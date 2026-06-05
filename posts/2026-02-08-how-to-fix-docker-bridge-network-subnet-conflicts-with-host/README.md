@@ -17,10 +17,10 @@ Here is how to identify and fix Docker bridge network subnet conflicts.
 By default, Docker uses the following IP ranges:
 
 - Default bridge network: `172.17.0.0/16`
-- User-defined networks: Allocated from `172.18.0.0/16`, `172.19.0.0/16`, and so on
+- User-defined networks: Allocated from Docker's built-in default address pools, which include `172.18.0.0/16`, `172.19.0.0/16`, parts of the rest of `172.16.0.0/12`, and `192.168.0.0/16` split into smaller subnets
 - Docker Swarm overlay networks: `10.0.0.0/8` range
 
-Docker picks these ranges automatically without checking if they conflict with your existing network infrastructure. If your corporate network uses `172.16.0.0/12` (which many do), conflicts are almost guaranteed.
+Docker picks these ranges automatically and attempts to avoid address prefixes already in use on the host. It still cannot reliably account for every corporate LAN, VPN, or route that may appear later. If your corporate network uses `172.16.0.0/12` (which many do), conflicts are common.
 
 Check what subnets Docker is currently using:
 
@@ -66,7 +66,7 @@ ip addr show
 ip route show | grep -E "172\.|10\.|192\.168"
 ```
 
-If any Docker subnet overlaps with a route in your host's routing table, you have found the conflict.
+If any Docker subnet overlaps with a non-Docker route in your host's routing table, you have found the conflict.
 
 ## Fix 1: Configure the Default Bridge Network
 
@@ -178,8 +178,9 @@ networks:
 If Docker already created networks that conflict, remove them:
 
 ```bash
-# Stop all containers using the conflicting network
-docker network disconnect my-network $(docker network inspect my-network -f '{{range .Containers}}{{.Name}} {{end}}')
+# Disconnect each container using the conflicting network
+docker network inspect my-network -f '{{range .Containers}}{{.Name}}{{"\n"}}{{end}}' \
+  | xargs -r -n1 docker network disconnect my-network
 
 # Remove the network
 docker network rm my-network
@@ -224,7 +225,7 @@ After changing the configuration, verify there are no conflicts with your VPN:
 # Connect to VPN first, then check routes
 ip route show
 
-# Verify Docker networks do not overlap with any route
+# Verify Docker networks do not overlap with non-Docker routes
 docker network inspect $(docker network ls -q) --format '{{.Name}} {{range .IPAM.Config}}{{.Subnet}}{{end}}'
 ```
 
@@ -235,15 +236,21 @@ If IPv4 address space is extremely constrained, consider enabling IPv6 for Docke
 ```json
 {
     "ipv6": true,
-    "fixed-cidr-v6": "fd00:dead:beef::/48",
+    "fixed-cidr-v6": "fd00:dead:beef:1::/64",
     "default-address-pools": [
         {
-            "base": "fd00:dead:beef::/48",
+            "base": "192.168.201.0/24",
+            "size": 28
+        },
+        {
+            "base": "fd00:dead:beef::/56",
             "size": 64
         }
     ]
 }
 ```
+
+When you override `default-address-pools` for IPv6, include IPv4 pools as well if you still want Docker to allocate IPv4 subnets automatically.
 
 ## Preventing Future Conflicts
 
@@ -259,33 +266,54 @@ Docker networks:     192.168.201.0/22 (split into /28 blocks)
 
 Create a validation script that checks for conflicts:
 
-```bash
-#!/bin/bash
-# check-docker-network-conflicts.sh
+```python
+#!/usr/bin/env python3
+# check-docker-network-conflicts.py
 # Compare Docker subnets against host routes to detect conflicts
 
-echo "Docker network subnets:"
-docker network ls -q | xargs docker network inspect \
-  --format '{{.Name}}: {{range .IPAM.Config}}{{.Subnet}}{{end}}'
+import ipaddress
+import json
+import subprocess
 
-echo ""
-echo "Host routes:"
-ip route show
 
-echo ""
-echo "Checking for potential conflicts..."
+def run(command):
+    return subprocess.check_output(command, text=True).strip()
 
-# Extract Docker subnets
-DOCKER_SUBNETS=$(docker network ls -q | xargs docker network inspect \
-  --format '{{range .IPAM.Config}}{{.Subnet}}{{end}}' 2>/dev/null)
 
-for subnet in $DOCKER_SUBNETS; do
-    # Extract the network prefix
-    prefix=$(echo "$subnet" | cut -d'/' -f1 | cut -d'.' -f1-2)
-    if ip route | grep -q "^${prefix}"; then
-        echo "WARNING: Docker subnet $subnet may conflict with host route"
-    fi
-done
+docker_network_ids = run(["docker", "network", "ls", "-q"]).splitlines()
+docker_subnets = []
+
+if docker_network_ids:
+    networks = json.loads(run(["docker", "network", "inspect", *docker_network_ids]))
+    for network in networks:
+        for config in network.get("IPAM", {}).get("Config", []):
+            subnet = config.get("Subnet")
+            if subnet:
+                docker_subnets.append((network["Name"], ipaddress.ip_network(subnet, strict=False)))
+
+routes = []
+for line in run(["ip", "-j", "route", "show"]).splitlines():
+    for route in json.loads(line):
+        destination = route.get("dst")
+        dev = route.get("dev", "")
+        if not destination or destination == "default" or dev.startswith(("docker", "br-")):
+            continue
+        routes.append((dev, ipaddress.ip_network(destination, strict=False)))
+
+print("Docker network subnets:")
+for name, subnet in docker_subnets:
+    print(f"{name}: {subnet}")
+
+print("\nPotential conflicts:")
+found = False
+for name, docker_subnet in docker_subnets:
+    for dev, route in routes:
+        if docker_subnet.version == route.version and docker_subnet.overlaps(route):
+            found = True
+            print(f"WARNING: Docker network {name} ({docker_subnet}) overlaps host route {route} on {dev}")
+
+if not found:
+    print("No overlapping non-Docker routes found.")
 ```
 
 ## Summary
