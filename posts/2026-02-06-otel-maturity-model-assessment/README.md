@@ -43,7 +43,7 @@ levels:
       - "OpenTelemetry SDK installed and initialized"
       - "Auto-instrumentation enabled for HTTP server"
       - "Traces visible in the observability backend"
-      - "Resource attributes include service.name and deployment.environment"
+      - "Resource attributes include service.name and deployment.environment.name"
     score: 1
 
   level_2:
@@ -54,7 +54,7 @@ levels:
       - "Domain-specific attributes on spans (e.g., order.id, user.id)"
       - "Span naming follows organizational conventions"
       - "Basic request rate and error rate metrics exported"
-      - "Resource attributes include service.team and service.namespace"
+      - "Resource attributes include service.namespace and an organization-specific team attribute such as com.example.team.name"
     score: 2
 
   level_3:
@@ -77,7 +77,7 @@ levels:
       - "Custom sampling rules reduce noise while preserving signal"
       - "SLOs defined and tracked using OpenTelemetry metrics"
       - "Telemetry data used for capacity planning"
-      - "Team contributes to shared semantic conventions"
+      - "Team contributes to shared organizational conventions"
       - "Runbooks reference specific trace queries and metric dashboards"
     score: 4
 ```
@@ -90,7 +90,7 @@ Create a simple script that teams can run to self-assess their services:
 #!/usr/bin/env python3
 """
 OpenTelemetry Maturity Assessment Tool
-Run this against a service to check its instrumentation maturity level.
+Run this against a service in a Jaeger-compatible backend to check its instrumentation maturity level.
 """
 
 import requests
@@ -115,8 +115,7 @@ def check_custom_spans(service_name: str, backend_url: str) -> bool:
     for trace in data.get("data", []):
         for span in trace.get("spans", []):
             op = span.get("operationName", "")
-            # Auto-instrumented spans usually start with HTTP or have DB prefixes
-            # Custom spans follow our <domain>.<operation> convention
+            # For this example, custom spans follow our <domain>.<operation> convention.
             if "." in op and not op.startswith("HTTP"):
                 return True
     return False
@@ -148,15 +147,15 @@ def assess(service_name: str, backend_url: str):
 
     resource_attrs = check_resource_attributes(service_name, backend_url)
     has_service_name = "service.name" in resource_attrs
-    has_environment = "deployment.environment" in resource_attrs
+    has_environment = "deployment.environment.name" in resource_attrs
     print(f"  service.name set: {'PASS' if has_service_name else 'FAIL'}")
-    print(f"  deployment.environment set: {'PASS' if has_environment else 'FAIL'}")
+    print(f"  deployment.environment.name set: {'PASS' if has_environment else 'FAIL'}")
 
     # Level 2 checks
     has_custom = check_custom_spans(service_name, backend_url)
-    has_team = "service.team" in resource_attrs
+    has_team = "com.example.team.name" in resource_attrs
     print(f"  Custom spans: {'PASS' if has_custom else 'FAIL'}")
-    print(f"  service.team set: {'PASS' if has_team else 'FAIL'}")
+    print(f"  com.example.team.name set: {'PASS' if has_team else 'FAIL'}")
 
     # Determine level
     if not has_traces:
