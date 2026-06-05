@@ -84,29 +84,32 @@ Now configure Vector to receive OTLP logs, process them, and forward to your bac
 # Receive OTLP logs from the Collector
 [sources.otel_logs]
 type = "opentelemetry"
+
+[sources.otel_logs.grpc]
+address = "0.0.0.0:4320"
+
+[sources.otel_logs.http]
 address = "0.0.0.0:4319"
-# Only accept logs, not traces or metrics
-grpc.enable = false
-http.enable = true
 
 # Parse JSON log bodies
 [transforms.parse_json]
 type = "remap"
-inputs = ["otel_logs"]
+inputs = ["otel_logs.logs"]
 source = '''
-# Try to parse the log body as JSON
-parsed, err = parse_json(.body)
-if err == null {
-  .body = parsed
+# Try to parse the log body as JSON. In Vector's native OpenTelemetry
+# log schema, the OTLP body is stored in the message field.
+parsed, err = parse_json(string(.message) ?? "")
+if err == null && is_object(parsed) {
+  .attributes.parsed_body = parsed
   # Extract common fields to top-level attributes
-  if exists(.body.level) {
-    .attributes.severity = .body.level
+  if exists(parsed.level) {
+    .severity_text = string(parsed.level) ?? .severity_text
   }
-  if exists(.body.request_id) {
-    .attributes.request_id = .body.request_id
+  if exists(parsed.request_id) {
+    .attributes.request_id = parsed.request_id
   }
-  if exists(.body.user_id) {
-    .attributes.user_id = .body.user_id
+  if exists(parsed.user_id) {
+    .attributes.user_id = parsed.user_id
   }
 }
 '''
@@ -117,7 +120,7 @@ type = "filter"
 inputs = ["parse_json"]
 condition = '''
 !includes(["GET /healthz", "GET /readyz", "GET /livez"],
-  string(.attributes.http_target) ?? "")
+  string(get!(.attributes, ["http.target"])) ?? "")
 '''
 
 # Enrich with environment metadata
@@ -128,11 +131,11 @@ source = '''
 .attributes.pipeline_version = "1.2.0"
 .attributes.processed_by = "vector"
 # Redact sensitive fields
-if exists(.body.password) {
-  .body.password = "REDACTED"
+if exists(.attributes.parsed_body.password) {
+  .attributes.parsed_body.password = "REDACTED"
 }
-if exists(.body.token) {
-  .body.token = "REDACTED"
+if exists(.attributes.parsed_body.token) {
+  .attributes.parsed_body.token = "REDACTED"
 }
 '''
 
@@ -152,7 +155,7 @@ VRL is where Vector really shines. Here are some practical transformations:
 
 ```coffeescript
 # Parse a Nginx access log line
-parsed = parse_regex!(.body,
+parsed = parse_regex!(string!(.message),
   r'^(?P<ip>\S+) - (?P<user>\S+) \[(?P<ts>[^\]]+)\] "(?P<method>\S+) (?P<path>\S+) (?P<proto>[^"]+)" (?P<status>\d+) (?P<bytes>\d+)')
 .attributes.client_ip = parsed.ip
 .attributes.http_method = parsed.method
@@ -161,9 +164,9 @@ parsed = parse_regex!(.body,
 .attributes.response_bytes = to_int!(parsed.bytes)
 
 # Classify log severity based on content
-if contains(string!(.body), "ERROR") || contains(string!(.body), "FATAL") {
+if contains(string!(.message), "ERROR") || contains(string!(.message), "FATAL") {
   .severity_number = 17
-} else if contains(string!(.body), "WARN") {
+} else if contains(string!(.message), "WARN") {
   .severity_number = 13
 } else {
   .severity_number = 9
@@ -172,7 +175,7 @@ if contains(string!(.body), "ERROR") || contains(string!(.body), "FATAL") {
 # Sample verbose debug logs at 10%
 if .severity_number <= 5 {
   rate = get_env_var("DEBUG_SAMPLE_RATE") ?? "0.1"
-  if !sample(to_float!(rate)) {
+  if random_float!(0.0, 1.0) >= to_float!(rate) {
     abort
   }
 }
@@ -184,7 +187,6 @@ Here is a minimal Docker Compose file to run both components together:
 
 ```yaml
 # docker-compose.yaml
-version: "3.8"
 services:
   otel-collector:
     image: otel/opentelemetry-collector-contrib:latest
