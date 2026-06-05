@@ -79,7 +79,7 @@ engine = create_engine("postgresql://user:pass@localhost:5432/mydb")
 SQLAlchemyInstrumentor().instrument(engine=engine)
 ```
 
-With this in place, every query executed through SQLAlchemy will produce a span containing `db.statement`, `db.system`, and duration information.
+With this in place, every query executed through SQLAlchemy will produce a span containing database attributes such as `db.query.text` and `db.system.name` when the instrumentation is opted into the stable database semantic conventions. Existing instrumentations may still emit the older `db.statement` and `db.system` attributes by default during the semantic convention migration.
 
 ---
 
@@ -100,7 +100,7 @@ def execute_with_context(session, query, params=None, query_name="unnamed"):
     with tracer.start_as_current_span("db.query") as span:
         # Add a human-readable query name for easier identification
         span.set_attribute("db.query.name", query_name)
-        span.set_attribute("db.system", "postgresql")
+        span.set_attribute("db.system.name", "postgresql")
 
         start = time.monotonic()
         result = session.execute(query, params)
@@ -147,11 +147,11 @@ metrics.set_meter_provider(meter_provider)
 meter = metrics.get_meter("db-metrics")
 
 # Create a histogram to track query duration distribution
-# Bucket boundaries are in milliseconds
+# The stable database metric convention records duration in seconds
 query_duration_histogram = meter.create_histogram(
-    name="db.query.duration",
-    description="Duration of database queries in milliseconds",
-    unit="ms"
+    name="db.client.operation.duration",
+    description="Duration of database client operations",
+    unit="s"
 )
 
 # Create a counter for slow queries
@@ -165,11 +165,11 @@ def record_query_metrics(duration_ms, query_name, db_system, is_slow):
     # Attributes let you slice metrics by query name, database, etc.
     attributes = {
         "db.query.name": query_name,
-        "db.system": db_system
+        "db.system.name": db_system
     }
 
-    # Record the duration in the histogram
-    query_duration_histogram.record(duration_ms, attributes)
+    # Record the duration in seconds, matching the stable database metric convention
+    query_duration_histogram.record(duration_ms / 1000, attributes)
 
     # Increment the slow query counter if applicable
     if is_slow:
@@ -193,33 +193,34 @@ receivers:
         endpoint: 0.0.0.0:4317
 
 connectors:
-  # The spanmetrics connector converts span data into metrics
-  spanmetrics:
+  # The span_metrics connector converts span data into metrics
+  span_metrics:
     histogram:
+      unit: ms
       explicit:
         # Define bucket boundaries in milliseconds for query latency distribution
-        buckets: [5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000]
+        buckets: [5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 2500ms, 5s, 10s]
     dimensions:
       # These span attributes become metric labels
-      - name: db.system
+      - name: db.system.name
       - name: db.query.name
       - name: db.query.slow
-    # Only process spans that represent database operations
-    dimensions_cache_size: 1000
+    # Limit distinct dimension combinations to protect the metrics backend
+    aggregation_cardinality_limit: 1000
+    exemplars:
+      enabled: true
 
 processors:
   batch:
     timeout: 10s
     send_batch_size: 1024
 
-  # Filter to only process database-related spans for metrics generation
+  # Drop non-database spans before metrics generation
   filter/db:
-    spans:
-      include:
-        match_type: regexp
-        attributes:
-          - key: db.system
-            value: ".*"
+    error_mode: ignore
+    traces:
+      span:
+        - 'attributes["db.system.name"] == nil and attributes["db.system"] == nil'
 
 exporters:
   otlp/traces:
@@ -238,16 +239,22 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [spanmetrics, otlp/traces]
+      exporters: [otlp/traces]
 
-    # Metrics pipeline - receives derived metrics from the spanmetrics connector
+    # Database spans pipeline - filters spans before generating metrics
+    traces/db-metrics:
+      receivers: [otlp]
+      processors: [filter/db, batch]
+      exporters: [span_metrics]
+
+    # Metrics pipeline - receives derived metrics from the span_metrics connector
     metrics:
-      receivers: [spanmetrics]
+      receivers: [span_metrics]
       processors: [batch]
       exporters: [otlp/metrics]
 ```
 
-The `spanmetrics` connector sits between the traces and metrics pipelines. It reads incoming spans, extracts duration data, and emits histogram metrics. The `dimensions` field controls which span attributes become metric labels.
+The `span_metrics` connector sits between the database span pipeline and the metrics pipeline. It reads incoming spans, extracts duration data, and emits histogram metrics. The `dimensions` field controls which span attributes become metric labels.
 
 ---
 
@@ -255,7 +262,7 @@ The `spanmetrics` connector sits between the traces and metrics pipelines. It re
 
 With metrics flowing into your backend, you can set up alerts that fire when query performance degrades. Here are some useful alert conditions to start with.
 
-For a Node.js application, you can also instrument database calls using the `@opentelemetry/instrumentation-pg` library. The pattern is the same: capture the query as a span, record duration, and flag slow queries.
+For a Node.js application, you can also instrument database calls using the `@opentelemetry/instrumentation-pg` library. The pattern is the same: capture the query as a span with auto-instrumentation, then use a small wrapper when you also want custom duration and slow-query metrics.
 
 ```javascript
 // Node.js example using the pg (PostgreSQL) instrumentation
@@ -284,6 +291,10 @@ const queryDuration = meter.createHistogram('db.query.duration', {
   unit: 'ms',
 });
 
+const slowQueryCount = meter.createCounter('db.query.slow.count', {
+  description: 'Number of queries that exceeded the slow threshold',
+});
+
 // Register the PostgreSQL auto-instrumentation
 // This automatically wraps all pg queries in spans
 registerInstrumentations({
@@ -292,18 +303,39 @@ registerInstrumentations({
       enhancedDatabaseReporting: true,
       // Hook to enrich query spans with custom attributes
       responseHook: (span, responseInfo) => {
-        span.setAttribute('db.rows_affected', responseInfo.data.rowCount ?? 0);
+        span.setAttribute('db.response.returned_rows', responseInfo.data?.rowCount ?? 0);
       },
     }),
   ],
 });
+
+const { Pool } = require('pg');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+
+async function queryWithMetrics(queryName, sql, params = []) {
+  const start = performance.now();
+  const result = await pool.query(sql, params);
+  const durationMs = performance.now() - start;
+  const attributes = {
+    'db.query.name': queryName,
+    'db.system.name': 'postgresql',
+  };
+
+  queryDuration.record(durationMs, attributes);
+
+  if (durationMs > 500) {
+    slowQueryCount.add(1, attributes);
+  }
+
+  return result;
+}
 ```
 
 ---
 
 ## Step 6: Correlate Slow Queries with Application Traces
 
-The real power of OpenTelemetry is correlation. When a slow query metric fires an alert, you can trace it back to the exact request that triggered it. This is possible because spans and metrics share the same attributes.
+The real power of OpenTelemetry is correlation. When a slow query metric fires an alert, you can trace it back to matching requests by using the same attributes on spans and metrics. If your backend supports exemplars and the Collector enables them, metric points can also carry trace references for direct click-through.
 
 Here is how the flow works in practice:
 
@@ -321,12 +353,12 @@ sequenceDiagram
     DB-->>App: Result set
     App-->>User: 200 OK (slow)
     App->>Col: Span: db.query (duration=2300ms, slow=true)
-    Col->>Backend: Trace + Derived Metrics
+    Col->>Backend: Trace + Derived Metrics with exemplars
     Note over Backend: Alert fires: p95 query duration > 1000ms
-    Backend-->>Backend: Link alert to trace ID for investigation
+    Backend-->>Backend: Link exemplar or matching attributes to traces
 ```
 
-When the alert fires, you click through to the trace and see the full request context. You see which endpoint triggered the query, what the SQL statement was, and how it fits into the broader request timeline. No more guessing.
+When the alert fires, you click through an exemplar when your backend supports it, or search for traces with the same query attributes. You see which endpoint triggered the query, what the SQL statement was, and how it fits into the broader request timeline. No more guessing.
 
 ---
 
@@ -334,12 +366,12 @@ When the alert fires, you click through to the trace and see the full request co
 
 Once your instrumentation is in place, focus on these metrics for database query performance:
 
-- **db.query.duration (histogram)** - p50, p95, p99 latency by query name and database system
+- **db.client.operation.duration or db.query.duration (histogram)** - p50, p95, p99 latency by query name and database system
 - **db.query.slow.count (counter)** - rate of slow queries, useful for alerting on sudden spikes
 - **db.query.count (counter)** - total query throughput, helpful for capacity planning
 - **db.query.error.count (counter)** - failed queries, catches connection issues and syntax errors
 
-Group these by `db.query.name` and `db.system` to pinpoint exactly which queries are degrading and on which database.
+Group these by `db.query.name` and `db.system.name` to pinpoint exactly which queries are degrading and on which database.
 
 ---
 
