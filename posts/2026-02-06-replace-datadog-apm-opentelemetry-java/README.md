@@ -21,7 +21,7 @@ The Datadog Java agent (dd-java-agent) is a capable tool, but there are several 
 - **Cost control**: Datadog pricing is based on hosts and ingestion volume. With OpenTelemetry, you choose your backend and pricing model.
 - **Vendor flexibility**: Your instrumentation code works with any OTLP-compatible backend, not just Datadog.
 - **Open standard**: OpenTelemetry is a CNCF project with broad industry support. Your team's knowledge transfers across jobs and projects.
-- **Growing ecosystem**: Over 100 Java libraries have OpenTelemetry instrumentation, with more added regularly.
+- **Growing ecosystem**: OpenTelemetry Java instrumentation supports a broad set of popular Java libraries, with more added regularly.
 
 ---
 
@@ -91,11 +91,11 @@ Also remove the `dd-trace-api` dependency from your build file if you used manua
 
 ## Step 2: Install the OpenTelemetry Java Agent
 
-Download the OpenTelemetry Java auto-instrumentation agent. This single JAR file replaces the Datadog agent and provides automatic instrumentation for the same set of libraries:
+Download the OpenTelemetry Java auto-instrumentation agent. This single JAR file replaces the Datadog agent at JVM startup and provides automatic instrumentation for a broad set of popular libraries:
 
 ```bash
 # Download the latest OpenTelemetry Java agent
-# This is a drop-in replacement for dd-java-agent.jar
+# Review supported libraries and configuration before rolling it out
 curl -L -o /opt/opentelemetry-javaagent.jar \
   https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/latest/download/opentelemetry-javaagent.jar
 ```
@@ -107,6 +107,7 @@ Run your application with the OpenTelemetry agent. The environment variable mapp
 # Each Datadog env var has a direct OpenTelemetry equivalent
 java -javaagent:/opt/opentelemetry-javaagent.jar \
      -Dotel.service.name=order-service \
+     -Dotel.exporter.otlp.protocol=http/protobuf \
      -Dotel.exporter.otlp.endpoint=https://oneuptime.com/otlp \
      -Dotel.exporter.otlp.headers=x-oneuptime-token=your-token-here \
      -Dotel.resource.attributes=deployment.environment=production,service.version=1.5.0 \
@@ -120,11 +121,12 @@ Here is the environment variable translation table for your deployment scripts:
 # DD_SERVICE=order-service         ->  OTEL_SERVICE_NAME=order-service
 # DD_ENV=production                ->  OTEL_RESOURCE_ATTRIBUTES=deployment.environment=production
 # DD_VERSION=1.5.0                 ->  OTEL_RESOURCE_ATTRIBUTES=service.version=1.5.0
-# DD_AGENT_HOST=datadog-agent      ->  OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+# DD_AGENT_HOST=datadog-agent      ->  OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
 # DD_TRACE_SAMPLE_RATE=1.0         ->  OTEL_TRACES_SAMPLER=parentbased_always_on
-# DD_LOGS_INJECTION=true           ->  (automatic with OTel agent)
+# DD_LOGS_INJECTION=true           ->  (automatic for supported logging frameworks; include MDC fields in your log pattern)
 
 export OTEL_SERVICE_NAME="order-service"
+export OTEL_EXPORTER_OTLP_PROTOCOL="http/protobuf"
 export OTEL_EXPORTER_OTLP_ENDPOINT="https://oneuptime.com/otlp"
 export OTEL_EXPORTER_OTLP_HEADERS="x-oneuptime-token=your-token-here"
 export OTEL_RESOURCE_ATTRIBUTES="deployment.environment=production,service.version=1.5.0"
@@ -153,7 +155,8 @@ COPY target/order-service.jar /app/order-service.jar
 # This ensures the agent loads regardless of how the container is started
 ENV JAVA_TOOL_OPTIONS="-javaagent:/opt/opentelemetry-javaagent.jar"
 ENV OTEL_SERVICE_NAME="order-service"
-ENV OTEL_EXPORTER_OTLP_ENDPOINT="http://otel-collector:4317"
+ENV OTEL_EXPORTER_OTLP_PROTOCOL="http/protobuf"
+ENV OTEL_EXPORTER_OTLP_ENDPOINT="http://otel-collector:4318"
 
 EXPOSE 8080
 ENTRYPOINT ["java", "-jar", "/app/order-service.jar"]
@@ -170,7 +173,7 @@ If you used the Datadog `dd-trace-api` for manual instrumentation, replace those
 <dependency>
     <groupId>io.opentelemetry</groupId>
     <artifactId>opentelemetry-api</artifactId>
-    <version>1.44.1</version>
+    <version>1.62.0</version>
 </dependency>
 ```
 
@@ -247,7 +250,7 @@ Datadog provides a `@Trace` annotation for declarative instrumentation. OpenTele
 <dependency>
     <groupId>io.opentelemetry.instrumentation</groupId>
     <artifactId>opentelemetry-instrumentation-annotations</artifactId>
-    <version>2.11.0</version>
+    <version>2.28.1</version>
 </dependency>
 ```
 
@@ -318,7 +321,8 @@ public class OrderMetrics {
         .build();
 
     // Gauge replaces statsd.gauge
-    // Note: gauges in OTel use a callback pattern for async observation
+    // Note: synchronous gauges record the current value when it changes;
+    // asynchronous gauges use a callback pattern.
     private static final LongGauge queueSize = meter
         .gaugeBuilder("orders.queue_size")
         .setDescription("Current order queue depth")
@@ -360,7 +364,7 @@ Most Java services use Spring Boot. Here is how to configure OpenTelemetry speci
 <dependency>
     <groupId>io.opentelemetry.instrumentation</groupId>
     <artifactId>opentelemetry-spring-boot-starter</artifactId>
-    <version>2.11.0</version>
+    <version>2.28.1</version>
 </dependency>
 ```
 
@@ -381,6 +385,7 @@ otel:
       service.version: ${APP_VERSION:1.0.0}
   exporter:
     otlp:
+      protocol: http/protobuf
       endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:https://oneuptime.com/otlp}
       headers:
         x-oneuptime-token: ${ONEUPTIME_TOKEN:your-token-here}
@@ -419,8 +424,10 @@ spec:
               value: "-javaagent:/opt/opentelemetry-javaagent.jar"
             - name: OTEL_SERVICE_NAME
               value: "order-service"
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: "http/protobuf"
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: "http://otel-collector.observability:4317"
+              value: "http://otel-collector.observability:4318"
             - name: OTEL_RESOURCE_ATTRIBUTES
               value: "deployment.environment=production,service.version=1.5.0"
 ```
@@ -442,7 +449,7 @@ After completing the migration, verify these items:
 
 ## Conclusion
 
-Replacing the Datadog Java APM agent with OpenTelemetry is a clean swap. The OpenTelemetry Java agent provides equivalent automatic instrumentation for the same set of libraries, and the manual API is straightforward to adopt. The biggest win is that your Java services are no longer locked into a single vendor's pricing and ecosystem.
+Replacing the Datadog Java APM agent with OpenTelemetry is a clean swap for many services. The OpenTelemetry Java agent provides broad automatic instrumentation, and the manual API is straightforward to adopt. The biggest win is that your Java services are no longer locked into a single vendor's pricing and ecosystem.
 
 Start with one service, validate the telemetry output, and then roll the change across your fleet. The migration is typically a day of work per service for the initial setup, with custom instrumentation migration taking a bit longer depending on how much Datadog-specific API usage you have.
 
