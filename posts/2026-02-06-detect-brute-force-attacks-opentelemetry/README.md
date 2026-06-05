@@ -18,8 +18,8 @@ Your application knows things that network tools do not: which user accounts are
 # auth_security.py
 
 from opentelemetry import trace, metrics
-from opentelemetry.trace import StatusCode
 from collections import defaultdict
+import hashlib
 import time
 
 tracer = trace.get_tracer("security.auth")
@@ -50,12 +50,18 @@ account_lockouts = meter.create_counter(
     unit="1",
 )
 
+def hash_username(username: str) -> str:
+    """Hash usernames before adding them to telemetry."""
+    normalized = username.strip().lower().encode("utf-8")
+    return hashlib.sha256(normalized).hexdigest()
+
 class AuthSecurityMonitor:
     def __init__(self):
         # In-memory counters for rate detection
         # In production, use Redis for distributed counting
         self.ip_attempt_counts = defaultdict(list)
         self.username_attempt_counts = defaultdict(list)
+        self.ip_username_attempts = defaultdict(list)
 
     async def process_login_attempt(self, username: str, source_ip: str,
                                       user_agent: str, success: bool):
@@ -73,7 +79,7 @@ class AuthSecurityMonitor:
 
             # Record basic metrics
             login_attempts.add(1, {
-                "security.login.success": str(success),
+                "security.login.success": success,
                 "security.source_ip": source_ip,
             })
 
@@ -85,6 +91,8 @@ class AuthSecurityMonitor:
             # Track attempts per IP in the last 5 minutes
             self.ip_attempt_counts[source_ip].append(now)
             self._cleanup_old_attempts(self.ip_attempt_counts[source_ip], now, 300)
+            self.ip_username_attempts[source_ip].append((now, username))
+            self._cleanup_old_username_attempts(self.ip_username_attempts[source_ip], now, 300)
 
             # Track attempts per username in the last 10 minutes
             self.username_attempt_counts[username].append(now)
@@ -93,8 +101,9 @@ class AuthSecurityMonitor:
             # Analyze for brute force patterns
             ip_rate = len(self.ip_attempt_counts[source_ip])
             username_rate = len(self.username_attempt_counts[username])
+            attempts_per_minute = ip_rate / 5
 
-            login_attempt_rate.record(ip_rate, {
+            login_attempt_rate.record(attempts_per_minute, {
                 "security.source_ip": source_ip,
             })
 
@@ -123,6 +132,21 @@ class AuthSecurityMonitor:
         cutoff = now - window
         while attempts and attempts[0] < cutoff:
             attempts.pop(0)
+
+    def _cleanup_old_username_attempts(self, attempts: list, now: float, window: int):
+        """Remove username attempts outside the time window."""
+        cutoff = now - window
+        while attempts and attempts[0][0] < cutoff:
+            attempts.pop(0)
+
+    def _count_unique_usernames(self, source_ip: str, now: float, window: int):
+        """Count unique usernames attempted from a source IP."""
+        cutoff = now - window
+        return len({
+            username
+            for timestamp, username in self.ip_username_attempts[source_ip]
+            if timestamp >= cutoff
+        })
 
     async def _handle_brute_force(self, source_ip: str, detection_type: str, span):
         """Take action when brute force is detected."""
@@ -181,13 +205,18 @@ Configure your collector to forward security events to your alerting system:
 
 ```yaml
 # otel-collector-security.yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+      http:
+
 processors:
   filter/security_events:
+    error_mode: ignore
     traces:
-      include:
-        match_type: regexp
-        span_names:
-          - "security\\..*"
+      span:
+        - 'IsMatch(name, "^security\\..*") == false'
 
   attributes/enrich:
     actions:
@@ -198,17 +227,17 @@ processors:
 exporters:
   otlp/security:
     endpoint: security-backend:4317
-  logging/security:
-    loglevel: warn
+  debug/security:
+    verbosity: basic
 
 service:
   pipelines:
     traces/security:
       receivers: [otlp]
       processors: [filter/security_events, attributes/enrich]
-      exporters: [otlp/security, logging/security]
+      exporters: [otlp/security, debug/security]
 ```
 
 ## Summary
 
-Brute-force detection with OpenTelemetry gives you application-level visibility that network-based tools miss. You see not just the volume of requests, but which accounts are targeted, what credentials are being tried, and how the attack pattern evolves. Combined with automated blocking and geo-anomaly detection, this creates a defense layer that runs inside your application where it has the most context.
+Brute-force detection with OpenTelemetry gives you application-level visibility that network-based tools miss. You see not just the volume of requests, but which accounts are targeted and how the attack pattern evolves. Combined with automated blocking and geo-anomaly detection, this creates a defense layer that runs inside your application where it has the most context.
