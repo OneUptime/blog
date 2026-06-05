@@ -15,6 +15,10 @@ The most useful approach is a parent span for the entire stream and child spans 
 ```protobuf
 syntax = "proto3";
 
+package chat;
+
+option go_package = "example.com/chat/proto";
+
 service ChatService {
   // Bidirectional streaming: both client and server send messages
   rpc Chat(stream ChatMessage) returns (stream ChatMessage);
@@ -33,9 +37,7 @@ message ChatMessage {
 package main
 
 import (
-    "context"
     "io"
-    "log"
 
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/attribute"
@@ -56,9 +58,8 @@ func (s *chatServer) Chat(stream pb.ChatService_ChatServer) error {
         "ChatService.Chat",
         trace.WithSpanKind(trace.SpanKindServer),
         trace.WithAttributes(
-            attribute.String("rpc.system", "grpc"),
-            attribute.String("rpc.service", "ChatService"),
-            attribute.String("rpc.method", "Chat"),
+            attribute.String("rpc.system.name", "grpc"),
+            attribute.String("rpc.method", "ChatService/Chat"),
         ),
     )
     defer parentSpan.End()
@@ -70,8 +71,8 @@ func (s *chatServer) Chat(stream pb.ChatService_ChatServer) error {
         // Create a span for each received message
         _, recvSpan := tracer.Start(ctx, "ChatService.Chat.Receive",
             trace.WithAttributes(
-                attribute.Int("rpc.grpc.message.sequence", messagesReceived+1),
-                attribute.String("rpc.grpc.message.type", "RECEIVED"),
+                attribute.Int("stream.message.sequence", messagesReceived+1),
+                attribute.String("stream.message.direction", "RECEIVED"),
             ),
         )
 
@@ -101,8 +102,8 @@ func (s *chatServer) Chat(stream pb.ChatService_ChatServer) error {
         // Create a span for each sent message
         _, sendSpan := tracer.Start(ctx, "ChatService.Chat.Send",
             trace.WithAttributes(
-                attribute.Int("rpc.grpc.message.sequence", messagesSent+1),
-                attribute.String("rpc.grpc.message.type", "SENT"),
+                attribute.Int("stream.message.sequence", messagesSent+1),
+                attribute.String("stream.message.direction", "SENT"),
             ),
         )
 
@@ -118,8 +119,8 @@ func (s *chatServer) Chat(stream pb.ChatService_ChatServer) error {
 
     // Record totals on the parent span
     parentSpan.SetAttributes(
-        attribute.Int("rpc.grpc.messages_sent", messagesSent),
-        attribute.Int("rpc.grpc.messages_received", messagesReceived),
+        attribute.Int("stream.messages_sent", messagesSent),
+        attribute.Int("stream.messages_received", messagesReceived),
     )
 
     return nil
@@ -141,6 +142,10 @@ func chatWithServer(client pb.ChatServiceClient, messages []string) error {
         context.Background(),
         "ChatService.Chat.Client",
         trace.WithSpanKind(trace.SpanKindClient),
+        trace.WithAttributes(
+            attribute.String("rpc.system.name", "grpc"),
+            attribute.String("rpc.method", "ChatService/Chat"),
+        ),
     )
     defer parentSpan.End()
 
@@ -158,7 +163,8 @@ func chatWithServer(client pb.ChatServiceClient, messages []string) error {
         for {
             _, recvSpan := tracer.Start(ctx, "ChatService.Chat.Client.Receive",
                 trace.WithAttributes(
-                    attribute.Int("rpc.grpc.message.sequence", receivedCount+1),
+                    attribute.Int("stream.message.sequence", receivedCount+1),
+                    attribute.String("stream.message.direction", "RECEIVED"),
                 ),
             )
 
@@ -188,8 +194,8 @@ func chatWithServer(client pb.ChatServiceClient, messages []string) error {
     for i, msg := range messages {
         _, sendSpan := tracer.Start(ctx, "ChatService.Chat.Client.Send",
             trace.WithAttributes(
-                attribute.Int("rpc.grpc.message.sequence", i+1),
-                attribute.String("rpc.grpc.message.type", "SENT"),
+                attribute.Int("stream.message.sequence", i+1),
+                attribute.String("stream.message.direction", "SENT"),
                 attribute.Int("chat.content_length", len(msg)),
             ),
         )
@@ -216,8 +222,8 @@ func chatWithServer(client pb.ChatServiceClient, messages []string) error {
     }
 
     parentSpan.SetAttributes(
-        attribute.Int("rpc.grpc.messages_sent", len(messages)),
-        attribute.Int("rpc.grpc.messages_received", receivedCount),
+        attribute.Int("stream.messages_sent", len(messages)),
+        attribute.Int("stream.messages_received", receivedCount),
     )
 
     return nil
