@@ -28,7 +28,7 @@ myreceiver/
 package myreceiver
 
 import (
-    "go.opentelemetry.io/collector/component"
+    "fmt"
 )
 
 // Config holds the configuration for the receiver
@@ -62,7 +62,6 @@ package myreceiver
 
 import (
     "context"
-    "time"
 
     "go.opentelemetry.io/collector/component"
     "go.opentelemetry.io/collector/consumer"
@@ -122,16 +121,16 @@ package myreceiver
 
 import (
     "context"
+    "crypto/sha256"
     "encoding/json"
     "fmt"
     "net/http"
-    "time"
 
     "go.opentelemetry.io/collector/component"
     "go.opentelemetry.io/collector/consumer"
     "go.opentelemetry.io/collector/pdata/pcommon"
-    "go.opentelemetry.io/collector/pdata/ptrace"
     "go.opentelemetry.io/collector/pdata/plog"
+    "go.opentelemetry.io/collector/pdata/ptrace"
     "go.opentelemetry.io/collector/receiver"
     "go.uber.org/zap"
 )
@@ -250,6 +249,15 @@ func (r *myReceiver) convertToTraces(event incomingEvent) ptrace.Traces {
     scopeSpans := rs.ScopeSpans().AppendEmpty()
     span := scopeSpans.Spans().AppendEmpty()
 
+    idSource := []byte(fmt.Sprintf("%s:%d:%s", event.EventID, event.Timestamp, event.Type))
+    idHash := sha256.Sum256(idSource)
+    var traceID pcommon.TraceID
+    copy(traceID[:], idHash[:16])
+    var spanID pcommon.SpanID
+    copy(spanID[:], idHash[16:24])
+
+    span.SetTraceID(traceID)
+    span.SetSpanID(spanID)
     span.SetName(event.Type)
     span.SetStartTimestamp(pcommon.Timestamp(event.Timestamp * 1_000_000))
     span.SetEndTimestamp(pcommon.Timestamp(
@@ -293,7 +301,16 @@ Add it to your collector config:
 receivers:
   myreceiver:
     endpoint: "0.0.0.0:9999"
-    secret: "${WEBHOOK_SECRET}"
+    secret: "${env:WEBHOOK_SECRET}"
+
+processors:
+  batch: {}
+
+exporters:
+  otlp:
+    endpoint: "localhost:4317"
+    tls:
+      insecure: true
 
 service:
   pipelines:
@@ -307,9 +324,22 @@ service:
 
 ```go
 // receiver_test.go
+package myreceiver
+
+import (
+    "net/http/httptest"
+    "strings"
+    "testing"
+
+    "github.com/stretchr/testify/assert"
+    "go.opentelemetry.io/collector/component"
+    "go.opentelemetry.io/collector/consumer/consumertest"
+    "go.opentelemetry.io/collector/receiver/receivertest"
+)
+
 func TestHandleWebhook(t *testing.T) {
     consumer := new(consumertest.TracesSink)
-    rcv := newMyReceiver(receivertest.NewNopSettings(), &Config{
+    rcv := newMyReceiver(receivertest.NewNopSettings(component.MustNewType(typeStr)), &Config{
         Endpoint: "localhost:0",
     }, consumer, nil)
 
