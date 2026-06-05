@@ -25,22 +25,24 @@ Your development configuration optimizes for debugging:
 ```yaml
 # config/otel-dev.yaml
 
-file_format: "0.3"
+file_format: "1.0"
 
 resource:
   attributes:
-    service.name: "${SERVICE_NAME}"
-    service.version: "${SERVICE_VERSION:-dev}"
-    deployment.environment: "development"
+    - name: service.name
+      value: "${SERVICE_NAME}"
+    - name: service.version
+      value: "${SERVICE_VERSION:-dev}"
+    - name: deployment.environment.name
+      value: "development"
 
 tracer_provider:
   processors:
     # Simple processor for immediate export in dev
     - simple:
         exporter:
-          otlp:
+          otlp_grpc:
             endpoint: "http://localhost:4317"
-            protocol: "grpc"
     # Also print spans to console for easy debugging
     - simple:
         exporter:
@@ -56,9 +58,8 @@ meter_provider:
     - periodic:
         interval: 10000  # collect metrics every 10s in dev
         exporter:
-          otlp:
+          otlp_grpc:
             endpoint: "http://localhost:4317"
-            protocol: "grpc"
 
 logger_provider:
   processors:
@@ -67,20 +68,25 @@ logger_provider:
           console: {}
 
 propagator:
-  composite: [tracecontext, baggage]
+  composite:
+    - tracecontext:
+    - baggage:
 ```
 
 Your production configuration prioritizes throughput and reliability:
 
 ```yaml
 # config/otel-prod.yaml
-file_format: "0.3"
+file_format: "1.0"
 
 resource:
   attributes:
-    service.name: "${SERVICE_NAME}"
-    service.version: "${SERVICE_VERSION}"
-    deployment.environment: "production"
+    - name: service.name
+      value: "${SERVICE_NAME}"
+    - name: service.version
+      value: "${SERVICE_VERSION}"
+    - name: deployment.environment.name
+      value: "production"
 
 tracer_provider:
   processors:
@@ -89,13 +95,13 @@ tracer_provider:
         max_queue_size: 4096
         max_export_batch_size: 512
         exporter:
-          otlp:
+          otlp_grpc:
             endpoint: "${OTEL_COLLECTOR_ENDPOINT}"
-            protocol: "grpc"
             compression: "gzip"
             timeout: 10000
             headers:
-              Authorization: "Bearer ${OTEL_AUTH_TOKEN}"
+              - name: Authorization
+                value: "Bearer ${OTEL_AUTH_TOKEN}"
   sampler:
     parent_based:
       root:
@@ -113,9 +119,8 @@ meter_provider:
         interval: 60000
         timeout: 30000
         exporter:
-          otlp:
+          otlp_grpc:
             endpoint: "${OTEL_COLLECTOR_ENDPOINT}"
-            protocol: "grpc"
             compression: "gzip"
 
 logger_provider:
@@ -124,20 +129,21 @@ logger_provider:
         schedule_delay: 5000
         max_queue_size: 4096
         exporter:
-          otlp:
+          otlp_grpc:
             endpoint: "${OTEL_COLLECTOR_ENDPOINT}"
-            protocol: "grpc"
             compression: "gzip"
 
 propagator:
-  composite: [tracecontext, baggage]
+  composite:
+    - tracecontext:
+    - baggage:
 ```
 
 Select the right file at deployment time:
 
 ```bash
 # In your deployment script or Dockerfile
-export OTEL_EXPERIMENTAL_CONFIG_FILE="/etc/otel/otel-${DEPLOY_ENV}.yaml"
+export OTEL_CONFIG_FILE="/etc/otel/otel-${DEPLOY_ENV}.yaml"
 ```
 
 ## Strategy 2: Single File with Environment Variable Substitution
@@ -146,13 +152,16 @@ If you want to avoid maintaining multiple files, you can use a single file that 
 
 ```yaml
 # config/otel-config.yaml
-file_format: "0.3"
+file_format: "1.0"
 
 resource:
   attributes:
-    service.name: "${SERVICE_NAME}"
-    service.version: "${SERVICE_VERSION:-0.0.0}"
-    deployment.environment: "${DEPLOY_ENV:-development}"
+    - name: service.name
+      value: "${SERVICE_NAME}"
+    - name: service.version
+      value: "${SERVICE_VERSION:-0.0.0}"
+    - name: deployment.environment.name
+      value: "${DEPLOY_ENV:-development}"
 
 tracer_provider:
   processors:
@@ -161,9 +170,8 @@ tracer_provider:
         max_queue_size: ${BATCH_QUEUE_SIZE:-2048}
         max_export_batch_size: ${BATCH_SIZE:-512}
         exporter:
-          otlp:
+          otlp_grpc:
             endpoint: "${OTEL_COLLECTOR_ENDPOINT:-http://localhost:4317}"
-            protocol: "grpc"
             compression: "${OTEL_COMPRESSION:-none}"
   sampler:
     parent_based:
@@ -176,21 +184,21 @@ meter_provider:
     - periodic:
         interval: ${METRICS_INTERVAL:-30000}
         exporter:
-          otlp:
+          otlp_grpc:
             endpoint: "${OTEL_COLLECTOR_ENDPOINT:-http://localhost:4317}"
-            protocol: "grpc"
 
 logger_provider:
   processors:
     - batch:
         schedule_delay: ${BATCH_DELAY:-1000}
         exporter:
-          otlp:
+          otlp_grpc:
             endpoint: "${OTEL_COLLECTOR_ENDPOINT:-http://localhost:4317}"
-            protocol: "grpc"
 
 propagator:
-  composite: [tracecontext, baggage]
+  composite:
+    - tracecontext:
+    - baggage:
 ```
 
 Then define per-environment env files:
@@ -294,10 +302,7 @@ for env in "${ENVS[@]}"; do
   source "env/${env}.env"
 
   # Run validation with substitution
-  ./otel-config-validator validate \
-    --config "config/otel-config.yaml" \
-    --substitute-env \
-    --strict || FAILED=1
+  ./otel_config_validator "config/otel-config.yaml" || FAILED=1
 done
 
 exit $FAILED
