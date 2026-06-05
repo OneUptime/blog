@@ -38,7 +38,7 @@ processors:
           - delete_key(attributes, "serviceName")
 
           # Rename HTTP status code to semantic convention format
-          - set(attributes["http.status_code"], attributes["status"])
+          - set(attributes["http.response.status_code"], attributes["status"])
           - delete_key(attributes, "status")
 
           # Rename user identifier
@@ -60,10 +60,10 @@ processors:
       - context: log
         statements:
           # Convert to uppercase
-          - set(attributes["environment"], Upper(attributes["environment"]))
+          - set(attributes["environment"], ToUpperCase(attributes["environment"]))
 
           # Convert to lowercase for consistency
-          - set(attributes["http.method"], Lower(attributes["http.method"]))
+          - set(attributes["http.request.method"], ToLowerCase(attributes["http.request.method"]))
 
           # Trim whitespace
           - set(attributes["user.name"], Trim(attributes["user.name"]))
@@ -112,7 +112,7 @@ processors:
           - delete_key(resource.attributes, "app_name")
 
           # Rename deployment environment
-          - set(resource.attributes["deployment.environment"], resource.attributes["env"])
+          - set(resource.attributes["deployment.environment.name"], resource.attributes["env"])
           - delete_key(resource.attributes, "env")
 
           # Rename host identifier
@@ -134,16 +134,19 @@ processors:
       - context: log
         statements:
           # Extract domain from email
-          - set(attributes["user.domain"], ExtractPatterns(attributes["user.email"], "@(.+)$"))
+          - set(attributes["user.domain"], attributes["user.email"]) where IsMatch(attributes["user.email"], "^[^@]+@.+$")
+          - replace_pattern(attributes["user.domain"], "^[^@]+@(.+)$", "$1") where attributes["user.domain"] != nil
 
           # Extract status class from status code (e.g., 404 -> "4xx")
-          - set(attributes["http.status_class"], Concat([Substring(attributes["http.status_code"], 0, 1), "xx"], ""))
+          - set(attributes["http.status_class"], Concat([Substring(String(attributes["http.response.status_code"]), 0, 1), "xx"], "")) where attributes["http.response.status_code"] != nil
 
           # Extract error code from error message
-          - set(attributes["error.code"], ExtractPatterns(attributes["error.message"], "\\[([A-Z0-9_]+)\\]"))
+          - set(attributes["error.code"], attributes["error.message"]) where IsMatch(attributes["error.message"], "\\[[A-Z0-9_]+\\]")
+          - replace_pattern(attributes["error.code"], "^.*\\[([A-Z0-9_]+)\\].*$", "$1") where attributes["error.code"] != nil
 
           # Extract version number from user agent
-          - set(attributes["browser.version"], ExtractPatterns(attributes["user.agent"], "Version/([0-9.]+)"))
+          - set(attributes["browser.version"], attributes["user.agent"]) where IsMatch(attributes["user.agent"], "Version/[0-9.]+")
+          - replace_pattern(attributes["browser.version"], "^.*Version/([0-9.]+).*$", "$1") where attributes["browser.version"] != nil
 ```
 
 ### Combining Multiple Attributes
@@ -158,10 +161,10 @@ processors:
       - context: log
         statements:
           # Create a composite identifier
-          - set(attributes["resource.identifier"], Concat([resource.attributes["service.name"], "-", resource.attributes["deployment.environment"]], ""))
+          - set(attributes["resource.identifier"], Concat([resource.attributes["service.name"], "-", resource.attributes["deployment.environment.name"]], ""))
 
           # Create full URL from parts
-          - set(attributes["http.full_url"], Concat(["https://", attributes["http.host"], attributes["http.path"]], ""))
+          - set(attributes["url.full"], Concat(["https://", attributes["server.address"], attributes["url.path"]], ""))
 
           # Create geographic location string
           - set(attributes["geo.location"], Concat([attributes["geo.city"], ", ", attributes["geo.country"]], ""))
@@ -193,10 +196,10 @@ processors:
           - set(attributes["priority"], "low") where severity_number < 9
 
           # Classify HTTP status codes
-          - set(attributes["http.status_type"], "success") where Int(attributes["http.status_code"]) >= 200 and Int(attributes["http.status_code"]) < 300
-          - set(attributes["http.status_type"], "redirect") where Int(attributes["http.status_code"]) >= 300 and Int(attributes["http.status_code"]) < 400
-          - set(attributes["http.status_type"], "client_error") where Int(attributes["http.status_code"]) >= 400 and Int(attributes["http.status_code"]) < 500
-          - set(attributes["http.status_type"], "server_error") where Int(attributes["http.status_code"]) >= 500
+          - set(attributes["http.status_type"], "success") where Int(attributes["http.response.status_code"]) >= 200 and Int(attributes["http.response.status_code"]) < 300
+          - set(attributes["http.status_type"], "redirect") where Int(attributes["http.response.status_code"]) >= 300 and Int(attributes["http.response.status_code"]) < 400
+          - set(attributes["http.status_type"], "client_error") where Int(attributes["http.response.status_code"]) >= 400 and Int(attributes["http.response.status_code"]) < 500
+          - set(attributes["http.status_type"], "server_error") where Int(attributes["http.response.status_code"]) >= 500
 ```
 
 ## Bulk Attribute Renaming
@@ -211,13 +214,13 @@ processors:
       - context: log
         statements:
           # HTTP attributes
-          - set(attributes["http.method"], attributes["request.method"])
+          - set(attributes["http.request.method"], attributes["request.method"])
           - delete_key(attributes, "request.method")
 
-          - set(attributes["http.url"], attributes["request.url"])
+          - set(attributes["url.full"], attributes["request.url"])
           - delete_key(attributes, "request.url")
 
-          - set(attributes["http.status_code"], attributes["response.status"])
+          - set(attributes["http.response.status_code"], attributes["response.status"])
           - delete_key(attributes, "response.status")
 
           - set(attributes["http.request.body.size"], attributes["request.size"])
@@ -237,10 +240,10 @@ processors:
           - set(attributes["db.system"], attributes["database.type"])
           - delete_key(attributes, "database.type")
 
-          - set(attributes["db.name"], attributes["database.name"])
+          - set(attributes["db.namespace"], attributes["database.name"])
           - delete_key(attributes, "database.name")
 
-          - set(attributes["db.operation"], attributes["query.type"])
+          - set(attributes["db.operation.name"], attributes["query.type"])
           - delete_key(attributes, "query.type")
 ```
 
@@ -256,14 +259,14 @@ processors:
       - context: log
         statements:
           # Add timestamp-based attributes
-          - set(attributes["hour_of_day"], Hour(time_now()))
-          - set(attributes["day_of_week"], DayOfWeek(time_now()))
+          - set(attributes["hour_of_day"], Hour(Now()))
+          - set(attributes["day_of_week"], Weekday(Now()))
 
           # Add processing timestamp
-          - set(attributes["processed_at"], UnixMicro(time_now()))
+          - set(attributes["processed_at"], UnixMicro(Now()))
 
           # Add data classification
-          - set(attributes["contains_pii"], IsMatch(body, "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z|a-z]{2,}\\b"))
+          - set(attributes["contains_pii"], IsMatch(body, "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}\\b"))
 
           # Add size metrics
           - set(attributes["body_length"], Len(body))
@@ -292,10 +295,6 @@ receivers:
       http:
         endpoint: 0.0.0.0:4318
 
-  # Receive logs from Kubernetes
-  k8scluster:
-    auth_type: serviceAccount
-
 processors:
   # Memory limiter
   memory_limiter:
@@ -313,34 +312,34 @@ processors:
       - context: log
         statements:
           # Step 1: Rename legacy attributes to semantic conventions
-          - set(attributes["http.method"], attributes["request_method"])
+          - set(attributes["http.request.method"], attributes["request_method"])
           - delete_key(attributes, "request_method")
 
-          - set(attributes["http.status_code"], attributes["status"])
+          - set(attributes["http.response.status_code"], attributes["status"])
           - delete_key(attributes, "status")
 
-          - set(attributes["http.url"], attributes["request_url"])
+          - set(attributes["url.full"], attributes["request_url"])
           - delete_key(attributes, "request_url")
 
           # Step 2: Normalize attribute values
-          - set(attributes["http.method"], Upper(attributes["http.method"]))
-          - set(attributes["environment"], Lower(attributes["environment"]))
+          - set(attributes["http.request.method"], ToUpperCase(attributes["http.request.method"]))
+          - set(attributes["environment"], ToLowerCase(attributes["environment"]))
 
           # Step 3: Set defaults for missing attributes
           - set(attributes["environment"], "production") where attributes["environment"] == nil
           - set(attributes["region"], "us-east-1") where attributes["region"] == nil
 
           # Step 4: Create computed attributes
-          - set(attributes["http.status_class"], Concat([Substring(String(attributes["http.status_code"]), 0, 1), "xx"], "")) where attributes["http.status_code"] != nil
+          - set(attributes["http.status_class"], Concat([Substring(String(attributes["http.response.status_code"]), 0, 1), "xx"], "")) where attributes["http.response.status_code"] != nil
 
-          - set(attributes["is_error"], Int(attributes["http.status_code"]) >= 400) where attributes["http.status_code"] != nil
+          - set(attributes["is_error"], Int(attributes["http.response.status_code"]) >= 400) where attributes["http.response.status_code"] != nil
 
           - set(attributes["response_time_bucket"], "fast") where Int(attributes["duration_ms"]) < 100
           - set(attributes["response_time_bucket"], "medium") where Int(attributes["duration_ms"]) >= 100 and Int(attributes["duration_ms"]) < 1000
           - set(attributes["response_time_bucket"], "slow") where Int(attributes["duration_ms"]) >= 1000
 
           # Step 5: Enrich with resource context
-          - set(attributes["service.instance"], Concat([resource.attributes["service.name"], "-", resource.attributes["host.name"]], ""))
+          - set(attributes["service.instance.id"], Concat([resource.attributes["service.name"], "-", resource.attributes["host.name"]], ""))
 
           # Step 6: Clean up unwanted attributes
           - delete_key(attributes, "internal_id")
@@ -368,7 +367,7 @@ processors:
       # Rename Kubernetes attributes
       - key: k8s.cluster.name
         from_attribute: cluster_name
-        action: insert
+        action: upsert
       - key: cluster_name
         action: delete
 
@@ -464,7 +463,7 @@ processors:
         statements:
           # Create metric-style attributes for dimensions
           # Example: status=200 becomes metric.status.200 = true
-          - set(attributes[Concat(["metric.status.", String(attributes["http.status_code"])], "")], true) where attributes["http.status_code"] != nil
+          - set(attributes[Concat(["metric.status.", String(attributes["http.response.status_code"])], "")], true) where attributes["http.response.status_code"] != nil
 
           # Tag by environment
           - set(attributes[Concat(["env.", attributes["environment"]], "")], true) where attributes["environment"] != nil
@@ -486,8 +485,8 @@ processors:
           - set(attributes["original.method"], attributes["method"])
 
           # Now transform
-          - set(attributes["http.status_code"], attributes["status"])
-          - set(attributes["http.method"], Upper(attributes["method"]))
+          - set(attributes["http.response.status_code"], attributes["status"])
+          - set(attributes["http.request.method"], ToUpperCase(attributes["method"]))
 
           # Remove old attributes but keep backup
           - delete_key(attributes, "status")
