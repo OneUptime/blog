@@ -6,9 +6,9 @@ Tags: OpenTelemetry, gRPC, Interceptors, Distributed Tracing
 
 Description: Instrument gRPC unary and streaming calls across Go, Java, and Python using OpenTelemetry interceptors for full trace visibility.
 
-gRPC is the backbone of many microservice architectures, but tracing gRPC calls requires more thought than tracing HTTP requests. You have four different call types to handle: unary, server streaming, client streaming, and bidirectional streaming. Each one needs its own instrumentation approach.
+gRPC is the backbone of many microservice architectures, but tracing gRPC calls requires more thought than tracing HTTP requests. You have four different call types to handle: unary, server streaming, client streaming, and bidirectional streaming. Each one needs its own instrumentation approach when you add custom telemetry.
 
-OpenTelemetry provides gRPC interceptors for the major languages. This post covers practical setup for Go, Java, and Python, with a focus on what the auto-instrumentation gives you and where you need to add custom attributes.
+OpenTelemetry provides gRPC instrumentation hooks for the major languages. This post covers practical setup for Go, Java, and Python, with a focus on what the auto-instrumentation gives you and where you need to add custom attributes.
 
 ## Go: Using otelgrpc Interceptors
 
@@ -18,13 +18,17 @@ Install the gRPC OpenTelemetry package:
 go get go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc
 ```
 
-Attach interceptors to both your server and client:
+Attach telemetry handlers to both your server and client:
 
 ```go
 // server.go
 package main
 
 import (
+    "log"
+    "net"
+
+    pb "example.com/orders/gen/orderpb"
     "go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
     "google.golang.org/grpc"
 )
@@ -38,8 +42,13 @@ func main() {
     // Register your services
     pb.RegisterOrderServiceServer(server, &orderService{})
 
-    lis, _ := net.Listen("tcp", ":50051")
-    server.Serve(lis)
+    lis, err := net.Listen("tcp", ":50051")
+    if err != nil {
+        log.Fatal(err)
+    }
+    if err := server.Serve(lis); err != nil {
+        log.Fatal(err)
+    }
 }
 ```
 
@@ -48,13 +57,18 @@ func main() {
 package main
 
 import (
+    "context"
+    "log"
+
+    pb "example.com/orders/gen/orderpb"
     "go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
     "google.golang.org/grpc"
+    "google.golang.org/grpc/credentials/insecure"
 )
 
 func main() {
-    // Client-side interceptors propagate trace context
-    conn, err := grpc.Dial(
+    // Client-side handlers propagate trace context
+    conn, err := grpc.NewClient(
         "localhost:50051",
         grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
         grpc.WithTransportCredentials(insecure.NewCredentials()),
@@ -62,11 +76,16 @@ func main() {
     if err != nil {
         log.Fatal(err)
     }
+    defer conn.Close()
 
     client := pb.NewOrderServiceClient(conn)
     resp, err := client.GetOrder(context.Background(), &pb.GetOrderRequest{
         OrderId: "12345",
     })
+    if err != nil {
+        log.Fatal(err)
+    }
+    _ = resp
 }
 ```
 
@@ -77,16 +96,24 @@ func main() {
 <dependency>
     <groupId>io.opentelemetry.instrumentation</groupId>
     <artifactId>opentelemetry-grpc-1.6</artifactId>
-    <version>2.2.0-alpha</version>
+    <version>2.28.1-alpha</version>
 </dependency>
 ```
 
 ```java
 // GrpcServer.java
+import io.grpc.ManagedChannel;
+import io.grpc.ManagedChannelBuilder;
+import io.grpc.Server;
+import io.grpc.ServerBuilder;
+import io.opentelemetry.api.GlobalOpenTelemetry;
+import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.instrumentation.grpc.v1_6.GrpcTelemetry;
 
 public class GrpcServer {
     public static void main(String[] args) throws Exception {
+        OpenTelemetry openTelemetry = GlobalOpenTelemetry.get();
+
         // Build the telemetry interceptor from your OpenTelemetry instance
         GrpcTelemetry grpcTelemetry = GrpcTelemetry.create(openTelemetry);
 
@@ -120,6 +147,8 @@ import grpc
 from concurrent import futures
 from opentelemetry.instrumentation.grpc import GrpcInstrumentorServer
 
+import order_pb2_grpc
+
 # Instrument the server globally - this patches grpc.server()
 grpc_server_instrumentor = GrpcInstrumentorServer()
 grpc_server_instrumentor.instrument()
@@ -134,18 +163,22 @@ server.start()
 # client.py
 from opentelemetry.instrumentation.grpc import GrpcInstrumentorClient
 
+import grpc
+import order_pb2
+import order_pb2_grpc
+
 # Instrument the client globally
 grpc_client_instrumentor = GrpcInstrumentorClient()
 grpc_client_instrumentor.instrument()
 
-channel = grpc.insecure_channel('localhost:50051')
-stub = order_pb2_grpc.OrderServiceStub(channel)
-response = stub.GetOrder(order_pb2.GetOrderRequest(order_id="12345"))
+with grpc.insecure_channel('localhost:50051') as channel:
+    stub = order_pb2_grpc.OrderServiceStub(channel)
+    response = stub.GetOrder(order_pb2.GetOrderRequest(order_id="12345"))
 ```
 
 ## Adding Custom Attributes to gRPC Spans
 
-The auto-instrumentation captures the gRPC method name, status code, and basic metadata. For richer traces, add custom attributes inside your service implementations:
+The auto-instrumentation captures the gRPC method name and status code. Request and response metadata can be captured when you opt in to that instrumentation. For richer traces, add custom attributes inside your service implementations:
 
 ```go
 // Inside a Go gRPC handler
@@ -208,14 +241,14 @@ func (s *orderService) WatchOrders(req *pb.WatchRequest, stream pb.OrderService_
 
 ## What the Interceptors Capture Automatically
 
-Across all three languages, the OpenTelemetry gRPC interceptors give you:
+Across these instrumentations, OpenTelemetry gRPC tracing gives you the standard RPC attributes:
 
-- `rpc.system`: always "grpc"
-- `rpc.service`: the full service name (e.g., "orders.OrderService")
-- `rpc.method`: the method name (e.g., "GetOrder")
-- `rpc.grpc.status_code`: the gRPC status code (0 for OK, 5 for NOT_FOUND, etc.)
+- `rpc.system.name`: always "grpc"
+- `rpc.method`: the fully qualified RPC method name (e.g., "orders.OrderService/GetOrder")
+- `rpc.response.status_code`: the string gRPC status code (e.g., "OK" or "NOT_FOUND")
+- `server.address` and `server.port` on client spans when available
 - Proper context propagation through gRPC metadata headers
 
-For streaming calls, you also get message-level events with `rpc.message.type` (SENT or RECEIVED) and `rpc.message.id`.
+For streaming calls, message-level events are implementation-specific and may need to be enabled explicitly. In Go, for example, `otelgrpc.WithMessageEvents(otelgrpc.SentEvents, otelgrpc.ReceivedEvents)` records send and receive events; otherwise the handler records summary attributes at the end of the RPC.
 
-The interceptor approach keeps your instrumentation clean. You do not need to modify every handler. The interceptors wrap every call automatically, and you only add custom attributes where you need deeper visibility.
+The instrumentation approach keeps your telemetry clean. You do not need to modify every handler. The instrumentation wraps every call automatically, and you only add custom attributes where you need deeper visibility.
