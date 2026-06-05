@@ -57,7 +57,7 @@ ENTRYPOINT ["java", "-jar", "/app.jar"]
 
 Problems with this approach:
 - Uses the full JDK image (over 400MB) instead of just the JRE
-- No multi-stage build, so build tools end up in the final image
+- Requires a separate host or CI build instead of capturing the build environment
 - No JVM tuning for containers
 - Runs as root
 - No health check
@@ -95,6 +95,10 @@ RUN java -Djarmode=layertools -jar target/*.jar extract --destination /extracted
 # === Runtime Stage ===
 FROM eclipse-temurin:21-jre-jammy
 
+# Install curl for the Docker health check, then remove package index files
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+
 # Create a non-root user for security
 RUN groupadd -r appuser && useradd -r -g appuser -d /app appuser
 
@@ -115,7 +119,7 @@ EXPOSE 8080
 
 # Health check that tests the application's health endpoint
 HEALTHCHECK --interval=15s --timeout=5s --retries=3 --start-period=30s \
-  CMD curl -f http://localhost:8080/actuator/health || exit 1
+  CMD curl -f http://localhost:8080/health || exit 1
 
 # JVM flags optimized for containers
 # -XX:+UseContainerSupport enables container-aware memory settings
@@ -158,6 +162,7 @@ docker images myapp
 ```
 
 The optimized image should be around 250-300MB, compared to 600MB+ with the naive approach.
+Actual size varies based on the base image, installed OS packages, and application dependencies.
 
 Run the container:
 
@@ -176,26 +181,26 @@ Test the application:
 ```bash
 # Verify the application is responding
 curl http://localhost:8080/
-curl http://localhost:8080/actuator/health
+curl http://localhost:8080/health
 ```
 
 ## JVM Tuning for Containers
 
-The JVM needs to know it is running inside a container. Without proper flags, it will try to use the host's full memory, not the container's limit.
+The JVM should be configured for the memory limit of the container. Modern HotSpot JVMs enable container support by default, but setting heap percentages explicitly makes the container memory budget clear.
 
 Key JVM flags for containers:
 
 ```bash
 # Essential container-aware JVM settings
 JAVA_OPTS="
-  -XX:+UseContainerSupport          # Enable container detection (default in JDK 11+)
-  -XX:MaxRAMPercentage=75.0         # Use 75% of container memory for heap
-  -XX:InitialRAMPercentage=50.0     # Start with 50% heap allocation
-  -XX:+UseG1GC                      # G1 collector for balanced performance
-  -XX:+ExitOnOutOfMemoryError       # Exit cleanly on OOM so Docker can restart
-  -XX:+HeapDumpOnOutOfMemoryError   # Create heap dump for debugging
-  -XX:HeapDumpPath=/tmp/heapdump    # Heap dump location
-  -Xss512k                          # Thread stack size
+  -XX:+UseContainerSupport
+  -XX:MaxRAMPercentage=75.0
+  -XX:InitialRAMPercentage=50.0
+  -XX:+UseG1GC
+  -XX:+ExitOnOutOfMemoryError
+  -XX:+HeapDumpOnOutOfMemoryError
+  -XX:HeapDumpPath=/tmp/heapdump
+  -Xss512k
 "
 ```
 
@@ -203,11 +208,10 @@ The `MaxRAMPercentage=75.0` setting is important. If you set it to 100%, the JVM
 
 ## Docker Compose for Development
 
-Create a Compose file for local development with hot reload:
+Create a Compose file for local development with remote debugging:
 
 ```yaml
-# docker-compose.dev.yml - Development setup with live reload
-version: "3.9"
+# docker-compose.dev.yml - Development setup with remote debugging
 
 services:
   app:
@@ -220,9 +224,6 @@ services:
     environment:
       - SPRING_PROFILES_ACTIVE=dev
       - JAVA_OPTS=-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005
-    volumes:
-      # Mount source code for development (Spring Boot DevTools handles restart)
-      - ./src:/app/src:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -265,7 +266,6 @@ Create a production-ready Compose file:
 
 ```yaml
 # docker-compose.prod.yml - Production deployment
-version: "3.9"
 
 services:
   app:
@@ -285,7 +285,7 @@ services:
           cpus: "0.5"
           memory: 512M
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 15s
       timeout: 5s
       retries: 3
@@ -337,8 +337,7 @@ ENV JAVA_OPTS="-XX:+UseContainerSupport \
   -XX:+UseG1GC \
   -XX:+ExitOnOutOfMemoryError \
   -XX:TieredStopAtLevel=1 \
-  -Dspring.jmx.enabled=false \
-  -noverify"
+  -Dspring.jmx.enabled=false"
 ```
 
 The `-XX:TieredStopAtLevel=1` flag reduces JIT compilation overhead at startup, at the cost of slightly lower peak throughput. Remove it for long-running production services where peak performance matters more than startup time.
