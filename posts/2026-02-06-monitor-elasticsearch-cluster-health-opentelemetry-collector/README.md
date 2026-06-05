@@ -35,7 +35,7 @@ Here is a complete collector configuration for monitoring an Elasticsearch clust
 receivers:
   elasticsearch:
     # Connect to the Elasticsearch HTTP endpoint
-    endpoint: "http://elasticsearch:9200"
+    endpoint: "https://elasticsearch:9200"
     # Scrape metrics every 60 seconds
     collection_interval: 60s
     # Authentication (if X-Pack security is enabled)
@@ -43,7 +43,7 @@ receivers:
     password: "${ES_PASSWORD}"
     # Collect node-level metrics
     nodes: ["_all"]
-    # Skip TLS verification for self-signed certs (not recommended for production)
+    # Trust the Elasticsearch CA certificate
     tls:
       insecure_skip_verify: false
       ca_file: "/etc/ssl/certs/elasticsearch-ca.pem"
@@ -61,13 +61,15 @@ receivers:
         enabled: true
       elasticsearch.index.operations.completed:
         enabled: true
-      elasticsearch.jvm.memory.heap.used:
+      elasticsearch.node.fs.disk.total:
         enabled: true
-      elasticsearch.jvm.memory.heap.max:
+      jvm.memory.heap.used:
         enabled: true
-      elasticsearch.jvm.gc.collection.count:
+      jvm.memory.heap.max:
         enabled: true
-      elasticsearch.jvm.gc.collection.time:
+      jvm.gc.collections.count:
+        enabled: true
+      jvm.gc.collections.elapsed:
         enabled: true
 
 processors:
@@ -108,12 +110,12 @@ Let's break down the most important metrics by category.
 
 These are the highest-level indicators of cluster stability.
 
-- `elasticsearch.cluster.health` - Reports the cluster status as a numeric value (0 = green, 1 = yellow, 2 = red)
+- `elasticsearch.cluster.health` - Reports the cluster status with a `status` attribute (`green`, `yellow`, or `red`)
 - `elasticsearch.cluster.shards` - Count of shards by state (active, initializing, relocating, unassigned)
 - `elasticsearch.cluster.data_nodes` - Number of data nodes currently in the cluster
 - `elasticsearch.cluster.pending_tasks` - Number of cluster-level tasks waiting in the queue
 
-A yellow status means at least one replica shard is unassigned. Red means at least one primary shard is unassigned, which means data loss is possible. Both warrant immediate attention.
+A yellow status means at least one replica shard is unassigned. Red means at least one primary shard is unassigned, which means some data is unavailable. Both warrant immediate attention.
 
 ### Node Performance Metrics
 
@@ -130,10 +132,10 @@ The operations time metric is especially useful. If `search` operation time clim
 
 Elasticsearch runs on the JVM, and garbage collection pauses are a common source of latency spikes.
 
-- `elasticsearch.jvm.memory.heap.used` - Current JVM heap usage
-- `elasticsearch.jvm.memory.heap.max` - Maximum configured heap size
-- `elasticsearch.jvm.gc.collection.count` - Number of GC runs
-- `elasticsearch.jvm.gc.collection.time` - Total time spent in GC
+- `jvm.memory.heap.used` - Current JVM heap usage
+- `jvm.memory.heap.max` - Maximum configured heap size
+- `jvm.gc.collections.count` - Number of GC runs
+- `jvm.gc.collections.elapsed` - Total time spent in GC
 
 When heap usage consistently stays above 75%, the JVM spends more time on garbage collection, which directly impacts query latency. The standard advice is to keep heap at 50% of available RAM, up to 32 GB.
 
@@ -150,7 +152,7 @@ graph TD
 
 ## Setting Up Alerts
 
-Now let's create alerts that catch problems early. These rules cover the most common failure modes.
+Now let's create alerts that catch problems early. These Prometheus-style rules use the default OpenTelemetry-to-Prometheus name translation and cover the most common failure modes.
 
 ```yaml
 # elasticsearch-alerts.yaml
@@ -159,7 +161,7 @@ groups:
     rules:
       # Alert when cluster status is not green
       - alert: ElasticsearchClusterYellow
-        expr: elasticsearch_cluster_health == 1
+        expr: elasticsearch_cluster_health{status="yellow"} == 1
         for: 5m
         labels:
           severity: warning
@@ -170,7 +172,7 @@ groups:
             serve requests, but fault tolerance is reduced.
 
       - alert: ElasticsearchClusterRed
-        expr: elasticsearch_cluster_health == 2
+        expr: elasticsearch_cluster_health{status="red"} == 1
         for: 1m
         labels:
           severity: critical
@@ -194,45 +196,45 @@ groups:
       # Alert when disk space is running low on any node
       - alert: ElasticsearchDiskSpaceLow
         expr: |
-          elasticsearch_node_fs_disk_available
-          / elasticsearch_node_fs_disk_total
+          elasticsearch_node_fs_disk_available_bytes
+          / elasticsearch_node_fs_disk_total_bytes
           < 0.15
         for: 10m
         labels:
           severity: critical
         annotations:
-          summary: "Low disk space on ES node {{ $labels.node_name }}"
+          summary: "Low disk space on ES node {{ $labels.elasticsearch_node_name }}"
           description: >
-            Node {{ $labels.node_name }} has less than 15% disk space remaining.
-            Elasticsearch will start relocating shards at the low watermark (85% full)
-            and stop allocating entirely at the high watermark (90% full).
+            Node {{ $labels.elasticsearch_node_name }} has less than 15% disk space remaining.
+            Elasticsearch will avoid allocating replicas to nodes past the low watermark (85% full)
+            and relocate shards away from nodes past the high watermark (90% full).
 
       # Alert when JVM heap is consistently high
       - alert: ElasticsearchHeapPressure
         expr: |
-          elasticsearch_jvm_memory_heap_used
-          / elasticsearch_jvm_memory_heap_max
+          jvm_memory_heap_used_bytes
+          / jvm_memory_heap_max_bytes
           > 0.85
         for: 15m
         labels:
           severity: warning
         annotations:
-          summary: "High JVM heap usage on {{ $labels.node_name }}"
+          summary: "High JVM heap usage on {{ $labels.elasticsearch_node_name }}"
           description: >
             JVM heap usage has been above 85% for 15 minutes on node
-            {{ $labels.node_name }}. Expect increased GC pauses and
+            {{ $labels.elasticsearch_node_name }}. Expect increased GC pauses and
             potential OOM conditions.
 
       # Alert on high GC time - indicates the JVM is spending too much time
       # collecting garbage instead of serving requests
       - alert: ElasticsearchHighGCTime
         expr: |
-          rate(elasticsearch_jvm_gc_collection_time[5m]) > 500
+          rate(jvm_gc_collections_elapsed_milliseconds_total[5m]) > 500
         for: 10m
         labels:
           severity: warning
         annotations:
-          summary: "Excessive GC time on {{ $labels.node_name }}"
+          summary: "Excessive GC time on {{ $labels.elasticsearch_node_name }}"
 ```
 
 ## Monitoring Multiple Clusters
