@@ -55,7 +55,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"os"
 	"time"
 
@@ -74,10 +73,6 @@ import (
 func initTracer() (*sdktrace.TracerProvider, error) {
 	exporter, err := otlptracehttp.New(
 		context.Background(),
-		otlptracehttp.WithEndpoint(
-			os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"),
-		),
-		otlptracehttp.WithInsecure(),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create exporter: %w", err)
@@ -335,9 +330,6 @@ Beyond traces, you want metrics that show lifecycle behavior over time. How ofte
 package main
 
 import (
-	"context"
-	"time"
-
 	"go.opentelemetry.io/otel/metric"
 )
 
@@ -428,8 +420,8 @@ receivers:
 processors:
   batch:
     # Short timeout for Lambda's constrained environment.
-    # The default 200ms send batch size and 5000ms timeout
-    # are too long for Lambda where every millisecond counts.
+    # The default send_batch_size is 8192 and the default
+    # timeout is 200ms; use a smaller batch trigger for Lambda.
     timeout: 1s
     send_batch_size: 64
 
