@@ -27,6 +27,7 @@ The fundamental technique is embedding a high-resolution timestamp at the ingest
 
 ```python
 from opentelemetry import trace, metrics
+from opentelemetry.propagate import extract, inject
 import time
 
 tracer = trace.get_tracer("livestream.pipeline", "1.0.0")
@@ -68,28 +69,31 @@ At the ingest point, stamp each incoming segment or frame group with a wallclock
 def handle_ingest(stream_id, segment_data):
     """Process an incoming stream segment at the ingest server."""
     with tracer.start_as_current_span("livestream.ingest") as span:
-        ingest_time = time.time() * 1000  # milliseconds
+        ingest_time = time.time_ns() / 1_000_000  # milliseconds since Unix epoch
 
-        span.setAttribute("stream.id", stream_id)
-        span.setAttribute("stream.ingest_time_ms", ingest_time)
-        span.setAttribute("stream.protocol", "srt")
-        span.setAttribute("stream.segment_size_bytes", len(segment_data))
+        span.set_attribute("stream.id", stream_id)
+        span.set_attribute("stream.ingest_time_ms", ingest_time)
+        span.set_attribute("stream.protocol", "srt")
+        span.set_attribute("stream.segment_size_bytes", len(segment_data))
 
-        start = time.time()
+        start = time.perf_counter()
 
         # Validate and normalize the incoming segment
         validated = validate_segment(segment_data)
 
         # Forward to transcoder with the ingest timestamp embedded
+        trace_context = {}
+        inject(trace_context)
+
         metadata = {
             "ingest_time_ms": ingest_time,
             "stream_id": stream_id,
-            "trace_context": get_current_trace_context(),
+            "trace_context": trace_context,
         }
 
         send_to_transcoder(validated, metadata)
 
-        elapsed_ms = (time.time() - start) * 1000
+        elapsed_ms = (time.perf_counter() - start) * 1000
         ingest_latency.record(elapsed_ms, {"stream_id": stream_id})
 ```
 
@@ -102,23 +106,23 @@ def transcode_segment(segment_data, metadata):
     """Transcode a segment and track per-stage latency."""
 
     # Restore trace context from the ingest stage
-    ctx = restore_trace_context(metadata["trace_context"])
+    ctx = extract(metadata["trace_context"])
 
     with tracer.start_as_current_span("livestream.transcode", context=ctx) as span:
-        start = time.time()
+        start = time.perf_counter()
         stream_id = metadata["stream_id"]
 
-        span.setAttribute("stream.id", stream_id)
+        span.set_attribute("stream.id", stream_id)
 
         renditions = ["1080p", "720p", "480p", "360p"]
         outputs = {}
 
         for rendition in renditions:
             with tracer.start_as_current_span(f"transcode.{rendition}") as rspan:
-                rspan.setAttribute("rendition", rendition)
+                rspan.set_attribute("rendition", rendition)
                 outputs[rendition] = encode_rendition(segment_data, rendition)
 
-        elapsed_ms = (time.time() - start) * 1000
+        elapsed_ms = (time.perf_counter() - start) * 1000
         transcode_latency.record(elapsed_ms, {"stream_id": stream_id})
 
         # Forward all renditions to packager with original ingest timestamp
@@ -134,14 +138,14 @@ The packager creates HLS or DASH segments and publishes them to the CDN.
 def package_segment(segment_data, metadata, rendition):
     """Package a transcoded segment into HLS/DASH format."""
 
-    ctx = restore_trace_context(metadata["trace_context"])
+    ctx = extract(metadata["trace_context"])
 
     with tracer.start_as_current_span("livestream.package", context=ctx) as span:
-        start = time.time()
+        start = time.perf_counter()
 
-        span.setAttribute("stream.id", metadata["stream_id"])
-        span.setAttribute("rendition", rendition)
-        span.setAttribute("format", "hls")
+        span.set_attribute("stream.id", metadata["stream_id"])
+        span.set_attribute("rendition", rendition)
+        span.set_attribute("format", "hls")
 
         # Create HLS segment and update playlist
         hls_segment = create_hls_segment(segment_data, rendition)
@@ -150,22 +154,24 @@ def package_segment(segment_data, metadata, rendition):
         # Publish to CDN origin
         publish_to_cdn(hls_segment)
 
-        elapsed_ms = (time.time() - start) * 1000
+        elapsed_ms = (time.perf_counter() - start) * 1000
         package_latency.record(elapsed_ms, {
             "stream_id": metadata["stream_id"],
             "rendition": rendition,
         })
 
         # Record the timestamp when content becomes available on CDN
-        cdn_available_time = time.time() * 1000
-        span.setAttribute("cdn.available_time_ms", cdn_available_time)
+        cdn_available_time = time.time_ns() / 1_000_000
+        span.set_attribute("cdn.available_time_ms", cdn_available_time)
 ```
 
 ## Measuring Playback-Side Latency
 
-On the player side, you need the OpenTelemetry Browser SDK to report when segments are actually rendered.
+On the player side, you need the OpenTelemetry JavaScript API with a browser-capable metrics SDK/exporter to report when segments are actually rendered.
 
 ```javascript
+import { metrics } from "@opentelemetry/api";
+
 const meter = metrics.getMeter("livestream.player");
 
 const playerLatency = meter.createHistogram("livestream.player.latency", {
