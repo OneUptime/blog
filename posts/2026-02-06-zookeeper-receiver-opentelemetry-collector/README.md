@@ -10,24 +10,23 @@ Apache Zookeeper is a critical coordination service for distributed systems, use
 
 ## What is the Zookeeper Receiver?
 
-The Zookeeper receiver is a specialized OpenTelemetry Collector component that connects to Zookeeper nodes and collects performance and health metrics using Zookeeper's four-letter word commands (mntr, stat, srvr). These administrative commands expose internal Zookeeper state and statistics without requiring client library integration.
+The Zookeeper receiver is a specialized OpenTelemetry Collector component that connects to Zookeeper nodes and collects performance and health metrics using Zookeeper's four-letter word commands (`mntr` and `ruok`). These administrative commands expose internal Zookeeper state and statistics without requiring client library integration.
 
 The receiver monitors critical Zookeeper aspects including:
 
-- Node health and role (leader, follower, observer)
-- Request latency and throughput
-- Outstanding request queue depths
+- Node health and role (leader, follower, standalone)
+- Request latency and active request counts
+- Packet counts by direction
 - Ephemeral node counts
 - Znode data size and counts
 - Connection and session statistics
 - Leader election metrics
-- Packet sent and received counts
-- Watch counts and triggers
-- Ensemble synchronization status
+- Watch counts
+- Ensemble follower and synchronization status
 
 ## How the Zookeeper Receiver Works
 
-The receiver connects to each Zookeeper node's client port (typically 2181) and sends four-letter word commands to retrieve metrics. The responses are parsed and converted to OpenTelemetry format:
+The receiver connects to each Zookeeper node's client port (typically 2181) and sends the `mntr` and `ruok` four-letter word commands to retrieve metrics. The responses are parsed and converted to OpenTelemetry format:
 
 ```mermaid
 graph LR
@@ -51,8 +50,8 @@ Ensure Zookeeper's four-letter word commands are enabled. By default, they're re
 ```properties
 # In zoo.cfg or zookeeper.properties
 
-# Allow specific four-letter word commands
-4lw.commands.whitelist=mntr,stat,srvr,ruok
+# Allow the four-letter word commands used by the receiver
+4lw.commands.whitelist=mntr,ruok
 
 # Or allow all commands (less secure, useful for development)
 # 4lw.commands.whitelist=*
@@ -64,8 +63,8 @@ Restart Zookeeper after configuration changes. Verify commands work:
 # Test the mntr (monitor) command
 echo mntr | nc localhost 2181
 
-# Test the stat command
-echo stat | nc localhost 2181
+# Test the ruok command
+echo ruok | nc localhost 2181
 ```
 
 If commands are disabled, you'll see "command is not executed because it is not in the whitelist."
@@ -140,87 +139,65 @@ receivers:
       # Latency metrics - critical for coordination service performance
       zookeeper.latency.avg:
         enabled: true
-        description: "Average request latency in milliseconds"
 
       zookeeper.latency.min:
         enabled: true
-        description: "Minimum request latency"
 
       zookeeper.latency.max:
         enabled: true
-        description: "Maximum request latency"
 
       # Connection metrics - track client connections
       zookeeper.connection.active:
         enabled: true
-        description: "Number of active client connections"
 
       # Data metrics - monitor znode storage
       zookeeper.znode.count:
         enabled: true
-        description: "Total number of znodes in the namespace"
 
       zookeeper.data_tree.size:
         enabled: true
-        description: "Total size of data tree in bytes"
 
       zookeeper.data_tree.ephemeral_node.count:
         enabled: true
-        description: "Number of ephemeral nodes (temporary nodes)"
 
-      # Request metrics - throughput and queue depth
-      zookeeper.packet.sent:
+      # Request and packet metrics
+      zookeeper.packet.count:
         enabled: true
-        description: "Packets sent to clients"
-
-      zookeeper.packet.received:
-        enabled: true
-        description: "Packets received from clients"
 
       zookeeper.request.active:
         enabled: true
-        description: "Outstanding requests being processed"
-
-      zookeeper.outstanding_requests:
-        enabled: true
-        description: "Number of queued requests"
 
       # Watch metrics - event notification system
       zookeeper.watch.count:
         enabled: true
-        description: "Total watches registered by clients"
 
       # File descriptor metrics - resource utilization
       zookeeper.file_descriptor.open:
         enabled: true
-        description: "Number of open file descriptors"
 
       zookeeper.file_descriptor.limit:
         enabled: true
-        description: "Maximum file descriptors allowed"
 
       # Ensemble synchronization metrics
       zookeeper.follower.count:
         enabled: true
-        description: "Number of followers connected to leader"
 
       zookeeper.sync.pending:
         enabled: true
-        description: "Pending syncs from leader to followers"
 
-      # Server state metrics
-      zookeeper.server.state:
+      # Health and performance counters
+      zookeeper.ruok:
         enabled: true
-        description: "Server role (leader=1, follower=2, observer=3)"
 
-      # Performance counters
-      zookeeper.packets.sent.rate:
+      zookeeper.fsync.exceeded_threshold.count:
         enabled: true
-        description: "Packet send rate"
 
-      zookeeper.packets.received.rate:
+    # Server role and ZooKeeper version are emitted as resource attributes
+    resource_attributes:
+      server.state:
         enabled: true
-        description: "Packet receive rate"
+      zk.version:
+        enabled: true
 ```
 
 This comprehensive configuration provides visibility into all aspects of Zookeeper performance and health.
@@ -245,11 +222,12 @@ receivers:
         enabled: true
       zookeeper.znode.count:
         enabled: true
-      zookeeper.server.state:
-        enabled: true
       zookeeper.follower.count:
         enabled: true
-      zookeeper.outstanding_requests:
+      zookeeper.request.active:
+        enabled: true
+    resource_attributes:
+      server.state:
         enabled: true
 
   # Zookeeper node 2
@@ -266,11 +244,12 @@ receivers:
         enabled: true
       zookeeper.znode.count:
         enabled: true
-      zookeeper.server.state:
-        enabled: true
       zookeeper.follower.count:
         enabled: true
-      zookeeper.outstanding_requests:
+      zookeeper.request.active:
+        enabled: true
+    resource_attributes:
+      server.state:
         enabled: true
 
   # Zookeeper node 3
@@ -287,11 +266,12 @@ receivers:
         enabled: true
       zookeeper.znode.count:
         enabled: true
-      zookeeper.server.state:
-        enabled: true
       zookeeper.follower.count:
         enabled: true
-      zookeeper.outstanding_requests:
+      zookeeper.request.active:
+        enabled: true
+    resource_attributes:
+      server.state:
         enabled: true
 
 # Add node-specific attributes
@@ -374,13 +354,6 @@ receivers:
     # Timeout for command responses - prevent hanging
     timeout: 10s
 
-    # Retry failed connections
-    retry_on_failure:
-      enabled: true
-      initial_interval: 5s
-      max_interval: 30s
-      max_elapsed_time: 300s
-
     metrics:
       # Critical performance metrics
       zookeeper.latency.avg:
@@ -391,9 +364,7 @@ receivers:
         enabled: true
       zookeeper.znode.count:
         enabled: true
-      zookeeper.outstanding_requests:
-        enabled: true
-      zookeeper.server.state:
+      zookeeper.request.active:
         enabled: true
 
       # Resource metrics
@@ -412,11 +383,6 @@ receivers:
     endpoint: "zk-node2.internal:2181"
     collection_interval: 30s
     timeout: 10s
-    retry_on_failure:
-      enabled: true
-      initial_interval: 5s
-      max_interval: 30s
-      max_elapsed_time: 300s
     metrics:
       zookeeper.latency.avg:
         enabled: true
@@ -426,9 +392,7 @@ receivers:
         enabled: true
       zookeeper.znode.count:
         enabled: true
-      zookeeper.outstanding_requests:
-        enabled: true
-      zookeeper.server.state:
+      zookeeper.request.active:
         enabled: true
       zookeeper.file_descriptor.open:
         enabled: true
@@ -443,11 +407,6 @@ receivers:
     endpoint: "zk-node3.internal:2181"
     collection_interval: 30s
     timeout: 10s
-    retry_on_failure:
-      enabled: true
-      initial_interval: 5s
-      max_interval: 30s
-      max_elapsed_time: 300s
     metrics:
       zookeeper.latency.avg:
         enabled: true
@@ -457,9 +416,7 @@ receivers:
         enabled: true
       zookeeper.znode.count:
         enabled: true
-      zookeeper.outstanding_requests:
-        enabled: true
-      zookeeper.server.state:
+      zookeeper.request.active:
         enabled: true
       zookeeper.file_descriptor.open:
         enabled: true
@@ -548,7 +505,7 @@ service:
       exporters: [otlphttp]
 ```
 
-This configuration includes timeouts, retries, buffering, and comprehensive error handling to ensure reliable metric collection.
+This configuration includes collection timeouts, exporter retries, buffering, and batching to improve delivery reliability.
 
 ## Monitoring Zookeeper Used by Kafka
 
@@ -580,12 +537,16 @@ receivers:
       zookeeper.znode.count:
         enabled: true
 
-      # Outstanding requests - queue depth affects Kafka operations
-      zookeeper.outstanding_requests:
+      # Active requests - request load affects Kafka operations
+      zookeeper.request.active:
         enabled: true
 
-      # Leader state - important for ensemble health
-      zookeeper.server.state:
+      # Health response from ruok
+      zookeeper.ruok:
+        enabled: true
+
+    resource_attributes:
+      server.state:
         enabled: true
 
 processors:
@@ -623,7 +584,7 @@ Secure your Zookeeper monitoring:
 
 ### Zookeeper Access Control
 
-If Zookeeper has SASL authentication enabled, configure the receiver accordingly:
+The Zookeeper receiver opens a TCP connection and sends four-letter word commands directly. It does not provide a SASL authentication configuration, so use network controls and a restricted four-letter command whitelist for the monitoring path:
 
 ```yaml
 receivers:
@@ -632,13 +593,6 @@ receivers:
     collection_interval: 30s
     timeout: 10s
 
-    # SASL authentication (if Zookeeper requires it)
-    auth:
-      sasl:
-        mechanism: "DIGEST-MD5"
-        username: "${ZK_MONITOR_USER}"
-        password: "${ZK_MONITOR_PASSWORD}"
-
     metrics:
       zookeeper.latency.avg:
         enabled: true
@@ -646,12 +600,7 @@ receivers:
         enabled: true
 ```
 
-Set credentials in environment variables:
-
-```bash
-export ZK_MONITOR_USER="monitor"
-export ZK_MONITOR_PASSWORD="SecurePassword123!"
-```
+If the only available ZooKeeper endpoint requires SASL for all connections, use a different supported collection path instead of this receiver.
 
 ### Network Security
 
@@ -672,7 +621,7 @@ Enable only necessary commands in zoo.cfg:
 
 ```properties
 # Only allow monitoring commands
-4lw.commands.whitelist=mntr,stat,srvr,ruok
+4lw.commands.whitelist=mntr,ruok
 ```
 
 ## Alerting on Critical Zookeeper Conditions
@@ -683,11 +632,11 @@ Configure alerts for critical Zookeeper scenarios:
 
 **Ensemble Split**: Alert when follower count drops, suggesting network partitions or node failures.
 
-**Outstanding Requests Growing**: Alert when outstanding request queue grows, indicating Zookeeper is overloaded or slow.
+**Active Requests Growing**: Alert when active request counts grow, indicating Zookeeper is overloaded or slow.
 
 **File Descriptor Exhaustion**: Alert when open FDs approach limit, which can prevent new connections.
 
-**Leader Election in Progress**: Alert on server state changes, indicating ensemble instability.
+**Leader Election in Progress**: Alert on `server.state` resource attribute changes, indicating ensemble instability.
 
 **Connection Churn**: Alert on rapid connection creation/deletion, suggesting client issues.
 
@@ -717,7 +666,7 @@ service:
 
 If commands are rejected:
 
-1. Check zoo.cfg has appropriate whitelist: `4lw.commands.whitelist=mntr,stat,srvr,ruok`
+1. Check zoo.cfg has appropriate whitelist: `4lw.commands.whitelist=mntr,ruok`
 2. Restart Zookeeper after configuration changes
 3. Test commands manually: `echo mntr | nc localhost 2181`
 
@@ -778,6 +727,6 @@ The Zookeeper receiver provides essential monitoring for Apache Zookeeper coordi
 
 Configure the receiver to monitor all nodes in your Zookeeper ensemble, enable comprehensive metrics, and tag data appropriately for filtering and analysis. Follow security best practices by whitelisting only necessary commands and restricting network access to monitoring systems.
 
-Zookeeper is critical infrastructure for distributed systems like Kafka, Hadoop, and HBase. Monitoring Zookeeper health prevents cascading failures across your entire platform. Track latency, outstanding requests, ensemble synchronization, and resource utilization to ensure reliable coordination services.
+Zookeeper is critical infrastructure for distributed systems like Kafka, Hadoop, and HBase. Monitoring Zookeeper health prevents cascading failures across your entire platform. Track latency, active requests, ensemble synchronization, and resource utilization to ensure reliable coordination services.
 
 Need a powerful backend for your Zookeeper metrics? OneUptime provides native OpenTelemetry support with advanced visualization, correlation, and alerting capabilities designed for distributed system observability.
