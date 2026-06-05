@@ -16,6 +16,7 @@ Before configuring Grafana, make sure your data backends are running and receivi
 - **Mimir** for metrics (Prometheus Remote Write on port 9009)
 - **Loki** for logs (OTLP on port 3100)
 - **Pyroscope** for profiles (HTTP on port 4040)
+- Your application instrumented with the OpenTelemetry span profiling bridge so spans include `pyroscope.profile.id` for trace-to-profile correlation
 
 ## Step 1: Configure the Mimir Data Source (Metrics)
 
@@ -95,7 +96,7 @@ datasources:
             value: "service_name"
         profileTypeId: "process_cpu:cpu:nanoseconds:cpu:nanoseconds"
         customQuery: true
-        query: '{service_name="$${__span.tags["service.name"]}"}'
+        query: 'service_name="$${__span.tags["service.name"]}"'
 
       # Service graph powered by span metrics
       serviceMap:
@@ -206,7 +207,7 @@ Create a dashboard that demonstrates the full navigation flow:
         "datasource": {"uid": "tempo"},
         "targets": [{
           "queryType": "traceql",
-          "query": "{resource.service.name = \"$service\"} | select(duration, status)"
+          "query": "{resource.service.name = \"$service\"}"
         }],
         "gridPos": {"h": 8, "w": 24, "x": 0, "y": 8}
       },
@@ -265,7 +266,8 @@ curl -X POST http://your-service/api/test-endpoint
 # 3. In Grafana, go to Explore > Tempo
 #    Search for recent traces
 #    Click "Logs" on a span - verify it opens Loki
-#    Click "Profiles" on a span - verify it opens Pyroscope
+#    Expand a span with pyroscope.profile.id
+#    Click "Profiles for this span" - verify it opens Pyroscope
 
 # 4. In Grafana, go to Explore > Loki
 #    Search for logs with trace_id
