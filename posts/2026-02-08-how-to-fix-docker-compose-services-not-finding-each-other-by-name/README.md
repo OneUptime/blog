@@ -129,7 +129,7 @@ services:
     image: postgres:15
 ```
 
-If you must use host networking for one service, the other services need to connect to it using `host.docker.internal` (on Docker Desktop) or the host's actual IP address:
+If you must use host networking for one service, remember that it is using the host's network namespace. Containers that need to reach that host-networked service must connect through `host.docker.internal` (on Docker Desktop) or the host's actual IP address. A host-networked service that needs to reach another Compose service must connect through a port published on the host:
 
 ```yaml
 # Workaround for host network mode
@@ -183,10 +183,10 @@ services:
       start_period: 10s
 ```
 
-For services without built-in health checks, use a generic TCP check:
+For services without built-in health checks, use the service's CLI or another application-level check:
 
 ```yaml
-# Health check using a TCP connection test
+# Health check using the Redis CLI
 services:
   redis:
     image: redis:7
@@ -220,14 +220,14 @@ services:
       - POSTGRES_DB=mydb
 ```
 
-Another mistake is using the container name instead of the service name:
+Another mistake is relying on generated or custom container names instead of the stable service name:
 
 ```yaml
 services:
   webapp:
     image: myapp:latest
     environment:
-      # Wrong: using the container name
+      # Brittle: using the generated container name
       # - REDIS_HOST=myproject-cache-1
 
       # Right: use the service name
@@ -235,7 +235,7 @@ services:
 
   cache:
     image: redis:7
-    container_name: myproject-cache-1  # Container name != service name for DNS
+    container_name: myproject-cache-1  # Custom names can conflict and prevent scaling
 ```
 
 ## Cause 6: DNS Caching Issues
@@ -263,7 +263,7 @@ services:
 
 ## Cause 7: Container Name Conflicts
 
-If you manually set `container_name` and have a naming conflict with another project, networking can break.
+If you manually set `container_name` and have a naming conflict with another project, Compose cannot create the container.
 
 ```yaml
 # Risky: hardcoded container names can conflict across projects
@@ -295,9 +295,8 @@ docker compose ps
 docker network inspect $(docker compose config --format json | python3 -c "
 import sys, json
 config = json.load(sys.stdin)
-networks = config.get('networks', {})
-for name in networks:
-    print(name)
+for name, network in config.get('networks', {}).items():
+    print(network.get('name', name))
 ") 2>/dev/null || docker network ls | grep $(basename $(pwd))
 
 # Step 3: Test DNS resolution from one service to another
@@ -341,4 +340,4 @@ Now the database is reachable by `db`, `postgres`, `database`, or `primary-db` f
 
 ## Summary
 
-Docker Compose service discovery works automatically when services are on the same user-defined network. The most common failures are: services placed on different custom networks, explicit use of the default bridge or host network mode, applications connecting to `localhost` instead of the service name, and services trying to connect before the target is ready. Start debugging with `nslookup` or `getent hosts` from inside the container that cannot connect. If DNS resolves but the connection fails, the target application is not ready yet, so add health checks and conditional `depends_on`. Keep things simple by using the default Compose network unless you have a specific reason to create custom networks.
+Docker Compose service discovery works automatically when services are on the same user-defined network. The most common failures are: services placed on different custom networks, explicit use of the default bridge or host network mode, applications connecting to `localhost` instead of the service name, and services trying to connect before the target is ready. Start debugging with `nslookup` or `getent hosts` from inside the container that cannot connect. If DNS resolves but the connection fails, the target application may not be ready yet, so add health checks and conditional `depends_on`. Keep things simple by using the default Compose network unless you have a specific reason to create custom networks.
