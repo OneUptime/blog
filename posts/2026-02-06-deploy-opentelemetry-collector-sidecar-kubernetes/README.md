@@ -74,7 +74,7 @@ data:
       # Memory limiter sized for sidecar
       memory_limiter:
         check_interval: 1s
-        limit_mib: 128
+        limit_mib: 96
         spike_limit_mib: 32
 
       # Add application-specific attributes
@@ -255,7 +255,7 @@ data:
       otlphttp/payment:
         endpoint: https://payment-observability.company.com:4318
         headers:
-          X-API-Key: ${PAYMENT_OBSERVABILITY_KEY}
+          X-API-Key: ${env:PAYMENT_OBSERVABILITY_KEY}
         compression: gzip
 
     service:
@@ -297,9 +297,9 @@ data:
         default_pipelines: [traces/default]
         error_mode: ignore
         table:
-          - statement: route() where resource.attributes["tenant.id"] == "tenant-1"
+          - statement: route() where attributes["tenant.id"] == "tenant-1"
             pipelines: [traces/tenant-1]
-          - statement: route() where resource.attributes["tenant.id"] == "tenant-2"
+          - statement: route() where attributes["tenant.id"] == "tenant-2"
             pipelines: [traces/tenant-2]
 
     processors:
@@ -328,13 +328,13 @@ data:
         endpoint: https://tenant1.observability.company.com:4318
         headers:
           X-Tenant-ID: tenant-1
-          X-API-Key: ${TENANT_1_KEY}
+          X-API-Key: ${env:TENANT_1_KEY}
 
       otlphttp/tenant-2:
         endpoint: https://tenant2.observability.company.com:4318
         headers:
           X-Tenant-ID: tenant-2
-          X-API-Key: ${TENANT_2_KEY}
+          X-API-Key: ${env:TENANT_2_KEY}
 
       otlp/default:
         endpoint: otel-collector-gateway.opentelemetry.svc.cluster.local:4317
@@ -391,6 +391,8 @@ spec:
         env:
         - name: OTEL_EXPORTER_OTLP_ENDPOINT
           value: "http://127.0.0.1:4317"
+        - name: OTEL_EXPORTER_OTLP_PROTOCOL
+          value: "grpc"
         resources:
           requests:
             memory: 512Mi
@@ -568,10 +570,7 @@ spec:
         app: my-application
       annotations:
         # Annotations for automatic injection
-        sidecar.opentelemetry.io/inject: "true"
-        sidecar.opentelemetry.io/config: "default-sidecar-config"
-        sidecar.opentelemetry.io/memory-limit: "128Mi"
-        sidecar.opentelemetry.io/cpu-limit: "100m"
+        sidecar.opentelemetry.io/inject: "default-sidecar"
     spec:
       containers:
       - name: application
@@ -583,45 +582,58 @@ spec:
         - containerPort: 8080
 ```
 
-This requires an admission webhook controller (like the OpenTelemetry Operator) that watches for these annotations and injects the sidecar automatically.
+This requires an admission webhook controller (like the OpenTelemetry Operator) and a matching `OpenTelemetryCollector` resource with `mode: sidecar`. With the OpenTelemetry Operator, sidecar configuration and resources come from the referenced collector resource.
 
 ## OpenTelemetry Operator for Sidecars
 
-The OpenTelemetry Operator simplifies sidecar management. First, install the operator:
+The OpenTelemetry Operator simplifies sidecar management. First, make sure cert-manager is installed, then install the operator:
 
 ```bash
 kubectl apply -f https://github.com/open-telemetry/opentelemetry-operator/releases/latest/download/opentelemetry-operator.yaml
 ```
 
-Then define an Instrumentation resource:
+Then define an `OpenTelemetryCollector` resource with `mode: sidecar`:
 
 ```yaml
-apiVersion: opentelemetry.io/v1alpha1
-kind: Instrumentation
+apiVersion: opentelemetry.io/v1beta1
+kind: OpenTelemetryCollector
 metadata:
-  name: my-instrumentation
+  name: default-sidecar
   namespace: default
 spec:
-  # Sidecar configuration
-  exporter:
-    endpoint: http://otel-collector-gateway.opentelemetry.svc.cluster.local:4317
-
-  # Sidecar resource limits
-  resource:
+  mode: sidecar
+  resources:
     limits:
       memory: 128Mi
       cpu: 100m
     requests:
       memory: 64Mi
       cpu: 50m
-
-  # Auto-instrumentation for different languages
-  java:
-    image: ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-java:latest
-  python:
-    image: ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-python:latest
-  nodejs:
-    image: ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-nodejs:latest
+  config:
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 127.0.0.1:4317
+          http:
+            endpoint: 127.0.0.1:4318
+    processors:
+      batch: {}
+      memory_limiter:
+        check_interval: 1s
+        limit_mib: 96
+        spike_limit_mib: 32
+    exporters:
+      otlp:
+        endpoint: otel-collector-gateway.opentelemetry.svc.cluster.local:4317
+        tls:
+          insecure: true
+    service:
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [memory_limiter, batch]
+          exporters: [otlp]
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -638,8 +650,8 @@ spec:
       labels:
         app: my-java-app
       annotations:
-        # Enable auto-instrumentation
-        instrumentation.opentelemetry.io/inject-java: "true"
+        # Enable collector sidecar injection
+        sidecar.opentelemetry.io/inject: "default-sidecar"
     spec:
       containers:
       - name: application
@@ -648,11 +660,22 @@ spec:
         - containerPort: 8080
 ```
 
-The operator automatically injects the sidecar and auto-instrumentation libraries.
+The operator injects the collector sidecar from the referenced `OpenTelemetryCollector` resource. Auto-instrumentation uses separate `Instrumentation` resources and `instrumentation.opentelemetry.io/*` annotations.
 
 ## Monitoring Sidecar Health
 
-Monitor sidecar collectors with health check endpoints:
+Monitor sidecar collectors with health check endpoints. First, enable the health check extension in the collector configuration:
+
+```yaml
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+service:
+  extensions: [health_check]
+```
+
+Then configure Kubernetes probes on the collector container:
 
 ```yaml
 containers:
@@ -690,7 +713,12 @@ service:
     logs:
       level: info
     metrics:
-      address: 127.0.0.1:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 127.0.0.1
+                port: 8888
 ```
 
 ## Sidecar vs Other Patterns
