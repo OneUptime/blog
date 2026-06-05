@@ -79,18 +79,53 @@ Create an interceptor that automatically traces all incoming RPC calls:
 ```cpp
 #include <grpcpp/grpcpp.h>
 #include <grpcpp/server_context.h>
+#include <memory>
+#include <string>
+#include <utility>
 #include "opentelemetry/trace/provider.h"
 #include "opentelemetry/trace/span.h"
+#include "opentelemetry/trace/context.h"
+#include "opentelemetry/trace/scope.h"
+#include "opentelemetry/trace/span_startoptions.h"
 #include "opentelemetry/context/propagation/global_propagator.h"
 #include "opentelemetry/trace/propagation/http_trace_context.h"
 
 namespace trace_api = opentelemetry::trace;
 namespace context = opentelemetry::context;
+namespace nostd = opentelemetry::nostd;
+
+std::string NormalizeGrpcMethod(const char* method) {
+    std::string value(method == nullptr ? "" : method);
+    return value.rfind("/", 0) == 0 ? value.substr(1) : value;
+}
+
+std::string GrpcStatusCodeName(grpc::StatusCode code) {
+    switch (code) {
+        case grpc::StatusCode::OK: return "OK";
+        case grpc::StatusCode::CANCELLED: return "CANCELLED";
+        case grpc::StatusCode::UNKNOWN: return "UNKNOWN";
+        case grpc::StatusCode::INVALID_ARGUMENT: return "INVALID_ARGUMENT";
+        case grpc::StatusCode::DEADLINE_EXCEEDED: return "DEADLINE_EXCEEDED";
+        case grpc::StatusCode::NOT_FOUND: return "NOT_FOUND";
+        case grpc::StatusCode::ALREADY_EXISTS: return "ALREADY_EXISTS";
+        case grpc::StatusCode::PERMISSION_DENIED: return "PERMISSION_DENIED";
+        case grpc::StatusCode::RESOURCE_EXHAUSTED: return "RESOURCE_EXHAUSTED";
+        case grpc::StatusCode::FAILED_PRECONDITION: return "FAILED_PRECONDITION";
+        case grpc::StatusCode::ABORTED: return "ABORTED";
+        case grpc::StatusCode::OUT_OF_RANGE: return "OUT_OF_RANGE";
+        case grpc::StatusCode::UNIMPLEMENTED: return "UNIMPLEMENTED";
+        case grpc::StatusCode::INTERNAL: return "INTERNAL";
+        case grpc::StatusCode::UNAVAILABLE: return "UNAVAILABLE";
+        case grpc::StatusCode::DATA_LOSS: return "DATA_LOSS";
+        case grpc::StatusCode::UNAUTHENTICATED: return "UNAUTHENTICATED";
+        default: return std::to_string(static_cast<int>(code));
+    }
+}
 
 // Carrier to extract trace context from gRPC metadata
 class GrpcServerCarrier : public context::propagation::TextMapCarrier {
 public:
-    explicit GrpcServerCarrier(grpc::ServerContext* context)
+    explicit GrpcServerCarrier(grpc::ServerContextBase* context)
         : context_(context) {}
 
     nostd::string_view Get(nostd::string_view key) const noexcept override {
@@ -108,7 +143,7 @@ public:
     }
 
 private:
-    grpc::ServerContext* context_;
+    grpc::ServerContextBase* context_;
     mutable std::string value_;
 };
 
@@ -132,17 +167,15 @@ public:
             // Start server span
             trace_api::StartSpanOptions options;
             options.kind = trace_api::SpanKind::kServer;
-            options.parent = trace_api::GetSpan(current_ctx)->GetContext();
+            options.parent = current_ctx;
 
-            std::string span_name = std::string(info_->method());
+            std::string span_name = NormalizeGrpcMethod(info_->method());
             span_ = tracer_->StartSpan(span_name, {
-                {"rpc.system", "grpc"},
-                {"rpc.service", std::string(info_->service())},
-                {"rpc.method", std::string(info_->method())},
-                {"rpc.grpc.status_code", 0}
+                {"rpc.system.name", "grpc"},
+                {"rpc.method", span_name}
             }, options);
 
-            scope_ = tracer_->WithActiveSpan(span_);
+            scope_ = std::make_unique<trace_api::Scope>(span_);
         }
 
         if (methods->QueryInterceptionHookPoint(
@@ -150,18 +183,20 @@ public:
         )) {
             // Record final status
             if (span_) {
-                auto status = info_->server_context()->status();
-                span_->SetAttribute("rpc.grpc.status_code",
-                                   static_cast<int>(status.error_code()));
+                auto status = methods->GetSendStatus();
+                auto status_code = GrpcStatusCodeName(status.error_code());
+                span_->SetAttribute("rpc.response.status_code", status_code);
 
                 if (!status.ok()) {
                     span_->SetStatus(trace_api::StatusCode::kError,
                                    status.error_message());
+                    span_->SetAttribute("error.type", status_code);
                     span_->AddEvent("error", {
                         {"error.message", status.error_message()}
                     });
                 }
 
+                scope_.reset();
                 span_->End();
             }
         }
@@ -173,7 +208,7 @@ private:
     grpc::experimental::ServerRpcInfo* info_;
     trace_api::Tracer* tracer_;
     std::shared_ptr<trace_api::Span> span_;
-    trace_api::Scope scope_;
+    std::unique_ptr<trace_api::Scope> scope_;
 };
 
 // Factory for creating server interceptors
@@ -200,7 +235,9 @@ Create a service implementation that benefits from automatic tracing:
 
 ```cpp
 #include "user_service.grpc.pb.h"
+#include <chrono>
 #include <memory>
+#include <thread>
 
 class UserServiceImpl final : public demo::UserService::Service {
 public:
@@ -320,8 +357,13 @@ class TracingClientInterceptor : public grpc::experimental::Interceptor {
 public:
     explicit TracingClientInterceptor(
         grpc::experimental::ClientRpcInfo* info,
-        trace_api::Tracer* tracer
-    ) : info_(info), tracer_(tracer) {}
+        trace_api::Tracer* tracer,
+        std::string server_address,
+        int server_port
+    ) : info_(info),
+        tracer_(tracer),
+        server_address_(std::move(server_address)),
+        server_port_(server_port) {}
 
     void Intercept(grpc::experimental::InterceptorBatchMethods* methods) override {
         if (methods->QueryInterceptionHookPoint(
@@ -331,36 +373,44 @@ public:
             trace_api::StartSpanOptions options;
             options.kind = trace_api::SpanKind::kClient;
 
-            std::string span_name = std::string(info_->method());
+            std::string span_name = NormalizeGrpcMethod(info_->method());
             span_ = tracer_->StartSpan(span_name, {
-                {"rpc.system", "grpc"},
-                {"rpc.service", std::string(info_->service())},
-                {"rpc.method", std::string(info_->method())},
-                {"net.peer.name", std::string(info_->channel()->GetLoadBalancingPolicyName())}
+                {"rpc.system.name", "grpc"},
+                {"rpc.method", span_name},
+                {"server.address", server_address_},
+                {"server.port", server_port_}
             }, options);
 
             // Inject trace context into metadata
             GrpcClientCarrier carrier(info_->client_context());
             auto prop = context::propagation::GlobalTextMapPropagator::GetGlobalPropagator();
             auto current_ctx = context::RuntimeContext::GetCurrent();
-            prop->Inject(carrier, current_ctx.SetValue("active_span", span_));
+            auto span_ctx = trace_api::SetSpan(current_ctx, span_);
+            prop->Inject(carrier, span_ctx);
 
-            scope_ = tracer_->WithActiveSpan(span_);
+            scope_ = std::make_unique<trace_api::Scope>(span_);
         }
 
         if (methods->QueryInterceptionHookPoint(
             grpc::experimental::InterceptionHookPoints::POST_RECV_STATUS
         )) {
             if (span_) {
-                auto status = info_->client_context()->status();
-                span_->SetAttribute("rpc.grpc.status_code",
-                                   static_cast<int>(status.error_code()));
-
-                if (!status.ok()) {
-                    span_->SetStatus(trace_api::StatusCode::kError,
-                                   status.error_message());
+                auto status = methods->GetRecvStatus();
+                if (status == nullptr) {
+                    methods->Proceed();
+                    return;
                 }
 
+                auto status_code = GrpcStatusCodeName(status->error_code());
+                span_->SetAttribute("rpc.response.status_code", status_code);
+
+                if (!status->ok()) {
+                    span_->SetStatus(trace_api::StatusCode::kError,
+                                   status->error_message());
+                    span_->SetAttribute("error.type", status_code);
+                }
+
+                scope_.reset();
                 span_->End();
             }
         }
@@ -371,25 +421,39 @@ public:
 private:
     grpc::experimental::ClientRpcInfo* info_;
     trace_api::Tracer* tracer_;
+    std::string server_address_;
+    int server_port_;
     std::shared_ptr<trace_api::Span> span_;
-    trace_api::Scope scope_;
+    std::unique_ptr<trace_api::Scope> scope_;
 };
 
 // Factory for creating client interceptors
 class TracingClientInterceptorFactory
     : public grpc::experimental::ClientInterceptorFactoryInterface {
 public:
-    explicit TracingClientInterceptorFactory(trace_api::Tracer* tracer)
-        : tracer_(tracer) {}
+    explicit TracingClientInterceptorFactory(
+        trace_api::Tracer* tracer,
+        std::string server_address,
+        int server_port
+    ) : tracer_(tracer),
+        server_address_(std::move(server_address)),
+        server_port_(server_port) {}
 
     grpc::experimental::Interceptor* CreateClientInterceptor(
         grpc::experimental::ClientRpcInfo* info
     ) override {
-        return new TracingClientInterceptor(info, tracer_);
+        return new TracingClientInterceptor(
+            info,
+            tracer_,
+            server_address_,
+            server_port_
+        );
     }
 
 private:
     trace_api::Tracer* tracer_;
+    std::string server_address_;
+    int server_port_;
 };
 ```
 
@@ -400,17 +464,29 @@ Set up a server with the tracing interceptor:
 ```cpp
 #include <grpcpp/server.h>
 #include <grpcpp/server_builder.h>
+#include <iostream>
 #include <memory>
+#include <utility>
+#include <vector>
+#include "opentelemetry/context/propagation/global_propagator.h"
+#include "opentelemetry/exporters/otlp/otlp_grpc_exporter_factory.h"
+#include "opentelemetry/sdk/trace/batch_span_processor_factory.h"
+#include "opentelemetry/sdk/trace/tracer_provider_factory.h"
+#include "opentelemetry/trace/propagation/http_trace_context.h"
+#include "opentelemetry/trace/provider.h"
 
 void RunServer() {
     // Initialize OpenTelemetry
     auto exporter = opentelemetry::exporter::otlp::OtlpGrpcExporterFactory::Create();
+    opentelemetry::sdk::trace::BatchSpanProcessorOptions processor_options;
     auto processor = opentelemetry::sdk::trace::BatchSpanProcessorFactory::Create(
-        std::move(exporter)
+        std::move(exporter),
+        processor_options
     );
-    auto provider = opentelemetry::sdk::trace::TracerProviderFactory::Create(
-        std::move(processor)
-    );
+    std::shared_ptr<opentelemetry::trace::TracerProvider> provider =
+        opentelemetry::sdk::trace::TracerProviderFactory::Create(
+            std::move(processor)
+        );
     opentelemetry::trace::Provider::SetTracerProvider(provider);
 
     auto tracer = opentelemetry::trace::Provider::GetTracerProvider()
@@ -418,7 +494,9 @@ void RunServer() {
 
     // Set up global propagator
     opentelemetry::context::propagation::GlobalTextMapPropagator::SetGlobalPropagator(
-        std::make_shared<opentelemetry::trace::propagation::HttpTraceContext>()
+        opentelemetry::nostd::shared_ptr<
+            opentelemetry::context::propagation::TextMapPropagator>(
+            new opentelemetry::trace::propagation::HttpTraceContext())
     );
 
     // Create service implementation
@@ -458,7 +536,11 @@ void CallService() {
     std::vector<std::unique_ptr<grpc::experimental::ClientInterceptorFactoryInterface>>
         interceptor_factories;
     interceptor_factories.push_back(
-        std::make_unique<TracingClientInterceptorFactory>(tracer.get())
+        std::make_unique<TracingClientInterceptorFactory>(
+            tracer.get(),
+            "localhost",
+            50051
+        )
     );
 
     auto channel = grpc::experimental::CreateCustomChannelWithInterceptors(
@@ -541,7 +623,7 @@ target_include_directories(user_service_proto PUBLIC ${CMAKE_CURRENT_BINARY_DIR}
 protobuf_generate(TARGET user_service_proto)
 protobuf_generate(TARGET user_service_proto LANGUAGE grpc
     GENERATE_EXTENSIONS .grpc.pb.h .grpc.pb.cc
-    PLUGIN "protoc-gen-grpc=\$<TARGET_FILE:gRPC::grpc_cpp_plugin>")
+    PLUGIN "protoc-gen-grpc=$<TARGET_FILE:gRPC::grpc_cpp_plugin>")
 
 # Server executable
 add_executable(server server.cpp)
@@ -549,6 +631,7 @@ target_link_libraries(server
     PRIVATE
     user_service_proto
     gRPC::grpc++
+    opentelemetry-cpp::api
     opentelemetry-cpp::trace
     opentelemetry-cpp::otlp_grpc_exporter
 )
@@ -559,6 +642,7 @@ target_link_libraries(client
     PRIVATE
     user_service_proto
     gRPC::grpc++
+    opentelemetry-cpp::api
     opentelemetry-cpp::trace
     opentelemetry-cpp::otlp_grpc_exporter
 )
