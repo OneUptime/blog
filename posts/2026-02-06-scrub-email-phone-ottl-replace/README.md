@@ -12,7 +12,7 @@ The OTTL `replace_pattern` function in the OpenTelemetry Collector's transform p
 
 ## Understanding OTTL replace_pattern
 
-The `replace_pattern` function works like a regex find-and-replace on telemetry fields. It takes a target field, a regex pattern, and a replacement string. Unlike the redaction processor which works at the attribute level, OTTL can operate on the log body itself.
+The `replace_pattern` function works like a regex find-and-replace on telemetry fields. It takes a target field, a regex pattern, and a replacement string. Unlike the redaction processor, which works on span, log, and metric datapoint attributes, OTTL can operate on the log body itself.
 
 ## Basic Configuration
 
@@ -47,8 +47,10 @@ processors:
         statements:
           # Scrub email addresses from the log body
           - replace_pattern(body, "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}\\b", "[EMAIL_REDACTED]")
-          # Scrub US/international phone numbers
-          - replace_pattern(body, "\\+?[0-9]{1,3}[\\s.-]?\\(?[0-9]{3}\\)?[\\s.-]?[0-9]{3}[\\s.-]?[0-9]{4}", "[PHONE_REDACTED]")
+          # Scrub US phone numbers
+          - replace_pattern(body, "\\+?1?[\\s.-]?\\(?[0-9]{3}\\)?[\\s.-]?[0-9]{3}[\\s.-]?[0-9]{4}\\b", "[PHONE_REDACTED]")
+          # Scrub simple international phone numbers
+          - replace_pattern(body, "\\+[0-9]{1,3}[\\s.-]?[0-9]{6,14}\\b", "[PHONE_REDACTED]")
           # Also scrub from log attributes if they exist
           - replace_pattern(attributes["user.email"], ".*", "[EMAIL_REDACTED]") where attributes["user.email"] != nil
           - replace_pattern(attributes["user.phone"], ".*", "[PHONE_REDACTED]") where attributes["user.phone"] != nil
@@ -132,12 +134,12 @@ echo '2024-01-15 WARN User +1-555-987-6543 exceeded rate limit' >> /var/log/app/
 echo '2024-01-15 INFO Contact support@example.com or call (800) 555-0199' >> /var/log/app/test.log
 ```
 
-Check the debug output to confirm the scrubbed results look like:
+Check the debug output to confirm the scrubbed log bodies include values like:
 
 ```text
-2024-01-15 ERROR Failed to send email to [EMAIL_REDACTED]
-2024-01-15 WARN User [PHONE_REDACTED] exceeded rate limit
-2024-01-15 INFO Contact [EMAIL_REDACTED] or call [PHONE_REDACTED]
+Body: Str(2024-01-15 ERROR Failed to send email to [EMAIL_REDACTED])
+Body: Str(2024-01-15 WARN User [PHONE_REDACTED] exceeded rate limit)
+Body: Str(2024-01-15 INFO Contact [EMAIL_REDACTED] or call [PHONE_REDACTED])
 ```
 
 ## Performance Tips
@@ -158,4 +160,4 @@ Each `replace_pattern` call evaluates a regex against the field value. For high-
 
 Some edge cases to be aware of: email-like strings in URLs (user@host in JDBC connection strings), phone-like strings in order IDs or reference numbers, and email addresses with unusual TLDs. Test thoroughly with real production log samples before deploying. You do not want to accidentally redact something important that is not actually PII.
 
-The OTTL approach gives you fine-grained control over what gets scrubbed and where. Combined with the redaction processor for span attributes, you can build a comprehensive PII scrubbing pipeline that covers all three signal types.
+The OTTL approach gives you fine-grained control over what gets scrubbed and where. Combined with the redaction processor for span, log, and metric datapoint attributes, you can build a comprehensive PII scrubbing pipeline that covers all three signal types.
