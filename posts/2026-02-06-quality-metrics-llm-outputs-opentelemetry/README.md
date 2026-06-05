@@ -143,6 +143,7 @@ class LLMQualityEvaluator:
             "text-classification",
             model="unitary/toxic-bert",
             truncation=True,
+            top_k=None,
         )
 
     def compute_relevance(self, prompt: str, response: str) -> float:
@@ -158,11 +159,12 @@ class LLMQualityEvaluator:
     def compute_toxicity(self, text: str) -> float:
         """Run toxicity classification and return the toxic probability."""
         result = self.toxicity_classifier(text)
-        # The model returns a label and score
-        if result[0]["label"] == "toxic":
-            return float(result[0]["score"])
-        else:
-            return 1.0 - float(result[0]["score"])
+        # The model is multi-label, so find the main toxicity score.
+        scores = result[0] if result and isinstance(result[0], list) else result
+        for item in scores:
+            if item["label"].lower() == "toxic":
+                return float(item["score"])
+        return 0.0
 
     def compute_hallucination_score(self, response: str, context: str = None) -> float:
         """Estimate hallucination by checking response grounding against context.
@@ -183,7 +185,7 @@ class LLMQualityEvaluator:
         )
 
         # Invert: high grounding = low hallucination
-        return float(max(0.0, 1.0 - grounding_score))
+        return float(max(0.0, min(1.0, 1.0 - grounding_score)))
 
     def _heuristic_hallucination_check(self, text: str) -> float:
         """Simple heuristic checks for common hallucination indicators."""
@@ -212,15 +214,16 @@ import time
 from opentelemetry import trace, metrics
 from quality_evaluator import LLMQualityEvaluator
 from quality_metrics import setup_quality_metrics
-import openai
+from openai import OpenAI
 
 tracer = trace.get_tracer("llm.service")
+client = OpenAI()
 quality_instruments = setup_quality_metrics()
 evaluator = LLMQualityEvaluator()
 
 def generate_and_measure(
     prompt: str,
-    model: str = "gpt-4",
+    model: str = "gpt-5.4",
     context: str = None,
     temperature: float = 0.7,
 ) -> dict:
@@ -240,7 +243,7 @@ def generate_and_measure(
         start = time.time()
 
         # Call the LLM API
-        response = openai.chat.completions.create(
+        response = client.chat.completions.create(
             model=model,
             messages=[{"role": "user", "content": prompt}],
             temperature=temperature,
@@ -400,9 +403,9 @@ def ab_test_generate(prompt: str, context: str = None) -> dict:
 
     # Simple random routing - in production, use a proper feature flag system
     if random.random() < 0.5:
-        model = "gpt-4"
+        model = "gpt-5.4"
     else:
-        model = "gpt-4-turbo"
+        model = "gpt-5.4-mini"
 
     # The quality metrics will automatically be tagged with the model name,
     # so you can compare quality distributions across variants in your dashboard
@@ -413,7 +416,7 @@ def ab_test_generate(prompt: str, context: str = None) -> dict:
     )
 ```
 
-With this setup, your metrics backend will have separate histograms for each model variant. You can compare the relevance distribution of gpt-4 vs gpt-4-turbo, see if one has a higher hallucination rate, and make data-driven decisions about which model to promote.
+With this setup, your metrics backend will have separate histograms for each model variant. You can compare the relevance distribution of gpt-5.4 vs gpt-5.4-mini, see if one has a higher hallucination rate, and make data-driven decisions about which model to promote.
 
 ## Metric Cardinality Considerations
 
