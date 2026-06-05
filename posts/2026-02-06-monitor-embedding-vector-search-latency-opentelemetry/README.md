@@ -88,6 +88,7 @@ Embedding generation is where your text gets converted into a numerical vector. 
 # embedding_instrumentation.py - Trace and measure embedding generation
 import time
 from opentelemetry import trace, metrics
+from opentelemetry.trace import Status, StatusCode
 
 tracer = trace.get_tracer("rag-pipeline")
 meter = metrics.get_meter("rag-pipeline")
@@ -143,8 +144,8 @@ def generate_embedding_traced(client, text: str, model: str = "text-embedding-3-
 
         except Exception as e:
             duration_ms = (time.perf_counter() - start_time) * 1000
-            span.set_attribute("error", True)
-            span.set_attribute("error.message", str(e))
+            span.record_exception(e)
+            span.set_status(Status(StatusCode.ERROR, str(e)))
 
             # Still record the metric on failure
             embedding_latency.record(
@@ -161,6 +162,9 @@ In practice, you'll often embed multiple documents at once during indexing. Batc
 
 ```python
 # batch_embedding.py - Instrument batch embedding operations for indexing
+import time
+from embedding_instrumentation import tracer, embedding_latency, embedding_requests
+
 def generate_batch_embeddings_traced(client, texts: list[str], model: str = "text-embedding-3-small"):
     """Generate embeddings for multiple texts with batch-specific metrics."""
 
@@ -190,6 +194,10 @@ def generate_batch_embeddings_traced(client, texts: list[str], model: str = "tex
             duration_ms,
             attributes={"model": model, "status": "success", "operation": "batch"},
         )
+        embedding_requests.add(
+            1,
+            attributes={"model": model, "status": "success", "operation": "batch"},
+        )
 
         return [item.embedding for item in response.data]
 ```
@@ -202,6 +210,7 @@ The vector search step queries your database for the most similar documents to t
 # vector_search_instrumentation.py - Trace vector database queries with full context
 import time
 from opentelemetry import trace, metrics
+from opentelemetry.trace import Status, StatusCode
 
 tracer = trace.get_tracer("rag-pipeline")
 meter = metrics.get_meter("rag-pipeline")
@@ -213,11 +222,23 @@ vector_search_latency = meter.create_histogram(
     unit="ms",
 )
 
+# Counter for total vector search requests
+vector_search_requests = meter.create_counter(
+    name="rag.vector_search.requests",
+    description="Total number of vector search requests",
+)
+
 # Track the number of results returned
 vector_search_results = meter.create_histogram(
     name="rag.vector_search.results_count",
     description="Number of results returned by vector search",
     unit="items",
+)
+
+# Track the best distance returned by ChromaDB. Lower distances are better.
+vector_search_best_distance = meter.create_histogram(
+    name="rag.vector_search.best_distance",
+    description="Best distance returned by vector search",
 )
 
 def search_vectors_traced(collection, query_embedding: list[float], top_k: int = 5, filters: dict = None):
@@ -233,41 +254,69 @@ def search_vectors_traced(collection, query_embedding: list[float], top_k: int =
 
         start_time = time.perf_counter()
 
-        # Execute the vector search
-        results = collection.query(
-            query_embeddings=[query_embedding],
-            n_results=top_k,
-            where=filters,
-        )
+        try:
+            # Execute the vector search
+            results = collection.query(
+                query_embeddings=[query_embedding],
+                n_results=top_k,
+                where=filters,
+            )
 
-        duration_ms = (time.perf_counter() - start_time) * 1000
+            duration_ms = (time.perf_counter() - start_time) * 1000
 
-        # Record result metadata
-        num_results = len(results["ids"][0]) if results["ids"] else 0
-        span.set_attribute("vector_search.duration_ms", duration_ms)
-        span.set_attribute("vector_search.results_returned", num_results)
+            # Record result metadata
+            num_results = len(results["ids"][0]) if results["ids"] else 0
+            span.set_attribute("vector_search.duration_ms", duration_ms)
+            span.set_attribute("vector_search.results_returned", num_results)
 
-        # Record similarity scores if available
-        if results.get("distances"):
-            distances = results["distances"][0]
-            span.set_attribute("vector_search.best_score", min(distances))
-            span.set_attribute("vector_search.worst_score", max(distances))
+            # Record distances if available. In ChromaDB, lower distance is better.
+            if results.get("distances"):
+                distances = results["distances"][0]
+                best_distance = min(distances)
+                span.set_attribute("vector_search.best_distance", best_distance)
+                span.set_attribute("vector_search.worst_distance", max(distances))
+                vector_search_best_distance.record(
+                    best_distance,
+                    attributes={"collection": collection.name},
+                )
 
-        # Record metrics for dashboarding
-        vector_search_latency.record(
-            duration_ms,
-            attributes={
-                "collection": collection.name,
-                "top_k": str(top_k),
-                "status": "success",
-            },
-        )
-        vector_search_results.record(
-            num_results,
-            attributes={"collection": collection.name},
-        )
+            # Record metrics for dashboarding
+            vector_search_latency.record(
+                duration_ms,
+                attributes={
+                    "collection": collection.name,
+                    "top_k": str(top_k),
+                    "status": "success",
+                },
+            )
+            vector_search_requests.add(
+                1,
+                attributes={"collection": collection.name, "status": "success"},
+            )
+            vector_search_results.record(
+                num_results,
+                attributes={"collection": collection.name},
+            )
 
-        return results
+            return results
+
+        except Exception as e:
+            duration_ms = (time.perf_counter() - start_time) * 1000
+            span.record_exception(e)
+            span.set_status(Status(StatusCode.ERROR, str(e)))
+            vector_search_latency.record(
+                duration_ms,
+                attributes={
+                    "collection": collection.name,
+                    "top_k": str(top_k),
+                    "status": "error",
+                },
+            )
+            vector_search_requests.add(
+                1,
+                attributes={"collection": collection.name, "status": "error"},
+            )
+            raise
 ```
 
 ## The Complete RAG Pipeline
@@ -276,13 +325,24 @@ Now let's put it all together in a complete RAG pipeline where every step is ins
 
 ```python
 # rag_pipeline.py - Fully instrumented RAG pipeline
-import openai
+import time
+from opentelemetry.trace import Status, StatusCode
 from setup_otel import setup_observability
 from embedding_instrumentation import generate_embedding_traced
 from vector_search_instrumentation import search_vectors_traced
-import chromadb
 
 tracer, meter = setup_observability("rag-service")
+
+llm_latency = meter.create_histogram(
+    name="rag.llm.duration",
+    description="Time taken for LLM completion",
+    unit="ms",
+)
+
+llm_requests = meter.create_counter(
+    name="rag.llm.requests",
+    description="Total number of LLM completion requests",
+)
 
 def rag_query(question: str, collection, openai_client):
     """Execute a full RAG query with end-to-end tracing."""
@@ -308,20 +368,34 @@ def rag_query(question: str, collection, openai_client):
         # Step 4: Call the LLM with retrieved context
         with tracer.start_as_current_span("llm.completion") as llm_span:
             llm_span.set_attribute("gen_ai.system", "openai")
-            llm_span.set_attribute("gen_ai.request.model", "gpt-4")
+            llm_span.set_attribute("gen_ai.request.model", "gpt-4o")
+            start_time = time.perf_counter()
 
-            response = openai_client.chat.completions.create(
-                model="gpt-4",
-                messages=[
-                    {"role": "system", "content": f"Answer based on this context:\n{context}"},
-                    {"role": "user", "content": question},
-                ],
-            )
+            try:
+                response = openai_client.chat.completions.create(
+                    model="gpt-4o",
+                    messages=[
+                        {"role": "system", "content": f"Answer based on this context:\n{context}"},
+                        {"role": "user", "content": question},
+                    ],
+                )
 
-            llm_span.set_attribute("gen_ai.usage.input_tokens", response.usage.prompt_tokens)
-            llm_span.set_attribute("gen_ai.usage.output_tokens", response.usage.completion_tokens)
+                duration_ms = (time.perf_counter() - start_time) * 1000
+                llm_span.set_attribute("llm.duration_ms", duration_ms)
+                llm_span.set_attribute("gen_ai.usage.input_tokens", response.usage.prompt_tokens)
+                llm_span.set_attribute("gen_ai.usage.output_tokens", response.usage.completion_tokens)
+                llm_latency.record(duration_ms, attributes={"model": "gpt-4o", "status": "success"})
+                llm_requests.add(1, attributes={"model": "gpt-4o", "status": "success"})
 
-            return response.choices[0].message.content
+                return response.choices[0].message.content
+
+            except Exception as e:
+                duration_ms = (time.perf_counter() - start_time) * 1000
+                llm_span.record_exception(e)
+                llm_span.set_status(Status(StatusCode.ERROR, str(e)))
+                llm_latency.record(duration_ms, attributes={"model": "gpt-4o", "status": "error"})
+                llm_requests.add(1, attributes={"model": "gpt-4o", "status": "error"})
+                raise
 ```
 
 ## Latency Breakdown Dashboard
@@ -333,10 +407,10 @@ flowchart TB
     subgraph Dashboard["RAG Latency Dashboard"]
         A["P50/P95/P99 Embedding Latency<br/>rag.embedding.duration"]
         B["P50/P95/P99 Vector Search Latency<br/>rag.vector_search.duration"]
-        C["P50/P95/P99 LLM Latency<br/>llm.completion.duration"]
+        C["P50/P95/P99 LLM Latency<br/>rag.llm.duration"]
         D["Latency Breakdown Pie Chart<br/>embedding vs search vs LLM"]
         E["Error Rate by Stage<br/>rag.*.requests by status"]
-        F["Results Quality<br/>vector_search.best_score distribution"]
+        F["Results Quality<br/>rag.vector_search.best_distance distribution"]
     end
 ```
 
@@ -348,7 +422,7 @@ Once you have this data, common optimizations become obvious:
 
 **High vector search latency?** Check your index configuration. The `top_k` attribute in your spans will tell you if you're retrieving more documents than you need. Reducing `top_k` from 20 to 5 can cut search time significantly.
 
-**Low similarity scores?** If `vector_search.best_score` is consistently poor, you might need a better embedding model or a different chunking strategy for your documents.
+**High vector distances?** If `vector_search.best_distance` is consistently high, you might need a better embedding model or a different chunking strategy for your documents.
 
 **Batch embedding slower than expected?** Compare `embedding.per_item_ms` between batch and single operations. If batching isn't giving you a speedup, your batch sizes might be too large.
 
@@ -360,14 +434,15 @@ With these metrics in place, you can create alerts for performance regressions.
 # alert_examples.py - Example alert conditions based on RAG telemetry
 
 # Alert: Embedding latency P95 exceeds 500ms
-# Query: histogram_quantile(0.95, rag_embedding_duration_bucket{status="success"}) > 500
+# Query: histogram_quantile(0.95, sum by (le) (rate(rag_embedding_duration_milliseconds_bucket{status="success"}[5m]))) > 500
 
 # Alert: Vector search error rate exceeds 1%
-# Query: rate(rag_vector_search_requests{status="error"}[5m]) /
-#         rate(rag_vector_search_requests[5m]) > 0.01
+# Query: rate(rag_vector_search_requests_total{status="error"}[5m]) /
+#         rate(rag_vector_search_requests_total[5m]) > 0.01
 
-# Alert: Average similarity score drops below threshold
-# Query: avg(vector_search_best_score) > 0.5  (lower distance = better for cosine)
+# Alert: Average vector distance rises above threshold
+# Query: rate(rag_vector_search_best_distance_sum[5m]) /
+#         rate(rag_vector_search_best_distance_count[5m]) > 0.5  (lower distance is better)
 ```
 
 ## Conclusion
