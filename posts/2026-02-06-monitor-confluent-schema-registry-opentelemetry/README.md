@@ -51,36 +51,23 @@ The JMX exporter configuration file maps JMX MBeans to Prometheus-format metrics
 # jmx_exporter/schema-registry.yml
 # Map Schema Registry JMX beans to Prometheus metrics
 rules:
+  # Jetty connection metrics
+  - pattern: "kafka.schema.registry<type=jetty-metrics><>([a-zA-Z0-9_.-]+)"
+    name: "schema_registry_jetty_$1"
+    type: GAUGE
+
   # API request latency metrics
-  - pattern: "kafka.schema.registry<type=jersey-metrics, name=(.+)><>(\\w+)"
-    name: "schema_registry_jersey_$1_$2"
+  - pattern: "kafka.schema.registry<type=jersey-metrics><>([a-zA-Z0-9_.-]+)"
+    name: "schema_registry_jersey_$1"
     type: GAUGE
 
-  # Schema store metrics
-  - pattern: "kafka.schema.registry<type=master-slave-role><>(\\w+)"
-    name: "schema_registry_master_slave_$1"
-    type: GAUGE
-
-  # Kafka store metrics for the _schemas topic
-  - pattern: "kafka.schema.registry<type=kafka-store><>(\\w+)"
-    name: "schema_registry_kafka_store_$1"
-    type: GAUGE
-
-  # Serializer metrics
-  - pattern: "kafka.schema.registry<type=json-schema-provider><>(\\w+)"
-    name: "schema_registry_json_schema_$1"
-    type: GAUGE
-
-  - pattern: "kafka.schema.registry<type=avro-schema-provider><>(\\w+)"
-    name: "schema_registry_avro_schema_$1"
-    type: GAUGE
-
-  - pattern: "kafka.schema.registry<type=protobuf-schema-provider><>(\\w+)"
-    name: "schema_registry_protobuf_schema_$1"
+  # Primary/secondary role status
+  - pattern: "kafka.schema.registry<type=master-slave-role><>master-slave-role"
+    name: "schema_registry_master_slave_role"
     type: GAUGE
 ```
 
-These rules capture the most important metric categories: API request performance through the Jersey metrics, the master/slave role status for multi-node deployments, the Kafka store operations for the internal `_schemas` topic, and per-schema-type provider metrics.
+These rules capture the most important metric categories exposed by Schema Registry: API request performance through the Jersey metrics, Jetty connection metrics, and the master/slave role status for multi-node deployments.
 
 ## OpenTelemetry Collector Configuration
 
@@ -147,6 +134,7 @@ Beyond server-side metrics, instrumenting your application's Schema Registry cli
 ```python
 from confluent_kafka.schema_registry import SchemaRegistryClient
 from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
 
 tracer = trace.get_tracer("schema.registry.client")
 
@@ -174,7 +162,7 @@ class TracedSchemaRegistryClient:
                 span.set_attribute("schema_registry.schema_type", schema.schema_type)
                 return schema
             except Exception as e:
-                span.set_status(trace.StatusCode.ERROR, str(e))
+                span.set_status(Status(StatusCode.ERROR, str(e)))
                 span.record_exception(e)
                 raise
 
@@ -195,7 +183,7 @@ class TracedSchemaRegistryClient:
                 span.set_attribute("schema_registry.schema_id", schema_id)
                 return schema_id
             except Exception as e:
-                span.set_status(trace.StatusCode.ERROR, str(e))
+                span.set_status(Status(StatusCode.ERROR, str(e)))
                 span.record_exception(e)
                 raise
 
@@ -218,7 +206,7 @@ class TracedSchemaRegistryClient:
                 span.set_attribute("schema_registry.compatible", is_compatible)
                 return is_compatible
             except Exception as e:
-                span.set_status(trace.StatusCode.ERROR, str(e))
+                span.set_status(Status(StatusCode.ERROR, str(e)))
                 span.record_exception(e)
                 raise
 ```
@@ -295,15 +283,15 @@ In production, Schema Registry typically runs as a cluster with one master and o
 #
 # Key metrics to alert on:
 #
-# schema_registry_master_slave_master_slave_role
+# schema_registry_master_slave_role
 #   Value 1 = master, 0 = slave
 #   Alert if no node reports as master for > 30 seconds
 #
 # schema_registry_jersey_request_error_rate
 #   Alert if error rate exceeds 1% over a 5-minute window
 #
-# schema_registry_kafka_store_flush_latency
-#   Alert if p99 latency for _schemas topic writes exceeds 500ms
+# schema_registry_jersey_request_latency_max
+#   Alert if maximum API request latency exceeds 500ms
 ```
 
 The master/slave role metric is the most critical one for cluster health. If you are running three Schema Registry nodes and none of them report as master, no write operations (schema registrations) can succeed. Read operations (schema lookups) will continue to work from any node because schemas are cached locally, but this is a situation that needs immediate attention.
