@@ -90,7 +90,7 @@ if __name__ == '__main__':
     app.run(debug=True, port=5000)
 ```
 
-This code automatically creates spans for every request. The span names follow the pattern `HTTP {method} {route}`, such as `HTTP GET /api/users`.
+This code automatically creates spans for every request. The span names use the HTTP method and Flask route pattern, such as `GET /api/users`.
 
 ## Architecture Flow
 
@@ -112,18 +112,10 @@ graph TD
 
 ## Capturing Request and Response Data
 
-By default, FlaskInstrumentor captures standard HTTP attributes. You can configure it to capture additional data like headers, query parameters, or request/response bodies.
+By default, FlaskInstrumentor captures standard HTTP attributes. You can configure it to capture additional data like selected headers, or use hooks to add application-specific request and response attributes.
 
 ```python
 from opentelemetry.instrumentation.flask import FlaskInstrumentor
-
-# Configure instrumentation with custom options
-FlaskInstrumentor().instrument_app(
-    app,
-    excluded_urls="/health,/metrics",  # Skip these endpoints
-    request_hook=request_hook,
-    response_hook=response_hook
-)
 
 def request_hook(span, environ):
     """Called when a request starts, before route handler"""
@@ -138,6 +130,14 @@ def response_hook(span, status, response_headers):
         # Add response-specific attributes
         content_type = dict(response_headers).get("Content-Type", "")
         span.set_attribute("http.response.content_type", content_type)
+
+# Configure instrumentation with custom options
+FlaskInstrumentor().instrument_app(
+    app,
+    excluded_urls="/health,/metrics",  # Skip these endpoints
+    request_hook=request_hook,
+    response_hook=response_hook
+)
 ```
 
 These hooks give you fine-grained control over what telemetry data gets captured. The request hook runs before your route handler, while the response hook runs after.
@@ -161,7 +161,7 @@ def create_app(config_name='development'):
     app.register_blueprint(api_blueprint, url_prefix='/api')
     app.register_blueprint(auth_blueprint, url_prefix='/auth')
 
-    # Instrument after all configuration and blueprints
+    # Instrument the configured app before serving requests
     FlaskInstrumentor().instrument_app(app)
 
     return app
@@ -173,7 +173,7 @@ if __name__ == '__main__':
     app.run()
 ```
 
-The critical point is to call `instrument_app()` after registering all blueprints and configuring the application. This ensures all routes get instrumented properly.
+The critical point is to call `instrument_app()` during application setup before serving requests. Placing it near the end of the factory keeps the instrumentation close to the rest of the application configuration.
 
 ## Adding Custom Spans Within Routes
 
@@ -239,8 +239,7 @@ def risky_operation():
         result = perform_risky_operation()
         return jsonify({"result": result})
     except ValueError as e:
-        # Span is automatically marked as error
-        # Add additional context
+        # The exception is handled, so add context explicitly
         current_span.set_attribute("error.type", "ValueError")
         current_span.set_attribute("error.message", str(e))
         current_span.record_exception(e)
