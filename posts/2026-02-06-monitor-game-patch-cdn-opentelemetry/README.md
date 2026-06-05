@@ -78,14 +78,14 @@ cdn_requests = meter.create_counter(
 
 cdn_bytes_served = meter.create_counter(
     "cdn.bytes_served",
-    unit="bytes",
+    unit="By",
     description="Total bytes served by CDN"
 )
 
 cdn_latency = meter.create_histogram(
-    "cdn.response_time_ms",
-    unit="ms",
-    description="CDN response time in milliseconds"
+    "cdn.response_time",
+    unit="s",
+    description="CDN response time in seconds"
 )
 
 def process_cdn_log_entry(entry):
@@ -99,7 +99,7 @@ def process_cdn_log_entry(entry):
 
     cdn_requests.add(1, attributes)
     cdn_bytes_served.add(entry.bytes_sent, attributes)
-    cdn_latency.record(entry.response_time_ms, attributes)
+    cdn_latency.record(entry.response_time_ms / 1000.0, attributes)
 ```
 
 ## Client-Side Download Instrumentation
@@ -110,67 +110,83 @@ The game launcher or patcher should report download progress and failures:
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
 
-var meter = new Meter("GameLauncher.Patching");
-
-var downloadDuration = meter.CreateHistogram<double>(
-    "launcher.download.duration_seconds",
-    unit: "s",
-    description: "Time to download a single patch file"
-);
-
-var downloadThroughput = meter.CreateHistogram<double>(
-    "launcher.download.throughput_mbps",
-    unit: "Mbps",
-    description: "Download throughput for patch files"
-);
-
-var downloadFailures = meter.CreateCounter<long>(
-    "launcher.download.failures",
-    description: "Count of failed file downloads"
-);
-
-var checksumMismatches = meter.CreateCounter<long>(
-    "launcher.download.checksum_mismatches",
-    description: "Files that failed checksum verification after download"
-);
-
-public async Task DownloadPatchFile(PatchFile file, string cdnBaseUrl)
+public class PatchDownloader
 {
-    var sw = Stopwatch.StartNew();
-    var tags = new TagList
-    {
-        { "asset.type", file.AssetType },
-        { "patch.version", file.Version },
-        { "cdn.region", ResolvedCdnRegion },
-    };
+    private readonly HttpClient _httpClient;
+    private readonly string _resolvedCdnRegion;
 
-    try
-    {
-        var data = await _httpClient.GetByteArrayAsync(
-            $"{cdnBaseUrl}/{file.Path}"
+    private static readonly Meter Meter = new("GameLauncher.Patching");
+
+    private static readonly Histogram<double> DownloadDuration =
+        Meter.CreateHistogram<double>(
+            "launcher.download.duration",
+            unit: "s",
+            description: "Time to download a single patch file"
         );
 
-        sw.Stop();
-        double seconds = sw.Elapsed.TotalSeconds;
-        double mbps = (data.Length * 8.0 / 1_000_000) / seconds;
+    private static readonly Histogram<double> DownloadThroughput =
+        Meter.CreateHistogram<double>(
+            "launcher.download.throughput",
+            unit: "By/s",
+            description: "Download throughput for patch files in bytes per second"
+        );
 
-        downloadDuration.Record(seconds, tags);
-        downloadThroughput.Record(mbps, tags);
+    private static readonly Counter<long> DownloadFailures =
+        Meter.CreateCounter<long>(
+            "launcher.download.failures",
+            description: "Count of failed file downloads"
+        );
 
-        // Verify checksum
-        string hash = ComputeSha256(data);
-        if (hash != file.ExpectedChecksum)
-        {
-            checksumMismatches.Add(1, tags);
-            throw new ChecksumMismatchException(file.Path, file.ExpectedChecksum, hash);
-        }
+    private static readonly Counter<long> ChecksumMismatches =
+        Meter.CreateCounter<long>(
+            "launcher.download.checksum_mismatches",
+            description: "Files that failed checksum verification after download"
+        );
 
-        await ApplyPatchFile(file, data);
-    }
-    catch (HttpRequestException ex)
+    public PatchDownloader(HttpClient httpClient, string resolvedCdnRegion)
     {
-        downloadFailures.Add(1, tags);
-        throw;
+        _httpClient = httpClient;
+        _resolvedCdnRegion = resolvedCdnRegion;
+    }
+
+    public async Task DownloadPatchFile(PatchFile file, string cdnBaseUrl)
+    {
+        var sw = Stopwatch.StartNew();
+        var tags = new TagList
+        {
+            { "asset.type", file.AssetType },
+            { "patch.version", file.Version },
+            { "cdn.region", _resolvedCdnRegion },
+        };
+
+        try
+        {
+            var data = await _httpClient.GetByteArrayAsync(
+                $"{cdnBaseUrl}/{file.Path}"
+            );
+
+            sw.Stop();
+            double seconds = sw.Elapsed.TotalSeconds;
+            double bytesPerSecond = data.Length / seconds;
+
+            DownloadDuration.Record(seconds, tags);
+            DownloadThroughput.Record(bytesPerSecond, tags);
+
+            // Verify checksum
+            string hash = ComputeSha256(data);
+            if (hash != file.ExpectedChecksum)
+            {
+                ChecksumMismatches.Add(1, tags);
+                throw new ChecksumMismatchException(file.Path, file.ExpectedChecksum, hash);
+            }
+
+            await ApplyPatchFile(file, data);
+        }
+        catch (HttpRequestException)
+        {
+            DownloadFailures.Add(1, tags);
+            throw;
+        }
     }
 }
 ```
