@@ -56,10 +56,12 @@ The `--no-cache` flag forces every step to run fresh, and `--progress=plain` sho
 If the error is in step 8, add a temporary target that stops before the failing command:
 
 ```dockerfile
-# Original Dockerfile
-FROM node:18-alpine
+# Add a named stage before the failing line
+FROM node:18-alpine AS debug
 WORKDIR /app
 COPY package*.json ./
+
+FROM debug AS build
 RUN npm install         # <-- This fails
 COPY . .
 RUN npm run build
@@ -171,10 +173,10 @@ For Alpine-specific issues, some packages have different names:
 ```dockerfile
 # Common Alpine package name differences
 RUN apk add --no-cache \
-    bash \          # Alpine uses ash by default, not bash
-    coreutils \     # For GNU versions of common tools
-    findutils \     # For GNU find with -printf support
-    grep \          # For GNU grep with -P support
+    bash \
+    coreutils \
+    findutils \
+    grep \
     procps          # For ps with full options
 ```
 
@@ -189,7 +191,8 @@ RUN if [[ "$NODE_ENV" == "production" ]]; then npm ci; fi
 # Right: POSIX-compatible syntax
 RUN if [ "$NODE_ENV" = "production" ]; then npm ci; fi
 
-# Or explicitly use bash
+# Or install bash and explicitly use it
+RUN apk add --no-cache bash
 SHELL ["/bin/bash", "-c"]
 RUN if [[ "$NODE_ENV" == "production" ]]; then npm ci; fi
 ```
@@ -274,7 +277,7 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 RUN curl -sSL https://example.com/script.sh | sh
 ```
 
-For POSIX sh (Alpine), pipefail is not available. Use a different approach:
+If your `/bin/sh` does not support `pipefail`, use a different approach:
 
 ```dockerfile
 # Download first, then execute

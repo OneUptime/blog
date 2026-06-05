@@ -14,7 +14,7 @@ This guide covers the most common version mismatch scenarios and how to resolve 
 
 ## Understanding Compose File Versions
 
-Docker Compose has gone through several major version changes. The Compose file format has had versions 1, 2, 2.x, 3, and 3.x. Each version introduced new features while deprecating others. On top of that, Docker Compose itself has two major versions: the Python-based `docker-compose` (V1) and the Go-based `docker compose` (V2, now a Docker CLI plugin).
+Docker Compose has gone through several major version changes. The legacy Compose file format had versions 1, 2, 2.x, 3, and 3.x. Those legacy file versions have been merged into the current Compose Specification. On top of that, Docker Compose itself has two command styles you are likely to encounter: the Python-based `docker-compose` (V1) and the Go-based `docker compose` (V2 and newer, as a Docker CLI plugin).
 
 Check your currently installed versions:
 
@@ -46,10 +46,13 @@ If your Compose file version is too new for your Docker Compose installation, up
 # Upgrade Docker Compose V2 plugin (on Linux)
 sudo apt-get update && sudo apt-get install docker-compose-plugin
 
-# Or install manually
+# Or install the plugin manually for the current user on x86_64 Linux
+# For another architecture, substitute the asset name from the Compose release.
 DOCKER_COMPOSE_VERSION=$(curl -s https://api.github.com/repos/docker/compose/releases/latest | grep tag_name | cut -d '"' -f 4)
-sudo curl -L "https://github.com/docker/compose/releases/download/${DOCKER_COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-sudo chmod +x /usr/local/bin/docker-compose
+DOCKER_CONFIG=${DOCKER_CONFIG:-$HOME/.docker}
+mkdir -p "$DOCKER_CONFIG/cli-plugins"
+curl -SL "https://github.com/docker/compose/releases/download/${DOCKER_COMPOSE_VERSION}/docker-compose-linux-x86_64" -o "$DOCKER_CONFIG/cli-plugins/docker-compose"
+chmod +x "$DOCKER_CONFIG/cli-plugins/docker-compose"
 ```
 
 If you need to downgrade the Compose file version to work with an older installation, adjust the version field:
@@ -102,28 +105,22 @@ docker ps --filter "label=com.docker.compose.service=webapp" --format "{{.Names}
 
 ## Error: "Unsupported Config Option" for a Service
 
-This happens when you use a configuration key that does not exist in your declared Compose file version.
+This happens when you use a configuration key that does not exist in the Compose file format your installed Compose binary supports.
 
 ```text
 ERROR: The Compose file './docker-compose.yml' is invalid because:
 Unsupported config option for services.webapp: 'deploy'
 ```
 
-The `deploy` key is only available in version 3.x files. Other version-specific keys include:
+With older `docker-compose` V1 releases, `deploy` was associated with version 3.x files and could fail in version 2.x files. In the current Compose Specification, `deploy`, `mem_limit`, `cpus`, and `scale` are all defined service attributes, so the right fix is usually to upgrade Compose or remove the legacy `version` field rather than mix old file-version rules.
 
 ```yaml
-# Version 2.x specific options (not available in 3.x)
-version: "2.4"
+# Current Compose Specification resource options
 services:
   app:
-    mem_limit: 512m        # Use deploy.resources in v3
-    cpus: 0.5              # Use deploy.resources in v3
-    scale: 3               # Use deploy.replicas in v3
-
-# Version 3.x specific options (not available in 2.x)
-version: "3.8"
-services:
-  app:
+    mem_limit: 512m
+    cpus: 0.5
+    scale: 3
     deploy:
       resources:
         limits:
@@ -134,7 +131,7 @@ services:
 
 ## Dropping the Version Field Entirely
 
-With Docker Compose V2, the `version` field is no longer required. In fact, Compose V2 ignores it. You can remove it from your file and Compose will automatically use the latest format.
+With Docker Compose V2 and newer, the `version` field is no longer required. In fact, Compose ignores it and warns that it is obsolete. You can remove it from your file and Compose will validate the file against the current Compose Specification.
 
 ```yaml
 # Modern docker-compose.yml - no version field needed
@@ -156,11 +153,11 @@ services:
       retries: 5
 ```
 
-This approach avoids version mismatch errors entirely, but it requires Docker Compose V2.
+This approach avoids legacy file-version mismatch errors, but it requires a Compose release that supports the Compose Specification.
 
 ## Migrating from Version 2 to Version 3
 
-If you need to upgrade a Compose file from version 2.x to 3.x, several keys need to change.
+If you need to upgrade an older Compose V1 file from version 2.x to 3.x, several keys may need to change.
 
 Here is a version 2 file and its version 3 equivalent:
 
@@ -176,7 +173,7 @@ services:
     links:
       - db
     volumes_from:
-      - data-container
+      - container:data-container
     depends_on:
       - db
     restart: always
@@ -204,7 +201,7 @@ services:
           memory: 256M
           cpus: "0.5"
     # links are no longer needed - services communicate by name
-    # volumes_from is removed - use named volumes instead
+    # prefer named volumes instead of volumes_from
     volumes:
       - app-data:/data
     depends_on:
@@ -221,13 +218,13 @@ volumes:
   app-data:
 ```
 
-Key changes to remember during migration:
+Key changes to remember during legacy V1 migration:
 
-- `mem_limit` becomes `deploy.resources.limits.memory`
-- `cpus` becomes `deploy.resources.limits.cpus` (as a string)
+- `mem_limit` can become `deploy.resources.limits.memory`
+- `cpus` can become `deploy.resources.limits.cpus` (as a string)
 - `links` are no longer needed since services resolve by name automatically
-- `volumes_from` is removed; use named volumes instead
-- `extends` was removed in v3 but brought back in later Compose V2 releases
+- `volumes_from` is still supported in the Compose Specification, but named volumes are usually clearer
+- `extends` is supported in the Compose Specification, but it is not supported by `docker stack deploy`
 
 ## Handling Multi-Environment Compose Files
 
@@ -297,4 +294,4 @@ This command will catch unsupported options, syntax errors, and version incompat
 
 ## Summary
 
-Most Docker Compose version mismatch errors fall into three categories: the Compose file format version does not match the installed Compose binary, configuration keys from one format version are used in another, or V1 vs V2 behavioral differences break scripts. The cleanest solution going forward is to drop the `version` field from your Compose files entirely and standardize on Docker Compose V2 across your team. If you need to support older environments, pin a specific Compose file version and validate with `docker compose config` before deploying.
+Most Docker Compose version mismatch errors fall into three categories: the legacy Compose file format version does not match the installed Compose binary, configuration keys require a newer Compose implementation, or V1 vs V2 behavioral differences break scripts. The cleanest solution going forward is to drop the `version` field from your Compose files entirely and standardize on the current `docker compose` plugin across your team. If you need to support older environments, pin a specific Compose file version and validate with `docker compose config` before deploying.
