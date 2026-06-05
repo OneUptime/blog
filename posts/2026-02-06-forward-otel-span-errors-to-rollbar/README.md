@@ -10,7 +10,7 @@ Rollbar is built for error grouping and tracking. OpenTelemetry is built for dis
 
 ## The Approach
 
-OpenTelemetry records exceptions as span events. When you call `span.recordException(error)`, it creates an event on that span with the exception type, message, and stack trace. We will build a custom `SpanProcessor` that inspects completed spans, checks for exception events, and sends them to Rollbar via their REST API.
+OpenTelemetry records exceptions as span events. When you call `span.record_exception(error)`, it creates an event on that span with the exception type, message, and stack trace. We will build a custom `SpanProcessor` that inspects completed spans, checks for exception events, and sends them to Rollbar via their REST API.
 
 ## Building the Rollbar Span Processor
 
@@ -18,7 +18,6 @@ OpenTelemetry records exceptions as span events. When you call `span.recordExcep
 # rollbar_span_processor.py
 
 import requests
-import json
 from opentelemetry.sdk.trace import SpanProcessor
 
 class RollbarSpanProcessor(SpanProcessor):
@@ -48,7 +47,6 @@ class RollbarSpanProcessor(SpanProcessor):
 
         # Build the Rollbar payload from OpenTelemetry span data
         payload = {
-            "access_token": self.rollbar_token,
             "data": {
                 "environment": self.environment,
                 "body": {
@@ -81,6 +79,7 @@ class RollbarSpanProcessor(SpanProcessor):
             response = requests.post(
                 self.rollbar_url,
                 json=payload,
+                headers={"X-Rollbar-Access-Token": self.rollbar_token},
                 timeout=5,
             )
             response.raise_for_status()
@@ -113,7 +112,7 @@ class RollbarSpanProcessor(SpanProcessor):
         pass
 
     def force_flush(self, timeout_millis=None):
-        pass
+        return True
 ```
 
 ## Registering the Processor
@@ -184,23 +183,33 @@ The processor above sends errors synchronously, which adds latency. For producti
 
 ```python
 # rollbar_batch_processor.py
-from concurrent.futures import ThreadPoolExecutor
-from opentelemetry.sdk.trace import SpanProcessor
+from concurrent.futures import ThreadPoolExecutor, wait
+from rollbar_span_processor import RollbarSpanProcessor
 
-class BatchedRollbarSpanProcessor(SpanProcessor):
+class BatchedRollbarSpanProcessor(RollbarSpanProcessor):
     """Sends errors to Rollbar in a background thread pool."""
 
     def __init__(self, rollbar_token, environment="production", max_workers=2):
-        self.rollbar_token = rollbar_token
-        self.environment = environment
+        super().__init__(rollbar_token, environment)
         self.executor = ThreadPoolExecutor(max_workers=max_workers)
-        self.rollbar_url = "https://api.rollbar.com/api/1/item/"
+        self.futures = set()
 
     def on_end(self, span):
         for event in span.events:
             if event.name == "exception":
                 # Submit to thread pool instead of blocking
-                self.executor.submit(self._send_to_rollbar, span, event)
+                future = self.executor.submit(self._send_to_rollbar, span, event)
+                self.futures.add(future)
+                future.add_done_callback(self.futures.discard)
+
+    def force_flush(self, timeout_millis=None):
+        if not self.futures:
+            return True
+
+        timeout = None if timeout_millis is None else timeout_millis / 1000
+        done, not_done = wait(self.futures, timeout=timeout)
+        self.futures.difference_update(done)
+        return not not_done
 
     def shutdown(self):
         self.executor.shutdown(wait=True)
