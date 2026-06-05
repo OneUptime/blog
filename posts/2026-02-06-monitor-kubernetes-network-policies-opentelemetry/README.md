@@ -40,7 +40,7 @@ flowchart TD
 
 ## Step 1: Collect CNI Plugin Metrics
 
-Most CNI plugins expose Prometheus metrics that include network policy enforcement data. The OpenTelemetry Collector's Prometheus receiver can scrape these metrics.
+Many CNI plugins expose Prometheus metrics that include network policy enforcement data. The OpenTelemetry Collector's Prometheus receiver can scrape these metrics.
 
 Here is a collector configuration for scraping Calico's Felix component, which handles policy enforcement.
 
@@ -68,7 +68,7 @@ receivers:
           metric_relabel_configs:
             # Keep only network policy related metrics
             - source_labels: [__name__]
-              regex: "felix_iptables.*|felix_policy.*|felix_denied_packets.*|felix_active_.*"
+              regex: "felix_iptables.*|felix_cluster_num_policies|felix_active_local_policies|felix_active_local_selectors"
               action: keep
 
         # For Cilium CNI - scrape the agent metrics
@@ -113,50 +113,52 @@ service:
 
 ## Step 2: Monitor Denied Connections
 
-When a network policy blocks traffic, the CNI plugin usually logs the event or increments a counter. Capturing these denial events is the most valuable part of network policy monitoring.
+When a network policy blocks traffic, the CNI plugin may log the event or increment a counter. Capturing these denial events is the most valuable part of network policy monitoring.
 
-For Calico, denied packets are tracked per-rule. For Cilium, you can enable policy audit mode to log every policy decision. Here is how to collect Cilium's policy verdict logs using the filelog receiver.
+Calico Enterprise exposes policy metrics such as `calico_denied_packets` for packets denied by policy. For Cilium, you can enable policy audit mode to allow traffic while logging connections that would otherwise be dropped, and you can use Hubble Exporter to write flow logs to a file. Here is how to collect dropped Hubble flow logs using the filelog receiver.
 
 ```yaml
 # Collect Cilium policy verdict logs
 receivers:
   filelog:
     include:
-      # Cilium agent logs contain policy verdicts
+      # Hubble Exporter writes JSON flow logs here when enabled
       - /var/run/cilium/hubble/events.log
     operators:
       # Parse the JSON log entries
       - type: json_parser
         id: cilium_log
-      # Filter for policy verdict events
+      # Keep dropped/error flows and drop other entries
       - type: filter
-        expr: 'attributes.Type != "PolicyVerdict"'
+        expr: 'attributes.flow.verdict != "DROPPED" and attributes.flow.verdict != "ERROR"'
       # Extract relevant fields
       - type: move
-        from: attributes.verdict
+        from: attributes.flow.verdict
         to: attributes.network.policy.verdict
       - type: move
-        from: attributes.source.identity
+        from: attributes.flow.drop_reason_desc
+        to: attributes.network.policy.drop_reason
+      - type: move
+        from: attributes.flow.source.identity
         to: attributes.network.source.identity
       - type: move
-        from: attributes.destination.identity
+        from: attributes.flow.destination.identity
         to: attributes.network.destination.identity
       # Set severity based on verdict
       - type: severity_parser
         parse_from: attributes.network.policy.verdict
         mapping:
-          info: "FORWARDED"
           warn: "DROPPED"
           error: "ERROR"
 ```
 
-If you are using Cilium with Hubble enabled, you get much richer visibility. Hubble provides a dedicated gRPC API for flow observation. Here is an alternative approach using a custom receiver that connects to Hubble.
+If you are using Cilium with Hubble enabled, you get much richer visibility. Hubble provides a dedicated gRPC API for flow observation and can expose Prometheus metrics for flow and drop counts. Here is an alternative approach that scrapes Hubble metrics.
 
 ```yaml
 # Alternative: Use Hubble for Cilium flow visibility
-# This requires deploying hubble-relay in your cluster
+# This requires enabling Hubble metrics in your cluster
 receivers:
-  # Scrape Hubble metrics which include policy verdicts
+  # Scrape Hubble metrics which include flow and drop counts
   prometheus:
     config:
       scrape_configs:
@@ -166,7 +168,7 @@ receivers:
           metric_relabel_configs:
             # Focus on policy-related drop metrics
             - source_labels: [__name__]
-              regex: "hubble_drop_total|hubble_flows_processed_total|hubble_policy_.*"
+              regex: "hubble_drop_total|hubble_flows_processed_total|hubble_flows_to_world_total"
               action: keep
 ```
 
@@ -230,9 +232,8 @@ def check_coverage():
 
             # Check if any policy selects this pod
             for pol in policies:
-                selector = pol.spec.pod_selector.match_labels or {}
-                # Simple label matching (does not handle matchExpressions)
-                if all(pod_labels.get(k) == v for k, v in selector.items()):
+                selector = pol.spec.pod_selector
+                if selector_matches(selector, pod_labels):
                     is_covered = True
                     break
 
@@ -243,6 +244,26 @@ def check_coverage():
 
         pods_with_policy.labels(namespace=ns_name).set(covered)
         pods_without_policy.labels(namespace=ns_name).set(uncovered)
+
+def selector_matches(selector, labels):
+    """Return True if a Kubernetes LabelSelector matches pod labels."""
+    match_labels = selector.match_labels or {}
+    if not all(labels.get(k) == v for k, v in match_labels.items()):
+        return False
+
+    for expr in selector.match_expressions or []:
+        values = expr.values or []
+        key_exists = expr.key in labels
+        if expr.operator == 'In' and labels.get(expr.key) not in values:
+            return False
+        if expr.operator == 'NotIn' and labels.get(expr.key) in values:
+            return False
+        if expr.operator == 'Exists' and not key_exists:
+            return False
+        if expr.operator == 'DoesNotExist' and key_exists:
+            return False
+
+    return True
 
 # Start Prometheus metrics server on port 8080
 start_http_server(8080)
@@ -272,7 +293,7 @@ Add a scrape target in the collector to pick up these coverage metrics.
 
 ## Step 4: Correlate Network Denials with Application Errors
 
-When a network policy blocks a connection, the calling application sees a connection timeout or reset. Without correlation, the application team sees "connection refused" errors and the network team has no idea it is related to a policy.
+When a network policy blocks a connection, the calling application usually sees a connection timeout, reset, or another connection failure depending on how the CNI handles denied traffic. Without correlation, the application team sees network errors and the network team has no idea it is related to a policy.
 
 By collecting both application traces and network policy metrics in the same observability platform, you can correlate them. The key is to have matching resource attributes.
 
@@ -308,8 +329,8 @@ groups:
       # Alert when denied packets spike, possibly indicating a misconfigured policy
       - alert: NetworkPolicyDenialSpike
         expr: |
-          rate(felix_denied_packets_total[5m]) > 100
-          or rate(hubble_drop_total{reason="POLICY_DENIED"}[5m]) > 100
+          rate(calico_denied_packets[5m]) > 100
+          or rate(hubble_drop_total{reason="Policy denied"}[5m]) > 100
         for: 5m
         labels:
           severity: warning
@@ -343,11 +364,11 @@ groups:
 
 ## Testing Network Policies with Observability
 
-One of the most practical uses of this monitoring setup is validating network policy changes before enforcing them. Both Calico and Cilium support audit/log mode where policies log what they would deny without actually blocking traffic.
+One of the most practical uses of this monitoring setup is validating network policy changes before enforcing them. Calico supports staged network policies for previewing policy impact, and Cilium supports policy audit mode where traffic is allowed while connections that would otherwise be dropped are logged.
 
 The workflow looks like this:
 
-1. Deploy the network policy in audit mode
+1. Deploy the policy in staged or audit mode
 2. Monitor the denial logs through the collector
 3. Review which connections would be blocked
 4. Fix any legitimate traffic that would be denied
