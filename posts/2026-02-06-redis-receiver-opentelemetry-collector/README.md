@@ -10,15 +10,14 @@ The Redis receiver enables the OpenTelemetry Collector to collect performance me
 
 ## Understanding Redis Monitoring
 
-Redis monitoring is crucial for ensuring optimal cache performance and preventing memory exhaustion. As an in-memory data store, Redis performance directly impacts application response times and user experience. Key metrics include cache hit ratios, memory fragmentation, command latency, eviction rates, and replication lag.
+Redis monitoring is crucial for ensuring optimal cache performance and preventing memory exhaustion. As an in-memory data store, Redis performance directly impacts application response times and user experience. Key metrics include cache hit ratios, memory fragmentation, command latency, eviction rates, and replication offsets.
 
-The Redis receiver collects metrics by connecting to Redis instances and executing INFO commands. This approach provides real-time operational metrics with minimal overhead, capturing both instance-level and keyspace-level statistics.
+The Redis receiver collects metrics by connecting to a Redis instance and executing the Redis `INFO` command. It can also use `CLUSTER INFO` for Redis Cluster metrics. This approach provides real-time operational metrics with minimal overhead, capturing both instance-level and keyspace-level statistics.
 
 ```mermaid
 graph TD
     A[Redis Instance] -->|INFO Command| B[Redis Receiver]
-    A -->|SLOWLOG| B
-    A -->|CLIENT LIST| B
+    A -->|CLUSTER INFO| B
     B --> C[Metrics Processor]
     C --> D[Resource Detection]
     D --> E[Batch Processor]
@@ -56,15 +55,15 @@ processors:
 
 exporters:
   # Export to stdout for testing
-  logging:
-    loglevel: info
+  debug:
+    verbosity: basic
 
 service:
   pipelines:
     metrics:
       receivers: [redis]
       processors: [batch]
-      exporters: [logging]
+      exporters: [debug]
 ```
 
 This basic configuration connects to a local Redis instance and collects metrics every 10 seconds. The password is securely read from an environment variable.
@@ -78,13 +77,15 @@ The receiver collects comprehensive metrics organized by category:
 - `redis.memory.used`: Memory used by Redis
 - `redis.memory.peak`: Peak memory used since startup
 - `redis.memory.rss`: Resident set size (physical memory)
-- `redis.memory.fragmentation`: Memory fragmentation ratio
+- `redis.memory.fragmentation_ratio`: Memory fragmentation ratio
 - `redis.memory.lua`: Memory used by Lua engine
 
 ### Performance Metrics
 
 - `redis.commands.processed`: Total commands processed
-- `redis.commands.duration`: Command execution time
+- `redis.cmd.calls`: Total calls by command
+- `redis.cmd.usec`: Total execution time by command
+- `redis.cmd.latency`: Command execution latency
 - `redis.keyspace.hits`: Successful key lookups
 - `redis.keyspace.misses`: Failed key lookups
 - `redis.net.input`: Bytes read from network
@@ -105,16 +106,14 @@ The receiver collects comprehensive metrics organized by category:
 
 ### Replication Metrics
 
-- `redis.replication.connected_slaves`: Number of connected replicas
+- `redis.slaves.connected`: Number of connected replicas
 - `redis.replication.offset`: Replication offset
-- `redis.replication.backlog_size`: Replication backlog size
-- `redis.replication.lag`: Replication lag in seconds
+- `redis.replication.backlog_first_byte_offset`: Replication backlog first byte offset
 
 ### Persistence Metrics
 
 - `redis.rdb.changes_since_last_save`: Changes since last RDB save
-- `redis.rdb.last_save_time`: Unix timestamp of last save
-- `redis.aof.size`: AOF file size
+- `redis.latest_fork`: Duration of the latest fork operation
 
 ### Eviction Metrics
 
@@ -158,13 +157,17 @@ receivers:
         enabled: true
       redis.memory.rss:
         enabled: true
-      redis.memory.fragmentation:
+      redis.memory.fragmentation_ratio:
         enabled: true
 
       # Performance metrics
       redis.commands.processed:
         enabled: true
-      redis.commands.duration:
+      redis.cmd.calls:
+        enabled: true
+      redis.cmd.usec:
+        enabled: true
+      redis.cmd.latency:
         enabled: true
       redis.keyspace.hits:
         enabled: true
@@ -190,7 +193,7 @@ receivers:
         enabled: true
 
       # Replication metrics
-      redis.replication.connected_slaves:
+      redis.slaves.connected:
         enabled: true
       redis.replication.offset:
         enabled: true
@@ -200,6 +203,21 @@ receivers:
         enabled: true
       redis.keys.expired:
         enabled: true
+
+processors:
+  batch:
+    timeout: 30s
+
+exporters:
+  otlp:
+    endpoint: https://observability.example.com:4317
+
+service:
+  pipelines:
+    metrics:
+      receivers: [redis]
+      processors: [batch]
+      exporters: [otlp]
 ```
 
 ## Monitoring Redis Clusters
@@ -214,27 +232,11 @@ receivers:
     password: ${env:REDIS_PASSWORD}
     collection_interval: 30s
 
-    resource_attributes:
-      redis.role:
-        enabled: true
-        value: master
-      redis.cluster.node:
-        enabled: true
-        value: node1
-
   # Master node 2
   redis/master2:
     endpoint: redis-master2.example.com:6379
     password: ${env:REDIS_PASSWORD}
     collection_interval: 30s
-
-    resource_attributes:
-      redis.role:
-        enabled: true
-        value: master
-      redis.cluster.node:
-        enabled: true
-        value: node2
 
   # Master node 3
   redis/master3:
@@ -242,27 +244,11 @@ receivers:
     password: ${env:REDIS_PASSWORD}
     collection_interval: 30s
 
-    resource_attributes:
-      redis.role:
-        enabled: true
-        value: master
-      redis.cluster.node:
-        enabled: true
-        value: node3
-
   # Replica monitoring
   redis/replica1:
     endpoint: redis-replica1.example.com:6379
     password: ${env:REDIS_PASSWORD}
     collection_interval: 30s
-
-    resource_attributes:
-      redis.role:
-        enabled: true
-        value: replica
-      redis.cluster.node:
-        enabled: true
-        value: replica1
 
 processors:
   # Add cluster information
@@ -311,13 +297,8 @@ receivers:
         enabled: true
       redis.keyspace.misses:
         enabled: true
-      redis.replication.connected_slaves:
+      redis.slaves.connected:
         enabled: true
-
-    resource_attributes:
-      redis.role:
-        enabled: true
-        value: primary
 
   # Monitor replica instances
   redis/replica1:
@@ -328,13 +309,6 @@ receivers:
     metrics:
       redis.replication.offset:
         enabled: true
-      redis.replication.lag:
-        enabled: true
-
-    resource_attributes:
-      redis.role:
-        enabled: true
-        value: replica
 
   redis/replica2:
     endpoint: redis-replica2.example.com:6379
@@ -344,23 +318,11 @@ receivers:
     metrics:
       redis.replication.offset:
         enabled: true
-      redis.replication.lag:
-        enabled: true
-
-    resource_attributes:
-      redis.role:
-        enabled: true
-        value: replica
 
   # Monitor Sentinel instances
   redis/sentinel1:
     endpoint: redis-sentinel1.example.com:26379
     collection_interval: 60s
-
-    resource_attributes:
-      redis.role:
-        enabled: true
-        value: sentinel
 
 processors:
   resource:
@@ -368,6 +330,13 @@ processors:
       - key: redis.sentinel.cluster
         value: prod-sentinel
         action: insert
+
+  batch:
+    timeout: 30s
+
+exporters:
+  otlp:
+    endpoint: https://observability.example.com:4317
 
 service:
   pipelines:
@@ -413,13 +382,17 @@ receivers:
         enabled: true
       redis.memory.rss:
         enabled: true
-      redis.memory.fragmentation:
+      redis.memory.fragmentation_ratio:
         enabled: true
       redis.memory.lua:
         enabled: true
       redis.commands.processed:
         enabled: true
-      redis.commands.duration:
+      redis.cmd.calls:
+        enabled: true
+      redis.cmd.usec:
+        enabled: true
+      redis.cmd.latency:
         enabled: true
       redis.keyspace.hits:
         enabled: true
@@ -439,7 +412,7 @@ receivers:
         enabled: true
       redis.db.avg_ttl:
         enabled: true
-      redis.replication.connected_slaves:
+      redis.slaves.connected:
         enabled: true
       redis.replication.offset:
         enabled: true
@@ -474,16 +447,6 @@ processors:
       - key: redis.cluster.region
         value: us-east-1
         action: insert
-
-  # Calculate cache hit ratio
-  metricstransform:
-    transforms:
-      - include: redis.keyspace.hits
-        action: insert
-        new_name: redis.cache.hit_ratio
-        operations:
-          - action: experimental_scale_value
-            value_as_function: "redis.keyspace.hits / (redis.keyspace.hits + redis.keyspace.misses)"
 
   # Batch processing
   batch:
@@ -522,7 +485,6 @@ service:
         - memory_limiter
         - resourcedetection
         - resource
-        - metricstransform
         - batch
       exporters: [otlp, prometheus]
 
@@ -531,71 +493,54 @@ service:
     logs:
       level: info
     metrics:
-      address: :8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: "0.0.0.0"
+                port: 8888
 ```
 
 ## Monitoring Multiple Redis Databases
 
-Redis supports multiple databases (0-15 by default). Monitor each database separately:
+Redis supports multiple databases (0-15 by default). The receiver reports keyspace metrics for each database returned by `INFO keyspace`, with the database name available as a metric attribute:
 
 ```yaml
 receivers:
-  # Database 0 (default)
-  redis/db0:
+  redis:
     endpoint: localhost:6379
     password: ${env:REDIS_PASSWORD}
     collection_interval: 30s
 
-    resource_attributes:
-      redis.database:
+    metrics:
+      redis.db.keys:
         enabled: true
-        value: "0"
-
-  # Database 1
-  redis/db1:
-    endpoint: localhost:6379
-    password: ${env:REDIS_PASSWORD}
-    collection_interval: 30s
-
-    resource_attributes:
-      redis.database:
+      redis.db.expires:
         enabled: true
-        value: "1"
+      redis.db.avg_ttl:
+        enabled: true
 
 processors:
-  # Filter metrics by database
-  filter/db0:
-    metrics:
-      include:
-        match_type: regexp
-        resource_attributes:
-          - key: redis.database
-            value: "0"
+  batch:
+    timeout: 30s
 
-  filter/db1:
-    metrics:
-      include:
-        match_type: regexp
-        resource_attributes:
-          - key: redis.database
-            value: "1"
+exporters:
+  otlp:
+    endpoint: https://observability.example.com:4317
 
 service:
   pipelines:
-    metrics/db0:
-      receivers: [redis/db0]
-      processors: [filter/db0, batch]
-      exporters: [otlp]
-
-    metrics/db1:
-      receivers: [redis/db1]
-      processors: [filter/db1, batch]
+    metrics:
+      receivers: [redis]
+      processors: [batch]
       exporters: [otlp]
 ```
 
 ## Alerting Strategies
 
 Configure alerts for common Redis issues:
+
+When using the Collector's Prometheus exporter, OpenTelemetry metric names are translated to Prometheus-compatible names. The exact names can vary with exporter translation settings and namespace configuration, but the rules below use the common underscore format.
 
 ### Low Cache Hit Ratio
 
@@ -606,8 +551,8 @@ Alert when cache effectiveness degrades:
 
 - alert: RedisLowCacheHitRatio
   expr: |
-    redis.keyspace.hits /
-    (redis.keyspace.hits + redis.keyspace.misses) < 0.8
+    redis_keyspace_hits_total /
+    (redis_keyspace_hits_total + redis_keyspace_misses_total) < 0.8
   for: 10m
   labels:
     severity: warning
@@ -622,7 +567,7 @@ Alert on excessive memory consumption:
 
 ```yaml
 - alert: RedisHighMemoryUsage
-  expr: redis.memory.used > 8589934592  # 8GB
+  expr: redis_memory_used_bytes > 8589934592  # 8GB
   for: 5m
   labels:
     severity: warning
@@ -637,7 +582,7 @@ Alert on poor memory fragmentation:
 
 ```yaml
 - alert: RedisHighMemoryFragmentation
-  expr: redis.memory.fragmentation > 1.5
+  expr: redis_memory_fragmentation_ratio > 1.5
   for: 15m
   labels:
     severity: warning
@@ -646,28 +591,13 @@ Alert on poor memory fragmentation:
     description: "Fragmentation ratio: {{ $value }}"
 ```
 
-### Replication Lag
-
-Alert on replication delay:
-
-```yaml
-- alert: RedisReplicationLag
-  expr: redis.replication.lag > 10
-  for: 5m
-  labels:
-    severity: critical
-  annotations:
-    summary: "Redis replication lag on {{ $labels.instance }}"
-    description: "Replication lag: {{ $value }} seconds"
-```
-
 ### High Eviction Rate
 
 Alert when keys are frequently evicted:
 
 ```yaml
 - alert: RedisHighEvictionRate
-  expr: rate(redis.keys.evicted[5m]) > 100
+  expr: rate(redis_keys_evicted_total[5m]) > 100
   for: 10m
   labels:
     severity: warning
@@ -682,7 +612,7 @@ Alert on clients blocked on operations:
 
 ```yaml
 - alert: RedisBlockedClients
-  expr: redis.clients.blocked > 10
+  expr: redis_clients_blocked > 10
   for: 5m
   labels:
     severity: warning
@@ -752,7 +682,7 @@ spec:
       containers:
         - name: otel-collector
           image: otel/opentelemetry-collector-contrib:latest
-          command: ["--config=/conf/config.yaml"]
+          args: ["--config=/conf/config.yaml"]
           env:
             - name: REDIS_PASSWORD
               valueFrom:
