@@ -20,7 +20,7 @@ A resource in OpenTelemetry is a set of key-value pairs that describe the source
 service.name        - The logical name of the service (e.g., "payment-service")
 service.version     - The version of the service (e.g., "1.4.2")
 service.namespace   - A namespace for the service (e.g., "shop")
-deployment.environment - The deployment environment (e.g., "production")
+deployment.environment.name - The deployment environment (e.g., "production")
 host.name           - The hostname of the machine
 process.runtime.name - The runtime (e.g., "CPython", "Node.js")
 ```
@@ -29,9 +29,9 @@ These attributes get attached to every span, metric, and log record your applica
 
 ```mermaid
 graph TD
-    A[Resource Attributes] --> B[Traces<br/>service.name: payment-service<br/>deployment.environment: prod]
-    A --> C[Metrics<br/>service.name: payment-service<br/>deployment.environment: prod]
-    A --> D[Logs<br/>service.name: payment-service<br/>deployment.environment: prod]
+    A[Resource Attributes] --> B[Traces<br/>service.name: payment-service<br/>deployment.environment.name: prod]
+    A --> C[Metrics<br/>service.name: payment-service<br/>deployment.environment.name: prod]
+    A --> D[Logs<br/>service.name: payment-service<br/>deployment.environment.name: prod]
 
     style A fill:#9cf,stroke:#333,stroke-width:2px
     style B fill:#ff9,stroke:#333,stroke-width:2px
@@ -63,7 +63,7 @@ from opentelemetry.sdk.resources import Resource
 resource = Resource.create({
     "service.name": "payment-service",
     "service.version": "1.4.2",
-    "deployment.environment": "production"
+    "deployment.environment.name": "production"
 })
 
 provider = TracerProvider(resource=resource)
@@ -72,13 +72,13 @@ provider = TracerProvider(resource=resource)
 ```javascript
 // Node.js: Set resource attributes
 const { NodeTracerProvider } = require('@opentelemetry/sdk-trace-node');
-const { Resource } = require('@opentelemetry/resources');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 const { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } = require('@opentelemetry/semantic-conventions');
 
-const resource = new Resource({
+const resource = resourceFromAttributes({
     [ATTR_SERVICE_NAME]: 'payment-service',
     [ATTR_SERVICE_VERSION]: '1.4.2',
-    'deployment.environment': 'production'
+    'deployment.environment.name': 'production'
 });
 
 const provider = new NodeTracerProvider({ resource });
@@ -88,14 +88,14 @@ const provider = new NodeTracerProvider({ resource });
 // Go: Set resource attributes
 import (
     "go.opentelemetry.io/otel/sdk/resource"
-    semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
+    semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
 )
 
 res, err := resource.New(ctx,
     resource.WithAttributes(
         semconv.ServiceName("payment-service"),
         semconv.ServiceVersion("1.4.2"),
-        semconv.DeploymentEnvironment("production"),
+        semconv.DeploymentEnvironmentName("production"),
     ),
 )
 ```
@@ -107,10 +107,10 @@ The most flexible way to set resource attributes is through environment variable
 ```bash
 # Set service name and other attributes via environment variables
 export OTEL_SERVICE_NAME=payment-service
-export OTEL_RESOURCE_ATTRIBUTES=service.version=1.4.2,deployment.environment=production,team=payments
+export OTEL_RESOURCE_ATTRIBUTES=service.version=1.4.2,deployment.environment.name=production,team=payments
 ```
 
-These environment variables work across all OpenTelemetry SDKs. The `OTEL_SERVICE_NAME` variable is a shortcut specifically for the service name, while `OTEL_RESOURCE_ATTRIBUTES` accepts a comma-separated list of key=value pairs for everything else.
+These environment variables are part of OpenTelemetry's general SDK configuration, though support can vary by language. The `OTEL_SERVICE_NAME` variable is a shortcut specifically for the service name, while `OTEL_RESOURCE_ATTRIBUTES` accepts a comma-separated list of key=value pairs for everything else.
 
 In Docker and Kubernetes, set these in your deployment configuration:
 
@@ -130,14 +130,6 @@ spec:
             # Service name
             - name: OTEL_SERVICE_NAME
               value: "payment-service"
-            # Additional resource attributes
-            - name: OTEL_RESOURCE_ATTRIBUTES
-              value: >-
-                service.version=1.4.2,
-                deployment.environment=production,
-                k8s.namespace.name=payments,
-                k8s.pod.name=$(POD_NAME),
-                k8s.node.name=$(NODE_NAME)
             # Inject pod and node names from Kubernetes
             - name: POD_NAME
               valueFrom:
@@ -147,6 +139,9 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
+            # Additional resource attributes
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: "service.version=1.4.2,deployment.environment.name=production,k8s.namespace.name=payments,k8s.pod.name=$(POD_NAME),k8s.node.name=$(NODE_NAME)"
 ```
 
 ## Why Attributes Set in Code Might Not Appear
@@ -159,7 +154,7 @@ First, the resource might be created but not passed to the provider:
 # BUG: Resource is created but never used
 resource = Resource.create({
     "service.name": "payment-service",
-    "deployment.environment": "production"
+    "deployment.environment.name": "production"
 })
 
 # The provider does not receive the resource!
@@ -170,7 +165,7 @@ provider = TracerProvider()  # Missing resource=resource
 # FIX: Pass the resource to the provider
 resource = Resource.create({
     "service.name": "payment-service",
-    "deployment.environment": "production"
+    "deployment.environment.name": "production"
 })
 
 provider = TracerProvider(resource=resource)
@@ -194,10 +189,10 @@ trace.set_tracer_provider(provider)
 from opentelemetry.sdk.resources import Resource, OTELResourceDetector
 
 # Detect default attributes and merge with custom ones
-resource = Resource.create({
+resource = OTELResourceDetector().detect().merge(Resource.create({
     "service.name": "payment-service",
     "custom.attribute": "my-value"
-}).merge(OTELResourceDetector().detect())
+}))
 ```
 
 Resource Detectors: Automatic Attribute Discovery
@@ -224,18 +219,18 @@ provider = TracerProvider(resource=resource)
 ```javascript
 // Node.js: Enable resource detectors
 const { NodeTracerProvider } = require('@opentelemetry/sdk-trace-node');
-const { Resource, envDetector, hostDetector, processDetector } = require('@opentelemetry/resources');
+const { detectResources, envDetector, hostDetector, processDetector, resourceFromAttributes } = require('@opentelemetry/resources');
 const { ATTR_SERVICE_NAME } = require('@opentelemetry/semantic-conventions');
 
 // Detect host, process, and environment attributes automatically
-const detectedResource = await Resource.detect({
+const detectedResource = detectResources({
     detectors: [envDetector, hostDetector, processDetector]
 });
 
 // Merge with your explicit attributes
-const resource = new Resource({
+const resource = detectedResource.merge(resourceFromAttributes({
     [ATTR_SERVICE_NAME]: 'payment-service'
-}).merge(detectedResource);
+}));
 
 const provider = new NodeTracerProvider({ resource });
 ```
@@ -244,9 +239,10 @@ For cloud environments, there are specialized detectors:
 
 ```python
 # Python: Cloud-specific resource detectors
-# pip install opentelemetry-resource-detector-aws
+# pip install opentelemetry-sdk-extension-aws
 
-from opentelemetry.resource.detector.aws import AwsEc2ResourceDetector, AwsEcsResourceDetector
+from opentelemetry.sdk.extension.aws.resource.ec2 import AwsEc2ResourceDetector
+from opentelemetry.sdk.extension.aws.resource.ecs import AwsEcsResourceDetector
 
 # These auto-detect cloud.provider, cloud.region, host.id, etc.
 resource = get_aggregated_resources([
@@ -276,7 +272,7 @@ provider.add_span_processor(SimpleSpanProcessor(ConsoleSpanExporter()))
 #     "resource": {
 #         "service.name": "payment-service",
 #         "service.version": "1.4.2",
-#         "deployment.environment": "production",
+#         "deployment.environment.name": "production",
 #         "process.pid": 12345,
 #         "host.name": "web-01"
 #     }
@@ -304,7 +300,7 @@ processors:
   resource:
     attributes:
       # Make sure you are not accidentally deleting attributes
-      - key: deployment.environment
+      - key: deployment.environment.name
         value: production
         action: upsert    # upsert adds or updates
 
@@ -369,4 +365,4 @@ resource = Resource.create({
 
 ## Conclusion
 
-Missing resource attributes in OpenTelemetry telemetry usually come from one of a handful of configuration mistakes: not setting attributes at all, not passing the resource to the provider, or confusing span attributes with resource attributes. The best practice is to set the critical attributes (`service.name`, `service.version`, `deployment.environment`) through environment variables so they can be configured at deployment time, and use resource detectors to automatically pick up runtime and infrastructure attributes. Always verify your resource attributes by checking the console exporter output before deploying to production.
+Missing resource attributes in OpenTelemetry telemetry usually come from one of a handful of configuration mistakes: not setting attributes at all, not passing the resource to the provider, or confusing span attributes with resource attributes. The best practice is to set the critical attributes (`service.name`, `service.version`, `deployment.environment.name`) through environment variables so they can be configured at deployment time, and use resource detectors to automatically pick up runtime and infrastructure attributes. Always verify your resource attributes by checking the console exporter output before deploying to production.
