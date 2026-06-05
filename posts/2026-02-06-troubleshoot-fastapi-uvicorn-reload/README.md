@@ -4,9 +4,9 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, FastAPI, Python, Uvicorn
 
-Description: Resolve OpenTelemetry instrumentation issues caused by uvicorn's reload mode and multi-worker process forking in FastAPI apps.
+Description: Resolve OpenTelemetry instrumentation issues caused by uvicorn's reload mode and multi-worker process management in FastAPI apps.
 
-FastAPI applications typically run under uvicorn, which has two modes that break OpenTelemetry: `--reload` (for development) and `--workers N` (for production). Both modes create child processes, and OpenTelemetry initialization in the parent process does not carry over correctly to the children.
+FastAPI applications typically run under uvicorn, and two modes can make OpenTelemetry setup confusing: `--reload` (for development) and `--workers N` (for production). Both modes create child processes, so OpenTelemetry setup should happen in the process that actually runs the application.
 
 ## The Problem with --reload
 
@@ -21,14 +21,16 @@ The `--reload` flag starts a file watcher in the main process and runs your appl
 ## The Problem with --workers
 
 ```bash
-# Multi-worker mode uses fork()
+# Multi-worker mode starts separate worker processes
 uvicorn main:app --workers 4
 ```
 
-With multiple workers, uvicorn forks the main process. The fork copies the parent's memory, including any initialized OpenTelemetry SDK state. This causes problems because:
-- All workers share the same exporter connection (which cannot be shared across processes)
-- The BatchSpanProcessor background thread is not forked correctly
-- Export operations from one worker can interfere with another
+With multiple workers, uvicorn starts separate worker processes using Python's `spawn` start method, not Gunicorn-style pre-fork. That means module-level setup runs independently in each worker, and any setup that only happens in a parent supervisor process will not be enough for request tracing in the workers.
+
+Fork-specific OpenTelemetry problems still apply when you run through a pre-fork server such as Gunicorn:
+- Each worker needs its own exporter connection
+- The BatchSpanProcessor background thread and locks are not safe to initialize before a fork
+- Export operations should be isolated per worker process
 
 ## Fix 1: Use Lifespan Events for Initialization
 
@@ -81,7 +83,7 @@ import os
 
 bind = "0.0.0.0:8000"
 workers = 4
-worker_class = "uvicorn.workers.UvicornWorker"
+worker_class = "uvicorn_worker.UvicornWorker"
 
 def post_fork(server, worker):
     """Initialize OpenTelemetry in each worker process."""
@@ -98,6 +100,9 @@ def post_fork(server, worker):
     provider = TracerProvider(resource=resource)
     provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
     trace.set_tracer_provider(provider)
+
+# Instrument the FastAPI app in main.py, for example with:
+# FastAPIInstrumentor.instrument_app(app)
 ```
 
 ```bash
@@ -177,4 +182,4 @@ CMD ["gunicorn", "main:app", \
      "-c", "gunicorn.conf.py"]
 ```
 
-The pattern for FastAPI with OpenTelemetry is: initialize in each worker process (not the parent), use lifespan events or gunicorn's post_fork hook, and avoid uvicorn's `--reload` flag when tracing matters. For production, always use gunicorn with uvicorn workers for proper process management.
+The pattern for FastAPI with OpenTelemetry is: initialize in each worker process, use lifespan events or gunicorn's post_fork hook, and avoid uvicorn's `--reload` flag when tracing matters. For production, gunicorn with uvicorn workers is a common option for process management.
