@@ -21,15 +21,15 @@ Start by querying your trace backend for slow requests. You want to find a repre
 
 {
   resource.service.name = "order-service"
-  && name = "HTTP POST /api/v1/orders"
-  && duration > 3s
-  && duration < 6s
+  && span:name = "HTTP POST /api/v1/orders"
+  && trace:duration > 3s
+  && trace:duration < 6s
 }
 ```
 
 ```bash
-# Jaeger API query - find traces with min duration
-curl "http://jaeger:16686/api/traces?service=order-service&operation=HTTP%20POST%20/api/v1/orders&minDuration=3000000&limit=10" \
+# Jaeger UI internal JSON API query - find traces with min duration
+curl "http://jaeger:16686/api/traces?service=order-service&operation=HTTP%20POST%20/api/v1/orders&minDuration=3s&limit=10" \
   | jq '.data[0].traceID'
 ```
 
@@ -68,14 +68,14 @@ Slow spans generally fall into one of these categories:
 
 # Query for the downstream service's perspective
 # Tempo TraceQL:
-# { resource.service.name = "fraud-service" && span.http.route = "/analyze" && duration > 2s }
+# { resource.service.name = "fraud-service" && span.http.route = "/analyze" && span:duration > 2s }
 ```
 
-**Database queries**: A database span shows a slow query. Check the `db.statement` attribute for the query text.
+**Database queries**: A database span shows a slow query. Check the `db.query.text` attribute for the query text if your instrumentation captures sanitized statements.
 
 ```sql
 -- If you see a span like: postgresql SELECT orders (duration: 3.5s)
--- Check the db.statement attribute for the actual query
+-- Check the db.query.text attribute for the actual query
 -- Common causes:
 --   Missing index on a WHERE clause column
 --   Full table scan on a large table
@@ -114,10 +114,10 @@ Once you identify the bottleneck span, examine its attributes for clues:
 # server.address - which host handled the request?
 
 # For database spans:
-# db.system - postgresql, mysql, redis, etc.
-# db.statement - the actual query
-# db.operation - SELECT, INSERT, UPDATE
-# db.sql.table - which table
+# db.system.name - postgresql, mysql, redis, etc.
+# db.query.text - the sanitized query text, if captured
+# db.operation.name - SELECT, INSERT, UPDATE
+# db.collection.name - which table or collection
 
 # For custom spans:
 # Look at any domain-specific attributes your team added
