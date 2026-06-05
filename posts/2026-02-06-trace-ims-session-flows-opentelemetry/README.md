@@ -21,47 +21,46 @@ An IMS session traverses multiple components:
 
 ## Implementing Trace Context Propagation in IMS
 
-Since IMS uses SIP signaling, we need to propagate OpenTelemetry trace context through SIP headers. We will use a custom header approach that works with existing IMS infrastructure.
+Since IMS uses SIP signaling, we need to propagate OpenTelemetry trace context through SIP headers. We will use a dedicated SIP header approach that works with existing IMS infrastructure.
 
 ```python
 # ims_tracing.py
 
-from opentelemetry import trace, context
-from opentelemetry.propagators.textmap import TextMapPropagator
-from opentelemetry import propagate
+from opentelemetry import context as otel_context
+from opentelemetry import trace
+from opentelemetry.propagators.textmap import (
+    TextMapPropagator,
+    default_getter,
+    default_setter,
+)
 import re
 
 tracer = trace.get_tracer("ims.session")
 
-# Custom SIP header for trace propagation within the IMS core
-TRACE_PARENT_HEADER = "P-OTel-Traceparent"
-TRACE_STATE_HEADER = "P-OTel-Tracestate"
+# Dedicated SIP header for trace propagation within the IMS core
+TRACE_PARENT_HEADER = "OTel-Traceparent"
 
 
 class IMSSIPPropagator(TextMapPropagator):
-    """Propagator that uses IMS-friendly SIP private headers."""
+    """Propagator that uses IMS-friendly SIP headers."""
 
-    def inject(self, carrier, context=None, setter=None):
-        span = trace.get_current_span(context)
+    def inject(self, carrier, context=None, setter=default_setter):
+        current_context = context or otel_context.get_current()
+        span = trace.get_current_span(current_context)
         if not span.get_span_context().is_valid:
             return
 
         sc = span.get_span_context()
         # Format as W3C traceparent
         traceparent = f"00-{format(sc.trace_id, '032x')}-{format(sc.span_id, '016x')}-{format(sc.trace_flags, '02x')}"
-        if setter:
-            setter.set(carrier, TRACE_PARENT_HEADER, traceparent)
-        else:
-            carrier[TRACE_PARENT_HEADER] = traceparent
+        setter.set(carrier, TRACE_PARENT_HEADER, traceparent)
 
-    def extract(self, carrier, context=None, getter=None):
-        if getter:
-            traceparent = getter.get(carrier, TRACE_PARENT_HEADER)
-        else:
-            traceparent = carrier.get(TRACE_PARENT_HEADER)
+    def extract(self, carrier, context=None, getter=default_getter):
+        current_context = context or otel_context.get_current()
+        traceparent = getter.get(carrier, TRACE_PARENT_HEADER)
 
         if not traceparent:
-            return context or context.get_current()
+            return current_context
 
         # Parse the traceparent value
         if isinstance(traceparent, list):
@@ -72,11 +71,14 @@ class IMSSIPPropagator(TextMapPropagator):
             traceparent
         )
         if not match:
-            return context or context.get_current()
+            return current_context
 
         trace_id = int(match.group(1), 16)
         span_id = int(match.group(2), 16)
         trace_flags = int(match.group(3), 16)
+
+        if trace_id == 0 or span_id == 0:
+            return current_context
 
         span_context = trace.SpanContext(
             trace_id=trace_id,
@@ -87,12 +89,12 @@ class IMSSIPPropagator(TextMapPropagator):
 
         return trace.set_span_in_context(
             trace.NonRecordingSpan(span_context),
-            context or context.get_current()
+            current_context
         )
 
     @property
     def fields(self):
-        return {TRACE_PARENT_HEADER, TRACE_STATE_HEADER}
+        return {TRACE_PARENT_HEADER}
 ```
 
 ## Instrumenting the P-CSCF
