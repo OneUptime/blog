@@ -122,8 +122,11 @@ class ApiController {
     @Get('/compute/{n}')
     Map<String, Object> compute(int n) {
         // Compute prime count up to n
-        def primes = (2..n).findAll { num ->
-            (2..Math.sqrt(num).intValue()).every { num % it != 0 }
+        def primes = n < 2 ? [] : (2..n).findAll { num ->
+            def maxDivisor = Math.sqrt(num).intValue()
+            maxDivisor < 2 || (2..maxDivisor).every { divisor ->
+                num % divisor != 0
+            }
         }
         [
             limit: n,
@@ -230,15 +233,17 @@ Micronaut supports GraalVM native image compilation, which eliminates JVM startu
 
 ```dockerfile
 # Stage 1: Build native image
-FROM ghcr.io/graalvm/native-image:ol9-java26 AS builder
+FROM ghcr.io/graalvm/native-image-community:25 AS builder
 
 WORKDIR /app
 
 # Install Gradle
-RUN curl -L https://services.gradle.org/distributions/gradle-9.5.1-bin.zip -o gradle.zip && \
+RUN microdnf install -y curl unzip && \
+    curl -L https://services.gradle.org/distributions/gradle-9.5.1-bin.zip -o gradle.zip && \
     unzip -q gradle.zip && \
     ln -s /app/gradle-9.5.1/bin/gradle /usr/local/bin/gradle && \
-    rm gradle.zip
+    rm gradle.zip && \
+    microdnf clean all
 
 COPY build.gradle ./
 COPY gradle/ gradle/
@@ -309,7 +314,6 @@ CMD ["java", "-jar", "/app/app.jar"]
 
 ```yaml
 # docker-compose.yml - development environment
-version: "3.8"
 services:
   app:
     build:
@@ -364,7 +368,7 @@ For simpler Groovy scripts that don't need a full build, you can run them direct
 
 ```dockerfile
 # Dockerfile for standalone Groovy scripts
-FROM groovy:9.5.1-jdk26-alpine
+FROM groovy:5.0.4-jdk21-alpine
 
 WORKDIR /app
 COPY script.groovy /app/
@@ -392,8 +396,8 @@ docker run -d \
   --name groovy-app \
   -p 8080:8080 \
   -m 512m \
-  -e JAVA_OPTS="-XX:MaxRAMPercentage=75.0 -XX:+UseG1GC" \
-  groovy-app:latest
+  groovy-app:latest \
+  java -XX:MaxRAMPercentage=75.0 -XX:+UseG1GC -jar /app/app.jar
 ```
 
 Key JVM flags for containers:
@@ -403,7 +407,7 @@ Key JVM flags for containers:
 
 ## Monitoring
 
-Groovy applications on the JVM expose metrics through standard JMX. For external monitoring, configure [OneUptime](https://oneuptime.com) to watch your `/health` endpoint and track JVM metrics like heap usage and GC activity. Micronaut's built-in health endpoints provide detailed information about application state.
+Groovy applications on the JVM expose metrics through standard JMX. For external monitoring, configure [OneUptime](https://oneuptime.com) to watch your `/health` endpoint and track JVM metrics like heap usage and GC activity. If you add Micronaut Management, its health endpoints provide detailed information about application state.
 
 ## Summary
 
