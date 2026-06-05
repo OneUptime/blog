@@ -4,73 +4,75 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, Extension, Encoding, Data Transformation
 
-Description: Learn how to configure the Encoding Extension in OpenTelemetry Collector to transform telemetry data between different encoding formats like JSON, Protobuf.
+Description: Learn how to configure the OTLP Encoding Extension in OpenTelemetry Collector to handle OTLP telemetry data encoded as JSON or Protobuf.
 
 ---
 
-The Encoding Extension in the OpenTelemetry Collector provides critical capabilities for transforming telemetry data between different encoding formats. This extension becomes essential when you need to optimize data transmission, ensure compatibility with downstream systems, or reduce bandwidth consumption in distributed observability pipelines.
+The OTLP Encoding Extension in the OpenTelemetry Collector provides a reusable way for supported components to serialize and deserialize telemetry data in OTLP formats. This extension becomes useful when a receiver or exporter supports pluggable encodings, such as Kafka components that read from or write to topics containing OTLP JSON or OTLP Protobuf payloads.
 
 ## What is the Encoding Extension?
 
-The Encoding Extension is an OpenTelemetry Collector component that handles the serialization and deserialization of telemetry data. It enables you to convert telemetry signals (traces, metrics, logs) between different encoding formats such as JSON, Protocol Buffers (Protobuf), MessagePack, and other binary formats.
+The OTLP Encoding Extension is an OpenTelemetry Collector contrib component that handles OTLP serialization and deserialization. It supports telemetry signals encoded with the OTLP Protobuf protocol or the OTLP JSON protocol.
 
-This extension operates at the pipeline level, allowing you to specify different encoding strategies for different receivers and exporters. The primary use cases include:
+This extension is not a processor and it does not run as a separate stage between receivers, processors, and exporters. Instead, components that support encoding extensions can reference it by component ID. The Collector receives data, converts it into its internal pdata representation, runs processors on that internal representation, and then exporters encode data for their destination.
 
-- Converting between human-readable formats (JSON) and efficient binary formats (Protobuf)
-- Optimizing data transmission size for high-throughput environments
-- Ensuring compatibility when integrating with legacy systems
-- Reducing network bandwidth consumption in constrained environments
-- Enabling debugging through readable format conversion
+The primary use cases include:
+
+- Reading OTLP JSON or OTLP Protobuf telemetry from systems such as Kafka
+- Writing OTLP JSON or OTLP Protobuf telemetry to systems such as Kafka
+- Keeping encoding configuration reusable across components that support encoding extensions
+- Ensuring compatibility when integrating with systems that already store OTLP payloads in a specific format
+- Enabling readable OTLP JSON payloads in development or debugging workflows
 
 ## Why Use the Encoding Extension?
 
-Performance optimization is the primary driver for using the Encoding Extension. Binary formats like Protobuf can reduce payload sizes by 70-80% compared to JSON, significantly lowering network costs and improving throughput in high-volume telemetry pipelines.
+Compatibility is the primary driver for using the OTLP Encoding Extension. When telemetry is stored in Kafka or another supported transport as OTLP JSON or OTLP Protobuf, the extension gives the Collector an explicit encoder or decoder for that payload format.
 
-Compatibility requirements often necessitate format conversion. When integrating the Collector with systems that only accept specific encoding formats, the Encoding Extension bridges this gap without requiring custom code changes in your applications.
+Performance requirements often favor OTLP Protobuf because it is compact and efficient. OTLP JSON is easier to inspect manually, but it usually produces larger payloads and costs more CPU to parse and generate.
 
-Debugging becomes easier when you can convert binary telemetry to human-readable JSON for inspection, then switch back to optimized binary formats for production transmission.
+Debugging becomes easier when you use OTLP JSON for development topics or test pipelines, then switch to OTLP Protobuf for production topics where efficiency matters more.
 
 ## Architecture and Data Flow
 
-The Encoding Extension sits between the receiver and processor stages in the Collector pipeline. Here's how data flows through the system:
+The Encoding Extension is referenced by supported receivers or exporters. Here's how data flows through a Kafka-based pipeline:
 
 ```mermaid
 graph LR
-    A[Application SDKs] -->|OTLP/JSON| B[OTLP Receiver]
-    B --> C[Encoding Extension]
-    C -->|Converts to Protobuf| D[Processor Pipeline]
-    D --> E[Batch Processor]
-    E --> F[Encoding Extension]
-    F -->|Converts to format for backend| G[Exporter]
-    G -->|Optimized Binary| H[(Backend Storage)]
+    A[Application SDKs] -->|OTLP/HTTP or OTLP/gRPC| B[Collector or Gateway]
+    B -->|OTLP JSON message| C[(Kafka Topic)]
+    C --> D[Kafka Receiver]
+    D -->|Uses otlp_encoding/json| E[Processor Pipeline]
+    E --> F[Batch Processor]
+    F --> G[OTLP HTTP Exporter]
+    G -->|OTLP Protobuf with compression| H[(Backend Storage)]
 ```
 
-The extension performs bidirectional conversion - it can decode incoming data from one format and encode outgoing data to another format. This flexibility allows you to optimize each leg of your telemetry pipeline independently.
+The receiver decodes incoming telemetry into the Collector's internal representation. Processors work on that internal representation, and exporters encode data for the destination protocol.
 
 ## Basic Configuration
 
-The Encoding Extension requires configuration in both the extensions section and the service section of your Collector configuration. Here's a basic setup that converts incoming JSON telemetry to Protobuf for internal processing:
+The OTLP Encoding Extension is configured in the `extensions` section and enabled in the `service.extensions` list. Supported components then reference the extension by its component ID. Here's a basic setup that reads OTLP JSON telemetry from Kafka and exports it as compressed OTLP Protobuf over HTTP:
 
 ```yaml
-# extensions section defines the encoding strategies
-
+# extensions section defines reusable OTLP encoders/decoders
 extensions:
-  # Define encoding extension for JSON to Protobuf conversion
-  encoding:
-    # Input encoding format from receivers
-    decode:
-      format: json              # Accept JSON-encoded telemetry
-    # Output encoding format to processors/exporters
-    encode:
-      format: proto             # Convert to Protocol Buffers
-      compression: gzip         # Apply gzip compression to reduce size
+  otlp_encoding/json:
+    protocol: otlp_json
 
-# receivers section remains standard
+# receivers decode incoming data
 receivers:
-  otlp:
-    protocols:
-      http:                     # HTTP receiver on port 4318
-        endpoint: 0.0.0.0:4318
+  kafka:
+    brokers:
+      - localhost:9092
+    traces:
+      topics: [otlp_spans_json]
+      encoding: otlp_encoding/json
+    metrics:
+      topics: [otlp_metrics_json]
+      encoding: otlp_encoding/json
+    logs:
+      topics: [otlp_logs_json]
+      encoding: otlp_encoding/json
 
 # processors for data transformation
 processors:
@@ -80,160 +82,114 @@ processors:
 
 # exporters send to backend
 exporters:
-  otlphttp:
+  otlp_http:
     endpoint: https://oneuptime.com/otlp
+    encoding: proto
+    compression: gzip
     headers:
       x-oneuptime-token: ${ONEUPTIME_TOKEN}
 
 # service section wires everything together
 service:
   # Enable the encoding extension
-  extensions: [encoding]
+  extensions: [otlp_encoding/json]
 
   pipelines:
     traces:
-      receivers: [otlp]
+      receivers: [kafka]
       processors: [batch]
-      exporters: [otlphttp]
+      exporters: [otlp_http]
     metrics:
-      receivers: [otlp]
+      receivers: [kafka]
       processors: [batch]
-      exporters: [otlphttp]
+      exporters: [otlp_http]
     logs:
-      receivers: [otlp]
+      receivers: [kafka]
       processors: [batch]
-      exporters: [otlphttp]
+      exporters: [otlp_http]
 ```
 
-This configuration accepts JSON-encoded OTLP data from applications and converts it to compressed Protobuf for efficient internal processing and transmission to the backend.
+This configuration consumes OTLP JSON data from Kafka topics, decodes it into the Collector's internal telemetry representation, batches it, and exports it to the backend using OTLP HTTP with Protobuf encoding and gzip compression.
 
 ## Advanced Configuration Patterns
 
 ### Multi-Format Support
 
-In production environments, you often need to support multiple encoding formats simultaneously. Different services might emit telemetry in different formats, and your backend systems might require specific encodings.
+In production environments, you often need to support multiple OTLP formats simultaneously. Different services might publish telemetry in different formats, and your backend systems might require a specific export encoding.
 
-Here's a configuration that handles multiple input formats and routes them appropriately:
+Here's a configuration that handles OTLP JSON and OTLP Protobuf Kafka topics and routes them to a unified OTLP HTTP backend:
 
 ```yaml
 extensions:
-  # Encoding extension for legacy JSON systems
-  encoding/json:
-    decode:
-      format: json
-    encode:
-      format: json              # Keep as JSON for compatibility
+  # Encoding extension for OTLP JSON payloads
+  otlp_encoding/json:
+    protocol: otlp_json
 
-  # Encoding extension for high-performance Protobuf
-  encoding/proto:
-    decode:
-      format: proto
-    encode:
-      format: proto
-      compression: snappy       # Snappy is faster than gzip for binary data
-
-  # Encoding extension for MessagePack (compact binary)
-  encoding/msgpack:
-    decode:
-      format: msgpack           # Accept MessagePack from efficient clients
-    encode:
-      format: proto             # Convert to Protobuf for backend
-      compression: gzip
+  # Encoding extension for OTLP Protobuf payloads
+  otlp_encoding/proto:
+    protocol: otlp_proto
 
 receivers:
-  # Separate receivers for different encoding formats
-  otlp/json:
-    protocols:
-      http:
-        endpoint: 0.0.0.0:4318  # JSON endpoint
+  # Kafka receiver for OTLP JSON telemetry
+  kafka/json:
+    brokers:
+      - localhost:9092
+    traces:
+      topics: [otlp_spans_json]
+      encoding: otlp_encoding/json
 
-  otlp/proto:
-    protocols:
-      grpc:
-        endpoint: 0.0.0.0:4317  # Protobuf endpoint
-
-  otlp/msgpack:
-    protocols:
-      http:
-        endpoint: 0.0.0.0:4319  # MessagePack endpoint
+  # Kafka receiver for OTLP Protobuf telemetry
+  kafka/proto:
+    brokers:
+      - localhost:9092
+    traces:
+      topics: [otlp_spans_proto]
+      encoding: otlp_encoding/proto
 
 processors:
   # Batch processor optimized for each format
   batch/json:
-    timeout: 5s                 # Shorter timeout for JSON (larger payloads)
+    timeout: 5s
     send_batch_size: 512
 
   batch/binary:
-    timeout: 10s                # Longer timeout for binary (smaller payloads)
+    timeout: 10s
     send_batch_size: 2048
 
 exporters:
   # Export to OneUptime with Protobuf
-  otlphttp/oneuptime:
+  otlp_http/oneuptime:
     endpoint: https://oneuptime.com/otlp
-    encoding: proto             # Use Protobuf for optimal performance
+    encoding: proto
     compression: gzip
     headers:
       x-oneuptime-token: ${ONEUPTIME_TOKEN}
 
 service:
   # Enable all encoding extensions
-  extensions: [encoding/json, encoding/proto, encoding/msgpack]
+  extensions: [otlp_encoding/json, otlp_encoding/proto]
 
   pipelines:
-    # Pipeline for JSON telemetry
+    # Pipeline for OTLP JSON telemetry
     traces/json:
-      receivers: [otlp/json]
+      receivers: [kafka/json]
       processors: [batch/json]
-      exporters: [otlphttp/oneuptime]
+      exporters: [otlp_http/oneuptime]
 
-    # Pipeline for Protobuf telemetry
+    # Pipeline for OTLP Protobuf telemetry
     traces/proto:
-      receivers: [otlp/proto]
+      receivers: [kafka/proto]
       processors: [batch/binary]
-      exporters: [otlphttp/oneuptime]
-
-    # Pipeline for MessagePack telemetry
-    traces/msgpack:
-      receivers: [otlp/msgpack]
-      processors: [batch/binary]
-      exporters: [otlphttp/oneuptime]
+      exporters: [otlp_http/oneuptime]
 ```
 
-This multi-pipeline approach allows different services to use their preferred encoding format while maintaining a unified backend export format.
+This multi-pipeline approach allows different services to use their preferred OTLP payload format while maintaining a unified backend export format.
 
 ### Compression Strategies
 
-Compression significantly impacts both network bandwidth and CPU utilization. The Encoding Extension supports multiple compression algorithms, each with different trade-offs:
+Compression is configured on the transport component, such as the OTLP HTTP exporter, not on the OTLP Encoding Extension. Compression significantly impacts both network bandwidth and CPU utilization:
 
 ```yaml
-extensions:
-  # No compression - lowest CPU, highest bandwidth
-  encoding/none:
-    encode:
-      format: proto
-      compression: none         # No compression overhead
-
-  # Gzip - best compression ratio, higher CPU usage
-  encoding/gzip:
-    encode:
-      format: proto
-      compression: gzip
-      compression_level: 6      # Balance between speed and ratio (1-9)
-
-  # Snappy - fast compression, moderate ratio
-  encoding/snappy:
-    encode:
-      format: proto
-      compression: snappy       # Optimized for speed
-
-  # Zstd - modern algorithm, excellent ratio and speed
-  encoding/zstd:
-    encode:
-      format: proto
-      compression: zstd
-      compression_level: 3      # Default level for balanced performance
-
 receivers:
   otlp:
     protocols:
@@ -246,44 +202,65 @@ processors:
     send_batch_size: 1024
 
 exporters:
-  # Use Zstd for optimal balance in production
-  otlphttp:
+  # No compression - lowest CPU, highest bandwidth
+  otlp_http/none:
+    endpoint: https://oneuptime.com/otlp
+    encoding: proto
+    compression: none
+    headers:
+      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+
+  # Gzip - widely supported and a good default for OTLP HTTP
+  otlp_http/gzip:
+    endpoint: https://oneuptime.com/otlp
+    encoding: proto
+    compression: gzip
+    compression_params:
+      level: 6
+    headers:
+      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+
+  # Snappy - faster compression when the backend supports it
+  otlp_http/snappy:
+    endpoint: https://oneuptime.com/otlp
+    encoding: proto
+    compression: snappy
+    headers:
+      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+
+  # Zstd - strong compression when the backend supports it
+  otlp_http/zstd:
     endpoint: https://oneuptime.com/otlp
     encoding: proto
     compression: zstd
+    compression_params:
+      level: 3
     headers:
       x-oneuptime-token: ${ONEUPTIME_TOKEN}
 
 service:
-  extensions: [encoding/zstd]
   pipelines:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlphttp]
+      exporters: [otlp_http/gzip]
 ```
 
-Compression benchmarks for typical telemetry data:
-- **None**: 100% size, 0% CPU overhead
-- **Snappy**: 40-50% size reduction, 5-10% CPU overhead
-- **Gzip (level 6)**: 70-80% size reduction, 15-25% CPU overhead
-- **Zstd (level 3)**: 70-80% size reduction, 10-15% CPU overhead
-
-For most production deployments, Zstd offers the best balance of compression ratio and CPU efficiency.
+Compression benchmarks vary heavily by payload size and data entropy. The Collector documentation includes benchmark data for gzip, snappy, and zstd and notes that gzip is the only required compression algorithm for OTLP servers. Use gzip as a compatibility-first default, and use snappy or zstd only when your destination supports them.
 
 ## Performance Considerations
 
 ### Memory Usage
 
-The Encoding Extension performs in-memory serialization and deserialization. For high-throughput environments, configure the memory_limiter processor to prevent out-of-memory conditions:
+Encoding and decoding require the Collector to hold request payloads and internal telemetry data in memory. For high-throughput environments, configure the memory_limiter processor to prevent out-of-memory conditions:
 
 ```yaml
 processors:
-  # Protect Collector from memory exhaustion during encoding
+  # Protect Collector from memory exhaustion
   memory_limiter:
     check_interval: 1s
-    limit_mib: 2048             # Hard limit
-    spike_limit_mib: 512        # Allow temporary spikes
+    limit_mib: 2048
+    spike_limit_mib: 512
 
   batch:
     timeout: 10s
@@ -293,27 +270,18 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      # Memory limiter runs before encoding to prevent issues
+      # Best practice is to place memory_limiter first in the pipeline
       processors: [memory_limiter, batch]
-      exporters: [otlphttp]
+      exporters: [otlp_http]
 ```
 
-Place the memory_limiter processor before encoding-intensive operations to catch memory issues early.
+Place the memory_limiter processor first in the pipeline so it can apply backpressure early when memory usage crosses its configured limits.
 
 ### CPU Optimization
 
-Encoding and compression are CPU-intensive operations. For multi-core systems, the Collector automatically parallelizes processing, but you can tune concurrency:
+Encoding and compression can be CPU-intensive operations. Tune the receiver and exporter settings that actually control concurrency and request behavior:
 
 ```yaml
-extensions:
-  encoding:
-    encode:
-      format: proto
-      compression: zstd
-      compression_level: 3
-      # Number of concurrent encoding workers
-      workers: 4                # Match to available CPU cores
-
 receivers:
   otlp:
     protocols:
@@ -328,50 +296,45 @@ processors:
     send_batch_size: 1024
 
 exporters:
-  otlphttp:
+  otlp_http:
     endpoint: https://oneuptime.com/otlp
+    encoding: proto
+    compression: gzip
     # Control export concurrency
     sending_queue:
-      num_consumers: 4          # Parallel export workers
+      enabled: true
+      num_consumers: 4
     headers:
       x-oneuptime-token: ${ONEUPTIME_TOKEN}
 
 service:
-  extensions: [encoding]
   pipelines:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlphttp]
+      exporters: [otlp_http]
 ```
 
-Monitor CPU utilization and adjust worker counts based on your specific workload patterns.
+Monitor CPU utilization and adjust receiver limits, batch sizes, compression settings, and exporter queue consumers based on your specific workload patterns.
 
 ## Debugging and Troubleshooting
 
 ### Enabling Debug Logging
 
-When troubleshooting encoding issues, enable detailed logging to inspect format conversions:
+When troubleshooting encoding issues, enable Collector debug logs and add the debug exporter to inspect the telemetry that successfully entered the pipeline:
 
 ```yaml
 extensions:
-  encoding:
-    decode:
-      format: json
-    encode:
-      format: proto
-      compression: gzip
-    # Enable debug logging for encoding operations
-    debug:
-      log_payloads: true        # Log payload samples (use carefully in production)
-      log_errors: true          # Log all encoding errors
-      sample_rate: 0.01         # Log 1% of successful conversions
+  otlp_encoding/json:
+    protocol: otlp_json
 
 receivers:
-  otlp:
-    protocols:
-      http:
-        endpoint: 0.0.0.0:4318
+  kafka:
+    brokers:
+      - localhost:9092
+    logs:
+      topics: [otlp_logs_json]
+      encoding: otlp_encoding/json
 
 processors:
   batch:
@@ -379,12 +342,12 @@ processors:
 
 exporters:
   # Debug exporter logs telemetry to console
-  logging:
-    loglevel: debug
+  debug:
+    verbosity: detailed
     sampling_initial: 5
     sampling_thereafter: 200
 
-  otlphttp:
+  otlp_http:
     endpoint: https://oneuptime.com/otlp
     headers:
       x-oneuptime-token: ${ONEUPTIME_TOKEN}
@@ -393,176 +356,161 @@ service:
   # Configure Collector's own telemetry
   telemetry:
     logs:
-      level: debug              # Enable debug-level logs
+      level: debug
 
-  extensions: [encoding]
+  extensions: [otlp_encoding/json]
   pipelines:
-    traces:
-      receivers: [otlp]
+    logs:
+      receivers: [kafka]
       processors: [batch]
-      # Include logging exporter for debugging
-      exporters: [logging, otlphttp]
+      # Include debug exporter for troubleshooting
+      exporters: [debug, otlp_http]
 ```
 
-The debug configuration logs encoding operations, helping you identify format incompatibilities or conversion errors.
+Collector logs help identify configuration and decoding errors. The debug exporter helps you inspect telemetry after it has been decoded into the Collector pipeline.
 
 ### Format Validation
 
-Add validation to ensure incoming data matches expected encoding:
+Use the documented protocol values on the OTLP Encoding Extension, and let the receiver reject payloads that do not match the configured encoding:
 
 ```yaml
 extensions:
-  encoding:
-    decode:
-      format: json
-      # Strict validation catches malformed data early
-      validation:
-        strict: true            # Reject invalid payloads
-        max_size_mb: 10         # Reject oversized payloads
-    encode:
-      format: proto
+  otlp_encoding/json:
+    protocol: otlp_json
 
 receivers:
-  otlp:
-    protocols:
-      http:
-        endpoint: 0.0.0.0:4318
+  kafka:
+    brokers:
+      - localhost:9092
+    logs:
+      topics: [otlp_logs_json]
+      encoding: otlp_encoding/json
 
 processors:
   batch:
     timeout: 10s
 
 exporters:
-  otlphttp:
+  otlp_http:
     endpoint: https://oneuptime.com/otlp
     headers:
       x-oneuptime-token: ${ONEUPTIME_TOKEN}
 
 service:
-  extensions: [encoding]
+  extensions: [otlp_encoding/json]
   pipelines:
-    traces:
-      receivers: [otlp]
+    logs:
+      receivers: [kafka]
       processors: [batch]
-      exporters: [otlphttp]
+      exporters: [otlp_http]
 ```
 
-Strict validation prevents corrupt or malformed telemetry from entering your pipeline, improving overall data quality.
+If a Kafka message is not valid OTLP JSON, the receiver reports a decode error instead of passing malformed telemetry into the pipeline.
 
 ## Production Best Practices
 
 ### High-Availability Configuration
 
-For production deployments, implement redundancy and failover mechanisms:
+For production deployments, combine explicit encoding, batching, sending queues, and retry configuration. The Collector's OTLP HTTP exporter supports retry and queue settings; failover to a second backend is not automatic just because multiple exporters are configured.
 
 ```yaml
 extensions:
-  encoding/primary:
-    decode:
-      format: json
-    encode:
-      format: proto
-      compression: zstd
-
-  encoding/fallback:
-    decode:
-      format: json
-    encode:
-      format: json              # Fallback to JSON if Protobuf fails
-      compression: gzip
+  otlp_encoding/proto:
+    protocol: otlp_proto
 
 receivers:
-  otlp:
-    protocols:
-      grpc:
-        endpoint: 0.0.0.0:4317
-      http:
-        endpoint: 0.0.0.0:4318
+  kafka:
+    brokers:
+      - kafka-1:9092
+      - kafka-2:9092
+      - kafka-3:9092
+    traces:
+      topics: [otlp_spans]
+      encoding: otlp_encoding/proto
 
 processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 2048
+    spike_limit_mib: 512
+
   batch:
     timeout: 10s
     send_batch_size: 1024
 
-  # Retry on encoding failures
-  retry_on_failure:
-    enabled: true
-    initial_interval: 1s
-    max_interval: 30s
-    max_elapsed_time: 5m
-
 exporters:
   # Primary backend with Protobuf
-  otlphttp/primary:
+  otlp_http/primary:
     endpoint: https://oneuptime.com/otlp
     encoding: proto
-    compression: zstd
+    compression: gzip
     headers:
       x-oneuptime-token: ${ONEUPTIME_TOKEN}
+    sending_queue:
+      enabled: true
+      num_consumers: 4
+      queue_size: 1000
     retry_on_failure:
       enabled: true
       initial_interval: 5s
       max_interval: 30s
+      max_elapsed_time: 5m
 
-  # Fallback backend with JSON for maximum compatibility
-  otlphttp/fallback:
+  # Optional backup export path. This duplicates telemetry to the backup backend.
+  otlp_http/backup:
     endpoint: https://backup.oneuptime.com/otlp
-    encoding: json
+    encoding: proto
+    compression: gzip
     headers:
       x-oneuptime-token: ${ONEUPTIME_TOKEN_BACKUP}
+    retry_on_failure:
+      enabled: true
 
 service:
-  extensions: [encoding/primary, encoding/fallback]
+  extensions: [otlp_encoding/proto]
   pipelines:
-    traces/primary:
-      receivers: [otlp]
-      processors: [batch, retry_on_failure]
-      exporters: [otlphttp/primary]
-
-    traces/fallback:
-      receivers: [otlp]
-      processors: [batch]
-      exporters: [otlphttp/fallback]
+    traces:
+      receivers: [kafka]
+      processors: [memory_limiter, batch]
+      exporters: [otlp_http/primary, otlp_http/backup]
 ```
 
-This configuration provides automatic failover if the primary encoding or export path encounters issues.
+This configuration provides retry and queueing for the primary exporter and duplicates telemetry to a backup backend. If you need true failover semantics instead of duplicate export, validate the behavior with the specific exporter and routing components in your Collector distribution.
 
 ## Monitoring the Encoding Extension
 
-Track encoding performance with internal metrics:
+Track Collector and component performance with internal telemetry:
 
 ```yaml
 extensions:
-  encoding:
-    decode:
-      format: json
-    encode:
-      format: proto
-      compression: zstd
+  otlp_encoding/proto:
+    protocol: otlp_proto
 
 receivers:
-  otlp:
-    protocols:
-      grpc:
-        endpoint: 0.0.0.0:4317
+  kafka:
+    brokers:
+      - localhost:9092
+    traces:
+      topics: [otlp_spans]
+      encoding: otlp_encoding/proto
 
 processors:
   batch:
     timeout: 10s
 
 exporters:
-  otlphttp:
+  otlp_http:
     endpoint: https://oneuptime.com/otlp
     headers:
       x-oneuptime-token: ${ONEUPTIME_TOKEN}
 
 service:
-  extensions: [encoding]
+  extensions: [otlp_encoding/proto]
 
   # Configure Collector self-monitoring
   telemetry:
     metrics:
-      level: detailed           # Capture detailed metrics
+      level: detailed
       readers:
         - periodic:
             exporter:
@@ -574,18 +522,12 @@ service:
 
   pipelines:
     traces:
-      receivers: [otlp]
+      receivers: [kafka]
       processors: [batch]
-      exporters: [otlphttp]
+      exporters: [otlp_http]
 ```
 
-Key metrics to monitor:
-- **otelcol_encoding_decode_duration**: Time spent decoding incoming telemetry
-- **otelcol_encoding_encode_duration**: Time spent encoding outgoing telemetry
-- **otelcol_encoding_compression_ratio**: Achieved compression ratios
-- **otelcol_encoding_errors**: Encoding/decoding error counts
-
-These metrics help you identify performance bottlenecks and optimize encoding configurations.
+Key metrics to monitor include receiver accepted/refused counts, exporter sent/failed counts, exporter queue metrics, process memory, and process CPU. These metrics help you identify decoding errors, queue pressure, and performance bottlenecks.
 
 ## Related Resources
 
@@ -597,10 +539,10 @@ For more information on optimizing your OpenTelemetry Collector deployment, chec
 
 ## Summary
 
-The Encoding Extension provides essential capabilities for optimizing telemetry data transmission in OpenTelemetry Collector pipelines. By configuring appropriate encoding formats and compression strategies, you can significantly reduce bandwidth consumption, improve throughput, and ensure compatibility across diverse observability infrastructure.
+The OTLP Encoding Extension provides useful capabilities for Collector components that support pluggable encodings. By configuring OTLP JSON or OTLP Protobuf explicitly, you can integrate with Kafka topics and other supported transports that carry serialized OTLP payloads.
 
-Start with simple configurations using Protobuf with Zstd compression for most production deployments. As your requirements grow, leverage multi-format support and advanced compression strategies to optimize specific pipeline segments.
+Start with OTLP Protobuf for most production deployments where payload size and throughput matter. Use OTLP JSON when human readability or integration compatibility is more important.
 
-Monitor encoding performance continuously through internal metrics, and adjust configurations based on actual workload patterns and resource utilization. The flexibility of the Encoding Extension allows you to balance CPU, memory, and network resources according to your specific operational constraints.
+Monitor Collector performance continuously through internal metrics, and adjust receiver, batch, queue, retry, encoding, and compression settings based on actual workload patterns and resource utilization.
 
-Need a production-grade backend for your OpenTelemetry Collector? OneUptime natively supports all OTLP encoding formats with automatic optimization and compression, providing a seamless observability experience without vendor lock-in.
+Need a production-grade backend for your OpenTelemetry Collector? OneUptime supports OTLP ingestion, providing a seamless observability experience without vendor lock-in.
