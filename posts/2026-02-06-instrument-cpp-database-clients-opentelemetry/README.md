@@ -29,7 +29,7 @@ namespace nostd = opentelemetry::nostd;
 
 class InstrumentedDatabaseClient {
 private:
-    std::shared_ptr<trace::Tracer> tracer_;
+    nostd::shared_ptr<trace::Tracer> tracer_;
     std::unique_ptr<SQLConnection> connection_;
     std::string db_name_;
     std::string db_system_;
@@ -77,39 +77,37 @@ InstrumentedDatabaseClient::CreateDatabaseSpan(
     trace::StartSpanOptions options;
     options.kind = trace::SpanKind::kClient;
 
-    auto span = tracer_->StartSpan(operation, options);
+    auto span = tracer_->StartSpan(operation + " " + db_name_, options);
 
     // Set semantic convention attributes for databases
-    span->SetAttribute("db.system", db_system_);  // e.g., "postgresql", "mysql"
-    span->SetAttribute("db.name", db_name_);
-    span->SetAttribute("db.statement", statement);
-    span->SetAttribute("db.operation", operation);
+    span->SetAttribute("db.system.name", db_system_);  // e.g., "postgresql", "mysql"
+    span->SetAttribute("db.namespace", db_name_);
+    span->SetAttribute("db.query.text", SanitizeQuery(statement));
+    span->SetAttribute("db.operation.name", operation);
 
     // Connection-level attributes
-    span->SetAttribute("db.connection_string", connection_->GetSanitizedConnectionString());
-    span->SetAttribute("net.peer.name", connection_->GetHost());
-    span->SetAttribute("net.peer.port", connection_->GetPort());
+    span->SetAttribute("server.address", connection_->GetHost());
+    span->SetAttribute("server.port", connection_->GetPort());
 
     return span;
 }
 ```
 
-Notice the sanitized connection string prevents leaking credentials into your telemetry. Always sanitize sensitive data before setting span attributes.
+Notice the sanitized query text prevents leaking literal values into your telemetry. Always sanitize sensitive data before setting span attributes.
 
 ## Instrumenting Query Execution
 
-Query execution needs to capture both successful operations and failures. The span status should reflect whether the database operation succeeded.
+Query execution needs to capture both successful operations and failures. For successful operations, leave the span status unset; for failures, set the span status to error.
 
 ```cpp
 // Implementation of query execution with instrumentation
 QueryResult InstrumentedDatabaseClient::ExecuteQuery(const std::string& query) {
     // Extract operation type from query (SELECT, INSERT, etc.)
     std::string operation = ExtractOperationType(query);
-    std::string span_name = "db." + operation;
 
-    auto span = CreateDatabaseSpan(span_name, query);
+    auto span = CreateDatabaseSpan(operation, query);
 
-    // Use a scope to automatically end the span
+    // Use a scope to make the span active while the query runs
     auto scope = tracer_->WithActiveSpan(span);
 
     try {
@@ -124,17 +122,17 @@ QueryResult InstrumentedDatabaseClient::ExecuteQuery(const std::string& query) {
         ).count();
 
         // Record success metrics
-        span->SetAttribute("db.rows_affected", result.GetRowCount());
-        span->SetAttribute("db.execution_time_ms", duration_ms);
-        span->SetStatus(trace::StatusCode::kOk);
+        span->SetAttribute("db.response.returned_rows", result.GetRowCount());
+        span->SetAttribute("app.db.execution_time_ms", duration_ms);
+        span->End();
 
         return result;
 
     } catch (const DatabaseException& e) {
         // Record error information
         span->SetStatus(trace::StatusCode::kError, e.what());
-        span->SetAttribute("db.error.type", e.GetErrorType());
-        span->SetAttribute("db.error.code", e.GetErrorCode());
+        span->SetAttribute("error.type", e.GetErrorType());
+        span->SetAttribute("db.response.status_code", e.GetErrorCode());
 
         // Add an event for the exception
         span->AddEvent("exception", {
@@ -143,6 +141,7 @@ QueryResult InstrumentedDatabaseClient::ExecuteQuery(const std::string& query) {
             {"exception.stacktrace", e.GetStackTrace()}
         });
 
+        span->End();
         throw;  // Re-throw to maintain original error handling
     }
 }
@@ -158,7 +157,7 @@ Connection pools add complexity because spans need to track both pool operations
 // Connection pool wrapper with instrumentation
 class InstrumentedConnectionPool {
 private:
-    std::shared_ptr<trace::Tracer> tracer_;
+    nostd::shared_ptr<trace::Tracer> tracer_;
     std::unique_ptr<ConnectionPool> pool_;
 
 public:
@@ -174,6 +173,19 @@ public:
             Connection* conn,
             ConnectionPool* pool
         ) : span_(span), conn_(conn), pool_(pool) {}
+
+        ScopedConnection(const ScopedConnection&) = delete;
+        ScopedConnection& operator=(const ScopedConnection&) = delete;
+
+        ScopedConnection(ScopedConnection&& other) noexcept
+            : span_(std::move(other.span_)),
+              conn_(other.conn_),
+              pool_(other.pool_) {
+            other.conn_ = nullptr;
+            other.pool_ = nullptr;
+        }
+
+        ScopedConnection& operator=(ScopedConnection&&) = delete;
 
         ~ScopedConnection() {
             // Return connection to pool and end span
@@ -200,17 +212,18 @@ public:
             ).count();
 
             // Record pool metrics
-            span->SetAttribute("db.pool.wait_time_ms", wait_time);
-            span->SetAttribute("db.pool.size", pool_->GetTotalConnections());
-            span->SetAttribute("db.pool.active", pool_->GetActiveConnections());
-            span->SetAttribute("db.pool.idle", pool_->GetIdleConnections());
-            span->SetStatus(trace::StatusCode::kOk);
+            span->SetAttribute("app.db.pool.wait_time_ms", wait_time);
+            span->SetAttribute("app.db.pool.size", pool_->GetTotalConnections());
+            span->SetAttribute("app.db.pool.active", pool_->GetActiveConnections());
+            span->SetAttribute("app.db.pool.idle", pool_->GetIdleConnections());
 
             return ScopedConnection(span, conn, pool_.get());
 
         } catch (const PoolExhaustedException& e) {
             span->SetStatus(trace::StatusCode::kError, "Pool exhausted");
-            span->SetAttribute("db.pool.timeout", true);
+            span->SetAttribute("app.db.pool.timeout", true);
+            span->SetAttribute("error.type", typeid(e).name());
+            span->End();
             throw;
         }
     }
@@ -227,26 +240,25 @@ Prepared statements are executed multiple times with different parameters. You s
 // Instrumented prepared statement wrapper
 class InstrumentedPreparedStatement {
 private:
-    std::shared_ptr<trace::Tracer> tracer_;
+    nostd::shared_ptr<trace::Tracer> tracer_;
     std::unique_ptr<PreparedStatement> statement_;
     std::string query_;
     std::string statement_id_;
 
 public:
     InstrumentedPreparedStatement(
-        std::shared_ptr<trace::Tracer> tracer,
+        nostd::shared_ptr<trace::Tracer> tracer,
         Connection* conn,
         const std::string& query
     ) : tracer_(tracer), query_(query) {
         auto span = tracer_->StartSpan("db.prepare");
-        span->SetAttribute("db.statement", query);
+        span->SetAttribute("db.query.text", query);
 
         try {
             statement_ = conn->Prepare(query);
             statement_id_ = GenerateStatementId(query);
 
-            span->SetAttribute("db.statement.id", statement_id_);
-            span->SetStatus(trace::StatusCode::kOk);
+            span->SetAttribute("db.query.summary", GenerateQuerySummary(query));
             span->End();
 
         } catch (const std::exception& e) {
@@ -259,17 +271,16 @@ public:
     template<typename... Params>
     QueryResult Execute(Params... params) {
         auto span = tracer_->StartSpan("db.execute");
-        span->SetAttribute("db.statement.id", statement_id_);
-        span->SetAttribute("db.statement", query_);
+        span->SetAttribute("db.query.summary", GenerateQuerySummary(query_));
+        span->SetAttribute("db.query.text", query_);
 
         // Record parameter count (not values for security)
-        span->SetAttribute("db.statement.param_count", sizeof...(params));
+        span->SetAttribute("app.db.parameter_count", sizeof...(params));
 
         try {
             auto result = statement_->Execute(params...);
 
-            span->SetAttribute("db.rows_affected", result.GetRowCount());
-            span->SetStatus(trace::StatusCode::kOk);
+            span->SetAttribute("db.response.returned_rows", result.GetRowCount());
             span->End();
 
             return result;
@@ -286,6 +297,11 @@ private:
         // Create a hash or unique ID for the statement
         return std::to_string(std::hash<std::string>{}(query));
     }
+
+    std::string GenerateQuerySummary(const std::string& query) {
+        // Create a low-cardinality summary such as "SELECT users"
+        return ExtractQuerySummary(query);
+    }
 };
 ```
 
@@ -301,9 +317,8 @@ std::future<QueryResult> InstrumentedDatabaseClient::ExecuteQueryAsync(
     const std::string& query
 ) {
     std::string operation = ExtractOperationType(query);
-    std::string span_name = "db." + operation;
 
-    auto span = CreateDatabaseSpan(span_name, query);
+    auto span = CreateDatabaseSpan(operation, query);
 
     // Capture the current context
     auto current_context = opentelemetry::context::RuntimeContext::GetCurrent();
@@ -312,19 +327,19 @@ std::future<QueryResult> InstrumentedDatabaseClient::ExecuteQueryAsync(
     return std::async(std::launch::async, [this, query, span, current_context]() {
         // Restore context in the async thread
         auto token = opentelemetry::context::RuntimeContext::Attach(current_context);
+        auto scope = tracer_->WithActiveSpan(span);
 
         try {
             QueryResult result = connection_->Execute(query);
 
-            span->SetAttribute("db.rows_affected", result.GetRowCount());
-            span->SetStatus(trace::StatusCode::kOk);
+            span->SetAttribute("db.response.returned_rows", result.GetRowCount());
             span->End();
 
             return result;
 
         } catch (const DatabaseException& e) {
             span->SetStatus(trace::StatusCode::kError, e.what());
-            span->SetAttribute("db.error.type", e.GetErrorType());
+            span->SetAttribute("error.type", e.GetErrorType());
             span->End();
             throw;
         }
@@ -343,24 +358,24 @@ Database transactions require a parent span that encompasses all operations with
 class InstrumentedTransaction {
 private:
     nostd::shared_ptr<trace::Span> transaction_span_;
-    std::shared_ptr<trace::Tracer> tracer_;
+    nostd::shared_ptr<trace::Tracer> tracer_;
     std::unique_ptr<Transaction> transaction_;
-    bool committed_ = false;
+    bool finalized_ = false;
 
 public:
     InstrumentedTransaction(
-        std::shared_ptr<trace::Tracer> tracer,
+        nostd::shared_ptr<trace::Tracer> tracer,
         Connection* conn
     ) : tracer_(tracer) {
         transaction_span_ = tracer_->StartSpan("db.transaction");
-        transaction_span_->SetAttribute("db.transaction.id", GenerateTransactionId());
+        transaction_span_->SetAttribute("app.db.transaction.id", GenerateTransactionId());
         transaction_ = conn->BeginTransaction();
     }
 
     ~InstrumentedTransaction() {
-        if (!committed_) {
+        if (!finalized_) {
             // Transaction was not committed, must have failed
-            transaction_span_->SetAttribute("db.transaction.outcome", "rollback");
+            transaction_span_->SetAttribute("app.db.transaction.outcome", "rollback");
             transaction_span_->SetStatus(trace::StatusCode::kError, "Implicit rollback");
             transaction_span_->End();
         }
@@ -368,13 +383,16 @@ public:
 
     QueryResult Execute(const std::string& query) {
         // Create a child span for each operation within the transaction
-        auto span = tracer_->StartSpan("db.query", {}, transaction_span_->GetContext());
-        span->SetAttribute("db.statement", query);
+        trace::StartSpanOptions options;
+        options.kind = trace::SpanKind::kClient;
+        options.parent = transaction_span_->GetContext();
+
+        auto span = tracer_->StartSpan("db.query", options);
+        span->SetAttribute("db.query.text", query);
 
         try {
             auto result = transaction_->Execute(query);
-            span->SetAttribute("db.rows_affected", result.GetRowCount());
-            span->SetStatus(trace::StatusCode::kOk);
+            span->SetAttribute("db.response.returned_rows", result.GetRowCount());
             span->End();
             return result;
 
@@ -386,22 +404,25 @@ public:
     }
 
     void Commit() {
-        auto span = tracer_->StartSpan("db.commit", {}, transaction_span_->GetContext());
+        trace::StartSpanOptions options;
+        options.kind = trace::SpanKind::kClient;
+        options.parent = transaction_span_->GetContext();
+
+        auto span = tracer_->StartSpan("db.commit", options);
 
         try {
             transaction_->Commit();
-            committed_ = true;
+            finalized_ = true;
 
-            span->SetStatus(trace::StatusCode::kOk);
-            transaction_span_->SetAttribute("db.transaction.outcome", "commit");
-            transaction_span_->SetStatus(trace::StatusCode::kOk);
+            transaction_span_->SetAttribute("app.db.transaction.outcome", "commit");
 
             span->End();
             transaction_span_->End();
 
         } catch (const std::exception& e) {
             span->SetStatus(trace::StatusCode::kError, e.what());
-            transaction_span_->SetAttribute("db.transaction.outcome", "rollback");
+            finalized_ = true;
+            transaction_span_->SetAttribute("app.db.transaction.outcome", "rollback");
             transaction_span_->SetStatus(trace::StatusCode::kError, e.what());
 
             span->End();
@@ -444,7 +465,7 @@ Instrumentation adds overhead. For high-throughput database applications, consid
 // Conditional instrumentation based on sampling
 class SampledDatabaseClient {
 private:
-    std::shared_ptr<trace::Tracer> tracer_;
+    nostd::shared_ptr<trace::Tracer> tracer_;
     std::unique_ptr<SQLConnection> connection_;
     double sample_rate_;  // 0.0 to 1.0
 
