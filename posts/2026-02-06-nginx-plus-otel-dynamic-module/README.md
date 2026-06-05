@@ -15,17 +15,28 @@ The NGINX Plus OpenTelemetry module is distributed through the NGINX Plus reposi
 ```bash
 # On Debian/Ubuntu
 
-sudo apt-get update
-sudo apt-get install nginx-plus-module-otel
+sudo apt update
+sudo apt install nginx-plus-module-otel
 
-# On RHEL/CentOS/Amazon Linux
+# On RHEL/CentOS/Oracle Linux
+sudo yum update
 sudo yum install nginx-plus-module-otel
+
+# On Amazon Linux 2023, AlmaLinux, or Rocky Linux
+sudo dnf update
+sudo dnf install nginx-plus-module-otel
 ```
 
 After installation, verify the module is available:
 
 ```bash
-ls /etc/nginx/modules/ngx_otel_module.so
+# Debian/Ubuntu
+ls /usr/lib/nginx/modules/ngx_otel_module.so
+
+# RHEL/CentOS/Oracle Linux/Amazon Linux 2023/AlmaLinux/Rocky Linux
+ls /usr/lib64/nginx/modules/ngx_otel_module.so
+
+nginx -t
 ```
 
 ## Basic Configuration
@@ -43,7 +54,7 @@ http {
     otel_exporter {
         endpoint collector:4317;
         # Batch export settings
-        interval 5000;
+        interval 5s;
         batch_size 512;
         batch_count 4;
     }
@@ -107,7 +118,7 @@ server {
 Use a low sampling rate for high-traffic services:
 
 ```nginx
-split_clients $request_id $otel_sample {
+split_clients $otel_trace_id $otel_sample {
     # Trace only 2% of requests
     2%  "on";
     *   "off";
@@ -126,7 +137,7 @@ Increase the batch interval and size to reduce export frequency:
 otel_exporter {
     endpoint collector:4317;
     # Export every 10 seconds instead of 5
-    interval 10000;
+    interval 10s;
     # Larger batches, fewer network calls
     batch_size 1024;
     # Allow more batches to queue up
@@ -151,34 +162,34 @@ location /api/ {
 }
 ```
 
-### 5. Max Tag Length
+### 5. Span Attribute Values
 
-Keep the max path tag length reasonable:
+Keep high-cardinality or long attribute values out of spans unless they are required:
 
 ```nginx
-# Default is 256, which is sufficient for most APIs
-# Only increase if you need longer URL paths in traces
+location /api/ {
+    otel_trace on;
+    otel_span_attr "route.name" "api";
+    proxy_pass http://backend:8080;
+}
 ```
 
 ## Performance Benchmarks
 
-Here is a rough comparison of request latency with different tracing configurations:
+The NGINX OpenTelemetry module documentation gives this rough performance expectation:
 
 ```text
-Configuration                    | P99 Latency Overhead
----------------------------------|---------------------
+Configuration                    | Request processing overhead
+---------------------------------|----------------------------
 No tracing                       | baseline
-Tracing on, 100% sampling       | +2-3ms
-Tracing on, 10% sampling        | +0.3ms average
-Tracing on, 1% sampling         | +0.03ms average
-Selective tracing (API only)     | +1ms on traced routes
+NGINX OTel module enabled        | approximately 10-15%
 ```
 
-The overhead comes from span creation, context propagation, and gRPC export. Sampling reduces the average overhead proportionally.
+The overhead comes from span creation, context propagation, and OTLP/gRPC export. Sampling and selective tracing reduce the number of spans NGINX exports, but you should benchmark your own traffic mix before relying on a specific latency number.
 
 ## Monitoring the Module Itself
 
-NGINX Plus exposes module status through the API:
+NGINX Plus exposes request and upstream status through the API:
 
 ```nginx
 server {
@@ -190,37 +201,30 @@ server {
 }
 ```
 
-Check the NGINX Plus API for tracing-related stats:
+Check the NGINX Plus API for request volume and related HTTP stats:
 
 ```bash
-curl http://localhost:8080/api/8/http/requests
+curl http://localhost:8080/api/9/http/requests
 ```
 
 Also monitor the Collector to detect if spans are being dropped:
 
-```yaml
-# Collector self-monitoring
-receivers:
-  prometheus:
-    config:
-      scrape_configs:
-        - job_name: "otel-collector"
-          static_configs:
-            - targets: ["localhost:8888"]
+```bash
+curl http://localhost:8888/metrics
 ```
 
-Watch for `otelcol_receiver_refused_spans` which indicates the Collector is overwhelmed.
+Watch for sustained rates of `otelcol_receiver_refused_spans`, which indicate spans could not be pushed into the Collector pipeline.
 
 ## High Availability Configuration
 
-For production deployments, point NGINX at multiple Collector instances:
+For production deployments, put a load balancer in front of multiple Collector instances:
 
 ```nginx
-upstream otel_collectors {
-    server collector-1:4317;
-    server collector-2:4317;
-    # Mark unhealthy collectors as down
-    server collector-3:4317 backup;
+otel_exporter {
+    endpoint otel-collector-lb:4317;
+    interval 5s;
+    batch_size 512;
+    batch_count 4;
 }
 ```
 
@@ -229,8 +233,6 @@ Note: The current otel_exporter directive takes a single endpoint. For HA, use a
 ## Docker Compose Example
 
 ```yaml
-version: "3.8"
-
 services:
   nginx-plus:
     image: myregistry/nginx-plus-otel:latest
