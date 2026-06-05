@@ -59,7 +59,7 @@ graph TD
     B --> C[Framework Images]
     C --> D[Team Application Images]
 
-    A1[catalog/alpine:3.19] --> B1[catalog/node:20-alpine]
+    A1[catalog/alpine:3.23] --> B1[catalog/node:24-alpine]
     A2[catalog/debian:bookworm-slim] --> B2[catalog/python:3.12-slim]
     B1 --> C1[catalog/nextjs-base:14]
     B2 --> C2[catalog/django-base:5.0]
@@ -79,7 +79,7 @@ Start with your OS base images. These form the foundation of everything else.
 ```dockerfile
 # catalog/alpine/Dockerfile
 # Hardened Alpine base with standard security configuration
-FROM alpine:3.19
+FROM alpine:3.23
 
 # Install common security packages and CA certificates
 RUN apk update && \
@@ -109,13 +109,13 @@ Build and push it:
 
 ```bash
 # Build the base image with proper tagging
-docker build -t myregistry.example.com/catalog/alpine:3.19 \
-  -t myregistry.example.com/catalog/alpine:3.19-$(date +%Y%m%d) \
+docker build -t myregistry.example.com/catalog/alpine:3.23 \
+  -t myregistry.example.com/catalog/alpine:3.23-$(date +%Y%m%d) \
   -f catalog/alpine/Dockerfile .
 
 # Push both tags
-docker push myregistry.example.com/catalog/alpine:3.19
-docker push myregistry.example.com/catalog/alpine:3.19-$(date +%Y%m%d)
+docker push myregistry.example.com/catalog/alpine:3.23
+docker push myregistry.example.com/catalog/alpine:3.23-$(date +%Y%m%d)
 ```
 
 ## Building Language Runtime Images
@@ -125,12 +125,12 @@ Layer language runtimes on top of your base images.
 ```dockerfile
 # catalog/node/Dockerfile
 # Node.js runtime built on the catalog Alpine base
-FROM myregistry.example.com/catalog/alpine:3.19
+FROM myregistry.example.com/catalog/alpine:3.23
 
 USER root
 
 # Install Node.js from official Alpine packages
-RUN apk add --no-cache nodejs=20.11.0-r0 npm=10.2.5-r0
+RUN apk add --no-cache nodejs=24.14.1-r0 npm=11.11.0-r0
 
 # Configure npm for production use
 RUN npm config set fund false && \
@@ -139,7 +139,7 @@ RUN npm config set fund false && \
 # Add catalog labels
 LABEL catalog.tier="runtime" \
       catalog.language="nodejs" \
-      catalog.language-version="20.11.0" \
+      catalog.language-version="24.14.1" \
       catalog.owner="platform-team"
 
 # Switch back to non-root user
@@ -165,9 +165,9 @@ images:
   - name: catalog/alpine
     description: "Hardened Alpine Linux base image"
     tier: base
-    current_version: "3.19"
-    supported_versions: ["3.19", "3.18"]
-    deprecated_versions: ["3.17"]
+    current_version: "3.23"
+    supported_versions: ["3.23", "3.22"]
+    deprecated_versions: ["3.21"]
     owner: platform-team
     update_frequency: monthly
     security_scan: required
@@ -175,10 +175,10 @@ images:
   - name: catalog/node
     description: "Node.js runtime on hardened Alpine"
     tier: runtime
-    current_version: "20.11.0"
-    supported_versions: ["20.11.0", "18.19.0"]
-    deprecated_versions: ["16.20.2"]
-    base_image: catalog/alpine:3.19
+    current_version: "24.14.1"
+    supported_versions: ["24.14.1", "22.22.2"]
+    deprecated_versions: ["20.15.1"]
+    base_image: catalog/alpine:3.23
     owner: platform-team
     update_frequency: weekly
     security_scan: required
@@ -216,6 +216,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Log in to registry
+        uses: docker/login-action@v4
+        with:
+          registry: myregistry.example.com
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+
       - name: Build base image
         run: |
           docker build -t myregistry.example.com/catalog/${{ matrix.image }}:latest \
@@ -238,6 +245,13 @@ jobs:
         image: [node, python, go]
     steps:
       - uses: actions/checkout@v4
+
+      - name: Log in to registry
+        uses: docker/login-action@v4
+        with:
+          registry: myregistry.example.com
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
 
       - name: Build runtime image
         run: |
@@ -263,8 +277,18 @@ Provide tools that validate Dockerfiles reference catalog images.
 DOCKERFILE=$1
 CATALOG_REGISTRY="myregistry.example.com/catalog"
 
-# Extract FROM instructions (handling multi-stage builds)
-FROM_IMAGES=$(grep "^FROM" "$DOCKERFILE" | awk '{print $2}' | grep -v "AS")
+# Extract FROM instructions, including multi-stage builds and --platform flags
+FROM_IMAGES=$(awk '
+    toupper($1) == "FROM" {
+        for (i = 2; i <= NF; i++) {
+            if ($i ~ /^--/) {
+                continue
+            }
+            print $i
+            break
+        }
+    }
+' "$DOCKERFILE")
 
 VALID=true
 for image in $FROM_IMAGES; do
@@ -306,10 +330,7 @@ echo "Last updated: $(date)"
 echo ""
 
 # Parse catalog.yaml and generate docs for each image
-yq '.images[]' catalog.yaml | while read -r image; do
-    name=$(echo "$image" | yq '.name')
-    desc=$(echo "$image" | yq '.description')
-    version=$(echo "$image" | yq '.current_version')
+yq -r '.images[] | [.name, .description, .current_version] | @tsv' catalog.yaml | while IFS=$'\t' read -r name desc version; do
 
     echo "## $name"
     echo "$desc"
@@ -330,9 +351,9 @@ Use a clear versioning scheme so teams know exactly what they are getting.
 ```bash
 # Tag format: registry/catalog/name:version-builddate
 # Examples:
-myregistry.example.com/catalog/node:20.11.0-20260115
-myregistry.example.com/catalog/node:20.11.0            # Points to latest build
-myregistry.example.com/catalog/node:20                  # Points to latest 20.x
+myregistry.example.com/catalog/node:24.14.1-20260605
+myregistry.example.com/catalog/node:24.14.1            # Points to latest build
+myregistry.example.com/catalog/node:24                  # Points to latest 24.x
 ```
 
 Never use `latest` in production Dockerfiles. Always pin to a specific version.
