@@ -10,7 +10,7 @@ Apache Pulsar has a feature that Kafka does not: built-in geo-replication. This 
 
 ## Why Pulsar Over Kafka for Multi-Region
 
-Kafka can do multi-region with MirrorMaker, but it is bolted on and hard to manage. Pulsar's geo-replication is a first-class feature: you configure it at the namespace level, and Pulsar handles the rest. Messages published in one region automatically appear in all other regions with low latency.
+Kafka can do multi-region with MirrorMaker, but it is bolted on and hard to manage. Pulsar's geo-replication is a first-class feature: you configure it at the namespace level, and Pulsar handles the rest. Messages published in one region are persisted locally and then replicated asynchronously to the other configured regions, with end-to-end latency largely driven by inter-region RTT and replication backlog.
 
 ## Architecture
 
@@ -27,7 +27,7 @@ Region AP-South:
 Pulsar geo-replication syncs between all three clusters
 ```
 
-Each region has its own Pulsar cluster and backend. Geo-replication ensures that every region has a complete copy of all telemetry data.
+Each region has its own Pulsar cluster and backend. Geo-replication ensures that every region has a complete copy of newly published telemetry data.
 
 ## Pulsar Cluster Setup
 
@@ -64,7 +64,7 @@ pulsar-admin namespaces set-retention observability/telemetry \
 
 ## OpenTelemetry Collector Configuration
 
-Since the OpenTelemetry Collector does not have a native Pulsar exporter, we use the OTLP exporter to send to a small bridge service, or we use the Collector's HTTP exporter with Pulsar's HTTP endpoint. A cleaner approach is to use the community Pulsar exporter:
+Since the core OpenTelemetry Collector distribution does not include a Pulsar exporter, you can use the OTLP exporter to send to a small bridge service. A cleaner approach is to use the contrib Pulsar exporter:
 
 ```yaml
 # collector-config.yaml (per region)
@@ -80,9 +80,10 @@ exporters:
     topic: persistent://observability/telemetry/otel-traces
     encoding: otlp_proto
     # TLS configuration for production
-    tls_trust_certs_file: /etc/ssl/certs/pulsar-ca.pem
+    tls_trust_certs_file_path: /etc/ssl/certs/pulsar-ca.pem
     auth:
-      token: ${env:PULSAR_TOKEN}
+      token:
+        token: ${env:PULSAR_TOKEN}
 
 processors:
   batch:
@@ -112,7 +113,6 @@ If you cannot use the contrib Pulsar exporter, build a small bridge that accepts
 # pulsar_bridge.py
 import pulsar
 from flask import Flask, request
-import json
 
 app = Flask(__name__)
 
@@ -123,15 +123,15 @@ traces_producer = client.create_producer(
     compression_type=pulsar.CompressionType.ZSTD,
     batching_enabled=True,
     batching_max_publish_delay_ms=10,
-    # Partition by trace ID for ordering
-    routing_mode=pulsar.PartitionRoutingMode.UseSinglePartition
+    # Use one partition to preserve publish order from this producer.
+    message_routing_mode=pulsar.PartitionsRoutingMode.UseSinglePartition
 )
 
 @app.route("/v1/traces", methods=["POST"])
 def receive_traces():
     """Receive OTLP traces and forward to Pulsar."""
     data = request.get_data()
-    content_type = request.content_type
+    content_type = request.content_type or ""
 
     if "protobuf" in content_type:
         # Forward raw protobuf
@@ -171,9 +171,9 @@ processors:
 
   # Optionally filter to only process data from specific regions
   filter/local_only:
-    traces:
-      span:
-        - 'resource.attributes["telemetry.source.region"] != "us-east"'
+    error_mode: ignore
+    trace_conditions:
+      - 'resource.attributes["telemetry.source.region"] != "us-east"'
 
 service:
   pipelines:
