@@ -80,7 +80,7 @@ The `ParentBasedTraceIdRatio(0.25)` sampler does two things. For root spans (req
 
 ## Configuring Parent-Based Sampling in Java
 
-The Java SDK has a similar API. You build the sampler using the `ParentBased` builder, which gives you fine-grained control over how sampling behaves for different scenarios.
+The Java SDK has a similar API. You can use `Sampler.parentBased()` for the common case, or `Sampler.parentBasedBuilder()` when you need fine-grained control over how sampling behaves for different scenarios.
 
 ```java
 import io.opentelemetry.sdk.OpenTelemetrySdk;
@@ -114,11 +114,11 @@ public class TracingConfig {
 }
 ```
 
-The `Sampler.parentBased()` method takes a root sampler as its argument. When a span has no parent (it is a root span), this sampler is used. When a span has a remote parent, the SDK checks the parent's sampled flag from the incoming context.
+The `Sampler.parentBased()` method takes a root sampler as its argument. When a span has no parent (it is a root span), this sampler is used. When a span has a parent, the SDK follows the parent's sampled flag from the current or incoming context.
 
 ## Advanced Configuration with the ParentBased Builder
 
-Sometimes you need more control. The `ParentBased` sampler can be configured with different strategies for four scenarios: root spans, remote parent sampled, remote parent not sampled, and local parent sampled/not sampled.
+Sometimes you need more control. The `ParentBased` sampler can be configured with different strategies for five scenarios: root spans, remote parent sampled, remote parent not sampled, local parent sampled, and local parent not sampled.
 
 ```python
 from opentelemetry.sdk.trace.sampling import (
@@ -161,8 +161,8 @@ receivers:
         endpoint: 0.0.0.0:4317
 
 processors:
-  # The probabilistic sampler respects parent decisions
-  # by default when trace context is present
+  # The probabilistic sampler makes deterministic decisions
+  # from the trace ID, so spans from the same trace are treated consistently
   probabilistic_sampler:
     # Sample 30% of traces at the collector level
     sampling_percentage: 30
@@ -181,7 +181,7 @@ service:
       exporters: [otlp]
 ```
 
-The collector-level sampler uses the trace ID hash to make deterministic decisions. This means that if multiple collector instances process spans from the same trace, they will all make the same keep-or-drop decision. Determinism is critical here because without it, you end up with the same broken trace problem you were trying to avoid.
+The collector-level sampler uses the trace ID hash to make deterministic decisions. This means that if multiple collector instances process spans from the same trace with the same sampler configuration, they will all make the same keep-or-drop decision. Determinism is critical here because without it, you end up with the same broken trace problem you were trying to avoid. The collector processor is still a secondary filter: it cannot recover spans already dropped by SDK sampling, and it does not replace parent-based sampling in your services.
 
 ## Environment Variable Configuration
 
@@ -210,7 +210,7 @@ Another pitfall is forgetting about context propagation. Parent-based sampling d
 from opentelemetry.propagate import set_global_textmap
 from opentelemetry.propagators.composite import CompositeHTTPPropagator
 from opentelemetry.propagators.b3 import B3MultiFormat
-from opentelemetry.trace.propagation import TraceContextTextMapPropagator
+from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 
 # Configure context propagation
 # W3C TraceContext is the standard, but include B3 if
