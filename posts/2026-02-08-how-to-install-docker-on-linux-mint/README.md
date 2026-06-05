@@ -18,7 +18,7 @@ Linux Mint is one of the most popular desktop Linux distributions, built on top 
 
 ## Understanding the Codename Issue
 
-Linux Mint has its own release codenames (Victoria, Virginia, Wilma, etc.), but Docker's repository uses Ubuntu codenames (jammy, noble, etc.). If you blindly follow Docker's standard Ubuntu instructions, the repository URL will contain the Mint codename, and `apt` will fail to find packages.
+Linux Mint has its own release codenames (Victoria, Virginia, Wilma, etc.), but Docker's repository uses Ubuntu codenames (jammy, noble, etc.). Docker's current Ubuntu instructions account for this by reading `UBUNTU_CODENAME` from `/etc/os-release`, but older snippets that use `$(lsb_release -cs)` will put the Mint codename in the repository URL and `apt` will fail to find packages.
 
 The fix is simple: map your Mint version to its Ubuntu base codename.
 
@@ -32,7 +32,7 @@ You can find your Ubuntu base codename with this command.
 ```bash
 # Get the Ubuntu codename underlying your Mint installation
 
-cat /etc/upstream-release/lsb-release | grep CODENAME
+grep '^DISTRIB_CODENAME=' /etc/upstream-release/lsb-release
 ```
 
 This returns something like `DISTRIB_CODENAME=noble`.
@@ -43,7 +43,7 @@ Clean up any outdated Docker installations.
 
 ```bash
 # Remove legacy Docker packages
-sudo apt-get remove -y docker docker-engine docker.io containerd runc
+sudo apt-get remove -y $(dpkg --get-selections docker.io docker-compose docker-compose-v2 docker-doc podman-docker containerd runc 2>/dev/null | cut -f1)
 ```
 
 ## Step 2: Install Dependencies
@@ -71,21 +71,28 @@ Note that we use the Ubuntu GPG key URL, not a Mint-specific one, because Mint i
 
 ## Step 4: Add the Docker Repository (with Ubuntu Codename)
 
-This is where the Mint-specific fix comes in. Instead of using `$(lsb_release -cs)` which would return the Mint codename, we explicitly use the Ubuntu codename.
+This is where the Mint-specific fix comes in. Instead of using older examples based on `$(lsb_release -cs)` which would return the Mint codename, we explicitly use the Ubuntu codename.
 
 ```bash
 # Get the Ubuntu base codename
-UBUNTU_CODENAME=$(cat /etc/upstream-release/lsb-release | grep CODENAME | cut -d '=' -f 2)
+UBUNTU_CODENAME=$(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")
 
 # Add Docker's repository with the correct Ubuntu codename
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $UBUNTU_CODENAME stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+sudo tee /etc/apt/sources.list.d/docker.sources <<EOF
+Types: deb
+URIs: https://download.docker.com/linux/ubuntu
+Suites: $UBUNTU_CODENAME
+Components: stable
+Architectures: $(dpkg --print-architecture)
+Signed-By: /etc/apt/keyrings/docker.asc
+EOF
 ```
 
 Verify the repository file was created correctly.
 
 ```bash
 # Check the Docker repo entry
-cat /etc/apt/sources.list.d/docker.list
+cat /etc/apt/sources.list.d/docker.sources
 ```
 
 The output should reference `jammy` or `noble`, not a Mint codename.
@@ -146,17 +153,14 @@ docker ps
 
 Linux Mint is a developer-friendly desktop. Here are some Docker configurations that make development work smoother.
 
-### Enable BuildKit
+### BuildKit and Log Rotation
 
-BuildKit is Docker's improved build engine. It is faster and more cache-efficient.
+BuildKit is Docker's improved build engine. It is faster and more cache-efficient. Current Docker Engine releases use BuildKit by default for Linux image builds.
 
 ```bash
-# Enable BuildKit globally via daemon.json
+# Configure Docker log rotation via daemon.json
 sudo tee /etc/docker/daemon.json <<'EOF'
 {
-  "features": {
-    "buildkit": true
-  },
   "log-driver": "json-file",
   "log-opts": {
     "max-size": "10m",
@@ -168,7 +172,7 @@ EOF
 sudo systemctl restart docker
 ```
 
-Or enable it per-build with an environment variable.
+On older Docker releases, you can enable it per-build with an environment variable.
 
 ```bash
 # Use BuildKit for a single build
@@ -206,7 +210,7 @@ Create a `.devcontainer/devcontainer.json` in your project.
   "name": "My Dev Container",
   "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
   "features": {
-    "ghcr.io/devcontainers/features/node:1": {},
+    "ghcr.io/devcontainers/features/node:2": {},
     "ghcr.io/devcontainers/features/python:1": {}
   },
   "forwardPorts": [3000, 8080],
