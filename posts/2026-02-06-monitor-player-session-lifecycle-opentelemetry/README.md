@@ -23,7 +23,7 @@ import time
 
 provider = TracerProvider()
 provider.add_span_processor(BatchSpanProcessor(
-    OTLPSpanExporter(endpoint="otel-collector.yourgame.com:4317")
+    OTLPSpanExporter(endpoint="http://otel-collector.yourgame.com:4317", insecure=True)
 ))
 trace.set_tracer_provider(provider)
 
@@ -96,7 +96,7 @@ As the player moves through phases, create child spans under the session root:
     def matchmaking_complete(self, player_id, lobby_id, wait_seconds):
         """Player was matched and assigned to a lobby."""
         session = self._sessions[player_id]
-        phase_span = session.get("current_phase_span")
+        phase_span = session.pop("current_phase_span", None)
         if phase_span:
             phase_span.set_attribute("matchmaking.wait_seconds", wait_seconds)
             phase_span.set_attribute("lobby.id", lobby_id)
@@ -123,7 +123,7 @@ As the player moves through phases, create child spans under the session root:
     def leave_game(self, player_id, result, score):
         """Player finishes a match."""
         session = self._sessions[player_id]
-        phase_span = session.get("current_phase_span")
+        phase_span = session.pop("current_phase_span", None)
         if phase_span:
             phase_span.set_attribute("game.result", result)
             phase_span.set_attribute("game.score", score)
@@ -143,7 +143,7 @@ Disconnects are the most important events to capture well. They tell you why ses
             return
 
         # End any in-progress phase span
-        phase_span = session.get("current_phase_span")
+        phase_span = session.pop("current_phase_span", None)
         if phase_span:
             phase_span.set_attribute("phase.ended_by", "disconnect")
             phase_span.end()
