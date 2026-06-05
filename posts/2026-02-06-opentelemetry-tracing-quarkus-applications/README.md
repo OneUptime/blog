@@ -19,19 +19,13 @@ Quarkus provides first-class OpenTelemetry support through its extension ecosyst
     <!-- Quarkus core -->
     <dependency>
         <groupId>io.quarkus</groupId>
-        <artifactId>quarkus-resteasy-reactive</artifactId>
+        <artifactId>quarkus-rest</artifactId>
     </dependency>
 
     <!-- OpenTelemetry extension -->
     <dependency>
         <groupId>io.quarkus</groupId>
         <artifactId>quarkus-opentelemetry</artifactId>
-    </dependency>
-
-    <!-- OTLP exporter -->
-    <dependency>
-        <groupId>io.opentelemetry</groupId>
-        <artifactId>opentelemetry-exporter-otlp</artifactId>
     </dependency>
 
     <!-- Optional: JSON logging integration -->
@@ -50,27 +44,20 @@ Configure OpenTelemetry in your application.properties file.
 quarkus.application.name=order-service
 
 # OpenTelemetry configuration
-quarkus.opentelemetry.enabled=true
-quarkus.opentelemetry.tracer.exporter.otlp.endpoint=http://localhost:4317
-
-# Service name for traces
-quarkus.otel.service.name=order-service
+quarkus.otel.enabled=true
 
 # Trace all requests by default
 quarkus.otel.traces.sampler=always_on
 
 # Export configuration
-quarkus.otel.exporter.otlp.traces.endpoint=http://localhost:4317
-quarkus.otel.exporter.otlp.traces.protocol=grpc
+quarkus.otel.exporter.otlp.endpoint=http://localhost:4317
+quarkus.otel.exporter.otlp.protocol=grpc
 
 # Optional: Add resource attributes
 quarkus.otel.resource.attributes=deployment.environment=production,service.version=1.0.0
 
 # Integration with Quarkus logging
 quarkus.log.console.format=%d{HH:mm:ss} %-5p traceId=%X{traceId}, spanId=%X{spanId} [%c{2.}] (%t) %s%e%n
-
-# Native image configuration
-quarkus.native.additional-build-args=--initialize-at-run-time=io.opentelemetry
 ```
 
 ## Automatic REST Instrumentation
@@ -453,8 +440,6 @@ public class ReactiveOrderService {
      * Reactive order creation with automatic context propagation
      */
     public Uni<Order> createOrderAsync(CreateOrderRequest request) {
-        // Capture current trace context
-        Context context = Context.current();
         Span span = tracer.spanBuilder("reactive.create.order")
             .setAttribute("customer.id", request.getCustomerId())
             .startSpan();
@@ -501,7 +486,11 @@ public class ReactiveOrderService {
                 }
             })
             .select().first(5)
-            .invoke(() -> span.end());
+            .onCompletion().invoke(span::end)
+            .onFailure().invoke(e -> {
+                span.recordException(e);
+                span.end();
+            });
     }
 
     /**
@@ -513,7 +502,7 @@ public class ReactiveOrderService {
             .startSpan();
 
         // Capture context for parallel operations
-        Context parentContext = Context.current();
+        Context parentContext = Context.current().with(batchSpan);
 
         // Process each order in parallel with its own span
         java.util.List<Uni<Order>> orderUnis = requests.stream()
@@ -563,9 +552,14 @@ public class ReactiveOrderService {
 }
 ```
 
-## Database Tracing with Hibernate ORM
+## Database Tracing with JDBC and Hibernate ORM
 
-Quarkus automatically traces database operations when using Hibernate with OpenTelemetry.
+Quarkus traces JDBC calls used by Hibernate ORM when datasource telemetry is enabled.
+
+```properties
+# Enable OpenTelemetry JDBC instrumentation for the default datasource
+quarkus.datasource.jdbc.telemetry=true
+```
 
 ```java
 package com.oneuptime.repository;
@@ -582,7 +576,7 @@ import java.util.List;
 
 /**
  * Repository with automatic database operation tracing
- * Hibernate operations are automatically instrumented
+ * JDBC statements are traced when datasource telemetry is enabled
  */
 @ApplicationScoped
 public class OrderRepository implements PanacheRepository<Order> {
@@ -661,17 +655,11 @@ graph TD
 
 ## Native Image Support
 
-Quarkus compiles to native executables with GraalVM. Configure OpenTelemetry for native mode.
+Quarkus compiles to native executables with GraalVM. The Quarkus OpenTelemetry extension supports native mode without the OpenTelemetry Java agent, so the standard OpenTelemetry configuration can be reused.
 
 ```properties
-# Native image specific configuration
-quarkus.native.additional-build-args=\
-  --initialize-at-run-time=io.opentelemetry.sdk.trace.SdkTracerProvider,\
-  --initialize-at-run-time=io.opentelemetry.sdk.metrics.SdkMeterProvider,\
-  --initialize-at-run-time=io.opentelemetry.sdk.logs.SdkLoggerProvider
-
-# Optimize for native mode
-quarkus.otel.sdk-disabled=false
+# Keep the OpenTelemetry SDK enabled
+quarkus.otel.sdk.disabled=false
 ```
 
 Build and test the native executable.
@@ -686,25 +674,35 @@ Build and test the native executable.
 # Verify tracing works in native mode
 curl http://localhost:8080/orders/12345
 
-# Check exported traces
-curl http://localhost:4318/v1/traces
+# Check exported traces in your collector, Jaeger UI, or configured backend
 ```
 
 ## Testing Tracing Configuration
 
 Create tests to verify trace instrumentation works correctly.
 
+```xml
+<dependency>
+    <groupId>io.opentelemetry</groupId>
+    <artifactId>opentelemetry-sdk-testing</artifactId>
+    <scope>test</scope>
+</dependency>
+```
+
 ```java
 package com.oneuptime.tracing;
 
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.SpanKind;
-import io.opentelemetry.sdk.testing.junit5.OpenTelemetryExtension;
+import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.sdk.testing.exporter.InMemorySpanExporter;
 import io.opentelemetry.sdk.trace.data.SpanData;
 import io.quarkus.test.junit.QuarkusTest;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.inject.Produces;
 import jakarta.inject.Inject;
+import jakarta.inject.Singleton;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.RegisterExtension;
 
 import java.util.List;
 
@@ -716,23 +714,32 @@ import static org.junit.jupiter.api.Assertions.*;
 @QuarkusTest
 class OrderTracingTest {
 
-    @RegisterExtension
-    static final OpenTelemetryExtension otelTesting = OpenTelemetryExtension.create();
+    @ApplicationScoped
+    static class InMemorySpanExporterProducer {
+        @Produces
+        @Singleton
+        InMemorySpanExporter inMemorySpanExporter() {
+            return InMemorySpanExporter.create();
+        }
+    }
 
     @Inject
-    OrderService orderService;
+    InMemorySpanExporter inMemorySpanExporter;
+
+    @Inject
+    Tracer tracer;
 
     @Test
-    void testOrderCreationCreatesSpans() {
-        // Create test request
-        CreateOrderRequest request = new CreateOrderRequest();
-        request.setCustomerId("customer-123");
+    void testManualSpanIsExported() {
+        inMemorySpanExporter.reset();
 
-        // Execute operation
-        Order order = orderService.createOrder(request);
+        Span span = tracer.spanBuilder("service.create.order")
+            .setAttribute("customer.id", "customer-123")
+            .startSpan();
+        span.end();
 
         // Verify spans were created
-        List<SpanData> spans = otelTesting.getSpans();
+        List<SpanData> spans = inMemorySpanExporter.getFinishedSpanItems();
         assertFalse(spans.isEmpty(), "Expected spans to be created");
 
         // Verify span attributes
@@ -750,4 +757,4 @@ class OrderTracingTest {
 }
 ```
 
-Quarkus and OpenTelemetry combine to deliver high-performance observability for cloud-native Java applications. Automatic instrumentation covers REST endpoints, database operations, and external calls without code changes. Reactive programming support ensures trace context flows through asynchronous operations. Native image compilation maintains full tracing functionality while achieving startup times under 100ms and memory footprints under 50MB. The result is enterprise-grade observability with resource efficiency previously unavailable to Java applications.
+Quarkus and OpenTelemetry combine to deliver high-performance observability for cloud-native Java applications. Automatic instrumentation covers REST endpoints, supported client calls, messaging, and JDBC database operations with the relevant extensions and configuration. Reactive programming support ensures trace context flows through asynchronous operations. Native image compilation maintains tracing functionality while improving startup time and memory footprint. The result is enterprise-grade observability with resource efficiency previously unavailable to Java applications.
