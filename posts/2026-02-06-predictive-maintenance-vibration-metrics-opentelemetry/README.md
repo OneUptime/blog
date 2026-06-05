@@ -40,28 +40,28 @@ meter = metrics.get_meter("predictive-maintenance")
 
 # Define metrics for each vibration characteristic
 rms_velocity = meter.create_histogram(
-    "machine.vibration.rms_velocity_mm_s",
+    "machine.vibration.rms_velocity",
     description="RMS vibration velocity in mm/s",
     unit="mm/s"
 )
 peak_acceleration = meter.create_histogram(
-    "machine.vibration.peak_acceleration_g",
-    description="Peak acceleration in g-force units",
-    unit="g"
+    "machine.vibration.peak_acceleration",
+    description="Peak acceleration in standard gravity units",
+    unit="[g]"
 )
 crest_factor = meter.create_gauge(
     "machine.vibration.crest_factor",
     description="Ratio of peak to RMS - high values indicate bearing faults"
 )
 dominant_freq = meter.create_gauge(
-    "machine.vibration.dominant_frequency_hz",
+    "machine.vibration.dominant_frequency",
     description="Dominant vibration frequency in Hz",
     unit="Hz"
 )
 temperature = meter.create_gauge(
-    "machine.bearing.temperature_celsius",
+    "machine.bearing.temperature",
     description="Bearing temperature from IR sensor",
-    unit="celsius"
+    unit="Cel"
 )
 ```
 
@@ -75,7 +75,7 @@ import time
 def process_vibration_sample(raw_data, machine_id, bearing_id, sample_rate=25600):
     """
     Process a raw vibration sample from an accelerometer.
-    raw_data: numpy array of acceleration values
+    raw_data: numpy array of acceleration values in standard gravity units
     sample_rate: samples per second (typical for vibration monitoring)
     """
     # Common attributes for all metrics from this sensor
@@ -87,8 +87,9 @@ def process_vibration_sample(raw_data, machine_id, bearing_id, sample_rate=25600
     }
 
     # Compute RMS velocity from acceleration data
-    # Integrate acceleration to get velocity, then compute RMS
-    velocity = np.cumsum(raw_data) / sample_rate
+    # Remove DC offset, convert g to m/s^2, integrate to get velocity, then compute RMS
+    accel_m_s2 = (raw_data - np.mean(raw_data)) * 9.80665
+    velocity = np.cumsum(accel_m_s2) / sample_rate
     velocity_rms = np.sqrt(np.mean(velocity ** 2)) * 1000  # Convert to mm/s
     rms_velocity.record(velocity_rms, attrs)
 
@@ -150,14 +151,14 @@ def collect_machine_health(machine_id):
 
 ## Alert Configuration
 
-Set up alerts based on ISO 10816 vibration severity standards:
+Set up alerts based on ISO 20816 vibration severity guidance, which replaced the older ISO 10816 series:
 
 ```yaml
 # Example alert rules for your observability platform
 alerts:
   - name: high_vibration_rms
-    metric: machine.vibration.rms_velocity_mm_s
-    condition: p95 > 4.5    # ISO 10816 "unsatisfactory" threshold for Class II machines
+    metric: machine.vibration.rms_velocity
+    condition: p95 > 4.5    # Example mm/s RMS threshold; tune by machine group and mounting
     duration: 5m
     labels:
       severity: warning
@@ -172,7 +173,7 @@ alerts:
 
   - name: frequency_shift
     # Dominant frequency changed by more than 10% from baseline
-    metric: machine.vibration.dominant_frequency_hz
+    metric: machine.vibration.dominant_frequency
     condition: abs(value - baseline) / baseline > 0.10
     duration: 15m
     labels:
@@ -184,7 +185,7 @@ alerts:
 When deploying this in a real factory environment, keep these things in mind:
 
 - **Sample at the right rate**: For standard bearing monitoring, 25.6 kHz is a common choice. Lower rates miss high-frequency defect signatures.
-- **Use resource attributes**: Tag every metric with `machine.id`, `bearing_id`, and `production_line` so you can filter and group in your dashboards.
+- **Use consistent attributes**: Tag every metric with `machine.id`, `machine.bearing`, and `machine.line` so you can filter and group in your dashboards.
 - **Establish baselines first**: Run the system for a week on healthy machines to establish normal vibration profiles. Alerts based on absolute thresholds without baselines will generate too much noise.
 - **Batch your FFT calculations**: FFT is CPU-intensive. If you are monitoring 50+ machines, batch the calculations and stagger them across the collection interval.
 
