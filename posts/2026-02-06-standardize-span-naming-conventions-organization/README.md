@@ -14,7 +14,7 @@ Standardizing span names across an organization requires a combination of publis
 
 ## Why Span Names Matter
 
-Consider a trace search for all database operations. With standardized names, you can search for spans matching `SELECT *` or `INSERT *` and get results from every service. With inconsistent names, you need to know that the Java service uses "SELECT users", the Python service uses "db.query", and the Go service uses "postgresql.query". Every team invents their own convention, and your trace search becomes a guessing game.
+Consider a trace search for all database operations. With standardized names, you can search for spans whose names start with `SELECT` or `INSERT` and get results from every service. With inconsistent names, you need to know that the Java service uses "SELECT users", the Python service uses "db.query", and the Go service uses "postgresql.query". Every team invents their own convention, and your trace search becomes a guessing game.
 
 Good span names are:
 - Low cardinality (no user IDs, request IDs, or other high-cardinality values)
@@ -46,13 +46,15 @@ http_server:
 
 # HTTP client spans (outgoing requests)
 http_client:
-  pattern: "HTTP {method}"
+  pattern: "{method} {target}"
   examples:
-    - "HTTP GET"
-    - "HTTP POST"
+    - "GET /api/users"
+    - "POST /api/orders"
+    - "GET"
   rules:
-    - Do not include the target URL in the span name
-    - Store the full URL in the http.url attribute instead
+    - Use a low-cardinality target such as url.template when it is available
+    - Use only the HTTP method when no low-cardinality target is available
+    - Store the full URL in the url.full attribute instead
 
 # Database spans
 database:
@@ -68,23 +70,23 @@ database:
 
 # Message queue spans
 messaging:
-  pattern: "{destination} {operation}"
+  pattern: "{operation} {destination}"
   examples:
-    - "orders.queue send"
-    - "notifications.topic publish"
-    - "user-events.queue receive"
+    - "send orders.queue"
+    - "publish notifications.topic"
+    - "receive user-events.queue"
   rules:
     - Use the queue or topic name
     - Use lowercase operation (send, receive, publish, consume)
 
 # RPC spans
 rpc:
-  pattern: "{service}/{method}"
+  pattern: "{method}"
   examples:
-    - "UserService/GetUser"
-    - "OrderService/CreateOrder"
+    - "com.example.UserService/GetUser"
+    - "com.example.OrderService/CreateOrder"
   rules:
-    - Use the service name and method name from the RPC definition
+    - Use the fully-qualified logical method name from the RPC definition
     - Match the casing of the protobuf or IDL definition
 
 # Custom business logic spans
@@ -116,15 +118,15 @@ from opentelemetry.sdk.trace import SpanProcessor
 # Patterns that span names must match
 VALID_PATTERNS = [
     # HTTP server: "GET /api/users"
-    re.compile(r'^(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS) /'),
-    # HTTP client: "HTTP GET"
-    re.compile(r'^HTTP (GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)$'),
+    re.compile(r'^(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS|QUERY) /'),
+    # HTTP client fallback: "GET"
+    re.compile(r'^(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS|QUERY)$'),
     # Database: "SELECT users"
     re.compile(r'^(SELECT|INSERT|UPDATE|DELETE|CREATE|DROP|ALTER) \w+'),
-    # Messaging: "orders.queue send"
-    re.compile(r'^[\w.-]+ (send|receive|publish|consume|process)$'),
+    # Messaging: "send orders.queue"
+    re.compile(r'^(send|receive|publish|subscribe|consume|process|ack|nack|settle) [\w.-]+$'),
     # RPC: "UserService/GetUser"
-    re.compile(r'^\w+/\w+$'),
+    re.compile(r'^[\w.]+/\w+$'),
     # Custom: "Component.operation"
     re.compile(r'^[A-Z]\w+\.\w+$'),
 ]
@@ -149,7 +151,7 @@ class SpanNameValidator(SpanProcessor):
         pass
 
     def force_flush(self, timeout_millis=None):
-        pass
+        return True
 ```
 
 Register this processor alongside your regular span processor:
@@ -189,20 +191,13 @@ const SPAN_NAME_PATTERNS = [
   /startSpan\(["']([^"']+)["']\)/g,
 ];
 
-const VALID_NAME = /^(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS) \//
-  || /^HTTP (GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)$/
-  || /^(SELECT|INSERT|UPDATE|DELETE) \w+/
-  || /^[\w.-]+ (send|receive|publish|consume)$/
-  || /^\w+\/\w+$/
-  || /^[A-Z]\w+\.\w+$/;
-
 function isValidSpanName(name) {
   const patterns = [
-    /^(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS) \//,
-    /^HTTP (GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)$/,
+    /^(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS|QUERY) \//,
+    /^(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS|QUERY)$/,
     /^(SELECT|INSERT|UPDATE|DELETE) \w+/,
-    /^[\w.-]+ (send|receive|publish|consume)$/,
-    /^\w+\/\w+$/,
+    /^(send|receive|publish|subscribe|consume|process|ack|nack|settle) [\w.-]+$/,
+    /^[\w.]+\/\w+$/,
     /^[A-Z]\w+\.\w+$/,
   ];
   return patterns.some(p => p.test(name));
@@ -228,7 +223,11 @@ processors:
       - context: span
         statements:
           # Normalize "get /api/users" to "GET /api/users"
-          - replace_pattern(name, "^(get|post|put|delete|patch) ", "$$1 ")
+          - replace_pattern(name, "^get ", "GET ")
+          - replace_pattern(name, "^post ", "POST ")
+          - replace_pattern(name, "^put ", "PUT ")
+          - replace_pattern(name, "^delete ", "DELETE ")
+          - replace_pattern(name, "^patch ", "PATCH ")
 
           # Remove query parameters from HTTP span names
           - replace_pattern(name, "\\?.*$", "")
@@ -254,14 +253,15 @@ processors:
       - context: span
         statements:
           # Tag spans as conforming or non-conforming
+          - set(attributes["span.naming.conforming"], false)
           - set(attributes["span.naming.conforming"], true)
-            where name matches "^(GET|POST|PUT|DELETE|PATCH) /"
+            where IsMatch(name, "^(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS|QUERY) /")
           - set(attributes["span.naming.conforming"], true)
-            where name matches "^HTTP (GET|POST|PUT|DELETE|PATCH)$"
+            where IsMatch(name, "^(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS|QUERY)$")
           - set(attributes["span.naming.conforming"], true)
-            where name matches "^(SELECT|INSERT|UPDATE|DELETE) \\w+"
+            where IsMatch(name, "^(SELECT|INSERT|UPDATE|DELETE) \\w+")
           - set(attributes["span.naming.conforming"], true)
-            where name matches "^[A-Z]\\w+\\.\\w+$"
+            where IsMatch(name, "^[A-Z]\\w+\\.\\w+$")
 ```
 
 Build a dashboard that shows compliance percentage per team and per service. Set a target (for example, 95% compliance) and track progress over time.
@@ -281,7 +281,7 @@ Bad:  "database query"           (no operation or table info)
 Good: "SELECT orders"            (specific operation and table)
 
 Bad:  "handle_message_abc123"    (includes message ID)
-Good: "orders.queue receive"     (queue name and operation)
+Good: "receive orders.queue"     (operation and queue name)
 
 Bad:  "doStuff"                  (meaningless)
 Good: "PaymentProcessor.chargeCard" (component and operation)
