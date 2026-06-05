@@ -8,7 +8,7 @@ Description: Learn how to monitor Apache Kafka consumer lag using the OpenTeleme
 
 ---
 
-Consumer lag is the single most important metric in any Kafka deployment. It measures the difference between the latest message produced to a partition and the last message consumed by a consumer group. When lag grows, it means consumers are falling behind producers, and downstream systems are working with stale data. In time-sensitive applications like fraud detection, real-time pricing, or event-driven microservices, even a few seconds of lag can cause business problems.
+Consumer lag is the single most important metric in any Kafka deployment. It measures the difference between the partition's log end offset and the committed offset for a consumer group. When lag grows, it means consumers are falling behind producers, and downstream systems are working with stale data. In time-sensitive applications like fraud detection, real-time pricing, or event-driven microservices, even a few seconds of lag can cause business problems.
 
 The OpenTelemetry Collector provides a dedicated Kafka metrics receiver that scrapes consumer lag and other broker metrics without requiring any changes to your application code. This guide covers how to set it up, what metrics to watch, and how to build effective alerts around consumer lag.
 
@@ -31,20 +31,20 @@ graph LR
     style G fill:#f99,stroke:#333
 ```
 
-The log end offset (LEO) is the offset of the most recent message in the partition. The committed offset is the last offset the consumer group has confirmed processing. The difference between these two numbers is the consumer lag. Each partition has its own lag value, and the total lag for a consumer group is the sum across all partitions it consumes.
+The log end offset (LEO) is the next offset after the latest message in the partition. The committed offset is the next offset the consumer group will read after confirming processing. The difference between these two numbers is the consumer lag. Each partition has its own lag value, and the total lag for a consumer group is the sum across all partitions it consumes.
 
 Lag can grow for several reasons: the consumer is processing messages too slowly, a consumer instance crashed and its partitions have not been reassigned yet, the consumer is stuck on a poison pill message, or the producer throughput temporarily exceeded consumer capacity.
 
 ## Setting Up the Kafka Metrics Receiver
 
-The OpenTelemetry Collector's `kafkametrics` receiver connects to Kafka brokers and scrapes metrics at a configurable interval. Here is the basic configuration:
+The OpenTelemetry Collector's `kafka_metrics` receiver connects to Kafka brokers and scrapes metrics at a configurable interval. Here is the basic configuration:
 
 ```yaml
 # otel-collector-config.yaml
 
 receivers:
   # Kafka metrics receiver scrapes broker and consumer group metrics
-  kafkametrics:
+  kafka_metrics:
     # List of Kafka broker addresses
     brokers:
       - kafka-broker-1:9092
@@ -78,7 +78,7 @@ exporters:
 service:
   pipelines:
     metrics:
-      receivers: [kafkametrics]
+      receivers: [kafka_metrics]
       processors: [memory_limiter, batch]
       exporters: [otlp]
 ```
@@ -105,7 +105,7 @@ kafka.consumer_group.offset
     - partition: 0
 
 # Topic partition current offset (log end offset)
-kafka.topic.partitions.current_offset
+kafka.partition.current_offset
   Attributes:
     - topic: "orders"
     - partition: 0
@@ -128,7 +128,7 @@ For production environments, you will want a more detailed configuration that ha
 ```yaml
 # otel-collector-config-production.yaml
 receivers:
-  kafkametrics:
+  kafka_metrics:
     brokers:
       - kafka-broker-1:9092
       - kafka-broker-2:9092
@@ -145,9 +145,9 @@ receivers:
         mechanism: SCRAM-SHA-512
         username: ${env:KAFKA_USERNAME}
         password: ${env:KAFKA_PASSWORD}
-      tls:
-        insecure: false
-        ca_file: /etc/ssl/certs/kafka-ca.pem
+    tls:
+      insecure: false
+      ca_file: /etc/ssl/certs/kafka-ca.pem
     # Filter to specific topics and consumer groups
     # to reduce metric volume
     topic_match: "^(orders|payments|inventory|notifications).*"
@@ -203,7 +203,7 @@ exporters:
 service:
   pipelines:
     metrics:
-      receivers: [kafkametrics]
+      receivers: [kafka_metrics]
       processors: [memory_limiter, resource, transform, batch]
       exporters: [otlp]
 ```
@@ -229,16 +229,16 @@ With metrics flowing, build dashboards that answer the key questions operators a
 
 # Panel 3: Lag growth rate
 # Positive rate means lag is growing, negative means catching up
-# rate(kafka_consumer_group_lag[5m])
+# deriv(kafka_consumer_group_lag[5m])
 
 # Panel 4: Consumer group offset commit rate
 # Shows how fast consumers are making progress
-# rate(kafka_consumer_group_offset[5m])
+# deriv(kafka_consumer_group_offset[5m])
 
 # Panel 5: Producer offset rate vs consumer offset rate
 # Compare these to see if consumers can keep up
-# rate(kafka_topic_partitions_current_offset[5m])  -- producer rate
-# rate(kafka_consumer_group_offset[5m])             -- consumer rate
+# deriv(kafka_partition_current_offset[5m])  -- producer offset growth
+# deriv(kafka_consumer_group_offset[5m])      -- consumer offset growth
 ```
 
 The lag growth rate panel (Panel 3) is the most actionable. If lag is growing, you have a problem developing. If it is shrinking, the consumer is catching up. A steady non-zero lag suggests the consumer is keeping pace but always a fixed distance behind.
@@ -267,7 +267,7 @@ groups:
       - alert: KafkaConsumerLagGrowing
         expr: |
           sum by (group, topic) (
-            rate(kafka_consumer_group_lag[10m])
+            deriv(kafka_consumer_group_lag[10m])
           ) > 100
         for: 15m
         labels:
@@ -280,7 +280,9 @@ groups:
       - alert: KafkaConsumerStalled
         expr: |
           sum by (group, topic) (
-            rate(kafka_consumer_group_offset[5m])
+            max_over_time(kafka_consumer_group_offset[5m])
+            -
+            min_over_time(kafka_consumer_group_offset[5m])
           ) == 0
           and
           sum by (group, topic) (kafka_consumer_group_lag) > 0
@@ -312,7 +314,7 @@ The `KafkaPartitionLagSkewed` alert catches a subtler problem: one partition fal
 
 ## Correlating Lag with Application Traces
 
-Consumer lag metrics tell you there is a problem, but traces tell you why. To connect the two, use the same consumer group and topic labels in both your metrics and your trace attributes:
+Consumer lag metrics tell you there is a problem, but traces tell you why. To connect the two, record the same consumer group and topic values in both your metrics and your trace attributes:
 
 ```java
 // In your consumer application
@@ -320,16 +322,17 @@ Span span = tracer.spanBuilder("orders receive")
     .setSpanKind(SpanKind.CONSUMER)
     .setAttribute("messaging.system", "kafka")
     .setAttribute("messaging.destination.name", record.topic())
-    .setAttribute("messaging.kafka.consumer.group", "order-processor")
-    .setAttribute("messaging.kafka.partition", record.partition())
+    .setAttribute("messaging.consumer.group.name", "order-processor")
+    .setAttribute("messaging.destination.partition.id",
+        String.valueOf(record.partition()))
     .setAttribute("messaging.kafka.offset", record.offset())
     // Record the message age for correlation with lag metrics
-    .setAttribute("messaging.kafka.message.age_ms",
+    .setAttribute("kafka.message.age_ms",
         System.currentTimeMillis() - record.timestamp())
     .startSpan();
 ```
 
-When you see high lag on the `order-processor` consumer group in your metrics dashboard, you can jump to traces filtered by `messaging.kafka.consumer.group = "order-processor"` to find slow-processing spans. The `messaging.kafka.message.age_ms` attribute on each trace tells you the actual delay each message experienced.
+When you see high lag on the `order-processor` consumer group in your metrics dashboard, you can jump to traces filtered by `messaging.consumer.group.name = "order-processor"` to find slow-processing spans. The custom `kafka.message.age_ms` attribute on each trace tells you the actual delay each message experienced.
 
 ## Troubleshooting Common Lag Scenarios
 
@@ -358,7 +361,7 @@ Large Kafka deployments with hundreds of topics and many consumer groups can gen
 ```yaml
 # High-volume Kafka monitoring configuration
 receivers:
-  kafkametrics:
+  kafka_metrics:
     brokers:
       - kafka-broker-1:9092
       - kafka-broker-2:9092
@@ -373,20 +376,21 @@ receivers:
     # Filter to reduce cardinality
     topic_match: "^(orders|payments|inventory).*"
     group_match: "^(order-|payment-|inventory-).*"
+    # Keep per-topic group totals and disable
+    # per-partition series when they are not needed
+    metrics:
+      kafka.consumer_group.lag:
+        enabled: false
+      kafka.consumer_group.offset:
+        enabled: false
+      kafka.partition.current_offset:
+        enabled: false
 
 processors:
   memory_limiter:
     check_interval: 1s
     limit_mib: 2048
     spike_limit_mib: 512
-
-  # Aggregate per-partition lag into per-group totals
-  # to reduce metric cardinality when partition-level detail
-  # is not needed
-  groupbyattrs:
-    keys:
-      - group
-      - topic
 
   batch:
     timeout: 15s
@@ -406,12 +410,12 @@ exporters:
 service:
   pipelines:
     metrics:
-      receivers: [kafkametrics]
-      processors: [memory_limiter, groupbyattrs, batch]
+      receivers: [kafka_metrics]
+      processors: [memory_limiter, batch]
       exporters: [otlp]
 ```
 
-The `groupbyattrs` processor aggregates metrics by the specified keys, reducing the number of time series at the cost of partition-level granularity. For clusters with thousands of partitions, this tradeoff is often worthwhile since you can always drill into partition-level metrics for specific consumer groups when investigating issues.
+The receiver emits `kafka.consumer_group.lag_sum` and `kafka.consumer_group.offset_sum` as per-topic totals for each consumer group. Disabling the per-partition lag, offset, and partition current offset metrics reduces the number of time series at the cost of partition-level granularity. For clusters with thousands of partitions, this tradeoff is often worthwhile when you only need group-level dashboards.
 
 ## Monitoring the Monitor
 
@@ -432,7 +436,14 @@ service:
   telemetry:
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+                without_type_suffix: true
+                without_units: true
     logs:
       level: info
 ```
@@ -441,4 +452,4 @@ If the Collector loses connectivity to the Kafka brokers, you will see scrape er
 
 ## Conclusion
 
-Monitoring Kafka consumer lag with the OpenTelemetry Collector is straightforward to set up and provides critical visibility into your streaming infrastructure. The `kafkametrics` receiver handles the heavy lifting of connecting to brokers and scraping consumer group offsets. Combined with well-tuned alerting rules that distinguish between temporary spikes and sustained growth, and correlation with application-level traces, you get a complete picture of consumer health. Start with basic lag monitoring, add partition-level visibility for troubleshooting, and scale the Collector configuration as your cluster grows.
+Monitoring Kafka consumer lag with the OpenTelemetry Collector is straightforward to set up and provides critical visibility into your streaming infrastructure. The `kafka_metrics` receiver handles the heavy lifting of connecting to brokers and scraping consumer group offsets. Combined with well-tuned alerting rules that distinguish between temporary spikes and sustained growth, and correlation with application-level traces, you get a complete picture of consumer health. Start with basic lag monitoring, add partition-level visibility for troubleshooting, and scale the Collector configuration as your cluster grows.
