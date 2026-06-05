@@ -10,7 +10,7 @@ Description: Learn how to monitor Kafka Connect connectors with OpenTelemetry us
 
 Kafka Connect is the integration framework for Apache Kafka that moves data between Kafka and external systems like databases, search indexes, and cloud storage. A single Kafka Connect cluster might run dozens of connectors, each with multiple tasks, creating a complex operational surface that requires dedicated monitoring. When a connector task fails or slows down, the ripple effects can include data loss, stale search indexes, or broken ETL pipelines. OpenTelemetry gives you the tools to collect connector metrics, track task health, and alert on problems before they impact downstream systems.
 
-This guide covers monitoring Kafka Connect using the OpenTelemetry Collector's JMX receiver for connector metrics, the REST API for health checks, and application-level tracing for custom connectors.
+This guide covers monitoring Kafka Connect using the OpenTelemetry Java JMX Scraper for connector metrics, the REST API for health checks, and application-level tracing for custom connectors.
 
 ## Kafka Connect Metrics Architecture
 
@@ -26,8 +26,9 @@ graph TB
     C --> G[Task 1]
     C --> H[Task 2]
 
-    I[OTel Collector<br/>JMX Receiver] -->|scrape| A
-    I -->|export| J[Metrics Backend]
+    I[OTel JMX Scraper] -->|scrape| A
+    I -->|OTLP| K[OTel Collector]
+    K -->|export| J[Metrics Backend]
 
     style A fill:#9cf,stroke:#333
     style I fill:#fc9,stroke:#333
@@ -36,7 +37,7 @@ graph TB
 
 ## Enabling JMX on Kafka Connect
 
-Before the OpenTelemetry Collector can scrape metrics, JMX must be enabled on the Kafka Connect worker. Add the JMX configuration to the Connect startup:
+Before OpenTelemetry can scrape metrics, JMX must be enabled on the Kafka Connect worker. Add the JMX configuration to the Connect startup:
 
 ```bash
 # kafka-connect-env.sh
@@ -75,23 +76,33 @@ services:
       - "9999:9999"   # JMX
 ```
 
-## Collector Configuration for Kafka Connect Metrics
+## JMX Scraper Configuration for Kafka Connect Metrics
 
-The OpenTelemetry Collector's JMX receiver connects to the Kafka Connect JMX endpoint and collects the relevant MBeans. Here is a complete collector configuration:
+The OpenTelemetry Collector's `jmx` receiver has been deprecated. Use the OpenTelemetry Java JMX Scraper as the JMX process and send its OTLP metrics to the Collector:
+
+```properties
+# jmx-scraper.properties
+otel.jmx.service.url=service:jmx:rmi:///jndi/rmi://kafka-connect:9999/jmxrmi
+otel.jmx.target.system=kafka-connect
+otel.metric.export.interval=30000
+otel.jmx.username=monitor
+otel.jmx.password=change-me
+otel.metrics.exporter=otlp
+otel.exporter.otlp.endpoint=http://otel-collector:4317
+otel.resource.attributes=kafka.connect.cluster=connect-cluster
+```
+
+Run the scraper with the released JAR:
+
+```bash
+java -jar opentelemetry-jmx-scraper.jar -config jmx-scraper.properties
+```
+
+The Collector then receives the metrics over OTLP and exports them to your backend:
 
 ```yaml
 # otel-collector-config.yaml
 receivers:
-  # JMX receiver for Kafka Connect metrics
-  jmx:
-    jar_path: /opt/opentelemetry-jmx-metrics.jar
-    endpoint: kafka-connect:9999
-    target_system: kafka-connect
-    collection_interval: 30s
-    username: monitor
-    password: ${env:JMX_PASSWORD}
-
-  # OTLP for any application-level telemetry
   otlp:
     protocols:
       grpc:
@@ -118,7 +129,7 @@ exporters:
 service:
   pipelines:
     metrics:
-      receivers: [jmx]
+      receivers: [otlp]
       processors: [resource, batch]
       exporters: [otlp]
     traces:
@@ -127,7 +138,7 @@ service:
       exporters: [otlp]
 ```
 
-The `target_system: kafka-connect` setting uses the built-in metric definitions for Kafka Connect, which map to the standard JMX MBeans that Connect exposes.
+The `otel.jmx.target.system=kafka-connect` setting uses the built-in metric definitions for Kafka Connect, which map to the standard JMX MBeans that Connect exposes.
 
 ## Key Metrics to Monitor
 
@@ -140,19 +151,17 @@ Kafka Connect exposes a rich set of metrics across workers, connectors, and task
 # kafka.connect:type=connect-worker-metrics
 
 # Number of connectors in the worker
-kafka.connect.worker.connector_count:
+kafka.connect.worker.connector.count:
   description: "Total connectors deployed to this worker"
 
 # Task startup and failure rates
-kafka.connect.worker.task_startup_success_total:
-  description: "Total successful task starts"
-kafka.connect.worker.task_startup_failure_total:
-  description: "Total failed task starts"
+kafka.connect.worker.task.startup.count:
+  description: "Total task starts, with kafka.connect.worker.task.startup.result=success or failure"
 
 # Rebalance metrics - critical for cluster stability
-kafka.connect.worker.rebalance_completed_total:
+kafka.connect.worker.rebalance.completed.count:
   description: "Total completed rebalances"
-kafka.connect.worker.rebalance_avg_time_ms:
+kafka.connect.worker.rebalance.time.average:
   description: "Average time spent in rebalance"
 ```
 
@@ -167,13 +176,16 @@ Frequent rebalances indicate cluster instability. Each rebalance pauses all conn
 # Connector status
 kafka.connect.connector.status:
   description: "Connector running state"
-  # Values: running, paused, failed, unassigned
+  # kafka.connect.connector.state values include running, paused, failed,
+  # unassigned, restarting, degraded, stopped, and unknown
 
 # Task-level metrics from JMX MBean:
 # kafka.connect:type=connector-task-metrics,connector=*,task=*
 
-kafka.connect.connector.task.status:
+kafka.connect.task.status:
   description: "Individual task state"
+  # kafka.connect.task.state values include running, paused, failed,
+  # unassigned, restarting, destroyed, and unknown
 ```
 
 ### Source Connector Metrics
@@ -183,15 +195,15 @@ kafka.connect.connector.task.status:
 # kafka.connect:type=source-task-metrics,connector=*,task=*
 
 # Records produced to Kafka
-kafka.connect.source.poll_batch_avg_time_ms:
+kafka.connect.source.poll.batch.time.average:
   description: "Average time for a poll batch"
-kafka.connect.source.source_record_write_total:
+kafka.connect.source.record.write.count:
   description: "Total records written to Kafka"
-kafka.connect.source.source_record_active_count:
+kafka.connect.source.record.active.count:
   description: "Records polled but not yet committed"
 
 # Poll rate indicates source throughput
-kafka.connect.source.source_record_poll_total:
+kafka.connect.source.record.poll.count:
   description: "Total records polled from source"
 ```
 
@@ -202,33 +214,34 @@ kafka.connect.source.source_record_poll_total:
 # kafka.connect:type=sink-task-metrics,connector=*,task=*
 
 # Records consumed from Kafka
-kafka.connect.sink.sink_record_read_total:
+kafka.connect.sink.record.read.count:
   description: "Total records read from Kafka"
-kafka.connect.sink.sink_record_send_total:
+kafka.connect.sink.record.send.count:
   description: "Total records sent to destination"
 
 # Offset commit tracking
-kafka.connect.sink.offset_commit_success_percentage:
-  description: "Percentage of successful offset commits"
-kafka.connect.sink.offset_commit_avg_time_ms:
+kafka.connect.task.offset.commit.failure.ratio:
+  description: "Ratio of failed offset commits"
+kafka.connect.task.offset.commit.time.average:
   description: "Average offset commit duration"
 
 # Partition-level metrics for identifying lag
-kafka.connect.sink.partition_count:
+kafka.connect.sink.partition.count:
   description: "Number of partitions assigned to this task"
 ```
 
-The gap between `sink_record_read_total` and `sink_record_send_total` indicates records that were read from Kafka but not yet successfully written to the destination. A growing gap suggests the destination is slow or failing.
+The gap between `kafka.connect.sink.record.read.count` and `kafka.connect.sink.record.send.count` indicates records that were read from Kafka but not yet successfully sent to the sink task after transformations. `kafka.connect.sink.record.active.count` is the direct backlog metric for records not yet committed, flushed, or acknowledged by the sink task.
 
 ## Monitoring Connector Health via REST API
 
-Kafka Connect's REST API provides connector and task status information that complements JMX metrics. You can use the OpenTelemetry Collector's HTTP receiver with a script to poll the REST API:
+Kafka Connect's REST API provides connector and task status information that complements JMX metrics. You can run a small script alongside the Collector to poll the REST API and export health metrics over OTLP:
 
 ```python
 # connect_health_check.py - Poll Connect REST API and emit OTel metrics
 import requests
 import time
 from opentelemetry import metrics
+from opentelemetry.metrics import CallbackOptions, Observation
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
@@ -243,67 +256,87 @@ metrics.set_meter_provider(provider)
 
 meter = metrics.get_meter("kafka-connect-health")
 
-# Create gauges for connector and task status
-connector_status_gauge = meter.create_observable_gauge(
-    "kafka.connect.connector.health",
-    description="Connector health status (1=running, 0=failed)",
-)
-
-task_status_gauge = meter.create_observable_gauge(
-    "kafka.connect.task.health",
-    description="Task health status (1=running, 0=failed)",
-)
-
 CONNECT_URL = "http://kafka-connect:8083"
 
-def check_connector_health():
+def fetch_connector_statuses():
     """Poll all connectors and their tasks for health status."""
+    # Get list of all connectors
+    resp = requests.get(f"{CONNECT_URL}/connectors", timeout=5)
+    resp.raise_for_status()
+    connectors = resp.json()
+
+    for connector_name in connectors:
+        # Get connector status including task details
+        status_resp = requests.get(
+            f"{CONNECT_URL}/connectors/{connector_name}/status",
+            timeout=5)
+        status_resp.raise_for_status()
+        yield connector_name, status_resp.json()
+
+def observe_connector_health(options: CallbackOptions):
+    """Report connector health as observable gauge measurements."""
     try:
-        # Get list of all connectors
-        resp = requests.get(f"{CONNECT_URL}/connectors")
-        connectors = resp.json()
-
-        results = []
-        for connector_name in connectors:
-            # Get connector status including task details
-            status_resp = requests.get(
-                f"{CONNECT_URL}/connectors/{connector_name}/status")
-            status = status_resp.json()
-
+        for connector_name, status in fetch_connector_statuses():
             # Check connector state
             connector_state = status["connector"]["state"]
             is_running = 1 if connector_state == "RUNNING" else 0
 
-            results.append({
-                "name": connector_name,
-                "state": connector_state,
-                "healthy": is_running,
-                "worker": status["connector"]["worker_id"],
+            yield Observation(is_running, {
+                "kafka.connect.connector": connector_name,
+                "kafka.connect.connector.state": connector_state,
+                "kafka.connect.worker.id": status["connector"]["worker_id"],
             })
 
+    except requests.exceptions.RequestException:
+        print("Cannot connect to Kafka Connect REST API")
+        return []
+
+def observe_task_health(options: CallbackOptions):
+    """Report task health as observable gauge measurements."""
+    try:
+        for connector_name, status in fetch_connector_statuses():
             # Check each task state
             for task in status["tasks"]:
                 task_state = task["state"]
                 task_healthy = 1 if task_state == "RUNNING" else 0
+
+                yield Observation(task_healthy, {
+                    "kafka.connect.connector": connector_name,
+                    "kafka.connect.task.id": task["id"],
+                    "kafka.connect.task.state": task_state,
+                    "kafka.connect.worker.id": task.get("worker_id", ""),
+                })
 
                 if task_state == "FAILED":
                     # Log the failure trace for debugging
                     print(f"FAILED task {connector_name}/{task['id']}: "
                           f"{task.get('trace', 'no trace')}")
 
-        return results
-
-    except requests.exceptions.ConnectionError:
+    except requests.exceptions.RequestException:
         print("Cannot connect to Kafka Connect REST API")
         return []
 
-# Run health checks on a schedule
-while True:
-    check_connector_health()
-    time.sleep(30)
+# Create gauges for connector and task status
+connector_status_gauge = meter.create_observable_gauge(
+    "kafka.connect.connector.health",
+    callbacks=[observe_connector_health],
+    description="Connector health status (1=running, 0=not running)",
+)
+
+task_status_gauge = meter.create_observable_gauge(
+    "kafka.connect.task.health",
+    callbacks=[observe_task_health],
+    description="Task health status (1=running, 0=not running)",
+)
+
+try:
+    while True:
+        time.sleep(60)
+except KeyboardInterrupt:
+    provider.shutdown()
 ```
 
-This script polls the Connect REST API every 30 seconds and emits health metrics through OpenTelemetry. The REST API provides information that JMX does not easily expose, like the specific error trace when a task fails. Combining both sources gives you complete visibility.
+This script polls the Connect REST API on the metric reader's export interval and emits health metrics through OpenTelemetry. The REST API provides information that JMX does not easily expose, like the specific error trace when a task fails. Combining both sources gives you complete visibility.
 
 ## Alerting on Common Failure Patterns
 
@@ -322,7 +355,7 @@ Based on the collected metrics, set up alerts for these common Kafka Connect fai
 
 ```yaml
 # Alert condition:
-# kafka.connect.source.source_record_active_count > threshold
+# kafka.connect.source.record.active.count > threshold
 # sustained for 5 minutes
 # Severity: Warning
 # Action: Check Kafka broker health and network connectivity
@@ -332,7 +365,7 @@ Based on the collected metrics, set up alerts for these common Kafka Connect fai
 
 ```yaml
 # Alert condition:
-# kafka.connect.sink.offset_commit_success_percentage < 95
+# kafka.connect.task.offset.commit.failure.ratio > 0.05
 # Severity: Warning
 # Action: Check destination system health and Connect worker resources
 ```
@@ -341,7 +374,7 @@ Based on the collected metrics, set up alerts for these common Kafka Connect fai
 
 ```yaml
 # Alert condition:
-# kafka.connect.worker.rebalance_completed_total increases
+# kafka.connect.worker.rebalance.completed.count increases
 # more than 5 times per hour
 # Severity: Warning
 # Action: Check worker health, network stability, and session timeouts
@@ -359,8 +392,13 @@ import io.opentelemetry.api.GlobalOpenTelemetry;
 import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.context.Scope;
+import org.apache.kafka.common.TopicPartition;
 
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 public class CustomSinkTask extends SinkTask {
 
@@ -380,9 +418,11 @@ public class CustomSinkTask extends SinkTask {
 
         try (Scope scope = span.makeCurrent()) {
             // Group records by topic-partition for efficient writes
-            var grouped = groupByPartition(records);
+            Map<TopicPartition, List<SinkRecord>> grouped =
+                groupByPartition(records);
 
-            for (var entry : grouped.entrySet()) {
+            for (Map.Entry<TopicPartition, List<SinkRecord>> entry
+                    : grouped.entrySet()) {
                 // Create a child span per partition batch
                 Span partitionSpan = tracer
                     .spanBuilder("sink.write_partition")
@@ -400,7 +440,7 @@ public class CustomSinkTask extends SinkTask {
                 } catch (Exception e) {
                     partitionSpan.recordException(e);
                     partitionSpan.setAttribute("write.success", false);
-                    throw e;
+                    throw new RuntimeException("Failed to write partition batch", e);
                 } finally {
                     partitionSpan.end();
                 }
@@ -428,6 +468,22 @@ public class CustomSinkTask extends SinkTask {
     public void stop() {
         // Cleanup resources
     }
+
+    private Map<TopicPartition, List<SinkRecord>> groupByPartition(
+            Collection<SinkRecord> records) {
+        Map<TopicPartition, List<SinkRecord>> grouped = new HashMap<>();
+        for (SinkRecord record : records) {
+            TopicPartition partition =
+                new TopicPartition(record.topic(), record.kafkaPartition());
+            grouped.computeIfAbsent(partition, key -> new ArrayList<>())
+                .add(record);
+        }
+        return grouped;
+    }
+
+    private void writeToDestination(List<SinkRecord> records) {
+        // Write records to the destination system.
+    }
 }
 ```
 
@@ -444,9 +500,9 @@ Here is a summary of the metrics you should display on your Kafka Connect monito
 | Rebalance rate | JMX | Cluster stability |
 | Source poll rate | JMX | Source connector throughput |
 | Sink read/write gap | JMX | Destination write backlog |
-| Offset commit success % | JMX | Progress tracking reliability |
+| Offset commit failure ratio | JMX | Progress tracking reliability |
 | Worker memory/CPU | System | Resource utilization |
 
 ## Conclusion
 
-Monitoring Kafka Connect with OpenTelemetry provides the operational visibility needed to run reliable data pipelines. The JMX receiver captures worker, connector, and task-level metrics without modifying the Connect deployment. REST API health checks add failure details that JMX does not expose. For custom connectors, OpenTelemetry tracing gives you per-record visibility into write operations and error patterns. Together, these approaches form a comprehensive monitoring strategy that helps you detect and resolve Kafka Connect issues before they impact the data systems downstream.
+Monitoring Kafka Connect with OpenTelemetry provides the operational visibility needed to run reliable data pipelines. The JMX Scraper captures worker, connector, and task-level metrics without modifying connector code. REST API health checks add failure details that JMX does not expose. For custom connectors, OpenTelemetry tracing gives you batch and partition-level visibility into write operations and error patterns. Together, these approaches form a comprehensive monitoring strategy that helps you detect and resolve Kafka Connect issues before they impact the data systems downstream.
