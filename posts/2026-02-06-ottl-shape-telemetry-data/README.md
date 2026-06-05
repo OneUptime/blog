@@ -42,7 +42,7 @@ OTTL uses contexts to access different parts of telemetry data:
 
 - `resource`: Resource attributes (deployment.environment, service.name)
 - `span`: Span-level data (name, kind, status)
-- `attributes`: Span attributes (http.method, db.statement)
+- `span.attributes`: Span attributes (http.method, db.statement)
 - `instrumentation_scope`: Instrumentation library metadata
 - `metric`: Metric metadata (name, description, unit)
 - `datapoint`: Individual metric data points
@@ -56,7 +56,7 @@ Path expressions access nested data:
 resource.attributes["service.name"]
 
 # Access span attribute
-attributes["http.status_code"]
+span.attributes["http.status_code"]
 
 # Access span name
 span.name
@@ -96,7 +96,7 @@ Common OTTL functions:
 
 Drop unwanted spans to reduce noise and costs.
 
-Configure the transform processor to filter health check endpoints:
+Configure the filter processor to filter health check endpoints:
 
 ```yaml
 # collector-config.yaml
@@ -107,32 +107,24 @@ receivers:
         endpoint: 0.0.0.0:4317
 
 processors:
-  transform:
+  filter:
     error_mode: ignore
-    trace_statements:
+    trace_conditions:
       # Drop health check spans
-      - context: span
-        statements:
-          - drop() where attributes["http.target"] == "/health"
-          - drop() where attributes["http.target"] == "/metrics"
-          - drop() where attributes["http.target"] == "/readyz"
+      - span.attributes["http.target"] == "/health"
+      - span.attributes["http.target"] == "/metrics"
+      - span.attributes["http.target"] == "/readyz"
 
       # Drop spans with specific status codes
-      - context: span
-        statements:
-          - drop() where attributes["http.status_code"] == 304
-          - drop() where attributes["http.status_code"] == 204
+      - span.attributes["http.status_code"] == 304
+      - span.attributes["http.status_code"] == 204
 
       # Drop very short spans (likely noise)
-      - context: span
-        statements:
-          - drop() where span.duration < 1000000  # 1ms in nanoseconds
+      - (span.end_time - span.start_time) < Duration("1ms")
 
       # Drop internal polling operations
-      - context: span
-        statements:
-          - drop() where span.name == "internal.poll"
-          - drop() where span.name == "background.sync"
+      - span.name == "internal.poll"
+      - span.name == "background.sync"
 
 exporters:
   otlp:
@@ -142,7 +134,7 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [transform]
+      processors: [filter]
       exporters: [otlp]
 ```
 
@@ -150,19 +142,17 @@ Use complex conditions with logical operators:
 
 ```yaml
 processors:
-  transform:
-    trace_statements:
+  filter:
+    trace_conditions:
       # Drop spans matching multiple conditions
-      - context: span
-        statements:
-          # Drop successful health checks (2xx status and /health endpoint)
-          - drop() where attributes["http.target"] == "/health" and attributes["http.status_code"] >= 200 and attributes["http.status_code"] < 300
+      # Drop successful health checks (2xx status and /health endpoint)
+      - span.attributes["http.target"] == "/health" and span.attributes["http.status_code"] >= 200 and span.attributes["http.status_code"] < 300
 
-          # Drop fast successful requests to static assets
-          - drop() where span.duration < 5000000 and IsMatch(attributes["http.target"], "^/static/.*") and attributes["http.status_code"] == 200
+      # Drop fast successful requests to static assets
+      - (span.end_time - span.start_time) < Duration("5ms") and IsMatch(span.attributes["http.target"], "^/static/.*") and span.attributes["http.status_code"] == 200
 
-          # Drop internal service calls in development
-          - drop() where resource.attributes["deployment.environment"] == "development" and attributes["peer.service"] == "internal-api"
+      # Drop internal service calls in development
+      - resource.attributes["deployment.environment"] == "development" and span.attributes["peer.service"] == "internal-api"
 ```
 
 ## Modifying Span Attributes
@@ -222,9 +212,9 @@ processors:
           - set(attributes["response.size.category"], "large") where Int(attributes["http.response.body.size"]) >= 1048576
 
           # Add latency bucket
-          - set(attributes["latency.bucket"], "fast") where span.duration < 100000000  # < 100ms
-          - set(attributes["latency.bucket"], "normal") where span.duration >= 100000000 and span.duration < 1000000000  # 100ms-1s
-          - set(attributes["latency.bucket"], "slow") where span.duration >= 1000000000  # > 1s
+          - set(attributes["latency.bucket"], "fast") where (span.end_time - span.start_time) < Duration("100ms")
+          - set(attributes["latency.bucket"], "normal") where (span.end_time - span.start_time) >= Duration("100ms") and (span.end_time - span.start_time) < Duration("1s")
+          - set(attributes["latency.bucket"], "slow") where (span.end_time - span.start_time) >= Duration("1s")
 
           # Extract user tier from user ID pattern
           - set(attributes["user.tier"], "premium") where IsMatch(attributes["user.id"], "^premium-.*")
@@ -269,8 +259,8 @@ processors:
       # Rename metrics for consistency
       - context: metric
         statements:
-          - set(name, "http.server.request.duration") where name == "http_request_duration_seconds"
-          - set(name, "http.server.response.size") where name == "http_response_size_bytes"
+          - set(metric.name, "http.server.request.duration") where metric.name == "http_request_duration_seconds"
+          - set(metric.name, "http.server.response.size") where metric.name == "http_response_size_bytes"
 
       # Modify metric attributes
       - context: datapoint
@@ -289,11 +279,11 @@ processors:
           - set(attributes["status_class"], "4xx") where Int(attributes["http.status_code"]) >= 400 and Int(attributes["http.status_code"]) < 500
           - set(attributes["status_class"], "5xx") where Int(attributes["http.status_code"]) >= 500
 
-      # Drop unnecessary metrics
-      - context: metric
-        statements:
-          - drop() where name == "runtime.gc.pause.ns"
-          - drop() where name == "process.runtime.jvm.gc.duration"
+  filter:
+    # Drop unnecessary metrics
+    metric_conditions:
+      - metric.name == "runtime.gc.pause.ns"
+      - metric.name == "process.runtime.jvm.gc.duration"
 ```
 
 Reduce metric cardinality by truncating labels:
@@ -313,7 +303,7 @@ processors:
           - replace_pattern(attributes["http.route"], "/api/v\\d+/", "/api/{version}/")
 
           # Truncate version strings
-          - replace_pattern(attributes["service.version"], "^(\\d+\\.\\d+)\\..*", "$1")
+          - replace_pattern(attributes["service.version"], "^(\\d+\\.\\d+)\\..*", "$$1")
 ```
 
 ## Transforming Logs with OTTL
@@ -328,29 +318,31 @@ processors:
       - context: log
         statements:
           # Extract log level from unstructured logs
-          - set(severity_text, "ERROR") where IsMatch(body, "(?i)error|exception|fatal")
-          - set(severity_text, "WARN") where IsMatch(body, "(?i)warn|warning")
-          - set(severity_text, "INFO") where IsMatch(body, "(?i)info")
+          - set(log.severity_text, "ERROR") where IsMatch(log.body, "(?i)error|exception|fatal")
+          - set(log.severity_text, "WARN") where IsMatch(log.body, "(?i)warn|warning")
+          - set(log.severity_text, "INFO") where IsMatch(log.body, "(?i)info")
 
           # Extract structured fields from log body
-          - set(attributes["user.id"], ExtractPatterns(body, "user_id=(\\w+)")[0]) where IsMatch(body, "user_id=")
-          - set(attributes["request.id"], ExtractPatterns(body, "request_id=([a-f0-9-]+)")[0]) where IsMatch(body, "request_id=")
+          - set(log.attributes["user.id"], ExtractPatterns(log.body, "user_id=(?P<user_id>\\w+)")["user_id"]) where IsMatch(log.body, "user_id=")
+          - set(log.attributes["request.id"], ExtractPatterns(log.body, "request_id=(?P<request_id>[a-f0-9-]+)")["request_id"]) where IsMatch(log.body, "request_id=")
 
           # Redact sensitive data from log body
-          - replace_pattern(body, "password=[^\\s]+", "password=REDACTED")
-          - replace_pattern(body, "api_key=[^\\s]+", "api_key=REDACTED")
-          - replace_pattern(body, "\\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}\\b", "EMAIL_REDACTED")
+          - replace_pattern(log.body, "password=[^\\s]+", "password=REDACTED")
+          - replace_pattern(log.body, "api_key=[^\\s]+", "api_key=REDACTED")
+          - replace_pattern(log.body, "\\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}\\b", "EMAIL_REDACTED")
 
-      # Drop debug logs in production
+  filter:
+    # Drop debug logs in production
+    log_conditions:
+      - resource.attributes["deployment.environment"] == "production" and log.severity_text == "DEBUG"
+
+  transform/enrich:
+    # Enrich logs with context
+    log_statements:
       - context: log
         statements:
-          - drop() where resource.attributes["deployment.environment"] == "production" and severity_text == "DEBUG"
-
-      # Enrich logs with context
-      - context: log
-        statements:
-          - set(attributes["log.source"], "application") where attributes["log.source"] == nil
-          - set(attributes["cloud.region"], resource.attributes["cloud.region"])
+          - set(log.attributes["log.source"], "application") where log.attributes["log.source"] == nil
+          - set(log.attributes["cloud.region"], resource.attributes["cloud.region"])
 ```
 
 ## Advanced OTTL Patterns
@@ -385,7 +377,7 @@ processors:
       - context: span
         statements:
           # API service specific transformations
-          - set(attributes["api.version"], ExtractPatterns(attributes["http.target"], "/api/(v\\d+)/")[0]) where resource.attributes["service.name"] == "api-service"
+          - set(attributes["api.version"], ExtractPatterns(attributes["http.target"], "/api/(?P<api_version>v\\d+)/")["api_version"]) where resource.attributes["service.name"] == "api-service"
 
           # Database service specific transformations
           - set(attributes["query.type"], "SELECT") where resource.attributes["service.name"] == "database" and IsMatch(attributes["db.statement"], "^SELECT")
@@ -410,7 +402,7 @@ processors:
       - context: span
         statements:
           - set(attributes["environment"], resource.attributes["deployment.environment"])
-          - set(attributes["is_slow"], true) where span.duration > 1000000000
+          - set(attributes["is_slow"], true) where (span.end_time - span.start_time) > Duration("1s")
 
   # Step 2: Filter using attributes processor
   attributes:
@@ -422,10 +414,10 @@ processors:
   tail_sampling:
     policies:
       - name: sample-slow-requests
-        type: string_attribute
-        string_attribute:
+        type: boolean_attribute
+        boolean_attribute:
           key: is_slow
-          values: ["true"]
+          value: true
       - name: sample-errors
         type: status_code
         status_code:
@@ -490,10 +482,6 @@ processors:
           # Test: Should redact API keys
           - replace_pattern(attributes["http.url"], "apikey=[^&]+", "apikey=REDACTED")
 
-  # Add debug exporter to verify transformations
-  debug:
-    verbosity: detailed
-
 exporters:
   debug:
     verbosity: detailed
@@ -502,7 +490,7 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [transform, debug]
+      processors: [transform]
       exporters: [debug]
 ```
 
@@ -510,7 +498,7 @@ service:
 
 OTTL transformations add processing overhead. Follow these best practices:
 
-1. **Order matters**: Place drop statements early to avoid processing data that will be discarded
+1. **Order matters**: Place filter processors early to avoid processing data that will be discarded
 2. **Limit regex usage**: Pattern matching is expensive; use exact matches when possible
 3. **Avoid redundant operations**: Combine multiple set operations into single statements
 4. **Use error_mode wisely**: Set to `ignore` to prevent transformation errors from blocking data flow
