@@ -25,15 +25,15 @@ tracer = trace.get_tracer("db-instrumentation")
 def execute_query(connection, query, params=None):
     with tracer.start_as_current_span("db.query") as span:
         # Record standard database span attributes
-        span.set_attribute("db.system", "postgresql")
-        span.set_attribute("db.statement", query)
-        span.set_attribute("db.operation", query.split()[0].upper())
+        span.set_attribute("db.system.name", "postgresql")
+        span.set_attribute("db.query.text", query)
+        span.set_attribute("db.operation.name", query.split()[0])
 
         cursor = connection.cursor()
         cursor.execute(query, params)
         results = cursor.fetchall()
 
-        span.set_attribute("db.row_count", len(results))
+        span.set_attribute("db.response.returned_rows", len(results))
         return results
 ```
 
@@ -42,7 +42,6 @@ def execute_query(connection, query, params=None):
 The real power comes from analyzing span relationships after collection. Here is a script that queries your trace backend and identifies N+1 patterns:
 
 ```python
-import requests
 from collections import defaultdict
 
 def find_n_plus_1_patterns(trace_data):
@@ -65,7 +64,10 @@ def find_n_plus_1_patterns(trace_data):
         # Filter to only database spans
         db_children = [
             s for s in children
-            if s.get("attributes", {}).get("db.system") is not None
+            if (
+                s.get("attributes", {}).get("db.system.name") is not None
+                or s.get("attributes", {}).get("db.system") is not None
+            )
         ]
 
         if len(db_children) < 10:
@@ -74,7 +76,11 @@ def find_n_plus_1_patterns(trace_data):
         # Group by query template (ignoring parameter values)
         query_groups = defaultdict(int)
         for span in db_children:
-            statement = span.get("attributes", {}).get("db.statement", "")
+            attributes = span.get("attributes", {})
+            statement = (
+                attributes.get("db.query.text")
+                or attributes.get("db.statement", "")
+            )
             # Normalize the query by replacing literal values
             normalized = normalize_query(statement)
             query_groups[normalized] += 1
@@ -108,35 +114,59 @@ def normalize_query(sql):
 You can also instrument your application to count child spans in real time and flag potential N+1 patterns before they leave your service:
 
 ```python
-from opentelemetry import trace, context
+from collections import defaultdict
+from threading import Lock
 
-class NPlusOneDetector:
+from opentelemetry.sdk.trace import SpanProcessor
+
+class NPlusOneDetector(SpanProcessor):
     """Middleware that counts DB spans per request and logs warnings."""
 
     def __init__(self, threshold=20):
         self.threshold = threshold
+        self._active_spans = {}
+        self._db_counts = defaultdict(int)
+        self._lock = Lock()
 
-    def on_span_end(self, span):
-        # Only check database spans
-        if span.attributes.get("db.system") is None:
-            return
+    def on_start(self, span, parent_context=None):
+        span_id = span.get_span_context().span_id
+        with self._lock:
+            self._active_spans[span_id] = span
 
-        parent_ctx = span.parent
-        if parent_ctx is None:
-            return
+    def on_end(self, span):
+        span_id = span.get_span_context().span_id
 
-        # Increment counter on the parent span
-        parent_span = trace.get_current_span()
-        current_count = parent_span.attributes.get("db.child_query_count", 0)
-        new_count = current_count + 1
-        parent_span.set_attribute("db.child_query_count", new_count)
-
-        if new_count == self.threshold:
-            parent_span.set_attribute("n_plus_1.detected", True)
-            parent_span.add_event(
-                "N+1 query pattern detected",
-                attributes={"db.query_count": new_count},
+        try:
+            # Only check database spans
+            db_system = (
+                span.attributes.get("db.system.name")
+                or span.attributes.get("db.system")
             )
+            if db_system is None or span.parent is None:
+                return
+
+            # Increment counter on the active parent span
+            parent_id = span.parent.span_id
+            with self._lock:
+                parent_span = self._active_spans.get(parent_id)
+                if parent_span is None:
+                    return
+
+                new_count = self._db_counts[parent_id] + 1
+                self._db_counts[parent_id] = new_count
+
+                parent_span.set_attribute("db.child_query_count", new_count)
+
+                if new_count == self.threshold:
+                    parent_span.set_attribute("n_plus_1.detected", True)
+                    parent_span.add_event(
+                        "N+1 query pattern detected",
+                        attributes={"db.query_count": new_count},
+                    )
+        finally:
+            with self._lock:
+                self._active_spans.pop(span_id, None)
+                self._db_counts.pop(span_id, None)
 ```
 
 ## Fixing the Problem
@@ -144,6 +174,8 @@ class NPlusOneDetector:
 Once you identify the N+1, the fix is usually straightforward. Replace the loop of individual queries with a batch query or an eager-loading strategy:
 
 ```python
+from collections import defaultdict
+
 # Before: N+1 pattern
 
 def get_orders_with_items_bad(user_id):
