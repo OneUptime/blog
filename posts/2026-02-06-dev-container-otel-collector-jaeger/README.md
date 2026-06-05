@@ -20,19 +20,19 @@ Here is the `devcontainer.json`:
   "dockerComposeFile": "docker-compose.yml",
   "service": "app",
   "workspaceFolder": "/workspace",
-  "forwardPorts": [4317, 4318, 16686],
+  "forwardPorts": [4317, 4318, 16686, 5000],
   "postStartCommand": "echo 'Jaeger UI available at http://localhost:16686'",
   "customizations": {
     "vscode": {
       "extensions": [
-        "opentelemetry.otel-log-viewer"
+        "Tobias-Streng.vscode-opentelemetry-viewer"
       ]
     }
   }
 }
 ```
 
-The `forwardPorts` array exposes the OTLP gRPC port (4317), OTLP HTTP port (4318), and the Jaeger UI port (16686) to your host machine.
+The `forwardPorts` array exposes the OTLP gRPC port (4317), OTLP HTTP port (4318), the Jaeger UI port (16686), and the sample Flask app port (5000) to your host machine.
 
 ## The Docker Compose File
 
