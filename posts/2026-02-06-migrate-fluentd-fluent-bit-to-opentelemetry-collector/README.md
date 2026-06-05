@@ -104,23 +104,26 @@ receivers:
       - /var/log/pods/monitoring_otel-collector*/**
     start_at: end
     include_file_path: true
+    include_file_name: false
     # Checkpoint storage equivalent to Fluent Bit's DB
     storage: file_storage
     operators:
-      - type: regex_parser
-        id: parser-cri
-        regex: '^(?P<time>[^ ]+) (?P<stream>stdout|stderr) (?P<logtag>[^ ]*) ?(?P<log>.*)$'
-        timestamp:
-          parse_from: attributes.time
-          layout: '%Y-%m-%dT%H:%M:%S.%LZ'
-      - type: move
-        from: attributes.log
-        to: body
+      - type: container
+        id: container-parser
 
 processors:
   # Equivalent to Fluent Bit's kubernetes filter
   k8sattributes:
     auth_type: "serviceAccount"
+    pod_association:
+      - sources:
+          - from: resource_attribute
+            name: k8s.pod.uid
+      - sources:
+          - from: resource_attribute
+            name: k8s.pod.name
+          - from: resource_attribute
+            name: k8s.namespace.name
     extract:
       metadata:
         - k8s.pod.name
@@ -132,6 +135,9 @@ processors:
 extensions:
   file_storage:
     directory: /var/lib/otelcol/file_storage
+
+service:
+  extensions: [file_storage]
 ```
 
 ## Example 3: Output to Elasticsearch
@@ -165,9 +171,10 @@ exporters:
     logs_index: app-logs
     sending_queue:
       enabled: true
+      storage: file_storage
       # Queue size acts similarly to buffer
       queue_size: 1000
-    retry_on_failure:
+    retry:
       enabled: true
       max_interval: 30s
 
@@ -175,6 +182,13 @@ processors:
   batch:
     timeout: 5s
     send_batch_max_size: 5000
+
+extensions:
+  file_storage:
+    directory: /var/lib/otelcol/file_storage
+
+service:
+  extensions: [file_storage]
 ```
 
 ## Example 4: Log Filtering and Modification
@@ -199,19 +213,16 @@ processors:
 ```yaml
 processors:
   filter/exclude_health:
-    logs:
-      log_record:
-        # Drop logs containing "health_check"
-        - 'IsMatch(body, "health_check")'
+    log_conditions:
+      # Drop logs containing "health_check"
+      - 'IsMatch(log.body.string, "health_check")'
 
   transform/modify:
     log_statements:
-      - context: log
-        statements:
-          # Add a static attribute
-          - set(attributes["environment"], "production")
-          # Remove a sensitive field
-          - delete_key(attributes, "secret_field")
+      # Add a static attribute
+      - set(log.attributes["environment"], "production")
+      # Remove a sensitive field
+      - delete_key(log.attributes, "secret_field")
 ```
 
 ## Migration Strategy
@@ -231,7 +242,7 @@ Do not try to migrate everything at once. Follow these steps:
 A few things to watch out for during migration:
 
 - **Timestamp parsing**: Fluentd and OTel use different time format syntax. Fluentd uses Ruby's strftime, while OTel uses Go's time layout or strptime patterns. Double-check your timestamp formats.
-- **Buffering behavior**: Fluentd has file-based buffering with configurable chunk sizes. OTel Collector uses in-memory sending queues by default. Enable the `file_storage` extension if you need persistence across restarts.
+- **Buffering behavior**: Fluentd has file-based buffering with configurable chunk sizes. OTel Collector uses in-memory sending queues by default. Configure a storage extension such as `file_storage` and reference it from `sending_queue.storage` if you need exporter queue persistence across restarts.
 - **Plugin gaps**: Some Fluentd output plugins (like specific SaaS integrations) may not have OTel Collector equivalents. Check the Collector Contrib repository for available exporters before starting.
 
 ## Wrapping Up
