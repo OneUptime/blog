@@ -44,15 +44,15 @@ flowchart TB
 
 OneAgent discovers and monitors everything it can find on a host. Before you remove it, you need to know what "everything" includes. Use the Dynatrace API to pull the list of monitored entities.
 
-This script queries the Dynatrace API to list all process groups and their technologies. It gives you a clear picture of what needs OpenTelemetry instrumentation.
+This script queries the Dynatrace API to list all process group instances and their technologies. It gives you a clear picture of what needs OpenTelemetry instrumentation.
 
 ```bash
-# Query Dynatrace API for all monitored process groups
+# Query Dynatrace API for all monitored process group instances
 
 # This returns the technology type (Java, Node.js, .NET, etc.) for each process
 # You need this list to know which OpenTelemetry SDKs to deploy
 curl -s -X GET \
-  "https://your-environment.live.dynatrace.com/api/v2/entities?entitySelector=type(PROCESS_GROUP)&fields=properties.softwareTechnologies" \
+  "https://your-environment.live.dynatrace.com/api/v2/entities?entitySelector=type(PROCESS_GROUP_INSTANCE)&fields=properties.softwareTechnologies" \
   -H "Authorization: Api-Token ${DT_API_TOKEN}" \
   -H "Accept: application/json" | python3 -m json.tool
 ```
@@ -118,8 +118,10 @@ processors:
 
 exporters:
   otlphttp:
-    endpoint: "https://otlp.oneuptime.com"
+    endpoint: "https://oneuptime.com/otlp"
+    encoding: json
     headers:
+      Content-Type: "application/json"
       x-oneuptime-token: "${ONEUPTIME_TOKEN}"
 
 service:
@@ -164,7 +166,13 @@ kind: Deployment
 metadata:
   name: order-service
 spec:
+  selector:
+    matchLabels:
+      app: order-service
   template:
+    metadata:
+      labels:
+        app: order-service
     spec:
       containers:
         - name: order-service
@@ -180,7 +188,7 @@ spec:
               # Point to the Collector running as a DaemonSet
               value: "http://otel-collector:4317"
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: "deployment.environment=production,service.version=3.2.1"
+              value: "deployment.environment.name=production,service.version=3.2.1"
           volumeMounts:
             - name: otel-agent
               mountPath: /opt/otel
@@ -224,11 +232,20 @@ kind: Deployment
 metadata:
   name: order-service
 spec:
+  selector:
+    matchLabels:
+      app: order-service
   template:
     metadata:
+      labels:
+        app: order-service
       annotations:
         # This annotation tells the OTel Operator to inject the Java agent
         instrumentation.opentelemetry.io/inject-java: "java-instrumentation"
+    spec:
+      containers:
+        - name: order-service
+          image: myregistry/order-service:latest
 ```
 
 ## Step 4: Instrument Node.js and Python Applications
@@ -252,11 +269,13 @@ const sdk = new NodeSDK({
   traceExporter: new OTLPTraceExporter({
     url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4317',
   }),
-  metricReader: new PeriodicExportingMetricReader({
-    exporter: new OTLPMetricExporter({
-      url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4317',
+  metricReaders: [
+    new PeriodicExportingMetricReader({
+      exporter: new OTLPMetricExporter({
+        url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4317',
+      }),
     }),
-  }),
+  ],
   // Auto-instruments Express, HTTP, gRPC, database clients, and more
   instrumentations: [getNodeAutoInstrumentations()],
 });
@@ -281,7 +300,7 @@ opentelemetry-bootstrap -a install
 # This is the closest equivalent to OneAgent's automatic Python instrumentation
 OTEL_SERVICE_NAME=user-service \
 OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317 \
-OTEL_RESOURCE_ATTRIBUTES=deployment.environment=production \
+OTEL_RESOURCE_ATTRIBUTES=deployment.environment.name=production \
 opentelemetry-instrument python app.py
 ```
 
@@ -316,7 +335,6 @@ import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.api.trace.SpanKind;
 import io.opentelemetry.api.trace.StatusCode;
-import io.opentelemetry.semconv.SemanticAttributes;
 
 Tracer tracer = GlobalOpenTelemetry.getTracer("order-repository", "1.0.0");
 
@@ -324,11 +342,11 @@ Tracer tracer = GlobalOpenTelemetry.getTracer("order-repository", "1.0.0");
 // SpanKind.CLIENT indicates this is an outbound call to a database
 Span span = tracer.spanBuilder("SELECT orders")
     .setSpanKind(SpanKind.CLIENT)
-    .setAttribute(SemanticAttributes.DB_SYSTEM, "postgresql")
-    .setAttribute(SemanticAttributes.DB_NAME, "mydb")
-    .setAttribute(SemanticAttributes.DB_STATEMENT, "SELECT * FROM orders WHERE id = ?")
-    .setAttribute(SemanticAttributes.SERVER_ADDRESS, "db-host")
-    .setAttribute(SemanticAttributes.SERVER_PORT, 5432L)
+    .setAttribute("db.system.name", "postgresql")
+    .setAttribute("db.namespace", "mydb")
+    .setAttribute("db.query.text", "SELECT * FROM orders WHERE id = ?")
+    .setAttribute("server.address", "db-host")
+    .setAttribute("server.port", 5432L)
     .startSpan();
 try {
     // execute query
