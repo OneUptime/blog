@@ -8,13 +8,13 @@ Description: Learn how to prevent sensitive data from leaking through OpenTeleme
 
 ---
 
-Auto-instrumentation is one of the most appealing features of OpenTelemetry. You add an agent or SDK, and suddenly your application emits traces, metrics, and logs without writing a single line of instrumentation code. But that convenience comes with a serious risk: the auto-instrumentation libraries capture everything by default. HTTP headers, query parameters, database statements, message payloads - all of it can end up in your telemetry backend. If your application handles passwords, tokens, credit card numbers, or health records, those values can silently leak into your observability pipeline.
+Auto-instrumentation is one of the most appealing features of OpenTelemetry. You add an agent or SDK, and suddenly your application emits traces, metrics, and logs without writing a single line of instrumentation code. But that convenience comes with a serious risk: the auto-instrumentation libraries can capture more than you expect. HTTP metadata, selected headers, query parameters, database statements, and messaging metadata can end up in your telemetry backend. If your application handles passwords, tokens, credit card numbers, or health records, those values can silently leak into your observability pipeline.
 
 This post walks through the practical steps you need to take to lock down auto-instrumentation and keep sensitive data out of your spans and logs.
 
 ## Why Auto-Instrumentation Leaks Data
 
-Auto-instrumentation libraries hook into common frameworks and libraries at runtime. When an HTTP request comes in, the instrumentation captures the URL, headers, request body attributes, and response codes. When a database query runs, the instrumentation records the SQL statement, sometimes including parameter values. The libraries do this because more data generally means better debugging. But "more data" and "safe data" are not the same thing.
+Auto-instrumentation libraries hook into common frameworks and libraries at runtime. When an HTTP request comes in, the instrumentation captures metadata such as the method, route, URL attributes, and response codes. Some instrumentations can also be configured to capture selected headers, request parameters, or body-size attributes. When a database query runs, the instrumentation records the SQL statement, sometimes including literal values if the statement text already contains them. The libraries do this because more data generally means better debugging. But "more data" and "safe data" are not the same thing.
 
 Here is a simplified view of how data flows from your application through auto-instrumentation to your backend:
 
@@ -33,51 +33,54 @@ The dangerous point is at stage C. Span attributes and events are where sensitiv
 
 ## Step 1: Disable Capturing of HTTP Request and Response Headers
 
-Most HTTP auto-instrumentation libraries allow you to control which headers get captured. By default, many capture all request and response headers. You should explicitly limit this.
+Most HTTP auto-instrumentation libraries allow you to control which headers get captured. OpenTelemetry Java does not capture arbitrary HTTP headers unless you configure the header names. You should explicitly limit this list and never include secrets.
 
-For Java, you can set environment variables to control which headers the OTLP auto-instrumentation captures. An empty value means no headers are captured.
+For Java, you can set environment variables to control which headers the OpenTelemetry Java agent captures. Leaving these unset, or setting them to an empty value, means no extra headers are captured.
 
 ```bash
 # Disable all HTTP request header capture
 
-export OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_CLIENT_REQUEST=""
-export OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_CLIENT_RESPONSE=""
-export OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_REQUEST=""
-export OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_RESPONSE=""
+export OTEL_INSTRUMENTATION_HTTP_CLIENT_CAPTURE_REQUEST_HEADERS=""
+export OTEL_INSTRUMENTATION_HTTP_CLIENT_CAPTURE_RESPONSE_HEADERS=""
+export OTEL_INSTRUMENTATION_HTTP_SERVER_CAPTURE_REQUEST_HEADERS=""
+export OTEL_INSTRUMENTATION_HTTP_SERVER_CAPTURE_RESPONSE_HEADERS=""
 ```
 
 If you need specific headers for debugging (like `Content-Type` or `X-Request-Id`), list only those and nothing else.
 
 ```bash
 # Capture only safe, non-sensitive headers
-export OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_REQUEST="content-type,x-request-id"
-export OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_SERVER_RESPONSE="content-type,x-request-id"
+export OTEL_INSTRUMENTATION_HTTP_SERVER_CAPTURE_REQUEST_HEADERS="content-type,x-request-id"
+export OTEL_INSTRUMENTATION_HTTP_SERVER_CAPTURE_RESPONSE_HEADERS="content-type,x-request-id"
 ```
 
 ## Step 2: Suppress SQL Parameter Values
 
 Database instrumentation often records full SQL statements. A query like `SELECT * FROM users WHERE email = 'john@example.com'` will embed the actual email address in the span. This is a direct PII leak.
 
-Most OpenTelemetry database instrumentations support a sanitization mode that replaces parameter values with placeholders. For Java auto-instrumentation, you can configure this through system properties.
+OpenTelemetry Java auto-instrumentation supports a sanitization mode that replaces literal values with placeholders. It is enabled by default, but you can set it explicitly so the safety setting is visible in your deployment configuration.
 
 ```bash
-# Enable SQL statement sanitization to replace literal values with '?'
+# Keep SQL statement sanitization enabled so literal values are replaced with '?'
 export OTEL_INSTRUMENTATION_COMMON_DB_STATEMENT_SANITIZER_ENABLED=true
 ```
 
-After enabling this, your spans will contain `SELECT * FROM users WHERE email = ?` instead of the actual parameter value. This preserves the query structure for debugging without leaking user data.
+With this enabled, your spans will contain `SELECT * FROM users WHERE email = ?` instead of the actual literal value when the database statement is sanitized. This preserves the query structure for debugging without leaking user data.
 
-For Python, the SQLAlchemy and psycopg2 instrumentations also support this. You configure it when initializing the instrumentor.
+For Python, avoid building SQL strings by interpolating user data. Use bound parameters so sensitive values are passed separately from the SQL statement that instrumentation records.
 
 ```python
 from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
+from sqlalchemy import text
 
-# Initialize with enable_commenter but without capturing bound parameters
-# This ensures query parameters like emails and passwords are not recorded
-SQLAlchemyInstrumentor().instrument(
-    engine=engine,
-    enable_commenter=True,
-)
+# Instrument SQLAlchemy. Bound parameter values are not part of this SQL text.
+SQLAlchemyInstrumentor().instrument(engine=engine)
+
+with engine.connect() as connection:
+    connection.execute(
+        text("SELECT * FROM users WHERE email = :email"),
+        {"email": "john@example.com"},
+    )
 ```
 
 ## Step 3: Use the OpenTelemetry SDK's Attribute Limits
@@ -85,9 +88,9 @@ SQLAlchemyInstrumentor().instrument(
 The OpenTelemetry SDK provides built-in controls for limiting attribute values. While this is not a replacement for proper filtering, it acts as a safety net that truncates overly long attribute values which might contain large payloads.
 
 ```bash
-# Limit the maximum length of any attribute value to 256 characters
+# Limit the maximum length of any span attribute value to 256 characters
 # This prevents large request bodies or responses from being fully captured
-export OTEL_ATTRIBUTE_VALUE_LENGTH_LIMIT=256
+export OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT=256
 
 # Limit the maximum number of attributes per span
 # This prevents unbounded attribute growth from verbose instrumentation
@@ -100,12 +103,15 @@ These limits do not replace redaction. A credit card number is only 16 digits an
 
 Some endpoints inherently deal with sensitive data. Login routes, payment processing endpoints, and health record APIs are all places where you want to either suppress instrumentation entirely or heavily sanitize the captured data.
 
-In Java, you can exclude specific URL patterns from instrumentation.
+The OpenTelemetry Java agent does not provide a single generic environment variable for suppressing HTTP server spans by URL pattern. If you need route-based dropping outside the application, use the Collector's filter processor.
 
-```bash
-# Exclude authentication and payment endpoints from tracing entirely
-# Requests to these paths will not generate spans
-export OTEL_INSTRUMENTATION_HTTP_SERVER_SUPPRESS_PATTERN="/api/auth/.*|/api/payments/.*|/api/health-records/.*"
+```yaml
+processors:
+  filter/sensitive_routes:
+    error_mode: ignore
+    traces:
+      span:
+        - 'IsMatch(attributes["url.path"], "^/api/(auth|payments|health-records)/")'
 ```
 
 In Node.js, you can configure the HTTP instrumentation to ignore specific routes by passing a filter function during setup.
@@ -125,60 +131,44 @@ const httpInstrumentation = new HttpInstrumentation({
 
 ## Step 5: Apply SpanProcessor-Based Filtering in the SDK
 
-For cases where you cannot control what the auto-instrumentation captures, you can add a custom SpanProcessor that strips sensitive attributes before they leave the application. This runs inside the SDK, before data reaches the exporter.
+For cases where you cannot control what the auto-instrumentation captures, you can add a custom SpanProcessor that redacts sensitive attributes before they leave the application. This runs inside the SDK, before data reaches the exporter.
 
-Here is a Python example that removes specific attribute keys from every span.
+In OpenTelemetry Python, `SpanProcessor.on_end` receives a read-only `ReadableSpan`, so do not try to mutate `span.attributes` there. In SDKs that expose a mutable "span ending" hook, redact before the span is exported. For example, OpenTelemetry JavaScript exposes an `onEnding` hook on `SpanProcessor`.
 
-```python
-from opentelemetry.sdk.trace import SpanProcessor
+```javascript
+const { NodeSDK } = require('@opentelemetry/sdk-node');
+const { BatchSpanProcessor } = require('@opentelemetry/sdk-trace-base');
 
-class SensitiveDataFilter(SpanProcessor):
-    """
-    Custom span processor that removes sensitive attributes
-    before spans are exported. This is a last line of defense
-    inside the application process.
-    """
-    # List of attribute keys that should never be exported
-    SENSITIVE_KEYS = {
-        'http.request.header.authorization',
-        'http.request.header.cookie',
-        'http.request.header.set-cookie',
-        'db.statement',
-        'http.request.body',
-        'http.response.body',
+const SENSITIVE_KEYS = [
+  'http.request.header.authorization',
+  'http.request.header.cookie',
+  'http.response.header.set-cookie',
+  'db.statement',
+  'http.request.body',
+  'http.response.body',
+];
+
+const sensitiveDataFilter = {
+  onStart() {},
+  onEnding(span) {
+    // Force known sensitive keys to safe placeholder values before onEnd/export.
+    for (const key of SENSITIVE_KEYS) {
+      span.setAttribute(key, '[REDACTED]');
     }
+  },
+  onEnd() {},
+  shutdown: async () => {},
+  forceFlush: async () => {},
+};
 
-    def on_start(self, span, parent_context=None):
-        pass
+const sdk = new NodeSDK({
+  spanProcessors: [
+    sensitiveDataFilter,
+    new BatchSpanProcessor(otlpExporter),
+  ],
+});
 
-    def on_end(self, span):
-        # Remove sensitive attributes from the span before export
-        if span.attributes:
-            for key in self.SENSITIVE_KEYS:
-                if key in span.attributes:
-                    span.attributes[key] = "[REDACTED]"
-
-    def shutdown(self):
-        pass
-
-    def force_flush(self, timeout_millis=None):
-        pass
-```
-
-Register this processor in your tracer provider before the batch span processor.
-
-```python
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
-
-# Create the tracer provider
-provider = TracerProvider()
-
-# Add the sensitive data filter FIRST so it runs before export
-provider.add_span_processor(SensitiveDataFilter())
-
-# Then add the batch processor that handles actual export
-provider.add_span_processor(BatchSpanProcessor(otlp_exporter))
+sdk.start();
 ```
 
 ## Step 6: Use the Collector as a Second Layer of Defense
@@ -215,13 +205,13 @@ flowchart LR
 
 ## Step 7: Audit What Your Instrumentation Actually Captures
 
-After applying all these controls, you need to verify that nothing slips through. The simplest way is to temporarily export to the `logging` exporter in the Collector and inspect the output.
+After applying all these controls, you need to verify that nothing slips through. The simplest way is to temporarily export to the `debug` exporter in the Collector and inspect the output.
 
 ```yaml
 exporters:
-  # Use the logging exporter during audits to see exactly what data
+  # Use the debug exporter during audits to see exactly what data
   # is being captured in spans, metrics, and logs
-  logging:
+  debug:
     verbosity: detailed
 
 service:
@@ -229,7 +219,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [attributes]
-      exporters: [logging]
+      exporters: [debug]
 ```
 
 Run your application, trigger the sensitive endpoints, and read the Collector logs. Search for known test values (use a test credit card number, a test email) and confirm they do not appear in the output. Make this audit a regular part of your release process.
