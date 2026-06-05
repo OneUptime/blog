@@ -80,7 +80,7 @@ COPY . /app
 EXPOSE 3000
 
 # Start the Mojolicious app in production mode
-CMD ["perl", "app.pl", "daemon", "-l", "http://*:3000"]
+CMD ["perl", "app.pl", "daemon", "-m", "production", "-l", "http://*:3000"]
 ```
 
 Build and run:
@@ -111,6 +111,10 @@ RUN cpanm App::cpanminus --notest
 COPY cpanfile /app/
 RUN cpanm --installdeps --notest -l /app/local .
 
+# Tell Perl where to find the local modules, including when using this stage for development
+ENV PERL5LIB=/app/local/lib/perl5
+ENV PATH=/app/local/bin:$PATH
+
 # Copy application source
 COPY . /app
 
@@ -139,7 +143,7 @@ USER appuser
 
 EXPOSE 3000
 
-CMD ["perl", "app.pl", "daemon", "-l", "http://*:3000"]
+CMD ["perl", "app.pl", "daemon", "-m", "production", "-l", "http://*:3000"]
 ```
 
 This cuts the image size roughly in half by removing gcc, make, and other build tools from the final image.
@@ -170,7 +174,7 @@ If you need a private CPAN mirror or custom modules, you can configure cpanminus
 
 ```dockerfile
 # Use a custom CPAN mirror for faster installs
-RUN cpanm --mirror https://cpan.metacpan.org --mirror-only --installdeps --notest .
+RUN cpanm --from https://cpan.metacpan.org --installdeps --notest .
 ```
 
 ## The .dockerignore File
@@ -197,7 +201,6 @@ Set up a comfortable development environment:
 
 ```yaml
 # docker-compose.yml - development environment with live reload
-version: "3.8"
 services:
   app:
     build:
@@ -211,7 +214,7 @@ services:
     environment:
       - MOJO_MODE=development
       - MOJO_LOG_LEVEL=debug
-    command: ["perl", "app.pl", "daemon", "-l", "http://*:3000"]
+    command: ["morbo", "app.pl", "-l", "http://*:3000"]
 
   database:
     image: mariadb:11
@@ -231,7 +234,7 @@ Mojolicious has built-in file watching with the `morbo` development server:
 
 ```bash
 # Use morbo for automatic reloading during development
-docker compose exec app morbo app.pl -l http://*:3000
+docker compose up app
 ```
 
 ## Handling Perl's Carton for Dependency Locking
@@ -261,9 +264,10 @@ WORKDIR /app
 COPY --from=builder /app /app
 
 ENV PERL5LIB=/app/local/lib/perl5
+ENV PATH=/app/local/bin:$PATH
 EXPOSE 3000
 
-CMD ["perl", "app.pl", "daemon", "-l", "http://*:3000"]
+CMD ["perl", "app.pl", "daemon", "-m", "production", "-l", "http://*:3000"]
 ```
 
 Generate the `cpanfile.snapshot` locally before building:
@@ -322,7 +326,7 @@ Mojolicious supports prefork mode for production workloads:
 ```bash
 # Start with prefork server for production, 4 worker processes
 docker run -d -p 3000:3000 perl-app:latest \
-  perl app.pl prefork -l http://*:3000 -w 4 -c 2
+  perl app.pl prefork -m production -l http://*:3000 -w 4 -c 2
 ```
 
 Set memory limits on the container:
