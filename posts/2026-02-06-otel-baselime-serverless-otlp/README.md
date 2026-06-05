@@ -10,7 +10,7 @@ Baselime is an observability platform built specifically for serverless and clou
 
 ## Baselime OTLP Endpoint
 
-Baselime's OTLP endpoint: `otel.baselime.io:4317` (gRPC) and `https://otel.baselime.io/v1` (HTTP). Authentication uses a `x-api-key` header with your Baselime API key.
+Baselime's OTLP endpoint: `otel-ingest.baselime.io:8443` (gRPC) and `https://otel.baselime.io/v1/traces` or `https://otel.baselime.io/v1/logs` (HTTP). Authentication uses a `x-api-key` header with your Baselime API key.
 
 ## Instrumenting AWS Lambda with OpenTelemetry
 
@@ -101,11 +101,11 @@ def process_order(order_data):
 const { NodeTracerProvider } = require("@opentelemetry/sdk-trace-node");
 const { OTLPTraceExporter } = require("@opentelemetry/exporter-trace-otlp-http");
 const { SimpleSpanProcessor } = require("@opentelemetry/sdk-trace-base");
-const { Resource } = require("@opentelemetry/resources");
-const { trace } = require("@opentelemetry/api");
+const { resourceFromAttributes } = require("@opentelemetry/resources");
+const { trace, SpanStatusCode } = require("@opentelemetry/api");
 
 // Set up tracing at module load time
-const resource = new Resource({
+const resource = resourceFromAttributes({
   "service.name": "api-handler-lambda",
   "cloud.provider": "aws",
   "cloud.platform": "aws_lambda",
@@ -118,48 +118,56 @@ const exporter = new OTLPTraceExporter({
   },
 });
 
-const provider = new NodeTracerProvider({ resource });
 // SimpleSpanProcessor for Lambda (flushes immediately)
-provider.addSpanProcessor(new SimpleSpanProcessor(exporter));
+const provider = new NodeTracerProvider({
+  resource,
+  spanProcessors: [new SimpleSpanProcessor(exporter)],
+});
 provider.register();
 
 const tracer = trace.getTracer("api-handler");
 let isWarm = false;
 
 exports.handler = async (event, context) => {
-  const span = tracer.startSpan("lambda.handler", {
+  return await tracer.startActiveSpan("lambda.handler", {
     attributes: {
       "faas.trigger": "http",
       "faas.invocation_id": context.awsRequestId,
       "faas.coldstart": !isWarm,
     },
+  }, async (span) => {
+    isWarm = true;
+
+    try {
+      const body = JSON.parse(event.body || "{}");
+
+      const result = await tracer.startActiveSpan("process_request", (childSpan) => {
+        try {
+          childSpan.setAttribute("request.path", event.path || "");
+          return processRequest(body);
+        } finally {
+          childSpan.end();
+        }
+      });
+
+      span.setAttribute("http.response.status_code", 200);
+      return { statusCode: 200, body: JSON.stringify(result) };
+    } catch (error) {
+      span.recordException(error);
+      span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
+
+      return { statusCode: 500, body: JSON.stringify({ error: error.message }) };
+    } finally {
+      span.end();
+      // Flush before Lambda freezes
+      await provider.forceFlush();
+    }
   });
-  isWarm = true;
-
-  try {
-    const body = JSON.parse(event.body || "{}");
-
-    const childSpan = tracer.startSpan("process_request");
-    childSpan.setAttribute("request.path", event.path);
-    const result = processRequest(body);
-    childSpan.end();
-
-    span.setAttribute("http.status_code", 200);
-    span.end();
-
-    // Flush before Lambda freezes
-    await provider.forceFlush();
-
-    return { statusCode: 200, body: JSON.stringify(result) };
-  } catch (error) {
-    span.recordException(error);
-    span.setStatus({ code: trace.SpanStatusCode.ERROR });
-    span.end();
-    await provider.forceFlush();
-
-    return { statusCode: 500, body: JSON.stringify({ error: error.message }) };
-  }
 };
+
+function processRequest(body) {
+  return { status: "processed", request_id: body.request_id };
+}
 ```
 
 ## Sending Logs to Baselime
@@ -202,6 +210,7 @@ provider:
     BASELIME_API_KEY: ${ssm:/baselime/api-key}
     OTEL_SERVICE_NAME: order-processor
     OTEL_EXPORTER_OTLP_ENDPOINT: https://otel.baselime.io
+    OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
     OTEL_EXPORTER_OTLP_HEADERS: x-api-key=${ssm:/baselime/api-key}
 ```
 
