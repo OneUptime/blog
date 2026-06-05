@@ -55,28 +55,50 @@ The key to good thresholds is understanding what "normal" looks like for each me
 
 ```python
 # Compute statistical baselines from OTel metric history
+from datetime import datetime, timedelta, timezone
+import re
+
 import numpy as np
 import requests
 
-def compute_metric_baseline(prometheus_url, metric_name, service, lookback="14d", step="5m"):
+def parse_lookback(lookback):
+    match = re.fullmatch(r"(\d+)([dhm])", lookback)
+    if not match:
+        raise ValueError("lookback must use d, h, or m, such as 14d")
+
+    amount, unit = int(match.group(1)), match.group(2)
+    if unit == "d":
+        return timedelta(days=amount)
+    if unit == "h":
+        return timedelta(hours=amount)
+    return timedelta(minutes=amount)
+
+def compute_metric_baseline(prometheus_url, metric_name, service, lookback="14d", step="5m", hour_filter=None):
     """
     Query historical metric data and compute percentile-based baselines.
     Returns p50, p95, p99, and standard deviation.
     """
+    end_time = datetime.now(timezone.utc)
+    start_time = end_time - parse_lookback(lookback)
     query = f'{metric_name}{{service_name="{service}"}}'
     response = requests.get(
         f"{prometheus_url}/api/v1/query_range",
         params={
             "query": query,
-            "start": f"now-{lookback}",
-            "end": "now",
+            "start": start_time.isoformat(),
+            "end": end_time.isoformat(),
             "step": step
         }
     )
+    response.raise_for_status()
 
     values = []
     for result in response.json()["data"]["result"]:
         for timestamp, value in result["values"]:
+            if hour_filter is not None:
+                sample_hour = datetime.fromtimestamp(float(timestamp), timezone.utc).hour
+                if sample_hour != hour_filter:
+                    continue
             values.append(float(value))
 
     values = np.array(values)
@@ -118,7 +140,7 @@ flowchart TD
 
 ## Implementing Dynamic Thresholds in the Collector
 
-The OpenTelemetry Collector can evaluate threshold conditions before sending alerts. Use the `filter` processor to suppress metrics that fall within normal ranges, and only forward anomalous data points to your alerting backend.
+The OpenTelemetry Collector can evaluate threshold conditions before sending telemetry to an alerting backend that accepts OTLP metrics. Use the `filter` processor to suppress numeric metric data points that fall within normal ranges, and only forward anomalous data points to that backend.
 
 ```yaml
 # otel-collector-threshold-tuning.yaml
@@ -132,18 +154,17 @@ processors:
   # Filter out metric values within normal range
   # Only forward data points that exceed tuned thresholds
   filter/latency:
-    metrics:
-      datapoint:
-        - 'metric.name == "http.server.duration" and value_double < 500'
+    error_mode: ignore
+    metric_conditions:
+      - 'metric.name == "service.latency.p99_ms" and datapoint.value_double < 500'
 
   # Transform metrics to add threshold context
   transform:
+    error_mode: ignore
     metric_statements:
-      - context: datapoint
-        statements:
-          # Tag data points that exceed the p99 baseline
-          - set(attributes["threshold.exceeded"], "true")
-            where metric.name == "http.server.duration" and value_double > 890.0
+      # Tag data points that exceed the p99 baseline
+      - set(datapoint.attributes["threshold.exceeded"], "true")
+        where metric.name == "service.latency.p99_ms" and datapoint.value_double > 890.0
 
   batch:
     send_batch_size: 512
@@ -151,7 +172,7 @@ processors:
 
 exporters:
   otlp/alerting:
-    endpoint: "alertmanager:4317"
+    endpoint: "alerting-backend:4317"
   otlp/storage:
     endpoint: "metrics-backend:4317"
 
@@ -175,8 +196,6 @@ System behavior varies by time of day. A request rate that is alarming at 3 AM m
 
 ```python
 # Build time-of-day aware thresholds
-from datetime import datetime
-
 def compute_hourly_baselines(prometheus_url, metric_name, service, lookback="30d"):
     """
     Compute separate baselines for each hour of the day.
@@ -185,16 +204,9 @@ def compute_hourly_baselines(prometheus_url, metric_name, service, lookback="30d
     hourly_thresholds = {}
 
     for hour in range(24):
-        # Query only data points from this hour across all days
-        query = (
-            f'{metric_name}{{service_name="{service}"}} '
-            f'and on() hour(timestamp) == {hour}'
-        )
-        # In practice, you would filter in your query language
-        # This pseudocode illustrates the concept
-
+        # Keep only samples from this UTC hour across all days.
         baseline = compute_metric_baseline(
-            prometheus_url, metric_name, service, lookback
+            prometheus_url, metric_name, service, lookback, hour_filter=hour
         )
 
         # Set threshold at mean + 3 standard deviations for this hour
@@ -247,4 +259,4 @@ def recalibrate_thresholds(services, metrics_to_tune):
 
 ## Results You Can Expect
 
-Teams that adopt data-driven threshold tuning typically see a 40-60% reduction in alert volume within the first month. The alerts that remain are more meaningful, which restores engineer trust in the alerting system. The critical factor is treating threshold tuning as a continuous process rather than a one-time exercise. OpenTelemetry metrics provide the historical data foundation that makes this possible.
+Teams that adopt data-driven threshold tuning can reduce alert volume by removing alerts that repeatedly fire during normal behavior. The alerts that remain are more meaningful, which restores engineer trust in the alerting system. The critical factor is treating threshold tuning as a continuous process rather than a one-time exercise. OpenTelemetry metrics provide the historical data foundation that makes this possible.
