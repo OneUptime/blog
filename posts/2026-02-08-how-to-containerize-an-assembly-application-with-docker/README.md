@@ -25,7 +25,7 @@ mkdir asm-docker-demo
 cd asm-docker-demo
 ```
 
-Create a simpler starting point first, a program that writes an HTTP response to stdout:
+Create a simpler starting point first, a program that serves a fixed HTTP response:
 
 ```nasm
 ; hello.asm - simple "Hello World" using Linux syscalls
@@ -35,7 +35,7 @@ section .data
     ; HTTP response as a static string
     response db "HTTP/1.1 200 OK", 13, 10
              db "Content-Type: text/plain", 13, 10
-             db "Content-Length: 28", 13, 10
+             db "Content-Length: 30", 13, 10
              db 13, 10
              db "Hello from Assembly in Docker!"
     response_len equ $ - response
@@ -136,7 +136,7 @@ FROM ubuntu:22.04 AS builder
 # Install NASM assembler and linker
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-    nasm binutils \
+    nasm binutils file \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -147,7 +147,7 @@ COPY hello.asm ./
 # Assemble and link
 # -f elf64: output 64-bit ELF object file
 # -static: create a statically linked binary
-# -nostdlib: don't link against libc
+# -nostdlib: only search explicitly specified library directories
 RUN nasm -f elf64 hello.asm -o hello.o && \
     ld -static -nostdlib hello.o -o server
 
@@ -162,7 +162,7 @@ EXPOSE 8080
 CMD ["/server"]
 ```
 
-This creates what might be the smallest functional Docker image you will ever see. The binary is typically under 2 KB, and the total image size is under 10 KB.
+This creates what might be one of the smallest functional Docker images you will ever see. The binary is typically only a few KB to a few tens of KB, and the final image is usually dominated by that single binary.
 
 ## Understanding the Build Process
 
@@ -177,7 +177,7 @@ nasm -f elf64 hello.asm -o hello.o   # Assemble to 64-bit ELF object
 ld -static -nostdlib hello.o -o server # Link into static executable
 ```
 
-The `-nostdlib` flag means we are not linking against the C standard library. Our program talks directly to the Linux kernel through syscalls. This is what makes the binary so small.
+The direct `ld` command does not link the C standard library. Our program talks directly to the Linux kernel through syscalls, and `-nostdlib` prevents library directories from being searched unless you specify them explicitly. This is what makes the binary so small.
 
 ## Adding Health Check Support
 
@@ -191,7 +191,7 @@ section .data
     ; Response for root path
     root_response db "HTTP/1.1 200 OK", 13, 10
                   db "Content-Type: text/plain", 13, 10
-                  db "Content-Length: 30", 13, 10
+                  db "Content-Length: 31", 13, 10
                   db 13, 10
                   db "Hello from Assembly in Docker!", 10
     root_response_len equ $ - root_response
@@ -379,8 +379,8 @@ Assembly Docker images are extraordinarily small:
 
 | Component | Size |
 |-----------|------|
-| Assembly binary | ~2-4 KB |
-| Docker image (scratch) | ~10 KB |
+| Assembly binary | ~4-20 KB |
+| Docker image (scratch) | roughly the binary size |
 | Compared to Alpine | ~7 MB |
 | Compared to Ubuntu | ~78 MB |
 
@@ -401,11 +401,11 @@ RUN apt-get update && \
 WORKDIR /app
 COPY server.asm ./
 
-# Assemble as position-independent code for libc linking
+# Assemble to a 64-bit ELF object for libc linking
 RUN nasm -f elf64 server.asm -o server.o
 
 # Link with gcc to get libc support
-RUN gcc -static -o server server.o -lc -nostartfiles
+RUN gcc -static -no-pie -nostartfiles -o server server.o -lc
 
 FROM scratch
 COPY --from=builder /app/server /server
@@ -432,8 +432,10 @@ WORKDIR /app
 # Copy architecture-specific source
 COPY src/${TARGETARCH}/ ./
 
-RUN nasm -f elf64 server.asm -o server.o && \
-    ld -static -nostdlib server.o -o server
+RUN case "$TARGETARCH" in \
+      amd64) nasm -f elf64 server.asm -o server.o && ld -static -nostdlib server.o -o server ;; \
+      *) echo "Add assembler and linker commands for $TARGETARCH" >&2; exit 1 ;; \
+    esac
 
 FROM scratch
 COPY --from=builder /app/server /server
@@ -441,7 +443,7 @@ EXPOSE 8080
 CMD ["/server"]
 ```
 
-This expects different assembly source directories for each architecture (amd64, arm64, etc.).
+This expects different assembly source directories for each architecture (amd64, arm64, etc.). The NASM command shown only handles x86-64/amd64; other architectures need their own assembler and linker commands.
 
 ## Debugging Assembly in Docker
 
@@ -476,8 +478,8 @@ The `--cap-add=SYS_PTRACE` flag is required for GDB to attach to processes insid
 
 ## Monitoring
 
-Even bare-metal assembly servers need monitoring in production. [OneUptime](https://oneuptime.com) can hit the `/health` endpoint to verify your assembly server is responding correctly. Since assembly servers have no garbage collector and no runtime overhead, their response times are the most predictable of any language, so any deviation from baseline performance signals a real infrastructure issue.
+Even bare-metal assembly servers need monitoring in production. [OneUptime](https://oneuptime.com) can hit the `/health` endpoint to verify your assembly server is responding correctly. Since this assembly server has no garbage collector and no managed runtime overhead, response times can be very predictable, so deviations from baseline performance are worth investigating.
 
 ## Summary
 
-Containerizing assembly applications produces the smallest possible Docker images, often under 10 KB. The pattern is simple: use NASM and ld in the builder stage, copy the static binary to scratch. The resulting container has no shell, no libraries, and no attack surface beyond the binary itself. While most production applications are better served by higher-level languages, assembly containers demonstrate Docker's flexibility and provide the ultimate baseline for understanding what containers really are: isolated Linux processes running a single binary.
+Containerizing assembly applications produces extremely small Docker images, often only a few KB to a few tens of KB. The pattern is simple: use NASM and ld in the builder stage, copy the static binary to scratch. The resulting container has no shell, no libraries, and no attack surface beyond the binary itself. While most production applications are better served by higher-level languages, assembly containers demonstrate Docker's flexibility and provide the ultimate baseline for understanding what containers really are: isolated Linux processes running a single binary.
