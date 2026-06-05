@@ -2,11 +2,11 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Attributes Processor, Hashing, SHA-256, Privacy
+Tags: OpenTelemetry, Attributes Processor, Hashing, SHA-1, Privacy
 
-Description: Configure the OpenTelemetry Collector attributes processor to hash sensitive user IDs with SHA-256 so you can correlate without exposing PII.
+Description: Configure the OpenTelemetry Collector attributes processor to hash sensitive user IDs with SHA-1 so you can correlate without exposing PII.
 
-Hashing user IDs before they leave your infrastructure gives you the best of both worlds: you can still correlate traces and logs for a specific user across services, but you never expose the actual user identity to your observability backend. SHA-256 hashing is deterministic, meaning the same user ID always produces the same hash, preserving your ability to group and filter data.
+Hashing user IDs before they leave your infrastructure gives you the best of both worlds: you can still correlate traces and logs for a specific user across services, but you never expose the actual user identity to your observability backend. SHA-1 hashing is deterministic, meaning the same user ID always produces the same hash, preserving your ability to group and filter data.
 
 ## Why Hash Instead of Redact
 
@@ -18,20 +18,20 @@ If you redact a user ID entirely (replacing it with "REDACTED"), you lose the ab
 user.id: "john.doe@company.com"
 
 # After hashing
-user.id: "a8cfcd74832004951b4408cdb0a5dbcd8c7e52d43f7fe244bf720582e05241da"
+user.id: "3d7ee2b6070db641abc879e7ec1c7eae26a20b48"
 ```
 
-Two different requests from john.doe@company.com will produce the same hash, so you can still find all their traces. But nobody looking at the hash can determine the original email.
+Two different requests from john.doe@company.com will produce the same hash, so you can still find all their traces. But the hash does not directly expose the original email.
 
 ## Using the Attributes Processor Hash Action
 
-The attributes processor supports a `hash` action that applies SHA-256 to the attribute value:
+The attributes processor supports a `hash` action that applies SHA-1 to the attribute value:
 
 ```yaml
 processors:
   attributes/hash-user:
     actions:
-      # Hash the user.id attribute using SHA-256
+      # Hash the user.id attribute using SHA-1
       - key: user.id
         action: hash
       # Hash other sensitive identifiers
@@ -41,7 +41,7 @@ processors:
         action: hash
 ```
 
-That is all it takes. The `hash` action automatically uses SHA-256 and replaces the original value with the hex-encoded hash.
+That is all it takes. The `hash` action automatically uses SHA-1 and replaces the original value with the hex-encoded hash.
 
 ## Complete Configuration
 
@@ -159,17 +159,17 @@ import hashlib
 
 def hash_user_id(user_id: str) -> str:
     """
-    Produce the same SHA-256 hash that the OTel Collector
+    Produce the same SHA-1 hash that the OTel Collector
     attributes processor generates.
     """
-    return hashlib.sha256(user_id.encode('utf-8')).hexdigest()
+    return hashlib.sha1(user_id.encode('utf-8')).hexdigest()
 
 # Build a lookup from your user database
 user_ids = ["john.doe@company.com", "jane.smith@company.com"]
 lookup = {hash_user_id(uid): uid for uid in user_ids}
 
 # During incident response, look up the original
-hashed = "a8cfcd74832004951b4408cdb0a5dbcd8c7e52d43f7fe244bf720582e05241da"
+hashed = "3d7ee2b6070db641abc879e7ec1c7eae26a20b48"
 original = lookup.get(hashed, "unknown")
 print(f"Hash {hashed[:16]}... belongs to {original}")
 ```
@@ -178,7 +178,7 @@ Store this lookup in a secure, access-controlled system. The whole point of hash
 
 ## Using Transform Processor for Conditional Hashing
 
-If you only want to hash user IDs for certain services or environments, use the transform processor with OTTL conditions:
+If you only want to hash user IDs for certain services or environments, or if you require SHA-256 instead of the attributes processor's SHA-1 hash action, use the transform processor with OTTL conditions:
 
 ```yaml
 processors:
@@ -190,16 +190,16 @@ processors:
           - set(attributes["user.id"], SHA256(attributes["user.id"])) where resource.attributes["deployment.environment"] == "production" and attributes["user.id"] != nil
 ```
 
-Note that the OTTL `SHA256` function produces the same output as the attributes processor hash action, so your hashes will be consistent regardless of which method you use.
+Note that the OTTL `SHA256` function does not produce the same output as the attributes processor hash action. Use OTTL `SHA1` when you need consistency with the attributes processor, or `SHA256` when you specifically need SHA-256.
 
 ## Verifying the Hash Output
 
 Test your configuration by sending a known value and checking the output:
 
 ```bash
-# Expected SHA-256 of "test-user-123"
-echo -n "test-user-123" | sha256sum
-# Should output: 7c1a8d0f1c2b3e4a5d6c7b8a9f0e1d2c3b4a5f6e7d8c9b0a1f2e3d4c5b6a7f8
+# Expected SHA-1 of "test-user-123"
+printf '%s' "test-user-123" | sha1sum
+# Should output: e43ff8d002f2ba99a5057f5643d968cca0226065
 ```
 
 Compare this with the value you see in your backend after the Collector processes a span with `user.id: "test-user-123"`.
