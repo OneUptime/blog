@@ -8,7 +8,7 @@ Description: Learn how to migrate from Google Cloud Trace client libraries to Op
 
 ---
 
-Google Cloud Trace is the managed distributed tracing service on GCP. For years, developers used the Cloud Trace client libraries (or the older Stackdriver Trace SDK) to instrument their applications. Google has since shifted their recommendation toward OpenTelemetry. The Cloud Trace backend now natively accepts OTLP data, and Google contributes actively to the OpenTelemetry project. If you are still using the Cloud Trace client libraries, now is a good time to switch.
+Google Cloud Trace is the managed distributed tracing service on GCP. For years, developers used the Cloud Trace client libraries (or the older Stackdriver Trace SDK) to instrument their applications. Google has since shifted their recommendation toward OpenTelemetry. Google Cloud now provides the Telemetry (OTLP) API for sending OpenTelemetry trace data without a Cloud Trace-specific exporter, and Google contributes actively to the OpenTelemetry project. If you are still using the Cloud Trace client libraries, now is a good time to switch.
 
 This guide covers the migration from Google Cloud Trace client libraries to OpenTelemetry for Go, Python, and Node.js. We will show you how to remove the old libraries, set up OpenTelemetry, and configure the export pipeline.
 
@@ -20,7 +20,7 @@ The client libraries only export to Cloud Trace. If you want to send traces to a
 
 The Cloud Trace libraries also use a proprietary context propagation format. This can break distributed traces when your services communicate with systems outside GCP. OpenTelemetry defaults to W3C Trace Context, which is the industry standard.
 
-Google themselves recommend OpenTelemetry. The Cloud Trace documentation now points users to OpenTelemetry as the primary instrumentation approach, and the Cloud Trace client libraries receive only maintenance updates.
+Google themselves recommend OpenTelemetry. The Cloud Trace documentation now points users to OpenTelemetry as the primary instrumentation approach.
 
 ```mermaid
 graph LR
@@ -250,8 +250,8 @@ Here is the Node.js setup.
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
 const { TraceExporter } = require('@google-cloud/opentelemetry-cloud-trace-exporter');
-const { GcpDetector } = require('@opentelemetry/resource-detector-gcp');
-const { Resource } = require('@opentelemetry/resources');
+const { gcpDetector } = require('@opentelemetry/resource-detector-gcp');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 
 // Create the Google Cloud Trace exporter
 const traceExporter = new TraceExporter({
@@ -259,7 +259,7 @@ const traceExporter = new TraceExporter({
 });
 
 const sdk = new NodeSDK({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     'service.name': 'my-app',
     'service.version': '1.0.0',
   }),
@@ -271,7 +271,7 @@ const sdk = new NodeSDK({
   instrumentations: [getNodeAutoInstrumentations()],
 
   // Detect GCP resource attributes (project, zone, instance)
-  resourceDetectors: [new GcpDetector()],
+  resourceDetectors: [gcpDetector],
 });
 
 // Start the SDK before your application imports
@@ -382,7 +382,7 @@ graph TD
 
 ## Running on Google Cloud Run or GKE
 
-If your application runs on Cloud Run, you can use the OTLP endpoint that Cloud Run provides natively. Set the `OTEL_EXPORTER_OTLP_ENDPOINT` environment variable and Cloud Run will forward your traces to Cloud Trace without needing a separate Collector.
+If your application runs on Cloud Run, incoming requests automatically generate traces in Cloud Trace, and the `traceparent` header is populated for request propagation. For custom OpenTelemetry spans, either export directly to Google Cloud's Telemetry API by setting `OTEL_EXPORTER_OTLP_ENDPOINT=https://telemetry.googleapis.com` and configuring authentication, or run an OpenTelemetry Collector, for example as a sidecar or separate Cloud Run service.
 
 For GKE, deploy the Collector as a DaemonSet so every node has a local Collector instance. This minimizes network hops and provides a central place to manage your export configuration.
 
@@ -428,8 +428,8 @@ After deploying, check these things to confirm your traces are flowing correctly
 4. Test cross-service tracing by following a request through multiple services
 5. If you configured multiple exporters, verify data appears in all backends
 
-Watch out for authentication. The Google Cloud Trace exporter uses Application Default Credentials. Make sure your application has the `roles/cloudtrace.agent` IAM role, or the spans will be silently dropped.
+Watch out for authentication. The Google Cloud Trace exporter uses Application Default Credentials. Make sure your application has the `roles/cloudtrace.agent` IAM role, or spans will fail to appear in Cloud Trace. If you export directly to Google Cloud's Telemetry (OTLP) API instead, grant `roles/telemetry.tracesWriter`.
 
 ## Summary
 
-Replacing Google Cloud Trace client libraries with OpenTelemetry aligns your instrumentation with the industry standard and gives you the flexibility to send traces anywhere. Google actively supports this migration path through the `opentelemetry-operations-go` project and the Cloud Trace OTLP endpoint. The key steps are removing the old libraries, installing OpenTelemetry with the GCP exporter, translating any manual instrumentation, and optionally deploying a Collector for flexible routing.
+Replacing Google Cloud Trace client libraries with OpenTelemetry aligns your instrumentation with the industry standard and gives you the flexibility to send traces anywhere. Google actively supports this migration path through the `opentelemetry-operations-go` project, the Google Cloud exporters, and the Telemetry (OTLP) API. The key steps are removing the old libraries, installing OpenTelemetry with the GCP exporter, translating any manual instrumentation, and optionally deploying a Collector for flexible routing.
