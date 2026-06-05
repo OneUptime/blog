@@ -77,7 +77,7 @@ The `socks5h://` protocol (note the `h`) tells curl to resolve DNS through the S
 
 ## Method 3: Transparent Tor Proxy
 
-For applications that do not support SOCKS proxy configuration, you can run a transparent proxy that intercepts all traffic and routes it through Tor. This requires no application changes.
+For applications that do not support SOCKS proxy configuration, you can run a transparent proxy with NAT rules that intercept TCP and DNS traffic and route it through Tor. This requires no application changes in the app container, but the app must share the proxy container's network namespace so the iptables rules apply.
 
 Create a Dockerfile for a transparent Tor proxy:
 
@@ -97,7 +97,7 @@ RUN echo "VirtualAddrNetworkIPv4 10.192.0.0/10" >> /etc/tor/torrc && \
 
 EXPOSE 9040 9050 5353
 
-CMD ["tor", "-f", "/etc/tor/torrc"]
+CMD ["sh", "-c", "iptables -t nat -A OUTPUT -m owner --uid-owner \"$(id -u tor)\" -j RETURN && iptables -t nat -A OUTPUT -o lo -j RETURN && iptables -t nat -A OUTPUT -p udp --dport 53 -j REDIRECT --to-ports 5353 && iptables -t nat -A OUTPUT -p tcp --syn -j REDIRECT --to-ports 9040 && exec tor -f /etc/tor/torrc"]
 ```
 
 Build and run it:
@@ -109,28 +109,36 @@ docker build -t tor-transparent -f Dockerfile.tor-transparent .
 # Run the transparent proxy
 docker run -d \
   --name tor-transparent \
+  --cap-add NET_ADMIN \
   --network tor-net \
   tor-transparent
+
+# Run an application in the proxy's network namespace
+docker run --rm \
+  --network container:tor-transparent \
+  alpine/curl \
+  https://check.torproject.org/api/ip
 ```
 
-## Method 4: Sharing Network Namespace
+## Method 4: Sharing Network Namespace for Localhost Proxy Access
 
-For complete traffic interception without application configuration, use Docker's network namespace sharing:
+If you prefer the SOCKS proxy approach but want the proxy available on localhost inside the app container, use Docker's network namespace sharing:
 
 ```bash
 # Start the Tor proxy container
 docker run -d \
   --name tor-gateway \
-  --cap-add NET_ADMIN \
   dperson/torproxy
 
-# Route all traffic from an app container through Tor
+# Use the Tor SOCKS proxy from the shared network namespace
 docker run --rm \
   --network container:tor-gateway \
-  alpine/curl https://check.torproject.org/api/ip
+  alpine/curl \
+  -x socks5h://127.0.0.1:9050 \
+  https://check.torproject.org/api/ip
 ```
 
-With `--network container:tor-gateway`, the app container shares the Tor container's network stack. All traffic exits through Tor.
+With `--network container:tor-gateway`, the app container shares the Tor container's network stack, so the Tor SOCKS proxy is reachable at `127.0.0.1:9050`. This does not automatically intercept direct connections; applications still need to use the SOCKS proxy unless you add transparent proxy iptables rules as shown above.
 
 ## Docker Compose Setup
 
@@ -213,12 +221,7 @@ pip install requests[socks]
 
 ## Rotating Tor Exit Nodes
 
-Tor periodically changes circuits (and therefore exit IPs) automatically. If you need to force a new circuit, send a signal to the Tor process:
-
-```bash
-# Force Tor to establish a new circuit (new exit IP)
-docker exec tor-proxy sh -c 'echo -e "AUTHENTICATE\r\nSIGNAL NEWNYM\r\n" | nc 127.0.0.1 9051'
-```
+Tor periodically builds new circuits automatically, and new circuits may use different exit nodes. If you need to ask Tor to use clean circuits for new connections, send a `NEWNYM` signal to the Tor process.
 
 For this to work, you need to enable the Tor control port. Create a custom torrc:
 
@@ -234,6 +237,13 @@ Generate the password hash:
 ```bash
 # Generate a hashed password for the Tor control port
 docker run --rm dperson/torproxy tor --hash-password "mypassword"
+```
+
+Then authenticate with that password when sending the control command:
+
+```bash
+# Ask Tor to use clean circuits for new connections
+docker exec tor-proxy sh -c 'printf "AUTHENTICATE \"mypassword\"\r\nSIGNAL NEWNYM\r\nQUIT\r\n" | nc 127.0.0.1 9051'
 ```
 
 ## Accessing .onion Services
@@ -308,10 +318,10 @@ Check if Tor is connected and working:
 
 ```bash
 # Check Tor's bootstrap status
-docker exec tor-proxy sh -c "cat /var/lib/tor/notices.log | tail -5"
+docker logs --tail 20 tor-proxy
 
-# Verify circuit establishment
-docker exec tor-proxy sh -c 'echo -e "AUTHENTICATE\r\nGETINFO circuit-status\r\n" | nc 127.0.0.1 9051'
+# Verify circuit establishment if you enabled a control password
+docker exec tor-proxy sh -c 'printf "AUTHENTICATE \"mypassword\"\r\nGETINFO circuit-status\r\nQUIT\r\n" | nc 127.0.0.1 9051'
 
 # Quick connectivity test
 docker run --rm --network tor-net alpine/curl \
@@ -322,4 +332,4 @@ docker run --rm --network tor-net alpine/curl \
 
 ## Summary
 
-Forwarding Docker container traffic through Tor is straightforward with a dedicated proxy container. Use the SOCKS5 proxy approach when your application supports proxy configuration. Use network namespace sharing for transparent proxying without application changes. Always resolve DNS through the Tor proxy to prevent DNS leaks, and keep Tor traffic isolated on a dedicated Docker network. Whether you need anonymous testing, privacy-focused services, or access to .onion sites, Docker makes it easy to integrate Tor into your container workflow.
+Forwarding Docker container traffic through Tor is straightforward with a dedicated proxy container. Use the SOCKS5 proxy approach when your application supports proxy configuration. Use transparent proxying with iptables rules and network namespace sharing when you need to route traffic without application changes. Always resolve DNS through the Tor proxy to prevent DNS leaks, and keep Tor traffic isolated on a dedicated Docker network. Whether you need anonymous testing, privacy-focused services, or access to .onion sites, Docker makes it easy to integrate Tor into your container workflow.
