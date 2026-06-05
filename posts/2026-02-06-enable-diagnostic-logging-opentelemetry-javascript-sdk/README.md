@@ -19,7 +19,7 @@ OpenTelemetry's diagnostic logging lives in the `@opentelemetry/api` package. It
 The key components are:
 
 - `diag`: The global diagnostic logger access point
-- `DiagConsoleLogger`: A built-in logger that writes to `console.log`, `console.warn`, and `console.error`
+- `DiagConsoleLogger`: A built-in logger that writes to the corresponding console methods, such as `console.error`, `console.warn`, `console.info`, `console.debug`, and `console.trace`
 - `DiagLogLevel`: An enum that controls which messages are shown
 
 ## Basic Setup
@@ -50,11 +50,11 @@ sdk.start();
 console.log('SDK started with diagnostic logging enabled');
 ```
 
-The order matters. You must call `diag.setLogger()` before creating the SDK instance. Many important diagnostic messages are emitted during SDK initialization, such as which instrumentations are being registered and whether exporters can reach their endpoints. If you set the logger after initialization, you miss all of that.
+The order matters. You must call `diag.setLogger()` before creating the SDK instance. Many important diagnostic messages are emitted during SDK initialization, such as which instrumentations are being registered, and exporter failures are logged later when the SDK attempts to export telemetry. If you set the logger after initialization, you miss the setup messages.
 
 ## Understanding Log Levels
 
-The `DiagLogLevel` enum provides five levels, each including all messages from levels above it:
+The `DiagLogLevel` enum provides seven level settings. Each severity threshold includes messages at that level and less verbose, more severe levels:
 
 ```javascript
 const { DiagLogLevel } = require('@opentelemetry/api');
@@ -245,10 +245,10 @@ node app.js 2>&1 | grep -i "sampl"
 Once you have resolved your issue, remember to disable or reduce the log level of diagnostic logging. DEBUG-level logging adds overhead because every diagnostic message involves string formatting and I/O operations, even when the underlying tracing is working perfectly.
 
 ```javascript
-const { diag, DiagLogLevel } = require('@opentelemetry/api');
+const { diag, DiagConsoleLogger, DiagLogLevel } = require('@opentelemetry/api');
 
 // Disable diagnostic logging entirely for production
-diag.setLogger(undefined, DiagLogLevel.NONE);
+diag.disable();
 
 // Or keep only error-level logging as a safety net
 // This has minimal overhead and catches critical failures
