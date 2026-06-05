@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Observability, Ride-Sharing, Distributed Tracing, Microservice, Monitoring
 
-Description: Learn how to build full-stack observability for a ride-sharing platform using OpenTelemetry, covering tracing, metrics, and logs across matching, pricing, and dispatch services.
+Description: Learn how to build full-stack observability for a ride-sharing platform using OpenTelemetry, covering tracing and metrics across matching, pricing, and dispatch services.
 
 ---
 
@@ -55,7 +55,7 @@ def configure_opentelemetry(service_name: str, service_version: str = "1.0.0"):
     resource = Resource.create({
         SERVICE_NAME: service_name,
         SERVICE_VERSION: service_version,
-        "deployment.environment": "production",
+        "deployment.environment.name": "production",
         "service.namespace": "ride-sharing",
     })
 
@@ -99,7 +99,7 @@ match_attempts = meter.create_counter(
     name="ride.match.attempts",
     description="Number of match attempts by outcome",
 )
-nearby_drivers_gauge = meter.create_histogram(
+nearby_drivers_count = meter.create_histogram(
     name="ride.nearby_drivers.count",
     description="Number of drivers available within matching radius",
 )
@@ -129,7 +129,7 @@ async def find_match(ride_request):
                 vehicle_type=ride_request.vehicle_type,
             )
             driver_span.set_attribute("drivers.found", len(drivers))
-            nearby_drivers_gauge.record(len(drivers))
+            nearby_drivers_count.record(len(drivers))
 
         if not drivers:
             span.set_attribute("match.outcome", "no_drivers")
@@ -241,7 +241,7 @@ The span events within the dispatch flow are particularly valuable. When you are
 
 ## Collector Configuration for Ride-Sharing Telemetry
 
-The OpenTelemetry Collector acts as a central hub for all telemetry data. For a ride-sharing platform, you want to configure it to handle high-throughput data while applying useful transformations.
+The OpenTelemetry Collector acts as a central hub for all telemetry data. For a ride-sharing platform, you want to configure it to handle high-throughput data while applying useful transformations. The tail sampling processor used below is available in Collector distributions that include contrib components, such as `otelcol-contrib`.
 
 ```yaml
 # otel-collector-config.yaml
