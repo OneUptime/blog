@@ -104,13 +104,14 @@ import { defineConfig } from "vite";
 export default defineConfig({
   plugins: [
     remix({
-      // Server entry for the Node.js adapter
+      // Emit an ESM server build for Node.js
       serverModuleFormat: "esm",
     }),
   ],
-  // Set the server to listen on all interfaces inside Docker
+  // Set the development server to listen on all interfaces inside Docker
   server: {
     host: "0.0.0.0",
+    port: 3000,
   },
 });
 ```
@@ -121,11 +122,11 @@ The build command (`remix vite:build` or `npm run build`) produces output in `bu
 
 For production Docker deployments, you might want a custom Express server instead of the built-in Remix server. This gives you more control over middleware, logging, and health checks:
 
-```typescript
-// server.ts - Custom Express server for Remix
+```javascript
+// server.mjs - Custom Express server for Remix
 import express from "express";
 import { createRequestHandler } from "@remix-run/express";
-import path from "path";
+import path from "node:path";
 
 const app = express();
 
@@ -148,7 +149,7 @@ app.get("/healthz", (_req, res) => {
 
 // Handle all other requests with Remix
 app.all(
-  "*",
+  /.*/,
   createRequestHandler({
     build: await import("./build/server/index.js"),
     mode: process.env.NODE_ENV,
@@ -174,7 +175,7 @@ RUN adduser --system --uid 1001 remix
 COPY --from=production-deps /app/node_modules ./node_modules
 COPY --from=builder /app/build ./build
 COPY --from=builder /app/public ./public
-COPY --from=builder /app/server.ts ./server.ts
+COPY --from=builder /app/server.mjs ./server.mjs
 COPY package.json .
 
 RUN chown -R remix:remix /app
@@ -183,7 +184,7 @@ USER remix
 EXPOSE 3000
 
 # Use the custom server entry point
-CMD ["node", "--import", "tsx", "server.ts"]
+CMD ["node", "server.mjs"]
 ```
 
 ## The .dockerignore File
@@ -261,7 +262,6 @@ services:
     command: npm run dev
     ports:
       - "3000:3000"
-      - "8002:8002"  # Remix hot module replacement WebSocket
     volumes:
       - ./app:/app/app
       - ./public:/app/public
@@ -273,7 +273,7 @@ services:
 ```
 
 ```bash
-docker compose -f docker-compose.dev.yml up
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up
 ```
 
 ## Handling Prisma with Remix
@@ -303,8 +303,9 @@ FROM node:20-alpine AS production-deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY prisma ./prisma
-RUN npm ci --omit=dev
+RUN npm ci
 RUN npx prisma generate
+RUN npm prune --omit=dev
 
 FROM node:20-alpine AS runner
 WORKDIR /app
@@ -334,6 +335,8 @@ Remix handles environment variables on the server side. For client-side access, 
 
 ```typescript
 // app/root.tsx - Expose selected env vars to the client
+import { json } from "@remix-run/node";
+
 export async function loader() {
   return json({
     ENV: {
