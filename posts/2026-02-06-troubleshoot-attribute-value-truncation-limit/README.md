@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Attribute, Truncation, SDK
 
-Description: Troubleshoot and fix span attribute value truncation caused by SDK attribute length limits that silently cut long values.
+Description: Troubleshoot and fix span attribute value truncation caused by configured attribute length limits.
 
-You set a span attribute with a full SQL query, a request body, or a stack trace, but when you view the span in your backend, the value is cut off mid-sentence. The SDK is silently truncating attribute values that exceed the configured length limit. This post explains how to detect, configure, and work around this behavior.
+You set a span attribute with a full SQL query, a request body, or a stack trace, but when you view the span in your backend, the value is cut off mid-sentence. The SDK or telemetry pipeline may be truncating attribute values that exceed the configured length limit. This post explains how to detect, configure, and work around this behavior.
 
 ## Understanding Attribute Length Limits
 
-The OpenTelemetry SDK has configurable limits on attribute value length. While the default varies by SDK implementation, many set no limit by default, but the OTEL specification recommends backends and SDKs consider reasonable limits. Some SDKs and auto-instrumentation configurations set explicit limits.
+The OpenTelemetry SDK has configurable limits on attribute value length. The OpenTelemetry specification default for attribute value length is no limit, but SDKs, auto-instrumentation, or backend-specific configurations can set explicit limits.
 
 ```python
 # Check the current limit in Python
@@ -23,13 +23,14 @@ provider = TracerProvider()
 ```
 
 ```bash
-# Environment variable that controls this
-OTEL_ATTRIBUTE_VALUE_LENGTH_LIMIT=1024  # Truncate values longer than 1024 characters
+# Environment variables that control this
+OTEL_ATTRIBUTE_VALUE_LENGTH_LIMIT=1024       # Global attribute value length limit
+OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT=1024  # Span-specific limit; takes precedence for span attributes
 ```
 
 ## Detecting Truncation
 
-Truncation is silent. The SDK does not log a warning when it truncates a value. You have to notice the truncated data in your backend:
+Truncation is often silent. The OpenTelemetry specification allows SDKs to log when a value is truncated, but does not require every implementation or pipeline to surface a warning. You usually notice the truncated data in your backend:
 
 ```python
 # You set this
@@ -43,8 +44,10 @@ To verify truncation is happening:
 
 ```python
 import os
-limit = os.environ.get("OTEL_ATTRIBUTE_VALUE_LENGTH_LIMIT")
-print(f"Attribute length limit: {limit}")
+global_limit = os.environ.get("OTEL_ATTRIBUTE_VALUE_LENGTH_LIMIT")
+span_limit = os.environ.get("OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT")
+print(f"Global attribute length limit: {global_limit}")
+print(f"Span attribute length limit: {span_limit}")
 
 # If a limit is set and your values are longer, they will be truncated
 ```
@@ -54,9 +57,11 @@ print(f"Attribute length limit: {limit}")
 ```bash
 # Remove the limit entirely (no truncation)
 unset OTEL_ATTRIBUTE_VALUE_LENGTH_LIMIT
+unset OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT
 
 # Or increase it to accommodate your longest values
 export OTEL_ATTRIBUTE_VALUE_LENGTH_LIMIT=4096
+export OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT=4096
 ```
 
 In code:
@@ -66,7 +71,7 @@ from opentelemetry.sdk.trace import TracerProvider, SpanLimits
 
 provider = TracerProvider(
     span_limits=SpanLimits(
-        max_attribute_length=4096,  # Allow up to 4096 characters
+        max_span_attribute_length=4096,  # Allow span attributes up to 4096 characters
         # Or set to None for unlimited (be careful with memory)
     )
 )
@@ -75,17 +80,18 @@ provider = TracerProvider(
 For Go:
 
 ```go
+limits := trace.NewSpanLimits()
+limits.AttributeValueLengthLimit = 4096
+
 provider := trace.NewTracerProvider(
-    trace.WithSpanLimits(trace.SpanLimits{
-        AttributeValueLengthLimit: 4096,
-    }),
+    trace.WithRawSpanLimits(limits),
 )
 ```
 
 For Java:
 
 ```bash
-export OTEL_ATTRIBUTE_VALUE_LENGTH_LIMIT=4096
+export OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT=4096
 ```
 
 ## Fix 2: Truncate Intentionally with Context
@@ -103,9 +109,9 @@ span.set_attribute("db.statement", safe_attribute(sql_query))
 span.set_attribute("http.request.body", safe_attribute(request_body))
 ```
 
-## Fix 3: Use Span Events for Long Data
+## Fix 3: Use Span Events for Exception Details
 
-If you need to attach large text data (like stack traces or request bodies), consider using span events instead of attributes. Events can carry longer data:
+If you need to attach exception details, consider using span events instead of span attributes. Event attributes may still be subject to attribute value length limits, but events are the right place for point-in-time exception data:
 
 ```python
 # Instead of a long attribute
@@ -155,10 +161,10 @@ processors:
       - context: span
         statements:
           # Truncate specific attributes that tend to be long
-          - truncate_all(attributes, 4096)
+          - truncate_all(span.attributes, 4096)
           # Or truncate specific attributes
-          - set(attributes["db.statement"], Substring(attributes["db.statement"], 0, 2048))
-            where attributes["db.statement"] != nil
+          - set(span.attributes["db.statement"], Substring(span.attributes["db.statement"], 0, 2048))
+            where span.attributes["db.statement"] != nil
 ```
 
 ## Common Attributes That Get Truncated
@@ -175,13 +181,13 @@ These attributes frequently exceed default limits:
 
 ## Checking the Collector's Limits
 
-The Collector itself does not truncate attributes by default, but some exporters have payload size limits:
+The Collector itself does not truncate attributes by default, but OTLP/gRPC receivers and backends can have message size limits:
 
 ```yaml
 exporters:
   otlp:
     endpoint: "backend:4317"
-    # gRPC message size limit (default 4MB)
+    # The receiving endpoint may enforce a gRPC message size limit
     # If your spans are too large due to long attributes,
     # exports might fail
 ```
@@ -192,14 +198,14 @@ If exports fail due to message size, you will see:
 rpc error: code = ResourceExhausted desc = grpc: received message larger than max
 ```
 
-In this case, you need to either reduce attribute sizes or increase the gRPC message limit.
+In this case, you need to either reduce attribute sizes, reduce batch sizes, or increase the gRPC receive message limit on the receiving endpoint when you control it.
 
 ## Best Practices
 
-1. Set `OTEL_ATTRIBUTE_VALUE_LENGTH_LIMIT` explicitly rather than relying on defaults
+1. Set `OTEL_ATTRIBUTE_VALUE_LENGTH_LIMIT` or `OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT` explicitly rather than relying on defaults
 2. Parameterize SQL queries to reduce `db.statement` length
 3. Use span events for exception details and stack traces
 4. Use correlated logs for very large payloads
 5. Always include an indication when you intentionally truncate data
 
-Silent truncation is one of the most frustrating data quality issues because you do not know data is missing until you need it for debugging. Set your limits intentionally and handle long values explicitly.
+Unexpected truncation is one of the most frustrating data quality issues because you do not know data is missing until you need it for debugging. Set your limits intentionally and handle long values explicitly.
