@@ -73,11 +73,11 @@ The `-l` (latest) flag shows only the most recently created container.
 # Show the last created container
 docker ps -l
 
-# Show the last container even if it has exited
-docker ps -l -a
+# The latest container is shown even if it has exited
+docker ps -l
 ```
 
-The `-n` flag shows the last N containers:
+The `-n` flag shows the last N containers, including containers in all states:
 
 ```bash
 # Show the 5 most recently created containers
