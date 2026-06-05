@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Python, Asyncio, Context Propagation
 
 Description: Fix the problem where OpenTelemetry trace context is lost when creating asyncio tasks in Python async applications.
 
-When you create a new `asyncio.Task` in Python, the OpenTelemetry trace context may not automatically propagate to the new task. This causes spans created inside the task to become orphaned root spans instead of children of the current trace. The fix depends on your Python version and how you create the tasks.
+When you create a new `asyncio.Task` in Python, the OpenTelemetry trace context may not propagate if the task is created outside the active span context or if you are using an older Python/runtime setup without proper `contextvars` support. This causes spans created inside the task to become orphaned root spans instead of children of the current trace. The fix depends on your Python version and how you create the tasks.
 
 ## The Problem
 
@@ -24,20 +24,21 @@ async def process_item(item):
         return item
 
 async def handle_request(items):
+    # Tasks created here, before the span exists
+    tasks = [asyncio.create_task(process_item(item)) for item in items]
+
     with tracer.start_as_current_span("handle_request"):
-        # Creating tasks loses the context!
-        tasks = [asyncio.create_task(process_item(item)) for item in items]
         results = await asyncio.gather(*tasks)
         return results
 ```
 
-The `process_item` spans are disconnected from the `handle_request` span because `asyncio.create_task()` does not propagate the OpenTelemetry context to the new task by default.
+The `process_item` spans are disconnected from the `handle_request` span because the tasks were created before the `handle_request` span became current.
 
 ## Why Context Is Lost
 
 OpenTelemetry uses Python's `contextvars` module to store the current span context. In Python 3.7+, `asyncio.Task` automatically copies `contextvars` when the task is created. However, this behavior depends on how the task is created and which Python version you are using.
 
-The context copy happens at task creation time, not at coroutine creation time. If the coroutine is created outside the span context and the task is created later, the context will be wrong.
+The context copy happens at task creation time, not at coroutine creation time. If the task is created outside the span context, the context will be wrong.
 
 ## Fix 1: Verify contextvars Propagation (Python 3.7+)
 
@@ -139,17 +140,15 @@ async def handle_request(items):
         return [task.result() for task in results]
 ```
 
-## Common Pitfall: Coroutine Created Outside Span
+## Common Pitfall: Task Created Outside Span
 
 ```python
-# WRONG - coroutine created outside the span
+# WRONG - tasks created outside the span
 async def handle_request(items):
-    # Coroutines created here, before the span exists
-    coros = [process_item(item) for item in items]
+    # Tasks created here, before the span exists
+    tasks = [asyncio.create_task(process_item(item)) for item in items]
 
     with tracer.start_as_current_span("handle_request"):
-        # Tasks created inside span, but coroutines capture context at creation
-        tasks = [asyncio.create_task(coro) for coro in coros]
         results = await asyncio.gather(*tasks)
         return results
 ```
@@ -168,6 +167,8 @@ async def handle_request(items):
 Use a console exporter to check that parent-child relationships are correct:
 
 ```python
+from opentelemetry import trace
+from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import ConsoleSpanExporter, SimpleSpanProcessor
 
 provider = TracerProvider()
