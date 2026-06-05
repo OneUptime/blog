@@ -52,40 +52,41 @@ The declarative configuration ensures all three signal pipelines share the same 
 
 ```yaml
 # otel-config.yaml
-file_format: "0.3"
+file_format: "1.0"
 
 resource:
   attributes:
-    service.name: "${SERVICE_NAME}"
-    service.version: "${SERVICE_VERSION}"
-    service.namespace: "ecommerce"
-    deployment.environment.name: "${DEPLOY_ENV}"
+    - name: service.name
+      value: "${SERVICE_NAME}"
+    - name: service.version
+      value: "${SERVICE_VERSION}"
+    - name: service.namespace
+      value: "ecommerce"
+    - name: deployment.environment.name
+      value: "${DEPLOY_ENV}"
 
 # All three providers inherit the resource above
 tracer_provider:
   processors:
     - batch:
         exporter:
-          otlp:
+          otlp_grpc:
             endpoint: "${COLLECTOR_ENDPOINT}"
-            protocol: "grpc"
 
 meter_provider:
   readers:
     - periodic:
         interval: 30000
         exporter:
-          otlp:
+          otlp_grpc:
             endpoint: "${COLLECTOR_ENDPOINT}"
-            protocol: "grpc"
 
 logger_provider:
   processors:
     - batch:
         exporter:
-          otlp:
+          otlp_grpc:
             endpoint: "${COLLECTOR_ENDPOINT}"
-            protocol: "grpc"
 ```
 
 The key point: the `resource` block is defined once at the top level. Every span, metric, and log record emitted by this SDK instance will carry those exact same attributes.
@@ -98,14 +99,18 @@ Inconsistency creeps in when different teams or services define resources differ
 # Team A's service
 resource:
   attributes:
-    service.name: "checkout-svc"
-    env: "prod"
+    - name: service.name
+      value: "checkout-svc"
+    - name: env
+      value: "prod"
 
 # Team B's service
 resource:
   attributes:
-    service.name: "checkout-service"
-    deployment.environment: "production"
+    - name: service.name
+      value: "checkout-service"
+    - name: deployment.environment
+      value: "production"
 ```
 
 These refer to the same service but use different attribute names (`env` vs `deployment.environment`) and different values (`checkout-svc` vs `checkout-service`). Your observability backend will treat them as completely separate entities.
@@ -122,14 +127,20 @@ Create a shared base configuration that all services extend:
 resource:
   attributes:
     # Required attributes - every service must have these
-    service.name: "${SERVICE_NAME}"
-    service.version: "${SERVICE_VERSION}"
-    service.namespace: "${SERVICE_NAMESPACE}"
-    deployment.environment.name: "${DEPLOY_ENV}"
+    - name: service.name
+      value: "${SERVICE_NAME}"
+    - name: service.version
+      value: "${SERVICE_VERSION}"
+    - name: service.namespace
+      value: "${SERVICE_NAMESPACE}"
+    - name: deployment.environment.name
+      value: "${DEPLOY_ENV}"
 
     # Standard team attribution
-    team.name: "${TEAM_NAME}"
-    team.slack_channel: "${TEAM_SLACK}"
+    - name: team.name
+      value: "${TEAM_NAME}"
+    - name: team.slack_channel
+      value: "${TEAM_SLACK}"
 ```
 
 Each service then uses this as the basis for its configuration.
@@ -140,6 +151,11 @@ Even with a shared base, services might send telemetry with missing or inconsist
 
 ```yaml
 # collector-config.yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+
 processors:
   # Ensure required attributes exist
   resource/required:
@@ -180,6 +196,14 @@ processors:
             where attributes["env"] != nil and attributes["deployment.environment.name"] == nil
           - delete_key(attributes, "env")
 
+  batch:
+
+exporters:
+  otlp/backend:
+    endpoint: "${BACKEND_ENDPOINT}"
+    tls:
+      insecure: false
+
 service:
   pipelines:
     traces:
@@ -203,14 +227,16 @@ The OpenTelemetry SDK can auto-detect resource attributes from the runtime envir
 ```yaml
 resource:
   attributes:
-    service.name: "${SERVICE_NAME}"
-    service.version: "${SERVICE_VERSION}"
-  detectors:
-    - env          # reads OTEL_RESOURCE_ATTRIBUTES
-    - host         # detects host.name, host.id
-    - os           # detects os.type, os.description
-    - process      # detects process.pid, process.runtime.name
-    - container    # detects container.id (from cgroup)
+    - name: service.name
+      value: "${SERVICE_NAME}"
+    - name: service.version
+      value: "${SERVICE_VERSION}"
+  attributes_list: "${OTEL_RESOURCE_ATTRIBUTES}"  # reads OTEL_RESOURCE_ATTRIBUTES
+  detection/development:
+    detectors:
+      - host:       # detects host.name, host.id, and os.* attributes
+      - process:    # detects process.pid, process.runtime.name
+      - container:  # detects container.id (from cgroup)
 ```
 
 These detectors add attributes automatically, which saves you from hardcoding host and container information.
@@ -247,7 +273,11 @@ def validate_config(path):
         config = yaml.safe_load(f)
 
     resource = config.get("resource", {})
-    attrs = resource.get("attributes", {})
+    attrs_config = resource.get("attributes", [])
+    if isinstance(attrs_config, dict):
+        attrs = set(attrs_config.keys())
+    else:
+        attrs = {a.get("name") for a in attrs_config if isinstance(a, dict)}
     errors = []
 
     # Check required attributes
@@ -302,7 +332,7 @@ sum(rate(http_server_request_duration_seconds_count{
 {service_name="checkout-service", deployment_environment_name="production"}
 ```
 
-The same attribute names and values work across all three query languages because the underlying data is consistent.
+The same attribute concepts and values work across all three query languages because the underlying data is consistent. Some backends normalize resource attribute names when exposing them as labels, such as converting `service.name` to `service_name`.
 
 ## Wrapping Up
 
