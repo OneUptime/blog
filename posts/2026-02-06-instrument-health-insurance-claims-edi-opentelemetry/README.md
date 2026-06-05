@@ -37,9 +37,9 @@ metrics.set_meter_provider(MeterProvider(metric_readers=[metric_reader]))
 meter = metrics.get_meter("claims-processor", "1.0.0")
 
 claim_processing_latency = meter.create_histogram(
-    "claims.processing_latency_ms",
+    "claims.processing.duration",
     description="Time to process a claim through the pipeline",
-    unit="ms",
+    unit="s",
 )
 
 claims_submitted = meter.create_counter(
@@ -54,8 +54,8 @@ claims_rejected = meter.create_counter(
 
 claim_value = meter.create_histogram(
     "claims.billed_amount",
-    description="Billed amount per claim",
-    unit="usd",
+    description="Billed amount per claim in USD",
+    unit="{USD}",
 )
 
 
@@ -63,7 +63,7 @@ def process_837_claim(encounter_id, charge_data):
     """
     Process a charge into an EDI 837 claim and submit it.
     """
-    start = time.time()
+    start = time.perf_counter()
 
     with tracer.start_as_current_span("claims.837.process") as span:
         span.set_attribute("claims.encounter_id", encounter_id)
@@ -134,8 +134,8 @@ def process_837_claim(encounter_id, charge_data):
                 ))
                 return {"status": "rejected", "stage": "clearinghouse"}
 
-        duration_ms = (time.time() - start) * 1000
-        claim_processing_latency.record(duration_ms, {
+        duration_s = time.perf_counter() - start
+        claim_processing_latency.record(duration_s, {
             "transaction_type": "837P",
             "payer_id": charge_data["payer_id"],
         })
@@ -160,7 +160,7 @@ def process_835_remittance(edi_file_content):
     Process an incoming EDI 835 remittance advice file.
     A single 835 file can contain payment information for hundreds of claims.
     """
-    start = time.time()
+    start = time.perf_counter()
 
     with tracer.start_as_current_span("claims.835.process") as span:
         # Step 1: Parse the 835 EDI file
@@ -214,8 +214,8 @@ def process_835_remittance(edi_file_content):
         span.set_attribute("claims.835.payments_posted", posted_count)
         span.set_attribute("claims.835.denials", denial_count)
 
-        duration_ms = (time.time() - start) * 1000
-        claim_processing_latency.record(duration_ms, {"transaction_type": "835"})
+        duration_s = time.perf_counter() - start
+        claim_processing_latency.record(duration_s, {"transaction_type": "835"})
 
         return {
             "claims_processed": len(parsed["claims"]),
