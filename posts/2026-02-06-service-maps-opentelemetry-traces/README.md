@@ -44,7 +44,7 @@ Here is a Node.js example that ensures proper resource attributes are set:
 // Configure OpenTelemetry with the resource attributes needed for service map generation
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc');
-const { Resource } = require('@opentelemetry/resources');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 const { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } = require('@opentelemetry/semantic-conventions');
 const { HttpInstrumentation } = require('@opentelemetry/instrumentation-http');
 const { GrpcInstrumentation } = require('@opentelemetry/instrumentation-grpc');
@@ -52,10 +52,10 @@ const { GrpcInstrumentation } = require('@opentelemetry/instrumentation-grpc');
 const sdk = new NodeSDK({
   // Resource attributes identify this service in the service map
   // service.name is the most critical attribute for map generation
-  resource: new Resource({
+  resource: resourceFromAttributes({
     [ATTR_SERVICE_NAME]: 'order-service',
     [ATTR_SERVICE_VERSION]: '2.3.1',
-    'deployment.environment': 'production',
+    'deployment.environment.name': 'production',
     'service.namespace': 'ecommerce',
     'service.instance.id': process.env.HOSTNAME || 'local',
   }),
@@ -80,13 +80,13 @@ const sdk = new NodeSDK({
 sdk.start();
 ```
 
-The key attributes for service map generation are `service.name`, `service.namespace`, and `deployment.environment`. These let you group services by team or domain and filter maps by environment.
+The key attributes for service map generation are `service.name`, `service.namespace`, and `deployment.environment.name`. These let you group services by team or domain and filter maps by environment.
 
 ---
 
-## Using the Span Metrics Connector in the Collector
+## Using the Service Graph Connector in the Collector
 
-The OpenTelemetry Collector has a built-in connector called `spanmetrics` that extracts service-to-service dependency metrics from trace data. This is the most efficient way to generate service map data because it processes traces in a streaming fashion without storing the full trace.
+The OpenTelemetry Collector contrib and Kubernetes distributions include a connector called `service_graph` that extracts service-to-service dependency metrics from trace data. This is the most direct way to generate service map data because it pairs client and server spans, records edges, and emits metrics that visualization tools can query.
 
 ```yaml
 # otel-collector-config.yaml
@@ -98,24 +98,23 @@ receivers:
         endpoint: 0.0.0.0:4317
 
 connectors:
-  # The spanmetrics connector reads traces and produces metrics
+  # The service_graph connector reads traces and produces metrics
   # These metrics contain the service-to-service call information
-  spanmetrics:
+  service_graph:
     # Use the histogram of latencies for each service-to-service edge
-    histogram:
-      explicit:
-        buckets: [5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 5s]
+    latency_histogram_buckets: [5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 5s]
     # Include these attributes as metric dimensions
     # They become labels you can filter and group by
     dimensions:
-      - name: http.method
-      - name: http.status_code
-      - name: rpc.method
-      - name: rpc.service
+      - http.request.method
+      - http.response.status_code
+      - rpc.method
+      - rpc.service
     # Generate metrics for each service-to-service edge
     # This creates the data structure needed for service maps
-    dimensions_cache_size: 10000
-    aggregation_temporality: AGGREGATION_TEMPORALITY_CUMULATIVE
+    store:
+      ttl: 2s
+      max_items: 10000
 
 exporters:
   otlp/traces:
@@ -126,30 +125,30 @@ exporters:
 service:
   pipelines:
     # Traces flow in through OTLP and out to the backend
-    # They also feed into the spanmetrics connector
+    # They also feed into the service_graph connector
     traces:
       receivers: [otlp]
-      exporters: [otlp/traces, spanmetrics]
-    # Metrics from spanmetrics go to the same backend
+      exporters: [otlp/traces, service_graph]
+    # Metrics from service_graph go to the same backend
     metrics:
-      receivers: [spanmetrics]
+      receivers: [service_graph]
       exporters: [otlp/metrics]
 ```
 
-The `spanmetrics` connector produces metrics like `traces_spanmetrics_latency` and `traces_spanmetrics_calls_total` with labels for `service.name`, `span.name`, `span.kind`, `status.code`, and your custom dimensions. These metrics contain everything you need to draw a service map with annotated edges.
+The `service_graph` connector produces metrics like `traces_service_graph_request_total`, `traces_service_graph_request_failed_total`, `traces_service_graph_request_client`, and `traces_service_graph_request_server` with labels for `client`, `server`, `connection_type`, and your custom dimensions. These metrics contain everything you need to draw a service map with annotated edges.
 
 ---
 
 ## Building the Service Map Data Structure
 
-To render a service map, you need to transform the raw span data into a graph structure with nodes (services) and edges (dependencies). Here is a Python script that processes span metrics to build this graph:
+To render a service map from raw spans, you need to transform the span data into a graph structure with nodes (services) and edges (dependencies). Here is a Python script that processes span records to build this graph:
 
 ```python
 # build_service_map.py
 # Process OpenTelemetry span data to build a service dependency graph
 
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 @dataclass
 class ServiceNode:
@@ -194,7 +193,8 @@ def build_service_map(spans):
                 span.attributes.get("peer.service")
                 or span.attributes.get("db.system")
                 or span.attributes.get("messaging.system")
-                or extract_service_from_url(span.attributes.get("http.url", ""))
+                or extract_service_from_url(span.attributes.get("url.full", ""))
+                or span.attributes.get("server.address")
             )
 
             if target:
@@ -241,6 +241,8 @@ async function renderServiceMap(container) {
   // This returns nodes and edges with traffic metadata
   const response = await fetch('/api/service-map?env=production&window=5m');
   const { nodes, edges } = await response.json();
+  const width = container.clientWidth;
+  const height = container.clientHeight;
 
   // Color nodes based on their error rate
   // Green = healthy, yellow = degraded, red = failing
@@ -284,17 +286,17 @@ async function renderServiceMap(container) {
 
 Service maps built from trace data are only as accurate as your instrumentation. Here are common pitfalls and how to avoid them:
 
-1. **Missing `peer.service` attribute**: Without this, client spans cannot identify the downstream service. Set it explicitly in your instrumentation or configure semantic convention mapping in the Collector.
+1. **Missing downstream identity attributes**: For fully instrumented service-to-service calls, the connector pairs client and server spans. For uninstrumented downstream systems, attributes such as `peer.service`, `db.name`, `db.system`, and `messaging.system` help create useful virtual nodes.
 
 2. **Inconsistent `service.name` values**: If the same service reports different names (like "user-service" in one pod and "user-svc" in another), you get duplicate nodes. Standardize names through your deployment configuration.
 
 3. **Sampling artifacts**: If you sample traces aggressively, low-traffic edges might disappear from the map. Use tail-based sampling to ensure you keep at least some traces for every service pair.
 
-4. **Database and cache nodes**: External dependencies like PostgreSQL and Redis show up as nodes only if your instrumentation sets the `db.system` or `peer.service` attribute on client spans.
+4. **Database and cache nodes**: External dependencies like PostgreSQL and Redis show up as nodes only if your instrumentation sets useful database or peer attributes, such as `db.name`, `db.system`, or `peer.service`, on client spans.
 
 ```mermaid
 graph TD
-    A[Traces Flow In] --> B[Span Metrics Connector]
+    A[Traces Flow In] --> B[Service Graph Connector]
     B --> C[Service Map Metrics]
     C --> D[Graph Builder]
     D --> E[Interactive Map]
@@ -303,4 +305,4 @@ graph TD
     G --> H[View Traces for That Edge]
 ```
 
-Service maps are one of the highest-value outputs you can get from your OpenTelemetry data. They answer the question "what depends on what?" automatically and keep the answer current as your architecture changes. Start by ensuring every service sets `service.name` and `peer.service` correctly, then let the spanmetrics connector do the rest.
+Service maps are one of the highest-value outputs you can get from your OpenTelemetry data. They answer the question "what depends on what?" automatically and keep the answer current as your architecture changes. Start by ensuring every service sets `service.name` and propagates trace context correctly, then let the service graph connector do the rest.
