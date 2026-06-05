@@ -15,8 +15,8 @@ When properly configured, every log message emitted within an active span includ
 ```json
 {
   "message": "Processing order 12345",
-  "trace_id": "abc123def456",
-  "span_id": "789xyz",
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "span_id": "00f067aa0ba902b7",
   "trace_flags": "01",
   "severity": "INFO"
 }
@@ -32,12 +32,12 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import Resource, SERVICE_NAME
 from opentelemetry._logs import set_logger_provider
-from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
+from opentelemetry.sdk._logs import LoggerProvider
 from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
+from opentelemetry.instrumentation.logging import LoggingInstrumentor
 
 # Set up trace provider
-
 resource = Resource.create({SERVICE_NAME: "my-service"})
 trace_provider = TracerProvider(resource=resource)
 trace_provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
@@ -50,12 +50,9 @@ logger_provider.add_log_record_processor(
 )
 set_logger_provider(logger_provider)
 
-# Attach OpenTelemetry handler to Python's logging
-handler = LoggingHandler(
-    level=logging.INFO,
-    logger_provider=logger_provider,
-)
-logging.getLogger().addHandler(handler)
+# Attach OpenTelemetry logging instrumentation to Python's logging
+logging.getLogger().setLevel(logging.INFO)
+LoggingInstrumentor().instrument(log_handler_level=logging.INFO)
 ```
 
 ## Why Correlation Might Not Work
@@ -68,7 +65,7 @@ Logs emitted outside of a span have no trace context to correlate with:
 logger = logging.getLogger(__name__)
 
 # No active span - log has no trace context
-logger.info("Application starting")  # trace_id will be empty
+logger.info("Application starting")  # trace_id will be empty or all zeros
 
 def handle_request():
     with tracer.start_as_current_span("handle_request"):
@@ -76,29 +73,33 @@ def handle_request():
         logger.info("Processing request")  # trace_id will be set
 ```
 
-### Problem 2: Missing LoggingHandler
+### Problem 2: Missing Logging Instrumentation
 
-If you do not add the `LoggingHandler`, Python logs are not processed by OpenTelemetry:
+If you do not enable the logging instrumentation, Python logs are not processed by OpenTelemetry:
 
 ```python
+from opentelemetry.instrumentation.logging import LoggingInstrumentor
+
 # This alone is not enough
 logger_provider = LoggerProvider(resource=resource)
 set_logger_provider(logger_provider)
 
-# You MUST add the handler to Python's logging
-handler = LoggingHandler(logger_provider=logger_provider)
-logging.getLogger().addHandler(handler)
+# You MUST instrument Python's logging
+LoggingInstrumentor().instrument()
 ```
 
 ### Problem 3: Log Level Filtering
 
-The handler has its own log level. If it is set higher than your log messages:
+Python's root logger and the OpenTelemetry log handler both have log levels. If either one is set higher than your log messages, those messages are filtered out:
 
 ```python
-# Handler only processes WARNING and above
-handler = LoggingHandler(level=logging.WARNING, logger_provider=logger_provider)
+from opentelemetry.instrumentation.logging import LoggingInstrumentor
 
-# INFO messages are filtered out by the handler
+# Root logger allows INFO, but the OpenTelemetry handler only exports WARNING and above
+logging.getLogger().setLevel(logging.INFO)
+LoggingInstrumentor().instrument(log_handler_level=logging.WARNING)
+
+# INFO messages are filtered out by the OpenTelemetry handler
 logger.info("This will not be correlated")  # Filtered
 logger.warning("This will be correlated")   # Passes through
 ```
@@ -114,8 +115,8 @@ from opentelemetry import trace
 class TraceContextFormatter(logging.Formatter):
     def format(self, record):
         span = trace.get_current_span()
-        if span and span.is_recording():
-            ctx = span.get_span_context()
+        ctx = span.get_span_context()
+        if ctx.is_valid:
             record.trace_id = format(ctx.trace_id, '032x')
             record.span_id = format(ctx.span_id, '016x')
         else:
@@ -136,20 +137,19 @@ logging.getLogger().addHandler(console_handler)
 Output:
 
 ```text
-2024-01-15 10:30:00 [INFO] [trace_id=abc123def456... span_id=789xyz...] Processing order 12345
+2024-01-15 10:30:00 [INFO] [trace_id=4bf92f3577b34da6a3ce929d0e0e4736 span_id=00f067aa0ba902b7] Processing order 12345
 ```
 
 ## Using opentelemetry-instrument for Automatic Setup
 
-The CLI automatically sets up the logging bridge:
+With `opentelemetry-instrumentation-logging` installed, the CLI automatically sets up the logging bridge:
 
 ```bash
-OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED=true \
 OTEL_LOGS_EXPORTER=otlp \
 opentelemetry-instrument python app.py
 ```
 
-The `OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED=true` flag is required to enable the logging bridge through auto-instrumentation.
+For OpenTelemetry Python versions before 1.40.0, you also had to set `OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED=true` to enable log instrumentation through auto-instrumentation.
 
 ## Complete Example
 
@@ -158,11 +158,14 @@ The `OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED=true` flag is required to 
 import logging
 from flask import Flask
 from opentelemetry import trace
+from opentelemetry.instrumentation.flask import FlaskInstrumentor
 
 logger = logging.getLogger(__name__)
 tracer = trace.get_tracer(__name__)
+logging.getLogger().setLevel(logging.INFO)
 
 app = Flask(__name__)
+FlaskInstrumentor().instrument_app(app)
 
 @app.route("/api/orders/<order_id>")
 def get_order(order_id):
@@ -172,7 +175,7 @@ def get_order(order_id):
     with tracer.start_as_current_span("db_query"):
         # This log will include the db_query span_id
         logger.info(f"Querying database for order {order_id}")
-        order = db.get_order(order_id)
+        order = {"id": order_id}
 
     return order
 ```
@@ -183,7 +186,7 @@ When you view this trace in your backend and switch to the logs tab, you see the
 
 For log-trace correlation in Python:
 1. Set up both TracerProvider and LoggerProvider
-2. Add the `LoggingHandler` to Python's root logger
-3. Make sure the handler log level matches your application's log level
+2. Enable Python logging instrumentation
+3. Make sure the root logger and OpenTelemetry handler log levels match your application's log level
 4. Emit logs inside active spans for correlation
-5. Use `OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED=true` with the CLI
+5. Use `OTEL_LOGS_EXPORTER=otlp` with the CLI
