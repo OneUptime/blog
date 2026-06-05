@@ -6,7 +6,7 @@ Tags: OpenTelemetry, GraphQL, Error Tracking, Observability
 
 Description: Capture GraphQL partial failures that return HTTP 200 but contain errors using OpenTelemetry span events and attributes.
 
-GraphQL has a peculiar relationship with HTTP status codes. Even when something goes wrong, the response almost always comes back as HTTP 200. The errors live inside the response body, in the `errors` array, alongside whatever partial data the server managed to resolve. This breaks most standard monitoring tools that rely on HTTP status codes to detect failures.
+GraphQL has a peculiar relationship with HTTP status codes. For execution errors, especially partial failures, the response often comes back as HTTP 200. The errors live inside the response body, in the `errors` array, alongside whatever partial data the server managed to resolve. This breaks most standard monitoring tools that rely on HTTP status codes to detect failures.
 
 If your alerting only watches for 5xx responses, you are blind to GraphQL errors. OpenTelemetry lets you fix this by recording errors as span events and attributes.
 
@@ -38,7 +38,7 @@ The HTTP status is 200. The `name` field resolved fine, but `orders` failed. Sta
 
 ## Recording GraphQL Errors as Span Events
 
-The key is to intercept the response before it leaves the server and record each error in the `errors` array as a span event:
+The key is to intercept the response before it leaves the server and record each error in the `errors` array as a span event. In Apollo Server, you can do that with a plugin:
 
 ```typescript
 // graphql-error-plugin.ts
@@ -77,7 +77,7 @@ export const graphqlErrorTrackingPlugin = {
         }
 
         // Track whether the response has partial data or is fully failed
-        const hasData = response.body?.singleResult?.data !== null;
+        const hasData = response.body?.singleResult?.data != null;
         span.setAttribute('graphql.response.partial', hasData && errors.length > 0);
       },
     };
@@ -137,7 +137,7 @@ import { metrics } from '@opentelemetry/api';
 const meter = metrics.getMeter('graphql-errors');
 
 const errorCounter = meter.createCounter('graphql.errors', {
-  description: 'Count of GraphQL errors by type and path',
+  description: 'Count of GraphQL errors by type, code, and operation',
 });
 
 const partialFailureCounter = meter.createCounter('graphql.partial_failures', {
@@ -162,7 +162,7 @@ if (hasData && errors.length > 0) {
 
 ## Handling Error Paths for Cardinality
 
-Be careful with the `graphql.error.path` attribute in metrics. Paths like `user.orders.0.items.2.price` include array indices that create high cardinality. Normalize the paths by stripping numeric segments:
+If you choose to add the `graphql.error.path` attribute to metrics, be careful with cardinality. Paths like `user.orders.0.items.2.price` include array indices that create high cardinality. Normalize the paths by stripping numeric segments:
 
 ```typescript
 function normalizePath(path: (string | number)[]): string {
