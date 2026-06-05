@@ -8,13 +8,13 @@ Description: A practical guide to containerizing Gin framework applications in G
 
 ---
 
-Gin is the most popular Go web framework, known for its speed and familiar API. It provides routing, middleware, JSON handling, and request validation in a clean package. Go's compilation to a single static binary makes Gin applications ideal for Docker containerization. The final image can be as small as 10MB while running a fully functional web server. This guide covers the entire process from project setup to production deployment.
+Gin is the most popular Go web framework, known for its speed and familiar API. It provides routing, middleware, JSON handling, and request validation in a clean package. Go can compile to a single static binary, which makes Gin applications ideal for Docker containerization. The final image can be as small as 10MB while running a fully functional web server. This guide covers the entire process from project setup to production deployment.
 
 ## Prerequisites
 
 You need:
 
-- Go 1.21+
+- Go 1.25+
 - Docker Engine 20.10+
 - Basic Go experience
 
@@ -109,7 +109,7 @@ This Dockerfile produces a minimal container:
 ```dockerfile
 # Stage 1: Build the Go application
 
-FROM golang:1.22-alpine AS build
+FROM golang:1.25-alpine AS build
 
 WORKDIR /app
 
@@ -143,10 +143,11 @@ ENTRYPOINT ["/server"]
 
 ## Alpine Alternative
 
-When you need shell access or debugging tools:
+Replace the `scratch` final stage with Alpine when you need shell access or debugging tools:
 
 ```dockerfile
-FROM alpine:3.19
+# Stage 2: Alpine production image
+FROM alpine:3.23 AS runtime
 
 RUN apk --no-cache add ca-certificates tzdata
 
@@ -198,8 +199,6 @@ With `scratch`, expect around 10-15MB. With Alpine, around 18-25MB.
 A full development stack with PostgreSQL and Redis:
 
 ```yaml
-version: "3.8"
-
 services:
   api:
     build:
@@ -254,6 +253,10 @@ volumes:
 Gin has a flexible middleware system. Here are middleware patterns useful in containerized environments.
 
 Request ID middleware for distributed tracing:
+
+```bash
+go get github.com/google/uuid
+```
 
 ```go
 // middleware/requestid.go - Add a unique request ID to each request
@@ -406,6 +409,8 @@ Replace the default logger:
 
 ```go
 // Use zerolog for JSON-structured output
+package main
+
 import (
 	"os"
 	"time"
@@ -430,6 +435,12 @@ func JSONLogger() gin.HandlerFunc {
 			Msg("request")
 	}
 }
+
+func setupRouter() *gin.Engine {
+	r := gin.New()
+	r.Use(JSONLogger(), gin.Recovery())
+	return r
+}
 ```
 
 ## Development Workflow
@@ -438,7 +449,7 @@ Development setup with hot reload:
 
 ```dockerfile
 # Dockerfile.dev
-FROM golang:1.22-alpine
+FROM golang:1.25-alpine
 WORKDIR /app
 RUN go install github.com/air-verse/air@latest
 COPY go.mod go.sum ./
@@ -450,8 +461,6 @@ CMD ["air"]
 ```
 
 ```yaml
-version: "3.8"
-
 services:
   api-dev:
     build:
