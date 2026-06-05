@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Pyramid, Python, Web Framework, Tracing
 
 Description: Complete guide to instrumenting Pyramid web applications with OpenTelemetry for distributed tracing, request monitoring, and full observability of your Python web services.
 
-Pyramid is a mature, flexible web framework for Python that powers many production applications. When running Pyramid apps at scale, understanding request patterns, database query performance, and error propagation becomes essential. OpenTelemetry provides automatic instrumentation for Pyramid that captures HTTP requests, view execution, and template rendering with minimal setup.
+Pyramid is a mature, flexible web framework for Python that powers many production applications. When running Pyramid apps at scale, understanding request patterns, database query performance, and error propagation becomes essential. OpenTelemetry provides automatic instrumentation for Pyramid that captures HTTP server spans with minimal setup, while custom spans can trace view execution and template-related work.
 
 ## Why Instrument Pyramid Applications
 
@@ -18,7 +18,7 @@ Pyramid applications typically serve as API backends, content management systems
 - Integrate with authentication and authorization systems
 - Call external APIs and microservices
 
-Without instrumentation, debugging performance problems requires extensive logging and guesswork. OpenTelemetry automatically traces the entire request lifecycle, from HTTP reception through view execution to response generation.
+Without instrumentation, debugging performance problems requires extensive logging and guesswork. OpenTelemetry automatically creates spans for HTTP requests, and custom spans can add detail for view execution, database work, and response generation.
 
 ## Installation and Setup
 
@@ -100,6 +100,9 @@ def create_app():
     """Create and configure Pyramid application"""
     config = Configurator()
 
+    # Instrument this Pyramid configurator
+    PyramidInstrumentor().instrument_config(config)
+
     # Add routes
     config.add_route('home', '/')
     config.add_route('user_detail', '/users/{user_id}')
@@ -109,12 +112,7 @@ def create_app():
     config.scan()
 
     # Create WSGI application
-    app = config.make_wsgi_app()
-
-    # Instrument the Pyramid application
-    PyramidInstrumentor().instrument_app(app)
-
-    return app
+    return config.make_wsgi_app()
 
 if __name__ == '__main__':
     from waitress import serve
@@ -123,7 +121,7 @@ if __name__ == '__main__':
     serve(app, host='0.0.0.0', port=6543)
 ```
 
-Once instrumented, every HTTP request creates a span containing HTTP method, URL path, status code, and response time.
+Once instrumented, every HTTP request creates a span containing HTTP method, URL path, status code, and duration.
 
 ## Tracing View Execution with Custom Spans
 
@@ -192,13 +190,13 @@ def process_order_view(request):
 Pyramid applications often use SQLAlchemy. Instrument database queries:
 
 ```python
-from sqlalchemy import create_engine, Column, Integer, String
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy import create_engine, Column, Integer, String, select
+from sqlalchemy.orm import DeclarativeBase, sessionmaker
 from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 
 # Define database models
-Base = declarative_base()
+class Base(DeclarativeBase):
+    pass
 
 class Product(Base):
     __tablename__ = 'products'
@@ -230,9 +228,11 @@ def list_products_view(request):
         session = Session()
         try:
             if category:
-                products = session.query(Product).filter_by(category=category).all()
+                stmt = select(Product).where(Product.category == category)
             else:
-                products = session.query(Product).all()
+                stmt = select(Product)
+
+            products = session.scalars(stmt).all()
 
             span.set_attribute("query.result_count", len(products))
 
@@ -292,15 +292,13 @@ def create_product_view(request):
             session.close()
 ```
 
-SQLAlchemy instrumentation automatically creates child spans for each database query with SQL text, parameters, and execution time.
+SQLAlchemy instrumentation automatically creates spans for database operations with SQL statement information and execution timing.
 
 ## Tracing Template Rendering
 
 Pyramid supports multiple template engines. Trace template rendering:
 
 ```python
-from pyramid.renderers import render_to_response
-
 @view_config(route_name='product_page', renderer='templates/product.jinja2')
 def product_page_view(request):
     """Render product page with template tracing"""
@@ -312,7 +310,9 @@ def product_page_view(request):
         # Fetch product from database
         session = Session()
         try:
-            product = session.query(Product).filter_by(id=product_id).first()
+            product = session.scalars(
+                select(Product).where(Product.id == product_id)
+            ).first()
 
             if not product:
                 span.set_attribute("product.found", False)
@@ -323,7 +323,8 @@ def product_page_view(request):
             span.set_attribute("product.found", True)
             span.set_attribute("product.name", product.name)
 
-            # Template rendering happens automatically and can be traced
+            # The request span includes response rendering; this custom span
+            # captures the data preparation work before the template renders.
             return {
                 "product": product,
                 "page_title": f"{product.name} - Our Store"
@@ -493,9 +494,7 @@ graph TD
 Track authentication and authorization in traces:
 
 ```python
-from pyramid.security import remember, forget, authenticated_userid
-from pyramid.authentication import AuthTktAuthenticationPolicy
-from pyramid.authorization import ACLAuthorizationPolicy
+from pyramid.security import remember, forget
 
 @view_config(route_name='login', request_method='POST', renderer='json')
 def login_view(request):
@@ -513,13 +512,13 @@ def login_view(request):
         if username == "admin" and password == "secret":
             span.set_attribute("auth.result", "success")
 
-            # Create authentication token
+            # Remember the authenticated user in the configured security policy
             headers = remember(request, username)
+            request.response.headerlist.extend(headers)
 
             return {
                 "status": "success",
-                "username": username,
-                "token": headers[0][1]  # Simplified
+                "username": username
             }
         else:
             span.set_attribute("auth.result", "failure")
@@ -533,9 +532,10 @@ def protected_view(request):
     """Protected resource with authorization tracing"""
     span = trace.get_current_span()
 
-    user_id = authenticated_userid(request)
-    span.set_attribute("user.authenticated", True)
-    span.set_attribute("user.id", user_id)
+    user_id = request.authenticated_userid
+    span.set_attribute("user.authenticated", user_id is not None)
+    if user_id:
+        span.set_attribute("user.id", user_id)
 
     return {
         "message": "Protected content",
@@ -551,9 +551,14 @@ Combine traces with metrics for comprehensive monitoring:
 from opentelemetry import metrics
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 
 # Configure metrics
-metric_reader = PeriodicExportingMetricReader(otlp_exporter)
+metric_exporter = OTLPMetricExporter(
+    endpoint="http://localhost:4317",
+    insecure=True
+)
+metric_reader = PeriodicExportingMetricReader(metric_exporter)
 meter_provider = MeterProvider(metric_readers=[metric_reader])
 metrics.set_meter_provider(meter_provider)
 
@@ -655,6 +660,8 @@ def create_production_app():
         }
     )
 
+    PyramidInstrumentor().instrument_config(config)
+
     # Add tweens
     config.add_tween('myapp.tracing_tween_factory')
     config.add_tween('myapp.metrics_tween_factory')
@@ -665,10 +672,7 @@ def create_production_app():
 
     config.scan()
 
-    app = config.make_wsgi_app()
-    PyramidInstrumentor().instrument_app(app)
-
-    return app
+    return config.make_wsgi_app()
 ```
 
-OpenTelemetry's Pyramid instrumentation provides complete visibility into your Python web application. Automatic tracing captures HTTP requests while custom spans trace business logic, database queries, and external service calls. Combined with tweens for request enrichment and metrics for performance monitoring, you have everything needed to run Pyramid applications confidently in production.
+OpenTelemetry's Pyramid instrumentation provides visibility into your Python web application. Automatic tracing captures HTTP requests while custom spans trace business logic, database queries, and external service calls. Combined with tweens for request enrichment and metrics for performance monitoring, you have everything needed to run Pyramid applications confidently in production.
