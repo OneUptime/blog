@@ -17,10 +17,17 @@ service:
   telemetry:
     metrics:
       level: detailed    # Use 'detailed' for Arrow-specific metrics
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+                without_type_suffix: true
+                without_units: true
 ```
 
-The `detailed` level is important. The `basic` level does not include Arrow-specific metrics like compression ratios and stream counts.
+The `detailed` level is important if you want the full set of Arrow-related byte counters. The `basic` level only includes essential Collector telemetry and does not include the otelarrow component's network-level metrics.
 
 ## Key Metrics to Monitor
 
@@ -32,7 +39,9 @@ This is the most important metric for validating that OTel Arrow is delivering v
 # Current compression ratio (higher is better)
 
 # A ratio of 5.0 means the data is 5x smaller after Arrow + compression
-otelcol_otelarrow_exporter_compression_ratio
+rate(otelcol_exporter_sent{exporter="otelarrow"}[5m])
+/
+rate(otelcol_exporter_sent_wire{exporter="otelarrow"}[5m])
 ```
 
 Expected values:
@@ -42,44 +51,44 @@ Expected values:
 
 If the compression ratio drops below 3, investigate whether batch sizes have decreased or whether new high-cardinality attributes were added.
 
-### Active Stream Count
+### Exporter Wire Bytes
 
 ```promql
-# Number of currently active Arrow streams
-otelcol_otelarrow_exporter_active_streams
+# Uncompressed bytes sent by the Arrow exporter
+rate(otelcol_exporter_sent{exporter="otelarrow"}[5m])
 
-# Compare with configured num_streams
-# If active < configured, some streams may be failing to connect
+# Compressed bytes sent on the wire
+rate(otelcol_exporter_sent_wire{exporter="otelarrow"}[5m])
 ```
 
-This should equal your configured `num_streams` value. If it is lower, streams are failing to establish or are being terminated prematurely.
+Use these together to validate bandwidth savings. The `sent` metric is measured before compression, and `sent_wire` is measured after compression.
 
-### Stream Reconnection Rate
+### Stream Shutdown Errors
 
 ```promql
-# Rate of stream reconnections per second
-rate(otelcol_otelarrow_exporter_stream_reconnections_total[5m])
+# Failed export attempts can indicate abrupt stream shutdowns
+rate(otelcol_exporter_send_failed_spans{exporter="otelarrow"}[5m])
+rate(otelcol_exporter_send_failed_metric_points{exporter="otelarrow"}[5m])
+rate(otelcol_exporter_send_failed_log_records{exporter="otelarrow"}[5m])
 ```
 
 Expected behavior:
 ```text
-reconnections_per_minute = num_streams / max_stream_lifetime_minutes
-
-# Example: 4 streams with 10-minute lifetime
-# Expected: 4/10 = 0.4 reconnections per minute
+Streams should close cleanly when arrow.max_stream_lifetime is lower than the receiver
+or proxy keepalive limit.
 ```
 
-If the reconnection rate is significantly higher than expected, streams are being terminated before their configured lifetime. Check for network issues, load balancer timeouts, or receiver-side connection limits.
+If failed exports rise around stream lifetime boundaries, streams may be terminated before their configured lifetime. Check `arrow.max_stream_lifetime`, receiver keepalive settings, load balancer timeouts, and receiver-side connection limits.
 
 ### Bytes Sent and Received
 
 ```promql
 # Bytes sent by the Arrow exporter (compressed)
-rate(otelcol_exporter_sent_bytes_total{exporter="otelarrow"}[5m])
+rate(otelcol_exporter_sent_wire{exporter="otelarrow"}[5m])
 
 # Compare with what standard OTLP would send
-# (If you have a parallel pipeline for benchmarking)
-rate(otelcol_exporter_sent_bytes_total{exporter="otlp"}[5m])
+# (If you have a parallel otelarrow exporter with arrow.disabled: true)
+rate(otelcol_exporter_sent_wire{exporter="otelarrow/otlp_baseline"}[5m])
 ```
 
 ### Error Rates
@@ -90,12 +99,12 @@ rate(otelcol_exporter_send_failed_spans{exporter="otelarrow"}[5m])
 rate(otelcol_exporter_send_failed_metric_points{exporter="otelarrow"}[5m])
 rate(otelcol_exporter_send_failed_log_records{exporter="otelarrow"}[5m])
 
-# Arrow-specific errors (encoding failures, stream errors)
-rate(otelcol_otelarrow_exporter_errors_total[5m])
+# Receiver admission pressure
+otelcol_otelarrow_admission_waiting_bytes{receiver="otelarrow"}
 ```
 
 Any non-zero error rate needs investigation. Common causes:
-- `memory_limit_exceeded`: The receiver's Arrow memory limit was hit. Increase `arrow.memory_limit_mib` on the receiver.
+- `RESOURCE_EXHAUSTED`: The receiver's Arrow or admission memory limit was hit. Increase `arrow.memory_limit_mib`, `admission.request_limit_mib`, or receiver capacity.
 - `stream_terminated`: The gRPC stream was closed unexpectedly. Check keepalive settings.
 - `encoding_error`: The Arrow encoder encountered data it could not encode. This is usually a bug; report it.
 
@@ -110,7 +119,7 @@ Here is a Grafana dashboard JSON snippet covering the essential panels:
       "title": "Arrow Compression Ratio",
       "type": "stat",
       "targets": [{
-        "expr": "otelcol_otelarrow_exporter_compression_ratio",
+        "expr": "rate(otelcol_exporter_sent{exporter=\"otelarrow\"}[5m]) / rate(otelcol_exporter_sent_wire{exporter=\"otelarrow\"}[5m])",
         "legendFormat": "{{instance}}"
       }],
       "fieldConfig": {
@@ -126,10 +135,10 @@ Here is a Grafana dashboard JSON snippet covering the essential panels:
       }
     },
     {
-      "title": "Active Arrow Streams",
+      "title": "Arrow Wire Bytes",
       "type": "timeseries",
       "targets": [{
-        "expr": "otelcol_otelarrow_exporter_active_streams",
+        "expr": "rate(otelcol_exporter_sent_wire{exporter=\"otelarrow\"}[5m])",
         "legendFormat": "{{instance}}"
       }]
     },
@@ -137,24 +146,24 @@ Here is a Grafana dashboard JSON snippet covering the essential panels:
       "title": "Bandwidth (bytes/sec)",
       "type": "timeseries",
       "targets": [{
-        "expr": "rate(otelcol_exporter_sent_bytes_total{exporter=\"otelarrow\"}[5m])",
+        "expr": "rate(otelcol_exporter_sent_wire{exporter=\"otelarrow\"}[5m])",
         "legendFormat": "Arrow - {{instance}}"
       }]
     },
     {
-      "title": "Stream Reconnections",
+      "title": "Receiver Admission Waiting Bytes",
       "type": "timeseries",
       "targets": [{
-        "expr": "rate(otelcol_otelarrow_exporter_stream_reconnections_total[5m]) * 60",
-        "legendFormat": "{{instance}} (per min)"
+        "expr": "otelcol_otelarrow_admission_waiting_bytes{receiver=\"otelarrow\"}",
+        "legendFormat": "{{instance}}"
       }]
     },
     {
       "title": "Export Errors",
       "type": "timeseries",
       "targets": [{
-        "expr": "rate(otelcol_otelarrow_exporter_errors_total[5m]) * 60",
-        "legendFormat": "{{instance}} - {{error_type}}"
+        "expr": "rate(otelcol_exporter_send_failed_spans{exporter=\"otelarrow\"}[5m]) + rate(otelcol_exporter_send_failed_metric_points{exporter=\"otelarrow\"}[5m]) + rate(otelcol_exporter_send_failed_log_records{exporter=\"otelarrow\"}[5m])",
+        "legendFormat": "{{instance}}"
       }]
     }
   ]
@@ -172,43 +181,47 @@ groups:
     rules:
       # Compression ratio dropped significantly
       - alert: ArrowCompressionDegraded
-        expr: otelcol_otelarrow_exporter_compression_ratio < 3
+        expr: |
+          rate(otelcol_exporter_sent{exporter="otelarrow"}[5m])
+          /
+          rate(otelcol_exporter_sent_wire{exporter="otelarrow"}[5m])
+          < 3
         for: 10m
         labels:
           severity: warning
         annotations:
           summary: "OTel Arrow compression ratio below 3:1"
 
-      # Streams are failing
-      - alert: ArrowStreamCountLow
-        expr: |
-          otelcol_otelarrow_exporter_active_streams
-          < otelcol_otelarrow_exporter_configured_streams * 0.5
+      # Receiver admission pressure
+      - alert: ArrowReceiverAdmissionPressure
+        expr: otelcol_otelarrow_admission_waiting_bytes{receiver="otelarrow"} > 0
         for: 5m
         labels:
           severity: critical
         annotations:
-          summary: "Less than 50% of configured Arrow streams are active"
+          summary: "OTel Arrow receiver has bytes waiting for admission"
 
       # High error rate
       - alert: ArrowExportErrors
-        expr: rate(otelcol_otelarrow_exporter_errors_total[5m]) > 0.1
+        expr: |
+          rate(otelcol_exporter_send_failed_spans{exporter="otelarrow"}[5m])
+          + rate(otelcol_exporter_send_failed_metric_points{exporter="otelarrow"}[5m])
+          + rate(otelcol_exporter_send_failed_log_records{exporter="otelarrow"}[5m])
+          > 0.1
         for: 5m
         labels:
           severity: critical
         annotations:
           summary: "OTel Arrow exporter experiencing errors"
 
-      # Excessive reconnections (possible network instability)
-      - alert: ArrowExcessiveReconnections
-        expr: |
-          rate(otelcol_otelarrow_exporter_stream_reconnections_total[5m]) * 60
-          > otelcol_otelarrow_exporter_configured_streams * 2
+      # Receiver memory usage
+      - alert: ArrowReceiverMemoryHigh
+        expr: arrow_memory_inuse > 0.8 * 128 * 1024 * 1024
         for: 10m
         labels:
           severity: warning
         annotations:
-          summary: "Arrow streams reconnecting more than twice per minute per stream"
+          summary: "Arrow receiver memory usage is above 80% of the default 128 MiB limit"
 ```
 
 ## Receiver-Side Metrics
@@ -217,15 +230,18 @@ Do not forget to monitor the receiver as well:
 
 ```promql
 # Memory used for Arrow decoding
-otelcol_otelarrow_receiver_memory_usage_bytes
+arrow_memory_inuse
 
-# Number of active incoming Arrow streams
-otelcol_otelarrow_receiver_active_streams
+# Uncompressed bytes received by the Arrow receiver
+rate(otelcol_receiver_recv{receiver="otelarrow"}[5m])
 
-# Backpressure events (receiver told sender to slow down)
-rate(otelcol_otelarrow_receiver_backpressure_events_total[5m])
+# Compressed bytes received on the wire
+rate(otelcol_receiver_recv_wire{receiver="otelarrow"}[5m])
+
+# Admission pressure
+otelcol_otelarrow_admission_waiting_bytes{receiver="otelarrow"}
 ```
 
-Backpressure events indicate the receiver is under memory pressure. If you see these frequently, increase the receiver's `arrow.memory_limit_mib` or add more receiver instances.
+Admission waiting bytes indicate the receiver is under memory pressure. If you see these frequently, increase the receiver's `arrow.memory_limit_mib`, tune the receiver `admission` limits, or add more receiver instances.
 
 Monitoring your OTel Arrow deployment is just as important as deploying it. These metrics tell you whether you are getting the compression savings you expected and whether the streams are healthy. Without them, you are flying blind.
