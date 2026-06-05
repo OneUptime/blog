@@ -33,40 +33,46 @@ Here is how to configure environment-based log level filtering in a Go applicati
 package main
 
 import (
+    "context"
     "os"
 
-    "go.opentelemetry.io/otel/log"
+    "go.opentelemetry.io/contrib/processors/minsev"
+    "go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc"
     sdklog "go.opentelemetry.io/otel/sdk/log"
 )
 
-func newLogProvider() *sdklog.LoggerProvider {
+func newLogProvider(ctx context.Context) (*sdklog.LoggerProvider, error) {
     env := os.Getenv("DEPLOYMENT_ENVIRONMENT")
 
     // Set minimum severity based on environment.
     // Production only exports WARN and above.
     // Staging exports INFO and above.
     // Development exports everything including DEBUG.
-    var minSeverity log.Severity
+    var minSeverity minsev.Severity
     switch env {
     case "production":
-        minSeverity = log.SeverityWarn
+        minSeverity = minsev.SeverityWarn
     case "staging":
-        minSeverity = log.SeverityInfo
+        minSeverity = minsev.SeverityInfo
     default:
-        minSeverity = log.SeverityDebug
+        minSeverity = minsev.SeverityDebug
     }
 
-    // Create a filter processor that drops logs below
-    // the minimum severity before they reach the exporter.
-    exporter := newOTLPExporter()
-    filterProc := sdklog.NewFilterProcessor(
+    exporter, err := otlploggrpc.New(ctx)
+    if err != nil {
+        return nil, err
+    }
+
+    // Wrap the batch processor with a minimum-severity processor
+    // that drops logs below the configured threshold before export.
+    processor := minsev.NewLogProcessor(
         sdklog.NewBatchProcessor(exporter),
-        sdklog.WithMinSeverity(minSeverity),
+        minSeverity,
     )
 
     return sdklog.NewLoggerProvider(
-        sdklog.WithProcessor(filterProc),
-    )
+        sdklog.WithProcessor(processor),
+    ), nil
 }
 ```
 
@@ -78,7 +84,8 @@ For Python applications, use the standard logging integration with level configu
 # and sets the appropriate minimum level for the OTel handler.
 import os
 import logging
-from opentelemetry.sdk._logs import LoggerProvider
+from opentelemetry._logs import set_logger_provider
+from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
 from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
 
@@ -97,9 +104,12 @@ provider = LoggerProvider()
 provider.add_log_record_processor(
     BatchLogRecordProcessor(OTLPLogExporter())
 )
+set_logger_provider(provider)
 
-# Set the root logger level based on environment
-logging.basicConfig(level=min_level)
+# Attach the OpenTelemetry handler and set the root logger level
+# based on environment.
+handler = LoggingHandler(level=min_level, logger_provider=provider)
+logging.basicConfig(handlers=[handler], level=min_level)
 ```
 
 ## Approach 2: Collector-Level Filtering as a Safety Net
@@ -121,27 +131,26 @@ processors:
   # the minimum severity for their environment.
   filter/log_levels:
     error_mode: ignore
-    logs:
-      log_record:
-        # Drop DEBUG logs from production environments
-        - resource.attributes["deployment.environment"] == "production"
-            and severity_number < 9
-        # Drop DEBUG and INFO from staging
-        - resource.attributes["deployment.environment"] == "staging"
-            and severity_number < 9
+    log_conditions:
+      # Drop TRACE, DEBUG, and INFO logs from production environments
+      - resource.attributes["deployment.environment"] == "production"
+          and log.severity_number < SEVERITY_NUMBER_WARN
+      # Drop TRACE and DEBUG logs from staging
+      - resource.attributes["deployment.environment"] == "staging"
+          and log.severity_number < SEVERITY_NUMBER_INFO
 
   # Transform processor can also downgrade log levels
   # for specific noisy libraries.
   transform/normalize:
+    error_mode: ignore
     log_statements:
-      - context: log
-        statements:
-          # Some libraries log connection pool stats at INFO level
-          # every second. Downgrade these to DEBUG so they get
-          # filtered out in production.
-          - set(severity_number, 5) where
-              resource.attributes["service.name"] == "api-gateway"
-              and IsMatch(body, ".*connection pool stats.*")
+      # Some libraries log connection pool stats at INFO level
+      # every second. Downgrade these to DEBUG so they get
+      # filtered out in production.
+      - set(log.severity_number, SEVERITY_NUMBER_DEBUG) where
+          resource.attributes["service.name"] == "api-gateway"
+          and IsString(log.body)
+          and IsMatch(log.body, ".*connection pool stats.*")
 
   batch:
     send_batch_size: 8192
@@ -163,7 +172,7 @@ service:
 
 Sometimes you need DEBUG logs from a production service during an active incident. Rather than redeploying with a different log level, use the OpenTelemetry Collector's `remotetap` extension or a feature flag to temporarily increase verbosity.
 
-Here is a pattern using environment variables that can be updated without restarting:
+Here is a pattern using environment variables that can be changed during incidents:
 
 ```yaml
 # Kubernetes deployment with a configmap-based log level
@@ -194,7 +203,7 @@ spec:
             - name: DEPLOYMENT_ENVIRONMENT
               value: "production"
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: "service.name=checkout-api"
+              value: "service.name=checkout-api,deployment.environment=production"
 ```
 
 ## Severity Number Reference
@@ -216,9 +225,9 @@ After implementing log level optimization, track the reduction:
 
 ```promql
 # Compare log volume before and after filtering.
-# Group by environment to verify production is filtered.
-sum by (deployment_environment) (
-  rate(otel_exporter_sent_log_records_total[1h])
+# Group by exporter to verify the Collector is sending less log data.
+sum by (exporter) (
+  rate(otelcol_exporter_sent_log_records_total[1h])
 )
 ```
 
