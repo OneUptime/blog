@@ -44,11 +44,11 @@ Getting started is a single pip install. OpenLIT bundles all of its instrumentor
 pip install openlit
 ```
 
-If you also want GPU monitoring (for NVIDIA GPUs), install the optional dependency:
+If you also want GPU monitoring with NVIDIA GPUs, make sure the system metrics instrumentation, NVIDIA drivers, and NVML Python bindings are available:
 
 ```bash
-# Install with GPU monitoring support for NVIDIA GPUs
-pip install openlit[gpu]
+# Install system metrics instrumentation and NVIDIA NVML Python bindings
+pip install opentelemetry-instrumentation-system-metrics==0.59b0 nvidia-ml-py
 ```
 
 ## Basic Setup
@@ -63,16 +63,16 @@ import openai
 # Initialize OpenLIT with OTLP export
 # This automatically instruments all supported libraries in your environment
 openlit.init(
-    otlp_endpoint="https://otlp.oneuptime.com",
+    otlp_endpoint="https://oneuptime.com/otlp",
     otlp_headers={"x-oneuptime-token": "YOUR_ONEUPTIME_TOKEN"},
-    application_name="my-genai-app",
+    service_name="my-genai-app",
     environment="production",
 )
 
 # Now any OpenAI call is automatically traced - no extra code needed
 client = openai.OpenAI()
 response = client.chat.completions.create(
-    model="gpt-4",
+    model="gpt-4o-mini",
     messages=[{"role": "user", "content": "What is observability?"}],
 )
 
@@ -91,29 +91,29 @@ import openlit
 
 openlit.init(
     # Where to send telemetry data (OTLP endpoint)
-    otlp_endpoint="https://otlp.oneuptime.com",
+    otlp_endpoint="https://oneuptime.com/otlp",
 
     # Authentication headers for your backend
     otlp_headers={"x-oneuptime-token": "YOUR_TOKEN"},
 
     # Application identifier - shows up in your traces
-    application_name="chatbot-service",
+    service_name="chatbot-service",
 
     # Environment tag for filtering (production, staging, dev)
     environment="production",
 
     # Whether to capture prompt and completion content
     # Set to False in production if you handle sensitive data
-    trace_content=True,
+    capture_message_content=True,
 
     # Disable specific instrumentors if needed
     disabled_instrumentors=["chroma"],
 
-    # Enable GPU metrics collection (requires openlit[gpu])
-    collect_gpu_stats=True,
+    # Enable GPU and system metrics collection
+    collect_system_metrics=True,
 
-    # How often to collect GPU metrics in seconds
-    gpu_stats_interval=5,
+    # Limit captured prompt/completion content to 2,000 characters
+    max_content_length=2000,
 )
 ```
 
@@ -123,14 +123,14 @@ If you prefer not to hard-code configuration, OpenLIT respects the standard Open
 
 ```bash
 # Standard OpenTelemetry environment variables
-export OTEL_EXPORTER_OTLP_ENDPOINT="https://otlp.oneuptime.com"
+export OTEL_EXPORTER_OTLP_ENDPOINT="https://oneuptime.com/otlp"
 export OTEL_EXPORTER_OTLP_HEADERS="x-oneuptime-token=YOUR_TOKEN"
+export OTEL_SERVICE_NAME="my-genai-app"
+export OTEL_DEPLOYMENT_ENVIRONMENT="production"
 
 # OpenLIT-specific variables
-export OPENLIT_APPLICATION_NAME="my-genai-app"
-export OPENLIT_ENVIRONMENT="production"
-export OPENLIT_TRACE_CONTENT="true"
-export OPENLIT_COLLECT_GPU_STATS="true"
+export OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT="true"
+export OPENLIT_COLLECT_SYSTEM_METRICS="true"
 ```
 
 Then your code is even simpler:
@@ -147,24 +147,32 @@ openlit.init()
 
 OpenLIT shines when you're using orchestration frameworks like LangChain. It captures the entire chain execution, including individual LLM calls, retrieval steps, and tool usage, all as nested spans within a single trace.
 
+For this example, install the LangChain integration packages as well:
+
+```bash
+pip install langchain langchain-openai langchain-chroma langchain-text-splitters
+```
+
 ```python
 # langchain_traced.py - LangChain RAG pipeline with automatic OpenLIT tracing
 import openlit
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
-from langchain_community.vectorstores import Chroma
-from langchain.chains import RetrievalQA
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_chroma import Chroma
+from langchain.chains import create_retrieval_chain
+from langchain.chains.combine_documents import create_stuff_documents_chain
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 # Initialize OpenLIT once at startup
 openlit.init(
-    otlp_endpoint="https://otlp.oneuptime.com",
+    otlp_endpoint="https://oneuptime.com/otlp",
     otlp_headers={"x-oneuptime-token": "YOUR_TOKEN"},
-    application_name="rag-pipeline",
+    service_name="rag-pipeline",
 )
 
 # Set up the RAG components - all of these will be traced automatically
 embeddings = OpenAIEmbeddings()
-llm = ChatOpenAI(model="gpt-4", temperature=0)
+llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
 
 # Create a vector store from some documents
 documents = ["OpenTelemetry is an observability framework...", "LLMs need monitoring..."]
@@ -173,24 +181,33 @@ texts = text_splitter.create_documents(documents)
 vectorstore = Chroma.from_documents(texts, embeddings)
 
 # Build the retrieval chain
-qa_chain = RetrievalQA.from_chain_type(
-    llm=llm,
-    chain_type="stuff",
-    retriever=vectorstore.as_retriever(),
+prompt = ChatPromptTemplate.from_messages(
+    [
+        (
+            "system",
+            "Use the given context to answer the question. Context: {context}",
+        ),
+        ("human", "{input}"),
+    ]
+)
+question_answer_chain = create_stuff_documents_chain(llm, prompt)
+qa_chain = create_retrieval_chain(
+    vectorstore.as_retriever(),
+    question_answer_chain,
 )
 
 # This single call generates a rich trace with nested spans for:
 # 1. The retrieval step (embedding query + vector search)
 # 2. The LLM call (prompt construction + completion)
-result = qa_chain.invoke({"query": "How do I monitor LLMs?"})
-print(result["result"])
+result = qa_chain.invoke({"input": "How do I monitor LLMs?"})
+print(result["answer"])
 ```
 
 The trace for this single query will show the full execution breakdown:
 
 ```mermaid
 flowchart TD
-    A[RetrievalQA Chain] --> B[Retriever Span]
+    A[Retrieval Chain] --> B[Retriever Span]
     A --> C[LLM Span]
     B --> D[Embedding Generation]
     B --> E[Vector Search]
@@ -207,14 +224,14 @@ In production, you might want to trace the structure of your LLM calls without c
 # production_config.py - Disable content capture for sensitive environments
 import openlit
 
-# trace_content=False still captures timing, token counts, model info,
+# capture_message_content=False still captures timing, token counts, model info,
 # and span structure - just not the actual prompt/completion text
 openlit.init(
-    otlp_endpoint="https://otlp.oneuptime.com",
+    otlp_endpoint="https://oneuptime.com/otlp",
     otlp_headers={"x-oneuptime-token": "YOUR_TOKEN"},
-    application_name="healthcare-assistant",
+    service_name="healthcare-assistant",
     environment="production",
-    trace_content=False,  # No prompt or completion content in traces
+    capture_message_content=False,  # No prompt or completion content in traces
 )
 ```
 
@@ -229,17 +246,16 @@ If you're running local models or fine-tuning, GPU utilization is a critical met
 import openlit
 
 openlit.init(
-    otlp_endpoint="https://otlp.oneuptime.com",
+    otlp_endpoint="https://oneuptime.com/otlp",
     otlp_headers={"x-oneuptime-token": "YOUR_TOKEN"},
-    application_name="local-inference-server",
-    collect_gpu_stats=True,       # Enable GPU metric collection
-    gpu_stats_interval=5,         # Collect every 5 seconds
+    service_name="local-inference-server",
+    collect_system_metrics=True,  # Enable GPU and system metric collection
 )
 
 # The following metrics are collected automatically:
 # - gpu.utilization (percentage)
-# - gpu.memory.used (bytes)
-# - gpu.memory.available (bytes)
+# - gpu.memory.used (megabytes)
+# - gpu.memory.available (megabytes)
 # - gpu.temperature (celsius)
 # - gpu.power.draw (watts)
 ```
@@ -254,9 +270,9 @@ import openlit
 from opentelemetry import trace
 
 openlit.init(
-    otlp_endpoint="https://otlp.oneuptime.com",
+    otlp_endpoint="https://oneuptime.com/otlp",
     otlp_headers={"x-oneuptime-token": "YOUR_TOKEN"},
-    application_name="chatbot",
+    service_name="chatbot",
 )
 
 def handle_user_message(user_id: str, message: str, ab_variant: str):
@@ -275,7 +291,7 @@ def handle_user_message(user_id: str, message: str, ab_variant: str):
         import openai
         client = openai.OpenAI()
         response = client.chat.completions.create(
-            model="gpt-4",
+            model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": "You are a helpful assistant."},
                 {"role": "user", "content": message},
@@ -290,7 +306,7 @@ A few things to watch out for when setting up OpenLIT:
 
 **Spans not appearing** - Make sure `openlit.init()` is called before you import or instantiate the AI library clients. OpenLIT patches the libraries at init time, so anything created before that won't be instrumented.
 
-**High memory usage** - If you're tracing very large prompts (like RAG contexts with thousands of tokens), the span events can get big. Use `trace_content=False` or implement content truncation.
+**High memory usage** - If you're tracing very large prompts (like RAG contexts with thousands of tokens), the span events can get big. Use `capture_message_content=False` or implement content truncation.
 
 **Missing instrumentors** - OpenLIT only instruments libraries that are actually installed. If you don't see LangChain traces, double-check that `langchain` is in your pip list.
 
