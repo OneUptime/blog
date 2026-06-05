@@ -24,6 +24,7 @@ A typical asset lifecycle includes:
 
 ```python
 from opentelemetry import trace, metrics
+from opentelemetry.trace import Status, StatusCode
 import time
 import os
 
@@ -57,13 +58,13 @@ assets_failed = meter.create_counter(
 storage_usage = meter.create_histogram(
     name="mam.storage.bytes_written",
     description="Bytes written to storage during ingest",
-    unit="bytes",
+    unit="By",
 )
 
 
 def ingest_asset(file_path, source, metadata_overrides=None):
     """Full ingest workflow for a new media asset."""
-    with tracer.start_as_current_span("mam.ingest") as span:
+    with tracer.start_as_current_span("mam.ingest", record_exception=False) as span:
         workflow_start = time.time()
         asset_id = generate_asset_id()
         file_size = os.path.getsize(file_path)
@@ -181,6 +182,7 @@ def ingest_asset(file_path, source, metadata_overrides=None):
         except Exception as e:
             span.set_attribute("ingest.status", "failed")
             span.record_exception(e)
+            span.set_status(Status(StatusCode.ERROR, str(e)))
             assets_failed.add(1, {**common_attrs, "stage": "unknown"})
             raise
 ```
