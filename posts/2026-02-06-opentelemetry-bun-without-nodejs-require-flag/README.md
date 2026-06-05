@@ -37,6 +37,10 @@ First, install the required OpenTelemetry packages. Bun has excellent npm compat
 # Install core OpenTelemetry packages
 bun add @opentelemetry/api \
         @opentelemetry/sdk-node \
+        @opentelemetry/sdk-metrics \
+        @opentelemetry/sdk-trace-base \
+        @opentelemetry/resources \
+        @opentelemetry/semantic-conventions \
         @opentelemetry/auto-instrumentations-node \
         @opentelemetry/exporter-trace-otlp-http \
         @opentelemetry/exporter-metrics-otlp-http
@@ -53,10 +57,11 @@ import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentation
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-http";
 import { PeriodicExportingMetricReader } from "@opentelemetry/sdk-metrics";
-import { Resource } from "@opentelemetry/resources";
+import { TraceIdRatioBasedSampler } from "@opentelemetry/sdk-trace-base";
+import { resourceFromAttributes } from "@opentelemetry/resources";
 import {
-  SEMRESATTRS_SERVICE_NAME,
-  SEMRESATTRS_SERVICE_VERSION,
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
 } from "@opentelemetry/semantic-conventions";
 
 export interface TelemetryConfig {
@@ -64,13 +69,15 @@ export interface TelemetryConfig {
   serviceVersion: string;
   otlpEndpoint: string;
   environment: string;
+  sampleRate: number;
+  exportInterval: number;
 }
 
 export function createTelemetrySDK(config: TelemetryConfig): NodeSDK {
   // Define resource attributes
-  const resource = new Resource({
-    [SEMRESATTRS_SERVICE_NAME]: config.serviceName,
-    [SEMRESATTRS_SERVICE_VERSION]: config.serviceVersion,
+  const resource = resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: config.serviceName,
+    [ATTR_SERVICE_VERSION]: config.serviceVersion,
     "deployment.environment": config.environment,
     "telemetry.sdk.language": "javascript",
     "telemetry.sdk.runtime": "bun",
@@ -92,10 +99,13 @@ export function createTelemetrySDK(config: TelemetryConfig): NodeSDK {
   const sdk = new NodeSDK({
     resource,
     traceExporter,
-    metricReader: new PeriodicExportingMetricReader({
-      exporter: metricExporter,
-      exportIntervalMillis: 60000,
-    }),
+    sampler: new TraceIdRatioBasedSampler(config.sampleRate),
+    metricReaders: [
+      new PeriodicExportingMetricReader({
+        exporter: metricExporter,
+        exportIntervalMillis: config.exportInterval,
+      }),
+    ],
     instrumentations: [
       getNodeAutoInstrumentations({
         // Configure auto-instrumentation
@@ -108,7 +118,7 @@ export function createTelemetrySDK(config: TelemetryConfig): NodeSDK {
         "@opentelemetry/instrumentation-express": {
           enabled: true,
         },
-        "@opentelemetry/instrumentation-fetch": {
+        "@opentelemetry/instrumentation-undici": {
           enabled: true,
         },
       }),
@@ -136,6 +146,8 @@ const telemetryConfig: TelemetryConfig = {
   serviceVersion: process.env.APP_VERSION || "1.0.0",
   otlpEndpoint: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || "http://localhost:4318",
   environment: process.env.ENVIRONMENT || "development",
+  sampleRate: Number(process.env.OTEL_TRACES_SAMPLER_ARG || "1"),
+  exportInterval: Number(process.env.OTEL_METRIC_EXPORT_INTERVAL || "60000"),
 };
 
 // Initialize and start the SDK
@@ -152,8 +164,7 @@ process.on("SIGTERM", async () => {
 });
 
 // Now import and start your application
-import { startServer } from "./server";
-
+const { startServer } = await import("./server");
 startServer();
 ```
 
@@ -241,12 +252,22 @@ async function handleData(_req: Request): Promise<Response> {
 }
 
 async function handleExternal(_req: Request): Promise<Response> {
-  // Make an outgoing request - auto-instrumentation will create a span
-  const response = await fetch("https://api.github.com/users/github");
-  const data = await response.json();
+  // Manually trace Bun's native fetch call
+  return await tracer.startActiveSpan("external.github", async (span) => {
+    try {
+      const response = await fetch("https://api.github.com/users/github");
+      span.setAttribute("http.status_code", response.status);
+      const data = await response.json();
 
-  return new Response(JSON.stringify(data), {
-    headers: { "Content-Type": "application/json" },
+      return new Response(JSON.stringify(data), {
+        headers: { "Content-Type": "application/json" },
+      });
+    } catch (error) {
+      span.recordException(error as Error);
+      throw error;
+    } finally {
+      span.end();
+    }
   });
 }
 ```
@@ -424,6 +445,8 @@ if (shouldEnableTelemetry()) {
     serviceVersion: process.env.APP_VERSION || "1.0.0",
     otlpEndpoint: envConfig.otlpEndpoint,
     environment: process.env.ENVIRONMENT || "development",
+    sampleRate: envConfig.sampleRate,
+    exportInterval: envConfig.exportInterval,
   };
 
   sdk = createTelemetrySDK(telemetryConfig);
@@ -440,7 +463,7 @@ process.on("SIGTERM", async () => {
   process.exit(0);
 });
 
-import { startServer } from "./server";
+const { startServer } = await import("./server");
 startServer();
 ```
 
@@ -557,7 +580,7 @@ export function createOptimizedSDK() {
 
   // Optimize for high-throughput scenarios
   return new NodeSDK({
-    spanProcessor,
+    spanProcessors: [spanProcessor],
     // Disable auto-instrumentation for low-value modules
     instrumentations: [],
   });
