@@ -42,6 +42,7 @@ Start by adding the OpenTelemetry packages to your project. We'll use the Node.j
 # Install the OpenTelemetry SDK and auto-instrumentation
 
 npm install @opentelemetry/sdk-node \
+  @opentelemetry/api \
   @opentelemetry/auto-instrumentations-node \
   @opentelemetry/exporter-trace-otlp-http \
   @opentelemetry/exporter-metrics-otlp-http \
@@ -63,14 +64,14 @@ const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumenta
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
 const { OTLPMetricExporter } = require('@opentelemetry/exporter-metrics-otlp-http');
 const { PeriodicExportingMetricReader } = require('@opentelemetry/sdk-metrics');
-const { Resource } = require('@opentelemetry/resources');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 const { ATTR_SERVICE_NAME } = require('@opentelemetry/semantic-conventions');
 
 // Railway provides several environment variables automatically
 // We use them to enrich our telemetry with deployment context
-const resource = new Resource({
+const resource = resourceFromAttributes({
   [ATTR_SERVICE_NAME]: process.env.OTEL_SERVICE_NAME || process.env.RAILWAY_SERVICE_NAME || 'railway-app',
-  'deployment.environment': process.env.RAILWAY_ENVIRONMENT || 'production',
+  'deployment.environment': process.env.RAILWAY_ENVIRONMENT_NAME || 'production',
   'railway.project.id': process.env.RAILWAY_PROJECT_ID || 'unknown',
   'railway.service.id': process.env.RAILWAY_SERVICE_ID || 'unknown',
   'railway.deployment.id': process.env.RAILWAY_DEPLOYMENT_ID || 'unknown',
@@ -126,7 +127,7 @@ process.on('SIGTERM', () => {
 });
 ```
 
-Railway sets several environment variables automatically on your deployments: `RAILWAY_PROJECT_ID`, `RAILWAY_SERVICE_NAME`, `RAILWAY_ENVIRONMENT`, `RAILWAY_DEPLOYMENT_ID`, and others. We include these as resource attributes so you can correlate traces with specific deployments. If a bug was introduced in a particular deployment, you can filter traces by `railway.deployment.id` to see exactly what changed.
+Railway sets several environment variables automatically on your deployments: `RAILWAY_PROJECT_ID`, `RAILWAY_SERVICE_NAME`, `RAILWAY_ENVIRONMENT_NAME`, `RAILWAY_DEPLOYMENT_ID`, and others. We include these as resource attributes so you can correlate traces with specific deployments. If a bug was introduced in a particular deployment, you can filter traces by `railway.deployment.id` to see exactly what changed.
 
 ## Configuring the Start Command
 
@@ -173,36 +174,43 @@ railway variables set ONEUPTIME_TOKEN=your-auth-token
 
 ## Tracing Across Railway Services
 
-When you have multiple services in a Railway project (an API service, a worker, a database), distributed tracing ties them together. The OpenTelemetry SDK automatically injects trace context headers (W3C Trace Context) into outgoing HTTP requests.
+When you have multiple services in a Railway project (an API service, a worker, a database), distributed tracing ties them together. OpenTelemetry's HTTP and Undici instrumentations automatically inject trace context headers (W3C Trace Context) into outgoing HTTP requests from supported clients.
 
 Here's an example of an API service that calls a worker service over Railway's private network:
 
 ```javascript
 // API service calling a worker service on Railway's private network
-const { trace } = require('@opentelemetry/api');
+const { trace, SpanStatusCode } = require('@opentelemetry/api');
 const tracer = trace.getTracer('api-service');
 
 async function enqueueJob(jobData) {
   return tracer.startActiveSpan('enqueue-job', async (span) => {
-    span.setAttribute('job.type', jobData.type);
-    span.setAttribute('job.priority', jobData.priority || 'normal');
+    try {
+      span.setAttribute('job.type', jobData.type);
+      span.setAttribute('job.priority', jobData.priority || 'normal');
 
-    // Call the worker service using Railway's internal networking
-    // Railway services can reach each other via their service name
-    const response = await fetch('http://worker-service.railway.internal:3001/jobs', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(jobData),
-    });
+      // Call the worker service using Railway's internal networking
+      // Railway services can reach each other via their service name
+      const response = await fetch('http://worker-service.railway.internal:3001/jobs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(jobData),
+      });
 
-    span.setAttribute('http.status_code', response.status);
+      span.setAttribute('http.status_code', response.status);
 
-    if (!response.ok) {
-      span.setStatus({ code: 2, message: 'Worker returned error' });
+      if (!response.ok) {
+        span.setStatus({ code: SpanStatusCode.ERROR, message: 'Worker returned error' });
+      }
+
+      return response.json();
+    } catch (error) {
+      span.recordException(error);
+      span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
+      throw error;
+    } finally {
+      span.end();
     }
-
-    span.end();
-    return response.json();
   });
 }
 ```
@@ -275,9 +283,9 @@ function metricsMiddleware(req, res, next) {
 
 ## Handling Railway Redeployments
 
-When you push new code or change a configuration variable, Railway creates a new deployment. The old container receives `SIGTERM` and has a grace period to shut down. Our `SIGTERM` handler in the instrumentation file handles this by flushing any buffered telemetry before the process exits.
+When you push new code or change a configuration variable, Railway creates a new deployment. Once the new deployment is online, the old container receives `SIGTERM`. By default Railway gives it 0 seconds before `SIGKILL`, so configure `RAILWAY_DEPLOYMENT_DRAINING_SECONDS` if you want a graceful shutdown window. Our `SIGTERM` handler in the instrumentation file handles this by flushing any buffered telemetry before the process exits.
 
-One thing to watch out for: Railway performs zero-downtime deployments by starting the new container before stopping the old one. During this overlap period, both containers are running and both will emit telemetry. The `railway.deployment.id` resource attribute helps you distinguish between traces from the old and new deployments.
+One thing to watch out for: Railway can overlap the old and new deployments for zero-downtime rollouts. During this overlap period, both containers are running and both will emit telemetry. The `railway.deployment.id` resource attribute helps you distinguish between traces from the old and new deployments.
 
 ## Running a Collector on Railway
 
