@@ -8,7 +8,7 @@ Description: Learn how to safely drain workloads from Docker Swarm nodes and rem
 
 ---
 
-Servers need maintenance. Hardware fails, operating systems need patching, and sometimes you just need to shrink the cluster. Docker Swarm provides a clean process for removing nodes without disrupting running services. You drain the node first, which migrates all tasks to other nodes, then remove it from the cluster. Done correctly, your users never notice.
+Servers need maintenance. Hardware fails, operating systems need patching, and sometimes you just need to shrink the cluster. Docker Swarm provides a clean process for removing nodes while minimizing disruption to services. You drain the node first, which stops swarm service tasks on that node and starts replacement tasks on other nodes, then remove it from the cluster.
 
 This guide covers the full lifecycle: draining nodes, handling different node roles, removing nodes cleanly, and dealing with nodes that have already gone offline.
 
@@ -18,7 +18,7 @@ Every Swarm node has an availability setting that controls whether it accepts ne
 
 - **Active**: The node accepts new tasks and continues running existing ones. This is the default state.
 - **Pause**: The node keeps running existing tasks but does not accept new ones. Useful for testing without fully draining.
-- **Drain**: The node stops all running tasks and migrates them to other available nodes. No new tasks are scheduled here.
+- **Drain**: The node stops all running swarm service tasks and starts replacement tasks on other available nodes. No new service tasks are scheduled here.
 
 ```bash
 # Check the current availability of all nodes
@@ -30,10 +30,10 @@ The output shows the AVAILABILITY column for each node.
 
 ## Draining a Worker Node
 
-Before removing a worker node or performing maintenance, drain it to migrate workloads.
+Before removing a worker node or performing maintenance, drain it to reschedule swarm service workloads.
 
 ```bash
-# Drain a worker node - all tasks will be rescheduled to other nodes
+# Drain a worker node - service tasks will be rescheduled to other nodes
 docker node update --availability drain worker1
 ```
 
@@ -77,7 +77,7 @@ Manager nodes need extra care. Draining a manager stops workloads on it but does
 docker node update --availability drain manager2
 ```
 
-After draining, the manager still votes in Raft consensus and can become the leader. It just does not run application containers.
+After draining, the manager still votes in Raft consensus and can become the leader. It just does not run swarm service tasks.
 
 If you need to take the manager fully offline, consider the quorum implications:
 
@@ -119,11 +119,12 @@ docker node rm --force worker1
 
 ## Removing a Manager Node
 
-Removing a manager is a three-step process:
+Removing a manager is a four-step process:
 
 1. Drain the manager
 2. Demote it to a worker
-3. Remove it
+3. Leave the swarm from that node
+4. Remove the node entry
 
 ```bash
 # Step 1: Drain the manager
@@ -139,7 +140,7 @@ docker swarm leave
 docker node rm manager3
 ```
 
-Demoting before removing is important. If you remove a manager without demoting, the remaining managers need to adjust the Raft consensus group, which can cause brief disruptions.
+Demoting before removing is important. Docker requires manager nodes to be demoted to workers before they can be removed from the swarm, and demoting cleanly updates the Raft consensus group.
 
 ## Handling Dead Nodes
 
@@ -157,7 +158,7 @@ For a dead worker, simply force-remove it:
 docker node rm --force dead-worker
 ```
 
-Swarm has already rescheduled the tasks when the node became unreachable (after the task timeout period).
+Swarm tries to reschedule the service tasks when the node becomes unreachable, assuming other nodes can run them.
 
 For a dead manager, the situation is more serious. If you still have quorum, the cluster continues operating:
 
@@ -215,8 +216,8 @@ docker node update --availability drain "$NODE_NAME"
 # Wait for all tasks to leave the node
 echo "Waiting for tasks to migrate..."
 while true; do
-  # Count running tasks on the drained node
-  RUNNING=$(docker node ps "$NODE_NAME" --filter "desired-state=running" -q 2>/dev/null | wc -l)
+  # Count tasks that have not reached a terminal current state yet
+  RUNNING=$(docker node ps "$NODE_NAME" --format '{{.CurrentState}}' 2>/dev/null | grep -E '^(New|Pending|Assigned|Accepted|Preparing|Ready|Starting|Running)' | wc -l)
 
   if [ "$RUNNING" -eq 0 ]; then
     echo "All tasks have been migrated from $NODE_NAME"
@@ -258,8 +259,8 @@ docker service ls --format '{{.Name}}' | while read svc; do
   fi
 done
 
-# Verify no tasks are stuck in Pending after drain
-docker node ps worker1 --filter "desired-state=running"
+# Verify no replacement tasks are stuck in Pending after drain
+docker service ps webapp --filter "desired-state=running"
 ```
 
 ## Best Practices
@@ -269,11 +270,11 @@ docker node ps worker1 --filter "desired-state=running"
 **Check capacity before draining.** Make sure the remaining nodes have enough CPU and memory to absorb the migrated tasks:
 
 ```bash
-# Check resource usage across the cluster
-docker node ls --format '{{.Hostname}}: {{.Status}}'
+# Check advertised CPU and memory capacity across the cluster
+docker node inspect --format '{{.Description.Hostname}}: {{.Description.Resources.NanoCPUs}} NanoCPUs, {{.Description.Resources.MemoryBytes}} bytes memory' $(docker node ls -q)
 ```
 
-**Use labels for selective draining.** If only certain services run on specific nodes, labels help you understand the impact:
+**List affected tasks before draining.** If only certain services run on specific nodes, inspect the node's current tasks to understand the impact:
 
 ```bash
 # List services that will be affected by draining a node
