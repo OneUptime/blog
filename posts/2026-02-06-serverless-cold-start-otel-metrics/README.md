@@ -18,6 +18,7 @@ The first step is reliably detecting whether a given invocation is a cold start.
 import time
 from opentelemetry import trace, metrics
 from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
@@ -79,9 +80,9 @@ def handler(event, context):
     global _is_cold_start
 
     with tracer.start_as_current_span("lambda_invocation") as span:
-        span.set_attribute("faas.cold_start", _is_cold_start)
+        span.set_attribute("faas.coldstart", _is_cold_start)
         span.set_attribute("faas.invocation_id", context.aws_request_id)
-        span.set_attribute("faas.memory_size", context.memory_limit_in_mb)
+        span.set_attribute("faas.max_memory", context.memory_limit_in_mb * 1024 * 1024)
 
         if _is_cold_start:
             # Record cold start metrics
@@ -164,12 +165,18 @@ Query your metrics to build trend dashboards showing cold start degradation:
 
 ```promql
 # Cold start ratio over time (what percentage of invocations are cold starts)
-rate(faas_coldstart_count_total[5m])
+sum by (faas_name) (rate(faas_coldstart_count_total[5m]))
 /
-(rate(faas_coldstart_count_total[5m]) + rate(faas_warmstart_count_total[5m]))
+(
+  sum by (faas_name) (rate(faas_coldstart_count_total[5m]))
+  +
+  sum by (faas_name) (rate(faas_warmstart_count_total[5m]))
+)
 
 # Average cold start duration per function version
-avg(faas_coldstart_duration_milliseconds) by (faas_version)
+sum by (faas_version) (rate(faas_coldstart_duration_milliseconds_sum[5m]))
+/
+sum by (faas_version) (rate(faas_coldstart_duration_milliseconds_count[5m]))
 
 # P95 cold start duration trending up indicates degradation
 histogram_quantile(0.95,
@@ -177,7 +184,9 @@ histogram_quantile(0.95,
 )
 
 # Cold start phase breakdown
-avg(faas_coldstart_phase_duration_milliseconds) by (phase)
+sum by (phase) (rate(faas_coldstart_phase_duration_milliseconds_sum[5m]))
+/
+sum by (phase) (rate(faas_coldstart_phase_duration_milliseconds_count[5m]))
 ```
 
 ## Alerting on Cold Start Degradation
@@ -201,8 +210,13 @@ groups:
 
       - alert: HighColdStartRatio
         expr: |
-          rate(faas_coldstart_count_total[15m])
-          / (rate(faas_coldstart_count_total[15m]) + rate(faas_warmstart_count_total[15m]))
+          sum by (faas_name) (rate(faas_coldstart_count_total[15m]))
+          /
+          (
+            sum by (faas_name) (rate(faas_coldstart_count_total[15m]))
+            +
+            sum by (faas_name) (rate(faas_warmstart_count_total[15m]))
+          )
           > 0.3
         for: 15m
         annotations:
