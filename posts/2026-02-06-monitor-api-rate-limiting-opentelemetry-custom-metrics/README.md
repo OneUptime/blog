@@ -91,14 +91,14 @@ meter = metrics.get_meter("api.rate_limiting")
 requests_allowed = meter.create_counter(
     name="rate_limit.requests.allowed",
     description="Number of requests that passed the rate limiter",
-    unit="requests"
+    unit="{request}"
 )
 
 # Counter: Total requests rejected by the rate limiter
 requests_rejected = meter.create_counter(
     name="rate_limit.requests.rejected",
     description="Number of requests blocked by the rate limiter",
-    unit="requests"
+    unit="{request}"
 )
 
 # Histogram: How close clients are to their rate limit (0.0 to 1.0)
@@ -106,15 +106,14 @@ requests_rejected = meter.create_counter(
 usage_ratio = meter.create_histogram(
     name="rate_limit.usage_ratio",
     description="Ratio of used quota to total quota (0.0 = no usage, 1.0 = at limit)",
-    unit="ratio"
+    unit="1"
 )
 
 # Gauge: Current number of requests in the rate limit window per client
-# Uses an observable gauge with a callback for real-time values
 current_window_usage = meter.create_gauge(
     name="rate_limit.window.current_usage",
     description="Current request count within the rate limit window",
-    unit="requests"
+    unit="{request}"
 )
 
 # Histogram: Additional latency introduced by the rate limiter itself
@@ -122,20 +121,20 @@ current_window_usage = meter.create_gauge(
 limiter_latency = meter.create_histogram(
     name="rate_limit.check_latency",
     description="Time taken to evaluate rate limit decision",
-    unit="ms"
+    unit="s"
 )
 
 # Counter: Track rate limit policy changes (for audit/correlation)
 policy_changes = meter.create_counter(
     name="rate_limit.policy.changes",
     description="Number of times rate limit policies were updated",
-    unit="changes"
+    unit="{change}"
 )
 ```
 
 ## Instrumenting the Rate Limiter
 
-Here's where it all comes together. We'll wrap a token bucket rate limiter with OpenTelemetry instrumentation. This example uses a Redis-backed limiter, which is common in production API gateways.
+Here's where it all comes together. We'll wrap a sliding-window rate limiter with OpenTelemetry instrumentation. This example uses a Redis-backed limiter, which is common in production API gateways.
 
 This class wraps rate limiting logic with comprehensive metric recording.
 
@@ -149,15 +148,15 @@ from opentelemetry import metrics
 meter = metrics.get_meter("api.rate_limiting")
 
 # Define metric instruments
-requests_allowed = meter.create_counter("rate_limit.requests.allowed", unit="requests")
-requests_rejected = meter.create_counter("rate_limit.requests.rejected", unit="requests")
-usage_ratio_histogram = meter.create_histogram("rate_limit.usage_ratio", unit="ratio")
-limiter_latency = meter.create_histogram("rate_limit.check_latency", unit="ms")
-current_usage_gauge = meter.create_gauge("rate_limit.window.current_usage", unit="requests")
+requests_allowed = meter.create_counter("rate_limit.requests.allowed", unit="{request}")
+requests_rejected = meter.create_counter("rate_limit.requests.rejected", unit="{request}")
+usage_ratio_histogram = meter.create_histogram("rate_limit.usage_ratio", unit="1")
+limiter_latency = meter.create_histogram("rate_limit.check_latency", unit="s")
+current_usage_gauge = meter.create_gauge("rate_limit.window.current_usage", unit="{request}")
 
 
 class InstrumentedRateLimiter:
-    """Token bucket rate limiter with OpenTelemetry metrics."""
+    """Sliding-window rate limiter with OpenTelemetry metrics."""
 
     def __init__(self, redis_client, default_limit=100, window_seconds=60):
         self.redis = redis_client
@@ -211,7 +210,7 @@ class InstrumentedRateLimiter:
             usage_ratio_histogram.record(ratio, metric_attrs)
 
             # Record current window usage as a gauge
-            current_usage_gauge.set(current_count, metric_attrs)
+            current_usage_gauge.record(current_count, metric_attrs)
 
             if current_count >= effective_limit:
                 # Request is rejected
@@ -237,8 +236,8 @@ class InstrumentedRateLimiter:
 
         finally:
             # Always record the latency of the rate limit check itself
-            elapsed_ms = (time.monotonic() - start_time) * 1000
-            limiter_latency.record(elapsed_ms, metric_attrs)
+            elapsed_s = time.monotonic() - start_time
+            limiter_latency.record(elapsed_s, metric_attrs)
 ```
 
 ## Integrating with a Web Framework
@@ -252,6 +251,7 @@ This middleware runs on every request and records rate limit metrics before the 
 # FastAPI middleware that applies instrumented rate limiting
 from fastapi import FastAPI, Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
+import time
 import redis
 
 from instrumented_rate_limiter import InstrumentedRateLimiter
@@ -292,12 +292,12 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         )
 
         if not allowed:
-            # Return 429 with standard rate limit headers
+            # Return 429 with rate limit headers
             return Response(
                 content='{"error": "Rate limit exceeded"}',
                 status_code=429,
                 headers={
-                    "Retry-After": str(reset_time),
+                    "Retry-After": str(max(1, reset_time - int(time.time()))),
                     "X-RateLimit-Limit": str(limit or rate_limiter.default_limit),
                     "X-RateLimit-Remaining": "0",
                     "X-RateLimit-Reset": str(reset_time),
@@ -330,7 +330,7 @@ async def search(q: str):
 
 ## OpenTelemetry Collector Configuration
 
-Configure the collector to receive these metrics and prepare them for your backend. The collector can also derive additional metrics using its built-in processors.
+Configure the collector to receive these metrics and prepare them for your backend. The collector can also filter, transform, and enrich telemetry using its built-in processors.
 
 ```yaml
 # otel-collector-config.yaml
@@ -358,11 +358,14 @@ processors:
 
   # Filter out health check endpoint metrics to reduce cardinality
   filter:
-    metrics:
-      datapoint:
-        - 'attributes["api.endpoint"] == "/v1/health"'
+    error_mode: ignore
+    metric_conditions:
+      - context: datapoint
+        conditions:
+          - 'attributes["api.endpoint"] == "/v1/health"'
 
-  # Group metrics by client to make per-client dashboards efficient
+  # Move selected datapoint attributes to resources for backends that benefit from it.
+  # This processor is available in the contrib and k8s Collector distributions.
   groupbyattrs:
     keys:
       - client.id
@@ -448,7 +451,7 @@ groups:
       # Rate limiter latency spike could mean Redis issues
       - alert: RateLimiterLatencyHigh
         expr: |
-          histogram_quantile(0.99, rate(rate_limit_check_latency_bucket[5m])) > 50
+          histogram_quantile(0.99, rate(rate_limit_check_latency_seconds_bucket[5m])) > 0.05
         for: 2m
         labels:
           severity: critical
@@ -487,14 +490,14 @@ meter = metrics.get_meter("api.rate_limiting")
 headroom_histogram = meter.create_histogram(
     name="rate_limit.headroom",
     description="Remaining requests in quota window per client",
-    unit="requests"
+    unit="{request}"
 )
 
 # Gauge for the total number of active rate limit windows
 active_windows = meter.create_gauge(
     name="rate_limit.active_windows",
     description="Number of clients with active rate limit windows",
-    unit="windows"
+    unit="{window}"
 )
 
 
@@ -523,7 +526,7 @@ def report_headroom(redis_client, default_limit=100, window_seconds=60):
             active_count += 1
 
     # Report total number of active windows
-    active_windows.set(active_count)
+    active_windows.record(active_count)
 
 
 if __name__ == "__main__":
