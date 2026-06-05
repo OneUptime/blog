@@ -37,20 +37,20 @@ receivers:
       http:
         endpoint: 0.0.0.0:4318
 
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
 processors:
   # Policy 1: Require mandatory attributes on all spans
   # Reject spans missing required compliance attributes
   filter/require_attributes:
     error_mode: ignore
-    spans:
-      # Only include spans that have the required attributes
-      include:
-        match_type: regexp
-        attributes:
-          - key: service.name
-            value: ".+"
-          - key: deployment.environment
-            value: "^(production|staging|development)$"
+    trace_conditions:
+      - resource.attributes["service.name"] == nil
+      - resource.attributes["service.name"] == ""
+      - resource.attributes["deployment.environment"] == nil
+      - IsMatch(resource.attributes["deployment.environment"], "^(production|staging|development)$") == false
 
   # Policy 2: Enforce attribute naming conventions
   # Rename non-standard attributes to canonical names
@@ -74,23 +74,23 @@ processors:
 
   # Policy 3: Enforce PII redaction
   transform/redact_pii:
+    error_mode: ignore
     trace_statements:
-      - context: span
-        statements:
-          # Redact email addresses
-          - replace_pattern(attributes["enduser.id"],
-              "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}",
-              "[EMAIL-REDACTED]")
-          # Redact SSN patterns
-          - replace_pattern(attributes["db.statement"],
-              "[0-9]{3}-[0-9]{2}-[0-9]{4}",
-              "[SSN-REDACTED]")
+      # Redact email addresses
+      - replace_pattern(span.attributes["enduser.id"],
+          "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}",
+          "[EMAIL-REDACTED]") where span.attributes["enduser.id"] != nil
+      # Redact SSN patterns in current and legacy database attributes
+      - replace_pattern(span.attributes["db.query.text"],
+          "[0-9]{3}-[0-9]{2}-[0-9]{4}",
+          "[SSN-REDACTED]") where span.attributes["db.query.text"] != nil
+      - replace_pattern(span.attributes["db.statement"],
+          "[0-9]{3}-[0-9]{2}-[0-9]{4}",
+          "[SSN-REDACTED]") where span.attributes["db.statement"] != nil
     log_statements:
-      - context: log
-        statements:
-          - replace_pattern(body,
-              "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}",
-              "[EMAIL-REDACTED]")
+      - replace_pattern(log.body,
+          "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}",
+          "[EMAIL-REDACTED]") where IsString(log.body)
 
   # Policy 4: Add compliance metadata
   resource/compliance_tags:
@@ -101,23 +101,25 @@ processors:
       - key: compliance.policy_applied
         value: "true"
         action: insert
-      - key: compliance.processed_at
-        action: insert
-        value: ""
+  transform/compliance_timestamp:
+    error_mode: ignore
+    trace_statements:
+      - set(resource.attributes["compliance.processed_at"], Now())
+    log_statements:
+      - set(resource.attributes["compliance.processed_at"], Now())
 
   # Policy 5: Limit attribute cardinality to prevent cost explosions
   # and potential data leaks through high-cardinality user data
   transform/limit_cardinality:
+    error_mode: ignore
     trace_statements:
-      - context: span
-        statements:
-          # Replace high-cardinality URL paths with templates
-          - replace_pattern(attributes["url.path"],
-              "/users/[0-9a-f-]+",
-              "/users/{id}")
-          - replace_pattern(attributes["url.path"],
-              "/orders/[0-9]+",
-              "/orders/{id}")
+      # Replace high-cardinality URL paths with templates
+      - replace_pattern(span.attributes["url.path"],
+          "/users/[0-9a-f-]+",
+          "/users/{id}") where span.attributes["url.path"] != nil
+      - replace_pattern(span.attributes["url.path"],
+          "/orders/[0-9]+",
+          "/orders/{id}") where span.attributes["url.path"] != nil
 
   batch:
     timeout: 5s
@@ -125,12 +127,13 @@ processors:
 
 exporters:
   otlp/backend:
-    endpoint: https://oneuptime.example.com:4317
+    endpoint: oneuptime.example.com:4317
     tls:
       cert_file: /etc/ssl/gateway/client.crt
       key_file: /etc/ssl/gateway/client.key
 
 service:
+  extensions: [health_check]
   pipelines:
     traces:
       receivers: [otlp]
@@ -140,6 +143,7 @@ service:
         - filter/require_attributes
         - transform/limit_cardinality
         - resource/compliance_tags
+        - transform/compliance_timestamp
         - batch
       exporters: [otlp/backend]
     logs:
@@ -147,6 +151,7 @@ service:
       processors:
         - transform/redact_pii
         - resource/compliance_tags
+        - transform/compliance_timestamp
         - batch
       exporters: [otlp/backend]
 ```
@@ -178,7 +183,7 @@ spec:
     spec:
       containers:
         - name: collector
-          image: otel/opentelemetry-collector-contrib:0.96.0
+          image: otel/opentelemetry-collector-contrib:0.153.0
           args: ["--config=/etc/otel/config.yaml"]
           ports:
             - containerPort: 4317
@@ -187,6 +192,8 @@ spec:
               name: otlp-http
             - containerPort: 8888
               name: metrics
+            - containerPort: 13133
+              name: health
           resources:
             requests:
               cpu: "500m"
@@ -275,8 +282,8 @@ exporters:
 
 Your policy enforcement point needs its own monitoring. The collector exposes metrics you should track:
 
-- `otelcol_receiver_accepted_spans` vs `otelcol_receiver_refused_spans` shows how many spans are being rejected by policies
-- `otelcol_processor_dropped_spans` tells you if the filter processor is catching policy violations
+- `otelcol_receiver_accepted_spans` vs `otelcol_receiver_refused_spans` shows whether receivers are accepting or refusing incoming spans
+- `otelcol_processor_dropped_spans` tells you if processors such as the filter processor are dropping spans for policy violations
 - `otelcol_exporter_send_failed_spans` indicates backend connectivity issues
 
 Set up alerts on a sudden spike in rejected spans, which could indicate a deployment with broken instrumentation, or on a drop in total throughput, which could mean the gateway itself is having issues.
