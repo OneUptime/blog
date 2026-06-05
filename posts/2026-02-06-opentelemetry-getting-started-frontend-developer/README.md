@@ -26,11 +26,11 @@ OpenTelemetry captures this data from real users, not synthetic tests. You see a
 
 OpenTelemetry organizes browser telemetry into signals:
 
-**Traces** track user interactions and page loads. When a user clicks a button, OpenTelemetry creates a trace showing every operation triggered: API calls, component renders, state updates.
+**Traces** track user interactions and page loads. When a user clicks a button, OpenTelemetry can create a trace showing instrumented operations triggered by that action, such as API calls and custom spans you add around component work or state updates.
 
 **Metrics** measure browser performance: page load times, Time to First Byte, First Contentful Paint, Largest Contentful Paint, and custom metrics you define.
 
-**Logs** capture console errors, exceptions, and custom events. OpenTelemetry links logs to traces so you can see exactly what the user was doing when an error occurred.
+**Logs** can capture console errors, exceptions, and custom events when you configure log collection. Logs can also be correlated with traces so you can see what operation was running when an error occurred.
 
 ## Setting Up Browser Instrumentation
 
@@ -39,35 +39,42 @@ Install OpenTelemetry packages for the browser:
 ```bash
 npm install @opentelemetry/api \
             @opentelemetry/sdk-trace-web \
+            @opentelemetry/sdk-trace-base \
+            @opentelemetry/sdk-metrics \
+            @opentelemetry/resources \
+            @opentelemetry/semantic-conventions \
+            @opentelemetry/context-zone \
             @opentelemetry/instrumentation \
             @opentelemetry/instrumentation-fetch \
             @opentelemetry/instrumentation-xml-http-request \
             @opentelemetry/instrumentation-document-load \
             @opentelemetry/instrumentation-user-interaction \
-            @opentelemetry/exporter-trace-otlp-http
+            @opentelemetry/exporter-trace-otlp-http \
+            @opentelemetry/exporter-metrics-otlp-http
 ```
 
 Create an initialization file that sets up OpenTelemetry:
 
 ```javascript
 // tracing.js - Initialize before your app
+import { metrics } from '@opentelemetry/api';
 import { WebTracerProvider } from '@opentelemetry/sdk-trace-web';
 import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
+import { MeterProvider, PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
+import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
+import { resourceFromAttributes } from '@opentelemetry/resources';
+import { ATTR_SERVICE_NAME } from '@opentelemetry/semantic-conventions';
+import { ZoneContextManager } from '@opentelemetry/context-zone';
 import { registerInstrumentations } from '@opentelemetry/instrumentation';
 import { FetchInstrumentation } from '@opentelemetry/instrumentation-fetch';
 import { XMLHttpRequestInstrumentation } from '@opentelemetry/instrumentation-xml-http-request';
 import { DocumentLoadInstrumentation } from '@opentelemetry/instrumentation-document-load';
 import { UserInteractionInstrumentation } from '@opentelemetry/instrumentation-user-interaction';
 
-// Create a tracer provider
-const provider = new WebTracerProvider({
-  resource: {
-    attributes: {
-      'service.name': 'my-frontend-app',
-      'service.version': '1.0.0',
-    },
-  },
+const resource = resourceFromAttributes({
+  [ATTR_SERVICE_NAME]: 'my-frontend-app',
+  'service.version': '1.0.0',
 });
 
 // Configure the OTLP exporter to send data to your collector
@@ -79,19 +86,44 @@ const exporter = new OTLPTraceExporter({
 });
 
 // Use batch processing to reduce network overhead
-provider.addSpanProcessor(new BatchSpanProcessor(exporter, {
+const spanProcessor = new BatchSpanProcessor(exporter, {
   maxQueueSize: 100,
   scheduledDelayMillis: 5000,
-}));
+});
+
+// Create a tracer provider
+const provider = new WebTracerProvider({
+  resource,
+  spanProcessors: [spanProcessor],
+});
+
+const metricExporter = new OTLPMetricExporter({
+  url: 'https://your-collector.example.com/v1/metrics',
+});
+
+const meterProvider = new MeterProvider({
+  resource,
+  readers: [
+    new PeriodicExportingMetricReader({
+      exporter: metricExporter,
+      exportIntervalMillis: 5000,
+    }),
+  ],
+});
+
+metrics.setGlobalMeterProvider(meterProvider);
 
 // Register the provider globally
-provider.register();
+provider.register({
+  contextManager: new ZoneContextManager(),
+});
 
 // Register auto-instrumentation for common browser operations
 registerInstrumentations({
   instrumentations: [
     // Traces fetch() API calls
     new FetchInstrumentation({
+      semconvStabilityOptIn: 'http',
       propagateTraceHeaderCorsUrls: [
         /https:\/\/api\.example\.com\/.*/,
       ],
@@ -119,10 +151,10 @@ Import this file at the start of your application:
 // index.js or main.js - Your application entry point
 import './tracing'; // Must be first import
 import React from 'react';
-import ReactDOM from 'react-dom';
+import { createRoot } from 'react-dom/client';
 import App from './App';
 
-ReactDOM.render(<App />, document.getElementById('root'));
+createRoot(document.getElementById('root')).render(<App />);
 ```
 
 Now OpenTelemetry automatically traces page loads, user clicks, and HTTP requests.
@@ -143,7 +175,6 @@ async function loadUserData(userId) {
 The resulting span includes:
 
 - HTTP method and URL
-- Request and response headers (sanitized)
 - Status code
 - Duration from the browser's perspective
 - Any network errors
@@ -182,7 +213,7 @@ Now when a user triggers an API call, the trace spans the entire request from bu
 
 ## Measuring Page Load Performance
 
-The DocumentLoadInstrumentation automatically captures Web Vitals and navigation timing:
+The DocumentLoadInstrumentation automatically captures navigation timing and paint timing:
 
 ```javascript
 new DocumentLoadInstrumentation()
@@ -196,10 +227,9 @@ This creates spans with timing information:
 - Time to First Byte (TTFB)
 - DOM content loaded
 - Page fully loaded
-- First Contentful Paint (FCP)
-- Largest Contentful Paint (LCP)
+- First Paint and First Contentful Paint (FCP)
 
-You don't need to manually capture these metrics. They're automatically included in every page load trace.
+You don't need to manually capture these timings. They're automatically included in every page load trace.
 
 ## Tracking User Interactions
 
@@ -235,7 +265,8 @@ This reveals how users navigate your application and where they encounter delays
 Track component render times and state updates with custom spans:
 
 ```javascript
-import { trace } from '@opentelemetry/api';
+import { trace, SpanStatusCode } from '@opentelemetry/api';
+import { useEffect } from 'react';
 
 function ProductList({ products }) {
   const tracer = trace.getTracer('product-list-component');
@@ -245,27 +276,30 @@ function ProductList({ products }) {
     const span = tracer.startSpan('ProductList.initialize');
     span.setAttribute('product.count', products.length);
 
-    // Perform initialization
-    initializeProductList(products);
-
-    span.end();
+    try {
+      // Perform initialization
+      initializeProductList(products);
+    } finally {
+      span.end();
+    }
   }, [products]);
 
   const handleFilterChange = (filter) => {
     // Trace user-initiated operations
-    const span = tracer.startSpan('ProductList.filter');
-    span.setAttribute('filter.type', filter.type);
-    span.setAttribute('filter.value', filter.value);
+    tracer.startActiveSpan('ProductList.filter', (span) => {
+      span.setAttribute('filter.type', filter.type);
+      span.setAttribute('filter.value', filter.value);
 
-    try {
-      applyFilter(filter);
-      span.setStatus({ code: SpanStatusCode.OK });
-    } catch (error) {
-      span.recordException(error);
-      span.setStatus({ code: SpanStatusCode.ERROR });
-    } finally {
-      span.end();
-    }
+      try {
+        applyFilter(filter);
+        span.setStatus({ code: SpanStatusCode.OK });
+      } catch (error) {
+        span.recordException(error);
+        span.setStatus({ code: SpanStatusCode.ERROR });
+      } finally {
+        span.end();
+      }
+    });
   };
 
   return (
@@ -294,8 +328,8 @@ const lcpHistogram = meter.createHistogram('web.vitals.lcp', {
   unit: 'ms',
 });
 
-const fidHistogram = meter.createHistogram('web.vitals.fid', {
-  description: 'First Input Delay',
+const inpHistogram = meter.createHistogram('web.vitals.inp', {
+  description: 'Interaction to Next Paint',
   unit: 'ms',
 });
 
@@ -305,7 +339,7 @@ const clsHistogram = meter.createHistogram('web.vitals.cls', {
 });
 
 // Use the web-vitals library to measure and report
-import { onLCP, onFID, onCLS } from 'web-vitals';
+import { onLCP, onINP, onCLS } from 'web-vitals';
 
 onLCP((metric) => {
   lcpHistogram.record(metric.value, {
@@ -314,8 +348,8 @@ onLCP((metric) => {
   });
 });
 
-onFID((metric) => {
-  fidHistogram.record(metric.value, {
+onINP((metric) => {
+  inpHistogram.record(metric.value, {
     'page.path': window.location.pathname,
     'device.type': getDeviceType(),
   });
@@ -336,6 +370,8 @@ These metrics export to your observability backend, letting you track Web Vitals
 Capture JavaScript errors and unhandled promise rejections:
 
 ```javascript
+import { trace, SpanStatusCode } from '@opentelemetry/api';
+
 const tracer = trace.getTracer('error-handler');
 
 // Handle uncaught errors
@@ -362,19 +398,19 @@ window.addEventListener('unhandledrejection', (event) => {
 });
 ```
 
-Errors are linked to active spans, so you can see exactly what the user was doing when the error occurred.
+Errors are captured as error spans. When an active context is available, they can be correlated with the operation that was running when the error occurred.
 
 ## Session and User Context
 
 Add user and session information to all spans:
 
 ```javascript
-import { Resource } from '@opentelemetry/resources';
-import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
+import { resourceFromAttributes } from '@opentelemetry/resources';
+import { ATTR_SERVICE_NAME } from '@opentelemetry/semantic-conventions';
 
 // Add user context to the resource
-const resource = new Resource({
-  [SemanticResourceAttributes.SERVICE_NAME]: 'my-frontend-app',
+const resource = resourceFromAttributes({
+  [ATTR_SERVICE_NAME]: 'my-frontend-app',
   'user.id': getCurrentUserId(),
   'user.session': getSessionId(),
   'deployment.environment': 'production',
@@ -412,7 +448,7 @@ new BatchSpanProcessor(exporter, {
 
 **Be selective with attributes.** Don't add large objects as span attributes. Keep attributes small and focused.
 
-**Lazy load instrumentation.** For large applications, load OpenTelemetry asynchronously:
+**Lazy load instrumentation.** For large applications, load OpenTelemetry asynchronously when you can accept missing the initial page-load trace:
 
 ```javascript
 // Lazy load OpenTelemetry after initial page render
@@ -442,6 +478,36 @@ services:
       - "55679:55679"  # zPages for debugging
 ```
 
+Configure the collector to receive OTLP over HTTP and enable zPages:
+
+```yaml
+# otel-collector-config.yml
+
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+
+exporters:
+  debug:
+    verbosity: detailed
+
+extensions:
+  zpages:
+    endpoint: 0.0.0.0:55679
+
+service:
+  extensions: [zpages]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [debug]
+    metrics:
+      receivers: [otlp]
+      exporters: [debug]
+```
+
 Configure your frontend to send traces to localhost:
 
 ```javascript
@@ -461,6 +527,7 @@ For Vue.js:
 ```javascript
 // main.js
 import { createApp } from 'vue';
+import { trace, SpanStatusCode } from '@opentelemetry/api';
 import './tracing'; // Initialize OpenTelemetry first
 import App from './App.vue';
 
@@ -491,7 +558,7 @@ platformBrowserDynamic().bootstrapModule(AppModule)
   .catch(err => console.error(err));
 
 // app.module.ts - Add error handler
-import { ErrorHandler, Injectable } from '@angular/core';
+import { ErrorHandler, Injectable, NgModule } from '@angular/core';
 import { trace, SpanStatusCode } from '@opentelemetry/api';
 
 @Injectable()
@@ -521,17 +588,24 @@ Be careful about what data you collect. Sanitize sensitive information:
 
 ```javascript
 new FetchInstrumentation({
-  // Sanitize URLs before creating spans
+  semconvStabilityOptIn: 'http',
+  // Sanitize URLs before spans are exported
   applyCustomAttributesOnSpan: (span, request, response) => {
+    const requestUrl = request instanceof Request
+      ? request.url
+      : response instanceof Response
+        ? response.url
+        : undefined;
+
+    if (!requestUrl) {
+      return;
+    }
+
     // Remove sensitive query parameters
-    const url = new URL(request.url);
+    const url = new URL(requestUrl);
     url.searchParams.delete('token');
     url.searchParams.delete('api_key');
-    span.setAttribute('http.url', url.toString());
-
-    // Don't include request/response bodies
-    span.setAttribute('http.request.body', undefined);
-    span.setAttribute('http.response.body', undefined);
+    span.setAttribute('url.full', url.toString());
   },
 })
 ```
