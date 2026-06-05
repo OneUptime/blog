@@ -30,7 +30,7 @@ receivers:
         endpoint: "0.0.0.0:4317"
 
 connectors:
-  spanmetrics:
+  span_metrics:
     dimensions:
       - name: service.name
       - name: http.route
@@ -51,9 +51,9 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      exporters: [spanmetrics, otlp/traces]
+      exporters: [span_metrics, otlp/traces]
     metrics:
-      receivers: [spanmetrics]
+      receivers: [span_metrics]
       exporters: [prometheus]
 ```
 
@@ -71,14 +71,14 @@ groups:
       - record: slo:requests:rate5m
         expr: |
           sum by (service_name) (
-            rate(otel_traces_spanmetrics_calls_total[5m])
+            rate(otel_traces_span_metrics_calls_total[5m])
           )
 
       # Error request rate by service
       - record: slo:errors:rate5m
         expr: |
           sum by (service_name) (
-            rate(otel_traces_spanmetrics_calls_total{
+            rate(otel_traces_span_metrics_calls_total{
               status_code="STATUS_CODE_ERROR"
             }[5m])
           )
@@ -88,19 +88,19 @@ groups:
         expr: |
           slo:errors:rate5m / slo:requests:rate5m
 
-      # 30-day error budget consumed (percentage)
+      # 30-day error budget consumed (fraction of budget)
       - record: slo:budget_consumed:30d
         expr: |
           (
             sum by (service_name) (
-              increase(otel_traces_spanmetrics_calls_total{
+              increase(otel_traces_span_metrics_calls_total{
                 status_code="STATUS_CODE_ERROR"
               }[30d])
             )
             /
             (
               sum by (service_name) (
-                increase(otel_traces_spanmetrics_calls_total[30d])
+                increase(otel_traces_span_metrics_calls_total[30d])
               )
               * 0.001
             )
@@ -109,7 +109,17 @@ groups:
       # Burn rate (how fast budget is being consumed relative to sustainable rate)
       - record: slo:burn_rate:1h
         expr: |
-          (slo:error_ratio:5m) / 0.001
+          (
+            sum by (service_name) (
+              rate(otel_traces_span_metrics_calls_total{
+                status_code="STATUS_CODE_ERROR"
+              }[1h])
+            )
+            /
+            sum by (service_name) (
+              rate(otel_traces_span_metrics_calls_total[1h])
+            )
+          ) / 0.001
 ```
 
 ## Grafana Dashboard Panels
@@ -163,12 +173,12 @@ This shows cumulative budget consumption over the 30-day window:
 
 ```promql
 # Cumulative errors as a percentage of the budget
-sum(increase(otel_traces_spanmetrics_calls_total{
+sum(increase(otel_traces_span_metrics_calls_total{
   service_name="api-gateway",
   status_code="STATUS_CODE_ERROR"
 }[30d]))
 /
-(sum(increase(otel_traces_spanmetrics_calls_total{
+(sum(increase(otel_traces_span_metrics_calls_total{
   service_name="api-gateway"
 }[30d])) * 0.001)
 * 100
@@ -201,14 +211,14 @@ Break down which endpoints are consuming the most budget:
 # Error rate by route, sorted by impact
 topk(10,
   sum by (http_route) (
-    rate(otel_traces_spanmetrics_calls_total{
+    rate(otel_traces_span_metrics_calls_total{
       service_name="api-gateway",
       status_code="STATUS_CODE_ERROR"
     }[1h])
   )
   /
   sum by (http_route) (
-    rate(otel_traces_spanmetrics_calls_total{
+    rate(otel_traces_span_metrics_calls_total{
       service_name="api-gateway"
     }[1h])
   )
