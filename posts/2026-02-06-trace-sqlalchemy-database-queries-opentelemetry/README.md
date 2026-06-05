@@ -72,7 +72,7 @@ tracer = trace.get_tracer("sqlalchemy.app", "1.0.0")
 
 ## Instrumenting SQLAlchemy
 
-The SQLAlchemy instrumentor automatically wraps engine creation to capture all database operations.
+The SQLAlchemy instrumentor can instrument an existing engine or wrap engine creation to capture database operations.
 
 ```python
 from sqlalchemy import create_engine, Column, Integer, String, ForeignKey
@@ -90,7 +90,6 @@ engine = create_engine(
 # This enables automatic tracing for all queries
 SQLAlchemyInstrumentor().instrument(
     engine=engine,
-    service="user-service",
     enable_commenter=True,  # Adds trace context to SQL comments
 )
 
@@ -259,7 +258,7 @@ def get_users_with_posts_good():
 Enhance traces with application-specific context to make debugging easier.
 
 ```python
-from typing import List, Optional
+from typing import List
 
 def search_posts(keyword: str, limit: int = 10) -> List[Post]:
     """Search posts with rich tracing context"""
@@ -275,7 +274,7 @@ def search_posts(keyword: str, limit: int = 10) -> List[Post]:
                 Post.title.contains(keyword) | Post.content.contains(keyword)
             ).limit(limit)
 
-            # Add query explanation plan as event
+            # Add the compiled SQL as an event
             if hasattr(query.statement, 'compile'):
                 compiled = query.statement.compile(
                     compile_kwargs={"literal_binds": True}
