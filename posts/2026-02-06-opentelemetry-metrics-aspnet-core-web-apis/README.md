@@ -16,7 +16,7 @@ Understanding three fundamental metric types helps you choose the right instrume
 
 Counter measures values that only increase, like total requests processed or errors encountered. Use counters for cumulative values that reset only on application restart.
 
-Histogram records distributions of values, perfect for request durations or response sizes. Histograms automatically calculate percentiles, allowing you to answer questions like "what's the 95th percentile response time?"
+Histogram records distributions of values, perfect for request durations or response sizes. Monitoring backends can use histogram data to calculate percentiles, allowing you to answer questions like "what's the 95th percentile response time?"
 
 Gauge represents a value that can go up or down, such as active connections or memory usage. Unlike counters, gauges snapshot the current state at collection time.
 
@@ -36,7 +36,8 @@ dotnet add package OpenTelemetry.Instrumentation.AspNetCore
 dotnet add package OpenTelemetry.Instrumentation.Http
 dotnet add package OpenTelemetry.Instrumentation.Runtime
 dotnet add package OpenTelemetry.Exporter.Console
-dotnet add package OpenTelemetry.Exporter.Prometheus.AspNetCore
+dotnet add package OpenTelemetry.Exporter.Prometheus.AspNetCore --prerelease
+dotnet add package Swashbuckle.AspNetCore
 ```
 
 The Runtime instrumentation package automatically collects .NET runtime metrics like garbage collection, thread pool usage, and JIT compilation statistics.
@@ -96,6 +97,7 @@ While automatic instrumentation provides useful infrastructure metrics, you need
 
 ```csharp
 using System.Diagnostics.Metrics;
+using System.Threading;
 
 namespace MetricsDemo.Services;
 
@@ -142,7 +144,7 @@ public class OrderMetrics
         // Observable gauge for pending orders
         _pendingOrdersGauge = _meter.CreateObservableGauge<int>(
             name: "orders.pending",
-            observeValue: () => _pendingOrders,
+            observeValue: () => Volatile.Read(ref _pendingOrders),
             unit: "{orders}",
             description: "Number of orders currently pending");
     }
@@ -363,12 +365,12 @@ builder.Services.AddOpenTelemetry()
 
 ## Understanding Built-In ASP.NET Core Metrics
 
-The ASP.NET Core instrumentation automatically collects several important metrics:
+The ASP.NET Core instrumentation automatically collects HTTP server metrics. On .NET 6 and .NET 7, it emits `http.server.request.duration`. On .NET 8 and newer, it enables ASP.NET Core's built-in metrics, including:
 
 - http.server.request.duration: Histogram of HTTP request durations
 - http.server.active_requests: Gauge of currently active requests
-- http.server.request.body.size: Histogram of request body sizes
-- http.server.response.body.size: Histogram of response body sizes
+- aspnetcore.routing.match_attempts: Counter of endpoint routing match attempts
+- aspnetcore.diagnostics.exceptions: Counter of exceptions caught by exception handling middleware
 
 These metrics include tags for HTTP method, route, and status code, enabling detailed analysis of API performance.
 
@@ -457,12 +459,14 @@ builder.Services.AddOpenTelemetry()
         .AddPrometheusExporter());
 ```
 
-This automatically collects metrics like:
+For applications targeting .NET 8 and earlier, the runtime instrumentation package collects metrics like:
 
 - process.runtime.dotnet.gc.collections.count: Garbage collection frequency
 - process.runtime.dotnet.gc.heap.size: Heap memory usage
-- process.runtime.dotnet.thread_pool.thread.count: Thread pool utilization
-- process.runtime.dotnet.jit.il_bytes.compiled: JIT compilation activity
+- process.runtime.dotnet.thread_pool.threads.count: Thread pool utilization
+- process.runtime.dotnet.jit.il_compiled.size: JIT compilation activity
+
+For applications targeting .NET 9 and newer, the package enables the built-in `System.Runtime` meter instead, which uses names such as `dotnet.gc.collections`, `dotnet.gc.heap.total_allocated`, `dotnet.thread_pool.thread.count`, and `dotnet.jit.compiled_il.size`.
 
 These metrics help identify memory leaks, thread pool starvation, and other runtime performance issues.
 
