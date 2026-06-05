@@ -10,7 +10,7 @@ Honeycomb natively supports OTLP, which means you can send traces and metrics di
 
 ## Prerequisites
 
-You need a Honeycomb API key and a dataset name. The API key goes in the `x-honeycomb-team` header, and the dataset goes in the `x-honeycomb-dataset` header.
+You need a Honeycomb API key and a service name. The API key goes in the `x-honeycomb-team` header. Honeycomb Classic users also set a trace dataset in the `x-honeycomb-dataset` header, and metrics should include an `x-honeycomb-dataset` header for the metrics dataset.
 
 ## Go Setup
 
@@ -27,7 +27,7 @@ import (
     "go.opentelemetry.io/otel/sdk/resource"
     sdktrace "go.opentelemetry.io/otel/sdk/trace"
     sdkmetric "go.opentelemetry.io/otel/sdk/metric"
-    semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
+    semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
 )
 
 const (
@@ -35,6 +35,18 @@ const (
     honeycombAPIKey   = "your-honeycomb-api-key"
     honeycombDataset  = "my-service-traces"
 )
+
+func newResource() (*resource.Resource, error) {
+    return resource.Merge(
+        resource.Default(),
+        resource.NewWithAttributes(
+            semconv.SchemaURL,
+            semconv.ServiceName("my-api-service"),
+            semconv.ServiceVersion("1.0.0"),
+            semconv.DeploymentEnvironmentName("production"),
+        ),
+    )
+}
 
 func initTracing() (*sdktrace.TracerProvider, error) {
     ctx := context.Background()
@@ -53,15 +65,7 @@ func initTracing() (*sdktrace.TracerProvider, error) {
     }
 
     // Create a resource describing this service
-    res, err := resource.Merge(
-        resource.Default(),
-        resource.NewWithAttributes(
-            semconv.SchemaURL,
-            semconv.ServiceName("my-api-service"),
-            semconv.ServiceVersion("1.0.0"),
-            semconv.DeploymentEnvironment("production"),
-        ),
-    )
+    res, err := newResource()
     if err != nil {
         return nil, err
     }
@@ -80,6 +84,12 @@ func initTracing() (*sdktrace.TracerProvider, error) {
 func initMetrics() (*sdkmetric.MeterProvider, error) {
     ctx := context.Background()
 
+    // Reuse the same service resource for metrics
+    res, err := newResource()
+    if err != nil {
+        return nil, err
+    }
+
     // Create the OTLP gRPC metric exporter for Honeycomb
     metricExporter, err := otlpmetricgrpc.New(ctx,
         otlpmetricgrpc.WithEndpoint(honeycombEndpoint),
@@ -93,6 +103,7 @@ func initMetrics() (*sdkmetric.MeterProvider, error) {
     }
 
     mp := sdkmetric.NewMeterProvider(
+        sdkmetric.WithResource(res),
         sdkmetric.WithReader(
             sdkmetric.NewPeriodicReader(metricExporter),
         ),
@@ -141,7 +152,7 @@ HONEYCOMB_ENDPOINT = "https://api.honeycomb.io:443"
 resource = Resource.create({
     "service.name": "my-python-service",
     "service.version": "1.0.0",
-    "deployment.environment": "production",
+    "deployment.environment.name": "production",
 })
 
 # Set up traces
@@ -178,17 +189,19 @@ For containerized deployments, use environment variables:
 
 ```bash
 export OTEL_EXPORTER_OTLP_ENDPOINT="https://api.honeycomb.io:443"
+export OTEL_EXPORTER_OTLP_PROTOCOL="grpc"
 export OTEL_EXPORTER_OTLP_HEADERS="x-honeycomb-team=your-api-key,x-honeycomb-dataset=my-service"
+export OTEL_EXPORTER_OTLP_METRICS_HEADERS="x-honeycomb-team=your-api-key,x-honeycomb-dataset=my-service-metrics"
 export OTEL_SERVICE_NAME="my-service"
-export OTEL_RESOURCE_ATTRIBUTES="deployment.environment=production,service.version=1.0.0"
+export OTEL_RESOURCE_ATTRIBUTES="deployment.environment.name=production,service.version=1.0.0"
 ```
 
 ## Honeycomb Classic vs Honeycomb Environments
 
-Honeycomb has two modes. In Classic mode, you use the `x-honeycomb-dataset` header to route data to specific datasets. In the newer Environments mode, the dataset is derived from the `service.name` resource attribute, and you do not need the `x-honeycomb-dataset` header at all:
+Honeycomb has two modes. In Classic mode, you use the `x-honeycomb-dataset` header to route data to specific datasets. In the newer Environments mode, trace datasets are derived from the `service.name` resource attribute, so trace exporters do not need the `x-honeycomb-dataset` header. Metrics should still include an `x-honeycomb-dataset` header for the metrics dataset:
 
 ```python
-# For Honeycomb Environments (no dataset header needed)
+# For Honeycomb Environments (no trace dataset header needed)
 trace_exporter = OTLPSpanExporter(
     endpoint="https://api.honeycomb.io:443",
     headers=(
