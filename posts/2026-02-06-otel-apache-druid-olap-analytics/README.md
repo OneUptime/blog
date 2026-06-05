@@ -48,11 +48,14 @@ exporters:
 
 processors:
   batch:
-    send_batch_size: 4096
+    # The Druid specs below flatten one OTLP item from each Kafka message.
+    send_batch_size: 1
+    send_batch_max_size: 1
     timeout: 1s
 
-  # Flatten nested attributes for better Druid indexing
+  # Copy renamed semantic attributes for easier Druid indexing
   transform:
+    error_mode: ignore
     trace_statements:
       - context: span
         statements:
@@ -103,7 +106,9 @@ Create a Kafka ingestion supervisor spec for trace data:
             {"type": "path", "name": "start_time",
              "expr": "$.resourceSpans[0].scopeSpans[0].spans[0].startTimeUnixNano"},
             {"type": "path", "name": "end_time",
-             "expr": "$.resourceSpans[0].scopeSpans[0].spans[0].endTimeUnixNano"}
+             "expr": "$.resourceSpans[0].scopeSpans[0].spans[0].endTimeUnixNano"},
+            {"type": "path", "name": "status_code",
+             "expr": "$.resourceSpans[0].scopeSpans[0].spans[0].status.code"}
           ]
         }
       },
@@ -120,6 +125,12 @@ Create a Kafka ingestion supervisor spec for trace data:
       "timestampSpec": {
         "column": "start_time",
         "format": "nano"
+      },
+      "transformSpec": {
+        "transforms": [
+          {"type": "expression", "name": "duration_ns",
+           "expression": "parse_long(end_time) - parse_long(start_time)"}
+        ]
       },
       "dimensionsSpec": {
         "dimensions": [
@@ -151,6 +162,8 @@ Create a Kafka ingestion supervisor spec for trace data:
 
 ## Druid Ingestion Spec for Metrics
 
+This example handles gauge metrics. For sums and histograms, use the corresponding OTLP JSON paths for the point type you export.
+
 ```json
 {
   "type": "kafka",
@@ -162,7 +175,22 @@ Create a Kafka ingestion supervisor spec for trace data:
       },
       "topic": "otel-metrics-druid",
       "inputFormat": {
-        "type": "json"
+        "type": "json",
+        "flattenSpec": {
+          "useFieldDiscovery": false,
+          "fields": [
+            {"type": "path", "name": "metric_name",
+             "expr": "$.resourceMetrics[0].scopeMetrics[0].metrics[0].name"},
+            {"type": "path", "name": "service_name",
+             "expr": "$.resourceMetrics[0].resource.attributes[?(@.key=='service.name')].value.stringValue"},
+            {"type": "path", "name": "instance_id",
+             "expr": "$.resourceMetrics[0].resource.attributes[?(@.key=='service.instance.id')].value.stringValue"},
+            {"type": "path", "name": "timestamp",
+             "expr": "$.resourceMetrics[0].scopeMetrics[0].metrics[0].gauge.dataPoints[0].timeUnixNano"},
+            {"type": "path", "name": "value",
+             "expr": "$.resourceMetrics[0].scopeMetrics[0].metrics[0].gauge.dataPoints[0].asDouble"}
+          ]
+        }
       },
       "useEarliestOffset": true
     },
@@ -170,7 +198,7 @@ Create a Kafka ingestion supervisor spec for trace data:
       "dataSource": "otel_metrics",
       "timestampSpec": {
         "column": "timestamp",
-        "format": "millis"
+        "format": "nano"
       },
       "dimensionsSpec": {
         "dimensions": [
