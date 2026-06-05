@@ -34,13 +34,13 @@ connectors:
     # Define the attribute used for routing decisions
     # We use OTTL conditions on severity
     table:
-      - statement: route()
+      - context: log
         pipelines: [logs/errors]
         condition: 'severity_number >= 17'
-      - statement: route()
+      - context: log
         pipelines: [logs/warnings]
         condition: 'severity_number >= 13 and severity_number < 17'
-      - statement: route()
+      - context: log
         pipelines: [logs/info]
         condition: 'severity_number < 13'
     default_pipelines: [logs/info]
@@ -130,21 +130,18 @@ If the routing connector is too complex for your needs, you can achieve similar 
 processors:
   # Keep only errors
   filter/errors_only:
-    logs:
-      log_record:
-        - 'severity_number < 17'
+    log_conditions:
+      - 'log.severity_number < 17'
 
   # Keep only warnings
   filter/warnings_only:
-    logs:
-      log_record:
-        - 'severity_number < 13 or severity_number >= 17'
+    log_conditions:
+      - 'log.severity_number < 13 or log.severity_number >= 17'
 
   # Keep only info and debug
   filter/info_only:
-    logs:
-      log_record:
-        - 'severity_number >= 13'
+    log_conditions:
+      - 'log.severity_number >= 13'
 
 service:
   pipelines:
@@ -164,7 +161,7 @@ service:
       exporters: [otlp/bulk]
 ```
 
-Note that with the filter processor approach, the `conditions` list specifies what to **drop**, not what to keep. The filter drops log records that match the condition.
+Note that with the filter processor approach, the `log_conditions` list specifies what to **drop**, not what to keep. The filter drops log records that match the condition.
 
 ## Adding Service-Based Routing
 
@@ -175,20 +172,20 @@ connectors:
   routing:
     table:
       # Critical services always go to premium, regardless of severity
-      - statement: route()
+      - context: resource
         pipelines: [logs/errors]
-        condition: 'resource.attributes["service.name"] == "payment-service"'
-      - statement: route()
+        condition: 'attributes["service.name"] == "payment-service"'
+      - context: resource
         pipelines: [logs/errors]
-        condition: 'resource.attributes["service.name"] == "auth-service"'
+        condition: 'attributes["service.name"] == "auth-service"'
       # Standard severity-based routing for everything else
-      - statement: route()
+      - context: log
         pipelines: [logs/errors]
         condition: 'severity_number >= 17'
-      - statement: route()
+      - context: log
         pipelines: [logs/warnings]
         condition: 'severity_number >= 13 and severity_number < 17'
-      - statement: route()
+      - context: log
         pipelines: [logs/info]
         condition: 'severity_number < 13'
     default_pipelines: [logs/info]
@@ -202,7 +199,12 @@ After setting up routing, you will want to verify that logs are going where you 
 service:
   telemetry:
     metrics:
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 ```
 
 Then query the `otelcol_exporter_sent_log_records` metric, which breaks down by exporter name. You should see the distribution across your three backends matching your expected severity distribution.
