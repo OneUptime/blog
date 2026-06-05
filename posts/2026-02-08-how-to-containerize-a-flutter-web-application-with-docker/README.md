@@ -164,20 +164,17 @@ curl http://localhost:8080
 
 ## Optimizing the Flutter Build
 
-Flutter offers different web renderers. Choose based on your needs:
+Flutter offers different web build modes. Choose based on your needs:
 
 ```dockerfile
-# Use the CanvasKit renderer for richer graphics
-RUN flutter build web --release --web-renderer canvaskit
+# Use the default build mode with the CanvasKit renderer
+RUN flutter build web --release
 
-# Or use the HTML renderer for smaller bundle size
-RUN flutter build web --release --web-renderer html
-
-# Auto mode lets Flutter decide based on the device
-RUN flutter build web --release --web-renderer auto
+# Or use the WebAssembly build mode with Skwasm and CanvasKit fallback
+RUN flutter build web --release --wasm
 ```
 
-The HTML renderer produces smaller downloads, while CanvasKit provides better visual fidelity. For most business applications, the HTML renderer is sufficient.
+The default build mode uses CanvasKit and works across modern browsers. WebAssembly mode uses Skwasm when the browser supports WasmGC and falls back to CanvasKit when needed.
 
 You can also enable tree shaking for material icons to reduce bundle size:
 
@@ -192,6 +189,7 @@ Flutter builds are slow because of dependency downloads. Use BuildKit cache moun
 
 ```dockerfile
 # Optimized build with dependency caching
+# syntax=docker/dockerfile:1
 FROM ghcr.io/cirruslabs/flutter:stable AS builder
 
 WORKDIR /app
@@ -270,7 +268,6 @@ For local development with hot reload, avoid Docker for the Flutter build and us
 
 ```yaml
 # docker-compose.yml - backend services for Flutter web development
-version: "3.8"
 services:
   api:
     build: ./backend
@@ -303,7 +300,7 @@ Add a Docker health check:
 ```dockerfile
 # Check that Nginx is serving the app
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:80/health || exit 1
+  CMD wget -q --spider http://localhost:80/health || exit 1
 ```
 
 ## SSL with Let's Encrypt
@@ -336,13 +333,13 @@ server {
 
 ## Image Size Comparison
 
-Here is a comparison of different approaches:
+Here is a comparison of different approaches. Exact sizes vary by image version and platform:
 
 | Approach | Image Size |
 |----------|-----------|
-| Flutter SDK only | ~3 GB |
-| Multi-stage with Nginx | ~25 MB |
-| Multi-stage with Nginx Alpine | ~15 MB |
+| Flutter SDK only | Several GB |
+| Multi-stage with Nginx | Tens to hundreds of MB |
+| Multi-stage with Nginx Alpine | Tens of MB |
 
 The multi-stage build reduces the image by over 99%.
 
