@@ -43,21 +43,24 @@ Create a file called `otel-fpm-bootstrap.php` that will be loaded before every r
 
 require_once '/path/to/vendor/autoload.php';
 
-use OpenTelemetry\API\Globals;
 use OpenTelemetry\API\Trace\SpanKind;
 use OpenTelemetry\API\Trace\StatusCode;
+use OpenTelemetry\Contrib\Otlp\OtlpHttpTransportFactory;
 use OpenTelemetry\SDK\Trace\TracerProvider;
-use OpenTelemetry\SDK\Trace\SpanProcessor\BatchSpanProcessor;
+use OpenTelemetry\SDK\Trace\Sampler\ParentBased;
+use OpenTelemetry\SDK\Trace\Sampler\TraceIdRatioBasedSampler;
+use OpenTelemetry\SDK\Trace\SpanProcessor\BatchSpanProcessorBuilder;
 use OpenTelemetry\Contrib\Otlp\SpanExporter;
 use OpenTelemetry\SDK\Resource\ResourceInfo;
 use OpenTelemetry\SDK\Resource\ResourceInfoFactory;
 use OpenTelemetry\SDK\Common\Attribute\Attributes;
-use OpenTelemetry\SemConv\ResourceAttributes;
 
 class PHPFPMTracer {
     private static $instance = null;
     private $tracer;
+    private $tracerProvider;
     private $requestSpan;
+    private $requestScope;
     private $processId;
     private $startTime;
 
@@ -82,50 +85,56 @@ class PHPFPMTracer {
 
         $resource = ResourceInfoFactory::defaultResource()->merge(
             ResourceInfo::create(Attributes::create([
-                ResourceAttributes::SERVICE_NAME => 'php-fpm',
-                ResourceAttributes::SERVICE_VERSION => PHP_VERSION,
-                ResourceAttributes::PROCESS_PID => $this->processId,
-                ResourceAttributes::HOST_NAME => $hostname,
+                'service.name' => 'php-fpm',
+                'service.version' => PHP_VERSION,
+                'process.pid' => $this->processId,
+                'host.name' => $hostname,
                 'php.fpm.pool' => $poolName,
                 'php.sapi' => php_sapi_name(),
             ]))
         );
 
         $exporter = new SpanExporter(
-            \OpenTelemetry\Contrib\Otlp\HttpTransportFactory::create(
+            (new OtlpHttpTransportFactory())->create(
                 getenv('OTEL_EXPORTER_OTLP_ENDPOINT') ?: 'http://localhost:4318/v1/traces',
                 'application/json'
             )
         );
 
+        $samplingRatio = (float) (getenv('OTEL_TRACES_SAMPLER_ARG') ?: 1.0);
+
         // Use batch processor for better performance in high-throughput scenarios
-        $tracerProvider = TracerProvider::builder()
-            ->addSpanProcessor(new BatchSpanProcessor($exporter))
+        $this->tracerProvider = TracerProvider::builder()
+            ->addSpanProcessor((new BatchSpanProcessorBuilder($exporter))->build())
+            ->setSampler(new ParentBased(new TraceIdRatioBasedSampler($samplingRatio)))
             ->setResource($resource)
             ->build();
 
-        Globals::registerInitializer(fn() => $tracerProvider);
-        $this->tracer = $tracerProvider->getTracer('php-fpm-instrumentation');
+        $this->tracer = $this->tracerProvider->getTracer('php-fpm-instrumentation');
     }
 
     private function startRequestTrace() {
         $requestMethod = $_SERVER['REQUEST_METHOD'] ?? 'CLI';
         $requestUri = $_SERVER['REQUEST_URI'] ?? 'unknown';
+        $scheme = $_SERVER['REQUEST_SCHEME'] ?? 'http';
+        $serverAddress = parse_url('http://' . ($_SERVER['HTTP_HOST'] ?? 'localhost'), PHP_URL_HOST) ?: 'unknown';
+        $serverPort = (int) ($_SERVER['SERVER_PORT'] ?? ($scheme === 'https' ? 443 : 80));
 
         $this->requestSpan = $this->tracer
             ->spanBuilder("$requestMethod $requestUri")
             ->setSpanKind(SpanKind::KIND_SERVER)
-            ->setAttribute('http.method', $requestMethod)
-            ->setAttribute('http.url', $requestUri)
-            ->setAttribute('http.scheme', $_SERVER['REQUEST_SCHEME'] ?? 'http')
-            ->setAttribute('http.host', $_SERVER['HTTP_HOST'] ?? 'unknown')
-            ->setAttribute('http.target', $requestUri)
-            ->setAttribute('net.peer.ip', $_SERVER['REMOTE_ADDR'] ?? 'unknown')
+            ->setAttribute('http.request.method', $requestMethod)
+            ->setAttribute('url.full', $this->buildFullUrl($requestUri))
+            ->setAttribute('url.path', parse_url($requestUri, PHP_URL_PATH) ?: '/')
+            ->setAttribute('url.scheme', $scheme)
+            ->setAttribute('server.address', $serverAddress)
+            ->setAttribute('server.port', $serverPort)
+            ->setAttribute('client.address', $_SERVER['REMOTE_ADDR'] ?? 'unknown')
             ->setAttribute('php.fpm.process.id', $this->processId)
             ->setAttribute('php.fpm.process.start_time', $this->startTime)
             ->startSpan();
 
-        $this->requestSpan->activate();
+        $this->requestScope = $this->requestSpan->activate();
 
         // Register shutdown function to end the span
         register_shutdown_function([$this, 'endRequestTrace']);
@@ -135,17 +144,38 @@ class PHPFPMTracer {
         if ($this->requestSpan) {
             $endTime = microtime(true);
             $duration = $endTime - $this->startTime;
+            $statusCode = http_response_code();
+            $opcacheStatus = function_exists('opcache_get_status') ? opcache_get_status(false) : false;
 
             // Capture final request metrics
             $this->requestSpan
-                ->setAttribute('http.status_code', http_response_code())
+                ->setAttribute('http.response.status_code', $statusCode)
                 ->setAttribute('php.memory.peak', memory_get_peak_usage(true))
                 ->setAttribute('php.memory.current', memory_get_usage(true))
                 ->setAttribute('php.duration', $duration)
-                ->setAttribute('php.opcache.enabled', function_exists('opcache_get_status'))
-                ->setStatus(StatusCode::STATUS_OK)
+                ->setAttribute('php.opcache.enabled', is_array($opcacheStatus) && ($opcacheStatus['opcache_enabled'] ?? false));
+
+            if ($statusCode >= 500) {
+                $this->requestSpan->setStatus(StatusCode::STATUS_ERROR);
+            } else {
+                $this->requestSpan->setStatus(StatusCode::STATUS_OK);
+            }
+
+            $this->requestSpan
                 ->end();
+
+            if ($this->requestScope) {
+                $this->requestScope->detach();
+            }
+
+            $this->tracerProvider->shutdown();
         }
+    }
+
+    private function buildFullUrl(string $requestUri): string {
+        $scheme = $_SERVER['REQUEST_SCHEME'] ?? 'http';
+        $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+        return "$scheme://$host$requestUri";
     }
 
     public function traceFunction(string $functionName, callable $function, array $attributes = []) {
@@ -197,7 +227,7 @@ env[PHP_FPM_POOL] = www
 env[OTEL_SERVICE_NAME] = php-fpm-www
 
 ; Increase process priority for monitoring (optional)
-process_priority = -10
+process.priority = -10
 ```
 
 Restart PHP-FPM to apply changes:
@@ -219,18 +249,32 @@ To understand worker pool health, collect metrics about process state. Create a 
 
 require_once '/path/to/vendor/autoload.php';
 
-use OpenTelemetry\API\Globals;
+use OpenTelemetry\API\Metrics\ObserverInterface;
+use OpenTelemetry\Contrib\Otlp\MetricExporter;
+use OpenTelemetry\Contrib\Otlp\OtlpHttpTransportFactory;
 use OpenTelemetry\SDK\Metrics\MeterProvider;
-use OpenTelemetry\SDK\Metrics\MetricExporter\ConsoleMetricExporter;
+use OpenTelemetry\SDK\Metrics\MetricReader\ExportingReader;
 use OpenTelemetry\SDK\Resource\ResourceInfoFactory;
 
 class FPMPoolMonitor {
     private $meter;
+    private $reader;
+    private $meterProvider;
 
     public function __construct() {
         $resource = ResourceInfoFactory::defaultResource();
-        $meterProvider = new MeterProvider($resource);
-        $this->meter = $meterProvider->getMeter('php-fpm-pool-monitor');
+        $exporter = new MetricExporter(
+            (new OtlpHttpTransportFactory())->create(
+                getenv('OTEL_EXPORTER_OTLP_METRICS_ENDPOINT') ?: 'http://localhost:4318/v1/metrics',
+                'application/json'
+            )
+        );
+        $this->reader = new ExportingReader($exporter);
+        $this->meterProvider = MeterProvider::builder()
+            ->setResource($resource)
+            ->addReader($this->reader)
+            ->build();
+        $this->meter = $this->meterProvider->getMeter('php-fpm-pool-monitor');
     }
 
     public function collectMetrics() {
@@ -243,44 +287,47 @@ class FPMPoolMonitor {
         // Create observable gauges for pool metrics
         $activeProcesses = $this->meter->createObservableGauge(
             'php.fpm.processes.active',
-            'Number of active PHP-FPM processes',
-            'processes'
+            'processes',
+            'Number of active PHP-FPM processes'
         );
 
         $idleProcesses = $this->meter->createObservableGauge(
             'php.fpm.processes.idle',
-            'Number of idle PHP-FPM processes',
-            'processes'
+            'processes',
+            'Number of idle PHP-FPM processes'
         );
 
         $queuedRequests = $this->meter->createObservableGauge(
             'php.fpm.requests.queued',
-            'Number of queued requests',
-            'requests'
+            'requests',
+            'Number of queued requests'
         );
 
         $maxActiveProcesses = $this->meter->createObservableGauge(
             'php.fpm.processes.max_active',
-            'Maximum active processes reached',
-            'processes'
+            'processes',
+            'Maximum active processes reached'
         );
 
         // Register callbacks to provide metric values
-        $activeProcesses->observe(function() use ($poolStatus) {
-            return $poolStatus['active-processes'];
+        $activeProcesses->observe(function(ObserverInterface $observer) use ($poolStatus): void {
+            $observer->observe($poolStatus['active processes']);
         });
 
-        $idleProcesses->observe(function() use ($poolStatus) {
-            return $poolStatus['idle-processes'];
+        $idleProcesses->observe(function(ObserverInterface $observer) use ($poolStatus): void {
+            $observer->observe($poolStatus['idle processes']);
         });
 
-        $queuedRequests->observe(function() use ($poolStatus) {
-            return $poolStatus['listen-queue'];
+        $queuedRequests->observe(function(ObserverInterface $observer) use ($poolStatus): void {
+            $observer->observe($poolStatus['listen queue']);
         });
 
-        $maxActiveProcesses->observe(function() use ($poolStatus) {
-            return $poolStatus['max-active-processes'];
+        $maxActiveProcesses->observe(function(ObserverInterface $observer) use ($poolStatus): void {
+            $observer->observe($poolStatus['max active processes']);
         });
+
+        $this->reader->collect();
+        $this->meterProvider->shutdown();
     }
 
     private function getFPMStatus() {
@@ -341,15 +388,15 @@ $tracer->traceFunction('database.query', function() use ($pdo, $sql) {
     return $pdo->query($sql);
 }, [
     'db.system' => 'mysql',
-    'db.statement' => $sql,
+    'db.query.text' => $sql,
 ]);
 
 // Trace external API calls
 $tracer->traceFunction('external.api.call', function() use ($url) {
     return file_get_contents($url);
 }, [
-    'http.url' => $url,
-    'http.method' => 'GET',
+    'url.full' => $url,
+    'http.request.method' => 'GET',
 ]);
 
 // Trace cache operations
@@ -370,23 +417,28 @@ Track how long individual PHP-FPM processes have been running and how many reque
 // Add to otel-fpm-bootstrap.php
 
 // Track requests handled by this process
-if (!isset($_ENV['PROCESS_REQUEST_COUNT'])) {
-    $_ENV['PROCESS_REQUEST_COUNT'] = 0;
+$processStateFile = sys_get_temp_dir() . '/php-fpm-' . getmypid() . '.json';
+$processState = is_file($processStateFile)
+    ? json_decode(file_get_contents($processStateFile), true)
+    : null;
+
+if (!is_array($processState)) {
+    $processState = [
+        'started_at' => time(),
+        'request_count' => 0,
+    ];
 }
-$_ENV['PROCESS_REQUEST_COUNT']++;
+
+$processState['request_count']++;
+file_put_contents($processStateFile, json_encode($processState), LOCK_EX);
 
 // Calculate process uptime
-$processStartTime = getenv('PROCESS_START_TIME');
-if (!$processStartTime) {
-    $processStartTime = time();
-    putenv("PROCESS_START_TIME=$processStartTime");
-}
-$processUptime = time() - $processStartTime;
+$processUptime = time() - $processState['started_at'];
 
 // Add to request span
-$requestSpan
+$this->requestSpan
     ->setAttribute('php.fpm.process.uptime', $processUptime)
-    ->setAttribute('php.fpm.process.request_count', $_ENV['PROCESS_REQUEST_COUNT']);
+    ->setAttribute('php.fpm.process.request_count', $processState['request_count']);
 ```
 
 ## Performance Considerations
