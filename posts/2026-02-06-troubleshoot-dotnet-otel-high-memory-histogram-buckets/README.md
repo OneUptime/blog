@@ -6,17 +6,17 @@ Tags: OpenTelemetry, .NET, Metric, Histogram
 
 Description: Diagnose and fix high memory usage in .NET applications caused by OpenTelemetry histogram bucket explosion with high cardinality.
 
-Your .NET application's memory usage keeps growing. You trace the issue to OpenTelemetry metrics, specifically to histogram instruments. Each unique combination of histogram bucket boundaries and attribute values creates aggregation state in memory. With high cardinality attributes, this can consume hundreds of megabytes.
+Your .NET application's memory usage keeps growing. You trace the issue to OpenTelemetry metrics, specifically to histogram instruments. Each metric stream keeps aggregation state for every unique attribute set, and the histogram bucket configuration determines how much bucket state each attribute set needs. With high cardinality attributes, this can consume hundreds of megabytes.
 
 ## How Histogram Memory Works
 
-A histogram in OpenTelemetry stores a count for each bucket boundary. The default bucket boundaries for the explicit bucket histogram are:
+A histogram in OpenTelemetry stores aggregate state such as count, sum, min, max, and bucket counts. The default bucket boundaries for the explicit bucket histogram are:
 
 ```text
 [0, 5, 10, 25, 50, 75, 100, 250, 500, 750, 1000, 2500, 5000, 7500, 10000]
 ```
 
-That is 16 buckets (15 boundaries plus the overflow bucket). Each unique attribute set gets its own 16-bucket array.
+That is 16 buckets (15 boundaries plus the overflow bucket). Each unique attribute set gets its own histogram aggregation state with those bucket counts.
 
 If you have a histogram with attributes `{method, path, status}` and you have:
 - 5 methods
@@ -118,7 +118,7 @@ builder.Services.AddOpenTelemetry()
 
 ## Fix 4: Switch to Exponential Histograms
 
-Exponential histograms (also called base2 exponential histograms) adapt their buckets dynamically and are more memory-efficient for many workloads:
+Exponential histograms (also called base2 exponential histograms) adapt their buckets dynamically. They can be useful when your measurements need a wide dynamic range, but you should tune `MaxSize` because larger values can use more memory per attribute set:
 
 ```csharp
 builder.Services.AddOpenTelemetry()
@@ -129,14 +129,14 @@ builder.Services.AddOpenTelemetry()
             .AddView("http.server.request.duration",
                 new Base2ExponentialBucketHistogramConfiguration
                 {
-                    MaxSize = 160,  // max number of buckets
+                    MaxSize = 20,   // max buckets per positive/negative range
                     MaxScale = 20   // precision scale
                 })
             .AddOtlpExporter();
     });
 ```
 
-Exponential histograms provide better precision where the data actually falls, without wasting memory on empty buckets.
+Exponential histograms provide better precision where the data actually falls, while `MaxSize` controls the bucket-count tradeoff.
 
 ## Fix 5: Set Cardinality Limits
 
@@ -195,4 +195,4 @@ Watch for steady growth in heap size, which indicates a cardinality leak.
 
 ## Summary
 
-High memory usage from histograms is caused by the combination of many unique attribute values and many bucket boundaries. The fix involves reducing cardinality (fewer unique attribute values), reducing buckets (fewer boundaries), or switching to exponential histograms. Use Views to enforce these limits at the SDK level.
+High memory usage from histograms is caused by the combination of many unique attribute values and many bucket boundaries. The fix involves reducing cardinality (fewer unique attribute values), reducing buckets (fewer boundaries), or switching to and tuning exponential histograms. Use Views to enforce these limits at the SDK level.
