@@ -144,13 +144,13 @@ jobs:
           else
             SOURCE="${STAGING_REGISTRY}/myapp:${{ inputs.image_tag }}"
           fi
+          echo "SOURCE=${SOURCE}" >> "$GITHUB_ENV"
           # Check the image manifest exists
-          docker manifest inspect $SOURCE
+          docker manifest inspect "$SOURCE"
 
       - name: Run security scan before promotion
         run: |
-          docker pull $SOURCE
-          docker scout cves $SOURCE --exit-code --only-severity critical,high
+          docker scout cves "registry://${SOURCE}" --exit-code --only-severity critical,high
 
   promote:
     needs: validate
@@ -172,9 +172,16 @@ jobs:
 
       - name: Verify promotion
         run: |
+          if [ "${{ inputs.target_env }}" == "staging" ]; then
+            SOURCE="${DEV_REGISTRY}/myapp:${{ inputs.image_tag }}"
+            DEST="${STAGING_REGISTRY}/myapp:${{ inputs.image_tag }}"
+          else
+            SOURCE="${STAGING_REGISTRY}/myapp:${{ inputs.image_tag }}"
+            DEST="${PROD_REGISTRY}/myapp:${{ inputs.image_tag }}"
+          fi
           # Compare digests to confirm exact match
-          SOURCE_DIGEST=$(crane digest ${STAGING_REGISTRY}/myapp:${{ inputs.image_tag }})
-          DEST_DIGEST=$(crane digest ${PROD_REGISTRY}/myapp:${{ inputs.image_tag }})
+          SOURCE_DIGEST=$(crane digest "$SOURCE")
+          DEST_DIGEST=$(crane digest "$DEST")
           if [ "$SOURCE_DIGEST" != "$DEST_DIGEST" ]; then
             echo "Digest mismatch! Promotion failed."
             exit 1
@@ -212,10 +219,8 @@ docker manifest inspect "${SOURCE}" > /dev/null 2>&1 || {
 # Gate 2: Check for critical vulnerabilities
 echo "Scanning for vulnerabilities..."
 docker pull "${SOURCE}"
-SCAN_RESULT=$(docker scout cves "${SOURCE}" --format json 2>/dev/null)
-CRITICAL_COUNT=$(echo "${SCAN_RESULT}" | jq '.critical // 0')
-if [ "${CRITICAL_COUNT}" -gt 0 ]; then
-    echo "ERROR: Image has ${CRITICAL_COUNT} critical vulnerabilities"
+if ! docker scout cves "${SOURCE}" --exit-code --only-severity critical; then
+    echo "ERROR: Image has critical vulnerabilities"
     exit 1
 fi
 
@@ -273,7 +278,7 @@ LABEL build-date="${BUILD_DATE}" \
 
 COPY --from=build /app/dist ./dist
 COPY package.json package-lock.json ./
-RUN npm ci --production
+RUN npm ci --omit=dev
 CMD ["node", "dist/index.js"]
 ```
 
