@@ -14,9 +14,9 @@ In this post, we'll cover how to set up OpenTelemetry tracing alongside Linkerd 
 
 ## How Linkerd Handles Tracing
 
-Unlike Envoy-based meshes that can generate spans at the proxy level, Linkerd's proxy doesn't create trace spans on its own. What it does do is propagate trace context headers. When a request enters a Linkerd proxy, the proxy forwards any existing trace headers (like W3C `traceparent` or B3 headers) to the next hop.
+Unlike Envoy-based meshes that commonly generate spans at the proxy level, Linkerd keeps tracing deliberately narrow. Your application code is still responsible for creating application spans. When Linkerd's tracing support is configured and a request uses B3 trace context, the Linkerd proxy can participate in the trace and emit proxy spans. For other trace context formats, such as W3C `traceparent`, Linkerd forwards the headers transparently but does not actively participate in the trace.
 
-This means your application code is responsible for creating spans. Linkerd just makes sure the context flows correctly between services.
+This means your application code is responsible for creating the service-level spans that describe your business operations. Linkerd makes sure the context flows correctly between services, and can add proxy timing spans when you use the B3 propagation format that Linkerd supports for active tracing.
 
 ```mermaid
 graph LR
@@ -29,7 +29,7 @@ graph LR
     F --> G[Backend]
 ```
 
-This is actually a simpler model than what Envoy-based meshes use. You don't have to worry about reconciling proxy-generated spans with application-generated spans. Every span comes from your code, and Linkerd makes sure the context travels with the request.
+This is actually a simpler model than what Envoy-based meshes use when you only need application traces. You don't have to rely on the mesh to infer business operations from network traffic. The spans that explain your application behavior come from your code, while Linkerd makes sure the context travels with the request and can add proxy spans when B3 tracing is enabled.
 
 ## Setting Up OpenTelemetry in Your Services
 
@@ -44,23 +44,31 @@ const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc');
 const { HttpInstrumentation } = require('@opentelemetry/instrumentation-http');
 const { ExpressInstrumentation } = require('@opentelemetry/instrumentation-express');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { CompositePropagator, W3CTraceContextPropagator } = require('@opentelemetry/core');
+const { B3InjectEncoding, B3Propagator } = require('@opentelemetry/propagator-b3');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } = require('@opentelemetry/semantic-conventions');
 
 // Create the OTLP exporter pointing to the collector
 const traceExporter = new OTLPTraceExporter({
-  // The collector runs as a DaemonSet, so we use the node-local endpoint
-  url: 'grpc://otel-collector.observability:4317',
+  url: 'http://otel-collector.observability:4317',
 });
 
 // Configure the SDK with HTTP and Express auto-instrumentation
 // This automatically creates spans for incoming and outgoing HTTP requests
 const sdk = new NodeSDK({
-  resource: new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: 'order-service',
-    [SemanticResourceAttributes.SERVICE_VERSION]: '1.2.0',
+  resource: resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: 'order-service',
+    [ATTR_SERVICE_VERSION]: '1.2.0',
     // Tag this service as part of the Linkerd mesh
     'service.mesh': 'linkerd',
+  }),
+  textMapPropagator: new CompositePropagator({
+    propagators: [
+      // Linkerd proxy trace participation uses B3. W3C is kept for interoperability.
+      new B3Propagator({ injectEncoding: B3InjectEncoding.MULTI_HEADER }),
+      new W3CTraceContextPropagator(),
+    ],
   }),
   traceExporter,
   instrumentations: [
@@ -86,17 +94,15 @@ The key thing here is that the HTTP instrumentation automatically handles trace 
 
 ## Configuring Linkerd for Header Propagation
 
-Linkerd propagates trace headers by default, but you need to make sure your application is setting the right ones. Linkerd supports both B3 and W3C Trace Context headers. For new setups, W3C Trace Context is the recommended choice since it's the standard that OpenTelemetry uses natively.
+Linkerd forwards trace headers by default, but you need to make sure your application is setting the right ones. Linkerd actively participates in traces that use B3 propagation. It will also transparently forward W3C Trace Context headers, so W3C-only application traces can still flow through the mesh, but the Linkerd proxy won't add its own spans to those traces.
 
-If you're running Linkerd 2.14 or later, W3C trace context propagation works out of the box. For older versions, check that your Linkerd configuration includes the trace headers in its allowed headers list.
+For new OpenTelemetry services, consider enabling both B3 and W3C propagation during migration: B3 lets Linkerd proxy spans participate, while W3C keeps interoperability with modern OpenTelemetry tooling.
 
-You can verify that headers are being propagated correctly by checking the Linkerd proxy logs.
+You can verify that your services are injecting B3 headers by checking requests at the receiving application or with an HTTP debugging endpoint.
 
 ```bash
-# Check Linkerd proxy logs for a specific pod to verify trace header forwarding
-
-# Look for traceparent headers in the proxy output
-kubectl logs deployment/order-service -c linkerd-proxy | grep -i "traceparent"
+# Look for B3 headers in the receiving service's request logs or debug output
+kubectl logs deployment/payment-service -c payment-service | grep -i "x-b3-traceid"
 ```
 
 ## Deploying the OpenTelemetry Collector
@@ -156,8 +162,8 @@ exporters:
       insecure: false
 
   # Also log a sample of spans for debugging
-  logging:
-    loglevel: info
+  debug:
+    verbosity: normal
     sampling_initial: 5
     sampling_thereafter: 200
 
@@ -166,7 +172,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [k8s_attributes, resource, batch]
-      exporters: [otlp]
+      exporters: [otlp, debug]
 ```
 
 ## Combining Linkerd Metrics with OpenTelemetry Traces
