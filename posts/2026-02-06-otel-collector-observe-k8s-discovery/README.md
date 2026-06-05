@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Collector, Observe Inc, Kubernetes
 
 Description: Configure the OpenTelemetry Collector with Kubernetes service discovery to automatically collect and export telemetry to Observe Inc.
 
-Running the OpenTelemetry Collector in Kubernetes with service discovery means you can automatically scrape metrics from new pods as they appear. Combined with Observe Inc as the backend, you get full cluster observability without manually configuring each service.
+Running the OpenTelemetry Collector in Kubernetes with service discovery means you can automatically scrape metrics from new pods as they appear. Combined with Observe Inc as the backend, you get workload and node observability without manually configuring each service.
 
 ## Collector DaemonSet Configuration
 
@@ -35,12 +35,16 @@ receivers:
             - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
               action: keep
               regex: true
+            # In a DaemonSet, only scrape pods scheduled on the same node
+            - source_labels: [__meta_kubernetes_pod_node_name]
+              action: keep
+              regex: ${env:K8S_NODE_NAME}
             # Use the port from the annotation
-            - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
+            - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
               action: replace
               target_label: __address__
-              regex: (.+)
-              replacement: "${1}:${2}"
+              regex: ([^:]+)(?::\d+)?;(\d+)
+              replacement: "$1:$2"
             # Use the path from the annotation (default /metrics)
             - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
               action: replace
@@ -54,16 +58,11 @@ receivers:
             - source_labels: [__meta_kubernetes_pod_name]
               target_label: k8s_pod_name
 
-  # Collect Kubernetes node and cluster metrics
-  k8s_cluster:
-    collection_interval: 30s
-    node_conditions_to_report: [Ready, MemoryPressure, DiskPressure]
-
   # Collect kubelet metrics
   kubeletstats:
     collection_interval: 30s
     auth_type: serviceAccount
-    endpoint: "${K8S_NODE_NAME}:10250"
+    endpoint: "${env:K8S_NODE_NAME}:10250"
     insecure_skip_verify: true
 
 processors:
@@ -75,6 +74,8 @@ processors:
   k8sattributes:
     auth_type: serviceAccount
     passthrough: false
+    filter:
+      node_from_env_var: K8S_NODE_NAME
     extract:
       metadata:
         - k8s.pod.name
@@ -93,18 +94,20 @@ processors:
       - sources:
           - from: resource_attribute
             name: k8s.pod.ip
+      - sources:
+          - from: connection
 
   resource:
     attributes:
       - key: observe.customer_id
-        value: "${OBSERVE_CUSTOMER_ID}"
+        value: "${env:OBSERVE_CUSTOMER_ID}"
         action: upsert
 
 exporters:
-  otlp/observe:
-    endpoint: "collect.observeinc.com:4317"
+  otlphttp/observe:
+    endpoint: "https://${env:OBSERVE_CUSTOMER_ID}.collect.observeinc.com/v2/otel"
     headers:
-      Authorization: "Bearer ${OBSERVE_CUSTOMER_ID}:${OBSERVE_TOKEN}"
+      authorization: "Bearer ${env:OBSERVE_TOKEN}"
     retry_on_failure:
       enabled: true
       initial_interval: 5s
@@ -118,17 +121,17 @@ service:
     traces:
       receivers: [otlp]
       processors: [k8sattributes, resource, batch]
-      exporters: [otlp/observe]
+      exporters: [otlphttp/observe]
 
     metrics:
       receivers: [otlp, prometheus, kubeletstats]
       processors: [k8sattributes, resource, batch]
-      exporters: [otlp/observe]
+      exporters: [otlphttp/observe]
 
     logs:
       receivers: [otlp]
       processors: [k8sattributes, resource, batch]
-      exporters: [otlp/observe]
+      exporters: [otlphttp/observe]
 ```
 
 ## Kubernetes DaemonSet Manifest
@@ -236,4 +239,4 @@ spec:
             - containerPort: 8080
 ```
 
-This setup gives you automatic discovery and collection of metrics from every annotated pod in your cluster, Kubernetes infrastructure metrics from kubelet, and application traces and logs through OTLP. All of it flows to Observe Inc where you can build dashboards that correlate application performance with infrastructure health.
+This setup gives you automatic discovery and collection of metrics from every annotated pod in your cluster, node-level Kubernetes infrastructure metrics from kubelet, and application traces and logs through OTLP. All of it flows to Observe Inc where you can build dashboards that correlate application performance with infrastructure health.
