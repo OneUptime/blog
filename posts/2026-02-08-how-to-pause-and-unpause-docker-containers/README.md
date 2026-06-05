@@ -83,13 +83,13 @@ docker unpause myapp
 # CPU % returns to normal
 ```
 
-## Practical Use Case: Consistent Backups
+## Practical Use Case: Quiesced File Copies
 
-Pausing a container ensures the filesystem is in a consistent state before taking a backup or snapshot.
+Pausing a container stops its processes from changing files while you take a copy or snapshot. For databases and other applications with in-memory state, use the application's own backup tooling or flush/quiesce steps if you need an application-consistent backup.
 
 ```bash
 #!/bin/bash
-# backup-container.sh - Create a consistent backup of container data
+# backup-container.sh - Copy container data while processes are paused
 # Usage: ./backup-container.sh container_name volume_path backup_dir
 
 CONTAINER=$1
@@ -100,7 +100,7 @@ TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 echo "Pausing container $CONTAINER for backup..."
 docker pause "$CONTAINER"
 
-# Create backup while the container is paused (filesystem is consistent)
+# Create the copy while the container's processes are paused
 echo "Creating backup..."
 docker cp "$CONTAINER:$VOLUME_PATH" "$BACKUP_DIR/${CONTAINER}_${TIMESTAMP}"
 
@@ -113,11 +113,11 @@ echo "Backup complete: $BACKUP_DIR/${CONTAINER}_${TIMESTAMP}"
 Use it like this:
 
 ```bash
-# Backup the data directory of a running database container
+# Copy the data directory of a running database container
 ./backup-container.sh postgres /var/lib/postgresql/data /backups/
 ```
 
-Without the pause, files could be written mid-copy, resulting in an inconsistent backup.
+Without the pause, files could be written mid-copy, resulting in a copy that contains files from different points in time.
 
 ## Practical Use Case: Resource Management
 
@@ -152,24 +152,24 @@ Pause a container to freeze its state while you inspect it. This prevents the ap
 # Freeze the container's state
 docker pause myapp
 
-# Inspect the filesystem without the application writing new files
-docker exec myapp ls -la /tmp/
-docker exec myapp cat /app/state.json
-
-# Note: docker exec works on paused containers for read operations
-# The exec process itself is not paused since it starts after the pause
+# Copy files out without the application writing new data
+docker cp myapp:/app/state.json ./state-snapshot.json
 
 # Resume when done investigating
 docker unpause myapp
 ```
 
-Actually, there is an important caveat here. `docker exec` on a paused container creates a new process that is also immediately frozen. You need to unpause briefly to run exec commands, or use alternative inspection methods:
+There is an important caveat here. `docker exec` on a paused container fails with an error. You need to unpause briefly to run exec commands, or use alternative inspection methods:
 
 ```bash
+# This fails while the container is paused
+docker exec myapp ls -la /tmp/
+# Error response from daemon: Container myapp is paused, unpause the container before exec
+
 # Alternative: Inspect from the host filesystem
 # Find the container's filesystem on the host
-CONTAINER_ID=$(docker inspect --format '{{.Id}}' myapp)
-sudo ls /var/lib/docker/overlay2/$(docker inspect --format '{{.GraphDriver.Data.MergedDir}}' myapp | xargs basename)/
+MERGED_DIR=$(docker inspect --format '{{.GraphDriver.Data.MergedDir}}' myapp)
+sudo ls "$MERGED_DIR/tmp/"
 
 # Or use docker cp which works on paused containers
 docker cp myapp:/app/state.json ./state-snapshot.json
