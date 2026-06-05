@@ -55,11 +55,11 @@ exporters:
   otlp/cloudvendor:
     endpoint: "otel.vendor.example.com:4317"
     headers:
-      api-key: "${VENDOR_API_KEY}"
+      api-key: "${env:VENDOR_API_KEY}"
 
   # Log storage backend
-  otlp/loki:
-    endpoint: loki:3100
+  otlphttp/loki:
+    endpoint: http://loki:3100/otlp
 
   # Debug exporter for development and troubleshooting
   debug:
@@ -83,7 +83,7 @@ service:
     logs:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlp/loki, debug]
+      exporters: [otlphttp/loki, debug]
 ```
 
 This approach is straightforward but has a limitation. Every exporter in the pipeline gets exactly the same data. If you need different data in different backends, you need separate pipelines or routing.
@@ -195,10 +195,12 @@ connectors:
   routing:
     table:
       # Payment service traces go to a dedicated high-retention backend
-      - statement: route() where resource.attributes["service.name"] == "payment-service"
+      - context: resource
+        condition: attributes["service.name"] == "payment-service"
         pipelines: [traces/high-retention]
       # Internal tooling traces go to a low-cost backend
-      - statement: route() where resource.attributes["service.namespace"] == "internal-tools"
+      - context: resource
+        condition: attributes["service.namespace"] == "internal-tools"
         pipelines: [traces/low-cost]
     # Default route for everything else
     default_pipelines: [traces/standard]
@@ -302,9 +304,14 @@ When running multiple exporters, monitoring becomes more important. Each exporte
 service:
   telemetry:
     metrics:
-      # Expose collector metrics on a separate port
-      address: 0.0.0.0:8888
       level: detailed
+      # Expose collector metrics on a separate port
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 
   pipelines:
     # Self-monitoring pipeline for collector health metrics
@@ -320,7 +327,7 @@ receivers:
         - job_name: 'otel-collector'
           scrape_interval: 15s
           static_configs:
-            - targets: ['0.0.0.0:8888']
+            - targets: ['127.0.0.1:8888']
 ```
 
 Key metrics to watch include `otelcol_exporter_sent_spans` and `otelcol_exporter_send_failed_spans` for each exporter. A divergence between the two indicates a backend issue. The `otelcol_exporter_queue_size` metric shows how much data is buffered, which gives you early warning before data loss.
