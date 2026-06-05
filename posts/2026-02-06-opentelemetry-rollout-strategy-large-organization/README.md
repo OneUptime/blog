@@ -61,7 +61,8 @@ spec:
     spec:
       containers:
       - name: otel-collector
-        image: otel/opentelemetry-collector-contrib:0.90.0
+        image: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib:0.153.0
+        args: ["--config=/etc/otelcol-contrib/config.yaml"]
         resources:
           limits:
             memory: 2Gi
@@ -76,7 +77,8 @@ spec:
           name: otlp-http
         volumeMounts:
         - name: config
-          mountPath: /etc/otel
+          mountPath: /etc/otelcol-contrib/config.yaml
+          subPath: config.yaml
       volumes:
       - name: config
         configMap:
@@ -106,7 +108,7 @@ processors:
 
   resource:
     attributes:
-    - key: deployment.environment
+    - key: deployment.environment.name
       value: production
       action: insert
 
@@ -142,18 +144,22 @@ Build monitoring for the collectors themselves. They're critical infrastructure,
 
 Large organizations need standards to avoid chaos. Define conventions for service naming, resource attributes, and span naming before teams start instrumenting services. These conventions ensure consistency that makes data usable across team boundaries.
 
-Create a document that specifies required attributes for all spans. At minimum, services should include service name, version, deployment environment, and team ownership. These attributes enable filtering and aggregation across your entire service inventory.
+Create a document that specifies required resource attributes for all services. At minimum, services should include service name, version, deployment environment, and team ownership. These attributes enable filtering and aggregation across your entire service inventory.
 
 ```javascript
 // Standard resource attributes required for all services
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const {
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+  ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
+} = require('@opentelemetry/semantic-conventions');
 
-const resource = new Resource({
+const resource = resourceFromAttributes({
   // Required standard attributes
-  [SemanticResourceAttributes.SERVICE_NAME]: 'payment-service',
-  [SemanticResourceAttributes.SERVICE_VERSION]: process.env.SERVICE_VERSION,
-  [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: process.env.ENVIRONMENT,
+  [ATTR_SERVICE_NAME]: 'payment-service',
+  [ATTR_SERVICE_VERSION]: process.env.SERVICE_VERSION,
+  [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: process.env.ENVIRONMENT,
 
   // Required organizational attributes
   'service.owner.team': 'payments-team',
@@ -233,12 +239,12 @@ Create advanced sessions for platform engineers and SREs who will operate the co
 
 ```javascript
 // Example from hands-on workshop showing incremental instrumentation
-const express = require('express');
-const app = express();
-
 // Step 1: Initialize OpenTelemetry (covered in workshop part 1)
 const { initializeTelemetry } = require('@company/otel-config');
 initializeTelemetry({ serviceName: 'workshop-service' });
+
+const express = require('express');
+const app = express();
 
 // Step 2: Automatic instrumentation works without changes (part 2)
 app.get('/users/:id', async (req, res) => {
@@ -276,22 +282,26 @@ Monitor cost metrics: total observability spending, cost per service, and cost p
 
 ```javascript
 // Example: Track instrumentation coverage across services
-const serviceInventory = await getServiceInventory();
-const instrumentedServices = serviceInventory.filter(s => s.hasOpenTelemetry);
+async function reportInstrumentationCoverage() {
+  const serviceInventory = await getServiceInventory();
+  const instrumentedServices = serviceInventory.filter(s => s.hasOpenTelemetry);
 
-const coverageMetrics = {
-  totalServices: serviceInventory.length,
-  instrumentedServices: instrumentedServices.length,
-  coveragePercent: (instrumentedServices.length / serviceInventory.length) * 100,
+  const coverageMetrics = {
+    totalServices: serviceInventory.length,
+    instrumentedServices: instrumentedServices.length,
+    coveragePercent: (instrumentedServices.length / serviceInventory.length) * 100,
 
-  // Break down by service tier
-  criticalCoverage: calculateCoverage(serviceInventory, 'critical'),
-  highCoverage: calculateCoverage(serviceInventory, 'high'),
-  mediumCoverage: calculateCoverage(serviceInventory, 'medium'),
-};
+    // Break down by service tier
+    criticalCoverage: calculateCoverage(serviceInventory, 'critical'),
+    highCoverage: calculateCoverage(serviceInventory, 'high'),
+    mediumCoverage: calculateCoverage(serviceInventory, 'medium'),
+  };
 
-// Report these metrics to leadership monthly
-publishMetrics('opentelemetry.adoption', coverageMetrics);
+  // Report these metrics to leadership monthly
+  publishMetrics('opentelemetry.adoption', coverageMetrics);
+}
+
+reportInstrumentationCoverage();
 ```
 
 Create a dashboard showing rollout progress. Include adoption metrics, operational metrics, and cost metrics in one view. Update this dashboard weekly and share it with engineering leadership.
@@ -302,7 +312,7 @@ Not every team will embrace OpenTelemetry immediately. Some have invested heavil
 
 Address resistance by demonstrating value, not mandating adoption. Show concrete examples of how OpenTelemetry solved problems similar to what the resistant team faces. Offer to instrument one of their services as a proof of concept.
 
-For legacy systems that can't be easily instrumented, consider alternative approaches. Use sidecar proxies like Envoy that can generate traces based on network traffic. Deploy OpenTelemetry collectors that parse logs and convert them to traces. These approaches provide some visibility while avoiding invasive code changes.
+For legacy systems that can't be easily instrumented, consider alternative approaches. Use sidecar proxies like Envoy that can generate traces based on network traffic. Deploy OpenTelemetry collectors that parse logs into structured log telemetry and correlate them with traces when trace context is present. These approaches provide some visibility while avoiding invasive code changes.
 
 Some teams will have valid technical constraints. A team working on a high-frequency trading system might not be able to accept the overhead of instrumentation. Embedded systems might not have the resources to run an instrumentation SDK. Work with these teams to find appropriate solutions, which might include exemptions or alternative approaches.
 
