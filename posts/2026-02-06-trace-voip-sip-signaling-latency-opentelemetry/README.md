@@ -55,10 +55,10 @@ def on_sip_message(sip_msg):
     status_code = sip_msg.status_code  # None for requests
 
     if method == "INVITE" and status_code is None:
-        # Start a new root span for the call setup
+        # Start a new root span for the call
         ctx = trace.set_span_in_context(trace.INVALID_SPAN)
         span = tracer.start_span(
-            "sip.call.setup",
+            "sip.call",
             context=ctx,
             attributes={
                 "sip.call_id": call_id,
@@ -69,15 +69,15 @@ def on_sip_message(sip_msg):
             }
         )
         active_calls[call_id] = {
-            "setup_span": span,
-            "setup_ctx": trace.set_span_in_context(span),
+            "call_span": span,
+            "call_ctx": trace.set_span_in_context(span),
             "invite_time": time.time(),
         }
 
     elif status_code == 180 and call_id in active_calls:
         # Record the ringing event as a span event
         call_ctx = active_calls[call_id]
-        call_ctx["setup_span"].add_event("sip.ringing", {
+        call_ctx["call_span"].add_event("sip.ringing", {
             "sip.status_code": 180,
             "sip.elapsed_ms": (time.time() - call_ctx["invite_time"]) * 1000,
         })
@@ -88,13 +88,13 @@ def on_sip_message(sip_msg):
             # This is the 200 OK for BYE, end the teardown span
             call_ctx["teardown_span"].set_status(StatusCode.OK)
             call_ctx["teardown_span"].end()
-            call_ctx["setup_span"].end()
+            call_ctx["call_span"].end()
             del active_calls[call_id]
         else:
             # This is the 200 OK for INVITE, record call answered
             elapsed = (time.time() - call_ctx["invite_time"]) * 1000
-            call_ctx["setup_span"].set_attribute("sip.setup_time_ms", elapsed)
-            call_ctx["setup_span"].add_event("sip.answered", {
+            call_ctx["call_span"].set_attribute("sip.setup_time_ms", elapsed)
+            call_ctx["call_span"].add_event("sip.answered", {
                 "sip.status_code": 200,
                 "sip.setup_time_ms": elapsed,
             })
@@ -104,7 +104,7 @@ def on_sip_message(sip_msg):
         call_ctx = active_calls[call_id]
         teardown_span = tracer.start_span(
             "sip.call.teardown",
-            context=call_ctx["setup_ctx"],
+            context=call_ctx["call_ctx"],
             attributes={
                 "sip.call_id": call_id,
                 "sip.method": "BYE",
@@ -121,44 +121,41 @@ SIP does not natively carry W3C trace context. You need to inject it into a cust
 
 ```python
 # sip_context_propagation.py
-from opentelemetry.context import get_current
-from opentelemetry.propagators.textmap import CarrierT
+from opentelemetry.propagators.textmap import Getter, Setter
 from opentelemetry import propagate
 
 
-class SIPHeaderCarrier(dict):
-    """Adapter to use SIP headers as a W3C propagation carrier."""
+class SIPHeaderSetter(Setter):
+    """Setter that writes W3C propagation fields into SIP headers."""
 
-    def __init__(self, sip_msg):
-        self.sip_msg = sip_msg
-        super().__init__()
+    def set(self, carrier, key, value):
+        # Map W3C fields to private SIP extension headers.
+        sip_header = f"OTel-{key}"
+        carrier.add_header(sip_header, value)
 
-    def __setitem__(self, key, value):
-        # Map W3C headers to SIP custom headers
-        # Using X- prefix for custom SIP headers
-        sip_header = f"X-OTel-{key}"
-        self.sip_msg.add_header(sip_header, value)
 
-    def __getitem__(self, key):
-        sip_header = f"X-OTel-{key}"
-        return self.sip_msg.get_header(sip_header)
+class SIPHeaderGetter(Getter):
+    """Getter that reads W3C propagation fields from SIP headers."""
 
-    def keys(self):
-        return [h.replace("X-OTel-", "")
-                for h in self.sip_msg.headers
-                if h.startswith("X-OTel-")]
+    def get(self, carrier, key):
+        sip_header = f"OTel-{key}"
+        value = carrier.get_header(sip_header)
+        return [value] if value is not None else None
+
+    def keys(self, carrier):
+        return [h.replace("OTel-", "")
+                for h in carrier.headers
+                if h.lower().startswith("otel-")]
 
 
 def inject_context_into_sip(sip_msg):
     """Inject current trace context into outgoing SIP message."""
-    carrier = SIPHeaderCarrier(sip_msg)
-    propagate.inject(carrier)
+    propagate.inject(sip_msg, setter=SIPHeaderSetter())
 
 
 def extract_context_from_sip(sip_msg):
     """Extract trace context from incoming SIP message."""
-    carrier = SIPHeaderCarrier(sip_msg)
-    return propagate.extract(carrier)
+    return propagate.extract(sip_msg, getter=SIPHeaderGetter())
 ```
 
 ## Custom Metrics for SIP Performance
@@ -185,8 +182,8 @@ sip_response_counter = meter.create_counter(
     unit="{response}",
 )
 
-# Gauge for concurrent active calls
-active_call_gauge = meter.create_up_down_counter(
+# UpDownCounter for concurrent active calls
+active_call_counter = meter.create_up_down_counter(
     "sip.calls.active",
     description="Number of currently active SIP sessions",
     unit="{call}",
