@@ -25,21 +25,21 @@ Your CI pipeline needs a place to run the application with a collector and Jaege
 ```yaml
 # docker-compose.ci.yml
 
-version: '3.8'
-
 services:
   app:
     build: .
     environment:
       OTEL_SERVICE_NAME: pr-preview
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
     depends_on:
       - otel-collector
 
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.96.0
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
     volumes:
-      - ./ci/collector-config.yaml:/etc/otelcol/config.yaml
+      - ./ci/collector-config.yaml:/etc/otelcol-contrib/config.yaml
     depends_on:
       - jaeger
 
@@ -53,7 +53,7 @@ services:
 
 ## Writing Tests That Capture Trace IDs
 
-Your integration tests need to extract the trace ID from responses. Most instrumented servers return the trace ID in a response header (like `traceparent`) or you can parse it from the OpenTelemetry context:
+Your integration tests need to extract the trace ID from responses. If your application deliberately echoes trace context in a response header (like `traceparent`) or exposes a custom trace ID header, you can capture it there. Otherwise, parse the trace ID from the OpenTelemetry context or from structured test logs:
 
 ```javascript
 // tests/integration.test.js
@@ -118,6 +118,9 @@ on:
 jobs:
   integration-tests:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
 
@@ -127,12 +130,14 @@ jobs:
       - name: Wait for services to be ready
         run: |
           for i in {1..30}; do
-            curl -s http://localhost:3000/health && break
+            curl -fsS http://localhost:3000/health && exit 0
             sleep 2
           done
+          echo "Service did not become ready in time"
+          exit 1
 
       - name: Run integration tests
-        run: npm test -- --testPathPattern=integration
+        run: npm test -- --testPathPatterns=integration
 
       - name: Wait for traces to be flushed
         run: sleep 10
