@@ -50,16 +50,14 @@ processors:
 
 exporters:
   # Primary backend - OneUptime
-  otlp/oneuptime:
-    endpoint: "https://otlp.oneuptime.com:4317"
+  otlphttp/oneuptime:
+    endpoint: "https://oneuptime.com/otlp"
     headers:
-      x-oneuptime-token: "${ONEUPTIME_TOKEN}"
-    tls:
-      insecure: false
+      x-oneuptime-token: "${env:ONEUPTIME_TOKEN}"
 
   # Secondary backend - Jaeger for comparison
   otlp/jaeger:
-    endpoint: "jaeger-collector.monitoring.svc:4317"
+    endpoint: "jaeger:4317"
     tls:
       insecure: true
 
@@ -73,7 +71,7 @@ service:
       receivers: [otlp]
       processors: [memory_limiter, batch]
       # All three exporters receive every trace
-      exporters: [otlp/oneuptime, otlp/jaeger, debug]
+      exporters: [otlphttp/oneuptime, otlp/jaeger, debug]
 ```
 
 The key is the `exporters` array in the pipeline definition. Every exporter listed there gets the same data after processing.
@@ -84,10 +82,10 @@ One concern with fan-out is that a slow or failing backend could block the other
 
 ```yaml
 exporters:
-  otlp/oneuptime:
-    endpoint: "https://otlp.oneuptime.com:4317"
+  otlphttp/oneuptime:
+    endpoint: "https://oneuptime.com/otlp"
     headers:
-      x-oneuptime-token: "${ONEUPTIME_TOKEN}"
+      x-oneuptime-token: "${env:ONEUPTIME_TOKEN}"
     retry_on_failure:
       enabled: true
       initial_interval: 5s
@@ -99,7 +97,7 @@ exporters:
       queue_size: 5000
 
   otlp/jaeger:
-    endpoint: "jaeger-collector.monitoring.svc:4317"
+    endpoint: "jaeger:4317"
     tls:
       insecure: true
     retry_on_failure:
@@ -121,7 +119,6 @@ Here is a quick way to test this locally:
 
 ```yaml
 # docker-compose.yaml
-version: "3.8"
 services:
   otel-collector:
     image: otel/opentelemetry-collector-contrib:latest
@@ -131,14 +128,14 @@ services:
     ports:
       - "4317:4317"   # gRPC
       - "4318:4318"   # HTTP
+      - "8888:8888"   # Collector metrics
     environment:
       - ONEUPTIME_TOKEN=${ONEUPTIME_TOKEN}
 
   jaeger:
-    image: jaegertracing/all-in-one:latest
+    image: cr.jaegertracing.io/jaegertracing/jaeger:2.19.0
     ports:
       - "16686:16686" # Jaeger UI
-      - "14250:14250" # gRPC
 ```
 
 ## Monitoring the Fan-Out
@@ -149,7 +146,14 @@ You will want to know if one of the exporters is lagging. The collector exposes 
 service:
   telemetry:
     metrics:
-      address: "0.0.0.0:8888"
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: "0.0.0.0"
+                port: 8888
+                without_type_suffix: true
+                without_units: true
 ```
 
 Then query `otelcol_exporter_sent_spans` and `otelcol_exporter_send_failed_spans` per exporter to compare throughput and error rates.
