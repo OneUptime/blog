@@ -17,7 +17,12 @@ receivers:
   redis/node-1:
     endpoint: "redis-node-1:6379"
     collection_interval: 15s
-    password: "${REDIS_PASSWORD}"
+    password: "${env:REDIS_PASSWORD}"
+    resource_attributes:
+      server.address:
+        enabled: true
+      server.port:
+        enabled: true
     metrics:
       redis.clients.connected:
         enabled: true
@@ -35,16 +40,38 @@ receivers:
         enabled: true
       redis.replication.offset:
         enabled: true
+      redis.cluster.known_nodes:
+        enabled: true
+      redis.cluster.slots_assigned:
+        enabled: true
+      redis.cluster.slots_ok:
+        enabled: true
+      redis.cluster.slots_pfail:
+        enabled: true
+      redis.cluster.slots_fail:
+        enabled: true
+      redis.cluster.state:
+        enabled: true
 
   redis/node-2:
     endpoint: "redis-node-2:6379"
     collection_interval: 15s
-    password: "${REDIS_PASSWORD}"
+    password: "${env:REDIS_PASSWORD}"
+    resource_attributes:
+      server.address:
+        enabled: true
+      server.port:
+        enabled: true
 
   redis/node-3:
     endpoint: "redis-node-3:6379"
     collection_interval: 15s
-    password: "${REDIS_PASSWORD}"
+    password: "${env:REDIS_PASSWORD}"
+    resource_attributes:
+      server.address:
+        enabled: true
+      server.port:
+        enabled: true
 
 processors:
   batch:
@@ -71,7 +98,7 @@ service:
 
 ## Cluster Health Script
 
-The Redis receiver collects standard Redis metrics. For cluster-specific metrics (slot coverage, node roles), use a script that runs `CLUSTER INFO` and `CLUSTER NODES`:
+The Redis receiver collects standard Redis metrics and can collect Redis Cluster metrics when they are enabled. For cluster-specific checks that are not exposed by your backend, such as node roles, use a script that runs `CLUSTER INFO` and `CLUSTER NODES`:
 
 ```python
 import redis
@@ -184,10 +211,10 @@ Growing lag means the replica is falling behind, which increases the risk of dat
 
 # Node down
 - alert: RedisClusterNodeDown
-  condition: redis_up{node=~"redis-node-.*"} == 0
+  condition: redis.uptime{server.address=~"redis-node-.*"} is missing
   for: 1m
   severity: critical
-  message: "Redis Cluster node {{ node }} is down."
+  message: "Redis Cluster node {{ server.address }} is down."
 
 # High replication lag
 - alert: RedisClusterReplicationLag
@@ -217,15 +244,48 @@ services:
 
   redis-node-2:
     image: redis:latest
-    command: redis-server --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --port 6380
+    command: redis-server --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000
     ports:
-      - "6380:6380"
+      - "6380:6379"
 
   redis-node-3:
     image: redis:latest
-    command: redis-server --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --port 6381
+    command: redis-server --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000
     ports:
-      - "6381:6381"
+      - "6381:6379"
+
+  redis-node-4:
+    image: redis:latest
+    command: redis-server --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000
+    ports:
+      - "6382:6379"
+
+  redis-node-5:
+    image: redis:latest
+    command: redis-server --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000
+    ports:
+      - "6383:6379"
+
+  redis-node-6:
+    image: redis:latest
+    command: redis-server --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000
+    ports:
+      - "6384:6379"
+
+  redis-cluster-init:
+    image: redis:latest
+    depends_on:
+      - redis-node-1
+      - redis-node-2
+      - redis-node-3
+      - redis-node-4
+      - redis-node-5
+      - redis-node-6
+    command: >
+      sh -c "redis-cli --cluster create
+      redis-node-1:6379 redis-node-2:6379 redis-node-3:6379
+      redis-node-4:6379 redis-node-5:6379 redis-node-6:6379
+      --cluster-replicas 1 --cluster-yes"
 
   otel-collector:
     image: otel/opentelemetry-collector-contrib:latest
@@ -235,4 +295,4 @@ services:
 
 ## Summary
 
-Redis Cluster monitoring focuses on three areas: node availability, slot coverage, and replication health. Use the OpenTelemetry Collector Redis receiver for per-node metrics (memory, commands, connections) and a custom script for cluster-specific metrics (slot coverage, cluster state, node roles). Alert on cluster state changes, incomplete slot coverage, and high replication lag to ensure your cluster remains fully operational.
+Redis Cluster monitoring focuses on three areas: node availability, slot coverage, and replication health. Use the OpenTelemetry Collector Redis receiver for per-node metrics (memory, commands, connections) and Redis Cluster metrics, and a custom script for cluster-specific checks that are not exposed by your backend (node roles). Alert on cluster state changes, incomplete slot coverage, and high replication lag to ensure your cluster remains fully operational.
