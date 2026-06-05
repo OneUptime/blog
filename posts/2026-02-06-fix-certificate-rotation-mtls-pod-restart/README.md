@@ -24,7 +24,7 @@ T=90d: cert A expires, all mTLS connections fail
 
 ## Solution 1: Use the Collector's reload_interval
 
-Starting with Collector v0.90+, TLS configuration supports a `reload_interval` parameter that tells the Collector to periodically re-read certificate files from disk:
+Collector TLS configuration supports a `reload_interval` parameter that tells the Collector to periodically re-read certificate and key files from disk. For mTLS receivers, also enable `client_ca_file_reload` so the server reloads the client CA file when it changes:
 
 ```yaml
 receivers:
@@ -36,10 +36,11 @@ receivers:
           cert_file: /certs/tls.crt
           key_file: /certs/tls.key
           client_ca_file: /certs/ca.crt
+          client_ca_file_reload: true
           reload_interval: 1h  # Re-read certs every hour
 ```
 
-This is the cleanest solution. The Collector will pick up new certificates without a restart.
+This is the cleanest solution. The Collector will pick up new certificate and key files without a restart, and it will also reload the client CA file used to verify client certificates.
 
 ## Solution 2: Use Kubernetes Secret Volumes with Projected Volumes
 
@@ -51,10 +52,17 @@ kind: Deployment
 metadata:
   name: otel-collector
 spec:
+  selector:
+    matchLabels:
+      app: otel-collector
   template:
+    metadata:
+      labels:
+        app: otel-collector
     spec:
       containers:
         - name: collector
+          image: otel/opentelemetry-collector-contrib:latest
           volumeMounts:
             - name: certs
               mountPath: /certs
@@ -76,7 +84,7 @@ spec:
 
 ## Solution 3: Trigger a Rolling Restart on Certificate Renewal
 
-If your Collector version does not support `reload_interval`, you can use a hash annotation to trigger a rolling restart when the certificate changes:
+If your Collector version does not support certificate reloading, you can trigger a rolling restart when the certificate changes:
 
 ```yaml
 apiVersion: cert-manager.io/v1
@@ -95,17 +103,14 @@ spec:
   renewBefore: 720h
 ```
 
-Then use a tool like Reloader or stakater/Reloader to watch for Secret changes:
+Then use a tool like stakater/Reloader to watch for Secret changes:
 
 ```yaml
 # Install stakater/Reloader
 
 # It watches for Secret changes and triggers rolling restarts
 
-apiVersion: apps/v1
-kind: Deployment
 metadata:
-  name: otel-collector
   annotations:
     # Reloader will restart this Deployment when the Secret changes
     secret.reloader.stakater.com/reload: "otel-collector-tls"
@@ -113,7 +118,7 @@ metadata:
 
 ## Solution 4: Use a Sidecar to Signal Reload
 
-Another approach is a sidecar container that watches the certificate files and sends a signal to the Collector process:
+Another approach is a sidecar container that watches the certificate files and triggers a reload mechanism you provide. The Collector can reload its full configuration on `SIGHUP` in recent versions, but certificate reloads are better handled with `reload_interval` and `client_ca_file_reload` when those settings are available:
 
 ```yaml
 containers:
@@ -135,8 +140,8 @@ containers:
           CURRENT_HASH=$(md5sum $CERT_FILE 2>/dev/null || echo "none")
           if [ "$CURRENT_HASH" != "$LAST_HASH" ]; then
             echo "Certificate changed, signaling collector to reload"
-            # The collector does not natively support SIGHUP for reload
-            # so we write a marker file that a custom extension could watch
+            # This marker only works if you add a custom extension or supervisor
+            # that watches it and reloads or restarts the Collector.
             touch /tmp/cert-rotated
             LAST_HASH=$CURRENT_HASH
           fi
@@ -163,13 +168,17 @@ kubectl logs -f deployment/otel-collector -n observability | grep -i "tls\|cert\
 
 # Verify the connection still works after rotation
 kubectl exec -it test-pod -- openssl s_client \
-  -connect otel-collector.observability:4317 \
+  -connect otel-collector.observability.svc.cluster.local:4317 \
+  -servername otel-collector.observability.svc.cluster.local \
+  -CAfile /certs/ca.crt \
+  -verify_return_error \
+  -verify_hostname otel-collector.observability.svc.cluster.local \
   -cert /certs/client.crt \
   -key /certs/client.key < /dev/null
 ```
 
 ## Best Practice: Short-Lived Certificates
 
-Using short-lived certificates (hours or days instead of months) with frequent rotation is more secure but makes the reload problem more urgent. If you go this route, `reload_interval` in the Collector configuration is essentially required. Set the reload interval to be shorter than the certificate lifetime.
+Using short-lived certificates (hours or days instead of months) with frequent rotation is more secure but makes the reload problem more urgent. If you go this route, `reload_interval` in the Collector configuration is essentially required, and mTLS receivers should also set `client_ca_file_reload: true` when the client CA file can change. Set the reload interval to be shorter than the certificate lifetime.
 
 The bottom line: always plan for certificate rotation from day one. It is much easier to configure `reload_interval` upfront than to debug broken mTLS connections at 3 AM when a certificate expires.
