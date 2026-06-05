@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Vercel, Serverless, Next.js, Tracing, Edge Function
 
-Description: Learn how to add OpenTelemetry instrumentation to Vercel serverless functions for distributed tracing, metrics collection, and full observability.
+Description: Learn how to add OpenTelemetry instrumentation to Vercel serverless functions for distributed tracing and full observability.
 
 ---
 
 Vercel makes deploying frontend applications and serverless APIs incredibly easy. But once your functions are running in production, understanding what happens inside them is a different story. Cold starts, third-party API calls, database queries - these all affect your users and you need visibility into them.
 
-OpenTelemetry provides a standardized way to instrument your Vercel serverless functions. Whether you're running Next.js API routes, standalone serverless functions, or edge functions, you can capture traces and metrics without locking yourself into a specific vendor.
+OpenTelemetry provides a standardized way to instrument your Vercel serverless functions. Whether you're running Next.js API routes, standalone serverless functions, or edge functions, you can capture traces without locking yourself into a specific vendor.
 
 ## How Vercel Serverless Functions Work
 
@@ -46,12 +46,14 @@ Install the required packages first. The `@vercel/otel` package provides a thin 
 # Install OpenTelemetry packages for Next.js on Vercel
 
 npm install @vercel/otel @opentelemetry/sdk-node \
+  @opentelemetry/api \
   @opentelemetry/exporter-trace-otlp-http \
+  @opentelemetry/sdk-trace-node \
   @opentelemetry/resources \
   @opentelemetry/semantic-conventions
 ```
 
-Create an instrumentation file at the root of your project. Next.js automatically loads this file when the `instrumentationHook` experimental feature is enabled.
+Create an instrumentation file at the root of your project, or inside the `src` directory if your project uses one. Next.js 13.4 and 14 load this file when the `instrumentationHook` experimental feature is enabled. In Next.js 15 and later, the instrumentation file is stable and does not need the experimental config flag.
 
 ```typescript
 // instrumentation.ts - OpenTelemetry setup for Next.js on Vercel
@@ -68,7 +70,7 @@ export function register() {
 }
 ```
 
-Enable the instrumentation hook in your Next.js configuration:
+If you're using Next.js 13.4 or 14, enable the instrumentation hook in your Next.js configuration:
 
 ```javascript
 // next.config.js - Enable OpenTelemetry instrumentation hook
@@ -84,13 +86,13 @@ module.exports = nextConfig;
 
 ## Custom Configuration with OTLP Exporter
 
-The `@vercel/otel` package is convenient, but you might need more control over the exporter configuration. Here's how to set up a custom OpenTelemetry configuration that sends data to any OTLP-compatible backend.
+The `@vercel/otel` package is convenient, but you might need more control over the exporter configuration. Here's how to set up a custom OpenTelemetry configuration for Node.js runtime functions that sends data to any OTLP-compatible backend.
 
 ```typescript
 // instrumentation.ts - Custom OpenTelemetry configuration for Vercel
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
-import { Resource } from '@opentelemetry/resources';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 import { ATTR_SERVICE_NAME } from '@opentelemetry/semantic-conventions';
 import { SimpleSpanProcessor } from '@opentelemetry/sdk-trace-base';
 
@@ -107,12 +109,12 @@ export function register() {
   });
 
   const sdk = new NodeSDK({
-    resource: new Resource({
+    resource: resourceFromAttributes({
       [ATTR_SERVICE_NAME]: 'my-vercel-app',
       'deployment.environment': process.env.VERCEL_ENV || 'development',
       'vercel.region': process.env.VERCEL_REGION || 'unknown',
     }),
-    spanProcessor: new SimpleSpanProcessor(exporter),
+    spanProcessors: [new SimpleSpanProcessor(exporter)],
   });
 
   sdk.start();
@@ -123,11 +125,11 @@ Notice we're using `SimpleSpanProcessor` instead of `BatchSpanProcessor`. In ser
 
 ## Instrumenting API Routes
 
-With the SDK initialized, your Next.js API routes will automatically get basic HTTP span instrumentation. But you'll likely want to add custom spans for your business logic.
+With `@vercel/otel` initialized, your Next.js API routes will get basic HTTP span instrumentation. If you use a custom SDK setup instead, register the relevant instrumentation packages for automatic HTTP spans. Either way, you'll likely want to add custom spans for your business logic.
 
 ```typescript
 // app/api/users/route.ts - Instrumented API route with custom spans
-import { trace } from '@opentelemetry/api';
+import { SpanStatusCode, trace } from '@opentelemetry/api';
 import { NextResponse } from 'next/server';
 
 // Get a tracer for the users API module
@@ -154,7 +156,7 @@ export async function GET(request: Request) {
     } catch (error) {
       // Record the error so it shows up in your trace viewer
       span.recordException(error as Error);
-      span.setStatus({ code: 2, message: (error as Error).message });
+      span.setStatus({ code: SpanStatusCode.ERROR, message: (error as Error).message });
       return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
     } finally {
       span.end();
@@ -169,37 +171,36 @@ If you're not using Next.js and instead have standalone Vercel serverless functi
 
 ```typescript
 // lib/telemetry.ts - Shared OpenTelemetry init for standalone Vercel functions
-import { NodeSDK } from '@opentelemetry/sdk-node';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
-import { Resource } from '@opentelemetry/resources';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 import { SimpleSpanProcessor } from '@opentelemetry/sdk-trace-base';
+import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node';
 
-let sdk: NodeSDK | null = null;
+let provider: NodeTracerProvider | null = null;
 
 // Initialize the SDK once and reuse across warm invocations
 export function initTelemetry() {
-  if (sdk) return;
+  if (provider) return;
 
   const exporter = new OTLPTraceExporter({
     url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT + '/v1/traces',
   });
 
-  sdk = new NodeSDK({
-    resource: new Resource({
+  provider = new NodeTracerProvider({
+    resource: resourceFromAttributes({
       'service.name': 'my-vercel-functions',
       'faas.name': process.env.VERCEL_URL || 'unknown',
     }),
-    spanProcessor: new SimpleSpanProcessor(exporter),
+    spanProcessors: [new SimpleSpanProcessor(exporter)],
   });
 
-  sdk.start();
+  provider.register();
 }
 
 // Force flush all pending spans - call this before the function returns
 export async function flushTelemetry() {
-  if (sdk) {
-    await sdk.shutdown();
-    sdk = null;
+  if (provider) {
+    await provider.forceFlush();
   }
 }
 ```
@@ -209,15 +210,14 @@ Then use it in your function handler:
 ```typescript
 // api/process-payment.ts - Standalone Vercel function with telemetry
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { trace } from '@opentelemetry/api';
+import { SpanStatusCode, trace } from '@opentelemetry/api';
 import { initTelemetry, flushTelemetry } from '../lib/telemetry';
-
-// Initialize telemetry on cold start
-initTelemetry();
 
 const tracer = trace.getTracer('payment-service');
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  initTelemetry();
+
   return tracer.startActiveSpan('process-payment', async (span) => {
     try {
       span.setAttribute('payment.method', req.body.method);
@@ -229,7 +229,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       res.status(200).json(result);
     } catch (error) {
       span.recordException(error as Error);
-      span.setStatus({ code: 2 });
+      span.setStatus({ code: SpanStatusCode.ERROR });
       res.status(500).json({ error: 'Payment failed' });
     } finally {
       span.end();
@@ -259,7 +259,7 @@ You can set different values per environment (Production, Preview, Development),
 
 ## Trace Propagation Across Services
 
-If your Vercel functions call other backend services, you want the trace context to propagate so you can see the full request lifecycle. The OpenTelemetry SDK automatically injects trace headers into outgoing HTTP requests when using the standard `fetch` API or libraries like `axios`.
+If your Vercel functions call other backend services, you want the trace context to propagate so you can see the full request lifecycle. With `@vercel/otel`, you can configure outgoing `fetch` context propagation with `instrumentationConfig.fetch`. If you use a custom OpenTelemetry SDK setup or libraries like `axios`, install and register the relevant OpenTelemetry instrumentation packages.
 
 ```mermaid
 graph LR
