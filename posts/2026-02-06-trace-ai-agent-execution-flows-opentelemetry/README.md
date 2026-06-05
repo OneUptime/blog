@@ -44,10 +44,11 @@ In OpenTelemetry terms, the entire agent loop is the root span. Each LLM call an
 Start with the standard OpenTelemetry setup. Nothing special is required for agent tracing beyond the normal SDK configuration.
 
 ```python
+import os
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import Resource
 
 # Configure the tracer with your service name
@@ -58,7 +59,10 @@ resource = Resource.create({
 })
 
 provider = TracerProvider(resource=resource)
-exporter = OTLPSpanExporter(endpoint="https://oneuptime.com/otlp")
+exporter = OTLPSpanExporter(
+    endpoint="https://oneuptime.com/otlp/v1/traces",
+    headers={"x-oneuptime-token": os.environ["ONEUPTIME_TOKEN"]},
+)
 provider.add_span_processor(BatchSpanProcessor(exporter))
 trace.set_tracer_provider(provider)
 
@@ -75,6 +79,7 @@ The agent loop is the core of any agentic system. It repeatedly calls the LLM, c
 import json
 import openai
 from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
 
 tracer = trace.get_tracer("ai-agent-service")
 
@@ -148,14 +153,28 @@ def run_agent(user_query: str) -> str:
 
             # If the model is done (no tool calls), return the final answer
             if choice.finish_reason == "stop":
-                final_response = choice.message.content
+                final_response = choice.message.content or ""
                 root_span.set_attribute("agent.iterations_used", iteration)
                 root_span.set_attribute("agent.output", final_response[:500])
                 return final_response
 
             # Process any tool calls the model requested
             if choice.message.tool_calls:
-                messages.append(choice.message)
+                messages.append({
+                    "role": "assistant",
+                    "content": choice.message.content,
+                    "tool_calls": [
+                        {
+                            "id": tool_call.id,
+                            "type": tool_call.type,
+                            "function": {
+                                "name": tool_call.function.name,
+                                "arguments": tool_call.function.arguments,
+                            },
+                        }
+                        for tool_call in choice.message.tool_calls
+                    ],
+                })
 
                 for tool_call in choice.message.tool_calls:
                     tool_result = execute_tool(tool_call)
@@ -202,7 +221,7 @@ def execute_tool(tool_call) -> dict:
             return result
 
         except Exception as e:
-            tool_span.set_status(trace.StatusCode.ERROR, str(e))
+            tool_span.set_status(Status(StatusCode.ERROR, str(e)))
             tool_span.record_exception(e)
             return {"error": str(e)}
 
