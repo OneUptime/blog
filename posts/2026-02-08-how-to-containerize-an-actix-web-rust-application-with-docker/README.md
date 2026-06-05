@@ -107,7 +107,7 @@ curl http://localhost:8080
 
 ## Understanding the Rust Docker Build
 
-Rust compilation is resource-intensive. A typical build downloads and compiles all dependencies from source. This means the Docker build stage needs the full Rust toolchain and can take several minutes on the first build. However, the final binary is statically linked and runs without any runtime dependencies.
+Rust compilation is resource-intensive. A typical build downloads and compiles all dependencies from source. This means the Docker build stage needs the full Rust toolchain and can take several minutes on the first build. However, when you build for a static-compatible target such as the musl-based Alpine Rust image, the production binary can run without a full Rust runtime or application source code.
 
 Docker layer caching helps enormously. By structuring the Dockerfile correctly, dependency compilation only repeats when `Cargo.toml` or `Cargo.lock` changes.
 
@@ -122,6 +122,8 @@ FROM rust:1.77-alpine AS build
 
 # Install musl-dev for static linking
 RUN apk add --no-cache musl-dev
+
+ENV RUSTFLAGS="-C target-feature=+crt-static"
 
 WORKDIR /app
 
@@ -202,15 +204,13 @@ curl http://localhost:8080/health
 docker images my-actix-app
 ```
 
-A Rust Actix Web binary on `scratch` typically produces images of 5-10MB. That is remarkably small.
+A Rust Actix Web binary on `scratch` can produce a very small image, with the final size depending on the compiled binary and enabled dependencies.
 
 ## Docker Compose with PostgreSQL
 
 A full stack with database connectivity:
 
 ```yaml
-version: "3.8"
-
 services:
   api:
     build:
@@ -253,7 +253,7 @@ Add to `Cargo.toml`:
 
 ```toml
 [dependencies]
-sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres"] }
+sqlx = { version = "0.9", features = ["runtime-tokio", "tls-rustls-aws-lc-rs", "postgres"] }
 ```
 
 Database connection pool setup:
@@ -293,7 +293,7 @@ async fn main() -> std::io::Result<()> {
 }
 ```
 
-**Note**: When using SQLx with Docker, you may need to use the `runtime-tokio-rustls` feature instead of `runtime-tokio-native-tls` to avoid requiring OpenSSL in the production image.
+**Note**: When using SQLx with Docker, you may need to use a Rustls TLS feature such as `tls-rustls-aws-lc-rs` instead of `tls-native-tls` to avoid requiring OpenSSL in the production image.
 
 ## Graceful Shutdown
 
@@ -319,6 +319,7 @@ Use cargo-chef for better dependency caching:
 ```dockerfile
 # Stage 1: Plan the build
 FROM rust:1.77-alpine AS planner
+ENV RUSTFLAGS="-C target-feature=+crt-static"
 RUN cargo install cargo-chef
 WORKDIR /app
 COPY . .
@@ -326,6 +327,7 @@ RUN cargo chef prepare --recipe-path recipe.json
 
 # Stage 2: Cache dependencies
 FROM rust:1.77-alpine AS cacher
+ENV RUSTFLAGS="-C target-feature=+crt-static"
 RUN apk add --no-cache musl-dev
 RUN cargo install cargo-chef
 WORKDIR /app
@@ -334,6 +336,7 @@ RUN cargo chef cook --release --recipe-path recipe.json
 
 # Stage 3: Build the application
 FROM rust:1.77-alpine AS build
+ENV RUSTFLAGS="-C target-feature=+crt-static"
 RUN apk add --no-cache musl-dev
 WORKDIR /app
 COPY --from=cacher /app/target target
@@ -368,8 +371,6 @@ CMD ["cargo", "watch", "-x", "run"]
 Development Compose file:
 
 ```yaml
-version: "3.8"
-
 services:
   api-dev:
     build:
@@ -393,4 +394,4 @@ Caching the `cargo` registry and `target` directory in named volumes speeds up r
 
 ## Conclusion
 
-Actix Web produces some of the smallest and fastest Docker containers you can build. Rust's static compilation eliminates runtime dependencies, and the `scratch` base image keeps the final container around 5-10MB. The trade-off is build time, which is mitigated by careful layer caching and tools like `cargo-chef`. Add database connectivity with SQLx, handle configuration through environment variables, and leverage Actix Web's built-in graceful shutdown for production readiness. The combination of Rust's safety guarantees and Docker's deployment consistency makes for a robust production setup.
+Actix Web produces some of the smallest and fastest Docker containers you can build. Rust's static-friendly musl targets can eliminate runtime library dependencies, and the `scratch` base image keeps the final container very small. The trade-off is build time, which is mitigated by careful layer caching and tools like `cargo-chef`. Add database connectivity with SQLx, handle configuration through environment variables, and leverage Actix Web's built-in graceful shutdown for production readiness. The combination of Rust's safety guarantees and Docker's deployment consistency makes for a robust production setup.
