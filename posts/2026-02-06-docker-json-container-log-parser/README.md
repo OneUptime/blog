@@ -34,7 +34,7 @@ receivers:
       - type: container
 ```
 
-The `container` operator parses the JSON structure, extracts the timestamp from the `time` field, maps `stream` to the appropriate severity (stderr maps to ERROR), and places the actual log content in the body.
+The `container` operator parses the JSON structure, extracts the timestamp from the `time` field, stores the Docker stream as `log.iostream`, and places the actual log content in the body. If you want to derive severity from `stdout` or `stderr`, add a separate severity parsing step.
 
 ## Complete Configuration with Metadata Extraction
 
@@ -56,7 +56,6 @@ receivers:
         parse_from: attributes["log.file.path"]
         regex: '/var/lib/docker/containers/(?P<container_id>[a-f0-9]{64})/'
         on_error: send
-        preserve_to: attributes["log.file.path"]
 
       # Step 3: Map to OTel semantic conventions
       - type: move
@@ -72,7 +71,7 @@ processors:
         action: upsert
 
   # Optionally enrich with Docker metadata
-  # This requires the Docker observer extension
+  # This requires a separate Docker metadata enrichment path
   batch:
     timeout: 5s
 
@@ -155,11 +154,13 @@ receivers:
         parse_from: body
         regex: '^(?P<remote_addr>[^\s]+) - (?P<remote_user>[^\s]+) \[(?P<time_local>[^\]]+)\]'
         on_error: send
+        output: keep_raw
 
       - id: parse_json
         type: json_parser
         parse_from: body
         on_error: send
+        output: keep_raw
 
       - id: keep_raw
         type: noop
@@ -180,7 +181,7 @@ receivers:
       - type: container
 ```
 
-A more maintainable approach is to use the Docker stats receiver alongside the filelog receiver and filter by container labels in a processor.
+The filelog receiver does not read Docker labels from the log file itself. Label-based selection requires a separate Docker metadata path, such as the Docker observer with receiver creator, or enrichment before filtering.
 
 ## Log Rotation Handling
 
@@ -205,13 +206,11 @@ Docker health checks can generate a lot of log noise. Filter them out:
 ```yaml
 processors:
   filter/no-healthcheck:
-    logs:
-      exclude:
-        match_type: regexp
-        bodies:
-          - '.*GET /health.*'
-          - '.*GET /ready.*'
-          - '.*GET /healthz.*'
+    error_mode: ignore
+    log_conditions:
+      - 'IsMatch(log.body, ".*GET /health.*")'
+      - 'IsMatch(log.body, ".*GET /ready.*")'
+      - 'IsMatch(log.body, ".*GET /healthz.*")'
 ```
 
 Using the container log parser gives you clean, structured logs from Docker containers without needing to configure sidecar containers or Docker logging drivers. It works with the logs already on disk, making it simple to deploy alongside existing Docker setups.
