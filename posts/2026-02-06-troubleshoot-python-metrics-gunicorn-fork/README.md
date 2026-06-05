@@ -54,7 +54,7 @@ def post_fork(server, worker):
 
     resource = Resource.create({
         SERVICE_NAME: "my-service",
-        "worker.pid": worker.pid,
+        "process.pid": worker.pid,
     })
 
     # Traces
@@ -87,6 +87,7 @@ def setup_telemetry(worker_pid):
     from opentelemetry.sdk.metrics import MeterProvider
     from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
     from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
+    from opentelemetry.sdk.resources import Resource, SERVICE_NAME
 
     resource = Resource.create({
         SERVICE_NAME: "my-service",
@@ -139,7 +140,10 @@ Create a simple metric and verify it exports:
 
 ```python
 # myapp.py
+from flask import Flask
 from opentelemetry import metrics
+
+app = Flask(__name__)
 
 meter = metrics.get_meter("my-service")
 request_counter = meter.create_counter(
@@ -160,6 +164,8 @@ After the fix, each worker independently exports its metrics. The Collector or b
 With multiple workers, each one reports the same metric names. Your backend should handle this by aggregating across `process.pid` labels. Add the worker PID as a resource attribute to distinguish between workers:
 
 ```python
+import os
+
 resource = Resource.create({
     SERVICE_NAME: "my-service",
     "process.pid": os.getpid(),
