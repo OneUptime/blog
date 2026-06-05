@@ -19,32 +19,59 @@ GET /api/users  [================] 45ms  trace_id: abc123  (same trace!)
 
 Both spans have the same trace ID but different span IDs. They have the same name, attributes, and duration.
 
-## Cause 1: Double Initialization
+## Cause 1: Double Exporter Initialization
 
-The most common cause is initializing OpenTelemetry twice:
+The most common cause is running your OpenTelemetry setup code twice, especially the exporter setup:
 
 ```python
 # app.py
 
+from opentelemetry import trace
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.instrumentation.flask import FlaskInstrumentor
 
-# First initialization (maybe in a setup function)
-FlaskInstrumentor().instrument()
+def setup_instrumentation():
+    provider = trace.get_tracer_provider()
+    if isinstance(provider, trace.ProxyTracerProvider):
+        provider = TracerProvider()
+        trace.set_tracer_provider(provider)
+
+    provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
+    FlaskInstrumentor().instrument()
+
+# First initialization
+setup_instrumentation()
 
 # Second initialization (maybe in a different module)
-FlaskInstrumentor().instrument()  # Instruments again!
+setup_instrumentation()  # Adds another span processor to the same provider
 ```
 
 **Fix:** Guard against double initialization:
 
 ```python
+from opentelemetry import trace
 from opentelemetry.instrumentation.flask import FlaskInstrumentor
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 
-_instrumentor = FlaskInstrumentor()
+_instrumentation_initialized = False
 
 def setup_instrumentation():
-    if not _instrumentor.is_instrumented_by_opentelemetry:
-        _instrumentor.instrument()
+    global _instrumentation_initialized
+    if _instrumentation_initialized:
+        return
+
+    provider = trace.get_tracer_provider()
+    if isinstance(provider, trace.ProxyTracerProvider):
+        provider = TracerProvider()
+        trace.set_tracer_provider(provider)
+
+    provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
+    FlaskInstrumentor().instrument()
+    _instrumentation_initialized = True
 ```
 
 ## Cause 2: Auto-Instrumentation + Manual Instrumentation
@@ -59,7 +86,7 @@ opentelemetry-instrument python app.py
 ```python
 # app.py also applies manual instrumentation
 from opentelemetry.instrumentation.flask import FlaskInstrumentor
-FlaskInstrumentor().instrument()  # Double instrumentation!
+FlaskInstrumentor().instrument()  # Conflicts with the CLI approach
 ```
 
 **Fix:** Use one approach, not both. Either remove the manual instrumentation from your code or stop using the CLI:
@@ -105,15 +132,12 @@ if __name__ == '__main__':
     app.run(debug=True)
 ```
 
-**Fix:** Guard with the reloader check:
+**Fix:** Disable the reloader when debugging OpenTelemetry setup:
 
 ```python
-import os
-
 if __name__ == '__main__':
-    if os.environ.get('WERKZEUG_RUN_MAIN') == 'true' or not app.debug:
-        setup_tracing()
-    app.run(debug=True)
+    setup_tracing()
+    app.run(debug=True, use_reloader=False)
 ```
 
 ## Cause 5: Gunicorn Preload + Post-Fork
