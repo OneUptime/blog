@@ -68,7 +68,8 @@ def handle_store(event):
     ds.file_meta = event.file_meta
 
     with tracer.start_as_current_span("dicom.cstore") as span:
-        # DICOM metadata attributes (none of these are PHI)
+        # DICOM operational metadata. Confirm your privacy policy before
+        # exporting instance-specific UIDs outside your trusted environment.
         modality = str(ds.get("Modality", "UNKNOWN"))
         sop_class = str(ds.get("SOPClassUID", ""))
         study_uid = str(ds.get("StudyInstanceUID", ""))
@@ -81,7 +82,7 @@ def handle_store(event):
         span.set_attribute("dicom.series_instance_uid", series_uid)
 
         # Calculate image size
-        image_size = len(event.request.DataSet.getvalue())
+        image_size = len(event.encoded_dataset(include_meta=False))
         span.set_attribute("dicom.image_size_bytes", image_size)
 
         # Store the image
@@ -145,65 +146,90 @@ The viewer side is where radiologists feel the impact of slow transfers. Here is
 
 ```javascript
 // dicom-viewer-instrumentation.js
-import { trace } from '@opentelemetry/api';
+import { SpanStatusCode, trace } from '@opentelemetry/api';
 import { WebTracerProvider } from '@opentelemetry/sdk-trace-web';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
 
-const provider = new WebTracerProvider();
-provider.addSpanProcessor(
-  new BatchSpanProcessor(
-    new OTLPTraceExporter({ url: '/v1/traces' })
-  )
-);
+const provider = new WebTracerProvider({
+  spanProcessors: [
+    new BatchSpanProcessor(
+      new OTLPTraceExporter({ url: '/v1/traces' })
+    )
+  ]
+});
 provider.register();
 
 const viewerTracer = trace.getTracer('dicom-viewer', '1.0.0');
 
 async function loadStudy(studyInstanceUID) {
   // Trace the full study loading process
-  const span = viewerTracer.startSpan('dicom.viewer.load_study');
-  span.setAttribute('dicom.study_instance_uid', studyInstanceUID);
+  return viewerTracer.startActiveSpan('dicom.viewer.load_study', async (span) => {
+    const loadStart = performance.now();
+    span.setAttribute('dicom.study_instance_uid', studyInstanceUID);
 
-  try {
-    // Step 1: Fetch the study metadata via DICOMweb WADO-RS
-    const metadataSpan = viewerTracer.startSpan('dicom.viewer.fetch_metadata');
-    const metadata = await fetch(
-      `/dicomweb/studies/${studyInstanceUID}/metadata`
-    ).then((r) => r.json());
-    metadataSpan.setAttribute('dicom.series_count', metadata.length);
-    metadataSpan.end();
+    try {
+      // Step 1: Fetch the study metadata via DICOMweb WADO-RS
+      const metadata = await viewerTracer.startActiveSpan(
+        'dicom.viewer.fetch_metadata',
+        async (metadataSpan) => {
+          try {
+            const result = await fetch(
+              `/dicomweb/studies/${studyInstanceUID}/metadata`
+            ).then((r) => r.json());
+            metadataSpan.setAttribute('dicom.instance_count', result.length);
+            return result;
+          } finally {
+            metadataSpan.end();
+          }
+        }
+      );
 
-    // Step 2: Fetch pixel data for the first series
-    const pixelSpan = viewerTracer.startSpan('dicom.viewer.fetch_pixels');
-    const seriesUID = metadata[0]['0020000E'].Value[0];
-    pixelSpan.setAttribute('dicom.series_instance_uid', seriesUID);
+      // Step 2: Fetch DICOM instances for the first series
+      const seriesUID = metadata[0]['0020000E'].Value[0];
+      const pixelData = await viewerTracer.startActiveSpan(
+        'dicom.viewer.fetch_pixels',
+        async (pixelSpan) => {
+          pixelSpan.setAttribute('dicom.series_instance_uid', seriesUID);
 
-    const startFetch = performance.now();
-    const pixelData = await fetch(
-      `/dicomweb/studies/${studyInstanceUID}/series/${seriesUID}/instances`
-    ).then((r) => r.arrayBuffer());
+          const startFetch = performance.now();
+          try {
+            const result = await fetch(
+              `/dicomweb/studies/${studyInstanceUID}/series/${seriesUID}`,
+              { headers: { Accept: 'multipart/related; type="application/dicom"' } }
+            ).then((r) => r.arrayBuffer());
 
-    const fetchDuration = performance.now() - startFetch;
-    pixelSpan.setAttribute('dicom.fetch_duration_ms', fetchDuration);
-    pixelSpan.setAttribute('dicom.pixel_data_size_bytes', pixelData.byteLength);
-    pixelSpan.end();
+            const fetchDuration = performance.now() - startFetch;
+            pixelSpan.setAttribute('dicom.fetch_duration_ms', fetchDuration);
+            pixelSpan.setAttribute('dicom.pixel_data_size_bytes', result.byteLength);
+            return result;
+          } finally {
+            pixelSpan.end();
+          }
+        }
+      );
 
-    // Step 3: Render the images
-    const renderSpan = viewerTracer.startSpan('dicom.viewer.render');
-    const renderStart = performance.now();
-    await renderDicomImages(pixelData);
-    const renderDuration = performance.now() - renderStart;
-    renderSpan.setAttribute('dicom.render_duration_ms', renderDuration);
-    renderSpan.end();
+      // Step 3: Render the images
+      await viewerTracer.startActiveSpan('dicom.viewer.render', async (renderSpan) => {
+        const renderStart = performance.now();
+        try {
+          await renderDicomImages(pixelData);
+          const renderDuration = performance.now() - renderStart;
+          renderSpan.setAttribute('dicom.render_duration_ms', renderDuration);
+        } finally {
+          renderSpan.end();
+        }
+      });
 
-    span.setAttribute('dicom.total_load_ms', performance.now());
-  } catch (error) {
-    span.setStatus({ code: 2, message: error.message });
-    throw error;
-  } finally {
-    span.end();
-  }
+      span.setAttribute('dicom.total_load_ms', performance.now() - loadStart);
+    } catch (error) {
+      span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
+      span.recordException(error);
+      throw error;
+    } finally {
+      span.end();
+    }
+  });
 }
 ```
 
