@@ -10,11 +10,11 @@ The `kubeletstats` receiver in the OpenTelemetry Collector is designed to collec
 
 ## Understanding Kubelet Ports
 
-Every Kubernetes node runs a Kubelet with two API endpoints:
+Every Kubernetes node runs a Kubelet API. The common ports are:
 
 ```text
-Port 10250 - Read-write, requires authentication (default)
-Port 10255 - Read-only, no authentication (often disabled in production)
+Port 10250 - Secure Kubelet API, requires authentication (default)
+Port 10255 - Read-only Kubelet API, no authentication (often disabled in production)
 ```
 
 Many clusters disable port 10255 for security. If your receiver is configured to use the read-only port and it is disabled, you get no metrics.
@@ -37,12 +37,12 @@ Test connectivity to the Kubelet from the Collector pod:
 ```bash
 # Test the read-only port (might be disabled)
 kubectl exec -it otel-collector-pod -n observability -- \
-  curl -s http://$(NODE_IP):10255/stats/summary | head -20
+  sh -c 'curl -s http://"$NODE_IP":10255/stats/summary | head -20'
 
 # Test the authenticated port
 kubectl exec -it otel-collector-pod -n observability -- \
-  curl -sk https://$(NODE_IP):10250/stats/summary \
-  --header "Authorization: Bearer $(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"
+  sh -c 'curl -sk https://"$NODE_IP":10250/stats/summary \
+    --header "Authorization: Bearer $(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"'
 ```
 
 ## Fix 1: Use the Authenticated Port (10250)
@@ -97,14 +97,17 @@ rules:
   - apiGroups: [""]
     resources: ["nodes/stats"]
     verbs: ["get"]
-  # Permission to get node proxy (needed for some Kubelet endpoints)
+  # Needed when using extra_metadata_labels or request/limit utilization metrics
   - apiGroups: [""]
-    resources: ["nodes/proxy"]
+    resources: ["nodes/pods"]
     verbs: ["get"]
-  # Permission to list nodes (for node discovery)
+  # Needed when k8s_api_config collects detailed volume metadata from PVCs
   - apiGroups: [""]
-    resources: ["nodes"]
-    verbs: ["get", "list"]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["get"]
+  - apiGroups: [""]
+    resources: ["persistentvolumes"]
+    verbs: ["get"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -138,24 +141,19 @@ receivers:
 
 ### GKE (Google Cloud)
 
-GKE uses a different authentication model. You might need to use the node's metadata:
+GKE is moving away from the insecure read-only port. Use port 10250 with `serviceAccount` auth:
 
 ```yaml
 receivers:
   kubeletstats:
     auth_type: serviceAccount
     endpoint: "https://${env:NODE_IP}:10250"
-    ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+    insecure_skip_verify: true
 ```
 
 ### AKS (Azure)
 
-AKS typically works with the standard serviceAccount auth, but check if the API server authorization mode includes Node:
-
-```bash
-# Check kubelet configuration on the node
-kubectl get configmap kubelet-config -n kube-system -o yaml | grep -i "readOnlyPort\|authentication\|authorization"
-```
+AKS typically works with the standard `serviceAccount` auth, but you might need to provide the kubelet server certificate as `ca_file` if you do not use `insecure_skip_verify`.
 
 ## Fix 4: Use Extra Metadata
 
