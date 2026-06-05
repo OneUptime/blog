@@ -47,8 +47,8 @@ gem 'opentelemetry-sdk'
 # OTLP exporter for sending traces
 gem 'opentelemetry-exporter-otlp'
 
-# Automatic Rails instrumentation
-gem 'opentelemetry-instrumentation-rails'
+# Automatic instrumentation
+gem 'opentelemetry-instrumentation-all'
 
 # HTTP client instrumentation (for service-to-service calls)
 gem 'opentelemetry-instrumentation-net-http'
@@ -97,10 +97,7 @@ OpenTelemetry::SDK.configure do |c|
   )
 
   # Enable automatic instrumentation for Rails and dependencies
-  c.use_all({
-    'OpenTelemetry::Instrumentation::Rails' => { enable_recognize_route: true },
-    'OpenTelemetry::Instrumentation::ActiveRecord' => { enable_sql_obfuscation: true }
-  })
+  c.use_all
 end
 ```
 
@@ -150,7 +147,7 @@ class UsersController < ApplicationController
     if response.is_a?(Net::HTTPSuccess)
       render json: { user: user, billing: JSON.parse(response.body) }
     else
-      # Errors are automatically recorded in spans
+      # The HTTP client span records response metadata such as status code
       render json: { error: 'Billing setup failed' }, status: :unprocessable_entity
     end
   end
@@ -194,11 +191,10 @@ class OrdersController < ApplicationController
   def process_order
     # Get the current tracer
     tracer = OpenTelemetry.tracer_provider.tracer('orders-service', '1.0')
+    order = Order.find(params[:id])
 
     # Create a custom span for order validation
     tracer.in_span('validate_order') do |span|
-      order = Order.find(params[:id])
-
       # Add custom attributes to the span
       span.set_attribute('order.id', order.id)
       span.set_attribute('order.total', order.total_amount)
@@ -275,20 +271,11 @@ end
 
 Recording every single trace can overwhelm your tracing backend and generate massive costs. Sampling reduces the volume while still providing useful data.
 
-```ruby
-# config/initializers/opentelemetry.rb
-
-# Configure probabilistic sampling (sample 10% of traces)
-OpenTelemetry::SDK.configure do |c|
-  c.service_name = ENV['OTEL_SERVICE_NAME']
-
-  # Use parent-based sampler that respects upstream sampling decisions
-  c.sampler = OpenTelemetry::SDK::Trace::Samplers::ParentBased.new(
-    root: OpenTelemetry::SDK::Trace::Samplers::TraceIdRatioBased.new(0.1)
-  )
-
-  # Rest of configuration...
-end
+```bash
+# Use a parent-based sampler that respects upstream sampling decisions
+# and samples 10% of root traces
+export OTEL_TRACES_SAMPLER="parentbased_traceidratio"
+export OTEL_TRACES_SAMPLER_ARG="0.1"
 ```
 
 The parent-based sampler ensures that if a trace is sampled in Service A, all downstream services (B, C, etc.) also record their spans. This prevents incomplete traces where you see the start but not the end.
