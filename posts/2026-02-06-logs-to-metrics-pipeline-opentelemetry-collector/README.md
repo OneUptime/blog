@@ -6,9 +6,9 @@ Tags: OpenTelemetry, Log, Metric, Alerting
 
 Description: Build a pipeline in the OpenTelemetry Collector that converts log patterns into metrics you can alert on directly.
 
-Logs are great for debugging, but they are terrible for alerting. You cannot easily set a threshold on unstructured text. What you can do is extract metrics from your logs and use those metrics as the basis for alerts. The OpenTelemetry Collector has built-in support for this through the `count` connector and the `spanmetrics` connector, but for log-to-metric conversion specifically, we will use the `transform` processor combined with the `count` connector.
+Logs are great for debugging, but they are terrible for alerting. You cannot easily set a threshold on unstructured text. What you can do is extract metrics from your logs and use those metrics as the basis for alerts. The OpenTelemetry Collector Contrib distribution supports this through connectors such as the `count` connector and the `spanmetrics` connector, but for log-to-metric conversion specifically, we will use the `transform` processor combined with the `count` connector.
 
-This post shows you how to build a pipeline that reads logs, extracts meaningful counts and gauges, and exports them as proper metrics.
+This post shows you how to build a pipeline that reads logs, extracts meaningful counts, and exports them as proper metrics.
 
 ## The Use Case
 
@@ -43,7 +43,7 @@ connectors:
         description: "Count of HTTP 5xx log entries"
         conditions:
           # Only count logs where the severity is ERROR or higher
-          - 'severity_number >= 17'
+          - 'severity_number >= SEVERITY_NUMBER_ERROR'
         attributes:
           - key: http.route
           - key: service.name
@@ -61,11 +61,11 @@ processors:
       - context: log
         statements:
           # Parse the status code from the log body if it exists
-          - set(attributes["http.status_code"], body["status_code"])
-            where body["status_code"] != nil
+          - set(log.attributes["http.status_code"], log.body["status_code"])
+            where IsMap(log.body) and log.body["status_code"] != nil
           # Mark 5xx responses with ERROR severity
-          - set(severity_number, 17)
-            where body["status_code"] != nil and body["status_code"] >= 500
+          - set(log.severity_number, SEVERITY_NUMBER_ERROR)
+            where IsMap(log.body) and log.body["status_code"] != nil and log.body["status_code"] >= 500
 
   batch:
     timeout: 10s
@@ -100,7 +100,7 @@ service:
 
 ## How the Count Connector Works
 
-The `count` connector sits between a logs pipeline and a metrics pipeline. It receives log records from the logs pipeline and emits metric data points into the metrics pipeline. Each log record that matches the defined conditions increments the corresponding counter.
+The `count` connector sits between a logs pipeline and a metrics pipeline. It receives log records from the logs pipeline and emits delta, monotonic sum metric data points into the metrics pipeline. Each log record that matches the defined conditions increments the corresponding count.
 
 The `attributes` field controls which log attributes become metric labels. In the example above, `http.route` and `service.name` become dimensions on the metric, so you can break down error counts by route and service.
 
@@ -128,14 +128,14 @@ Once your metrics land in your backend (Prometheus, OneUptime, or any OTLP-compa
 ```promql
 # Alert if more than 50 errors per minute on any route
 
-rate(http_server_error_count_total[1m]) > 50
+increase(http_server_error_count_total[1m]) > 50
 ```
 
 Or if you are using OneUptime, you can create a metric monitor that watches `http.server.error.count` and triggers when it exceeds your threshold.
 
 ## Going Beyond Counts
 
-The count connector handles counting, but you might also want histograms or gauges derived from logs. For example, if your logs contain a `response_time_ms` field, you could use the `transform` processor to extract it and then use a custom connector or the OTTL (OpenTelemetry Transformation Language) to build histogram buckets.
+The count connector handles counting, but you might also want histograms or sums derived from logs. For example, if your logs contain a `response_time_ms` field, you could use the `transform` processor to extract it and then use a connector such as `sum` or a custom connector for the metric shape you need.
 
 Here is a snippet that extracts a numeric value from a log attribute:
 
@@ -146,9 +146,9 @@ processors:
       - context: log
         statements:
           # Convert the string field to a double for metric use
-          - set(attributes["response.time.ms"],
-              Double(body["response_time_ms"]))
-            where body["response_time_ms"] != nil
+          - set(log.attributes["response.time.ms"],
+              Double(log.body["response_time_ms"]))
+            where IsMap(log.body) and log.body["response_time_ms"] != nil
 ```
 
 ## Performance Considerations
