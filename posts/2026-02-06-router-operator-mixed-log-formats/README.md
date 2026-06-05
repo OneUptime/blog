@@ -56,9 +56,9 @@ receivers:
         id: parse_nginx
         regex: '^(?P<remote_addr>[^\s]+) - (?P<remote_user>[^\s]+) \[(?P<time_local>[^\]]+)\] "(?P<method>[A-Z]+) (?P<path>[^\s]+) (?P<protocol>[^"]+)" (?P<status>\d{3}) (?P<bytes>\d+)'
         output: tag_nginx
-        on_error: tag_unknown
         timestamp:
           parse_from: attributes.time_local
+          layout_type: gotime
           layout: "02/Jan/2006:15:04:05 -0700"
       - type: add
         id: tag_nginx
@@ -70,7 +70,6 @@ receivers:
       - type: json_parser
         id: parse_json
         output: tag_json
-        on_error: tag_unknown
       - type: add
         id: tag_json
         field: attributes["log.format"]
@@ -92,7 +91,6 @@ receivers:
         id: parse_syslog
         regex: '^<(?P<priority>\d+)>(?P<timestamp>\w{3}\s+\d{1,2} \d{2}:\d{2}:\d{2}) (?P<hostname>[^\s]+) (?P<app_name>[^\[]+)(?:\[(?P<proc_id>\d+)\])?: (?P<message>.*)'
         output: tag_syslog
-        on_error: tag_unknown
       - type: add
         id: tag_syslog
         field: attributes["log.format"]
@@ -165,21 +163,19 @@ receivers:
       - type: regex_parser
         id: parse_nginx
         regex: '^(?P<remote_addr>[^\s]+) - [^\s]+ \[(?P<time_local>[^\]]+)\] "(?P<method>\w+) (?P<path>[^\s]+) [^"]+" (?P<status>\d+) (?P<bytes>\d+)'
-        on_error: keep_raw
         timestamp:
           parse_from: attributes.time_local
+          layout_type: gotime
           layout: "02/Jan/2006:15:04:05 -0700"
         output: done
 
       - type: json_parser
         id: parse_json
-        on_error: keep_raw
         output: done
 
       - type: regex_parser
         id: parse_syslog
         regex: '^<(?P<priority>\d+)>(?P<message>.*)'
-        on_error: keep_raw
         output: done
 
       - type: noop
