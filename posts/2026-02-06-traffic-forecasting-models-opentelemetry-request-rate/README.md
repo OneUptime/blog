@@ -14,7 +14,7 @@ This is not about building a machine learning platform. It is about extracting t
 
 The foundation is having consistent request rate data from every service. OpenTelemetry's HTTP instrumentation captures this automatically, but you want to make sure the data is structured for aggregation.
 
-This collector config processes incoming HTTP metrics and adds the labels needed for forecasting:
+This collector config processes incoming HTTP metrics and adds the labels needed for forecasting. If you are writing directly to Prometheus, start Prometheus with the remote write receiver enabled so `/api/v1/write` accepts samples.
 
 ```yaml
 # otel-collector-config.yaml
@@ -71,10 +71,10 @@ sum(rate(http_server_request_duration_seconds_count[5m]))
 # Requests per second by service
 sum by (service_name) (rate(http_server_request_duration_seconds_count[5m]))
 
-# Hourly averages over the past 4 weeks, grouped by day of week
-# This gives you the typical traffic shape for each day
+# Four-week average of hourly samples
+# Use this as a baseline before decomposing by hour and day in Python
 avg_over_time(
-  sum(rate(http_server_request_duration_seconds_count[5m]))[4w:1h]
+  (sum(rate(http_server_request_duration_seconds_count[5m])))[4w:1h]
 )
 ```
 
@@ -88,7 +88,6 @@ This Python script pulls historical data and decomposes it into trend, daily cyc
 import numpy as np
 import requests
 from datetime import datetime, timedelta
-from collections import defaultdict
 
 PROM_URL = "http://prometheus:9090"
 
@@ -209,9 +208,10 @@ print(f"\nPredicted peak: {peak['predicted_rps']:.0f} req/s "
       f"at {peak['timestamp'].strftime('%A %H:%M')}")
 
 # Print daily peaks
+first_forecast_date = forecast[0]["timestamp"].date()
 for day_offset in range(7):
     day_forecasts = [f for f in forecast
-                     if f["timestamp"].date() == (datetime.now() + timedelta(days=day_offset+1)).date()]
+                     if f["timestamp"].date() == (first_forecast_date + timedelta(days=day_offset))]
     if day_forecasts:
         day_peak = max(day_forecasts, key=lambda f: f["predicted_rps"])
         print(f"  {day_peak['timestamp'].strftime('%A')}: "
@@ -222,7 +222,7 @@ for day_offset in range(7):
 
 The forecast is only useful if it drives action. Here is how to convert the traffic prediction into a scaling schedule that Kubernetes can use.
 
-This script generates a CronJob schedule from the forecast to pre-scale deployments before predicted traffic peaks:
+This script prints the scheduled replica changes as `kubectl scale` commands that you can run from an external scheduler or wrap in Kubernetes CronJobs:
 
 ```python
 def generate_scaling_schedule(forecast, service_name,
@@ -252,7 +252,6 @@ def generate_scaling_schedule(forecast, service_name,
     # Output as kubectl commands
     print(f"Scaling schedule for {service_name}:")
     for entry in schedule[:20]:  # Show first 20 changes
-        cron = entry["time"].strftime("%M %H %d %m *")
         print(f"  # {entry['time'].strftime('%Y-%m-%d %H:%M')} - {entry['reason']}")
         print(f"  kubectl scale deployment {service_name} "
               f"--replicas={entry['replicas']}")
