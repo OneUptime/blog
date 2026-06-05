@@ -6,18 +6,19 @@ Tags: OpenTelemetry, Collector, Extension, Health Check, Monitoring, Operation, 
 
 Description: Learn how to configure the Health Check extension in OpenTelemetry Collector to monitor collector health and integrate with orchestration platforms like Kubernetes.
 
-The Health Check extension is a critical component for production deployments of the OpenTelemetry Collector. It exposes HTTP endpoints that report the collector's health status, enabling orchestration platforms like Kubernetes, load balancers, and monitoring systems to detect and respond to collector issues automatically. Proper health check configuration ensures high availability and reliability of your telemetry pipeline.
+The Health Check extension is a critical component for production deployments of the OpenTelemetry Collector. It exposes an HTTP endpoint that reports the collector's service health status, enabling orchestration platforms like Kubernetes, load balancers, and monitoring systems to detect and respond to collector issues automatically. Proper health check configuration helps improve availability and reliability of your telemetry pipeline.
 
 ## Understanding the Health Check Extension
 
-The Health Check extension provides HTTP endpoints that return the operational status of the collector. These endpoints follow standard health check patterns used by cloud-native platforms and can be consumed by various infrastructure components to make routing and scaling decisions.
+The Health Check extension provides an HTTP endpoint that returns the service health status of the collector. This endpoint follows standard health check patterns used by cloud-native platforms and can be consumed by various infrastructure components to make routing and scaling decisions.
 
 The extension monitors:
 
 - **Collector startup state**: Whether the collector has successfully initialized
-- **Pipeline health**: Status of receivers, processors, and exporters
-- **Component readiness**: Individual component operational status
-- **Overall system health**: Aggregated health across all pipelines
+- **Service readiness**: Whether the collector service has reported itself ready
+- **Overall service health**: Whether the collector is ready to serve health checks
+
+The legacy `check_collector_pipeline` option is retained for compatibility, but the OpenTelemetry Collector project warns that it does not work as expected and recommends not using it for pipeline health.
 
 ## Health Check Architecture
 
@@ -26,24 +27,17 @@ Here's how health checks integrate with your infrastructure:
 ```mermaid
 graph TB
     A[OTel Collector] --> B[Health Check<br/>Extension]
-    B --> C[/health/alive endpoint]
-    B --> D[/health/ready endpoint]
+    B --> C[Configured health endpoint<br/>default: /]
 
     E[Kubernetes] --> C
-    E --> D
     F[Load Balancer] --> C
-    F --> D
     G[Monitoring System] --> C
-    G --> D
 
-    C -->|200 OK| H[Collector Running]
-    C -->|503 Error| I[Collector Dead]
-    D -->|200 OK| J[Collector Ready]
-    D -->|503 Error| K[Collector Not Ready]
+    C -->|200 OK| H[Collector Ready]
+    C -->|503 Error| I[Collector Not Ready]
 
     style B fill:#90EE90
     style H fill:#87CEEB
-    style J fill:#87CEEB
 ```
 
 ## Prerequisites
@@ -65,7 +59,7 @@ Here's a minimal health check configuration:
 extensions:
   health_check:
     # Endpoint for health check HTTP server
-    # Default is 0.0.0.0:13133
+    # Default is localhost:13133
     endpoint: 0.0.0.0:13133
 
 receivers:
@@ -80,8 +74,8 @@ processors:
     send_batch_size: 1024
 
 exporters:
-  logging:
-    loglevel: info
+  debug:
+    verbosity: basic
 
 # Enable the extension in the service section
 service:
@@ -91,15 +85,15 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [logging]
+      exporters: [debug]
 ```
 
-With this configuration, the collector exposes health check endpoints at:
-- `http://0.0.0.0:13133/` - Root health endpoint
+With this configuration, the collector exposes a health check endpoint at:
+- `http://localhost:13133/` - Root health endpoint when accessed locally
 
 ## Advanced Configuration with Custom Paths
 
-Configure custom paths for different health check types:
+Configure a custom path for the health check endpoint:
 
 ```yaml
 extensions:
@@ -114,12 +108,6 @@ extensions:
 
     # Custom path configuration
     path: /health
-
-    # Check interval for component health
-    check_collector_pipeline:
-      enabled: true
-      interval: 5s
-      exporter_failure_threshold: 5
 
 receivers:
   otlp:
@@ -174,12 +162,6 @@ extensions:
     # Path for health checks
     path: /health
 
-    # Enable detailed pipeline checking
-    check_collector_pipeline:
-      enabled: true
-      interval: 5s
-      exporter_failure_threshold: 5
-
 receivers:
   otlp:
     protocols:
@@ -232,6 +214,7 @@ spec:
       containers:
       - name: otel-collector
         image: otel/opentelemetry-collector-contrib:latest
+        args: ["--config=/etc/otelcol/config.yaml"]
         ports:
         - containerPort: 4317
           name: otlp-grpc
@@ -308,12 +291,6 @@ extensions:
       healthy: "OK"
       unhealthy: "Service Unavailable"
 
-    # Pipeline health monitoring
-    check_collector_pipeline:
-      enabled: true
-      interval: 5s
-      exporter_failure_threshold: 5
-
 receivers:
   otlp:
     protocols:
@@ -385,10 +362,6 @@ extensions:
   health_check:
     endpoint: 0.0.0.0:13133
     path: /health
-    check_collector_pipeline:
-      enabled: true
-      interval: 5s
-      exporter_failure_threshold: 5
 
   # pprof extension for performance profiling
   pprof:
@@ -397,10 +370,6 @@ extensions:
   # zpages extension for diagnostic information
   zpages:
     endpoint: 0.0.0.0:55679
-
-  # Prometheus metrics for collector monitoring
-  prometheus:
-    endpoint: 0.0.0.0:8888
 
 receivers:
   otlp:
@@ -423,7 +392,7 @@ exporters:
 
 service:
   # Enable all extensions
-  extensions: [health_check, pprof, zpages, prometheus]
+  extensions: [health_check, pprof, zpages]
 
   # Configure telemetry for the collector itself
   telemetry:
@@ -431,7 +400,14 @@ service:
       level: info
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+                without_type_suffix: true
+                without_units: true
 
   pipelines:
     traces:
@@ -442,7 +418,7 @@ service:
 
 ## Docker Compose Health Checks
 
-Configure health checks in Docker Compose deployments:
+Configure health checks in Docker Compose deployments using a collector image that includes `curl` or an equivalent HTTP client:
 
 ```yaml
 version: '3.8'
@@ -451,6 +427,7 @@ services:
   otel-collector:
     image: otel/opentelemetry-collector-contrib:latest
     container_name: otel-collector
+    command: ["--config=/etc/otelcol/config.yaml"]
 
     # Container health check using the extension
     healthcheck:
@@ -487,9 +464,9 @@ services:
       retries: 3
 ```
 
-## Custom Health Check Logic
+## Custom Health Check Responses
 
-Implement custom health check responses based on component status:
+Configure custom health check response bodies:
 
 ```yaml
 extensions:
@@ -500,18 +477,7 @@ extensions:
     # Configure response behavior
     response_body:
       healthy: '{"status": "healthy", "version": "1.0.0"}'
-      unhealthy: '{"status": "unhealthy", "message": "Pipeline failure detected"}'
-
-    # Detailed pipeline checking
-    check_collector_pipeline:
-      enabled: true
-      interval: 5s
-
-      # Threshold for marking unhealthy
-      exporter_failure_threshold: 5
-
-      # Recovery time before marking healthy again
-      exporter_recovery_threshold: 2
+      unhealthy: '{"status": "unhealthy", "message": "Collector is not ready"}'
 
 receivers:
   otlp:
@@ -557,14 +523,14 @@ service:
       exporters: [otlp/best_effort]
 ```
 
-## Monitoring Health Check Endpoints
+## Monitoring Collector Health
 
-Set up monitoring for health check endpoints using Prometheus:
+Set up monitoring for collector health using the collector's internal Prometheus metrics:
 
 ```yaml
 # Prometheus scrape configuration
 scrape_configs:
-  - job_name: 'otel-collector-health'
+  - job_name: 'otel-collector-internal'
     scrape_interval: 15s
     metrics_path: /metrics
 
@@ -593,7 +559,7 @@ groups:
     interval: 30s
     rules:
       - alert: OTelCollectorDown
-        expr: up{job="otel-collector-health"} == 0
+        expr: up{job="otel-collector-internal"} == 0
         for: 2m
         labels:
           severity: critical
@@ -619,9 +585,9 @@ groups:
 
 3. **Use Startup Probes**: In Kubernetes, use startup probes for collectors that take time to initialize.
 
-4. **Monitor Health Check Metrics**: Track health check failures and response times.
+4. **Monitor Health and Internal Metrics**: Track probe failures, probe response times, and collector internal metrics.
 
-5. **Implement Graceful Shutdown**: Ensure health checks fail before stopping data ingestion during shutdown.
+5. **Coordinate Graceful Shutdown**: Use readiness behavior and orchestrator settings so traffic is drained before the collector stops.
 
 ## Debugging Health Check Issues
 
@@ -629,11 +595,11 @@ Common issues and troubleshooting steps:
 
 **Health Check Endpoint Not Accessible**: Verify the endpoint is configured correctly and the port is not blocked by firewalls.
 
-**False Positive Health Failures**: Adjust failure thresholds and intervals to account for transient issues.
+**False Positive Health Failures**: Adjust Kubernetes, load balancer, or monitoring probe thresholds and intervals to account for transient issues.
 
-**Health Check Passes But Collector Not Working**: Enable pipeline checking to detect exporter failures.
+**Health Check Passes But Collector Not Working**: Use collector internal telemetry, such as exporter send failure metrics, to detect pipeline or exporter failures.
 
-**High Health Check Latency**: Reduce check intervals or investigate collector performance issues.
+**High Health Check Latency**: Increase probe timeouts or investigate collector performance issues.
 
 **TLS Errors**: Verify certificate paths and permissions when using TLS for health checks.
 
@@ -674,15 +640,9 @@ spec:
   policyTypes:
   - Ingress
   ingress:
-  # Allow health checks from Kubernetes control plane
-  - from:
-    - namespaceSelector:
-        matchLabels:
-          name: kube-system
-    ports:
-    - protocol: TCP
-      port: 13133
-  # Allow health checks from monitoring namespace
+  # Allow health checks from monitoring or proxy pods.
+  # Kubelet probes usually originate from node IPs, so Kubernetes probe traffic
+  # may require CNI-specific network policy rules instead of a namespace selector.
   - from:
     - namespaceSelector:
         matchLabels:
@@ -720,4 +680,4 @@ Learn more about OpenTelemetry Collector operations:
 
 ## Conclusion
 
-The Health Check extension is essential for operating OpenTelemetry Collector reliably in production environments. By properly configuring health checks and integrating them with your orchestration platform, you can ensure high availability, enable automatic recovery from failures, and maintain visibility into your telemetry pipeline's operational status. Start with basic configuration and progressively add monitoring, alerting, and automation based on your operational requirements.
+The Health Check extension is essential for operating OpenTelemetry Collector reliably in production environments. By properly configuring health checks and integrating them with your orchestration platform, you can improve availability, enable automatic recovery from collector process failures, and maintain visibility into the collector's operational status. Start with basic configuration and progressively add monitoring, alerting, and automation based on your operational requirements.
