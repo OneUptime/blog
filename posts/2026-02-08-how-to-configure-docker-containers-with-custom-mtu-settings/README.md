@@ -166,26 +166,26 @@ Use tracepath to discover the path MTU:
 tracepath 8.8.8.8
 ```
 
-The output includes the detected MTU for each hop.
+The output includes path MTU information when it detects an MTU change along the route.
 
 ## Common Cloud Provider Scenarios
 
 ### AWS with VPC
 
-AWS supports jumbo frames (MTU 9001) within a VPC, but traffic leaving the VPC is limited to MTU 1500. If your containers communicate only within the VPC, you can use jumbo frames:
+Many EC2 instance types support jumbo frames (MTU 9001) within a VPC, but traffic over internet gateways, VPN connections, and some cross-region paths is limited to MTU 1500. If your containers communicate only within jumbo-frame-capable VPC paths, you can use jumbo frames:
 
 ```bash
 # Create a network with jumbo frame MTU for AWS intra-VPC traffic
-docker network create --opt com.docker.network.driver.mtu=8981 aws-internal
+docker network create --opt com.docker.network.driver.mtu=9001 aws-internal
 ```
 
 ### GCP with VPN
 
-Google Cloud VPN connections typically use MTU 1460:
+Google Cloud VPN gateways use MTU 1460, but packets that traverse the tunnel must fit within the smaller Cloud VPN payload MTU. For HA VPN or Classic VPN tunnels using AEAD ciphers on IPv4 gateway interfaces, use 1406:
 
 ```bash
 # Create a network suitable for GCP VPN
-docker network create --opt com.docker.network.driver.mtu=1460 gcp-network
+docker network create --opt com.docker.network.driver.mtu=1406 gcp-network
 ```
 
 ### Azure
@@ -234,7 +234,7 @@ docker exec my-app ping -M do -s 1400 -c 3 8.8.8.8
 docker exec my-app cat /proc/net/snmp | grep -A 1 "Ip:"
 ```
 
-Look at the "FragFails" counter in `/proc/net/snmp`. If it is incrementing, packets are being dropped due to fragmentation issues.
+Look at the "FragFails" counter in `/proc/net/snmp`. If it is incrementing during your tests, it can indicate packets are being dropped due to fragmentation issues.
 
 You can also use tcpdump to spot ICMP "Fragmentation Needed" messages:
 
