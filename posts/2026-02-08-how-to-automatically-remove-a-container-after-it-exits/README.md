@@ -39,7 +39,7 @@ Check how many stopped containers are sitting on your system right now:
 
 ```bash
 # List all containers including stopped ones, then count them
-docker ps -a --filter "status=exited" | wc -l
+docker ps -a -q --filter "status=exited" | wc -l
 ```
 
 If that number surprises you, keep reading.
@@ -146,7 +146,7 @@ In Docker Compose, you do not have a direct equivalent of `--rm`, but you can us
 docker compose run --rm web python manage.py migrate
 ```
 
-For regular services defined in your compose file, you can add an `init` field and handle cleanup with `docker compose down`:
+For regular services defined in your compose file, handle cleanup with `docker compose down`:
 
 ```yaml
 # docker-compose.yml - services get removed with "docker compose down"
@@ -165,7 +165,7 @@ services:
 # Stop and remove all containers defined in the compose file
 docker compose down
 
-# Also remove volumes if you want a complete cleanup
+# Also remove Compose-managed volumes if you want a deeper cleanup
 docker compose down -v
 ```
 
@@ -174,10 +174,10 @@ docker compose down -v
 Sometimes you want to go beyond just containers. Docker's system prune removes stopped containers, unused networks, dangling images, and build cache all at once:
 
 ```bash
-# Remove all unused Docker resources
+# Remove stopped containers, unused networks, dangling images, and build cache
 docker system prune -f
 
-# Include unused volumes in the cleanup (be careful with this one)
+# Include anonymous volumes in the cleanup (be careful with this one)
 docker system prune -f --volumes
 ```
 
