@@ -96,7 +96,6 @@ from flask import Flask, jsonify, request
 import yaml
 import os
 from pathlib import Path
-from functools import wraps
 
 app = Flask(__name__)
 OWNERSHIP_DIR = os.getenv("OWNERSHIP_DIR", "./ownership")
@@ -190,16 +189,16 @@ if __name__ == "__main__":
 
 ## Enforcing Ownership at the Collector Level
 
-Use the ownership data to generate Collector configurations that enforce access levels:
+Use the ownership data to generate access policies that can be translated into Collector processors and downstream access controls:
 
 ```python
-# generate_access_configs.py
+# generate_access_policies.py
 import yaml
 from pathlib import Path
 
-def generate_collector_config(ownership_data):
-    """Generate routing and filtering rules from ownership data."""
-    configs = {}
+def generate_access_policies(ownership_data):
+    """Generate routing and filtering policy inputs from ownership data."""
+    policies = {}
 
     for service_name, data in ownership_data.items():
         spec = data["spec"]
@@ -211,15 +210,15 @@ def generate_collector_config(ownership_data):
                 team = access_rule["team"]
                 level = access_rule["level"]
 
-                if team not in configs:
-                    configs[team] = {"allowed_services": [],
-                                     "filter_rules": []}
+                if team not in policies:
+                    policies[team] = {"allowed_services": [],
+                                      "filter_rules": []}
 
-                configs[team]["allowed_services"].append(service_name)
+                policies[team]["allowed_services"].append(service_name)
 
                 if level == "metadata":
                     # Generate attribute stripping rules
-                    configs[team]["filter_rules"].append({
+                    policies[team]["filter_rules"].append({
                         "service": service_name,
                         "signal": signal_type,
                         "action": "strip_attributes",
@@ -227,13 +226,13 @@ def generate_collector_config(ownership_data):
                                  "duration", "status_code"],
                     })
                 elif level == "aggregated":
-                    configs[team]["filter_rules"].append({
+                    policies[team]["filter_rules"].append({
                         "service": service_name,
                         "signal": signal_type,
                         "action": "aggregate_only",
                     })
 
-    return configs
+    return policies
 
 # Load all ownership files
 ownership = {}
@@ -242,16 +241,17 @@ for path in Path("./ownership").glob("*.yaml"):
         data = yaml.safe_load(f)
     ownership[data["metadata"]["name"]] = data
 
-configs = generate_collector_config(ownership)
-print(yaml.dump(configs, default_flow_style=False))
+policies = generate_access_policies(ownership)
+print(yaml.dump(policies, default_flow_style=False))
 ```
 
 ## Cost Reporting by Owner
 
 ```sql
 -- Monthly cost report by service owner
+-- Assumes service.namespace is populated with the owning team.
 SELECT
-    resource_attributes['team.name'] as owner_team,
+    resource_attributes['service.namespace'] as owner_team,
     resource_attributes['service.name'] as service,
     count() as total_spans,
     count() * 0.0000005 as ingestion_cost_usd,
