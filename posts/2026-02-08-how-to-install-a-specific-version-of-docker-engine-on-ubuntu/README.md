@@ -8,11 +8,11 @@ Description: How to install a specific version of Docker Engine on Ubuntu instea
 
 ---
 
-Installing the latest Docker version is not always what you want. Production environments often require a specific, tested version. Kubernetes clusters mandate compatible Docker versions. CI/CD pipelines need reproducible builds across machines. Whatever the reason, this guide shows you how to install an exact Docker Engine version on Ubuntu and lock it in place.
+Installing the latest Docker version is not always what you want. Production environments often require a specific, tested version. Kubernetes clusters that use Docker Engine through cri-dockerd need compatible runtime versions. CI/CD pipelines need reproducible builds across machines. Whatever the reason, this guide shows you how to install an exact Docker Engine version on Ubuntu and lock it in place.
 
 ## Why Install a Specific Version?
 
-- **Kubernetes compatibility**: Each Kubernetes release supports specific Docker versions
+- **Kubernetes compatibility**: Clusters using Docker Engine through cri-dockerd need a Docker and runtime combination that is compatible with your Kubernetes release
 - **Reproducibility**: All servers in a cluster should run the same Docker version
 - **Stability**: Avoid regressions from untested updates
 - **Compliance**: Some organizations mandate specific software versions for audit purposes
@@ -20,7 +20,7 @@ Installing the latest Docker version is not always what you want. Production env
 
 ## Prerequisites
 
-- Ubuntu 22.04, 24.04, or later
+- Ubuntu 22.04, 24.04, 25.10, or 26.04
 - A user with sudo access
 - An active internet connection
 
@@ -85,7 +85,7 @@ Set the version string and install.
 # Define the version you want to install
 VERSION_STRING="5:27.3.1-1~ubuntu.24.04~noble"
 
-# Install Docker CE, CLI, and containerd at the specific version
+# Install Docker CE and CLI at the specific version, with compatible runtime and plugins
 sudo apt-get install -y \
   docker-ce=$VERSION_STRING \
   docker-ce-cli=$VERSION_STRING \
@@ -293,11 +293,11 @@ docker version
 
 ### Docker and Kubernetes Compatibility
 
-Each Kubernetes version documents which container runtimes it supports. Check the Kubernetes changelog for your version.
+Modern Kubernetes releases use CRI-compatible runtimes. Kubernetes removed the built-in dockershim integration in v1.24, so if your cluster still uses Docker Engine, check both your Kubernetes release and cri-dockerd compatibility.
 
 ```bash
 # Check your Kubernetes version
-kubectl version --short
+kubectl version
 
 # Check the Docker version
 docker version --format '{{.Server.Version}}'
