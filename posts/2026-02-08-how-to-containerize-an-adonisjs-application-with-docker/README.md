@@ -14,8 +14,8 @@ AdonisJS is a full-featured Node.js framework inspired by Laravel. It ships with
 
 You will need:
 
-- Node.js 20+ and npm
-- Docker Engine 20.10+
+- Node.js 22+ and npm
+- Docker Engine with Docker Compose v2.17+
 - An existing AdonisJS v6 project or the willingness to create one
 
 ## Creating an AdonisJS Project
@@ -36,17 +36,17 @@ Verify the build:
 node ace build
 ```
 
-AdonisJS compiles to the `build/` directory. The production build includes compiled JavaScript, the `package.json`, and a standalone server entry point.
+AdonisJS compiles to the `build/` directory. The production build includes compiled JavaScript, the `package.json`, your package manager lock file, and the server entry point.
 
 ## How AdonisJS Builds Work
 
-AdonisJS v6 uses `tsc` to compile TypeScript into JavaScript. The `node ace build` command creates a `build/` directory that contains everything needed to run the app in production. Inside the build directory, there is a `server.js` file and a fresh `package.json` with only production dependencies listed.
+AdonisJS v6 uses `tsc` to compile TypeScript into JavaScript. The `node ace build` command creates a `build/` directory that contains everything needed to run the app in production. Inside the build directory, there is a `bin/server.js` file and a fresh `package.json` alongside the lock file used to install production dependencies.
 
 This means your production Docker image needs to:
 
 1. Build the TypeScript source
 2. Install only production dependencies in the `build/` directory
-3. Run `node server.js` from the build directory
+3. Run `node bin/server.js` from the build directory
 
 ## Writing the Dockerfile
 
@@ -56,7 +56,7 @@ The first stage builds the application:
 
 ```dockerfile
 # Stage 1: Build
-FROM node:20-alpine AS build
+FROM node:22-alpine AS build
 
 WORKDIR /app
 
@@ -77,7 +77,7 @@ The second stage prepares the production image:
 
 ```dockerfile
 # Stage 2: Production
-FROM node:20-alpine AS production
+FROM node:22-alpine AS production
 
 WORKDIR /app
 
@@ -88,7 +88,7 @@ RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 COPY --from=build /app/build ./
 
 # Install only production dependencies
-RUN npm ci --production
+RUN npm ci --omit=dev
 
 # Set ownership
 RUN chown -R appuser:appgroup /app
@@ -103,7 +103,7 @@ ENV HOST=0.0.0.0
 ENV PORT=3333
 
 # Start the server
-CMD ["node", "server.js"]
+CMD ["node", "bin/server.js"]
 ```
 
 ## The .dockerignore File
@@ -153,8 +153,6 @@ AdonisJS applications typically use a database. Here is a Compose setup with Pos
 This configuration runs the app alongside a PostgreSQL database:
 
 ```yaml
-version: "3.8"
-
 services:
   app:
     build:
@@ -219,10 +217,10 @@ Alternatively, create an entrypoint script that runs migrations before starting 
 node ace migration:run --force
 
 # Start the application
-node server.js
+node bin/server.js
 ```
 
-Update the Dockerfile to use this entrypoint:
+Add the script before the `USER appuser` instruction, and update the Dockerfile to use this entrypoint:
 
 ```dockerfile
 COPY entrypoint.sh ./
@@ -247,7 +245,7 @@ For local development with live reload, use AdonisJS's built-in dev server.
 Development Dockerfile:
 
 ```dockerfile
-FROM node:20-alpine
+FROM node:22-alpine
 
 WORKDIR /app
 
@@ -265,8 +263,6 @@ CMD ["node", "ace", "serve", "--hmr"]
 Development Compose file:
 
 ```yaml
-version: "3.8"
-
 services:
   app-dev:
     build:
@@ -349,8 +345,8 @@ Configure AdonisJS to use the mounted path for file storage in your drive config
 
 AdonisJS production images typically range from 150-250MB. Reduce this by:
 
-- Always using `node:20-alpine` as the base
-- Running `npm ci --production` in the production stage (not all dependencies)
+- Always using an active LTS Alpine Node.js image as the base
+- Running `npm ci --omit=dev` in the production stage (not all dependencies)
 - Making sure your `.dockerignore` excludes test files and documentation
 
 Check the image size:
