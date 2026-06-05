@@ -25,6 +25,9 @@ my-laravel-app/
     php/
       php-fpm.conf
       production.ini
+    supervisor/
+      supervisord.conf
+    entrypoint.sh
   Dockerfile
   docker-compose.yml
   docker-compose.prod.yml
@@ -129,7 +132,7 @@ RUN php artisan config:cache \
 EXPOSE 80
 
 HEALTHCHECK --interval=15s --timeout=5s --retries=3 --start-period=30s \
-  CMD curl -f http://localhost/health || exit 1
+  CMD curl -f http://localhost/up || exit 1
 
 # Entrypoint script for migrations and startup
 COPY docker/entrypoint.sh /entrypoint.sh
@@ -238,7 +241,7 @@ echo "Starting Laravel application..."
 
 # Wait for database to be ready
 echo "Waiting for database..."
-until php artisan db:monitor --max=1 > /dev/null 2>&1; do
+until php artisan db:show --database="${DB_CONNECTION:-pgsql}" > /dev/null 2>&1; do
     sleep 2
 done
 echo "Database is ready."
@@ -283,7 +286,6 @@ opcache.interned_strings_buffer = 32
 opcache.max_accelerated_files = 20000
 opcache.validate_timestamps = 0
 opcache.save_comments = 1
-opcache.fast_shutdown = 1
 opcache.jit = tracing
 opcache.jit_buffer_size = 64M
 
@@ -318,7 +320,7 @@ services:
       DB_USERNAME: laravel
       DB_PASSWORD: secret
       REDIS_HOST: redis
-      CACHE_DRIVER: redis
+      CACHE_STORE: redis
       SESSION_DRIVER: redis
       QUEUE_CONNECTION: redis
     depends_on:
@@ -384,16 +386,17 @@ services:
       DB_USERNAME: ${DB_USER}
       DB_PASSWORD: ${DB_PASSWORD}
       REDIS_HOST: redis
-      CACHE_DRIVER: redis
+      CACHE_STORE: redis
       SESSION_DRIVER: redis
       QUEUE_CONNECTION: redis
+      RUN_MIGRATIONS: "true"
     deploy:
       resources:
         limits:
           cpus: "2.0"
           memory: 1G
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      test: ["CMD", "curl", "-f", "http://localhost/up"]
       interval: 15s
       timeout: 5s
       retries: 3
@@ -418,11 +421,17 @@ services:
       sh -c "while true; do php /var/www/html/artisan schedule:run --verbose --no-interaction; sleep 60; done"
     environment:
       APP_ENV: production
+      APP_KEY: ${APP_KEY}
+      DB_CONNECTION: pgsql
       DB_HOST: ${DB_HOST}
       DB_DATABASE: ${DB_NAME}
       DB_USERNAME: ${DB_USER}
       DB_PASSWORD: ${DB_PASSWORD}
       REDIS_HOST: redis
+      CACHE_STORE: redis
+      SESSION_DRIVER: redis
+      QUEUE_CONNECTION: redis
+      RUN_MIGRATIONS: "false"
 
 volumes:
   redis-data:
