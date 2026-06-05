@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Collector, Exporter, Honeycomb, Markers, Observability, Dep
 
 Description: Learn how to configure the Honeycomb Marker exporter in OpenTelemetry Collector to track deployments, releases, and significant events in your observability timeline.
 
-Honeycomb is an observability platform designed for high-cardinality data and complex queries. While most exporters focus on sending continuous telemetry data like logs, metrics, and traces, the Honeycomb Marker exporter serves a unique purpose: it creates markers (also called events) that represent significant moments in your system's timeline. These markers help you correlate system behavior with deployments, configuration changes, incidents, and other operational events, making it easier to understand the impact of changes on your application's performance and reliability.
+Honeycomb is an observability platform designed for high-cardinality data and complex queries. While most exporters focus on sending continuous telemetry data like logs, metrics, and traces, the Honeycomb Marker exporter serves a unique purpose: it creates markers that represent significant moments in your system's timeline. These markers help you correlate system behavior with deployments, configuration changes, incidents, and other operational events, making it easier to understand the impact of changes on your application's performance and reliability.
 
 ## Understanding Honeycomb Markers
 
@@ -50,13 +50,23 @@ exporters:
     api_url: https://api.honeycomb.io
 
     # API key for authentication (from Honeycomb settings)
-    api_key: "${HONEYCOMB_API_KEY}"
+    api_key: "${env:HONEYCOMB_API_KEY}"
 
-    # Marker type (appears in Honeycomb UI)
-    marker_type: "deployment"
+    markers:
+      # Marker type appears in the Honeycomb UI
+      - type: "deployment"
 
-    # Optional: message template for marker description
-    message_template: "Deployed version {{.version}} to {{.environment}}"
+        # Optional: dataset slug. Defaults to __all__ for an environment marker.
+        dataset_slug: "__all__"
+
+        # Attribute keys used for the marker text and URL
+        message_key: "marker_message"
+        url_key: "marker_url"
+
+        # Create a marker when any condition matches
+        rules:
+          log_conditions:
+            - 'log.attributes["marker.type"] == "deployment"'
 
 # No processors needed for basic marker creation
 processors:
@@ -73,7 +83,7 @@ service:
       exporters: [honeycomb_marker]
 ```
 
-This basic configuration creates deployment markers in Honeycomb. You would trigger marker creation by sending a log event to the collector with appropriate attributes like version and environment.
+This basic configuration creates deployment markers in Honeycomb. You would trigger marker creation by sending a log event to the collector with attributes like `marker.type`, `marker_message`, and `marker_url`.
 
 ## Production Configuration with Multiple Marker Types
 
@@ -87,73 +97,47 @@ receivers:
         endpoint: 0.0.0.0:4318
 
 exporters:
-  # Deployment markers
-  honeycomb_marker/deployment:
+  honeycomb_marker:
     api_url: https://api.honeycomb.io
-    api_key: "${HONEYCOMB_API_KEY}"
-    marker_type: "deployment"
-    message_template: "Deployed {{.service_name}} version {{.version}} to {{.environment}}"
+    api_key: "${env:HONEYCOMB_API_KEY}"
+    markers:
+      # Deployment markers
+      - type: "deployment"
+        dataset_slug: "__all__"
+        message_key: "marker_message"
+        url_key: "marker_url"
+        rules:
+          log_conditions:
+            - 'log.attributes["marker.type"] == "deployment"'
 
-    # Additional metadata
-    metadata:
-      team: "platform"
-      tool: "opentelemetry-collector"
+      # Incident markers
+      - type: "incident"
+        dataset_slug: "__all__"
+        message_key: "marker_message"
+        url_key: "marker_url"
+        rules:
+          log_conditions:
+            - 'log.attributes["marker.type"] == "incident"'
 
-  # Incident markers
-  honeycomb_marker/incident:
-    api_url: https://api.honeycomb.io
-    api_key: "${HONEYCOMB_API_KEY}"
-    marker_type: "incident"
-    message_template: "Incident {{.incident_id}}: {{.title}} - Status: {{.status}}"
+      # Configuration change markers
+      - type: "configuration"
+        dataset_slug: "__all__"
+        message_key: "marker_message"
+        url_key: "marker_url"
+        rules:
+          log_conditions:
+            - 'log.attributes["marker.type"] == "configuration"'
 
-    metadata:
-      team: "sre"
-      tool: "opentelemetry-collector"
-
-  # Configuration change markers
-  honeycomb_marker/config:
-    api_url: https://api.honeycomb.io
-    api_key: "${HONEYCOMB_API_KEY}"
-    marker_type: "configuration"
-    message_template: "Config change: {{.change_description}} by {{.user}}"
-
-    metadata:
-      team: "operations"
-      tool: "opentelemetry-collector"
-
-  # Feature flag markers
-  honeycomb_marker/feature_flag:
-    api_url: https://api.honeycomb.io
-    api_key: "${HONEYCOMB_API_KEY}"
-    marker_type: "feature_flag"
-    message_template: "Feature flag {{.flag_name}} set to {{.flag_value}} in {{.environment}}"
-
-    metadata:
-      team: "product"
-      tool: "opentelemetry-collector"
+      # Feature flag markers
+      - type: "feature_flag"
+        dataset_slug: "__all__"
+        message_key: "marker_message"
+        url_key: "marker_url"
+        rules:
+          log_conditions:
+            - 'log.attributes["marker.type"] == "feature_flag"'
 
 processors:
-  # Route to appropriate exporter based on marker type
-  routing:
-    from_attribute: marker.type
-    default_exporters: [honeycomb_marker/deployment]
-    table:
-      - value: deployment
-        exporters: [honeycomb_marker/deployment]
-      - value: incident
-        exporters: [honeycomb_marker/incident]
-      - value: configuration
-        exporters: [honeycomb_marker/config]
-      - value: feature_flag
-        exporters: [honeycomb_marker/feature_flag]
-
-  # Add timestamp if not present
-  attributes:
-    actions:
-      - key: timestamp
-        action: insert
-        value: ${NOW}
-
   batch:
     timeout: 1s
     send_batch_size: 1
@@ -164,20 +148,15 @@ service:
       level: info
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
 
   pipelines:
     logs:
       receivers: [otlp]
-      processors: [attributes, routing, batch]
-      exporters:
-        - honeycomb_marker/deployment
-        - honeycomb_marker/incident
-        - honeycomb_marker/config
-        - honeycomb_marker/feature_flag
+      processors: [batch]
+      exporters: [honeycomb_marker]
 ```
 
-This configuration supports multiple marker types, each with custom message templates and metadata. The routing processor directs events to the appropriate exporter based on the marker type attribute.
+This configuration supports multiple marker types, each with its own OTTL condition. The exporter creates the appropriate marker when the `marker.type` attribute matches one of the configured conditions.
 
 ## CI/CD Integration for Deployment Markers
 
@@ -197,21 +176,15 @@ receivers:
 exporters:
   honeycomb_marker:
     api_url: https://api.honeycomb.io
-    api_key: "${HONEYCOMB_API_KEY}"
-    marker_type: "deployment"
-
-    # Rich deployment information
-    message_template: |
-      Deployment completed
-      Service: {{.service_name}}
-      Version: {{.version}}
-      Environment: {{.environment}}
-      Deployed by: {{.deployer}}
-      Commit: {{.git_commit}}
-      Duration: {{.deployment_duration}}
-
-    # URL to deployment details
-    url_template: "{{.ci_pipeline_url}}"
+    api_key: "${env:HONEYCOMB_API_KEY}"
+    markers:
+      - type: "deployment"
+        dataset_slug: "__all__"
+        message_key: "marker_message"
+        url_key: "marker_url"
+        rules:
+          log_conditions:
+            - 'log.attributes["marker.type"] == "deployment"'
 
 processors:
   # Enrich with deployment metadata
@@ -220,12 +193,6 @@ processors:
       - key: marker.type
         value: deployment
         action: upsert
-      - key: timestamp
-        action: insert
-        from_attribute: deployment_timestamp
-      - key: service_name
-        action: insert
-        from_attribute: service.name
       - key: deployment_status
         value: success
         action: insert
@@ -260,11 +227,13 @@ curl -X POST http://collector:4318/v1/logs \
           "timeUnixNano": "'$(date +%s)000000000'",
           "body": {"stringValue": "Deployment marker"},
           "attributes": [
+            {"key": "marker.type", "value": {"stringValue": "deployment"}},
+            {"key": "marker_message", "value": {"stringValue": "Deployed api-gateway v1.2.3 to production by alice@example.com, commit abc123, duration 3m 45s"}},
+            {"key": "marker_url", "value": {"stringValue": "https://github.com/org/repo/actions/runs/123"}},
             {"key": "version", "value": {"stringValue": "v1.2.3"}},
             {"key": "environment", "value": {"stringValue": "production"}},
             {"key": "deployer", "value": {"stringValue": "alice@example.com"}},
             {"key": "git_commit", "value": {"stringValue": "abc123"}},
-            {"key": "ci_pipeline_url", "value": {"stringValue": "https://github.com/org/repo/actions/runs/123"}},
             {"key": "deployment_duration", "value": {"stringValue": "3m 45s"}}
           ]
         }]
@@ -289,16 +258,14 @@ receivers:
 exporters:
   honeycomb_marker:
     api_url: https://api.honeycomb.io
-    api_key: "${HONEYCOMB_API_KEY}"
-    marker_type: "k8s_deployment"
-
-    message_template: |
-      Kubernetes Deployment
-      Namespace: {{.k8s_namespace}}
-      Deployment: {{.k8s_deployment}}
-      Image: {{.container_image}}
-      Replicas: {{.replica_count}}
-      Cluster: {{.k8s_cluster}}
+    api_key: "${env:HONEYCOMB_API_KEY}"
+    markers:
+      - type: "k8s_deployment"
+        dataset_slug: "__all__"
+        message_key: "marker_message"
+        rules:
+          log_conditions:
+            - 'log.attributes["marker.type"] == "k8s_deployment"'
 
 processors:
   # Add Kubernetes metadata
@@ -309,7 +276,7 @@ processors:
       metadata:
         - k8s.namespace.name
         - k8s.deployment.name
-        - k8s.cluster.name
+        - k8s.cluster.uid
       labels:
         - tag_name: app
           key: app
@@ -319,16 +286,7 @@ processors:
   attributes/k8s:
     actions:
       - key: marker.type
-        value: deployment
-        action: upsert
-      - key: k8s_namespace
-        from_attribute: k8s.namespace.name
-        action: upsert
-      - key: k8s_deployment
-        from_attribute: k8s.deployment.name
-        action: upsert
-      - key: k8s_cluster
-        from_attribute: k8s.cluster.name
+        value: k8s_deployment
         action: upsert
 
   batch:
@@ -370,6 +328,8 @@ spec:
                     "timeUnixNano": "'$(date +%s)000000000'",
                     "body": {"stringValue": "K8s deployment marker"},
                     "attributes": [
+                      {"key": "marker.type", "value": {"stringValue": "k8s_deployment"}},
+                      {"key": "marker_message", "value": {"stringValue": "Kubernetes deployment image '"$IMAGE_TAG"' with '"$REPLICA_COUNT"' replicas"}},
                       {"key": "container_image", "value": {"stringValue": "'"$IMAGE_TAG"'"}},
                       {"key": "replica_count", "value": {"stringValue": "'"$REPLICA_COUNT"'"}}
                     ]
@@ -390,42 +350,22 @@ Track incident lifecycle with markers for start, escalation, and resolution even
 exporters:
   honeycomb_marker/incident:
     api_url: https://api.honeycomb.io
-    api_key: "${HONEYCOMB_API_KEY}"
-    marker_type: "incident"
-
-    message_template: |
-      Incident {{.incident_id}}
-      Title: {{.title}}
-      Severity: {{.severity}}
-      Status: {{.status}}
-      On-call: {{.oncall_engineer}}
-      Start: {{.start_time}}
-      Duration: {{.duration}}
-
-    # Link to incident management system
-    url_template: "https://pagerduty.com/incidents/{{.incident_id}}"
+    api_key: "${env:HONEYCOMB_API_KEY}"
+    markers:
+      - type: "incident"
+        dataset_slug: "__all__"
+        message_key: "marker_message"
+        url_key: "marker_url"
+        rules:
+          log_conditions:
+            - 'log.attributes["marker.type"] == "incident"'
 
 processors:
-  # Transform PagerDuty webhook to marker format
+  # Transform PagerDuty webhook attributes to marker attributes
   attributes/incident:
     actions:
       - key: marker.type
         value: incident
-        action: upsert
-      - key: incident_id
-        from_attribute: incident.id
-        action: upsert
-      - key: title
-        from_attribute: incident.title
-        action: upsert
-      - key: severity
-        from_attribute: incident.urgency
-        action: upsert
-      - key: status
-        from_attribute: incident.status
-        action: upsert
-      - key: oncall_engineer
-        from_attribute: incident.assignments[0].assignee.summary
         action: upsert
 
   batch:
@@ -440,7 +380,7 @@ service:
       exporters: [honeycomb_marker/incident]
 ```
 
-Configure your incident management tool (PagerDuty, Opsgenie, etc.) to send webhooks to the collector when incidents are created, acknowledged, or resolved.
+Configure your incident management tool (PagerDuty, Opsgenie, etc.) to send webhooks to the collector when incidents are created, acknowledged, or resolved. Include `marker_message` and `marker_url` attributes in the log record so Honeycomb displays the incident summary and link.
 
 ## Feature Flag Change Markers
 
@@ -450,39 +390,22 @@ Track feature flag changes to understand their impact on system behavior.
 exporters:
   honeycomb_marker/feature_flag:
     api_url: https://api.honeycomb.io
-    api_key: "${HONEYCOMB_API_KEY}"
-    marker_type: "feature_flag"
-
-    message_template: |
-      Feature Flag Change
-      Flag: {{.flag_name}}
-      Environment: {{.environment}}
-      Previous: {{.old_value}}
-      New: {{.new_value}}
-      Changed by: {{.user}}
-      Reason: {{.reason}}
+    api_key: "${env:HONEYCOMB_API_KEY}"
+    markers:
+      - type: "feature_flag"
+        dataset_slug: "__all__"
+        message_key: "marker_message"
+        url_key: "marker_url"
+        rules:
+          log_conditions:
+            - 'log.attributes["marker.type"] == "feature_flag"'
 
 processors:
-  # Transform LaunchDarkly webhook to marker format
+  # Transform LaunchDarkly webhook attributes to marker attributes
   attributes/feature_flag:
     actions:
       - key: marker.type
         value: feature_flag
-        action: upsert
-      - key: flag_name
-        from_attribute: flag.key
-        action: upsert
-      - key: environment
-        from_attribute: environment.key
-        action: upsert
-      - key: old_value
-        from_attribute: flag.previousValue
-        action: upsert
-      - key: new_value
-        from_attribute: flag.currentValue
-        action: upsert
-      - key: user
-        from_attribute: member.email
         action: upsert
 
   batch:
@@ -497,7 +420,7 @@ service:
       exporters: [honeycomb_marker/feature_flag]
 ```
 
-Configure your feature flag service (LaunchDarkly, Split, etc.) to send webhooks when flags change.
+Configure your feature flag service (LaunchDarkly, Split, etc.) to send webhooks when flags change. Include a preformatted `marker_message` attribute with the flag name, environment, old value, new value, user, and reason.
 
 ## Database Migration Markers
 
@@ -507,17 +430,14 @@ Track database schema changes and migrations.
 exporters:
   honeycomb_marker/migration:
     api_url: https://api.honeycomb.io
-    api_key: "${HONEYCOMB_API_KEY}"
-    marker_type: "database_migration"
-
-    message_template: |
-      Database Migration
-      Migration: {{.migration_name}}
-      Database: {{.database_name}}
-      Environment: {{.environment}}
-      Direction: {{.direction}}
-      Duration: {{.duration}}
-      Executed by: {{.user}}
+    api_key: "${env:HONEYCOMB_API_KEY}"
+    markers:
+      - type: "database_migration"
+        dataset_slug: "__all__"
+        message_key: "marker_message"
+        rules:
+          log_conditions:
+            - 'log.attributes["marker.type"] == "migration"'
 
 processors:
   attributes/migration:
@@ -551,6 +471,8 @@ curl -X POST http://collector:4318/v1/logs \
           "timeUnixNano": "'$(date +%s)000000000'",
           "body": {"stringValue": "Migration start"},
           "attributes": [
+            {"key": "marker.type", "value": {"stringValue": "migration"}},
+            {"key": "marker_message", "value": {"stringValue": "Database migration add_user_preferences started on production"}},
             {"key": "migration_name", "value": {"stringValue": "add_user_preferences"}},
             {"key": "database_name", "value": {"stringValue": "production"}},
             {"key": "environment", "value": {"stringValue": "production"}},
@@ -575,6 +497,8 @@ curl -X POST http://collector:4318/v1/logs \
           "timeUnixNano": "'$(date +%s)000000000'",
           "body": {"stringValue": "Migration complete"},
           "attributes": [
+            {"key": "marker.type", "value": {"stringValue": "migration"}},
+            {"key": "marker_message", "value": {"stringValue": "Database migration add_user_preferences completed in 45s"}},
             {"key": "migration_name", "value": {"stringValue": "add_user_preferences"}},
             {"key": "duration", "value": {"stringValue": "45s"}}
           ]
@@ -596,13 +520,12 @@ receivers:
         endpoint: 0.0.0.0:4318
         # Enable authentication
         auth:
-          authenticator: basicauth
+          authenticator: basicauth/server
 
 # Basic authentication extension
 extensions:
-  basicauth:
+  basicauth/server:
     htpasswd:
-      file: /etc/otel/htpasswd
       inline: |
         user1:$apr1$...
         user2:$apr1$...
@@ -611,11 +534,17 @@ exporters:
   honeycomb_marker:
     api_url: https://api.honeycomb.io
     # Use environment variable for API key
-    api_key: "${HONEYCOMB_API_KEY}"
-    marker_type: "deployment"
+    api_key: "${env:HONEYCOMB_API_KEY}"
+    markers:
+      - type: "deployment"
+        dataset_slug: "__all__"
+        message_key: "marker_message"
+        rules:
+          log_conditions:
+            - 'log.attributes["marker.type"] == "deployment"'
 
 service:
-  extensions: [basicauth]
+  extensions: [basicauth/server]
   pipelines:
     logs:
       receivers: [otlp]
@@ -639,32 +568,31 @@ exporters:
   # Production markers
   honeycomb_marker/production:
     api_url: https://api.honeycomb.io
-    api_key: "${HONEYCOMB_API_KEY_PROD}"
-    marker_type: "deployment"
-    message_template: "[PROD] Deployed {{.service_name}} {{.version}}"
+    api_key: "${env:HONEYCOMB_API_KEY_PROD}"
+    markers:
+      - type: "deployment"
+        dataset_slug: "__all__"
+        message_key: "marker_message"
+        rules:
+          log_conditions:
+            - 'log.attributes["marker.type"] == "deployment" and log.attributes["environment"] == "production"'
 
   # Staging markers
   honeycomb_marker/staging:
     api_url: https://api.honeycomb.io
-    api_key: "${HONEYCOMB_API_KEY_STAGING}"
-    marker_type: "deployment"
-    message_template: "[STAGING] Deployed {{.service_name}} {{.version}}"
-
-processors:
-  routing:
-    from_attribute: environment
-    default_exporters: [honeycomb_marker/production]
-    table:
-      - value: production
-        exporters: [honeycomb_marker/production]
-      - value: staging
-        exporters: [honeycomb_marker/staging]
+    api_key: "${env:HONEYCOMB_API_KEY_STAGING}"
+    markers:
+      - type: "deployment"
+        dataset_slug: "__all__"
+        message_key: "marker_message"
+        rules:
+          log_conditions:
+            - 'log.attributes["marker.type"] == "deployment" and log.attributes["environment"] == "staging"'
 
 service:
   pipelines:
     logs:
       receivers: [otlp]
-      processors: [routing]
       exporters: [honeycomb_marker/production, honeycomb_marker/staging]
 ```
 
@@ -682,7 +610,6 @@ service:
 
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
 ```
 
 Key metrics to monitor:
@@ -693,13 +620,13 @@ Key metrics to monitor:
 
 Common issues:
 
-**401 Unauthorized**: Verify Honeycomb API key is correct and has write permissions.
+**401 Unauthorized**: Verify Honeycomb API key is correct and has permission to create markers.
 
-**400 Bad Request**: Check message template is valid and required attributes are present.
+**400 Bad Request**: Check that marker configuration is valid and required marker attributes are present.
 
-**Markers Not Appearing**: Ensure you're viewing the correct time range in Honeycomb and the dataset matches.
+**Markers Not Appearing**: Ensure you're viewing the correct time range in Honeycomb and, for dataset-level markers, the correct dataset.
 
-**Template Errors**: Verify attribute names in templates match actual log attributes.
+**Condition Errors**: Verify OTTL conditions reference valid log or resource attributes.
 
 ## Integration Examples
 
@@ -719,11 +646,13 @@ Here are complete examples for common scenarios.
               "timeUnixNano": "'$(date +%s)000000000'",
               "body": {"stringValue": "GitHub Actions deployment"},
               "attributes": [
+                {"key": "marker.type", "value": {"stringValue": "deployment"}},
+                {"key": "marker_message", "value": {"stringValue": "Deployed '"${{ github.repository }}"' at '"${{ github.sha }}"' to production by '"${{ github.actor }}"'"}},
+                {"key": "marker_url", "value": {"stringValue": "'"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"'"}},
                 {"key": "service_name", "value": {"stringValue": "'"${{ github.repository }}"'"}},
                 {"key": "version", "value": {"stringValue": "'"${{ github.sha }}"'"}},
                 {"key": "environment", "value": {"stringValue": "production"}},
-                {"key": "deployer", "value": {"stringValue": "'"${{ github.actor }}"'"}},
-                {"key": "ci_pipeline_url", "value": {"stringValue": "'"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"'"}}
+                {"key": "deployer", "value": {"stringValue": "'"${{ github.actor }}"'"}}
               ]
             }]
           }]
@@ -738,7 +667,10 @@ Here are complete examples for common scenarios.
 terraform output -json | jq -r 'to_entries | map({
   key: .key,
   value: {stringValue: (.value.value | tostring)}
-}) | {
+}) + [
+  {key: "marker.type", value: {stringValue: "configuration"}},
+  {key: "marker_message", value: {stringValue: "Terraform apply completed"}}
+] | {
   resourceLogs: [{
     scopeLogs: [{
       logRecords: [{
