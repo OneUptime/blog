@@ -143,10 +143,10 @@ Most real COBOL programs process files. Here is a batch processing example:
        ENVIRONMENT DIVISION.
        INPUT-OUTPUT SECTION.
        FILE-CONTROL.
-           SELECT INPUT-FILE ASSIGN TO "/data/input/records.dat"
+           SELECT INPUT-FILE ASSIGN TO "INPUT_FILE"
                ORGANIZATION IS LINE SEQUENTIAL
                FILE STATUS IS WS-FILE-STATUS.
-           SELECT OUTPUT-FILE ASSIGN TO "/data/output/results.dat"
+           SELECT OUTPUT-FILE ASSIGN TO "OUTPUT_FILE"
                ORGANIZATION IS LINE SEQUENTIAL.
 
        DATA DIVISION.
@@ -227,6 +227,9 @@ COPY --from=builder /app/process-records /app/process-records
 # Create data directories
 RUN mkdir -p /data/input /data/output
 
+ENV INPUT_FILE=/data/input/records.dat \
+    OUTPUT_FILE=/data/output/results.dat
+
 RUN useradd -m -r coboluser && \
     chown -R coboluser:coboluser /data
 USER coboluser
@@ -253,6 +256,7 @@ Wrap your COBOL program with a lightweight web interface using a shell script an
 from flask import Flask, request, jsonify
 import subprocess
 import os
+import tempfile
 
 app = Flask(__name__)
 
@@ -266,31 +270,36 @@ def health():
 
 @app.route('/process', methods=['POST'])
 def process():
-    # Write input data to a temp file
-    input_data = request.get_data(as_text=True)
-    with open('/tmp/input.dat', 'w') as f:
-        f.write(input_data)
+    with tempfile.TemporaryDirectory() as workdir:
+        input_path = os.path.join(workdir, 'records.dat')
+        output_path = os.path.join(workdir, 'results.dat')
 
-    # Run the COBOL program
-    result = subprocess.run(
-        ['/app/process-records'],
-        capture_output=True,
-        text=True,
-        env={**os.environ, 'COB_FILE_PATH': '/tmp'}
-    )
+        # Write input data to a temp file
+        input_data = request.get_data(as_text=True)
+        with open(input_path, 'w') as f:
+            f.write(input_data)
 
-    # Read the output
-    output = ''
-    if os.path.exists('/tmp/results.dat'):
-        with open('/tmp/results.dat', 'r') as f:
-            output = f.read()
+        # Run the COBOL program
+        result = subprocess.run(
+            ['/app/process-records'],
+            capture_output=True,
+            text=True,
+            env={**os.environ, 'INPUT_FILE': input_path, 'OUTPUT_FILE': output_path},
+            timeout=30
+        )
 
-    return jsonify({
-        'stdout': result.stdout,
-        'stderr': result.stderr,
-        'output': output,
-        'returncode': result.returncode
-    })
+        # Read the output
+        output = ''
+        if os.path.exists(output_path):
+            with open(output_path, 'r') as f:
+                output = f.read()
+
+        return jsonify({
+            'stdout': result.stdout,
+            'stderr': result.stderr,
+            'output': output,
+            'returncode': result.returncode
+        })
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
@@ -311,26 +320,26 @@ WORKDIR /app
 COPY *.cob ./
 RUN cobc -x -free -o process-records process-records.cob
 
-FROM python:3.12-slim
+FROM ubuntu:22.04
 
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends libcob4 \
+    apt-get install -y --no-install-recommends python3 python3-pip libcob4 \
     && rm -rf /var/lib/apt/lists/*
 
-RUN pip install --no-cache-dir flask gunicorn
+RUN python3 -m pip install --no-cache-dir flask gunicorn
 
 WORKDIR /app
 
 COPY --from=cobol-builder /app/process-records /app/process-records
 COPY wrapper.py /app/
 
-RUN mkdir -p /tmp && useradd -m -r coboluser
+RUN useradd -m -r coboluser
 USER coboluser
 
 EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
-  CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')" || exit 1
+  CMD python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')" || exit 1
 
 CMD ["gunicorn", "-b", "0.0.0.0:8080", "-w", "4", "wrapper:app"]
 ```
@@ -351,7 +360,6 @@ docker-compose.yml
 
 ```yaml
 # docker-compose.yml - COBOL service with supporting infrastructure
-version: "3.8"
 services:
   cobol-service:
     build:
@@ -363,7 +371,8 @@ services:
       - ./data/output:/data/output
     environment:
       - PORT=8080
-      - COB_FILE_PATH=/data
+      - INPUT_FILE=/data/input/records.dat
+      - OUTPUT_FILE=/data/output/results.dat
 
   # Queue for batch job triggering
   redis:
@@ -424,11 +433,12 @@ RUN cobc -x -free -I /app/copybooks -o app program.cob
 
 ```bash
 # Run a quick test of the COBOL program
-docker run --rm cobol-app:latest /app/hello
+docker run --rm cobol-app:basic /app/hello
 
 # Run with test input data
 echo "0000000001John Doe                      0000010000" | \
-  docker run --rm -i -v /dev/stdin:/data/input/records.dat cobol-batch:latest
+  docker run --rm -i cobol-batch:latest sh -c \
+    'cat > /tmp/records.dat && INPUT_FILE=/tmp/records.dat OUTPUT_FILE=/tmp/results.dat /app/process-records'
 ```
 
 ## Monitoring Legacy COBOL Services
