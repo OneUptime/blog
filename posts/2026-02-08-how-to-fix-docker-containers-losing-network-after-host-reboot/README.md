@@ -71,7 +71,7 @@ sudo systemctl list-unit-files | grep iptables
 Fix the service ordering so Docker starts after the firewall:
 
 ```bash
-# Create a systemd override for Docker to start after firewalld
+# Create a systemd override for Docker to start after firewall services
 sudo systemctl edit docker
 ```
 
@@ -80,8 +80,7 @@ Add the following override:
 ```ini
 # /etc/systemd/system/docker.service.d/override.conf
 [Unit]
-After=firewalld.service iptables.service
-Requires=docker.socket
+After=firewalld.service ufw.service iptables.service
 ```
 
 ```bash
@@ -110,8 +109,6 @@ Make it persistent across reboots:
 # Create a sysctl configuration file for Docker
 sudo tee /etc/sysctl.d/99-docker.conf << 'EOF'
 net.ipv4.ip_forward = 1
-net.bridge.bridge-nf-call-iptables = 1
-net.bridge.bridge-nf-call-ip6tables = 1
 EOF
 
 # Apply immediately
@@ -204,9 +201,9 @@ volumes:
 
 The restart policy options are:
 - `no` - Do not restart (default)
-- `always` - Always restart, including on daemon startup
+- `always` - Always restart, and restart on daemon startup unless the container was manually stopped
 - `unless-stopped` - Restart unless manually stopped
-- `on-failure` - Only restart on non-zero exit codes
+- `on-failure` - Restart on non-zero exit codes, but not just because the Docker daemon restarts
 
 ## Cause 5: Network Interfaces Recreated with Different Names
 
@@ -258,15 +255,13 @@ Configure ufw to work with Docker by editing the after.rules file:
 sudo nano /etc/ufw/after.rules
 ```
 
-Add these rules at the end of the file (before the COMMIT line):
+Add these rules near the other chain definitions and rules in the existing `*filter` section, before the final `COMMIT` line:
 
 ```text
 # Allow Docker container traffic
-*filter
-:ufw-user-forward - [0:0]
 :DOCKER-USER - [0:0]
+-A DOCKER-USER -j ufw-user-forward
 -A DOCKER-USER -j RETURN
-COMMIT
 ```
 
 Then reload ufw:
