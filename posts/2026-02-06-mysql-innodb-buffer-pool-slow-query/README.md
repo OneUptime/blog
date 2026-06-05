@@ -15,7 +15,7 @@ receivers:
   mysql:
     endpoint: "mysql:3306"
     username: monitoring
-    password: "${MYSQL_PASSWORD}"
+    password: "${env:MYSQL_PASSWORD}"
     database: information_schema
     collection_interval: 15s
     metrics:
@@ -31,17 +31,17 @@ receivers:
         enabled: true
       mysql.threads:
         enabled: true
-      mysql.queries:
+      mysql.query.count:
         enabled: true
-      mysql.slow_queries:
+      mysql.query.slow.count:
         enabled: true
-      mysql.connections:
+      mysql.connection.count:
         enabled: true
       mysql.tmp_resources:
         enabled: true
       mysql.sorts:
         enabled: true
-      mysql.table_locks:
+      mysql.locks:
         enabled: true
       mysql.row_locks:
         enabled: true
@@ -76,7 +76,7 @@ service:
 The buffer pool hit ratio tells you how often InnoDB finds data in memory versus reading from disk:
 
 ```text
-buffer_pool_hit_ratio = 1 - (mysql.buffer_pool.operations{type="read_requests"} / mysql.buffer_pool.operations{type="reads"})
+buffer_pool_hit_ratio = 1 - (rate(mysql.buffer_pool.operations{operation="reads"}[5m]) / rate(mysql.buffer_pool.operations{operation="read_requests"}[5m]))
 ```
 
 A hit ratio above 99% is good. Below 95% indicates the buffer pool is too small for your working set.
@@ -84,10 +84,10 @@ A hit ratio above 99% is good. Below 95% indicates the buffer pool is too small 
 ### Buffer Pool Pages
 
 ```text
-mysql.buffer_pool.pages{status="total"}    - Total pages in buffer pool
-mysql.buffer_pool.pages{status="data"}     - Pages containing data
-mysql.buffer_pool.pages{status="free"}     - Free (unused) pages
-mysql.buffer_pool.pages{status="dirty"}    - Modified pages not yet flushed to disk
+mysql.buffer_pool.pages{kind="total"}       - Total pages in buffer pool
+mysql.buffer_pool.pages{kind="data"}        - Pages containing data
+mysql.buffer_pool.pages{kind="free"}        - Free (unused) pages
+mysql.buffer_pool.data_pages{status="dirty"} - Modified data pages not yet flushed to disk
 ```
 
 If `free` pages are consistently at zero, the buffer pool is fully utilized and InnoDB is evicting pages to make room for new data.
@@ -95,7 +95,7 @@ If `free` pages are consistently at zero, the buffer pool is fully utilized and 
 ### Buffer Pool Utilization
 
 ```text
-buffer_pool_utilization = pages{status="data"} / pages{status="total"} * 100
+buffer_pool_utilization = mysql.buffer_pool.pages{kind="data"} / mysql.buffer_pool.pages{kind="total"} * 100
 ```
 
 Above 95% utilization means the buffer pool is nearly full. Consider increasing `innodb_buffer_pool_size`.
@@ -103,7 +103,7 @@ Above 95% utilization means the buffer pool is nearly full. Consider increasing 
 ### Page Flushes
 
 ```text
-mysql.buffer_pool.page_flushes - Number of pages flushed from buffer pool to disk
+mysql.buffer_pool.page_flushes - Number of requests to flush pages from the buffer pool
 flush_rate = rate(mysql.buffer_pool.page_flushes[5m])
 ```
 
@@ -114,8 +114,8 @@ High flush rates during normal operations indicate the buffer pool is under pres
 ### Slow Query Count
 
 ```text
-mysql.slow_queries - Total slow queries (cumulative)
-slow_query_rate = rate(mysql.slow_queries[5m])
+mysql.query.slow.count - Total slow queries (cumulative)
+slow_query_rate = rate(mysql.query.slow.count[5m])
 ```
 
 Enable the slow query log in MySQL:
@@ -124,6 +124,7 @@ Enable the slow query log in MySQL:
 SET GLOBAL slow_query_log = 'ON';
 SET GLOBAL long_query_time = 2;  -- queries taking more than 2 seconds
 SET GLOBAL slow_query_log_file = '/var/log/mysql/slow.log';
+SET GLOBAL log_output = 'FILE';
 ```
 
 ### Parsing Slow Query Logs
@@ -151,10 +152,10 @@ receivers:
 ### Thread Counts
 
 ```text
-mysql.threads{status="connected"}  - Total connected threads
-mysql.threads{status="running"}    - Threads actively executing
-mysql.threads{status="cached"}     - Threads in the thread cache
-mysql.threads{status="created"}    - Total threads created (cumulative)
+mysql.threads{kind="connected"}  - Total connected threads
+mysql.threads{kind="running"}    - Threads actively executing
+mysql.threads{kind="cached"}     - Threads in the thread cache
+mysql.threads{kind="created"}    - Total threads created (cumulative)
 ```
 
 High `running` thread count indicates many concurrent queries. High `created` count relative to `cached` means the thread cache is too small.
@@ -200,28 +201,28 @@ FLUSH PRIVILEGES;
 
 # Slow queries increasing
 - alert: MySQLSlowQueries
-  condition: rate(mysql.slow_queries[5m]) > 5
+  condition: rate(mysql.query.slow.count[5m]) > 5
   for: 10m
   severity: warning
   message: "{{ value }} slow queries/sec. Check slow query log for details."
 
 # High thread count
 - alert: MySQLHighThreadCount
-  condition: mysql.threads{status="running"} > 50
+  condition: mysql.threads{kind="running"} > 50
   for: 5m
   severity: warning
   message: "{{ value }} threads actively running. May indicate query performance issues."
 
 # Lock waits
 - alert: MySQLRowLockWaits
-  condition: rate(mysql.row_locks{status="waits"}[5m]) > 10
+  condition: rate(mysql.row_locks{kind="waits"}[5m]) > 10
   for: 5m
   severity: warning
   message: "{{ value }} row lock waits/sec. Check for lock contention."
 
 # Connection count near max
 - alert: MySQLConnectionsHigh
-  condition: mysql.connections > 140
+  condition: mysql.threads{kind="connected"} > 140
   for: 5m
   severity: warning
   message: "{{ value }} connections. Approaching max_connections limit."
@@ -229,4 +230,4 @@ FLUSH PRIVILEGES;
 
 ## Summary
 
-MySQL performance monitoring with OpenTelemetry centers on three areas: InnoDB buffer pool efficiency (hit ratio, utilization, flush rate), slow query detection (count and detailed log analysis), and thread state (running threads, lock waits). The MySQL receiver collects these metrics from MySQL's internal status variables. Set alerts on buffer pool hit ratio below 95%, growing slow query rates, and high concurrent thread counts to catch performance issues early and guide tuning decisions.
+MySQL performance monitoring with OpenTelemetry centers on three areas: InnoDB buffer pool efficiency (hit ratio, utilization, flush rate), slow query detection (count and detailed log analysis), and thread state (running threads, lock waits). The MySQL receiver collects these metrics from MySQL's global status and InnoDB tables. Set alerts on buffer pool hit ratio below 95%, growing slow query rates, and high concurrent thread counts to catch performance issues early and guide tuning decisions.
