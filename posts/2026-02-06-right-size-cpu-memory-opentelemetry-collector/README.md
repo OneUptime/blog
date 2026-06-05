@@ -82,11 +82,9 @@ processors:
   # Transform processor: high CPU for complex transformations
   transform:
     trace_statements:
-      - context: span
-        statements:
-          # CPU-intensive: regex matching and string manipulation
-          - replace_pattern(attributes["http.url"], "token=([^&]+)", "token=***")
-          - set(attributes["service.environment"], "production")
+      # CPU-intensive: regex matching and string manipulation
+      - replace_pattern(span.attributes["http.url"], "token=([^&]+)", "token=***")
+      - set(span.attributes["service.environment"], "production")
 
   # Memory limiter: monitors memory usage (minimal CPU)
   memory_limiter:
@@ -183,17 +181,26 @@ Here's a memory-optimized configuration:
 
 ```yaml
 # config.yaml - Memory-optimized configuration
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
 processors:
   # Memory limiter should be first in pipeline
   # Prevents OOM by refusing data when limit is reached
   memory_limiter:
     check_interval: 1s
-    # Hard limit: collector will refuse data above this
+    # Hard limit: collector will force garbage collection above this
     limit_mib: 1024
-    # Soft limit: triggers garbage collection
+    # Spike limit: soft limit is limit_mib - spike_limit_mib
+    # Collector starts refusing data above the soft limit
     spike_limit_mib: 256
 
-  # Batch processor reduces memory by combining items
+  # Batch processor controls buffering and export request size
   batch:
     # Shorter timeout reduces memory holding time
     timeout: 200ms
@@ -215,7 +222,14 @@ service:
   telemetry:
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+                without_type_suffix: true
+                without_units: true
 
   pipelines:
     traces:
@@ -237,11 +251,17 @@ metadata:
   name: otel-collector
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app: otel-collector
   template:
+    metadata:
+      labels:
+        app: otel-collector
     spec:
       containers:
       - name: otel-collector
-        image: otel/opentelemetry-collector-contrib:0.93.0
+        image: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib:0.153.0
         resources:
           # Requests: guaranteed resources
           requests:
@@ -276,12 +296,14 @@ service:
       # Detailed level provides CPU and memory metrics
       level: detailed
       # Expose metrics endpoint
-      address: 0.0.0.0:8888
-
-exporters:
-  # Export collector's own metrics
-  prometheus:
-    endpoint: 0.0.0.0:8889
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+                without_type_suffix: true
+                without_units: true
 ```
 
 ### Key Metrics to Monitor
@@ -290,7 +312,8 @@ Monitor these collector metrics to identify resource constraints:
 
 - `otelcol_process_cpu_seconds`: CPU usage over time
 - `otelcol_process_memory_rss`: Resident memory usage
-- `otelcol_receiver_refused_spans`: Data refused due to memory limits
+- `otelcol_processor_refused_spans`: Spans refused by processors such as memory_limiter
+- `otelcol_receiver_refused_spans`: Spans refused by receivers
 - `otelcol_exporter_queue_size`: Current queue utilization
 - `otelcol_exporter_enqueue_failed_spans`: Queue overflow events
 
@@ -308,7 +331,10 @@ otelcol_process_memory_rss / 1024 / 1024
 # Queue saturation percentage
 (otelcol_exporter_queue_size / otelcol_exporter_queue_capacity) * 100
 
-# Data loss rate (should be 0)
+# Memory limiter refusal rate (should be 0)
+rate(otelcol_processor_refused_spans[5m])
+
+# Receiver refusal rate (should be 0)
 rate(otelcol_receiver_refused_spans[5m])
 ```
 
@@ -404,7 +430,7 @@ Avoid these common pitfalls:
 
 Right-sizing the OpenTelemetry Collector requires understanding your throughput, pipeline complexity, and deployment pattern. Start with the formulas and guidelines provided, deploy with comprehensive monitoring, and adjust based on observed metrics. Remember to set the memory_limiter processor to prevent OOM conditions, and always provision some headroom for traffic spikes.
 
-For more information on collector performance, see the [OpenTelemetry Collector Performance documentation](https://opentelemetry.io/docs/collector/performance/) and related posts:
+For more information on collector performance, see the [OpenTelemetry Collector Benchmarks documentation](https://opentelemetry.io/docs/collector/benchmarks/) and related posts:
 - https://oneuptime.com/blog/post/2026-02-06-benchmark-collector-telemetrygen/view
 - https://oneuptime.com/blog/post/2026-02-06-persistent-queue-storage-collector-reliability/view
 - https://oneuptime.com/blog/post/2026-02-06-troubleshoot-collector-not-exporting-data/view
