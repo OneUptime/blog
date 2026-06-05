@@ -37,16 +37,12 @@ processors:
     send_batch_size: 512
     timeout: 5s
 
-  batch/shadow:
-    send_batch_size: 1024
-    timeout: 15s
-
 exporters:
   # Production exporter - full reliability
   otlp/production:
     endpoint: "https://otlp.oneuptime.com:4317"
     headers:
-      x-oneuptime-token: "${ONEUPTIME_TOKEN}"
+      x-oneuptime-token: "${env:ONEUPTIME_TOKEN}"
     retry_on_failure:
       enabled: true
       initial_interval: 5s
@@ -68,6 +64,7 @@ exporters:
       enabled: true
       num_consumers: 2
       queue_size: 500  # Small queue - drop data if behind
+      block_on_overflow: false
 
 service:
   pipelines:
@@ -90,7 +87,7 @@ service:
       exporters: [otlp/production, otlp/shadow]
 ```
 
-The critical detail is the shadow exporter's configuration: retries are disabled and the queue is small. If the shadow destination cannot keep up, data gets dropped silently. This prevents the test system from affecting production.
+The critical detail is the shadow exporter's configuration: retries are disabled and the queue is small. If the shadow destination cannot keep up, the exporter rejects new batches instead of blocking on a full queue. This prevents the test system from consuming unbounded collector resources.
 
 ## Tagging Shadow Traffic
 
@@ -98,6 +95,10 @@ It is useful to tag shadow traffic so the test backend knows it is receiving dup
 
 ```yaml
 processors:
+  batch/shadow:
+    send_batch_size: 1024
+    timeout: 15s
+
   # Add a tag to shadow traffic
   attributes/shadow_tag:
     actions:
@@ -158,6 +159,7 @@ curl -s http://localhost:8888/metrics | grep shadow
 # Key metrics to watch:
 # otelcol_exporter_sent_spans{exporter="otlp/shadow"}
 # otelcol_exporter_send_failed_spans{exporter="otlp/shadow"}
+# otelcol_exporter_enqueue_failed_spans{exporter="otlp/shadow"}
 # otelcol_exporter_queue_size{exporter="otlp/shadow"}
 # otelcol_exporter_queue_capacity{exporter="otlp/shadow"}
 ```
@@ -169,7 +171,7 @@ Shadow Success Rate = sent / (sent + failed) * 100
 Shadow Queue Utilization = queue_size / queue_capacity * 100
 ```
 
-If the shadow success rate drops below 95% or queue utilization stays above 80%, the test backend is struggling and you should investigate before considering it for production use.
+Depending on how you expose the Collector's Prometheus metrics, counter names may include a `_total` suffix. If the shadow success rate drops below 95% or queue utilization stays above 80%, the test backend is struggling and you should investigate before considering it for production use.
 
 ## Time-Limited Shadow Traffic
 
@@ -180,15 +182,17 @@ You might not want to run shadow traffic indefinitely. A practical approach is t
 # enable-shadow.sh - Swap in the config with shadow enabled
 cp /etc/otel/config-with-shadow.yaml /etc/otel/config.yaml
 
-# The collector auto-reloads on config change
+# Reload the Collector if your deployment does not already do this
+kill -HUP $(pidof otelcol)
 echo "Shadow traffic enabled at $(date)"
 
 # Disable after 4 hours
 sleep 14400
 cp /etc/otel/config-production-only.yaml /etc/otel/config.yaml
+kill -HUP $(pidof otelcol)
 echo "Shadow traffic disabled at $(date)"
 ```
 
 ## Wrapping Up
 
-Shadow traffic gives you a safe way to test new backends, validate collector configurations, and benchmark performance using real production data. The key is configuring the shadow exporter as best-effort so it can never impact your production observability. Combined with proper monitoring of the shadow pipeline itself, this pattern removes most of the risk from backend evaluations.
+Shadow traffic gives you a safe way to test new backends, validate collector configurations, and benchmark performance using real production data. The key is configuring the shadow exporter as best-effort so it cannot consume unbounded resources in your production observability path. Combined with proper monitoring of the shadow pipeline itself, this pattern removes most of the risk from backend evaluations.
