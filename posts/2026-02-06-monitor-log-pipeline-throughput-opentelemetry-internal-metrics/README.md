@@ -18,11 +18,18 @@ The OpenTelemetry Collector exposes Prometheus-format metrics about its own oper
 service:
   telemetry:
     metrics:
-      # Expose internal metrics on this address
-      address: 0.0.0.0:8888
       # Level controls how many metrics are emitted
       # "detailed" gives you the most visibility
       level: detailed
+      # Expose internal metrics on this address
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+                without_type_suffix: true
+                without_units: true
     logs:
       # Collector's own log level
       level: info
@@ -40,31 +47,27 @@ These tell you how many log records the collector is ingesting:
 
 ```text
 # Total log records accepted by the receiver
-
 otelcol_receiver_accepted_log_records{receiver="filelog"}
 
-# Total log records refused by the receiver (indicates backpressure)
+# Total log records refused by the receiver
 otelcol_receiver_refused_log_records{receiver="filelog"}
 ```
 
-If `refused_log_records` is increasing, the collector is dropping logs at the intake because downstream components cannot keep up.
+If `refused_log_records` is increasing, the collector is failing to accept logs into the pipeline. Depending on the receiver and the client's retry behavior, this can lead to upstream data loss.
 
 ### Processor Metrics
 
 These show what happens to logs as they move through the pipeline:
 
 ```text
-# Log records that entered the processor
-otelcol_processor_incoming_log_records{processor="batch"}
+# Items that entered the processor
+otelcol_processor_incoming_items{processor="batch"}
 
-# Log records that left the processor
-otelcol_processor_outgoing_log_records{processor="batch"}
-
-# Log records dropped by a filter processor
-otelcol_processor_dropped_log_records{processor="filter/severity"}
+# Items that left the processor
+otelcol_processor_outgoing_items{processor="batch"}
 ```
 
-The difference between incoming and outgoing (minus intentional drops from filters) indicates unintentional loss.
+The difference between incoming and outgoing can help identify flow problems, but account for intentional filtering, routing, fan-out, and component-specific behavior before treating it as loss.
 
 ### Exporter Metrics
 
@@ -77,6 +80,9 @@ otelcol_exporter_sent_log_records{exporter="otlp"}
 # Log records that failed to send
 otelcol_exporter_send_failed_log_records{exporter="otlp"}
 
+# Log records that failed to enter the export queue
+otelcol_exporter_enqueue_failed_log_records{exporter="otlp"}
+
 # Current size of the sending queue
 otelcol_exporter_queue_size{exporter="otlp"}
 
@@ -84,7 +90,7 @@ otelcol_exporter_queue_size{exporter="otlp"}
 otelcol_exporter_queue_capacity{exporter="otlp"}
 ```
 
-If `send_failed_log_records` is climbing, your backend is rejecting or unreachable. If `queue_size` is approaching `queue_capacity`, you are about to start dropping logs.
+If `send_failed_log_records` is climbing, your backend may be rejecting data or unreachable, though retries can still prevent loss. If `queue_size` is approaching `queue_capacity`, watch `enqueue_failed_log_records`: once that climbs, data failed to enter the sending queue.
 
 ## Setting Up a Self-Monitoring Pipeline
 
@@ -120,8 +126,15 @@ exporters:
 service:
   telemetry:
     metrics:
-      address: 0.0.0.0:8888
       level: detailed
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+                without_type_suffix: true
+                without_units: true
   pipelines:
     logs:
       receivers: [filelog]
@@ -146,20 +159,20 @@ groups:
     rules:
       - alert: OtelCollectorRefusingLogs
         # Fires if refused logs rate exceeds 0 for 5 minutes
-        expr: rate(otelcol_receiver_refused_log_records_total[5m]) > 0
+        expr: rate(otelcol_receiver_refused_log_records[5m]) > 0
         for: 5m
         labels:
           severity: critical
         annotations:
           summary: "OpenTelemetry Collector is refusing log records"
-          description: "Receiver {{ $labels.receiver }} is refusing logs, indicating backpressure in the pipeline."
+          description: "Receiver {{ $labels.receiver }} is refusing logs, indicating that records could not be pushed into the pipeline."
 ```
 
 ### Alert: Export Failures
 
 ```yaml
       - alert: OtelCollectorExportFailures
-        expr: rate(otelcol_exporter_send_failed_log_records_total[5m]) > 0
+        expr: rate(otelcol_exporter_send_failed_log_records[5m]) > 0
         for: 5m
         labels:
           severity: warning
@@ -178,7 +191,7 @@ groups:
           severity: warning
         annotations:
           summary: "OpenTelemetry Collector export queue at 80% capacity"
-          description: "Exporter {{ $labels.exporter }} queue is filling up. Log loss is imminent if the backend does not recover."
+          description: "Exporter {{ $labels.exporter }} queue is filling up. Risk of data loss increases if the backend does not recover."
 ```
 
 ### Alert: Throughput Drop
@@ -187,8 +200,8 @@ groups:
       - alert: OtelCollectorThroughputDrop
         # Alert if throughput drops by more than 50% compared to the previous hour
         expr: |
-          rate(otelcol_receiver_accepted_log_records_total[5m])
-          < 0.5 * rate(otelcol_receiver_accepted_log_records_total[5m] offset 1h)
+          rate(otelcol_receiver_accepted_log_records[5m])
+          < 0.5 * rate(otelcol_receiver_accepted_log_records[5m] offset 1h)
         for: 10m
         labels:
           severity: warning
@@ -201,21 +214,21 @@ groups:
 
 A good collector monitoring dashboard should include these panels:
 
-1. **Ingestion rate**: `rate(otelcol_receiver_accepted_log_records_total[1m])` - shows how many logs per second are coming in
-2. **Export rate**: `rate(otelcol_exporter_sent_log_records_total[1m])` - shows how many are going out
-3. **Loss rate**: ingestion rate minus export rate (accounting for intentional filter drops)
+1. **Ingestion rate**: `rate(otelcol_receiver_accepted_log_records[1m])` - shows how many logs per second are coming in
+2. **Export rate**: `rate(otelcol_exporter_sent_log_records[1m])` - shows how many are going out
+3. **Loss indicator**: ingestion rate minus export rate (accounting for intentional filter drops, routing, and fan-out)
 4. **Queue utilization**: `otelcol_exporter_queue_size / otelcol_exporter_queue_capacity * 100` - percentage
 5. **Collector resource usage**: CPU and memory of the collector pods themselves
 
 ## Detecting Silent Data Loss
 
-The trickiest form of log loss is when the collector accepts logs, processes them, and the exporter reports them as sent, but they never arrive at the backend. This can happen with network issues or backend bugs.
+The trickiest form of log loss is when the collector accepts logs, processes them, and the exporter reports them as sent, but they never become queryable in the backend. This can happen with backend ingestion, indexing, or routing issues.
 
 To catch this, implement end-to-end verification by periodically injecting a known "canary" log record and verifying it arrives at the backend:
 
 ```yaml
 receivers:
-  # Generate a canary log every 60 seconds
+  # Read canary logs generated by an external job
   filelog/canary:
     include:
       - /var/log/otel-canary.log
