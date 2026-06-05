@@ -18,17 +18,22 @@ Here is a simplified view of the package dependency tree:
 
 ```mermaid
 graph TD
-    A[opentelemetry-api] --> B[opentelemetry-sdk]
-    B --> C[opentelemetry-exporter-otlp-proto-grpc]
-    B --> D[opentelemetry-exporter-otlp-proto-http]
-    A --> E[opentelemetry-instrumentation-flask]
-    B --> E
-    A --> F[opentelemetry-instrumentation-requests]
-    B --> F
-    C --> G[opentelemetry-exporter-otlp]
-    D --> G
-    H[opentelemetry-proto] --> C
-    H --> D
+    B[opentelemetry-sdk] --> A[opentelemetry-api]
+    B --> S[opentelemetry-semantic-conventions]
+    C[opentelemetry-exporter-otlp-proto-grpc] --> A
+    C --> B
+    C --> H[opentelemetry-proto]
+    C --> I[grpcio]
+    D[opentelemetry-exporter-otlp-proto-http] --> A
+    D --> B
+    D --> H
+    D --> J[requests]
+    G[opentelemetry-exporter-otlp] --> C
+    G --> D
+    E[opentelemetry-instrumentation-flask] --> A
+    E --> S
+    F[opentelemetry-instrumentation-requests] --> A
+    F --> S
 
     style A fill:#9cf,stroke:#333
     style B fill:#9f9,stroke:#333
@@ -142,7 +147,7 @@ from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExp
 from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
 ```
 
-Notice the underscore prefix on `_log_exporter`. This is a common stumbling point. The log exporter module name starts with an underscore in some SDK versions because it was initially considered experimental. If you get an ImportError on the log exporter, try both with and without the underscore.
+Notice the underscore prefix on `_log_exporter`. This is a common stumbling point. Current OpenTelemetry Python releases use the underscored module name for the OTLP log exporter imports shown above.
 
 ## Error 3: Version Mismatches Between Packages
 
@@ -249,22 +254,26 @@ ImportError: cannot import name 'descriptor' from 'google.protobuf'
 or
 
 ```text
-TypeError: Descriptors cannot not be created directly.
+TypeError: Descriptors cannot be created directly.
 ```
 
-This typically happens when you have protobuf 4.x installed but a package expects protobuf 3.x, or vice versa:
+This typically happens when the installed protobuf version falls outside the range required by your installed `opentelemetry-proto` version. For example, older OpenTelemetry Python releases required `protobuf>=3.19,<5.0`, while current releases require a newer protobuf range:
 
 ```bash
 # Check protobuf version
 pip show protobuf
 
-# If you see protobuf 4.x and get descriptor errors,
-# the opentelemetry-proto package might need a specific range.
-# Check what version is required:
-pip show opentelemetry-proto | grep Requires
+# If you see protobuf descriptor errors,
+# opentelemetry-proto might need a specific protobuf range.
+# Check for dependency conflicts:
+python -m pip check
 
-# Fix by installing a compatible protobuf version
-pip install "protobuf>=3.19,<5.0"
+# Print the exact protobuf range required by opentelemetry-proto:
+python -c "import importlib.metadata as md; print([r for r in md.requires('opentelemetry-proto') if r.startswith('protobuf')])"
+
+# Fix by reinstalling the OpenTelemetry packages together,
+# or install the protobuf range shown by opentelemetry-proto.
+pip install --upgrade --force-reinstall opentelemetry-proto opentelemetry-exporter-otlp
 ```
 
 The grpcio package can also cause issues, especially on certain platforms:
