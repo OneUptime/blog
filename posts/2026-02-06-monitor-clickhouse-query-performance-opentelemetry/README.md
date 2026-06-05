@@ -53,14 +53,14 @@ This configuration exposes metrics on port 9363 at the `/metrics` path.
     <prometheus>
         <endpoint>/metrics</endpoint>
         <port>9363</port>
-        <!-- Expose per-query metrics from the system.events table -->
+        <!-- Expose current values from the system.metrics table -->
         <metrics>true</metrics>
         <!-- Expose async metrics like memory usage and disk I/O -->
         <asynchronous_metrics>true</asynchronous_metrics>
-        <!-- Expose per-query event counters -->
+        <!-- Expose cumulative event counters from the system.events table -->
         <events>true</events>
-        <!-- Expose status information -->
-        <status_info>true</status_info>
+        <!-- Expose error counters from the system.errors table -->
+        <errors>true</errors>
     </prometheus>
 </clickhouse>
 ```
@@ -100,7 +100,7 @@ receivers:
             - source_labels: [__address__]
               target_label: clickhouse_node
               regex: '(.+):9363'
-              replacement: '${1}'
+              replacement: '$$1'
 
   # Receive application traces and metrics via OTLP
   otlp:
@@ -127,7 +127,7 @@ processors:
           - ClickHouseProfileEvents_QueryTimeMicroseconds
           # Memory usage
           - ClickHouseMetrics_MemoryTracking
-          - ClickHouseMetrics_MemoryTrackingForMerges
+          - ClickHouseMetrics_MergesMutationsMemoryTracking
           # Connection metrics
           - ClickHouseMetrics_TCPConnection
           - ClickHouseMetrics_HTTPConnection
@@ -149,21 +149,22 @@ processors:
           - ClickHouseMetrics_ZooKeeperWatch
 
 exporters:
-  otlp:
+  otlphttp:
     endpoint: https://oneuptime.com/otlp
-    tls:
-      insecure: false
+    encoding: json
+    headers:
+      x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
 
 service:
   pipelines:
     metrics:
       receivers: [prometheus, otlp]
       processors: [filter/clickhouse, batch]
-      exporters: [otlp]
+      exporters: [otlphttp]
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlp]
+      exporters: [otlphttp]
 ```
 
 ---
@@ -183,7 +184,7 @@ ClickHouse exposes a large number of metrics. Focus on these categories for quer
 
 **Memory:**
 - `ClickHouseMetrics_MemoryTracking` - Current memory used by queries. ClickHouse can use a lot of RAM for large aggregations and joins.
-- `ClickHouseMetrics_MemoryTrackingForMerges` - Memory used for background merge operations. If this is high, merges are competing with queries for RAM.
+- `ClickHouseMetrics_MergesMutationsMemoryTracking` - Memory used for background merge and mutation operations. If this is high, merges and mutations are competing with queries for RAM.
 
 **Merges and Parts:**
 - `ClickHouseMetrics_Merge` - Active merge operations. Too many concurrent merges degrade query performance.
@@ -400,7 +401,7 @@ flowchart TD
     B --> B3["CPU: User vs System time"]
 
     C --> C1["Active Merges Count"]
-    C --> C2["Parts Count per Table"]
+    C --> C2["Parts Count per Table/Partition"]
     C --> C3["Merge Throughput: rows/sec"]
 
     D --> D1["Active Connections"]
@@ -414,7 +415,7 @@ flowchart TD
 
 ClickHouse performance depends heavily on how data is ingested. Frequent small inserts create many parts that need merging, while large batch inserts are more efficient. Track insert patterns to avoid the "too many parts" error.
 
-This configuration adds a custom metric that tracks the number of active parts per table.
+This configuration adds a custom metric that tracks the number of active parts per table and partition.
 
 ```sql
 -- Run this query periodically and export the results as a gauge metric
@@ -422,16 +423,17 @@ This configuration adds a custom metric that tracks the number of active parts p
 SELECT
     database,
     table,
+    partition,
     count() as parts_count,
     sum(rows) as total_rows,
     formatReadableSize(sum(bytes_on_disk)) as disk_size
 FROM system.parts
 WHERE active = 1
-GROUP BY database, table
+GROUP BY database, table, partition
 ORDER BY parts_count DESC
 ```
 
-If parts_count exceeds 300 for any table, ClickHouse will start rejecting inserts. Monitor this metric closely and set alerts at 200 parts.
+If parts_count exceeds the `parts_to_throw_insert` setting in a single partition, ClickHouse can start rejecting inserts with a "Too many parts" error. In older versions this threshold was 300 by default, so monitor this metric closely and set alerts before it reaches your configured limit.
 
 ---
 
