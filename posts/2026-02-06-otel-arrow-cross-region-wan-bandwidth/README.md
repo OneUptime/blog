@@ -6,7 +6,7 @@ Tags: OpenTelemetry, OTel Arrow, Cross-Region, Bandwidth
 
 Description: Configure OTel Arrow for cross-region telemetry transport to minimize WAN bandwidth costs and cloud egress fees.
 
-Cross-region telemetry transport is one of the most expensive parts of running a distributed observability stack. Cloud providers charge $0.01-0.09 per GB for inter-region data transfer, and telemetry data adds up fast. A fleet of 500 microservices generating 50,000 spans per second can easily produce 2-5 GB of telemetry data per hour. At cross-region egress rates, that is $150-$400 per month just for one hop. OTel Arrow can cut that cost by 50-70% with the right configuration.
+Cross-region telemetry transport is one of the most expensive parts of running a distributed observability stack. Cloud providers charge $0.01-0.09 per GB for inter-region data transfer, and telemetry data adds up fast. A fleet of 500 microservices generating 50,000 spans per second can easily produce tens to hundreds of GB of telemetry data per hour before compression. At cross-region egress rates, that can become hundreds to thousands of dollars per month for one hop. OTel Arrow can cut that cost by 30-70% with the right configuration.
 
 ## The Cost Problem
 
@@ -72,7 +72,7 @@ processors:
   filter/traces:
     traces:
       span:
-        - 'attributes["http.status_code"] == 200 and duration < 100ms'
+        - 'attributes["http.status_code"] == 200 and (end_time_unix_nano - start_time_unix_nano) < 100000000'
         # Drop fast, successful spans to reduce volume
 
 exporters:
@@ -85,7 +85,7 @@ exporters:
     compression: zstd
     arrow:
       num_streams: 8          # More streams for higher throughput
-      max_stream_lifetime: 30m  # Longer lifetime for better compression
+      max_stream_lifetime: 9m  # Keep below receiver keepalive grace minus timeout
     sending_queue:
       enabled: true
       num_consumers: 8
@@ -115,7 +115,7 @@ service:
 
 Key settings for cross-region transport:
 
-- **`max_stream_lifetime: 30m`**: Longer streams mean better compression. Load balancing is less of a concern since you typically have a single central gateway endpoint.
+- **`max_stream_lifetime: 9m`**: Keep the exporter stream lifetime below the receiver or proxy keepalive grace period, leaving room for the export timeout so Arrow streams shut down cleanly instead of being reset mid-request.
 - **`num_streams: 8`**: More streams provide higher throughput. Cross-region links have higher latency, so multiple streams keep the pipeline from being bottlenecked by round-trip time.
 - **`queue_size: 1000`**: A large queue buffers data during WAN latency spikes or brief connectivity issues.
 - **`timeout: 60s`**: Cross-region latency can be 50-200ms, so give exports more time.
@@ -137,12 +137,12 @@ receivers:
         keepalive:
           server_parameters:
             max_connection_idle: 300s
-            max_connection_age: 1800s   # 30 minutes
-            max_connection_age_grace: 60s
+            max_connection_age: 60s
+            max_connection_age_grace: 600s
             time: 30s
             timeout: 20s
-        arrow:
-          memory_limit_mib: 512       # More memory for cross-region batches
+      arrow:
+        memory_limit_mib: 512       # More memory for cross-region batches
 
 processors:
   batch:
@@ -152,6 +152,8 @@ processors:
 exporters:
   otlp/traces:
     endpoint: tempo:4317
+  otlp/logs:
+    endpoint: logs-backend:4317
   prometheusremotewrite:
     endpoint: http://mimir:9009/api/v1/push
 
@@ -165,6 +167,10 @@ service:
       receivers: [otelarrow]
       processors: [batch]
       exporters: [prometheusremotewrite]
+    logs:
+      receivers: [otelarrow]
+      processors: [batch]
+      exporters: [otlp/logs]
 ```
 
 ## TLS Configuration
@@ -173,10 +179,10 @@ Cross-region traffic traverses public or semi-public networks. Always use TLS:
 
 ```bash
 # Generate certificates (use your actual CA in production)
-openssl req -x509 -newkey rsa:4096 -keyout ca.key -out ca.crt -days 365 -nodes
-openssl req -newkey rsa:4096 -keyout server.key -out server.csr -nodes
+openssl req -x509 -newkey rsa:4096 -keyout ca.key -out ca.crt -days 365 -nodes -subj "/CN=otel-arrow-ca"
+openssl req -newkey rsa:4096 -keyout server.key -out server.csr -nodes -subj "/CN=central-gateway.us-west-2.internal"
 openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key -out server.crt -days 365
-openssl req -newkey rsa:4096 -keyout client.key -out client.csr -nodes
+openssl req -newkey rsa:4096 -keyout client.key -out client.csr -nodes -subj "/CN=regional-gateway.us-east-1.internal"
 openssl x509 -req -in client.csr -CA ca.crt -CAkey ca.key -out client.crt -days 365
 ```
 
@@ -209,10 +215,10 @@ Track your actual bandwidth savings:
 
 ```promql
 # Bytes per second crossing the WAN
-rate(otelcol_exporter_sent_bytes_total{exporter="otelarrow"}[5m])
+rate(otelcol_exporter_sent_wire_total{exporter="otelarrow"}[5m])
 
 # Convert to monthly cost estimate (at $0.02/GB)
-rate(otelcol_exporter_sent_bytes_total{exporter="otelarrow"}[5m])
+rate(otelcol_exporter_sent_wire_total{exporter="otelarrow"}[5m])
   * 86400 * 30  # seconds in a month
   / 1e9          # convert to GB
   * 0.02         # cost per GB
