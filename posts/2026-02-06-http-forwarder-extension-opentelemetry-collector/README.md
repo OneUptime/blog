@@ -4,29 +4,27 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, Extension, HTTP, Networking, Load Balancing, Traffic Management
 
-Description: Comprehensive guide to configuring the HTTP Forwarder extension in OpenTelemetry Collector for advanced traffic routing, load balancing, and request forwarding capabilities.
+Description: Comprehensive guide to configuring the HTTP Forwarder extension in OpenTelemetry Collector for forwarding HTTP requests to downstream services.
 
-The HTTP Forwarder extension in the OpenTelemetry Collector provides powerful capabilities for forwarding HTTP requests to downstream services. This extension is particularly useful for implementing custom routing logic, load balancing across multiple backends, and creating proxy-like functionality within your observability infrastructure.
+The HTTP Forwarder extension in the OpenTelemetry Collector accepts HTTP requests and forwards them to a configured downstream service. It is useful when you need the Collector to expose a simple HTTP forwarding endpoint and add a small set of static headers to forwarded requests.
 
 ## What is the HTTP Forwarder Extension?
 
-The HTTP Forwarder extension enables the OpenTelemetry Collector to act as an HTTP proxy, forwarding incoming requests to one or more target endpoints. Unlike exporters that transform and send telemetry data in specific formats, the HTTP Forwarder operates at the HTTP protocol level, forwarding raw requests with minimal modification.
+The HTTP Forwarder extension enables the OpenTelemetry Collector to run an HTTP server that forwards incoming requests to a target endpoint. Unlike exporters that transform and send telemetry data in specific formats, the HTTP Forwarder operates at the HTTP protocol level. It preserves the original request URI, changes the scheme and host to the configured egress endpoint, adds any configured egress headers, and adds a `Via` header.
 
-This extension is valuable in scenarios where you need to route traffic based on request attributes, implement failover mechanisms, or create a fan-out pattern where requests are sent to multiple destinations simultaneously.
+This extension is intentionally small. It supports one egress endpoint per extension instance. It does not implement routing rules, fan-out, traffic mirroring, load balancing, health checks, circuit breaking, or rate limiting by itself.
 
 ## Core Use Cases
 
-The HTTP Forwarder extension excels in several deployment scenarios:
+The HTTP Forwarder extension fits a few focused deployment scenarios:
 
-**Gateway Pattern**: Position the collector as a gateway that routes requests to different backends based on headers, paths, or other request attributes.
+**Gateway Pattern**: Position the collector as a simple HTTP forwarding endpoint that sends requests to a single backend.
 
-**Load Distribution**: Distribute incoming telemetry requests across multiple collector instances or backend services for horizontal scaling.
+**Static Header Injection**: Add fixed headers to all forwarded requests, such as a routing marker or an authorization header sourced from Collector configuration.
 
-**Traffic Mirroring**: Send copies of requests to multiple destinations for testing, validation, or redundancy purposes.
+**TLS Termination and Re-encryption**: Use the Collector's HTTP server and client TLS settings to secure ingress and egress connections.
 
-**Protocol Translation**: Forward requests while adding authentication headers, modifying paths, or adjusting other HTTP attributes.
-
-**Legacy System Integration**: Bridge modern OTLP clients with legacy monitoring systems that expect specific HTTP request formats.
+**Legacy System Integration**: Bridge clients that need to send HTTP requests through a Collector-managed forwarding endpoint while preserving the request URI.
 
 ## Basic Configuration
 
@@ -50,7 +48,7 @@ extensions:
       # Optional: connection timeout
       timeout: 30s
 
-      # Optional: keep-alive settings
+      # Optional: keep-alive settings inherited from the Collector HTTP client config
       idle_conn_timeout: 90s
       max_idle_conns: 100
 
@@ -67,7 +65,7 @@ processors:
     timeout: 10s
 
 exporters:
-  logging:
+  debug:
     verbosity: detailed
 
 service:
@@ -77,174 +75,58 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [logging]
+      exporters: [debug]
 ```
 
 In this configuration, any HTTP request sent to port 8080 is forwarded to the backend collector at `backend-collector:4318`. The forwarder operates independently of the standard receiver/processor/exporter pipeline.
 
 ## Multiple Target Endpoints
 
-Forward requests to multiple endpoints for redundancy or traffic mirroring:
+The HTTP Forwarder extension does not support multiple egress endpoints, weighted load balancing, fallback targets, or traffic mirroring in a single extension instance. Configure one egress endpoint per `http_forwarder` instance, and use an external load balancer or proxy if you need backend selection:
 
 ```yaml
 extensions:
-  http_forwarder:
+  http_forwarder/primary:
     ingress:
       endpoint: 0.0.0.0:8080
-
     egress:
-      # Define multiple target endpoints
-      endpoints:
-        - url: "http://primary-collector:4318"
-          # Primary target with higher weight
-          weight: 70
+      endpoint: "http://primary-collector:4318"
+      timeout: 10s
 
-        - url: "http://secondary-collector:4318"
-          # Secondary target with lower weight
-          weight: 30
-
-        - url: "http://backup-collector:4318"
-          # Backup target for redundancy
-          weight: 0
-          # Only used when other targets are unavailable
-          fallback: true
-
-      # Load balancing strategy: round_robin, random, least_conn, or weighted
-      load_balancing:
-        strategy: "weighted"
-
-      # Optional: retry configuration
-      retry:
-        enabled: true
-        max_attempts: 3
-        backoff:
-          initial_interval: 1s
-          max_interval: 10s
-          multiplier: 2.0
-
-receivers:
-  otlp:
-    protocols:
-      http:
-        endpoint: 0.0.0.0:4318
-
-processors:
-  batch:
-    timeout: 10s
-
-exporters:
-  logging:
-    verbosity: normal
+  http_forwarder/secondary:
+    ingress:
+      endpoint: 0.0.0.0:8081
+    egress:
+      endpoint: "http://secondary-collector:4318"
+      timeout: 10s
 
 service:
-  extensions: [http_forwarder]
-  pipelines:
-    traces:
-      receivers: [otlp]
-      processors: [batch]
-      exporters: [logging]
+  extensions: [http_forwarder/primary, http_forwarder/secondary]
 ```
 
-This configuration implements weighted load balancing, sending 70% of traffic to the primary collector and 30% to the secondary. The backup collector only receives traffic if both primary targets fail.
+This configuration exposes two independent forwarding listeners. It does not split traffic automatically; traffic distribution has to happen before requests reach these listeners.
 
 ## Request Routing Based on Attributes
 
-Implement intelligent routing based on request attributes like headers, paths, or query parameters:
+The HTTP Forwarder extension does not evaluate routing rules based on headers, paths, or query parameters. Requests received by one forwarder instance go to that instance's single configured `egress.endpoint`.
 
-```yaml
-extensions:
-  http_forwarder:
-    ingress:
-      endpoint: 0.0.0.0:8080
-
-    # Define routing rules
-    routing:
-      # Route based on HTTP headers
-      - match:
-          header:
-            name: "X-Tenant-ID"
-            value: "tenant-a"
-        egress:
-          endpoint: "http://tenant-a-collector:4318"
-
-      - match:
-          header:
-            name: "X-Tenant-ID"
-            value: "tenant-b"
-        egress:
-          endpoint: "http://tenant-b-collector:4318"
-
-      # Route based on URL path
-      - match:
-          path:
-            prefix: "/v1/traces"
-        egress:
-          endpoint: "http://traces-collector:4318"
-
-      - match:
-          path:
-            prefix: "/v1/metrics"
-        egress:
-          endpoint: "http://metrics-collector:4318"
-
-      # Default route for unmatched requests
-      - match:
-          any: true
-        egress:
-          endpoint: "http://default-collector:4318"
-
-receivers:
-  otlp:
-    protocols:
-      http:
-        endpoint: 0.0.0.0:4318
-
-processors:
-  batch:
-    timeout: 10s
-
-exporters:
-  logging:
-    verbosity: normal
-
-service:
-  extensions: [http_forwarder]
-  pipelines:
-    traces:
-      receivers: [otlp]
-      processors: [batch]
-      exporters: [logging]
-```
-
-This configuration enables multi-tenancy by routing requests to different collectors based on tenant identification headers, and separates traces from metrics using path-based routing.
+If you need tenant-aware or path-aware routing, put a routing proxy such as Envoy, NGINX, HAProxy, or an application gateway in front of separate forwarder instances. If the request is OTLP telemetry and you want to route after decoding telemetry data, receive it with the OTLP receiver and use Collector processors/exporters designed for telemetry routing instead of the HTTP Forwarder extension.
 
 ## Traffic Flow Visualization
 
-The following diagram illustrates how the HTTP Forwarder processes and routes requests:
+The following diagram illustrates how the HTTP Forwarder processes requests:
 
 ```mermaid
 graph TD
     A[Client Application] -->|HTTP Request| B[HTTP Forwarder Extension]
-    B -->|Evaluate Rules| C{Routing Logic}
-
-    C -->|Header: tenant-a| D[Tenant A Collector]
-    C -->|Header: tenant-b| E[Tenant B Collector]
-    C -->|Path: /v1/traces| F[Traces Collector]
-    C -->|Path: /v1/metrics| G[Metrics Collector]
-    C -->|No match| H[Default Collector]
-
-    D --> I[Response]
-    E --> I
-    F --> I
-    G --> I
-    H --> I
-
-    I -->|HTTP Response| A
+    B -->|Preserve Request URI| C[Configured Egress Endpoint]
+    C --> D[Response]
+    D -->|HTTP Response| A
 ```
 
 ## Header Manipulation
 
-Modify request headers before forwarding to add authentication, routing metadata, or other attributes:
+The HTTP Forwarder extension can add static headers to forwarded requests. The `headers` setting is a map of header names to values:
 
 ```yaml
 extensions:
@@ -255,30 +137,10 @@ extensions:
     egress:
       endpoint: "http://backend-collector:4318"
 
-      # Add, modify, or remove headers
+      # Add these headers to all forwarded requests
       headers:
-        # Add authentication header
-        add:
-          - name: "Authorization"
-            value: "Bearer ${AUTH_TOKEN}"
-
-          # Add custom routing header
-          - name: "X-Forwarded-By"
-            value: "otel-collector-gateway"
-
-          # Add timestamp header
-          - name: "X-Forward-Time"
-            value: "${TIMESTAMP}"
-
-        # Remove sensitive headers
-        remove:
-          - "X-Internal-Secret"
-          - "X-Debug-Token"
-
-        # Override existing headers
-        set:
-          - name: "User-Agent"
-            value: "OpenTelemetry-Collector/1.0"
+        Authorization: "Bearer ${env:AUTH_TOKEN}"
+        X-Forwarded-By: "otel-collector-gateway"
 
 receivers:
   otlp:
@@ -291,7 +153,7 @@ processors:
     timeout: 10s
 
 exporters:
-  logging:
+  debug:
     verbosity: normal
 
 service:
@@ -300,14 +162,14 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [logging]
+      exporters: [debug]
 ```
 
-Header manipulation enables the forwarder to add authentication credentials, remove sensitive information, or inject metadata required by downstream services.
+Header manipulation in this extension is limited to adding headers. It does not provide separate `add`, `set`, or `remove` lists, and it does not generate dynamic values such as timestamps or client IP addresses.
 
 ## TLS Configuration
 
-Secure the ingress and egress connections with TLS:
+Secure the ingress and egress connections with TLS using the Collector's standard HTTP server and client TLS settings:
 
 ```yaml
 extensions:
@@ -317,35 +179,20 @@ extensions:
 
       # TLS configuration for ingress (server)
       tls:
-        # Server certificate and key
         cert_file: "/etc/certs/server-cert.pem"
         key_file: "/etc/certs/server-key.pem"
-
-        # Client certificate verification (mutual TLS)
         client_ca_file: "/etc/certs/client-ca.pem"
         client_auth_type: "RequireAndVerifyClientCert"
-
-        # Minimum TLS version
         min_version: "1.2"
-
-        # Allowed cipher suites
-        cipher_suites:
-          - "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256"
-          - "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384"
 
     egress:
       endpoint: "https://backend-collector:4318"
 
       # TLS configuration for egress (client)
       tls:
-        # Server certificate verification
         ca_file: "/etc/certs/backend-ca.pem"
-
-        # Client certificate for mutual TLS
         cert_file: "/etc/certs/client-cert.pem"
         key_file: "/etc/certs/client-key.pem"
-
-        # Skip server verification (not recommended for production)
         insecure_skip_verify: false
 
 receivers:
@@ -361,7 +208,7 @@ processors:
     timeout: 10s
 
 exporters:
-  logging:
+  debug:
     verbosity: normal
 
 service:
@@ -370,150 +217,59 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [logging]
+      exporters: [debug]
 ```
 
-This configuration implements end-to-end TLS encryption with mutual authentication for both ingress and egress connections.
+This configuration implements TLS encryption with mutual authentication for both ingress and egress connections.
 
 ## Health Checks and Circuit Breaking
 
-Implement health checking and circuit breaking to handle backend failures gracefully:
+The HTTP Forwarder extension does not include backend health checks or circuit breaker settings. If you need automatic failover or circuit breaking, place a proxy or load balancer with those features in front of the backend, and configure the forwarder to send traffic to that proxy:
 
 ```yaml
 extensions:
   http_forwarder:
     ingress:
       endpoint: 0.0.0.0:8080
-
     egress:
-      endpoints:
-        - url: "http://primary-collector:4318"
-          weight: 100
-
-          # Health check configuration
-          health_check:
-            enabled: true
-            endpoint: "http://primary-collector:13133/health"
-            interval: 10s
-            timeout: 5s
-            healthy_threshold: 2
-            unhealthy_threshold: 3
-
-        - url: "http://backup-collector:4318"
-          weight: 0
-          fallback: true
-
-          health_check:
-            enabled: true
-            endpoint: "http://backup-collector:13133/health"
-            interval: 10s
-            timeout: 5s
-
-      # Circuit breaker configuration
-      circuit_breaker:
-        enabled: true
-        # Open circuit after consecutive failures
-        failure_threshold: 5
-        # Keep circuit open for this duration
-        timeout: 30s
-        # Maximum concurrent requests
-        max_concurrent_requests: 1000
-
-      # Connection pool settings
-      connection_pool:
-        max_idle_conns: 100
-        max_idle_conns_per_host: 10
-        idle_conn_timeout: 90s
-
-receivers:
-  otlp:
-    protocols:
-      http:
-        endpoint: 0.0.0.0:4318
-
-processors:
-  batch:
-    timeout: 10s
-
-exporters:
-  logging:
-    verbosity: normal
+      endpoint: "http://telemetry-proxy:4318"
+      timeout: 10s
 
 service:
   extensions: [http_forwarder]
-  pipelines:
-    traces:
-      receivers: [otlp]
-      processors: [batch]
-      exporters: [logging]
 ```
 
-Health checks monitor backend availability, while circuit breakers prevent cascading failures by temporarily stopping requests to unhealthy backends.
+Health checking and circuit breaking should be configured in `telemetry-proxy`, not in the HTTP Forwarder extension.
 
 ## Rate Limiting
 
-Control the rate of forwarded requests to protect downstream services:
+The HTTP Forwarder extension does not provide ingress or egress rate-limiting configuration. Control request rates with an upstream API gateway, reverse proxy, service mesh, or load balancer:
 
 ```yaml
 extensions:
   http_forwarder:
     ingress:
       endpoint: 0.0.0.0:8080
-
-      # Rate limiting configuration
-      rate_limit:
-        enabled: true
-        # Requests per second
-        requests_per_second: 1000
-        # Burst capacity
-        burst: 1500
-        # Strategy: local or distributed
-        strategy: "local"
-
     egress:
-      endpoint: "http://backend-collector:4318"
-
-      # Per-target rate limiting
-      rate_limit:
-        enabled: true
-        requests_per_second: 500
-        burst: 750
-
-receivers:
-  otlp:
-    protocols:
-      http:
-        endpoint: 0.0.0.0:4318
-
-processors:
-  batch:
-    timeout: 10s
-
-exporters:
-  logging:
-    verbosity: normal
+      endpoint: "http://rate-limited-proxy:4318"
+      timeout: 10s
 
 service:
   extensions: [http_forwarder]
-  pipelines:
-    traces:
-      receivers: [otlp]
-      processors: [batch]
-      exporters: [logging]
 ```
 
-Rate limiting protects backend services from overload and ensures fair resource distribution across multiple clients.
+Rate limiting protects backend services from overload, but it has to be implemented outside this extension.
 
 ## Integration with Authentication Extensions
 
-Combine the HTTP Forwarder with authentication extensions for secure routing:
+Combine the HTTP Forwarder with authentication extensions for egress authentication:
 
 ```yaml
 extensions:
   # OAuth2 client credentials for backend authentication
   oauth2client:
     client_id: "collector-client"
-    client_secret: "${OAUTH_CLIENT_SECRET}"
+    client_secret: "${env:OAUTH_CLIENT_SECRET}"
     token_url: "https://auth.example.com/oauth/token"
     scopes: ["telemetry.write"]
 
@@ -528,11 +284,9 @@ extensions:
       auth:
         authenticator: oauth2client
 
-      # Additional headers
+      # Additional static headers
       headers:
-        add:
-          - name: "X-Forwarded-For"
-            value: "${CLIENT_IP}"
+        X-Forwarded-By: "otel-collector-gateway"
 
 receivers:
   otlp:
@@ -545,7 +299,7 @@ processors:
     timeout: 10s
 
 exporters:
-  logging:
+  debug:
     verbosity: normal
 
 service:
@@ -554,114 +308,59 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [logging]
+      exporters: [debug]
 ```
 
 This configuration authenticates forwarded requests using OAuth2 credentials managed by a separate authentication extension.
 
 ## Metrics and Observability
 
-The HTTP Forwarder extension exposes metrics for monitoring its operation:
+The HTTP Forwarder extension does not expose a custom `telemetry` block or a documented set of extension-specific metrics such as `requests_total` or `backend_health`. Monitor the Collector through its standard internal telemetry, and monitor backend availability with your proxy, load balancer, or backend service:
 
 ```yaml
 extensions:
   http_forwarder:
     ingress:
       endpoint: 0.0.0.0:8080
-
     egress:
       endpoint: "http://backend-collector:4318"
-
-    # Enable metrics collection
-    telemetry:
-      metrics:
-        enabled: true
-        # Metric prefix
-        prefix: "http_forwarder"
-        # Metrics to collect
-        include:
-          - "requests_total"
-          - "requests_duration"
-          - "requests_in_flight"
-          - "response_size"
-          - "backend_health"
-
-receivers:
-  otlp:
-    protocols:
-      http:
-        endpoint: 0.0.0.0:4318
-
-  # Prometheus receiver to scrape forwarder metrics
-  prometheus:
-    config:
-      scrape_configs:
-        - job_name: "otel-collector"
-          static_configs:
-            - targets: ["localhost:8888"]
-
-processors:
-  batch:
-    timeout: 10s
-
-exporters:
-  logging:
-    verbosity: normal
-
-  prometheusremotewrite:
-    endpoint: "http://prometheus:9090/api/v1/write"
+      timeout: 10s
 
 service:
   extensions: [http_forwarder]
-
-  # Expose internal metrics
   telemetry:
-    metrics:
-      address: ":8888"
-
-  pipelines:
-    traces:
-      receivers: [otlp]
-      processors: [batch]
-      exporters: [logging]
-
-    # Pipeline for forwarder metrics
-    metrics:
-      receivers: [prometheus]
-      processors: [batch]
-      exporters: [prometheusremotewrite]
+    logs:
+      level: info
 ```
 
-Monitoring these metrics helps track forwarding performance, identify bottlenecks, and detect backend issues.
+Standard Collector telemetry helps you see Collector-level behavior, while backend-specific metrics should come from the backend or proxy layer.
 
 ## Best Practices
 
-**Design for failure**: Always configure fallback endpoints and implement circuit breakers to handle backend failures gracefully.
+**Use one endpoint per forwarder instance**: Configure each `http_forwarder` instance with a single egress endpoint.
 
-**Use health checks**: Enable health checking to automatically detect and route around unhealthy backends.
+**Keep advanced traffic management outside the extension**: Use a proxy, gateway, service mesh, or load balancer for routing, load balancing, health checks, circuit breaking, mirroring, and rate limiting.
 
-**Implement rate limiting**: Protect downstream services from overload with appropriate rate limits.
+**Secure connections**: Use TLS for ingress and egress when forwarding sensitive telemetry data.
 
-**Secure connections**: Use TLS for both ingress and egress to protect telemetry data in transit.
+**Use authentication extensions for egress auth**: Prefer Collector authentication extensions over hard-coded credentials when downstream services require OAuth2 or another supported client authenticator.
 
-**Monitor forwarding metrics**: Track request rates, latencies, and error rates to identify issues quickly.
-
-**Test routing rules**: Thoroughly test routing configurations to ensure requests reach the intended destinations.
+**Monitor the surrounding path**: Track Collector internal telemetry, proxy metrics, and backend health so forwarding failures are visible quickly.
 
 ## Troubleshooting
 
-**Connection refused errors**: Verify backend endpoints are accessible and listening on the specified ports. Check firewall rules and network policies.
+**Connection refused errors**: Verify the single configured `egress.endpoint` is reachable and listening on the specified port. Check firewall rules and network policies.
 
-**TLS handshake failures**: Ensure certificates are valid and properly configured. Verify certificate chains and trusted CAs.
+**TLS handshake failures**: Ensure certificates are valid and properly configured. Verify certificate chains, trusted CAs, and whether mutual TLS is required.
 
-**High latency**: Check connection pool settings and adjust based on traffic patterns. Consider increasing timeout values if backends are slow.
+**High latency**: Check backend response time, network latency, and the `egress.timeout` setting. If a proxy sits between the forwarder and backend, check its connection pool and retry behavior.
 
-**Routing issues**: Enable debug logging to see how requests are being matched and routed. Verify routing rules are evaluated in the correct order.
+**Unexpected routing behavior**: The forwarder does not evaluate routing rules. Confirm the request reached the intended forwarder listener, or check the external proxy that performs routing.
 
-**Backend health check failures**: Verify health check endpoints are accessible and returning appropriate status codes.
+**Backend health check failures**: The forwarder does not run health checks. Verify health checks in your load balancer, proxy, or backend monitoring system.
 
 ## Conclusion
 
-The HTTP Forwarder extension transforms the OpenTelemetry Collector into a powerful HTTP proxy capable of intelligent routing, load balancing, and traffic management. By leveraging its features, you can build sophisticated telemetry pipelines that scale horizontally, handle failures gracefully, and route data efficiently.
+The HTTP Forwarder extension turns the OpenTelemetry Collector into a focused HTTP forwarding endpoint. It is best suited for forwarding requests to one configured backend, preserving the request URI, adding static headers, and using the Collector's HTTP client and server settings for TLS and authentication. For intelligent routing, load balancing, mirroring, rate limiting, and failover, pair it with infrastructure that is designed for traffic management.
 
 For related topics on collector extensions, explore [Storage Extension configuration](https://oneuptime.com/blog/post/2026-02-06-storage-extension-opentelemetry-collector/view) and [Jaeger Remote Sampling](https://oneuptime.com/blog/post/2026-02-06-jaeger-remote-sampling-extension-opentelemetry-collector/view).
