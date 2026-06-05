@@ -19,7 +19,7 @@ Traditional logging falls short because streams are asynchronous and event-drive
 First, install the necessary dependencies for instrumenting your Node.js application:
 
 ```bash
-npm install @opentelemetry/api @opentelemetry/sdk-node @opentelemetry/auto-instrumentations-node @opentelemetry/instrumentation
+npm install @opentelemetry/api @opentelemetry/sdk-node @opentelemetry/auto-instrumentations-node @opentelemetry/instrumentation @opentelemetry/exporter-trace-otlp-http
 ```
 
 Configure the OpenTelemetry SDK at your application entry point:
@@ -53,7 +53,7 @@ process.on('SIGTERM', () => {
 Readable streams emit data that other streams consume. Track when data starts flowing and when the stream completes:
 
 ```javascript
-const { trace, context } = require('@opentelemetry/api');
+const { trace, context, SpanStatusCode } = require('@opentelemetry/api');
 const fs = require('fs');
 const tracer = trace.getTracer('stream-instrumentation', '1.0.0');
 
@@ -94,7 +94,7 @@ function createInstrumentedReadStream(filePath) {
 
   readStream.on('error', (error) => {
     span.recordException(error);
-    span.setStatus({ code: 2, message: error.message });
+    span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
     span.end();
   });
 
@@ -154,7 +154,7 @@ class InstrumentedTransform extends Transform {
       callback(null, result);
     } catch (error) {
       chunkSpan.recordException(error);
-      chunkSpan.setStatus({ code: 2, message: error.message });
+      chunkSpan.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
       chunkSpan.end();
       callback(error);
     }
@@ -204,16 +204,21 @@ function createInstrumentedWriteStream(outputPath) {
 
   const originalWrite = writeStream.write.bind(writeStream);
   writeStream.write = function(chunk, encoding, callback) {
+    if (typeof encoding === 'function') {
+      callback = encoding;
+      encoding = undefined;
+    }
+
     const writeStart = Date.now();
     chunksWritten++;
-    bytesWritten += chunk.length;
+    bytesWritten += Buffer.isBuffer(chunk) ? chunk.length : Buffer.byteLength(chunk, encoding);
 
     return originalWrite(chunk, encoding, function(error) {
       const writeLatency = Date.now() - writeStart;
       writeLatencies.push(writeLatency);
 
       span.addEvent('chunk.written', {
-        'chunk.size': chunk.length,
+        'chunk.size': Buffer.isBuffer(chunk) ? chunk.length : Buffer.byteLength(chunk, encoding),
         'write.latency.ms': writeLatency,
         'total.bytes': bytesWritten,
       });
@@ -223,8 +228,10 @@ function createInstrumentedWriteStream(outputPath) {
   };
 
   writeStream.on('finish', () => {
-    const avgLatency = writeLatencies.reduce((a, b) => a + b, 0) / writeLatencies.length;
-    const maxLatency = Math.max(...writeLatencies);
+    const avgLatency = writeLatencies.length
+      ? writeLatencies.reduce((a, b) => a + b, 0) / writeLatencies.length
+      : 0;
+    const maxLatency = writeLatencies.length ? Math.max(...writeLatencies) : 0;
 
     span.setAttributes({
       'stream.bytes.total': bytesWritten,
@@ -238,7 +245,7 @@ function createInstrumentedWriteStream(outputPath) {
 
   writeStream.on('error', (error) => {
     span.recordException(error);
-    span.setStatus({ code: 2, message: error.message });
+    span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
     span.end();
   });
 
@@ -274,11 +281,10 @@ async function processFileWithPipeline(inputPath, outputPath) {
       await pipeline(readStream, transformStream, writeStream);
     });
 
-    pipelineSpan.setStatus({ code: 1 });
     pipelineSpan.end();
   } catch (error) {
     pipelineSpan.recordException(error);
-    pipelineSpan.setStatus({ code: 2, message: error.message });
+    pipelineSpan.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
     pipelineSpan.end();
     throw error;
   }
@@ -323,7 +329,7 @@ function instrumentStream(stream, operationType, metadata = {}) {
       });
     } else if (event === 'error') {
       span.recordException(args[0]);
-      span.setStatus({ code: 2, message: args[0]?.message });
+      span.setStatus({ code: SpanStatusCode.ERROR, message: args[0]?.message });
     } else if (event === 'end' || event === 'finish') {
       span.end();
     }
@@ -402,7 +408,7 @@ class ApiEnrichedTransform extends Transform {
       callback(null, JSON.stringify(enriched) + '\n');
     } catch (error) {
       span.recordException(error);
-      span.setStatus({ code: 2, message: error.message });
+      span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
       span.end();
       callback(error);
     }
