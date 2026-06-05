@@ -180,12 +180,9 @@ spec:
         timeout: 10s
       filter/jobs:
         # Filter events to only include Job-related ones
-        logs:
-          include:
-            match_type: regexp
-            record_attributes:
-              - key: k8s.event.reason
-                value: "^(Created|Started|Completed|Failed|BackOff|SuccessfulCreate|DeadlineExceeded)$"
+        error_mode: ignore
+        log_conditions:
+          - 'attributes["k8s.event.reason"] == nil or IsMatch(attributes["k8s.event.reason"], "^(Created|Started|Completed|Failed|BackOff|SuccessfulCreate|DeadlineExceeded)$") == false'
     exporters:
       otlp:
         endpoint: "https://your-backend.example.com:4317"
@@ -301,6 +298,19 @@ curl -s -X POST "$COLLECTOR_ENDPOINT" \
             \"aggregationTemporality\": 2,
             \"isMonotonic\": true
           }
+        }, {
+          \"name\": \"job.duration\",
+          \"unit\": \"s\",
+          \"gauge\": {
+            \"dataPoints\": [{
+              \"asInt\": \"${DURATION}\",
+              \"timeUnixNano\": \"${END_TIME}000000000\",
+              \"attributes\": [
+                {\"key\": \"job.status\", \"value\": {\"stringValue\": \"$STATUS\"}},
+                {\"key\": \"job.exit_code\", \"value\": {\"intValue\": \"$EXIT_CODE\"}}
+              ]
+            }]
+          }
         }]
       }]
     }]
@@ -339,7 +349,7 @@ spec:
                   valueFrom:
                     fieldRef:
                       # Use the downward API to get the Job name
-                      fieldPath: metadata.labels['job-name']
+                      fieldPath: metadata.labels['batch.kubernetes.io/job-name']
               command: ["/bin/bash", "/scripts/job-wrapper.sh", "python", "/app/cleanup.py"]
 ```
 
