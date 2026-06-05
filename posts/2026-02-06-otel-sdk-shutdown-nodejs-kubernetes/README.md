@@ -6,20 +6,20 @@ Tags: OpenTelemetry, Node.js, Kubernetes, Graceful Shutdown
 
 Description: Configure OpenTelemetry SDK shutdown in Node.js with SIGTERM and SIGINT signal handling for proper Kubernetes pod termination.
 
-When Kubernetes terminates a pod, it sends SIGTERM and waits for the terminationGracePeriodSeconds (default 30 seconds) before sending SIGKILL. During this window, your Node.js application needs to stop accepting new requests, finish in-flight work, and flush all pending OpenTelemetry data. Node.js does not handle SIGTERM by default in all scenarios, so you need explicit signal trapping.
+When Kubernetes terminates a pod, it sends SIGTERM and waits for the terminationGracePeriodSeconds (default 30 seconds) before sending SIGKILL. During this window, your Node.js application needs to stop accepting new requests, finish in-flight work, and flush all pending OpenTelemetry data. Node.js exits on SIGTERM by default on non-Windows platforms, but that default exit does not run your application cleanup. You need explicit signal trapping for graceful shutdown.
 
 ## Node.js Signal Handling Basics
 
-Node.js does not exit on SIGTERM by default when there are active event loop handles (like an HTTP server). You must explicitly handle the signal:
+Node.js exits on SIGTERM by default on non-Windows platforms. However, once you install a SIGTERM listener, Node.js removes that default behavior, so your handler must clean up and then exit:
 
 ```javascript
-// Without signal handling, the process keeps running
-// until Kubernetes sends SIGKILL after the grace period
+// Without signal handling, the process exits without
+// running your application cleanup
 
 // With signal handling, you can flush data and exit cleanly
 process.on('SIGTERM', () => {
   console.log('SIGTERM received, shutting down...');
-  // Clean up and exit
+  // Clean up and exit when finished
 });
 ```
 
@@ -31,15 +31,23 @@ const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc');
 const { OTLPMetricExporter } = require('@opentelemetry/exporter-metrics-otlp-grpc');
 const { PeriodicExportingMetricReader } = require('@opentelemetry/sdk-metrics');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const {
+  ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+} = require('@opentelemetry/semantic-conventions');
+const {
+  ATTR_K8S_NAMESPACE_NAME,
+  ATTR_K8S_POD_NAME,
+} = require('@opentelemetry/semantic-conventions/incubating');
 
-const resource = new Resource({
-  [SemanticResourceAttributes.SERVICE_NAME]: process.env.OTEL_SERVICE_NAME || 'my-service',
-  [SemanticResourceAttributes.SERVICE_VERSION]: process.env.APP_VERSION || '1.0.0',
-  'deployment.environment': process.env.NODE_ENV || 'production',
-  'k8s.pod.name': process.env.HOSTNAME || 'unknown',
-  'k8s.namespace.name': process.env.POD_NAMESPACE || 'default',
+const resource = resourceFromAttributes({
+  [ATTR_SERVICE_NAME]: process.env.OTEL_SERVICE_NAME || 'my-service',
+  [ATTR_SERVICE_VERSION]: process.env.APP_VERSION || '1.0.0',
+  [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: process.env.NODE_ENV || 'production',
+  [ATTR_K8S_POD_NAME]: process.env.HOSTNAME || 'unknown',
+  [ATTR_K8S_NAMESPACE_NAME]: process.env.POD_NAMESPACE || 'default',
 });
 
 const traceExporter = new OTLPTraceExporter({
@@ -53,10 +61,12 @@ const metricExporter = new OTLPMetricExporter({
 const sdk = new NodeSDK({
   resource,
   traceExporter,
-  metricReader: new PeriodicExportingMetricReader({
-    exporter: metricExporter,
-    exportIntervalMillis: 15000,
-  }),
+  metricReaders: [
+    new PeriodicExportingMetricReader({
+      exporter: metricExporter,
+      exportIntervalMillis: 15000,
+    }),
+  ],
 });
 
 // Start the SDK
@@ -100,7 +110,7 @@ async function gracefulShutdown(signal) {
   const shutdownTimeout = setTimeout(() => {
     console.error('Shutdown timed out, forcing exit');
     process.exit(1);
-  }, 25000); // Leave 5s buffer before Kubernetes SIGKILL
+  }, 20000); // 30s grace - 5s preStop - 5s safety buffer
 
   // Do not let the timeout keep the process alive
   shutdownTimeout.unref();
@@ -154,8 +164,8 @@ process.on('uncaughtException', async (error) => {
 // Handle unhandled promise rejections
 process.on('unhandledRejection', async (reason) => {
   console.error('Unhandled rejection:', reason);
-  // In Node.js 15+, this will terminate the process
-  // Flush telemetry before that happens
+  // In Node.js 15+, this would terminate the process by default
+  // Flush telemetry before exiting
   try {
     await sdk.shutdown();
   } catch (shutdownError) {
