@@ -51,9 +51,9 @@ graph TD
 
 ## Reading Span Relationships
 
-The parent-child hierarchy tells you the call graph. When Span A creates Span B, B is a child of A. The start time of B must be after the start time of A, and the end time of B must be before (or equal to) the end time of A.
+The parent-child hierarchy tells you the call graph. When Span A creates Span B, B is a child of A. In a synchronous nested operation, the start time of B should usually be after the start time of A, and the end time of B should usually be before (or equal to) the end time of A.
 
-If you see spans that violate this rule (child ending after parent), you have clock skew between hosts or a bug in instrumentation.
+If you see spans that violate this expectation (child ending after parent), check for clock skew between hosts, async/background work modeled as a child span, or a bug in instrumentation.
 
 ### Sequential execution
 
@@ -213,11 +213,11 @@ Span kind helps you distinguish between "this service received a request" vs "th
 For HTTP spans, you'll see:
 
 ```text
-http.method: "POST"
-http.target: "/api/orders"
-http.status_code: 200
+http.request.method: "POST"
+url.path: "/api/orders"
+http.response.status_code: 200
 http.route: "/api/orders"
-http.user_agent: "Mozilla/5.0..."
+user_agent.original: "Mozilla/5.0..."
 ```
 
 Check status codes for errors. Check routes for cardinality explosions (UUIDs in URL paths).
@@ -227,13 +227,13 @@ Check status codes for errors. Check routes for cardinality explosions (UUIDs in
 For database spans:
 
 ```text
-db.system: "postgresql"
-db.name: "orders_db"
-db.statement: "SELECT * FROM orders WHERE user_id = $1"
-db.operation: "SELECT"
+db.system.name: "postgresql"
+db.namespace: "orders_db"
+db.query.text: "SELECT * FROM orders WHERE user_id = $1"
+db.operation.name: "SELECT"
 ```
 
-The `db.statement` is gold. You can copy-paste it and run EXPLAIN ANALYZE to see the query plan.
+The `db.query.text` is gold when it is available and safe to inspect. For parameterized or sanitized SQL, you can copy-paste it and run EXPLAIN ANALYZE to see the query plan.
 
 ### Error status
 
@@ -241,7 +241,7 @@ Spans have a status: OK, ERROR, or UNSET.
 
 ```text
 status.code: ERROR
-status.message: "connection timeout after 5000ms"
+status.description: "connection timeout after 5000ms"
 ```
 
 Errors should stand out visually in your tool (red color, exclamation icon). Always check error messages for clues.
@@ -349,7 +349,7 @@ Distributed traces rely on timestamps from multiple machines. If clocks are out 
 
 ### Child starts before parent
 
-Impossible unless you have clock skew. Child's host clock is ahead of parent's host clock.
+For a synchronous child operation, this usually means you have clock skew or incorrect timestamps. Child's host clock may be ahead of parent's host clock.
 
 ```text
 Parent              [====================================]
@@ -362,7 +362,7 @@ Parent              [====================================]
 
 ### Child ends after parent
 
-Impossible unless you have clock skew or a bug in instrumentation.
+For a synchronous child operation, this usually means you have clock skew, async/background work modeled as a child span, or a bug in instrumentation.
 
 ```text
 Parent              [====================================]
