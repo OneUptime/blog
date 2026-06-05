@@ -41,15 +41,13 @@ Before optimizing, establish baseline measurements.
 Measure instrumentation impact on your application.
 
 ```go
-// benchmark-instrumentation.go
+// benchmark_instrumentation_test.go
 package main
 
 import (
     "context"
     "testing"
 
-    "go.opentelemetry.io/otel"
-    "go.opentelemetry.io/otel/attribute"
     "go.opentelemetry.io/otel/sdk/trace"
 )
 
@@ -114,16 +112,16 @@ Monitor collector resource usage.
 ```promql
 # Collector CPU usage
 
-rate(process_cpu_seconds_total{job="otel-collector"}[5m])
+rate(otelcol_process_cpu_seconds{job="otel-collector"}[5m])
 
 # Collector memory usage
-process_resident_memory_bytes{job="otel-collector"}
+otelcol_process_memory_rss{job="otel-collector"}
 
 # Data throughput (spans per second)
 sum(rate(otelcol_receiver_accepted_spans[5m]))
 
 # Overhead ratio: CPU per span
-rate(process_cpu_seconds_total{job="otel-collector"}[5m]) /
+rate(otelcol_process_cpu_seconds{job="otel-collector"}[5m]) /
 sum(rate(otelcol_receiver_accepted_spans[5m]))
 ```
 
@@ -141,7 +139,7 @@ package main
 
 import (
     "context"
-    "os"
+    "time"
 
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
@@ -168,7 +166,7 @@ func main() {
     tp := trace.NewTracerProvider(
         trace.WithBatcher(exporter,
             // Optimize batch processor
-            trace.WithBatchTimeout(5000),  // 5 seconds
+            trace.WithBatchTimeout(5*time.Second),
             trace.WithMaxExportBatchSize(512),
             trace.WithMaxQueueSize(2048),
         ),
@@ -185,7 +183,7 @@ func createSampler() trace.Sampler {
     // Sample 10% of normal traffic
     baseSampler := trace.TraceIDRatioBased(0.1)
 
-    // Always sample errors and slow requests
+    // Honor upstream sampled decisions and apply 10% sampling to new traces
     return trace.ParentBased(
         baseSampler,
         trace.WithRemoteParentSampled(trace.AlwaysSample()),
@@ -276,26 +274,23 @@ service:
 
 **Impact**: Reduces data volume by 95% while keeping all important traces.
 
-### Adaptive Sampling Based on Load
+### Load Shedding with Sampling
 
-Adjust sampling rate based on system load.
+Combine probabilistic sampling with explicit drop rules for low-priority telemetry when you need a high-load configuration.
 
 ```yaml
 # otel-collector-config.yaml
 processors:
-  # Probabilistic sampler with dynamic rate
+  # Probabilistic sampler with fixed rate
   probabilistic_sampler:
     # Base sampling rate
     sampling_percentage: 10
 
-    # Attribute to read dynamic rate from (set by application)
-    attribute_source: "sampling.priority"
-
-  # Filter to drop low-priority spans under load
+  # Filter to drop low-priority spans in a high-load pipeline/configuration
   filter/load_shedding:
     traces:
       span:
-      # Drop spans without priority when memory high
+      # Drop spans without priority
       - 'resource.attributes["sampling.priority"] == nil'
 
   memory_limiter:
@@ -307,7 +302,7 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [memory_limiter, probabilistic_sampler, batch]
+      processors: [memory_limiter, filter/load_shedding, probabilistic_sampler, batch]
       exporters: [otlp]
 ```
 
@@ -355,14 +350,17 @@ processors:
     - "secret"
 
   # Limit number of attributes per span
-  span_limiter:
-    max_attributes_count: 50
+  transform/limit_attributes:
+    trace_statements:
+    - context: span
+      statements:
+      - limit(attributes, 50, [])
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [attributes, redaction, span_limiter, batch]
+      processors: [attributes, redaction, transform/limit_attributes, batch]
       exporters: [otlp]
 ```
 
@@ -577,7 +575,14 @@ service:
       level: info
     metrics:
       level: basic
-      address: 0.0.0.0:8888
+      readers:
+      - pull:
+          exporter:
+            prometheus:
+              host: 0.0.0.0
+              port: 8888
+              without_type_suffix: true
+              without_units: true
 
   extensions: [health_check]
 
@@ -613,7 +618,7 @@ spec:
       # Use guaranteed QoS for consistent performance
       containers:
       - name: otel-collector
-        image: otel/opentelemetry-collector-contrib:0.93.0
+        image: otel/opentelemetry-collector-contrib:0.153.0
 
         args:
         - "--config=/conf/config.yaml"
@@ -632,7 +637,7 @@ spec:
             cpu: 2000m
             memory: 2Gi
           limits:
-            cpu: 2000m    # No CPU throttling
+            cpu: 2000m    # Match request for Guaranteed QoS
             memory: 2Gi
 
         ports:
@@ -749,10 +754,10 @@ exporters:
 ### Use Protocol Buffers Over JSON
 
 ```go
-// Use gRPC exporter (Protobuf) instead of HTTP (JSON)
+// Use the OTLP gRPC exporter (Protobuf). OTLP/HTTP can also use Protobuf;
+// avoid JSON encodings unless your backend requires them.
 import (
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
-    // NOT: "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 )
 
 exporter, err := otlptracegrpc.New(ctx,
@@ -779,7 +784,7 @@ import (
     "os"
 
     "go.opentelemetry.io/otel"
-    "go.opentelemetry.io/otel/attribute"
+    "go.opentelemetry.io/otel/trace"
 )
 
 func main() {
@@ -821,6 +826,14 @@ func main() {
 
     http.ListenAndServe(":8080", nil)
 }
+
+func handleCriticalRequest(ctx context.Context, w http.ResponseWriter, r *http.Request) {
+    w.WriteHeader(http.StatusOK)
+}
+
+func handleOptionalRequest(ctx context.Context, w http.ResponseWriter, r *http.Request) {
+    w.WriteHeader(http.StatusOK)
+}
 ```
 
 ### Use Instrumentation Libraries Selectively
@@ -828,18 +841,31 @@ func main() {
 ```go
 // Don't instrument everything automatically
 import (
+    "net/http"
+
     "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
-    "go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 )
 
-// Only wrap handlers that need instrumentation
-criticalHandler := otelhttp.NewHandler(
-    http.HandlerFunc(handleCriticalRequest),
-    "critical-endpoint",
-)
+func configureHandlers() (http.Handler, http.Handler) {
+    // Only wrap handlers that need instrumentation
+    criticalHandler := otelhttp.NewHandler(
+        http.HandlerFunc(handleCriticalHTTP),
+        "critical-endpoint",
+    )
 
-// Skip instrumentation for high-volume, low-value endpoints
-healthHandler := http.HandlerFunc(handleHealthCheck)  // Not wrapped
+    // Skip instrumentation for high-volume, low-value endpoints
+    healthHandler := http.HandlerFunc(handleHealthCheck)  // Not wrapped
+
+    return criticalHandler, healthHandler
+}
+
+func handleCriticalHTTP(w http.ResponseWriter, r *http.Request) {
+    w.WriteHeader(http.StatusOK)
+}
+
+func handleHealthCheck(w http.ResponseWriter, r *http.Request) {
+    w.WriteHeader(http.StatusOK)
+}
 ```
 
 **Impact**: Reduces CPU overhead by 50-70% by avoiding unnecessary instrumentation.
@@ -853,21 +879,21 @@ After applying optimizations, measure improvements.
 ```promql
 # Application CPU reduction
 (
-  avg_over_time(process_cpu_seconds_total{job="my-app"}[1h] offset 7d) -
-  avg_over_time(process_cpu_seconds_total{job="my-app"}[1h])
-) / avg_over_time(process_cpu_seconds_total{job="my-app"}[1h] offset 7d) * 100
+  sum(rate(process_cpu_seconds_total{job="my-app"}[1h] offset 7d)) -
+  sum(rate(process_cpu_seconds_total{job="my-app"}[1h]))
+) / sum(rate(process_cpu_seconds_total{job="my-app"}[1h] offset 7d)) * 100
 
 # Collector CPU reduction
 (
-  avg_over_time(process_cpu_seconds_total{job="otel-collector"}[1h] offset 7d) -
-  avg_over_time(process_cpu_seconds_total{job="otel-collector"}[1h])
-) / avg_over_time(process_cpu_seconds_total{job="otel-collector"}[1h] offset 7d) * 100
+  sum(rate(otelcol_process_cpu_seconds{job="otel-collector"}[1h] offset 7d)) -
+  sum(rate(otelcol_process_cpu_seconds{job="otel-collector"}[1h]))
+) / sum(rate(otelcol_process_cpu_seconds{job="otel-collector"}[1h] offset 7d)) * 100
 
 # Data volume reduction
 (
-  avg_over_time(otelcol_receiver_accepted_spans[1h] offset 7d) -
-  avg_over_time(otelcol_receiver_accepted_spans[1h])
-) / avg_over_time(otelcol_receiver_accepted_spans[1h] offset 7d) * 100
+  sum(rate(otelcol_receiver_accepted_spans[1h] offset 7d)) -
+  sum(rate(otelcol_receiver_accepted_spans[1h]))
+) / sum(rate(otelcol_receiver_accepted_spans[1h] offset 7d)) * 100
 
 # Network bandwidth savings
 (
