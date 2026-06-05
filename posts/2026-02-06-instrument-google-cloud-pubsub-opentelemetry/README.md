@@ -92,7 +92,8 @@ def publish_order_event(order_id: str, event_type: str, payload: dict):
         attributes={
             "messaging.system": "gcp_pubsub",
             "messaging.destination.name": "order-events",
-            "messaging.operation": "publish",
+            "messaging.operation.name": "send",
+            "messaging.operation.type": "send",
             "order.id": order_id,
             "order.event_type": event_type,
         },
@@ -156,7 +157,9 @@ def process_message(message):
         attributes={
             "messaging.system": "gcp_pubsub",
             "messaging.destination.name": "order-events",
-            "messaging.operation": "process",
+            "messaging.destination.subscription.name": "order-events-sub",
+            "messaging.operation.name": "subscribe",
+            "messaging.operation.type": "process",
             "messaging.message.id": message.message_id,
         },
     ) as span:
@@ -184,6 +187,7 @@ def process_message(message):
 
         except Exception as e:
             # Record the error and nack for retry
+            span.set_attribute("error.type", type(e).__name__)
             span.set_status(trace.StatusCode.ERROR, str(e))
             span.record_exception(e)
             message.nack()
@@ -221,7 +225,7 @@ meter = metrics.get_meter("pubsub-metrics")
 messages_processed = meter.create_counter(
     "pubsub.messages.processed",
     description="Total messages processed",
-    unit="messages",
+    unit="{message}",
 )
 
 processing_duration = meter.create_histogram(
@@ -241,7 +245,7 @@ You can then record these metrics inside your message processing callback alongs
 
 ## Collector Configuration for Pub/Sub Telemetry
 
-Your OpenTelemetry Collector should be configured to receive the telemetry data and forward it to your backend. Here is a straightforward configuration:
+Your OpenTelemetry Collector should be configured to receive the telemetry data and forward it to your backend. Here is a straightforward configuration for a Collector distribution that includes the `resourcedetection` processor:
 
 ```yaml
 # otel-collector-config.yaml
@@ -301,10 +305,12 @@ def process_dead_letter(message):
         attributes={
             "messaging.system": "gcp_pubsub",
             "messaging.destination.name": "order-events-dead-letter",
-            "messaging.operation": "process",
+            "messaging.destination.subscription.name": "order-events-dead-letter-sub",
+            "messaging.operation.name": "subscribe",
+            "messaging.operation.type": "process",
             "messaging.message.id": message.message_id,
             # Track delivery attempt count from Pub/Sub
-            "messaging.delivery_attempt": message.delivery_attempt,
+            "messaging.gcp_pubsub.message.delivery_attempt": message.delivery_attempt or 0,
         },
     ) as span:
         span.add_event("message_dead_lettered", {
