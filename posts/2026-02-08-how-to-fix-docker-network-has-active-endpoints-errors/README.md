@@ -25,7 +25,7 @@ Docker networks are reference-counted. When a container joins a network, Docker 
 The error occurs when:
 
 1. Running containers are attached to the network
-2. Stopped containers still reference the network
+2. Containers managed outside your current cleanup command are still attached
 3. Docker Compose services created the network and some containers are still linked
 4. A container crashed or was force-killed, leaving stale endpoint references
 5. Swarm services have tasks using the network
@@ -49,7 +49,7 @@ For a more detailed view:
 docker network inspect mynetwork
 ```
 
-The `Containers` section of the output shows all active endpoints, both running and stopped containers.
+The `Containers` section of the output shows the containers that currently have endpoints on the network.
 
 ## Fix 1: Stop and Remove Connected Containers
 
@@ -154,13 +154,13 @@ docker network inspect mynetwork
 docker network disconnect -f mynetwork stale-container-name
 ```
 
-If the container name in the network inspection does not match any existing container, use the endpoint ID:
+If the container name in the network inspection does not match any existing container, cross-reference the container IDs and names:
 
 ```bash
 # List all containers (including stopped) to cross-reference
 docker ps -a --format '{{.ID}} {{.Names}}'
 
-# If the container no longer exists, force disconnect by name
+# If the container no longer exists, force disconnect by the name or container ID shown in network inspect
 docker network disconnect -f mynetwork phantom-container
 ```
 
@@ -217,7 +217,7 @@ A more aggressive cleanup:
 
 ```bash
 # Stop all containers, prune everything
-docker stop $(docker ps -q)
+docker ps -q | xargs -r docker stop
 docker system prune -af --volumes
 ```
 
