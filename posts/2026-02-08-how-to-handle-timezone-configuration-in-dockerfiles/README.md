@@ -8,13 +8,13 @@ Description: Learn how to properly configure timezones in Docker containers to a
 
 ---
 
-Docker containers default to UTC. That sounds harmless until your application logs show timestamps three hours off from reality, your cron jobs fire at the wrong time, or your database queries return results for the wrong day. Timezone misconfiguration is one of those subtle problems that bites you in production when you least expect it.
+Most Docker containers default to UTC. That sounds harmless until your application logs show timestamps three hours off from reality, your cron jobs fire at the wrong time, or your database queries return results for the wrong day. Timezone misconfiguration is one of those subtle problems that bites you in production when you least expect it.
 
 This guide covers every practical approach to setting timezones in Docker containers, from Dockerfile instructions to runtime overrides, across different base images.
 
 ## Why Containers Default to UTC
 
-Every Docker container inherits UTC as its default timezone. This happens because most base images ship with minimal configuration, and UTC is the standard fallback when no timezone data is explicitly set. The system clock inside a container reads from the host kernel, but the interpretation of that clock depends on the timezone configuration within the container itself.
+Most Docker containers run in UTC by default. This happens because many base images ship with minimal configuration, and UTC is the standard fallback when no timezone data is explicitly set. The system clock inside a container reads from the host kernel, but the interpretation of that clock depends on the timezone configuration within the container itself.
 
 For many server-side applications, UTC is the right choice. It avoids daylight saving time confusion and provides a consistent reference point. But applications that deal with user-facing timestamps, scheduled tasks, or locale-specific date formatting often need a specific timezone.
 
@@ -97,7 +97,7 @@ RUN apt-get update && \
 CMD ["date"]
 ```
 
-The `DEBIAN_FRONTEND=noninteractive` variable prevents the tzdata package from launching an interactive configuration prompt during installation. Without it, your build will hang indefinitely waiting for user input.
+The `DEBIAN_FRONTEND=noninteractive` variable prevents the tzdata package from launching an interactive configuration prompt during installation. Without it, your build can block or fail while waiting for user input.
 
 ## Method 3: Alpine Linux Timezone Setup
 
@@ -109,9 +109,9 @@ Here is the approach for Alpine-based images:
 # Configure timezone on Alpine Linux
 FROM alpine:3.19
 
-ENV TZ=Asia/Tokyo
+ARG TZ=Asia/Tokyo
 
-# Install tzdata, set timezone, then remove tzdata to save space
+# Install tzdata, copy one timezone file, then remove tzdata to save space
 RUN apk add --no-cache tzdata && \
     cp /usr/share/zoneinfo/$TZ /etc/localtime && \
     echo $TZ > /etc/timezone && \
@@ -120,7 +120,7 @@ RUN apk add --no-cache tzdata && \
 CMD ["date"]
 ```
 
-Notice the trick here: we install tzdata, copy the needed timezone file, then remove the package. This keeps the final image small while still having the correct timezone configured. The copied file at `/etc/localtime` persists even after removing the package.
+Notice the trick here: we install tzdata, copy the needed timezone file, then remove the package. This keeps the final image small while still having the correct timezone configured. The copied file at `/etc/localtime` persists even after removing the package. Use `ARG` instead of `ENV` here so the final container does not keep a `TZ` value that points to a removed file under `/usr/share/zoneinfo`.
 
 If your application needs to handle multiple timezones at runtime (for example, converting between zones), keep the tzdata package installed so all zone files remain available.
 
@@ -132,13 +132,23 @@ Pass the TZ variable when starting the container:
 
 ```bash
 # Override timezone at runtime via environment variable
-docker run --rm -e TZ=America/Chicago ubuntu:22.04 date
+docker run --rm -e TZ=America/Chicago tz-test date
 ```
+
+This works reliably when the image already includes timezone data, such as the `tz-test` image built earlier.
 
 You can also bind-mount the host's timezone files into the container:
 
 ```bash
 # Mount host timezone configuration into the container
+docker run --rm \
+    -v /etc/localtime:/etc/localtime:ro \
+    ubuntu:22.04 date
+```
+
+On Debian-based hosts that have `/etc/timezone`, you can mount that file too:
+
+```bash
 docker run --rm \
     -v /etc/localtime:/etc/localtime:ro \
     -v /etc/timezone:/etc/timezone:ro \
