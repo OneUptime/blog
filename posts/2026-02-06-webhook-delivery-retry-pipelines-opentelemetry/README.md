@@ -18,7 +18,7 @@ A typical webhook pipeline has these components: an event producer, a delivery q
 # webhook_sender.py
 
 from opentelemetry import trace, metrics
-from opentelemetry.trace import StatusCode
+from opentelemetry.trace import Status, StatusCode
 import httpx
 import time
 import hashlib
@@ -43,7 +43,7 @@ delivery_latency = meter.create_histogram(
 delivery_response_size = meter.create_histogram(
     "webhooks.delivery.response_size",
     description="Size of webhook delivery responses",
-    unit="bytes",
+    unit="By",
 )
 
 class WebhookSender:
@@ -85,7 +85,7 @@ class WebhookSender:
 
                 duration_ms = (time.time() - start) * 1000
 
-                span.set_attribute("http.status_code", response.status_code)
+                span.set_attribute("http.response.status_code", response.status_code)
                 span.set_attribute("webhook.delivery.duration_ms", duration_ms)
 
                 # Record metrics
@@ -94,7 +94,7 @@ class WebhookSender:
                     "webhook.event_type": webhook["event_type"],
                     "tenant.id": webhook["tenant_id"],
                     "webhook.success": str(success),
-                    "http.status_code": str(response.status_code),
+                    "http.response.status_code": response.status_code,
                 })
 
                 delivery_latency.record(duration_ms, {
@@ -102,8 +102,14 @@ class WebhookSender:
                     "tenant.id": webhook["tenant_id"],
                 })
 
+                delivery_response_size.record(len(response.content), {
+                    "webhook.event_type": webhook["event_type"],
+                    "tenant.id": webhook["tenant_id"],
+                })
+
                 if not success:
-                    span.set_status(StatusCode.ERROR, f"HTTP {response.status_code}")
+                    span.set_status(Status(StatusCode.ERROR))
+                    span.set_attribute("error.type", "http_status_code")
 
                 return {
                     "success": success,
@@ -112,7 +118,8 @@ class WebhookSender:
                 }
 
             except httpx.TimeoutException as e:
-                span.set_status(StatusCode.ERROR, "Timeout")
+                span.set_status(Status(StatusCode.ERROR, "Timeout"))
+                span.set_attribute("error.type", "timeout")
                 span.record_exception(e)
                 delivery_counter.add(1, {
                     "webhook.event_type": webhook["event_type"],
@@ -123,7 +130,8 @@ class WebhookSender:
                 return {"success": False, "error": "timeout"}
 
             except httpx.ConnectError as e:
-                span.set_status(StatusCode.ERROR, "Connection failed")
+                span.set_status(Status(StatusCode.ERROR, "Connection failed"))
+                span.set_attribute("error.type", "connection_failed")
                 span.record_exception(e)
                 return {"success": False, "error": "connection_failed"}
 
@@ -140,10 +148,11 @@ class WebhookSender:
 
 ```python
 # webhook_retry.py
-from opentelemetry import trace
-import asyncio
+from opentelemetry import trace, metrics
+from webhook_sender import WebhookSender
 
 tracer = trace.get_tracer("webhooks.retry")
+meter = metrics.get_meter("webhooks.retry")
 
 retry_counter = meter.create_counter(
     "webhooks.retry.scheduled",
@@ -157,7 +166,7 @@ dead_letter_counter = meter.create_counter(
     unit="1",
 )
 
-RETRY_DELAYS = [60, 300, 900, 3600, 7200]  # seconds between retries
+RETRY_DELAYS = [60, 120, 240, 480, 960]  # seconds between retries
 
 class WebhookRetryManager:
     def __init__(self, sender: WebhookSender, queue):
@@ -204,6 +213,9 @@ class WebhookRetryManager:
 
             webhook["attempt"] = attempt + 1
             await self.queue.schedule(webhook, delay_seconds=delay)
+
+    async def _move_to_dead_letter(self, webhook: dict):
+        await self.queue.dead_letter(webhook)
 ```
 
 ## Endpoint Health Tracking
@@ -223,6 +235,10 @@ endpoint_success_rate = meter.create_histogram(
 )
 
 class EndpointHealthTracker:
+    def __init__(self):
+        self.endpoint_stats = {}
+        self.disabled_endpoints = set()
+
     def update_health(self, endpoint_url: str, tenant_id: str, success: bool):
         """Update endpoint health and disable consistently failing endpoints."""
         stats = self._get_endpoint_stats(endpoint_url)
@@ -238,8 +254,16 @@ class EndpointHealthTracker:
         # Auto-disable endpoints with consistently low success rates
         if stats["total"] >= 10 and success_rate < 5:
             self._disable_endpoint(endpoint_url, tenant_id)
+
+    def _get_endpoint_stats(self, endpoint_url: str) -> dict:
+        return self.endpoint_stats.setdefault(
+            endpoint_url, {"total": 0, "successes": 0}
+        )
+
+    def _disable_endpoint(self, endpoint_url: str, tenant_id: str):
+        self.disabled_endpoints.add((tenant_id, endpoint_url))
 ```
 
 ## What to Monitor
 
-The key signals from your webhook pipeline are: delivery success rate by event type, average retry count before successful delivery, dead letter queue size growth, and per-endpoint health scores. When a customer's endpoint starts failing, you want to know before they do. With OpenTelemetry traces linking each delivery attempt together, you can show customers the exact timeline of delivery attempts, response codes, and retry delays when they ask "why did I not get the webhook?"
+The key signals from your webhook pipeline are: delivery success rate by event type, average retry count before successful delivery, dead letter queue size growth, and per-endpoint health scores. When a customer's endpoint starts failing, you want to know before they do. With OpenTelemetry spans recording each delivery attempt, you can show customers the exact timeline of delivery attempts, response codes, and retry delays when they ask "why did I not get the webhook?"
