@@ -24,7 +24,7 @@ OpenTelemetry captures the data you need to answer these questions. Unlike tradi
 
 OpenTelemetry organizes telemetry into three signal types:
 
-**Traces** track requests as they flow through your system. Each trace contains spans, representing individual operations. When a user hits your API, OpenTelemetry creates a trace that follows that request through every function call, database query, and external service call.
+**Traces** track requests as they flow through your system. Each trace contains spans, representing individual operations. When a user hits your API, OpenTelemetry creates a trace that follows that request through instrumented handlers, database queries, and external service calls.
 
 **Metrics** measure what's happening at scale. They track things like request rates, error percentages, latency distributions, and queue depths. Unlike traces, which sample individual requests, metrics aggregate data to show trends.
 
@@ -39,8 +39,10 @@ Pick your language and install the OpenTelemetry SDK. Here's Node.js as an examp
 
 npm install @opentelemetry/api \
             @opentelemetry/sdk-node \
+            @opentelemetry/sdk-metrics \
             @opentelemetry/auto-instrumentations-node \
-            @opentelemetry/exporter-trace-otlp-http
+            @opentelemetry/exporter-trace-otlp-http \
+            @opentelemetry/exporter-metrics-otlp-http
 ```
 
 Create an initialization file that configures OpenTelemetry before your application starts:
@@ -50,15 +52,24 @@ Create an initialization file that configures OpenTelemetry before your applicat
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
+const { OTLPMetricExporter } = require('@opentelemetry/exporter-metrics-otlp-http');
+const { PeriodicExportingMetricReader } = require('@opentelemetry/sdk-metrics');
 
 // Configure the trace exporter to send data to your collector
 const traceExporter = new OTLPTraceExporter({
   url: 'http://localhost:4318/v1/traces',
 });
 
+const metricReader = new PeriodicExportingMetricReader({
+  exporter: new OTLPMetricExporter({
+    url: 'http://localhost:4318/v1/metrics',
+  }),
+});
+
 // Initialize the SDK with auto-instrumentation
 const sdk = new NodeSDK({
   traceExporter,
+  metricReader,
   instrumentations: [getNodeAutoInstrumentations()],
   serviceName: 'my-backend-service',
 });
@@ -108,7 +119,7 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.instrumentation.flask import FlaskInstrumentor
-from flask import Flask
+from flask import Flask, jsonify
 
 # Set up the tracer provider
 trace.set_tracer_provider(TracerProvider())
@@ -134,6 +145,8 @@ For Java with Spring Boot:
 
 ```java
 // Add dependencies to pom.xml or build.gradle
+// Import io.opentelemetry.instrumentation:opentelemetry-instrumentation-bom
+// to align OpenTelemetry dependency versions.
 // io.opentelemetry:opentelemetry-api
 // io.opentelemetry.instrumentation:opentelemetry-spring-boot-starter
 
@@ -220,7 +233,7 @@ Auto-instrumentation covers common frameworks, but you'll want to add custom spa
 
 ```javascript
 // Get a tracer instance
-const { trace } = require('@opentelemetry/api');
+const { trace, SpanStatusCode } = require('@opentelemetry/api');
 const tracer = trace.getTracer('my-service');
 
 async function processOrder(orderId) {
@@ -308,7 +321,7 @@ The payment service receives these headers and continues the trace:
 ```javascript
 // Payment service receives request with trace context
 app.post('/charge', async (req, res) => {
-  // This span is automatically linked to the parent trace
+  // This span is automatically created as a child in the same trace
   const { orderId, amount } = req.body;
 
   const result = await processPayment(orderId, amount);
@@ -408,7 +421,7 @@ Background jobs and message processing need special attention. OpenTelemetry pro
 
 ```javascript
 // Extract trace context from message headers
-const { propagation, context, trace } = require('@opentelemetry/api');
+const { propagation, context, trace, SpanStatusCode } = require('@opentelemetry/api');
 
 async function handleMessage(message) {
   // Extract parent context from message metadata
@@ -417,7 +430,7 @@ async function handleMessage(message) {
     message.headers
   );
 
-  // Create a new span linked to the parent
+  // Create a new child span with the extracted parent context
   const tracer = trace.getTracer('message-processor');
 
   await context.with(parentContext, async () => {
@@ -480,6 +493,7 @@ span_processor = BatchSpanProcessor(
 Write tests to verify your instrumentation:
 
 ```javascript
+const { SpanStatusCode } = require('@opentelemetry/api');
 const { InMemorySpanExporter } = require('@opentelemetry/sdk-trace-base');
 
 describe('Order processing instrumentation', () => {
