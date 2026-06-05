@@ -96,6 +96,8 @@ package amf
 
 import (
     "context"
+    "time"
+
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/attribute"
     "go.opentelemetry.io/otel/metric"
@@ -184,15 +186,14 @@ func HandleRegistrationRequest(ctx context.Context, supi string, sliceInfo Slice
 
 ## Feeding Data into NWDAF
 
-NWDAF consumes analytics data through the Nnwdaf interface. You can bridge OpenTelemetry data to NWDAF by building an exporter that translates OTLP metrics into the 3GPP-defined event subscription format.
+NWDAF exposes analytics through 3GPP-defined Nnwdaf services: `Nnwdaf_AnalyticsInfo` is used by consumers to request analytics, and `Nnwdaf_EventsSubscription` is used to create subscriptions for analytics notifications. There is not a standard OTLP-to-NWDAF ingestion endpoint, so in practice you bridge OpenTelemetry data into the data source or implementation-specific adapter that your NWDAF uses.
 
 ```python
 # nwdaf_bridge.py
 import requests
-from opentelemetry.sdk.metrics.export import MetricReader
 
 class NWDAFMetricBridge:
-    """Bridges OpenTelemetry metrics to NWDAF analytics subscription format."""
+    """Bridges OpenTelemetry metrics to an NWDAF implementation adapter."""
 
     def __init__(self, nwdaf_endpoint: str, nf_instance_id: str):
         self.nwdaf_endpoint = nwdaf_endpoint
@@ -200,21 +201,18 @@ class NWDAFMetricBridge:
 
     def send_load_level(self, nf_type: str, cpu_usage: float,
                          memory_usage: float, active_sessions: int):
-        """Send NF load level info per 3GPP TS 29.520."""
+        """Send NF load level data to the NWDAF implementation's ingestion adapter."""
         payload = {
             "nfInstanceId": self.nf_instance_id,
             "nfType": nf_type,
-            "nfLoadLevelInformation": {
-                "nfCpuUsage": int(cpu_usage),
-                "nfMemoryUsage": int(memory_usage),
-                "nfStorageUsage": 0,
-                "currentLoad": active_sessions,
-            }
+            "cpuUsagePercent": cpu_usage,
+            "memoryUsagePercent": memory_usage,
+            "activeSessions": active_sessions,
         }
 
-        # Post to NWDAF analytics info endpoint
+        # Post to your NWDAF vendor's telemetry ingestion adapter.
         resp = requests.post(
-            f"{self.nwdaf_endpoint}/nnwdaf-analyticsinfo/v1/analytics",
+            f"{self.nwdaf_endpoint}/telemetry-ingest/v1/nf-load",
             json=payload,
             headers={"Content-Type": "application/json"}
         )
