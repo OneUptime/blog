@@ -8,13 +8,13 @@ Description: Learn how to containerize a Go Fiber web application with Docker us
 
 ---
 
-Fiber is a Go web framework inspired by Express.js, built on top of Fasthttp for extreme performance. It gives Go developers a familiar API while delivering throughput numbers that put most frameworks to shame. Docker and Go are a natural match because Go compiles to a single static binary, meaning your production container can be incredibly small. This guide walks through containerizing a Fiber application, from the first Dockerfile to production deployment with tiny container images.
+Fiber is a Go web framework inspired by Express.js, built on top of Fasthttp for extreme performance. It gives Go developers a familiar API while delivering throughput numbers that put most frameworks to shame. Docker and Go are a natural match because Go can compile to a single static binary, meaning your production container can be incredibly small. This guide walks through containerizing a Fiber application, from the first Dockerfile to production deployment with tiny container images.
 
 ## Prerequisites
 
 You need:
 
-- Go 1.21+
+- Go 1.25+
 - Docker Engine 20.10+
 - Basic Go knowledge
 
@@ -88,7 +88,7 @@ This Dockerfile produces a minimal production image:
 ```dockerfile
 # Stage 1: Build the Go binary
 
-FROM golang:1.22-alpine AS build
+FROM golang:1.26-alpine AS build
 
 WORKDIR /app
 
@@ -134,7 +134,7 @@ If you need debugging capabilities, use Alpine instead:
 
 ```dockerfile
 # Alternative: Alpine-based production image
-FROM alpine:3.19
+FROM alpine:3.23
 
 # Install CA certificates
 RUN apk --no-cache add ca-certificates
@@ -182,8 +182,6 @@ A Fiber app on `scratch` typically weighs between 8-15MB. That is remarkably sma
 Most web applications need a database. Here is a Compose setup with PostgreSQL.
 
 ```yaml
-version: "3.8"
-
 services:
   api:
     build:
@@ -318,8 +316,6 @@ go install github.com/air-verse/air@latest
 Development Compose file:
 
 ```yaml
-version: "3.8"
-
 services:
   api-dev:
     build:
@@ -345,7 +341,7 @@ services:
 Development Dockerfile:
 
 ```dockerfile
-FROM golang:1.22-alpine
+FROM golang:1.26-alpine
 
 WORKDIR /app
 
