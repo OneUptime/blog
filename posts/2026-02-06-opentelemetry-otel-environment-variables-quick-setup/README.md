@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Environment Variable, Configuration, OTEL, Quick Start
 
 Description: Master OpenTelemetry configuration using environment variables for fast, flexible setup without hardcoding values in your application code.
 
-Environment variables provide the fastest way to configure OpenTelemetry. Instead of writing configuration code, you set variables before starting your application. This approach keeps configuration separate from code, makes it easy to change settings between environments, and works consistently across all OpenTelemetry language implementations.
+Environment variables provide the fastest way to configure OpenTelemetry. Instead of writing configuration code, you set variables before starting your application. This approach keeps configuration separate from code, makes it easy to change settings between environments, and uses a common configuration model across OpenTelemetry language implementations.
 
 ## Why Use Environment Variables
 
@@ -24,7 +24,7 @@ Configuration through environment variables offers several advantages over code-
 
 ## Core Environment Variables
 
-Every OpenTelemetry SDK recognizes a standard set of environment variables defined in the specification. These work across all languages.
+OpenTelemetry defines a standard set of environment variables in the specification. Support varies by language and component, but these variables are the common baseline used by SDKs, exporters, and automatic instrumentation.
 
 **OTEL_SERVICE_NAME**: Identifies your service in traces and metrics.
 
@@ -55,7 +55,6 @@ export OTEL_TRACES_EXPORTER=otlp
 
 Common values:
 - `otlp`: OpenTelemetry Protocol (recommended)
-- `jaeger`: Jaeger-native format
 - `zipkin`: Zipkin format
 - `console`: Print to stdout (debugging)
 - `none`: Disable trace export
@@ -66,7 +65,7 @@ Common values:
 export OTEL_METRICS_EXPORTER=otlp
 ```
 
-Values match trace exporters: `otlp`, `prometheus`, `console`, `none`.
+Common metric values include `otlp`, `prometheus`, `console`, and `none`.
 
 **OTEL_LOGS_EXPORTER**: Which exporter to use for logs.
 
@@ -82,7 +81,7 @@ Log export is less mature than traces and metrics, but follows the same pattern.
 export OTEL_EXPORTER_OTLP_ENDPOINT=http://collector.example.com:4317
 ```
 
-This sets the endpoint for traces, metrics, and logs. For gRPC (default), use port 4317. For HTTP, use port 4318.
+This sets the endpoint for traces, metrics, and logs. For gRPC, use port 4317. For HTTP, use port 4318. The default protocol is SDK-dependent, so set `OTEL_EXPORTER_OTLP_PROTOCOL` explicitly if the port matters.
 
 You can also set signal-specific endpoints:
 ```bash
@@ -90,6 +89,8 @@ export OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://traces.example.com:4317
 export OTEL_EXPORTER_OTLP_METRICS_ENDPOINT=http://metrics.example.com:4317
 export OTEL_EXPORTER_OTLP_LOGS_ENDPOINT=http://logs.example.com:4317
 ```
+
+For OTLP/HTTP signal-specific endpoints, include the signal path such as `/v1/traces`, `/v1/metrics`, or `/v1/logs`.
 
 ## Complete Quick Setup Example
 
@@ -222,7 +223,7 @@ export OTEL_EXPORTER_OTLP_HEADERS="X-API-Key=${API_KEY}"
 OTLP supports both gRPC and HTTP protocols. Specify which to use:
 
 ```bash
-# Use gRPC (default, more efficient)
+# Use gRPC
 export OTEL_EXPORTER_OTLP_PROTOCOL=grpc
 export OTEL_EXPORTER_OTLP_ENDPOINT=http://collector:4317
 
@@ -307,14 +308,28 @@ dotnet app.dll
 
 **Go** (with manual SDK setup):
 ```go
-// Go reads environment variables through the SDK
+package main
+
 import (
-    "go.opentelemetry.io/otel"
-    "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+    "context"
+
+    "go.opentelemetry.io/contrib/exporters/autoexport"
+    sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
 
-// SDK automatically reads OTEL_* environment variables
+func newTracerProvider(ctx context.Context) (*sdktrace.TracerProvider, error) {
+    exporter, err := autoexport.NewSpanExporter(ctx)
+    if err != nil {
+        return nil, err
+    }
+
+    return sdktrace.NewTracerProvider(
+        sdktrace.WithBatcher(exporter),
+    ), nil
+}
 ```
+
+The `autoexport` package can select exporters from `OTEL_TRACES_EXPORTER`, `OTEL_METRICS_EXPORTER`, and `OTEL_LOGS_EXPORTER`. The standard OTLP exporter packages read OTLP settings such as `OTEL_EXPORTER_OTLP_ENDPOINT` and headers.
 
 ```bash
 export OTEL_SERVICE_NAME=my-service
@@ -440,7 +455,7 @@ When things don't work, enable SDK logging:
 export OTEL_LOG_LEVEL=debug
 ```
 
-This makes the SDK print detailed logs about initialization, span creation, and export attempts.
+This makes the SDK internal logger more verbose, which can help with initialization and export troubleshooting.
 
 For even more detail:
 
