@@ -23,11 +23,11 @@ graph TD
     style CS fill:#2196F3,color:#fff
 ```
 
-Remote sampling lets you change these rates from a single configuration file without touching any application code or triggering deployments. You update the collector config, reload it, and every service picks up the new rates on its next polling interval.
+Remote sampling lets you change these rates from a single configuration file without touching any application code or triggering deployments. You update the sampling strategies file, and every service picks up the new rates on its next polling interval after the collector reloads the file.
 
 ## Setting Up the Collector as a Sampling Server
 
-The OpenTelemetry Collector has a built-in Jaeger remote sampling extension that serves sampling strategies over HTTP. Services configured with the Jaeger remote sampler will poll this endpoint to get their sampling configuration.
+The OpenTelemetry Collector Contrib distribution includes a Jaeger remote sampling extension that serves sampling strategies over HTTP and gRPC. Services configured with the Jaeger remote sampler will poll this endpoint to get their sampling configuration.
 
 ```yaml
 # collector-config.yaml
@@ -36,14 +36,18 @@ The OpenTelemetry Collector has a built-in Jaeger remote sampling extension that
 
 extensions:
   # Jaeger remote sampling extension serves strategies to clients
-  jaeger_remote_sampling:
+  jaegerremotesampling:
     # HTTP endpoint where services fetch sampling strategies
     source:
       # Reload strategies from this file without restarting
       file: /etc/otel/sampling-strategies.json
+      reload_interval: 30s
     # Optional: serve on a specific port
     http:
       endpoint: 0.0.0.0:5778
+    # gRPC endpoint used by SDKs such as OpenTelemetry Java
+    grpc:
+      endpoint: 0.0.0.0:14250
 
 receivers:
   otlp:
@@ -63,7 +67,7 @@ exporters:
     endpoint: https://otel.oneuptime.com:4317
 
 service:
-  extensions: [jaeger_remote_sampling]
+  extensions: [jaegerremotesampling]
   pipelines:
     traces:
       receivers: [otlp]
@@ -71,7 +75,7 @@ service:
       exporters: [otlp]
 ```
 
-The extension reads sampling strategies from a JSON file and serves them on port 5778, which is the standard Jaeger sampling port. Services query this endpoint with their service name, and the collector returns the appropriate sampling strategy.
+The extension reads sampling strategies from a JSON file and serves them on port 5778 for HTTP clients and port 14250 for gRPC clients. HTTP clients query the `/sampling` endpoint with their service name, and the collector returns the appropriate sampling strategy.
 
 ## Defining Sampling Strategies
 
@@ -138,8 +142,8 @@ You can go even more granular and define different sampling rates for different 
         },
         {
           "operation": "/api/v1/search",
-          "type": "ratelimiting",
-          "param": 10.0
+          "type": "probabilistic",
+          "param": 0.02
         }
       ]
     }
@@ -147,7 +151,7 @@ You can go even more granular and define different sampling rates for different 
 }
 ```
 
-The API gateway defaults to 5% sampling for most operations. Health check endpoints get 0.1% because they produce enormous volumes of nearly identical traces. The checkout endpoint gets 50% because you want deep visibility into the purchase flow. The search endpoint is rate limited to 10 traces per second.
+The API gateway defaults to 5% sampling for most operations. Health check endpoints get 0.1% because they produce enormous volumes of nearly identical traces. The checkout endpoint gets 50% because you want deep visibility into the purchase flow. The search endpoint gets 2% sampling. Jaeger supports rate limiting for service-level strategies, but not for `operation_strategies`.
 
 ## Configuring the Java SDK for Remote Sampling
 
@@ -158,7 +162,8 @@ The OpenTelemetry Java agent has built-in support for Jaeger remote sampling. Yo
 java -javaagent:opentelemetry-javaagent.jar \
   -Dotel.service.name=payment-service \
   -Dotel.traces.sampler=jaeger_remote \
-  -Dotel.traces.sampler.arg=endpoint=http://collector:5778/sampling \
+  -Dotel.traces.sampler.arg=endpoint=http://collector:14250,pollingIntervalMs=60000,initialSamplingRate=0.05 \
+  -Dotel.exporter.otlp.protocol=grpc \
   -Dotel.exporter.otlp.endpoint=http://collector:4317 \
   -jar payment-service.jar
 ```
@@ -170,7 +175,7 @@ For applications not using the Java agent, you can configure remote sampling pro
 ```java
 import io.opentelemetry.sdk.trace.SdkTracerProvider;
 import io.opentelemetry.sdk.trace.samplers.Sampler;
-import io.opentelemetry.sdk.extension.jaeger.remoteSampler.JaegerRemoteSampler;
+import io.opentelemetry.sdk.extension.trace.jaeger.sampler.JaegerRemoteSampler;
 import java.time.Duration;
 
 public class RemoteSamplingConfig {
@@ -179,8 +184,8 @@ public class RemoteSamplingConfig {
         JaegerRemoteSampler sampler = JaegerRemoteSampler.builder()
             // Service name used to look up the strategy
             .setServiceName("payment-service")
-            // Collector sampling endpoint
-            .setEndpoint("http://collector:5778")
+            // Collector gRPC sampling endpoint
+            .setEndpoint("http://collector:14250")
             // How often to poll for strategy updates
             .setPollingInterval(Duration.ofSeconds(30))
             // Fallback sampler if the collector is unreachable
@@ -198,7 +203,7 @@ The `setInitialSampler` call is important. It defines what sampling strategy to 
 
 ## Configuring the Python SDK for Remote Sampling
 
-Python applications can use the Jaeger remote sampler through the `opentelemetry-sdk-extension-aws` package or by implementing a polling mechanism. Here is a practical approach using the built-in HTTP client to fetch strategies.
+The OpenTelemetry Python SDK does not include a built-in Jaeger remote sampler. If you need this behavior in Python, you can implement a custom sampler that polls the Jaeger HTTP sampling endpoint. Here is a practical approach for probabilistic strategies.
 
 ```python
 import requests
@@ -206,7 +211,7 @@ import threading
 import time
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.sampling import TraceIdRatioBased, ParentBased
+from opentelemetry.sdk.trace.sampling import TraceIdRatioBased, ParentBased, Sampler
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 
@@ -232,12 +237,11 @@ class RemoteSamplingManager:
                 # Fetch the sampling strategy for this service
                 url = f"{self.endpoint}?service={self.service_name}"
                 response = requests.get(url, timeout=5)
+                response.raise_for_status()
                 strategy = response.json()
 
                 # Extract the sampling rate from the response
-                if "probabilisticSampling" in strategy.get(
-                    "strategyType", ""
-                ):
+                if strategy.get("strategyType") == "PROBABILISTIC":
                     self.current_rate = strategy[
                         "probabilisticSampling"
                     ]["samplingRate"]
@@ -245,6 +249,35 @@ class RemoteSamplingManager:
                 # Keep using the last known rate if polling fails
                 pass
             time.sleep(self.poll_interval)
+
+class DynamicRateSampler(Sampler):
+    """Delegates root-span decisions to the latest remote sampling rate."""
+
+    def __init__(self, manager):
+        self.manager = manager
+
+    def should_sample(
+        self,
+        parent_context,
+        trace_id,
+        name,
+        kind=None,
+        attributes=None,
+        links=None,
+        trace_state=None,
+    ):
+        return TraceIdRatioBased(self.manager.current_rate).should_sample(
+            parent_context,
+            trace_id,
+            name,
+            kind,
+            attributes,
+            links,
+            trace_state,
+        )
+
+    def get_description(self):
+        return f"DynamicRateSampler{{rate={self.manager.current_rate}}}"
 
 # Initialize the sampling manager
 manager = RemoteSamplingManager(
@@ -254,8 +287,8 @@ manager = RemoteSamplingManager(
 )
 manager.start()
 
-# Set up the tracer provider with the initial rate
-sampler = ParentBased(root=TraceIdRatioBased(manager.current_rate))
+# Set up the tracer provider with a sampler that reads the latest rate
+sampler = ParentBased(root=DynamicRateSampler(manager))
 provider = TracerProvider(sampler=sampler)
 
 exporter = OTLPSpanExporter(endpoint="http://collector:4317")
@@ -264,7 +297,7 @@ provider.add_span_processor(BatchSpanProcessor(exporter))
 trace.set_tracer_provider(provider)
 ```
 
-This implementation polls the collector every 30 seconds and updates the sampling rate. The `ParentBased` wrapper ensures that child spans still respect parent decisions even when the local sampling rate changes.
+This implementation polls the collector every 30 seconds and updates the sampling rate used for new root-span decisions. The `ParentBased` wrapper ensures that child spans still respect parent decisions even when the local sampling rate changes. This minimal example handles probabilistic responses; rate-limiting and per-operation strategies require additional sampler logic.
 
 ## Deployment Architecture
 
@@ -295,14 +328,14 @@ Applications poll the gateway collector for sampling strategies (dashed lines) a
 
 ## Hot-Reloading Strategies
 
-One of the best features of file-based remote sampling is that you can update strategies without restarting the collector. The collector watches the strategies file for changes and reloads it automatically.
+One of the best features of file-based remote sampling is that you can update strategies without restarting the collector. The collector polls the strategies file according to `source.reload_interval` and reloads it automatically.
 
 ```bash
 # Update the sampling rate for payment-service on the fly
 # Edit the strategies file
 vim /etc/otel/sampling-strategies.json
 
-# The collector detects the file change and reloads
+# The collector detects the file change on its reload interval
 # Services pick up the new strategy on their next poll
 # No restarts needed anywhere in the stack
 ```
