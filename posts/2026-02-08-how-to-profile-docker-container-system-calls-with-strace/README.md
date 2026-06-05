@@ -8,7 +8,7 @@ Description: Learn how to use strace to trace and profile system calls inside Do
 
 ---
 
-When a Docker container misbehaves - slow responses, high CPU usage, mysterious hangs - the application logs often tell you what went wrong but not why. System call tracing with strace reveals what the application is actually doing at the kernel level. Every file read, network connection, memory allocation, and signal passes through system calls, and strace captures all of them.
+When a Docker container misbehaves - slow responses, high CPU usage, mysterious hangs - the application logs often tell you what went wrong but not why. System call tracing with strace reveals what the application is actually doing at the kernel level. File reads, network connections, memory mappings, and signals pass through system calls, and strace captures all of them.
 
 ## What Is strace?
 
@@ -29,7 +29,7 @@ docker run --rm -it --cap-add SYS_PTRACE alpine sh -c "
 "
 ```
 
-The `--cap-add SYS_PTRACE` flag is required. Docker's default seccomp profile blocks the ptrace syscall that strace needs.
+The `--cap-add SYS_PTRACE` flag is required when tracing arbitrary processes inside the container. Docker containers do not include `CAP_SYS_PTRACE` by default, and Docker's default seccomp profile restricts process-inspection syscalls unless the required capability is present.
 
 ### Method 2: strace from the Host
 
@@ -43,7 +43,7 @@ docker run -d --name myapp nginx:latest
 PID=$(docker inspect --format '{{.State.Pid}}' myapp)
 
 # Attach strace to the running process
-sudo strace -p $PID -f -e trace=network
+sudo strace -p $PID -f -e trace=%network
 ```
 
 ### Method 3: Using nsenter
@@ -54,8 +54,8 @@ For more control, enter the container's namespaces:
 # Get the container PID
 PID=$(docker inspect --format '{{.State.Pid}}' myapp)
 
-# Enter the container's namespaces and run strace
-sudo nsenter -t $PID -p -n -m -- strace -p 1 -f
+# Enter the container's PID and network namespaces and run host strace
+sudo nsenter -t $PID -p -n -- strace -p 1 -f
 ```
 
 ## Essential strace Flags
@@ -70,11 +70,11 @@ strace -f -p $PID
 strace -c -f -p $PID
 
 # -e: Filter to specific syscall categories
-strace -e trace=network -p $PID     # Network calls only
-strace -e trace=file -p $PID        # File operations only
-strace -e trace=memory -p $PID      # Memory operations
-strace -e trace=process -p $PID     # Process management
-strace -e trace=signal -p $PID      # Signal handling
+strace -e trace=%network -p $PID     # Network calls only
+strace -e trace=%file -p $PID        # File path operations only
+strace -e trace=%memory -p $PID      # Memory mapping operations
+strace -e trace=%process -p $PID     # Process management
+strace -e trace=%signal -p $PID      # Signal handling
 
 # -t / -tt: Add timestamps
 strace -tt -p $PID                  # Microsecond timestamps
@@ -86,7 +86,7 @@ strace -T -p $PID
 strace -o /tmp/trace.log -f -p $PID
 
 # Combine flags for comprehensive profiling
-strace -f -tt -T -e trace=network,file -o /tmp/trace.log -p $PID
+strace -f -tt -T -e trace=%network,%file -o /tmp/trace.log -p $PID
 ```
 
 ## Profiling Slow Container Startup
@@ -117,7 +117,7 @@ When a container has high latency or failed connections:
 ```bash
 # Trace only network-related syscalls
 PID=$(docker inspect --format '{{.State.Pid}}' myapp)
-sudo strace -f -tt -T -e trace=network -p $PID 2>&1 | head -100
+sudo strace -f -tt -T -e trace=%network -p $PID 2>&1 | head -100
 ```
 
 Example output for a slow DNS lookup:
@@ -138,7 +138,7 @@ For containers that seem I/O bound:
 ```bash
 # Trace file operations with timing
 PID=$(docker inspect --format '{{.State.Pid}}' myapp)
-sudo strace -f -tt -T -e trace=file,read,write -p $PID 2>&1 | \
+sudo strace -f -tt -T -e trace=%file,read,write -p $PID 2>&1 | \
   grep -E "(openat|read|write)" | head -50
 ```
 
@@ -149,15 +149,15 @@ Look for patterns like:
 
 ```bash
 # Get a summary of file-related syscall times
-sudo strace -f -c -e trace=file -p $PID
+sudo strace -f -c -e trace=%file,read,write -p $PID
 # Run for 30 seconds, then press Ctrl+C
 
 # Output:
 # % time     seconds  usecs/call     calls    errors syscall
 # ------ ----------- ----------- --------- --------- --------
 #  45.23    0.123456          12     10284           openat
-#  32.11    0.087654           3     29234           fstat
-#  15.44    0.042123           8      5267           read
+#  32.11    0.087654           3     29234           read
+#  15.44    0.042123           8      5267           write
 ```
 
 ## Generating System Call Profiles for Seccomp
@@ -176,13 +176,13 @@ echo "Tracing syscalls for $IMAGE over $DURATION seconds..."
 
 # Run the container with strace
 docker run --rm --cap-add SYS_PTRACE "$IMAGE" sh -c "
-    apk add --no-cache strace 2>/dev/null || apt-get install -y strace 2>/dev/null
+    apk add --no-cache strace 2>/dev/null || (apt-get update 2>/dev/null && apt-get install -y strace 2>/dev/null)
     strace -f -c -S calls /app/entrypoint.sh &
     STRACE_PID=\$!
     sleep $DURATION
     kill -INT \$STRACE_PID
     wait \$STRACE_PID 2>/dev/null
-" 2>&1 | grep -E '^\s+[0-9]' | awk '{print $NF}' | sort -u
+" 2>&1 | awk '/^[[:space:]]*[0-9]/ && $NF != "total" {print $NF}' | sort -u
 ```
 
 ## Comparing Before and After Optimization
@@ -217,7 +217,7 @@ docker run --rm --cap-add SYS_PTRACE "$IMAGE_NEW" sh -c "
 # Watch for file descriptors that are opened but never closed
 PID=$(docker inspect --format '{{.State.Pid}}' myapp)
 sudo strace -f -e trace=open,openat,close -p $PID 2>&1 | \
-  awk '/openat.*=/ {fd=$NF; files[fd]=$0} /close\(/ {gsub(/[^0-9]/,"",$2); delete files[$2]} END {for(fd in files) print files[fd]}'
+  awk '/open(at)?\(.*= [0-9]+$/ {fd=$NF; files[fd]=$0} /close\([0-9]+\).* = 0/ {fd=$0; sub(/^.*close\(/,"",fd); sub(/\).*$/,"",fd); delete files[fd]} END {for(fd in files) print files[fd]}'
 ```
 
 ### Finding Excessive Polling
@@ -270,13 +270,13 @@ strace itself adds overhead. Each traced syscall is intercepted by ptrace, addin
 sudo strace -c -f -p $PID
 
 # Trace only specific syscalls to reduce overhead
-sudo strace -f -e trace=network -p $PID
+sudo strace -f -e trace=%network -p $PID
 
 # Use a time limit
 timeout 30 sudo strace -f -c -p $PID
 ```
 
-For truly minimal-overhead tracing in production, consider eBPF-based tools like `bpftrace` instead of strace:
+For lower-overhead tracing in production, consider eBPF-based tools like `bpftrace` instead of strace:
 
 ```bash
 # bpftrace alternative - lower overhead
