@@ -12,7 +12,7 @@ When network communication between Docker containers breaks, logs alone rarely t
 
 ## Method 1: Running tcpdump Inside the Container
 
-The simplest approach is to run tcpdump directly inside the target container. This works if the container's image includes tcpdump or if you can install it.
+The simplest approach is to run tcpdump directly inside the target container. This works if the container's image includes tcpdump or if you can install it and the process has permission to capture packets.
 
 Install and run tcpdump in a running container:
 
@@ -78,7 +78,7 @@ docker run --rm -it \
 
 ## Method 3: Capturing from the Host
 
-Every container's network interface has a corresponding virtual ethernet (veth) pair on the host. You can capture packets on the host side.
+For containers on Linux bridge networks, each container network interface has a corresponding virtual ethernet (veth) pair on the host. You can capture packets on the host side.
 
 Find the container's veth interface:
 
@@ -109,7 +109,7 @@ To see all traffic on a Docker network (not just one container), capture on the 
 
 ```bash
 # Find the bridge interface for a custom Docker network
-BRIDGE=$(docker network inspect my-network --format '{{.Options.com.docker.network.bridge.name}}')
+BRIDGE=$(docker network inspect my-network --format '{{index .Options "com.docker.network.bridge.name"}}')
 echo "Bridge interface: $BRIDGE"
 
 # If the above is empty, find it through brctl or ip link
