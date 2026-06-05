@@ -38,31 +38,31 @@ processors:
       - context: span
         statements:
           # Step 1: Save the original URL for debugging
-          - set(attributes["http.url.original"], attributes["http.url"]) where attributes["http.url"] != nil
+          - set(attributes["url.full.original"], attributes["url.full"]) where attributes["url.full"] != nil
 
-          # Step 2: Strip query parameters
-          - replace_pattern(attributes["http.url"], "\\?.*$", "") where attributes["http.url"] != nil
+          # Step 2: Copy the URL into a normalized path attribute
+          - set(attributes["url.path.normalized"], attributes["url.full"]) where attributes["url.full"] != nil
 
-          # Step 3: Strip the domain/scheme
-          - replace_pattern(attributes["http.url"], "^https?://[^/]+", "") where attributes["http.url"] != nil
+          # Step 3: Strip query parameters
+          - replace_pattern(attributes["url.path.normalized"], "\\?.*$", "") where attributes["url.path.normalized"] != nil
 
-          # Step 4: Replace UUIDs with placeholders
-          - replace_pattern(attributes["http.url"], "/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", "/{uuid}") where attributes["http.url"] != nil
+          # Step 4: Strip the domain/scheme
+          - replace_pattern(attributes["url.path.normalized"], "^https?://[^/]+", "") where attributes["url.path.normalized"] != nil
 
-          # Step 5: Replace numeric IDs
-          - replace_pattern(attributes["http.url"], "/[0-9]+", "/{id}") where attributes["http.url"] != nil
+          # Step 5: Replace UUIDs with placeholders
+          - replace_pattern(attributes["url.path.normalized"], "/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", "/{uuid}") where attributes["url.path.normalized"] != nil
 
-          # Step 6: Set the normalized URL as http.route if not already set
-          - set(attributes["http.route"], attributes["http.url"]) where attributes["http.route"] == nil and attributes["http.url"] != nil
+          # Step 6: Replace numeric IDs
+          - replace_pattern(attributes["url.path.normalized"], "/[0-9]+", "/{id}") where attributes["url.path.normalized"] != nil
 
-          # Step 7: Build span name from method + normalized route
-          - set(name, Concat([attributes["http.method"], " ", attributes["http.route"]], "")) where attributes["http.method"] != nil and attributes["http.route"] != nil
+          # Step 7: Build span name from method + normalized path
+          - set(name, Concat([attributes["http.request.method"], " ", attributes["url.path.normalized"]], "")) where attributes["http.request.method"] != nil and attributes["url.path.normalized"] != nil
 
           # Step 8: Classify the endpoint
-          - set(attributes["endpoint.category"], "api") where IsMatch(attributes["http.route"], "^/api/.*")
-          - set(attributes["endpoint.category"], "webhook") where IsMatch(attributes["http.route"], "^/webhooks?/.*")
-          - set(attributes["endpoint.category"], "internal") where IsMatch(attributes["http.route"], "^/(health|ready|metrics).*")
-          - set(attributes["endpoint.category"], "other") where attributes["endpoint.category"] == nil and attributes["http.route"] != nil
+          - set(attributes["endpoint.category"], "api") where IsMatch(attributes["url.path.normalized"], "^/api/.*")
+          - set(attributes["endpoint.category"], "webhook") where IsMatch(attributes["url.path.normalized"], "^/webhooks?/.*")
+          - set(attributes["endpoint.category"], "internal") where IsMatch(attributes["url.path.normalized"], "^/(health|ready|metrics).*")
+          - set(attributes["endpoint.category"], "other") where attributes["endpoint.category"] == nil and attributes["url.path.normalized"] != nil
 ```
 
 ## Multi-Step Log Processing
@@ -125,7 +125,7 @@ processors:
       - context: span
         statements:
           - set(attributes["cluster"], resource.attributes["cluster"]) where resource.attributes["cluster"] != nil
-          - set(name, Concat([attributes["http.method"], " ", attributes["http.route"]], "")) where attributes["http.method"] != nil and attributes["http.route"] != nil
+          - set(name, Concat([attributes["http.request.method"], " ", attributes["http.route"]], "")) where attributes["http.request.method"] != nil and attributes["http.route"] != nil
 
       # Context 3: Span event operations (runs after span context)
       - context: spanevent
@@ -145,8 +145,8 @@ processors:
       - context: span
         statements:
           # Step 1: Set error status from HTTP codes
-          - set(status.code, 2) where attributes["http.response.status_code"] >= 500
-          - set(status.code, 2) where attributes["http.response.status_code"] >= 400 and attributes["http.response.status_code"] != 404
+          - set(status.code, STATUS_CODE_ERROR) where attributes["http.response.status_code"] >= 500
+          - set(status.code, STATUS_CODE_ERROR) where attributes["http.response.status_code"] >= 400 and attributes["http.response.status_code"] != 404
 
           # Step 2: Categorize the error
           - set(attributes["error.category"], "server_error") where attributes["http.response.status_code"] >= 500
@@ -158,14 +158,14 @@ processors:
           - set(attributes["alert.priority"], "critical") where attributes["error.category"] == "server_error" and resource.attributes["deployment.environment"] == "production"
           - set(attributes["alert.priority"], "high") where attributes["error.category"] == "timeout" and resource.attributes["deployment.environment"] == "production"
           - set(attributes["alert.priority"], "medium") where attributes["error.category"] == "client_error"
-          - set(attributes["alert.priority"], "low") where attributes["alert.priority"] == nil and status.code == 2
+          - set(attributes["alert.priority"], "low") where attributes["alert.priority"] == nil and status.code == STATUS_CODE_ERROR
 
           # Step 4: Build error summary
-          - set(attributes["error.summary"], Concat([attributes["error.category"], " - ", attributes["exception.type"]], "")) where status.code == 2 and attributes["exception.type"] != nil
-          - set(attributes["error.summary"], Concat([attributes["error.category"], " - HTTP ", attributes["http.response.status_code"]], "")) where status.code == 2 and attributes["exception.type"] == nil and attributes["http.response.status_code"] != nil
+          - set(attributes["error.summary"], Concat([attributes["error.category"], " - ", attributes["exception.type"]], "")) where status.code == STATUS_CODE_ERROR and attributes["exception.type"] != nil
+          - set(attributes["error.summary"], Concat([attributes["error.category"], " - HTTP ", attributes["http.response.status_code"]], "")) where status.code == STATUS_CODE_ERROR and attributes["exception.type"] == nil and attributes["http.response.status_code"] != nil
 
           # Step 5: Set status message
-          - set(status.message, attributes["error.summary"]) where status.code == 2 and attributes["error.summary"] != nil
+          - set(status.message, attributes["error.summary"]) where status.code == STATUS_CODE_ERROR and attributes["error.summary"] != nil
 ```
 
 ## Using Multiple Transform Processors
@@ -178,22 +178,27 @@ processors:
     trace_statements:
       - context: span
         statements:
-          - replace_pattern(attributes["http.url"], "\\?.*$", "")
-          - replace_pattern(attributes["http.url"], "/[0-9]+", "/{id}")
+          - set(attributes["url.full.original"], attributes["url.full"]) where attributes["url.full"] != nil
+          - set(attributes["url.path.normalized"], attributes["url.full"]) where attributes["url.full"] != nil
+          - replace_pattern(attributes["url.path.normalized"], "\\?.*$", "") where attributes["url.path.normalized"] != nil
+          - replace_pattern(attributes["url.path.normalized"], "^https?://[^/]+", "") where attributes["url.path.normalized"] != nil
+          - replace_pattern(attributes["url.path.normalized"], "/[0-9]+", "/{id}") where attributes["url.path.normalized"] != nil
 
   transform/step2_enrich:
     trace_statements:
       - context: span
         statements:
-          - set(name, Concat([attributes["http.method"], " ", attributes["http.url"]], ""))
-          - set(attributes["endpoint.type"], "api") where IsMatch(attributes["http.url"], "^/api/.*")
+          - set(name, Concat([attributes["http.request.method"], " ", attributes["url.path.normalized"]], "")) where attributes["http.request.method"] != nil and attributes["url.path.normalized"] != nil
+          - set(attributes["endpoint.type"], "api") where IsMatch(attributes["url.path.normalized"], "^/api/.*")
 
   transform/step3_cleanup:
     trace_statements:
       - context: span
         statements:
           - truncate_all(attributes, 512)
-          - delete_key(attributes, "http.url.original")
+          - delete_key(attributes, "url.full.original")
+
+  batch:
 
 service:
   pipelines:
@@ -210,7 +215,7 @@ Splitting into multiple transform processors makes the configuration easier to r
 When a multi-step transformation produces unexpected results, add temporary debug attributes:
 
 ```yaml
-- set(attributes["_debug.after_step1"], attributes["http.url"])
+- set(attributes["_debug.after_step1"], attributes["url.path.normalized"])
 # ... more steps ...
 
 - set(attributes["_debug.after_step5"], name)
