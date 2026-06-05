@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Service Mesh, Sidecar Proxy, Istio, Latency
 
 Description: Measure and debug service mesh sidecar proxy overhead by comparing OpenTelemetry trace timelines with and without the proxy layer.
 
-Service meshes like Istio and Linkerd add a sidecar proxy to every pod. This proxy handles mTLS, load balancing, retries, and observability. But it also adds latency. Every request goes through two extra network hops: one through the sender's sidecar and one through the receiver's sidecar. When latency budgets are tight, you need to know exactly how much overhead the mesh is adding. OpenTelemetry traces make this measurable.
+Sidecar-based service meshes like Istio and Linkerd add a proxy to every pod. This proxy handles mTLS, load balancing, retries, and observability. But it also adds latency. Every request goes through two extra proxy hops: one through the sender's sidecar and one through the receiver's sidecar. When latency budgets are tight, you need to know exactly how much overhead the mesh is adding. OpenTelemetry traces make this measurable.
 
 ## Understanding the Proxy Hops
 
@@ -20,11 +20,11 @@ With a sidecar mesh, the path becomes:
 Service A -> Envoy (outbound) -> Network -> Envoy (inbound) -> Service B
 ```
 
-Each Envoy proxy adds processing time for TLS termination, header injection, routing decisions, and telemetry collection. On a healthy mesh, this overhead is typically 1-5ms per hop. But misconfiguration, resource constraints, or complex routing rules can push it much higher.
+Each Envoy proxy adds processing time for mTLS, header handling, routing decisions, and telemetry collection. On a healthy mesh, this overhead is often small, but it depends on workload, policy, and proxy configuration. Misconfiguration, resource constraints, or complex routing rules can push it much higher.
 
 ## Capturing Proxy Spans in Istio
 
-Istio's Envoy sidecars can generate OpenTelemetry spans. Enable tracing in your Istio mesh configuration:
+Istio's Envoy sidecars can generate OpenTelemetry spans. First, define an OpenTelemetry extension provider in your Istio mesh configuration:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -32,34 +32,66 @@ kind: IstioOperator
 spec:
   meshConfig:
     enableTracing: true
-    defaultConfig:
-      tracing:
-        sampling: 100  # 100% for debugging, lower for production
-        openCensusAgent:
-          address: "otel-collector.observability:55678"
     extensionProviders:
-      - name: otel
+      - name: otel-tracing
         opentelemetry:
           service: otel-collector.observability.svc.cluster.local
           port: 4317
 ```
 
-With this enabled, every request through the mesh generates proxy spans that show up alongside your application spans.
+Then enable tracing and set the sampling rate with Istio's Telemetry API:
+
+```yaml
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
+metadata:
+  name: mesh-tracing
+  namespace: istio-system
+spec:
+  tracing:
+    - providers:
+        - name: otel-tracing
+      randomSamplingPercentage: 100  # 100% for debugging, lower for production
+```
+
+With this enabled, sampled requests through the mesh generate proxy spans. To see those spans stitched together with your application spans, your services still need to propagate trace context headers on outbound calls.
 
 ## Measuring Proxy Overhead
 
-The proxy spans have distinct names in Istio (usually the upstream cluster name). Here is how to measure the overhead:
+The proxy spans have distinct names and attributes in Istio. Envoy's default operation name is based on the invoked host or route decorator, and the span metadata can include the upstream cluster. Here is how to measure the proxy span time:
 
 ```python
+from datetime import datetime, timezone
+
+
+def span_time_unix_nano(value):
+    if isinstance(value, (int, float)):
+        return int(value)
+    if isinstance(value, str):
+        return int(
+            datetime.fromisoformat(value.replace("Z", "+00:00"))
+            .astimezone(timezone.utc)
+            .timestamp()
+            * 1_000_000_000
+        )
+    raise TypeError(f"Unsupported span timestamp: {value!r}")
+
+
 def measure_proxy_overhead(trace_data):
     """
-    Calculate the time spent in sidecar proxies vs application code
+    Calculate proxy span time vs application span time
     for each request in a trace.
     """
     results = []
+    trace_start = None
+    trace_end = None
 
     for span in trace_data["spans"]:
         attrs = span.get("attributes", {})
+        start_ns = span_time_unix_nano(span["startTime"])
+        end_ns = span_time_unix_nano(span["endTime"])
+        trace_start = start_ns if trace_start is None else min(trace_start, start_ns)
+        trace_end = end_ns if trace_end is None else max(trace_end, end_ns)
 
         # Identify proxy spans by their attributes
         is_proxy = (
@@ -68,7 +100,7 @@ def measure_proxy_overhead(trace_data):
             or "envoy" in span.get("name", "").lower()
         )
 
-        duration_ms = (span["endTime"] - span["startTime"]) / 1_000_000
+        duration_ms = (end_ns - start_ns) / 1_000_000
 
         results.append({
             "name": span["name"],
@@ -81,21 +113,21 @@ def measure_proxy_overhead(trace_data):
     # Calculate totals
     proxy_time = sum(r["duration_ms"] for r in results if r["is_proxy"])
     app_time = sum(r["duration_ms"] for r in results if not r["is_proxy"])
-    total_time = trace_data["spans"][0]["endTime"] - trace_data["spans"][0]["startTime"]
-    total_ms = total_time / 1_000_000
+    total_ms = ((trace_end or 0) - (trace_start or 0)) / 1_000_000
+    span_time = proxy_time + app_time
 
     return {
         "total_ms": round(total_ms, 2),
-        "proxy_ms": round(proxy_time, 2),
-        "app_ms": round(app_time, 2),
-        "proxy_overhead_pct": round(proxy_time / total_ms * 100, 1) if total_ms > 0 else 0,
+        "proxy_span_ms": round(proxy_time, 2),
+        "app_span_ms": round(app_time, 2),
+        "proxy_span_share_pct": round(proxy_time / span_time * 100, 1) if span_time > 0 else 0,
         "spans": results,
     }
 ```
 
 ## A/B Comparison: With and Without Mesh
 
-For a definitive measurement, temporarily bypass the mesh for a test workload and compare:
+For a definitive measurement, temporarily bypass the mesh for a test workload and compare. A direct Pod IP request from a meshed client can still pass through the client's outbound sidecar, and a request to a meshed destination can still pass through the destination's inbound sidecar. Use a client and destination workload with sidecar injection disabled for the direct path.
 
 ```python
 from opentelemetry import trace
@@ -123,7 +155,7 @@ async def compare_mesh_overhead(target_url, direct_url, num_requests=100):
                 span.set_attribute("test.path", "mesh")
                 span.set_attribute("test.duration_ms", elapsed)
 
-            # Request bypassing the mesh (direct to pod IP)
+            # Request bypassing the mesh (from an unmeshed client to an unmeshed target)
             with tracer.start_as_current_span("test.direct") as span:
                 start = time.monotonic()
                 resp = await client.get(direct_url)
@@ -211,6 +243,11 @@ The mesh may intercept DNS queries, adding latency. Look for DNS-related delays 
 Export proxy overhead as a metric for continuous monitoring:
 
 ```python
+from opentelemetry import metrics
+
+
+meter = metrics.get_meter("mesh-overhead")
+
 mesh_overhead = meter.create_histogram(
     name="service_mesh.proxy.overhead",
     description="Additional latency introduced by the service mesh proxy",
@@ -219,7 +256,7 @@ mesh_overhead = meter.create_histogram(
 
 def record_overhead(trace_data):
     overhead = measure_proxy_overhead(trace_data)
-    mesh_overhead.record(overhead["proxy_ms"], attributes={
+    mesh_overhead.record(overhead["proxy_span_ms"], attributes={
         "source.service": get_source_service(trace_data),
         "destination.service": get_dest_service(trace_data),
     })
@@ -227,4 +264,4 @@ def record_overhead(trace_data):
 
 ## Summary
 
-Service mesh sidecar overhead is real but manageable when you can measure it. Use OpenTelemetry traces to isolate proxy spans from application spans, calculate the overhead percentage, and run A/B comparisons. When the overhead is too high, check sidecar resource limits, simplify authorization policies, and monitor the proxy latency as a first-class metric. The mesh provides valuable features, but you need to know what they cost.
+Service mesh sidecar overhead is real but manageable when you can measure it. Use OpenTelemetry traces to isolate proxy spans from application spans, calculate the proxy span share, and run A/B comparisons. When the overhead is too high, check sidecar resource limits, simplify authorization policies, and monitor the proxy latency as a first-class metric. The mesh provides valuable features, but you need to know what they cost.
