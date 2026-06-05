@@ -24,7 +24,7 @@ The diagram above shows how a single receiver can feed multiple pipelines, each 
 
 ## Basic Fan-Out Configuration
 
-The simplest fan-out pattern involves defining multiple pipelines that use the same receiver. Here's a basic configuration that sends traces to both Jaeger and Zipkin:
+The simplest fan-out pattern involves defining multiple pipelines that use the same receiver. Here's a basic configuration that sends traces to both Jaeger (using OTLP) and Zipkin:
 
 ```yaml
 # Basic fan-out configuration for traces
@@ -43,9 +43,9 @@ processors:
     send_batch_size: 1024
 
 exporters:
-  # Export to Jaeger
-  jaeger:
-    endpoint: jaeger:14250
+  # Export to Jaeger using OTLP
+  otlp/jaeger:
+    endpoint: jaeger:4317
     tls:
       insecure: true
 
@@ -59,7 +59,7 @@ service:
     traces/jaeger:
       receivers: [otlp]
       processors: [batch]
-      exporters: [jaeger]
+      exporters: [otlp/jaeger]
 
     # Second pipeline: OTLP -> Batch -> Zipkin
     traces/zipkin:
@@ -104,14 +104,14 @@ exporters:
     endpoint: storage-backend:4317
     tls:
       insecure: false
-      cert_file: /etc/certs/storage-cert.pem
+      ca_file: /etc/certs/storage-ca.pem
 
   # Expensive analytics platform (sampled data only)
   otlp/analytics:
     endpoint: analytics-backend:4317
     tls:
       insecure: false
-      cert_file: /etc/certs/analytics-cert.pem
+      ca_file: /etc/certs/analytics-ca.pem
 
 service:
   pipelines:
@@ -150,12 +150,9 @@ processors:
 
   # Filter metrics - only keep HTTP-related metrics
   filter/http:
-    metrics:
-      include:
-        match_type: regexp
-        metric_names:
-          - http_.*
-          - requests_.*
+    error_mode: ignore
+    metric_conditions:
+      - 'not IsMatch(metric.name, "^http_.*") and not IsMatch(metric.name, "^requests_.*")'
 
   # Cumulative to delta conversion
   cumulativetodelta:
@@ -166,13 +163,13 @@ processors:
 
 exporters:
   # Send all metrics to Prometheus
-  prometheusremotewrite:
+  prometheus_remote_write:
     endpoint: http://prometheus:9090/api/v1/write
     tls:
       insecure: true
 
   # Send filtered metrics to specialized backend
-  otlphttp/metrics:
+  otlp_http/metrics:
     endpoint: http://metrics-backend:4318
     compression: gzip
 
@@ -182,13 +179,13 @@ service:
     metrics/all:
       receivers: [prometheus]
       processors: [batch]
-      exporters: [prometheusremotewrite]
+      exporters: [prometheus_remote_write]
 
     # Pipeline 2: Filtered HTTP metrics with delta conversion
     metrics/http:
       receivers: [prometheus]
       processors: [filter/http, cumulativetodelta, batch]
-      exporters: [otlphttp/metrics]
+      exporters: [otlp_http/metrics]
 ```
 
 ## Cross-Signal Fan-Out Pattern
@@ -209,12 +206,9 @@ processors:
   batch/metrics:
     timeout: 30s
 
-  batch/logs:
-    timeout: 5s
-
+connectors:
   # Add span metrics from traces
-  spanmetrics:
-    metrics_exporter: prometheus
+  span_metrics:
 
 exporters:
   # Multi-signal backend
@@ -222,13 +216,13 @@ exporters:
     endpoint: primary-backend:4317
 
   # Specialized exporters
-  jaeger:
-    endpoint: jaeger:14250
+  otlp/jaeger:
+    endpoint: jaeger:4317
     tls:
       insecure: true
 
   prometheus:
-    endpoint: prometheus:9090
+    endpoint: 0.0.0.0:9464
 
 service:
   pipelines:
@@ -240,8 +234,8 @@ service:
 
     traces/jaeger:
       receivers: [otlp]
-      processors: [spanmetrics, batch/traces]
-      exporters: [jaeger]
+      processors: [batch/traces]
+      exporters: [otlp/jaeger, span_metrics]
 
     # Metric pipelines (including derived span metrics)
     metrics/primary:
@@ -250,12 +244,12 @@ service:
       exporters: [otlp/primary]
 
     metrics/prometheus:
-      receivers: [otlp, spanmetrics]
+      receivers: [otlp, span_metrics]
       processors: [batch/metrics]
       exporters: [prometheus]
 ```
 
-Notice how the `traces/jaeger` pipeline includes the `spanmetrics` processor, which generates metrics from trace spans. These derived metrics are then consumed by the `metrics/prometheus` pipeline through the `spanmetrics` receiver connection.
+Notice how the `traces/jaeger` pipeline exports spans to the `span_metrics` connector, which generates metrics from trace spans. These derived metrics are then consumed by the `metrics/prometheus` pipeline through the `span_metrics` receiver connection.
 
 ## Fan-Out with Error Handling
 
@@ -272,13 +266,6 @@ processors:
   batch:
     timeout: 10s
     send_batch_size: 1024
-
-  # Retry processor for unreliable backends
-  retry:
-    enabled: true
-    initial_interval: 5s
-    max_interval: 30s
-    max_elapsed_time: 300s
 
 exporters:
   # Primary backend (reliable)
@@ -303,8 +290,8 @@ exporters:
       max_interval: 60s
       max_elapsed_time: 600s
 
-  # Logging exporter for debugging
-  logging:
+  # Debug exporter for troubleshooting
+  debug:
     verbosity: detailed
     sampling_initial: 5
     sampling_thereafter: 200
@@ -318,13 +305,13 @@ service:
 
     traces/secondary:
       receivers: [otlp]
-      processors: [retry, batch]
+      processors: [batch]
       exporters: [otlp/secondary]
 
     traces/debug:
       receivers: [otlp]
       processors: [batch]
-      exporters: [logging]
+      exporters: [debug]
 ```
 
 This configuration shows how each exporter can have different retry and queuing strategies. The secondary backend has a larger queue and more aggressive retry settings to handle instability.
