@@ -4,21 +4,21 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, ActiveMQ, Monitoring, JMX, Messaging, Observability, Java
 
-Description: Learn how to monitor Apache ActiveMQ with OpenTelemetry using the JMX receiver, JMS instrumentation, and custom metrics for broker health and queue performance.
+Description: Learn how to monitor Apache ActiveMQ with OpenTelemetry using JMX metrics, JMS instrumentation, and custom metrics for broker health and queue performance.
 
 ---
 
 Apache ActiveMQ is one of the most widely deployed open-source message brokers, handling millions of messages daily in enterprise environments. Monitoring ActiveMQ effectively requires visibility into both the broker itself (queue depths, memory usage, connection counts) and the applications that interact with it (message production rates, consumption latency, processing errors). OpenTelemetry provides a unified approach to collecting both types of telemetry, letting you correlate broker-level metrics with application-level traces in a single observability platform.
 
-This guide covers three complementary approaches: using the OpenTelemetry Collector's JMX receiver to scrape broker metrics, instrumenting JMS client code for distributed tracing, and combining both for full-stack ActiveMQ observability.
+This guide covers three complementary approaches: using OpenTelemetry JMX metrics to scrape broker metrics, instrumenting JMS client code for distributed tracing, and combining both for full-stack ActiveMQ observability.
 
 ## ActiveMQ Monitoring Architecture
 
-ActiveMQ exposes its internal metrics through JMX (Java Management Extensions). The OpenTelemetry Collector can scrape these metrics using the JMX receiver, which connects to ActiveMQ's JMX endpoint and translates MBean attributes into OpenTelemetry metrics. On the application side, OpenTelemetry's JMS instrumentation library creates spans for message send and receive operations.
+ActiveMQ exposes its internal metrics through JMX (Java Management Extensions). OpenTelemetry can scrape these metrics with the standalone JMX Scraper, or with the Collector's deprecated JMX receiver for deployments that still use it. Both connect to ActiveMQ's JMX endpoint and translate MBean attributes into OpenTelemetry metrics. On the application side, OpenTelemetry's JMS instrumentation library creates spans for message send and receive operations.
 
 ```mermaid
 graph TB
-    A[ActiveMQ Broker] -->|JMX| B[OTel Collector<br/>JMX Receiver]
+    A[ActiveMQ Broker] -->|JMX| B[JMX Scraper or OTel Collector<br/>JMX Receiver]
     C[Producer App] -->|OTLP| B
     D[Consumer App] -->|OTLP| B
     C -->|JMS| A
@@ -30,9 +30,9 @@ graph TB
     style E fill:#9f9,stroke:#333
 ```
 
-## Collecting Broker Metrics with the JMX Receiver
+## Collecting Broker Metrics with JMX
 
-The JMX receiver in the OpenTelemetry Collector connects to ActiveMQ's JMX port and collects broker-level metrics. First, make sure JMX is enabled on your ActiveMQ broker:
+The OpenTelemetry JMX Scraper and the Collector JMX receiver connect to ActiveMQ's JMX port and collect broker-level metrics. The Collector JMX receiver is deprecated as of January 30, 2026, so new deployments should prefer running the standalone JMX Scraper and exporting OTLP metrics to the Collector. First, make sure JMX is enabled on your ActiveMQ broker:
 
 ```bash
 # In activemq.env or activemq startup script
@@ -49,14 +49,14 @@ ACTIVEMQ_SUNJMX_START="-Dcom.sun.management.jmxremote \
 
 In production, always enable JMX authentication. The password and access files control who can connect and what operations they can perform.
 
-Now configure the OpenTelemetry Collector with the JMX receiver and a Groovy script that defines which metrics to collect:
+Now configure the OpenTelemetry Collector with the JMX receiver and the built-in ActiveMQ target system. If you are starting from scratch, use the standalone JMX Scraper with the same `otel.jmx.target.system=activemq` setting instead:
 
 ```yaml
 # otel-collector-config.yaml
 receivers:
   # JMX receiver scrapes ActiveMQ MBeans
   jmx:
-    jar_path: /opt/opentelemetry-jmx-metrics.jar
+    jar_path: /opt/opentelemetry-jmx-scraper.jar
     endpoint: activemq-broker:1099
     target_system: activemq
     collection_interval: 30s
@@ -104,9 +104,9 @@ service:
 
 The `target_system: activemq` setting tells the JMX receiver to use the built-in ActiveMQ metric definitions. This automatically collects key metrics like queue size, enqueue/dequeue counts, producer and consumer counts, and memory usage.
 
-## Key Metrics from the JMX Receiver
+## Key Metrics from JMX
 
-The ActiveMQ target system in the JMX receiver collects these essential metrics:
+The ActiveMQ target system collects these essential metrics:
 
 ```yaml
 # Metrics automatically collected with target_system: activemq
@@ -115,29 +115,29 @@ The ActiveMQ target system in the JMX receiver collects these essential metrics:
 # Queue depth - messages waiting for consumption
 # MBean: org.apache.activemq:type=Broker,brokerName=*,destinationType=Queue,destinationName=*
 # Attribute: QueueSize
-activemq.queue.size:
+activemq.message.queue.size:
   description: "Number of messages in the queue"
   unit: "messages"
 
 # Message rates
-activemq.queue.enqueue_count:
+activemq.message.enqueued:
   description: "Total messages enqueued"
-activemq.queue.dequeue_count:
+activemq.message.dequeued:
   description: "Total messages dequeued"
 
 # Consumer and producer counts
-activemq.queue.consumer_count:
+activemq.consumer.count:
   description: "Number of active consumers"
-activemq.queue.producer_count:
+activemq.producer.count:
   description: "Number of active producers"
 
 # Memory usage
-activemq.broker.memory_percent_usage:
-  description: "Percentage of broker memory used"
-activemq.broker.store_percent_usage:
-  description: "Percentage of store (disk) used"
-activemq.broker.temp_percent_usage:
-  description: "Percentage of temp storage used"
+activemq.memory.utilization:
+  description: "Fraction of broker memory used"
+activemq.store.utilization:
+  description: "Fraction of persistent store used"
+activemq.temp.utilization:
+  description: "Fraction of temporary storage used"
 ```
 
 Queue size is the single most important metric. A steadily growing queue size indicates that consumers cannot keep up with producers. Memory and store usage percentages tell you how close the broker is to running out of resources, which triggers flow control and slows down producers.
@@ -161,7 +161,6 @@ The Java agent automatically instruments JMS `MessageProducer.send()` calls and 
 // OrderProducer.java - Send messages to ActiveMQ with tracing
 import javax.jms.*;
 import org.apache.activemq.ActiveMQConnectionFactory;
-import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.api.GlobalOpenTelemetry;
 
@@ -171,7 +170,7 @@ public class OrderProducer {
     private final Session session;
     private final MessageProducer producer;
 
-    // Get a tracer for custom spans
+    // Get a tracer if you add custom producer spans later
     private static final Tracer tracer =
         GlobalOpenTelemetry.getTracer("order-producer");
 
@@ -221,6 +220,7 @@ import org.apache.activemq.ActiveMQConnectionFactory;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.api.GlobalOpenTelemetry;
+import io.opentelemetry.context.Scope;
 
 public class OrderConsumer implements MessageListener {
 
@@ -244,8 +244,8 @@ public class OrderConsumer implements MessageListener {
 
     @Override
     public void onMessage(Message message) {
-        // The OTel agent automatically creates a CONSUMER span
-        // linked to the producer's trace context
+        // The OTel agent automatically creates a consumer span.
+        // With receive telemetry enabled, it links to the producer trace.
         try {
             TextMessage textMessage = (TextMessage) message;
             String orderId = message.getStringProperty("orderId");
@@ -272,7 +272,7 @@ public class OrderConsumer implements MessageListener {
         var span = tracer.spanBuilder("process_order")
             .setAttribute("order.id", orderId)
             .startSpan();
-        try {
+        try (Scope scope = span.makeCurrent()) {
             // Your order processing logic here
             validateOrder(orderJson);
             saveToDatabase(orderJson);
@@ -281,10 +281,26 @@ public class OrderConsumer implements MessageListener {
             span.end();
         }
     }
+
+    private void validateOrder(String orderJson) {
+        // Validate the order payload
+    }
+
+    private void saveToDatabase(String orderJson) {
+        // Save the order
+    }
+
+    private void notifyFulfillment(String orderId) {
+        // Notify downstream services
+    }
+
+    private void handleProcessingError(Message message, Exception e) {
+        // Send to a DLQ or trigger retry handling
+    }
 }
 ```
 
-The `onMessage` callback is automatically wrapped in a consumer span by the Java agent. That span extracts the trace context from the JMS message properties, so it becomes a child of the producer span. The custom `process_order` span adds more detail about what happens during message processing.
+The `onMessage` callback is automatically wrapped in a consumer span by the Java agent. When `otel.instrumentation.messaging.experimental.receive-telemetry.enabled=true` is enabled, the consumer side starts a new trace with a span link to the producer trace. The custom `process_order` span adds more detail about what happens during message processing.
 
 Using `CLIENT_ACKNOWLEDGE` mode and calling `message.acknowledge()` after successful processing ensures that messages are not lost if the consumer crashes during processing. The tracing captures whether the acknowledge happened, giving you visibility into message acknowledgment patterns.
 
@@ -350,41 +366,15 @@ These application-level metrics complement the broker-level JMX metrics. While J
 ActiveMQ routes messages that fail repeatedly to a dead letter queue (DLQ), which is `ActiveMQ.DLQ` by default. Monitoring DLQ growth is critical because it indicates persistent processing failures:
 
 ```yaml
-# Add DLQ-specific monitoring to your collector config
-receivers:
-  jmx:
-    jar_path: /opt/opentelemetry-jmx-metrics.jar
-    endpoint: activemq-broker:1099
-    target_system: activemq
-    collection_interval: 30s
-    # Additional MBean queries for DLQ monitoring
-    additional_jars: []
-
-processors:
-  # Filter to create alerts on DLQ growth
-  filter/dlq_alert:
-    metrics:
-      include:
-        match_type: strict
-        metric_names:
-          - activemq.queue.size
-      resource_attributes:
-        - key: destination
-          value: "ActiveMQ.DLQ"
-
-exporters:
-  otlp:
-    endpoint: https://oneuptime-ingest.example.com:4317
-
-service:
-  pipelines:
-    metrics:
-      receivers: [jmx]
-      processors: [batch]
-      exporters: [otlp]
+# Alert condition in your observability backend
+metric: activemq.message.queue.size
+where:
+  messaging.destination.name: ActiveMQ.DLQ
+  activemq.destination.type: queue
+threshold: "> 0"
 ```
 
-Set up alerts on the `activemq.queue.size` metric for the DLQ destination. Any messages appearing in the DLQ warrant investigation, since they represent messages that could not be processed after all retry attempts.
+Set up alerts on the `activemq.message.queue.size` metric for the DLQ destination. Any messages appearing in the DLQ warrant investigation, since they represent messages that could not be processed after all retry attempts.
 
 ## Putting It All Together
 
@@ -401,4 +391,4 @@ When any of these indicators drift outside their normal range, the combination o
 
 ## Conclusion
 
-Monitoring ActiveMQ with OpenTelemetry combines broker-level JMX metrics with application-level distributed tracing to give you complete visibility into your messaging infrastructure. The JMX receiver handles broker metrics without modifying the broker itself, while the Java agent provides automatic JMS instrumentation with zero code changes. Together, they create an observability foundation that supports both real-time troubleshooting and long-term capacity planning for your ActiveMQ deployment.
+Monitoring ActiveMQ with OpenTelemetry combines broker-level JMX metrics with application-level distributed tracing to give you complete visibility into your messaging infrastructure. The JMX Scraper handles broker metrics without modifying the broker itself, while the Java agent provides automatic JMS instrumentation with zero code changes. Together, they create an observability foundation that supports both real-time troubleshooting and long-term capacity planning for your ActiveMQ deployment.
