@@ -10,7 +10,7 @@ Description: Learn how to configure the group-by-trace processor in OpenTelemetr
 
 Distributed tracing generates spans across multiple services, and these spans arrive at the OpenTelemetry Collector out of order and from different sources. A single trace - representing one user request through your system - might generate dozens of spans that arrive milliseconds or even seconds apart.
 
-The group-by-trace processor (groupbytrace) solves a critical problem: it collects all spans belonging to the same trace and groups them together before passing them to downstream processors. This grouping enables trace-aware operations like tail sampling (deciding to keep or drop an entire trace based on its complete content), trace-level filtering, and complete trace analysis.
+The group-by-trace processor (groupbytrace) solves a critical problem: it collects all spans belonging to the same trace and groups them together before passing them to downstream processors. This grouping enables trace-aware operations for processors that need a whole-trace view, such as per-trace metrics processors or custom processors that analyze complete traces.
 
 ## Understanding Trace Fragmentation
 
@@ -37,21 +37,21 @@ sequenceDiagram
 
 Without grouping, downstream processors see individual spans in arrival order: Span 1, Span 3, Span 2, Span 5, Span 4, Span 6. They have no context about which spans belong together or whether all spans for a trace have arrived.
 
-The group-by-trace processor buffers spans and groups them by trace ID, enabling processors downstream to see complete traces: Trace abc123 with all 6 spans together.
+The group-by-trace processor buffers spans and groups them by trace ID, enabling processors downstream to receive spans from the same trace together: Trace abc123 with all 6 spans together when they arrive within the wait window.
 
 ## Why You Need This Processor
 
 The group-by-trace processor enables several critical capabilities:
 
-**Tail Sampling**: Make sampling decisions based on the complete trace. Keep all traces with errors, slow traces, or traces matching specific patterns, while dropping normal successful traces. This requires seeing the entire trace before deciding.
+**Tail Sampling**: Make sampling decisions based on the complete trace. Keep all traces with errors, slow traces, or traces matching specific patterns, while dropping normal successful traces. The tail sampling processor has its own trace grouping mechanism, so groupbytrace is not required when tail_sampling is the only downstream processor that needs grouped traces.
 
-**Trace-Level Filtering**: Drop entire traces that match certain patterns (like health checks or internal monitoring) instead of dropping individual spans and leaving partial traces.
+**Trace-Aware Processing**: Send each trace as a grouped batch to downstream processors or exporters that work better when all spans for a trace arrive together.
 
 **Trace Analysis**: Calculate trace-level metrics like total duration, span count, service depth, or error propagation. This requires having all spans together.
 
-**Complete Trace Export**: Ensure backends receive complete traces instead of fragments. Some analysis tools require complete traces to build accurate service maps and dependency graphs.
+**Grouped Trace Export**: Send backends grouped traces instead of fragments when spans arrive within the configured wait window. Some analysis tools benefit from receiving trace spans together to build accurate service maps and dependency graphs.
 
-**Memory Optimization**: By grouping spans before export, you can compress and batch complete traces more efficiently than individual spans.
+**Batching Control**: By grouping spans before export, you can batch whole trace groups more predictably than individual spans.
 
 ## Basic Configuration
 
@@ -78,14 +78,17 @@ processors:
 
   # Batch for efficiency
   batch:
+    send_batch_size: 1024
     send_batch_max_size: 1024
     timeout: 10s
 
 # EXPORTERS: Send to backend
 exporters:
   otlphttp:
-    endpoint: https://oneuptime.com/otlp/v1/traces
+    endpoint: https://oneuptime.com/otlp
+    encoding: json
     headers:
+      Content-Type: application/json
       x-oneuptime-token: ${ONEUPTIME_TOKEN}
 
 # SERVICE: Define the traces pipeline
@@ -101,9 +104,9 @@ The `wait_duration` parameter controls how long the processor waits for spans. S
 
 ## Enabling Tail Sampling with Trace Grouping
 
-The most common use case for groupbytrace is enabling tail sampling. Tail sampling makes sampling decisions after seeing the complete trace, allowing you to keep all error traces and slow traces while sampling normal traces.
+Tail sampling makes sampling decisions after seeing the complete trace, allowing you to keep all error traces and slow traces while sampling normal traces. The tail sampling processor groups spans by trace ID before making decisions, so you can use it directly without adding groupbytrace.
 
-Here is a configuration combining trace grouping with tail sampling:
+Here is a configuration using tail sampling directly:
 
 ```yaml
 receivers:
@@ -113,14 +116,8 @@ receivers:
         endpoint: 0.0.0.0:4317
 
 processors:
-  # STEP 1: Group spans by trace ID
-  groupbytrace:
-    wait_duration: 10s
-    num_traces: 100000    # Maximum concurrent traces to track
-
-  # STEP 2: Make tail sampling decisions on complete traces
+  # Make tail sampling decisions on grouped traces
   tail_sampling:
-    # Wait for trace grouping before deciding
     decision_wait: 10s
     num_traces: 100000
 
@@ -144,13 +141,16 @@ processors:
           sampling_percentage: 10
 
   batch:
+    send_batch_size: 1024
     send_batch_max_size: 1024
     timeout: 10s
 
 exporters:
   otlphttp:
-    endpoint: https://oneuptime.com/otlp/v1/traces
+    endpoint: https://oneuptime.com/otlp
+    encoding: json
     headers:
+      Content-Type: application/json
       x-oneuptime-token: ${ONEUPTIME_TOKEN}
 
 service:
@@ -158,13 +158,12 @@ service:
     traces:
       receivers: [otlp]
       processors:
-        - groupbytrace      # First group spans into complete traces
-        - tail_sampling     # Then make sampling decisions
+        - tail_sampling     # Groups spans by trace ID before deciding
         - batch
       exporters: [otlphttp]
 ```
 
-This configuration ensures the tail sampling processor sees complete traces. It can then make intelligent decisions: keep all error traces, keep all slow traces, but only sample 10% of normal fast traces. This dramatically reduces telemetry volume while preserving all problematic traces for debugging.
+This configuration lets the tail sampling processor make intelligent decisions: keep all error traces, keep all slow traces, but only sample 10% of normal fast traces. This dramatically reduces telemetry volume while preserving all problematic traces for debugging.
 
 ## Memory Management and Trace Limits
 
@@ -188,21 +187,20 @@ processors:
     # Prevents memory exhaustion from trace ID explosion
     num_traces: 50000
 
-    # Maximum number of spans to buffer per trace
-    # Protects against pathological traces with thousands of spans
-    num_spans: 1000
-
-    # Discard traces when limits are reached (vs blocking)
-    discard_orphaned_traces: true
+    # Increase workers when trace grouping becomes CPU-bound
+    num_workers: 2
 
   batch:
+    send_batch_size: 1024
     send_batch_max_size: 1024
     timeout: 10s
 
 exporters:
   otlphttp:
-    endpoint: https://oneuptime.com/otlp/v1/traces
+    endpoint: https://oneuptime.com/otlp
+    encoding: json
     headers:
+      Content-Type: application/json
       x-oneuptime-token: ${ONEUPTIME_TOKEN}
 
 service:
@@ -216,15 +214,15 @@ service:
       exporters: [otlphttp]
 ```
 
-The `num_traces` parameter limits how many concurrent traces the processor tracks. If this limit is exceeded, the processor starts discarding the oldest traces (with `discard_orphaned_traces: true`) or blocks until space is available (with `discard_orphaned_traces: false`).
+The `num_traces` parameter limits how many concurrent traces the processor tracks. If this limit is exceeded, the processor evicts traces due to capacity pressure, which is exposed through the `otelcol_processor_groupbytrace_traces_evicted` metric.
 
-The `num_spans` parameter protects against individual traces with pathological span counts. Some instrumentation bugs or malicious activity can create traces with thousands or millions of spans. This limit prevents a single trace from exhausting memory.
+The `num_workers` parameter controls how many workers process the processor's internal event queue. Increasing it can help when grouping itself becomes a bottleneck, but it does not replace overall memory sizing and the memory limiter.
 
 ## Handling Incomplete Traces
 
 Not all traces will have all their spans arrive within the wait duration. Network delays, service failures, or SDK bugs can cause spans to be lost or delayed beyond the wait window.
 
-The processor handles this with configurable behavior:
+The processor releases whatever spans it has collected after `wait_duration`:
 
 ```yaml
 processors:
@@ -232,21 +230,17 @@ processors:
     wait_duration: 10s
     num_traces: 50000
 
-    # What to do with incomplete traces after wait_duration expires
-    discard_orphaned_traces: false   # false = still send them (default)
-                                     # true = discard incomplete traces
-
-    # Store trace IDs to detect late-arriving spans
-    store_trace_ids: true
-
   batch:
+    send_batch_size: 1024
     send_batch_max_size: 1024
     timeout: 10s
 
 exporters:
   otlphttp:
-    endpoint: https://oneuptime.com/otlp/v1/traces
+    endpoint: https://oneuptime.com/otlp
+    encoding: json
     headers:
+      Content-Type: application/json
       x-oneuptime-token: ${ONEUPTIME_TOKEN}
 
 service:
@@ -257,11 +251,7 @@ service:
       exporters: [otlphttp]
 ```
 
-With `discard_orphaned_traces: false` (the default), the processor sends incomplete traces after the wait duration expires. This ensures you don't lose trace data, even if some spans are missing.
-
-With `discard_orphaned_traces: true`, incomplete traces are dropped. Use this when you prefer complete traces only and can tolerate data loss.
-
-The `store_trace_ids` parameter (when true) keeps a record of trace IDs that have been processed. When a late-arriving span shows up for an already-released trace, the processor can detect it and handle it appropriately (by default, it sends the span as a single-span trace).
+After `wait_duration` expires, the processor releases the trace data it has and removes that trace from internal storage. Spans from the same trace that arrive after release are collected again for the full wait duration and then released as another grouped batch.
 
 ## Multi-Tenant Trace Grouping
 
@@ -284,13 +274,16 @@ processors:
     num_traces: 50000    # Total across all tenants
 
   batch:
+    send_batch_size: 1024
     send_batch_max_size: 1024
     timeout: 10s
 
 exporters:
   otlphttp:
-    endpoint: https://oneuptime.com/otlp/v1/traces
+    endpoint: https://oneuptime.com/otlp
+    encoding: json
     headers:
+      Content-Type: application/json
       x-oneuptime-token: ${ONEUPTIME_TOKEN}
 
 service:
@@ -308,9 +301,9 @@ The groupbytrace processor doesn't have built-in per-tenant limits, but you can 
 
 ## Combining with Trace-Aware Filtering
 
-After grouping spans into complete traces, you can apply trace-aware filtering to drop entire traces based on patterns.
+After grouping spans into complete traces, you can apply filtering to drop spans based on patterns. The filter processor drops matching spans; if you need to drop whole traces based on trace content, use a tail sampling drop policy.
 
-Here is a configuration that drops health check traces:
+Here is a configuration that drops health check spans:
 
 ```yaml
 processors:
@@ -319,24 +312,26 @@ processors:
     wait_duration: 10s
     num_traces: 50000
 
-  # Filter out health check traces
+  # Filter out health check spans
   filter/drop_health_checks:
     error_mode: ignore
-    traces:
-      span:
-        # Drop traces where any span matches health check pattern
-        - 'attributes["http.target"] == "/health"'
-        - 'attributes["http.target"] == "/healthz"'
-        - 'attributes["http.target"] == "/ready"'
+    trace_conditions:
+      # Drop spans that match health check patterns
+      - 'span.attributes["http.target"] == "/health"'
+      - 'span.attributes["http.target"] == "/healthz"'
+      - 'span.attributes["http.target"] == "/ready"'
 
   batch:
+    send_batch_size: 1024
     send_batch_max_size: 1024
     timeout: 10s
 
 exporters:
   otlphttp:
-    endpoint: https://oneuptime.com/otlp/v1/traces
+    endpoint: https://oneuptime.com/otlp
+    encoding: json
     headers:
+      Content-Type: application/json
       x-oneuptime-token: ${ONEUPTIME_TOKEN}
 
 service:
@@ -350,7 +345,7 @@ service:
       exporters: [otlphttp]
 ```
 
-This configuration groups traces, then drops any trace containing a span that matches the health check patterns. This is more reliable than dropping individual spans, which could leave partial traces.
+This configuration groups traces, then drops spans that match the health check patterns. Be careful with this pattern: dropping parent spans can leave orphaned spans in the same trace.
 
 ## Distributed Collector Architecture
 
@@ -360,17 +355,13 @@ Here is an architecture diagram:
 
 ```mermaid
 graph TD
-    A[Service A] -->|Spans: Trace abc123| B[Load Balancer
-    Consistent Hash by Trace ID]
+    A[Service A] -->|Spans: Trace abc123| B["Load Balancer<br/>Consistent Hash by Trace ID"]
     C[Service B] -->|Spans: Trace abc123| B
     D[Service C] -->|Spans: Trace abc123| B
 
-    B -->|All spans for abc123| E[Collector Instance 1
-    groupbytrace]
-    B -->|All spans for def456| F[Collector Instance 2
-    groupbytrace]
-    B -->|All spans for ghi789| G[Collector Instance 3
-    groupbytrace]
+    B -->|All spans for abc123| E["Collector Instance 1<br/>groupbytrace"]
+    B -->|All spans for def456| F["Collector Instance 2<br/>groupbytrace"]
+    B -->|All spans for ghi789| G["Collector Instance 3<br/>groupbytrace"]
 
     E --> H[Backend]
     F --> H
@@ -391,22 +382,22 @@ receivers:
 processors:
   # No grouping at this layer - just forward
   batch:
+    send_batch_size: 1024
     send_batch_max_size: 1024
     timeout: 10s
 
 exporters:
   # Load balance to downstream collectors by trace ID
-  loadbalancing:
+  load_balancing:
     protocol:
       otlp:
-        endpoint: collector-cluster:4317
         tls:
           insecure: true
 
     resolver:
       dns:
         hostname: collector-cluster
-        port: 4317
+        port: "4317"
 
     # CRITICAL: Route by trace ID for proper grouping
     routing_key: "traceID"
@@ -416,7 +407,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [loadbalancing]
+      exporters: [load_balancing]
 ```
 
 This is the configuration for the gateway collector tier. It receives spans and routes them to downstream collectors by trace ID.
@@ -450,13 +441,16 @@ processors:
           sampling_percentage: 10
 
   batch:
+    send_batch_size: 1024
     send_batch_max_size: 1024
     timeout: 10s
 
 exporters:
   otlphttp:
-    endpoint: https://oneuptime.com/otlp/v1/traces
+    endpoint: https://oneuptime.com/otlp
+    encoding: json
     headers:
+      Content-Type: application/json
       x-oneuptime-token: ${ONEUPTIME_TOKEN}
 
 service:
@@ -484,7 +478,7 @@ Here is how to determine the right value:
 
 **Consider service failures**: When a service fails, its spans might never arrive. A longer wait_duration means holding incomplete traces longer. Balance between completeness and memory usage.
 
-**Monitor incomplete traces**: Track how often traces are released incomplete (via collector internal metrics). If it's high, increase wait_duration. If it's near zero, you can reduce it.
+**Monitor grouping behavior**: Track groupbytrace internal metrics and backend-side partial traces. If many traces are evicted, increase `num_traces` or reduce `wait_duration`. If traces often appear split in the backend, increase `wait_duration` or check collector routing.
 
 Here is a configuration with monitoring:
 
@@ -495,24 +489,28 @@ processors:
     num_traces: 50000
 
   batch:
+    send_batch_size: 1024
     send_batch_max_size: 1024
     timeout: 10s
 
 exporters:
   otlphttp:
-    endpoint: https://oneuptime.com/otlp/v1/traces
+    endpoint: https://oneuptime.com/otlp
+    encoding: json
     headers:
+      Content-Type: application/json
       x-oneuptime-token: ${ONEUPTIME_TOKEN}
-
-  # Export collector internal metrics
-  prometheus:
-    endpoint: 0.0.0.0:8888
 
 service:
   telemetry:
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 
   pipelines:
     traces:
@@ -543,24 +541,19 @@ processors:
   groupbytrace:
     wait_duration: 30s       # Longer wait for large traces
     num_traces: 10000        # Fewer concurrent traces
-    num_spans: 10000         # Allow large span counts per trace
-
-  # Split large traces into chunks for processing
-  span/limit:
-    name:
-      to_attributes:
-        rules:
-          - ^(.{100}).*$     # Truncate long span names
-            break_on_match: true
+    num_workers: 4           # More workers for the grouping queue
 
   batch:
+    send_batch_size: 2048
     send_batch_max_size: 2048
     timeout: 10s
 
 exporters:
   otlphttp:
-    endpoint: https://oneuptime.com/otlp/v1/traces
+    endpoint: https://oneuptime.com/otlp
+    encoding: json
     headers:
+      Content-Type: application/json
       x-oneuptime-token: ${ONEUPTIME_TOKEN}
 
 service:
@@ -570,16 +563,15 @@ service:
       processors:
         - memory_limiter
         - groupbytrace
-        - span/limit
         - batch
       exporters: [otlphttp]
 ```
 
-For systems that generate very large traces, increase `num_spans` and allocate more memory to the collector. Also increase `wait_duration` because large traces take longer to complete.
+For systems that generate very large traces, allocate more memory to the collector and tune `num_traces` based on concurrency. Also increase `wait_duration` if large traces take longer to complete.
 
 ## Debugging and Validation
 
-To verify trace grouping is working correctly, enable debug logging and use the spans metrics connector.
+To verify trace grouping is working correctly, enable debug logging and use the debug exporter.
 
 Here is a debugging configuration:
 
@@ -596,20 +588,23 @@ processors:
     num_traces: 50000
 
   batch:
+    send_batch_size: 1024
     send_batch_max_size: 1024
     timeout: 10s
 
 exporters:
   otlphttp:
-    endpoint: https://oneuptime.com/otlp/v1/traces
+    endpoint: https://oneuptime.com/otlp
+    encoding: json
     headers:
+      Content-Type: application/json
       x-oneuptime-token: ${ONEUPTIME_TOKEN}
 
   # Log traces to console for debugging
-  logging:
-    loglevel: debug
+  debug:
+    verbosity: detailed
     sampling_initial: 10     # Log first 10 traces
-    sampling_thereafter: 0
+    sampling_thereafter: 100
 
 service:
   telemetry:
@@ -620,10 +615,10 @@ service:
     traces:
       receivers: [otlp]
       processors: [groupbytrace, batch]
-      exporters: [otlphttp, logging]  # Add logging exporter
+      exporters: [otlphttp, debug]  # Add debug exporter
 ```
 
-The logging exporter prints complete traces to stdout, showing all spans grouped together. Verify that spans with the same trace ID appear together in the output.
+The debug exporter prints traces to stdout, showing spans grouped together. Verify that spans with the same trace ID appear together in the output.
 
 ## Common Pitfalls and Solutions
 
@@ -637,7 +632,7 @@ The logging exporter prints complete traces to stdout, showing all spans grouped
 
 **Problem**: Tail sampling isn't working as expected.
 
-**Solution**: Ensure groupbytrace comes before tail_sampling in the processor list. The tail sampling processor requires complete traces, which only groupbytrace can provide.
+**Solution**: Ensure all spans for a trace reach the same collector instance and tune `decision_wait` so the tail sampling processor has enough time to collect spans before deciding. The tail sampling processor groups spans internally and does not require groupbytrace.
 
 **Problem**: Some traces are split across multiple exports.
 
@@ -666,7 +661,7 @@ processors:
   groupbytrace:
     wait_duration: 10s
     num_traces: 50000
-    num_spans: 1000
+    num_workers: 2
 
   tail_sampling:
     decision_wait: 10s
@@ -686,13 +681,16 @@ processors:
           sampling_percentage: 10
 
   batch:
+    send_batch_size: 1024
     send_batch_max_size: 1024
     timeout: 10s
 
 exporters:
   otlphttp:
-    endpoint: https://oneuptime.com/otlp/v1/traces
+    endpoint: https://oneuptime.com/otlp
+    encoding: json
     headers:
+      Content-Type: application/json
       x-oneuptime-token: ${ONEUPTIME_TOKEN}
     retry_on_failure:
       enabled: true
@@ -711,7 +709,7 @@ service:
       exporters: [otlphttp]
 ```
 
-This configuration groups traces, applies intelligent tail sampling to reduce volume while keeping all problematic traces, and exports complete traces to OneUptime for comprehensive analysis.
+This configuration groups traces before export and applies intelligent tail sampling to reduce volume while keeping all problematic traces for OneUptime analysis.
 
 ## Related Resources
 
@@ -723,6 +721,6 @@ For more information on trace processing and sampling in OpenTelemetry:
 
 ## Conclusion
 
-The group-by-trace processor is essential for trace-aware processing in OpenTelemetry. It collects fragmented spans from distributed systems and assembles them into complete traces, enabling tail sampling, trace-level filtering, and comprehensive trace analysis.
+The group-by-trace processor is useful for trace-aware processing in OpenTelemetry when downstream components need grouped traces. It collects fragmented spans from distributed systems and releases them together after a configured wait duration, enabling complete trace export and comprehensive trace analysis.
 
-Configure it with appropriate wait_duration based on your system's trace latency, protect against memory exhaustion with num_traces and num_spans limits, and always place it before tail sampling or other trace-aware processors in your pipeline. With OneUptime as your backend, you get a platform that efficiently handles and analyzes complete traces, making full use of the organization this processor provides.
+Configure it with appropriate wait_duration based on your system's trace latency, protect against memory exhaustion with num_traces and the memory limiter, and place it before processors or exporters that need grouped traces. With OneUptime as your backend, you get a platform that efficiently handles and analyzes complete traces, making full use of the organization this processor provides.
