@@ -72,8 +72,8 @@ Here is a straightforward configuration that collects HAProxy metrics and export
 receivers:
   # HAProxy receiver connects to the stats endpoint
   haproxy:
-    # HTTP endpoint for HAProxy stats CSV
-    endpoint: http://localhost:8404/stats?stats;csv
+    # HTTP endpoint for HAProxy stats
+    endpoint: http://localhost:8404/stats
     # How often to scrape metrics
     collection_interval: 15s
 
@@ -101,7 +101,7 @@ service:
       exporters: [otlphttp]
 ```
 
-This minimal setup connects to HAProxy stats and starts shipping metrics. The receiver automatically collects all available metrics from frontends, backends, and individual servers.
+This minimal setup connects to HAProxy stats and starts shipping metrics. The receiver appends `;csv` to HTTP endpoints, parses the CSV output, and collects the enabled metrics from frontends, backends, and individual servers.
 
 ## Understanding HAProxy Metrics
 
@@ -111,7 +111,7 @@ The receiver collects metrics across three scopes: frontends, backends, and serv
 
 **Backend metrics** describe the pool of servers behind a frontend. These include queue depth, connection errors, response times, and retry counts. Backends represent your application server groups.
 
-**Server metrics** describe individual servers within a backend. These include health check status, current sessions, response times, and error counts for each specific server.
+**Server metrics** describe individual servers within a backend. These include server state attributes, current sessions, response times, and error counts for each specific server.
 
 ## Production Configuration with Authentication
 
@@ -121,12 +121,12 @@ For production deployments, your stats endpoint should require authentication. H
 receivers:
   haproxy:
     # Stats endpoint with authentication
-    endpoint: http://admin:${HAPROXY_STATS_PASSWORD}@localhost:8404/stats?stats;csv
+    endpoint: http://admin:${HAPROXY_STATS_PASSWORD}@localhost:8404/stats
     collection_interval: 15s
     # Timeout for stats requests
     timeout: 10s
 
-    # Enable all metric categories
+    # Enable the HAProxy metrics used in dashboards and alerts
     metrics:
       haproxy.connections.rate:
         enabled: true
@@ -144,25 +144,28 @@ receivers:
         enabled: true
       haproxy.responses.errors:
         enabled: true
-      haproxy.server.check.status:
+      haproxy.failed_checks:
         enabled: true
-      haproxy.sessions.current:
+      haproxy.sessions.count:
         enabled: true
-      haproxy.requests.queued.current:
+      haproxy.requests.queued:
         enabled: true
       haproxy.requests.denied:
         enabled: true
       haproxy.responses.denied:
         enabled: true
+    resource_attributes:
+      haproxy.server.state:
+        enabled: true
 
 processors:
   # Add resource attributes
-  resourcedetection:
+  resource_detection:
     detectors: [system, env]
     timeout: 5s
 
   # Tag metrics with environment info
-  attributes/haproxy:
+  resource/haproxy:
     actions:
       - key: service.name
         value: "haproxy"
@@ -194,11 +197,11 @@ service:
   pipelines:
     metrics:
       receivers: [haproxy]
-      processors: [resourcedetection, attributes/haproxy, batch]
+      processors: [resource_detection, resource/haproxy, batch]
       exporters: [otlphttp]
 ```
 
-The resource detection processor automatically adds hostname and OS information. The attributes processor tags all HAProxy metrics with the service name and environment, which makes filtering and dashboarding much easier.
+The resource detection processor automatically adds host information. The resource processor tags all HAProxy metrics with the service name and environment, which makes filtering and dashboarding much easier.
 
 ## Monitoring Multiple HAProxy Instances
 
@@ -208,19 +211,19 @@ If you run HAProxy in a high-availability pair or across multiple tiers, you can
 receivers:
   # Primary load balancer
   haproxy/primary:
-    endpoint: http://admin:${HAPROXY_STATS_PASSWORD}@lb-primary.internal:8404/stats?stats;csv
+    endpoint: http://admin:${HAPROXY_STATS_PASSWORD}@lb-primary.internal:8404/stats
     collection_interval: 15s
     timeout: 10s
 
   # Secondary load balancer (standby)
   haproxy/secondary:
-    endpoint: http://admin:${HAPROXY_STATS_PASSWORD}@lb-secondary.internal:8404/stats?stats;csv
+    endpoint: http://admin:${HAPROXY_STATS_PASSWORD}@lb-secondary.internal:8404/stats
     collection_interval: 15s
     timeout: 10s
 
 processors:
   # Label the primary
-  attributes/primary:
+  resource/primary:
     actions:
       - key: haproxy.instance
         value: "lb-primary"
@@ -230,7 +233,7 @@ processors:
         action: insert
 
   # Label the secondary
-  attributes/secondary:
+  resource/secondary:
     actions:
       - key: haproxy.instance
         value: "lb-secondary"
@@ -252,12 +255,12 @@ service:
   pipelines:
     metrics/primary:
       receivers: [haproxy/primary]
-      processors: [attributes/primary, batch]
+      processors: [resource/primary, batch]
       exporters: [otlphttp]
 
     metrics/secondary:
       receivers: [haproxy/secondary]
-      processors: [attributes/secondary, batch]
+      processors: [resource/secondary, batch]
       exporters: [otlphttp]
 ```
 
@@ -271,7 +274,7 @@ Beyond metrics, HAProxy produces valuable access and error logs. You can collect
 receivers:
   # HAProxy metrics
   haproxy:
-    endpoint: http://admin:${HAPROXY_STATS_PASSWORD}@localhost:8404/stats?stats;csv
+    endpoint: http://admin:${HAPROXY_STATS_PASSWORD}@localhost:8404/stats
     collection_interval: 15s
 
   # HAProxy access logs
@@ -282,14 +285,14 @@ receivers:
     # Parse the standard HAProxy log format
     operators:
       - type: regex_parser
-        regex: '(?P<client_ip>\S+):(?P<client_port>\d+)\s+\[(?P<timestamp>[^\]]+)\]\s+(?P<frontend>\S+)\s+(?P<backend>\S+)/(?P<server>\S+)\s+(?P<tq>\d+)/(?P<tw>\d+)/(?P<tc>\d+)/(?P<tr>\d+)/(?P<tt>\d+)\s+(?P<status_code>\d+)\s+(?P<bytes_read>\d+)'
+        regex: '^(?P<client_ip>\S+):(?P<client_port>\d+)\s+\[(?P<timestamp>[^\]]+)\]\s+(?P<frontend>\S+)\s+(?P<backend>\S+)/(?P<server>\S+)\s+(?P<tq>-?\d+)/(?P<tw>-?\d+)/(?P<tc>-?\d+)/(?P<tr>-?\d+)/(?P<tt>-?\d+)\s+(?P<status_code>\d+)\s+(?P<bytes_read>\d+)'
         timestamp:
           parse_from: attributes.timestamp
           layout: "%d/%b/%Y:%H:%M:%S.%f"
 
 processors:
   # Add service context to logs
-  attributes/logs:
+  resource/logs:
     actions:
       - key: service.name
         value: "haproxy"
@@ -316,7 +319,7 @@ service:
 
     logs:
       receivers: [filelog/haproxy]
-      processors: [attributes/logs, batch]
+      processors: [resource/logs, batch]
       exporters: [otlphttp]
 ```
 
@@ -326,13 +329,13 @@ The regex parser extracts structured fields from HAProxy log lines, including cl
 
 Not all HAProxy metrics carry the same weight. Here are the ones to prioritize in your dashboards and alerts.
 
-**Backend server health.** The `haproxy.server.check.status` metric tells you whether each backend server is up, down, or in maintenance. Alert immediately when a server goes down.
+**Backend server health.** The optional `haproxy.server.state` resource attribute tells you whether each backend server is up, down, or in maintenance. Pair it with `haproxy.failed_checks` and alert immediately when a server goes down.
 
-**Request error rate.** The `haproxy.requests.errors` and `haproxy.responses.errors` metrics show connection failures and bad responses. A sudden spike usually means a backend is unhealthy.
+**Request error rate.** The `haproxy.requests.errors`, `haproxy.connections.errors`, and `haproxy.responses.errors` metrics show request parsing errors, backend connection failures, and bad responses. A sudden spike usually means a backend is unhealthy.
 
-**Queue depth.** The `haproxy.requests.queued.current` metric indicates requests waiting for a free server. A growing queue means your backends cannot keep up with demand.
+**Queue depth.** The `haproxy.requests.queued` metric indicates requests waiting for a free server. A growing queue means your backends cannot keep up with demand.
 
-**Session count.** Track `haproxy.sessions.current` against your configured session limits. Approaching the limit means traffic is growing beyond your capacity.
+**Session count.** Track `haproxy.sessions.count` against your configured session limits. Approaching the limit means traffic is growing beyond your capacity.
 
 **Connection rate.** The `haproxy.connections.rate` metric shows how fast new connections arrive. Use this for capacity planning and to detect traffic anomalies.
 
@@ -346,13 +349,13 @@ First, verify the stats endpoint is accessible from the Collector host.
 
 ```bash
 # Test without auth
-curl -s http://localhost:8404/stats?stats;csv | head -5
+curl -s http://localhost:8404/stats;csv | head -5
 
 # Test with auth
-curl -s http://admin:password@localhost:8404/stats?stats;csv | head -5
+curl -s http://admin:password@localhost:8404/stats;csv | head -5
 ```
 
-Second, make sure the URL in the receiver configuration includes the `?stats;csv` query string. Without it, HAProxy returns the HTML stats page instead of the CSV data the receiver expects.
+Second, make sure the receiver endpoint points to the HAProxy stats URI. The receiver appends `;csv` to HTTP endpoints, so the configured endpoint should be `http://localhost:8404/stats`, not `http://localhost:8404/stats;csv`.
 
 Third, check that HAProxy is not rate-limiting the stats endpoint. Under heavy load, HAProxy might delay stats responses.
 
