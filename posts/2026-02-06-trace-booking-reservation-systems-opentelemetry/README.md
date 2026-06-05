@@ -39,20 +39,23 @@ Let's start with the core setup for a Node.js booking service. This configuratio
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const {
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+} = require('@opentelemetry/semantic-conventions');
 
 // Create the SDK with service-specific resource attributes
 const sdk = new NodeSDK({
-  resource: new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: 'booking-service',
-    [SemanticResourceAttributes.SERVICE_VERSION]: '2.1.0',
+  resource: resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: 'booking-service',
+    [ATTR_SERVICE_VERSION]: '2.1.0',
     // Custom attribute to identify the business domain
     'service.domain': 'reservations',
   }),
   traceExporter: new OTLPTraceExporter({
     // Send traces to the OpenTelemetry Collector
-    url: 'grpc://otel-collector:4317',
+    url: 'http://otel-collector:4317',
   }),
   instrumentations: [getNodeAutoInstrumentations()],
 });
@@ -67,7 +70,7 @@ The auto-instrumentation handles HTTP requests and database calls automatically.
 The availability check is usually the first step. Users search for rooms, flights, or appointments, and the system needs to query inventory in real time. This is where you want to capture search parameters as span attributes so you can later analyze patterns like which date ranges cause slow queries.
 
 ```javascript
-const { trace, SpanStatusCode } = require('@opentelemetry/api');
+const { trace, SpanKind, SpanStatusCode } = require('@opentelemetry/api');
 
 // Get a tracer instance for the booking domain
 const tracer = trace.getTracer('booking-service', '2.1.0');
@@ -164,7 +167,7 @@ Payment processing is where things get especially interesting from a tracing per
 async function processPayment(paymentDetails) {
   return tracer.startActiveSpan('booking.process_payment', {
     // Mark this as a client span since we are calling an external service
-    kind: trace.SpanKind.CLIENT,
+    kind: SpanKind.CLIENT,
   }, async (span) => {
     try {
       span.setAttribute('booking.reservation_id', paymentDetails.reservationId);
