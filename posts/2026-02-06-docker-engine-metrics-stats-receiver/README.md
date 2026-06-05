@@ -25,8 +25,7 @@ receivers:
     collection_interval: 15s
     # Timeout for Docker API calls
     timeout: 10s
-    # Only collect metrics for containers with these labels
-    # Omit this to collect for all containers
+    # Copy selected Docker labels onto metric datapoints
     # container_labels_to_metric_labels:
     #   com.docker.compose.service: service_name
     # Include specific metrics you care about
@@ -35,7 +34,7 @@ receivers:
         enabled: true
       container.cpu.usage.percpu:
         enabled: true
-      container.cpu.percent:
+      container.cpu.utilization:
         enabled: true
       container.memory.usage.total:
         enabled: true
@@ -55,11 +54,10 @@ processors:
     timeout: 10s
     send_batch_size: 200
 
-  # Convert container labels to resource attributes
+  # Set a host name resource attribute
   resource:
     attributes:
       - key: host.name
-        from_attribute: ""
         action: upsert
         value: "docker-host-01"
 
@@ -70,15 +68,15 @@ exporters:
       insecure: false
 
   # Debug exporter for development
-  logging:
-    loglevel: debug
+  debug:
+    verbosity: detailed
 
 service:
   pipelines:
     metrics:
       receivers: [docker_stats]
       processors: [resource, batch]
-      exporters: [otlp]
+      exporters: [otlp, debug]
 ```
 
 ## Running the Collector with Docker Socket Access
@@ -88,12 +86,13 @@ The Collector needs access to the Docker socket. Run it with:
 ```bash
 docker run -d \
   --name otel-collector \
+  --group-add "$(getent group docker | cut -d: -f3)" \
   -v /var/run/docker.sock:/var/run/docker.sock:ro \
   -v ./otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml \
   otel/opentelemetry-collector-contrib:latest
 ```
 
-The `:ro` flag makes the mount read-only. The Collector only reads from the API and never modifies container state.
+The `:ro` flag makes the mount read-only, and `--group-add` lets the non-root Collector process read the Docker socket on Linux hosts where the socket is owned by the `docker` group. The Docker stats receiver only queries stats, but Docker socket access still grants broad Docker API permissions to the Collector process.
 
 ## Understanding the Metrics
 
@@ -103,16 +102,16 @@ Here is what each metric category tells you:
 
 ```text
 container.cpu.usage.total     - Total CPU time consumed in nanoseconds
-container.cpu.percent         - CPU usage as a percentage of available CPU
+container.cpu.utilization     - CPU usage as a percentage of available CPU
 container.cpu.usage.percpu    - CPU time per individual CPU core
 ```
 
-The percent metric is most useful for dashboards and alerting. Values above 80% sustained may indicate the container needs more CPU resources.
+The utilization metric is most useful for dashboards and alerting. Values above 80% sustained may indicate the container needs more CPU resources.
 
 ### Memory Metrics
 
 ```text
-container.memory.usage.total  - Current memory usage in bytes
+container.memory.usage.total  - Current memory usage in bytes, excluding cache
 container.memory.usage.limit  - Memory limit set on the container
 container.memory.percent      - Memory usage as a percentage of the limit
 ```
@@ -145,7 +144,7 @@ receivers:
   docker_stats:
     endpoint: unix:///var/run/docker.sock
     collection_interval: 15s
-    # Map Docker labels to OpenTelemetry resource attributes
+    # Map Docker labels to metric attributes
     container_labels_to_metric_labels:
       com.docker.compose.service: compose_service
       com.docker.compose.project: compose_project
@@ -164,7 +163,7 @@ With these metrics flowing into your backend, set up alerts for common failure s
 
 # CPU usage above 90% for 5 minutes
 - alert: ContainerHighCPU
-  expr: container_cpu_percent > 90
+  expr: container_cpu_utilization > 90
   for: 5m
 
 # Memory usage above 85% of limit
@@ -180,21 +179,21 @@ With these metrics flowing into your backend, set up alerts for common failure s
 
 ## Excluding Specific Containers
 
-You may not want metrics for every container. Use label filters to exclude infrastructure containers:
+You may not want metrics for every container. Use image exclusions to skip infrastructure containers, and copy any labels you need for filtering in your backend:
 
 ```yaml
 receivers:
   docker_stats:
     endpoint: unix:///var/run/docker.sock
     collection_interval: 15s
-    # Only monitor containers with this label
+    # Copy this Docker label to a metric attribute
     container_labels_to_metric_labels:
-      monitoring.enabled: ""
+      monitoring.enabled: monitoring_enabled
     excluded_images:
-      - "otel/opentelemetry-collector-contrib"
-      - "grafana/grafana"
+      - "otel/opentelemetry-collector-contrib*"
+      - "grafana/grafana*"
 ```
 
 ## Summary
 
-The Docker stats receiver gives you per-container CPU, memory, network, and I/O metrics without touching your application code. Mount the Docker socket into the Collector, configure which metrics you need, and set up alerts on the critical thresholds. This approach works for any Docker host, whether you are running standalone containers or Docker Compose stacks.
+The Docker stats receiver gives you per-container CPU, memory, network, and I/O metrics without touching your application code. Mount the Docker socket into the Collector, configure which metrics you need, and set up alerts on the critical thresholds. This approach works for Linux Docker hosts, whether you are running standalone containers or Docker Compose stacks.

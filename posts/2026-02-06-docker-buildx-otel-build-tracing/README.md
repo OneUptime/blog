@@ -4,71 +4,46 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Docker Buildx, Build Tracing, Performance
 
-Description: Configure Docker Buildx to export OpenTelemetry traces for each build stage, enabling performance profiling of your container image builds.
+Description: Configure Docker Buildx to export OpenTelemetry traces to Jaeger for each build stage, enabling performance profiling of your container image builds.
 
-Docker Buildx (and BuildKit under the hood) has native OpenTelemetry support. When enabled, it generates traces for each build stage, layer, and operation. This helps you understand where your builds spend time and identify optimization opportunities like slow package installations, unnecessary layer copies, or cache misses.
+Docker Buildx (and BuildKit under the hood) has native OpenTelemetry support. When enabled, it generates traces for BuildKit API calls and build operations. This helps you understand where your builds spend time and identify optimization opportunities like slow package installations, unnecessary layer copies, or cache misses.
 
 ## Enabling OpenTelemetry in Buildx
 
-Set the `OTEL_EXPORTER_OTLP_ENDPOINT` environment variable before running your build:
+Start Jaeger, then create a `docker-container` builder with the `JAEGER_TRACE` environment variable passed to BuildKit:
 
 ```bash
-# Point Buildx at your Collector
+# Start Jaeger for collecting and viewing traces
+docker run -d --name jaeger \
+  -p "6831:6831/udp" -p "16686:16686" \
+  --restart unless-stopped \
+  jaegertracing/all-in-one
 
-export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
+# Create a Buildx builder that sends traces to Jaeger
+docker buildx create --use \
+  --name traced-builder \
+  --driver docker-container \
+  --driver-opt "network=host" \
+  --driver-opt "env.JAEGER_TRACE=localhost:6831"
+
+# Boot the builder
+docker buildx inspect --bootstrap
 
 # Run the build with tracing enabled
 docker buildx build --progress=plain -t myapp:latest .
 ```
 
-BuildKit detects the `OTEL_EXPORTER_OTLP_ENDPOINT` variable and automatically exports trace data. No additional flags are needed.
+BuildKit reads the `JAEGER_TRACE` value from the builder environment and exports trace data to Jaeger. Build traces should be visible at `http://127.0.0.1:16686/`.
 
-## Setting Up a Collector for Build Traces
+## Setting Up Jaeger for Build Traces
 
-Configure a Collector to receive and forward build traces:
-
-```yaml
-# otel-collector-config.yaml
-receivers:
-  otlp:
-    protocols:
-      grpc:
-        endpoint: 0.0.0.0:4317
-      http:
-        endpoint: 0.0.0.0:4318
-
-processors:
-  batch:
-    timeout: 10s
-    send_batch_size: 256
-
-  resource:
-    attributes:
-      - key: ci.pipeline
-        value: "docker-build"
-        action: upsert
-
-exporters:
-  otlp:
-    endpoint: "your-tracing-backend:4317"
-    tls:
-      insecure: false
-
-service:
-  pipelines:
-    traces:
-      receivers: [otlp]
-      processors: [resource, batch]
-      exporters: [otlp]
-```
-
-Start the Collector before running your build:
+Run Jaeger before running your build:
 
 ```bash
-docker run -d --name otel-collector \
-  -p 4317:4317 -p 4318:4318 \
-  -v ./otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml \
-  otel/opentelemetry-collector-contrib:latest
+docker run -d --name jaeger \
+  -p "6831:6831/udp" -p "16686:16686" \
+  --restart unless-stopped \
+  jaegertracing/all-in-one
 ```
 
 ## Understanding Build Traces
@@ -97,29 +72,28 @@ docker.build                                    [total: 45s]
 
 From this trace, you can immediately see that `npm install` takes 14.5 seconds and `npm run build` takes 11 seconds. These are the optimization targets.
 
-## Configuring Additional OTEL Variables
+## Configuring the Tracing Environment
 
-Fine-tune the trace output with standard OpenTelemetry environment variables:
+BuildKit's documented tracing configuration uses `JAEGER_TRACE`. If you change the trace destination, recreate or rebootstrap the builder so `buildkitd` starts with the new value:
 
 ```bash
-# Service name for the build traces
-export OTEL_SERVICE_NAME=docker-build
+docker buildx create --use \
+  --name traced-builder \
+  --driver docker-container \
+  --driver-opt "network=host" \
+  --driver-opt "env.JAEGER_TRACE=localhost:6831"
 
-# Add custom resource attributes
-export OTEL_RESOURCE_ATTRIBUTES="ci.job=build-image,git.branch=main"
-
-# Use HTTP instead of gRPC
-export OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
-export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+docker buildx inspect --bootstrap
 ```
 
 ## Using BuildKit Directly
 
-If you use BuildKit directly (without Docker), tracing works the same way:
+If you use BuildKit directly (without Docker), set `JAEGER_TRACE` before starting `buildkitd` and `buildctl`:
 
 ```bash
-# Start BuildKit with OTLP export
-export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
+# Start BuildKit with Jaeger tracing
+export JAEGER_TRACE=localhost:6831
+
 buildctl build \
   --frontend dockerfile.v0 \
   --local context=. \
@@ -140,12 +114,11 @@ jobs:
   build:
     runs-on: ubuntu-latest
     services:
-      otel-collector:
-        image: otel/opentelemetry-collector-contrib:latest
+      jaeger:
+        image: jaegertracing/all-in-one
         ports:
-          - 4317:4317
-        volumes:
-          - ./otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml
+          - 6831:6831/udp
+          - 16686:16686
 
     steps:
       - uses: actions/checkout@v4
@@ -154,14 +127,13 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Build with tracing
-        env:
-          OTEL_EXPORTER_OTLP_ENDPOINT: http://localhost:4317
-          OTEL_SERVICE_NAME: ci-build
-          OTEL_RESOURCE_ATTRIBUTES: >-
-            ci.pipeline.id=${{ github.run_id }},
-            git.commit.sha=${{ github.sha }},
-            git.branch=${{ github.ref_name }}
         run: |
+          docker buildx create --use \
+            --name traced-builder \
+            --driver docker-container \
+            --driver-opt "network=host" \
+            --driver-opt "env.JAEGER_TRACE=localhost:6831"
+          docker buildx inspect --bootstrap
           docker buildx build --progress=plain -t myapp:latest .
 ```
 
@@ -174,7 +146,7 @@ Multi-stage builds benefit the most from tracing because you can see which stage
 FROM node:20-alpine AS deps
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --production
+RUN npm ci --omit=dev
 
 FROM node:20-alpine AS build
 WORKDIR /app
@@ -194,8 +166,8 @@ The trace shows that `deps` and `build` stages can run in parallel (since they d
 
 ## Identifying Cache Misses
 
-Build traces show whether each layer was a cache hit or miss. A cache miss on `COPY package*.json ./` means the package files changed, triggering a full `npm install`. By tracking cache hit rates over time, you can identify Dockerfile patterns that frequently break the cache.
+Build traces show which build operations ran and how long they took, while BuildKit's plain progress output marks cached steps as `CACHED`. A cache miss on `COPY package*.json ./` means the package files changed, triggering a full `npm install`. By tracking slow operations alongside cache hits and misses over time, you can identify Dockerfile patterns that frequently break the cache.
 
 ## Summary
 
-Docker Buildx and BuildKit natively support OpenTelemetry tracing. Set `OTEL_EXPORTER_OTLP_ENDPOINT` and your builds generate detailed traces showing time spent in each stage and layer. This is especially valuable in CI/CD pipelines where build performance directly impacts deployment speed. Look for slow package installations, cache misses, and stages that could run in parallel.
+Docker Buildx and BuildKit natively support OpenTelemetry tracing. Start Jaeger and pass `JAEGER_TRACE` to your Buildx builder, and your builds generate traces showing time spent in BuildKit operations. This is especially valuable in CI/CD pipelines where build performance directly impacts deployment speed. Look for slow package installations, cache misses, and stages that could run in parallel.
