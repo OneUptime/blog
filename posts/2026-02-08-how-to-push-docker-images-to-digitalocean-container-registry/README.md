@@ -20,7 +20,7 @@ Install the DigitalOcean CLI (doctl):
 brew install doctl
 
 # Linux
-snap install doctl
+sudo snap install doctl
 
 # Authenticate with your DigitalOcean account
 doctl auth init
@@ -29,7 +29,7 @@ doctl auth init
 
 ## Creating a Container Registry
 
-DigitalOcean allows one registry per account, but you can have multiple repositories within that registry:
+DigitalOcean Starter and Basic plans allow one registry per account, while the Professional plan supports up to 10 registries. Each registry can have multiple repositories:
 
 ```bash
 # Create a container registry
@@ -67,7 +67,7 @@ For CI/CD environments where doctl is not available, use a Docker credential dir
 
 ```bash
 # Generate a read/write registry credential
-doctl registry docker-config --read-write
+doctl registry docker-config my-registry --read-write
 
 # This outputs a Docker config JSON that you can use in CI
 ```
@@ -101,13 +101,13 @@ Check that your images are in the registry:
 
 ```bash
 # List repositories in the registry
-doctl registry repository list-v2
+doctl registries repository list-v2 my-registry
 
 # List tags for a specific repository
-doctl registry repository list-tags myapp
+doctl registries repository list-tags my-registry myapp
 
 # Get detailed manifest info
-doctl registry repository list-manifests myapp
+doctl registries repository list-manifests my-registry myapp
 ```
 
 ## CI/CD with GitHub Actions
@@ -160,7 +160,7 @@ If you prefer not to install doctl in CI:
 - name: Login to DOCR
   run: |
     echo ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }} | \
-    docker login registry.digitalocean.com -u ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }} --password-stdin
+    docker login registry.digitalocean.com -u ${{ secrets.DIGITALOCEAN_EMAIL }} --password-stdin
 ```
 
 ## Connecting DOCR to DigitalOcean Kubernetes
@@ -175,7 +175,7 @@ doctl kubernetes cluster registry add my-k8s-cluster
 doctl kubernetes cluster list
 ```
 
-After integration, your Kubernetes pods can pull from DOCR without needing imagePullSecrets. The registry credentials are automatically configured on the cluster nodes.
+After integration, your Kubernetes pods can pull from DOCR without manually creating imagePullSecrets. The registry credentials are automatically configured as image pull secrets in your cluster namespaces.
 
 Use the image in a Kubernetes deployment:
 
@@ -213,7 +213,6 @@ services:
   - name: web
     image:
       registry_type: DOCR
-      registry: my-registry
       repository: myapp
       tag: latest
     http_port: 8080
@@ -245,10 +244,10 @@ doctl registry garbage-collection start my-registry --include-untagged-manifests
 doctl registry garbage-collection get-active my-registry
 
 # Delete old tags manually
-doctl registry repository delete-tag myapp v1.0.0
+doctl registries repository delete-tag my-registry myapp v1.0.0
 ```
 
-DOCR does not automatically clean up untagged manifests. Run garbage collection periodically to reclaim storage.
+Unless you have enabled automatic garbage collection, DOCR does not automatically clean up untagged manifests. Run garbage collection periodically to reclaim storage.
 
 ## Automating Cleanup
 
@@ -259,10 +258,10 @@ Add a cleanup step to your CI/CD pipeline:
 - name: Clean up old images
   run: |
     # Keep only the 10 most recent tags
-    TAGS=$(doctl registry repository list-tags myapp --format Tag --no-header | tail -n +11)
+    TAGS=$(doctl registries repository list-tags my-registry myapp --format Tag --no-header | tail -n +11)
     for TAG in $TAGS; do
       echo "Deleting myapp:$TAG"
-      doctl registry repository delete-tag myapp "$TAG" --force
+      doctl registries repository delete-tag my-registry myapp "$TAG" --force
     done
     # Run garbage collection to reclaim storage
     doctl registry garbage-collection start my-registry --include-untagged-manifests --force
@@ -272,9 +271,9 @@ Add a cleanup step to your CI/CD pipeline:
 
 DOCR offers subscription-based pricing:
 
-- **Starter** (free): 500 MB storage, limited bandwidth
-- **Basic**: 5 GB storage
-- **Professional**: 100+ GB storage
+- **Starter** (free): 500 MiB storage, one repository
+- **Basic**: 5 GiB storage, five repositories
+- **Professional**: 100 GiB storage, unlimited repositories
 
 Check your current usage:
 
