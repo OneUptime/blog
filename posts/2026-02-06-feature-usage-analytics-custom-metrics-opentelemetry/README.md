@@ -10,18 +10,24 @@ Product-led growth depends on understanding which features drive adoption, reten
 
 ## Why Use OpenTelemetry for Product Analytics
 
-Most teams use separate tools for product analytics (Mixpanel, Amplitude) and observability (Datadog, OneUptime). This creates a gap: product data tells you what users did, but not how the system performed when they did it. With OpenTelemetry, feature usage events carry the same trace context as your infrastructure data. When a user says "the export feature is slow," you can see both the product event and the backend trace in one view.
+Most teams use separate tools for product analytics (Mixpanel, Amplitude) and observability (Datadog, OneUptime). This creates a gap: product data tells you what users did, but not how the system performed when they did it. With OpenTelemetry, feature usage spans can carry the same trace context as your infrastructure data, and metrics recorded while a span is active can be correlated with traces through exemplars in backends that support them. When a user says "the export feature is slow," you can see both the product action and the backend trace in one view.
 
 ## Defining Feature Usage Metrics
 
-Start by creating metrics that capture feature engagement:
+After configuring a MeterProvider and exporter in your application, start by creating metrics that capture feature engagement:
 
 ```python
 # feature_metrics.py
 
+from typing import Optional
 from opentelemetry import metrics
 
 meter = metrics.get_meter("product.features")
+
+FEATURE_CATEGORIES = {
+    "report_export": "reporting",
+    "dashboard_create": "dashboards",
+}
 
 # Count how many times each feature is used
 feature_usage_counter = meter.create_counter(
@@ -37,15 +43,18 @@ feature_latency = meter.create_histogram(
     unit="ms",
 )
 
-# Gauge for currently active users per feature
+# Track the current active user count with increments and decrements
 active_users_gauge = meter.create_up_down_counter(
     "product.feature.active_users",
     description="Users currently engaged with a feature",
     unit="1",
 )
 
+def get_feature_category(feature_name: str) -> str:
+    return FEATURE_CATEGORIES.get(feature_name, "other")
+
 def track_feature_used(feature_name: str, user_id: str, tenant_id: str,
-                       plan: str, duration_ms: float = None):
+                       plan: str, duration_ms: Optional[float] = None):
     """Record a feature usage event with context."""
     attributes = {
         "feature.name": feature_name,
@@ -81,7 +90,7 @@ def track_feature(feature_name: str):
             request = kwargs.get("request") or args[0]
             user = request.state.user
 
-            start = time.time()
+            start = time.perf_counter()
             with tracer.start_as_current_span(
                 f"feature.{feature_name}",
                 attributes={
@@ -91,7 +100,7 @@ def track_feature(feature_name: str):
                 }
             ):
                 result = await func(*args, **kwargs)
-                duration_ms = (time.time() - start) * 1000
+                duration_ms = (time.perf_counter() - start) * 1000
 
                 track_feature_used(
                     feature_name=feature_name,
@@ -155,7 +164,7 @@ def check_adoption_stage(user_id: str, feature_name: str, usage_count: int):
 
 ## Frontend Feature Tracking with the Browser SDK
 
-Feature usage often starts in the browser. Use the OpenTelemetry JS SDK to capture frontend interactions:
+Feature usage often starts in the browser. After configuring a MeterProvider and exporter for your browser application, use the OpenTelemetry JS API to capture frontend interactions:
 
 ```javascript
 // feature-tracker.js
@@ -201,7 +210,7 @@ export function createFeatureSession(featureName) {
 
 The real power of product analytics through OpenTelemetry comes when you correlate feature usage with business outcomes. By adding plan and tenant attributes to every feature metric, you can answer questions like "which features do customers on the Pro plan use most before upgrading to Enterprise?" or "which features have the strongest correlation with retention?"
 
-These queries become straightforward when your product analytics and infrastructure telemetry share the same pipeline and attribute schema. You do not need a separate data warehouse join to connect the dots.
+These queries become straightforward when your product analytics, infrastructure telemetry, and business outcome data share the same pipeline and attribute schema. For questions that depend on billing, upgrades, or retention outcomes, you still need those outcomes in the same backend or a downstream join.
 
 ## Summary
 
