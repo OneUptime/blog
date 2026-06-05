@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Onboarding, Funnel Metrics, SaaS
 
 Description: Track SaaS onboarding flow completion rates and identify bottlenecks using OpenTelemetry funnel metrics and custom instrumentation.
 
-Your onboarding flow is the first real experience a user has with your product. If they drop off at step 3 of 5, you need to know why. Was it a slow API call? A confusing UI step? A backend error they never saw? OpenTelemetry lets you instrument your onboarding funnel so you can measure completion rates and trace individual user journeys through the flow.
+Your onboarding flow is the first real experience a user has with your product. If they drop off at step 3 of 5, you need to know why. Was it a slow API call? A confusing UI step? A backend error they never saw? OpenTelemetry lets you instrument your onboarding funnel so you can measure completion rates and correlate traces with individual user journeys through the flow.
 
 ## Defining the Onboarding Funnel
 
@@ -25,11 +25,9 @@ Each step is a measurable event. The goal is to track how many users reach each 
 ```python
 # onboarding_metrics.py
 
-from opentelemetry import metrics, trace
-from time import time
+from opentelemetry import metrics
 
 meter = metrics.get_meter("onboarding.funnel")
-tracer = trace.get_tracer("onboarding.flow")
 
 # Counter for each funnel step
 funnel_step_counter = meter.create_counter(
@@ -76,12 +74,12 @@ def record_step_completion(user_id: str, step_name: str, duration_seconds: float
 
 ## Tracing the Full Onboarding Journey
 
-While metrics give you aggregate numbers, traces let you follow a single user through the entire flow:
+While metrics give you aggregate numbers, traces let you inspect individual onboarding steps and correlate them with a user journey:
 
 ```python
 # onboarding_service.py
+from datetime import UTC, datetime
 from opentelemetry import trace
-from opentelemetry.trace import StatusCode
 
 tracer = trace.get_tracer("onboarding.service")
 
@@ -92,10 +90,10 @@ class OnboardingService:
             "onboarding.full_flow",
             attributes={
                 "user.id": user_id,
-                "onboarding.started_at": str(datetime.utcnow()),
+                "onboarding.started_at": datetime.now(UTC).isoformat(),
             }
         ) as span:
-            # Store the trace context so we can link later steps
+            # Store the trace ID so we can look up this journey later.
             trace_id = span.get_span_context().trace_id
             save_onboarding_trace_id(user_id, trace_id)
             return trace_id
@@ -119,6 +117,10 @@ class OnboardingService:
 
             span.set_attribute("onboarding.step.status", "completed")
 
+            # To keep separate requests in one trace, propagate or restore the
+            # full trace context in your application. A trace ID alone is only
+            # enough for lookup and correlation.
+
     def _check_email_delivery(self, user_id: str, span):
         """Check if email delivery was delayed, which causes dropoffs."""
         with tracer.start_as_current_span("onboarding.email.delivery_check") as child:
@@ -135,13 +137,16 @@ Users who start onboarding but never finish need to be counted as dropoffs. A pe
 
 ```python
 # onboarding_dropoff_detector.py
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
+from opentelemetry import trace
 from onboarding_metrics import dropoff_counter, FUNNEL_STEPS
+
+tracer = trace.get_tracer("onboarding.dropoff_detector")
 
 def detect_onboarding_dropoffs():
     """Find users who have stalled in onboarding and record dropoffs."""
     with tracer.start_as_current_span("onboarding.dropoff_detection") as span:
-        cutoff = datetime.utcnow() - timedelta(hours=24)
+        cutoff = datetime.now(UTC) - timedelta(hours=24)
         stalled_users = get_stalled_onboarding_sessions(cutoff)
 
         span.set_attribute("onboarding.stalled_count", len(stalled_users))
@@ -168,7 +173,7 @@ With these metrics flowing into your observability platform, you can build a fun
 
 - **Completion rate per step**: `sum(onboarding.funnel.step_completed)` grouped by `onboarding.step`
 - **Drop-off rate**: `sum(onboarding.funnel.dropoff)` grouped by `onboarding.dropoff_step`
-- **Step duration P95**: `histogram_quantile(0.95, onboarding.funnel.step_duration)` grouped by `onboarding.step`
+- **Step duration P95**: in Prometheus-style backends, use a histogram query such as `histogram_quantile(0.95, sum by (le, onboarding_step) (rate(onboarding_funnel_step_duration_seconds_bucket[5m])))`
 
 The most actionable insight is usually the step with the highest dropoff combined with the longest duration. If users spend 5 minutes on "first integration" and 40% drop off there, that step needs UX work or better documentation.
 
@@ -179,10 +184,12 @@ Do not forget to instrument the API endpoints that power each onboarding step:
 ```python
 # onboarding_api.py
 from fastapi import APIRouter, Request
+from opentelemetry import trace
 from onboarding_metrics import record_step_completion
 import time
 
 router = APIRouter()
+tracer = trace.get_tracer("onboarding.api")
 
 @router.post("/onboarding/org-setup")
 async def setup_organization(request: Request):
