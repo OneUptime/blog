@@ -38,7 +38,7 @@ from opentelemetry.sdk.resources import Resource
 
 # Create a resource that identifies your service
 
-resource = Resource(attributes={
+resource = Resource.create({
     "service.name": "asyncio-service",
     "service.version": "1.0.0"
 })
@@ -189,7 +189,8 @@ async def main():
 The callback queue depth indicates how many callbacks are waiting to execute. A growing queue suggests the event loop can't keep up.
 
 ```python
-import sys
+import asyncio
+from typing import Optional
 
 class CallbackQueueMonitor:
     def __init__(self, meter):
@@ -201,13 +202,14 @@ class CallbackQueueMonitor:
 
         self._loop: Optional[asyncio.AbstractEventLoop] = None
 
+    def set_loop(self, loop: asyncio.AbstractEventLoop):
+        """Set the loop to observe from the application thread"""
+        self._loop = loop
+
     def _observe_queue_depth(self, options):
         """Callback to observe current queue depth"""
         if self._loop is None:
-            try:
-                self._loop = asyncio.get_running_loop()
-            except RuntimeError:
-                return
+            return
 
         # Get queue depth from loop internals
         # Note: This is implementation-specific and may not work on all Python versions
@@ -217,6 +219,10 @@ class CallbackQueueMonitor:
 
 # Initialize the monitor
 queue_monitor = CallbackQueueMonitor(meter)
+
+async def main():
+    queue_monitor.set_loop(asyncio.get_running_loop())
+    # Your application code here
 ```
 
 ## Complete Monitoring Solution
@@ -262,6 +268,7 @@ class AsyncioObservability:
 
     async def start_monitoring(self):
         """Start all monitoring tasks"""
+        self.queue_monitor.set_loop(asyncio.get_running_loop())
         await self.event_loop_monitor.monitor()
 
     def instrument_function(self, func_name: str = None):
