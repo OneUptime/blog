@@ -6,37 +6,37 @@ Tags: OpenTelemetry, Collector, Prometheus, Memory
 
 Description: Diagnose and fix gradual memory growth in the OpenTelemetry Collector caused by the Prometheus receiver accumulating metrics.
 
-Your OpenTelemetry Collector looks healthy on day one. Memory usage is stable at 200MB. By day three, it is at 800MB. By day seven, it hits the container limit and gets OOM-killed. The Prometheus receiver is the likely culprit.
+Your OpenTelemetry Collector looks healthy on day one. Memory usage is stable at 200MB. By day three, it is at 800MB. By day seven, it hits the container limit and gets OOM-killed. If the Collector is scraping high-cardinality or high-churn targets, the Prometheus receiver is a likely culprit.
 
 ## Why the Prometheus Receiver Accumulates Memory
 
 The Prometheus receiver scrapes targets and converts Prometheus metrics into the OpenTelemetry metric format. To do this conversion correctly, it maintains internal state for each time series it has seen. This state includes:
 
 - Metric metadata (name, type, help text)
-- The last scraped value for each time series (needed for cumulative-to-delta conversions)
+- Scrape cache entries for series identity and lifecycle handling
 - Stale marker tracking
 
 When targets produce new time series (due to pod restarts, label changes, or high cardinality), the receiver accumulates state for each unique series. If old series are never cleaned up, memory grows indefinitely.
 
 ## Identifying the Problem
 
-Check the number of active time series the receiver is tracking:
+Check the Collector's own memory metric:
 
 ```bash
 # Query the Collector's internal metrics
 
-curl -s http://localhost:8888/metrics | grep "scrape_series"
+curl -s http://localhost:8888/metrics | grep "otelcol_process_memory_rss"
 ```
 
-Look at the Prometheus receiver's scrape metrics:
+Then check whether scrapes are constantly introducing new series by querying the scrape metrics exported by your metrics pipeline:
 
 ```text
-prometheus_target_scrapes_sample_out_of_order_total
-prometheus_target_scrapes_sample_duplicate_total
-prometheus_tsdb_head_series
+scrape_series_added
+scrape_samples_scraped
+scrape_samples_post_metric_relabeling
 ```
 
-If `prometheus_tsdb_head_series` keeps growing, series are accumulating without being cleaned up.
+If `scrape_series_added` stays high over time while `otelcol_process_memory_rss` keeps growing, the receiver is seeing continuous series churn. If you also scrape a Prometheus server, `prometheus_tsdb_head_series` is useful for that Prometheus server's TSDB, but it is not the Collector receiver's active-series metric.
 
 ## Common Causes
 
@@ -59,13 +59,13 @@ If pods produce metrics with high-cardinality labels (like request IDs or timest
 
 When pods restart, they get new IPs and new instance labels. The receiver sees the new pod as a new target and starts tracking new series. The old series from the terminated pod remain in memory.
 
-### 3. Missing Staleness Handling
+### 3. Missing Explicit Timestamp Staleness Handling
 
-The Prometheus receiver should mark series as stale when a target disappears, but certain configurations can prevent proper staleness detection.
+The Prometheus receiver should mark series as stale when a target disappears, but metrics with explicit timestamps need additional staleness tracking.
 
-## Fix 1: Enable Staleness Tracking
+## Fix 1: Enable Explicit Timestamp Staleness Tracking
 
-Make sure the receiver properly handles stale series:
+Make sure the receiver properly handles stale series for metrics that include explicit timestamps:
 
 ```yaml
 receivers:
@@ -74,8 +74,8 @@ receivers:
       scrape_configs:
       - job_name: 'kubernetes-pods'
         scrape_interval: 30s
-        # Honor timestamps helps with staleness
         honor_timestamps: true
+        track_timestamps_staleness: true
         kubernetes_sd_configs:
         - role: pod
 ```
@@ -147,9 +147,9 @@ receivers:
 
 If a target returns more than 5000 samples, the entire scrape is rejected. This prevents cardinality explosions from a single misbehaving target.
 
-## Fix 5: Use the Filter Processor
+## Fix 5: Use the Filter Processor for Downstream Volume
 
-Add a filter processor to drop unwanted metrics after scraping:
+Add a filter processor to drop unwanted metrics after scraping. This reduces what the Collector exports, but because it runs after the Prometheus receiver, use `metric_relabel_configs` first when the goal is to reduce scrape-time receiver state:
 
 ```yaml
 processors:
@@ -172,12 +172,12 @@ service:
 
 ## Monitoring the Receiver
 
-Set up an alert for the receiver's memory footprint:
+Set up an alert for sustained series churn:
 
 ```yaml
 # Alert when series count is growing too fast
 - alert: PrometheusReceiverSeriesGrowth
-  expr: delta(prometheus_tsdb_head_series[1h]) > 10000
+  expr: sum_over_time(scrape_series_added[1h]) > 10000
   for: 30m
   labels:
     severity: warning
