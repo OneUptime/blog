@@ -34,9 +34,9 @@ availability_cache_hits = meter.create_counter(
     description="Availability check cache hits and misses"
 )
 
-stock_level_gauge = meter.create_observable_gauge(
+stock_level_gauge = meter.create_gauge(
     "inventory.stock_level",
-    description="Current stock level by product category"
+    description="Current stock level by product"
 )
 
 class AvailabilityService:
@@ -52,6 +52,7 @@ class AvailabilityService:
                 availability_cache_hits.add(1, {"cache.result": "hit"})
                 span.set_attribute("inventory.source", "cache")
                 span.set_attribute("inventory.stock_level", cached)
+                stock_level_gauge.set(cached, {"product.id": product_id})
 
                 available = cached >= quantity
                 span.set_attribute("inventory.available", available)
@@ -68,6 +69,7 @@ class AvailabilityService:
 
             span.set_attribute("inventory.source", "database")
             span.set_attribute("inventory.stock_level", stock)
+            stock_level_gauge.set(stock, {"product.id": product_id})
 
             available = stock >= quantity
             span.set_attribute("inventory.available", available)
@@ -84,8 +86,8 @@ class AvailabilityService:
 
     def _query_stock_db(self, product_id: str):
         with tracer.start_as_current_span("inventory.db_query") as span:
-            span.set_attribute("db.system", "postgresql")
-            span.set_attribute("db.operation", "SELECT")
+            span.set_attribute("db.system.name", "postgresql")
+            span.set_attribute("db.operation.name", "SELECT")
 
             result = self.db.execute(
                 "SELECT available_quantity FROM inventory WHERE product_id = %s",
