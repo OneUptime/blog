@@ -44,7 +44,7 @@ Before configuring the Tinybird exporter, you need:
 1. A Tinybird account (sign up at tinybird.co)
 2. A Tinybird workspace with an authentication token
 3. Data Sources created in Tinybird for your telemetry types
-4. OpenTelemetry Collector with the Tinybird exporter component
+4. OpenTelemetry Collector Contrib v0.131.0 or newer, which includes the Tinybird exporter component
 
 ## Setting Up Tinybird Data Sources
 
@@ -53,24 +53,23 @@ First, create Data Sources in Tinybird to receive your telemetry data. Here's an
 ```sql
 -- Tinybird Data Source schema for traces
 SCHEMA >
-    `trace_id` String,
-    `span_id` String,
-    `parent_span_id` String,
-    `trace_state` String,
-    `name` String,
-    `kind` String,
-    `start_time` DateTime64(9),
-    `end_time` DateTime64(9),
-    `duration_ns` UInt64,
-    `status_code` String,
-    `status_message` String,
-    `service_name` String,
-    `resource_attributes` String,
-    `span_attributes` String
+    `Timestamp` DateTime64(9) `json:$.start_time`
+    `TraceId` String `json:$.trace_id`
+    `SpanId` String `json:$.span_id`
+    `ParentSpanId` String `json:$.parent_span_id`
+    `TraceState` String `json:$.trace_state`
+    `SpanName` String `json:$.span_name`
+    `SpanKind` String `json:$.span_kind`
+    `ServiceName` String `json:$.service_name`
+    `ResourceAttributes` Map(String, String) `json:$.resource_attributes`
+    `Duration` UInt64 `json:$.duration`
+    `StatusCode` String `json:$.status_code`
+    `StatusMessage` String `json:$.status_message`
+    `SpanAttributes` Map(String, String) `json:$.span_attributes`
 
 ENGINE "MergeTree"
-ENGINE_PARTITION_KEY "toYYYYMM(start_time)"
-ENGINE_SORTING_KEY "service_name, name, start_time"
+ENGINE_PARTITION_KEY "toDate(Timestamp)"
+ENGINE_SORTING_KEY "ServiceName, SpanName, Timestamp"
 ```
 
 ## Basic Configuration
@@ -90,7 +89,8 @@ exporters:
     token: ${env:TINYBIRD_TOKEN}
 
     # Data Source name for traces in Tinybird
-    datasource: otel_traces
+    traces:
+      datasource: otel_traces
 
     # Timeout for HTTP requests
     timeout: 30s
@@ -125,14 +125,15 @@ For production deployments, configure the exporter with retry logic and resource
 exporters:
   tinybird/traces:
     # Tinybird regional endpoint
-    # Options: api.tinybird.co (US), api.eu-central-1.tinybird.co (EU)
+    # Examples: api.tinybird.co (Europe/Frankfurt on GCP), api.us-east.aws.tinybird.co (US East on AWS)
     endpoint: https://api.tinybird.co
 
     # Authentication token with write permissions
     token: ${env:TINYBIRD_TRACES_TOKEN}
 
     # Data Source name in Tinybird
-    datasource: production_traces
+    traces:
+      datasource: production_traces
 
     # HTTP client configuration
     timeout: 45s
@@ -154,7 +155,6 @@ exporters:
       enabled: true
       num_consumers: 10
       queue_size: 5000
-      storage_type: file_storage
 
     # Compression for data transfer
     compression: gzip
@@ -183,15 +183,14 @@ processors:
         value: ecommerce
         action: upsert
 
-  # Transform span data for Tinybird schema
+  # Add a custom duration attribute for downstream analysis
   transform:
+    error_mode: ignore
     trace_statements:
       - context: span
         statements:
           # Extract duration in nanoseconds
-          - set(attributes["duration_ns"], (end_time_unix_nano() - start_time_unix_nano()))
-          # Flatten resource attributes to JSON string
-          - set(attributes["resource_attributes"], ConvertAttributesToString(resource.attributes))
+          - set(attributes["duration_ns"], end_time_unix_nano - start_time_unix_nano)
 
 service:
   pipelines:
@@ -210,7 +209,15 @@ exporters:
   tinybird/metrics:
     endpoint: https://api.tinybird.co
     token: ${env:TINYBIRD_METRICS_TOKEN}
-    datasource: production_metrics
+    metrics:
+      gauge:
+        datasource: production_metrics_gauge
+      sum:
+        datasource: production_metrics_sum
+      histogram:
+        datasource: production_metrics_histogram
+      exponential_histogram:
+        datasource: production_metrics_exponential_histogram
 
     # Configuration for metrics-specific handling
     timeout: 30s
@@ -293,7 +300,8 @@ exporters:
   tinybird/logs:
     endpoint: https://api.tinybird.co
     token: ${env:TINYBIRD_LOGS_TOKEN}
-    datasource: application_logs
+    logs:
+      datasource: application_logs
 
     timeout: 30s
 
@@ -436,7 +444,8 @@ exporters:
   tinybird/traces:
     endpoint: https://api.tinybird.co
     token: ${env:TINYBIRD_TRACES_TOKEN}
-    datasource: prod_traces
+    traces:
+      datasource: prod_traces
     timeout: 45s
     compression: gzip
     retry_on_failure:
@@ -452,7 +461,15 @@ exporters:
   tinybird/metrics:
     endpoint: https://api.tinybird.co
     token: ${env:TINYBIRD_METRICS_TOKEN}
-    datasource: prod_metrics
+    metrics:
+      gauge:
+        datasource: prod_metrics_gauge
+      sum:
+        datasource: prod_metrics_sum
+      histogram:
+        datasource: prod_metrics_histogram
+      exponential_histogram:
+        datasource: prod_metrics_exponential_histogram
     timeout: 30s
     compression: gzip
     retry_on_failure:
@@ -468,7 +485,8 @@ exporters:
   tinybird/logs:
     endpoint: https://api.tinybird.co
     token: ${env:TINYBIRD_LOGS_TOKEN}
-    datasource: prod_logs
+    logs:
+      datasource: prod_logs
     timeout: 30s
     compression: gzip
     retry_on_failure:
@@ -507,21 +525,21 @@ Use Tinybird's SQL Pipes to transform raw telemetry data into analytics:
 NODE request_latencies
 SQL >
     SELECT
-        name as endpoint,
-        service_name,
-        quantile(0.50)(duration_ns / 1000000) as p50_ms,
-        quantile(0.95)(duration_ns / 1000000) as p95_ms,
-        quantile(0.99)(duration_ns / 1000000) as p99_ms,
+        SpanName as endpoint,
+        ServiceName,
+        quantile(0.50)(Duration / 1000000) as p50_ms,
+        quantile(0.95)(Duration / 1000000) as p95_ms,
+        quantile(0.99)(Duration / 1000000) as p99_ms,
         count() as request_count,
-        toStartOfMinute(start_time) as minute
+        toStartOfMinute(Timestamp) as minute
     FROM otel_traces
-    WHERE start_time >= now() - INTERVAL 1 HOUR
-    AND kind = 'server'
-    GROUP BY endpoint, service_name, minute
+    WHERE Timestamp >= now() - INTERVAL 1 HOUR
+    AND SpanKind = 'server'
+    GROUP BY endpoint, ServiceName, minute
     ORDER BY minute DESC
 
 -- Publish as an API endpoint
-TYPE materialized
+TYPE MATERIALIZED
 DATASOURCE request_latencies_mv
 ```
 
@@ -534,18 +552,18 @@ Create a real-time error rate API using Tinybird:
 NODE error_rates
 SQL >
     SELECT
-        service_name,
-        countIf(status_code = 'ERROR') as error_count,
+        ServiceName,
+        countIf(StatusCode = 'ERROR') as error_count,
         count() as total_count,
         (error_count / total_count) * 100 as error_rate_pct,
-        toStartOfMinute(start_time) as time_bucket
+        toStartOfMinute(Timestamp) as time_bucket
     FROM otel_traces
-    WHERE start_time >= now() - INTERVAL 5 MINUTE
-    GROUP BY service_name, time_bucket
+    WHERE Timestamp >= now() - INTERVAL 5 MINUTE
+    GROUP BY ServiceName, time_bucket
     ORDER BY time_bucket DESC, error_rate_pct DESC
 
 -- Expose as REST API
-TYPE endpoint
+TYPE ENDPOINT
 ```
 
 ## Security Best Practices
@@ -571,7 +589,8 @@ exporters:
   tinybird:
     endpoint: https://api.tinybird.co
     token: ${env:TINYBIRD_TOKEN}
-    datasource: high_volume_traces
+    traces:
+      datasource: high_volume_traces
 
     # Optimize for high throughput
     timeout: 60s
