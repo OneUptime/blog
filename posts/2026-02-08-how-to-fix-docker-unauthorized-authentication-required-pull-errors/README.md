@@ -120,7 +120,7 @@ docker manifest inspect registry.example.com/myapp:latest
 
 Many registries issue temporary tokens. When they expire, pulls start failing.
 
-**Docker Hub personal access tokens** do not expire unless you revoke them, but session tokens from `docker login` with a password can become stale.
+**Docker Hub personal access tokens** can have expiration dates and can also be revoked, so check the token in Docker Hub if pulls suddenly start failing.
 
 **ECR tokens** expire after 12 hours. You need to re-authenticate:
 
@@ -170,7 +170,7 @@ If the config uses a `credsStore` (like `desktop`, `osxkeychain`, or `secretserv
 
 ```bash
 # Test the credential helper directly
-echo "https://index.docker.io/v1/" | docker-credential-desktop list
+echo "https://index.docker.io/v1/" | docker-credential-desktop get
 
 # If the helper is broken, temporarily remove the credsStore entry
 # and log in again to store credentials in the config file directly
@@ -205,8 +205,8 @@ sudo apt-get install amazon-ecr-credential-helper
 For GCR:
 
 ```bash
-# Install the GCR credential helper
-gcloud components install docker-credential-gcr
+# Install the standalone GCR credential helper with Go
+go install github.com/GoogleCloudPlatform/docker-credential-gcr/v2@latest
 
 # Configure it
 docker-credential-gcr configure-docker
