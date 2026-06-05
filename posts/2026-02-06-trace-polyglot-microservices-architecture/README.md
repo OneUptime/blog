@@ -55,15 +55,14 @@ import (
     "context"
     "log"
     "net/http"
-    "time"
 
+    "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
     "go.opentelemetry.io/otel/propagation"
     "go.opentelemetry.io/otel/sdk/resource"
     sdktrace "go.opentelemetry.io/otel/sdk/trace"
-    semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
-    "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+    semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
 )
 
 // initTracer sets up the OTLP exporter and registers a global tracer provider.
@@ -84,7 +83,7 @@ func initTracer() func() {
         resource.WithAttributes(
             semconv.ServiceName("api-gateway"),
             semconv.ServiceVersion("1.0.0"),
-            semconv.DeploymentEnvironment("production"),
+            semconv.DeploymentEnvironmentName("production"),
         ),
     )
 
@@ -108,7 +107,7 @@ func main() {
 
     // Wrap the HTTP handler with OpenTelemetry instrumentation.
     // This automatically creates spans for incoming requests and
-    // propagates context to outgoing requests.
+    // extracts trace context from incoming request headers.
     handler := http.HandlerFunc(gatewayHandler)
     wrappedHandler := otelhttp.NewHandler(handler, "api-gateway")
 
@@ -162,7 +161,7 @@ Create a tracing setup file that runs before your application code:
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
-const { Resource } = require('@opentelemetry/resources');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 const { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } = require('@opentelemetry/semantic-conventions');
 
 // Configure the OTLP exporter to send traces to the collector
@@ -171,7 +170,7 @@ const traceExporter = new OTLPTraceExporter({
 });
 
 const sdk = new NodeSDK({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     [ATTR_SERVICE_NAME]: 'auth-service',
     [ATTR_SERVICE_VERSION]: '1.0.0',
   }),
@@ -256,7 +255,7 @@ curl -L -o opentelemetry-javaagent.jar \
   https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/latest/download/opentelemetry-javaagent.jar
 ```
 
-Configure the agent using environment variables:
+Configure the agent using system properties:
 
 ```bash
 # Run the Java application with the OpenTelemetry agent attached.
@@ -337,6 +336,8 @@ processors:
 exporters:
   otlphttp:
     endpoint: https://oneuptime.com/otlp
+    headers:
+      x-oneuptime-token: YOUR_ONEUPTIME_TOKEN
 
 service:
   pipelines:
