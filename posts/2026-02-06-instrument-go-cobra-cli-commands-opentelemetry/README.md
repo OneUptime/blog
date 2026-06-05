@@ -36,7 +36,7 @@ go get go.opentelemetry.io/otel
 go get go.opentelemetry.io/otel/sdk/trace
 go get go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc
 go get go.opentelemetry.io/otel/sdk/resource
-go get go.opentelemetry.io/otel/semconv/v1.24.0
+go get go.opentelemetry.io/otel/semconv/v1.40.0
 ```
 
 Create a tracing initialization module that configures OpenTelemetry for CLI usage:
@@ -52,7 +52,7 @@ import (
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
     "go.opentelemetry.io/otel/sdk/resource"
     sdktrace "go.opentelemetry.io/otel/sdk/trace"
-    semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
+    semconv "go.opentelemetry.io/otel/semconv/v1.40.0"
 )
 
 // InitTracer sets up OpenTelemetry tracing for CLI applications
@@ -71,9 +71,9 @@ func InitTracer(ctx context.Context, serviceName, version string) (*sdktrace.Tra
     // Define resource attributes identifying this CLI tool
     res, err := resource.New(ctx,
         resource.WithAttributes(
-            semconv.ServiceNameKey.String(serviceName),
-            semconv.ServiceVersionKey.String(version),
-            semconv.DeploymentEnvironmentKey.String("cli"),
+            semconv.ServiceName(serviceName),
+            semconv.ServiceVersion(version),
+            semconv.DeploymentEnvironmentName("cli"),
         ),
     )
     if err != nil {
@@ -114,8 +114,7 @@ import (
 
     "github.com/spf13/cobra"
     "go.opentelemetry.io/otel"
-    "go.opentelemetry.io/otel/attribute"
-    "go.opentelemetry.io/otel/codes"
+    sdktrace "go.opentelemetry.io/otel/sdk/trace"
     "go.opentelemetry.io/otel/trace"
 
     "your-cli/telemetry"
@@ -142,20 +141,22 @@ var rootCmd = &cobra.Command{
         tracer = otel.Tracer("mycli-commands")
         return nil
     },
-    PersistentPostRunE: func(cmd *cobra.Command, args []string) error {
-        // Ensure all traces are flushed before exit
-        if tp != nil {
-            ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-            defer cancel()
-            return tp.Shutdown(ctx)
-        }
-        return nil
-    },
 }
 
 // Execute runs the root command
 func Execute() {
-    if err := rootCmd.ExecuteContext(context.Background()); err != nil {
+    err := rootCmd.ExecuteContext(context.Background())
+
+    // Ensure all traces are flushed before exit, even when the command fails
+    if tp != nil {
+        ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+        defer cancel()
+        if shutdownErr := tp.Shutdown(ctx); shutdownErr != nil && err == nil {
+            err = shutdownErr
+        }
+    }
+
+    if err != nil {
         os.Exit(1)
     }
 }
@@ -167,7 +168,7 @@ Create a helper function for instrumenting command execution:
 package cmd
 
 import (
-    "context"
+    "fmt"
     "time"
 
     "github.com/spf13/cobra"
@@ -228,11 +229,13 @@ Use the tracing wrapper in your commands:
 package cmd
 
 import (
+    "context"
     "fmt"
     "time"
 
     "github.com/spf13/cobra"
     "go.opentelemetry.io/otel/attribute"
+    "go.opentelemetry.io/otel/trace"
 )
 
 var deployCmd = &cobra.Command{
@@ -302,8 +305,10 @@ Command flags and arguments provide important context for traces. Capture them s
 package cmd
 
 import (
-    "context"
+    "fmt"
+    "strings"
 
+    "github.com/spf13/pflag"
     "github.com/spf13/cobra"
     "go.opentelemetry.io/otel/attribute"
     "go.opentelemetry.io/otel/trace"
@@ -410,6 +415,7 @@ package operations
 
 import (
     "context"
+    "fmt"
     "net/http"
     "time"
 
@@ -437,18 +443,18 @@ func NewAPIClient(baseURL string) *APIClient {
 
 // CreateResource makes a traced API call to create a resource
 func (c *APIClient) CreateResource(ctx context.Context, resourceType, name string) error {
+    url := fmt.Sprintf("%s/resources/%s", c.baseURL, resourceType)
+
     ctx, span := c.tracer.Start(ctx, "api.create_resource",
         trace.WithSpanKind(trace.SpanKindClient),
         trace.WithAttributes(
-            attribute.String("http.method", "POST"),
+            attribute.String("http.request.method", "POST"),
+            attribute.String("url.full", url),
             attribute.String("resource.type", resourceType),
             attribute.String("resource.name", name),
-            attribute.String("server.address", c.baseURL),
         ),
     )
     defer span.End()
-
-    url := fmt.Sprintf("%s/resources/%s", c.baseURL, resourceType)
 
     // Create request with traced context
     req, err := http.NewRequestWithContext(ctx, "POST", url, nil)
@@ -561,6 +567,7 @@ package cmd
 import (
     "context"
     "fmt"
+    "os"
 
     "go.opentelemetry.io/otel/attribute"
     "go.opentelemetry.io/otel/codes"
@@ -619,7 +626,6 @@ Track command performance over time to identify regressions:
 package cmd
 
 import (
-    "context"
     "os"
     "runtime"
 
@@ -660,17 +666,21 @@ import (
     "context"
     "testing"
 
+    "github.com/spf13/cobra"
     "github.com/stretchr/testify/assert"
     "github.com/stretchr/testify/require"
-    "go.opentelemetry.io/otel/sdk/trace"
+    "go.opentelemetry.io/otel"
+    "go.opentelemetry.io/otel/attribute"
+    sdktrace "go.opentelemetry.io/otel/sdk/trace"
     "go.opentelemetry.io/otel/sdk/trace/tracetest"
+    "go.opentelemetry.io/otel/trace"
 )
 
 func TestDeployCommandTracing(t *testing.T) {
     // Create in-memory span recorder for testing
     exporter := tracetest.NewInMemoryExporter()
-    tp := trace.NewTracerProvider(
-        trace.WithSyncer(exporter),
+    tp := sdktrace.NewTracerProvider(
+        sdktrace.WithSyncer(exporter),
     )
 
     // Set as global provider
@@ -678,7 +688,17 @@ func TestDeployCommandTracing(t *testing.T) {
     tracer = tp.Tracer("test-tracer")
 
     // Execute command
-    cmd := deployCmd
+    cmd := &cobra.Command{
+        Use:  "deploy [service]",
+        Args: cobra.ExactArgs(1),
+        RunE: withTracing(func(cmd *cobra.Command, args []string) error {
+            span := trace.SpanFromContext(cmd.Context())
+            span.SetAttributes(
+                attribute.String("service.name", args[0]),
+            )
+            return nil
+        }),
+    }
     cmd.SetArgs([]string{"test-service"})
     err := cmd.ExecuteContext(context.Background())
     require.NoError(t, err)
