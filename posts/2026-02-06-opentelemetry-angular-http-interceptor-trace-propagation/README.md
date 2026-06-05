@@ -43,6 +43,7 @@ Install the required OpenTelemetry packages for Angular applications.
 npm install @opentelemetry/api \
   @opentelemetry/sdk-trace-web \
   @opentelemetry/core \
+  @opentelemetry/context-zone \
   @opentelemetry/instrumentation-fetch \
   @opentelemetry/instrumentation-xml-http-request \
   @opentelemetry/exporter-trace-otlp-http \
@@ -53,6 +54,7 @@ npm install @opentelemetry/api \
 ```
 
 These packages provide the core tracing functionality and various propagation formats.
+The examples below assume your Angular app has already registered a browser tracer provider and context manager; without an SDK provider, `@opentelemetry/api` uses no-op implementations and will not create real trace context.
 
 ## Creating the Trace Propagation Interceptor
 
@@ -78,14 +80,16 @@ import {
   propagation,
   SpanStatusCode,
   SpanKind,
-  Span,
+  type Span,
+  type Context,
 } from '@opentelemetry/api';
-import { W3CTraceContextPropagator } from '@opentelemetry/core';
+import { BaggageService } from '../services/baggage.service';
 
 @Injectable()
 export class TracePropagationInterceptor implements HttpInterceptor {
   private tracer = trace.getTracer('angular-http-client');
-  private propagator = new W3CTraceContextPropagator();
+
+  constructor(private baggageService: BaggageService) {}
 
   intercept(
     request: HttpRequest<unknown>,
@@ -95,21 +99,27 @@ export class TracePropagationInterceptor implements HttpInterceptor {
     const span = this.tracer.startSpan(`HTTP ${request.method}`, {
       kind: SpanKind.CLIENT,
       attributes: {
-        'http.method': request.method,
-        'http.url': request.url,
-        'http.target': this.getTarget(request),
-        'http.host': this.getHost(request),
-        'http.scheme': this.getScheme(request),
+        'http.request.method': request.method,
+        'url.full': this.getAbsoluteUrl(request),
+        'url.path': this.getPath(request),
+        'url.query': this.getQuery(request),
+        'server.address': this.getHost(request),
+        'url.scheme': this.getScheme(request),
       },
     });
 
+    const spanContext = trace.setSpan(
+      this.baggageService.getContextWithBaggage(),
+      span
+    );
+
     // Inject trace context into request headers
-    const modifiedRequest = this.injectTraceContext(request, span);
+    const modifiedRequest = this.injectTraceContext(request, spanContext);
 
     const startTime = Date.now();
 
     // Execute the request within the span's context
-    return context.with(trace.setSpan(context.active(), span), () => {
+    return context.with(spanContext, () => {
       return next.handle(modifiedRequest).pipe(
         tap({
           next: (event) => {
@@ -118,10 +128,10 @@ export class TracePropagationInterceptor implements HttpInterceptor {
 
               // Add response attributes to span
               span.setAttributes({
-                'http.status_code': event.status,
-                'http.status_text': event.statusText,
-                'http.response_content_length':
-                  event.headers.get('content-length') || 0,
+                'http.response.status_code': event.status,
+                'http.response.status_text': event.statusText,
+                'http.response.body.size':
+                  Number(event.headers.get('content-length') || 0),
                 'http.response_time_ms': duration,
               });
 
@@ -134,8 +144,8 @@ export class TracePropagationInterceptor implements HttpInterceptor {
           error: (error) => {
             if (error instanceof HttpErrorResponse) {
               span.setAttributes({
-                'http.status_code': error.status,
-                'http.status_text': error.statusText,
+                'http.response.status_code': error.status,
+                'http.response.status_text': error.statusText,
                 'error.type': error.name,
                 'error.message': error.message,
               });
@@ -157,16 +167,13 @@ export class TracePropagationInterceptor implements HttpInterceptor {
 
   private injectTraceContext(
     request: HttpRequest<unknown>,
-    span: Span
+    spanContext: Context
   ): HttpRequest<unknown> {
     // Create a carrier object to hold trace headers
     const carrier: { [key: string]: string } = {};
 
     // Inject trace context into carrier using the propagator
-    propagation.inject(
-      trace.setSpan(context.active(), span),
-      carrier
-    );
+    propagation.inject(spanContext, carrier);
 
     // Clone the request and add trace headers
     let modifiedRequest = request;
@@ -197,9 +204,18 @@ export class TracePropagationInterceptor implements HttpInterceptor {
     }
   }
 
-  private getTarget(request: HttpRequest<unknown>): string {
+  private getAbsoluteUrl(request: HttpRequest<unknown>): string {
+    return new URL(request.url, window.location.origin).toString();
+  }
+
+  private getPath(request: HttpRequest<unknown>): string {
     const url = new URL(request.url, window.location.origin);
-    return url.pathname + url.search;
+    return url.pathname;
+  }
+
+  private getQuery(request: HttpRequest<unknown>): string {
+    const url = new URL(request.url, window.location.origin);
+    return url.search.replace(/^\?/, '');
   }
 
   private getHost(request: HttpRequest<unknown>): string {
@@ -223,7 +239,11 @@ Register the interceptor in your Angular module to apply it to all HTTP requests
 
 import { NgModule } from '@angular/core';
 import { BrowserModule } from '@angular/platform-browser';
-import { HttpClientModule, HTTP_INTERCEPTORS } from '@angular/common/http';
+import {
+  HTTP_INTERCEPTORS,
+  provideHttpClient,
+  withInterceptorsFromDi,
+} from '@angular/common/http';
 import { AppComponent } from './app.component';
 import { TracePropagationInterceptor } from './interceptors/trace-propagation.interceptor';
 
@@ -233,9 +253,9 @@ import { TracePropagationInterceptor } from './interceptors/trace-propagation.in
   ],
   imports: [
     BrowserModule,
-    HttpClientModule,
   ],
   providers: [
+    provideHttpClient(withInterceptorsFromDi()),
     {
       provide: HTTP_INTERCEPTORS,
       useClass: TracePropagationInterceptor,
@@ -261,7 +281,7 @@ import {
   W3CBaggagePropagator,
   CompositePropagator,
 } from '@opentelemetry/core';
-import { B3Propagator, B3InjectEncoding } from '@opentelemetry/propagator-b3';
+import { B3Propagator } from '@opentelemetry/propagator-b3';
 import { JaegerPropagator } from '@opentelemetry/propagator-jaeger';
 
 @Injectable({
@@ -281,8 +301,8 @@ export class TracingConfigService {
         propagators: [
           new W3CTraceContextPropagator(),
           new W3CBaggagePropagator(),
+          // B3 extracts both single and multi-header formats; choose one injection format.
           new B3Propagator(),
-          new B3Propagator({ injectEncoding: B3InjectEncoding.MULTI_HEADER }),
           new JaegerPropagator(),
         ],
       })
@@ -296,25 +316,18 @@ Initialize the configuration service early in your application:
 ```typescript
 // src/app/app.module.ts
 
-import { APP_INITIALIZER } from '@angular/core';
+import { inject, provideAppInitializer } from '@angular/core';
 import { TracingConfigService } from './services/tracing-config.service';
 
-export function initializeTracing(tracingConfig: TracingConfigService) {
-  return () => {
-    // Configuration happens in constructor
-    return Promise.resolve();
-  };
+export function initializeTracing() {
+  // Configuration happens in constructor
+  inject(TracingConfigService);
 }
 
 @NgModule({
   providers: [
     TracingConfigService,
-    {
-      provide: APP_INITIALIZER,
-      useFactory: initializeTracing,
-      deps: [TracingConfigService],
-      multi: true,
-    },
+    provideAppInitializer(initializeTracing),
   ],
 })
 export class AppModule { }
@@ -335,6 +348,7 @@ import {
   HttpEvent,
 } from '@angular/common/http';
 import { Observable } from 'rxjs';
+import { finalize } from 'rxjs/operators';
 import { trace, context, propagation } from '@opentelemetry/api';
 
 @Injectable()
@@ -376,7 +390,11 @@ export class SelectiveTracePropagationInterceptor implements HttpInterceptor {
     });
 
     return context.with(trace.setSpan(context.active(), span), () => {
-      return next.handle(modifiedRequest);
+      return next.handle(modifiedRequest).pipe(
+        finalize(() => {
+          span.end();
+        })
+      );
     });
   }
 
@@ -409,30 +427,33 @@ Baggage allows you to propagate additional context beyond trace IDs, such as use
 // src/app/services/baggage.service.ts
 
 import { Injectable } from '@angular/core';
-import { propagation, context, baggageUtils } from '@opentelemetry/api';
+import { propagation, context, type Baggage, type Context } from '@opentelemetry/api';
 
 @Injectable({
   providedIn: 'root'
 })
 export class BaggageService {
+  private baggage: Baggage = propagation.createBaggage();
 
   /**
    * Set baggage items that will be propagated with traces
    */
   setBaggage(key: string, value: string): void {
-    const currentBaggage = propagation.getBaggage(context.active()) || baggageUtils.createBaggage();
-    const newBaggage = currentBaggage.setEntry(key, { value });
-    context.with(propagation.setBaggage(context.active(), newBaggage), () => {
-      // Baggage is now set in the current context
-    });
+    this.baggage = this.baggage.setEntry(key, { value });
   }
 
   /**
-   * Get a baggage item from the current context
+   * Get a stored baggage item
    */
   getBaggage(key: string): string | undefined {
-    const baggage = propagation.getBaggage(context.active());
-    return baggage?.getEntry(key)?.value;
+    return this.baggage.getEntry(key)?.value;
+  }
+
+  /**
+   * Add stored baggage to the current OpenTelemetry context
+   */
+  getContextWithBaggage(): Context {
+    return propagation.setBaggage(context.active(), this.baggage);
   }
 
   /**
@@ -527,10 +548,7 @@ export class EnhancedTraceInterceptor implements HttpInterceptor {
     propagation.inject(trace.setSpan(context.active(), span), carrier);
 
     const modifiedRequest = request.clone({
-      setHeaders: {
-        ...carrier,
-        'x-attempt-number': '1',
-      },
+      setHeaders: carrier,
     });
 
     return context.with(trace.setSpan(context.active(), span), () => {
@@ -549,7 +567,7 @@ export class EnhancedTraceInterceptor implements HttpInterceptor {
               // Add retry information to span
               span.addEvent('http.retry', {
                 'retry.attempt': retryCount,
-                'http.status_code': error.status,
+                'http.response.status_code': error.status,
               });
 
               // Exponential backoff
@@ -566,7 +584,7 @@ export class EnhancedTraceInterceptor implements HttpInterceptor {
         }),
         catchError((error: HttpErrorResponse) => {
           span.setAttributes({
-            'http.status_code': error.status,
+            'http.response.status_code': error.status,
             'error.type': error.name,
             'error.message': error.message,
             'http.retry_count': attemptCount,
@@ -685,23 +703,22 @@ export function traceContextMiddleware(req, res, next) {
 
     // Add request attributes
     span.setAttributes({
-      'http.method': req.method,
-      'http.url': req.url,
-      'http.path': req.path,
+      'http.request.method': req.method,
+      'url.full': `${req.protocol}://${req.get('host')}${req.originalUrl}`,
+      'url.path': req.path,
     });
 
     // Store span in request for later use
     req.span = span;
 
-    // Add response timing header
+    // Add Server-Timing header before the response is sent
     const startTime = Date.now();
+    res.setHeader('Server-Timing', 'app');
+
     res.on('finish', () => {
       const duration = Date.now() - startTime;
-      span.setAttribute('http.status_code', res.statusCode);
+      span.setAttribute('http.response.status_code', res.statusCode);
       span.setAttribute('http.duration_ms', duration);
-
-      // Add Server-Timing header for frontend
-      res.setHeader('Server-Timing', `total;dur=${duration}`);
 
       span.end();
     });
@@ -712,4 +729,3 @@ export function traceContextMiddleware(req, res, next) {
 ```
 
 Trace propagation through HTTP interceptors creates a seamless connection between your Angular frontend and backend services, enabling comprehensive distributed tracing. By automatically injecting trace context into every request, you gain complete visibility into how user actions flow through your entire system, making it dramatically easier to diagnose issues and optimize performance.
-
