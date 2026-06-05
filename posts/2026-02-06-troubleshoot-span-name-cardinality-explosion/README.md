@@ -10,7 +10,7 @@ You open your tracing backend and see thousands of unique span names like `GET /
 
 ## Why This Happens
 
-HTTP auto-instrumentation libraries capture the URL path as the span name. If your URLs contain dynamic segments (user IDs, order IDs, UUIDs), each unique URL becomes a unique span name.
+Some HTTP auto-instrumentation libraries, older instrumentation versions, custom hooks, or framework middleware that cannot see the matched route can capture the raw URL path as the span name. If your URLs contain dynamic segments (user IDs, order IDs, UUIDs), each unique URL becomes a unique span name.
 
 ```text
 Expected:   GET /users/{userId}
@@ -20,7 +20,7 @@ Actual:     GET /users/abc123
             ... (thousands more)
 ```
 
-This problem affects both server-side and client-side spans.
+OpenTelemetry semantic conventions say HTTP instrumentation should use a low-cardinality target when one is available, such as `http.route` for server spans or `url.template` for client spans. The problem appears when that template is missing or the span name is overridden with the raw path.
 
 ## Detecting the Problem
 
@@ -49,7 +49,7 @@ service:
 
 ## Fix 1: Configure SDK HTTP Instrumentation
 
-Most auto-instrumentation libraries have options to normalize URL paths.
+Most framework-aware auto-instrumentation libraries use route templates when they are available. Check that the framework instrumentation is enabled in addition to lower-level HTTP instrumentation.
 
 For Python (Flask/Django):
 
@@ -66,13 +66,19 @@ For Node.js (Express):
 
 ```javascript
 const { ExpressInstrumentation } = require('@opentelemetry/instrumentation-express');
+const { ExpressLayerType } = require('@opentelemetry/instrumentation-express');
 const { HttpInstrumentation } = require('@opentelemetry/instrumentation-http');
 
 const httpInstrumentation = new HttpInstrumentation({
-  // Custom hook to normalize span names
-  requestHook: (span, request) => {
-    // The route will be set later by Express instrumentation
-    // Do not set the span name from the raw URL here
+  // Do not set the span name from request.url here.
+});
+
+const expressInstrumentation = new ExpressInstrumentation({
+  spanNameHook: (info, defaultName) => {
+    if (info.layerType === ExpressLayerType.REQUEST_HANDLER && info.route) {
+      return `${info.request.method} ${info.route}`;
+    }
+    return defaultName;
   },
 });
 ```
@@ -80,11 +86,10 @@ const httpInstrumentation = new HttpInstrumentation({
 For Java (Spring Boot):
 
 ```java
-// The Spring Boot auto-instrumentation uses the route pattern by default
-// But for servlet-based apps, you might need to configure it:
-
-// In the OTel Java agent configuration
--Dotel.instrumentation.servlet.experimental.capture-request-parameters=false
+// Spring Web MVC instrumentation should set http.route and use route patterns
+// for server span names when the route is available.
+// The servlet capture-request-parameters option captures named request
+// parameters as attributes; it does not normalize span names.
 ```
 
 ## Fix 2: Use the Collector's Transform Processor
@@ -110,21 +115,22 @@ processors:
 
 ## Fix 3: Use the Span Processor to Group Span Names
 
-Use the `groupbyattrs` processor or a custom span name mapping:
+Use the `span` processor to extract dynamic path segments from the span name and replace them with placeholders:
 
 ```yaml
 processors:
-  # Use attributes processor to normalize
-  attributes/span-name:
-    actions:
-      - key: http.route
-        action: upsert
-        from_attribute: http.route
+  span/to_attributes:
     include:
       match_type: regexp
       span_names:
         - "GET /users/.*"
         - "POST /orders/.*"
+    name:
+      to_attributes:
+        rules:
+          - ^GET /users/(?P<userId>[^/]+)$
+          - ^POST /orders/(?P<orderId>[^/]+)$
+        break_after_match: true
 ```
 
 ## Fix 4: Set Span Names Manually in Code
@@ -140,7 +146,8 @@ def get_user(user_id):
     # Override the auto-generated span name with a normalized one
     span.update_name("GET /users/{userId}")
 
-    # Store the actual user_id as an attribute (low cardinality for the name)
+    # Keep the actual user_id out of the span name. Only add it as an
+    # attribute if your backend policy allows this cardinality.
     span.set_attribute("user.id", user_id)
 
     return fetch_user(user_id)
@@ -148,10 +155,14 @@ def get_user(user_id):
 
 ```javascript
 // Node.js / Express
+const { trace } = require('@opentelemetry/api');
+
 app.get('/users/:userId', (req, res) => {
   const span = trace.getActiveSpan();
-  span.updateName('GET /users/{userId}');
-  span.setAttribute('user.id', req.params.userId);
+  if (span) {
+    span.updateName('GET /users/{userId}');
+    span.setAttribute('user.id', req.params.userId);
+  }
 
   // ... handle request
 });
@@ -179,6 +190,6 @@ High cardinality span names cause:
 - Slow queries in your tracing backend
 - Bloated indexes and increased storage costs
 - Unusable operation-level dashboards and alerts
-- Degraded performance in the Collector's spanmetrics processor
+- Degraded performance in span-to-metrics components if span name is used as a dimension
 
 Always keep span names at a bounded cardinality. Dynamic values belong in span attributes, not span names. A good rule of thumb: if you have more than a few hundred unique span names across your entire system, something needs normalization.
