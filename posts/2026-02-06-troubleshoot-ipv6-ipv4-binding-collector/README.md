@@ -49,7 +49,7 @@ receivers:
   otlp:
     protocols:
       grpc:
-        endpoint: "[::]:4317"  # Listen on all IPv6 and IPv4 interfaces
+        endpoint: "[::]:4317"  # Listen on all IPv6 interfaces; may also accept IPv4
       http:
         endpoint: "[::]:4318"
 ```
@@ -109,7 +109,7 @@ spec:
       targetPort: 4317
 ```
 
-And make sure the Collector binds to `[::]` to accept both families.
+And make sure the Collector binds to `[::]`, and verify that the socket also accepts IPv4 if IPv4 clients need to use the same listener.
 
 ## Fix 4: Handle Node-Level Differences
 
@@ -155,4 +155,4 @@ for r in results:
 
 ## Summary
 
-IPv6 issues are tricky because they depend on the cluster configuration, node OS settings, and CNI plugin behavior. The safest approach is to use `0.0.0.0` for IPv4-only clusters and `[::]` for dual-stack clusters, and to configure your Kubernetes Services with explicit `ipFamilies` and `ipFamilyPolicy` settings so there are no surprises.
+IPv6 issues are tricky because they depend on the cluster configuration, node OS settings, and CNI plugin behavior. The safest approach is to use `0.0.0.0` for IPv4-only clusters and `[::]` for dual-stack clusters where the listener is verified to accept the families you need, and to configure your Kubernetes Services with explicit `ipFamilies` and `ipFamilyPolicy` settings so there are no surprises.
