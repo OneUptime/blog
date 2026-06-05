@@ -55,7 +55,7 @@ import (
     "go.opentelemetry.io/otel/sdk/metric"
     "go.opentelemetry.io/otel/sdk/resource"
     "go.opentelemetry.io/otel/sdk/trace"
-    semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
+    semconv "go.opentelemetry.io/otel/semconv/v1.28.0"
 )
 
 func InitTelemetry(ctx context.Context, serviceName string) (func(), error) {
@@ -64,7 +64,7 @@ func InitTelemetry(ctx context.Context, serviceName string) (func(), error) {
         resource.WithAttributes(
             semconv.ServiceName(serviceName),
             semconv.ServiceVersion("2.1.0"),
-            semconv.DeploymentEnvironment("production"),
+            semconv.DeploymentEnvironmentName("production"),
         ),
     )
     if err != nil {
@@ -90,7 +90,7 @@ func InitTelemetry(ctx context.Context, serviceName string) (func(), error) {
         trace.WithMaxQueueSize(8192),
     )
 
-    // Sample only 10% of normal game ticks but 100% of errors
+    // Head-sample 10% of traces before collector-side sampling
     sampler := trace.ParentBased(
         trace.TraceIDRatioBased(0.10),
     )
@@ -130,7 +130,7 @@ func InitTelemetry(ctx context.Context, serviceName string) (func(), error) {
 }
 ```
 
-Two critical choices here. First, the 10% sampling rate for normal operations keeps trace volume manageable for high-frequency game ticks. Second, the large queue size (8192) ensures that the batch processor never blocks the game loop waiting for export capacity. Dropped spans are better than added latency.
+Two critical choices here. First, the 10% head sampling rate for normal operations keeps trace volume manageable for high-frequency game ticks, although any traces dropped by the SDK cannot be recovered later by Collector tail sampling. Second, the large queue size (8192) gives the batch processor room to absorb bursts, and the default non-blocking behavior drops spans rather than blocking when the queue is full. Dropped spans are better than added latency.
 
 ## Instrumenting the Game Loop
 
@@ -155,7 +155,7 @@ var (
     tickDuration metric.Float64Histogram
     // Counter for ticks that exceeded the budget
     tickOverruns metric.Int64Counter
-    // Gauge for current player count on this server
+    // UpDownCounter for current player count on this server
     playerCount  metric.Int64UpDownCounter
 )
 
@@ -235,6 +235,7 @@ package matchmaking
 
 import (
     "context"
+    "fmt"
     "time"
 
     "go.opentelemetry.io/otel"
@@ -308,6 +309,12 @@ func FindMatch(ctx context.Context, player Player) (*Match, error) {
     // Step 2: Score and rank candidates by match quality
     ctx, scoreSpan := tracer.Start(ctx, "matchmaking.score_candidates")
     rankedCandidates := scoreCandidates(player, candidates)
+    if len(rankedCandidates) == 0 {
+        scoreSpan.SetStatus(codes.Error, "No candidates available")
+        scoreSpan.End()
+        span.SetStatus(codes.Error, "No candidates available")
+        return nil, fmt.Errorf("no matchmaking candidates available")
+    }
     scoreSpan.SetAttributes(
         attribute.Int("candidates.scored", len(rankedCandidates)),
         attribute.Float64("best_match.quality",
@@ -369,10 +376,23 @@ import (
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/attribute"
     "go.opentelemetry.io/otel/codes"
+    "go.opentelemetry.io/otel/metric"
     otelTrace "go.opentelemetry.io/otel/trace"
 )
 
-var tracer = otel.Tracer("inventory-service")
+var (
+    tracer = otel.Tracer("inventory-service")
+    meter  = otel.Meter("inventory-service")
+
+    inventoryTransactionFailures metric.Int64Counter
+)
+
+func init() {
+    inventoryTransactionFailures, _ = meter.Int64Counter(
+        "inventory.transaction.failures",
+        metric.WithDescription("Number of failed inventory transactions"),
+    )
+}
 
 func PurchaseItem(ctx context.Context, playerID string,
     itemID string, currencyType string, price int64) error {
@@ -431,6 +451,10 @@ func PurchaseItem(ctx context.Context, playerID string,
     if err != nil {
         span.SetStatus(codes.Error, err.Error())
         span.RecordError(err)
+        inventoryTransactionFailures.Add(ctx, 1, metric.WithAttributes(
+            attribute.String("item.id", itemID),
+            attribute.String("currency.type", currencyType),
+        ))
         // Record a specific event for transaction failures
         // so we can alert on them separately
         span.AddEvent("transaction_failed", otelTrace.WithAttributes(
@@ -461,18 +485,23 @@ package gameserver
 
 import (
     "context"
-    "time"
 
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/attribute"
     "go.opentelemetry.io/otel/metric"
 )
 
-var sessionMeter = otel.Meter("game-sessions")
+var (
+    sessionMeter       = otel.Meter("game-sessions")
+    sessionDuration    metric.Float64Histogram
+    concurrentSessions metric.Int64UpDownCounter
+    playerRTT          metric.Float64Histogram
+    serverFPS          metric.Float64Histogram
+)
 
 func InitSessionMetrics() {
     // Track session duration distribution
-    sessionDuration, _ := sessionMeter.Float64Histogram(
+    sessionDuration, _ = sessionMeter.Float64Histogram(
         "game.session.duration",
         metric.WithDescription("Player session duration"),
         metric.WithUnit("s"),
@@ -482,13 +511,13 @@ func InitSessionMetrics() {
     )
 
     // Track concurrent sessions per server
-    concurrentSessions, _ := sessionMeter.Int64UpDownCounter(
+    concurrentSessions, _ = sessionMeter.Int64UpDownCounter(
         "game.sessions.concurrent",
         metric.WithDescription("Number of concurrent player sessions"),
     )
 
     // Track network round-trip time per player
-    playerRTT, _ := sessionMeter.Float64Histogram(
+    playerRTT, _ = sessionMeter.Float64Histogram(
         "game.player.rtt",
         metric.WithDescription("Player network round-trip time"),
         metric.WithUnit("ms"),
@@ -498,7 +527,7 @@ func InitSessionMetrics() {
     )
 
     // Track server frame rate
-    serverFPS, _ := sessionMeter.Float64Histogram(
+    serverFPS, _ = sessionMeter.Float64Histogram(
         "game.server.fps",
         metric.WithDescription("Server simulation frame rate"),
         metric.WithUnit("{frames}/s"),
@@ -507,19 +536,13 @@ func InitSessionMetrics() {
         ),
     )
 
-    // Register callbacks for async metrics collection
     _ = sessionDuration
     _ = concurrentSessions
-    _ = playerRTT
     _ = serverFPS
 }
 
 func RecordPlayerRTT(ctx context.Context, playerID string,
     region string, rttMs float64) {
-    playerRTT, _ := sessionMeter.Float64Histogram(
-        "game.player.rtt",
-        metric.WithUnit("ms"),
-    )
     playerRTT.Record(ctx, rttMs, metric.WithAttributes(
         attribute.String("player.region", region),
         attribute.String("server.region", serverRegion),
@@ -570,11 +593,11 @@ processors:
         type: latency
         latency:
           threshold_ms: 10000
-      # Keep all inventory transactions (lower volume, high value)
+      # Keep inventory service traces that reach the Collector
       - name: inventory-transactions
         type: string_attribute
         string_attribute:
-          key: otel.library.name
+          key: service.name
           values: ["inventory-service"]
       # Sample 5% of normal game traces
       - name: baseline
@@ -611,7 +634,7 @@ service:
       exporters: [otlp]
 ```
 
-The tail sampling policy keeps all inventory transaction traces (since they are low volume but high business value) and all error traces. Normal game tick traces are sampled at 5% to keep volume manageable. The large sending queue (10000) absorbs traffic spikes during peak playing hours.
+The tail sampling policy keeps inventory service traces and error traces that reach the Collector. Normal game traces received by the Collector are sampled at 5% to keep volume manageable. The large sending queue (10000) absorbs traffic spikes during peak playing hours.
 
 ## Alerting for Gaming Backends
 
@@ -637,7 +660,7 @@ groups:
       - alert: HighPlayerLatency
         expr: |
           histogram_quantile(0.95,
-            rate(game_player_rtt_bucket[5m])
+            rate(game_player_rtt_milliseconds_bucket[5m])
           ) > 100
         for: 3m
         labels:
@@ -649,7 +672,7 @@ groups:
       - alert: SlowMatchmaking
         expr: |
           histogram_quantile(0.95,
-            rate(matchmaking_duration_bucket[5m])
+            rate(matchmaking_duration_milliseconds_bucket[5m])
           ) > 30000
         for: 5m
         labels:
