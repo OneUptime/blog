@@ -129,10 +129,24 @@ aws ecr put-lifecycle-policy \
       },
       {
         "rulePriority": 4,
-        "description": "Keep production images for 1 year",
+        "description": "Keep prod images for 1 year",
         "selection": {
           "tagStatus": "tagged",
-          "tagPrefixList": ["prod-", "release-"],
+          "tagPrefixList": ["prod-"],
+          "countType": "sinceImagePushed",
+          "countUnit": "days",
+          "countNumber": 365
+        },
+        "action": {
+          "type": "expire"
+        }
+      },
+      {
+        "rulePriority": 5,
+        "description": "Keep release images for 1 year",
+        "selection": {
+          "tagStatus": "tagged",
+          "tagPrefixList": ["release-"],
           "countType": "sinceImagePushed",
           "countUnit": "days",
           "countNumber": 365
@@ -152,6 +166,7 @@ Verify the policy:
 aws ecr get-lifecycle-policy --repository-name myapp | jq '.lifecyclePolicyText | fromjson'
 
 # Preview which images would be affected
+aws ecr start-lifecycle-policy-preview --repository-name myapp
 aws ecr get-lifecycle-policy-preview --repository-name myapp
 ```
 
@@ -160,30 +175,36 @@ aws ecr get-lifecycle-policy-preview --repository-name myapp
 Google Artifact Registry supports cleanup policies through Terraform or the gcloud CLI.
 
 ```bash
+# Write the cleanup policy to a JSON file
+cat > cleanup-policy.json <<'JSON'
+[
+  {
+    "name": "delete-old-dev",
+    "action": {"type": "Delete"},
+    "condition": {
+      "tagState": "tagged",
+      "tagPrefixes": ["dev-"],
+      "olderThan": "7d"
+    }
+  },
+  {
+    "name": "keep-recent-production",
+    "action": {"type": "Keep"},
+    "condition": {
+      "tagState": "tagged",
+      "tagPrefixes": ["prod-", "release-"],
+      "newerThan": "365d"
+    }
+  }
+]
+JSON
+
 # Set a cleanup policy on a Docker repository
 gcloud artifacts repositories set-cleanup-policies myrepo \
   --project=my-project \
   --location=us-central1 \
-  --policy='[
-    {
-      "name": "delete-old-dev",
-      "action": {"type": "Delete"},
-      "condition": {
-        "tagState": "tagged",
-        "tagPrefixes": ["dev-"],
-        "olderThan": "604800s"
-      }
-    },
-    {
-      "name": "keep-recent-production",
-      "action": {"type": "Keep"},
-      "condition": {
-        "tagState": "tagged",
-        "tagPrefixes": ["prod-", "release-"],
-        "newerThan": "31536000s"
-      }
-    }
-  ]'
+  --policy=cleanup-policy.json \
+  --no-dry-run
 ```
 
 ## Azure Container Registry Retention
@@ -219,7 +240,7 @@ for repo in $REPOS; do
     echo "Processing: $repo"
 
     # Get all tags with their creation dates
-    TAGS=$(curl -s "https://${REGISTRY}/v2/${repo}/tags/list" | jq -r '.tags[]')
+    TAGS=$(curl -s "https://${REGISTRY}/v2/${repo}/tags/list" | jq -r '.tags[]?')
 
     for tag in $TAGS; do
         # Get the manifest creation date
