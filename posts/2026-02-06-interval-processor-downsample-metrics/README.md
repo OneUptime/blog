@@ -10,13 +10,13 @@ Metrics that report every 10 seconds generate six times more data points than me
 
 ## What the Interval Processor Does
 
-The interval processor aggregates incoming metric data points over a configurable time window and emits a single aggregated data point per interval. If your application exports a counter every 15 seconds but the interval processor is set to 60 seconds, the processor accumulates four data points and exports one.
+The interval processor aggregates incoming metric data points over a configurable time window and emits the latest data point per metric stream at each interval. If your application exports a cumulative counter every 15 seconds but the interval processor is set to 60 seconds, the processor keeps the newest cumulative value for that stream and exports one data point.
 
 This works differently for each metric type:
 
 - **Counters (cumulative)**: The processor passes through the latest cumulative value at each interval boundary
 - **Gauges**: The processor emits the last observed value at each interval boundary
-- **Histograms**: Bucket counts are accumulated and emitted as a single histogram per interval
+- **Histograms (cumulative)**: The processor emits the latest cumulative bucket counts as a single histogram per interval
 
 ## Basic Configuration
 
@@ -37,9 +37,10 @@ processors:
   # specified interval and emits aggregated results.
   interval:
     interval: 60s
-    # Passthrough gauge metrics without modification since
-    # gauges represent point-in-time values.
-    passthrough_gauges: false
+    # Aggregate gauge metrics by retaining the latest value
+    # observed during each interval.
+    pass_through:
+      gauge: false
 
   batch:
     send_batch_size: 8192
@@ -96,10 +97,12 @@ connectors:
     error_mode: ignore
     table:
       # Route autoscaling metrics to high-res pipeline
-      - condition: IsMatch(metric.name, ".*cpu.*|.*memory.*|.*request_rate.*")
+      - context: metric
+        condition: IsMatch(metric.name, ".*cpu.*|.*memory.*|.*request_rate.*")
         pipelines: [metrics/high_res]
       # Route business metrics to low-res pipeline
-      - condition: IsMatch(metric.name, ".*revenue.*|.*signups.*|.*monthly.*")
+      - context: metric
+        condition: IsMatch(metric.name, ".*revenue.*|.*signups.*|.*monthly.*")
         pipelines: [metrics/low_res]
 
 exporters:
