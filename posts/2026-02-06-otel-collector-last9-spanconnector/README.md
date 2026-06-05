@@ -2,15 +2,15 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Last9, SpanConnector, Metrics Derivation
+Tags: OpenTelemetry, Last9, Span Metrics Connector, Metrics Derivation
 
-Description: Set up the OpenTelemetry Collector with the SpanConnector to derive RED metrics from traces before exporting to Last9.
+Description: Set up the OpenTelemetry Collector with the Span Metrics connector to derive RED metrics from traces before exporting to Last9.
 
-While Last9 can derive metrics from traces on the server side, there are situations where you want to compute span-based metrics in the Collector itself. Maybe you need those metrics available to multiple backends, or you want to apply custom dimensions that Last9 does not automatically extract. The SpanConnector (also called the spanmetrics connector) in the OpenTelemetry Collector bridges the traces pipeline to the metrics pipeline, generating RED metrics from spans before they leave the Collector.
+While Last9 can derive metrics from traces on the server side, there are situations where you want to compute span-based metrics in the Collector itself. Maybe you need those metrics available to multiple backends, or you want to apply custom dimensions that Last9 does not automatically extract. The Span Metrics connector in the OpenTelemetry Collector bridges the traces pipeline to the metrics pipeline, generating RED metrics from spans before they leave the Collector.
 
-## What the SpanConnector Does
+## What the Span Metrics Connector Does
 
-The SpanConnector sits between your traces pipeline and metrics pipeline. It receives span data, computes latency histograms, call counts, and error counts, then emits those as metrics. These derived metrics flow through the metrics pipeline and get exported alongside your application metrics.
+The Span Metrics connector sits between your traces pipeline and metrics pipeline. It receives span data, computes latency histograms, call counts, and error counts, then emits those as metrics. These derived metrics flow through the metrics pipeline and get exported alongside your application metrics.
 
 ## Full Collector Configuration
 
@@ -26,8 +26,8 @@ receivers:
         endpoint: 0.0.0.0:4318
 
 connectors:
-  # The spanmetrics connector bridges traces to metrics
-  spanmetrics:
+  # The span_metrics connector bridges traces to metrics
+  span_metrics:
     # Define which span attributes become metric dimensions
     dimensions:
       - name: http.method
@@ -82,32 +82,32 @@ service:
     traces:
       receivers: [otlp]
       processors: [resource, batch/traces]
-      # The spanmetrics connector acts as an exporter in the traces pipeline
-      exporters: [otlp/last9_traces, spanmetrics]
+      # The span_metrics connector acts as an exporter in the traces pipeline
+      exporters: [otlp/last9_traces, span_metrics]
 
     metrics:
-      # The spanmetrics connector acts as a receiver in the metrics pipeline
-      receivers: [otlp, spanmetrics]
+      # The span_metrics connector acts as a receiver in the metrics pipeline
+      receivers: [otlp, span_metrics]
       processors: [batch/metrics]
       exporters: [otlp/last9_metrics]
 ```
 
-## How the SpanConnector Bridges Pipelines
+## How the Span Metrics Connector Bridges Pipelines
 
-The key insight is that `spanmetrics` appears in two places:
+The key insight is that `span_metrics` appears in two places:
 
 1. As an **exporter** in the traces pipeline - it receives span data
 2. As a **receiver** in the metrics pipeline - it emits derived metrics
 
 ```yaml
-# In the traces pipeline, spanmetrics is an exporter
+# In the traces pipeline, span_metrics is an exporter
 
 traces:
-  exporters: [otlp/last9_traces, spanmetrics]
+  exporters: [otlp/last9_traces, span_metrics]
 
-# In the metrics pipeline, spanmetrics is a receiver
+# In the metrics pipeline, span_metrics is a receiver
 metrics:
-  receivers: [otlp, spanmetrics]
+  receivers: [otlp, span_metrics]
 ```
 
 This dual role is what makes connectors powerful. The span data flows into the connector, gets transformed into metrics, and those metrics join the regular metrics pipeline.
@@ -118,7 +118,7 @@ The `dimensions` field controls which span attributes become metric labels:
 
 ```yaml
 connectors:
-  spanmetrics:
+  span_metrics:
     dimensions:
       - name: http.method
       - name: http.status_code
@@ -136,7 +136,7 @@ The default histogram buckets may not fit your latency profile. If your service 
 
 ```yaml
 connectors:
-  spanmetrics:
+  span_metrics:
     histogram:
       explicit:
         buckets: [1ms, 2ms, 5ms, 10ms, 20ms, 50ms, 100ms, 500ms]
@@ -146,7 +146,7 @@ Alternatively, use exponential histograms for automatic bucket boundaries:
 
 ```yaml
 connectors:
-  spanmetrics:
+  span_metrics:
     histogram:
       exponential:
         max_size: 160
@@ -156,12 +156,12 @@ Exponential histograms adapt to your data distribution and are supported by Last
 
 ## Metrics Produced by the Connector
 
-The spanmetrics connector generates these metrics:
+The Span Metrics connector generates these metrics:
 
 - `span.metrics.duration` - A histogram of span durations
 - `span.metrics.calls` - A counter of total span count, broken down by status
 
-Each metric includes the configured dimensions plus `service.name`, `span.name`, `span.kind`, and `status.code` as default labels.
+Each metric includes the configured dimensions plus `service.name`, `span.name`, `span.kind`, `status.code`, and `collector.instance.id` as default labels.
 
 ## Verifying the Derived Metrics
 
@@ -169,17 +169,17 @@ Check that the connector is producing metrics by querying the Collector's intern
 
 ```bash
 # Check the Collector's own metrics endpoint
-curl -s http://localhost:8888/metrics | grep spanmetrics
+curl -s http://localhost:8888/metrics | grep -E 'connector.*(consumed|produced)'
 
 # Look for connector-related counters
-# otelcol_connector_accepted_spans{connector="spanmetrics"} 5432
-# otelcol_connector_emitted_metric_points{connector="spanmetrics"} 1289
+# otelcol.connector.consumed.items{otelcol.component.id="span_metrics",otelcol.signal="traces"} 5432
+# otelcol.connector.produced.items{otelcol.component.id="span_metrics",otelcol.signal.output="metrics"} 1289
 ```
 
 In Last9, query for `span.metrics.duration` to see the derived latency histograms. You can build p50, p95, and p99 latency dashboards from these histogram metrics.
 
 ## When to Use Collector-Side vs Server-Side Derivation
 
-Use the SpanConnector when you need derived metrics available to multiple backends (not just Last9), when you want custom dimensions that the server-side derivation does not support, or when you need to apply Collector-level processing to the derived metrics before export.
+Use the Span Metrics connector when you need derived metrics available to multiple backends (not just Last9), when you want custom dimensions that the server-side derivation does not support, or when you need to apply Collector-level processing to the derived metrics before export.
 
 Use Last9's native TraceMetrics when you want a simpler Collector config and the default dimensions meet your needs. Both approaches work well, and you can even use both simultaneously without conflict.
