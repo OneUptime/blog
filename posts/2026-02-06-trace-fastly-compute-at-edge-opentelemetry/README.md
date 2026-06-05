@@ -10,17 +10,17 @@ Description: Learn how to implement OpenTelemetry tracing in Fastly Compute@Edge
 
 Fastly Compute@Edge runs your code on Fastly's global edge network using WebAssembly. Your application compiles to a Wasm module and executes in an isolated sandbox at whichever Fastly POP is closest to the requesting user. This gives you sub-millisecond startup times and worldwide distribution, but it also means your code runs in a constrained environment where traditional observability tools do not work out of the box.
 
-OpenTelemetry can still work here. The key is to manually construct spans during request handling and export them via HTTP to a collector before the request completes. This guide covers how to do that in both Rust and JavaScript, the two primary languages supported by Compute@Edge.
+OpenTelemetry can still work here. The key is to manually construct spans during request handling and export them via HTTP to a collector before the request completes. This guide covers how to do that in both Rust and JavaScript, two commonly used languages supported by Compute@Edge.
 
 ## How Compute@Edge Differs from Other Edge Platforms
 
 Compute@Edge has specific constraints that affect how you approach instrumentation:
 
 - Code compiles to WebAssembly (no native library linking)
-- Each request gets its own isolated execution context
-- No persistent state between requests
+- Each request runs in an isolated execution context, with reusable sandboxes available as an opt-in mode
+- No guaranteed persistent in-memory state between requests
 - All external communication happens through Fastly backend definitions
-- Execution time is limited (typically under 50ms for most use cases)
+- CPU time is limited (the default maximum CPU time for a single request execution is 50ms)
 
 These constraints mean you cannot use the standard OpenTelemetry SDK directly. Instead, you build spans manually using the OpenTelemetry API primitives and export them via HTTP through a declared Fastly backend.
 
@@ -62,13 +62,13 @@ Rust is the most mature language for Compute@Edge development. Here is how to bu
 // Lightweight OpenTelemetry span builder for Fastly Compute@Edge
 // Constructs OTLP-compatible JSON payloads without the full SDK
 
-use fastly::http::StatusCode;
-use fastly::{Backend, Request, Response};
+use fastly::Request;
 use serde::Serialize;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 // Span representation matching OTLP JSON format
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct OtelSpan {
     // W3C trace ID as 32 hex characters
     pub trace_id: String,
@@ -81,9 +81,9 @@ pub struct OtelSpan {
     // Span kind: 1=Internal, 2=Server, 3=Client
     pub kind: u32,
     // Start time in nanoseconds since epoch
-    pub start_time_unix_nano: u64,
+    pub start_time_unix_nano: String,
     // End time in nanoseconds since epoch
-    pub end_time_unix_nano: u64,
+    pub end_time_unix_nano: String,
     // Key-value attributes
     pub attributes: Vec<OtelAttribute>,
     // Status: 0=Unset, 1=Ok, 2=Error
@@ -98,10 +98,10 @@ pub struct OtelAttribute {
 
 #[derive(Serialize)]
 pub struct OtelValue {
-    #[serde(rename = "stringValue")]
+    #[serde(rename = "stringValue", skip_serializing_if = "Option::is_none")]
     pub string_value: Option<String>,
-    #[serde(rename = "intValue")]
-    pub int_value: Option<i64>,
+    #[serde(rename = "intValue", skip_serializing_if = "Option::is_none")]
+    pub int_value: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -112,25 +112,27 @@ pub struct OtelStatus {
 
 // Generate a random hex string for trace and span IDs
 fn random_hex(len: usize) -> String {
-    // Use Fastly's random number generation
-    let bytes: Vec<u8> = (0..len / 2)
-        .map(|_| fastly::handle::dictionary_open("random")
-            .map(|_| rand::random::<u8>())
-            .unwrap_or(0))
-        .collect();
+    let bytes: Vec<u8> = (0..len / 2).map(|_| rand::random::<u8>()).collect();
     bytes.iter().map(|b| format!("{:02x}", b)).collect()
 }
 
-fn now_nanos() -> u64 {
+fn now_nanos() -> String {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
-        .as_nanos() as u64
+        .as_nanos()
+        .to_string()
+}
+
+fn is_valid_trace_id(trace_id: &str) -> bool {
+    trace_id.len() == 32
+        && trace_id != "00000000000000000000000000000000"
+        && trace_id.chars().all(|c| c.is_ascii_hexdigit())
 }
 
 // Collect spans during request processing and export them at the end
 pub struct SpanCollector {
-    trace_id: String,
+    pub trace_id: String,
     spans: Vec<OtelSpan>,
 }
 
@@ -147,7 +149,7 @@ impl SpanCollector {
         if let Some(traceparent) = req.get_header_str("traceparent") {
             // Parse W3C traceparent: version-traceid-parentid-flags
             let parts: Vec<&str> = traceparent.split('-').collect();
-            if parts.len() == 4 {
+            if parts.len() == 4 && parts[0] == "00" && is_valid_trace_id(parts[1]) {
                 return SpanCollector {
                     trace_id: parts[1].to_string(),
                     spans: Vec::new(),
@@ -167,7 +169,7 @@ impl SpanCollector {
             name: name.to_string(),
             kind,
             start_time_unix_nano: now_nanos(),
-            end_time_unix_nano: 0, // Set when span ends
+            end_time_unix_nano: "0".to_string(), // Set when span ends
             attributes: Vec::new(),
             status: OtelStatus {
                 code: 0,
@@ -222,7 +224,7 @@ impl SpanCollector {
             .with_header("Content-Type", "application/json")
             .with_body(payload.to_string());
 
-        // Send asynchronously so it does not block the response
+        // Send before returning the response so the execution can complete with traces exported
         let _resp = collector_req.send("otel_collector")?;
         Ok(())
     }
@@ -342,7 +344,7 @@ async function handleRequest(event) {
   collector.setAttribute(rootId, "http.status_code", String(response.status));
   collector.endSpan(rootId);
 
-  // Export traces (fire and forget to avoid blocking the response)
+  // Export traces before returning the response
   await collector.export();
 
   return response;
@@ -357,19 +359,23 @@ class SpanCollector {
     const traceparent = req.headers.get("traceparent");
     if (traceparent) {
       const parts = traceparent.split("-");
-      this.traceId = parts[1] || this.generateId(32);
+      this.traceId = parts.length === 4 && parts[0] === "00" && this.isValidTraceId(parts[1])
+        ? parts[1]
+        : this.generateId(32);
     } else {
       this.traceId = this.generateId(32);
     }
   }
 
   generateId(length) {
-    const chars = "0123456789abcdef";
-    let result = "";
-    for (let i = 0; i < length; i++) {
-      result += chars[Math.floor(Math.random() * chars.length)];
-    }
-    return result;
+    const bytes = new Uint8Array(length / 2);
+    crypto.getRandomValues(bytes);
+    return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  }
+
+  isValidTraceId(traceId) {
+    return /^[0-9a-f]{32}$/i.test(traceId)
+      && traceId !== "00000000000000000000000000000000";
   }
 
   startSpan(name, parentId, kind) {
@@ -447,4 +453,4 @@ graph LR
 
 ## Summary
 
-Tracing Fastly Compute@Edge requires working outside the standard OpenTelemetry SDK because of the WebAssembly execution environment. By manually constructing OTLP-compatible span payloads and exporting them through declared Fastly backends, you get the same distributed tracing capabilities as any other instrumented service. The spans link together through W3C Trace Context propagation, giving you end-to-end visibility from the edge through your origin servers. The overhead is minimal since you collect spans in memory and export once per request, keeping the impact on response latency as low as possible.
+Tracing Fastly Compute@Edge requires working outside the standard OpenTelemetry SDK because of the WebAssembly execution environment. By manually constructing OTLP-compatible span payloads and exporting them through declared Fastly backends, you get the same distributed tracing capabilities as any other instrumented service. The spans link together through W3C Trace Context propagation, giving you end-to-end visibility from the edge through your origin servers. The overhead is contained since you collect spans in memory and export once per request, but the export still adds one outbound request before the response is returned.
