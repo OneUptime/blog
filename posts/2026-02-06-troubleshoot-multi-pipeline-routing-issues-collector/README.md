@@ -78,7 +78,23 @@ service:
 
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+
+  pipelines:
+    traces/pipeline1:
+      receivers: [otlp]
+      processors: [attributes/pipeline1, batch]
+      exporters: [debug/pipeline1, otlp/backend1]
+
+    traces/pipeline2:
+      receivers: [otlp]
+      processors: [attributes/pipeline2, batch]
+      exporters: [debug/pipeline2, otlp/backend2]
 
 receivers:
   otlp:
@@ -105,14 +121,14 @@ processors:
     send_batch_size: 8192
 
 exporters:
-  # Logging exporter to see what each pipeline receives
-  logging/pipeline1:
-    loglevel: info
+  # Debug exporter to see what each pipeline receives
+  debug/pipeline1:
+    verbosity: normal
     sampling_initial: 5
     sampling_thereafter: 100
 
-  logging/pipeline2:
-    loglevel: info
+  debug/pipeline2:
+    verbosity: normal
     sampling_initial: 5
     sampling_thereafter: 100
 
@@ -121,18 +137,6 @@ exporters:
 
   otlp/backend2:
     endpoint: "backend2.observability.svc.cluster.local:4317"
-
-service:
-  pipelines:
-    traces/pipeline1:
-      receivers: [otlp]
-      processors: [attributes/pipeline1, batch]
-      exporters: [logging/pipeline1, otlp/backend1]
-
-    traces/pipeline2:
-      receivers: [otlp]
-      processors: [attributes/pipeline2, batch]
-      exporters: [logging/pipeline2, otlp/backend2]
 ```
 
 Monitor pipeline-specific logs:
@@ -162,8 +166,8 @@ sum by (pipeline) (rate(otelcol_receiver_accepted_spans[5m]))
 # Data exported from each pipeline
 sum by (pipeline, exporter) (rate(otelcol_exporter_sent_spans[5m]))
 
-# Data dropped in each pipeline
-sum by (pipeline) (rate(otelcol_processor_dropped_spans[5m]))
+# Data leaving processors in each pipeline
+sum by (pipeline, processor) (rate(otelcol_processor_outgoing_items[5m]))
 
 # Compare input vs output for each pipeline
 sum by (pipeline) (rate(otelcol_receiver_accepted_spans[5m])) -
@@ -187,17 +191,24 @@ receivers:
 processors:
   # Filter for tenant A data
   filter/tenantA:
-    traces:
-      span:
-      # Include only spans with tenant_id = "tenant-a"
-      - 'attributes["tenant_id"] == "tenant-a"'
+    error_mode: ignore
+    trace_conditions:
+      # Drop spans that are not tagged for tenant-a
+      - 'span.attributes["tenant_id"] != "tenant-a" and resource.attributes["tenant_id"] != "tenant-a"'
 
   # Filter for tenant B data
   filter/tenantB:
-    traces:
-      span:
-      # Include only spans with tenant_id = "tenant-b"
-      - 'attributes["tenant_id"] == "tenant-b"'
+    error_mode: ignore
+    trace_conditions:
+      # Drop spans that are not tagged for tenant-b
+      - 'span.attributes["tenant_id"] != "tenant-b" and resource.attributes["tenant_id"] != "tenant-b"'
+
+  # Drop spans already routed to tenant-specific pipelines
+  filter/default:
+    error_mode: ignore
+    trace_conditions:
+      - 'span.attributes["tenant_id"] == "tenant-a" or resource.attributes["tenant_id"] == "tenant-a"'
+      - 'span.attributes["tenant_id"] == "tenant-b" or resource.attributes["tenant_id"] == "tenant-b"'
 
   # Add pipeline identifier
   attributes/tenantA:
@@ -249,7 +260,7 @@ service:
     # Catch-all pipeline for unmatched data
     traces/default:
       receivers: [otlp]
-      processors: [batch]
+      processors: [filter/default, batch]
       exporters: [otlp/default]
 ```
 
@@ -271,12 +282,12 @@ kubectl logs deployment/otel-collector -n observability | grep -i "filter"
 ```yaml
 processors:
   filter/tenantA:
-    traces:
-      span:
+    error_mode: ignore
+    trace_conditions:
       # Use correct attribute key (check case sensitivity)
-      - 'attributes["tenant.id"] == "tenant-a"'
-      # OR use resource attribute if that's where it's stored
-      - 'resource.attributes["tenant_id"] == "tenant-a"'
+      - 'span.attributes["tenant.id"] != "tenant-a" and resource.attributes["tenant.id"] != "tenant-a"'
+      # OR use tenant_id if that's where it's stored
+      - 'span.attributes["tenant_id"] != "tenant-a" and resource.attributes["tenant_id"] != "tenant-a"'
 ```
 
 ### Pattern 2: Fan-Out to Multiple Backends
@@ -459,7 +470,7 @@ EOF
 
 ### Pattern 4: Using Routing Connector
 
-Use the routing connector (experimental) for advanced routing logic.
+Use the routing connector for advanced routing logic.
 
 ```yaml
 # otel-collector-config.yaml
@@ -477,16 +488,20 @@ connectors:
 
     # Table defining routing rules
     table:
-    - statement: route() where attributes["service.name"] == "payment-service"
+    - context: resource
+      condition: attributes["service.name"] == "payment-service"
       pipelines: [traces/critical]
 
-    - statement: route() where attributes["http.status_code"] >= 500
+    - context: span
+      condition: attributes["http.status_code"] >= 500
       pipelines: [traces/errors]
 
-    - statement: route() where attributes["environment"] == "production"
+    - context: resource
+      condition: attributes["environment"] == "production"
       pipelines: [traces/prod]
 
-    - statement: route() where attributes["environment"] == "staging"
+    - context: resource
+      condition: attributes["environment"] == "staging"
       pipelines: [traces/staging]
 
 processors:
@@ -576,7 +591,7 @@ kubectl logs deployment/otel-collector -n observability | \
 
 ### Pattern 5: Cross-Pipeline Data Sharing
 
-Use forward connector to duplicate data across different signal types.
+Use the spanmetrics connector to generate metrics from trace data.
 
 ```yaml
 # otel-collector-config.yaml
@@ -587,7 +602,7 @@ receivers:
         endpoint: 0.0.0.0:4317
 
 connectors:
-  # Forward connector to generate metrics from traces
+  # Spanmetrics connector to generate metrics from traces
   spanmetrics:
     # Histogram buckets for latency
     histogram:
@@ -595,7 +610,6 @@ connectors:
         buckets: [0.01, 0.05, 0.1, 0.5, 1, 5, 10]
     # Dimensions to aggregate by
     dimensions:
-    - name: service.name
     - name: http.method
     - name: http.status_code
 
@@ -638,6 +652,12 @@ Add detailed logging at each stage to understand routing decisions.
 
 ```yaml
 # otel-collector-config.yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+
 processors:
   # Log data entering pipeline
   attributes/stage1:
@@ -648,9 +668,9 @@ processors:
 
   # Filter or route
   filter/route:
-    traces:
-      span:
-      - 'attributes["tenant_id"] == "tenant-a"'
+    error_mode: ignore
+    trace_conditions:
+      - 'span.attributes["tenant_id"] != "tenant-a" and resource.attributes["tenant_id"] != "tenant-a"'
 
   # Log data after filter
   attributes/stage2:
@@ -671,9 +691,9 @@ processors:
       action: insert
 
 exporters:
-  # Detailed logging exporter
-  logging:
-    loglevel: debug
+  # Detailed debug exporter
+  debug:
+    verbosity: detailed
     sampling_initial: 10
     sampling_thereafter: 100
 
@@ -690,7 +710,7 @@ service:
       - attributes/stage2
       - batch
       - attributes/stage3
-      exporters: [logging, otlp/backend]
+      exporters: [debug, otlp/backend]
 ```
 
 ### Validate Configuration Before Deployment
@@ -700,12 +720,14 @@ Use the collector's validate command to catch configuration errors.
 ```bash
 # Validate configuration locally
 docker run --rm -v $(pwd)/otel-collector-config.yaml:/etc/otel/config.yaml \
-  otel/opentelemetry-collector-contrib:0.93.0 \
+  otel/opentelemetry-collector-contrib:0.153.0 \
   validate --config=/etc/otel/config.yaml
 
-# Or in Kubernetes
-kubectl run -it --rm debug --image=otel/opentelemetry-collector-contrib:0.93.0 \
-  --restart=Never -- validate --config=/conf/config.yaml
+# Or in Kubernetes, validate a ConfigMap-mounted collector config
+kubectl run -it --rm debug \
+  --image=otel/opentelemetry-collector-contrib:0.153.0 \
+  --restart=Never \
+  --overrides='{"spec":{"containers":[{"name":"debug","image":"otel/opentelemetry-collector-contrib:0.153.0","args":["validate","--config=/conf/config.yaml"],"volumeMounts":[{"name":"config","mountPath":"/conf"}]}],"volumes":[{"name":"config","configMap":{"name":"otel-collector-config"}}]}}'
 ```
 
 ### Use Metrics to Track Pipeline Health
@@ -719,8 +741,8 @@ sum by (pipeline) (rate(otelcol_receiver_accepted_spans{pipeline=~"traces/.*"}[5
 # Data leaving each pipeline
 sum by (pipeline) (rate(otelcol_exporter_sent_spans{pipeline=~"traces/.*"}[5m]))
 
-# Data dropped in each pipeline (should be zero or expected amount)
-sum by (pipeline) (rate(otelcol_processor_dropped_spans{pipeline=~"traces/.*"}[5m]))
+# Data leaving processors in each pipeline
+sum by (pipeline, processor) (rate(otelcol_processor_outgoing_items{pipeline=~"traces/.*"}[5m]))
 
 # Verify fan-out: sum of exports should equal input * number of exporters
 sum(rate(otelcol_exporter_sent_spans[5m])) /
@@ -743,7 +765,6 @@ import (
     "log"
     "time"
 
-    "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/attribute"
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
     "go.opentelemetry.io/otel/sdk/resource"
@@ -754,28 +775,33 @@ import (
 func main() {
     ctx := context.Background()
 
-    // Create exporter
-    exporter, err := otlptracegrpc.New(
+    standardEndpoint := "otel-collector.observability.svc.cluster.local:4317"
+    priorityEndpoint := "otel-collector.observability.svc.cluster.local:4320"
+
+    // Test routing to tenant A
+    testTenantRouting(ctx, standardEndpoint, "tenant-a")
+
+    // Test routing to tenant B
+    testTenantRouting(ctx, standardEndpoint, "tenant-b")
+
+    // Test priority routing
+    testPriorityRouting(ctx, priorityEndpoint)
+}
+
+func newExporter(ctx context.Context, endpoint string) (trace.SpanExporter, error) {
+    return otlptracegrpc.New(
         ctx,
-        otlptracegrpc.WithEndpoint("otel-collector.observability.svc.cluster.local:4317"),
+        otlptracegrpc.WithEndpoint(endpoint),
         otlptracegrpc.WithInsecure(),
     )
+}
+
+func testTenantRouting(ctx context.Context, endpoint string, tenantID string) {
+    exporter, err := newExporter(ctx, endpoint)
     if err != nil {
         log.Fatalf("Failed to create exporter: %v", err)
     }
-    defer exporter.Shutdown(ctx)
 
-    // Test routing to tenant A
-    testTenantRouting(ctx, exporter, "tenant-a")
-
-    // Test routing to tenant B
-    testTenantRouting(ctx, exporter, "tenant-b")
-
-    // Test priority routing
-    testPriorityRouting(ctx, exporter)
-}
-
-func testTenantRouting(ctx context.Context, exporter trace.SpanExporter, tenantID string) {
     // Create trace provider with tenant resource
     tp := trace.NewTracerProvider(
         trace.WithBatcher(exporter),
@@ -801,7 +827,12 @@ func testTenantRouting(ctx context.Context, exporter trace.SpanExporter, tenantI
     log.Printf("Sent test span for tenant: %s", tenantID)
 }
 
-func testPriorityRouting(ctx context.Context, exporter trace.SpanExporter) {
+func testPriorityRouting(ctx context.Context, endpoint string) {
+    exporter, err := newExporter(ctx, endpoint)
+    if err != nil {
+        log.Fatalf("Failed to create exporter: %v", err)
+    }
+
     tp := trace.NewTracerProvider(
         trace.WithBatcher(exporter),
         trace.WithResource(resource.NewWithAttributes(
@@ -938,7 +969,7 @@ When routing issues occur, work through this checklist:
 - [ ] Validate filter expressions with test data
 - [ ] Check pipeline metrics to see where data flows
 - [ ] Verify exporter configurations point to correct backends
-- [ ] Test with logging exporter to see what each pipeline receives
+- [ ] Test with debug exporter to see what each pipeline receives
 - [ ] Ensure resource attributes vs span attributes are used correctly
 - [ ] Check for processor ordering issues (filters before other processors)
 - [ ] Verify connector configurations if using advanced routing
