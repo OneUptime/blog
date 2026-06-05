@@ -20,18 +20,19 @@ The SQL interface is particularly valuable for teams where not everyone is an ob
 
 ## Architecture Overview
 
-The pipeline uses the OpenTelemetry Collector to receive metrics and export them to QuestDB via the InfluxDB line protocol (ILP), which QuestDB supports natively for high-speed ingestion.
+The pipeline uses the OpenTelemetry Collector to receive metrics and export them to a small OTLP HTTP bridge. The bridge writes the metrics to QuestDB via the InfluxDB line protocol (ILP), which QuestDB supports natively for high-speed ingestion.
 
 ```mermaid
 graph LR
     A[Applications] -->|OTLP gRPC| B[OpenTelemetry Collector]
-    B -->|InfluxDB Line Protocol| C[QuestDB]
+    B -->|OTLP HTTP| F[OTLP to ILP Bridge]
+    F -->|InfluxDB Line Protocol| C[QuestDB]
     D[Grafana] -->|PostgreSQL Wire Protocol| C
     E[Custom Apps] -->|REST API / SQL| C
     style C fill:#00b894,stroke:#333,stroke-width:2px
 ```
 
-QuestDB supports multiple ingestion protocols, but the InfluxDB Line Protocol over TCP gives the best performance for high-volume metrics. On the query side, QuestDB speaks the PostgreSQL wire protocol, so any PostgreSQL client or tool can connect to it.
+QuestDB supports multiple ingestion protocols. ILP over HTTP is recommended for most production ingestion because it provides request-level feedback and retry behavior, while ILP over TCP has lower protocol overhead and is useful for simple high-throughput local pipelines. On the query side, QuestDB speaks the PostgreSQL wire protocol, so any PostgreSQL client or tool can connect to it.
 
 ## Deploying QuestDB
 
@@ -44,11 +45,11 @@ version: "3"
 
 services:
   questdb:
-    image: questdb/questdb:7.4.0
+    image: questdb/questdb:9.4.0
     ports:
       # Web console for interactive SQL queries
       - "9000:9000"
-      # InfluxDB Line Protocol for high-speed ingestion
+      # InfluxDB Line Protocol over TCP
       - "9009:9009"
       # PostgreSQL wire protocol for standard SQL clients
       - "8812:8812"
@@ -61,8 +62,6 @@ services:
       QDB_SHARED_WORKER_COUNT: 4
       # Set the maximum number of uncommitted rows before auto-commit
       QDB_CAIRO_MAX_UNCOMMITTED_ROWS: 500000
-      # Commit lag controls how long data waits before being committed
-      QDB_CAIRO_COMMIT_LAG: 10000
     restart: unless-stopped
 
 volumes:
@@ -79,8 +78,8 @@ docker compose up -d
 curl -s http://localhost:9000 | head -5
 
 # Check the health endpoint
-curl -s http://localhost:9003/healthcheck
-# Should return {"status":"healthy"}
+curl -s http://localhost:9003
+# Should return OK
 ```
 
 The web console at `http://localhost:9000` provides an interactive SQL editor where you can run queries and see results immediately.
@@ -113,11 +112,11 @@ PARTITION BY DAY WAL
 DEDUP UPSERT KEYS(timestamp, metric_name, service_name, host_name);
 ```
 
-The `SYMBOL` type is QuestDB's indexed string type, optimized for columns with a limited set of repeating values. This is perfect for dimension attributes like service names and metric names. The `PARTITION BY DAY` clause splits data into daily partitions, which allows QuestDB to efficiently prune partitions during time-range queries. The `WAL` keyword enables Write-Ahead Logging for durability.
+The `SYMBOL` type is QuestDB's dictionary-encoded string type, optimized for columns with a limited set of repeating values. This is perfect for dimension attributes like service names and metric names. The `PARTITION BY DAY` clause splits data into daily partitions, which allows QuestDB to efficiently prune partitions during time-range queries. The `WAL` keyword enables Write-Ahead Logging for durability.
 
 ## Configuring the OpenTelemetry Collector
 
-The OpenTelemetry Collector does not have a native QuestDB exporter, but QuestDB supports the InfluxDB Line Protocol. We can use the InfluxDB exporter from the Collector contrib distribution to send metrics to QuestDB.
+The OpenTelemetry Collector does not have a native QuestDB exporter. The configuration below sends metrics to the bridge service using the stable OTLP HTTP exporter with JSON encoding, which keeps the bridge simple and lets the bridge map OTLP metrics into the `otel_metrics` table.
 
 ```yaml
 # otel-collector-config.yml
@@ -150,35 +149,25 @@ processors:
     check_interval: 1s
     limit_mib: 256
 
-  # Transform metric attributes for clean QuestDB columns
-  attributes:
-    actions:
-      - key: service.name
-        action: upsert
-      - key: host.name
-        action: upsert
-
 exporters:
-  # InfluxDB exporter sends data using Line Protocol
-  # QuestDB accepts this on port 9009
-  influxdb:
-    endpoint: http://localhost:9009
-    # Payload type determines the line protocol version
-    payload_type: influx
-    metrics_schema: telegraf-prometheus-v2
+  # OTLP HTTP exporter sends JSON payloads to the bridge.
+  # The exporter appends /v1/metrics to this base endpoint.
+  otlp_http/questdb_bridge:
+    endpoint: http://localhost:4319
+    encoding: json
 
 service:
   pipelines:
     metrics:
       receivers: [otlp, hostmetrics]
-      processors: [memory_limiter, attributes, batch]
-      exporters: [influxdb]
+      processors: [memory_limiter, batch]
+      exporters: [otlp_http/questdb_bridge]
 ```
 
-If the InfluxDB exporter does not work well for your setup, an alternative approach is to use a small bridge service that receives OTLP data and writes to QuestDB using the ILP TCP protocol directly. Here is a Python script that does this:
+Here is a Python bridge service that receives OTLP JSON data and writes gauge and sum data points to QuestDB using the ILP TCP protocol directly:
 
 ```python
-# bridge.py - OTLP to QuestDB bridge using the questdb Python client
+# bridge.py - OTLP to QuestDB bridge
 # This receives metrics from the Collector via OTLP HTTP
 # and writes them to QuestDB using the ILP protocol
 
@@ -192,12 +181,17 @@ app = Flask(__name__)
 QUESTDB_HOST = "localhost"
 QUESTDB_ILP_PORT = 9009
 
+def escape_ilp_tag(value):
+    """Escape a value for use as an ILP measurement or tag value."""
+    return str(value).replace("\\", "\\\\").replace(" ", "\\ ").replace(",", "\\,").replace("=", "\\=")
+
 def send_to_questdb(metric_name, tags, value, timestamp_ns):
     """Send a single metric data point to QuestDB via ILP."""
     # Build the InfluxDB Line Protocol string
     # Format: measurement,tag1=val1,tag2=val2 field1=value timestamp
-    tag_str = ",".join(f"{k}={v}" for k, v in tags.items())
-    line = f"otel_metrics,metric_name={metric_name},{tag_str} value={value} {timestamp_ns}\n"
+    tags = {"metric_name": metric_name, **tags}
+    tag_str = ",".join(f"{escape_ilp_tag(k)}={escape_ilp_tag(v)}" for k, v in tags.items())
+    line = f"otel_metrics,{tag_str} value={float(value)},count=1i {timestamp_ns}\n"
 
     # Send over TCP
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -220,17 +214,28 @@ def receive_metrics():
             resource_attrs[attr["key"]] = attr["value"].get("stringValue", "")
 
         service_name = resource_attrs.get("service.name", "unknown")
+        host_name = resource_attrs.get("host.name", "unknown")
+        environment = resource_attrs.get("deployment.environment.name", "unknown")
 
         for scope_metric in resource_metric.get("scopeMetrics", []):
             for metric in scope_metric.get("metrics", []):
                 name = metric["name"]
 
-                # Handle gauge metrics
+                points = []
                 if "gauge" in metric:
-                    for dp in metric["gauge"]["dataPoints"]:
-                        value = dp.get("asDouble", dp.get("asInt", 0))
-                        ts = dp.get("timeUnixNano", int(time.time() * 1e9))
-                        send_to_questdb(name, {"service_name": service_name}, value, ts)
+                    points = metric["gauge"].get("dataPoints", [])
+                elif "sum" in metric:
+                    points = metric["sum"].get("dataPoints", [])
+
+                for dp in points:
+                    value = dp.get("asDouble", dp.get("asInt", 0))
+                    ts = dp.get("timeUnixNano", int(time.time() * 1e9))
+                    tags = {
+                        "service_name": service_name,
+                        "host_name": host_name,
+                        "environment": environment,
+                    }
+                    send_to_questdb(name, tags, value, ts)
 
     return jsonify({}), 200
 
@@ -264,21 +269,36 @@ The `SAMPLE BY` clause is QuestDB's time-series extension to SQL. It groups rows
 ```sql
 -- Detect anomalies by comparing current values to the 24h average
 -- Useful for spotting services that are behaving differently than usual
+WITH
+    current_window AS (
+        SELECT
+            service_name,
+            metric_name,
+            avg(value) AS current_avg
+        FROM otel_metrics
+        WHERE timestamp > dateadd('m', -15, now())
+        GROUP BY service_name, metric_name
+    ),
+    daily_window AS (
+        SELECT
+            service_name,
+            metric_name,
+            avg(value) AS daily_avg
+        FROM otel_metrics
+        WHERE timestamp > dateadd('d', -1, now())
+        GROUP BY service_name, metric_name
+    )
 SELECT
-    service_name,
-    metric_name,
-    avg(value) AS current_avg,
-    (
-        SELECT avg(value)
-        FROM otel_metrics q2
-        WHERE q2.metric_name = q1.metric_name
-        AND q2.service_name = q1.service_name
-        AND q2.timestamp > dateadd('d', -1, now())
-    ) AS daily_avg
-FROM otel_metrics q1
-WHERE timestamp > dateadd('m', -15, now())
-GROUP BY service_name, metric_name
-HAVING current_avg > daily_avg * 2;
+    current_window.service_name,
+    current_window.metric_name,
+    current_window.current_avg,
+    daily_window.daily_avg
+FROM current_window
+JOIN daily_window ON (
+    current_window.service_name = daily_window.service_name
+    AND current_window.metric_name = daily_window.metric_name
+)
+WHERE current_window.current_avg > daily_window.daily_avg * 2;
 ```
 
 ```sql
@@ -302,7 +322,7 @@ The `ALIGN TO CALENDAR` modifier aligns the time buckets to clock boundaries (e.
 
 ## Connecting Grafana to QuestDB
 
-QuestDB supports the PostgreSQL wire protocol, so you can connect Grafana using the PostgreSQL data source.
+QuestDB supports the PostgreSQL wire protocol, and the recommended Grafana integration is the official QuestDB data source plugin, which connects to QuestDB on the PostgreSQL wire port.
 
 ```yaml
 # grafana/provisioning/datasources/questdb.yml
@@ -310,22 +330,16 @@ apiVersion: 1
 
 datasources:
   - name: QuestDB
-    type: postgres
-    access: proxy
-    # QuestDB PostgreSQL wire protocol endpoint
-    url: questdb:8812
-    user: admin
+    type: questdb-questdb-datasource
+    jsonData:
+      # QuestDB PostgreSQL wire protocol endpoint
+      server: questdb
+      port: 8812
+      username: admin
+      tlsMode: disable
+      maxOpenConnections: 10
     secureJsonData:
       password: quest
-    jsonData:
-      # Use PostgreSQL mode for QuestDB
-      sslmode: disable
-      # Set the max open connections
-      maxOpenConns: 10
-      # The default database
-      database: qdb
-      # PostgreSQL version (QuestDB is compatible with v12)
-      postgresVersion: 1200
 ```
 
 In Grafana, create panels using SQL queries. Use the `$__timeFilter(timestamp)` macro to automatically apply the dashboard time range:
@@ -340,7 +354,7 @@ FROM otel_metrics
 WHERE
     $__timeFilter(timestamp)
     AND metric_name = 'system.cpu.utilization'
-SAMPLE BY $__interval
+SAMPLE BY $__sampleByInterval
 ORDER BY timestamp
 ```
 
@@ -361,9 +375,7 @@ Since the table is partitioned by day, this operation drops entire daily partiti
 
 For production deployments, there are several QuestDB settings that impact performance with OpenTelemetry metrics workloads.
 
-The `QDB_CAIRO_MAX_UNCOMMITTED_ROWS` setting controls how many rows QuestDB buffers before committing to disk. Higher values improve ingestion throughput but increase the amount of data that could be lost in a crash. For metrics data where occasional loss is acceptable, set this to 500,000 or higher.
-
-The `QDB_CAIRO_COMMIT_LAG` setting (in microseconds) controls the maximum time between auto-commits. This works together with `MAX_UNCOMMITTED_ROWS` to balance throughput and latency. A value of 10,000 microseconds (10ms) works well for most metrics workloads.
+The `QDB_CAIRO_MAX_UNCOMMITTED_ROWS` setting controls how many rows QuestDB buffers before issuing a commit for a table. Higher values can improve ingestion throughput, while lower values make newly ingested data visible to queries sooner. The default is 500,000 rows, which is a reasonable starting point for metrics workloads.
 
 Use `SYMBOL` columns for all string attributes that have a bounded set of values. Symbols are stored as integers internally with a dictionary lookup, which is much more space-efficient and faster to query than regular strings.
 
