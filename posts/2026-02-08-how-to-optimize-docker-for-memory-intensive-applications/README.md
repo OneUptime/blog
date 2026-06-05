@@ -141,13 +141,13 @@ echo "vm.overcommit_ratio = 80" | sudo tee -a /etc/sysctl.d/memory.conf
 sudo sysctl -p /etc/sysctl.d/memory.conf
 ```
 
-### Page Cache Pressure
+### VFS Cache Pressure
 
-Control how aggressively the kernel reclaims page cache memory:
+Control how aggressively the kernel reclaims directory and inode caches relative to page cache and swap cache:
 
 ```bash
-# Lower values keep more page cache (good for I/O-heavy apps)
-# Higher values free page cache faster (good for memory-heavy apps)
+# Lower values keep more directory and inode cache
+# Higher values reclaim directory and inode cache more aggressively
 echo 150 | sudo tee /proc/sys/vm/vfs_cache_pressure
 
 # Make persistent
@@ -159,10 +159,10 @@ echo "vm.vfs_cache_pressure = 150" | sudo tee -a /etc/sysctl.d/memory.conf
 For applications that write large amounts of data, tune when the kernel flushes dirty pages to disk:
 
 ```bash
-# Start flushing when 5% of memory has dirty pages
+# Processes writing data start writeback when 5% of available memory has dirty pages
 echo 5 | sudo tee /proc/sys/vm/dirty_ratio
 
-# Background flushing at 2%
+# Background flusher threads start writeback at 2%
 echo 2 | sudo tee /proc/sys/vm/dirty_background_ratio
 
 # Make persistent
@@ -239,7 +239,7 @@ Set Redis `maxmemory` to about 85-90% of the container memory limit. The remaini
 # Docker stats with memory details
 docker stats --format "table {{.Name}}\t{{.MemUsage}}\t{{.MemPerc}}\t{{.NetIO}}"
 
-# Detailed memory breakdown inside the container
+# Kernel memory view inside the container; use cgroup files for actual limits
 docker exec mycontainer cat /proc/meminfo
 
 # Check cgroup memory stats
@@ -278,15 +278,20 @@ SHR=$(cat /proc/$PID/status | grep RssFile | awk '{print $2}')
 echo "Shared: ${SHR} kB"
 
 # Cgroup memory usage
-CGROUP_USAGE=$(docker exec "$CONTAINER" cat /sys/fs/cgroup/memory.current 2>/dev/null || echo "N/A")
+CGROUP_USAGE=$(docker exec "$CONTAINER" cat /sys/fs/cgroup/memory.current 2>/dev/null || \
+docker exec "$CONTAINER" cat /sys/fs/cgroup/memory/memory.usage_in_bytes 2>/dev/null || \
+echo "N/A")
 echo "Cgroup current: ${CGROUP_USAGE} bytes"
 
 # Cgroup memory limit
-CGROUP_LIMIT=$(docker exec "$CONTAINER" cat /sys/fs/cgroup/memory.max 2>/dev/null || echo "N/A")
+CGROUP_LIMIT=$(docker exec "$CONTAINER" cat /sys/fs/cgroup/memory.max 2>/dev/null || \
+docker exec "$CONTAINER" cat /sys/fs/cgroup/memory/memory.limit_in_bytes 2>/dev/null || \
+echo "N/A")
 echo "Cgroup limit: ${CGROUP_LIMIT} bytes"
 
 # OOM events
-OOM_COUNT=$(docker exec "$CONTAINER" cat /sys/fs/cgroup/memory.events 2>/dev/null | grep oom_kill | awk '{print $2}')
+OOM_COUNT=$(docker exec "$CONTAINER" cat /sys/fs/cgroup/memory.events 2>/dev/null | grep oom_kill | awk '{print $2}' || \
+docker exec "$CONTAINER" cat /sys/fs/cgroup/memory/memory.oom_control 2>/dev/null | grep oom_kill | awk '{print $2}')
 echo "OOM kills: ${OOM_COUNT:-0}"
 ```
 
@@ -337,14 +342,14 @@ services:
 
   postgres:
     image: postgres:16-alpine
+    command: postgres -c shared_buffers=8GB -c effective_cache_size=12GB
     shm_size: '4g'
     deploy:
       resources:
         limits:
           memory: 16G
     environment:
-      POSTGRES_SHARED_BUFFERS: 8GB
-      POSTGRES_EFFECTIVE_CACHE_SIZE: 12GB
+      POSTGRES_PASSWORD: change-me
     volumes:
       - pgdata:/var/lib/postgresql/data
 
