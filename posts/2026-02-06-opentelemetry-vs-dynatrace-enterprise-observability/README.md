@@ -16,7 +16,7 @@ OpenTelemetry takes a fundamentally different approach. It provides a vendor-neu
 
 ## Architectural Philosophies
 
-Dynatrace uses a single agent called OneAgent that you deploy on every host. This agent automatically discovers processes, maps dependencies, and instruments applications without code changes. It uses deep code-level instrumentation that hooks into the runtime of your application (bytecode injection for Java, CLR instrumentation for .NET, V8 hooks for Node.js).
+Dynatrace uses a single agent called OneAgent that you deploy on every host. This agent automatically discovers processes, maps dependencies, and instruments applications without code changes. It uses deep code-level instrumentation that injects itself into supported application runtimes such as Java, .NET, and Node.js.
 
 OpenTelemetry uses SDK libraries and optional auto-instrumentation packages. The telemetry flows through the OTel Collector, which handles processing and export. You choose the backend.
 
@@ -61,13 +61,11 @@ No code changes. No configuration files. No SDK integration. OneAgent handles ev
 
 OpenTelemetry requires more explicit setup. Here is the equivalent for a Java Spring Boot application.
 
-```java
+```gradle
 // build.gradle - Add OpenTelemetry dependencies
 dependencies {
-    implementation 'io.opentelemetry:opentelemetry-api:1.36.0'
-    implementation 'io.opentelemetry:opentelemetry-sdk:1.36.0'
-    implementation 'io.opentelemetry:opentelemetry-exporter-otlp:1.36.0'
-    implementation 'io.opentelemetry.instrumentation:opentelemetry-spring-boot-starter:2.2.0'
+    implementation platform('io.opentelemetry.instrumentation:opentelemetry-instrumentation-bom:2.28.1')
+    implementation 'io.opentelemetry.instrumentation:opentelemetry-spring-boot-starter'
 }
 ```
 
@@ -76,7 +74,7 @@ dependencies {
 otel:
   exporter:
     otlp:
-      endpoint: http://otel-collector:4317
+      endpoint: http://otel-collector:4318
   resource:
     attributes:
       service.name: order-service
@@ -94,7 +92,7 @@ Alternatively, you can use the Java agent for zero-code instrumentation:
 # Run with the OpenTelemetry Java agent
 java -javaagent:opentelemetry-javaagent.jar \
      -Dotel.service.name=order-service \
-     -Dotel.exporter.otlp.endpoint=http://collector:4317 \
+     -Dotel.exporter.otlp.endpoint=http://collector:4318 \
      -jar my-application.jar
 ```
 
@@ -127,6 +125,8 @@ receivers:
     protocols:
       grpc:
         endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
   # Receive metrics from Prometheus endpoints
   prometheus:
     config:
@@ -173,7 +173,7 @@ The Collector's ability to receive data from multiple sources (OTLP, Prometheus,
 
 ## Cost at Enterprise Scale
 
-Dynatrace pricing is based on the amount of monitoring consumed across several dimensions: host units, DEM (Digital Experience Monitoring) units, custom metrics, log ingest, and Davis Data Units. For enterprise deployments, annual contracts typically run from $100,000 to well over $1 million depending on scale.
+Dynatrace pricing is based on a Dynatrace Platform Subscription commitment. Each capability you use draws down that annual commitment according to your rate card. Current public pricing still exposes practical meters such as hosts, memory-GiB-hours, sessions, synthetic actions, log ingest, and retention. For enterprise deployments, annual contracts can run from $100,000 to well over $1 million depending on scale.
 
 The pricing structure rewards commitment. Enterprise discount agreements with longer terms bring per-unit costs down significantly. But the underlying model still scales with your infrastructure size.
 
@@ -181,11 +181,11 @@ OpenTelemetry eliminates the instrumentation cost entirely. Your expenses come f
 
 | Component | Dynatrace (Estimated) | OpenTelemetry + Backend |
 |---|---|---|
-| 200 host units | $140,000/year | N/A |
+| 200 full-stack 8 GiB hosts | About $139,200/year before discounts | N/A |
 | Full-stack monitoring | Included | Backend dependent |
-| Log management (500 GB/day) | $180,000/year | Backend dependent |
+| Log ingest and processing (500 GiB/day) | About $36,500/year before retention and query costs | Backend dependent |
 | Davis AI | Included | Not available natively |
-| Total estimate | $320,000+ /year | $40,000 - $120,000/year |
+| Total estimate | $175,000+ /year before retention, query costs, and discounts | $40,000 - $120,000/year |
 
 The gap narrows if you factor in the engineering time to set up and maintain OpenTelemetry. Dynatrace's zero-config approach genuinely reduces operational overhead. But for cost-conscious enterprises, the difference is hard to ignore.
 
@@ -199,6 +199,7 @@ Dynatrace supports OpenTelemetry natively. You can send OTLP data to Dynatrace a
 # Send OTel data directly to Dynatrace
 export OTEL_EXPORTER_OTLP_ENDPOINT="https://your-env.live.dynatrace.com/api/v2/otlp"
 export OTEL_EXPORTER_OTLP_HEADERS="Authorization=Api-Token YOUR_TOKEN"
+export OTEL_EXPORTER_OTLP_PROTOCOL="http/protobuf"
 export OTEL_SERVICE_NAME="my-service"
 
 # Run your application with OTel instrumentation
