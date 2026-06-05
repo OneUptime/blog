@@ -24,7 +24,7 @@ The first step is extracting text from the submitted document. Different file fo
 
 ```python
 from opentelemetry import trace
-from opentelemetry.trace import StatusCode
+from opentelemetry.trace import Status, StatusCode
 
 tracer = trace.get_tracer("plagiarism.detection")
 
@@ -50,7 +50,7 @@ def process_submission(submission_id, file_path, file_type):
             elif file_type == "txt":
                 text = read_text_file(file_path)
             else:
-                extract_span.set_status(StatusCode.ERROR, f"Unsupported file type: {file_type}")
+                extract_span.set_status(Status(StatusCode.ERROR, f"Unsupported file type: {file_type}"))
                 raise ValueError(f"Unsupported file type: {file_type}")
 
             extract_span.set_attribute("plagiarism.word_count", len(text.split()))
@@ -201,8 +201,15 @@ def compare_against_web(text, submission_id):
 Track the processing queue to understand system throughput and wait times:
 
 ```python
+from typing import Iterable
+from opentelemetry.metrics import CallbackOptions, Observation
+
+def observe_queue_depth(options: CallbackOptions) -> Iterable[Observation]:
+    yield Observation(get_queue_depth())
+
 queue_depth = meter.create_observable_gauge(
     "plagiarism.queue_depth",
+    callbacks=[observe_queue_depth],
     description="Number of submissions waiting for plagiarism detection",
 )
 
