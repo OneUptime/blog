@@ -44,9 +44,9 @@ The agent Collectors run close to your pods and handle initial collection. The g
 
 ## Prerequisites
 
-- A DigitalOcean account with a Kubernetes cluster (1.28+)
+- A DigitalOcean account with a supported DigitalOcean Kubernetes cluster
 - `kubectl` configured to talk to your cluster
-- Helm 3 installed
+- Helm 4 installed
 - A backend to receive telemetry (OneUptime, Jaeger, Grafana Cloud, etc.)
 
 ---
@@ -61,7 +61,7 @@ If you do not already have a cluster, create one with `doctl`.
 # Using the s-2vcpu-4gb size which is good for small-to-medium workloads
 doctl kubernetes cluster create otel-cluster \
   --region nyc1 \
-  --version 1.29.1-do.0 \
+  --version latest \
   --size s-2vcpu-4gb \
   --count 3
 
@@ -107,6 +107,12 @@ The agent Collector runs on every node and collects telemetry from pods on that 
 
 mode: daemonset
 
+image:
+  repository: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-k8s
+
+command:
+  name: otelcol-k8s
+
 # Resource limits appropriate for a DaemonSet agent
 resources:
   limits:
@@ -125,6 +131,9 @@ presets:
   logsCollection:
     enabled: true
     includeCollectorLogs: false  # Avoid log loops
+  # Add the kubeletstats receiver and required RBAC/env vars
+  kubeletMetrics:
+    enabled: true
 
 config:
   receivers:
@@ -170,7 +179,7 @@ config:
   exporters:
     # Forward to the gateway Collector
     otlp:
-      endpoint: "otel-gateway-collector.observability.svc.cluster.local:4317"
+      endpoint: "otel-gateway-opentelemetry-collector.observability.svc.cluster.local:4317"
       tls:
         insecure: true  # Use TLS in production
 
@@ -209,8 +218,14 @@ The gateway Collector receives telemetry from all agents and handles the final p
 
 mode: deployment
 
-# Run 2 replicas for high availability
-replicaCount: 2
+# Run 1 replica when using tail-based sampling so each trace is evaluated in one gateway
+replicaCount: 1
+
+image:
+  repository: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-k8s
+
+command:
+  name: otelcol-k8s
 
 resources:
   limits:
@@ -308,7 +323,7 @@ kubectl get daemonset -n observability
 kubectl get deployment -n observability
 
 # View logs from the gateway to confirm it is receiving data
-kubectl logs -n observability -l app.kubernetes.io/name=opentelemetry-collector --tail=50
+kubectl logs -n observability -l app.kubernetes.io/instance=otel-gateway --tail=50
 ```
 
 ---
@@ -356,14 +371,20 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: status.hostIP
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
 
-            # The agent Collector listens on port 4317 (gRPC)
+            # The agent Collector listens on port 4318 (HTTP/protobuf)
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: "http://$(K8S_NODE_IP):4317"
+              value: "http://$(K8S_NODE_IP):4318"
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: "http/protobuf"
 
             # Add Kubernetes metadata as resource attributes
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: "k8s.namespace.name=default,k8s.pod.name=$(HOSTNAME)"
+              value: "k8s.namespace.name=default,k8s.pod.name=$(POD_NAME)"
 
             # Configure trace sampling (10% in production)
             - name: OTEL_TRACES_SAMPLER
@@ -387,10 +408,10 @@ For a zero-code approach, the OpenTelemetry Operator can inject instrumentation 
 
 ```bash
 # Install cert-manager (required by the OTel Operator)
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.5/cert-manager.yaml
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml
 
 # Wait for cert-manager to be ready
-kubectl wait --for=condition=ready pod -l app.kubernetes.io/instance=cert-manager -n cert-manager --timeout=120s
+kubectl wait --for=condition=Available deployment --all -n cert-manager --timeout=120s
 
 # Install the OpenTelemetry Operator
 helm install otel-operator open-telemetry/opentelemetry-operator \
@@ -412,7 +433,7 @@ metadata:
 spec:
   # Where to send telemetry
   exporter:
-    endpoint: http://otel-agent-collector.observability.svc.cluster.local:4317
+    endpoint: http://otel-gateway-opentelemetry-collector.observability.svc.cluster.local:4318
 
   # Language-specific configuration
   python:
@@ -429,6 +450,8 @@ spec:
     env:
       - name: OTEL_TRACES_EXPORTER
         value: otlp
+      - name: OTEL_EXPORTER_OTLP_PROTOCOL
+        value: http/protobuf
 
   # Propagators for distributed tracing context
   propagators:
@@ -467,7 +490,7 @@ A few things are specific to running OpenTelemetry on DOKS:
 
 ```bash
 # Check Collector health by hitting its metrics endpoint
-kubectl port-forward -n observability svc/otel-gateway-collector 8888:8888
+kubectl port-forward -n observability svc/otel-gateway-opentelemetry-collector 8888:8888
 # Then visit http://localhost:8888/metrics in your browser
 ```
 
@@ -484,7 +507,7 @@ As your cluster grows, keep these scaling patterns in mind:
 | 20-50 nodes | 256m CPU, 512Mi | 3-5 | 2 CPU, 4Gi |
 | 50+ nodes | 512m CPU, 1Gi | 5+ (with HPA) | 4 CPU, 8Gi |
 
-For very large clusters, add a Horizontal Pod Autoscaler to the gateway.
+For very large clusters, add a Horizontal Pod Autoscaler to the gateway. If you keep tail-based sampling enabled, use trace-aware load balancing before scaling the gateway above one replica so all spans for a trace reach the same gateway instance.
 
 ```yaml
 # gateway-hpa.yaml
