@@ -20,30 +20,36 @@ Install the necessary OpenTelemetry packages for Node.js:
 
 ```bash
 npm install @opentelemetry/api @opentelemetry/sdk-node
+npm install @opentelemetry/resources @opentelemetry/semantic-conventions
 npm install @opentelemetry/auto-instrumentations-node
 npm install @opentelemetry/exporter-trace-otlp-http
-npm install @opentelemetry/instrumentation-http
+npm install @opentelemetry/instrumentation @opentelemetry/instrumentation-http
+npm install @opentelemetry/sdk-trace-web @opentelemetry/sdk-trace-base @opentelemetry/context-zone
 ```
 
 Create an instrumentation file that initializes OpenTelemetry before Astro starts:
 
 ```typescript
-// instrumentation.ts - Initialize OpenTelemetry
+// instrumentation.mjs - Initialize OpenTelemetry
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
-import { Resource } from '@opentelemetry/resources';
-import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
+import { resourceFromAttributes } from '@opentelemetry/resources';
+import {
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+  ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
+} from '@opentelemetry/semantic-conventions';
 
 const sdk = new NodeSDK({
-  resource: new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: 'astro-application',
-    [SemanticResourceAttributes.SERVICE_VERSION]: '1.0.0',
-    [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]:
+  resource: resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: 'astro-application',
+    [ATTR_SERVICE_VERSION]: '1.0.0',
+    [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]:
       process.env.NODE_ENV || 'development',
   }),
   traceExporter: new OTLPTraceExporter({
-    url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT ||
+    url: process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT ||
          'http://localhost:4318/v1/traces',
   }),
   instrumentations: [
@@ -68,25 +74,26 @@ process.on('SIGTERM', () => {
 
 ## Configuring Astro to Load Instrumentation
 
-Update your Astro configuration to load instrumentation in SSR mode:
+Update your Astro configuration for on-demand rendering, and load the instrumentation module before the server entrypoint starts:
 
 ```typescript
 // astro.config.mjs
 import { defineConfig } from 'astro/config';
 import node from '@astrojs/node';
 
-// Load instrumentation for server builds
-if (process.env.NODE_ENV === 'production' || process.env.SSR === 'true') {
-  await import('./instrumentation.ts');
-}
-
 export default defineConfig({
-  output: 'hybrid', // or 'server' for full SSR
+  output: 'static', // or 'server' for full SSR by default
   adapter: node({
     mode: 'standalone',
   }),
   integrations: [],
 });
+```
+
+```bash
+node --experimental-loader=@opentelemetry/instrumentation/hook.mjs \
+  --import ./instrumentation.mjs \
+  ./dist/server/entry.mjs
 ```
 
 ## Instrumenting API Routes
@@ -96,51 +103,68 @@ Create instrumented API routes that track execution time and errors:
 ```typescript
 // src/pages/api/users/[id].ts - Instrumented API route
 import type { APIRoute } from 'astro';
-import { trace, SpanStatusCode, context } from '@opentelemetry/api';
+import { trace, SpanStatusCode, context, propagation } from '@opentelemetry/api';
 
 const tracer = trace.getTracer('astro-api', '1.0.0');
+const headersGetter = {
+  keys: (headers: Headers) => Array.from(headers.keys()),
+  get: (headers: Headers, key: string) => headers.get(key) ?? undefined,
+};
 
 export const GET: APIRoute = async ({ params, request }) => {
-  const span = tracer.startSpan('api.users.get', {
-    attributes: {
-      'http.method': 'GET',
-      'http.route': '/api/users/:id',
-      'http.url': request.url,
-      'user.id': params.id,
+  const extractedContext = propagation.extract(
+    context.active(),
+    request.headers,
+    headersGetter
+  );
+
+  const span = tracer.startSpan(
+    'api.users.get',
+    {
+      attributes: {
+        'http.request.method': 'GET',
+        'http.route': '/api/users/:id',
+        'url.full': request.url,
+        'user.id': params.id ?? 'unknown',
+      },
     },
-  });
+    extractedContext
+  );
 
   const startTime = Date.now();
 
   try {
-    // Extract trace context from incoming request
-    const traceParent = request.headers.get('traceparent');
-    if (traceParent) {
-      span.setAttribute('trace.parent', traceParent);
-    }
-
     // Simulate database query
     const dbSpan = tracer.startSpan(
       'db.query.users',
       {
         attributes: {
-          'db.system': 'postgresql',
-          'db.operation': 'SELECT',
-          'db.table': 'users',
+          'db.system.name': 'postgresql',
+          'db.operation.name': 'SELECT',
+          'db.collection.name': 'users',
         },
       },
-      trace.setSpan(context.active(), span)
+      trace.setSpan(extractedContext, span)
     );
 
-    const user = await fetchUser(params.id!);
-
-    dbSpan.setAttributes({
-      'db.rows_returned': user ? 1 : 0,
-    });
-    dbSpan.end();
+    let user;
+    try {
+      user = await fetchUser(params.id!);
+      dbSpan.setAttribute('db.rows_returned', user ? 1 : 0);
+      dbSpan.setStatus({ code: SpanStatusCode.OK });
+    } catch (error) {
+      dbSpan.recordException(error as Error);
+      dbSpan.setStatus({
+        code: SpanStatusCode.ERROR,
+        message: (error as Error).message,
+      });
+      throw error;
+    } finally {
+      dbSpan.end();
+    }
 
     if (!user) {
-      span.setAttribute('http.status_code', 404);
+      span.setAttribute('http.response.status_code', 404);
       span.end();
 
       return new Response(JSON.stringify({ error: 'User not found' }), {
@@ -152,7 +176,7 @@ export const GET: APIRoute = async ({ params, request }) => {
     const duration = Date.now() - startTime;
 
     span.setAttributes({
-      'http.status_code': 200,
+      'http.response.status_code': 200,
       'http.response.duration_ms': duration,
     });
     span.setStatus({ code: SpanStatusCode.OK });
@@ -166,7 +190,7 @@ export const GET: APIRoute = async ({ params, request }) => {
     const duration = Date.now() - startTime;
 
     span.setAttributes({
-      'http.status_code': 500,
+      'http.response.status_code': 500,
       'http.response.duration_ms': duration,
     });
     span.recordException(error as Error);
@@ -184,12 +208,22 @@ export const GET: APIRoute = async ({ params, request }) => {
 };
 
 export const POST: APIRoute = async ({ request }) => {
-  const span = tracer.startSpan('api.users.create', {
-    attributes: {
-      'http.method': 'POST',
-      'http.route': '/api/users',
+  const extractedContext = propagation.extract(
+    context.active(),
+    request.headers,
+    headersGetter
+  );
+
+  const span = tracer.startSpan(
+    'api.users.create',
+    {
+      attributes: {
+        'http.request.method': 'POST',
+        'http.route': '/api/users',
+      },
     },
-  });
+    extractedContext
+  );
 
   try {
     const body = await request.json();
@@ -202,7 +236,7 @@ export const POST: APIRoute = async ({ request }) => {
     const validationSpan = tracer.startSpan(
       'validation.user.create',
       {},
-      trace.setSpan(context.active(), span)
+      trace.setSpan(extractedContext, span)
     );
 
     const validationErrors = validateUserInput(body);
@@ -210,7 +244,7 @@ export const POST: APIRoute = async ({ request }) => {
     validationSpan.end();
 
     if (validationErrors.length > 0) {
-      span.setAttribute('http.status_code', 400);
+      span.setAttribute('http.response.status_code', 400);
       span.end();
 
       return new Response(JSON.stringify({ errors: validationErrors }), {
@@ -224,20 +258,32 @@ export const POST: APIRoute = async ({ request }) => {
       'db.insert.users',
       {
         attributes: {
-          'db.system': 'postgresql',
-          'db.operation': 'INSERT',
-          'db.table': 'users',
+          'db.system.name': 'postgresql',
+          'db.operation.name': 'INSERT',
+          'db.collection.name': 'users',
         },
       },
-      trace.setSpan(context.active(), span)
+      trace.setSpan(extractedContext, span)
     );
 
-    const newUser = await createUser(body);
-    insertSpan.setAttribute('db.user.id', newUser.id);
-    insertSpan.end();
+    let newUser;
+    try {
+      newUser = await createUser(body);
+      insertSpan.setAttribute('db.user.id', newUser.id);
+      insertSpan.setStatus({ code: SpanStatusCode.OK });
+    } catch (error) {
+      insertSpan.recordException(error as Error);
+      insertSpan.setStatus({
+        code: SpanStatusCode.ERROR,
+        message: (error as Error).message,
+      });
+      throw error;
+    } finally {
+      insertSpan.end();
+    }
 
     span.setAttributes({
-      'http.status_code': 201,
+      'http.response.status_code': 201,
       'user.id': newUser.id,
     });
     span.setStatus({ code: SpanStatusCode.OK });
@@ -248,8 +294,12 @@ export const POST: APIRoute = async ({ request }) => {
       headers: { 'Content-Type': 'application/json' },
     });
   } catch (error) {
+    span.setAttribute('http.response.status_code', 500);
     span.recordException(error as Error);
-    span.setStatus({ code: SpanStatusCode.ERROR });
+    span.setStatus({
+      code: SpanStatusCode.ERROR,
+      message: (error as Error).message,
+    });
     span.end();
 
     return new Response(JSON.stringify({ error: 'Failed to create user' }), {
@@ -285,7 +335,14 @@ Track SSR page rendering performance:
 ```astro
 ---
 // src/pages/users/[id].astro - SSR page with tracing
-import { trace, context as otelContext } from '@opentelemetry/api';
+import {
+  trace,
+  context as otelContext,
+  propagation,
+  SpanStatusCode,
+} from '@opentelemetry/api';
+
+export const prerender = false;
 
 const tracer = trace.getTracer('astro-ssr', '1.0.0');
 
@@ -296,37 +353,55 @@ const span = tracer.startSpan('ssr.page.render.user', {
   },
 });
 
+let user;
+
 try {
   // Fetch data with tracing
-  const dataSpan = tracer.startSpan(
-    'ssr.data.fetch.user',
-    {},
-    trace.setSpan(otelContext.active(), span)
-  );
+  await otelContext.with(trace.setSpan(otelContext.active(), span), async () => {
+    const dataSpan = tracer.startSpan('ssr.data.fetch.user');
+    try {
+      const headers: Record<string, string> = {};
+      propagation.inject(otelContext.active(), headers);
 
-  const response = await fetch(`http://localhost:4321/api/users/${Astro.params.id}`, {
-    headers: {
-      // Propagate trace context
-      'traceparent': `00-${span.spanContext().traceId}-${span.spanContext().spanId}-01`,
-    },
+      const response = await fetch(
+        new URL(`/api/users/${Astro.params.id}`, Astro.url),
+        { headers }
+      );
+
+      user = await response.json();
+
+      dataSpan.setAttributes({
+        'http.response.status_code': response.status,
+        'data.user.id': user.id,
+      });
+      dataSpan.setStatus({ code: SpanStatusCode.OK });
+    } catch (error) {
+      dataSpan.recordException(error as Error);
+      dataSpan.setStatus({
+        code: SpanStatusCode.ERROR,
+        message: (error as Error).message,
+      });
+      throw error;
+    } finally {
+      dataSpan.end();
+    }
   });
 
-  const user = await response.json();
-
-  dataSpan.setAttributes({
-    'http.status': response.status,
-    'data.user.id': user.id,
+  span.setAttributes({
+    'ssr.success': true,
+    'ssr.user.id': user.id,
   });
-  dataSpan.end();
-
-  // Component rendering span
-  const renderSpan = tracer.startSpan(
-    'ssr.component.render',
-    {},
-    trace.setSpan(otelContext.active(), span)
-  );
-
-  const startRender = Date.now();
+  span.setStatus({ code: SpanStatusCode.OK });
+  span.end();
+} catch (error) {
+  span.recordException(error as Error);
+  span.setStatus({
+    code: SpanStatusCode.ERROR,
+    message: (error as Error).message,
+  });
+  span.end();
+  throw error;
+}
 ---
 
 <!DOCTYPE html>
@@ -339,24 +414,6 @@ try {
     <p>Email: {user.email}</p>
   </body>
 </html>
-
----
-  const renderDuration = Date.now() - startRender;
-  renderSpan.setAttribute('render.duration_ms', renderDuration);
-  renderSpan.end();
-
-  span.setAttributes({
-    'ssr.success': true,
-    'ssr.user.id': user.id,
-  });
-  span.end();
-} catch (error) {
-  span.recordException(error as Error);
-  span.setStatus({ code: 2, message: (error as Error).message });
-  span.end();
-  throw error;
-}
----
 ```
 
 ## Creating Reusable Tracing Utilities
@@ -365,7 +422,8 @@ Build helper functions to simplify instrumentation across your application:
 
 ```typescript
 // src/lib/tracing.ts - Reusable tracing utilities
-import { trace, context, Span, SpanStatusCode } from '@opentelemetry/api';
+import { trace, context, SpanStatusCode } from '@opentelemetry/api';
+import type { Span } from '@opentelemetry/api';
 
 const tracer = trace.getTracer('astro-app', '1.0.0');
 
@@ -447,11 +505,11 @@ export const onRequest = defineMiddleware(async (context, next) => {
 
   const span = tracer.startSpan('http.request', {
     attributes: {
-      'http.method': request.method,
-      'http.url': url.href,
+      'http.request.method': request.method,
+      'url.full': url.href,
       'http.route': url.pathname,
-      'http.scheme': url.protocol.replace(':', ''),
-      'http.host': url.hostname,
+      'url.scheme': url.protocol.replace(':', ''),
+      'server.address': url.hostname,
     },
   });
 
@@ -467,7 +525,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
     const duration = Date.now() - startTime;
 
     span.setAttributes({
-      'http.status_code': response.status,
+      'http.response.status_code': response.status,
       'http.response.duration_ms': duration,
     });
 
@@ -506,7 +564,7 @@ Instrument the build process to understand static generation performance:
 
 ```typescript
 // src/lib/buildTracing.ts - Build-time instrumentation
-import { trace, context } from '@opentelemetry/api';
+import { trace, SpanStatusCode } from '@opentelemetry/api';
 
 const tracer = trace.getTracer('astro-build', '1.0.0');
 
@@ -534,7 +592,10 @@ export async function tracePageGeneration(
     span.end();
   } catch (error) {
     span.recordException(error as Error);
-    span.setStatus({ code: 2 });
+    span.setStatus({
+      code: SpanStatusCode.ERROR,
+      message: (error as Error).message,
+    });
     span.end();
     throw error;
   }
@@ -548,6 +609,7 @@ Trace content loading and processing:
 ```typescript
 // src/content/config.ts - Content collections with tracing
 import { defineCollection, z } from 'astro:content';
+import type { CollectionKey } from 'astro:content';
 import { traceAsync } from '../lib/tracing';
 
 const blog = defineCollection({
@@ -562,7 +624,9 @@ const blog = defineCollection({
 export const collections = { blog };
 
 // Traced content loader utility
-export async function getTracedCollection(collectionName: string) {
+export async function getTracedCollection<T extends CollectionKey>(
+  collectionName: T
+) {
   return traceAsync(
     'content.collection.load',
     {
@@ -584,7 +648,25 @@ export async function getTracedCollection(collectionName: string) {
 Track client-side hydration performance:
 
 ```typescript
+// src/lib/clientTracing.ts - Initialize browser tracing
+import { WebTracerProvider } from '@opentelemetry/sdk-trace-web';
+import {
+  ConsoleSpanExporter,
+  SimpleSpanProcessor,
+} from '@opentelemetry/sdk-trace-base';
+import { ZoneContextManager } from '@opentelemetry/context-zone';
+
+const provider = new WebTracerProvider({
+  spanProcessors: [new SimpleSpanProcessor(new ConsoleSpanExporter())],
+});
+provider.register({
+  contextManager: new ZoneContextManager(),
+});
+```
+
+```typescript
 // src/components/TracedCounter.tsx - Instrumented interactive component
+import '../lib/clientTracing';
 import { useEffect, useState } from 'react';
 import { trace } from '@opentelemetry/api';
 
@@ -601,8 +683,7 @@ export default function TracedCounter() {
       },
     });
 
-    const hydrationEnd = performance.now();
-    const hydrationDuration = hydrationEnd - performance.timeOrigin;
+    const hydrationDuration = performance.now();
 
     span.setAttributes({
       'hydration.duration_ms': hydrationDuration,
