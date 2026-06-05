@@ -26,8 +26,8 @@ locals {
     receivers = {
       otlp = {
         protocols = {
-          grpc = { endpoint = "0.0.0.0:4317" }
-          http = { endpoint = "0.0.0.0:4318" }
+          grpc = { endpoint = "localhost:4317" }
+          http = { endpoint = "localhost:4318" }
         }
       }
     }
@@ -55,7 +55,7 @@ locals {
       otlp = {
         endpoint = var.otlp_endpoint
         headers = {
-          Authorization = "Bearer $${OTLP_API_KEY}"
+          Authorization = "Bearer $${env:OTLP_API_KEY}"
         }
       }
     }
@@ -114,6 +114,10 @@ resource "aws_ecs_task_definition" "app" {
           value = "http://localhost:4317"
         },
         {
+          name  = "OTEL_EXPORTER_OTLP_PROTOCOL"
+          value = "grpc"
+        },
+        {
           name  = "OTEL_SERVICE_NAME"
           value = var.app_name
         }
@@ -130,7 +134,7 @@ resource "aws_ecs_task_definition" "app" {
     # OpenTelemetry Collector sidecar
     {
       name      = "otel-collector"
-      image     = "otel/opentelemetry-collector-contrib:0.96.0"
+      image     = "otel/opentelemetry-collector-contrib:0.153.0"
       essential = false
       command   = ["--config=env:COLLECTOR_CONFIG"]
       environment = [
@@ -187,8 +191,30 @@ resource "aws_secretsmanager_secret" "otlp_api_key" {
   name = "${var.app_name}/otlp-api-key"
 }
 
+resource "aws_secretsmanager_secret_version" "otlp_api_key" {
+  secret_id     = aws_secretsmanager_secret.otlp_api_key.id
+  secret_string = var.otlp_api_key
+}
+
 resource "aws_iam_role" "ecs_execution" {
   name = "${var.app_name}-execution"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "ecs-tasks.amazonaws.com"
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role" "ecs_task" {
+  name = "${var.app_name}-task"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -249,9 +275,25 @@ variable "app_version" {
   type        = string
 }
 
+variable "ecr_repo_url" {
+  description = "ECR repository URL for the application image"
+  type        = string
+}
+
+variable "app_port" {
+  description = "Application container port"
+  type        = number
+}
+
 variable "otlp_endpoint" {
   description = "OTLP backend endpoint"
   type        = string
+}
+
+variable "otlp_api_key" {
+  description = "API key for the OTLP backend"
+  type        = string
+  sensitive   = true
 }
 
 variable "aws_region" {
@@ -281,8 +323,8 @@ The Collector sidecar adds overhead to your Fargate task. Plan for approximately
 
 ```bash
 terraform init
-terraform plan -var="app_version=1.0.0" -var="otlp_endpoint=https://backend.example.com:4317"
-terraform apply
+terraform plan -out=tfplan -var="app_name=my-service" -var="app_version=1.0.0" -var="ecr_repo_url=123456789012.dkr.ecr.us-east-1.amazonaws.com/my-service" -var="app_port=8080" -var="otlp_endpoint=https://backend.example.com:4317" -var="otlp_api_key=replace-me"
+terraform apply tfplan
 ```
 
 This setup gives you a fully managed, version-controlled Collector deployment on Fargate. Changes to the Collector configuration go through your normal Terraform workflow with plan review and state tracking.
