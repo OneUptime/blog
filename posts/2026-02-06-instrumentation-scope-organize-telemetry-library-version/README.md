@@ -12,11 +12,12 @@ When you call `tracer_provider.get_tracer("my.library", "1.2.3")`, that name and
 
 ## What is Instrumentation Scope
 
-The OpenTelemetry specification defines Instrumentation Scope as a logical unit of instrumentation code. It has three fields:
+The OpenTelemetry specification defines Instrumentation Scope as a logical unit of instrumentation code. It is identified by a tuple with these fields:
 
 - **Name**: A unique identifier for the instrumentation library (e.g., `io.opentelemetry.contrib.jdbc` or `my.company.auth-lib`)
 - **Version**: The version of the instrumentation library (e.g., `1.2.3`)
 - **Schema URL**: An optional URL pointing to the telemetry schema used by this instrumentation (e.g., `https://opentelemetry.io/schemas/1.21.0`)
+- **Attributes**: Optional attributes that provide additional information about the scope, such as the source repository URL
 
 Every telemetry signal (span, metric, log) carries the scope of the instrumentation that created it. This is different from the resource, which identifies the service or process. A single service might use multiple instrumentation libraries, each with its own scope.
 
@@ -97,10 +98,9 @@ public class InstrumentedHttpClient {
             INSTRUMENTATION_NAME,
             INSTRUMENTATION_VERSION
         );
-        this.meter = openTelemetry.getMeter(
-            INSTRUMENTATION_NAME,
-            INSTRUMENTATION_VERSION
-        );
+        this.meter = openTelemetry.meterBuilder(INSTRUMENTATION_NAME)
+            .setInstrumentationVersion(INSTRUMENTATION_VERSION)
+            .build();
     }
 
     public Response execute(Request request) {
@@ -265,17 +265,16 @@ The OpenTelemetry Collector can filter, transform, and route telemetry based on 
 # Collector configuration: drop telemetry from a specific scope
 processors:
   filter/drop-noisy:
-    traces:
-      span:
-        # Drop spans from a known noisy instrumentation library
-        - 'instrumentation_scope.name == "com.thirdparty.verbose-lib"'
+    error_mode: ignore
+    trace_conditions:
+      # Drop spans from a known noisy instrumentation library
+      - 'scope.name == "com.thirdparty.verbose-lib"'
 
   filter/keep-important:
-    traces:
-      span:
-        # Only keep spans from specific instrumentation libraries
-        - 'instrumentation_scope.name != "com.mycompany.http-client"'
-        - 'instrumentation_scope.name != "com.mycompany.db-client"'
+    error_mode: ignore
+    trace_conditions:
+      # Only keep spans from specific instrumentation libraries
+      - 'scope.name != "com.mycompany.http-client" and scope.name != "com.mycompany.db-client"'
 
 receivers:
   otlp:
@@ -306,9 +305,9 @@ processors:
         statements:
           # Tag spans from internal libraries for easy filtering
           - set(attributes["instrumentation.origin"], "internal")
-            where instrumentation_scope.name startswith "com.mycompany"
+            where HasPrefix(instrumentation_scope.name, "com.mycompany")
           - set(attributes["instrumentation.origin"], "third-party")
-            where not(instrumentation_scope.name startswith "com.mycompany")
+            where not HasPrefix(instrumentation_scope.name, "com.mycompany")
 ```
 
 ## Organizing Metrics by Scope
