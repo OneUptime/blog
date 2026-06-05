@@ -28,9 +28,11 @@ docker run --rm \
 ```
 
 Key details:
-- The source volume is mounted read-only (`:ro`) to prevent modifications during the snapshot
+- The source volume is mounted read-only (`:ro`) so the temporary snapshot container cannot modify it
 - The snapshot is saved to a host directory `/opt/snapshots`
 - The filename includes a timestamp for easy identification
+
+This does not stop other containers from writing to the volume while `tar` is reading it. Stop or quiesce the application first when you need an application-consistent snapshot.
 
 ### Restoring from a Snapshot
 
@@ -139,26 +141,34 @@ LVM snapshots are copy-on-write, meaning they only store blocks that change afte
 
 ## Approach 3: Btrfs Snapshots
 
-Btrfs provides instant, zero-cost snapshots at the filesystem level. If your Docker storage driver is Btrfs, you can snapshot volumes directly.
+Btrfs provides fast, space-efficient snapshots at the filesystem level. Docker's Btrfs storage driver snapshots image and container layers, but Docker named volumes are not automatically created as Btrfs subvolumes. To snapshot a Docker volume with Btrfs, keep the volume data in a Btrfs subvolume and expose it to Docker as a bind-backed local volume.
 
-### Configure Docker to Use Btrfs
+### Confirm the Volume Path Uses Btrfs
 
-Make sure your Docker data directory is on a Btrfs filesystem:
+Make sure the directory you use for volume data is on a Btrfs filesystem:
 
 ```bash
-# Check if Docker's data directory is on Btrfs
-df -T /var/lib/docker | grep btrfs
+# Check if the volume data path is on Btrfs
+df -T /mnt/btrfs | grep btrfs
 ```
 
 ### Create and Manage Btrfs Snapshots
 
 ```bash
-# Create a Btrfs subvolume for a Docker volume
-sudo btrfs subvolume create /var/lib/docker/volumes/myapp_data/_data
+# Create a Btrfs subvolume for the volume data
+sudo mkdir -p /mnt/btrfs/docker-volumes
+sudo btrfs subvolume create /mnt/btrfs/docker-volumes/myapp_data
+
+# Create a Docker volume backed by that subvolume
+docker volume create --driver local \
+  --opt type=none \
+  --opt device=/mnt/btrfs/docker-volumes/myapp_data \
+  --opt o=bind \
+  myapp_data
 
 # Take an instant snapshot
 sudo btrfs subvolume snapshot -r \
-  /var/lib/docker/volumes/myapp_data/_data \
+  /mnt/btrfs/docker-volumes/myapp_data \
   /opt/snapshots/myapp_data-$(date +%Y%m%d-%H%M%S)
 ```
 
@@ -168,9 +178,16 @@ The `-r` flag creates a read-only snapshot, which is safer for backup purposes.
 
 ```bash
 # Create a new volume from a Btrfs snapshot
+sudo mkdir -p /mnt/btrfs/docker-volumes
 sudo btrfs subvolume snapshot \
   /opt/snapshots/myapp_data-20260208-143022 \
-  /var/lib/docker/volumes/myapp_data_restored/_data
+  /mnt/btrfs/docker-volumes/myapp_data_restored
+
+docker volume create --driver local \
+  --opt type=none \
+  --opt device=/mnt/btrfs/docker-volumes/myapp_data_restored \
+  --opt o=bind \
+  myapp_data_restored
 ```
 
 ## Approach 4: ZFS Snapshots
@@ -230,20 +247,20 @@ sudo zfs send -i @snap-20260207-020000 docker-pool/volumes@snap-20260208-020000 
 
 ## Ensuring Consistent Snapshots
 
-For databases, taking a snapshot while writes are happening can result in corruption. The safest approach is to quiesce the database first:
+For databases, taking a snapshot while writes are happening can result in corruption. The safest approach is to quiesce the database first. For PostgreSQL, `pg_backup_start()` and `pg_backup_stop()` are for PostgreSQL's low-level backup API with WAL archiving; they do not pause writes. A simple maintenance-window snapshot stops the container before taking the snapshot:
 
 ```bash
 #!/bin/bash
-# Consistent database snapshot with write pause
+# Consistent database snapshot with a maintenance window
 
-# Tell PostgreSQL to enter backup mode
-docker exec myapp-postgres psql -U postgres -c "SELECT pg_backup_start('snapshot');"
+# Stop PostgreSQL so all files are closed cleanly
+docker stop myapp-postgres
 
-# Take the snapshot while writes are paused
+# Take the snapshot while the database is stopped
 sudo zfs snapshot docker-pool/volumes@consistent-$(date +%Y%m%d-%H%M%S)
 
 # Resume normal operations
-docker exec myapp-postgres psql -U postgres -c "SELECT pg_backup_stop();"
+docker start myapp-postgres
 
 echo "Consistent snapshot created"
 ```
@@ -252,9 +269,9 @@ echo "Consistent snapshot created"
 
 | Method | Speed | Consistency | Complexity | Best For |
 |--------|-------|-------------|------------|----------|
-| Tar | Slow (full copy) | Good with :ro | Low | Small volumes, any filesystem |
-| LVM | Fast | Good | Medium | Existing LVM setups |
-| Btrfs | Instant | Excellent | Medium | Btrfs-native Docker hosts |
-| ZFS | Instant | Excellent | Higher | Production with replication needs |
+| Tar | Slow (full copy) | Good only when writers are stopped or quiesced | Low | Small volumes, any filesystem |
+| LVM | Fast | Crash-consistent; application-consistent if quiesced | Medium | Existing LVM setups |
+| Btrfs | Instant | Crash-consistent; application-consistent if quiesced | Medium | Btrfs-native Docker hosts |
+| ZFS | Instant | Crash-consistent; application-consistent if quiesced | Higher | Production with replication needs |
 
 For most setups, start with tar-based snapshots. If you need instant snapshots on large volumes or remote replication, invest the time to set up ZFS. The reliability and flexibility of ZFS snapshots pay for themselves quickly in production environments.
