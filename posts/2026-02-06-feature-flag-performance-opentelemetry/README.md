@@ -43,10 +43,21 @@ The first step is recording which flags are active for each request. Add flag ev
 
 # Integrate feature flag evaluations with OpenTelemetry spans
 
-from opentelemetry import trace
+from contextvars import ContextVar
+
+from opentelemetry import metrics, trace
 import ldclient  # LaunchDarkly client, but this pattern works with any provider
 
 tracer = trace.get_tracer("feature-flags")
+meter = metrics.get_meter("feature-flag-metrics")
+current_flag_states = ContextVar("current_flag_states", default={})
+
+# Counter for flag evaluations to track rollout percentage
+flag_evaluations = meter.create_counter(
+    name="feature_flag.evaluations",
+    description="Number of feature flag evaluations",
+    unit="1",
+)
 
 class TracedFeatureFlags:
     """
@@ -69,8 +80,19 @@ class TracedFeatureFlags:
         result = self.client.variation(flag_key, user_context, default_value)
 
         # Record the flag evaluation as a span attribute
-        # Prefix with "feature_flag." to follow OpenTelemetry conventions
         span.set_attribute(f"feature_flag.{flag_key}", str(result))
+        span.set_attribute("feature_flag.key", flag_key)
+        span.set_attribute("feature_flag.result.variant", str(result))
+        span.set_attribute("feature_flag.provider.name", "launchdarkly")
+
+        flag_states = dict(current_flag_states.get())
+        flag_states[flag_key] = str(result)
+        current_flag_states.set(flag_states)
+
+        flag_evaluations.add(1, {
+            "feature_flag.key": flag_key,
+            "feature_flag.result.variant": str(result),
+        })
 
         # Also record it as an event with additional detail
         # Events provide a timeline of flag evaluations within the span
@@ -78,8 +100,8 @@ class TracedFeatureFlags:
             "feature_flag.evaluation",
             attributes={
                 "feature_flag.key": flag_key,
-                "feature_flag.value": str(result),
-                "feature_flag.provider": "launchdarkly",
+                "feature_flag.result.variant": str(result),
+                "feature_flag.provider.name": "launchdarkly",
             },
         )
 
@@ -90,22 +112,26 @@ class TracedFeatureFlags:
 flags = TracedFeatureFlags(ldclient.get())
 
 def handle_recommendation_request(request):
+    flag_state_token = current_flag_states.set({})
     with tracer.start_as_current_span("get_recommendations") as span:
-        user = get_user_context(request)
+        try:
+            user = get_user_context(request)
 
-        # This records the flag state on the span automatically
-        use_new_algo = flags.evaluate("new_reco_algo", user, False)
+            # This records the flag state on the span automatically
+            use_new_algo = flags.evaluate("new_reco_algo", user, False)
 
-        if use_new_algo:
-            # New code path
-            with tracer.start_as_current_span("recommendations.new_algorithm"):
-                results = new_recommendation_engine(user)
-        else:
-            # Old code path
-            with tracer.start_as_current_span("recommendations.old_algorithm"):
-                results = old_recommendation_engine(user)
+            if use_new_algo:
+                # New code path
+                with tracer.start_as_current_span("recommendations.new_algorithm"):
+                    results = new_recommendation_engine(user)
+            else:
+                # Old code path
+                with tracer.start_as_current_span("recommendations.old_algorithm"):
+                    results = old_recommendation_engine(user)
 
-        return results
+            return results
+        finally:
+            current_flag_states.reset(flag_state_token)
 ```
 
 Now every trace includes the flag state as an attribute, and you can see which code path each request took.
@@ -120,9 +146,11 @@ Span attributes are great for individual trace investigation, but you also need 
 # flag_metrics.py
 # Record performance metrics segmented by feature flag state
 
-from opentelemetry import metrics, trace
+from opentelemetry import metrics
 import time
 from functools import wraps
+
+from feature_flags import current_flag_states
 
 meter = metrics.get_meter("feature-flag-metrics")
 
@@ -130,7 +158,7 @@ meter = metrics.get_meter("feature-flag-metrics")
 flag_duration = meter.create_histogram(
     name="http.server.request.duration.by_flag",
     description="Request duration segmented by feature flag variant",
-    unit="ms",
+    unit="s",
 )
 
 # Counter for errors, segmented by flag variant
@@ -140,14 +168,6 @@ flag_errors = meter.create_counter(
     unit="1",
 )
 
-# Counter for flag evaluations to track rollout percentage
-flag_evaluations = meter.create_counter(
-    name="feature_flag.evaluations",
-    description="Number of feature flag evaluations",
-    unit="1",
-)
-
-
 def track_flag_performance(flag_key):
     """
     Decorator that measures function performance segmented by feature flag value.
@@ -156,9 +176,8 @@ def track_flag_performance(flag_key):
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
-            # Read the flag value from the current span's attributes
-            span = trace.get_current_span()
-            flag_value = span.attributes.get(f"feature_flag.{flag_key}", "unknown")
+            # Read the flag value recorded by the feature flag wrapper
+            flag_value = current_flag_states.get().get(flag_key, "unknown")
 
             start_time = time.time()
             try:
@@ -168,16 +187,16 @@ def track_flag_performance(flag_key):
                 # Record the error with flag context
                 flag_errors.add(1, {
                     "feature_flag.key": flag_key,
-                    "feature_flag.value": str(flag_value),
+                    "feature_flag.result.variant": str(flag_value),
                     "error.type": type(e).__name__,
                 })
                 raise
             finally:
-                duration_ms = (time.time() - start_time) * 1000
+                duration_s = time.time() - start_time
                 # Record duration with flag context
-                flag_duration.record(duration_ms, {
+                flag_duration.record(duration_s, {
                     "feature_flag.key": flag_key,
-                    "feature_flag.value": str(flag_value),
+                    "feature_flag.result.variant": str(flag_value),
                 })
 
         return wrapper
@@ -208,17 +227,17 @@ panels:
       - label: "Flag ON (new algorithm)"
         query: |
           histogram_quantile(0.95,
-            sum(rate(http_server_request_duration_by_flag_bucket{
+            sum(rate(http_server_request_duration_by_flag_seconds_bucket{
               feature_flag_key="new_reco_algo",
-              feature_flag_value="true"
+              feature_flag_result_variant="true"
             }[5m])) by (le)
           )
       - label: "Flag OFF (old algorithm)"
         query: |
           histogram_quantile(0.95,
-            sum(rate(http_server_request_duration_by_flag_bucket{
+            sum(rate(http_server_request_duration_by_flag_seconds_bucket{
               feature_flag_key="new_reco_algo",
-              feature_flag_value="false"
+              feature_flag_result_variant="false"
             }[5m])) by (le)
           )
 
@@ -227,26 +246,26 @@ panels:
     queries:
       - label: "Flag ON"
         query: |
-          sum(rate(http_server_request_errors_by_flag{
+          sum(rate(http_server_request_errors_by_flag_total{
             feature_flag_key="new_reco_algo",
-            feature_flag_value="true"
+            feature_flag_result_variant="true"
           }[5m]))
       - label: "Flag OFF"
         query: |
-          sum(rate(http_server_request_errors_by_flag{
+          sum(rate(http_server_request_errors_by_flag_total{
             feature_flag_key="new_reco_algo",
-            feature_flag_value="false"
+            feature_flag_result_variant="false"
           }[5m]))
 
   - title: "Rollout Percentage"
     type: gauge
     query: |
-      sum(rate(feature_flag_evaluations{
+      sum(rate(feature_flag_evaluations_total{
         feature_flag_key="new_reco_algo",
-        feature_flag_value="true"
+        feature_flag_result_variant="true"
       }[5m]))
       /
-      sum(rate(feature_flag_evaluations{
+      sum(rate(feature_flag_evaluations_total{
         feature_flag_key="new_reco_algo"
       }[5m]))
       * 100
@@ -293,8 +312,8 @@ class FlagRegressionDetector:
             on_latency = self._query_latency(flag_key, variant_on, window)
             off_latency = self._query_latency(flag_key, variant_off, window)
 
-            span.set_attribute("flag.on_p95_ms", on_latency)
-            span.set_attribute("flag.off_p95_ms", off_latency)
+            span.set_attribute("flag.on_p95_s", on_latency)
+            span.set_attribute("flag.off_p95_s", off_latency)
 
             # Query error rate for both variants
             on_errors = self._query_error_rate(flag_key, variant_on, window)
@@ -332,8 +351,8 @@ class FlagRegressionDetector:
                     "regression_detected": True,
                     "flag_key": flag_key,
                     "latency": {
-                        "on_ms": on_latency,
-                        "off_ms": off_latency,
+                        "on_s": on_latency,
+                        "off_s": off_latency,
                         "increase_pct": latency_increase,
                     },
                     "error_rate": {
@@ -349,21 +368,21 @@ class FlagRegressionDetector:
     def _query_latency(self, flag_key, variant, window):
         return self.metrics_client.query(
             f'histogram_quantile(0.95, sum(rate('
-            f'http_server_request_duration_by_flag_bucket{{'
+            f'http_server_request_duration_by_flag_seconds_bucket{{'
             f'feature_flag_key="{flag_key}", '
-            f'feature_flag_value="{variant}"'
+            f'feature_flag_result_variant="{variant}"'
             f'}}[{window}])) by (le))'
         )
 
     def _query_error_rate(self, flag_key, variant, window):
         return self.metrics_client.query(
-            f'sum(rate(http_server_request_errors_by_flag{{'
+            f'sum(rate(http_server_request_errors_by_flag_total{{'
             f'feature_flag_key="{flag_key}", '
-            f'feature_flag_value="{variant}"'
+            f'feature_flag_result_variant="{variant}"'
             f'}}[{window}]))'
-            f' / sum(rate(feature_flag_evaluations{{'
+            f' / sum(rate(feature_flag_evaluations_total{{'
             f'feature_flag_key="{flag_key}", '
-            f'feature_flag_value="{variant}"'
+            f'feature_flag_result_variant="{variant}"'
             f'}}[{window}]))'
         )
 ```
@@ -395,7 +414,7 @@ processors:
       - key: feature_flag.key
         from_attribute: ff.key
         action: upsert
-      - key: feature_flag.value
+      - key: feature_flag.result.variant
         from_attribute: ff.value
         action: upsert
 
@@ -419,7 +438,7 @@ service:
 
 ## Best Practices for Flag Observability
 
-1. **Log flag evaluations at the request level, not the flag level**: Recording one attribute per flag per request scales well. Recording every flag evaluation as a separate event creates too much noise.
+1. **Record flag evaluations at the request level, not for every repeated lookup**: Recording the flag state once per request scales better. If the same flag is evaluated repeatedly in one request, avoid adding duplicate events for each lookup.
 
 2. **Watch cardinality**: If you have 50 active flags, adding all of them as metric dimensions creates a cardinality explosion. Only add the flags you are actively monitoring to your metrics.
 
