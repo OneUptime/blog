@@ -56,7 +56,8 @@ receivers:
       line_start_pattern: '^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}'
     operators:
       # Parse the first line to extract timestamp, level, logger, and message
-      - type: regex_parser
+      - id: parse_log_line
+        type: regex_parser
         regex: '^(?P<timestamp>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}) (?P<level>\w+)\s+(?P<logger>[^\s]+) - (?P<message>[\s\S]*)'
         timestamp:
           parse_from: attributes.timestamp
@@ -65,31 +66,36 @@ receivers:
           parse_from: attributes.level
 
       # Move the full message (including stack trace) to the body
-      - type: move
+      - id: message_to_body
+        type: move
         from: attributes.message
         to: body
 
       # Extract the exception class name if present
-      - type: regex_parser
+      - id: extract_exception
+        type: regex_parser
         parse_from: body
         regex: '(?P<exception_type>[a-zA-Z_.]+Exception|[a-zA-Z_.]+Error): (?P<exception_message>[^\n]+)'
         on_error: send
-        preserve_to: body
 
       # Map to OTel semantic conventions
-      - type: move
+      - id: exception_type_to_semconv
+        type: move
         from: attributes.exception_type
         to: attributes["exception.type"]
         if: 'attributes.exception_type != nil'
-      - type: move
+      - id: exception_message_to_semconv
+        type: move
         from: attributes.exception_message
         to: attributes["exception.message"]
         if: 'attributes.exception_message != nil'
 
       # Clean up
-      - type: remove
+      - id: remove_timestamp
+        type: remove
         field: attributes.timestamp
-      - type: remove
+      - id: remove_level
+        type: remove
         field: attributes.level
 
 processors:
