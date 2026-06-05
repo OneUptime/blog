@@ -34,7 +34,9 @@ import { NodeSDK } from "@opentelemetry/sdk-node";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-grpc";
 import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-grpc";
 import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-grpc";
-import { Resource } from "@opentelemetry/resources";
+import { resourceFromAttributes } from "@opentelemetry/resources";
+import { PeriodicExportingMetricReader } from "@opentelemetry/sdk-metrics";
+import { BatchLogRecordProcessor } from "@opentelemetry/sdk-logs";
 import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentations-node";
 
 interface PlatformObservabilityConfig {
@@ -66,10 +68,10 @@ export function initObservability(config: PlatformObservabilityConfig): void {
   const teamName = process.env.TEAM_NAME || "unknown";
 
   // Build resource with standard attributes
-  const resource = new Resource({
+  const resource = resourceFromAttributes({
     "service.name": config.serviceName,
     "service.version": version,
-    "deployment.environment": environment,
+    "deployment.environment.name": environment,
     "team.name": teamName,
     "service.tier": config.tier || "standard",
     "platform.sdk.version": "2.1.0",
@@ -79,8 +81,16 @@ export function initObservability(config: PlatformObservabilityConfig): void {
   sdk = new NodeSDK({
     resource,
     traceExporter: new OTLPTraceExporter({ url: collectorEndpoint }),
-    metricReader: new OTLPMetricExporter({ url: collectorEndpoint }),
-    logRecordExporter: new OTLPLogExporter({ url: collectorEndpoint }),
+    metricReaders: [
+      new PeriodicExportingMetricReader({
+        exporter: new OTLPMetricExporter({ url: collectorEndpoint }),
+      }),
+    ],
+    logRecordProcessors: [
+      new BatchLogRecordProcessor(
+        new OTLPLogExporter({ url: collectorEndpoint })
+      ),
+    ],
     // Auto-instrument everything: HTTP, gRPC, databases, etc.
     instrumentations: [
       getNodeAutoInstrumentations({
@@ -126,8 +136,12 @@ import { initObservability } from "@yourorg/observability";
 initObservability({ serviceName: "payment-api", tier: "critical" });
 
 // That is it. HTTP, database, gRPC calls are all traced automatically.
-import express from "express";
+const { default: express } = await import("express");
 const app = express();
+
+declare const db: {
+  payments: { findById(id: string): Promise<unknown> };
+};
 
 app.get("/api/payments/:id", async (req, res) => {
   // This handler is automatically traced
@@ -146,15 +160,19 @@ app.listen(3000);
 
 import os
 import atexit
+import logging
 from opentelemetry import trace, metrics
+from opentelemetry._logs import set_logger_provider
+from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
+from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
+from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
 from opentelemetry.sdk.resources import Resource
-from opentelemetry.instrumentation.auto_instrumentation import sitecustomize
 
 _initialized = False
 
@@ -178,7 +196,7 @@ def init(service_name: str, tier: str = "standard", **kwargs):
     resource = Resource.create({
         "service.name": service_name,
         "service.version": os.getenv("APP_VERSION", "0.0.0"),
-        "deployment.environment": os.getenv("DEPLOYMENT_ENV", "unknown"),
+        "deployment.environment.name": os.getenv("DEPLOYMENT_ENV", "unknown"),
         "team.name": os.getenv("TEAM_NAME", "unknown"),
         "service.tier": tier,
         "platform.sdk.version": "2.1.0",
@@ -203,9 +221,21 @@ def init(service_name: str, tier: str = "standard", **kwargs):
     )
     metrics.set_meter_provider(meter_provider)
 
+    # Set up logs
+    logger_provider = LoggerProvider(resource=resource)
+    logger_provider.add_log_record_processor(
+        BatchLogRecordProcessor(OTLPLogExporter(endpoint=endpoint))
+    )
+    set_logger_provider(logger_provider)
+    logging.basicConfig(
+        handlers=[LoggingHandler(level=logging.INFO, logger_provider=logger_provider)],
+        level=logging.INFO,
+    )
+
     # Register shutdown hook
     atexit.register(tracer_provider.shutdown)
     atexit.register(meter_provider.shutdown)
+    atexit.register(logger_provider.shutdown)
 ```
 
 ## Automated Sidecar Injection
@@ -230,12 +260,14 @@ webhooks:
         apiGroups: [""]
         apiVersions: ["v1"]
         resources: ["pods"]
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
     namespaceSelector:
       matchLabels:
         observability-enabled: "true"
 ```
 
-The webhook checks for the `observability: enabled` label and injects the Collector sidecar plus the necessary environment variables. Developers never need to touch Collector configuration.
+The webhook checks for the `observability-enabled: "true"` namespace label and injects the Collector sidecar plus the necessary environment variables. Developers never need to touch Collector configuration.
 
 ## Wrapping Up
 
