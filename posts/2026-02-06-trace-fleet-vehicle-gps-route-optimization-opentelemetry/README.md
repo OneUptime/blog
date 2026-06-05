@@ -56,8 +56,8 @@ def ingest_gps_ping(vehicle_id: str, lat: float, lon: float, speed: float, headi
         # Persist to the time-series database
         with tracer.start_as_current_span("gps.store") as store_span:
             store_gps_record(vehicle_id, lat, lon, speed, heading)
-            store_span.set_attribute("db.system", "timescaledb")
-            store_span.set_attribute("db.operation", "INSERT")
+            store_span.set_attribute("db.system.name", "postgresql")
+            store_span.set_attribute("db.operation.name", "INSERT")
 ```
 
 This gives you three nested spans: the outer ingestion span, a validation child, and a storage child. If the database write is slow, you will see it immediately in your trace waterfall.
@@ -100,6 +100,14 @@ Traces tell you about individual requests. Metrics give you the aggregate pictur
 
 ```python
 from opentelemetry import metrics
+from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+
+metric_reader = PeriodicExportingMetricReader(
+    OTLPMetricExporter(endpoint="http://localhost:4317")
+)
+metrics.set_meter_provider(MeterProvider(metric_readers=[metric_reader]))
 
 meter = metrics.get_meter("fleet.gps.service")
 
@@ -149,12 +157,11 @@ Fleet systems are rarely monolithic. The GPS ingestion service, route optimizati
 Make sure you configure the W3C TraceContext propagator in all your services:
 
 ```python
-from opentelemetry.propagators.composite import CompositeHTTPPropagator
-from opentelemetry.propagators.textmap import DefaultTextMapPropagator
-
 # This is set by default, but being explicit helps with clarity
 from opentelemetry import propagate
-propagate.set_global_textmap(DefaultTextMapPropagator())
+from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
+
+propagate.set_global_textmap(TraceContextTextMapPropagator())
 ```
 
 When calling between services over HTTP or gRPC, the trace context headers are injected automatically if you use instrumented HTTP clients like `requests` with the OpenTelemetry instrumentation library.
