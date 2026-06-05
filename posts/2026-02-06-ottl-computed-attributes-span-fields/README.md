@@ -10,7 +10,7 @@ Sometimes the most useful attributes on a span are not set by the instrumentatio
 
 ## Computing Attributes from Duration
 
-The span duration is accessible via the `duration` field in OTTL, representing the span's elapsed time:
+The span duration can be computed from `span.end_time_unix_nano - span.start_time_unix_nano` in OTTL:
 
 ```yaml
 processors:
@@ -20,14 +20,14 @@ processors:
         statements:
           # Flag slow spans based on duration
           # Duration is in nanoseconds
-          - set(attributes["perf.slow"], true) where duration > 1000000000
+          - set(span.attributes["perf.slow"], true) where span.end_time_unix_nano - span.start_time_unix_nano > 1000000000
           # 1 second = 1,000,000,000 nanoseconds
 
           # More granular classification
-          - set(attributes["perf.category"], "fast") where duration <= 100000000
-          - set(attributes["perf.category"], "normal") where duration > 100000000 and duration <= 500000000
-          - set(attributes["perf.category"], "slow") where duration > 500000000 and duration <= 2000000000
-          - set(attributes["perf.category"], "very_slow") where duration > 2000000000
+          - set(span.attributes["perf.category"], "fast") where span.end_time_unix_nano - span.start_time_unix_nano <= 100000000
+          - set(span.attributes["perf.category"], "normal") where span.end_time_unix_nano - span.start_time_unix_nano > 100000000 and span.end_time_unix_nano - span.start_time_unix_nano <= 500000000
+          - set(span.attributes["perf.category"], "slow") where span.end_time_unix_nano - span.start_time_unix_nano > 500000000 and span.end_time_unix_nano - span.start_time_unix_nano <= 2000000000
+          - set(span.attributes["perf.category"], "very_slow") where span.end_time_unix_nano - span.start_time_unix_nano > 2000000000
 ```
 
 ## Computing from Multiple Attributes
@@ -41,13 +41,13 @@ processors:
       - context: span
         statements:
           # Compute a composite route key from method and path
-          - set(attributes["http.endpoint"], Concat([attributes["http.method"], attributes["http.route"]], " ")) where attributes["http.method"] != nil and attributes["http.route"] != nil
+          - set(span.attributes["http.endpoint"], Concat([span.attributes["http.request.method"], span.attributes["http.route"]], " ")) where span.attributes["http.request.method"] != nil and span.attributes["http.route"] != nil
 
           # Flag critical errors: 5xx on high-priority routes
-          - set(attributes["alert.critical"], true) where attributes["http.response.status_code"] >= 500 and IsMatch(attributes["http.route"], "^/(checkout|payment|auth)/.*")
+          - set(span.attributes["alert.critical"], true) where span.attributes["http.response.status_code"] >= 500 and IsMatch(span.attributes["http.route"], "^/(checkout|payment|auth)/.*")
 
           # Compute error context from exception and status
-          - set(attributes["error.context"], Concat([attributes["exception.type"], " on ", attributes["http.route"]], "")) where status.code == 2 and attributes["exception.type"] != nil and attributes["http.route"] != nil
+          - set(span.attributes["error.context"], Concat([span.attributes["exception.type"], " on ", span.attributes["http.route"]], "")) where span.status.code == STATUS_CODE_ERROR and span.attributes["exception.type"] != nil and span.attributes["http.route"] != nil
 ```
 
 ## SLA-Based Attribute Computation
@@ -62,21 +62,21 @@ processors:
         statements:
           # Different SLA thresholds per endpoint type
           # API endpoints: 200ms SLA
-          - set(attributes["sla.met"], true) where IsMatch(attributes["http.route"], "^/api/.*") and duration <= 200000000
-          - set(attributes["sla.met"], false) where IsMatch(attributes["http.route"], "^/api/.*") and duration > 200000000
+          - set(span.attributes["sla.met"], true) where IsMatch(span.attributes["http.route"], "^/api/.*") and span.end_time_unix_nano - span.start_time_unix_nano <= 200000000
+          - set(span.attributes["sla.met"], false) where IsMatch(span.attributes["http.route"], "^/api/.*") and span.end_time_unix_nano - span.start_time_unix_nano > 200000000
 
           # Webhook endpoints: 5s SLA (more lenient)
-          - set(attributes["sla.met"], true) where IsMatch(attributes["http.route"], "^/webhooks/.*") and duration <= 5000000000
-          - set(attributes["sla.met"], false) where IsMatch(attributes["http.route"], "^/webhooks/.*") and duration > 5000000000
+          - set(span.attributes["sla.met"], true) where IsMatch(span.attributes["http.route"], "^/webhooks/.*") and span.end_time_unix_nano - span.start_time_unix_nano <= 5000000000
+          - set(span.attributes["sla.met"], false) where IsMatch(span.attributes["http.route"], "^/webhooks/.*") and span.end_time_unix_nano - span.start_time_unix_nano > 5000000000
 
           # Report generation: 30s SLA
-          - set(attributes["sla.met"], true) where IsMatch(attributes["http.route"], "^/reports/.*") and duration <= 30000000000
-          - set(attributes["sla.met"], false) where IsMatch(attributes["http.route"], "^/reports/.*") and duration > 30000000000
+          - set(span.attributes["sla.met"], true) where IsMatch(span.attributes["http.route"], "^/reports/.*") and span.end_time_unix_nano - span.start_time_unix_nano <= 30000000000
+          - set(span.attributes["sla.met"], false) where IsMatch(span.attributes["http.route"], "^/reports/.*") and span.end_time_unix_nano - span.start_time_unix_nano > 30000000000
 
           # Add the SLA threshold for context
-          - set(attributes["sla.threshold_ms"], 200) where IsMatch(attributes["http.route"], "^/api/.*")
-          - set(attributes["sla.threshold_ms"], 5000) where IsMatch(attributes["http.route"], "^/webhooks/.*")
-          - set(attributes["sla.threshold_ms"], 30000) where IsMatch(attributes["http.route"], "^/reports/.*")
+          - set(span.attributes["sla.threshold_ms"], 200) where IsMatch(span.attributes["http.route"], "^/api/.*")
+          - set(span.attributes["sla.threshold_ms"], 5000) where IsMatch(span.attributes["http.route"], "^/webhooks/.*")
+          - set(span.attributes["sla.threshold_ms"], 30000) where IsMatch(span.attributes["http.route"], "^/reports/.*")
 ```
 
 ## Error Categorization
@@ -90,17 +90,17 @@ processors:
       - context: span
         statements:
           # Categorize based on exception type
-          - set(attributes["error.category"], "timeout") where IsMatch(attributes["exception.type"], "(?i).*(Timeout|DeadlineExceeded).*")
-          - set(attributes["error.category"], "connection") where IsMatch(attributes["exception.type"], "(?i).*(Connection|Socket|Network).*")
-          - set(attributes["error.category"], "auth") where IsMatch(attributes["exception.type"], "(?i).*(Auth|Unauthorized|Forbidden|Permission).*")
-          - set(attributes["error.category"], "validation") where IsMatch(attributes["exception.type"], "(?i).*(Validation|Invalid|BadRequest).*")
-          - set(attributes["error.category"], "not_found") where IsMatch(attributes["exception.type"], "(?i).*(NotFound|NoSuch).*")
-          - set(attributes["error.category"], "rate_limit") where attributes["http.response.status_code"] == 429
-          - set(attributes["error.category"], "unknown") where status.code == 2 and attributes["error.category"] == nil
+          - set(span.attributes["error.category"], "timeout") where IsMatch(span.attributes["exception.type"], "(?i).*(Timeout|DeadlineExceeded).*")
+          - set(span.attributes["error.category"], "connection") where IsMatch(span.attributes["exception.type"], "(?i).*(Connection|Socket|Network).*")
+          - set(span.attributes["error.category"], "auth") where IsMatch(span.attributes["exception.type"], "(?i).*(Auth|Unauthorized|Forbidden|Permission).*")
+          - set(span.attributes["error.category"], "validation") where IsMatch(span.attributes["exception.type"], "(?i).*(Validation|Invalid|BadRequest).*")
+          - set(span.attributes["error.category"], "not_found") where IsMatch(span.attributes["exception.type"], "(?i).*(NotFound|NoSuch).*")
+          - set(span.attributes["error.category"], "rate_limit") where span.attributes["http.response.status_code"] == 429
+          - set(span.attributes["error.category"], "unknown") where span.status.code == STATUS_CODE_ERROR and span.attributes["error.category"] == nil
 
           # Set actionability flag
-          - set(attributes["error.actionable"], true) where attributes["error.category"] == "timeout" or attributes["error.category"] == "connection"
-          - set(attributes["error.actionable"], false) where attributes["error.category"] == "validation" or attributes["error.category"] == "not_found"
+          - set(span.attributes["error.actionable"], true) where span.attributes["error.category"] == "timeout" or span.attributes["error.category"] == "connection"
+          - set(span.attributes["error.actionable"], false) where span.attributes["error.category"] == "validation" or span.attributes["error.category"] == "not_found"
 ```
 
 ## Computing from Resource and Span Fields Together
@@ -114,12 +114,12 @@ processors:
       - context: span
         statements:
           # Build a fully qualified operation name
-          - set(attributes["operation.fqn"], Concat([resource.attributes["service.name"], ".", name], ""))
+          - set(span.attributes["operation.fqn"], Concat([resource.attributes["service.name"], ".", span.name], ""))
 
           # Determine criticality from service and HTTP route
-          - set(attributes["criticality"], "high") where resource.attributes["service.name"] == "checkout-service" and IsMatch(attributes["http.route"], "^/api/(payment|order).*")
-          - set(attributes["criticality"], "medium") where resource.attributes["service.name"] == "checkout-service" and attributes["criticality"] == nil
-          - set(attributes["criticality"], "low") where resource.attributes["deployment.environment"] == "staging"
+          - set(span.attributes["criticality"], "high") where resource.attributes["service.name"] == "checkout-service" and IsMatch(span.attributes["http.route"], "^/api/(payment|order).*")
+          - set(span.attributes["criticality"], "medium") where resource.attributes["service.name"] == "checkout-service" and span.attributes["criticality"] == nil
+          - set(span.attributes["criticality"], "low") where resource.attributes["deployment.environment"] == "staging"
 ```
 
 ## Computing Span Kind Descriptions
@@ -133,17 +133,17 @@ processors:
       - context: span
         statements:
           # Map span kind integer to readable string
-          # kind == 1: Internal, 2: Server, 3: Client, 4: Producer, 5: Consumer
-          - set(attributes["span.kind.label"], "internal") where kind == 1
-          - set(attributes["span.kind.label"], "server") where kind == 2
-          - set(attributes["span.kind.label"], "client") where kind == 3
-          - set(attributes["span.kind.label"], "producer") where kind == 4
-          - set(attributes["span.kind.label"], "consumer") where kind == 5
+          # SPAN_KIND_INTERNAL: Internal, SPAN_KIND_SERVER: Server, SPAN_KIND_CLIENT: Client, SPAN_KIND_PRODUCER: Producer, SPAN_KIND_CONSUMER: Consumer
+          - set(span.attributes["span.kind.label"], "internal") where span.kind == SPAN_KIND_INTERNAL
+          - set(span.attributes["span.kind.label"], "server") where span.kind == SPAN_KIND_SERVER
+          - set(span.attributes["span.kind.label"], "client") where span.kind == SPAN_KIND_CLIENT
+          - set(span.attributes["span.kind.label"], "producer") where span.kind == SPAN_KIND_PRODUCER
+          - set(span.attributes["span.kind.label"], "consumer") where span.kind == SPAN_KIND_CONSUMER
 
           # Compute a direction label
-          - set(attributes["span.direction"], "inbound") where kind == 2 or kind == 5
-          - set(attributes["span.direction"], "outbound") where kind == 3 or kind == 4
-          - set(attributes["span.direction"], "internal") where kind == 1
+          - set(span.attributes["span.direction"], "inbound") where span.kind == SPAN_KIND_SERVER or span.kind == SPAN_KIND_CONSUMER
+          - set(span.attributes["span.direction"], "outbound") where span.kind == SPAN_KIND_CLIENT or span.kind == SPAN_KIND_PRODUCER
+          - set(span.attributes["span.direction"], "internal") where span.kind == SPAN_KIND_INTERNAL
 ```
 
 ## Full Configuration
@@ -161,16 +161,16 @@ processors:
       - context: span
         statements:
           # Performance classification
-          - set(attributes["perf.category"], "fast") where duration <= 100000000
-          - set(attributes["perf.category"], "normal") where duration > 100000000 and duration <= 1000000000
-          - set(attributes["perf.category"], "slow") where duration > 1000000000
+          - set(span.attributes["perf.category"], "fast") where span.end_time_unix_nano - span.start_time_unix_nano <= 100000000
+          - set(span.attributes["perf.category"], "normal") where span.end_time_unix_nano - span.start_time_unix_nano > 100000000 and span.end_time_unix_nano - span.start_time_unix_nano <= 1000000000
+          - set(span.attributes["perf.category"], "slow") where span.end_time_unix_nano - span.start_time_unix_nano > 1000000000
 
           # Error classification
-          - set(attributes["error.category"], "server") where attributes["http.response.status_code"] >= 500
-          - set(attributes["error.category"], "client") where attributes["http.response.status_code"] >= 400 and attributes["http.response.status_code"] < 500
+          - set(span.attributes["error.category"], "server") where span.attributes["http.response.status_code"] >= 500
+          - set(span.attributes["error.category"], "client") where span.attributes["http.response.status_code"] >= 400 and span.attributes["http.response.status_code"] < 500
 
           # Composite key for grouping
-          - set(attributes["group.key"], Concat([resource.attributes["service.name"], attributes["http.method"], attributes["http.route"]], "|")) where attributes["http.method"] != nil
+          - set(span.attributes["group.key"], Concat([resource.attributes["service.name"], span.attributes["http.request.method"], span.attributes["http.route"]], "|")) where resource.attributes["service.name"] != nil and span.attributes["http.request.method"] != nil and span.attributes["http.route"] != nil
 
   batch:
     send_batch_size: 512
