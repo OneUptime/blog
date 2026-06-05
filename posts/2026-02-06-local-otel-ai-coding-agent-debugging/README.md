@@ -52,7 +52,7 @@ Start the collector:
 
 ```bash
 docker run --rm -p 4318:4318 \
-  -v $(pwd)/collector-config.yaml:/etc/otelcol/config.yaml \
+  -v $(pwd)/collector-config.yaml:/etc/otelcol-contrib/config.yaml \
   -v /tmp:/tmp \
   otel/opentelemetry-collector-contrib:latest
 ```
@@ -93,6 +93,7 @@ Now instrument each agent operation:
 
 ```python
 # agent.py
+import json
 import openai
 from agent_tracing import tracer
 from opentelemetry import trace
