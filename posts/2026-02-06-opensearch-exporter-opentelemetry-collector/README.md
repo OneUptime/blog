@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, Exporter, OpenSearch, Observability, Telemetry
 
-Description: Learn how to configure the OpenSearch exporter in OpenTelemetry Collector to send traces, metrics, and logs to OpenSearch for powerful search and analytics capabilities.
+Description: Learn how to configure the OpenSearch exporter in OpenTelemetry Collector to send traces and logs to OpenSearch for powerful search and analytics capabilities.
 
-OpenSearch is a popular open-source search and analytics engine that provides powerful capabilities for storing and querying telemetry data. The OpenTelemetry Collector's OpenSearch exporter enables you to send traces, metrics, and logs directly to OpenSearch clusters, making it an excellent choice for organizations that want full control over their observability data with an open-source solution.
+OpenSearch is a popular open-source search and analytics engine that provides powerful capabilities for storing and querying telemetry data. The OpenTelemetry Collector's OpenSearch exporter enables you to send traces and logs directly to OpenSearch clusters, making it an excellent choice for organizations that want full control over their observability data with an open-source solution.
 
 ## Understanding the OpenSearch Exporter
 
-The OpenSearch exporter is designed to write OpenTelemetry data to OpenSearch indices. It supports all three telemetry signals (traces, metrics, and logs) and provides flexible configuration options for authentication, index management, and data formatting. This exporter is particularly useful when you want to leverage OpenSearch's search capabilities, visualization tools like OpenSearch Dashboards, and machine learning features for anomaly detection.
+The OpenSearch exporter is designed to write OpenTelemetry data to OpenSearch indices. It supports traces and logs, and provides flexible configuration options for authentication, index naming, and data formatting. This exporter is particularly useful when you want to leverage OpenSearch's search capabilities, visualization tools like OpenSearch Dashboards, and machine learning features for anomaly detection.
 
-The exporter handles the conversion of OpenTelemetry Protocol (OTLP) data into JSON documents that OpenSearch can index efficiently. It automatically creates indices with appropriate mappings and supports both basic authentication and AWS Signature Version 4 for secure connections.
+The exporter handles the conversion of OpenTelemetry Protocol (OTLP) data into JSON documents that OpenSearch can index efficiently. It uses OpenSearch's Bulk API and supports both basic authentication and AWS Signature Version 4 through Collector authenticator extensions.
 
 ## Architecture Overview
 
@@ -30,7 +30,7 @@ graph LR
 
 ## Basic Configuration
 
-Here's a minimal configuration to get started with the OpenSearch exporter. This example sends traces to a local OpenSearch instance.
+Here's a minimal configuration to get started with the OpenSearch exporter. This example sends traces and logs to a local OpenSearch instance.
 
 ```yaml
 # receivers section - collecting telemetry data
@@ -56,9 +56,6 @@ exporters:
     # Index configuration for logs
     logs_index: otel-logs
 
-    # Index configuration for metrics
-    metrics_index: otel-metrics
-
 # processors for data transformation
 processors:
   batch:
@@ -77,14 +74,9 @@ service:
       receivers: [otlp]
       processors: [batch]
       exporters: [opensearch]
-
-    metrics:
-      receivers: [otlp]
-      processors: [batch]
-      exporters: [opensearch]
 ```
 
-This basic configuration establishes OTLP receivers on standard ports and exports all three signal types to separate OpenSearch indices. The batch processor optimizes network usage by grouping data before sending.
+This basic configuration establishes OTLP receivers on standard ports and exports traces and logs to separate OpenSearch indices. The batch processor optimizes network usage by grouping data before sending.
 
 ## Advanced Configuration with Authentication
 
@@ -93,13 +85,8 @@ In production environments, you'll need to secure your OpenSearch cluster with a
 ```yaml
 exporters:
   opensearch:
-    # Multiple endpoints for high availability
     http:
       endpoint: https://opensearch-node1.example.com:9200
-      endpoints:
-        - https://opensearch-node1.example.com:9200
-        - https://opensearch-node2.example.com:9200
-        - https://opensearch-node3.example.com:9200
 
       # TLS configuration for secure connections
       tls:
@@ -111,23 +98,16 @@ exporters:
 
       # Authentication settings
       auth:
-        authenticator: basicauth
+        authenticator: basicauth/client
 
-    # Basic authentication credentials
-    auth:
-      user: admin
-      password: ${OPENSEARCH_PASSWORD}
+    # Index naming patterns with time-based suffixes
+    traces_index: otel-traces
+    traces_index_time_format: yyyy.MM.dd
+    logs_index: otel-logs
+    logs_index_time_format: yyyy.MM.dd
 
-    # Index naming patterns with time-based rotation
-    traces_index: otel-traces-%{2006.01.02}
-    logs_index: otel-logs-%{2006.01.02}
-    metrics_index: otel-metrics-%{2006.01.02}
-
-    # Bulk indexing settings for performance
-    bulk:
-      max_batch_size: 1000
-      max_batch_bytes: 5242880  # 5MB
-      flush_interval: 30s
+    # Bulk API action. Valid values are create and index.
+    bulk_action: create
 
     # Retry configuration for transient failures
     retry_on_failure:
@@ -136,24 +116,27 @@ exporters:
       max_interval: 30s
       max_elapsed_time: 300s
 
-    # Connection pool settings
-    discover_nodes_interval: 5m
-    discover_nodes_on_start: true
-
     # Mapping configuration
     mapping:
-      mode: ecs  # Use Elastic Common Schema format
+      mode: ss4o
+
+extensions:
+  basicauth/client:
+    client_auth:
+      username: admin
+      password: ${env:OPENSEARCH_PASSWORD}
+
+service:
+  extensions: [basicauth/client]
 ```
 
 This advanced configuration includes several important features:
 
-**Multiple Endpoints**: Distributes load across multiple OpenSearch nodes and provides failover capability if one node becomes unavailable.
-
 **TLS Security**: Encrypts data in transit and validates server certificates to prevent man-in-the-middle attacks.
 
-**Time-Based Index Rotation**: Creates daily indices using Go time formatting, which helps with index lifecycle management and search performance.
+**Time-Based Index Suffixes**: Creates daily indices using the exporter's UTC time format tokens, which helps with index lifecycle management and search performance.
 
-**Bulk Indexing**: Batches documents together to reduce network overhead and improve indexing throughput.
+**Bulk Indexing**: Uses the OpenSearch Bulk API with the configured `bulk_action` to ingest documents.
 
 **Retry Logic**: Automatically retries failed requests with exponential backoff to handle transient network issues.
 
@@ -171,28 +154,16 @@ exporters:
       auth:
         authenticator: sigv4auth
 
-    # AWS SigV4 authentication settings
-    aws:
-      region: us-east-1
-      service: es
-
-      # Use IAM role or access keys
-      # Option 1: Use IAM role (recommended for EC2/ECS/EKS)
-      role_arn: arn:aws:iam::123456789012:role/OTelCollectorRole
-
-      # Option 2: Use access keys (not recommended for production)
-      # access_key_id: ${AWS_ACCESS_KEY_ID}
-      # secret_access_key: ${AWS_SECRET_ACCESS_KEY}
-
     traces_index: otel-traces
     logs_index: otel-logs
-    metrics_index: otel-metrics
 
 # Add the sigv4auth extension
 extensions:
   sigv4auth:
     region: us-east-1
     service: es
+    assume_role:
+      arn: arn:aws:iam::123456789012:role/OTelCollectorRole
 
 service:
   extensions: [sigv4auth]
@@ -201,13 +172,17 @@ service:
       receivers: [otlp]
       processors: [batch]
       exporters: [opensearch]
+    logs:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [opensearch]
 ```
 
-Using IAM roles is the recommended approach for AWS environments as it eliminates the need to manage static credentials. The collector automatically retrieves temporary credentials from the instance metadata service.
+Using IAM roles is the recommended approach for AWS environments as it eliminates the need to manage static credentials. The SigV4 authenticator uses the AWS SDK credential chain, including environment credentials, web identity credentials, and instance or task role credentials when available.
 
 ## Index Template Management
 
-OpenSearch uses index templates to define mappings and settings for new indices. You can configure the exporter to automatically create templates.
+OpenSearch uses index templates to define mappings and settings for new indices. The OpenSearch exporter does not manage index templates directly, so create templates in OpenSearch before sending data if you need custom mappings or settings.
 
 ```yaml
 exporters:
@@ -215,47 +190,10 @@ exporters:
     http:
       endpoint: http://localhost:9200
 
-    # Enable automatic template creation
-    index_template:
-      enabled: true
-
-      # Template for traces indices
-      traces:
-        name: otel-traces-template
-        pattern: otel-traces-*
-        settings:
-          number_of_shards: 3
-          number_of_replicas: 1
-          refresh_interval: 30s
-          codec: best_compression
-
-        # Custom field mappings
-        mappings:
-          properties:
-            trace_id:
-              type: keyword
-            span_id:
-              type: keyword
-            parent_span_id:
-              type: keyword
-            name:
-              type: text
-              fields:
-                keyword:
-                  type: keyword
-            start_time:
-              type: date
-            duration:
-              type: long
-
-      # Template for logs indices
-      logs:
-        name: otel-logs-template
-        pattern: otel-logs-*
-        settings:
-          number_of_shards: 3
-          number_of_replicas: 1
-          refresh_interval: 30s
+    traces_index: otel-traces
+    logs_index: otel-logs
+    mapping:
+      mode: ss4o
 ```
 
 Index templates ensure consistent mapping across all indices matching the pattern, which improves query performance and reduces storage overhead.
@@ -314,14 +252,18 @@ service:
 
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 
 exporters:
   opensearch:
     http:
       endpoint: http://localhost:9200
 
-    # Enable detailed logging for this exporter
     sending_queue:
       enabled: true
       num_consumers: 10
@@ -338,7 +280,7 @@ Common issues and solutions:
 
 **Indexing Errors**: Check OpenSearch logs for mapping conflicts or invalid data. Verify index templates are correctly defined.
 
-**High Memory Usage**: Reduce batch sizes or increase flush intervals to prevent memory buildup.
+**High Memory Usage**: Reduce batch sizes or decrease flush intervals to prevent memory buildup.
 
 ## Performance Optimization
 
@@ -354,15 +296,14 @@ exporters:
       max_idle_conns_per_host: 10
       idle_conn_timeout: 90s
 
-    bulk:
-      max_batch_size: 5000
-      max_batch_bytes: 10485760  # 10MB
-      flush_interval: 10s
-
     sending_queue:
       enabled: true
       num_consumers: 20
       queue_size: 10000
+      batch:
+        flush_timeout: 10s
+        min_size: 2048
+        max_size: 4096
 
 processors:
   batch:
