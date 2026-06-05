@@ -45,6 +45,9 @@ sysrc vm_dir="zfs:zpool/vm"
 
 # Initialize the template directory
 vm init
+
+# Install the sample templates
+cp /usr/local/share/examples/vm-bhyve/* /zpool/vm/.templates/
 ```
 
 ### Step 3: Configure Networking
@@ -59,13 +62,13 @@ vm switch add public em0  # Replace em0 with your network interface
 
 ```bash
 # Fetch an Alpine Linux ISO (lightweight, ideal for Docker)
-vm iso https://dl-cdn.alpinelinux.org/alpine/v3.19/releases/x86_64/alpine-virt-3.19.0-x86_64.iso
+vm iso https://dl-cdn.alpinelinux.org/alpine/v3.23/releases/x86_64/alpine-virt-3.23.4-x86_64.iso
 
 # Create a VM with 2 CPUs, 2GB RAM, and 20GB disk
 vm create -t alpine -c 2 -m 2G -s 20G docker-host
 
 # Install Alpine Linux
-vm install docker-host alpine-virt-3.19.0-x86_64.iso
+vm install docker-host alpine-virt-3.23.4-x86_64.iso
 ```
 
 ### Step 5: Install Docker Inside the Alpine VM
@@ -78,7 +81,7 @@ apk update
 apk add docker docker-compose
 
 # Start Docker
-rc-update add docker boot
+rc-update add docker default
 service docker start
 
 # Verify
@@ -87,7 +90,23 @@ docker run hello-world
 
 ### Step 6: Access Docker from FreeBSD Host
 
-You can expose Docker's TCP socket to access it from the FreeBSD host.
+The safest way to access Docker from the FreeBSD host is to use the Docker CLI over SSH.
+
+On the FreeBSD host, set the `DOCKER_HOST` environment variable.
+
+```bash
+# On the FreeBSD host: point Docker CLI to the VM over SSH
+export DOCKER_HOST=ssh://docker-user@192.168.1.100  # Replace with your VM user and IP
+```
+
+Install the Docker CLI on FreeBSD (it does not need the daemon).
+
+```bash
+# Install Docker client on FreeBSD
+pkg install docker
+```
+
+Alternatively, you can expose Docker's TCP socket to access it from the FreeBSD host. Only do this on a trusted network or with TLS authentication.
 
 Inside the Alpine VM, edit the Docker daemon configuration.
 
@@ -104,20 +123,6 @@ EOF
 service docker restart
 ```
 
-On the FreeBSD host, set the `DOCKER_HOST` environment variable.
-
-```bash
-# On the FreeBSD host: point Docker CLI to the VM
-export DOCKER_HOST=tcp://192.168.1.100:2375  # Replace with your VM's IP
-```
-
-Install the Docker CLI on FreeBSD (it does not need the daemon).
-
-```bash
-# Install Docker client on FreeBSD
-pkg install docker
-```
-
 Now Docker commands on FreeBSD will be forwarded to the Linux VM.
 
 ```bash
@@ -126,11 +131,11 @@ docker ps
 docker run hello-world
 ```
 
-**Security warning**: The unauthenticated TCP socket exposes full Docker control. Only use this on trusted networks or add TLS authentication.
+**Security warning**: The unauthenticated TCP socket exposes full Docker control. Docker's documentation recommends SSH or TLS for remote access.
 
 ## Approach 2: Using the Linux Compatibility Layer
 
-FreeBSD includes a Linux compatibility layer (Linuxulator) that can run Linux binaries. However, it emulates system calls at the userspace level and does not provide the kernel features Docker needs (cgroups, namespaces).
+FreeBSD includes a Linux compatibility layer (Linuxulator) that can run many Linux binaries by providing a Linux ABI in the FreeBSD kernel. However, it does not provide all Linux-specific system management features Docker needs, such as cgroups and namespaces.
 
 You can run the Docker CLI through the Linuxulator, but the Docker daemon itself will not work.
 
@@ -153,10 +158,6 @@ pkg install linux_base-c7
 # Create a directory for Linux binaries
 mkdir -p /compat/linux/usr/local/bin
 
-# Download the Docker CLI (static binary)
-fetch -o /compat/linux/usr/local/bin/docker \
-  https://download.docker.com/linux/static/stable/x86_64/docker-24.0.7.tgz
-
 # Extract just the docker binary
 cd /tmp
 fetch https://download.docker.com/linux/static/stable/x86_64/docker-24.0.7.tgz
@@ -177,22 +178,25 @@ This is more of a workaround than a real solution. The VM approach from Approach
 
 ## Approach 3: Podman on FreeBSD (Native Alternative)
 
-While not Docker, Podman is worth mentioning. FreeBSD has experimental Podman support through OCI-compatible container runtimes like `runj` that use FreeBSD Jails.
+While not Docker, Podman is worth mentioning. FreeBSD has experimental Podman support through OCI-compatible container runtimes that use FreeBSD Jails.
 
 ```bash
 # Install Podman on FreeBSD (experimental)
 pkg install podman
+
+# Required for Podman's container restart policy
+mount -t fdescfs fdesc /dev/fd
+service podman enable
 ```
 
-Podman on FreeBSD runs OCI containers inside Jails. It supports a subset of Docker-compatible features, and many Docker images work if they do not depend on Linux-specific kernel features.
+Podman on FreeBSD runs OCI containers inside Jails. It supports a subset of Docker-compatible features. FreeBSD-native OCI images are the best fit; some Linux images can run through FreeBSD's Linux emulation if they do not depend on unsupported Linux-specific kernel features.
 
 ```bash
-# Pull and run a container with Podman
-podman pull docker.io/library/nginx
-podman run -d -p 8080:80 nginx
+# Pull and run a FreeBSD-native container with Podman
+podman run --rm quay.io/dougrabson/hello
 ```
 
-The compatibility is limited. Containers that need Linux-specific syscalls will fail. But for simple web servers, databases, and stateless services, it can work.
+The compatibility is limited. Containers that need unsupported Linux-specific syscalls will fail. But for simple services that are available as FreeBSD-native images, it can work.
 
 ## Approach 4: Docker Machine (Legacy)
 
@@ -257,8 +261,8 @@ If your primary need is process isolation (not Docker-specific images), FreeBSD 
 mkdir -p /jails/webserver
 bsdinstall jail /jails/webserver
 
-# Start the Jail
-jail -c name=webserver path=/jails/webserver host.hostname=webserver ip4.addr=192.168.1.50
+# Start a persistent Jail
+jail -c name=webserver path=/jails/webserver host.hostname=webserver ip4.addr=192.168.1.50 persist
 ```
 
 Jails provide filesystem isolation, network isolation, and resource limits without any virtualization overhead. They just do not run Docker images.
