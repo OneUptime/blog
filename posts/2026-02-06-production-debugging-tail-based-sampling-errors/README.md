@@ -4,9 +4,9 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Tail-Based Sampling, Error Traces, Production Debugging, Collector
 
-Description: Build a production debugging workflow that captures 100% of error traces using OpenTelemetry tail-based sampling strategies.
+Description: Build a production debugging workflow that retains every error trace that reaches the OpenTelemetry tail sampler.
 
-In production, you cannot afford to capture every single trace. The volume would overwhelm your storage and your wallet. But you also cannot afford to miss the traces that matter most: the ones that contain errors. Tail-based sampling solves this by making the keep-or-drop decision after the trace is complete, so you can guarantee that every error trace is retained while sampling down the healthy traffic.
+In production, you cannot afford to capture every single trace. The volume would overwhelm your storage and your wallet. But you also cannot afford to miss the traces that matter most: the ones that contain errors. Tail-based sampling solves this by making the keep-or-drop decision after the trace is complete, so you can retain every error trace that reaches the sampler while sampling down the healthy traffic.
 
 ## Head-Based vs Tail-Based Sampling
 
@@ -57,7 +57,7 @@ processors:
           values: [".*"]
           enabled_regex_matching: true
 
-      # Policy 4: Sample 5% of successful, fast traces
+      # Policy 4: Sample a baseline 5% of traffic
       - name: normal-traffic-sample
         type: probabilistic
         probabilistic:
@@ -89,7 +89,7 @@ Your metrics pipeline (which is separate from trace sampling) shows a spike in 5
 
 ### Step 2: Query Error Traces
 
-Because the tail sampler keeps 100% of error traces, you can confidently query for all traces with errors in that time window:
+Because the tail sampler keeps the error traces it sees, you can confidently query for traces with errors in that time window:
 
 ```sql
 -- Query your trace backend for error traces
@@ -158,33 +158,38 @@ processors:
     num_traces: 50000
 ```
 
-For very high throughput, run multiple collector instances behind a load balancer that routes by trace ID. This ensures all spans from the same trace land on the same collector instance:
+For very high throughput, run multiple collector instances behind a collector gateway that uses the `load_balancing` exporter with trace ID routing. This ensures all spans from the same trace land on the same tail-sampling collector instance:
 
 ```yaml
-# In your load balancer config, use trace ID based routing
-# This is often done with a routing processor in a gateway collector
+# In your gateway collector config, use trace ID based routing
 
-processors:
-  routing:
-    from_attribute: "trace_id"
-    table:
-      - value: "0*"
-        exporters: [otlp/collector-1]
-      - value: "1*"
-        exporters: [otlp/collector-2]
+exporters:
+  load_balancing:
+    routing_key: traceID
+    protocol:
+      otlp:
+        tls:
+          insecure: true
+    resolver:
+      static:
+        hostnames:
+          - collector-1:4317
+          - collector-2:4317
 ```
 
 ## Handling Late-Arriving Spans
 
-Sometimes spans arrive after the sampling decision has been made. Configure a grace period to handle stragglers:
+Sometimes spans arrive after the sampling decision has been made. Set `decision_wait` high enough for your normal trace completion time, monitor late-span metrics, and configure a decision cache so late spans reuse the original keep or drop decision after the trace data has been released from memory:
 
 ```yaml
 processors:
   tail_sampling:
     decision_wait: 30s
-    # Additional policies can catch late errors
+    decision_cache:
+      sampled_cache_size: 100000
+      non_sampled_cache_size: 100000
     policies:
-      - name: late-error-catch
+      - name: errors-always-keep
         type: status_code
         status_code:
           status_codes: [ERROR]
@@ -192,4 +197,4 @@ processors:
 
 ## Summary
 
-Tail-based sampling is the foundation of a solid production debugging workflow. It guarantees you never lose an error trace while keeping storage costs manageable by sampling down healthy traffic. Set up your collector with policies that prioritize errors and high latency, scale it with trace-ID-based routing, and build your debugging workflow around the confidence that every error is captured. When the next incident hits, you will have every failing trace available for analysis.
+Tail-based sampling is the foundation of a solid production debugging workflow. When all spans for a trace reach the same correctly sized sampler, it keeps error traces while keeping storage costs manageable by sampling down healthy traffic. Set up your collector with policies that prioritize errors and high latency, scale it with trace-ID-based routing, and build your debugging workflow around the confidence that every error trace seen by the sampler is captured. When the next incident hits, you will have the failing traces available for analysis.
