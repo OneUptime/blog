@@ -10,7 +10,7 @@ You see a spike on your error rate graph. The next step is figuring out which sp
 
 ## What Are Exemplars?
 
-An exemplar is a sample data point attached to a metric that links back to a specific trace. When OpenTelemetry records a metric (like an error count), it can also record the trace ID and span ID of the request that produced that data point. This creates a direct link from any metric spike to an actual trace you can investigate.
+An exemplar is a sample data point attached to a metric that links back to a specific trace. When OpenTelemetry records an eligible metric measurement (like an error count), it can also record the trace ID and span ID of the active sampled span for the request that produced that data point. This creates a direct link from any metric spike to an actual trace you can investigate.
 
 ## Enabling Exemplars in the OpenTelemetry SDK
 
@@ -35,7 +35,7 @@ trace_provider.add_span_processor(
 )
 trace.set_tracer_provider(trace_provider)
 
-# Set up metrics with exemplar support
+# Set up metrics with trace-based exemplar support
 metric_exporter = OTLPMetricExporter(endpoint="http://localhost:4317")
 metric_reader = PeriodicExportingMetricReader(
     metric_exporter,
@@ -59,12 +59,12 @@ metrics.set_meter_provider(meter_provider)
 
 ### Recording Metrics with Trace Context
 
-The key is that metrics are recorded while a span is active. The SDK automatically attaches the current span's trace ID as an exemplar.
+The key is that metrics are recorded while a sampled span is active. The Python SDK's default trace-based exemplar filter makes those measurements eligible for exemplars, and the exemplar carries the active span's trace ID and span ID.
 
 ```python
 # request_handler.py
 import time
-from opentelemetry import trace, metrics, context
+from opentelemetry import trace, metrics
 
 tracer = trace.get_tracer("my-service")
 meter = metrics.get_meter("my-service")
@@ -85,7 +85,7 @@ error_counter = meter.create_counter(
 def handle_request(method, route, handler):
     """
     Wrapper that records request metrics with exemplars.
-    The exemplar automatically includes the active trace ID.
+    Eligible exemplars include the active trace ID and span ID.
     """
     with tracer.start_as_current_span(f"{method} {route}") as span:
         start_time = time.time()
@@ -97,23 +97,23 @@ def handle_request(method, route, handler):
         try:
             result = handler()
 
-            # Record duration - exemplar is attached automatically
-            # because there is an active span
+            # Record duration while the sampled span is active.
             duration_ms = (time.time() - start_time) * 1000
             request_duration.record(duration_ms, attributes)
 
             return result
 
         except Exception as e:
-            # Record the error counter with the active trace context
-            # The exemplar links this metric data point to this specific trace
+            span.record_exception(e)
+            span.set_status(trace.StatusCode.ERROR, str(e))
+
+            # Record the error counter with the active trace context.
+            # The exemplar can link this metric data point to this specific trace.
             error_counter.add(1, attributes)
 
             duration_ms = (time.time() - start_time) * 1000
             request_duration.record(duration_ms, attributes)
 
-            span.record_exception(e)
-            span.set_status(trace.StatusCode.ERROR, str(e))
             raise
 ```
 
@@ -157,7 +157,7 @@ service:
 
 ## Prometheus Configuration for Exemplars
 
-Enable exemplar storage in Prometheus:
+Enable exemplar storage in Prometheus. In addition to this configuration block, start Prometheus with `--enable-feature=exemplar-storage` so scraped exemplars are stored:
 
 ```yaml
 # prometheus.yml
@@ -187,7 +187,7 @@ sum(rate(http_server_errors_total[5m])) by (http_route)
 In the Grafana panel settings:
 1. Open the query editor.
 2. Toggle "Exemplars" to on.
-3. Set the "Trace ID" label to `traceID`.
+3. Set the "Trace ID" label to `trace_id`.
 4. Configure the internal link to point to your Tempo data source.
 
 Now when you hover over the error rate graph, you will see small diamonds at specific data points. Clicking a diamond takes you directly to the trace in Tempo.
@@ -198,7 +198,7 @@ Sometimes you want exemplars only for interesting cases, not for every request. 
 
 ```python
 # exemplar_filter.py
-from opentelemetry.sdk.metrics.export import ExemplarFilter
+from opentelemetry.sdk.metrics import ExemplarFilter
 from opentelemetry import trace
 
 class ErrorOnlyExemplarFilter(ExemplarFilter):
@@ -209,7 +209,7 @@ class ErrorOnlyExemplarFilter(ExemplarFilter):
     """
 
     def should_sample(self, value, timestamp, attributes, context):
-        span = trace.get_current_span()
+        span = trace.get_current_span(context)
         if span and span.is_recording():
             # Only sample if the span has an error status
             if hasattr(span, 'status') and span.status.status_code == trace.StatusCode.ERROR:
