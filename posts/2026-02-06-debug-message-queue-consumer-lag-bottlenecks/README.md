@@ -13,8 +13,8 @@ Consumer lag in message queues is one of those problems that starts small and es
 Start by recording when messages are published, including the trace context that will link the producer to the consumer:
 
 ```python
-from opentelemetry import trace, context
-from opentelemetry.trace.propagation import set_span_in_context
+from opentelemetry import trace
+from opentelemetry.propagate import inject
 import json
 import time
 
@@ -27,28 +27,30 @@ def publish_message(topic, message, producer):
         kind=trace.SpanKind.PRODUCER,
     ) as span:
         span.set_attribute("messaging.system", "kafka")
-        span.set_attribute("messaging.destination", topic)
-        span.set_attribute("messaging.operation", "publish")
+        span.set_attribute("messaging.destination.name", topic)
+        span.set_attribute("messaging.operation.name", "publish")
+        span.set_attribute("messaging.operation.type", "send")
 
         # Inject trace context into message headers
         headers = {}
-        from opentelemetry.propagate import inject
         inject(headers)
 
         # Record the publish timestamp in the message
         message["_published_at"] = time.time()
+        payload = json.dumps(message).encode()
 
-        span.set_attribute("messaging.message.payload_size_bytes", len(
-            json.dumps(message)
-        ))
+        span.set_attribute("messaging.message.body.size", len(payload))
 
-        producer.send(
+        record_metadata = producer.send(
             topic,
-            value=json.dumps(message).encode(),
+            value=payload,
             headers=[(k, v.encode()) for k, v in headers.items()],
-        )
+        ).get(timeout=10)
 
-        span.set_attribute("messaging.kafka.partition", producer.partition)
+        span.set_attribute(
+            "messaging.destination.partition.id",
+            str(record_metadata.partition),
+        )
 ```
 
 ## Instrumenting the Consumer
@@ -57,6 +59,7 @@ On the consumer side, extract the trace context and measure the end-to-end laten
 
 ```python
 from opentelemetry.propagate import extract
+from opentelemetry.trace import Status, StatusCode
 
 def consume_messages(consumer, handler):
     """Consume messages with tracing and lag measurement."""
@@ -67,16 +70,20 @@ def consume_messages(consumer, handler):
         }
         parent_ctx = extract(carrier)
 
-        # Create a consumer span linked to the producer
+        # Create a consumer span correlated with the producer
         with tracer.start_as_current_span(
             f"queue.process {message.topic}",
             context=parent_ctx,
             kind=trace.SpanKind.CONSUMER,
         ) as span:
             span.set_attribute("messaging.system", "kafka")
-            span.set_attribute("messaging.destination", message.topic)
-            span.set_attribute("messaging.operation", "process")
-            span.set_attribute("messaging.kafka.partition", message.partition)
+            span.set_attribute("messaging.destination.name", message.topic)
+            span.set_attribute("messaging.operation.name", "process")
+            span.set_attribute("messaging.operation.type", "process")
+            span.set_attribute(
+                "messaging.destination.partition.id",
+                str(message.partition),
+            )
             span.set_attribute("messaging.kafka.offset", message.offset)
 
             # Calculate queue wait time
@@ -88,8 +95,8 @@ def consume_messages(consumer, handler):
 
                 # Record as metric too
                 queue_wait_histogram.record(queue_wait_ms, attributes={
-                    "messaging.destination": message.topic,
-                    "messaging.kafka.partition": str(message.partition),
+                    "messaging.destination.name": message.topic,
+                    "messaging.destination.partition.id": str(message.partition),
                 })
 
             # Process the message
@@ -99,7 +106,7 @@ def consume_messages(consumer, handler):
                 process_ms = (time.monotonic() - process_start) * 1000
                 span.set_attribute("messaging.process_time_ms", process_ms)
             except Exception as e:
-                span.set_attribute("error", True)
+                span.set_status(Status(StatusCode.ERROR))
                 span.record_exception(e)
                 raise
 ```
@@ -110,8 +117,12 @@ Consumer lag is the difference between the latest offset in the partition and th
 
 ```python
 from opentelemetry import metrics
+from opentelemetry.metrics import CallbackOptions, Observation
+from kafka import KafkaAdminClient, KafkaConsumer
 
 meter = metrics.get_meter("kafka-consumer")
+admin = KafkaAdminClient(bootstrap_servers="kafka:9092")
+lag_consumer = KafkaConsumer(bootstrap_servers="kafka:9092")
 
 queue_wait_histogram = meter.create_histogram(
     name="messaging.queue.wait_time",
@@ -123,32 +134,34 @@ consumer_lag_gauge = meter.create_observable_gauge(
     name="messaging.kafka.consumer.lag",
     description="Number of messages behind the latest offset",
     unit="messages",
-    callbacks=[lambda options: get_consumer_lag_observations()],
+    callbacks=[lambda options: get_consumer_lag_observations(options)],
 )
 
-def get_consumer_lag_observations():
+def get_consumer_lag_observations(options: CallbackOptions):
     """Query Kafka for current consumer lag per partition."""
-    from kafka import KafkaAdminClient
-    admin = KafkaAdminClient(bootstrap_servers="kafka:9092")
-
     observations = []
     # Get consumer group offsets
     group_offsets = admin.list_consumer_group_offsets("my-consumer-group")
 
     for tp, offset_meta in group_offsets.items():
+        if offset_meta.offset < 0:
+            continue
+
         # Get the latest offset for comparison
-        end_offsets = consumer.end_offsets([tp])
+        end_offsets = lag_consumer.end_offsets([tp])
         latest = end_offsets[tp]
 
         lag = latest - offset_meta.offset
-        observations.append(metrics.Observation(
-            value=lag,
-            attributes={
-                "messaging.kafka.topic": tp.topic,
-                "messaging.kafka.partition": str(tp.partition),
-                "messaging.kafka.consumer_group": "my-consumer-group",
-            },
-        ))
+        observations.append(
+            Observation(
+                lag,
+                {
+                    "messaging.destination.name": tp.topic,
+                    "messaging.destination.partition.id": str(tp.partition),
+                    "messaging.consumer.group.name": "my-consumer-group",
+                },
+            )
+        )
 
     return observations
 ```
@@ -214,13 +227,14 @@ class BatchProcessor:
     def __init__(self, batch_size=100, flush_interval_ms=1000):
         self.batch = []
         self.batch_size = batch_size
+        self.flush_interval_ms = flush_interval_ms
         self.last_flush = time.monotonic()
 
     def add(self, message):
         self.batch.append(message)
         elapsed = (time.monotonic() - self.last_flush) * 1000
 
-        if len(self.batch) >= self.batch_size or elapsed >= 1000:
+        if len(self.batch) >= self.batch_size or elapsed >= self.flush_interval_ms:
             self.flush()
 
     def flush(self):
