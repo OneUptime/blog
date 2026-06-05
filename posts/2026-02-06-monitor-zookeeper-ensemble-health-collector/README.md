@@ -14,7 +14,7 @@ The OpenTelemetry Collector has a dedicated Zookeeper receiver that connects to 
 
 ## Understanding Zookeeper Ensemble Architecture
 
-A Zookeeper ensemble is a cluster of an odd number of nodes (typically 3, 5, or 7) that maintain consensus using the ZAB (Zookeeper Atomic Broadcast) protocol. One node acts as the leader, and the rest are followers. The ensemble remains healthy as long as a quorum (majority) of nodes is operational.
+A Zookeeper ensemble is usually deployed as an odd number of nodes (typically 3, 5, or 7) that maintain consensus using the ZAB (Zookeeper Atomic Broadcast) protocol. One node acts as the leader, and the rest are followers unless you configure observers. The ensemble remains healthy as long as a quorum (majority) of voting nodes is operational.
 
 ```mermaid
 graph TD
@@ -43,7 +43,7 @@ The health of the ensemble depends on several factors: how many nodes are up, wh
 
 ## Enabling Zookeeper Administrative Commands
 
-Modern Zookeeper versions (3.5+) disable the four-letter administrative commands by default for security reasons. You need to explicitly enable the ones the collector needs.
+Modern Zookeeper versions (3.5.3+) disable most four-letter administrative commands by default for security reasons. You need to explicitly enable the ones the collector needs.
 
 Edit the `zoo.cfg` configuration file on each Zookeeper node:
 
@@ -85,7 +85,7 @@ echo mntr | nc localhost 2181
 # zk_synced_followers  4
 ```
 
-The `mntr` command is the most important one. It returns a comprehensive set of metrics that cover nearly every aspect of Zookeeper's internal state.
+The `mntr` command is the most important one, and the collector also checks `ruok`. `mntr` returns a comprehensive set of metrics that cover nearly every aspect of Zookeeper's internal state.
 
 ## Collector Configuration for Ensemble Monitoring
 
@@ -163,11 +163,11 @@ The Zookeeper receiver collects a wide range of metrics. Here are the ones that 
 
 ### Quorum and Role Tracking
 
-The `zookeeper.server_state` metric tells you the role of each node: leader, follower, or observer. In a healthy ensemble, you should see exactly one leader and the rest as followers. If you see no leader, the ensemble is in an election state and cannot serve write requests. If you see multiple leaders (a split-brain scenario), something is seriously wrong with network connectivity between nodes.
+The `server.state` resource attribute tells you the role of each node: leader, follower, standalone, or observer depending on your Zookeeper configuration. In a healthy voting ensemble, you should see exactly one leader and the rest as followers. If you see no leader, the ensemble is in an election state and cannot serve write requests. If you see multiple leaders from the collector's point of view, something is seriously wrong with network connectivity between nodes or with how the nodes are being scraped.
 
 ### Follower Synchronization
 
-On the leader node, two metrics are critical: `zookeeper.followers` shows the total number of followers, and `zookeeper.synced_followers` shows how many are fully synchronized. When `synced_followers` is less than `followers`, some nodes are lagging behind. If the number of synced followers drops below quorum, the ensemble is at risk of becoming unavailable.
+On the leader node, `zookeeper.follower.count` is critical. It is emitted with a `state` attribute: `state="synced"` shows how many followers are fully synchronized, and `state="unsynced"` shows how many are lagging. In a five-node voting ensemble, the leader plus two synced followers is the minimum quorum of three voting nodes. If the number of synced followers drops below two while the leader is up, the ensemble is at risk of becoming unavailable.
 
 ### Latency Metrics
 
@@ -175,7 +175,7 @@ The receiver collects `zookeeper.latency.avg`, `zookeeper.latency.min`, and `zoo
 
 ### Outstanding Requests
 
-The `zookeeper.outstanding_requests` metric shows how many requests are waiting to be processed. This number should stay at or near zero. A growing queue means the server cannot keep up with incoming requests. On follower nodes, outstanding requests indicate slow synchronization with the leader.
+The `zookeeper.request.active` metric is derived from Zookeeper's `zk_outstanding_requests` value and shows how many requests are currently executing. This number should stay at or near zero. A growing queue means the server cannot keep up with incoming requests. On follower nodes, sustained active requests can indicate load or synchronization pressure.
 
 ### Connection Counts
 
@@ -200,13 +200,13 @@ Row 1: Ensemble Overview
 Row 2: Performance
 - Average latency by node (line chart)
 - Outstanding requests by node (line chart)
-- Request throughput (packets received/sent per second)
+- Request throughput (`zookeeper.packet.count` received/sent per second)
 
 Row 3: Resource Usage
 - Active connections by node (stacked bar)
 - Znode count (line chart, should be relatively stable)
 - Watch count by node (line chart)
-- Approximate data size (line chart)
+- Data tree size (line chart)
 
 Row 4: Ensemble Stability
 - Leader election events (counter, should rarely change)
@@ -218,19 +218,19 @@ Row 4: Ensemble Stability
 
 The alerting rules for Zookeeper should focus on quorum safety and performance degradation.
 
-The most important alert is on synced follower count. In a five-node ensemble, quorum requires three nodes. Alert at warning when synced followers drops to three (one failure away from losing quorum) and at critical when it drops below three:
+The most important alert is on synced follower count and leader presence. In a five-node voting ensemble, quorum requires three voting nodes, so the leader needs at least two synced followers. Alert at warning when synced followers drops to two (one failure away from losing quorum) and at critical when it drops below two:
 
 ```yaml
 # Alert rule pseudo-configuration
 # Quorum at risk - one more failure causes outage
 - alert: ZookeeperQuorumAtRisk
-  condition: zookeeper.synced_followers <= (ensemble_size / 2)
+  condition: zookeeper.follower.count{state="synced"} <= ((ensemble_size + 1) / 2 - 1)
   for: 1m
   severity: warning
 
 # Quorum lost - ensemble cannot serve writes
 - alert: ZookeeperQuorumLost
-  condition: zookeeper.synced_followers < (ensemble_size / 2)
+  condition: zookeeper.follower.count{state="synced"} < ((ensemble_size + 1) / 2 - 1)
   for: 30s
   severity: critical
 
@@ -242,14 +242,14 @@ The most important alert is on synced follower count. In a five-node ensemble, q
 
 # Request queue building up
 - alert: ZookeeperRequestBacklog
-  condition: zookeeper.outstanding_requests > 10
+  condition: zookeeper.request.active > 10
   for: 2m
   severity: warning
 ```
 
 ## Handling Leader Elections
 
-Leader elections are normal during maintenance (rolling restarts) but unexpected elections indicate instability. The Zookeeper receiver does not directly emit an "election happened" event, but you can detect elections by tracking changes in the `server_state` metric. When a node transitions from follower to leader, an election occurred.
+Leader elections are normal during maintenance (rolling restarts) but unexpected elections indicate instability. The Zookeeper receiver does not directly emit an "election happened" event, but you can detect elections by tracking changes in the `server.state` resource attribute. When a node transitions from follower to leader, an election occurred.
 
 During planned maintenance, perform rolling restarts starting with followers and restarting the leader last. This minimizes the number of elections and ensures the ensemble maintains quorum throughout the process.
 
