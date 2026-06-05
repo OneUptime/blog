@@ -94,7 +94,7 @@ function jwtAuthMiddleware(req, res, next) {
 
       // Now verify the token properly
       const verified = jwt.verify(token, JWT_SECRET, {
-        algorithms: ['HS256', 'RS256'],
+        algorithms: ['HS256'],
         clockTolerance: 30, // 30 seconds tolerance for clock skew
       });
 
@@ -135,7 +135,6 @@ function handleJwtError(err, span, req, res) {
     });
 
     expiredTokenCounter.add(1);
-    activeSessionsGauge.add(-1);
 
   } else if (err.name === 'JsonWebTokenError') {
     result = 'invalid';
@@ -167,7 +166,7 @@ function handleJwtError(err, span, req, res) {
 
 ## Tracking Session Lifecycle
 
-Beyond individual token validation, you might want to track session events. Here is how to instrument login and logout:
+Beyond individual token validation, you might want to track session events. Here is how to instrument login:
 
 ```javascript
 async function loginHandler(req, res) {
