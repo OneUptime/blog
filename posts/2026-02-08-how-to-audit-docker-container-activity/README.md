@@ -14,7 +14,7 @@ This guide covers practical approaches to auditing Docker container activity, fr
 
 ## Docker Events: The Built-In Audit Stream
 
-Docker ships with an event system that tracks container lifecycle actions. Every time a container starts, stops, gets killed, or changes state, Docker records it.
+Docker ships with an event system that tracks container lifecycle actions. Every time a container starts, stops, gets killed, or changes state, Docker emits an event for it.
 
 ```bash
 # Watch Docker events in real time
@@ -30,6 +30,8 @@ docker events --filter type=container
 # Get events from the last hour in JSON format for automated processing
 docker events --since "1h" --format '{{json .}}'
 ```
+
+Docker only returns the last 256 events for historical queries, so stream them continuously if you need a durable audit trail.
 
 The JSON output includes the actor, action, timestamp, and attributes:
 
@@ -67,7 +69,7 @@ The Docker daemon logs record API calls and internal operations. Configure the d
 
 ```json
 {
-  "log-level": "info",
+  "log-level": "debug",
   "log-driver": "json-file",
   "log-opts": {
     "max-size": "50m",
@@ -351,12 +353,15 @@ Forward Docker audit data to your centralized logging platform:
 # Filebeat configuration for shipping Docker audit logs to Elasticsearch
 
 filebeat.inputs:
-  - type: log
+  - type: filestream
+    id: docker-audit
     enabled: true
     paths:
       - /var/log/docker-audit-detailed.jsonl
-    json.keys_under_root: true
-    json.add_error_key: true
+    parsers:
+      - ndjson:
+          target: ""
+          add_error_key: true
     fields:
       log_type: docker_audit
 
