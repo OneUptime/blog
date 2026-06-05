@@ -42,6 +42,9 @@ composer require slim/slim:"4.*"
 composer require slim/psr7
 composer require open-telemetry/sdk
 composer require open-telemetry/exporter-otlp
+composer require open-telemetry/sem-conv
+composer require guzzlehttp/guzzle
+composer require vlucas/phpdotenv
 ```
 
 Create a bootstrap file that initializes OpenTelemetry. Create `src/Bootstrap/OpenTelemetry.php`:
@@ -52,14 +55,16 @@ declare(strict_types=1);
 
 namespace App\Bootstrap;
 
-use OpenTelemetry\API\Globals;
-use OpenTelemetry\SDK\Trace\TracerProvider;
 use OpenTelemetry\SDK\Trace\SpanProcessor\BatchSpanProcessor;
 use OpenTelemetry\Contrib\Otlp\SpanExporter;
+use OpenTelemetry\Contrib\Otlp\OtlpHttpTransportFactory;
 use OpenTelemetry\SDK\Resource\ResourceInfo;
 use OpenTelemetry\SDK\Resource\ResourceInfoFactory;
 use OpenTelemetry\SDK\Common\Attribute\Attributes;
-use OpenTelemetry\SemConv\ResourceAttributes;
+use OpenTelemetry\SDK\Sdk;
+use OpenTelemetry\API\Trace\Propagation\TraceContextPropagator;
+use OpenTelemetry\SemConv\Attributes\ServiceAttributes;
+use OpenTelemetry\SemConv\Incubating\Attributes\DeploymentIncubatingAttributes;
 
 class OpenTelemetry
 {
@@ -70,27 +75,31 @@ class OpenTelemetry
 
         $resource = ResourceInfoFactory::defaultResource()->merge(
             ResourceInfo::create(Attributes::create([
-                ResourceAttributes::SERVICE_NAME => $serviceName,
-                ResourceAttributes::SERVICE_VERSION => '1.0.0',
-                ResourceAttributes::DEPLOYMENT_ENVIRONMENT => $environment,
+                ServiceAttributes::SERVICE_NAME => $serviceName,
+                ServiceAttributes::SERVICE_VERSION => '1.0.0',
+                DeploymentIncubatingAttributes::DEPLOYMENT_ENVIRONMENT_NAME => $environment,
                 'framework.name' => 'slim',
                 'framework.version' => '4.12.0',
             ]))
         );
 
         $exporter = new SpanExporter(
-            \OpenTelemetry\Contrib\Otlp\HttpTransportFactory::create(
+            (new OtlpHttpTransportFactory())->create(
                 getenv('OTEL_EXPORTER_OTLP_ENDPOINT') ?: 'http://localhost:4318/v1/traces',
                 'application/json'
             )
         );
 
-        $tracerProvider = TracerProvider::builder()
-            ->addSpanProcessor(new BatchSpanProcessor($exporter))
+        $tracerProvider = \OpenTelemetry\SDK\Trace\TracerProvider::builder()
+            ->addSpanProcessor(BatchSpanProcessor::builder($exporter)->build())
             ->setResource($resource)
             ->build();
 
-        Globals::registerInitializer(fn() => $tracerProvider);
+        Sdk::builder()
+            ->setTracerProvider($tracerProvider)
+            ->setPropagator(TraceContextPropagator::getInstance())
+            ->setAutoShutdown(true)
+            ->buildAndRegisterGlobal();
     }
 }
 ```
@@ -112,7 +121,8 @@ use Psr\Http\Server\RequestHandlerInterface;
 use OpenTelemetry\API\Globals;
 use OpenTelemetry\API\Trace\SpanKind;
 use OpenTelemetry\API\Trace\StatusCode;
-use OpenTelemetry\Context\Context;
+use OpenTelemetry\Context\ContextInterface;
+use OpenTelemetry\API\Trace\Propagation\TraceContextPropagator;
 
 class TracingMiddleware implements MiddlewareInterface
 {
@@ -130,13 +140,13 @@ class TracingMiddleware implements MiddlewareInterface
             ->spanBuilder($request->getMethod() . ' ' . $request->getUri()->getPath())
             ->setParent($parentContext)
             ->setSpanKind(SpanKind::KIND_SERVER)
-            ->setAttribute('http.method', $request->getMethod())
-            ->setAttribute('http.url', (string) $request->getUri())
-            ->setAttribute('http.scheme', $request->getUri()->getScheme())
-            ->setAttribute('http.host', $request->getUri()->getHost())
-            ->setAttribute('http.target', $request->getUri()->getPath())
-            ->setAttribute('http.user_agent', $request->getHeaderLine('User-Agent'))
-            ->setAttribute('net.peer.ip', $this->getClientIp($request))
+            ->setAttribute('http.request.method', $request->getMethod())
+            ->setAttribute('url.full', (string) $request->getUri())
+            ->setAttribute('url.scheme', $request->getUri()->getScheme())
+            ->setAttribute('server.address', $request->getUri()->getHost())
+            ->setAttribute('url.path', $request->getUri()->getPath())
+            ->setAttribute('user_agent.original', $request->getHeaderLine('User-Agent'))
+            ->setAttribute('client.address', $this->getClientIp($request))
             ->startSpan();
 
         // Activate span context for this request
@@ -150,8 +160,8 @@ class TracingMiddleware implements MiddlewareInterface
 
             // Add response attributes to span
             $span
-                ->setAttribute('http.status_code', $response->getStatusCode())
-                ->setAttribute('http.response_content_length', $response->getHeaderLine('Content-Length'));
+                ->setAttribute('http.response.status_code', $response->getStatusCode())
+                ->setAttribute('http.response.body.size', (int) $response->getHeaderLine('Content-Length'));
 
             // Set span status based on HTTP status code
             if ($response->getStatusCode() >= 500) {
@@ -172,20 +182,9 @@ class TracingMiddleware implements MiddlewareInterface
         }
     }
 
-    private function extractParentContext(ServerRequestInterface $request): Context
+    private function extractParentContext(ServerRequestInterface $request): ContextInterface
     {
-        // Extract trace context from W3C Trace Context headers
-        $traceparent = $request->getHeaderLine('traceparent');
-
-        if (empty($traceparent)) {
-            return Context::getCurrent();
-        }
-
-        // Parse traceparent header and create context
-        // Format: version-trace_id-parent_id-trace_flags
-        // Example: 00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01
-
-        return Context::getCurrent();
+        return TraceContextPropagator::getInstance()->extract($request->getHeaders());
     }
 
     private function getClientIp(ServerRequestInterface $request): string
@@ -246,13 +245,14 @@ abstract class BaseController
     protected function traceOperation(
         string $name,
         callable $operation,
-        array $attributes = []
+        array $attributes = [],
+        int $spanKind = SpanKind::KIND_INTERNAL
     ) {
         $tracer = $this->getTracer();
 
         $span = $tracer
             ->spanBuilder($name)
-            ->setSpanKind(SpanKind::KIND_INTERNAL);
+            ->setSpanKind($spanKind);
 
         foreach ($attributes as $key => $value) {
             $span->setAttribute($key, $value);
@@ -312,10 +312,11 @@ class UserController extends BaseController
             'db.query.user',
             fn() => $this->fetchUserFromDatabase($userId),
             [
-                'db.system' => 'mysql',
-                'db.operation' => 'SELECT',
+                'db.system.name' => 'mysql',
+                'db.operation.name' => 'SELECT',
                 'user.id' => $userId,
-            ]
+            ],
+            SpanKind::KIND_CLIENT
         );
 
         if (!$user) {
@@ -328,9 +329,10 @@ class UserController extends BaseController
             'external.api.enrich_user',
             fn() => $this->enrichUserData($user),
             [
-                'http.method' => 'GET',
-                'http.url' => 'https://api.example.com/users/' . $userId,
-            ]
+                'http.request.method' => 'GET',
+                'url.full' => 'https://api.example.com/users/' . $userId,
+            ],
+            SpanKind::KIND_CLIENT
         );
 
         $response->getBody()->write(json_encode($enrichedUser));
@@ -350,11 +352,12 @@ class UserController extends BaseController
             'db.query.users.list',
             fn() => $this->fetchUsersFromDatabase($limit, $offset),
             [
-                'db.system' => 'mysql',
-                'db.operation' => 'SELECT',
+                'db.system.name' => 'mysql',
+                'db.operation.name' => 'SELECT',
                 'query.limit' => $limit,
                 'query.offset' => $offset,
-            ]
+            ],
+            SpanKind::KIND_CLIENT
         );
 
         $response->getBody()->write(json_encode([
@@ -429,11 +432,14 @@ OpenTelemetry::initialize();
 // Create Slim app
 $app = AppFactory::create();
 
-// Add error middleware
-$app->addErrorMiddleware(true, true, true);
+// Add routing middleware before error middleware
+$app->addRoutingMiddleware();
 
 // Add OpenTelemetry tracing middleware
 $app->add(new TracingMiddleware());
+
+// Add error middleware last
+$app->addErrorMiddleware(true, true, true);
 
 // Set up database connection (simplified for example)
 $db = new PDO('mysql:host=localhost;dbname=testdb', 'user', 'password');
@@ -516,8 +522,6 @@ Create a `.env` file for configuration:
 ```bash
 OTEL_SERVICE_NAME=slim-api
 OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318/v1/traces
-OTEL_TRACES_SAMPLER=parentbased_traceidratio
-OTEL_TRACES_SAMPLER_ARG=1.0
 APP_ENV=development
 ```
 
@@ -557,10 +561,10 @@ Configure in your bootstrap:
 // Adjust batch processor settings
 $batchProcessor = new BatchSpanProcessor(
     $exporter,
-    null, // Clock
+    \OpenTelemetry\API\Common\Time\Clock::getDefault(),
     2048, // Max queue size
     5000, // Scheduled delay (ms)
-    512,  // Export timeout (ms)
+    30000, // Export timeout (ms)
     512   // Max export batch size
 );
 ```
