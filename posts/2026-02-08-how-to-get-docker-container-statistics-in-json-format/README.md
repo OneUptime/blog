@@ -8,7 +8,7 @@ Description: Learn how to extract Docker container statistics in JSON format for
 
 ---
 
-Docker's `stats` command gives you a live stream of container resource usage. By default, it renders a human-friendly table. But when you need to feed that data into a monitoring system, parse it with `jq`, or build a custom dashboard, you want JSON. This post covers every way to get Docker container statistics in structured JSON format.
+Docker's `stats` command gives you a live stream of container resource usage. By default, it renders a human-friendly table. But when you need to feed that data into a monitoring system, parse it with `jq`, or build a custom dashboard, you want JSON. This post covers practical ways to get Docker container statistics in structured JSON format.
 
 ## The Default docker stats Output
 
@@ -32,7 +32,14 @@ This is great for a quick glance, but terrible for automation.
 
 ## Getting JSON with --format
 
-The `docker stats` command supports Go template formatting, which lets you build JSON output directly:
+The `docker stats` command supports JSON output directly:
+
+```bash
+# Get a single snapshot of stats in JSON format for all containers
+docker stats --no-stream --format json
+```
+
+You can also use Go template formatting when you want custom field names:
 
 ```bash
 # Get a single snapshot of stats in JSON format for all containers
@@ -57,19 +64,19 @@ docker stats --no-stream --format '{"container":"{{.Name}}","cpu":"{{.CPUPerc}}"
 
 ## Available Template Fields
 
-Here are all the fields you can use in the `--format` template:
+Here are the fields you can use in the `--format` template:
 
 | Field | Description |
 |-------|-------------|
-| `.Container` | Container ID |
+| `.Container` | Container name or ID, based on the input |
 | `.Name` | Container name |
-| `.ID` | Container ID (short) |
+| `.ID` | Container ID |
 | `.CPUPerc` | CPU percentage |
 | `.MemUsage` | Memory usage / limit |
-| `.MemPerc` | Memory percentage |
+| `.MemPerc` | Memory percentage (not available on Windows) |
 | `.NetIO` | Network I/O |
 | `.BlockIO` | Block I/O |
-| `.PIDs` | Number of PIDs |
+| `.PIDs` | Number of PIDs (not available on Windows) |
 
 ## Using the Docker API for Raw JSON
 
@@ -220,7 +227,7 @@ For time-series analysis, you might want to stream stats to a file in JSON Lines
 
 ```bash
 # Stream stats to a JSONL file, one reading per second
-docker stats --format '{"timestamp":"{{.Name}}","cpu":"{{.CPUPerc}}","mem":"{{.MemPerc}}"}' \
+docker stats --format '{"container":"{{.Name}}","cpu":"{{.CPUPerc}}","mem":"{{.MemPerc}}"}' \
   | while read line; do
     echo "{\"time\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",$(echo $line | sed 's/^{//')}" >> /var/log/container-stats.jsonl
   done
