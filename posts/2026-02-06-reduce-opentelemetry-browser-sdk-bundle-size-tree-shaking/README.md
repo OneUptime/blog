@@ -55,7 +55,7 @@ provider.register({
 });
 ```
 
-The trade-off is that `StackContextManager` does not automatically propagate context across native async boundaries like `setTimeout`, `Promise.then`, or event listeners the way zone.js does. If you always use `context.with()` explicitly when you need context propagation, this works perfectly fine and saves you nearly 90KB.
+The trade-off is that `StackContextManager` does not automatically propagate context across native async boundaries like `setTimeout`, `Promise.then`, or event listeners the way zone.js does. If you explicitly wrap the async callbacks where you need propagation with `context.with()` or `context.bind()`, this can work well and saves you nearly 90KB. If your code relies on automatic async context propagation, keep `ZoneContextManager` and make sure your build target is compatible with it.
 
 ## Configuring Tree Shaking in Webpack
 
@@ -77,25 +77,23 @@ module.exports = {
     // Enable module concatenation for better tree shaking
     concatenateModules: true,
 
-    // Tell webpack which packages are side-effect-free
+    // Respect package.json sideEffects metadata
     sideEffects: true,
   },
 
   resolve: {
-    // Prefer the ESM build of packages when available
-    mainFields: ['module', 'main'],
-
-    // Resolve conditional exports that prefer ESM
-    conditionNames: ['import', 'module', 'default'],
+    // For browser bundles, prefer browser-specific ESM builds
+    // when packages publish them.
+    mainFields: ['browser', 'module', 'main'],
   },
 };
 ```
 
-The `mainFields` configuration is important. Many OpenTelemetry packages ship both CommonJS (`main` field) and ESM (`module` field) builds. Tree shaking works much better with ESM, so you want webpack to prefer the `module` entry point.
+The `mainFields` configuration is important. Many OpenTelemetry packages ship both CommonJS (`main` field) and ESM (`module` field) builds. Tree shaking works much better with ESM, and browser bundles should still prefer the `browser` field when a package provides one, so you want webpack to resolve `browser`, then `module`, then `main`.
 
 ## Configuring Tree Shaking in Vite
 
-Vite uses Rollup for production builds, which has excellent tree shaking support out of the box. However, there are still optimizations you can make.
+Vite 8 uses Rolldown for production builds, and earlier Vite versions used Rollup. Both have excellent tree shaking support out of the box. However, there are still optimizations you can make.
 
 ```javascript
 // vite.config.js
@@ -103,30 +101,34 @@ import { defineConfig } from 'vite';
 
 export default defineConfig({
   build: {
-    // Rollup handles tree shaking automatically in production
-    rollupOptions: {
+    // Rolldown handles tree shaking automatically in production
+    rolldownOptions: {
       output: {
         // Split OpenTelemetry into its own chunk
         // This allows caching it separately from your app code
-        manualChunks: {
-          'otel-core': [
-            '@opentelemetry/api',
-            '@opentelemetry/sdk-trace-web',
-            '@opentelemetry/sdk-trace-base',
-            '@opentelemetry/resources',
-          ],
-          'otel-export': [
-            '@opentelemetry/exporter-trace-otlp-http',
-          ],
-          'otel-instrument': [
-            '@opentelemetry/instrumentation-fetch',
-            '@opentelemetry/instrumentation-document-load',
+        codeSplitting: {
+          groups: [
+            {
+              name: 'otel-core',
+              test: /node_modules[\\/]@opentelemetry[\\/](api|sdk-trace-web|sdk-trace-base|resources)/,
+              priority: 30,
+            },
+            {
+              name: 'otel-export',
+              test: /node_modules[\\/]@opentelemetry[\\/]exporter-trace-otlp-http/,
+              priority: 20,
+            },
+            {
+              name: 'otel-instrument',
+              test: /node_modules[\\/]@opentelemetry[\\/]instrumentation-(fetch|document-load)/,
+              priority: 10,
+            },
           ],
         },
       },
     },
 
-    // Set a size warning threshold to catch regressions
+    // Set an uncompressed chunk-size warning threshold to catch regressions
     chunkSizeWarningLimit: 100,
 
     // Enable source maps for debugging but keep them separate
@@ -170,25 +172,24 @@ Not every instrumentation needs to be loaded at startup. User interaction tracin
 import { WebTracerProvider } from '@opentelemetry/sdk-trace-web';
 import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
-import { Resource } from '@opentelemetry/resources';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 import { registerInstrumentations } from '@opentelemetry/instrumentation';
 import { FetchInstrumentation } from '@opentelemetry/instrumentation-fetch';
 import { DocumentLoadInstrumentation } from '@opentelemetry/instrumentation-document-load';
 
 // Set up the provider with only the critical instrumentations
 const provider = new WebTracerProvider({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     'service.name': 'my-app',
   }),
+  spanProcessors: [
+    new BatchSpanProcessor(
+      new OTLPTraceExporter({
+        url: '/v1/traces',
+      })
+    ),
+  ],
 });
-
-provider.addSpanProcessor(
-  new BatchSpanProcessor(
-    new OTLPTraceExporter({
-      url: '/v1/traces',
-    })
-  )
-);
 
 provider.register();
 
@@ -241,7 +242,7 @@ This pattern moves non-critical instrumentation code into separate chunks that l
 
 ## Analyzing Your Bundle
 
-Before and after optimizing, measure your actual bundle size. Webpack Bundle Analyzer and Vite's built-in rollup-plugin-visualizer are the best tools for this.
+Before and after optimizing, measure your actual bundle size. Webpack Bundle Analyzer and the Rollup Visualizer plugin commonly used with Vite are good tools for this.
 
 ```bash
 # For webpack: install and run the bundle analyzer
@@ -287,7 +288,7 @@ The OTLP HTTP exporter is the standard choice, but if bundle size is critical, y
 ```javascript
 // Lightweight alternative: send spans via fetch to a simple endpoint
 // instead of using the full OTLP exporter
-import { SimpleSpanProcessor, ReadableSpan } from '@opentelemetry/sdk-trace-base';
+import { ExportResultCode } from '@opentelemetry/core';
 
 class LightweightExporter {
   constructor(endpoint) {
@@ -318,8 +319,14 @@ class LightweightExporter {
     const success = navigator.sendBeacon(this.endpoint, blob);
 
     resultCallback({
-      code: success ? 0 : 1, // 0 = SUCCESS, 1 = FAILURE
+      code: success
+        ? ExportResultCode.SUCCESS
+        : ExportResultCode.FAILED,
     });
+  }
+
+  forceFlush() {
+    return Promise.resolve();
   }
 
   shutdown() {
@@ -328,7 +335,7 @@ class LightweightExporter {
 }
 ```
 
-This custom exporter is much smaller than the full OTLP exporter because it does not include Protocol Buffers serialization, retry logic, or compression support. The trade-off is that your collector or backend needs to accept this simplified JSON format. For many use cases, particularly when sending to a lightweight proxy endpoint, this works well.
+This custom exporter is much smaller than the full OTLP HTTP exporter because it does not include the standard OTLP JSON request shape, retry logic, timeout handling, or configurable headers. The trade-off is that your collector or backend needs to accept this simplified JSON format. For many use cases, particularly when sending to a lightweight proxy endpoint, this works well.
 
 ## Practical Bundle Size Targets
 
@@ -340,7 +347,7 @@ Based on real-world projects, here are reasonable bundle size targets for OpenTe
 | Standard (traces + fetch + doc load + user interaction) | ~120KB | ~35KB |
 | Full (all instrumentations + zone.js) | ~300KB | ~85KB |
 
-The minimal configuration is suitable for most applications. It captures the page load trace, all API calls, and lets you add custom spans. The gzipped size of 25KB is comparable to a small image and adds minimal load time.
+The minimal configuration is suitable for many applications. It captures API calls and lets you add custom spans; add document-load instrumentation if you also need automatic page load traces. The gzipped size of 25KB is comparable to a small image and adds minimal load time.
 
 ## Monitoring Bundle Size in CI
 
@@ -348,7 +355,8 @@ Prevent bundle size regressions by adding a size check to your continuous integr
 
 ```javascript
 // scripts/check-bundle-size.js
-import { readFileSync, readdirSync, statSync } from 'fs';
+import { gzipSync } from 'zlib';
+import { readFileSync, readdirSync } from 'fs';
 import { join } from 'path';
 
 // Maximum allowed size for the OpenTelemetry chunk (gzipped)
@@ -361,9 +369,9 @@ const files = readdirSync(distDir);
 const otelChunk = files.find((f) => f.startsWith('otel-core'));
 
 if (otelChunk) {
-  const size = statSync(join(distDir, otelChunk)).size;
+  const size = gzipSync(readFileSync(join(distDir, otelChunk))).length;
   console.log(
-    `OpenTelemetry chunk size: ${(size / 1024).toFixed(1)}KB`
+    `OpenTelemetry chunk size (gzipped): ${(size / 1024).toFixed(1)}KB`
   );
 
   if (size > MAX_OTEL_CHUNK_SIZE) {
