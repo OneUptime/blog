@@ -45,6 +45,8 @@ func handleCheckout(w http.ResponseWriter, r *http.Request) {
     // This span inherits the trace ID from the parent
     traceID := span.SpanContext().TraceID().String()
     spanID := span.SpanContext().SpanID().String()
+    _ = traceID
+    _ = spanID
 
     // Use context for downstream calls
     processPayment(ctx, order)
@@ -60,11 +62,12 @@ Logs correlate with traces by including trace and span IDs in log records. When 
 ```python
 import logging
 from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
 from opentelemetry.instrumentation.logging import LoggingInstrumentor
 
 # Initialize logging instrumentation
 
-LoggingInstrumentor().instrument()
+LoggingInstrumentor().instrument(set_logging_format=True)
 
 logger = logging.getLogger(__name__)
 tracer = trace.get_tracer(__name__)
@@ -75,7 +78,7 @@ def process_payment(order_id, amount):
         span.set_attribute("order.id", order_id)
         span.set_attribute("payment.amount", amount)
 
-        # This log automatically includes trace_id and span_id
+        # This log automatically includes the current trace and span context
         logger.info(f"Processing payment for order {order_id}")
 
         try:
@@ -86,11 +89,11 @@ def process_payment(order_id, amount):
         except PaymentError as e:
             # Error log includes the same trace context
             logger.error(f"Payment failed: {e}", exc_info=True)
-            span.set_status(StatusCode.ERROR, str(e))
+            span.set_status(Status(StatusCode.ERROR, str(e)))
             raise
 ```
 
-The instrumented logger adds fields like `trace_id`, `span_id`, and `trace_flags` to every log entry. Backend systems can then query logs by trace ID to see all log messages from a specific request.
+The instrumented logger injects fields like `otelTraceID`, `otelSpanID`, and `otelTraceSampled` into Python log records, and OpenTelemetry log records carry `TraceId`, `SpanId`, and `TraceFlags` fields. Backend systems can then query logs by trace ID to see all log messages from a specific request.
 
 ### Connecting Metrics to Traces
 
@@ -101,42 +104,44 @@ Metrics correlation works differently because metrics are aggregated rather than
 ```javascript
 // Recording metrics with exemplar support
 const meter = opentelemetry.metrics.getMeterProvider().getMeter('api-service');
-const requestDuration = meter.createHistogram('http.server.duration', {
+const requestDuration = meter.createHistogram('http.server.request.duration', {
   description: 'HTTP request duration',
-  unit: 'ms'
+  unit: 's'
 });
 
 function handleRequest(req, res) {
   const startTime = Date.now();
-  const span = opentelemetry.trace.getTracer('api-service').startSpan('handle_request');
+  const tracer = opentelemetry.trace.getTracer('api-service');
 
-  try {
-    // Process request
-    const result = processRequest(req);
+  return tracer.startActiveSpan('handle_request', (span) => {
+    try {
+      // Process request
+      const result = processRequest(req);
 
-    // Record metric with context (enables exemplar)
-    const duration = Date.now() - startTime;
-    requestDuration.record(duration, {
-      'http.method': req.method,
-      'http.route': req.route,
-      'http.status_code': 200
-    }, opentelemetry.context.active());
+      // Record metric with context (enables exemplar)
+      const duration = (Date.now() - startTime) / 1000;
+      requestDuration.record(duration, {
+        'http.request.method': req.method,
+        'http.route': req.route,
+        'http.response.status_code': 200
+      }, opentelemetry.context.active());
 
-    span.end();
-    res.json(result);
-  } catch (error) {
-    const duration = Date.now() - startTime;
-    requestDuration.record(duration, {
-      'http.method': req.method,
-      'http.route': req.route,
-      'http.status_code': 500
-    }, opentelemetry.context.active());
+      span.end();
+      res.json(result);
+    } catch (error) {
+      const duration = (Date.now() - startTime) / 1000;
+      requestDuration.record(duration, {
+        'http.request.method': req.method,
+        'http.route': req.route,
+        'http.response.status_code': 500
+      }, opentelemetry.context.active());
 
-    span.recordException(error);
-    span.setStatus({ code: opentelemetry.SpanStatusCode.ERROR });
-    span.end();
-    throw error;
-  }
+      span.recordException(error);
+      span.setStatus({ code: opentelemetry.SpanStatusCode.ERROR });
+      span.end();
+      throw error;
+    }
+  });
 }
 ```
 
@@ -267,8 +272,8 @@ logger = Logger.new(STDOUT)
 logger.formatter = proc do |severity, datetime, progname, msg|
   span_context = OpenTelemetry::Trace.current_span.context
   if span_context.valid?
-    trace_id = span_context.trace_id.unpack1('H*')
-    span_id = span_context.span_id.unpack1('H*')
+    trace_id = span_context.hex_trace_id
+    span_id = span_context.hex_span_id
     "[#{datetime}] #{severity} trace_id=#{trace_id} span_id=#{span_id} - #{msg}\n"
   else
     "[#{datetime}] #{severity} - #{msg}\n"
@@ -293,24 +298,18 @@ processors:
     timeout: 10s
     send_batch_size: 1024
 
-  # Resource detection adds cloud/k8s attributes
+  # Resource detection adds cloud and host attributes
   resourcedetection:
     detectors: [env, system, docker, gcp, eks, ecs]
 
-  # Ensure trace context in logs
-  attributes:
-    actions:
-      - key: trace_id
-        action: insert
-        from_context: trace_id
-      - key: span_id
-        action: insert
-        from_context: span_id
+  # Kubernetes attributes add pod and namespace resource attributes
+  k8sattributes:
+    auth_type: serviceAccount
 
 exporters:
   # Configure your backend exporter
   otlphttp:
-    endpoint: https://your-backend.com/v1/traces
+    endpoint: https://your-backend.com
     headers:
       api-key: ${API_KEY}
 
@@ -318,15 +317,15 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [resourcedetection, batch]
+      processors: [resourcedetection, k8sattributes, batch]
       exporters: [otlphttp]
     logs:
       receivers: [otlp]
-      processors: [resourcedetection, attributes, batch]
+      processors: [resourcedetection, k8sattributes, batch]
       exporters: [otlphttp]
     metrics:
       receivers: [otlp]
-      processors: [resourcedetection, batch]
+      processors: [resourcedetection, k8sattributes, batch]
       exporters: [otlphttp]
 ```
 
