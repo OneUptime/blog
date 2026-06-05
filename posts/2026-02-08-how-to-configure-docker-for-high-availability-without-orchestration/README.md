@@ -123,9 +123,9 @@ The `live-restore: true` setting keeps containers running during Docker daemon r
 Apply on each host:
 
 ```bash
-# Write the daemon config and restart Docker
+# Write the daemon config and reload Docker
 sudo cp daemon.json /etc/docker/daemon.json
-sudo systemctl restart docker
+sudo systemctl reload docker
 ```
 
 ## Container Restart Policies
@@ -170,6 +170,7 @@ sudo apt-get update
 sudo apt-get install -y glusterfs-server
 sudo systemctl start glusterd
 sudo systemctl enable glusterd
+sudo mkdir -p /data/gluster/brick1
 ```
 
 Create the cluster from the first host:
@@ -228,8 +229,6 @@ Create a compose file for the application stack:
 
 ```yaml
 # docker-compose.yml - Application stack for each Docker host
-version: "3.9"
-
 services:
   app:
     image: myapp:latest
@@ -238,7 +237,7 @@ services:
       - "8080:8080"
     environment:
       - DATABASE_URL=postgresql://db.internal:5432/myapp
-      - REDIS_URL=redis://localhost:6379
+      - REDIS_URL=redis://redis:6379
     volumes:
       - /mnt/app-data/uploads:/app/uploads
     healthcheck:
@@ -289,7 +288,7 @@ Use a simple script to deploy updates to all hosts:
 
 NEW_IMAGE=$1
 HOSTS=("192.168.1.10" "192.168.1.11" "192.168.1.12")
-SSH_KEY="~/.ssh/deploy_key"
+SSH_KEY="$HOME/.ssh/deploy_key"
 
 if [ -z "$NEW_IMAGE" ]; then
     echo "Usage: $0 <image:tag>"
@@ -357,24 +356,20 @@ done
 For databases, avoid running the primary database in Docker across multiple hosts. Instead, use a managed database service or run database replication:
 
 ```yaml
-# docker-compose.db.yml - PostgreSQL with streaming replication
-version: "3.9"
-
+# docker-compose.db.yml - PostgreSQL primary container
 services:
   postgres-primary:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
       POSTGRES_PASSWORD: secretpass
-      POSTGRES_REPLICATION_USER: replicator
-      POSTGRES_REPLICATION_PASSWORD: replpass
     volumes:
       - /mnt/app-data/postgres:/var/lib/postgresql/data
     ports:
       - "5432:5432"
 ```
 
-Run the primary on one host and read replicas on the others. Your application should use connection pooling and handle failover at the application level or through a tool like PgBouncer.
+Run the primary on one host and read replicas on the others. Streaming replication still requires PostgreSQL-level setup such as a replication role, `pg_hba.conf` access, WAL settings, and standby configuration. Your application should use connection pooling and handle failover at the application level or through a proxy/failover tool like HAProxy, Pgpool-II, or a managed service.
 
 ## Summary
 
