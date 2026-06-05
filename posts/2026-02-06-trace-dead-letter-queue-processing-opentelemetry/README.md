@@ -36,8 +36,11 @@ Start with a standard OpenTelemetry setup that supports both the primary consume
 
 ```python
 from opentelemetry import trace, metrics
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import Resource
 
@@ -51,6 +54,13 @@ provider.add_span_processor(
     BatchSpanProcessor(OTLPSpanExporter(endpoint="http://localhost:4317"))
 )
 trace.set_tracer_provider(provider)
+
+metric_reader = PeriodicExportingMetricReader(
+    OTLPMetricExporter(endpoint="http://localhost:4317")
+)
+metrics.set_meter_provider(
+    MeterProvider(resource=resource, metric_readers=[metric_reader])
+)
 
 tracer = trace.get_tracer("dlq.processing")
 meter = metrics.get_meter("dlq.metrics")
@@ -79,9 +89,9 @@ The primary consumer is where messages first fail. Your instrumentation needs to
 
 ```python
 import json
+import time
 import pika
 from opentelemetry.propagate import extract, inject
-from opentelemetry.context.propagation import get_global_textmap_propagator
 
 def on_message(channel, method, properties, body):
     # Extract trace context from the incoming message headers
@@ -100,10 +110,11 @@ def on_message(channel, method, properties, body):
         kind=trace.SpanKind.CONSUMER,
         attributes={
             "messaging.system": "rabbitmq",
-            "messaging.source.name": method.routing_key,
-            "messaging.operation": "process",
+            "messaging.destination.name": method.routing_key,
+            "messaging.operation.name": "process",
+            "messaging.operation.type": "process",
             "messaging.message.id": properties.message_id or "",
-            "messaging.rabbitmq.delivery_tag": method.delivery_tag,
+            "messaging.rabbitmq.message.delivery_tag": method.delivery_tag,
         }
     ) as process_span:
         try:
@@ -135,31 +146,35 @@ The routing function creates a child span that documents the DLQ transition and 
 
 ```python
 def route_to_dlq(channel, method, properties, body, error):
+    headers = dict(properties.headers or {})
+    original_queue = headers.get("x-dlq-original-queue", method.routing_key)
+    retry_count = _get_retry_count(properties)
+    dlq_queue = f"{original_queue}.dlq"
+
     # Create a span for the DLQ routing operation
     with tracer.start_as_current_span(
         "dlq route",
         kind=trace.SpanKind.PRODUCER,
         attributes={
             "messaging.system": "rabbitmq",
-            "messaging.destination.name": f"{method.routing_key}.dlq",
-            "messaging.operation": "publish",
+            "messaging.destination.name": dlq_queue,
+            "messaging.operation.name": "publish",
+            "messaging.operation.type": "send",
             "messaging.dlq.reason": str(error),
-            "messaging.dlq.original_queue": method.routing_key,
-            "messaging.dlq.retry_count": _get_retry_count(properties),
+            "messaging.dlq.original_queue": original_queue,
+            "messaging.dlq.retry_count": retry_count,
         }
     ) as dlq_span:
         # Inject current trace context into headers for the DLQ message
-        headers = dict(properties.headers or {})
         inject(headers)
 
         # Add DLQ-specific metadata to the message headers
         headers["x-dlq-reason"] = str(error)[:500]
-        headers["x-dlq-original-queue"] = method.routing_key
+        headers["x-dlq-original-queue"] = original_queue
         headers["x-dlq-timestamp"] = str(int(time.time()))
-        headers["x-dlq-retry-count"] = str(_get_retry_count(properties) + 1)
+        headers["x-dlq-retry-count"] = str(retry_count + 1)
 
         # Publish to the dead letter queue
-        dlq_queue = f"{method.routing_key}.dlq"
         channel.basic_publish(
             exchange="",
             routing_key=dlq_queue,
@@ -175,7 +190,7 @@ def route_to_dlq(channel, method, properties, body, error):
         dlq_routed_counter.add(1, {
             "messaging.dlq.queue": dlq_queue,
             "messaging.dlq.error_type": type(error).__name__,
-            "messaging.dlq.original_queue": method.routing_key,
+            "messaging.dlq.original_queue": original_queue,
         })
 
 def _get_retry_count(properties):
@@ -192,8 +207,6 @@ This function does several important things. It injects the current trace contex
 The DLQ processor is a separate consumer that reads from the dead letter queue and attempts to reprocess messages. It needs to extract the original trace context and decide whether to retry or permanently fail the message.
 
 ```python
-import time
-
 MAX_RETRIES = 3
 
 def on_dlq_message(channel, method, properties, body):
@@ -222,8 +235,9 @@ def on_dlq_message(channel, method, properties, body):
         kind=trace.SpanKind.CONSUMER,
         attributes={
             "messaging.system": "rabbitmq",
-            "messaging.source.name": method.routing_key,
-            "messaging.operation": "process",
+            "messaging.destination.name": method.routing_key,
+            "messaging.operation.name": "process",
+            "messaging.operation.type": "process",
             "messaging.dlq.original_queue": original_queue,
             "messaging.dlq.retry_count": retry_count,
             "messaging.dlq.dwell_time_seconds": dwell_time_seconds,
@@ -300,7 +314,8 @@ def observe_dlq_depths(options):
     # Query RabbitMQ management API for queue depths
     response = requests.get(
         "http://localhost:15672/api/queues",
-        auth=("guest", "guest")
+        auth=("guest", "guest"),
+        timeout=options.timeout_millis / 1000,
     )
     queues = response.json()
 
@@ -336,15 +351,6 @@ processors:
   batch:
     timeout: 5s
     send_batch_size: 256
-
-  # Filter to separate DLQ-related spans for specialized processing
-  filter/dlq:
-    spans:
-      include:
-        match_type: regexp
-        attributes:
-          - key: messaging.dlq.original_queue
-            value: ".*"
 
 exporters:
   otlp:
