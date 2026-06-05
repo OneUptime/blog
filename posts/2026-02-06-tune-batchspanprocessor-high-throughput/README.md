@@ -6,7 +6,7 @@ Tags: OpenTelemetry, BatchSpanProcessor, Performance Tuning, SDK
 
 Description: Learn how to tune BatchSpanProcessor parameters like maxQueueSize, scheduledDelayMillis, and maxExportBatchSize for high-throughput services.
 
-The BatchSpanProcessor is the default way to export spans from the OpenTelemetry SDK. It buffers completed spans in a queue and periodically flushes them in batches to the configured exporter. The default settings work well for moderate workloads, but high-throughput services that generate thousands of spans per second need careful tuning to avoid dropped spans and excessive memory usage.
+The BatchSpanProcessor is the common production way to export spans from the OpenTelemetry SDK. It buffers completed spans in a queue and periodically flushes them in batches to the configured exporter. The default settings work well for moderate workloads, but high-throughput services that generate thousands of spans per second need careful tuning to avoid dropped spans and excessive memory usage.
 
 ## The Three Key Parameters
 
@@ -18,15 +18,15 @@ The BatchSpanProcessor has three parameters that interact with each other:
 
 ## Understanding the Interaction
 
-Think of it as a pipeline: spans enter the queue, and every `scheduledDelayMillis` the processor takes up to `maxExportBatchSize` spans from the queue and sends them to the exporter. If your service produces spans faster than the processor can drain the queue, spans get dropped.
+Think of it as a pipeline: spans enter the queue, and the processor exports up to `maxExportBatchSize` spans when the delay timer fires, when the queue reaches `maxExportBatchSize`, or when `forceFlush` is called. If your service produces spans faster than the processor and exporter can drain the queue, spans get dropped.
 
-The throughput formula is roughly:
+The timer-driven drain rate is roughly:
 
 ```text
-max_throughput = maxQueueSize / scheduledDelayMillis * 1000
+timer_driven_rate = maxExportBatchSize / scheduledDelayMillis * 1000
 ```
 
-With defaults: 2048 / 5000 * 1000 = 409 spans/second. If your service generates more than that and the exporter cannot keep up, you will lose data.
+With defaults: 512 / 5000 * 1000 = about 102 spans/second from timer-triggered exports. In practice, the processor can export sooner when the queue reaches `maxExportBatchSize`, so steady throughput depends on exporter latency, backend latency, and batch size. `maxQueueSize` is burst capacity, not the steady-state drain rate.
 
 ## Tuning for a High-Throughput Java Service
 
@@ -107,30 +107,18 @@ Here is a practical approach to choosing values:
 
 ## Monitoring for Dropped Spans
 
-The SDK exposes metrics that tell you if spans are being dropped. In Java, you can check the internal logging:
+The SDK defines internal metrics for span processor queue size, queue capacity, and processed spans. In Java, pass a `MeterProvider` to the `BatchSpanProcessor` builder to collect batch processor metrics, and use Java Util Logging to check SDK internal logs:
 
-```java
-// Enable SDK internal logging to see drop warnings
-// Add this JVM argument:
-// -Dio.opentelemetry.sdk.trace.internal.LOGGING_LEVEL=FINE
-
-// Or check programmatically with a custom SpanProcessor wrapper
-public class MonitoringSpanProcessor implements SpanProcessor {
-    private final AtomicLong dropCount = new AtomicLong(0);
-    private final BatchSpanProcessor delegate;
-
-    // Track queue state by monitoring onEnd timing
-    @Override
-    public void onEnd(ReadableSpan span) {
-        delegate.onEnd(span);
-    }
-}
+```properties
+# logging.properties
+io.opentelemetry.level = FINE
+java.util.logging.ConsoleHandler.level = FINE
 ```
 
 In Python, watch for log messages like:
 
 ```text
-WARNING: Dropping span because queue is full. Consider increasing maxQueueSize.
+WARNING: Queue is full, likely spans will be dropped.
 ```
 
 ## Environment Variable Configuration
