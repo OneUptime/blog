@@ -266,7 +266,7 @@ The model forward pass is where the actual computation happens. For LLMs, this i
             # Disable gradient computation for inference
             with torch.no_grad():
                 # Use automatic mixed precision for faster inference on supported GPUs
-                with torch.cuda.amp.autocast(enabled=self.device == "cuda"):
+                with torch.amp.autocast("cuda", enabled=self.device == "cuda"):
                     output = self.model(**tokens)
 
             # Force GPU synchronization so we measure actual compute time,
@@ -316,6 +316,7 @@ GPU contention is a sneaky cause of slow inference. When multiple requests compe
 ```python
 import torch
 from opentelemetry import metrics
+from opentelemetry.metrics import Observation
 
 meter = metrics.get_meter("ai.gpu")
 
@@ -324,7 +325,7 @@ def gpu_utilization_callback(options):
     if torch.cuda.is_available():
         for i in range(torch.cuda.device_count()):
             utilization = torch.cuda.utilization(i)
-            yield metrics.Observation(utilization, {"gpu.index": i})
+            yield Observation(utilization, {"gpu.index": i})
 
 def gpu_memory_callback(options):
     """Report GPU memory usage in GB."""
@@ -332,7 +333,7 @@ def gpu_memory_callback(options):
         for i in range(torch.cuda.device_count()):
             free, total = torch.cuda.mem_get_info(i)
             used_gb = (total - free) / 1024**3
-            yield metrics.Observation(round(used_gb, 2), {"gpu.index": i})
+            yield Observation(round(used_gb, 2), {"gpu.index": i})
 
 # These gauges update automatically on the metrics export interval
 meter.create_observable_gauge(
