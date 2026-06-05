@@ -18,12 +18,12 @@ Both gRPC and HTTP transport OTLP data, but they do so using different underlyin
 - Built on HTTP/2
 - Binary protocol using Protocol Buffers
 - Multiplexed streams over a single connection
-- Bidirectional streaming support
-- Built-in load balancing and health checking
+- Concurrent unary export requests over HTTP/2 streams
+- Supports client-side load balancing policies and gRPC health checking implementations
 
 **HTTP (specifically HTTP/1.1 or HTTP/2)**
 - Can use HTTP/1.1 or HTTP/2
-- Typically uses JSON or Protocol Buffers encoding
+- Uses Protocol Buffers or JSON-encoded Protocol Buffers for OTLP/HTTP
 - Request-response model
 - Simpler to debug and proxy
 - Better firewall and load balancer compatibility
@@ -49,12 +49,12 @@ Here's how the protocols compare across key performance dimensions:
 
 ### Throughput
 
-gRPC typically offers 20-30% higher throughput than HTTP due to:
-- More efficient binary serialization
-- Connection multiplexing reducing overhead
-- Smaller message headers
+gRPC can offer higher throughput than HTTP/1.1 in many collector deployments due to:
+- Protocol Buffers encoding by default
+- HTTP/2 connection multiplexing reducing connection overhead
+- Persistent connections with efficient flow control
 
-Benchmark results (1000 traces/second, 15 spans each):
+Illustrative benchmark results (1000 traces/second, 15 spans each):
 
 ```text
 gRPC throughput:    ~45,000 spans/second
@@ -64,7 +64,7 @@ HTTP/1.1 throughput: ~25,000 spans/second
 
 ### Latency
 
-gRPC provides lower latency for high-frequency exports:
+gRPC can provide lower latency for high-frequency exports, especially compared with HTTP/1.1:
 
 ```text
 gRPC average latency:      5-8ms (p50), 12-15ms (p99)
@@ -74,7 +74,7 @@ HTTP/1.1 average latency:  15-25ms (p50), 50-80ms (p99)
 
 Resource Usage
 
-gRPC is more efficient with resources:
+gRPC can be more efficient with resources:
 
 ```text
 CPU usage (1000 req/s):
@@ -108,6 +108,7 @@ receivers:
         # Maximum message size (16 MiB)
         # Larger messages improve batching efficiency
         max_recv_msg_size_mib: 16
+        # This option mostly affects streaming RPCs; OTLP Export calls are unary.
         max_concurrent_streams: 100
 
         # TCP keepalive prevents connection drops
@@ -215,8 +216,8 @@ receivers:
         # Maximum request body size (16 MiB)
         max_request_body_size: 16777216
 
-        # Enable compression
-        compression: gzip
+        # Accept gzip-compressed requests from clients
+        compression_algorithms: ["", "gzip"]
 
         # HTTP server timeouts
         read_timeout: 30s
@@ -311,9 +312,6 @@ func initGRPCTracer() (*trace.TracerProvider, error) {
             PermitWithoutStream: true,              // Allow pings without streams
         }),
 
-        // Enable compression for bandwidth efficiency
-        grpc.WithDefaultCallOptions(grpc.UseCompressor("gzip")),
-
         // Configure TLS
         grpc.WithTransportCredentials(
             credentials.NewTLS(&tls.Config{
@@ -331,6 +329,7 @@ func initGRPCTracer() (*trace.TracerProvider, error) {
         context.Background(),
         otlptracegrpc.WithEndpoint("collector:4317"),
         otlptracegrpc.WithDialOption(grpcOpts...),
+        otlptracegrpc.WithCompressor("gzip"),
         otlptracegrpc.WithTimeout(30*time.Second),
         // Retry configuration
         otlptracegrpc.WithRetry(otlptracegrpc.RetryConfig{
@@ -463,7 +462,7 @@ exporters:
 
 **Binary efficiency**: Bandwidth-constrained environments
 
-**Streaming**: Bidirectional communication or server push requirements
+**Concurrent export traffic**: High-frequency unary export requests over HTTP/2 streams
 
 ## When to Choose HTTP
 
@@ -530,7 +529,7 @@ This allows clients to use either protocol while the collector uses the most eff
 
 ### For gRPC
 
-1. **Enable compression**: Always use gzip or zstd compression
+1. **Enable compression**: Use gzip compression, or zstd when both client and server support it
 2. **Tune batch sizes**: Larger batches (2048+) work well
 3. **Configure keepalive**: Prevent connection drops
 4. **Set appropriate timeouts**: Balance responsiveness and retry behavior
@@ -554,7 +553,6 @@ service:
   telemetry:
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
 ```
 
 Monitor:
@@ -567,14 +565,14 @@ Compare metrics between gRPC and HTTP endpoints to determine which performs bett
 
 ## Network Bandwidth Considerations
 
-Both protocols support compression, but effectiveness varies:
+Both protocols support gzip compression. Some Collector-to-Collector paths can also use zstd when both ends support it, but effectiveness varies by payload and workload:
 
 ```text
 Uncompressed span: ~2 KB
 gRPC + gzip:      ~600 bytes (70% reduction)
 HTTP + gzip:      ~650 bytes (67.5% reduction)
-gRPC + zstd:      ~500 bytes (75% reduction)
-HTTP + zstd:      ~550 bytes (72.5% reduction)
+Collector gRPC + zstd: ~500 bytes (75% reduction)
+Collector HTTP + zstd: ~550 bytes (72.5% reduction)
 ```
 
 For bandwidth-constrained environments, see our guide on [reducing network bandwidth with compression](https://oneuptime.com/blog/post/2026-02-06-reduce-network-bandwidth-opentelemetry-compression/view).
@@ -604,8 +602,8 @@ Protocol choice affects infrastructure costs:
 
 ```text
 gRPC advantages:
-- 20-30% lower bandwidth costs due to efficiency
-- 15-25% lower compute costs due to lower CPU usage
+- Lower bandwidth costs in workloads where gRPC's framing and compression are more efficient
+- Lower compute costs in workloads where persistent HTTP/2 connections reduce CPU usage
 - Fewer connection overheads
 
 HTTP advantages:
@@ -619,7 +617,7 @@ For a comprehensive cost analysis, see our guide on [building cost-effective obs
 
 1. **Default to gRPC**: Use gRPC for internal service-to-service communication
 2. **Use HTTP for edge cases**: Browsers, restrictive networks, debugging
-3. **Enable compression**: Always compress telemetry data regardless of protocol
+3. **Enable compression**: Compress telemetry data when the bandwidth savings justify the CPU overhead
 4. **Configure keepalive**: Prevent connection drops in both protocols
 5. **Match configurations**: Ensure SDK and collector settings align
 6. **Monitor performance**: Track metrics to validate protocol choice
