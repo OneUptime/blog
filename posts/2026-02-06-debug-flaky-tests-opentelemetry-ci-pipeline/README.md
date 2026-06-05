@@ -16,7 +16,8 @@ Configure your test framework to create spans for each test case. Here is a pyte
 # conftest.py
 
 import pytest
-import time
+import os
+from opentelemetry import context
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
@@ -33,7 +34,12 @@ resource = Resource.create({
 
 provider = TracerProvider(resource=resource)
 provider.add_span_processor(
-    BatchSpanProcessor(OTLPSpanExporter(endpoint="http://otel-collector:4317"))
+    BatchSpanProcessor(
+        OTLPSpanExporter(
+            endpoint=os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", "http://otel-collector:4317"),
+            insecure=True,
+        )
+    )
 )
 trace.set_tracer_provider(provider)
 
@@ -41,41 +47,50 @@ tracer = trace.get_tracer("test-runner")
 
 
 @pytest.hookimpl(tryfirst=True)
-def pytest_runtest_protocol(item, nextitem):
+def pytest_runtest_setup(item):
     """Create a span for each test case."""
     test_name = item.nodeid
 
-    with tracer.start_as_current_span("test.execute") as span:
-        span.set_attribute("test.name", test_name)
-        span.set_attribute("test.file", str(item.fspath))
-        span.set_attribute("test.class", item.cls.__name__ if item.cls else "")
-        span.set_attribute("test.function", item.name)
+    span = tracer.start_span("test.execute")
+    token = context.attach(trace.set_span_in_context(span))
+    item._otel_span = span
+    item._otel_token = token
 
-        # Record markers
-        markers = [m.name for m in item.iter_markers()]
-        span.set_attribute("test.markers", str(markers))
+    span.set_attribute("test.name", test_name)
+    span.set_attribute("test.file", str(item.path))
+    span.set_attribute("test.class", item.cls.__name__ if item.cls else "")
+    span.set_attribute("test.function", item.name)
+    span.set_attribute("test.outcome", "unknown")
 
-        # Run the test
-        reports = []
-        ihook = item.ihook
-
-        report = ihook.pytest_runtest_makereport(item=item, call=None)
-        span.set_attribute("test.outcome", "unknown")
-
-    return None  # Let pytest continue with default protocol
+    # Record markers
+    markers = [m.name for m in item.iter_markers()]
+    span.set_attribute("test.markers", str(markers))
 
 
-@pytest.hookimpl(hookimpl=True)
+@pytest.hookimpl(hookwrapper=True)
 def pytest_runtest_makereport(item, call):
     """Record test outcome on the current span."""
-    span = trace.get_current_span()
-    if call.when == "call":
-        if call.excinfo is not None:
-            span.set_attribute("test.outcome", "failed")
-            span.set_attribute("test.error", str(call.excinfo.value))
-            span.set_attribute("error", True)
-        else:
-            span.set_attribute("test.outcome", "passed")
+    outcome = yield
+    report = outcome.get_result()
+
+    span = getattr(item, "_otel_span", None)
+    if span is None:
+        return
+
+    if report.failed:
+        span.set_attribute("test.outcome", "failed")
+        span.set_attribute("test.error", str(report.longrepr))
+        span.set_attribute("error", True)
+    elif report.skipped:
+        span.set_attribute("test.outcome", "skipped")
+    elif report.when == "call":
+        span.set_attribute("test.outcome", "passed")
+
+    if report.when == "teardown":
+        token = getattr(item, "_otel_token", None)
+        if token is not None:
+            context.detach(token)
+        span.end()
 ```
 
 ## Instrumenting Test Infrastructure
@@ -85,20 +100,23 @@ The real value comes from tracing the infrastructure your tests interact with. I
 ```python
 # In your test file
 import httpx
-from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentation
+from opentelemetry import trace
+from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 
 # Auto-instrument the HTTP client used in tests
-HTTPXClientInstrumentation().instrument()
+HTTPXClientInstrumentor().instrument()
+tracer = trace.get_tracer("test-runner")
 
 class TestOrderAPI:
-    def test_create_order(self, test_client):
+    def test_create_order(self):
         """This test is flaky - sometimes returns 500."""
         with tracer.start_as_current_span("test.create_order") as span:
             # The trace propagates into the service being tested
-            response = test_client.post("/api/orders", json={
-                "items": [{"sku": "WIDGET-1", "qty": 2}],
-                "customer_id": "test-user-123",
-            })
+            with httpx.Client(base_url="http://service-under-test") as client:
+                response = client.post("/api/orders", json={
+                    "items": [{"sku": "WIDGET-1", "qty": 2}],
+                    "customer_id": "test-user-123",
+                })
 
             span.set_attribute("http.status_code", response.status_code)
             assert response.status_code == 201
