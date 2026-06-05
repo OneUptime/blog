@@ -16,7 +16,7 @@ The setup uses two collector deployment patterns: a DaemonSet for node-level met
 
 ```mermaid
 graph LR
-    A[Kubelet Stats Receiver<br/>DaemonSet] --> C[OTLP Exporter]
+    A[Kubelet Stats Receiver<br/>DaemonSet] --> C[Metrics Pipeline]
     B[K8s Cluster Receiver<br/>Deployment] --> C
     C --> D[Prometheus Remote Write<br/>or OTLP Backend]
     D --> E[Grafana Dashboard]
@@ -33,7 +33,7 @@ Here is the collector config for the cluster-level deployment:
 
 # Deploy this as a single-replica Deployment (not a DaemonSet)
 receivers:
-  k8scluster:
+  k8s_cluster:
     # How often to poll the API server
     collection_interval: 30s
     # Which resource types to watch
@@ -46,14 +46,16 @@ receivers:
       - memory
 
 exporters:
-  prometheusremotewrite:
+  prometheus_remote_write:
     endpoint: "http://prometheus:9090/api/v1/write"
+    resource_to_telemetry_conversion:
+      enabled: true
 
 service:
   pipelines:
     metrics:
-      receivers: [k8scluster]
-      exporters: [prometheusremotewrite]
+      receivers: [k8s_cluster]
+      exporters: [prometheus_remote_write]
 ```
 
 ## Configuring the Kubelet Stats Receiver
@@ -63,11 +65,14 @@ The Kubelet Stats Receiver runs on each node as a DaemonSet. It connects to the 
 ```yaml
 # otel-collector-daemonset.yaml
 # Deploy this as a DaemonSet so each node gets one instance
+# Set K8S_NODE_NAME from the pod spec's downward API: spec.nodeName
 receivers:
   kubeletstats:
     # Use the node's service account to authenticate
     auth_type: serviceAccount
     collection_interval: 20s
+    endpoint: "https://${env:K8S_NODE_NAME}:10250"
+    insecure_skip_verify: true
     # Pull container, pod, and node level stats
     metric_groups:
       - node
@@ -85,15 +90,17 @@ processors:
         - k8s.node.name
 
 exporters:
-  prometheusremotewrite:
+  prometheus_remote_write:
     endpoint: "http://prometheus:9090/api/v1/write"
+    resource_to_telemetry_conversion:
+      enabled: true
 
 service:
   pipelines:
     metrics:
       receivers: [kubeletstats]
       processors: [k8sattributes]
-      exporters: [prometheusremotewrite]
+      exporters: [prometheus_remote_write]
 ```
 
 ## RBAC Requirements
@@ -109,21 +116,33 @@ metadata:
   name: otel-collector-cluster
 rules:
   - apiGroups: [""]
-    resources: ["nodes", "pods", "namespaces", "replicationcontrollers"]
+    resources: ["events", "namespaces", "namespaces/status", "nodes", "nodes/spec", "pods", "pods/status", "replicationcontrollers", "replicationcontrollers/status", "resourcequotas", "services"]
     verbs: ["get", "list", "watch"]
   - apiGroups: ["apps"]
     resources: ["deployments", "replicasets", "daemonsets", "statefulsets"]
     verbs: ["get", "list", "watch"]
+  - apiGroups: ["batch"]
+    resources: ["jobs", "cronjobs"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers"]
+    verbs: ["get", "list", "watch"]
 ---
-# ClusterRole for the Kubelet Stats Receiver
+# ClusterRole for the Kubelet Stats Receiver and Kubernetes Attributes Processor
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: otel-collector-kubelet
 rules:
   - apiGroups: [""]
-    resources: ["nodes/stats", "nodes/proxy"]
+    resources: ["nodes/stats"]
     verbs: ["get"]
+  - apiGroups: [""]
+    resources: ["pods", "namespaces"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["replicasets"]
+    verbs: ["get", "list", "watch"]
 ```
 
 ## Building the Dashboard Panels
@@ -141,28 +160,28 @@ sum(k8s_node_condition_ready == 1)
 
 ```promql
 # Count pods grouped by their phase
-count by (phase) (k8s_pod_phase)
+count_values("phase", k8s_pod_phase)
 ```
 
 **CPU Usage vs Allocatable** - a gauge showing cluster-wide CPU saturation:
 
 ```promql
 # Total CPU used across all nodes divided by total allocatable CPU
-sum(k8s_node_cpu_utilization) / sum(k8s_node_allocatable_cpu) * 100
+sum(k8s_node_cpu_usage) / sum(k8s_node_allocatable_cpu) * 100
 ```
 
 **Memory Working Set per Namespace** - a stacked time series:
 
 ```promql
 # Memory working set bytes grouped by namespace
-sum by (k8s_namespace_name) (k8s_pod_memory_working_set)
+sum by (k8s_namespace_name) (k8s_pod_memory_working_set_bytes)
 ```
 
 **Top 10 Pods by CPU** - a bar gauge for quick identification of resource-heavy pods:
 
 ```promql
 # Top 10 pods consuming the most CPU
-topk(10, sum by (k8s_pod_name) (k8s_container_cpu_utilization))
+topk(10, sum by (k8s_namespace_name, k8s_pod_name) (container_cpu_usage))
 ```
 
 ## Dashboard Layout
