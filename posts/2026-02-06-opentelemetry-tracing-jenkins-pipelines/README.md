@@ -41,7 +41,7 @@ graph TD
 
 Install the OpenTelemetry plugin through Jenkins' plugin manager or by adding it to your plugin list if you manage Jenkins as code.
 
-```groovy
+```yaml
 // If using Jenkins Configuration as Code (JCasC),
 // add the plugin dependency to your plugins.txt:
 // opentelemetry:latest
@@ -53,14 +53,13 @@ unclassified:
     # OTLP endpoint where traces will be sent
     endpoint: "https://otel-collector.example.com:4317"
     # Protocol to use for exporting (grpc or http/protobuf)
-    exporterProtocol: "grpc"
+    configurationProperties: "otel.exporter.otlp.protocol=grpc"
     # Service name that appears in traces
     serviceName: "jenkins"
-    # Authentication headers for the OTLP endpoint
+    # Bearer token credential ID for the OTLP endpoint
     authentication:
-      header:
-        headerName: "Authorization"
-        headerValueSecretId: "otel-auth-token"
+      bearerTokenAuthentication:
+        tokenId: "otel-auth-token"
 ```
 
 If you prefer the Jenkins UI, navigate to Manage Jenkins, then System Configuration, and scroll to the OpenTelemetry section. Fill in your OTLP endpoint, choose the protocol, and set the service name.
@@ -79,13 +78,12 @@ Trace: jenkins-pipeline-run
   |-- Span: Pipeline 'my-app-build' #142
   |   |-- ci.pipeline.name: my-app-build
   |   |-- ci.pipeline.run.number: 142
-  |   |-- ci.pipeline.result: SUCCESS
+  |   |-- ci.pipeline.run.result: success
   |   |
   |   |-- Span: Stage 'Checkout'
   |   |   |-- Span: git checkout
-  |   |       |-- git.url: https://github.com/org/my-app.git
+  |   |       |-- git.repository: https://github.com/org/my-app.git
   |   |       |-- git.branch: main
-  |   |       |-- git.commit: a1b2c3d4
   |   |
   |   |-- Span: Stage 'Build'
   |   |   |-- Span: sh 'mvn clean package'
@@ -95,9 +93,6 @@ Trace: jenkins-pipeline-run
   |   |   |-- Span: sh 'mvn test'
   |   |   |   |-- duration: 180s
   |   |   |-- Span: junit 'target/surefire-reports/*.xml'
-  |   |       |-- tests.total: 342
-  |   |       |-- tests.passed: 340
-  |   |       |-- tests.failed: 2
   |   |
   |   |-- Span: Stage 'Deploy'
   |       |-- Span: sh 'kubectl apply -f k8s/'
@@ -110,7 +105,7 @@ This automatic instrumentation gives you visibility without writing any tracing 
 
 While the plugin handles automatic tracing, you often want to add custom spans for specific operations, attach business-relevant attributes, or create spans around shell commands that do important work.
 
-The OpenTelemetry plugin exposes a `withOpenTelemetrySpan` step that you can use in your pipeline scripts.
+The OpenTelemetry plugin exposes a `withNewSpan` step that you can use in your pipeline scripts.
 
 ```groovy
 // Jenkinsfile with custom OpenTelemetry instrumentation
@@ -127,13 +122,13 @@ pipeline {
         stage('Build') {
             steps {
                 // Wrap the build in a custom span with extra attributes
-                withOpenTelemetrySpan(
-                    spanName: 'docker-build',
-                    attributes: [
-                        'build.tool': 'docker',
-                        'build.target': 'production',
-                        'app.version': "${APP_VERSION}"
-                    ]
+                withNewSpan(
+                    label: 'docker-build',
+                    attributes: ([
+                        spanAttribute(key: 'build.tool', value: 'docker'),
+                        spanAttribute(key: 'build.target', value: 'production'),
+                        spanAttribute(key: 'app.version', value: "${APP_VERSION}")
+                    ])
                 ) {
                     sh '''
                         docker build \
@@ -148,21 +143,25 @@ pipeline {
             parallel {
                 stage('Unit Tests') {
                     steps {
-                        withOpenTelemetrySpan(
-                            spanName: 'unit-tests',
-                            attributes: ['test.type': 'unit']
+                        withNewSpan(
+                            label: 'unit-tests',
+                            attributes: ([
+                                spanAttribute(key: 'test.type', value: 'unit')
+                            ])
                         ) {
                             sh 'mvn test -pl unit-tests'
-                            // Publish test results so the plugin captures counts
+                            // Publish test results in Jenkins
                             junit 'unit-tests/target/surefire-reports/*.xml'
                         }
                     }
                 }
                 stage('Integration Tests') {
                     steps {
-                        withOpenTelemetrySpan(
-                            spanName: 'integration-tests',
-                            attributes: ['test.type': 'integration']
+                        withNewSpan(
+                            label: 'integration-tests',
+                            attributes: ([
+                                spanAttribute(key: 'test.type', value: 'integration')
+                            ])
                         ) {
                             sh 'mvn test -pl integration-tests'
                             junit 'integration-tests/target/surefire-reports/*.xml'
@@ -174,13 +173,13 @@ pipeline {
 
         stage('Deploy') {
             steps {
-                withOpenTelemetrySpan(
-                    spanName: 'kubernetes-deploy',
-                    attributes: [
-                        'deployment.environment': 'production',
-                        'deployment.strategy': 'rolling',
-                        'app.version': "${APP_VERSION}"
-                    ]
+                withNewSpan(
+                    label: 'kubernetes-deploy',
+                    attributes: ([
+                        spanAttribute(key: 'deployment.environment', value: 'production'),
+                        spanAttribute(key: 'deployment.strategy', value: 'rolling'),
+                        spanAttribute(key: 'app.version', value: "${APP_VERSION}")
+                    ])
                 ) {
                     sh "kubectl set image deployment/my-app my-app=my-app:${APP_VERSION}"
                     sh "kubectl rollout status deployment/my-app --timeout=300s"
@@ -230,16 +229,16 @@ processors:
 
   # Filter out noisy spans from internal Jenkins housekeeping
   filter:
-    traces:
-      span:
-        - 'name == "node" AND attributes["jenkins.step.type"] == "node"'
-        - 'name == "properties"'
+    error_mode: ignore
+    trace_conditions:
+      - 'span.name == "node" and span.attributes["jenkins.pipeline.step.type"] == "node"'
+      - 'span.name == "properties"'
 
 exporters:
   otlphttp:
     endpoint: https://your-backend.example.com
     headers:
-      Authorization: "Bearer ${OTEL_AUTH_TOKEN}"
+      Authorization: "Bearer ${env:OTEL_AUTH_TOKEN}"
 
   # Optional: also export to a debug log for troubleshooting
   debug:
@@ -292,7 +291,8 @@ service:
 The plugin exports metrics such as:
 
 - `ci.pipeline.run.duration` - how long each pipeline run takes
-- `ci.pipeline.run.count` - number of pipeline runs by status
+- `ci.pipeline.run.completed` - number of completed pipeline runs
+- `ci.pipeline.run.success` and `ci.pipeline.run.failed` - successful and failed pipeline runs
 - `jenkins.queue.waiting` - number of builds waiting in the queue
 - `jenkins.agents.online` - number of online build agents
 
@@ -309,15 +309,15 @@ Many Jenkins setups use shared libraries for common pipeline logic. You can inst
 // automatically gets deployment tracing.
 
 def call(Map config) {
-    withOpenTelemetrySpan(
-        spanName: "deploy-${config.app}-${config.environment}",
-        attributes: [
-            'deployment.app': config.app,
-            'deployment.environment': config.environment,
-            'deployment.namespace': config.namespace ?: 'default',
-            'deployment.version': config.version,
-            'deployment.cluster': config.cluster ?: 'primary'
-        ]
+    withNewSpan(
+        label: "deploy-${config.app}-${config.environment}",
+        attributes: ([
+            spanAttribute(key: 'deployment.app', value: config.app),
+            spanAttribute(key: 'deployment.environment', value: config.environment),
+            spanAttribute(key: 'deployment.namespace', value: config.namespace ?: 'default'),
+            spanAttribute(key: 'deployment.version', value: config.version),
+            spanAttribute(key: 'deployment.cluster', value: config.cluster ?: 'primary')
+        ])
     ) {
         sh """
             kubectl config use-context ${config.cluster ?: 'primary'}
@@ -370,13 +370,13 @@ The most valuable integration is linking Jenkins build traces to production moni
 // monitoring can link back to the CI build that created this release.
 stage('Record Deployment') {
     steps {
-        withOpenTelemetrySpan(
-            spanName: 'record-deployment-event',
-            attributes: [
-                'deployment.environment': 'production',
-                'deployment.version': "${APP_VERSION}",
-                'vcs.commit.sha': "${env.GIT_COMMIT}"
-            ]
+        withNewSpan(
+            label: 'record-deployment-event',
+            attributes: ([
+                spanAttribute(key: 'deployment.environment', value: 'production'),
+                spanAttribute(key: 'deployment.version', value: "${APP_VERSION}"),
+                spanAttribute(key: 'vcs.commit.sha', value: "${env.GIT_COMMIT}")
+            ])
         ) {
             // Write deployment metadata for production correlation
             sh """
@@ -386,6 +386,7 @@ stage('Record Deployment') {
                     "version": "${APP_VERSION}",
                     "commit": "${env.GIT_COMMIT}",
                     "jenkins_build": "${env.BUILD_URL}",
+                    "trace_id": "\${TRACE_ID}",
                     "timestamp": "'"\$(date -u +%Y-%m-%dT%H:%M:%SZ)"'"
                   }'
             """
