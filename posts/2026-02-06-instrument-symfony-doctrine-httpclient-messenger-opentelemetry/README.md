@@ -69,7 +69,11 @@ namespace App\Doctrine;
 
 use Doctrine\DBAL\Driver;
 use Doctrine\DBAL\Driver\Connection;
+use Doctrine\DBAL\Driver\API\ExceptionConverter;
+use Doctrine\DBAL\Platforms\AbstractPlatform;
+use Doctrine\DBAL\ServerVersionProvider;
 use OpenTelemetry\API\Trace\TracerProviderInterface;
+use SensitiveParameter;
 
 class OpenTelemetryDriver implements Driver
 {
@@ -80,7 +84,7 @@ class OpenTelemetryDriver implements Driver
         private int $slowQueryThreshold
     ) {}
 
-    public function connect(array $params): Connection
+    public function connect(#[SensitiveParameter] array $params): Connection
     {
         $connection = $this->driver->connect($params);
 
@@ -89,18 +93,32 @@ class OpenTelemetryDriver implements Driver
             $this->tracerProvider,
             $this->captureParameters,
             $this->slowQueryThreshold,
-            $params['dbname'] ?? 'unknown'
+            $params['dbname'] ?? 'unknown',
+            $this->detectDatabaseSystem($params)
         );
     }
 
-    public function getDatabasePlatform(): \Doctrine\DBAL\Platforms\AbstractPlatform
+    public function getDatabasePlatform(ServerVersionProvider $versionProvider): AbstractPlatform
     {
-        return $this->driver->getDatabasePlatform();
+        return $this->driver->getDatabasePlatform($versionProvider);
     }
 
-    public function getSchemaManager(\Doctrine\DBAL\Connection $conn, \Doctrine\DBAL\Platforms\AbstractPlatform $platform): \Doctrine\DBAL\Schema\AbstractSchemaManager
+    public function getExceptionConverter(): ExceptionConverter
     {
-        return $this->driver->getSchemaManager($conn, $platform);
+        return $this->driver->getExceptionConverter();
+    }
+
+    private function detectDatabaseSystem(array $params): string
+    {
+        $driver = strtolower((string) ($params['driver'] ?? $params['driverClass'] ?? 'unknown'));
+
+        return match (true) {
+            str_contains($driver, 'mysql') => 'mysql',
+            str_contains($driver, 'pgsql'), str_contains($driver, 'postgres') => 'postgresql',
+            str_contains($driver, 'sqlite') => 'sqlite',
+            str_contains($driver, 'sqlsrv') => 'mssql',
+            default => 'unknown',
+        };
     }
 }
 ```
@@ -128,7 +146,8 @@ class OpenTelemetryConnection implements Connection
         TracerProviderInterface $tracerProvider,
         private bool $captureParameters,
         private int $slowQueryThreshold,
-        private string $databaseName
+        private string $databaseName,
+        private string $databaseSystem
     ) {
         $this->tracer = $tracerProvider->getTracer('doctrine.dbal');
     }
@@ -143,7 +162,8 @@ class OpenTelemetryConnection implements Connection
             $sql,
             $this->captureParameters,
             $this->slowQueryThreshold,
-            $this->databaseName
+            $this->databaseName,
+            $this->databaseSystem
         );
     }
 
@@ -151,7 +171,7 @@ class OpenTelemetryConnection implements Connection
     {
         $span = $this->tracer->spanBuilder('db.query')
             ->setSpanKind(SpanKind::KIND_CLIENT)
-            ->setAttribute('db.system', 'mysql')
+            ->setAttribute('db.system', $this->databaseSystem)
             ->setAttribute('db.name', $this->databaseName)
             ->setAttribute('db.statement', $this->sanitizeQuery($sql))
             ->setAttribute('db.operation', $this->extractOperation($sql))
@@ -172,11 +192,11 @@ class OpenTelemetryConnection implements Connection
         }
     }
 
-    public function exec(string $sql): int
+    public function exec(string $sql): int|string
     {
         $span = $this->tracer->spanBuilder('db.exec')
             ->setSpanKind(SpanKind::KIND_CLIENT)
-            ->setAttribute('db.system', 'mysql')
+            ->setAttribute('db.system', $this->databaseSystem)
             ->setAttribute('db.name', $this->databaseName)
             ->setAttribute('db.statement', $this->sanitizeQuery($sql))
             ->setAttribute('db.operation', $this->extractOperation($sql))
@@ -223,24 +243,129 @@ class OpenTelemetryConnection implements Connection
     }
 
     // Implement other Connection interface methods by delegating to $this->connection
-    public function beginTransaction(): bool
+    public function quote(string $value): string
     {
-        return $this->connection->beginTransaction();
+        return $this->connection->quote($value);
     }
 
-    public function commit(): bool
+    public function beginTransaction(): void
     {
-        return $this->connection->commit();
+        $this->connection->beginTransaction();
     }
 
-    public function rollBack(): bool
+    public function commit(): void
     {
-        return $this->connection->rollBack();
+        $this->connection->commit();
     }
 
-    public function lastInsertId($name = null): string|int
+    public function rollBack(): void
     {
-        return $this->connection->lastInsertId($name);
+        $this->connection->rollBack();
+    }
+
+    public function lastInsertId(): string|int
+    {
+        return $this->connection->lastInsertId();
+    }
+
+    public function getNativeConnection()
+    {
+        return $this->connection->getNativeConnection();
+    }
+
+    public function getServerVersion(): string
+    {
+        return $this->connection->getServerVersion();
+    }
+}
+```
+
+Add a statement wrapper for prepared statements.
+
+```php
+// src/Doctrine/OpenTelemetryStatement.php
+
+namespace App\Doctrine;
+
+use Doctrine\DBAL\Driver\Result;
+use Doctrine\DBAL\Driver\Statement;
+use Doctrine\DBAL\ParameterType;
+use OpenTelemetry\API\Trace\SpanKind;
+use OpenTelemetry\API\Trace\StatusCode;
+use OpenTelemetry\API\Trace\TracerInterface;
+
+class OpenTelemetryStatement implements Statement
+{
+    private array $parameters = [];
+
+    public function __construct(
+        private Statement $statement,
+        private TracerInterface $tracer,
+        private string $sql,
+        private bool $captureParameters,
+        private int $slowQueryThreshold,
+        private string $databaseName,
+        private string $databaseSystem
+    ) {}
+
+    public function bindValue(int|string $param, mixed $value, ParameterType $type): void
+    {
+        if ($this->captureParameters) {
+            $this->parameters[(string) $param] = $value;
+        }
+
+        $this->statement->bindValue($param, $value, $type);
+    }
+
+    public function execute(): Result
+    {
+        $span = $this->tracer->spanBuilder('db.statement')
+            ->setSpanKind(SpanKind::KIND_CLIENT)
+            ->setAttribute('db.system', $this->databaseSystem)
+            ->setAttribute('db.name', $this->databaseName)
+            ->setAttribute('db.statement', $this->sanitizeQuery($this->sql))
+            ->setAttribute('db.operation', $this->extractOperation($this->sql))
+            ->startSpan();
+
+        if ($this->captureParameters && $this->parameters !== []) {
+            $span->setAttribute('db.statement.parameters', json_encode($this->parameters));
+        }
+
+        try {
+            $result = $this->statement->execute();
+            $span->setStatus(StatusCode::STATUS_OK);
+            return $result;
+
+        } catch (\Throwable $e) {
+            $span->recordException($e);
+            $span->setStatus(StatusCode::STATUS_ERROR, $e->getMessage());
+            throw $e;
+
+        } finally {
+            $span->end();
+        }
+    }
+
+    private function extractOperation(string $sql): string
+    {
+        if (preg_match('/^\s*(SELECT|INSERT|UPDATE|DELETE|CREATE|DROP|ALTER)\b/i', $sql, $matches)) {
+            return strtoupper($matches[1]);
+        }
+        return 'UNKNOWN';
+    }
+
+    private function sanitizeQuery(string $sql): string
+    {
+        if (!$this->captureParameters) {
+            $sql = preg_replace("/('[^']*')/", '?', $sql);
+            $sql = preg_replace('/(\d+)/', '?', $sql);
+        }
+
+        if (strlen($sql) > 2000) {
+            $sql = substr($sql, 0, 2000) . '... [truncated]';
+        }
+
+        return $sql;
     }
 }
 ```
@@ -252,8 +377,7 @@ Register the middleware in your Doctrine configuration.
 
 doctrine:
   dbal:
-    middlewares:
-      - App\Doctrine\OpenTelemetryMiddleware
+    # regular DBAL connection configuration...
 
 services:
   App\Doctrine\OpenTelemetryMiddleware:
@@ -261,6 +385,8 @@ services:
       $tracerProvider: '@opentelemetry.trace.tracer_provider'
       $captureParameters: '%env(bool:OTEL_DOCTRINE_CAPTURE_PARAMETERS)%'
       $slowQueryThreshold: '%env(int:OTEL_DOCTRINE_SLOW_QUERY_THRESHOLD)%'
+    tags:
+      - { name: doctrine.middleware }
 ```
 
 ## Instrumenting Symfony HttpClient
@@ -275,7 +401,7 @@ namespace App\HttpClient;
 use OpenTelemetry\API\Trace\TracerProviderInterface;
 use OpenTelemetry\API\Trace\SpanKind;
 use OpenTelemetry\API\Trace\StatusCode;
-use OpenTelemetry\Context\Context;
+use OpenTelemetry\API\Trace\Propagation\TraceContextPropagator;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 use Symfony\Contracts\HttpClient\ResponseInterface;
 use Symfony\Contracts\HttpClient\ResponseStreamInterface;
@@ -286,7 +412,7 @@ class TracingHttpClient implements HttpClientInterface
 
     public function __construct(
         private HttpClientInterface $client,
-        TracerProviderInterface $tracerProvider,
+        private TracerProviderInterface $tracerProvider,
         private bool $captureHeaders = false
     ) {
         $this->tracer = $tracerProvider->getTracer('http.client');
@@ -311,11 +437,7 @@ class TracingHttpClient implements HttpClientInterface
         try {
             // Inject trace context into HTTP headers for distributed tracing
             $propagationHeaders = [];
-            $injector = Context::getCurrent()->propagate();
-
-            foreach ($injector as $key => $value) {
-                $propagationHeaders[$key] = $value;
-            }
+            TraceContextPropagator::getInstance()->inject($propagationHeaders);
 
             $options['headers'] = array_merge(
                 $options['headers'] ?? [],
@@ -335,12 +457,13 @@ class TracingHttpClient implements HttpClientInterface
             $span->recordException($e);
             $span->setStatus(StatusCode::STATUS_ERROR, $e->getMessage());
             $span->end();
-            $scope->detach();
             throw $e;
+        } finally {
+            $scope->detach();
         }
     }
 
-    public function stream($responses, float $timeout = null): ResponseStreamInterface
+    public function stream(ResponseInterface|iterable $responses, ?float $timeout = null): ResponseStreamInterface
     {
         return $this->client->stream($responses, $timeout);
     }
@@ -349,7 +472,7 @@ class TracingHttpClient implements HttpClientInterface
     {
         return new self(
             $this->client->withOptions($options),
-            $this->tracer,
+            $this->tracerProvider,
             $this->captureHeaders
         );
     }
@@ -426,7 +549,17 @@ class TracingResponse implements ResponseInterface
 
     public function toArray(bool $throw = true): array
     {
-        return $this->response->toArray($throw);
+        try {
+            return $this->response->toArray($throw);
+
+        } catch (\Throwable $e) {
+            $this->span->recordException($e);
+            $this->span->setStatus(StatusCode::STATUS_ERROR, $e->getMessage());
+            throw $e;
+
+        } finally {
+            $this->endSpan();
+        }
     }
 
     public function cancel(): void
@@ -436,7 +569,7 @@ class TracingResponse implements ResponseInterface
         $this->endSpan();
     }
 
-    public function getInfo(string $type = null)
+    public function getInfo(?string $type = null): mixed
     {
         return $this->response->getInfo($type);
     }
@@ -483,6 +616,7 @@ use OpenTelemetry\API\Trace\TracerProviderInterface;
 use OpenTelemetry\API\Trace\SpanKind;
 use OpenTelemetry\API\Trace\StatusCode;
 use OpenTelemetry\Context\Context;
+use OpenTelemetry\API\Trace\Propagation\TraceContextPropagator;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Middleware\MiddlewareInterface;
 use Symfony\Component\Messenger\Middleware\StackInterface;
@@ -532,7 +666,9 @@ class OpenTelemetryMiddleware implements MiddlewareInterface
 
         try {
             // Inject trace context into message stamps
-            $traceStamp = new TraceContextStamp(Context::getCurrent()->toArray());
+            $traceContext = [];
+            TraceContextPropagator::getInstance()->inject($traceContext);
+            $traceStamp = new TraceContextStamp($traceContext);
             $envelope = $envelope->with($traceStamp);
 
             $result = $stack->next()->handle($envelope, $stack);
@@ -560,7 +696,9 @@ class OpenTelemetryMiddleware implements MiddlewareInterface
     {
         // Extract parent context from message stamps
         $traceStamp = $envelope->last(TraceContextStamp::class);
-        $parentContext = $traceStamp ? Context::fromArray($traceStamp->getContext()) : Context::getCurrent();
+        $parentContext = $traceStamp
+            ? TraceContextPropagator::getInstance()->extract($traceStamp->getContext())
+            : Context::getCurrent();
 
         $span = $this->tracer->spanBuilder("messenger.receive {$messageClass}")
             ->setSpanKind(SpanKind::KIND_CONSUMER)
