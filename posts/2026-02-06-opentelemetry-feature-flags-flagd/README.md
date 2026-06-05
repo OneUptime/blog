@@ -57,7 +57,7 @@ The OpenFeature SDK has hooks that fire when flags are evaluated. Use these hook
 // app.js - Node.js example
 const { OpenFeature } = require('@openfeature/server-sdk');
 const { FlagdProvider } = require('@openfeature/flagd-provider');
-const { TracingHook } = require('@openfeature/open-telemetry-hooks');
+const { SpanEventHook } = require('@openfeature/open-telemetry-hooks');
 const { trace } = require('@opentelemetry/api');
 
 // Register the flagd provider
@@ -66,8 +66,8 @@ OpenFeature.setProvider(new FlagdProvider({
   port: 8013,
 }));
 
-// Add the tracing hook - this automatically adds flag evaluations to spans
-OpenFeature.addHooks(new TracingHook());
+// Add the tracing hook - this automatically adds flag evaluations as span events
+OpenFeature.addHooks(new SpanEventHook());
 
 const client = OpenFeature.getClient();
 
@@ -75,20 +75,23 @@ async function handleCheckout(req, res) {
   const span = trace.getActiveSpan();
 
   // Evaluate the feature flag
-  // The TracingHook will automatically add these as span attributes:
+  // The SpanEventHook will automatically add a feature_flag.evaluation event
+  // to the active span with semantic convention attributes such as:
   //   feature_flag.key = "checkout-flow"
-  //   feature_flag.variant = "treatment-a"
-  //   feature_flag.provider_name = "flagd"
-  const variant = await client.getStringValue('checkout-flow', 'control', {
+  //   feature_flag.result.variant = "treatment-a"
+  //   feature_flag.provider.name = "flagd"
+  const details = await client.getStringDetails('checkout-flow', 'control', {
     targetingKey: req.userId,
   });
+  const flow = details.value;
+  const flagVariant = details.variant ?? flow;
 
-  // Also set it explicitly if you want more control
-  span.setAttribute('ab_test.checkout_flow.variant', variant);
+  // Set it explicitly on the checkout span so span-derived metrics can group by it
+  span?.setAttribute('checkout.flag_variant', flagVariant);
 
-  if (variant === 'one-click') {
+  if (flow === 'one-click') {
     return processOneClickCheckout(req, res);
-  } else if (variant === 'streamlined') {
+  } else if (flow === 'streamlined') {
     return processStreamlinedCheckout(req, res);
   } else {
     return processClassicCheckout(req, res);
@@ -101,6 +104,7 @@ async function handleCheckout(req, res) {
 ```python
 # app.py
 from openfeature import api as openfeature_api
+from openfeature.evaluation_context import EvaluationContext
 from openfeature.contrib.provider.flagd import FlagdProvider
 from openfeature.contrib.hook.opentelemetry import TracingHook
 from opentelemetry import trace
@@ -118,19 +122,22 @@ tracer = trace.get_tracer("checkout-service")
 def handle_checkout(user_id: str, cart: dict):
     with tracer.start_as_current_span("checkout") as span:
         # Evaluate the flag - tracing hook records it on the span
-        variant = client.get_string_value(
+        details = client.get_string_details(
             "checkout-flow",
             "control",
-            evaluation_context={"targetingKey": user_id},
+            evaluation_context=EvaluationContext(targeting_key=user_id),
         )
+        flow = details.value
+        flag_variant = details.variant or flow
 
-        span.set_attribute("checkout.variant", variant)
+        # Set it explicitly on the checkout span so span-derived metrics can group by it
+        span.set_attribute("checkout.flag_variant", flag_variant)
         span.set_attribute("checkout.cart_size", len(cart["items"]))
 
         # Route to the appropriate checkout flow
-        if variant == "one-click":
+        if flow == "one-click":
             result = one_click_checkout(cart)
-        elif variant == "streamlined":
+        elif flow == "streamlined":
             result = streamlined_checkout(cart)
         else:
             result = classic_checkout(cart)
@@ -141,7 +148,7 @@ def handle_checkout(user_id: str, cart: dict):
 
 ## Building Metrics Dashboards by Variant
 
-Now that every span carries the flag variant, you can create metrics that break down performance by variant. Use the OpenTelemetry Collector's spanmetrics connector:
+Now that the checkout span carries the flag variant, you can create metrics that break down performance by variant. Use the OpenTelemetry Collector's span metrics connector:
 
 ```yaml
 # otel-collector-config.yaml
@@ -152,11 +159,10 @@ receivers:
         endpoint: 0.0.0.0:4317
 
 connectors:
-  spanmetrics:
+  span_metrics:
+    namespace: ""
     dimensions:
-      - name: feature_flag.variant
-      - name: feature_flag.key
-      - name: checkout.variant
+      - name: checkout.flag_variant
     histogram:
       explicit:
         buckets: [10ms, 50ms, 100ms, 250ms, 500ms, 1s, 2s, 5s]
@@ -169,9 +175,9 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      exporters: [spanmetrics]
+      exporters: [span_metrics]
     metrics:
-      receivers: [spanmetrics]
+      receivers: [span_metrics]
       exporters: [prometheus]
 ```
 
@@ -181,20 +187,19 @@ Query the resulting metrics in Prometheus or Grafana:
 # P95 latency by checkout variant
 histogram_quantile(0.95,
   sum(rate(duration_milliseconds_bucket{
-    span_name="checkout",
-    feature_flag_key="checkout-flow"
-  }[5m])) by (le, feature_flag_variant)
+    span_name="checkout"
+  }[5m])) by (le, checkout_flag_variant)
 )
 
 # Error rate by variant
 sum(rate(calls_total{
   span_name="checkout",
   status_code="STATUS_CODE_ERROR"
-}[5m])) by (feature_flag_variant)
+}[5m])) by (checkout_flag_variant)
 /
 sum(rate(calls_total{
   span_name="checkout"
-}[5m])) by (feature_flag_variant)
+}[5m])) by (checkout_flag_variant)
 ```
 
 ## Automated Variant Comparison
@@ -207,13 +212,13 @@ import requests
 
 PROMETHEUS_URL = "http://localhost:9090"
 
-def get_p95_by_variant(flag_key):
-    """Fetch p95 latency for each variant of a feature flag."""
-    query = f'''
+def get_p95_by_variant():
+    """Fetch p95 latency for each checkout variant."""
+    query = '''
     histogram_quantile(0.95,
-      sum(rate(duration_milliseconds_bucket{{
-        feature_flag_key="{flag_key}"
-      }}[30m])) by (le, feature_flag_variant)
+      sum(rate(duration_milliseconds_bucket{
+        span_name="checkout"
+      }[30m])) by (le, checkout_flag_variant)
     )
     '''
     resp = requests.get(f"{PROMETHEUS_URL}/api/v1/query", params={"query": query})
@@ -221,13 +226,13 @@ def get_p95_by_variant(flag_key):
 
     variants = {}
     for result in results:
-        variant = result["metric"]["feature_flag_variant"]
+        variant = result["metric"]["checkout_flag_variant"]
         p95 = float(result["value"][1])
         variants[variant] = p95
 
     return variants
 
-variants = get_p95_by_variant("checkout-flow")
+variants = get_p95_by_variant()
 print("P95 latency by variant:")
 for variant, latency in sorted(variants.items()):
     print(f"  {variant}: {latency:.1f}ms")
@@ -235,10 +240,10 @@ for variant, latency in sorted(variants.items()):
 # Alert if any variant is 20% slower than control
 control_latency = variants.get("control", 0)
 for variant, latency in variants.items():
-    if variant != "control" and latency > control_latency * 1.2:
+    if control_latency > 0 and variant != "control" and latency > control_latency * 1.2:
         print(f"WARNING: {variant} is {((latency/control_latency)-1)*100:.0f}% slower than control")
 ```
 
 ## Summary
 
-By wiring flagd into your OpenTelemetry instrumentation, every trace and metric carries the feature flag context. This lets you answer the question that matters most for A/B tests: "Does the new variant perform well enough to ship?" You do not need separate analytics pipelines or custom instrumentation per experiment. The flag evaluation just becomes another attribute on your existing telemetry.
+By wiring flagd into your OpenTelemetry instrumentation, your traces can include feature flag evaluation events, and your checkout spans can carry the resolved variant for metric aggregation. This lets you answer the question that matters most for A/B tests: "Does the new variant perform well enough to ship?" You do not need separate analytics pipelines or custom instrumentation per experiment. The flag evaluation becomes part of your existing telemetry.
