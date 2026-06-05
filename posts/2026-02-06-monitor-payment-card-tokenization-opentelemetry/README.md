@@ -16,16 +16,17 @@ Every time a customer saves a card or makes a payment, the tokenization service 
 
 ```python
 from opentelemetry import trace, metrics
+from opentelemetry.trace import Status, StatusCode
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.metrics import MeterProvider
-from opentelemetry.sdk.trace.export import BatchSpanExporter
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 
 trace_provider = TracerProvider()
 trace_provider.add_span_processor(
-    BatchSpanExporter(OTLPSpanExporter(endpoint="http://otel-collector:4317"))
+    BatchSpanProcessor(OTLPSpanExporter(endpoint="http://otel-collector:4317"))
 )
 trace.set_tracer_provider(trace_provider)
 
@@ -45,6 +46,7 @@ meter = metrics.get_meter("tokenization-service")
 ```python
 import time
 import hashlib
+import hmac
 
 # Tokenization metrics
 
@@ -78,10 +80,11 @@ hsm_errors = meter.create_counter(
 )
 
 class TokenizationService:
-    def __init__(self, hsm_client, token_store, cache):
+    def __init__(self, hsm_client, token_store, cache, pan_correlation_key):
         self.hsm = hsm_client
         self.store = token_store
         self.cache = cache
+        self.pan_correlation_key = pan_correlation_key
 
     def tokenize(self, pan, merchant_id, token_requestor):
         """Tokenize a payment card number (PAN)."""
@@ -89,15 +92,19 @@ class TokenizationService:
             start = time.monotonic()
 
             # IMPORTANT: Never log or set the actual PAN as a span attribute.
-            # Use a hash for correlation without exposing cardholder data.
-            pan_hash = hashlib.sha256(pan.encode()).hexdigest()[:16]
-            span.set_attribute("pan.hash", pan_hash)
+            # Use a keyed, non-reversible correlation ID instead of a plain PAN hash.
+            pan_correlation_id = hmac.new(
+                self.pan_correlation_key,
+                pan.encode(),
+                hashlib.sha256,
+            ).hexdigest()[:16]
+            span.set_attribute("pan.correlation_id", pan_correlation_id)
             span.set_attribute("token_requestor", token_requestor)
             span.set_attribute("merchant.id", merchant_id)
 
             # Check if this PAN is already tokenized for this merchant
             with tracer.start_as_current_span("tokenization.cache_lookup"):
-                cache_key = f"{pan_hash}:{merchant_id}"
+                cache_key = f"{pan_correlation_id}:{merchant_id}"
                 cached_token = self.cache.get(cache_key)
                 if cached_token:
                     token_cache_hits.add(1, {"requestor": token_requestor})
@@ -158,11 +165,19 @@ class TokenizationService:
 Detokenization is the reverse: given a token, retrieve the original PAN. This is typically restricted to specific use cases like settlement processing.
 
 ```python
+class TokenizationService:
+    # ... __init__ and tokenize method from earlier ...
+
     def detokenize(self, token, purpose, requesting_service):
         """Retrieve the original PAN for a given token."""
         with tracer.start_as_current_span("tokenization.detokenize") as span:
             start = time.monotonic()
-            span.set_attribute("token.hash", hashlib.sha256(token.encode()).hexdigest()[:16])
+            token_correlation_id = hmac.new(
+                self.pan_correlation_key,
+                token.encode(),
+                hashlib.sha256,
+            ).hexdigest()[:16]
+            span.set_attribute("token.correlation_id", token_correlation_id)
             span.set_attribute("detokenize.purpose", purpose)
             span.set_attribute("detokenize.requesting_service", requesting_service)
 
@@ -172,7 +187,7 @@ Detokenization is the reverse: given a token, retrieve the original PAN. This is
                 auth_span.set_attribute("auth.authorized", authorized)
                 if not authorized:
                     tokenize_counter.add(1, {"outcome": "unauthorized"})
-                    span.set_status(trace.StatusCode.ERROR, "Unauthorized detokenization")
+                    span.set_status(Status(StatusCode.ERROR, "Unauthorized detokenization"))
                     raise PermissionError(
                         f"Service {requesting_service} not authorized for {purpose}"
                     )
@@ -207,7 +222,7 @@ Detokenization is the reverse: given a token, retrieve the original PAN. This is
             tokenize_counter.add(1, {"outcome": "success"})
 
             # Record the access for audit purposes
-            record_detokenize_audit_log(token, purpose, requesting_service)
+            record_detokenize_audit_log(token_correlation_id, purpose, requesting_service)
 
             return pan
 ```
@@ -255,4 +270,4 @@ For tokenization services, you should set up alerts for:
 
 ## Conclusion
 
-Tokenization services are both performance-critical and security-critical. OpenTelemetry lets you instrument them thoroughly without ever logging sensitive cardholder data. By tracking latency breakdowns across cache lookups, HSM operations, and store interactions, you can pinpoint exactly where slowdowns occur. The audit trail from traces also helps during PCI DSS assessments, where you need to demonstrate that access to cardholder data is monitored and controlled.
+Tokenization services are both performance-critical and security-critical. OpenTelemetry lets you instrument them thoroughly without ever logging sensitive cardholder data. By tracking latency breakdowns across cache lookups, HSM operations, and store interactions, you can pinpoint exactly where slowdowns occur. Dedicated audit logs, supported by trace data, also help during PCI DSS assessments, where you need to demonstrate that access to cardholder data is monitored and controlled.
