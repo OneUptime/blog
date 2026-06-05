@@ -37,12 +37,9 @@ Set up OpenTelemetry before instrumenting handlers. This initialization configur
 package main
 
 import (
-    "context"
-    "log"
-    "time"
-
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
+    "go.opentelemetry.io/otel/propagation"
     "go.opentelemetry.io/otel/sdk/resource"
     sdktrace "go.opentelemetry.io/otel/sdk/trace"
     semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
@@ -72,6 +69,10 @@ func initTracer() (*sdktrace.TracerProvider, error) {
 
     // Set as global provider
     otel.SetTracerProvider(tp)
+    otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
+        propagation.TraceContext{},
+        propagation.Baggage{},
+    ))
 
     return tp, nil
 }
@@ -87,7 +88,9 @@ Wrap your http.HandlerFunc with otelhttp to add automatic tracing.
 package main
 
 import (
+    "context"
     "fmt"
+    "log"
     "net/http"
     "time"
 
@@ -256,7 +259,7 @@ func orderHandler(w http.ResponseWriter, r *http.Request) {
     _, dbSpan := otel.Tracer("handlers").Start(ctx, "fetch-order-from-db")
     dbSpan.SetAttributes(attribute.String("db.system", "postgresql"))
 
-    order := fetchOrderFromDB(orderID)
+    _ = fetchOrderFromDB(orderID)
     dbSpan.End()
 
     // Create child span for external API call
@@ -304,7 +307,6 @@ Use otelhttp to instrument outbound HTTP requests, enabling distributed tracing 
 package main
 
 import (
-    "context"
     "io"
     "net/http"
     "time"
@@ -368,12 +370,15 @@ Customize otelhttp behavior with configuration options.
 package main
 
 import (
+    "context"
+    "fmt"
     "net/http"
+    "net/http/httptrace"
+    "time"
 
     "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
     "go.opentelemetry.io/otel/attribute"
-    "go.opentelemetry.io/otel/metric"
-    "go.opentelemetry.io/otel/propagation"
+    "go.opentelemetry.io/otel/trace"
 )
 
 func setupAdvancedHandler() http.Handler {
