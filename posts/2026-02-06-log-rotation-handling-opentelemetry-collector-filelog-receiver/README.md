@@ -14,13 +14,13 @@ This post covers the different log rotation approaches and how to configure the 
 
 There are two common rotation strategies, and they create different problems:
 
-**Rename/create rotation** (logrotate default): The current file is renamed (`app.log` becomes `app.log.1`), and a new empty file is created with the original name. The issue here is that the collector was tailing `app.log` by inode. After rotation, the inode for `app.log` changes, and the collector might continue reading the old file (now `app.log.1`) or miss the transition entirely.
+**Rename/create rotation** (logrotate default): The current file is renamed (`app.log` becomes `app.log.1`), and a new empty file is created with the original name. A collector that only follows the path can miss the transition or read the wrong file after rotation unless it can identify the renamed file and the new replacement file separately.
 
-**Copytruncate rotation** (logrotate with `copytruncate`): The current file is copied to `app.log.1`, then the original is truncated to zero bytes. The inode stays the same, but the file suddenly shrinks. If the collector was tracking its read position as "byte offset 50000" and the file is now 0 bytes, it gets confused.
+**Copytruncate rotation** (logrotate with `copytruncate`): The current file is copied to `app.log.1`, then the original is truncated to zero bytes. The inode stays the same, but the file suddenly shrinks. If the collector was tracking its read position as "byte offset 50000" and the file is now 0 bytes, it needs a configured truncation behavior to decide whether to wait, read the file again, or skip to newly written data.
 
 ## Basic Configuration for Rename/Create Rotation
 
-The Filelog receiver handles rename/create rotation well out of the box when you configure it with the right settings. The key is the `poll_interval` and letting the receiver track files by fingerprint rather than just path:
+The Filelog receiver handles rename/create rotation well out of the box when you configure it with the right settings. The key is the `poll_interval` and letting the receiver track files by internal identity and fingerprint rather than just path:
 
 ```yaml
 # otel-collector-config.yaml
@@ -49,7 +49,7 @@ receivers:
           layout: "%Y-%m-%dT%H:%M:%S"
 ```
 
-The receiver uses fingerprinting to track files across renames. It reads the first `fingerprint_size` bytes of each file and uses that as an identifier. When `app.log` is renamed to `app.log.1`, the fingerprint stays the same, so the receiver knows it is the same file and continues reading from where it left off.
+The receiver uses the file's internal identity and fingerprinting to track files across renames. It reads the first `fingerprint_size` bytes of each file as part of that identity. When `app.log` is renamed to `app.log.1`, the identity and fingerprint stay the same, so the receiver knows it is the same file and continues reading from where it left off.
 
 After rotation, a new `app.log` is created with different content, which means a different fingerprint. The receiver picks it up as a new file and starts reading from the beginning.
 
@@ -62,17 +62,17 @@ receivers:
   filelog:
     include:
       - /var/log/myapp/app.log
+      - /var/log/myapp/app.log.1
     start_at: end
     poll_interval: 200ms
     # Detect when a file is truncated and reset the read position
     # The receiver compares the current file size with its tracked offset
-    # If the file is smaller than the offset, it knows truncation happened
+    # If the file is smaller than the offset, it knows truncation happened.
+    # read_whole_file favors completeness, but can re-read some logs.
+    on_truncate: read_whole_file
     fingerprint_size: 1kb
     # Important: also read the rotated copies to catch any lines
     # written between the copy and truncate steps
-    include:
-      - /var/log/myapp/app.log
-      - /var/log/myapp/app.log.1
     operators:
       - type: regex_parser
         regex: '^(?P<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}) (?P<severity>\w+) (?P<message>.*)'
@@ -81,7 +81,7 @@ receivers:
           layout: "%Y-%m-%dT%H:%M:%S"
 ```
 
-The race condition with copytruncate is that lines can be written to the file between the copy and truncate steps. By also watching `app.log.1`, you catch any lines that were copied to the rotated file. Yes, this means some lines might be read twice (once from `app.log` before truncation and once from `app.log.1`). If deduplication matters, handle it downstream in your pipeline.
+The race condition with copytruncate is that lines can be written to the file between the copy and truncate steps. By setting `on_truncate: read_whole_file`, the receiver resets to the beginning after truncation so it can read the truncated file's new contents instead of waiting for the file to grow past the old offset. By also watching `app.log.1`, you catch lines that were copied to the rotated file. Yes, this means some lines might be read twice (once from `app.log` before truncation and once from `app.log.1`). If deduplication matters, handle it downstream in your pipeline. If you prefer to avoid re-reading after truncation, use `on_truncate: read_new` instead.
 
 ## Persisting Read Positions Across Restarts
 
@@ -133,7 +133,7 @@ The storage extension writes checkpoint data to disk. On restart, the receiver r
 
 ## Handling Compressed Rotated Files
 
-Logrotate often compresses old files (`app.log.1.gz`). The Filelog receiver cannot read compressed files natively. There are two ways to deal with this:
+Logrotate often compresses old files (`app.log.1.gz`). The Filelog receiver does not read compressed files unless you configure the `compression` option. There are three ways to deal with this:
 
 1. **Delay compression**: Configure logrotate to wait before compressing, giving the collector time to finish reading the rotated file:
 
@@ -163,6 +163,17 @@ receivers:
       - /var/log/myapp/*.gz
 ```
 
+3. **Read gzip files explicitly**: If you need to ingest compressed rotated files, include the compressed path and set `compression` to `gzip` or `auto`:
+
+```yaml
+receivers:
+  filelog:
+    include:
+      - /var/log/myapp/app.log
+      - /var/log/myapp/app.log.*.gz
+    compression: auto
+```
+
 ## Monitoring the Receiver Itself
 
 The Filelog receiver exposes internal metrics that tell you if it is keeping up with log production. Enable the telemetry endpoint:
@@ -171,10 +182,15 @@ The Filelog receiver exposes internal metrics that tell you if it is keeping up 
 service:
   telemetry:
     metrics:
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 ```
 
-Watch for `otelcol_filelog_open_files` (number of files being tailed) and check that it matches your expected count. If files are not being tracked, your include patterns might be wrong or the `max_concurrent_files` limit is too low.
+Watch for `otelcol_fileconsumer_open_files` (number of files open for reading) and `otelcol_fileconsumer_reading_files` (number of files actively being read) and check that they match your expected count. If files are not being tracked, your include patterns might be wrong or the `max_concurrent_files` limit is too low.
 
 ## Wrapping Up
 
