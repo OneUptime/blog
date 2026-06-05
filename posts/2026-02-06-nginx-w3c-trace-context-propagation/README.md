@@ -84,9 +84,9 @@ http {
 
 This passes headers through without modification. NGINX does not create its own span in this case, but the trace remains intact between the client and the backend.
 
-## Preserving Headers with proxy_pass_header
+## Do Not Use proxy_pass_header for Request Headers
 
-An alternative approach uses `proxy_pass_header`:
+Do not use `proxy_pass_header` to forward trace context request headers:
 
 ```nginx
 location /api/ {
@@ -97,7 +97,7 @@ location /api/ {
 }
 ```
 
-However, `proxy_set_header` is more explicit and recommended for trace context headers.
+The `proxy_pass_header` directive controls response headers passed from the upstream server back to the client. Use `proxy_set_header` to pass `traceparent`, `tracestate`, and `baggage` request headers to the upstream.
 
 ## Handling Multiple Upstreams
 
@@ -139,24 +139,27 @@ Setting the headers at the server level applies them to all locations, avoiding 
 Combine trace context with NGINX's built-in request ID for additional correlation:
 
 ```nginx
-server {
-    listen 80;
-
-    # Generate a unique request ID if not provided
-    # This is separate from the trace ID but useful for log correlation
-    proxy_set_header X-Request-ID $request_id;
-    proxy_set_header traceparent $http_traceparent;
-    proxy_set_header tracestate $http_tracestate;
-
+http {
     # Log both request ID and trace context
     log_format traced '$remote_addr - [$time_local] '
                       '"$request" $status '
                       'trace=$http_traceparent '
                       'reqid=$request_id';
-    access_log /var/log/nginx/access.log traced;
 
-    location / {
-        proxy_pass http://backend:8080;
+    server {
+        listen 80;
+
+        # Set a unique NGINX request ID for upstream correlation
+        # This is separate from the trace ID but useful for log correlation
+        proxy_set_header X-Request-ID $request_id;
+        proxy_set_header traceparent $http_traceparent;
+        proxy_set_header tracestate $http_tracestate;
+
+        access_log /var/log/nginx/access.log traced;
+
+        location / {
+            proxy_pass http://backend:8080;
+        }
     }
 }
 ```
