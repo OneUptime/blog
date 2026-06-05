@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Span Events, SDK Limits, Tracing
 
 Description: Fix span events being silently dropped when they exceed the SDK default limit of 128 events per span.
 
-You are adding events to spans to record important milestones: exceptions, log messages, state transitions. But when you look at the spans in your backend, only some events appear. The rest were silently dropped by the SDK because you hit the maximum events-per-span limit. Here is how to detect and fix this.
+You are adding events to spans to record important milestones: exceptions, log messages, state transitions. But when you look at the spans in your backend, only some events appear. The rest were not retained by the SDK because you hit the maximum events-per-span limit. Here is how to detect and fix this.
 
 ## Understanding Span Events
 
@@ -35,7 +35,7 @@ If your batch has 200 items, you could add 200+ events to a single span. The SDK
 
 ## The Default Limit
 
-The OpenTelemetry specification defines a default limit of 128 events per span. Once this limit is reached, new events are silently dropped:
+The OpenTelemetry specification defines a default limit of 128 events per span. Once this limit is reached, the SDK may discard events beyond the configured limit. Some SDKs keep the newest events and evict the oldest ones:
 
 ```python
 # Default SpanLimits in the Python SDK
@@ -68,11 +68,13 @@ with tracer.start_as_current_span("process-batch") as span:
 In your backend, check the event count on the span:
 
 ```sql
--- Query your backend for span event counts
-SELECT span_id, count(events) as event_count
-FROM spans
+-- Query your backend for span event counts.
+-- Adjust table and field names for your backend schema.
+SELECT span_id, COUNT(*) AS event_count
+FROM span_events
 WHERE span_name = 'process-batch'
-AND event_count = 128  -- Spans at exactly the limit are suspicious
+GROUP BY span_id
+HAVING COUNT(*) = 128;  -- Spans at exactly the limit are suspicious
 ```
 
 ## Fix 1: Increase the Events Per Span Limit
@@ -99,10 +101,11 @@ For Go:
 ```go
 import "go.opentelemetry.io/otel/sdk/trace"
 
+limits := trace.NewSpanLimits()
+limits.EventCountLimit = 512
+
 provider := trace.NewTracerProvider(
-    trace.WithSpanLimits(trace.SpanLimits{
-        EventCountLimit: 512,
-    }),
+    trace.WithRawSpanLimits(limits),
 )
 ```
 
