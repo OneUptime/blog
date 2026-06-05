@@ -15,7 +15,7 @@ There are several practical reasons to derive SLIs from span data rather than (o
 - **Automatic coverage**: Every traced operation gets SLI metrics without explicit counter/histogram code
 - **Consistency**: The same data source feeds both your tracing and SLI pipelines, eliminating discrepancies
 - **Rich dimensions**: Spans carry attributes like HTTP method, route, status code, and custom business dimensions that become metric labels automatically
-- **Retroactive SLIs**: You can add new SLI dimensions by updating the collector config, without redeploying application code
+- **Collector-configurable SLIs**: You can add new SLI dimensions for newly processed spans by updating the collector config, without redeploying application code
 
 ## The Span Metrics Connector
 
@@ -38,21 +38,26 @@ receivers:
       http:
         endpoint: "0.0.0.0:4318"
 
+processors:
+  filter/server_spans:
+    error_mode: ignore
+    traces:
+      span:
+        # Keep only server spans (entry points) for request SLIs
+        - 'span.kind != SPAN_KIND_SERVER'
+
 connectors:
-  spanmetrics:
+  span_metrics:
     # Configure histogram buckets aligned to SLO thresholds
     histogram:
       explicit:
         buckets: [5ms, 10ms, 25ms, 50ms, 100ms, 200ms, 500ms, 1s, 2.5s, 5s, 10s]
     # Dimensions become Prometheus labels on the derived metrics
     dimensions:
-      - name: service.name
-      - name: http.method
+      - name: http.request.method
       - name: http.route
-      - name: http.status_code
-    # Only derive metrics from server spans (entry points)
-    # This avoids double-counting in service meshes
-    dimensions_cache_size: 1000
+      - name: http.response.status_code
+    aggregation_cardinality_limit: 1000
     aggregation_temporality: "AGGREGATION_TEMPORALITY_CUMULATIVE"
     metrics_flush_interval: 15s
 
@@ -70,13 +75,18 @@ exporters:
 
 service:
   pipelines:
-    # Traces flow in through OTLP and out to both spanmetrics and Jaeger
-    traces:
+    # Filtered traces go to span_metrics for SLI generation
+    traces/spanmetrics:
       receivers: [otlp]
-      exporters: [spanmetrics, otlp/traces]
+      processors: [filter/server_spans]
+      exporters: [span_metrics]
+    # Full traces still go to your tracing backend
+    traces/backend:
+      receivers: [otlp]
+      exporters: [otlp/traces]
     # Span-derived metrics flow from the connector to Prometheus
     metrics:
-      receivers: [spanmetrics]
+      receivers: [span_metrics]
       exporters: [prometheus]
 ```
 
@@ -137,7 +147,8 @@ processors:
     error_mode: ignore
     traces:
       span:
-        # Exclude health check endpoints
+        # Exclude non-server spans and health check endpoints
+        - 'span.kind != SPAN_KIND_SERVER'
         - 'attributes["http.route"] == "/health"'
         - 'attributes["http.route"] == "/ready"'
         # Exclude internal retry spans
@@ -145,10 +156,13 @@ processors:
 
 service:
   pipelines:
-    traces:
+    traces/spanmetrics:
       receivers: [otlp]
       processors: [filter/sli]
-      exporters: [spanmetrics, otlp/traces]
+      exporters: [span_metrics]
+    traces/backend:
+      receivers: [otlp]
+      exporters: [otlp/traces]
 ```
 
 ## Combining Span Metrics with Direct Metrics
@@ -163,7 +177,7 @@ receivers:
         endpoint: "0.0.0.0:4317"
 
 connectors:
-  spanmetrics:
+  span_metrics:
     histogram:
       explicit:
         buckets: [5ms, 10ms, 25ms, 50ms, 100ms, 200ms, 500ms, 1s]
@@ -176,10 +190,10 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      exporters: [spanmetrics]
+      exporters: [span_metrics]
     # Direct application metrics AND span-derived metrics both flow to Prometheus
     metrics:
-      receivers: [otlp, spanmetrics]
+      receivers: [otlp, span_metrics]
       exporters: [prometheus]
 ```
 
