@@ -40,13 +40,13 @@ async function trackedRequest(method, url, options = {}) {
   return tracer.startActiveSpan(spanName, {
     kind: SpanKind.CLIENT,
     attributes: {
-      'http.method': method.toUpperCase(),
-      'http.url': url,
+      'http.request.method': method.toUpperCase(),
+      'url.full': url,
       'dependency.name': dep.name,
       'dependency.category': dep.category,
       'dependency.is_third_party': true,
       // Do not log auth headers or sensitive params
-      'http.request.body_size': options.data ? JSON.stringify(options.data).length : 0,
+      'http.request.body.size': options.data ? JSON.stringify(options.data).length : 0,
     },
   }, async (span) => {
     const startTime = Date.now();
@@ -56,8 +56,8 @@ async function trackedRequest(method, url, options = {}) {
       const duration = Date.now() - startTime;
 
       span.setAttributes({
-        'http.status_code': response.status,
-        'http.response.body_size': JSON.stringify(response.data).length,
+        'http.response.status_code': response.status,
+        'http.response.body.size': JSON.stringify(response.data).length,
         'dependency.response_time_ms': duration,
       });
 
@@ -66,10 +66,10 @@ async function trackedRequest(method, url, options = {}) {
       const duration = Date.now() - startTime;
 
       span.setAttributes({
-        'http.status_code': error.response?.status || 0,
+        'http.response.status_code': error.response?.status || 0,
         'dependency.response_time_ms': duration,
         'dependency.error': true,
-        'dependency.error_type': error.code || 'unknown',
+        'error.type': error.code || 'unknown',
       });
 
       span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
@@ -119,8 +119,15 @@ Use the Span Metrics Connector to create time-series metrics from dependency spa
 ```yaml
 # otel-collector-config.yaml
 
+receivers:
+  otlp:
+    protocols:
+      grpc:
+      http:
+
 connectors:
-  spanmetrics:
+  span_metrics:
+    namespace: dependency
     histogram:
       explicit:
         buckets: [10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 2s, 5s, 10s]
@@ -128,9 +135,13 @@ connectors:
       - name: dependency.name
       - name: dependency.category
       - name: dependency.is_third_party
-      - name: http.status_code
+      - name: http.response.status_code
 
 exporters:
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
   prometheus:
     endpoint: "0.0.0.0:8889"
 
@@ -138,9 +149,9 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      exporters: [spanmetrics, otlp/tempo]
+      exporters: [span_metrics, otlp/tempo]
     metrics:
-      receivers: [spanmetrics]
+      receivers: [span_metrics]
       exporters: [prometheus]
 ```
 
@@ -151,23 +162,32 @@ Query your metrics to understand how each dependency affects your application:
 ```promql
 # P95 latency per third-party dependency
 histogram_quantile(0.95,
-  sum(rate(duration_milliseconds_bucket{dependency_is_third_party="true"}[5m])) by (le, dependency_name)
+  sum(rate(dependency_duration_milliseconds_bucket{dependency_is_third_party="true"}[5m])) by (le, dependency_name)
 )
 
 # Error rate per dependency
-sum(rate(duration_milliseconds_count{dependency_is_third_party="true", http_status_code=~"5.."}[5m])) by (dependency_name)
+sum(rate(dependency_duration_milliseconds_count{dependency_is_third_party="true", http_response_status_code=~"5.."}[5m])) by (dependency_name)
 /
-sum(rate(duration_milliseconds_count{dependency_is_third_party="true"}[5m])) by (dependency_name)
+sum(rate(dependency_duration_milliseconds_count{dependency_is_third_party="true"}[5m])) by (dependency_name)
 
 # Percentage of total request time spent in third-party calls
-sum(rate(duration_milliseconds_sum{dependency_is_third_party="true"}[5m])) by (dependency_name)
+sum(rate(dependency_duration_milliseconds_sum{dependency_is_third_party="true"}[5m])) by (dependency_name)
 /
+ignoring(dependency_name) group_left
 sum(rate(http_server_duration_milliseconds_sum[5m]))
 
-# Dependency latency as percentage of parent span
-avg(dependency_response_time_ms) by (dependency_name)
+# Average dependency latency compared with average server request latency
+(
+  sum(rate(dependency_duration_milliseconds_sum{dependency_is_third_party="true"}[5m])) by (dependency_name)
+  /
+  sum(rate(dependency_duration_milliseconds_count{dependency_is_third_party="true"}[5m])) by (dependency_name)
+)
 /
-avg(http_server_duration_milliseconds)
+(
+  sum(rate(http_server_duration_milliseconds_sum[5m]))
+  /
+  sum(rate(http_server_duration_milliseconds_count[5m]))
+)
 ```
 
 ## Building a Dependency Health Dashboard
@@ -179,7 +199,7 @@ avg(http_server_duration_milliseconds)
       "title": "Third-Party Dependency Latency (P95)",
       "type": "bargauge",
       "targets": [{
-        "expr": "histogram_quantile(0.95, sum(rate(duration_milliseconds_bucket{dependency_is_third_party='true'}[5m])) by (le, dependency_name))",
+        "expr": "histogram_quantile(0.95, sum(rate(dependency_duration_milliseconds_bucket{dependency_is_third_party='true'}[5m])) by (le, dependency_name))",
         "legendFormat": "{{dependency_name}}"
       }]
     },
@@ -187,7 +207,7 @@ avg(http_server_duration_milliseconds)
       "title": "Dependency Error Rate",
       "type": "stat",
       "targets": [{
-        "expr": "sum(rate(duration_milliseconds_count{dependency_is_third_party='true', http_status_code=~'5..'}[5m])) by (dependency_name) / sum(rate(duration_milliseconds_count{dependency_is_third_party='true'}[5m])) by (dependency_name) * 100",
+        "expr": "sum(rate(dependency_duration_milliseconds_count{dependency_is_third_party='true', http_response_status_code=~'5..'}[5m])) by (dependency_name) / sum(rate(dependency_duration_milliseconds_count{dependency_is_third_party='true'}[5m])) by (dependency_name) * 100",
         "legendFormat": "{{dependency_name}}"
       }]
     },
@@ -195,7 +215,7 @@ avg(http_server_duration_milliseconds)
       "title": "Time Spent in Dependencies (% of total request)",
       "type": "piechart",
       "targets": [{
-        "expr": "sum(rate(duration_milliseconds_sum{dependency_is_third_party='true'}[5m])) by (dependency_name)",
+        "expr": "sum(rate(dependency_duration_milliseconds_sum{dependency_is_third_party='true'}[5m])) by (dependency_name)",
         "legendFormat": "{{dependency_name}}"
       }]
     }
@@ -215,7 +235,7 @@ groups:
       - alert: StripeLateP95
         expr: |
           histogram_quantile(0.95,
-            sum(rate(duration_milliseconds_bucket{dependency_name="stripe"}[5m])) by (le))
+            sum(rate(dependency_duration_milliseconds_bucket{dependency_name="stripe"}[5m])) by (le))
           > 2000
         for: 5m
         annotations:
@@ -223,9 +243,9 @@ groups:
 
       - alert: DependencyErrorSpike
         expr: |
-          sum(rate(duration_milliseconds_count{dependency_is_third_party="true", http_status_code=~"5.."}[5m])) by (dependency_name)
+          sum(rate(dependency_duration_milliseconds_count{dependency_is_third_party="true", http_response_status_code=~"5.."}[5m])) by (dependency_name)
           /
-          sum(rate(duration_milliseconds_count{dependency_is_third_party="true"}[5m])) by (dependency_name)
+          sum(rate(dependency_duration_milliseconds_count{dependency_is_third_party="true"}[5m])) by (dependency_name)
           > 0.05
         for: 5m
         annotations:
