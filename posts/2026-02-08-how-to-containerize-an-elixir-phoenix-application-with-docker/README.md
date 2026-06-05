@@ -84,24 +84,30 @@ RUN mix local.hex --force && \
 # Install Elixir dependencies first for layer caching
 COPY mix.exs mix.lock ./
 RUN mix deps.get --only prod
+
+# Copy compile-time config before compiling dependencies
+RUN mkdir config
+COPY config/config.exs config/prod.exs ./config/
 RUN mix deps.compile
 
 # Install and build frontend assets
 COPY assets/package.json assets/package-lock.json ./assets/
 RUN npm --prefix assets ci
 
-COPY priv ./priv
-COPY assets ./assets
-
-# Build frontend assets (CSS, JavaScript)
-RUN mix assets.deploy
-
 # Copy the rest of the application source
-COPY config ./config
+COPY priv ./priv
 COPY lib ./lib
 
 # Compile the application
 RUN mix compile
+
+# Build frontend assets (CSS, JavaScript)
+COPY assets ./assets
+RUN mix assets.deploy
+
+# Copy runtime config and release templates
+COPY config/runtime.exs ./config/
+COPY rel ./rel
 
 # Build the release
 RUN mix release
@@ -212,7 +218,9 @@ defmodule MyAppWeb.HealthController do
 
     status = if db_status == "ok", do: 200, else: 503
 
-    json(conn, %{
+    conn
+    |> put_status(status)
+    |> json(%{
       status: if(status == 200, do: "UP", else: "DOWN"),
       checks: %{database: db_status}
     })
@@ -222,22 +230,21 @@ end
 
 ## BEAM VM Configuration for Containers
 
-The BEAM VM needs specific settings for container environments. Create a `rel/vm.args.eex` file:
+The BEAM VM can be tuned for container environments. Create a `rel/vm.args.eex` file:
 
 ```text
 # rel/vm.args.eex - BEAM VM arguments for containers
 
-# Set the node name using the hostname
--name my_app@127.0.0.1
-
-# Set the cookie for distributed Erlang
--setcookie ${RELEASE_COOKIE}
+## -mode/-name/-sname/-setcookie are configured via RELEASE_* env vars.
+## For distributed Erlang, set RELEASE_DISTRIBUTION, RELEASE_NODE,
+## and RELEASE_COOKIE in rel/env.sh.eex or the container environment.
 
 # Memory settings
 +MBas aobf
 
-# Scheduler settings - use the container's CPU count
-+S ${SCHEDULERS}:${SCHEDULERS}
+# Scheduler settings
+# The BEAM defaults are usually correct; set +S explicitly only after measuring.
+##+S 2:2
 
 # Enable kernel polling for better I/O performance
 +K true
@@ -279,8 +286,6 @@ end
 
 ```yaml
 # docker-compose.yml - Phoenix development environment
-version: "3.9"
-
 services:
   app:
     build:
@@ -328,8 +333,6 @@ volumes:
 
 ```yaml
 # docker-compose.prod.yml - Phoenix production deployment
-version: "3.9"
-
 services:
   app:
     image: my-phoenix-app:${VERSION:-latest}
@@ -400,7 +403,8 @@ defmodule MyApp.Release do
   end
 
   defp load_app do
-    Application.load(@app)
+    Application.ensure_all_started(:ssl)
+    Application.ensure_loaded(@app)
   end
 end
 ```
@@ -438,7 +442,7 @@ Phoenix on the BEAM is already fast and handles concurrency well. A few containe
 
 2. **Enable the BEAM's kernel poll.** The `+K true` flag in vm.args enables epoll/kqueue for efficient I/O handling.
 
-3. **Use `strip_beams: true`.** This removes debug information from compiled BEAM files, reducing the release size by 30-50%.
+3. **Keep `strip_beams: true`.** This removes debug information and other non-essential chunks from compiled BEAM files, reducing the release size.
 
 4. **The BEAM handles concurrency natively.** Unlike PHP or Ruby, you do not need multiple processes or workers for concurrent request handling. A single Phoenix container handles thousands of simultaneous connections.
 
