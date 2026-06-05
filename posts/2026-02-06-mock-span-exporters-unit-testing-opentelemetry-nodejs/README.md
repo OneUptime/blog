@@ -8,7 +8,7 @@ Description: Learn how to build and use mock span exporters to unit test OpenTel
 
 ---
 
-Testing OpenTelemetry instrumentation in Node.js requires a different approach than testing in Python or Go. The Node.js SDK does not ship with a built-in in-memory exporter in the same convenient way that the Python SDK does. Instead, you build lightweight mock exporters that capture spans during test runs. This approach gives you full control over what gets captured and how you assert against it.
+Testing OpenTelemetry instrumentation in Node.js requires a different approach than testing production telemetry pipelines. The Node.js tracing SDK includes an `InMemorySpanExporter` for testing, and you can also build lightweight mock exporters that capture spans during test runs. This approach gives you full control over what gets captured and how you assert against it.
 
 This guide covers how to create mock span exporters, wire them into your test setup, and write meaningful assertions against the telemetry your Node.js code produces.
 
@@ -107,10 +107,10 @@ export function setupTestTracing(): {
 } {
     const exporter = new MockSpanExporter();
 
-    const provider = new NodeTracerProvider();
-
     // Use SimpleSpanProcessor to avoid batching delays in tests
-    provider.addSpanProcessor(new SimpleSpanProcessor(exporter));
+    const provider = new NodeTracerProvider({
+        spanProcessors: [new SimpleSpanProcessor(exporter)],
+    });
 
     // Register as the global tracer provider
     provider.register();
@@ -283,7 +283,9 @@ it("should maintain parent-child relationship across async calls", async () => {
     const parentSpan = spans.find((s) => s.name === "parent.operation")!;
 
     // Verify the child references the parent
-    expect(childSpan.parentSpanId).toBe(parentSpan.spanContext().spanId);
+    expect(childSpan.parentSpanContext?.spanId).toBe(
+        parentSpan.spanContext().spanId
+    );
 
     // Verify both spans share the same trace
     expect(childSpan.spanContext().traceId).toBe(
@@ -301,12 +303,24 @@ If you use HTTP instrumentation, you can test that middleware-generated spans ha
 ```typescript
 // http-test-example.test.ts
 import { setupTestTracing, teardownTestTracing } from "./test-helpers";
-import express from "express";
+import { registerInstrumentations } from "@opentelemetry/instrumentation";
+import { HttpInstrumentation } from "@opentelemetry/instrumentation-http";
+import { ExpressInstrumentation } from "@opentelemetry/instrumentation-express";
 import request from "supertest";
 
 it("should capture HTTP span attributes", async () => {
     const { exporter, provider } = setupTestTracing();
 
+    registerInstrumentations({
+        tracerProvider: provider,
+        instrumentations: [
+            new HttpInstrumentation(),
+            new ExpressInstrumentation(),
+        ],
+    });
+
+    // Import Express after registering instrumentation so it can patch the module
+    const express = (await import("express")).default;
     const app = express();
 
     // A simple route that does nothing fancy
@@ -326,8 +340,14 @@ it("should capture HTTP span attributes", async () => {
 
     // Verify HTTP-specific attributes
     expect(httpSpan).toBeDefined();
-    expect(httpSpan!.attributes["http.method"]).toBe("GET");
-    expect(httpSpan!.attributes["http.status_code"]).toBe(200);
+    expect(
+        httpSpan!.attributes["http.request.method"] ??
+            httpSpan!.attributes["http.method"]
+    ).toBe("GET");
+    expect(
+        httpSpan!.attributes["http.response.status_code"] ??
+            httpSpan!.attributes["http.status_code"]
+    ).toBe(200);
 
     await teardownTestTracing(exporter, provider);
 });
