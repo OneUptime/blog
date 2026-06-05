@@ -34,13 +34,13 @@ exporters:
       - kafka-1:9092
       - kafka-2:9092
       - kafka-3:9092
-    topic: otel-traces-replayable
     protocol_version: "3.0.0"
-    # Use JSON for human readability during debugging
-    encoding: otlp_json
+    traces:
+      topic: otel-traces-replayable
+      # Use JSON for human readability during debugging
+      encoding: otlp_json
     producer:
       compression: zstd
-      # Ensure ordering within a trace
       max_message_bytes: 10485760
       required_acks: all
     # Partition by trace_id to keep related spans together
@@ -51,9 +51,10 @@ exporters:
       - kafka-1:9092
       - kafka-2:9092
       - kafka-3:9092
-    topic: otel-metrics-replayable
     protocol_version: "3.0.0"
-    encoding: otlp_json
+    metrics:
+      topic: otel-metrics-replayable
+      encoding: otlp_json
     producer:
       compression: zstd
       required_acks: all
@@ -63,9 +64,10 @@ exporters:
       - kafka-1:9092
       - kafka-2:9092
       - kafka-3:9092
-    topic: otel-logs-replayable
     protocol_version: "3.0.0"
-    encoding: otlp_json
+    logs:
+      topic: otel-logs-replayable
+      encoding: otlp_json
     producer:
       compression: zstd
       required_acks: all
@@ -74,13 +76,6 @@ processors:
   batch:
     send_batch_size: 4096
     timeout: 2s
-
-  # Add timestamps as Kafka headers for easier replay filtering
-  attributes:
-    actions:
-      - key: collector.export_timestamp
-        value: ""
-        action: upsert
 
 service:
   pipelines:
@@ -132,7 +127,7 @@ kafka-topics.sh --create \
 
 ## Replaying Data
 
-When you need to reprocess data, create a new consumer group and reset its offset:
+When you need to reprocess data, use an inactive replay consumer group and reset its offset:
 
 ```bash
 # Reset the consumer group to replay from a specific timestamp
@@ -154,7 +149,7 @@ kafka-consumer-groups.sh \
   --execute
 ```
 
-Then start your consumer Collector with the new group ID:
+Then start your consumer Collector with that group ID:
 
 ```yaml
 # replay-consumer.yaml
@@ -162,9 +157,10 @@ receivers:
   kafka:
     brokers:
       - kafka-1:9092
-    topic: otel-traces-replayable
     protocol_version: "3.0.0"
-    encoding: otlp_json
+    traces:
+      topics: [otel-traces-replayable]
+      encoding: otlp_json
     group_id: replay-processor-v2
     initial_offset: earliest
 
@@ -192,10 +188,10 @@ If you only need to replay a specific time window, use the Collector's filter pr
 ```yaml
 processors:
   filter:
-    traces:
-      span:
-        - 'start_time_unix_nano < 1706745600000000000'
-        - 'start_time_unix_nano > 1706832000000000000'
+    error_mode: ignore
+    trace_conditions:
+      - 'span.start_time_unix_nano < 1769904000000000000'
+      - 'span.start_time_unix_nano >= 1769990400000000000'
 ```
 
 This drops spans outside your target window, so you do not reprocess everything.
