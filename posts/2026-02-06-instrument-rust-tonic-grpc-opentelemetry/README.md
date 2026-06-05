@@ -26,9 +26,9 @@ Here's how OpenTelemetry integrates with Tonic services:
 
 ```mermaid
 graph LR
-    A[gRPC Client] -->|Instrumented Request| B[Tonic Interceptor]
+    A[gRPC Client] -->|Instrumented Request| B[Tonic Middleware]
     B -->|Inject Context| C[gRPC Transport]
-    C -->|Network Call| D[Server Interceptor]
+    C -->|Network Call| D[Server Middleware]
     D -->|Extract Context| E[Service Handler]
     E -->|Create Spans| F[OpenTelemetry Exporter]
     F -->|Send Traces| G[Backend Collector]
@@ -45,10 +45,12 @@ Add the necessary crates to your `Cargo.toml`:
 tonic = "0.11"
 prost = "0.12"
 tokio = { version = "1.35", features = ["full"] }
+tokio-stream = "0.1"
+tower = "0.4"
 
 # OpenTelemetry core libraries
 opentelemetry = "0.22"
-opentelemetry_sdk = "0.22"
+opentelemetry_sdk = { version = "0.22", features = ["rt-tokio"] }
 opentelemetry-otlp = "0.15"
 
 # Tracing integration with OpenTelemetry
@@ -56,7 +58,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-opentelemetry = "0.23"
 
-# gRPC interceptor for automatic instrumentation
+# gRPC middleware for automatic instrumentation
 tonic-tracing-opentelemetry = "0.18"
 
 [build-dependencies]
@@ -101,19 +103,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 Create a function to set up the OpenTelemetry pipeline with OTLP exporter:
 
 ```rust
-use opentelemetry::{global, trace::TracerProvider as _, KeyValue};
+use opentelemetry::{global, KeyValue};
 use opentelemetry_otlp::WithExportConfig;
-use opentelemetry_sdk::{runtime, trace::TracerProvider, Resource};
+use opentelemetry_sdk::{runtime, trace::Tracer, Resource};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
-fn init_tracer() -> Result<TracerProvider, Box<dyn std::error::Error>> {
+fn init_tracer() -> Result<Tracer, Box<dyn std::error::Error>> {
     // Configure the OTLP exporter to send traces to a collector
     let exporter = opentelemetry_otlp::new_exporter()
         .tonic()
         .with_endpoint("http://localhost:4317");
 
     // Build the tracer provider with service metadata
-    let provider = opentelemetry_otlp::new_pipeline()
+    let tracer = opentelemetry_otlp::new_pipeline()
         .tracing()
         .with_exporter(exporter)
         .with_trace_config(
@@ -127,7 +129,7 @@ fn init_tracer() -> Result<TracerProvider, Box<dyn std::error::Error>> {
 
     // Set up the tracing subscriber with OpenTelemetry layer
     let telemetry_layer = tracing_opentelemetry::layer()
-        .with_tracer(provider.tracer("rust-grpc-service"));
+        .with_tracer(tracer.clone());
 
     tracing_subscriber::registry()
         .with(EnvFilter::from_default_env())
@@ -135,16 +137,17 @@ fn init_tracer() -> Result<TracerProvider, Box<dyn std::error::Error>> {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    Ok(provider)
+    Ok(tracer)
 }
 ```
 
 ## Implement Instrumented gRPC Server
 
-Create a Tonic server with OpenTelemetry interceptors:
+Create a Tonic server with OpenTelemetry middleware:
 
 ```rust
 use tonic::{transport::Server, Request, Response, Status};
+use tonic_tracing_opentelemetry::middleware::server::OtelGrpcLayer;
 use tracing::{info, instrument};
 
 // Include the generated protobuf code
@@ -165,6 +168,8 @@ pub struct MyGreeter {
 // The instrument macro automatically creates spans for this method
 #[tonic::async_trait]
 impl Greeter for MyGreeter {
+    type SayHelloStreamStream = tokio_stream::wrappers::ReceiverStream<Result<HelloReply, Status>>;
+
     #[instrument(skip(self, request))]
     async fn say_hello(
         &self,
@@ -221,23 +226,22 @@ impl Greeter for MyGreeter {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize OpenTelemetry tracer
-    let provider = init_tracer()?;
+    let _tracer = init_tracer()?;
 
     let addr = "0.0.0.0:50051".parse()?;
     let greeter = MyGreeter::default();
 
     info!("Starting gRPC server on {}", addr);
 
-    // Create server with OpenTelemetry interceptor for automatic tracing
+    // Create server with OpenTelemetry middleware for automatic tracing
     Server::builder()
-        .layer(tonic_tracing_opentelemetry::layer())
+        .layer(OtelGrpcLayer::default())
         .add_service(GreeterServer::new(greeter))
         .serve(addr)
         .await?;
 
     // Ensure all spans are exported before shutdown
     global::shutdown_tracer_provider();
-    let _ = provider.shutdown();
 
     Ok(())
 }
@@ -249,6 +253,8 @@ Create a client that propagates trace context across service boundaries:
 
 ```rust
 use tonic::transport::Channel;
+use tonic_tracing_opentelemetry::middleware::client::OtelGrpcLayer;
+use tower::ServiceBuilder;
 use tracing::{info, instrument};
 
 pub mod greeter {
@@ -259,16 +265,16 @@ use greeter::{greeter_client::GreeterClient, HelloRequest};
 
 #[instrument]
 async fn make_grpc_call(name: String) -> Result<(), Box<dyn std::error::Error>> {
-    // Connect to the gRPC server with OpenTelemetry interceptor
+    // Connect to the gRPC server with OpenTelemetry middleware
     let channel = Channel::from_static("http://localhost:50051")
         .connect()
         .await?;
+    let channel = ServiceBuilder::new()
+        .layer(OtelGrpcLayer::default())
+        .service(channel);
 
-    // Create client with tracing interceptor to propagate context
-    let mut client = GreeterClient::with_interceptor(
-        channel,
-        tonic_tracing_opentelemetry::tracing_interceptor(),
-    );
+    // Create client with tracing middleware to propagate context
+    let mut client = GreeterClient::new(channel);
 
     info!("Sending unary gRPC request");
 
@@ -304,7 +310,7 @@ async fn make_grpc_call(name: String) -> Result<(), Box<dyn std::error::Error>> 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize OpenTelemetry for the client
-    let provider = init_tracer()?;
+    let _tracer = init_tracer()?;
 
     // Make multiple calls to demonstrate tracing
     for i in 0..3 {
@@ -314,7 +320,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Shutdown gracefully
     opentelemetry::global::shutdown_tracer_provider();
-    let _ = provider.shutdown();
 
     Ok(())
 }
@@ -326,7 +331,17 @@ Add custom metadata to traces using Tonic interceptors:
 
 ```rust
 use tonic::{Request, Status};
+use tonic::transport::Channel;
+use tonic_tracing_opentelemetry::middleware::client::{OtelGrpcLayer, OtelGrpcService};
+use tower::ServiceBuilder;
 use tracing::Span;
+
+type InstrumentedGreeterClient = GreeterClient<
+    tonic::service::interceptor::InterceptedService<
+        OtelGrpcService<Channel>,
+        fn(Request<()>) -> Result<Request<()>, Status>,
+    >,
+>;
 
 // Custom interceptor that adds request metadata to the current span
 fn metadata_interceptor(mut req: Request<()>) -> Result<Request<()>, Status> {
@@ -349,19 +364,20 @@ fn metadata_interceptor(mut req: Request<()>) -> Result<Request<()>, Status> {
     Ok(req)
 }
 
-// Use the custom interceptor in addition to the tracing interceptor
-async fn create_instrumented_client() -> Result<GreeterClient<Channel>, Box<dyn std::error::Error>> {
+// Use the custom interceptor in addition to the tracing middleware
+async fn create_instrumented_client() -> Result<InstrumentedGreeterClient, Box<dyn std::error::Error>> {
     let channel = Channel::from_static("http://localhost:50051")
         .connect()
         .await?;
+    let channel = ServiceBuilder::new()
+        .layer(OtelGrpcLayer::default())
+        .service(channel);
 
-    // Chain interceptors: first tracing, then custom metadata
-    let client = GreeterClient::with_interceptor(channel, move |mut req: Request<()>| {
-        // Apply OpenTelemetry tracing
-        req = tonic_tracing_opentelemetry::tracing_interceptor()(req)?;
-        // Apply custom metadata
-        metadata_interceptor(req)
-    });
+    // The Tower layer handles OpenTelemetry context propagation; the interceptor adds metadata.
+    let client = GreeterClient::with_interceptor(
+        channel,
+        metadata_interceptor as fn(Request<()>) -> Result<Request<()>, Status>,
+    );
 
     Ok(client)
 }
@@ -372,7 +388,7 @@ async fn create_instrumented_client() -> Result<GreeterClient<Channel>, Box<dyn 
 Capture gRPC status codes and errors in traces:
 
 ```rust
-use tonic::{Code, Status};
+use tonic::Status;
 use tracing::{error, warn};
 
 #[instrument(skip(self, request))]
@@ -417,11 +433,12 @@ Create tests that verify tracing behavior:
 mod tests {
     use super::*;
     use opentelemetry::trace::TraceContextExt;
-    use tracing::Span;
+    use tracing::{info_span, Instrument};
+    use tracing_opentelemetry::OpenTelemetrySpanExt;
 
     #[tokio::test]
     async fn test_grpc_with_tracing() {
-        let provider = init_tracer().unwrap();
+        let _tracer = init_tracer().unwrap();
 
         let greeter = MyGreeter::default();
         let request = Request::new(HelloRequest {
@@ -429,17 +446,17 @@ mod tests {
         });
 
         // Execute within a traced context
-        let response = greeter.say_hello(request).await.unwrap();
+        let span = info_span!("test_grpc_call");
+        let response = greeter.say_hello(request).instrument(span.clone()).await.unwrap();
 
         assert!(response.get_ref().message.contains("Test User"));
         assert_eq!(response.get_ref().request_count, 1);
 
         // Verify span was created
-        let span = Span::current();
         let context = span.context();
         assert!(context.span().span_context().is_valid());
 
-        provider.shutdown().unwrap();
+        opentelemetry::global::shutdown_tracer_provider();
     }
 }
 ```
