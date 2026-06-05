@@ -14,7 +14,7 @@ This post walks through every step needed to get cross-origin distributed tracin
 
 ## Why Cross-Origin Tracing Breaks
 
-When a browser makes a cross-origin request, the CORS protocol governs which headers can be sent and received. By default, browsers only send a limited set of "simple" headers. The `traceparent` and `tracestate` headers that OpenTelemetry uses for context propagation are not on that list. If your API does not explicitly allow these headers in its CORS configuration, the browser will strip them from the request.
+When a browser makes a cross-origin request, the CORS protocol governs which headers can be sent and received. By default, browsers only send a limited set of "simple" headers. The `traceparent` and `tracestate` headers that OpenTelemetry uses for context propagation are not on that list. If your API does not explicitly allow these headers in its CORS configuration, the browser will fail the preflight check and block the actual request.
 
 ```mermaid
 sequenceDiagram
@@ -27,10 +27,10 @@ sequenceDiagram
     CORS->>Browser: 200 OK (headers allowed)
     Browser->>API: GET /api/data + traceparent header
     API->>API: Extract trace context
-    API->>Browser: 200 OK + traceresponse header
+    API->>Browser: 200 OK + optional traceresponse header
 ```
 
-The preflight request is the key interaction. If the server's CORS response does not include `traceparent` in the `Access-Control-Allow-Headers` list, the browser will not send it on the actual request. Your traces will appear to start fresh on the backend with no connection to the frontend span.
+The preflight request is the key interaction. If the server's CORS response does not include `traceparent` in the `Access-Control-Allow-Headers` list, the browser will not make the actual cross-origin request with that header. Your traces will appear to start fresh on the backend with no connection to the frontend span if the application retries without trace context or if only some routes/origins are misconfigured.
 
 ## Configuring the Browser SDK
 
@@ -45,7 +45,7 @@ import { ZoneContextManager } from '@opentelemetry/context-zone';
 import { registerInstrumentations } from '@opentelemetry/instrumentation';
 import { FetchInstrumentation } from '@opentelemetry/instrumentation-fetch';
 import { XMLHttpRequestInstrumentation } from '@opentelemetry/instrumentation-xml-http-request';
-import { Resource } from '@opentelemetry/resources';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 import {
   CompositePropagator,
   W3CTraceContextPropagator,
@@ -66,19 +66,18 @@ propagation.setGlobalPropagator(
 );
 
 const provider = new WebTracerProvider({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     'service.name': 'frontend-app',
     'service.version': '1.0.0',
   }),
+  spanProcessors: [
+    new BatchSpanProcessor(
+      new OTLPTraceExporter({
+        url: 'https://collector.example.com/v1/traces',
+      })
+    ),
+  ],
 });
-
-provider.addSpanProcessor(
-  new BatchSpanProcessor(
-    new OTLPTraceExporter({
-      url: 'https://collector.example.com/v1/traces',
-    })
-  )
-);
 
 provider.register({
   contextManager: new ZoneContextManager(),
@@ -137,7 +136,7 @@ registerInstrumentations({
 
 The `propagateTraceHeaderCorsUrls` option takes an array of regular expressions or strings. When a fetch request matches one of these patterns, the instrumentation will inject the `traceparent` header. For requests that do not match, the header is omitted, which prevents leaking trace information to third-party services.
 
-The `ignoreUrls` option is equally important. Without it, the SDK would create spans for the OTLP export requests themselves, creating an infinite loop of traces about traces.
+The `ignoreUrls` option is equally important. It helps avoid creating unwanted spans for analytics, monitoring, or telemetry export calls.
 
 ## Configuring CORS on the Backend
 
@@ -167,8 +166,8 @@ const corsOptions = {
     'baggage',        // W3C Baggage header
   ],
 
-  // Expose the traceresponse header so the browser SDK
-  // can read the server's trace information
+  // Expose the optional traceresponse header so custom
+  // browser-side correlation code can read it
   exposedHeaders: [
     'traceresponse',
   ],
@@ -214,7 +213,7 @@ location /api/ {
 }
 ```
 
-The `Access-Control-Expose-Headers` entry for `traceresponse` is optional but useful. It allows the backend to send trace information back to the browser, which some advanced correlation setups use.
+The `Access-Control-Expose-Headers` entry for `traceresponse` is optional and only needed if your backend emits that draft response header. It allows custom browser-side correlation code to read server trace information.
 
 ## Extracting Trace Context on the Backend
 
@@ -230,22 +229,21 @@ const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http')
 const { registerInstrumentations } = require('@opentelemetry/instrumentation');
 const { HttpInstrumentation } = require('@opentelemetry/instrumentation-http');
 const { ExpressInstrumentation } = require('@opentelemetry/instrumentation-express');
-const { Resource } = require('@opentelemetry/resources');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 
 const provider = new NodeTracerProvider({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     'service.name': 'api-service',
     'service.version': '2.0.0',
   }),
+  spanProcessors: [
+    new BatchSpanProcessor(
+      new OTLPTraceExporter({
+        url: 'https://collector.example.com/v1/traces',
+      })
+    ),
+  ],
 });
-
-provider.addSpanProcessor(
-  new BatchSpanProcessor(
-    new OTLPTraceExporter({
-      url: 'https://collector.example.com/v1/traces',
-    })
-  )
-);
 
 provider.register();
 
@@ -306,7 +304,7 @@ fetch('https://api.example.com/health', {
 }).then(async (response) => {
   console.log('Response status:', response.status);
 
-  // Check if the traceresponse header came back
+  // Check if the optional traceresponse header came back
   const traceResponse = response.headers.get('traceresponse');
   console.log('Trace response header:', traceResponse);
 });
@@ -331,7 +329,10 @@ const API_SERVICES = {
 
 // Build the regex array for propagateTraceHeaderCorsUrls
 export const traceableOrigins = Object.keys(API_SERVICES).map(
-  (origin) => new RegExp(origin.replace(/\./g, '\\.'))
+  (origin) =>
+    new RegExp(
+      `^${origin.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:/|$)`
+    )
 );
 
 // Custom attribute function that tags spans with the backend service name
