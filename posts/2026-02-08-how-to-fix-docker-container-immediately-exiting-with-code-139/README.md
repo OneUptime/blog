@@ -8,15 +8,15 @@ Description: Fix Docker containers crashing with exit code 139, caused by segmen
 
 ---
 
-Your container starts and immediately crashes with exit code 139. Sometimes it runs for a few seconds first. There is no error message from the application, just a sudden exit. Exit code 139 means the process received SIGSEGV (signal 11), commonly known as a segmentation fault. The math: 128 + 11 = 139. The process tried to access memory it was not allowed to touch, and the kernel killed it.
+Your container starts and immediately crashes with exit code 139. Sometimes it runs for a few seconds first. There is no error message from the application, just a sudden exit. Exit code 139 usually means the process received SIGSEGV (signal 11), commonly known as a segmentation fault. The math used by shells for fatal signals is 128 + 11 = 139. The process tried to access memory it was not allowed to touch, and the kernel killed it.
 
 Segfaults in containers are trickier than in normal development because the container environment can introduce its own causes. Let's go through the most common reasons and fixes.
 
 ## What Causes a Segfault in a Container
 
-A segmentation fault happens when a process tries to read or write to a memory address that has not been allocated to it. In Docker containers, the common triggers are:
+A segmentation fault happens when a process tries to read or write to a memory address that is invalid or not accessible to it. In Docker containers, the common triggers are:
 
-1. Running a binary compiled for a different architecture (ARM binary on x86, or vice versa)
+1. Running a binary compiled for a different architecture, or running it through CPU emulation
 2. Running a binary linked against glibc inside an Alpine container (which uses musl)
 3. Corrupted binary or incompatible shared library versions
 4. Application bug triggered by the container's environment
@@ -59,7 +59,7 @@ If the application crashes with "Segmentation fault (core dumped)", you have con
 
 ## Cause 1: Architecture Mismatch
 
-The most common cause of immediate segfaults in containers is running a binary compiled for the wrong CPU architecture. This happens when you build an image on an ARM Mac (Apple Silicon) and try to run it on an x86 Linux server, or vice versa.
+A common cause of immediate container crashes is an architecture mismatch or an emulation problem. A completely wrong CPU architecture often fails with an "exec format error" before your program starts, but platform mismatches and QEMU emulation can also show up as crashes. This happens when you build an image on an ARM Mac (Apple Silicon) and try to run it on an x86 Linux server, or vice versa.
 
 Check the image architecture:
 
@@ -80,8 +80,8 @@ If there is a mismatch, rebuild for the correct architecture:
 # Build for a specific platform
 docker build --platform linux/amd64 -t myimage .
 
-# Build for multiple platforms
-docker buildx build --platform linux/amd64,linux/arm64 -t myimage .
+# Build and push for multiple platforms
+docker buildx build --platform linux/amd64,linux/arm64 -t myrepo/myimage:latest --push .
 ```
 
 In Docker Compose, specify the platform:
@@ -109,7 +109,7 @@ Note that running x86 images through QEMU emulation on ARM is slow and can somet
 
 ## Cause 2: glibc vs musl Mismatch
 
-Alpine Linux uses musl libc instead of glibc. If you compile a binary on a glibc system (Ubuntu, Debian, CentOS) and try to run it on Alpine, it will segfault.
+Alpine Linux uses musl libc instead of glibc. If you compile a dynamically linked binary on a glibc system (Ubuntu, Debian, CentOS) and try to run it on Alpine, it usually fails with a missing loader or missing library error. In some cases, especially with partial compatibility layers or incompatible native libraries, it can crash with a segfault.
 
 Check which libc the binary expects:
 
@@ -117,8 +117,9 @@ Check which libc the binary expects:
 # Inside the container, check what libraries the binary needs
 docker run --entrypoint sh myimage -c "ldd /app/myapp"
 
-# If you see "not found" for any library, that's the problem
-# You might see: libc.musl-x86_64.so.1 => not found
+# If you see "not found" for any library or dynamic loader, that's the problem
+# You might see: /lib64/ld-linux-x86-64.so.2: No such file or directory
+# Or: libc.so.6 => not found
 ```
 
 Fix by either using a glibc-based image or recompiling for Alpine:
@@ -162,8 +163,7 @@ CMD ["/myapp"]
 If an image layer was corrupted during push or pull, the binary might be damaged.
 
 ```bash
-# Pull the image fresh, ignoring local cache
-docker pull myimage:latest --quiet
+# Pull the image fresh
 docker rmi myimage:latest
 docker pull myimage:latest
 
@@ -173,7 +173,7 @@ docker build --no-cache -t myimage .
 
 ## Cause 4: Stack Size Limits
 
-Some applications need more stack space than the default. Docker containers inherit the host's ulimit settings, which might be restrictive.
+Some applications need more stack space than the default. Docker containers use the runtime's default ulimit settings unless you override them, and those defaults might be restrictive.
 
 ```bash
 # Check current stack size limit inside a container
@@ -198,7 +198,7 @@ services:
 
 ## Cause 5: Seccomp Profile Restrictions
 
-Docker applies a default seccomp profile that restricts which system calls a container can make. Some applications use system calls that are blocked by default.
+Docker applies a default seccomp profile that restricts which system calls a container can make. Blocked syscalls normally return a permission error, but some applications crash if they do not handle that error path correctly.
 
 Test if seccomp is causing the issue:
 
@@ -217,11 +217,14 @@ Enable core dumps for debugging:
 
 ```bash
 # Run with core dumps enabled
-docker run --ulimit core=-1 -v /tmp/coredumps:/tmp myimage
+docker run --ulimit core=-1 --workdir /tmp -v /tmp/coredumps:/tmp myimage
 
-# Inside the container, set the core dump location
-# Add to your entrypoint:
-echo "/tmp/core.%p" > /proc/sys/kernel/core_pattern
+# Check the host core dump pattern
+cat /proc/sys/kernel/core_pattern
+
+# If you need plain core files, set this on the host as root.
+# This affects the host, not just one container.
+sudo sysctl -w kernel.core_pattern=/tmp/core.%p
 ```
 
 Install debugging tools and analyze:
@@ -273,7 +276,7 @@ CMD ["/app/myapp"]
 
 ## Quick Diagnostic Script
 
-Run this to quickly identify the cause:
+Run this to quickly identify the cause. It assumes your binary is `/app/myapp` and that `sh`, `ldd`, and `strace` are available in the image:
 
 ```bash
 #!/bin/bash
@@ -298,4 +301,4 @@ docker run --cap-add SYS_PTRACE --entrypoint strace "$IMAGE" -f -e trace=memory 
 
 ## Summary
 
-Exit code 139 is a segmentation fault (SIGSEGV). In Docker, the three most common causes are architecture mismatches (running ARM binaries on x86 or vice versa), libc mismatches (glibc binaries on Alpine's musl), and corrupted image layers. Start by checking `docker inspect` for the image architecture and comparing it to `uname -m` on the host. If architectures match, check shared library compatibility with `ldd`. For genuine application bugs, enable core dumps and use `gdb` or `strace` to find the exact instruction that crashes. When all else fails, rebuild the image from scratch with `--no-cache` to rule out corrupted layers.
+Exit code 139 is usually a segmentation fault (SIGSEGV). In Docker, common causes include architecture mismatches or emulation issues, libc mismatches (glibc binaries on Alpine's musl), incompatible shared libraries, and application bugs. Start by checking `docker inspect` for the image architecture and comparing it to `uname -m` on the host. If architectures match, check shared library compatibility with `ldd`. For genuine application bugs, enable core dumps and use `gdb` or `strace` to find the exact instruction that crashes. When all else fails, rebuild the image from scratch with `--no-cache` to rule out corrupted layers.
