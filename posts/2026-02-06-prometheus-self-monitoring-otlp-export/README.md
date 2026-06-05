@@ -20,6 +20,8 @@ The Collector handles the conversion from Prometheus exposition format to OTLP m
 
 ## Complete Collector Configuration
 
+This example uses the `metricstransform` processor, so run it with a Collector distribution that includes contrib processors, such as the OpenTelemetry Collector Contrib or Kubernetes distribution.
+
 ```yaml
 # otel-collector-config.yaml
 
@@ -41,15 +43,9 @@ processors:
 
   # Filter to only keep the metrics we care about
   filter/prometheus:
-    metrics:
-      include:
-        match_type: regexp
-        metric_names:
-          - "prometheus_.*"
-          - "process_.*"
-          - "go_.*"
-          - "scrape_.*"
-          - "net_conntrack_.*"
+    error_mode: ignore
+    metric_conditions:
+      - 'not IsMatch(metric.name, "^(prometheus_|process_|go_|scrape_|net_conntrack_).*")'
 
   # Convert Prometheus metric names to a more standard format
   metricstransform:
@@ -84,9 +80,9 @@ exporters:
     headers:
       Authorization: "Bearer your-api-key"
 
-  # Optional: also log metrics for debugging
-  logging:
-    loglevel: info
+  # Optional: add debug to the pipeline exporters when you need console output
+  debug:
+    verbosity: basic
 
 service:
   pipelines:
@@ -108,7 +104,7 @@ The Collector handles type conversion automatically:
 | Summary | Summary |
 | Untyped | Gauge |
 
-One thing to be aware of: Prometheus counters with the `_total` suffix get the suffix stripped in OTLP. So `prometheus_tsdb_compactions_total` becomes `prometheus_tsdb_compactions` in OTLP unless you use the metricstransform processor to rename it.
+One thing to be aware of: Prometheus metric names are preserved by default when they are converted to OTLP. If you explicitly enable the Prometheus receiver's `trim_metric_suffixes` option, counter and unit suffixes can be trimmed; otherwise `prometheus_tsdb_compactions_total` remains `prometheus_tsdb_compactions_total` unless you use the metricstransform processor to rename it.
 
 ## Scraping Multiple Prometheus Instances
 
@@ -133,9 +129,9 @@ receivers:
               target_label: instance
 ```
 
-## Handling Metric Staleness
+## Handling Scrape Failures
 
-Prometheus uses a staleness mechanism where metrics disappear 5 minutes after the last scrape. The Collector handles this by tracking the last seen value. Configure the staleness timeout:
+Prometheus uses staleness markers when a target no longer returns a time series. The Collector's Prometheus receiver uses Prometheus scrape behavior, but `scrape_timeout` controls how long a single scrape request may run; it does not configure a staleness timeout:
 
 ```yaml
 receivers:
@@ -144,7 +140,7 @@ receivers:
       scrape_configs:
         - job_name: "prometheus-self"
           scrape_interval: 30s
-          # Mark stale after missing 3 scrapes
+          # Fail a scrape request if it takes longer than 10 seconds
           scrape_timeout: 10s
 ```
 
@@ -173,7 +169,12 @@ receivers:
 service:
   telemetry:
     metrics:
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 
   pipelines:
     metrics/prometheus:
@@ -192,13 +193,12 @@ Watch these Collector metrics:
 - `otelcol_exporter_sent_metric_points`: Points successfully exported
 - `otelcol_exporter_send_failed_metric_points`: Export failures
 
-## Deduplication for HA Prometheus
+## Labeling HA Prometheus Replicas
 
-When running multiple Prometheus replicas that scrape the same targets, you get duplicate metrics. Use the Collector to deduplicate:
+When scraping multiple Prometheus replicas, keep enough labels to distinguish each replica. In distributions that include it, the `groupbyattrs` processor can promote selected metric attributes to resource attributes for grouping, but it does not deduplicate identical series:
 
 ```yaml
 processors:
-  # Use the filter processor to remove duplicates based on instance label
   groupbyattrs:
     keys:
       - instance
@@ -213,8 +213,8 @@ Start the pipeline and verify data flows:
 # Start the stack
 docker compose up -d
 
-# Check Collector logs
-docker logs otel-collector 2>&1 | grep "MetricsExported"
+# Check Collector logs for export errors
+docker logs otel-collector 2>&1 | grep -i "error"
 
 # Verify metrics in your OTLP backend
 # Look for prometheus.tsdb.head.series or similar renamed metrics
