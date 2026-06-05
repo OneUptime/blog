@@ -8,13 +8,13 @@ Description: Learn how to instrument GitLab CI pipelines with OpenTelemetry to t
 
 ---
 
-GitLab CI has a built-in integration with OpenTelemetry that most teams do not know about. Starting with GitLab 15.11, you can export trace data from your pipelines directly to any OTLP-compatible backend. Every pipeline, job, and even individual script commands can become spans in a distributed trace.
+GitLab CI has an experimental integration with GitLab Observability that most teams do not know about. In current GitLab versions, you can enable automatic CI/CD telemetry export to GitLab Observability with a CI/CD variable. Pipeline jobs and execution flow can be represented as OpenTelemetry telemetry, and individual script commands can be instrumented with your own OTLP spans when you need more detail.
 
-This guide walks through enabling GitLab's native OpenTelemetry support, adding custom instrumentation for deeper visibility, and building a complete CI/CD observability setup around your GitLab pipelines.
+This guide walks through enabling GitLab's automatic CI/CD telemetry support, adding custom instrumentation for deeper visibility, and building a complete CI/CD observability setup around your GitLab pipelines.
 
 ## GitLab's Built-in OpenTelemetry Support
 
-GitLab has native support for exporting pipeline traces using the OpenTelemetry protocol. When enabled, GitLab automatically creates traces for pipeline runs, with spans for each job and section within a job.
+GitLab Observability has experimental support for automatic CI/CD pipeline telemetry. When enabled, GitLab captures pipeline execution data after pipelines complete, converts it to OpenTelemetry format, and makes it available in GitLab Observability.
 
 ```mermaid
 graph LR
@@ -25,82 +25,60 @@ graph LR
     C --> F[before_script]
     C --> G[script]
     C --> H[after_script]
-    B --> I[OTLP Export]
-    I --> J[OTel Collector]
-    J --> K[Tracing Backend]
+    B --> I[GitLab Observability Export]
+    I --> J[GitLab Observability]
+    J --> K[Dashboards]
 
     style A fill:#9cf,stroke:#333,stroke-width:2px
     style I fill:#fc9,stroke:#333,stroke-width:2px
     style K fill:#9f9,stroke:#333,stroke-width:2px
 ```
 
-The trace hierarchy maps naturally to GitLab's pipeline structure. The pipeline is the root span, each job is a child span, and each script section within a job gets its own span.
+The trace hierarchy maps naturally to GitLab's pipeline structure. The pipeline is the root operation, with telemetry for job dependencies, timing, and execution flow.
 
 ## Enabling OpenTelemetry in GitLab
 
-To enable tracing, you configure the OTLP endpoint in your GitLab instance settings or at the project level using CI/CD variables.
+To enable automatic pipeline telemetry in GitLab Observability, add the `GITLAB_OBSERVABILITY_EXPORT` CI/CD variable at the project or group level.
 
-For self-managed GitLab, add the configuration to your GitLab Rails settings.
-
-```ruby
-# /etc/gitlab/gitlab.rb
-
-# Enable OpenTelemetry tracing for CI/CD pipelines.
-# This sends trace data for all pipeline runs to the specified OTLP endpoint.
-
-gitlab_rails['env'] = {
-  # OTLP endpoint for trace export
-  'OTEL_EXPORTER_OTLP_ENDPOINT' => 'https://otel-collector.example.com:4318',
-
-  # Service name that appears in traces
-  'OTEL_SERVICE_NAME' => 'gitlab-ci',
-
-  # Authentication for the OTLP endpoint
-  'OTEL_EXPORTER_OTLP_HEADERS' => 'Authorization=Bearer your-token-here',
-
-  # Export protocol (http/protobuf or grpc)
-  'OTEL_EXPORTER_OTLP_PROTOCOL' => 'http/protobuf'
-}
-```
-
-For GitLab.com or project-level configuration, set these as CI/CD variables in your project settings under Settings, then CI/CD, then Variables.
+For GitLab.com or self-managed projects, set this as a CI/CD variable in your project or group settings under Settings, then CI/CD, then Variables.
 
 ```yaml
 # Project-level CI/CD variables for OpenTelemetry
 # Set these in GitLab UI: Settings > CI/CD > Variables
 #
-# OTEL_EXPORTER_OTLP_ENDPOINT: https://otel-collector.example.com:4318
-# OTEL_EXPORTER_OTLP_HEADERS: Authorization=Bearer your-token-here
-# OTEL_SERVICE_NAME: my-project-ci
+# GITLAB_OBSERVABILITY_EXPORT: traces
+#
+# You can also enable multiple signals:
+# GITLAB_OBSERVABILITY_EXPORT: traces,metrics,logs
 ```
 
-Once these variables are set, GitLab will automatically export trace data for every pipeline run in that project.
+Once this variable is set, GitLab automatically captures pipeline execution data after each pipeline completes and exports the selected telemetry types to your GitLab Observability instance.
 
 ## Understanding the Automatic Trace Structure
 
-With tracing enabled, each pipeline run generates a trace with the following structure. Understanding this hierarchy helps you write effective queries against your trace data.
+With tracing enabled, each pipeline run can generate telemetry with a structure like the following. Understanding this hierarchy helps you write effective queries against your trace data.
 
 ```text
 Trace: gitlab-pipeline-run
   |
   |-- Span: Pipeline #12345
-  |   |-- ci.pipeline.id: 12345
-  |   |-- ci.pipeline.source: push
-  |   |-- ci.pipeline.ref: main
-  |   |-- ci.pipeline.status: success
+  |   |-- cicd.pipeline.run.id: 12345
+  |   |-- cicd.pipeline.action.name: RUN
+  |   |-- vcs.ref.head.name: main
+  |   |-- cicd.pipeline.result: success
   |   |
   |   |-- Span: Stage 'build'
   |   |   |-- Span: Job 'compile'
-  |   |   |   |-- ci.job.id: 67890
-  |   |   |   |-- ci.job.status: success
-  |   |   |   |-- ci.runner.type: shared
+  |   |   |   |-- cicd.pipeline.task.run.id: 67890
+  |   |   |   |-- cicd.pipeline.task.run.result: success
+  |   |   |   |-- cicd.worker.name: shared-runner
   |   |   |   |-- Span: before_script
   |   |   |   |-- Span: script
   |   |   |   |-- Span: after_script
   |   |   |
   |   |   |-- Span: Job 'docker-build'
-  |   |       |-- ci.job.id: 67891
-  |   |       |-- ci.job.status: success
+  |   |       |-- cicd.pipeline.task.run.id: 67891
+  |   |       |-- cicd.pipeline.task.run.result: success
   |   |
   |   |-- Span: Stage 'test'
   |   |   |-- Span: Job 'unit-tests'
@@ -111,71 +89,86 @@ Trace: gitlab-pipeline-run
   |       |-- Span: Job 'deploy-production'
 ```
 
-Each span carries attributes that map to GitLab CI concepts, making it straightforward to filter and aggregate by project, branch, job name, or runner type.
+Each span can carry attributes that map to GitLab CI concepts, making it straightforward to filter and aggregate by project, branch, job name, or runner.
 
 ## Adding Custom Instrumentation
 
-The automatic instrumentation captures the pipeline structure, but you often want more granular tracing inside your scripts. You can add custom spans by calling the OTLP HTTP API directly from your job scripts.
+The automatic instrumentation captures the pipeline structure, but you often want more granular tracing inside your scripts. You can add custom spans by calling the OTLP HTTP API directly from your job scripts. These custom spans are separate from GitLab's automatic Observability export unless you explicitly manage and propagate the same trace context yourself.
 
 Here is a reusable script that creates spans for individual operations within a GitLab CI job.
 
 ```bash
-#!/bin/bash
+#!/bin/sh
 # scripts/trace-step.sh
-# Creates a child span for a specific operation within a GitLab CI job.
-# Usage: source scripts/trace-step.sh && trace_step "step-name" "command to run"
+# Creates a span for a specific operation within a GitLab CI job.
+# Usage: . scripts/trace-step.sh && trace_step "step-name" "command to run"
+
+otel_hex_id() {
+  od -An -N"$1" -tx1 /dev/urandom | tr -d ' \n'
+}
+
+if [ -z "${CUSTOM_TRACE_ID:-}" ]; then
+  CUSTOM_TRACE_ID="$(otel_hex_id 16)"
+  export CUSTOM_TRACE_ID
+fi
 
 trace_step() {
-  local STEP_NAME="$1"
+  STEP_NAME="$1"
   shift
-  local COMMAND="$@"
+  COMMAND="$*"
 
   # Record the start time in nanoseconds
-  local START_TIME=$(date +%s%N)
+  START_TIME=$(date +%s%N)
 
   # Generate a unique span ID for this step
-  local SPAN_ID=$(openssl rand -hex 8)
+  SPAN_ID=$(otel_hex_id 8)
 
   # Execute the actual command
   eval "$COMMAND"
-  local EXIT_CODE=$?
+  EXIT_CODE=$?
 
   # Record the end time
-  local END_TIME=$(date +%s%N)
+  END_TIME=$(date +%s%N)
 
   # Determine span status based on exit code
-  local STATUS_CODE=1
+  STATUS_CODE=1
   if [ $EXIT_CODE -ne 0 ]; then
     STATUS_CODE=2
   fi
 
   # Build and send the OTLP trace payload
-  # Uses the trace context from the parent GitLab job span
-  curl -s -X POST "${OTEL_EXPORTER_OTLP_ENDPOINT}/v1/traces" \
-    -H "Content-Type: application/json" \
-    -H "${OTEL_EXPORTER_OTLP_HEADERS}" \
+  set -- -H "Content-Type: application/json"
+  if [ -n "${OTEL_EXPORTER_OTLP_AUTH_HEADER:-}" ]; then
+    set -- "$@" -H "${OTEL_EXPORTER_OTLP_AUTH_HEADER}"
+  fi
+
+  # Sends OTLP/JSON to a collector or backend that accepts OTLP over HTTP.
+  # Use CUSTOM_TRACE_ID to correlate multiple steps in the same trace.
+  curl -sS -X POST "${OTEL_EXPORTER_OTLP_ENDPOINT}/v1/traces" \
+    "$@" \
     -d "{
       \"resourceSpans\": [{
         \"resource\": {
           \"attributes\": [
             {\"key\": \"service.name\", \"value\": {\"stringValue\": \"${OTEL_SERVICE_NAME}\"}},
-            {\"key\": \"ci.project.path\", \"value\": {\"stringValue\": \"${CI_PROJECT_PATH}\"}},
-            {\"key\": \"ci.pipeline.id\", \"value\": {\"stringValue\": \"${CI_PIPELINE_ID}\"}}
+            {\"key\": \"vcs.repository.name\", \"value\": {\"stringValue\": \"${CI_PROJECT_PATH}\"}},
+            {\"key\": \"cicd.pipeline.run.id\", \"value\": {\"stringValue\": \"${CI_PIPELINE_ID}\"}}
           ]
         },
         \"scopeSpans\": [{
           \"scope\": {\"name\": \"gitlab-ci-custom\", \"version\": \"1.0.0\"},
           \"spans\": [{
-            \"traceId\": \"${OTEL_TRACE_ID}\",
+            \"traceId\": \"${CUSTOM_TRACE_ID}\",
             \"spanId\": \"${SPAN_ID}\",
-            \"parentSpanId\": \"${OTEL_PARENT_SPAN_ID}\",
             \"name\": \"${STEP_NAME}\",
             \"kind\": 1,
             \"startTimeUnixNano\": \"${START_TIME}\",
             \"endTimeUnixNano\": \"${END_TIME}\",
             \"status\": {\"code\": ${STATUS_CODE}},
             \"attributes\": [
-              {\"key\": \"ci.job.name\", \"value\": {\"stringValue\": \"${CI_JOB_NAME}\"}},
+              {\"key\": \"cicd.pipeline.task.name\", \"value\": {\"stringValue\": \"${CI_JOB_NAME}\"}},
+              {\"key\": \"cicd.pipeline.task.run.id\", \"value\": {\"stringValue\": \"${CI_JOB_ID}\"}},
+              {\"key\": \"cicd.pipeline.task.run.result\", \"value\": {\"stringValue\": \"$(if [ $EXIT_CODE -eq 0 ]; then echo success; else echo failure; fi)\"}},
               {\"key\": \"ci.step.name\", \"value\": {\"stringValue\": \"${STEP_NAME}\"}},
               {\"key\": \"ci.step.exit_code\", \"value\": {\"intValue\": ${EXIT_CODE}}}
             ]
@@ -188,7 +181,7 @@ trace_step() {
 }
 ```
 
-Now you can use this function inside your `.gitlab-ci.yml` to trace specific operations.
+Now you can use this function inside your `.gitlab-ci.yml` to trace specific operations. The job image must include `curl`, `od`, `tr`, and GNU `date`.
 
 ```yaml
 # .gitlab-ci.yml
@@ -203,6 +196,7 @@ stages:
 variables:
   OTEL_EXPORTER_OTLP_ENDPOINT: "https://otel-collector.example.com:4318"
   OTEL_SERVICE_NAME: "my-app-ci"
+  OTEL_EXPORTER_OTLP_AUTH_HEADER: "Authorization: Bearer your-token-here"
 
 build:
   stage: build
@@ -210,7 +204,8 @@ build:
   services:
     - docker:24-dind
   script:
-    - source scripts/trace-step.sh
+    - apk add --no-cache curl coreutils
+    - . scripts/trace-step.sh
     # Each trace_step call creates a separate span in the trace
     - trace_step "docker-login" "docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY"
     - trace_step "docker-build" "docker build -t $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA ."
@@ -220,7 +215,7 @@ unit-tests:
   stage: test
   image: node:20
   script:
-    - source scripts/trace-step.sh
+    - . scripts/trace-step.sh
     - trace_step "npm-install" "npm ci"
     - trace_step "run-unit-tests" "npm test"
   artifacts:
@@ -234,7 +229,7 @@ integration-tests:
     - postgres:16
     - redis:7
   script:
-    - source scripts/trace-step.sh
+    - . scripts/trace-step.sh
     - trace_step "npm-install" "npm ci"
     - trace_step "wait-for-db" "scripts/wait-for-postgres.sh"
     - trace_step "run-migrations" "npm run migrate"
@@ -246,23 +241,23 @@ deploy-production:
   environment:
     name: production
   script:
-    - source scripts/trace-step.sh
+    - . scripts/trace-step.sh
     - trace_step "kubectl-apply" "kubectl apply -f k8s/production/"
     - trace_step "rollout-wait" "kubectl rollout status deployment/my-app -n production --timeout=300s"
-  only:
-    - main
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
 ```
 
 With this setup, your traces show not just that a job ran, but exactly how long each operation within the job took. You can see that `docker build` took 3 minutes while `docker push` took 45 seconds, or that waiting for Postgres to be ready added 10 seconds to every integration test run.
 
 ## Setting Up the OpenTelemetry Collector
 
-Route your GitLab CI traces through an OpenTelemetry Collector for processing and enrichment before they reach your backend.
+Route your custom GitLab CI traces through an OpenTelemetry Collector for processing and enrichment before they reach your backend. GitLab's automatic Observability export is configured separately with `GITLAB_OBSERVABILITY_EXPORT`.
 
 ```yaml
 # otel-collector-config.yaml
-# Collector configuration for processing GitLab CI trace data.
-# Adds CI-specific resource attributes and filters noise.
+# Collector configuration for processing custom GitLab CI trace data.
+# Adds CI-specific resource attributes.
 receivers:
   otlp:
     protocols:
@@ -289,9 +284,9 @@ processors:
   # Add span-level attributes based on existing data
   attributes:
     actions:
-      # Extract the project name from the full path
+      # Copy the repository path to a CI-specific attribute for queries
       - key: ci.project.name
-        from_attribute: ci.project.path
+        from_attribute: vcs.repository.name
         action: upsert
 
 exporters:
@@ -310,51 +305,71 @@ service:
 
 ## Tracing Multi-Project Pipelines
 
-GitLab supports triggering pipelines across projects. When you have multi-project pipelines, you want traces that span across project boundaries to show the full execution flow.
+GitLab supports triggering pipelines across projects. When you have multi-project pipelines and custom OTLP spans, you can pass a generated trace ID across project boundaries so spans from both projects can use the same trace.
 
 ```yaml
 # .gitlab-ci.yml in the parent project
-# Triggers a downstream pipeline and passes trace context so
-# both pipelines appear in the same trace.
+# Generates a trace ID, triggers a downstream pipeline, and passes context so
+# custom spans from both pipelines can appear in the same trace.
+
+stages:
+  - prepare
+  - deploy
+
+prepare-trace:
+  stage: prepare
+  image: alpine:3.20
+  script:
+    - apk add --no-cache coreutils
+    - echo "CUSTOM_TRACE_ID=$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')" >> trace.env
+  artifacts:
+    reports:
+      dotenv: trace.env
 
 trigger-deploy:
   stage: deploy
+  needs:
+    - prepare-trace
   variables:
-    # Pass trace context to the downstream pipeline
-    UPSTREAM_TRACE_ID: "${OTEL_TRACE_ID}"
+    # Tell the downstream pipeline where to fetch the dotenv trace context
+    UPSTREAM_TRACE_JOB: "prepare-trace"
     UPSTREAM_PIPELINE_ID: "${CI_PIPELINE_ID}"
     UPSTREAM_PROJECT: "${CI_PROJECT_PATH}"
+    UPSTREAM_REF: "${CI_COMMIT_REF_NAME}"
     DEPLOY_VERSION: "${CI_COMMIT_SHA}"
   trigger:
     project: infrastructure/deploy-pipeline
     branch: main
-    strategy: depend
+    strategy: mirror
 ```
 
-In the downstream pipeline, use the passed trace context to link spans.
+In the downstream pipeline, use the passed trace context for custom spans.
 
 ```yaml
 # .gitlab-ci.yml in the downstream deploy project
 # Receives trace context from the upstream pipeline
-# and uses it to create linked spans.
+# and uses it to create custom spans in the same trace.
 
 deploy:
   stage: deploy
+  needs:
+    - project: $UPSTREAM_PROJECT
+      job: $UPSTREAM_TRACE_JOB
+      ref: $UPSTREAM_REF
+      artifacts: true
   script:
-    - source scripts/trace-step.sh
-    # Use the upstream trace ID to link this pipeline's spans
-    - export OTEL_TRACE_ID="${UPSTREAM_TRACE_ID}"
+    - . scripts/trace-step.sh
     - trace_step "deploy-to-kubernetes" "scripts/deploy.sh ${DEPLOY_VERSION}"
     - trace_step "verify-deployment" "scripts/smoke-test.sh"
   environment:
     name: production
 ```
 
-This creates a single trace that spans both the build pipeline and the deploy pipeline, giving you end-to-end visibility across project boundaries.
+This gives your custom spans a shared trace ID across the build pipeline and the deploy pipeline, giving you end-to-end visibility across project boundaries for the spans you emit yourself.
 
 ## Building Dashboards from Pipeline Traces
 
-Once you have trace data flowing, you can build dashboards that answer operational questions about your CI/CD system.
+Once you have telemetry flowing, you can build dashboards that answer operational questions about your CI/CD system.
 
 Key metrics to derive from trace data include:
 
@@ -396,4 +411,4 @@ These alerts catch problems that are not visible from individual pipeline runs b
 
 ## Conclusion
 
-GitLab CI's built-in OpenTelemetry support makes it straightforward to get pipeline traces flowing to your observability backend. The automatic instrumentation captures the pipeline structure, while custom trace steps give you granular visibility into individual operations. Combined with an OpenTelemetry Collector for enrichment and processing, you get a complete picture of your CI/CD performance that helps you optimize build times, reduce failure rates, and debug issues faster.
+GitLab CI's experimental Observability support makes it straightforward to get pipeline telemetry flowing to GitLab Observability. The automatic instrumentation captures the pipeline structure, while custom OTLP trace steps give you granular visibility into individual operations that you can send through an OpenTelemetry Collector for enrichment and processing. Together, they give you a complete picture of your CI/CD performance that helps you optimize build times, reduce failure rates, and debug issues faster.
