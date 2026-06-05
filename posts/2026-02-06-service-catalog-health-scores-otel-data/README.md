@@ -62,14 +62,14 @@ def compute_health_score(
     slo_latency_target_ms: the latency SLO target for scoring
     """
 
-    # Error rate scoring: 0% errors = 100, >5% errors = 0
+    # Error rate scoring: 0% errors = 100, >=5% errors = 0
     error_score = max(0, 100 - (error_rate * 20))
 
     # Latency scoring: at or below SLO target = 100, 3x target = 0
     latency_ratio = p99_latency_ms / slo_latency_target_ms
     latency_score = max(0, min(100, 100 - ((latency_ratio - 1) * 50)))
 
-    # Throughput stability: no change = 100, >50% drop = 0
+    # Throughput stability: no change = 100, >=50% drop = 0
     if throughput_change_pct < 0:
         throughput_score = max(0, 100 + (throughput_change_pct * 2))
     else:
@@ -97,7 +97,7 @@ def compute_health_score(
 
 ## Fetching OpenTelemetry Metrics
 
-The scorer pulls data from your metrics backend. These queries use the semantic conventions from OpenTelemetry, specifically the `http.server.request.duration` metric that HTTP instrumentation produces.
+The scorer pulls data from your metrics backend. These queries use the semantic conventions from OpenTelemetry, specifically the `http.server.request.duration` metric that HTTP instrumentation produces. In Prometheus, the examples assume the default OpenTelemetry translation strategy, where that metric is exposed as `http_server_request_duration_seconds`, with `service.name` mapped to the `job` label.
 
 ```python
 # health_scorer/metrics_client.py
@@ -109,12 +109,12 @@ def get_error_rate(service_name: str, window: str = "5m") -> float:
     """Compute error rate from OTel HTTP server metrics."""
     query = f"""
       sum(rate(http_server_request_duration_seconds_count{{
-        service_name="{service_name}",
+        job="{service_name}",
         http_response_status_code=~"5.."
       }}[{window}]))
       /
       sum(rate(http_server_request_duration_seconds_count{{
-        service_name="{service_name}"
+        job="{service_name}"
       }}[{window}]))
       * 100
     """
@@ -127,7 +127,7 @@ def get_p99_latency(service_name: str, window: str = "5m") -> float:
     query = f"""
       histogram_quantile(0.99,
         sum(rate(http_server_request_duration_seconds_bucket{{
-          service_name="{service_name}"
+          job="{service_name}"
         }}[{window}])) by (le)
       ) * 1000
     """
@@ -139,12 +139,12 @@ def get_dependency_error_rate(service_name: str, window: str = "5m") -> float:
     """Check error rates of services this service calls."""
     query = f"""
       sum(rate(http_client_request_duration_seconds_count{{
-        service_name="{service_name}",
+        job="{service_name}",
         http_response_status_code=~"5.."
       }}[{window}]))
       /
       sum(rate(http_client_request_duration_seconds_count{{
-        service_name="{service_name}"
+        job="{service_name}"
       }}[{window}]))
       * 100
     """
@@ -155,7 +155,7 @@ def get_dependency_error_rate(service_name: str, window: str = "5m") -> float:
 
 ## Catalog API
 
-Expose the health scores through a REST API that your internal developer portal consumes. The API refreshes scores every minute and caches results.
+Expose the health scores through a REST API that your internal developer portal consumes. This example computes scores on request; in production, you can refresh them every minute and cache results.
 
 ```python
 # catalog_api/routes.py
@@ -164,7 +164,7 @@ from health_scorer.model import compute_health_score
 from health_scorer.metrics_client import (
     get_error_rate, get_p99_latency, get_dependency_error_rate
 )
-from datetime import datetime
+from datetime import datetime, timezone
 
 app = Flask(__name__)
 
@@ -193,7 +193,7 @@ def service_health(service_name: str):
             {"name": c.name, "score": c.score, "weight": c.weight}
             for c in score.components
         ],
-        "computed_at": datetime.utcnow().isoformat(),
+        "computed_at": datetime.now(timezone.utc).isoformat(),
     })
 
 def _score_to_status(score: float) -> str:
