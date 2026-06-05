@@ -88,51 +88,28 @@ processors:
   # Filter to keep only the most relevant CockroachDB metrics
   # CockroachDB exposes hundreds of metrics; focus on what matters
   filter/cockroachdb:
-    metrics:
-      include:
-        match_type: regexp
-        metric_names:
-          # SQL query performance
-          - sql_exec_latency.*
-          - sql_query_count
-          - sql_failure_count
-          - sql_distsql_queries_active
-          # Transaction metrics
-          - sql_txn_commit_count
-          - sql_txn_abort_count
-          - sql_txn_latency.*
-          # Storage and LSM metrics
-          - rocksdb_block_cache_hits
-          - rocksdb_block_cache_misses
-          - rocksdb_compactions
-          - rocksdb_read_amplification
-          # Replication health
-          - replicas_quiescent
-          - replicas_leaders
-          - range_splits
-          - range_merges
-          # Liveness and cluster health
-          - liveness_livenodes
-          - node_id
-          - capacity_available
-          - capacity_used
+    error_mode: ignore
+    metric_conditions:
+      - |
+        not IsMatch(metric.name, "^(sql_exec_latency.*|sql_query_count|sql_failure_count|sql_statements_active|sql_conns|sql_txn_commit_count|sql_txn_abort_count|sql_txn_latency.*|rocksdb_block_cache_hits|rocksdb_block_cache_misses|rocksdb_compactions|rocksdb_read_amplification|replicas|replicas_leaseholders|ranges_underreplicated|range_splits|range_merges|liveness_livenodes|node_id|capacity_available|capacity_used)$")
 
 exporters:
-  otlp:
+  otlp_http:
     endpoint: https://oneuptime.com/otlp
-    tls:
-      insecure: false
+    encoding: json
+    headers:
+      x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
 
 service:
   pipelines:
     metrics:
       receivers: [prometheus, otlp]
       processors: [filter/cockroachdb, batch]
-      exporters: [otlp]
+      exporters: [otlp_http]
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlp]
+      exporters: [otlp_http]
 ```
 
 ---
@@ -145,7 +122,8 @@ Not all metrics are equally useful. Here are the ones that matter most for day-t
 - `sql_exec_latency` - Time spent executing SQL statements. Track p50, p95, and p99 to catch slow query regressions.
 - `sql_query_count` - Total queries executed. Useful for capacity planning and spotting traffic spikes.
 - `sql_failure_count` - Failed SQL statements. A sudden increase usually indicates application bugs or schema issues.
-- `sql_distsql_queries_active` - Number of active distributed queries. High values suggest long-running queries holding resources.
+- `sql_statements_active` - Number of currently active user SQL statements. High values suggest long-running queries holding resources.
+- `sql_conns` - Number of open SQL connections.
 
 **Transaction Metrics:**
 - `sql_txn_commit_count` - Successful transaction commits per second.
@@ -165,7 +143,7 @@ Not all metrics are equally useful. Here are the ones that matter most for day-t
 
 Cluster metrics tell you about overall database health. To trace individual queries and understand application-level performance, you need driver instrumentation.
 
-For Go applications using the CockroachDB-compatible `pgx` driver, here is how to set up OpenTelemetry tracing.
+For Go applications using the PostgreSQL `pgx` driver with CockroachDB, here is how to set up OpenTelemetry tracing.
 
 ```go
 package main
@@ -180,7 +158,6 @@ import (
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
     "go.opentelemetry.io/otel/sdk/resource"
     sdktrace "go.opentelemetry.io/otel/sdk/trace"
-    semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
 )
 
 // initTracer configures OpenTelemetry with OTLP export
@@ -194,11 +171,10 @@ func initTracer() (*sdktrace.TracerProvider, error) {
         return nil, err
     }
 
-    // Define the service resource with CockroachDB as the database system
+    // Define the service resource
     res := resource.NewWithAttributes(
-        semconv.SchemaURL,
-        semconv.ServiceName("my-cockroachdb-app"),
-        attribute.String("db.system", "cockroachdb"),
+        "",
+        attribute.String("service.name", "my-cockroachdb-app"),
     )
 
     tp := sdktrace.NewTracerProvider(
@@ -210,7 +186,7 @@ func initTracer() (*sdktrace.TracerProvider, error) {
 }
 
 // queryWithTracing wraps a database query with OpenTelemetry span
-func queryWithTracing(ctx context.Context, pool *pgxpool.Pool, query string) error {
+func queryWithTracing(ctx context.Context, pool *pgxpool.Pool, query string, args ...any) error {
     tracer := otel.Tracer("cockroachdb-client")
 
     // Start a span for this database query
@@ -218,12 +194,12 @@ func queryWithTracing(ctx context.Context, pool *pgxpool.Pool, query string) err
     defer span.End()
 
     // Record the SQL statement and database system as span attributes
-    span.SetAttribute(attribute.String("db.statement", query))
-    span.SetAttribute(attribute.String("db.system", "cockroachdb"))
-    span.SetAttribute(attribute.String("db.name", "mydb"))
+    span.SetAttribute(attribute.String("db.query.text", query))
+    span.SetAttribute(attribute.String("db.system.name", "cockroachdb"))
+    span.SetAttribute(attribute.String("db.namespace", "mydb"))
 
     // Execute the query
-    rows, err := pool.Query(ctx, query)
+    rows, err := pool.Query(ctx, query, args...)
     if err != nil {
         // Record the error on the span for visibility in traces
         span.RecordError(err)
@@ -247,17 +223,18 @@ func main() {
     if err != nil {
         log.Fatal(err)
     }
+    defer pool.Close()
 
     // Execute a traced query
     err = queryWithTracing(context.Background(), pool,
-        "SELECT * FROM orders WHERE status = 'pending'")
+        "SELECT * FROM orders WHERE status = $1", "pending")
     if err != nil {
         log.Printf("Query failed: %v", err)
     }
 }
 ```
 
-Since CockroachDB is wire-compatible with PostgreSQL, any PostgreSQL OpenTelemetry instrumentation library works. For Python, use `opentelemetry-instrumentation-psycopg2`. For Java, use `opentelemetry-instrumentation-jdbc`.
+Since CockroachDB is wire-compatible with PostgreSQL, PostgreSQL client instrumentation can trace application queries. For Python, use `opentelemetry-instrumentation-psycopg2`. For Java, use `opentelemetry-instrumentation-jdbc`.
 
 ---
 
@@ -265,20 +242,20 @@ Since CockroachDB is wire-compatible with PostgreSQL, any PostgreSQL OpenTelemet
 
 CockroachDB's DistSQL engine splits queries across multiple nodes. Monitoring distributed query performance requires attention to specific metrics.
 
-This configuration adds processing rules to compute the distributed query ratio and flag potential issues.
+This configuration adds processing rules to tag datapoints from nodes with high read amplification and group metrics by node.
 
 ```yaml
 # Additional processor for CockroachDB-specific metric transformations
 processors:
-  # Transform processor to compute useful derived metrics
+  # Transform processor to add useful labels
   transform:
     metric_statements:
       - context: datapoint
         statements:
           # Tag datapoints from nodes with high read amplification
           # Read amplification above 20 often indicates compaction issues
-          - set(attributes["high_read_amp"], "true")
-            where metric.name == "rocksdb_read_amplification" and value_int > 20
+          - set(datapoint.attributes["high_read_amp"], "true")
+            where metric.name == "rocksdb_read_amplification" and datapoint.value_double > 20
 
   # Group metrics by node for per-node health dashboards
   groupbyattrs:
@@ -308,7 +285,7 @@ Effective alerting requires understanding what normal looks like for your cluste
 # Description: More than 10% of transactions are being aborted (contention likely)
 
 # Query latency alert
-# Condition: sql_exec_latency_p99 > 1000 (milliseconds)
+# Condition: p99(sql_exec_latency) > 1s
 # Severity: Warning
 # Description: p99 query latency exceeds 1 second
 
@@ -345,7 +322,7 @@ flowchart TD
 
     B --> B1[Query Latency p50/p95/p99]
     B --> B2[Transaction Commit vs Abort Rate]
-    B --> B3[Slow Queries Count]
+    B --> B3[SQL Failures Count]
 
     C --> C1[Disk Usage per Node]
     C --> C2[Read Amplification]
@@ -353,7 +330,7 @@ flowchart TD
 
     D --> D1[Range Splits/Merges]
     D --> D2[Under-replicated Ranges]
-    D --> D3[Quiescent Replicas %]
+    D --> D3[Replica Leaseholders]
 ```
 
 **Cluster Overview** shows high-level health. If live nodes drop or active connections spike, you know immediately.
