@@ -28,17 +28,18 @@ graph LR
 
 ## Installing Required Packages
 
-Azure Service Bus instrumentation requires the core OpenTelemetry packages plus the Azure-specific instrumentation library.
+Azure Service Bus tracing uses the spans emitted by the Azure SDK, plus the core OpenTelemetry packages and the instrumentation libraries for the rest of your application.
 
 ```xml
-<PackageReference Include="Azure.Messaging.ServiceBus" Version="7.17.0" />
-<PackageReference Include="OpenTelemetry" Version="1.7.0" />
-<PackageReference Include="OpenTelemetry.Instrumentation.Azure" Version="1.0.0-beta.1" />
-<PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.7.0" />
-<PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.7.0" />
+<PackageReference Include="Azure.Messaging.ServiceBus" Version="7.20.1" />
+<PackageReference Include="OpenTelemetry" Version="1.15.3" />
+<PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.15.3" />
+<PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.15.3" />
+<PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.15.2" />
+<PackageReference Include="OpenTelemetry.Instrumentation.Http" Version="1.15.1" />
 ```
 
-The Azure instrumentation package is currently in beta but provides robust automatic instrumentation for Service Bus operations.
+Azure SDK OpenTelemetry support is currently enabled through the Azure SDK ActivitySource feature flag. Once enabled, Service Bus operations can be collected by subscribing to the `Azure.*` ActivitySource pattern.
 
 ## Configuring OpenTelemetry with Service Bus Instrumentation
 
@@ -49,6 +50,8 @@ using Azure.Messaging.ServiceBus;
 using OpenTelemetry;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
+
+AppContext.SetSwitch("Azure.Experimental.EnableActivitySource", true);
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -82,18 +85,13 @@ builder.Services.AddOpenTelemetry()
     .WithTracing(tracing => tracing
         .AddAspNetCoreInstrumentation()
         .AddHttpClientInstrumentation()
-        .AddAzureServiceBusInstrumentation(options =>
-        {
-            // Include message payload in spans (be careful with sensitive data)
-            options.EnrichWithDiagnosticSource = true;
-        })
-        .AddSource("OrderProcessing.*")
+        .AddSource("Azure.*", "OrderProcessing.*")
         .AddOtlpExporter());
 
 var app = builder.Build();
 ```
 
-The Azure Service Bus instrumentation automatically creates spans for send and receive operations, propagates trace context through message properties, and captures relevant attributes like queue name and message ID.
+The Azure Service Bus client emits spans for send, receive, settle, process, and other Service Bus operations. It also uses message application properties such as `Diagnostic-Id`, `traceparent`, and `tracestate` to correlate message send and processing work.
 
 ## Manual Context Propagation for Advanced Scenarios
 
@@ -174,21 +172,24 @@ namespace OrderProcessing.Messaging
 
         public async Task SendBatchAsync(IEnumerable<Order> orders, string queueName)
         {
+            var orderList = orders.ToList();
+
             using var activity = _activitySource.StartActivity(
                 $"ServiceBus Batch Publisher {queueName}",
                 ActivityKind.Producer);
 
             activity?.SetTag("messaging.system", "azureservicebus");
             activity?.SetTag("messaging.destination", queueName);
-            activity?.SetTag("messaging.batch_size", orders.Count());
+            activity?.SetTag("messaging.batch_size", orderList.Count);
 
             var sender = _client.CreateSender(queueName);
+            ServiceBusMessageBatch? messageBatch = null;
 
             try
             {
-                using var messageBatch = await sender.CreateMessageBatchAsync();
+                messageBatch = await sender.CreateMessageBatchAsync();
 
-                foreach (var order in orders)
+                foreach (var order in orderList)
                 {
                     var messageBody = JsonSerializer.Serialize(order);
                     var message = new ServiceBusMessage(messageBody)
@@ -204,13 +205,24 @@ namespace OrderProcessing.Messaging
 
                     if (!messageBatch.TryAddMessage(message))
                     {
+                        if (messageBatch.Count == 0)
+                        {
+                            throw new InvalidOperationException("Message is too large to fit in an empty Service Bus batch.");
+                        }
+
                         activity?.AddEvent(new ActivityEvent(
                             "Batch full, sending partial batch",
                             tags: new ActivityTagsCollection { ["messages_in_batch"] = messageBatch.Count }));
 
                         await sender.SendMessagesAsync(messageBatch);
-                        messageBatch.Clear();
-                        messageBatch.TryAddMessage(message);
+                        messageBatch.Dispose();
+
+                        messageBatch = await sender.CreateMessageBatchAsync();
+
+                        if (!messageBatch.TryAddMessage(message))
+                        {
+                            throw new InvalidOperationException("Message is too large to fit in an empty Service Bus batch.");
+                        }
                     }
                 }
 
@@ -219,7 +231,7 @@ namespace OrderProcessing.Messaging
                     await sender.SendMessagesAsync(messageBatch);
                 }
 
-                activity?.SetTag("messages.sent", orders.Count());
+                activity?.SetTag("messages.sent", orderList.Count);
             }
             catch (Exception ex)
             {
@@ -229,6 +241,7 @@ namespace OrderProcessing.Messaging
             }
             finally
             {
+                messageBatch?.Dispose();
                 await sender.DisposeAsync();
             }
         }
@@ -285,7 +298,7 @@ namespace OrderProcessing.Messaging
 
             Baggage.Current = parentContext.Baggage;
 
-            // Create consumer span linked to producer span
+            // Create consumer span that continues the producer trace
             using var activity = _activitySource.StartActivity(
                 $"ServiceBus Consumer {args.EntityPath}",
                 ActivityKind.Consumer,
@@ -399,6 +412,7 @@ public class SessionProcessor
 {
     private readonly ServiceBusClient _client;
     private readonly ActivitySource _activitySource;
+    private static readonly TextMapPropagator _propagator = Propagators.DefaultTextMapPropagator;
 
     public SessionProcessor(ServiceBusClient client)
     {
@@ -417,10 +431,18 @@ public class SessionProcessor
 
         processor.ProcessMessageAsync += async args =>
         {
+            var parentContext = _propagator.Extract(
+                default,
+                args.Message.ApplicationProperties,
+                ExtractTraceContext);
+
+            Baggage.Current = parentContext.Baggage;
+
             // Create a span for the session message
             using var activity = _activitySource.StartActivity(
                 $"Session Message {args.SessionId}",
-                ActivityKind.Consumer);
+                ActivityKind.Consumer,
+                parentContext.ActivityContext);
 
             activity?.SetTag("messaging.session_id", args.SessionId);
             activity?.SetTag("messaging.message_id", args.Message.MessageId);
@@ -451,6 +473,17 @@ public class SessionProcessor
         await processor.StartProcessingAsync();
     }
 
+    private static IEnumerable<string> ExtractTraceContext(
+        IDictionary<string, object> props,
+        string key)
+    {
+        if (props.TryGetValue(key, out var value) && value is string stringValue)
+        {
+            return new[] { stringValue };
+        }
+        return Enumerable.Empty<string>();
+    }
+
     private async Task ProcessSessionMessageAsync(string sessionId, string messageBody)
     {
         using var activity = _activitySource.StartActivity("ProcessSessionMessage");
@@ -471,6 +504,12 @@ public class ScheduledMessageSender
 {
     private readonly ServiceBusClient _client;
     private readonly ActivitySource _activitySource;
+
+    public ScheduledMessageSender(ServiceBusClient client)
+    {
+        _client = client;
+        _activitySource = new ActivitySource("OrderProcessing.ScheduledMessages");
+    }
 
     public async Task ScheduleOrderReminderAsync(Order order, TimeSpan delay)
     {
@@ -512,6 +551,12 @@ public class DeadLetterQueueMonitor
 {
     private readonly ServiceBusClient _client;
     private readonly ActivitySource _activitySource;
+
+    public DeadLetterQueueMonitor(ServiceBusClient client)
+    {
+        _client = client;
+        _activitySource = new ActivitySource("OrderProcessing.DeadLetters");
+    }
 
     public async Task ProcessDeadLetterQueueAsync(string queueName)
     {
