@@ -8,7 +8,7 @@ Description: Step-by-step instructions for pushing Docker images to Azure Contai
 
 ---
 
-Azure Container Registry (ACR) is Microsoft's managed Docker registry that integrates tightly with Azure services like AKS, App Service, and Azure Container Instances. It supports geo-replication, content trust, and automated image builds. If your infrastructure runs on Azure, ACR is the most straightforward option for storing and distributing container images.
+Azure Container Registry (ACR) is Microsoft's managed Docker registry that integrates tightly with Azure services like AKS, App Service, and Azure Container Instances. It supports geo-replication, private endpoints, and automated image builds. If your infrastructure runs on Azure, ACR is the most straightforward option for storing and distributing container images.
 
 This guide covers setting up ACR, pushing images, and automating the process with CI/CD pipelines.
 
@@ -52,8 +52,8 @@ az acr show --name myappregistry --query loginServer --output tsv
 
 ACR offers three pricing tiers:
 - **Basic** - For development and testing, includes 10 GB storage
-- **Standard** - For production workloads, includes 100 GB storage and webhooks
-- **Premium** - Adds geo-replication, content trust, and private links
+- **Standard** - For production workloads, includes 100 GB storage and higher throughput
+- **Premium** - Adds geo-replication, private endpoints, and higher limits
 
 ## Authenticating Docker with ACR
 
@@ -140,7 +140,7 @@ az acr repository list --name myappregistry --output table
 az acr repository show-tags --name myappregistry --repository myapp --output table
 
 # Show detailed manifest information
-az acr repository show-manifests --name myappregistry --repository myapp --output table
+az acr manifest list-metadata --registry myappregistry --name myapp --output table
 ```
 
 ## CI/CD with GitHub Actions
@@ -167,9 +167,9 @@ jobs:
 
       # Login to ACR using a service principal
       - name: Login to ACR
-        uses: azure/docker-login@v2
+        uses: docker/login-action@v4
         with:
-          login-server: ${{ env.REGISTRY }}
+          registry: ${{ env.REGISTRY }}
           username: ${{ secrets.ACR_USERNAME }}
           password: ${{ secrets.ACR_PASSWORD }}
 
@@ -204,7 +204,7 @@ jobs:
 
       # Authenticate with Azure using OIDC
       - name: Azure Login
-        uses: azure/login@v2
+        uses: azure/login@v3
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
@@ -263,8 +263,8 @@ Geo-replication ensures fast pulls from any region and provides disaster recover
 Manage storage by cleaning up old images:
 
 ```bash
-# Delete a specific tag
-az acr repository delete --name myappregistry --image myapp:v1.0.0 --yes
+# Untag a specific image tag
+az acr repository untag --name myappregistry --image myapp:v1.0.0
 
 # Delete untagged manifests (dangling images)
 az acr run --registry myappregistry \
@@ -287,8 +287,8 @@ Lock down your registry with these recommendations:
 # Disable admin user in production
 az acr update --name myappregistry --admin-enabled false
 
-# Enable content trust for image signing
-az acr config content-trust update --registry myappregistry --status enabled
+# Docker Content Trust is deprecated and cannot be enabled on new registries.
+# Use Notary Project/Notation-based signing for new image signing workflows.
 
 # Restrict network access (Premium SKU)
 az acr update --name myappregistry --default-action Deny
