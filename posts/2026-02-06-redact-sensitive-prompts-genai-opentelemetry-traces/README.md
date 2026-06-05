@@ -23,8 +23,8 @@ flowchart TD
     A[User Input] --> B[Span Attributes]
     A --> C[Span Events]
     A --> D[Log Records]
-    B --> B1["gen_ai.prompt - Full prompt text"]
-    B --> B2["gen_ai.completion - Full response text"]
+    B --> B1["gen_ai.input.messages - Input message content"]
+    B --> B2["gen_ai.output.messages - Output message content"]
     B --> B3["Custom attributes with user data"]
     C --> C1["Prompt sent event body"]
     C --> C2["Response received event body"]
@@ -37,7 +37,7 @@ flowchart TD
     D1 --> E
 ```
 
-The OpenTelemetry GenAI semantic conventions define attributes like `gen_ai.prompt` and `gen_ai.completion` that are designed to carry the full text. These are the primary targets for redaction.
+The OpenTelemetry GenAI semantic conventions define opt-in attributes like `gen_ai.input.messages` and `gen_ai.output.messages` that can carry prompt and response content. These are the primary targets for redaction.
 
 ## Strategy 1: Redact at the Application Level
 
@@ -57,7 +57,7 @@ class PIIRedactor:
         self.patterns: List[Tuple[str, str, str]] = [
             # (pattern_name, regex, replacement)
             ("ssn", r"\b\d{3}-\d{2}-\d{4}\b", "[REDACTED_SSN]"),
-            ("email", r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b", "[REDACTED_EMAIL]"),
+            ("email", r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b", "[REDACTED_EMAIL]"),
             ("phone_us", r"\b(?:\+1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b", "[REDACTED_PHONE]"),
             ("credit_card", r"\b(?:\d{4}[-\s]?){3}\d{4}\b", "[REDACTED_CC]"),
             ("ip_address", r"\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b", "[REDACTED_IP]"),
@@ -90,12 +90,14 @@ Now use this redactor when setting span attributes in your GenAI application:
 
 from opentelemetry import trace
 from pii_redactor import PIIRedactor
-import openai
+from openai import OpenAI
+import json
 
 tracer = trace.get_tracer("genai.service")
 redactor = PIIRedactor()
+client = OpenAI()
 
-def chat_completion(user_prompt: str, model: str = "gpt-4") -> str:
+def chat_completion(user_prompt: str, model: str = "gpt-4o") -> str:
     with tracer.start_as_current_span("genai.chat_completion") as span:
         # Detect what types of PII are present (for metrics, not stored as raw text)
         pii_types = redactor.detect(user_prompt)
@@ -104,23 +106,37 @@ def chat_completion(user_prompt: str, model: str = "gpt-4") -> str:
 
         # Store the REDACTED version of the prompt, never the original
         redacted_prompt = redactor.redact(user_prompt)
-        span.set_attribute("gen_ai.prompt", redacted_prompt)
-        span.set_attribute("gen_ai.system", "openai")
+        span.set_attribute(
+            "gen_ai.input.messages",
+            json.dumps([{"role": "user", "parts": [{"type": "text", "content": redacted_prompt}]}]),
+        )
+        span.set_attribute("gen_ai.provider.name", "openai")
+        span.set_attribute("gen_ai.operation.name", "chat")
         span.set_attribute("gen_ai.request.model", model)
 
         # Send the ORIGINAL prompt to the LLM (it needs the real data)
-        response = openai.chat.completions.create(
+        response = client.chat.completions.create(
             model=model,
             messages=[{"role": "user", "content": user_prompt}],
         )
 
-        output = response.choices[0].message.content
+        output = response.choices[0].message.content or ""
 
         # Also redact the response since the LLM might echo back sensitive data
         redacted_output = redactor.redact(output)
-        span.set_attribute("gen_ai.completion", redacted_output)
-        span.set_attribute("gen_ai.usage.prompt_tokens", response.usage.prompt_tokens)
-        span.set_attribute("gen_ai.usage.completion_tokens", response.usage.completion_tokens)
+        span.set_attribute(
+            "gen_ai.output.messages",
+            json.dumps([
+                {
+                    "role": "assistant",
+                    "parts": [{"type": "text", "content": redacted_output}],
+                    "finish_reason": response.choices[0].finish_reason,
+                }
+            ]),
+        )
+        if response.usage:
+            span.set_attribute("gen_ai.usage.input_tokens", response.usage.prompt_tokens)
+            span.set_attribute("gen_ai.usage.output_tokens", response.usage.completion_tokens)
 
         return output
 ```
@@ -132,24 +148,22 @@ This is important to get right: the LLM gets the original prompt so it can respo
 If you want a centralized redaction layer that catches all spans regardless of which part of your code created them, you can implement a custom `SpanProcessor`. This acts as middleware in the OpenTelemetry pipeline.
 
 ```python
-# redacting_span_processor.py - Custom SpanProcessor that redacts PII from all spans
+# redacting_span_processor.py - SpanProcessor hook for centralized redaction
 
 from opentelemetry.sdk.trace import SpanProcessor, ReadableSpan
 from opentelemetry.sdk.trace.export import SpanExporter
-from pii_redactor import PIIRedactor
 from opentelemetry.trace import Span
 
 class RedactingSpanProcessor(SpanProcessor):
-    """A SpanProcessor that redacts PII from span attributes before export."""
+    """A SpanProcessor hook that delegates export-time redaction."""
 
     def __init__(self, delegate_exporter: SpanExporter):
         self.exporter = delegate_exporter
-        self.redactor = PIIRedactor()
 
         # Attributes that should be checked for PII
         self.sensitive_attributes = {
-            "gen_ai.prompt",
-            "gen_ai.completion",
+            "gen_ai.input.messages",
+            "gen_ai.output.messages",
             "http.request.body",
             "http.response.body",
             "db.statement",
@@ -180,7 +194,21 @@ Since the built-in `ReadableSpan` is immutable after it ends, a cleaner approach
 from opentelemetry.sdk.trace.export import SpanExporter, SpanExportResult
 from opentelemetry.sdk.trace import ReadableSpan
 from pii_redactor import PIIRedactor
-from typing import Sequence
+from typing import Any, Mapping, Sequence, cast
+
+class RedactedReadableSpan:
+    """Delegates to the original span but exposes redacted attributes."""
+
+    def __init__(self, span: ReadableSpan, attributes: Mapping[str, Any]):
+        self._span = span
+        self._attributes = attributes
+
+    @property
+    def attributes(self) -> Mapping[str, Any]:
+        return self._attributes
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._span, name)
 
 class RedactingExporter(SpanExporter):
     """Wraps another exporter and redacts PII from span attributes before export."""
@@ -190,8 +218,9 @@ class RedactingExporter(SpanExporter):
         self.redactor = PIIRedactor()
         # Attribute keys that might contain sensitive user data
         self.sensitive_keys = {
-            "gen_ai.prompt",
-            "gen_ai.completion",
+            "gen_ai.input.messages",
+            "gen_ai.output.messages",
+            "gen_ai.system_instructions",
             "user.input",
             "message.content",
         }
@@ -212,10 +241,8 @@ class RedactingExporter(SpanExporter):
                     if key in new_attrs and isinstance(new_attrs[key], str):
                         new_attrs[key] = self.redactor.redact(new_attrs[key])
 
-                # Create a modified copy of the span with redacted attributes
-                redacted_spans.append(
-                    _create_redacted_span(span, new_attrs)
-                )
+                # Export a span-like wrapper with redacted attributes.
+                redacted_spans.append(cast(ReadableSpan, RedactedReadableSpan(span, new_attrs)))
             else:
                 redacted_spans.append(span)
 
@@ -268,18 +295,17 @@ receivers:
 processors:
   # Use the transform processor to redact PII patterns
   transform:
+    error_mode: ignore
     trace_statements:
-      - context: span
-        statements:
-          # Redact email addresses from prompt attributes
-          - replace_pattern(attributes["gen_ai.prompt"], "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z|a-z]{2,}\\b", "[REDACTED_EMAIL]")
-          # Redact SSN patterns
-          - replace_pattern(attributes["gen_ai.prompt"], "\\b\\d{3}-\\d{2}-\\d{4}\\b", "[REDACTED_SSN]")
-          # Redact phone numbers
-          - replace_pattern(attributes["gen_ai.prompt"], "\\b\\d{3}[-.]?\\d{3}[-.]?\\d{4}\\b", "[REDACTED_PHONE]")
-          # Apply the same redactions to completion text
-          - replace_pattern(attributes["gen_ai.completion"], "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z|a-z]{2,}\\b", "[REDACTED_EMAIL]")
-          - replace_pattern(attributes["gen_ai.completion"], "\\b\\d{3}-\\d{2}-\\d{4}\\b", "[REDACTED_SSN]")
+      # Redact email addresses from input message attributes
+      - replace_pattern(span.attributes["gen_ai.input.messages"], "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}\\b", "[REDACTED_EMAIL]")
+      # Redact SSN patterns
+      - replace_pattern(span.attributes["gen_ai.input.messages"], "\\b\\d{3}-\\d{2}-\\d{4}\\b", "[REDACTED_SSN]")
+      # Redact phone numbers
+      - replace_pattern(span.attributes["gen_ai.input.messages"], "\\b\\d{3}[-.]?\\d{3}[-.]?\\d{4}\\b", "[REDACTED_PHONE]")
+      # Apply the same redactions to output message text
+      - replace_pattern(span.attributes["gen_ai.output.messages"], "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}\\b", "[REDACTED_EMAIL]")
+      - replace_pattern(span.attributes["gen_ai.output.messages"], "\\b\\d{3}-\\d{2}-\\d{4}\\b", "[REDACTED_SSN]")
 
 exporters:
   otlp:
