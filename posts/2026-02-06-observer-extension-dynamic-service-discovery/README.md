@@ -12,18 +12,16 @@ Modern cloud-native environments are highly dynamic. Services scale up and down,
 
 ## What is the Observer Extension?
 
-The Observer Extension is an OpenTelemetry Collector component that automatically discovers and monitors services, containers, and endpoints in dynamic environments. It integrates with orchestration platforms like Kubernetes and Docker, cloud provider APIs, and service registries to maintain an up-to-date inventory of monitoring targets.
+The Observer Extension is an OpenTelemetry Collector component that automatically discovers services, containers, and endpoints in dynamic environments. It integrates with orchestration platforms like Kubernetes and Docker, and host-level network endpoint discovery, to maintain an up-to-date inventory of monitoring targets.
 
 The extension operates as a discovery mechanism that feeds dynamic target information to receivers. As new services appear or existing services disappear, the Observer Extension automatically updates the receiver configuration without requiring Collector restarts or manual intervention.
 
 Key capabilities include:
 
-- Automatic discovery of Kubernetes pods, services, and nodes
+- Automatic discovery of Kubernetes pods, ports, services, ingresses, and nodes
 - Docker container monitoring with real-time container lifecycle tracking
-- Cloud provider integration (AWS EC2, ECS, Azure VMs)
 - Endpoint discovery for scraping metrics from dynamic targets
-- Label and annotation-based filtering for selective monitoring
-- Cross-environment service discovery coordination
+- Label and annotation-based receiver rules for selective monitoring
 
 ## Why Use the Observer Extension?
 
@@ -48,13 +46,13 @@ graph TB
     subgraph Environment
         K[Kubernetes API]
         D[Docker Socket]
-        C[Cloud Provider API]
+        H[Host Sockets]
     end
 
     subgraph OpenTelemetry Collector
         O[Observer Extension] -->|Discovers Targets| K
         O -->|Discovers Containers| D
-        O -->|Discovers Instances| C
+        O -->|Discovers Ports| H
 
         O -->|Updates Target List| R[Receiver Operator]
 
@@ -72,7 +70,7 @@ graph TB
     E -->|Telemetry| B[(OneUptime Backend)]
 ```
 
-The Observer Extension continuously polls discovery sources (Kubernetes API, Docker socket, cloud APIs) and maintains an internal registry of active targets. When targets appear or disappear, the extension notifies receivers, which dynamically update their scraping configurations.
+The Observer Extension watches or refreshes discovery sources such as the Kubernetes API, Docker socket, and host listening sockets. When targets appear or disappear, the extension notifies compatible receivers, which dynamically update their scraping configurations.
 
 ## Basic Kubernetes Observer Configuration
 
@@ -89,10 +87,7 @@ extensions:
 
     # Node on which this observer is running
     # Leave empty to discover all nodes in cluster
-    node: ${K8S_NODE_NAME}        # Typically set via downward API
-
-    # How often to poll Kubernetes API for changes
-    observe_interval: 10s
+    node: ${env:K8S_NODE_NAME}    # Typically set via downward API
 
     # Watch for specific resource types
     observe_pods: true            # Discover pods
@@ -104,7 +99,7 @@ receivers:
   # Receiver creator dynamically instantiates receivers
   receiver_creator:
     # Link to k8s_observer extension
-    observers: [k8s_observer]
+    watch_observers: [k8s_observer]
 
     # Configure receivers based on discovered targets
     receivers:
@@ -121,14 +116,14 @@ receivers:
 
               # Use discovered endpoint information
               static_configs:
-                - targets: ['`endpoint`:`annotations["prometheus.io/port"]`']
+                - targets: ['`endpoint`:`"prometheus.io/port" in annotations ? annotations["prometheus.io/port"] : 9090`']
 
               # Preserve Kubernetes labels as metric labels
               relabel_configs:
-                - source_labels: [__meta_kubernetes_pod_name]
-                  target_label: pod
-                - source_labels: [__meta_kubernetes_namespace]
-                  target_label: namespace
+                - target_label: pod
+                  replacement: '`name`'
+                - target_label: namespace
+                  replacement: '`namespace`'
 
 processors:
   batch:
@@ -146,7 +141,7 @@ exporters:
   otlphttp:
     endpoint: https://oneuptime.com/otlp
     headers:
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+      x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
 
 service:
   # Enable observer extension
@@ -171,31 +166,16 @@ Filter discovered targets based on labels and annotations to monitor specific wo
 extensions:
   k8s_observer:
     auth_type: serviceAccount
-    node: ${K8S_NODE_NAME}
-    observe_interval: 10s
+    node: ${env:K8S_NODE_NAME}
     observe_pods: true
     observe_services: true
 
-    # Filter discovered resources by labels
-    label_selector:
-      # Only discover pods with these labels
-      - key: app.kubernetes.io/component
-        operator: In
-        values: [backend, frontend, api]
-
-      - key: monitoring.enabled
-        operator: Exists           # Label key must exist (any value)
-
-    # Filter by namespace
-    namespace_selector:
-      # Exclude system namespaces
-      - key: name
-        operator: NotIn
-        values: [kube-system, kube-public, kube-node-lease]
+    # Limit discovery to application namespaces
+    namespaces: [production, staging]
 
 receivers:
   receiver_creator:
-    observers: [k8s_observer]
+    watch_observers: [k8s_observer]
 
     receivers:
       # Prometheus receiver for application metrics
@@ -203,21 +183,27 @@ receivers:
         rule: |
           type == "pod" &&
           annotations["prometheus.io/scrape"] == "true" &&
+          namespace != "kube-system" &&
+          namespace != "kube-public" &&
+          namespace != "kube-node-lease" &&
           labels["app.kubernetes.io/component"] == "backend"
 
         config:
           scrape_configs:
             - job_name: 'backend-metrics'
               scrape_interval: 15s
-              metrics_path: '`annotations["prometheus.io/path"]`'
+              metrics_path: '`"prometheus.io/path" in annotations ? annotations["prometheus.io/path"] : "/metrics"`'
               static_configs:
-                - targets: ['`endpoint`:`annotations["prometheus.io/port"]`']
+                - targets: ['`endpoint`:`"prometheus.io/port" in annotations ? annotations["prometheus.io/port"] : 9090`']
 
       # Separate receiver for different component type
       prometheus/frontend:
         rule: |
           type == "pod" &&
           annotations["prometheus.io/scrape"] == "true" &&
+          namespace != "kube-system" &&
+          namespace != "kube-public" &&
+          namespace != "kube-node-lease" &&
           labels["app.kubernetes.io/component"] == "frontend"
 
         config:
@@ -225,24 +211,23 @@ receivers:
             - job_name: 'frontend-metrics'
               scrape_interval: 30s          # Less frequent for frontend
               static_configs:
-                - targets: ['`endpoint`:`annotations["prometheus.io/port"]`']
+                - targets: ['`endpoint`:`"prometheus.io/port" in annotations ? annotations["prometheus.io/port"] : 9090`']
 
 processors:
   batch:
     timeout: 10s
 
-  # Add discovered labels as resource attributes
   resource:
     attributes:
-      - key: k8s.pod.labels
-        from_attribute: labels      # Copy all discovered labels
+      - key: k8s.cluster.name
+        value: production-cluster
         action: upsert
 
 exporters:
   otlphttp:
     endpoint: https://oneuptime.com/otlp
     headers:
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+      x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
 
 service:
   extensions: [k8s_observer]
@@ -265,29 +250,19 @@ extensions:
   # Observer for production namespace
   k8s_observer/production:
     auth_type: serviceAccount
-    observe_interval: 10s
     observe_pods: true
-
-    namespace_selector:
-      - key: name
-        operator: In
-        values: [production]
+    namespaces: [production]
 
   # Observer for staging namespace
   k8s_observer/staging:
     auth_type: serviceAccount
-    observe_interval: 30s         # Less frequent polling for staging
     observe_pods: true
-
-    namespace_selector:
-      - key: name
-        operator: In
-        values: [staging]
+    namespaces: [staging]
 
 receivers:
   # Production monitoring with strict SLAs
   receiver_creator/production:
-    observers: [k8s_observer/production]
+    watch_observers: [k8s_observer/production]
 
     receivers:
       prometheus:
@@ -300,7 +275,7 @@ receivers:
               scrape_timeout: 10s
 
               static_configs:
-                - targets: ['`endpoint`:`annotations["prometheus.io/port"]`']
+                - targets: ['`endpoint`:`"prometheus.io/port" in annotations ? annotations["prometheus.io/port"] : 9090`']
 
               metric_relabel_configs:
                 # Add environment label
@@ -309,7 +284,7 @@ receivers:
 
   # Staging monitoring with relaxed requirements
   receiver_creator/staging:
-    observers: [k8s_observer/staging]
+    watch_observers: [k8s_observer/staging]
 
     receivers:
       prometheus:
@@ -322,7 +297,7 @@ receivers:
               scrape_timeout: 30s
 
               static_configs:
-                - targets: ['`endpoint`:`annotations["prometheus.io/port"]`']
+                - targets: ['`endpoint`:`"prometheus.io/port" in annotations ? annotations["prometheus.io/port"] : 9090`']
 
               metric_relabel_configs:
                 - target_label: environment
@@ -341,7 +316,7 @@ exporters:
   otlphttp:
     endpoint: https://oneuptime.com/otlp
     headers:
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+      x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
 
 service:
   extensions: [k8s_observer/production, k8s_observer/staging]
@@ -360,7 +335,7 @@ service:
       exporters: [otlphttp]
 ```
 
-This pattern allows environment-specific monitoring configurations with different intervals, timeouts, and processing strategies.
+This pattern allows environment-specific monitoring configurations with different scrape intervals, timeouts, and processing strategies.
 
 ## Docker Observer Configuration
 
@@ -373,30 +348,22 @@ extensions:
     # Docker socket endpoint
     endpoint: unix:///var/run/docker.sock
 
-    # How often to poll for container changes
-    poll_interval: 10s
-
     # Watch for container events in real-time
     use_host_bindings: true       # Discover host port mappings
 
-    # Filter containers by labels
-    filters:
-      - key: monitoring.enabled
-        value: "true"
-
-      # Exclude system containers
-      - key: name
-        value: ".*-sidecar"
-        operator: DoesNotMatch
+    # Exclude containers by image name using literals, globs, or regex
+    excluded_images:
+      - "pause"
+      - "/.*-sidecar.*/"
 
 receivers:
   receiver_creator:
-    observers: [docker_observer]
+    watch_observers: [docker_observer]
 
     receivers:
       # Prometheus receiver for Docker containers
       prometheus:
-        rule: type == "container" && labels["prometheus.scrape"] == "true"
+        rule: type == "container" && labels["prometheus.scrape"] == "true" && port != 0
 
         config:
           scrape_configs:
@@ -405,33 +372,30 @@ receivers:
 
               # Use discovered container endpoint
               static_configs:
-                - targets: ['`host`:`labels["prometheus.port"]`']
+                - targets: ['`host`:`port`']
 
               relabel_configs:
                 # Add container metadata as labels
-                - source_labels: [__meta_docker_container_name]
-                  target_label: container
-                - source_labels: [__meta_docker_container_label_app]
-                  target_label: app
+                - target_label: container
+                  replacement: '`name`'
+                - target_label: app
+                  replacement: '`labels["app"]`'
 
-      # Docker stats receiver for resource metrics
-      docker_stats:
-        rule: type == "container"
+  # Docker stats receiver for resource metrics
+  docker_stats:
+    endpoint: unix:///var/run/docker.sock
+    collection_interval: 30s
 
-        config:
-          endpoint: unix:///var/run/docker.sock
-          collection_interval: 30s
-
-          # Collect comprehensive container metrics
-          metrics:
-            container.cpu.usage.total:
-              enabled: true
-            container.memory.usage.limit:
-              enabled: true
-            container.network.io.usage.tx_bytes:
-              enabled: true
-            container.network.io.usage.rx_bytes:
-              enabled: true
+    # Collect comprehensive container metrics
+    metrics:
+      container.cpu.usage.total:
+        enabled: true
+      container.memory.usage.limit:
+        enabled: true
+      container.network.io.usage.tx_bytes:
+        enabled: true
+      container.network.io.usage.rx_bytes:
+        enabled: true
 
 processors:
   batch:
@@ -448,14 +412,14 @@ exporters:
   otlphttp:
     endpoint: https://oneuptime.com/otlp
     headers:
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+      x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
 
 service:
   extensions: [docker_observer]
 
   pipelines:
     metrics:
-      receivers: [receiver_creator]
+      receivers: [receiver_creator, docker_stats]
       processors: [resource, batch]
       exporters: [otlphttp]
 ```
@@ -473,31 +437,14 @@ extensions:
     # Interval for endpoint discovery
     refresh_interval: 30s
 
-    # Network interface patterns to monitor
-    interface_patterns:
-      - "eth*"                    # Monitor all Ethernet interfaces
-      - "en*"                     # macOS interfaces
-      - "wlan*"                   # Wireless interfaces
-
-    # Ports to discover
-    endpoint_detection:
-      enabled: true
-
-      # Discover services on these ports
-      ports:
-        - 8080                    # Common app port
-        - 9090                    # Prometheus default
-        - 3000                    # Grafana default
-        - 8086                    # InfluxDB
-
 receivers:
   receiver_creator:
-    observers: [host_observer]
+    watch_observers: [host_observer]
 
     receivers:
       # Prometheus receiver for discovered endpoints
       prometheus:
-        rule: type == "hostport"
+        rule: type == "port"
 
         config:
           scrape_configs:
@@ -511,34 +458,31 @@ receivers:
                 - source_labels: [__address__]
                   target_label: instance
 
-      # Host metrics receiver for system metrics
-      hostmetrics:
-        rule: type == "hostport" && port == 9090
+  # Host metrics receiver for system metrics
+  host_metrics:
+    collection_interval: 30s
 
-        config:
-          collection_interval: 30s
-
-          scrapers:
-            cpu:
-              metrics:
-                system.cpu.utilization:
-                  enabled: true
-            memory:
-              metrics:
-                system.memory.utilization:
-                  enabled: true
-            disk:
-              metrics:
-                system.disk.io:
-                  enabled: true
-            network:
-              metrics:
-                system.network.io:
-                  enabled: true
-            processes:
-              metrics:
-                system.processes.count:
-                  enabled: true
+    scrapers:
+      cpu:
+        metrics:
+          system.cpu.utilization:
+            enabled: true
+      memory:
+        metrics:
+          system.memory.utilization:
+            enabled: true
+      disk:
+        metrics:
+          system.disk.io:
+            enabled: true
+      network:
+        metrics:
+          system.network.io:
+            enabled: true
+      processes:
+        metrics:
+          system.processes.count:
+            enabled: true
 
 processors:
   batch:
@@ -547,21 +491,21 @@ processors:
   resource:
     attributes:
       - key: host.name
-        value: ${HOSTNAME}
+        value: ${env:HOSTNAME}
         action: upsert
 
 exporters:
   otlphttp:
     endpoint: https://oneuptime.com/otlp
     headers:
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+      x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
 
 service:
   extensions: [host_observer]
 
   pipelines:
     metrics:
-      receivers: [receiver_creator]
+      receivers: [receiver_creator, host_metrics]
       processors: [resource, batch]
       exporters: [otlphttp]
 ```
@@ -570,79 +514,66 @@ The host observer is useful for monitoring services on static infrastructure or 
 
 ## Performance and Scalability
 
-### Optimizing Discovery Intervals
+### Optimizing Discovery Scope
 
-Balance discovery freshness with API load:
+Balance discovery coverage with API load:
 
 ```yaml
 extensions:
-  # Fast discovery for critical production workloads
+  # Discovery for critical production workloads
   k8s_observer/critical:
     auth_type: serviceAccount
-    observe_interval: 5s          # Rapid discovery (5 seconds)
-
-    namespace_selector:
-      - key: name
-        operator: In
-        values: [production]
-
-    label_selector:
-      - key: tier
-        operator: In
-        values: [critical]
+    namespaces: [production]
+    kube_api_qps: 10
+    kube_api_burst: 20
 
   # Standard discovery for normal workloads
   k8s_observer/standard:
     auth_type: serviceAccount
-    observe_interval: 30s         # Moderate discovery (30 seconds)
+    namespaces: [staging]
+    kube_api_qps: 5
+    kube_api_burst: 10
 
-    namespace_selector:
-      - key: name
-        operator: In
-        values: [production, staging]
-
-    label_selector:
-      - key: tier
-        operator: In
-        values: [standard]
-
-  # Slow discovery for low-priority workloads
+  # Batch namespace discovery
   k8s_observer/batch:
     auth_type: serviceAccount
-    observe_interval: 120s        # Infrequent discovery (2 minutes)
-
-    namespace_selector:
-      - key: name
-        operator: In
-        values: [batch-jobs]
+    namespaces: [batch-jobs]
+    kube_api_qps: 2
+    kube_api_burst: 5
 
 receivers:
   receiver_creator/critical:
-    observers: [k8s_observer/critical]
+    watch_observers: [k8s_observer/critical]
     receivers:
       prometheus:
-        rule: type == "pod" && annotations["prometheus.io/scrape"] == "true"
+        rule: |
+          type == "pod" &&
+          annotations["prometheus.io/scrape"] == "true" &&
+          labels["tier"] == "critical"
         config:
           scrape_configs:
             - job_name: 'critical'
               scrape_interval: 15s
               static_configs:
-                - targets: ['`endpoint`:`annotations["prometheus.io/port"]`']
+                - targets: ['`endpoint`:`"prometheus.io/port" in annotations ? annotations["prometheus.io/port"] : 9090`']
 
   receiver_creator/standard:
-    observers: [k8s_observer/standard]
+    watch_observers: [k8s_observer/standard]
     receivers:
       prometheus:
-        rule: type == "pod" && annotations["prometheus.io/scrape"] == "true"
+        rule: |
+          type == "pod" &&
+          annotations["prometheus.io/scrape"] == "true" &&
+          labels["tier"] == "standard"
         config:
           scrape_configs:
             - job_name: 'standard'
               scrape_interval: 30s
               static_configs:
-                - targets: ['`endpoint`:`annotations["prometheus.io/port"]`']
+                - targets: ['`endpoint`:`"prometheus.io/port" in annotations ? annotations["prometheus.io/port"] : 9090`']
 
   receiver_creator/batch:
-    observers: [k8s_observer/batch]
+    watch_observers: [k8s_observer/batch]
     receivers:
       prometheus:
         rule: type == "pod" && annotations["prometheus.io/scrape"] == "true"
@@ -651,7 +582,7 @@ receivers:
             - job_name: 'batch'
               scrape_interval: 60s
               static_configs:
-                - targets: ['`endpoint`:`annotations["prometheus.io/port"]`']
+                - targets: ['`endpoint`:`"prometheus.io/port" in annotations ? annotations["prometheus.io/port"] : 9090`']
 
 processors:
   batch:
@@ -661,7 +592,7 @@ exporters:
   otlphttp:
     endpoint: https://oneuptime.com/otlp
     headers:
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+      x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
 
 service:
   extensions:
@@ -679,7 +610,7 @@ service:
       exporters: [otlphttp]
 ```
 
-This tiered approach reduces API load by polling high-priority workloads frequently and low-priority workloads infrequently.
+This tiered approach reduces API load by limiting which namespaces are watched and by applying workload filters in receiver rules.
 
 ### Memory Management
 
@@ -689,19 +620,11 @@ Limit memory consumption in large environments:
 extensions:
   k8s_observer:
     auth_type: serviceAccount
-    observe_interval: 30s
-
-    # Limit target cache size
-    cache:
-      max_entries: 10000          # Maximum discovered targets to cache
-      ttl: 5m                     # Remove stale entries after 5 minutes
+    namespaces: [production]
 
 receivers:
   receiver_creator:
-    observers: [k8s_observer]
-
-    # Limit concurrent receiver instances
-    max_receivers: 500            # Maximum simultaneous scrapers
+    watch_observers: [k8s_observer]
 
     receivers:
       prometheus:
@@ -711,7 +634,7 @@ receivers:
             - job_name: 'pods'
               scrape_interval: 30s
               static_configs:
-                - targets: ['`endpoint`:`annotations["prometheus.io/port"]`']
+                - targets: ['`endpoint`:`"prometheus.io/port" in annotations ? annotations["prometheus.io/port"] : 9090`']
 
 processors:
   # Protect against memory exhaustion
@@ -727,7 +650,7 @@ exporters:
   otlphttp:
     endpoint: https://oneuptime.com/otlp
     headers:
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+      x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
 
 service:
   extensions: [k8s_observer]
@@ -739,7 +662,7 @@ service:
       exporters: [otlphttp]
 ```
 
-These limits prevent unbounded growth in environments with thousands of dynamic targets.
+The memory limiter helps protect the Collector process from memory exhaustion; namespace scoping and selective receiver rules reduce the number of dynamic receivers created in large environments.
 
 ## Troubleshooting and Debugging
 
@@ -751,23 +674,10 @@ Debug discovery issues with detailed logging:
 extensions:
   k8s_observer:
     auth_type: serviceAccount
-    observe_interval: 10s
-
-    # Enable debug logging
-    logging:
-      level: debug                # Verbose discovery logs
-      log_discovered_targets: true # Log each discovered target
-      log_target_changes: true    # Log additions and removals
 
 receivers:
   receiver_creator:
-    observers: [k8s_observer]
-
-    # Log receiver creation
-    logging:
-      level: debug
-      log_receiver_creation: true
-      log_rule_evaluation: true
+    watch_observers: [k8s_observer]
 
     receivers:
       prometheus:
@@ -777,23 +687,23 @@ receivers:
             - job_name: 'pods'
               scrape_interval: 30s
               static_configs:
-                - targets: ['`endpoint`:`annotations["prometheus.io/port"]`']
+                - targets: ['`endpoint`:`"prometheus.io/port" in annotations ? annotations["prometheus.io/port"] : 9090`']
 
 processors:
   batch:
     timeout: 10s
 
 exporters:
-  # Use logging exporter for debugging
-  logging:
-    loglevel: debug
+  # Use debug exporter for local inspection
+  debug:
+    verbosity: detailed
     sampling_initial: 10
     sampling_thereafter: 100
 
   otlphttp:
     endpoint: https://oneuptime.com/otlp
     headers:
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+      x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
 
 service:
   # Enable debug telemetry
@@ -807,10 +717,10 @@ service:
     metrics:
       receivers: [receiver_creator]
       processors: [batch]
-      exporters: [logging, otlphttp]
+      exporters: [debug, otlphttp]
 ```
 
-Debug logs show discovered targets, rule evaluation results, and receiver instantiation, helping diagnose discovery and configuration issues.
+Collector debug logs and the debug exporter output help diagnose discovery and configuration issues.
 
 ## Production Best Practices
 
@@ -848,9 +758,9 @@ rules:
     resources: ["nodes"]
     verbs: ["get", "list", "watch"]
 
-  # Read-only access to endpoints
-  - apiGroups: [""]
-    resources: ["endpoints"]
+  # Read-only access to ingresses (if observe_ingresses is enabled)
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses"]
     verbs: ["get", "list", "watch"]
 
 ---
@@ -903,7 +813,7 @@ spec:
 
       containers:
         - name: otel-collector
-          image: otel/opentelemetry-collector-contrib:0.93.0
+          image: otel/opentelemetry-collector-contrib:0.153.0
 
           env:
             # Inject node name for node-scoped discovery
@@ -953,11 +863,11 @@ For comprehensive observability in dynamic environments, explore these related t
 
 ## Summary
 
-The Observer Extension enables automatic service discovery in dynamic environments, eliminating manual configuration maintenance and ensuring comprehensive telemetry coverage. By integrating with Kubernetes, Docker, and other orchestration platforms, it adapts monitoring configurations in real-time as services scale and migrate.
+The Observer Extension enables automatic service discovery in dynamic environments, eliminating manual configuration maintenance and ensuring comprehensive telemetry coverage. By integrating with Kubernetes, Docker, and host-level discovery, it adapts monitoring configurations in real-time as services scale and migrate.
 
-Start with basic Kubernetes pod discovery using annotation-based filtering. As requirements grow, implement label-based filtering, multi-namespace discovery, and tiered observation intervals to optimize for your specific environment characteristics.
+Start with basic Kubernetes pod discovery using annotation-based filtering. As requirements grow, implement label-based filtering, multi-namespace discovery, and tiered scrape intervals to optimize for your specific environment characteristics.
 
-Monitor discovery performance through internal metrics and adjust polling intervals based on API load and discovery latency requirements. Proper RBAC configuration ensures security while DaemonSet deployments provide scalable, efficient discovery across large clusters.
+Monitor discovery performance through internal metrics and adjust Kubernetes API QPS and burst settings based on API load and discovery latency requirements. Proper RBAC configuration ensures security while DaemonSet deployments provide scalable, efficient discovery across large clusters.
 
 The Observer Extension transforms static monitoring configurations into dynamic, self-adapting observability pipelines that keep pace with modern cloud-native environments.
 
