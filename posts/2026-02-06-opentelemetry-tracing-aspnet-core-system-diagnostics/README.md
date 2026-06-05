@@ -14,7 +14,7 @@ The System.Diagnostics namespace in .NET contains the Activity API, which forms 
 
 Before diving into implementation, you need to understand two core concepts: Activity and ActivitySource. An Activity represents a single unit of work in your application, similar to a span in OpenTelemetry terminology. An ActivitySource is a factory for creating activities, analogous to a tracer.
 
-The beauty of this approach is that System.Diagnostics.Activity is built directly into .NET, so many frameworks and libraries already emit activities automatically. ASP.NET Core, HttpClient, and SqlClient all create activities out of the box.
+The beauty of this approach is that System.Diagnostics.Activity is built directly into .NET, so many frameworks and libraries already emit activities automatically. ASP.NET Core and HttpClient create activities for HTTP work, and database calls such as SqlClient can be captured by adding the corresponding OpenTelemetry instrumentation package.
 
 ## Setting Up Your ASP.NET Core Project
 
@@ -23,7 +23,7 @@ Start by creating a new ASP.NET Core Web API project and adding the necessary Op
 ```bash
 # Create a new ASP.NET Core Web API project
 
-dotnet new webapi -n TracingDemo
+dotnet new webapi --use-controllers -n TracingDemo
 cd TracingDemo
 
 # Add OpenTelemetry packages
@@ -32,6 +32,7 @@ dotnet add package OpenTelemetry.Instrumentation.AspNetCore
 dotnet add package OpenTelemetry.Instrumentation.Http
 dotnet add package OpenTelemetry.Exporter.Console
 dotnet add package OpenTelemetry.Exporter.OpenTelemetryProtocol
+dotnet add package Swashbuckle.AspNetCore
 ```
 
 These packages provide the core OpenTelemetry functionality, automatic instrumentation for ASP.NET Core and HttpClient, and exporters for both console output (useful for development) and OTLP (for production).
@@ -110,6 +111,7 @@ While automatic instrumentation covers HTTP requests, you often need to trace cu
 
 ```csharp
 using System.Diagnostics;
+using OpenTelemetry.Trace;
 
 namespace TracingDemo.Services;
 
