@@ -28,12 +28,10 @@ otel-playground/
 This is the heart of the setup. It defines all the services and how they connect:
 
 ```yaml
-version: '3.8'
-
 services:
   # OpenTelemetry Collector - receives, processes, and exports telemetry
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.96.0
+    image: otel/opentelemetry-collector-contrib:0.153.0
     command: ["--config", "/etc/otel-collector-config.yaml"]
     volumes:
       - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml
@@ -46,7 +44,7 @@ services:
 
   # Jaeger - trace storage and visualization
   jaeger:
-    image: jaegertracing/all-in-one:1.54
+    image: jaegertracing/all-in-one:1.76.0
     ports:
       - "16686:16686" # Jaeger UI
       - "14268:14268" # Accept spans directly (optional)
@@ -55,7 +53,7 @@ services:
 
   # Prometheus - scrapes metrics from the collector
   prometheus:
-    image: prom/prometheus:v2.50.0
+    image: prom/prometheus:v3.12.0
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
     ports:
@@ -65,7 +63,7 @@ services:
 
   # Grafana - dashboards for metrics and traces
   grafana:
-    image: grafana/grafana:10.3.1
+    image: grafana/grafana:12.4.0
     ports:
       - "3000:3000"
     environment:
@@ -177,7 +175,7 @@ Bring everything up:
 docker compose up -d
 ```
 
-Verify all services are healthy:
+Verify all services are running:
 
 ```bash
 docker compose ps
@@ -232,6 +230,7 @@ Point any OpenTelemetry-instrumented application at the collector. The environme
 
 ```bash
 export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+export OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
 export OTEL_SERVICE_NAME=my-app
 export OTEL_TRACES_EXPORTER=otlp
 export OTEL_METRICS_EXPORTER=otlp
