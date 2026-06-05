@@ -10,7 +10,7 @@ Large attribute values and oversized log bodies increase storage costs, slow dow
 
 ## Using truncate_all for Attributes
 
-The `truncate_all` function limits the length of all string attribute values in a map:
+The `truncate_all` function limits the byte length of all string attribute values in a map:
 
 ```yaml
 processors:
@@ -18,19 +18,19 @@ processors:
     trace_statements:
       - context: span
         statements:
-          # Truncate ALL span attribute string values to 256 characters
+          # Truncate ALL span attribute string values to 256 bytes
           - truncate_all(attributes, 256)
 
     log_statements:
       - context: log
         statements:
-          # Truncate ALL log attribute string values to 512 characters
+          # Truncate ALL log attribute string values to 512 bytes
           - truncate_all(attributes, 512)
 ```
 
-After truncation, a string value of 1000 characters becomes 256 characters. Non-string attributes (integers, booleans) are not affected.
+After truncation, a string value larger than 256 bytes becomes at most 256 bytes. Non-string attributes (integers, booleans) are not affected.
 
-## Selective Truncation with limit_all
+## Selective Truncation with Substring
 
 For more targeted control, truncate specific attributes:
 
@@ -60,12 +60,12 @@ processors:
     log_statements:
       - context: log
         statements:
+          # Add a flag when truncation happened
+          - set(attributes["log.truncated"], true) where IsString(body) and Len(body) > 4096
+          - set(attributes["log.original_length"], Len(body)) where IsString(body) and Len(body) > 4096
+
           # Truncate log body to 4KB if it is a string
           - set(body, Substring(body, 0, 4096)) where IsString(body) and Len(body) > 4096
-
-          # Add a flag when truncation happened
-          - set(attributes["log.truncated"], true) where IsString(body) and Len(body) >= 4096
-          - set(attributes["log.original_length"], Len(body)) where IsString(body) and Len(body) >= 4096
 ```
 
 ## Different Limits for Different Severity Levels
@@ -120,12 +120,12 @@ processors:
     trace_statements:
       - context: span
         statements:
+          # Mark that the stacktrace was truncated
+          - set(attributes["exception.stacktrace.truncated"], true) where attributes["exception.stacktrace"] != nil and Len(attributes["exception.stacktrace"]) > 2048
+
           # Truncate exception stacktrace to 2KB
           # This keeps the most relevant top frames
           - set(attributes["exception.stacktrace"], Substring(attributes["exception.stacktrace"], 0, 2048)) where attributes["exception.stacktrace"] != nil and Len(attributes["exception.stacktrace"]) > 2048
-
-          # Mark that the stacktrace was truncated
-          - set(attributes["exception.stacktrace.truncated"], true) where attributes["exception.stacktrace"] != nil and Len(attributes["exception.stacktrace"]) >= 2048
 ```
 
 ## Combining Truncation with Deletion
@@ -141,8 +141,8 @@ processors:
           # Delete extremely large attributes rather than truncating
           # If db.statement is over 10KB, it is probably a bulk insert
           # and the truncated version is not useful
+          - set(attributes["db.statement.removed"], true) where attributes["db.statement"] != nil and Len(attributes["db.statement"]) > 10240
           - delete_key(attributes, "db.statement") where attributes["db.statement"] != nil and Len(attributes["db.statement"]) > 10240
-          - set(attributes["db.statement.removed"], true) where attributes["db.statement"] == nil
 
           # For moderately large attributes, truncate
           - set(attributes["db.statement"], Substring(attributes["db.statement"], 0, 500)) where attributes["db.statement"] != nil and Len(attributes["db.statement"]) > 500
@@ -210,4 +210,4 @@ Truncation directly reduces storage and network costs. If your average span has 
 
 Monitor the impact by tracking the `log.truncated` and related attributes you add during truncation. This tells you how often truncation is happening and whether your limits are too aggressive.
 
-Truncation in the Collector is a simple, effective way to control telemetry data size. Apply broad limits with `truncate_all` and fine-grained limits with `Substring` on specific attributes that you know can grow large.
+Truncation in the Collector is a simple, effective way to control telemetry data size. Apply broad byte limits with `truncate_all` and fine-grained limits with `Substring` on specific attributes that you know can grow large.
