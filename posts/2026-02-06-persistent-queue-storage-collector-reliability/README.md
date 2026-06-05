@@ -38,7 +38,7 @@ graph TB
 
 ## Enabling Persistent Queue
 
-The persistent queue is configured per exporter using the `exporterhelper` extensions. Here's a basic configuration:
+The persistent queue is configured per exporter using the exporter's `sending_queue` settings and a storage extension. Here's a basic configuration:
 
 ```yaml
 # config.yaml - Basic persistent queue configuration
@@ -49,14 +49,15 @@ extensions:
     # Directory where queue data is persisted
     # Must be writable by collector process
     directory: /var/lib/otelcol/queue
-    # How often to sync writes to disk
-    # Lower values increase durability but reduce performance
+    # Create the directory if it does not already exist
+    create_directory: true
+    # Maximum time to wait for file locks
     timeout: 1s
-    # Compress stored data to save disk space
+    # Compact the underlying database to reclaim unused disk space
     compaction:
-      # Compact when directory exceeds this size
-      directory: 100MiB
-      # How often to check for compaction need
+      # Directory used for temporary compaction files
+      directory: /var/lib/otelcol/queue/compact
+      # Compact online after the queue grows and then drains
       on_rebound: true
 
 receivers:
@@ -80,7 +81,7 @@ exporters:
     # Enable persistent queue for this exporter
     sending_queue:
       enabled: true
-      # Number of batches to keep in memory
+      # Queue capacity, measured in batches by default
       queue_size: 1000
       # Reference to storage extension
       storage: file_storage
@@ -108,35 +109,41 @@ extensions:
   file_storage:
     # Storage directory - must exist and be writable
     directory: /var/lib/otelcol/queue
+    create_directory: true
 
-    # Timeout for write operations
-    # Shorter timeout = more frequent fsyncs = better durability but slower
+    # Maximum time to wait for file locks
     timeout: 1s
+    # Enable fsync after each write for stronger durability at a performance cost
+    fsync: true
 
-    # Compaction settings to manage disk usage
+    # Compaction settings to reclaim unused disk space
     compaction:
       # Enable automatic compaction
       on_start: true
       on_rebound: true
-      # Maximum directory size before compaction
-      # When exceeded, oldest data is removed
-      directory: 512MiB
-      # Maximum time to keep data on disk
-      # Prevents indefinite accumulation
-      max_transaction_age: 24h
+      # Directory used for temporary compaction files
+      directory: /var/lib/otelcol/queue/compact
+      # Mark compaction as needed after allocated storage exceeds this size
+      rebound_needed_threshold_mib: 512
+      # Run compaction after used storage drops below this size
+      rebound_trigger_threshold_mib: 64
 
   # Multiple storage backends for different exporters
   file_storage/traces:
     directory: /var/lib/otelcol/queue/traces
+    create_directory: true
     compaction:
-      directory: 1GiB
-      max_transaction_age: 48h
+      directory: /var/lib/otelcol/queue/traces/compact
+      rebound_needed_threshold_mib: 1024
+      rebound_trigger_threshold_mib: 128
 
   file_storage/metrics:
     directory: /var/lib/otelcol/queue/metrics
+    create_directory: true
     compaction:
-      directory: 256MiB
-      max_transaction_age: 12h
+      directory: /var/lib/otelcol/queue/metrics/compact
+      rebound_needed_threshold_mib: 256
+      rebound_trigger_threshold_mib: 32
 
 exporters:
   # Traces exporter with larger persistent queue
@@ -205,30 +212,34 @@ extensions:
   # Persistent storage for traces
   file_storage/traces:
     directory: /var/lib/otelcol/queue/traces
+    create_directory: true
     timeout: 1s
     compaction:
       on_start: true
       on_rebound: true
-      # 100GB max storage for traces
-      directory: 100GiB
-      # Remove data older than 24 hours
-      max_transaction_age: 24h
+      directory: /var/lib/otelcol/queue/traces/compact
+      rebound_needed_threshold_mib: 102400
+      rebound_trigger_threshold_mib: 1024
 
   # Persistent storage for metrics
   file_storage/metrics:
     directory: /var/lib/otelcol/queue/metrics
+    create_directory: true
     timeout: 1s
     compaction:
-      directory: 50GiB
-      max_transaction_age: 12h
+      directory: /var/lib/otelcol/queue/metrics/compact
+      rebound_needed_threshold_mib: 51200
+      rebound_trigger_threshold_mib: 512
 
   # Persistent storage for logs
   file_storage/logs:
     directory: /var/lib/otelcol/queue/logs
+    create_directory: true
     timeout: 1s
     compaction:
-      directory: 50GiB
-      max_transaction_age: 12h
+      directory: /var/lib/otelcol/queue/logs/compact
+      rebound_needed_threshold_mib: 51200
+      rebound_trigger_threshold_mib: 512
 
 receivers:
   otlp:
@@ -278,7 +289,7 @@ exporters:
     # Persistent queue configuration
     sending_queue:
       enabled: true
-      # In-memory queue size (number of batches)
+      # Queue capacity, measured in batches by default
       queue_size: 5000
       # Reference to persistent storage
       storage: file_storage/traces
@@ -325,7 +336,14 @@ service:
       level: info
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+                without_type_suffix: true
+                without_units: true
 
   pipelines:
     traces:
@@ -350,22 +368,6 @@ Deploy the collector in Kubernetes with persistent volumes:
 
 ```yaml
 # collector-deployment.yaml - Kubernetes deployment with persistent queue
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: otel-collector-queue
-  namespace: observability
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      # Size based on your calculations
-      # This example: 4 hour buffer at 10k spans/sec
-      storage: 300Gi
-  storageClassName: fast-ssd
-
----
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -394,7 +396,7 @@ spec:
     spec:
       containers:
       - name: otel-collector
-        image: otel/opentelemetry-collector-contrib:0.93.0
+        image: otel/opentelemetry-collector-contrib:0.153.0
         args:
           - --config=/conf/config.yaml
         ports:
@@ -509,9 +511,11 @@ Verify persistent queue works by simulating failures:
 ```bash
 # Test 1: Backend unavailability
 # Start collector with persistent queue
-docker run -v $(pwd)/config.yaml:/etc/otelcol/config.yaml \
+docker run -d --name otel-collector \
+  -p 4317:4317 -p 4318:4318 -p 8888:8888 \
+  -v $(pwd)/config.yaml:/etc/otelcol/config.yaml \
   -v /tmp/otel-queue:/var/lib/otelcol/queue \
-  otel/opentelemetry-collector-contrib:0.93.0
+  otel/opentelemetry-collector-contrib:0.153.0
 
 # Generate test data
 telemetrygen traces --otlp-endpoint localhost:4317 \
@@ -562,7 +566,8 @@ Persistent queues add overhead compared to memory-only queues. Optimize performa
 # Kubernetes: Use SSD storage class
 storageClassName: fast-ssd  # or gp3, premium-ssd, etc.
 
-# Docker: Mount tmpfs for moderate persistence with high performance
+# Docker: Mount tmpfs only for high-performance tests.
+# tmpfs is memory-backed and is not persistent across host or container restarts.
 volumes:
   - type: tmpfs
     target: /var/lib/otelcol/queue
@@ -570,15 +575,14 @@ volumes:
       size: 10G
 ```
 
-### Tune Write Frequency
+### Tune Disk Sync Behavior
 
 ```yaml
 extensions:
   file_storage:
     directory: /var/lib/otelcol/queue
-    # Longer timeout = fewer disk writes = better performance
-    # Shorter timeout = more durability
-    timeout: 5s  # Default is 1s
+    # fsync after each write improves durability but reduces performance
+    fsync: true
 ```
 
 ### Adjust Queue Size
@@ -587,8 +591,8 @@ extensions:
 exporters:
   otlp:
     sending_queue:
-      # Larger in-memory queue reduces disk I/O
-      # But increases memory usage
+      # Larger queue capacity absorbs longer outages
+      # But requires more disk space when persistent storage is enabled
       queue_size: 10000  # Default is 1000
       storage: file_storage
 ```
@@ -596,10 +600,8 @@ exporters:
 ### Monitor Latency Impact
 
 ```promql
-# Measure export latency with persistent queue
-histogram_quantile(0.99,
-  rate(otelcol_exporter_send_failed_spans_bucket[5m])
-)
+# Watch for queue buildup that can indicate export latency or backend slowness
+otelcol_exporter_queue_size / otelcol_exporter_queue_capacity
 ```
 
 ## Handling Disk Full Scenarios
@@ -611,11 +613,12 @@ When persistent queue disk fills up, the collector must reject new data:
 extensions:
   file_storage:
     directory: /var/lib/otelcol/queue
+    create_directory: true
     compaction:
-      # Automatically remove old data when limit reached
-      directory: 100GiB
-      # Remove data older than this age
-      max_transaction_age: 24h
+      # Reclaim unused disk space after the queue grows and drains
+      directory: /var/lib/otelcol/queue/compact
+      rebound_needed_threshold_mib: 102400
+      rebound_trigger_threshold_mib: 1024
       # Compact on startup to recover space
       on_start: true
 
@@ -648,6 +651,7 @@ Migrate existing deployments to use persistent queues:
 extensions:
   file_storage:
     directory: /var/lib/otelcol/queue
+    create_directory: true
 
 # Step 2: Update exporters to reference storage
 exporters:
@@ -703,7 +707,11 @@ initContainers:
 
 ```bash
 # Check if backend is reachable
-kubectl exec -it otel-collector-0 -- wget -O- http://backend:4317
+kubectl run -it --rm connectivity-check \
+  --image=busybox:latest \
+  --restart=Never \
+  -n observability \
+  -- nc -vz backend 4317
 
 # Check exporter metrics
 curl -s http://localhost:8888/metrics | grep exporter_send_failed
@@ -717,7 +725,7 @@ curl -s http://localhost:8888/metrics | grep exporter_send_failed
 # Monitor disk I/O
 iostat -x 1
 
-# Solution: Increase timeout to reduce write frequency
+# Solution: Disable fsync if your durability requirements allow it
 # Or use faster storage (SSD instead of HDD)
 ```
 
