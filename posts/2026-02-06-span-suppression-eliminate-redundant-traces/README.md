@@ -19,20 +19,30 @@ Before suppressing anything, you need to know which spans are candidates. Look a
 
 ## Strategy 1: SDK-Level Span Filtering
 
-The most efficient place to suppress spans is at the SDK, before they are serialized. Use a custom SpanProcessor or the built-in filtering capabilities.
+The most efficient place to suppress spans is at the SDK, before they are serialized. Use a custom SpanProcessor with an exporter wrapper or the built-in filtering capabilities.
 
 Here is a Java example that suppresses health check and framework-internal spans:
 
 ```java
-// Custom SpanProcessor that filters out low-value spans
-// before they reach the exporter. This saves serialization
-// and network costs in addition to storage.
+// Custom SpanProcessor and exporter wrapper that filter out
+// low-value spans before they are sent over the network.
+import io.opentelemetry.api.common.AttributeKey;
+import io.opentelemetry.api.trace.StatusCode;
 import io.opentelemetry.sdk.trace.SpanProcessor;
 import io.opentelemetry.sdk.trace.ReadWriteSpan;
 import io.opentelemetry.sdk.trace.ReadableSpan;
+import io.opentelemetry.sdk.trace.data.SpanData;
+import io.opentelemetry.sdk.trace.export.SpanExporter;
+import io.opentelemetry.sdk.common.CompletableResultCode;
 import io.opentelemetry.context.Context;
+import java.util.Collection;
+import java.util.List;
+import java.util.Set;
 
 public class SpanSuppressionProcessor implements SpanProcessor {
+
+    private static final AttributeKey<Boolean> SUPPRESS_KEY =
+        AttributeKey.booleanKey("otel.suppress");
 
     // Set of span names to suppress entirely
     private static final Set<String> SUPPRESSED_NAMES = Set.of(
@@ -54,7 +64,7 @@ public class SpanSuppressionProcessor implements SpanProcessor {
         // Check span name at start time for known suppressed patterns.
         // Setting an attribute that the exporter checks.
         if (SUPPRESSED_NAMES.contains(span.getName())) {
-            span.setAttribute("otel.suppress", true);
+            span.setAttribute(SUPPRESS_KEY, true);
         }
     }
 
@@ -68,10 +78,41 @@ public class SpanSuppressionProcessor implements SpanProcessor {
 
     @Override
     public boolean isEndRequired() { return false; }
+
+    public static class FilteringSpanExporter implements SpanExporter {
+        private final SpanExporter delegate;
+
+        public FilteringSpanExporter(SpanExporter delegate) {
+            this.delegate = delegate;
+        }
+
+        @Override
+        public CompletableResultCode export(Collection<SpanData> spans) {
+            List<SpanData> filtered = spans.stream()
+                .filter(span -> span.getStatus().getStatusCode() == StatusCode.ERROR
+                    || !Boolean.TRUE.equals(
+                    span.getAttributes().get(SUPPRESS_KEY)))
+                .filter(span -> span.getStatus().getStatusCode() == StatusCode.ERROR
+                    || (span.getEndEpochNanos() - span.getStartEpochNanos())
+                        >= MIN_DURATION_NANOS)
+                .toList();
+            return delegate.export(filtered);
+        }
+
+        @Override
+        public CompletableResultCode flush() {
+            return delegate.flush();
+        }
+
+        @Override
+        public CompletableResultCode shutdown() {
+            return delegate.shutdown();
+        }
+    }
 }
 ```
 
-A simpler Python approach using the OpenTelemetry SDK's environment variable configuration:
+A simpler Python approach using the OpenTelemetry SDK's environment variable configuration before auto-instrumentation starts:
 
 ```python
 # Suppress specific instrumentation libraries that generate
@@ -111,33 +152,30 @@ processors:
   # Filter processor drops entire spans matching these conditions.
   filter/suppress:
     error_mode: ignore
-    traces:
-      span:
-        # Drop health check endpoint spans
-        - IsMatch(name, "GET /health.*")
-        - IsMatch(name, "GET /ready.*")
-        - IsMatch(name, "GET /live.*")
-        - IsMatch(name, "GET /metrics")
+    trace_conditions:
+      # Drop health check endpoint spans
+      - span.name != nil and IsMatch(span.name, "GET /health.*")
+      - span.name != nil and IsMatch(span.name, "GET /ready.*")
+      - span.name != nil and IsMatch(span.name, "GET /live.*")
+      - span.name == "GET /metrics"
 
-        # Drop spans from internal middleware
-        - IsMatch(name, "middleware.*")
+      # Drop spans from internal middleware
+      - span.name != nil and IsMatch(span.name, "middleware.*")
 
-        # Drop spans shorter than 1ms that completed successfully
-        # (keep short error spans since they indicate fast failures)
-        - duration < 1000000
-            and status.code != STATUS_CODE_ERROR
+      # Drop spans shorter than 1ms that completed successfully
+      # (keep short error spans since they indicate fast failures)
+      - (span.end_time - span.start_time) < Duration("1ms")
+          and span.status.code != STATUS_CODE_ERROR
 
-  # The tail-based sampler can also suppress redundant spans
-  # by looking at the full trace context before deciding.
+  # The transform processor can also remove large attributes
+  # before spans are exported.
   transform/cleanup:
     trace_statements:
-      - context: span
-        statements:
-          # Remove large attributes that inflate span size
-          # without providing diagnostic value.
-          - delete_key(attributes, "http.request.header.cookie")
-          - delete_key(attributes, "http.request.header.authorization")
-          - truncate_all(attributes, 256)
+      # Remove large attributes that inflate span size
+      # without providing diagnostic value.
+      - delete_key(span.attributes, "http.request.header.cookie")
+      - delete_key(span.attributes, "http.request.header.authorization")
+      - truncate_all(span.attributes, 256)
 
   batch:
     send_batch_size: 8192
@@ -171,23 +209,22 @@ Keeping span 2 and suppressing 1 and 3 preserves the diagnostic value while redu
 processors:
   filter/dedup_db:
     error_mode: ignore
-    traces:
-      span:
-        # Suppress raw driver-level spans when ORM spans exist.
-        # The ORM span contains the parameterized query which
-        # is more useful than the raw driver span.
-        - attributes["db.system"] == "postgresql"
-            and IsMatch(name, "PostgreSQL.*")
-            and parent_span_id != nil
+    trace_conditions:
+      # Suppress raw driver-level spans when ORM spans exist.
+      # The ORM span contains the parameterized query which
+      # is more useful than the raw driver span.
+      - span.attributes["db.system"] == "postgresql"
+          and span.name != nil
+          and IsMatch(span.name, "PostgreSQL.*")
+          and not IsRootSpan()
 
   # Also suppress trivially short internal spans
   filter/trivial:
     error_mode: ignore
-    traces:
-      span:
-        - kind == SPAN_KIND_INTERNAL
-            and duration < 500000
-            and status.code != STATUS_CODE_ERROR
+    trace_conditions:
+      - span.kind.string == "Internal"
+          and (span.end_time - span.start_time) < Duration("500us")
+          and span.status.code != STATUS_CODE_ERROR
 ```
 
 ## Measuring Suppression Impact
@@ -212,9 +249,9 @@ A typical suppression configuration eliminates 40-60% of spans. Health check sup
 ## Guidelines for Safe Suppression
 
 - Never suppress error spans regardless of their source or duration
-- Never suppress the root span of a trace
+- Avoid suppressing the root span of a trace unless you intend to drop that entire low-value trace, such as health checks
 - Always test suppression rules in staging before production
-- Monitor `otelcol_processor_filter_logs_filtered` and `otelcol_processor_filter_spans_filtered` metrics to ensure filters are working as expected
+- Monitor `otelcol_processor_filter_logs.filtered` and `otelcol_processor_filter_spans.filtered` metrics to ensure filters are working as expected
 - Review suppression rules quarterly as new services and instrumentation libraries are added
 
 Span suppression is a targeted optimization that removes noise while preserving signal. Unlike sampling, which probabilistically drops entire traces, suppression selectively removes specific low-value spans from every trace, keeping the overall trace structure intact for debugging.
