@@ -8,7 +8,7 @@ Description: Configure the OpenTelemetry Collector to monitor DNS resolution lat
 
 DNS failures are one of those infrastructure problems that look like application problems. When DNS resolution is slow or broken, every service that depends on it starts timing out. Engineers chase application-level symptoms while the root cause sits in the network layer. Monitoring DNS resolution latency and failures directly gives you visibility into this critical dependency.
 
-The OpenTelemetry Collector can monitor DNS health through the `dns` check receiver, giving you metrics that flow into your standard observability pipeline.
+The OpenTelemetry Collector can monitor DNS health by scraping DNS probe metrics from Prometheus Blackbox Exporter with the `prometheus` receiver, giving you metrics that flow into your standard observability pipeline.
 
 ## Why DNS Monitoring Matters
 
@@ -16,32 +16,82 @@ A DNS lookup that takes 500ms instead of 5ms adds 500ms to every outbound connec
 
 Most teams do not monitor DNS until a DNS-related outage burns them. By then, they have spent hours looking at the wrong dashboards.
 
-## Configuring the DNS Check Receiver
+## Configuring DNS Probes
 
-The OpenTelemetry Collector Contrib distribution includes a receiver that performs DNS lookups at regular intervals and reports resolution time and success/failure metrics.
+The OpenTelemetry Collector includes a Prometheus receiver that can scrape Blackbox Exporter. Blackbox Exporter performs DNS probes at scrape time and reports resolution time and success/failure metrics.
 
 Here is a basic configuration:
 
 ```yaml
-# collector-dns-check.yaml
+# blackbox.yml
 
 # Monitor DNS resolution for critical service hostnames.
-# The receiver performs A record lookups and reports latency and errors
+# Blackbox Exporter performs DNS lookups and reports latency and errors
 # for each configured hostname.
 
+modules:
+  dns_api_a:
+    prober: dns
+    dns:
+      query_name: "api.example.com"
+      query_type: "A"
+  dns_db_a:
+    prober: dns
+    dns:
+      query_name: "db.example.com"
+      query_type: "A"
+  dns_cache_a:
+    prober: dns
+    dns:
+      query_name: "cache.example.com"
+      query_type: "A"
+  dns_auth_aaaa:
+    prober: dns
+    dns:
+      query_name: "auth.example.com"
+      query_type: "AAAA"
+```
+
+```yaml
+# collector-dns-check.yaml
+
 receivers:
-  dnscheck:
-    targets:
-      - hostname: "api.example.com"
-        query_type: A
-      - hostname: "db.example.com"
-        query_type: A
-      - hostname: "cache.example.com"
-        query_type: A
-      - hostname: "auth.example.com"
-        query_type: AAAA
-    collection_interval: 30s
-    dns_server_address: ""     # empty means use system resolver
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: "dns-blackbox"
+          scrape_interval: 30s
+          metrics_path: /probe
+          static_configs:
+            - targets: ["127.0.0.53:53"]
+              labels:
+                dns_resolver: "local"
+                dns_hostname: "api.example.com"
+                module: "dns_api_a"
+            - targets: ["127.0.0.53:53"]
+              labels:
+                dns_resolver: "local"
+                dns_hostname: "db.example.com"
+                module: "dns_db_a"
+            - targets: ["127.0.0.53:53"]
+              labels:
+                dns_resolver: "local"
+                dns_hostname: "cache.example.com"
+                module: "dns_cache_a"
+            - targets: ["127.0.0.53:53"]
+              labels:
+                dns_resolver: "local"
+                dns_hostname: "auth.example.com"
+                module: "dns_auth_aaaa"
+          relabel_configs:
+            - source_labels: [__address__]
+              target_label: __param_target
+            - source_labels: [module]
+              target_label: __param_module
+            - source_labels: [__param_target]
+              target_label: instance
+            - target_label: __address__
+              replacement: "blackbox-exporter:9115"
 
 exporters:
   otlp:
@@ -54,69 +104,92 @@ processors:
 service:
   pipelines:
     metrics:
-      receivers: [dnscheck]
+      receivers: [prometheus]
       processors: [batch]
       exporters: [otlp]
 ```
 
-This checks four hostnames every 30 seconds and reports the resolution time and any errors. Setting `dns_server_address` to empty uses the system's configured resolver, which matches what your applications experience.
+This checks four hostnames every 30 seconds and reports the resolution time and any errors. Set the DNS target to the resolver address your applications use, such as the local stub resolver on the same host or the internal resolver IP configured in production.
 
 ## Monitoring Specific DNS Servers
 
 In production environments, you often have multiple DNS servers - internal resolvers, cloud provider DNS, and public resolvers. Monitoring each gives you visibility into which resolver is causing problems:
 
 ```yaml
-# collector-dns-multi-resolver.yaml
+# blackbox.yml
 # Run the same DNS lookups against different resolvers to identify
 # which specific DNS server is causing latency or failures.
 
+modules:
+  dns_api_a:
+    prober: dns
+    dns:
+      query_name: "api.example.com"
+      query_type: "A"
+  dns_db_internal_a:
+    prober: dns
+    dns:
+      query_name: "db.internal.example.com"
+      query_type: "A"
+  dns_rds_a:
+    prober: dns
+    dns:
+      query_name: "rds.us-east-1.amazonaws.com"
+      query_type: "A"
+```
+
+```yaml
+# collector-dns-multi-resolver.yaml
+
 receivers:
-  # Check against internal DNS
-  dnscheck/internal:
-    targets:
-      - hostname: "api.example.com"
-        query_type: A
-      - hostname: "db.internal.example.com"
-        query_type: A
-    collection_interval: 30s
-    dns_server_address: "10.0.0.53:53"
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: "dns-blackbox"
+          scrape_interval: 30s
+          metrics_path: /probe
+          static_configs:
+            # Check against internal DNS
+            - targets: ["10.0.0.53:53"]
+              labels:
+                dns_resolver: "internal"
+                dns_hostname: "api.example.com"
+                module: "dns_api_a"
+            - targets: ["10.0.0.53:53"]
+              labels:
+                dns_resolver: "internal"
+                dns_hostname: "db.internal.example.com"
+                module: "dns_db_internal_a"
 
-  # Check against cloud provider DNS (e.g., AWS Route 53 resolver)
-  dnscheck/cloud:
-    targets:
-      - hostname: "api.example.com"
-        query_type: A
-      - hostname: "rds.us-east-1.amazonaws.com"
-        query_type: A
-    collection_interval: 30s
-    dns_server_address: "169.254.169.253:53"
+            # Check against cloud provider DNS (e.g., AWS Route 53 resolver)
+            - targets: ["169.254.169.253:53"]
+              labels:
+                dns_resolver: "cloud"
+                dns_hostname: "api.example.com"
+                module: "dns_api_a"
+            - targets: ["169.254.169.253:53"]
+              labels:
+                dns_resolver: "cloud"
+                dns_hostname: "rds.us-east-1.amazonaws.com"
+                module: "dns_rds_a"
 
-  # Check against public DNS for external resolution comparison
-  dnscheck/public:
-    targets:
-      - hostname: "api.example.com"
-        query_type: A
-    collection_interval: 30s
-    dns_server_address: "8.8.8.8:53"
+            # Check against public DNS for external resolution comparison
+            - targets: ["8.8.8.8:53"]
+              labels:
+                dns_resolver: "public"
+                dns_hostname: "api.example.com"
+                module: "dns_api_a"
+          relabel_configs:
+            - source_labels: [__address__]
+              target_label: __param_target
+            - source_labels: [module]
+              target_label: __param_module
+            - source_labels: [__param_target]
+              target_label: instance
+            - target_label: __address__
+              replacement: "blackbox-exporter:9115"
 
 processors:
-  # Tag each check with its resolver for grouping in dashboards
-  resource/internal:
-    attributes:
-      - key: dns.resolver
-        value: "internal"
-        action: upsert
-  resource/cloud:
-    attributes:
-      - key: dns.resolver
-        value: "cloud"
-        action: upsert
-  resource/public:
-    attributes:
-      - key: dns.resolver
-        value: "public"
-        action: upsert
-
   batch:
     timeout: 10s
 
@@ -126,17 +199,9 @@ exporters:
 
 service:
   pipelines:
-    metrics/internal:
-      receivers: [dnscheck/internal]
-      processors: [resource/internal, batch]
-      exporters: [otlp]
-    metrics/cloud:
-      receivers: [dnscheck/cloud]
-      processors: [resource/cloud, batch]
-      exporters: [otlp]
-    metrics/public:
-      receivers: [dnscheck/public]
-      processors: [resource/public, batch]
+    metrics:
+      receivers: [prometheus]
+      processors: [batch]
       exporters: [otlp]
 ```
 
@@ -156,7 +221,7 @@ groups:
     rules:
       # Hard failure - DNS lookup returning errors
       - alert: DNSResolutionFailure
-        expr: rate(dnscheck_error_total[5m]) > 0
+        expr: probe_success{job="dns-blackbox"} == 0
         for: 1m
         labels:
           severity: critical
@@ -166,19 +231,19 @@ groups:
 
       # Latency degradation - resolution taking too long
       - alert: DNSResolutionSlow
-        expr: dnscheck_duration_ms > 100
+        expr: probe_dns_duration_seconds{job="dns-blackbox", phase="request"} > 0.1
         for: 3m
         labels:
           severity: warning
         annotations:
           summary: "DNS resolution slow for {{ $labels.dns_hostname }}"
-          description: "Resolution time is {{ $value }}ms, normally under 10ms."
+          description: "DNS request time is {{ $value }} seconds, normally under 0.01 seconds."
 
       # Complete resolver failure - all lookups failing on one resolver
       - alert: DNSResolverDown
         expr: >
-          count by (dns_resolver) (rate(dnscheck_error_total[5m]) > 0)
-          == count by (dns_resolver) (dnscheck_duration_ms)
+          count by (dns_resolver) (probe_success{job="dns-blackbox"} == 0)
+          == count by (dns_resolver) (probe_success{job="dns-blackbox"})
         for: 2m
         labels:
           severity: critical
@@ -190,17 +255,17 @@ The `DNSResolverDown` alert triggers when every hostname checked against a speci
 
 ## Correlating DNS Latency with Application Performance
 
-The real power of DNS monitoring through OpenTelemetry is correlation. When DNS latency spikes, you can cross-reference that with application trace data to see the downstream impact.
+The real power of DNS monitoring through OpenTelemetry is correlation. When DNS latency spikes, you can cross-reference that with application metrics and traces to see the downstream impact.
 
 Here is a simple Grafana dashboard query structure:
 
 ```text
 # Panel 1: DNS Resolution Latency by Hostname
 # Shows resolution time trend for each monitored hostname
-dnscheck_duration_ms{dns_resolver="internal"}
+probe_dns_duration_seconds{job="dns-blackbox", dns_resolver="internal", phase="request"}
 
 # Panel 2: Application HTTP Client Latency
-# Shows the connection establishment time from application traces
+# Shows the 95th percentile HTTP client duration from application metrics
 histogram_quantile(0.95, rate(http_client_duration_bucket[5m]))
 
 # Panel 3: Overlay both
@@ -210,7 +275,7 @@ histogram_quantile(0.95, rate(http_client_duration_bucket[5m]))
 
 ## Monitoring DNS TTL Behavior
 
-A useful extension is to track DNS record TTL values. Short TTLs mean more frequent resolution, which amplifies any DNS latency issues. While the standard `dnscheck` receiver does not emit TTL as a metric, you can supplement it with a custom script that runs as a subprocess:
+A useful extension is to track DNS record TTL values. Short TTLs mean more frequent resolution, which amplifies any DNS latency issues. While Blackbox Exporter DNS probes do not emit TTL as a metric, you can supplement them with a custom script that runs periodically:
 
 ```bash
 # dns_ttl_check.sh
