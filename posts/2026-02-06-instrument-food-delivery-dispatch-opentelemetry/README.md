@@ -47,7 +47,11 @@ Since dispatch involves long-running operations (an order lifecycle can span 30 
 ```python
 # pip install opentelemetry-api opentelemetry-sdk opentelemetry-exporter-otlp
 
+import time
+from typing import Iterable
+
 from opentelemetry import trace, metrics
+from opentelemetry.metrics import CallbackOptions, Observation
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.sdk.metrics import MeterProvider
@@ -59,7 +63,7 @@ from opentelemetry.sdk.resources import Resource
 resource = Resource.create({
     "service.name": "dispatch-service",
     "service.version": "5.1.0",
-    "deployment.environment": "production",
+    "deployment.environment.name": "production",
 })
 
 # Tracing setup
@@ -67,7 +71,7 @@ resource = Resource.create({
 trace_provider = TracerProvider(resource=resource)
 trace_provider.add_span_processor(
     BatchSpanProcessor(
-        OTLPSpanExporter(endpoint="otel-collector:4317"),
+        OTLPSpanExporter(endpoint="http://otel-collector:4317", insecure=True),
         max_export_batch_size=512,  # Larger batches for high throughput
         schedule_delay_millis=5000,
     )
@@ -76,7 +80,7 @@ trace.set_tracer_provider(trace_provider)
 
 # Metrics setup
 metric_reader = PeriodicExportingMetricReader(
-    OTLPMetricExporter(endpoint="otel-collector:4317"),
+    OTLPMetricExporter(endpoint="http://otel-collector:4317", insecure=True),
     export_interval_millis=10000,
 )
 meter_provider = MeterProvider(resource=resource, metric_readers=[metric_reader])
@@ -86,7 +90,7 @@ tracer = trace.get_tracer("dispatch.service")
 meter = metrics.get_meter("dispatch.service")
 ```
 
-For dispatch specifically, you do not want to create a single span that covers the entire order lifecycle (that could be an hour long). Instead, create separate spans for each phase and link them together using the order ID as an attribute.
+For dispatch specifically, you do not want to create a single span that covers the entire order lifecycle (that could be an hour long). Instead, create separate spans for each phase and correlate them using the order ID as an attribute. If you need causal links between spans that are not in the same trace, use OpenTelemetry span links.
 
 ---
 
@@ -191,10 +195,16 @@ driver_offer_rejections = meter.create_counter(
     description="Driver assignment offers rejected",
 )
 
-active_drivers_gauge = meter.create_up_down_counter(
+def observe_active_drivers(_options: CallbackOptions) -> Iterable[Observation]:
+    """Report the current number of active drivers per zone."""
+    for zone, count in driver_pool.active_counts_by_zone().items():
+        yield Observation(count, {"dispatch.zone": zone})
+
+active_drivers_gauge = meter.create_observable_gauge(
     name="dispatch.driver.active_count",
+    callbacks=[observe_active_drivers],
     description="Currently active drivers by zone",
-    unit="drivers",
+    unit="{driver}",
 )
 
 def initiate_driver_matching(order):
@@ -285,7 +295,7 @@ ETA accuracy is one of the most important quality metrics for a food delivery se
 eta_accuracy = meter.create_histogram(
     name="dispatch.eta.accuracy_minutes",
     description="Difference between estimated and actual delivery time",
-    unit="minutes",
+    unit="min",
 )
 
 eta_calculations = meter.create_counter(
@@ -351,13 +361,13 @@ Once a driver is assigned, track the order through pickup and delivery with key 
 pickup_wait_time = meter.create_histogram(
     name="dispatch.delivery.pickup_wait_minutes",
     description="Time driver waits at restaurant for order",
-    unit="minutes",
+    unit="min",
 )
 
 delivery_completion_time = meter.create_histogram(
     name="dispatch.delivery.total_minutes",
     description="Total time from order placement to delivery",
-    unit="minutes",
+    unit="min",
 )
 
 late_deliveries = meter.create_counter(
