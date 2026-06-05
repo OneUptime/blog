@@ -32,6 +32,7 @@ import os
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.trace import StatusCode
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.semconv.resource import ResourceAttributes
@@ -68,21 +69,24 @@ def run_terraform(command, args):
         start = time.time()
 
         # Run terraform with JSON output where possible
-        cmd = ["terraform", command] + args
-        if command in ("plan", "apply"):
-            # Add JSON output flag for structured parsing
-            if command == "plan":
-                cmd.extend(["-json"])
+        cmd = ["terraform", command]
+        if command in ("plan", "apply") and "-json" not in args:
+            # Add JSON output flag for structured parsing.
+            # For apply, Terraform requires either -auto-approve or a saved
+            # plan file when -json is used.
+            cmd.append("-json")
+        cmd.extend(args)
 
         process = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
             text=True
         )
 
         stdout_lines = []
-        resource_count = 0
+        resources_seen = set()
+        resource_spans = {}
         error_count = 0
 
         # Parse JSON output line by line
@@ -93,9 +97,9 @@ def run_terraform(command, args):
                 msg_type = event.get("type", "")
 
                 if msg_type == "planned_change":
-                    resource_count += 1
                     resource_addr = event.get("change", {}).get(
                         "resource", {}).get("addr", "unknown")
+                    resources_seen.add(resource_addr)
                     # Create a child span for each resource change
                     with tracer.start_as_current_span(
                         f"terraform.resource.{resource_addr}",
@@ -105,7 +109,36 @@ def run_terraform(command, args):
                                 "change", {}).get("action", "unknown"),
                         }
                     ):
-                        pass  # Span captures timing
+                        pass  # Span records planned resource metadata
+
+                elif msg_type == "apply_start":
+                    hook = event.get("hook", {})
+                    resource_addr = hook.get(
+                        "resource", {}).get("addr", "unknown")
+                    resources_seen.add(resource_addr)
+                    resource_spans[resource_addr] = tracer.start_span(
+                        f"terraform.resource.{resource_addr}",
+                        attributes={
+                            "terraform.resource.address": resource_addr,
+                            "terraform.resource.action": hook.get(
+                                "action", "unknown"),
+                        },
+                    )
+
+                elif msg_type in ("apply_complete", "apply_errored"):
+                    hook = event.get("hook", {})
+                    resource_addr = hook.get(
+                        "resource", {}).get("addr", "unknown")
+                    resources_seen.add(resource_addr)
+                    resource_span = resource_spans.pop(resource_addr, None)
+                    if resource_span:
+                        resource_span.set_attribute(
+                            "terraform.resource.elapsed_seconds",
+                            hook.get("elapsed_seconds", 0),
+                        )
+                        if msg_type == "apply_errored":
+                            resource_span.set_status(StatusCode.ERROR)
+                        resource_span.end()
 
                 elif msg_type == "diagnostic" and event.get(
                         "diagnostic", {}).get("severity") == "error":
@@ -121,17 +154,20 @@ def run_terraform(command, args):
         process.wait()
         duration = time.time() - start
 
+        for resource_span in resource_spans.values():
+            resource_span.end()
+
         # Set span attributes with operation summary
         span.set_attribute("terraform.exit_code", process.returncode)
         span.set_attribute("terraform.duration_seconds", duration)
-        span.set_attribute("terraform.resource_count", resource_count)
+        span.set_attribute("terraform.resource_count", len(resources_seen))
         span.set_attribute("terraform.error_count", error_count)
 
         if process.returncode != 0:
-            stderr = process.stderr.read()
-            span.set_attribute("terraform.stderr", stderr[:1000])
+            span.set_attribute("terraform.output", "".join(
+                stdout_lines[-20:])[:1000])
             span.set_status(
-                trace.StatusCode.ERROR,
+                StatusCode.ERROR,
                 f"Terraform {command} failed with exit code "
                 f"{process.returncode}"
             )
@@ -177,7 +213,7 @@ if __name__ == "__main__":
 
 ## Metrics Collection
 
-In addition to traces, collect metrics about Terraform operations:
+In addition to traces, define metrics that you can record from the wrapper:
 
 ```python
 # terraform_metrics.py
