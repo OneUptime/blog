@@ -14,13 +14,13 @@ This guide covers setting up the OpenTelemetry Collector to monitor MariaDB, con
 
 ## How the MySQL Receiver Works with MariaDB
 
-MariaDB maintains wire-level compatibility with MySQL, which means the OpenTelemetry Collector's MySQL receiver connects to MariaDB using the standard MySQL protocol. The receiver executes `SHOW GLOBAL STATUS` and `SHOW INNODB STATUS` commands to collect metrics, then converts them into OpenTelemetry metric format.
+MariaDB maintains wire-level compatibility with MySQL, which means the OpenTelemetry Collector's MySQL receiver connects to MariaDB using the standard MySQL protocol. The receiver executes `SHOW GLOBAL STATUS` and queries InnoDB and performance schema tables to collect metrics, then converts them into OpenTelemetry metric format.
 
 ```mermaid
 graph LR
     A[OpenTelemetry Collector] -->|MySQL Protocol| B[MariaDB Server]
     B -->|SHOW GLOBAL STATUS| A
-    B -->|SHOW INNODB STATUS| A
+    B -->|InnoDB and performance schema queries| A
     A --> C[Metric Processors]
     C --> D[Batch Processor]
     D --> E[OTLP Exporter]
@@ -47,10 +47,10 @@ FLUSH PRIVILEGES;
 
 -- Verify the user can connect and read status
 -- Run this from a terminal to test connectivity
--- mysql -u otel_monitor -p -h mariadb-host -e "SHOW GLOBAL STATUS LIMIT 5;"
+-- mysql -u otel_monitor -p -h mariadb-host -e "SHOW GLOBAL STATUS LIKE 'Uptime';"
 ```
 
-The `PROCESS` privilege allows the monitoring user to run `SHOW GLOBAL STATUS` and `SHOW ENGINE INNODB STATUS`. The `performance_schema` access enables more detailed query-level metrics if you need them.
+The `PROCESS` privilege allows the monitoring user to inspect server activity needed by database monitoring queries. The `performance_schema` access enables more detailed table, index, and query-level metrics if you need them. If you enable replication metrics on MariaDB replicas, grant `REPLICA MONITOR` as well so the receiver can run `SHOW REPLICA STATUS`.
 
 ## Basic Collector Configuration
 
@@ -67,20 +67,20 @@ receivers:
 
     # Credentials for the monitoring user created above
     username: otel_monitor
-    password: "${MARIADB_MONITOR_PASSWORD}"
+    password: "${env:MARIADB_MONITOR_PASSWORD}"
 
     # How often to collect metrics (10s is good for most environments)
     collection_interval: 10s
 
     # Collect InnoDB metrics for storage engine monitoring
     metrics:
-      mysql.innodb.buffer_pool.pages:
+      mysql.buffer_pool.pages:
         enabled: true
-      mysql.innodb.buffer_pool.operations:
+      mysql.buffer_pool.operations:
         enabled: true
-      mysql.innodb.row_operations:
+      mysql.row_operations:
         enabled: true
-      mysql.innodb.data:
+      mysql.buffer_pool.usage:
         enabled: true
 
 processors:
@@ -104,13 +104,13 @@ exporters:
   otlp:
     endpoint: "https://otlp.oneuptime.com:4317"
     headers:
-      "x-oneuptime-token": "${ONEUPTIME_TOKEN}"
+      "x-oneuptime-token": "${env:ONEUPTIME_TOKEN}"
 
 service:
   pipelines:
     metrics:
       receivers: [mysql]
-      processors: [batch, resource]
+      processors: [resource, batch]
       exporters: [otlp]
 ```
 
@@ -125,21 +125,21 @@ receivers:
   mysql/primary:
     endpoint: mariadb-primary.internal:3306
     username: otel_monitor
-    password: "${MARIADB_MONITOR_PASSWORD}"
+    password: "${env:MARIADB_MONITOR_PASSWORD}"
     collection_interval: 10s
 
   # Replica 1 - handles read traffic
   mysql/replica1:
     endpoint: mariadb-replica1.internal:3306
     username: otel_monitor
-    password: "${MARIADB_MONITOR_PASSWORD}"
+    password: "${env:MARIADB_MONITOR_PASSWORD}"
     collection_interval: 10s
 
   # Replica 2 - handles read traffic
   mysql/replica2:
     endpoint: mariadb-replica2.internal:3306
     username: otel_monitor
-    password: "${MARIADB_MONITOR_PASSWORD}"
+    password: "${env:MARIADB_MONITOR_PASSWORD}"
     collection_interval: 10s
 
 processors:
@@ -179,7 +179,7 @@ exporters:
   otlp:
     endpoint: "https://otlp.oneuptime.com:4317"
     headers:
-      "x-oneuptime-token": "${ONEUPTIME_TOKEN}"
+      "x-oneuptime-token": "${env:ONEUPTIME_TOKEN}"
 
 service:
   pipelines:
@@ -210,12 +210,12 @@ Connections are often the first thing to saturate on a busy MariaDB server.
 
 | Metric | Type | What It Tells You |
 |--------|------|-------------------|
-| `mysql.connection.count` | Gauge | Current active connections |
+| `mysql.threads` with `kind="connected"` | Gauge | Current connected threads |
 | `mysql.connection.errors` | Counter | Failed connection attempts |
-| `mysql.threads.running` | Gauge | Threads actively processing queries |
-| `mysql.threads.connected` | Gauge | Total connected threads |
+| `mysql.threads` with `kind="running"` | Gauge | Threads actively processing queries |
+| `mysql.connection.count` | Counter | Total connection attempts |
 
-If `mysql.connection.count` approaches `max_connections`, your application is at risk of connection errors. Set an alert at 80% of your maximum.
+If `mysql.threads` with `kind="connected"` approaches `max_connections`, your application is at risk of connection errors. Set an alert at 80% of your maximum.
 
 ### Query Throughput Metrics
 
@@ -223,12 +223,12 @@ These metrics track how much work the database is doing.
 
 | Metric | Type | What It Tells You |
 |--------|------|-------------------|
-| `mysql.queries` | Counter | Total queries executed |
+| `mysql.query.count` | Counter | Total statements executed |
 | `mysql.commands` | Counter | Commands by type (SELECT, INSERT, UPDATE, DELETE) |
-| `mysql.slow_queries` | Counter | Queries exceeding long_query_time |
+| `mysql.query.slow.count` | Counter | Queries exceeding long_query_time |
 | `mysql.sorts` | Counter | Sort operations by type |
 
-A rising `mysql.slow_queries` counter is a clear signal that performance is degrading. Track the rate of change rather than the absolute count.
+A rising `mysql.query.slow.count` counter is a clear signal that performance is degrading. Track the rate of change rather than the absolute count.
 
 ### InnoDB Buffer Pool Metrics
 
@@ -236,11 +236,12 @@ The InnoDB buffer pool is the most important performance knob for MariaDB. These
 
 | Metric | Type | What It Tells You |
 |--------|------|-------------------|
-| `mysql.innodb.buffer_pool.pages` | Gauge | Pages by state (data, free, dirty) |
-| `mysql.innodb.buffer_pool.operations` | Counter | Read requests, reads from disk |
-| `mysql.innodb.buffer_pool.data` | Gauge | Data in the buffer pool in bytes |
+| `mysql.buffer_pool.pages` | Gauge | Pages by state (data, free, misc) |
+| `mysql.buffer_pool.data_pages` | Gauge | Data pages by state (dirty, clean) |
+| `mysql.buffer_pool.operations` | Counter | Read requests, reads from disk |
+| `mysql.buffer_pool.usage` | Gauge | Data in the buffer pool in bytes |
 
-The buffer pool hit ratio is the key derived metric. Calculate it as: `(read_requests - reads_from_disk) / read_requests * 100`. A hit ratio below 99% usually means your buffer pool is too small.
+The buffer pool hit ratio is the key derived metric. Calculate it from `mysql.buffer_pool.operations` as: `(operation="read_requests" - operation="reads") / operation="read_requests" * 100`. A hit ratio below 99% usually means your buffer pool is too small.
 
 ### Replication Metrics
 
@@ -248,11 +249,10 @@ If you run MariaDB with replication, monitor these metrics on every replica.
 
 | Metric | Type | What It Tells You |
 |--------|------|-------------------|
-| `mysql.replica.seconds_behind_source` | Gauge | Replication lag in seconds |
-| `mysql.replica.sql_running` | Gauge | Whether the SQL thread is running |
-| `mysql.replica.io_running` | Gauge | Whether the IO thread is running |
+| `mysql.replica.time_behind_source` | Gauge | Replication lag in seconds |
+| `mysql.replica.sql_delay` | Gauge | Configured SQL replication delay in seconds |
 
-Any value above zero for `seconds_behind_source` means the replica is falling behind. Alert on this metric immediately.
+Any sustained value above zero for `mysql.replica.time_behind_source` means the replica is falling behind.
 
 ## Adding Process and Host Metrics
 
@@ -264,7 +264,7 @@ receivers:
   mysql:
     endpoint: mariadb-primary.internal:3306
     username: otel_monitor
-    password: "${MARIADB_MONITOR_PASSWORD}"
+    password: "${env:MARIADB_MONITOR_PASSWORD}"
     collection_interval: 10s
 
   # Host metrics for the machine running MariaDB
@@ -309,7 +309,7 @@ exporters:
   otlp:
     endpoint: "https://otlp.oneuptime.com:4317"
     headers:
-      "x-oneuptime-token": "${ONEUPTIME_TOKEN}"
+      "x-oneuptime-token": "${env:ONEUPTIME_TOKEN}"
 
 service:
   pipelines:
@@ -351,7 +351,7 @@ spec:
 
     # OpenTelemetry Collector sidecar for monitoring
     - name: otel-collector
-      image: otel/opentelemetry-collector-contrib:0.104.0
+      image: otel/opentelemetry-collector-contrib:0.153.0
       args: ["--config=/etc/otel/config.yaml"]
       volumeMounts:
         - name: otel-config
@@ -381,11 +381,11 @@ spec:
 
 Based on the metrics collected, set up these alerts for production MariaDB instances:
 
-1. **Connection saturation**: Alert when `mysql.connection.count` exceeds 80% of `max_connections` for more than 2 minutes.
-2. **Slow query spike**: Alert when the rate of `mysql.slow_queries` exceeds your baseline by 3x.
+1. **Connection saturation**: Alert when `mysql.threads` with `kind="connected"` exceeds 80% of `max_connections` for more than 2 minutes.
+2. **Slow query spike**: Alert when the rate of `mysql.query.slow.count` exceeds your baseline by 3x.
 3. **Buffer pool pressure**: Alert when InnoDB buffer pool hit ratio drops below 98%.
-4. **Replication lag**: Alert when `mysql.replica.seconds_behind_source` exceeds 10 seconds.
-5. **Thread pile-up**: Alert when `mysql.threads.running` exceeds 50 for more than 1 minute. This usually means queries are blocked on locks or I/O.
+4. **Replication lag**: Alert when `mysql.replica.time_behind_source` exceeds 10 seconds.
+5. **Thread pile-up**: Alert when `mysql.threads` with `kind="running"` exceeds 50 for more than 1 minute. This usually means queries are blocked on locks or I/O.
 6. **Disk I/O saturation**: Alert when disk utilization on the MariaDB data volume exceeds 90% sustained.
 
 The OpenTelemetry Collector makes MariaDB monitoring straightforward. With the MySQL receiver, a few minutes of configuration gives you comprehensive visibility into your database's health and performance. Combined with host metrics and proper alerting, you can detect and resolve issues before they impact your users.
