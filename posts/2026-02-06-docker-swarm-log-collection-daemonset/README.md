@@ -20,6 +20,9 @@ version: "3.8"
 services:
   otel-collector:
     image: otel/opentelemetry-collector-contrib:latest
+    user: "0:0"
+    environment:
+      - SWARM_NODE_HOSTNAME={{.Node.Hostname}}
     # Global mode runs one instance on every node
     deploy:
       mode: global
@@ -64,7 +67,7 @@ docker stack deploy -c otel-stack.yaml observability
 
 ## Collector Configuration for Swarm
 
-The Collector config needs to handle logs from all containers on the node and enrich them with Swarm metadata:
+The Collector config needs to handle logs from containers on the node that use Docker's `json-file` logging driver and enrich them with Swarm metadata:
 
 ```yaml
 # otel-collector-config.yaml
@@ -72,13 +75,15 @@ receivers:
   filelog:
     include:
       - /var/lib/docker/containers/*/*-json.log
+    include_file_path: true
     start_at: end
     operators:
       # Parse Docker JSON log format
       - type: json_parser
         timestamp:
           parse_from: attributes.time
-          layout: '%Y-%m-%dT%H:%M:%S.%LZ'
+          layout_type: gotime
+          layout: '2006-01-02T15:04:05.999999999Z07:00'
       - type: move
         from: attributes.log
         to: body
@@ -109,7 +114,7 @@ processors:
   resource:
     attributes:
       - key: swarm.node
-        from_attribute: host.name
+        value: ${env:SWARM_NODE_HOSTNAME}
         action: upsert
       - key: deployment.mode
         value: "swarm"
@@ -133,9 +138,9 @@ service:
       exporters: [otlp]
 ```
 
-## Enriching Logs with Swarm Service Metadata
+## Collecting Swarm Service Metadata
 
-Docker Swarm adds labels to containers that identify the service, task, and node. Use these labels for enrichment:
+Docker Swarm adds labels to containers that identify the service, task, and node. Use the Docker Stats receiver to expose these labels on container metrics:
 
 ```yaml
 receivers:
@@ -149,7 +154,7 @@ receivers:
       com.docker.stack.namespace: swarm.stack
 ```
 
-These labels let you filter logs by Swarm service name in your observability backend.
+These labels let you filter container metrics by Swarm service name in your observability backend, and correlate them with logs using the container ID extracted from the log file path.
 
 ## Application Services Sending Traces
 
@@ -165,8 +170,8 @@ services:
     deploy:
       replicas: 3
     environment:
-      # Each task sends to the collector on its local node
-      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+      # Each task sends to the collector published on its node
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://{{.Node.Hostname}}:4317
       - OTEL_SERVICE_NAME=web-api
     networks:
       - otel-network
@@ -180,7 +185,7 @@ networks:
     driver: overlay
 ```
 
-Since the Collector runs on every node, the application container connects to its local instance through the overlay network.
+Since the Collector publishes port 4317 in host mode on every node, the application can connect to the Collector on its own node when the Swarm node hostname resolves from the application container. Using `otel-collector:4317` on an overlay network would use Swarm service discovery and may route to any Collector task, not necessarily the local one.
 
 ## Handling Node Scaling
 
@@ -211,16 +216,19 @@ docker service logs observability_otel-collector --raw --tail 50
 To update the Collector config, update the Docker config and redeploy:
 
 ```bash
-# Remove the old config (configs are immutable)
-docker config rm collector-config
+# Create a new config name because configs are immutable
+docker config create collector-config-v2 ./otel-collector-config.yaml
 
-# Create a new config with updated content
-docker config create collector-config ./otel-collector-config.yaml
+# Update the service to use the new config at the same target path
+docker service update \
+  --config-rm observability_collector-config \
+  --config-add source=collector-config-v2,target=/etc/otelcol-contrib/config.yaml \
+  observability_otel-collector
 
-# Force a rolling update of the service
+# Force a rolling update if no other service spec changed
 docker service update --force observability_otel-collector
 ```
 
 ## Summary
 
-The global service pattern in Docker Swarm is equivalent to a Kubernetes DaemonSet. It ensures one Collector instance runs on every node, collecting logs from local container log files and receiving OTLP traces from application services. Swarm labels provide service-level metadata for log enrichment, and the global mode handles node scaling automatically. Use resource limits to prevent the Collector from consuming too many resources on production nodes.
+The global service pattern in Docker Swarm is equivalent to a Kubernetes DaemonSet. It ensures one Collector instance runs on every node, collecting logs from local Docker JSON log files and receiving OTLP traces from application services. Swarm labels provide service-level metadata for container metrics, and the global mode handles node scaling automatically. Use resource limits to prevent the Collector from consuming too many resources on production nodes.
