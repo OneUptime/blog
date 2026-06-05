@@ -10,7 +10,7 @@ Reproducing production bugs locally is often impossible. The data is different, 
 
 ## How Log-Trace Correlation Works
 
-When a request is being processed, OpenTelemetry maintains a trace context (trace ID and span ID) on the current execution thread. Log-trace correlation means injecting that trace context into every log line emitted during the request. Later, you can search for all logs with a specific trace ID to see every log message produced during a single request's lifecycle.
+When a request is being processed, OpenTelemetry maintains a trace context (trace ID and span ID) in the current execution context. Log-trace correlation means injecting that trace context into every log line emitted during the request. Later, you can search for all logs with a specific trace ID to see every log message produced during a single request's lifecycle.
 
 ## Setting Up Correlation
 
@@ -23,7 +23,7 @@ from opentelemetry.instrumentation.logging import LoggingInstrumentor
 
 # Enable automatic injection of trace context into log records
 
-LoggingInstrumentor().instrument(set_logging_format=True)
+LoggingInstrumentor().instrument()
 
 # Configure your logging format to include trace context
 logging.basicConfig(
@@ -69,8 +69,15 @@ def process_order(order_id: str):
     </encoder>
   </appender>
 
+  <!-- If you use the OpenTelemetry Java agent, the STDOUT appender
+       can be referenced directly. If you use the standalone
+       opentelemetry-logback-mdc-1.0 library instead, wrap it first. -->
+  <appender name="OTEL" class="io.opentelemetry.instrumentation.logback.mdc.v1_0.OpenTelemetryAppender">
+    <appender-ref ref="STDOUT"/>
+  </appender>
+
   <root level="INFO">
-    <appender-ref ref="STDOUT" />
+    <appender-ref ref="OTEL" />
   </root>
 </configuration>
 ```
@@ -78,8 +85,8 @@ def process_order(order_id: str):
 ```java
 // The OpenTelemetry Java agent automatically populates
 // the MDC (Mapped Diagnostic Context) with trace_id and span_id.
-// If you are not using the agent, add the opentelemetry-logback-mdc
-// dependency to get automatic injection.
+// If you are not using the agent, add the opentelemetry-logback-mdc-1.0
+// dependency and wrap your Logback appender with OpenTelemetryAppender.
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -133,8 +140,8 @@ const logger = winston.createLogger({
 // {
 //   "level": "error",
 //   "message": "Payment processing failed",
-//   "trace_id": "abc123def456789",
-//   "span_id": "1234567890",
+//   "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+//   "span_id": "00f067aa0ba902b7",
 //   "timestamp": "2026-02-06T14:30:00.000Z",
 //   "order_id": "ord_xyz"
 // }
@@ -153,7 +160,7 @@ Start from an alert, a customer report, or an error in your logging dashboard:
 level:error AND service:order-service AND message:"payment failed"
 
 # From the log entry, extract the trace_id
-# Example log: 2026-02-06 14:30:00 ERROR [trace_id=abc123 span_id=def456] Payment failed
+# Example log: 2026-02-06 14:30:00 ERROR [trace_id=4bf92f3577b34da6a3ce929d0e0e4736 span_id=00f067aa0ba902b7] Payment failed
 ```
 
 ### Step 2: Pull Up the Full Trace
@@ -161,7 +168,7 @@ level:error AND service:order-service AND message:"payment failed"
 Open the trace ID in your trace viewer. The waterfall shows you the request flow:
 
 ```text
-Trace: abc123 (14:30:00 UTC)
+Trace: 4bf92f3577b34da6a3ce929d0e0e4736 (14:30:00 UTC)
 [ERROR] HTTP POST /api/v1/orders                    1200ms
   [OK]    order.validate                              50ms
   [OK]    inventory.reserve                           200ms
@@ -176,25 +183,25 @@ Query your log backend for every log entry with this trace ID:
 
 ```text
 # Loki query
-{service="order-service"} |= "abc123"
+{service="order-service"} |= "4bf92f3577b34da6a3ce929d0e0e4736"
 
 # Elasticsearch query
-trace_id:"abc123"
+trace_id:"4bf92f3577b34da6a3ce929d0e0e4736"
 ```
 
 This gives you a complete narrative:
 
 ```text
-14:30:00.001 INFO  [trace_id=abc123] Starting order processing, order_id=ord_789
-14:30:00.051 INFO  [trace_id=abc123] Order validated, items=3, total=$149.99
-14:30:00.052 INFO  [trace_id=abc123] Reserving inventory for 3 items
-14:30:00.250 INFO  [trace_id=abc123] Inventory reserved successfully
-14:30:00.251 INFO  [trace_id=abc123] Processing payment, method=credit_card
-14:30:00.260 INFO  [trace_id=abc123] Calling payment gateway, amount=$149.99
-14:30:01.010 WARN  [trace_id=abc123] Payment gateway returned decline, code=insufficient_funds
-14:30:01.011 ERROR [trace_id=abc123] Payment failed for order ord_789: Card declined
-14:30:01.012 INFO  [trace_id=abc123] Releasing inventory reservation
-14:30:01.200 INFO  [trace_id=abc123] Returning error response to client, status=402
+14:30:00.001 INFO  [trace_id=4bf92f3577b34da6a3ce929d0e0e4736] Starting order processing, order_id=ord_789
+14:30:00.051 INFO  [trace_id=4bf92f3577b34da6a3ce929d0e0e4736] Order validated, items=3, total=$149.99
+14:30:00.052 INFO  [trace_id=4bf92f3577b34da6a3ce929d0e0e4736] Reserving inventory for 3 items
+14:30:00.250 INFO  [trace_id=4bf92f3577b34da6a3ce929d0e0e4736] Inventory reserved successfully
+14:30:00.251 INFO  [trace_id=4bf92f3577b34da6a3ce929d0e0e4736] Processing payment, method=credit_card
+14:30:00.260 INFO  [trace_id=4bf92f3577b34da6a3ce929d0e0e4736] Calling payment gateway, amount=$149.99
+14:30:01.010 WARN  [trace_id=4bf92f3577b34da6a3ce929d0e0e4736] Payment gateway returned decline, code=insufficient_funds
+14:30:01.011 ERROR [trace_id=4bf92f3577b34da6a3ce929d0e0e4736] Payment failed for order ord_789: Card declined
+14:30:01.012 INFO  [trace_id=4bf92f3577b34da6a3ce929d0e0e4736] Releasing inventory reservation
+14:30:01.200 INFO  [trace_id=4bf92f3577b34da6a3ce929d0e0e4736] Returning error response to client, status=402
 ```
 
 Now you know exactly what happened, in what order, without reproducing anything.
@@ -205,14 +212,14 @@ If the trace spans multiple services, check logs from each service:
 
 ```text
 # Get logs from the payment service for the same trace
-{service="payment-service"} |= "abc123"
+{service="payment-service"} |= "4bf92f3577b34da6a3ce929d0e0e4736"
 
 # Payment service logs might show:
-14:30:00.270 INFO  [trace_id=abc123] Received charge request, amount=$149.99
-14:30:00.275 INFO  [trace_id=abc123] Customer payment profile loaded, card=*4242
-14:30:00.280 INFO  [trace_id=abc123] Sending to gateway, provider=stripe
-14:30:01.005 WARN  [trace_id=abc123] Gateway response: decline, reason=insufficient_funds
-14:30:01.008 ERROR [trace_id=abc123] Charge failed, returning error to caller
+14:30:00.270 INFO  [trace_id=4bf92f3577b34da6a3ce929d0e0e4736] Received charge request, amount=$149.99
+14:30:00.275 INFO  [trace_id=4bf92f3577b34da6a3ce929d0e0e4736] Customer payment profile loaded, card=*4242
+14:30:00.280 INFO  [trace_id=4bf92f3577b34da6a3ce929d0e0e4736] Sending to gateway, provider=stripe
+14:30:01.005 WARN  [trace_id=4bf92f3577b34da6a3ce929d0e0e4736] Gateway response: decline, reason=insufficient_funds
+14:30:01.008 ERROR [trace_id=4bf92f3577b34da6a3ce929d0e0e4736] Charge failed, returning error to caller
 ```
 
 ## Sending Logs Through the OTel Collector
@@ -244,8 +251,8 @@ exporters:
     endpoint: tempo:4317
     tls:
       insecure: true
-  loki:
-    endpoint: http://loki:3100/loki/api/v1/push
+  otlphttp/loki:
+    endpoint: http://loki:3100/otlp
 
 service:
   pipelines:
@@ -256,7 +263,7 @@ service:
     logs:
       receivers: [otlp]
       processors: [batch, resource]
-      exporters: [loki]
+      exporters: [otlphttp/loki]
 ```
 
 ## Connecting Traces and Logs in Grafana
@@ -269,7 +276,7 @@ datasources:
   - name: Tempo
     type: tempo
     jsonData:
-      tracesToLogs:
+      tracesToLogsV2:
         datasourceUid: loki-uid
         filterByTraceID: true
         filterBySpanID: false
