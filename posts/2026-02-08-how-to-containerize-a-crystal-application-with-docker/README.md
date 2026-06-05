@@ -25,6 +25,7 @@ Create the project structure:
 
 mkdir crystal-docker-demo
 cd crystal-docker-demo
+mkdir -p src
 ```
 
 Create `shard.yml` (Crystal's dependency file):
@@ -41,9 +42,9 @@ targets:
 dependencies:
   kemal:
     github: kemalcr/kemal
-    version: ~> 1.4.0
+    version: ~> 1.11.0
 
-crystal: ">= 1.10.0"
+crystal: ">= 1.20.0"
 ```
 
 Create the main application:
@@ -90,7 +91,7 @@ get "/compute" do |env|
   {
     limit: limit,
     count: primes.size,
-    largest: primes.last
+    largest: primes.last?
   }.to_json
 end
 
@@ -105,7 +106,7 @@ Kemal.run
 
 ```dockerfile
 # Basic Crystal Dockerfile
-FROM crystallang/crystal:1.10.1
+FROM crystallang/crystal:1.20.2
 
 WORKDIR /app
 
@@ -115,7 +116,7 @@ RUN shards install --production
 
 # Copy source code and build
 COPY src/ src/
-RUN crystal build src/server.cr --release -o bin/server
+RUN mkdir -p bin && crystal build src/server.cr --release -o bin/server
 
 EXPOSE 3000
 
@@ -130,7 +131,7 @@ Crystal supports static linking via musl, which produces a fully self-contained 
 
 ```dockerfile
 # Stage 1: Build the Crystal binary with static linking
-FROM crystallang/crystal:1.10.1-alpine AS builder
+FROM crystallang/crystal:1.20.2-alpine AS builder
 
 WORKDIR /app
 
@@ -142,14 +143,14 @@ RUN shards install --production
 COPY src/ src/
 
 # Build a statically linked release binary
-RUN crystal build src/server.cr \
+RUN mkdir -p bin && crystal build src/server.cr \
     --release \
     --static \
     --no-debug \
     -o bin/server
 
 # Stage 2: Minimal runtime image
-FROM alpine:3.19
+FROM alpine:3.22
 
 WORKDIR /app
 
@@ -177,14 +178,14 @@ Since the binary is statically linked, you can use `FROM scratch`:
 
 ```dockerfile
 # Stage 1: Build
-FROM crystallang/crystal:1.10.1-alpine AS builder
+FROM crystallang/crystal:1.20.2-alpine AS builder
 
 WORKDIR /app
 COPY shard.yml shard.lock* ./
 RUN shards install --production
 
 COPY src/ src/
-RUN crystal build src/server.cr --release --static --no-debug -o bin/server
+RUN mkdir -p bin && crystal build src/server.cr --release --static --no-debug -o bin/server
 
 # Stage 2: Scratch - contains only the binary
 FROM scratch
@@ -218,7 +219,6 @@ The scratch approach reduces image size by over 99% compared to the full SDK.
 lib/
 bin/
 .shards/
-shard.lock
 *.dwarf
 README.md
 spec/
@@ -230,7 +230,8 @@ Speed up Docker builds by caching shard downloads:
 
 ```dockerfile
 # Optimized dependency caching with BuildKit
-FROM crystallang/crystal:1.10.1-alpine AS builder
+# syntax=docker/dockerfile:1
+FROM crystallang/crystal:1.20.2-alpine AS builder
 
 WORKDIR /app
 
@@ -244,7 +245,7 @@ RUN --mount=type=cache,target=/app/lib \
 COPY src/ src/
 
 RUN --mount=type=cache,target=/app/lib \
-    crystal build src/server.cr --release --static --no-debug -o bin/server
+    mkdir -p bin && crystal build src/server.cr --release --static --no-debug -o bin/server
 
 FROM scratch
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
@@ -257,7 +258,6 @@ CMD ["/server"]
 
 ```yaml
 # docker-compose.yml - development environment
-version: "3.8"
 services:
   app:
     build:
@@ -286,16 +286,13 @@ volumes:
   pgdata:
 ```
 
-Development Dockerfile with sentinel for auto-rebuilding:
+Development Dockerfile for quick iteration:
 
 ```dockerfile
-# Dockerfile.dev - development image with sentry for auto-rebuild
-FROM crystallang/crystal:1.10.1
+# Dockerfile.dev - development image
+FROM crystallang/crystal:1.20.2
 
 WORKDIR /app
-
-# Install sentry for watching file changes
-RUN apt-get update && apt-get install -y inotify-tools && rm -rf /var/lib/apt/lists/*
 
 COPY shard.yml shard.lock* ./
 RUN shards install
@@ -304,7 +301,7 @@ COPY . .
 
 EXPOSE 3000
 
-# Build and run, rebuild on source changes
+# Build and run the current source
 CMD ["crystal", "run", "src/server.cr"]
 ```
 
@@ -314,7 +311,7 @@ Include a test stage in your multi-stage build:
 
 ```dockerfile
 # Test stage
-FROM crystallang/crystal:1.10.1-alpine AS test
+FROM crystallang/crystal:1.20.2-alpine AS test
 
 WORKDIR /app
 COPY shard.yml shard.lock* ./
@@ -324,7 +321,7 @@ COPY . .
 RUN crystal spec
 
 # Build stage
-FROM crystallang/crystal:1.10.1-alpine AS builder
+FROM crystallang/crystal:1.20.2-alpine AS builder
 # ... rest of build
 ```
 
@@ -341,7 +338,7 @@ Crystal's compiled binaries start almost instantly and use minimal memory:
 
 ```bash
 # Check startup time
-time docker run --rm crystal-app:latest /server --help
+time docker run --rm --name crystal-app -p 3000:3000 -d crystal-app:latest
 
 # Check memory usage of a running container
 docker stats crystal-app --no-stream
@@ -355,7 +352,7 @@ Some Crystal shards depend on C libraries. Handle these in the build stage:
 
 ```dockerfile
 # Install C library dependencies needed by Crystal shards
-FROM crystallang/crystal:1.10.1-alpine AS builder
+FROM crystallang/crystal:1.20.2-alpine AS builder
 
 RUN apk add --no-cache \
     sqlite-dev \
@@ -370,7 +367,7 @@ RUN shards install --production
 COPY src/ src/
 
 # Static linking pulls in the C libraries
-RUN crystal build src/server.cr --release --static --no-debug -o bin/server
+RUN mkdir -p bin && crystal build src/server.cr --release --static --no-debug -o bin/server
 ```
 
 ## Monitoring
