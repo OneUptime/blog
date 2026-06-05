@@ -43,6 +43,7 @@ npm install @opentelemetry/api \
   @opentelemetry/semantic-conventions \
   @opentelemetry/exporter-trace-otlp-http \
   @opentelemetry/context-zone \
+  @opentelemetry/instrumentation \
   @opentelemetry/instrumentation-document-load \
   @opentelemetry/instrumentation-fetch \
   @opentelemetry/instrumentation-xml-http-request \
@@ -61,7 +62,7 @@ import { WebTracerProvider } from '@opentelemetry/sdk-trace-web';
 import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { ZoneContextManager } from '@opentelemetry/context-zone';
-import { Resource } from '@opentelemetry/resources';
+import { defaultResource, resourceFromAttributes } from '@opentelemetry/resources';
 import {
   ATTR_SERVICE_NAME,
   ATTR_SERVICE_VERSION,
@@ -73,11 +74,13 @@ import { XMLHttpRequestInstrumentation } from '@opentelemetry/instrumentation-xm
 import { UserInteractionInstrumentation } from '@opentelemetry/instrumentation-user-interaction';
 
 // Define the resource that represents this application
-const resource = new Resource({
-  [ATTR_SERVICE_NAME]: 'my-web-app',
-  [ATTR_SERVICE_VERSION]: '1.0.0',
-  'deployment.environment': 'production',
-});
+const resource = defaultResource().merge(
+  resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: 'my-web-app',
+    [ATTR_SERVICE_VERSION]: '1.0.0',
+    'deployment.environment': 'production',
+  })
+);
 
 // Configure the OTLP exporter to send traces to your collector
 const exporter = new OTLPTraceExporter({
@@ -85,24 +88,23 @@ const exporter = new OTLPTraceExporter({
   url: 'https://otel-collector.example.com/v1/traces',
 });
 
+// Use BatchSpanProcessor to buffer and send spans efficiently
+const processor = new BatchSpanProcessor(exporter, {
+  // Maximum number of spans to buffer before sending
+  maxQueueSize: 100,
+  // Maximum batch size per export
+  maxExportBatchSize: 50,
+  // How often to flush the buffer in milliseconds
+  scheduledDelayMillis: 5000,
+  // Timeout for each export attempt
+  exportTimeoutMillis: 30000,
+});
+
 // Create the tracer provider with resource metadata
 const provider = new WebTracerProvider({
   resource: resource,
+  spanProcessors: [processor],
 });
-
-// Use BatchSpanProcessor to buffer and send spans efficiently
-provider.addSpanProcessor(
-  new BatchSpanProcessor(exporter, {
-    // Maximum number of spans to buffer before sending
-    maxQueueSize: 100,
-    // Maximum batch size per export
-    maxExportBatchSize: 50,
-    // How often to flush the buffer in milliseconds
-    scheduledDelayMillis: 5000,
-    // Timeout for each export attempt
-    exportTimeoutMillis: 30000,
-  })
-);
 
 // Register the provider globally so all instrumentations use it
 provider.register({
@@ -192,7 +194,7 @@ async function loadUserProfile(userId) {
 }
 ```
 
-For this to work across origins, your backend must be configured to accept the `traceparent` and `tracestate` headers in its CORS policy. Without that, the browser will strip the headers from preflight requests and context propagation will silently fail.
+For this to work across origins, your backend must be configured to accept the `traceparent` and `tracestate` headers in its CORS policy. Without that, the browser can fail the CORS preflight and block the request before context propagation reaches the backend.
 
 ## Adding Custom Spans
 
@@ -200,10 +202,22 @@ The automatic instrumentations cover network requests and page loads, but you of
 
 ```javascript
 // src/utils/custom-tracing.js
-import { trace, SpanStatusCode, context } from '@opentelemetry/api';
+import { trace, SpanStatusCode } from '@opentelemetry/api';
 
 // Get a tracer instance for your application
 const tracer = trace.getTracer('my-web-app', '1.0.0');
+
+async function fetchSearchResults(query) {
+  const response = await fetch(
+    `/api/search?q=${encodeURIComponent(query)}`
+  );
+
+  if (!response.ok) {
+    throw new Error(`Search failed: ${response.status}`);
+  }
+
+  return response.json();
+}
 
 // Trace a search operation including both the request and rendering
 export async function tracedSearch(query) {
@@ -276,7 +290,7 @@ Be mindful of privacy when adding user context. Avoid storing personally identif
 
 ## Exporting Spans Safely
 
-Browser environments have unique challenges for telemetry export. Users close tabs, navigate away, and lose network connectivity. The `sendBeacon` API helps ensure that buffered spans are delivered even during page unload.
+Browser environments have unique challenges for telemetry export. Users close tabs, navigate away, and lose network connectivity. Current OpenTelemetry HTTP exporters use browser `fetch` with `keepalive` where possible, and an explicit flush on page hide gives buffered spans a better chance of being delivered before the page is unloaded.
 
 ```javascript
 // src/tracing-lifecycle.js
@@ -304,7 +318,7 @@ The `visibilitychange` event is more reliable than `beforeunload` on modern brow
 
 ## Verifying Your Setup
 
-After setting up instrumentation, open your browser DevTools and check the Network tab. You should see periodic POST requests to your collector endpoint containing trace data. The request body will be Protocol Buffers or JSON (depending on your exporter configuration) containing span data.
+After setting up instrumentation, open your browser DevTools and check the Network tab. You should see periodic POST requests to your collector endpoint containing trace data. With `@opentelemetry/exporter-trace-otlp-http`, the request body is OTLP/HTTP JSON. If you use `@opentelemetry/exporter-trace-otlp-proto` instead, the request body is OTLP/HTTP protobuf.
 
 You can also add a simple diagnostic span to verify everything works:
 
