@@ -96,7 +96,7 @@ Option 2 is usually better because it handles context propagation for every task
 
 ## Python: Threading and concurrent.futures
 
-Python has similar issues with its `threading` module and `concurrent.futures.ThreadPoolExecutor`. The OpenTelemetry Python SDK stores context in `contextvars`, which does propagate to threads created with `threading.Thread` in Python 3.12+. However, thread pools created with `concurrent.futures` can behave differently depending on the version.
+Python has similar issues with its `threading` module and `concurrent.futures.ThreadPoolExecutor`. The OpenTelemetry Python SDK stores context in `contextvars`, and each thread has its own top-level context. Python 3.14 adds a `context` parameter to `threading.Thread`, but in most supported Python versions you should either propagate context manually or use OpenTelemetry's threading instrumentation.
 
 Here is the problem and fix:
 
@@ -182,7 +182,7 @@ func handleRequest(ctx context.Context) {
 }
 
 // FIXED: Pass the context explicitly to the goroutine
-func handleRequest(ctx context.Context) {
+func handleRequestFixed(ctx context.Context) {
     ctx, parentSpan := tracer.Start(ctx, "parent-operation")
     defer parentSpan.End()
 
@@ -205,11 +205,12 @@ When you suspect context propagation issues, here is how to confirm and find the
 First, look for traces with an unusually high number of root spans. In a healthy system, most traces should have a single root span. If you see traces with many roots, or if you see standalone spans that should be part of larger traces, context is being lost somewhere.
 
 ```promql
-# Prometheus query to find services producing excessive root spans
-# A high ratio of root spans to total spans indicates context loss
-sum(rate(traces_spanmetrics_calls_total{span_kind="SPAN_KIND_INTERNAL", parent_span_id=""}[5m])) by (service_name)
+# OpenTelemetry Collector spanmetrics do not include parent_span_id by default.
+# If your backend or Collector pipeline adds an is_root dimension, alert on a
+# high root-span ratio with a query like this:
+sum(rate(traces_span_metrics_calls_total{span_kind="SPAN_KIND_INTERNAL", is_root="true"}[5m])) by (service_name)
 /
-sum(rate(traces_spanmetrics_calls_total{span_kind="SPAN_KIND_INTERNAL"}[5m])) by (service_name)
+sum(rate(traces_span_metrics_calls_total{span_kind="SPAN_KIND_INTERNAL"}[5m])) by (service_name)
 ```
 
 Second, add debug logging around context propagation points:
@@ -267,8 +268,7 @@ async def async_handler():
         await async_child_operation()
 
         # This needs manual propagation: runs on a thread pool
-        loop = asyncio.get_event_loop()
-        ctx = context.get_current()
+        loop = asyncio.get_running_loop()
         await loop.run_in_executor(
             None,
             propagate_context(blocking_operation)
