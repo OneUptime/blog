@@ -36,7 +36,7 @@ java -XX:+HeapDumpOnOutOfMemoryError \
 Open the heap dump in Eclipse MAT and look for:
 - Objects retained by `io.opentelemetry.javaagent` classes
 - Large numbers of `ReadableSpan` or `SpanData` objects
-- Request/response objects retained by span attributes
+- Large request/response payload strings retained as span attributes
 
 ### Step 3: Check Retained Paths
 
@@ -44,7 +44,7 @@ In Eclipse MAT, use "Path to GC Roots" on suspected objects. If the path goes th
 
 ## Common Leak Sources
 
-### Leak 1: Span Attributes Holding Large Objects
+### Leak 1: Span Attributes Holding Large Values
 
 ```java
 // BAD - stores the entire request body as an attribute
@@ -52,7 +52,7 @@ Span span = tracer.spanBuilder("process").startSpan();
 span.setAttribute("request.body", requestBody.toString()); // 10MB string!
 ```
 
-**Fix:** Only store small, serializable values:
+**Fix:** Only store small scalar values:
 
 ```java
 Span span = tracer.spanBuilder("process").startSpan();
@@ -85,9 +85,9 @@ try (Scope scope = span.makeCurrent()) {
 }
 ```
 
-### Leak 3: Batch Processor Queue Growing Unbounded
+### Leak 3: Batch Processor Queue Pressure
 
-If the exporter is slow or failing, the batch processor queue accumulates spans:
+If the exporter is slow or failing, the batch processor queue can fill up to its configured limit. Larger queue limits increase memory use, while spans are dropped once the queue is full:
 
 ```bash
 # Limit the queue size
@@ -143,20 +143,20 @@ Use heap analysis to identify which instrumentation is retaining objects.
 Add JVM metrics to detect leaks early:
 
 ```bash
-# Enable JVM metrics
+# JVM runtime metrics are enabled by default in the Java agent; this turns them on if they were disabled
 -Dotel.instrumentation.runtime-telemetry.enabled=true
 ```
 
 Monitor these metrics:
-- `process.runtime.jvm.memory.usage` (heap usage over time)
-- `process.runtime.jvm.gc.duration` (GC frequency and duration)
-- `process.runtime.jvm.classes.loaded` (class loading leaks)
+- `jvm.memory.used` and `jvm.memory.used_after_last_gc` (heap usage over time)
+- `jvm.gc.duration` (GC frequency and duration)
+- `jvm.class.loaded` and `jvm.class.count` (class loading leaks)
 
 Set an alert when heap usage after GC exceeds 80%:
 
 ```yaml
 alert: JvmHeapLeakDetected
-expr: jvm_memory_used_bytes{area="heap"} / jvm_memory_max_bytes{area="heap"} > 0.8
+expr: sum(jvm_memory_used_after_last_gc_bytes{jvm_memory_type="heap"}) / sum(jvm_memory_limit_bytes{jvm_memory_type="heap"}) > 0.8
 for: 30m
 labels:
   severity: warning
