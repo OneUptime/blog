@@ -4,9 +4,9 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Loyalty Program, Points Redemption, Travel
 
-Description: Trace loyalty program points calculation and redemption flows using OpenTelemetry span attributes for full transaction visibility.
+Description: Trace loyalty program points calculation and redemption flows using OpenTelemetry span attributes for transaction visibility.
 
-Travel loyalty programs are complex financial systems where points have real monetary value. Every points calculation, transfer, and redemption needs to be accurate and auditable. When a frequent flyer redeems 100,000 points for a flight, the system needs to validate their balance, calculate the correct deduction (including tier bonuses and partner transfers), process the booking, and update the account. This post shows how to trace these workflows with OpenTelemetry, using span attributes to create a clear audit trail.
+Travel loyalty programs are complex financial systems where points have real monetary value. Every points calculation, transfer, and redemption needs to be accurate and auditable. When a frequent flyer redeems 100,000 points for a flight, the system needs to validate their balance, calculate the correct deduction (including tier bonuses and partner transfers), process the booking, and update the account. This post shows how to trace these workflows with OpenTelemetry, using span attributes to create a clear diagnostic trail alongside your system of record.
 
 ## Points Lifecycle
 
@@ -45,7 +45,7 @@ def earn_points(member_id, activity_type, activity_details):
         "loyalty.earn_points",
         kind=SpanKind.SERVER,
         attributes={
-            "loyalty.member_id": member_id,
+            "loyalty.member_hash": hash_member_id(member_id),
             "loyalty.activity_type": activity_type,  # 'flight', 'hotel', 'card_spend'
             "loyalty.transaction_type": "earn",
         }
@@ -117,9 +117,9 @@ Redemption is the most critical flow because it involves deducting value from a 
 
 ```python
 redemption_latency = meter.create_histogram(
-    "loyalty.redemption_latency_ms",
+    "loyalty.redemption.duration",
     description="Time to process a points redemption",
-    unit="ms",
+    unit="s",
 )
 
 def redeem_points(member_id, redemption_type, redemption_details):
@@ -128,13 +128,13 @@ def redeem_points(member_id, redemption_type, redemption_details):
         "loyalty.redeem_points",
         kind=SpanKind.SERVER,
         attributes={
-            "loyalty.member_id": member_id,
+            "loyalty.member_hash": hash_member_id(member_id),
             "loyalty.redemption_type": redemption_type,
             "loyalty.transaction_type": "redeem",
         }
     ) as span:
         import time
-        start = time.time()
+        start = time.perf_counter()
 
         # Load member and validate balance
         member = load_member_profile(member_id)
@@ -173,8 +173,8 @@ def redeem_points(member_id, redemption_type, redemption_details):
             fulfill_span.set_attribute("loyalty.fulfillment_status", fulfillment.status)
             fulfill_span.set_attribute("loyalty.confirmation_code", fulfillment.confirmation)
 
-        duration_ms = (time.time() - start) * 1000
-        redemption_latency.record(duration_ms, {
+        duration_s = time.perf_counter() - start
+        redemption_latency.record(duration_s, {
             "loyalty.redemption_type": redemption_type,
         })
 
@@ -214,7 +214,7 @@ def process_points_expiration():
             with tracer.start_as_current_span(
                 "loyalty.expire_member_points",
                 attributes={
-                    "loyalty.member_id": record.member_id,
+                    "loyalty.member_hash": hash_member_id(record.member_id),
                     "loyalty.points_expiring": record.points,
                 }
             ):
@@ -226,4 +226,4 @@ def process_points_expiration():
 
 ## Conclusion
 
-Tracing loyalty program transactions with OpenTelemetry span attributes creates a detailed, searchable audit trail for every points movement. By recording base points, tier bonuses, promotional multipliers, and redemption costs as span attributes, you can debug individual transaction discrepancies and monitor overall program health. This is especially valuable when members dispute their points balance or when you need to validate that tier multipliers and promotions are applying correctly.
+Tracing loyalty program transactions with OpenTelemetry span attributes creates detailed, searchable telemetry for sampled and retained points movements. By recording base points, tier bonuses, promotional multipliers, and redemption costs as span attributes, you can debug individual transaction discrepancies and monitor overall program health. This is especially valuable when members dispute their points balance or when you need to validate that tier multipliers and promotions are applying correctly, but it should complement rather than replace your transactional audit logs.
