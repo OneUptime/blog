@@ -61,7 +61,7 @@ processors:
         latency:
           threshold_ms: 2000
 
-      # Sample 10% of successful, fast traces
+      # Also sample 10% of traces probabilistically
       - name: probabilistic-policy
         type: probabilistic
         probabilistic:
@@ -254,15 +254,13 @@ processors:
   # Filter processor to exclude unwanted telemetry
   filter/traces:
     error_mode: ignore
-    traces:
-      span:
-        # Drop spans from health check endpoints
-        - 'attributes["http.route"] == "/health"'
-        - 'attributes["http.route"] == "/ready"'
-        - 'attributes["http.route"] == "/metrics"'
-      # Drop traces from internal service accounts
-      spanevent:
-        - 'attributes["user.type"] == "service-account"'
+    trace_conditions:
+      # Drop spans from health check endpoints
+      - 'span.attributes["http.route"] == "/health"'
+      - 'span.attributes["http.route"] == "/ready"'
+      - 'span.attributes["http.route"] == "/metrics"'
+      # Drop spans from internal service accounts
+      - 'span.attributes["user.type"] == "service-account"'
 
 exporters:
   debug:
@@ -305,13 +303,13 @@ kept_routes = ["/api/orders", "/api/users", "/api/products"]
 for route in filtered_routes:
     with tracer.start_as_current_span(f"GET {route}") as span:
         span.set_attribute("http.route", route)
-        span.set_attribute("http.method", "GET")
+        span.set_attribute("http.request.method", "GET")
         span.set_attribute("test.expect", "filtered")
 
 for route in kept_routes:
     with tracer.start_as_current_span(f"GET {route}") as span:
         span.set_attribute("http.route", route)
-        span.set_attribute("http.method", "GET")
+        span.set_attribute("http.request.method", "GET")
         span.set_attribute("test.expect", "kept")
 
 provider.shutdown()
@@ -349,14 +347,14 @@ processors:
             - name: keep-all
               type: always_sample
 
-      # Policy group 3: For everything else, sample 5%
+      # Policy group 3: Also sample 5% of traces probabilistically
       - name: default-sampling
         type: probabilistic
         probabilistic:
           sampling_percentage: 5
 ```
 
-For this configuration, your test script should generate traces from multiple services and verify that payment service traces are always kept while other services are sampled at 5%.
+For this configuration, your test script should generate traces from multiple services and verify that payment service traces are always kept while other services are sampled at about 5%.
 
 ## Automating Sampling Tests in CI
 
@@ -407,7 +405,7 @@ When testing sampling rules, keep these issues in mind.
 
 Tail sampling requires complete traces. If your test generates spans across multiple services, all spans must arrive within the `decision_wait` window for the policy to evaluate correctly. In local testing, this is usually fine, but be aware of it.
 
-The order of policies in composite configurations matters. The tail sampling processor evaluates policies in order and uses the first matching policy's decision. Test your policies with traces that could match multiple rules to verify priority works as expected.
+Top-level tail-sampling policies are additive: a trace is sampled if any policy returns a sample decision. For composite policies, the configured `policy_order` and rate allocation matter. Test your policies with traces that could match multiple rules to verify the interactions work as expected.
 
 Probabilistic sampling is, by definition, probabilistic. Do not expect exactly 10% of 100 traces to be sampled. Run enough test traces (500 or more) to get statistically meaningful results, and use a tolerance range in your assertions.
 
