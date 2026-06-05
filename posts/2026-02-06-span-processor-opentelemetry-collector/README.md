@@ -4,21 +4,21 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, Processor, Span, Trace, Observability, Distributed Tracing
 
-Description: Learn how to configure the Span Processor in OpenTelemetry Collector to transform, enrich, and optimize trace spans for better distributed tracing visibility.
+Description: Learn how to configure the Span Processor in OpenTelemetry Collector to rename spans, extract span attributes, and set span status for better distributed tracing visibility.
 
-Trace spans carry critical context about distributed operations, but they often need transformation before reaching your backend. The Span Processor enables you to rename spans, modify attributes, set status codes, and restructure span hierarchies without changing application code. This gives you control over how traces appear in your observability platform.
+Trace spans carry critical context about distributed operations, but they often need normalization before reaching your backend. The Span Processor can rename spans from existing attributes, extract attributes from span names, and set span status without changing application code. This gives you control over common span cleanup tasks while keeping richer transformations in the Collector pipeline.
 
 ## What Is the Span Processor?
 
-The Span Processor manipulates trace spans as they flow through the Collector. It can rename spans, add or remove attributes, change span status, modify span kinds, and adjust parent-child relationships. These transformations help standardize trace data from diverse sources and optimize traces for analysis and visualization.
+The Span Processor modifies trace spans as they flow through the Collector. In the OpenTelemetry Collector, it supports span name changes, extracting attributes from span names, setting span status, and include/exclude matching. For adding or removing attributes, use the Attributes Processor. For conditional logic, span kind changes, or computed values, use the Transform Processor.
 
 This is useful when:
 
 - Span names from instrumentation libraries are too verbose or inconsistent
-- You need to add business context to spans based on attributes
-- Legacy instrumentation uses outdated naming conventions
-- You want to redact sensitive data from span attributes
-- Span status codes need normalization across different services
+- You need to build span names from existing attributes
+- Legacy instrumentation puts useful route or operation information in the span name
+- Span status codes need simple normalization across different services
+- You need to scope span changes to services, names, kinds, resources, or attributes
 
 ## Architecture Overview
 
@@ -32,7 +32,7 @@ graph LR
     style B fill:#f9f,stroke:#333,stroke-width:2px
 ```
 
-Spans arrive with different naming conventions, attributes, and structures. The processor normalizes them into a consistent format for your backend.
+Spans arrive with different naming conventions and attributes. The processor can normalize their names or status before export.
 
 ## Basic Configuration
 
@@ -40,7 +40,6 @@ Here's a minimal Span Processor configuration that renames spans based on attrib
 
 ```yaml
 # Configure receivers to accept traces
-
 receivers:
   otlp:
     protocols:
@@ -51,27 +50,17 @@ receivers:
 
 # Define the Span Processor
 processors:
-  # The span processor transforms span properties
+  # The span processor renames spans from existing attributes
   span:
-    # Rename spans based on patterns
-    # This configuration changes generic span names to more specific ones
     name:
       # Use attribute values to construct new span names
-      # fromAttributes takes a list of attribute keys and uses their values
+      # All listed attributes must exist or the span name is not changed
       from_attributes:
-        - http.method
+        - http.request.method
         - http.route
 
       # Separator between attribute values in the new name
       separator: " "
-
-    # Modify span status
-    status:
-      # Set span status based on attributes
-      # This marks spans with HTTP 5xx as errors
-      code: ERROR
-      # Only apply if http.status_code is 5xx
-      if: attributes["http.status_code"] >= 500
 
   # Batch processor for efficient export
   batch:
@@ -96,7 +85,7 @@ service:
 
 ## Understanding Span Transformations
 
-The Span Processor supports multiple transformation types:
+The Span Processor supports a small set of span-specific transformation types:
 
 ### Span Name Transformations
 
@@ -107,194 +96,145 @@ processors:
   span/rename:
     name:
       # Build span names from attributes
+      # Result: "GET /api/users/{id}" if both attributes exist
       from_attributes:
-        - http.method
+        - http.request.method
         - http.route
       separator: " "
 
-      # Result: "GET /api/users/{id}" instead of "HTTP GET"
-
-    # Alternatively, use a to_attributes pattern to extract from name
-    to_attributes:
-      # Rules to extract attributes from span name
-      rules:
-        # Extract HTTP method and path from span name
-        - pattern: "^(GET|POST|PUT|DELETE) (.+)$"
-          attribute_names:
-            - http.method
-            - http.route
-
-    # Or use simple string replacement
-    replace:
-      # Find and replace patterns in span names
-      - pattern: "Datastore::"
-        replacement: ""
-      - pattern: "Service::"
-        replacement: ""
+  span/extract:
+    name:
+      # Extract attributes from the span name using named regex captures
+      to_attributes:
+        rules:
+          - "^HTTP (?P<method>[A-Z]+) (?P<route>/.+)$"
+        keep_original_name: true
 ```
+
+The `to_attributes` rule must be a regex string with named capture groups. Each capture name becomes an attribute key, and each matched value becomes the attribute value.
 
 ### Span Status Modifications
 
-Control span status based on conditions:
+Set span status directly or scope it with include/exclude matching:
 
 ```yaml
 processors:
-  span/status:
+  span/status_error:
+    include:
+      match_type: strict
+      attributes:
+        - key: http.response.status_code
+          value: 500
     status:
-      # Set status to ERROR for HTTP 5xx
-      - code: ERROR
-        description: "Server error"
-        if: attributes["http.status_code"] >= 500 and attributes["http.status_code"] < 600
+      code: Error
+      description: "HTTP 500 response"
 
-      # Set status to OK for successful requests
-      - code: OK
-        if: attributes["http.status_code"] >= 200 and attributes["http.status_code"] < 300
-
-      # Set status to ERROR for specific error messages
-      - code: ERROR
-        description: "Database connection failed"
-        if: attributes["error.message"] matches ".*connection timeout.*"
+  span/status_ok:
+    include:
+      match_type: strict
+      attributes:
+        - key: http.response.status_code
+          value: 200
+    status:
+      code: Ok
 ```
+
+The supported status codes are `Ok`, `Error`, and `Unset`. The Span Processor does not support inline `if` expressions; use `include` and `exclude` matching or the Transform Processor for richer conditions.
 
 ### Span Kind Adjustments
 
-Change span kind for proper visualization:
+The Span Processor does not change span kind. Use the Transform Processor when you need to modify span kind:
 
 ```yaml
 processors:
-  span/kind:
-    # Change span kind based on attributes
-    kind:
-      # Set to CLIENT for outgoing HTTP calls
-      - value: CLIENT
-        if: attributes["http.url"] != nil and attributes["span.kind"] == "INTERNAL"
-
-      # Set to SERVER for incoming requests
-      - value: SERVER
-        if: attributes["http.method"] != nil and attributes["span.kind"] == "INTERNAL"
-
-      # Set to INTERNAL for database operations
-      - value: INTERNAL
-        if: attributes["db.system"] != nil
+  transform/kind:
+    error_mode: ignore
+    trace_statements:
+      - context: span
+        statements:
+          - 'set(span.kind, SPAN_KIND_CLIENT) where span.kind == SPAN_KIND_INTERNAL and span.attributes["http.url"] != nil'
+          - 'set(span.kind, SPAN_KIND_SERVER) where span.kind == SPAN_KIND_INTERNAL and span.attributes["http.request.method"] != nil'
 ```
 
 ## Advanced Configuration
 
 ### Pattern-Based Transformations
 
-Apply complex transformations based on attribute patterns:
+Use the Span Processor for name extraction, and combine it with other processors when you need attribute edits or conditional transformations:
 
 ```yaml
 processors:
-  span/advanced:
-    # Rename spans with complex patterns
+  span/extract_route:
     name:
-      from_attributes:
-        - db.system
-        - db.operation
-        - db.name
-      separator: "."
+      to_attributes:
+        rules:
+          - "^HTTP (?P<method>[A-Z]+) (?P<route>/.+)$"
+        keep_original_name: true
 
-      # Template for span name
-      template: "{db.system}.{db.operation} {db.name}"
+  attributes/database_category:
+    include:
+      match_type: strict
+      attributes:
+        - key: db.system
+    actions:
+      - key: span.category
+        value: "database"
+        action: insert
 
-    # Add computed attributes
-    attributes:
-      actions:
-        # Add span type attribute
-        - key: span.type
-          value: "database"
-          action: insert
-          if: attributes["db.system"] != nil
-
-        # Add latency bucket
-        - key: span.latency_bucket
-          value: "fast"
-          action: insert
-          if: span.duration < 100ms
-
-        - key: span.latency_bucket
-          value: "slow"
-          action: upsert
-          if: span.duration >= 1s
-
-        # Extract transaction ID from span name
-        - key: transaction.id
-          from_attribute: span.name
-          action: extract
-          pattern: "txn-([0-9]+)"
-
-    # Conditionally modify status
-    status:
-      - code: ERROR
-        description: "Slow database query"
-        if: attributes["db.system"] != nil and span.duration > 5s
-
-      - code: ERROR
-        description: "High retry count"
-        if: attributes["retry.count"] > 3
+  transform/latency_buckets:
+    error_mode: ignore
+    trace_statements:
+      - context: span
+        statements:
+          - 'set(span.attributes["span.latency_bucket"], "fast") where span.end_time_unix_nano - span.start_time_unix_nano < 100000000'
+          - 'set(span.attributes["span.latency_bucket"], "slow") where span.end_time_unix_nano - span.start_time_unix_nano >= 1000000000'
+          - 'set(span.status.code, STATUS_CODE_ERROR) where span.attributes["db.system"] != nil and span.end_time_unix_nano - span.start_time_unix_nano > 5000000000'
 ```
 
 ### Service-Specific Transformations
 
-Apply different transformations based on service name:
+Apply different transformations based on service name with include matching:
 
 ```yaml
 processors:
   # Transformations for API gateway
   span/api_gateway:
-    # Only process spans from API gateway
-    if: resource.attributes["service.name"] == "api-gateway"
-
+    include:
+      match_type: strict
+      services: ["api-gateway"]
     name:
       from_attributes:
-        - http.method
+        - http.request.method
         - http.route
       separator: " "
 
-    attributes:
-      actions:
-        - key: span.category
-          value: "gateway"
-          action: insert
-
   # Transformations for database service
   span/database:
-    if: resource.attributes["service.name"] == "database-service"
-
+    include:
+      match_type: strict
+      services: ["database-service"]
     name:
       from_attributes:
         - db.operation
         - db.name
       separator: " on "
-      template: "{db.operation} on {db.name}"
-
-    attributes:
-      actions:
-        - key: span.category
-          value: "database"
-          action: insert
 
   # Transformations for payment service
-  span/payment:
-    if: resource.attributes["service.name"] == "payment-service"
-
-    name:
-      from_attributes:
-        - payment.operation
-        - payment.method
-      separator: " via "
-
+  span/payment_declined:
+    include:
+      match_type: strict
+      services: ["payment-service"]
+      attributes:
+        - key: payment.status
+          value: declined
     status:
-      # Always mark declined payments as errors
-      - code: ERROR
-        description: "Payment declined"
-        if: attributes["payment.status"] == "declined"
+      code: Error
+      description: "Payment declined"
 ```
 
 ## Production Configuration Example
 
-Here's a complete production-ready configuration with comprehensive span processing:
+Here's a complete production-ready configuration with supported span processing and complementary processors:
 
 ```yaml
 receivers:
@@ -312,188 +252,98 @@ processors:
     limit_mib: 1024
     spike_limit_mib: 256
 
-  # Standardize HTTP spans
+  # Standardize HTTP span names
   span/http:
-    if: attributes["http.method"] != nil
-
+    include:
+      match_type: strict
+      attributes:
+        - key: http.request.method
+        - key: http.route
     name:
-      # Create readable span names: "GET /api/users"
       from_attributes:
-        - http.method
+        - http.request.method
         - http.route
       separator: " "
-      # Fallback to http.target if http.route not available
-      fallback_attributes:
-        - http.target
 
-    attributes:
-      actions:
-        # Add span category
-        - key: span.category
-          value: "http"
-          action: insert
-
-        # Normalize HTTP status code attribute
-        - key: http.status_code
-          from_attribute: http.response.status_code
-          action: upsert
-
-        # Add HTTP method group
-        - key: http.method.group
-          value: "read"
-          action: insert
-          if: attributes["http.method"] in ["GET", "HEAD", "OPTIONS"]
-
-        - key: http.method.group
-          value: "write"
-          action: upsert
-          if: attributes["http.method"] in ["POST", "PUT", "PATCH", "DELETE"]
-
-    status:
-      # Mark 4xx as errors for certain routes
-      - code: ERROR
-        description: "Client error"
-        if: |
-          attributes["http.status_code"] >= 400 and
-          attributes["http.status_code"] < 500 and
-          attributes["http.route"] matches "/api/.*"
-
-      # Always mark 5xx as errors
-      - code: ERROR
-        description: "Server error"
-        if: attributes["http.status_code"] >= 500
-
-  # Standardize database spans
+  # Standardize database span names
   span/database:
-    if: attributes["db.system"] != nil
-
+    include:
+      match_type: strict
+      attributes:
+        - key: db.operation
+        - key: db.name
     name:
       from_attributes:
         - db.operation
         - db.name
       separator: " "
-      template: "{db.operation} {db.name}"
 
-    attributes:
-      actions:
-        - key: span.category
-          value: "database"
-          action: insert
-
-        # Normalize operation names
-        - key: db.operation
-          value: "SELECT"
-          action: upsert
-          if: attributes["db.operation"] in ["select", "query", "find"]
-
-        - key: db.operation
-          value: "INSERT"
-          action: upsert
-          if: attributes["db.operation"] in ["insert", "create"]
-
-        - key: db.operation
-          value: "UPDATE"
-          action: upsert
-          if: attributes["db.operation"] in ["update", "modify"]
-
-        - key: db.operation
-          value: "DELETE"
-          action: upsert
-          if: attributes["db.operation"] in ["delete", "remove"]
-
-    status:
-      # Mark slow queries as errors
-      - code: ERROR
-        description: "Slow database query"
-        if: span.duration > 5s
-
-      # Mark queries with high retry count
-      - code: ERROR
-        description: "Database query retries exceeded"
-        if: attributes["db.retry.count"] > 3
-
-  # Standardize RPC spans
+  # Standardize RPC span names
   span/rpc:
-    if: attributes["rpc.system"] != nil
-
+    include:
+      match_type: strict
+      attributes:
+        - key: rpc.service
+        - key: rpc.method
     name:
       from_attributes:
         - rpc.service
         - rpc.method
       separator: "/"
-      template: "{rpc.service}/{rpc.method}"
 
-    attributes:
-      actions:
-        - key: span.category
-          value: "rpc"
-          action: insert
-
-    status:
-      # Mark RPC errors
-      - code: ERROR
-        description: "RPC call failed"
-        if: attributes["rpc.grpc.status_code"] != 0
-
-  # Standardize messaging spans
+  # Standardize messaging span names
   span/messaging:
-    if: attributes["messaging.system"] != nil
-
+    include:
+      match_type: strict
+      attributes:
+        - key: messaging.operation.name
+        - key: messaging.destination.name
     name:
       from_attributes:
-        - messaging.operation
-        - messaging.destination
+        - messaging.operation.name
+        - messaging.destination.name
       separator: " "
-      template: "{messaging.operation} {messaging.destination}"
 
-    attributes:
-      actions:
-        - key: span.category
-          value: "messaging"
-          action: insert
+  # Mark specific HTTP error responses
+  span/http_500:
+    include:
+      match_type: strict
+      attributes:
+        - key: http.response.status_code
+          value: 500
+    status:
+      code: Error
+      description: "HTTP 500 response"
 
-  # Redact sensitive data
-  span/redact:
-    attributes:
-      actions:
-        # Remove sensitive headers
-        - key: http.request.header.authorization
-          action: delete
-
-        - key: http.request.header.cookie
-          action: delete
-
-        # Redact email addresses
-        - key: user.email
-          value: "[REDACTED]"
-          action: upsert
-          if: attributes["user.email"] != nil
-
-        # Redact credit card numbers
-        - key: payment.card.number
-          value: "****"
-          action: upsert
-          if: attributes["payment.card.number"] != nil
+  # Redact sensitive data with the Attributes Processor
+  attributes/redact:
+    actions:
+      - key: http.request.header.authorization
+        action: delete
+      - key: http.request.header.cookie
+        action: delete
+      - key: user.email
+        value: "[REDACTED]"
+        action: update
+      - key: payment.card.number
+        value: "****"
+        action: update
 
   # Add business context
-  span/business:
-    attributes:
-      actions:
-        # Add customer tier
-        - key: customer.tier
-          from_attribute: http.request.header.x-customer-tier
-          action: insert
+  attributes/business:
+    actions:
+      - key: customer.tier
+        from_attribute: http.request.header.x-customer-tier
+        action: insert
 
-        # Add request priority
-        - key: request.priority
-          value: "high"
-          action: insert
-          if: attributes["http.route"] matches "/api/checkout.*"
-
-        - key: request.priority
-          value: "normal"
-          action: insert
-          if: attributes["request.priority"] == nil
+  transform/business_priority:
+    error_mode: ignore
+    trace_statements:
+      - context: span
+        statements:
+          - 'set(span.attributes["request.priority"], "high") where IsMatch(span.attributes["http.route"], "^/api/checkout.*")'
+          - 'set(span.attributes["request.priority"], "normal") where span.attributes["request.priority"] == nil'
+          - 'set(span.status.code, STATUS_CODE_ERROR) where span.attributes["http.response.status_code"] >= 500'
 
   # Resource processor adds deployment context
   resource:
@@ -521,9 +371,9 @@ exporters:
       max_interval: 30s
       max_elapsed_time: 300s
 
-  # Debug logging
-  logging:
-    loglevel: info
+  # Debug output for validation
+  debug:
+    verbosity: normal
     sampling_initial: 5
     sampling_thereafter: 50
 
@@ -539,11 +389,13 @@ service:
         - span/database
         - span/rpc
         - span/messaging
-        - span/redact
-        - span/business
+        - span/http_500
+        - attributes/redact
+        - attributes/business
+        - transform/business_priority
         - resource
         - batch
-      exporters: [otlphttp/primary, logging]
+      exporters: [otlphttp/primary, debug]
 
 extensions:
   health_check:
@@ -579,46 +431,44 @@ data:
 
       # HTTP span standardization
       span/http:
-        if: attributes["http.method"] != nil
+        include:
+          match_type: strict
+          attributes:
+            - key: http.request.method
+            - key: http.route
         name:
           from_attributes:
-            - http.method
+            - http.request.method
             - http.route
           separator: " "
-        attributes:
-          actions:
-            - key: span.category
-              value: "http"
-              action: insert
-        status:
-          - code: ERROR
-            if: attributes["http.status_code"] >= 500
 
       # Database span standardization
       span/database:
-        if: attributes["db.system"] != nil
+        include:
+          match_type: strict
+          attributes:
+            - key: db.operation
+            - key: db.name
         name:
           from_attributes:
             - db.operation
             - db.name
           separator: " "
-        attributes:
-          actions:
-            - key: span.category
-              value: "database"
-              action: insert
-        status:
-          - code: ERROR
-            if: span.duration > 5s
 
       # Redact sensitive data
-      span/redact:
-        attributes:
-          actions:
-            - key: http.request.header.authorization
-              action: delete
-            - key: http.request.header.cookie
-              action: delete
+      attributes/redact:
+        actions:
+          - key: http.request.header.authorization
+            action: delete
+          - key: http.request.header.cookie
+            action: delete
+
+      transform/status:
+        error_mode: ignore
+        trace_statements:
+          - context: span
+            statements:
+              - 'set(span.status.code, STATUS_CODE_ERROR) where span.attributes["http.response.status_code"] >= 500'
 
       batch:
         timeout: 10s
@@ -630,11 +480,16 @@ data:
         headers:
           x-oneuptime-token: ${ONEUPTIME_TOKEN}
 
+    extensions:
+      health_check:
+        endpoint: 0.0.0.0:13133
+
     service:
+      extensions: [health_check]
       pipelines:
         traces:
           receivers: [otlp]
-          processors: [memory_limiter, span/http, span/database, span/redact, batch]
+          processors: [memory_limiter, span/http, span/database, attributes/redact, transform/status, batch]
           exporters: [otlphttp]
 ---
 apiVersion: apps/v1
@@ -654,7 +509,7 @@ spec:
     spec:
       containers:
       - name: otel-collector
-        image: otel/opentelemetry-collector-contrib:0.93.0
+        image: otel/opentelemetry-collector-contrib:0.153.0
         args:
           - "--config=/conf/collector.yaml"
         env:
@@ -663,8 +518,6 @@ spec:
             secretKeyRef:
               name: oneuptime-credentials
               key: token
-        - name: DEPLOY_ENV
-          value: "production"
         volumeMounts:
         - name: config
           mountPath: /conf
@@ -673,6 +526,8 @@ spec:
           name: otlp-grpc
         - containerPort: 4318
           name: otlp-http
+        - containerPort: 13133
+          name: health
         resources:
           requests:
             memory: "2Gi"
@@ -707,6 +562,9 @@ spec:
   - name: otlp-http
     port: 4318
     targetPort: 4318
+  - name: health
+    port: 13133
+    targetPort: 13133
 ```
 
 ## Common Use Cases
@@ -717,92 +575,60 @@ Different instrumentation libraries use different naming conventions. Standardiz
 
 ```yaml
 processors:
-  span/standardize:
+  span/standardize_http:
     name:
-      # For HTTP spans
       from_attributes:
-        - http.method
+        - http.request.method
         - http.route
       separator: " "
 
-      # Replace patterns
-      replace:
-        # Remove framework-specific prefixes
-        - pattern: "^Express: "
-          replacement: ""
-        - pattern: "^Rails: "
-          replacement: ""
-        - pattern: "^Django: "
-          replacement: ""
-
-        # Normalize parameter patterns
-        - pattern: "\\{[^}]+\\}"
-          replacement: "{id}"
+  transform/remove_prefixes:
+    error_mode: ignore
+    trace_statements:
+      - context: span
+        statements:
+          - 'replace_pattern(span.name, "^Express: ", "")'
+          - 'replace_pattern(span.name, "^Rails: ", "")'
+          - 'replace_pattern(span.name, "^Django: ", "")'
 ```
 
 ### Adding Business Context
 
-Enrich spans with business-level information:
+Enrich spans with business-level information by pairing the Span Processor with the Attributes or Transform Processor:
 
 ```yaml
 processors:
-  span/business_context:
-    attributes:
-      actions:
-        # Add business domain
-        - key: business.domain
-          value: "checkout"
-          action: insert
-          if: attributes["http.route"] matches "/checkout.*"
+  attributes/business_context:
+    actions:
+      - key: customer.segment
+        from_attribute: http.request.header.x-customer-tier
+        action: insert
 
-        # Add criticality
-        - key: span.criticality
-          value: "critical"
-          action: insert
-          if: attributes["http.route"] in ["/api/payment", "/api/checkout"]
-
-        # Add customer segment
-        - key: customer.segment
-          value: "enterprise"
-          action: insert
-          if: attributes["http.request.header.x-customer-tier"] == "enterprise"
+  transform/business_context:
+    error_mode: ignore
+    trace_statements:
+      - context: span
+        statements:
+          - 'set(span.attributes["business.domain"], "checkout") where IsMatch(span.attributes["http.route"], "^/checkout.*")'
+          - 'set(span.attributes["span.criticality"], "critical") where span.attributes["http.route"] == "/api/payment" or span.attributes["http.route"] == "/api/checkout"'
 ```
 
 ### Performance Classification
 
-Classify spans by performance characteristics:
+Classify spans by performance characteristics with the Transform Processor:
 
 ```yaml
 processors:
-  span/performance:
-    attributes:
-      actions:
-        # Add latency classification
-        - key: span.latency.class
-          value: "fast"
-          action: insert
-          if: span.duration < 100ms
-
-        - key: span.latency.class
-          value: "normal"
-          action: upsert
-          if: span.duration >= 100ms and span.duration < 1s
-
-        - key: span.latency.class
-          value: "slow"
-          action: upsert
-          if: span.duration >= 1s and span.duration < 5s
-
-        - key: span.latency.class
-          value: "critical"
-          action: upsert
-          if: span.duration >= 5s
-
-    status:
-      # Mark critically slow spans as errors
-      - code: ERROR
-        description: "Performance SLO violated"
-        if: span.duration >= 5s
+  transform/performance:
+    error_mode: ignore
+    trace_statements:
+      - context: span
+        statements:
+          - 'set(span.attributes["span.latency.class"], "fast") where span.end_time_unix_nano - span.start_time_unix_nano < 100000000'
+          - 'set(span.attributes["span.latency.class"], "normal") where span.end_time_unix_nano - span.start_time_unix_nano >= 100000000 and span.end_time_unix_nano - span.start_time_unix_nano < 1000000000'
+          - 'set(span.attributes["span.latency.class"], "slow") where span.end_time_unix_nano - span.start_time_unix_nano >= 1000000000 and span.end_time_unix_nano - span.start_time_unix_nano < 5000000000'
+          - 'set(span.attributes["span.latency.class"], "critical") where span.end_time_unix_nano - span.start_time_unix_nano >= 5000000000'
+          - 'set(span.status.code, STATUS_CODE_ERROR) where span.end_time_unix_nano - span.start_time_unix_nano >= 5000000000'
 ```
 
 ## Validating Span Transformations
@@ -811,9 +637,9 @@ To verify that the Span Processor is working correctly:
 
 ```yaml
 exporters:
-  # Add logging exporter to see transformed spans
-  logging:
-    loglevel: debug
+  # Add debug exporter to see transformed spans
+  debug:
+    verbosity: detailed
     sampling_initial: 10
     sampling_thereafter: 100
 
@@ -822,30 +648,26 @@ service:
     traces:
       receivers: [otlp]
       processors: [span/http, span/database, batch]
-      # Include logging exporter for validation
-      exporters: [otlphttp, logging]
+      # Include debug exporter for validation
+      exporters: [otlphttp, debug]
 ```
 
 Check the Collector logs to verify transformations:
 
 ```bash
 # View Collector logs
-kubectl logs -n observability deployment/otel-collector -f | grep -A 5 "Span"
-
-# Expected output showing transformed spans:
-# Original span name: "HTTP GET"
-# Transformed span name: "GET /api/users/{id}"
-# Added attribute: span.category=http
-# Updated status: OK -> ERROR (http.status_code=500)
+kubectl logs -n observability deployment/otel-collector -f | grep -A 10 "Span #"
 ```
+
+The debug exporter output includes transformed span fields such as span name, attributes, kind, and status.
 
 ## Performance Considerations
 
-The Span Processor adds minimal overhead:
+The Span Processor is a focused processor with modest overhead:
 
-- Attribute lookups use efficient hash maps
-- Pattern matching is optimized with compiled regexes
-- Conditional logic short-circuits when possible
+- Attribute lookups are used for `from_attributes` renaming
+- Regex matching is used for `to_attributes` extraction
+- Include/exclude matching lets you scope work to selected spans
 
 For high-throughput environments:
 
@@ -853,21 +675,25 @@ For high-throughput environments:
 processors:
   # Apply transformations selectively
   span/selective:
-    # Only transform server spans (highest value)
-    if: span.kind == "SERVER"
-
+    include:
+      match_type: strict
+      span_kinds: [SPAN_KIND_SERVER]
+      attributes:
+        - key: http.request.method
+        - key: http.route
     name:
       from_attributes:
-        - http.method
+        - http.request.method
         - http.route
       separator: " "
 
-  # Skip transformation for health check spans
+  # Drop health check spans before renaming
   filter/skip_health:
+    error_mode: ignore
     traces:
       span:
-        - 'attributes["http.route"] == "/health"'
-        - 'attributes["http.route"] == "/metrics"'
+        - 'span.attributes["http.route"] == "/health"'
+        - 'span.attributes["http.route"] == "/metrics"'
 
 service:
   pipelines:
@@ -881,65 +707,61 @@ service:
 
 ### Transformations Not Applied
 
-If spans aren't being transformed:
+If spans aren't being transformed, check that every attribute listed in `from_attributes` exists on the span:
 
 ```yaml
 processors:
-  span/debug:
-    # Enable debug logging
-    debug:
-      enabled: true
-      log_conditions: true
-
-    # Check conditions
-    if: attributes["http.method"] != nil
-
+  span/http:
+    include:
+      match_type: strict
+      attributes:
+        - key: http.request.method
+        - key: http.route
     name:
       from_attributes:
-        - http.method
+        - http.request.method
         - http.route
       separator: " "
+
+exporters:
+  debug:
+    verbosity: detailed
 ```
 
-Check logs for condition evaluation:
+Check logs for the span name and attributes:
 
 ```bash
-kubectl logs -n observability deployment/otel-collector | grep "condition"
-
-# Expected output:
-# Condition evaluated: attributes["http.method"] != nil = true
-# Applying transformation to span: HTTP GET
+kubectl logs -n observability deployment/otel-collector | grep -A 10 "Span #"
 ```
 
 ### Attribute Not Found
 
-If attributes referenced in transformations don't exist:
+If attributes referenced in `from_attributes` don't exist, the Span Processor leaves the span name unchanged. Define a second processor for another attribute set, or use the Transform Processor for conditional fallback logic:
 
 ```yaml
 processors:
-  span/safe:
+  span/route_name:
     name:
       from_attributes:
-        - http.method
+        - http.request.method
         - http.route
       separator: " "
 
-      # Provide fallback attributes
-      fallback_attributes:
+  span/target_name:
+    name:
+      from_attributes:
+        - http.request.method
         - http.target
-        - http.url
-
-      # Default name if all fail
-      default_name: "UNKNOWN"
+      separator: " "
 ```
 
 ## Best Practices
 
-1. **Apply transformations early**: Place span processors before expensive operations like tail sampling
-2. **Use conditions wisely**: Filter which spans get transformed to minimize overhead
+1. **Apply transformations early**: Place span processors before expensive operations like tail sampling when the sampling policy depends on transformed data
+2. **Use include/exclude wisely**: Scope which spans get transformed to minimize overhead
 3. **Keep names concise**: Span names should be human-readable but not verbose
 4. **Standardize across services**: Use consistent span naming and attribute conventions
-5. **Document conventions**: Maintain documentation of span naming and categorization standards
+5. **Use the right processor**: Use Span Processor for span name and status changes, Attributes Processor for attributes, and Transform Processor for OTTL-based conditions
 
 ## Related Resources
 
@@ -949,6 +771,6 @@ processors:
 
 ## Final Thoughts
 
-The Span Processor is essential for maintaining consistent, readable, and actionable trace data. By standardizing span names, enriching attributes, and normalizing status codes, you create traces that are easier to query, visualize, and debug.
+The Span Processor is useful for maintaining consistent, readable trace data when you need to rename spans, extract attributes from names, or set span status. By pairing it with the Attributes Processor and Transform Processor, you can also enrich attributes, redact sensitive values, and apply richer conditional logic.
 
-Start with basic span name transformations, gradually add business context, and implement redaction for sensitive data. With the Span Processor, you gain full control over how your traces appear in your observability platform, enabling more effective distributed tracing and faster incident resolution.
+Start with basic span name transformations, gradually add scoped status changes, and use complementary processors for attribute and OTTL-based transformations. With a correctly configured pipeline, you gain control over how your traces appear in your observability platform, enabling more effective distributed tracing and faster incident resolution.
