@@ -89,6 +89,7 @@ For Node.js, install the core packages plus any instrumentation libraries for th
 # Install OpenTelemetry core packages for Node.js
 npm install @opentelemetry/sdk-node \
   @opentelemetry/api \
+  @opentelemetry/resources \
   @opentelemetry/exporter-trace-otlp-grpc \
   @opentelemetry/auto-instrumentations-node \
   @opentelemetry/resource-detector-aws
@@ -102,8 +103,7 @@ pip install opentelemetry-sdk \
   opentelemetry-api \
   opentelemetry-exporter-otlp \
   opentelemetry-instrumentation-flask \
-  opentelemetry-instrumentation-boto3 \
-  opentelemetry-resource-detector-aws
+  opentelemetry-instrumentation-botocore
 ```
 
 ## Step 3: Initialize OpenTelemetry in Your Application
@@ -117,13 +117,13 @@ This Node.js example sets up OpenTelemetry with OTLP export and automatic instru
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
-const { AwsEcsDetector, AwsEc2Detector } = require('@opentelemetry/resource-detector-aws');
-const { Resource } = require('@opentelemetry/resources');
+const { awsEcsDetector, awsEc2Detector } = require('@opentelemetry/resource-detector-aws');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 
 // Create the SDK with auto-instrumentation enabled
 const sdk = new NodeSDK({
   // Define service name and other resource attributes
-  resource: new Resource({
+  resource: resourceFromAttributes({
     'service.name': 'my-app',
     'service.version': '1.0.0',
     'deployment.environment': process.env.NODE_ENV || 'development',
@@ -138,7 +138,7 @@ const sdk = new NodeSDK({
   instrumentations: [getNodeAutoInstrumentations()],
 
   // Detect AWS resource attributes (ECS task ID, EC2 instance ID, etc.)
-  resourceDetectors: [new AwsEcsDetector(), new AwsEc2Detector()],
+  resourceDetectors: [awsEcsDetector, awsEc2Detector],
 });
 
 // Start the SDK before your application code runs
@@ -160,7 +160,7 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.instrumentation.flask import FlaskInstrumentor
-from opentelemetry.instrumentation.boto3 import Boto3Instrumentor
+from opentelemetry.instrumentation.botocore import BotocoreInstrumentor
 
 # Define the service resource with identifying attributes
 resource = Resource.create({
@@ -179,9 +179,9 @@ provider.add_span_processor(BatchSpanProcessor(otlp_exporter))
 # Set this provider as the global default
 trace.set_tracer_provider(provider)
 
-# Auto-instrument Flask and boto3 (AWS SDK for Python)
+# Auto-instrument Flask and botocore, which is used by boto3
 FlaskInstrumentor().instrument()
-Boto3Instrumentor().instrument()
+BotocoreInstrumentor().instrument()
 ```
 
 ## Step 4: Map X-Ray Concepts to OpenTelemetry
@@ -192,15 +192,15 @@ If you had manual instrumentation with X-Ray segments and subsegments, you need 
 |---|---|
 | Segment | Root Span |
 | Subsegment | Child Span |
-| Annotation | Span Attribute (indexed) |
-| Metadata | Span Attribute (non-indexed) |
+| Annotation | Span Attribute configured for X-Ray indexing |
+| Metadata | Span Attribute or Span Event not indexed by X-Ray |
 | Error/Fault | Span Status + Exception Event |
 
 Here is how manual X-Ray instrumentation translates to OpenTelemetry in Node.js.
 
 ```javascript
 // Get a tracer instance (equivalent to getting an X-Ray segment)
-const { trace } = require('@opentelemetry/api');
+const { trace, SpanStatusCode } = require('@opentelemetry/api');
 const tracer = trace.getTracer('my-app');
 
 // Create a span (replaces X-Ray subsegments)
@@ -213,10 +213,10 @@ tracer.startActiveSpan('process-payment', (span) => {
   try {
     // Your business logic here
     processPayment();
-    span.setStatus({ code: trace.SpanStatusCode.OK });
+    span.setStatus({ code: SpanStatusCode.OK });
   } catch (error) {
     // Record errors (replaces X-Ray fault/error flags)
-    span.setStatus({ code: trace.SpanStatusCode.ERROR, message: error.message });
+    span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
     span.recordException(error);
     throw error;
   } finally {
@@ -228,7 +228,7 @@ tracer.startActiveSpan('process-payment', (span) => {
 
 ## Step 5: Deploy the OpenTelemetry Collector
 
-You need something to receive the OTLP data from your application and forward it to your chosen backend. The OpenTelemetry Collector handles this. If you still want to send data to X-Ray during the migration, you can configure the Collector with the AWS X-Ray exporter alongside any other exporter.
+You need something to receive the OTLP data from your application and forward it to your chosen backend. The OpenTelemetry Collector handles this. If you still want to send data to X-Ray during the migration, use ADOT Collector or the OpenTelemetry Collector Contrib distribution so the AWS X-Ray exporter is available alongside any other exporter.
 
 This Collector configuration receives OTLP data and sends it to both X-Ray and a generic OTLP endpoint.
 
@@ -292,15 +292,15 @@ If you are running on AWS Lambda, the migration is even simpler. AWS provides an
 # Add the AWS OpenTelemetry Lambda layer to your function
 aws lambda update-function-configuration \
   --function-name my-function \
-  --layers arn:aws:lambda:us-east-1:901920570463:layer:aws-otel-nodejs-amd64-ver-1-18-1:1 \
+  --layers arn:aws:lambda:us-east-1:901920570463:layer:aws-otel-nodejs-amd64-ver-1-30-2:1 \
   --environment "Variables={
     AWS_LAMBDA_EXEC_WRAPPER=/opt/otel-handler,
     OTEL_SERVICE_NAME=my-lambda-function,
-    OTEL_EXPORTER_OTLP_ENDPOINT=http://collector.example.com:4317
+    OTEL_EXPORTER_OTLP_ENDPOINT=http://collector.example.com:4318
   }"
 ```
 
-The Lambda layer wraps your function handler and automatically instruments incoming requests, AWS SDK calls, and outgoing HTTP requests. You do not need to change any application code if you were relying purely on auto-instrumentation.
+The legacy Node.js Lambda layer wraps your function handler and automatically instruments incoming requests, AWS SDK calls, and outgoing HTTP requests. Use the layer ARN for your function's region and architecture. You do not need to change any application code if you were relying purely on auto-instrumentation.
 
 ## Verifying the Migration
 
