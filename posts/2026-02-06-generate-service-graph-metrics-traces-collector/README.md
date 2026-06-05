@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Collector, Service Graph, Trace, Metric, Distributed Tracin
 
 Description: Learn how to use the Service Graph connector in OpenTelemetry Collector to automatically generate service dependency metrics and visualize microservice relationships from distributed traces.
 
-Understanding service dependencies and communication patterns is critical in microservices architectures. The Service Graph connector in the OpenTelemetry Collector automatically analyzes distributed traces to generate metrics that describe how services interact with each other. These metrics reveal request rates, latency distributions, error rates, and payload sizes between service pairs, providing invaluable insights for troubleshooting, capacity planning, and architectural decisions.
+Understanding service dependencies and communication patterns is critical in microservices architectures. The Service Graph connector in the OpenTelemetry Collector automatically analyzes distributed traces to generate metrics that describe how services interact with each other. These metrics reveal request rates, latency distributions, and error rates between service pairs, providing invaluable insights for troubleshooting, capacity planning, and architectural decisions.
 
 ## What is the Service Graph Connector?
 
@@ -18,7 +18,7 @@ When a trace flows through your system, it creates a chain of spans. A span repr
 
 Understanding the fundamental concepts helps clarify how service graph metrics work:
 
-**Service Node**: A distinct service in your architecture, identified by attributes like `service.name` and `service.namespace`.
+**Service Node**: A distinct service in your architecture, identified from resource attributes like `service.name`.
 
 **Service Edge**: A connection between two services, representing that one service calls another. This is the fundamental unit the connector tracks.
 
@@ -43,7 +43,7 @@ processors:
     send_batch_size: 1024
 
 connectors:
-  servicegraph:
+  service_graph:
     # Configure the trace relationship store
     store:
       # Maximum number of edges to track
@@ -54,10 +54,10 @@ connectors:
     # Define histogram buckets for latency metrics
     latency_histogram_buckets: [10ms, 50ms, 100ms, 250ms, 500ms, 1s, 2.5s, 5s, 10s]
 
-    # Dimensions to include in generated metrics
+    # Span attributes to include as additional dimensions in generated metrics
     dimensions:
-      - service.name
-      - service.namespace
+      - http.method
+      - rpc.system
 
 exporters:
   otlp/traces:
@@ -72,11 +72,11 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [servicegraph, otlp/traces]
+      exporters: [service_graph, otlp/traces]
 
     # Metrics pipeline receives service graph metrics
     metrics/service-graph:
-      receivers: [servicegraph]
+      receivers: [service_graph]
       processors: [batch]
       exporters: [prometheusremotewrite]
 ```
@@ -91,11 +91,13 @@ The Service Graph connector generates several types of metrics:
 
 **Request Failed Total**: `traces_service_graph_request_failed_total{client="service-a", server="service-b"}` counts failed requests between services.
 
-**Request Duration**: `traces_service_graph_request_duration_seconds{client="service-a", server="service-b"}` provides a histogram of request latency between services.
+**Request Client Duration**: `traces_service_graph_request_client{client="service-a", server="service-b"}` provides a histogram of request latency between services as seen from the client span.
 
-**Request Size**: `traces_service_graph_request_size_bytes{client="service-a", server="service-b"}` tracks request payload sizes (if available).
+**Request Server Duration**: `traces_service_graph_request_server{client="service-a", server="service-b"}` provides a histogram of request latency between services as seen from the server span.
 
-**Response Size**: `traces_service_graph_response_size_bytes{client="service-a", server="service-b"}` tracks response payload sizes (if available).
+**Unpaired Spans Total**: `traces_service_graph_unpaired_spans_total{client="service-a", server="service-b"}` counts spans that could not be paired before they expired from the store.
+
+**Dropped Spans Total**: `traces_service_graph_dropped_spans_total{client="service-a", server="service-b"}` counts spans dropped when the connector cannot add them to the store.
 
 ## Service Graph Data Flow
 
@@ -108,9 +110,9 @@ graph TB
     C --> D[Edge Store]
     D --> E[Metrics Generator]
     E --> F[Request Total]
-    E --> G[Request Duration]
+    E --> G[Client/Server Request Duration]
     E --> H[Request Failed]
-    E --> I[Request/Response Size]
+    E --> I[Unpaired/Dropped Spans]
     F --> J[Metrics Pipeline]
     G --> J
     H --> J
@@ -125,7 +127,7 @@ The store configuration is critical for accurate metric generation:
 
 ```yaml
 connectors:
-  servicegraph:
+  service_graph:
     store:
       # Maximum edges to track in memory
       # Set based on: (number of services)^2 * expected dimension cardinality
@@ -137,9 +139,8 @@ connectors:
       # Too long: higher memory usage
       ttl: 10s
 
-      # Cleanup interval for expired edges
-      # How often to remove expired edge data
-      cleanup_interval: 5s
+    # How often to remove expired edge data
+    store_expiration_loop: 5s
 ```
 
 The TTL is particularly important. If a trace takes 3 seconds to complete, but your TTL is only 2 seconds, the connector might not see all spans before the relationship expires, resulting in incomplete service graph metrics.
@@ -150,29 +151,23 @@ Dimensions determine how granular your service graph metrics are:
 
 ```yaml
 connectors:
-  servicegraph/detailed:
+  service_graph/detailed:
     store:
       max_items: 100000
       ttl: 10s
 
     latency_histogram_buckets: [10ms, 50ms, 100ms, 250ms, 500ms, 1s, 2.5s, 5s, 10s]
 
-    # Include additional dimensions
+    # Include additional span attributes as dimensions
     dimensions:
-      - service.name
-      - service.namespace
-      - service.version
-      - deployment.environment
-      - k8s.cluster.name
-
-    # You can also include span attributes as dimensions
-    span_attributes:
       - http.method
       - http.route
+      - http.status_code
+      - messaging.system
       - rpc.method
 ```
 
-More dimensions provide finer granularity but increase cardinality. For a service graph, focus on service-level attributes rather than request-level attributes to keep cardinality manageable.
+More dimensions provide finer granularity but increase cardinality. For a service graph, keep additional span-attribute dimensions low-cardinality to avoid creating too many metric series.
 
 ## Configuring Latency Histogram Buckets
 
@@ -181,15 +176,15 @@ Tailor histogram buckets to your service latency characteristics:
 ```yaml
 connectors:
   # Fast microservices (APIs, caches)
-  servicegraph/fast:
+  service_graph/fast:
     latency_histogram_buckets: [1ms, 5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s]
 
   # Standard web services
-  servicegraph/standard:
+  service_graph/standard:
     latency_histogram_buckets: [10ms, 50ms, 100ms, 250ms, 500ms, 1s, 2.5s, 5s, 10s]
 
   # Slow batch processing or external APIs
-  servicegraph/slow:
+  service_graph/slow:
     latency_histogram_buckets: [100ms, 500ms, 1s, 5s, 10s, 30s, 60s, 120s, 300s]
 ```
 
@@ -203,25 +198,28 @@ You can selectively process traces to focus on specific service interactions:
 processors:
   # Only analyze production traffic
   filter/production:
+    error_mode: ignore
     traces:
       span:
-        - 'resource.attributes["deployment.environment"] == "production"'
+        - 'resource.attributes["deployment.environment"] != "production"'
 
   # Exclude internal health checks
   filter/exclude-health:
+    error_mode: ignore
     traces:
       span:
-        - 'attributes["http.route"] != "/health"'
-        - 'attributes["http.route"] != "/readiness"'
+        - 'attributes["http.route"] == "/health"'
+        - 'attributes["http.route"] == "/readiness"'
 
   # Only analyze specific services
   filter/critical-services:
+    error_mode: ignore
     traces:
       span:
-        - 'resource.attributes["service.name"] matches "^(payment|auth|checkout).*"'
+        - 'not IsMatch(resource.attributes["service.name"], "^(payment|auth|checkout).*")'
 
 connectors:
-  servicegraph:
+  service_graph:
     store:
       max_items: 10000
       ttl: 5s
@@ -232,10 +230,10 @@ service:
     traces:
       receivers: [otlp]
       processors: [filter/production, filter/exclude-health, batch]
-      exporters: [servicegraph, otlp/traces]
+      exporters: [service_graph, otlp/traces]
 
     metrics/service-graph:
-      receivers: [servicegraph]
+      receivers: [service_graph]
       exporters: [prometheusremotewrite]
 ```
 
@@ -258,33 +256,30 @@ processors:
           # Map load balancers to backend services
           - set(attributes["service.name"], "api-backend") where attributes["service.name"] == "nginx-lb"
 
-  # Add virtual node for external services
-  attributes/external:
-    actions:
-      - key: service.name
-        pattern: ".*\\.(amazonaws\\.com|external\\.api).*"
-        value: "external-service"
-        action: update
-
 connectors:
-  servicegraph:
+  service_graph:
     store:
       max_items: 10000
       ttl: 5s
     latency_histogram_buckets: [10ms, 50ms, 100ms, 250ms, 500ms, 1s, 2.5s, 5s]
     dimensions:
-      - service.name
-      - service.namespace
+      - http.method
+      - rpc.system
+    virtual_node_peer_attributes:
+      - peer.service
+      - server.address
+      - db.name
+      - db.system
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [transform/normalize, attributes/external, batch]
-      exporters: [servicegraph, otlp/traces]
+      processors: [transform/normalize, batch]
+      exporters: [service_graph, otlp/traces]
 
     metrics/service-graph:
-      receivers: [servicegraph]
+      receivers: [service_graph]
       exporters: [prometheusremotewrite]
 ```
 
@@ -322,23 +317,21 @@ processors:
 
 connectors:
   # Separate service graph per cluster
-  servicegraph/cluster-a:
+  service_graph/cluster-a:
     store:
       max_items: 50000
       ttl: 10s
     latency_histogram_buckets: [10ms, 50ms, 100ms, 250ms, 500ms, 1s, 2.5s, 5s]
     dimensions:
-      - service.name
-      - k8s.cluster.name
+      - http.method
 
-  servicegraph/cluster-b:
+  service_graph/cluster-b:
     store:
       max_items: 50000
       ttl: 10s
     latency_histogram_buckets: [10ms, 50ms, 100ms, 250ms, 500ms, 1s, 2.5s, 5s]
     dimensions:
-      - service.name
-      - k8s.cluster.name
+      - http.method
 
 exporters:
   prometheusremotewrite:
@@ -349,19 +342,19 @@ service:
     traces/cluster-a:
       receivers: [otlp/cluster-a]
       processors: [resource/cluster-a, batch]
-      exporters: [servicegraph/cluster-a]
+      exporters: [service_graph/cluster-a]
 
     traces/cluster-b:
       receivers: [otlp/cluster-b]
       processors: [resource/cluster-b, batch]
-      exporters: [servicegraph/cluster-b]
+      exporters: [service_graph/cluster-b]
 
     metrics/service-graph:
-      receivers: [servicegraph/cluster-a, servicegraph/cluster-b]
+      receivers: [service_graph/cluster-a, service_graph/cluster-b]
       exporters: [prometheusremotewrite]
 ```
 
-This approach maintains separate service graphs per cluster while allowing unified querying by including cluster name as a dimension.
+This approach maintains separate service graphs per cluster. If you need cluster labels on the exported metric series, configure your metrics exporter or resource-to-telemetry strategy to promote the `k8s.cluster.name` resource attribute.
 
 ## Combining Service Graph with Span Metrics
 
@@ -381,17 +374,17 @@ processors:
 
 connectors:
   # Generate service graph metrics
-  servicegraph:
+  service_graph:
     store:
       max_items: 10000
       ttl: 5s
     latency_histogram_buckets: [10ms, 50ms, 100ms, 250ms, 500ms, 1s, 2.5s, 5s]
     dimensions:
-      - service.name
-      - service.namespace
+      - http.method
+      - rpc.system
 
   # Generate per-service RED metrics
-  spanmetrics:
+  span_metrics:
     histogram:
       explicit:
         buckets: [10ms, 50ms, 100ms, 250ms, 500ms, 1s, 2.5s, 5s, 10s]
@@ -414,16 +407,16 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [servicegraph, spanmetrics, otlp/traces]
+      exporters: [service_graph, span_metrics, otlp/traces]
 
     # Service graph metrics
     metrics/service-graph:
-      receivers: [servicegraph]
+      receivers: [service_graph]
       exporters: [prometheusremotewrite]
 
     # Span metrics
     metrics/spans:
-      receivers: [spanmetrics]
+      receivers: [span_metrics]
       exporters: [prometheusremotewrite]
 ```
 
@@ -445,7 +438,7 @@ receivers:
 processors:
   # Resource detection
   resourcedetection:
-    detectors: [env, system, docker, kubernetes]
+    detectors: [env, system, docker, k8snode]
     timeout: 5s
 
   # Memory protection
@@ -460,11 +453,12 @@ processors:
 
   # Filter out health checks and internal traffic
   filter/meaningful:
+    error_mode: ignore
     traces:
       span:
-        - 'attributes["http.route"] != "/health"'
-        - 'attributes["http.route"] != "/metrics"'
-        - 'resource.attributes["service.name"] != "istio-proxy"'
+        - 'attributes["http.route"] == "/health"'
+        - 'attributes["http.route"] == "/metrics"'
+        - 'resource.attributes["service.name"] == "istio-proxy"'
 
   # Normalize service names
   transform/normalize:
@@ -474,44 +468,23 @@ processors:
           # Remove replica identifiers
           - replace_pattern(attributes["service.name"], "^(.+)-[a-f0-9]{8,}$", "$$1")
 
-  # Add business context
-  attributes/business:
-    actions:
-      - key: business.tier
-        from_attribute: service.namespace
-        action: insert
-
 connectors:
-  servicegraph/platform:
+  service_graph/platform:
     store:
       # Large e-commerce platform with many services
       max_items: 100000
       # Long TTL for slow payment/shipping processes
       ttl: 30s
-      cleanup_interval: 10s
+    store_expiration_loop: 10s
 
     # Buckets covering fast APIs to slow payment processing
     latency_histogram_buckets: [10ms, 50ms, 100ms, 250ms, 500ms, 1s, 2.5s, 5s, 10s, 30s, 60s]
 
     dimensions:
-      - service.name
-      - service.namespace
-      - business.tier
-      - deployment.environment
-      - k8s.cluster.name
-
-    # Generate all available metric types
-    metrics:
-      calls:
-        enabled: true
-      duration:
-        enabled: true
-      request_size:
-        enabled: true
-      response_size:
-        enabled: true
-      failed_requests:
-        enabled: true
+      - http.method
+      - http.route
+      - messaging.system
+      - rpc.system
 
 exporters:
   # Export traces to Tempo
@@ -527,8 +500,6 @@ exporters:
   prometheusremotewrite/graph:
     endpoint: http://prometheus:9090/api/v1/write
     compression: snappy
-    headers:
-      X-Prometheus-Remote-Write-Version: "0.1.0"
     external_labels:
       source: service-graph
       platform: ecommerce
@@ -539,7 +510,6 @@ service:
       level: info
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
 
   pipelines:
     # Main traces pipeline
@@ -550,13 +520,12 @@ service:
         - resourcedetection
         - filter/meaningful
         - transform/normalize
-        - attributes/business
         - batch
-      exporters: [servicegraph/platform, otlp/tempo]
+      exporters: [service_graph/platform, otlp/tempo]
 
     # Service graph metrics pipeline
     metrics/service-graph:
-      receivers: [servicegraph/platform]
+      receivers: [service_graph/platform]
       processors: [batch]
       exporters: [prometheusremotewrite/graph]
 ```
@@ -583,7 +552,7 @@ rate(traces_service_graph_request_failed_total{client="frontend", server="api-ga
 
 # P95 latency between services
 histogram_quantile(0.95,
-  rate(traces_service_graph_request_duration_seconds_bucket[5m])
+  sum by (le, client, server) (rate(traces_service_graph_request_server_bucket[5m]))
 )
 
 # Top service dependencies by request volume
@@ -616,7 +585,7 @@ Service graph generation can be memory-intensive. Optimize with these strategies
 # Example: 50 services, 5 dimensions, 2x safety = 50*50*5*2 = 25,000
 
 connectors:
-  servicegraph:
+  service_graph:
     store:
       max_items: 25000
 ```
@@ -629,17 +598,17 @@ connectors:
 
 ```yaml
 connectors:
-  servicegraph/optimized:
+  service_graph/optimized:
     store:
       max_items: 10000
       ttl: 10s
 
     # Minimal dimensions for lower cardinality
     dimensions:
-      - service.name
+      - http.method
       # Consider removing:
-      # - service.version (if not needed)
-      # - deployment.environment (if single environment)
+      # - http.route (if too high cardinality)
+      # - messaging.destination.name (if too high cardinality)
 
     # Wider buckets reduce histogram overhead
     latency_histogram_buckets: [100ms, 500ms, 1s, 5s, 10s]
@@ -658,15 +627,14 @@ service:
         service: otel-collector
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
 ```
 
 Key metrics to monitor:
 
-- `otelcol_connector_servicegraph_total_edges`: Current number of tracked edges
-- `otelcol_connector_servicegraph_expired_edges`: Edges that expired (may indicate TTL too short)
-- `otelcol_connector_servicegraph_traces_processed`: Traces analyzed
-- `otelcol_processor_batch_batch_send_size_bucket`: Batch sizes for metrics
+- `otelcol_connector_servicegraph_total_edges`: Total number of unique edges
+- `otelcol_connector_servicegraph_expired_edges`: Edges that expired before finding a matching span
+- `otelcol_connector_servicegraph_dropped_spans`: Spans dropped when trying to add edges
+- `otelcol_processor_batch_batch_send_size_bytes_bucket`: Batch sizes for metrics when exported in Prometheus format
 
 If `expired_edges` is high relative to `total_edges`, increase your TTL.
 
