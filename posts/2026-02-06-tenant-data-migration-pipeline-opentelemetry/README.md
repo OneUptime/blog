@@ -16,9 +16,10 @@ Here is how to instrument a CSV/JSON import pipeline that processes tenant data:
 # data_import.py
 
 from opentelemetry import trace, metrics
-from opentelemetry.trace import StatusCode
+from opentelemetry.trace import Status, StatusCode
 import csv
 import io
+import time
 
 tracer = trace.get_tracer("data.import")
 meter = metrics.get_meter("data.import")
@@ -71,7 +72,7 @@ class DataImporter:
                 val_span.set_attribute("import.validation_errors", len(validation_errors))
 
                 if len(validation_errors) > len(rows) * 0.5:
-                    val_span.set_status(StatusCode.ERROR, "Too many validation errors")
+                    val_span.set_status(Status(StatusCode.ERROR, "Too many validation errors"))
                     raise ImportError(f"Over 50% of rows failed validation")
 
             # Phase 2: Transform and load
@@ -142,7 +143,11 @@ class DataImporter:
 
 ```python
 # data_export.py
+from opentelemetry import trace, metrics
+import time
+
 tracer = trace.get_tracer("data.export")
+meter = metrics.get_meter("data.export")
 
 export_duration = meter.create_histogram(
     "data.export.duration",
@@ -161,6 +166,7 @@ class DataExporter:
                 "export.entity_types": ",".join(entity_types),
             }
         ) as span:
+            start_time = time.time()
             export_files = []
 
             for entity_type in entity_types:
@@ -180,8 +186,14 @@ class DataExporter:
                     })
 
             total_records = sum(f["record_count"] for f in export_files)
+            duration = time.time() - start_time
+            export_duration.record(duration, {
+                "tenant.id": tenant_id,
+                "export.format": format,
+            })
             span.set_attribute("export.total_records", total_records)
             span.set_attribute("export.file_count", len(export_files))
+            span.set_attribute("export.duration_seconds", duration)
 
             return export_files
 ```
@@ -192,6 +204,11 @@ When migrating tenants between database clusters or regions, trace the full migr
 
 ```python
 # tenant_migration.py
+from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
+
+tracer = trace.get_tracer("tenant.migration")
+
 class TenantMigrationService:
     async def migrate_tenant(self, tenant_id: str, source_region: str, target_region: str):
         """Migrate a tenant between regions with full observability."""
@@ -216,6 +233,9 @@ class TenantMigrationService:
             with tracer.start_as_current_span("migration.verify"):
                 is_valid = await verify_migration_integrity(tenant_id, target_region)
                 span.set_attribute("migration.integrity_check", "passed" if is_valid else "failed")
+                if not is_valid:
+                    span.set_status(Status(StatusCode.ERROR, "Migration integrity check failed"))
+                    raise RuntimeError("Migration integrity check failed")
 
             # Phase 4: Switch traffic
             with tracer.start_as_current_span("migration.cutover"):
