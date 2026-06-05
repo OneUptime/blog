@@ -8,13 +8,13 @@ Description: Learn how to monitor CSS, JavaScript, and image loading performance
 
 ---
 
-When a page loads slowly, the culprit is often a specific resource that took too long to download, a JavaScript bundle that blocked rendering, or an image that was far too large for what it needed to be. Browser DevTools show you this information for a single page load on your machine, but they do not help you understand resource loading patterns across thousands of users in production. OpenTelemetry can bridge that gap by collecting resource timing data from real users and exporting it as spans and metrics to your observability backend.
+When a page loads slowly, the culprit is often a specific resource that took too long to download, a JavaScript bundle that blocked rendering, or an image that was far too large for what it needed to be. Browser DevTools show you this information for a single page load on your machine, but they do not help you understand resource loading patterns across thousands of users in production. OpenTelemetry can bridge that gap by collecting resource timing data from real users and exporting it as spans and span attributes to your observability backend.
 
-This post covers how to instrument frontend resource loading using the browser's Performance API and OpenTelemetry, giving you visibility into every CSS file, JavaScript bundle, image, and font that your application loads.
+This post covers how to instrument frontend resource loading using the browser's Performance API and OpenTelemetry, giving you visibility into CSS files, JavaScript bundles, images, and fonts that your application loads.
 
 ## How the Browser Performance API Works
 
-Browsers expose detailed timing data for every resource loaded on a page through the `PerformanceResourceTiming` interface. Each entry contains timestamps for DNS lookup, TCP connection, TLS negotiation, request/response, and the total transfer size.
+Browsers expose detailed timing data for resources loaded on a page through the `PerformanceResourceTiming` interface. Each entry contains timestamps for DNS lookup, TCP connection, TLS negotiation, request/response, and size information. For cross-origin resources, many timing and size fields are reported as `0` unless the response includes a `Timing-Allow-Origin` header.
 
 ```mermaid
 gantt
@@ -37,7 +37,7 @@ gantt
     Content Download     :120, 180
 ```
 
-OpenTelemetry does not have built-in instrumentation for resource loading out of the box, but the Performance API makes it straightforward to build your own. The `PerformanceObserver` interface lets you listen for new resource entries as they appear, so you can create spans in real time rather than polling.
+OpenTelemetry's document-load instrumentation can create resource fetch spans during page load, but if you need custom categorization and analysis, the Performance API makes it straightforward to build your own. The `PerformanceObserver` interface lets you listen for new resource entries as they appear, so you can create spans in real time rather than polling.
 
 ## Setting Up the Base Tracer
 
@@ -48,23 +48,22 @@ Start with a standard OpenTelemetry browser setup. We will add the resource moni
 import { WebTracerProvider } from '@opentelemetry/sdk-trace-web';
 import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
-import { Resource } from '@opentelemetry/resources';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 import { ZoneContextManager } from '@opentelemetry/context-zone';
 
 const provider = new WebTracerProvider({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     'service.name': 'frontend-app',
     'service.version': '1.4.0',
   }),
+  spanProcessors: [
+    new BatchSpanProcessor(
+      new OTLPTraceExporter({
+        url: '/api/v1/traces',
+      })
+    ),
+  ],
 });
-
-provider.addSpanProcessor(
-  new BatchSpanProcessor(
-    new OTLPTraceExporter({
-      url: '/api/v1/traces',
-    })
-  )
-);
 
 provider.register({
   contextManager: new ZoneContextManager(),
@@ -110,7 +109,7 @@ function createResourceSpan(entry) {
     startTime: toHrTime(entry.startTime),
     attributes: {
       // Resource identification
-      'http.url': entry.name,
+      'url.full': entry.name,
       'resource.type': category,
       'resource.initiator': entry.initiatorType,
       'resource.filename': url.pathname.split('/').pop(),
@@ -131,8 +130,9 @@ function createResourceSpan(entry) {
       'resource.timing.download_ms': entry.responseEnd - entry.responseStart,
       'resource.timing.total_ms': entry.responseEnd - entry.startTime,
 
-      // Cache status: transferSize of 0 means it was served from cache
-      'resource.cached': entry.transferSize === 0,
+      // Cache status: transferSize of 0 plus a non-zero decoded size
+      // indicates a same-origin or TAO-enabled resource served from cache
+      'resource.cached': entry.transferSize === 0 && entry.decodedBodySize > 0,
 
       // Cross-origin flag
       'resource.cross_origin': url.origin !== window.location.origin,
@@ -247,7 +247,7 @@ export function detectRenderBlockingResources() {
 }
 ```
 
-This function waits for the First Contentful Paint metric and then retrospectively identifies which resources were render-blocking. The summary span gives you a single data point per page load that shows how many resources blocked rendering and their total size.
+This function waits for the First Contentful Paint metric and then retrospectively identifies likely render-blocking candidates. The summary span gives you a single data point per page load that shows how many resources may have blocked rendering and their total size.
 
 ## Monitoring Image Loading Performance
 
@@ -306,11 +306,22 @@ The `oversized` check compares the image's natural resolution to its display siz
 
 ## Aggregating Resource Metrics
 
-Individual resource spans are useful for debugging, but aggregate metrics help you track trends over time. Create a summary span for each page load that captures overall resource statistics.
+Individual resource spans are useful for debugging, but aggregate summaries help you track trends over time. Create a summary span for each page load that captures overall resource statistics.
 
 ```javascript
 // src/instrumentation/resource-summary.js
 import { tracer } from '../tracing/provider';
+
+const RESOURCE_CATEGORIES = {
+  script: 'javascript',
+  link: 'css',
+  img: 'image',
+  css: 'css',
+  font: 'font',
+  fetch: 'api',
+  xmlhttprequest: 'api',
+  other: 'other',
+};
 
 // Generate a summary of all resources loaded during the page load.
 // This runs after the window load event to capture everything.
@@ -383,6 +394,6 @@ createResourceSummary();
 
 ## Summary
 
-Monitoring frontend resource loading with OpenTelemetry gives you production visibility into the performance data that is usually only available in browser DevTools. By using the Performance API's `PerformanceObserver`, you can create spans for every CSS file, JavaScript bundle, image, and font that loads on your pages. Adding analysis for render-blocking resources, oversized images, and per-page-load summaries turns raw timing data into actionable insights.
+Monitoring frontend resource loading with OpenTelemetry gives you production visibility into the performance data that is usually only available in browser DevTools. By using the Performance API's `PerformanceObserver`, you can create spans for CSS files, JavaScript bundles, images, and fonts that load on your pages. Adding analysis for render-blocking resources, oversized images, and per-page-load summaries turns raw timing data into actionable insights.
 
 The spans created by this instrumentation integrate naturally with the rest of your OpenTelemetry data. You can correlate slow resource loads with slow traces, identify which pages have the heaviest resource footprints, and track whether your optimization efforts are actually improving things for real users in production.
