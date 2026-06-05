@@ -31,6 +31,8 @@ graph LR
 
 Kong's OpenTelemetry plugin is bundled with Kong Gateway starting from version 3.0. You don't need to install anything extra. You can enable it globally (for all routes and services) or selectively per route or service.
 
+The plugin's tracing features require Kong's tracing instrumentation to be enabled. In `kong.conf`, set `tracing_instrumentations=request` for request-level spans or `tracing_instrumentations=all` if you also want router, balancer, and plugin phase spans. In production, set `tracing_sampling_rate` to the percentage of requests you want traced.
+
 Here's how to enable the plugin globally using Kong's Admin API. This will instrument every request that passes through the gateway.
 
 ```bash
@@ -38,10 +40,17 @@ Here's how to enable the plugin globally using Kong's Admin API. This will instr
 
 # This sends traces for all routes and services to the specified OTLP endpoint
 curl -X POST http://localhost:8001/plugins \
-  --data "name=opentelemetry" \
-  --data "config.endpoint=http://otel-collector:4318/v1/traces" \
-  --data "config.resource_attributes.service.name=kong-gateway" \
-  --data "config.resource_attributes.deployment.environment=production"
+  --header "Content-Type: application/json" \
+  --data '{
+    "name": "opentelemetry",
+    "config": {
+      "traces_endpoint": "http://otel-collector:4318/v1/traces",
+      "resource_attributes": {
+        "service.name": "kong-gateway",
+        "deployment.environment": "production"
+      }
+    }
+  }'
 ```
 
 If you prefer to enable it for a specific service only, you can scope the plugin to that service. This is useful when you want to start with selective instrumentation before rolling it out everywhere.
@@ -50,9 +59,16 @@ If you prefer to enable it for a specific service only, you can scope the plugin
 # Enable OpenTelemetry only for a specific service
 # Replace {service_id} with your actual Kong service ID
 curl -X POST http://localhost:8001/services/{service_id}/plugins \
-  --data "name=opentelemetry" \
-  --data "config.endpoint=http://otel-collector:4318/v1/traces" \
-  --data "config.resource_attributes.service.name=kong-gateway"
+  --header "Content-Type: application/json" \
+  --data '{
+    "name": "opentelemetry",
+    "config": {
+      "traces_endpoint": "http://otel-collector:4318/v1/traces",
+      "resource_attributes": {
+        "service.name": "kong-gateway"
+      }
+    }
+  }'
 ```
 
 ## Declarative Configuration with kong.yml
@@ -70,7 +86,7 @@ plugins:
   - name: opentelemetry
     config:
       # OTLP HTTP endpoint for the OpenTelemetry Collector
-      endpoint: http://otel-collector:4318/v1/traces
+      traces_endpoint: http://otel-collector:4318/v1/traces
 
       # Resource attributes attached to every span from Kong
       resource_attributes:
@@ -85,9 +101,16 @@ plugins:
       # Sampling rate: 1.0 = 100% of traces, 0.1 = 10%
       sampling_rate: 1.0
 
-      # Header type for trace context propagation to upstream services
-      # Options: w3c, b3, jaeger, ot, aws, gcp
-      header_type: w3c
+      # Trace context propagation to upstream services
+      propagation:
+        default_format: w3c
+        extract:
+          - w3c
+          - b3
+          - jaeger
+          - ot
+        inject:
+          - w3c
 
 # Define your services and routes
 services:
@@ -122,28 +145,24 @@ http.method: GET                           # HTTP request method
 http.url: https://api.example.com/users    # Full request URL
 http.scheme: https                         # URL scheme
 http.host: api.example.com                 # Request host header
-http.target: /users                        # Path and query string
+http.route: /api/users                     # Matched route path
 http.status_code: 200                      # Response status code
 http.flavor: "1.1"                         # HTTP version
-http.user_agent: "Mozilla/5.0..."          # Client user agent
+http.client_ip: 192.168.1.100              # Client IP address when known
+kong.request.id: 319d1e4e7862095f704a7d6c60e63260
 
-# Kong-specific attributes
-kong.route: user-routes                    # Name of the matched Kong route
-kong.service: user-service                 # Name of the upstream Kong service
-kong.consumer: mobile-app                  # Authenticated consumer (if any)
-kong.balancer.ip: 10.0.1.15               # IP of the upstream target selected
-kong.balancer.port: 8080                   # Port of the upstream target
-
-# Network attributes
+# Network and balancer span attributes
 net.peer.ip: 192.168.1.100                # Client IP address
-net.peer.port: 54321                      # Client port
+net.peer.port: 8080                       # Upstream target port on balancer spans
+net.peer.name: user-service               # Upstream target name on balancer spans
+peer.service: user-service                # Kong service name on balancer spans
 ```
 
 ## Trace Context Propagation
 
-One of the most important aspects of gateway instrumentation is making sure the trace context propagates correctly to your upstream services. Kong supports multiple propagation formats through the `header_type` configuration.
+One of the most important aspects of gateway instrumentation is making sure the trace context propagates correctly to your upstream services. Kong supports multiple propagation formats through the `propagation` configuration.
 
-The W3C Trace Context format is the default and recommended option. It uses the `traceparent` and `tracestate` headers. If you have services instrumented with Jaeger or Zipkin that use B3 headers, Kong can propagate in those formats too.
+The W3C Trace Context format is the recommended option. It uses the `traceparent` and `tracestate` headers. If you have services instrumented with Jaeger or Zipkin that use B3 headers, Kong can propagate in those formats too.
 
 ```mermaid
 sequenceDiagram
@@ -174,8 +193,9 @@ In Kubernetes environments, you'll typically deploy Kong alongside an OpenTeleme
 ```yaml
 # kong-values.yaml - Helm chart values for Kong with OpenTelemetry
 env:
-  # Enable the OpenTelemetry plugin in Kong's configuration
-  plugins: "bundled,opentelemetry"
+  # Keep the bundled plugins available. This loads the OpenTelemetry plugin
+  # code, but does not enable a plugin instance by itself.
+  plugins: "bundled"
 
   # Set tracing instrumentation level
   # Options: off, request, all
@@ -183,12 +203,6 @@ env:
 
   # Sampling rate for tracing
   tracing_sampling_rate: "1.0"
-
-# Kong plugin configuration via environment variables
-plugins:
-  configMaps:
-    - name: kong-otel-plugin-config
-      pluginName: opentelemetry
 
 # Resource limits for Kong pods
 resources:
@@ -200,24 +214,35 @@ resources:
     memory: 512Mi
 ```
 
-And here is a ConfigMap that holds the OpenTelemetry plugin configuration for Kong running in Kubernetes.
+And here is a `KongClusterPlugin` that enables the OpenTelemetry plugin globally for Kong running with the Kong Ingress Controller.
 
 ```yaml
-# kong-otel-configmap.yaml
-apiVersion: v1
-kind: ConfigMap
+# kong-otel-plugin.yaml
+apiVersion: configuration.konghq.com/v1
+kind: KongClusterPlugin
 metadata:
-  name: kong-otel-plugin-config
-  namespace: kong
-data:
-  opentelemetry: |
-    endpoint: http://otel-collector.observability.svc.cluster.local:4318/v1/traces
-    resource_attributes:
-      service.name: kong-gateway
-      k8s.namespace.name: kong
-      k8s.cluster.name: production
-    sampling_rate: 0.5
-    header_type: w3c
+  name: opentelemetry
+  annotations:
+    kubernetes.io/ingress.class: kong
+  labels:
+    global: "true"
+plugin: opentelemetry
+config:
+  traces_endpoint: http://otel-collector.observability.svc.cluster.local:4318/v1/traces
+  resource_attributes:
+    service.name: kong-gateway
+    k8s.namespace.name: kong
+    k8s.cluster.name: production
+  sampling_rate: 0.5
+  propagation:
+    default_format: w3c
+    extract:
+      - w3c
+      - b3
+      - jaeger
+      - ot
+    inject:
+      - w3c
 ```
 
 ## Collector Configuration for Kong
@@ -255,7 +280,7 @@ processors:
         type: status_code
         status_code:
           status_codes: [ERROR]
-      # Sample 20% of successful traces
+      # Sample an additional 20% of traces
       - name: success-sample
         type: probabilistic
         probabilistic:
@@ -271,7 +296,7 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [batch, attributes, tail_sampling]
+      processors: [attributes, tail_sampling, batch]
       exporters: [otlp]
 ```
 
@@ -281,7 +306,7 @@ One valuable use case for Kong's OpenTelemetry integration is measuring the late
 
 For example, if you're running authentication, rate limiting, and request transformation plugins, you'll see separate spans for each. This makes it straightforward to identify plugins that are adding unexpected latency.
 
-To dig into plugin performance, query your tracing backend for spans where `kong.plugin` is set. Group by plugin name and look at the p95 and p99 durations. If your rate limiting plugin is taking 50ms because it's hitting a slow Redis instance, you'll spot it immediately.
+To dig into plugin performance, query your tracing backend for spans whose names follow the `kong.<phase>.plugin.<plugin-name>` pattern. Group by plugin span name and look at the p95 and p99 durations. If your rate limiting plugin is taking 50ms because it's hitting a slow Redis instance, you'll spot it immediately.
 
 ## Troubleshooting Common Issues
 
