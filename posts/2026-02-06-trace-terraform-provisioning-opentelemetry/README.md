@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Terraform, Infrastructure as Code, Tracing, Observability, DevOps
 
-Description: Learn how to trace Terraform infrastructure provisioning with OpenTelemetry to gain visibility into resource creation times, API call patterns, and provisioning failures.
+Description: Learn how to trace Terraform infrastructure provisioning with OpenTelemetry to gain visibility into resource creation times, provider operation patterns, and provisioning failures.
 
 ---
 
-Terraform runs can take anywhere from seconds to hours depending on what you are provisioning. When a `terraform apply` takes 45 minutes and you are staring at a slowly scrolling terminal, it is hard to know which resources are causing the delay, which API calls are being throttled, or why a particular resource keeps timing out. OpenTelemetry tracing gives you structured visibility into the entire provisioning process.
+Terraform runs can take anywhere from seconds to hours depending on what you are provisioning. When a `terraform apply` takes 45 minutes and you are staring at a slowly scrolling terminal, it is hard to know which resources are causing the delay, which provider operations are slow, or why a particular resource keeps timing out. OpenTelemetry tracing gives you structured visibility into the entire provisioning process.
 
-This guide covers how to instrument Terraform runs with OpenTelemetry to trace resource creation, track provider API calls, and build observability around your infrastructure provisioning workflows.
+This guide covers how to instrument Terraform runs with OpenTelemetry to trace resource creation, track provider operation timing, and build observability around your infrastructure provisioning workflows.
 
 ## Why Trace Terraform
 
@@ -19,10 +19,10 @@ Terraform's built-in logging (`TF_LOG=DEBUG`) produces massive amounts of unstru
 Common questions that tracing answers:
 
 - Which resource takes the longest to provision?
-- How many API calls does Terraform make to each cloud provider?
+- Which provider operations dominate the apply time?
 - Why did this apply take 3x longer than usual?
-- Which resources failed and how many retries happened?
-- What is the dependency graph at runtime, and where are the bottlenecks?
+- Which resources failed, and what diagnostics did Terraform emit?
+- What resource ordering and concurrency patterns show up at runtime, and where are the bottlenecks?
 
 ## Architecture Overview
 
@@ -124,8 +124,10 @@ START=$(date +%s%N)
 echo "Starting traced terraform ${TF_COMMAND}..."
 
 # Run the Terraform command and capture the exit code
+set +e
 terraform "${TF_COMMAND}" "$@"
 EXIT_CODE=$?
+set -e
 
 # Record the end time
 END=$(date +%s%N)
@@ -175,11 +177,11 @@ import subprocess
 import sys
 import time
 import uuid
+import os
 import requests
-from datetime import datetime
 
-OTEL_ENDPOINT = "http://localhost:4318/v1/traces"
-SERVICE_NAME = "terraform"
+OTEL_ENDPOINT = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4318").rstrip("/") + "/v1/traces"
+SERVICE_NAME = os.getenv("OTEL_SERVICE_NAME", "terraform")
 
 def generate_id(length=16):
     """Generate a random hex ID for trace or span IDs."""
@@ -241,7 +243,7 @@ def run_traced_apply(args):
     process = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
         text=True
     )
 
@@ -282,7 +284,7 @@ def run_traced_apply(args):
                     attributes={
                         "terraform.resource.address": resource_addr,
                         "terraform.resource.action": resource_info["action"],
-                        "terraform.resource.provider": event.get("hook", {}).get("resource", {}).get("provider", ""),
+                        "terraform.resource.provider": event.get("hook", {}).get("resource", {}).get("implied_provider", ""),
                     }
                 )
                 print(f"  Completed: {resource_info['action']} {resource_addr}")
@@ -405,17 +407,16 @@ processors:
         value: infrastructure
         action: upsert
       - key: deployment.environment
-        from_attribute: TF_WORKSPACE
+        value: "${env:TF_WORKSPACE:-default}"
         action: upsert
 
   # Add useful attributes from resource addresses
   attributes:
     actions:
       # Extract the provider from the resource address
-      - key: cloud.provider
+      - key: terraform.resource.address
         pattern: "^(?P<provider>[^_]+)_"
-        from_attribute: terraform.resource.address
-        action: upsert
+        action: extract
 
 exporters:
   otlphttp:
@@ -455,17 +456,17 @@ jobs:
       OTEL_SERVICE_NAME: terraform-ci
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: 1.7.0
           # Disable the wrapper to get raw JSON output
           terraform_wrapper: false
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.12'
 
@@ -501,19 +502,56 @@ You can use the same tracing approach with `terraform plan` to detect and track 
 TRACE_ID=$(openssl rand -hex 16)
 SPAN_ID=$(openssl rand -hex 8)
 START=$(date +%s%N)
+OTEL_ENDPOINT="${OTEL_EXPORTER_OTLP_ENDPOINT:-http://localhost:4318}"
+OTEL_SERVICE_NAME="${OTEL_SERVICE_NAME:-terraform}"
+
+send_span() {
+  local SPAN_NAME="$1"
+  local SPAN_ID="$2"
+  local PARENT_ID="$3"
+  local START_NANOS="$4"
+  local END_NANOS="$5"
+  local STATUS_CODE="$6"
+  local EXTRA_ATTRS="$7"
+
+  curl -s -X POST "${OTEL_ENDPOINT}/v1/traces" \
+    -H "Content-Type: application/json" \
+    -d "{
+      \"resourceSpans\": [{
+        \"resource\": {
+          \"attributes\": [
+            {\"key\": \"service.name\", \"value\": {\"stringValue\": \"${OTEL_SERVICE_NAME}\"}}
+          ]
+        },
+        \"scopeSpans\": [{
+          \"scope\": {\"name\": \"terraform-drift-tracer\", \"version\": \"1.0.0\"},
+          \"spans\": [{
+            \"traceId\": \"${TRACE_ID}\",
+            \"spanId\": \"${SPAN_ID}\",
+            \"parentSpanId\": \"${PARENT_ID}\",
+            \"name\": \"${SPAN_NAME}\",
+            \"kind\": 1,
+            \"startTimeUnixNano\": \"${START_NANOS}\",
+            \"endTimeUnixNano\": \"${END_NANOS}\",
+            \"status\": {\"code\": ${STATUS_CODE}},
+            \"attributes\": [${EXTRA_ATTRS}]
+          }]
+        }]
+      }]
+    }" > /dev/null 2>&1
+}
 
 # Run plan in JSON mode and capture the output
 terraform plan -json -detailed-exitcode 2>/dev/null | tee plan-output.json
 
-# Count the changes from the plan output
-ADDS=$(jq -r 'select(.type == "planned_change") | select(.change.action == "create")' plan-output.json | wc -l)
-CHANGES=$(jq -r 'select(.type == "planned_change") | select(.change.action == "update")' plan-output.json | wc -l)
-DELETES=$(jq -r 'select(.type == "planned_change") | select(.change.action == "delete")' plan-output.json | wc -l)
+# Count drift events from the plan output
+CHANGES=$(jq -r 'select(.type == "resource_drift") | select(.change.action == "update")' plan-output.json | wc -l)
+DELETES=$(jq -r 'select(.type == "resource_drift") | select(.change.action == "delete")' plan-output.json | wc -l)
 
 END=$(date +%s%N)
 
 # Determine if there is drift
-TOTAL=$((ADDS + CHANGES + DELETES))
+TOTAL=$((CHANGES + DELETES))
 if [ $TOTAL -gt 0 ]; then
   STATUS=2  # Error status indicates drift detected
   DRIFT="true"
@@ -527,24 +565,21 @@ fi
 ATTRS="
   {\"key\": \"terraform.command\", \"value\": {\"stringValue\": \"plan\"}},
   {\"key\": \"terraform.drift.detected\", \"value\": {\"stringValue\": \"${DRIFT}\"}},
-  {\"key\": \"terraform.drift.additions\", \"value\": {\"intValue\": ${ADDS}}},
   {\"key\": \"terraform.drift.changes\", \"value\": {\"intValue\": ${CHANGES}}},
   {\"key\": \"terraform.drift.deletions\", \"value\": {\"intValue\": ${DELETES}}}
 "
 
-# Reuse the send_span function from traced-terraform.sh
-source scripts/traced-terraform.sh
 send_span "terraform-drift-check" "${SPAN_ID}" "" "${START}" "${END}" "${STATUS}" "${ATTRS}"
 
 echo "Drift check complete. Trace ID: ${TRACE_ID}"
-echo "Additions: ${ADDS}, Changes: ${CHANGES}, Deletions: ${DELETES}"
+echo "Changed outside Terraform: ${CHANGES}, Deleted outside Terraform: ${DELETES}"
 ```
 
 Running this on a schedule and tracking the results gives you a drift history for your infrastructure. If drift suddenly increases, something is making manual changes to resources that Terraform manages.
 
 ## Analyzing Provider API Performance
 
-When Terraform runs slowly, the culprit is usually cloud provider API latency or throttling. By examining the trace data, you can identify which provider operations are slow.
+When Terraform runs slowly, the culprit is usually cloud provider API latency, long-running managed service operations, or throttling. By examining the trace data, you can identify which provider-managed resource operations are slow.
 
 Common patterns you might discover:
 
