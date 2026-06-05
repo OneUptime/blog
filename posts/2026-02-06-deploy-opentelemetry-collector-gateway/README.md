@@ -94,21 +94,26 @@ data:
             value: gateway
             action: insert
 
+    extensions:
+      health_check:
+        endpoint: 0.0.0.0:13133
+
     exporters:
       # Export to observability backend
       otlphttp:
         endpoint: https://observability-backend.example.com:4318
         compression: gzip
         headers:
-          X-API-Key: ${BACKEND_API_KEY}
+          X-API-Key: ${env:BACKEND_API_KEY}
 
-      # Logging for debugging
-      logging:
+      # Debug exporter for troubleshooting
+      debug:
         verbosity: normal
         sampling_initial: 5
         sampling_thereafter: 200
 
     service:
+      extensions: [health_check]
       pipelines:
         traces:
           receivers: [otlp]
@@ -129,7 +134,14 @@ data:
         logs:
           level: info
         metrics:
-          address: 0.0.0.0:8888
+          readers:
+            - pull:
+                exporter:
+                  prometheus:
+                    host: 0.0.0.0
+                    port: 8888
+                    without_type_suffix: true
+                    without_units: true
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -149,7 +161,7 @@ spec:
       serviceAccountName: otel-collector-gateway
       containers:
       - name: otel-collector
-        image: otel/opentelemetry-collector-contrib:0.95.0
+        image: otel/opentelemetry-collector-contrib:0.153.0
         args:
           - --config=/conf/config.yaml
         ports:
@@ -161,6 +173,9 @@ spec:
           protocol: TCP
         - name: metrics
           containerPort: 8888
+          protocol: TCP
+        - name: health
+          containerPort: 13133
           protocol: TCP
         volumeMounts:
         - name: config
@@ -294,17 +309,6 @@ processors:
         probabilistic:
           sampling_percentage: 10
 
-  # Generate span metrics from traces
-  spanmetrics:
-    metrics_exporter: prometheusremotewrite
-    latency_histogram_buckets: [2ms, 4ms, 8ms, 16ms, 32ms, 64ms, 128ms, 256ms, 512ms, 1024ms, 2048ms, 4096ms, 8192ms]
-    dimensions:
-      - name: http.method
-        default: GET
-      - name: http.status_code
-      - name: service.name
-    dimensions_cache_size: 10000
-
   # Transform and filter metrics
   metricstransform:
     transforms:
@@ -341,7 +345,7 @@ processors:
   resource:
     attributes:
       - key: collector.version
-        value: 0.95.0
+        value: 0.153.0
         action: insert
 
   # Batch processor - should be last
@@ -349,6 +353,18 @@ processors:
     timeout: 10s
     send_batch_size: 2048
     send_batch_max_size: 4096
+
+connectors:
+  # Generate span metrics from traces
+  span_metrics:
+    histogram:
+      explicit:
+        buckets: [2ms, 4ms, 8ms, 16ms, 32ms, 64ms, 128ms, 256ms, 512ms, 1024ms, 2048ms, 4096ms, 8192ms]
+    dimensions:
+      - name: http.method
+        default: GET
+      - name: http.status_code
+    aggregation_cardinality_limit: 10000
 
 exporters:
   # Jaeger for traces
@@ -371,21 +387,14 @@ exporters:
     endpoint: http://prometheus.monitoring.svc.cluster.local:9090/api/v1/write
     resource_to_telemetry_conversion:
       enabled: true
-    sending_queue:
+    remote_write_queue:
       enabled: true
       num_consumers: 10
       queue_size: 5000
 
-  # Loki for logs
-  loki:
-    endpoint: http://loki.monitoring.svc.cluster.local:3100/loki/api/v1/push
-    format: json
-    labels:
-      resource:
-        service.name: "service_name"
-        service.namespace: "namespace"
-      attributes:
-        level: "level"
+  # Loki for logs via native OTLP ingestion
+  otlphttp/loki:
+    endpoint: http://loki.monitoring.svc.cluster.local:3100/otlp/v1/logs
 
 service:
   pipelines:
@@ -397,9 +406,8 @@ service:
         - resource
         - attributes
         - tail_sampling
-        - spanmetrics
         - batch
-      exporters: [otlp/jaeger]
+      exporters: [otlp/jaeger, span_metrics]
 
     # Metrics pipeline with transformation
     metrics:
@@ -414,7 +422,7 @@ service:
 
     # Span metrics pipeline
     metrics/spanmetrics:
-      receivers: [spanmetrics]
+      receivers: [span_metrics]
       processors: [batch]
       exporters: [prometheusremotewrite]
 
@@ -426,13 +434,20 @@ service:
         - resource
         - attributes
         - batch
-      exporters: [loki]
+      exporters: [otlphttp/loki]
 
   telemetry:
     logs:
       level: info
     metrics:
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+                without_type_suffix: true
+                without_units: true
 ```
 
 This configuration demonstrates tail sampling, a stateful operation that requires buffering trace spans to make sampling decisions. This is resource-intensive and should only run in gateway collectors, not in sidecars or DaemonSets.
@@ -477,29 +492,31 @@ processors:
 exporters:
   # Production backend
   otlp/production:
-    endpoint: https://prod-observability.company.com:4317
+    endpoint: prod-observability.company.com:4317
     tls:
       insecure: false
       cert_file: /etc/certs/prod.pem
+      key_file: /etc/certs/prod-key.pem
     compression: gzip
 
   # Staging backend
   otlp/staging:
-    endpoint: https://staging-observability.company.com:4317
+    endpoint: staging-observability.company.com:4317
     tls:
       insecure: false
       cert_file: /etc/certs/staging.pem
+      key_file: /etc/certs/staging-key.pem
 
   # Tenant-specific backend
   otlp/tenant-a:
-    endpoint: https://tenant-a.observability.company.com:4317
+    endpoint: tenant-a.observability.company.com:4317
     headers:
       X-Tenant-ID: tenant-a
-      X-API-Key: ${TENANT_A_API_KEY}
+      X-API-Key: ${env:TENANT_A_API_KEY}
 
   # Default backend
   otlp/default:
-    endpoint: https://default-observability.company.com:4317
+    endpoint: default-observability.company.com:4317
 
 service:
   pipelines:
@@ -542,7 +559,7 @@ metadata:
   namespace: opentelemetry
   annotations:
     # Enable session affinity for stateful operations
-    service.kubernetes.io/topology-aware-hints: auto
+    service.kubernetes.io/topology-mode: Auto
 spec:
   type: ClusterIP
   # Use session affinity for tail sampling
@@ -635,7 +652,7 @@ spec:
               topologyKey: kubernetes.io/hostname
       containers:
       - name: otel-collector
-        image: otel/opentelemetry-collector-contrib:0.95.0
+        image: otel/opentelemetry-collector-contrib:0.153.0
         # ... rest of container spec
 ```
 
@@ -711,7 +728,7 @@ Key metrics to monitor:
 - `otelcol_processor_batch_batch_send_size`: Batch sizes
 - `otelcol_exporter_sent_spans`: Spans successfully exported
 - `otelcol_exporter_send_failed_spans`: Export failures
-- `otelcol_processor_tail_sampling_sampling_decision_latency`: Sampling decision time
+- `otelcol_processor_tail_sampling_sampling_decision_timer_latency`: Sampling decision timer latency
 
 ## Gateway vs Agent Pattern
 
