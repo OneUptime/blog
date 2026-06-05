@@ -6,11 +6,11 @@ Tags: OpenTelemetry, Environment Variable, Configuration, .env Files, Best Pract
 
 Description: Use .env files and standard OTEL_* environment variables to manage OpenTelemetry configuration across development, staging, and production.
 
-OpenTelemetry SDKs are designed to be configured through environment variables. The specification defines a set of standard `OTEL_*` variables that every SDK implementation respects. By managing these variables through `.env` files, you get environment-specific telemetry configuration without changing any application code. This post covers the key variables and how to organize them.
+OpenTelemetry SDKs are designed to be configured through environment variables. The specification defines a set of standard `OTEL_*` variables that SDKs and environment-based autoconfiguration components can use consistently. By managing these variables through `.env` files, you get environment-specific telemetry configuration without changing any application code. This post covers the key variables and how to organize them.
 
 ## Why Environment Variables
 
-The OpenTelemetry specification standardizes environment variable names across all languages. This means the same `OTEL_SERVICE_NAME=order-service` works whether your app is written in Node.js, Python, Go, Java, or .NET. Your deployment tooling sets the variables, and the SDK reads them automatically.
+The OpenTelemetry specification standardizes environment variable names across languages. This means the same `OTEL_SERVICE_NAME=order-service` works with SDKs or auto-instrumentation that support the standard environment configuration, whether your app is written in Node.js, Python, Go, Java, or .NET. Your deployment tooling sets the variables, and the SDK or autoconfiguration layer reads them during startup.
 
 This is better than hardcoding configuration in your application because:
 - The same code runs in every environment
@@ -110,13 +110,14 @@ OTEL_BSP_MAX_EXPORT_BATCH_SIZE=1024
 
 ## Loading .env Files
 
-**Node.js with dotenv:**
+**Node.js with dotenv and dotenv-expand:**
 
 ```javascript
 // Load the environment-specific .env file
 const dotenv = require('dotenv');
+const dotenvExpand = require('dotenv-expand');
 const env = process.env.NODE_ENV || 'development';
-dotenv.config({ path: `.env.${env}` });
+dotenvExpand.expand(dotenv.config({ path: `.env.${env}` }));
 
 // Now require the tracing setup - it reads OTEL_* vars automatically
 require('./tracing');
@@ -136,13 +137,17 @@ from dotenv import load_dotenv
 env = os.environ.get("APP_ENV", "development")
 load_dotenv(f".env.{env}")
 
-# After loading, the OTel SDK picks up the variables
+# After loading, the OTel SDK and exporter can read the variables
+from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 
 # The exporter reads OTEL_EXPORTER_OTLP_ENDPOINT automatically
 provider = TracerProvider()
 exporter = OTLPSpanExporter()  # No arguments needed
+provider.add_span_processor(BatchSpanProcessor(exporter))
+trace.set_tracer_provider(provider)
 ```
 
 **Docker Compose:**
@@ -170,11 +175,20 @@ data:
 ---
 apiVersion: apps/v1
 kind: Deployment
+metadata:
+  name: order-service
 spec:
+  selector:
+    matchLabels:
+      app: order-service
   template:
+    metadata:
+      labels:
+        app: order-service
     spec:
       containers:
         - name: app
+          image: your-registry/order-service:latest
           envFrom:
             - configMapRef:
                 name: otel-config
