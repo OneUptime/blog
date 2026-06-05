@@ -62,6 +62,7 @@ on:
 env:
   # Point to your OTel Collector endpoint
   OTEL_EXPORTER_OTLP_ENDPOINT: "https://collector.example.com:4317"
+  OTEL_EXPORTER_OTLP_PROTOCOL: "grpc"
   OTEL_SERVICE_NAME: "ci-pipeline"
 
 jobs:
@@ -73,11 +74,9 @@ jobs:
 
       - name: Install otel-cli
         run: |
-          # Download and install the otel-cli binary
-          curl -L -o otel-cli.tar.gz \
-            https://github.com/equinix-labs/otel-cli/releases/latest/download/otel-cli-linux-amd64.tar.gz
-          tar xzf otel-cli.tar.gz
-          sudo mv otel-cli /usr/local/bin/
+          # Install the otel-cli binary
+          go install github.com/equinix-labs/otel-cli@latest
+          echo "$HOME/go/bin" >> "$GITHUB_PATH"
 
       - name: Install dependencies
         run: |
@@ -121,28 +120,44 @@ The individual step spans from `otel-cli` are useful, but to get a single trace 
 ```bash
 #!/bin/bash
 # scripts/ci-trace-wrapper.sh
-# Creates a parent span for the entire CI pipeline run and links child spans
+# Creates a parent span for the entire CI pipeline run and runs child spans inside it
 
 set -euo pipefail
 
-# Generate a trace ID that will be shared across all steps
-export TRACEPARENT=$(otel-cli span background \
+# Run the pipeline commands inside one parent span. otel-cli passes TRACEPARENT
+# to the child shell, so nested otel-cli exec calls become child spans.
+otel-cli exec \
   --name "pipeline: ${GITHUB_WORKFLOW}" \
   --attrs "ci.pipeline=${GITHUB_WORKFLOW},ci.run_id=${GITHUB_RUN_ID},ci.ref=${GITHUB_REF},ci.sha=${GITHUB_SHA},ci.actor=${GITHUB_ACTOR}" \
-  --timeout 3600)
+  -- bash -euo pipefail <<'PIPELINE'
+otel-cli exec \
+  --name "install-dependencies" \
+  --attrs "ci.step=install,ci.job=build" \
+  -- npm ci
 
-echo "TRACEPARENT=${TRACEPARENT}" >> "$GITHUB_ENV"
+otel-cli exec \
+  --name "lint" \
+  --attrs "ci.step=lint,ci.job=build" \
+  -- npm run lint
 
-echo "Pipeline trace started with traceparent: ${TRACEPARENT}"
+otel-cli exec \
+  --name "unit-tests" \
+  --attrs "ci.step=test,ci.test.type=unit,ci.job=build" \
+  -- npm test
+
+otel-cli exec \
+  --name "build" \
+  --attrs "ci.step=build,ci.job=build" \
+  -- npm run build
+PIPELINE
 ```
 
-Run this script at the beginning of your workflow, and all subsequent `otel-cli exec` calls will automatically pick up the `TRACEPARENT` environment variable, making their spans children of the pipeline span.
+Run this script instead of the individual build steps when you want one parent span for the whole job. Nested `otel-cli exec` calls automatically pick up the `TRACEPARENT` environment variable from the parent process, making their spans children of the pipeline span.
 
 ```yaml
-      # Add this as the first step after checkout and otel-cli install
-      - name: Start pipeline trace
+      # Add this after checkout and otel-cli install
+      - name: Run instrumented pipeline
         run: |
-          # Initialize the parent span for the entire pipeline
           chmod +x scripts/ci-trace-wrapper.sh
           ./scripts/ci-trace-wrapper.sh
 ```
@@ -156,7 +171,6 @@ If you need richer instrumentation, such as recording custom metrics alongside t
 # Python-based CI telemetry that emits both traces and metrics
 
 import subprocess
-import sys
 import os
 import time
 
@@ -184,20 +198,20 @@ def setup_telemetry():
     meter_provider = MeterProvider(metric_readers=[reader])
     metrics.set_meter_provider(meter_provider)
 
-    return trace.get_tracer("ci.pipeline"), metrics.get_meter("ci.pipeline")
-
-
-def run_step(tracer, meter, step_name, command, parent_context=None):
-    """Execute a CI step and record its duration as both a span and a metric."""
-    # Create a histogram to track step durations
+    meter = metrics.get_meter("ci.pipeline")
     duration_histogram = meter.create_histogram(
         name="ci.step.duration",
         description="Duration of CI pipeline steps in seconds",
         unit="s",
     )
 
+    return trace.get_tracer("ci.pipeline"), duration_histogram
+
+
+def run_step(tracer, duration_histogram, step_name, command):
+    """Execute a CI step and record its duration as both a span and a metric."""
     # Start a span for this step
-    with tracer.start_as_current_span(step_name, context=parent_context) as span:
+    with tracer.start_as_current_span(step_name) as span:
         span.set_attribute("ci.step.command", command)
         span.set_attribute("ci.pipeline", os.environ.get("GITHUB_WORKFLOW", "local"))
         span.set_attribute("ci.run_id", os.environ.get("GITHUB_RUN_ID", "0"))
@@ -205,7 +219,7 @@ def run_step(tracer, meter, step_name, command, parent_context=None):
         start_time = time.time()
         try:
             # Run the actual command
-            result = subprocess.run(
+            subprocess.run(
                 command, shell=True, check=True,
                 capture_output=True, text=True
             )
@@ -224,7 +238,7 @@ def run_step(tracer, meter, step_name, command, parent_context=None):
 
 
 if __name__ == "__main__":
-    tracer, meter = setup_telemetry()
+    tracer, duration_histogram = setup_telemetry()
 
     # Define pipeline steps
     steps = [
@@ -240,7 +254,7 @@ if __name__ == "__main__":
         pipeline_span.set_attribute("ci.sha", os.environ.get("GITHUB_SHA", "unknown"))
 
         for step_name, command in steps:
-            run_step(tracer, meter, step_name, command)
+            run_step(tracer, duration_histogram, step_name, command)
 
     # Flush all telemetry before the process exits
     trace.get_tracer_provider().force_flush()
