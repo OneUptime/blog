@@ -10,7 +10,7 @@ The OpenTelemetry Collector scrapes Prometheus endpoints, converts the metrics, 
 
 ## Understanding the Memory Impact
 
-Each unique combination of metric name and label values creates a time series. The Collector tracks state for each series to handle cumulative-to-delta conversions and staleness detection.
+Each unique combination of metric name and label values creates a time series. The Collector's Prometheus receiver and any downstream processors or exporters may need to keep per-series state while scraping, converting, processing, or exporting those metrics.
 
 For example, if an application exports:
 
@@ -38,14 +38,20 @@ curl -s http://your-app:8080/metrics | \
 
 This shows the top 20 metric names by series count. Look for metrics with thousands of series.
 
-You can also use the `prometheusreceiver` internal metrics:
+You can also use Prometheus scrape metadata metrics, or the backend Prometheus TSDB metrics if you export to Prometheus:
 
 ```text
-# Total number of active time series
-prometheus_tsdb_head_series
+# Samples exposed by a target before metric relabeling
+scrape_samples_scraped
 
-# Series created per scrape
-prometheus_target_scrapes_sample_duplicate_total
+# Samples remaining after metric relabeling
+scrape_samples_post_metric_relabeling
+
+# Approximate number of new series in a scrape
+scrape_series_added
+
+# Total number of active time series in Prometheus
+prometheus_tsdb_head_series
 ```
 
 ## Step 2: Drop High-Cardinality Labels at Scrape Time
@@ -62,9 +68,10 @@ receivers:
         static_configs:
         - targets: ['my-app:8080']
         metric_relabel_configs:
-        # Drop the high-cardinality 'path' label entirely
-        - action: labeldrop
-          regex: 'path'
+        # Drop the high-cardinality 'path' label entirely, or use the
+        # replacement rule below to normalize it instead.
+        # - action: labeldrop
+        #   regex: 'path'
 
         # Or replace it with a normalized version
         - source_labels: [path]
@@ -85,13 +92,12 @@ If you cannot change the scrape config (e.g., using service discovery), add a fi
 ```yaml
 processors:
   filter/high-cardinality:
-    metrics:
-      metric:
+    error_mode: ignore
+    metric_conditions:
       # Drop metrics by name
-      - 'IsMatch(name, "internal_.*")'
-      datapoint:
+      - 'IsMatch(metric.name, "internal_.*")'
       # Drop data points with specific label values
-      - 'IsMatch(attributes["path"], "/users/[0-9]+")'
+      - 'IsMatch(datapoint.attributes["path"], "^/users/[0-9]+$")'
 ```
 
 ```yaml
@@ -145,7 +151,7 @@ Set up alerts to detect cardinality creep:
 # Alert if series count grows too fast
 - alert: HighCardinalityGrowth
   expr: |
-    rate(prometheus_tsdb_head_series[1h]) > 1000
+    delta(prometheus_tsdb_head_series[1h]) > 1000
   for: 30m
   annotations:
     summary: "Time series count growing by >1000/hour"
