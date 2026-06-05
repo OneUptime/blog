@@ -65,7 +65,8 @@ processors:
     policies:
       - name: errors-only
         type: status_code
-        status_codes: [ERROR]
+        status_code:
+          status_codes: [ERROR]
 
 exporters:
   otlp:
@@ -91,7 +92,7 @@ The Collector has a `validate` command that checks configuration syntax:
 otelcol-contrib validate --config=config.yaml
 ```
 
-Unfortunately, this validates syntax but does not warn about unused components. It will catch typos in the `service.pipelines` section but not missing references.
+Unfortunately, this validates syntax and component settings but does not warn about unused components. It will catch typos in the `service.pipelines` section and invalid component configuration, but not missing references.
 
 ### Check 2: Compare Definitions to Pipeline References
 
