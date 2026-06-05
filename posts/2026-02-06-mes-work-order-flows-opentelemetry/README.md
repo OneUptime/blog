@@ -76,10 +76,13 @@ scrap_count = meter.create_counter(
 When the ERP system pushes a new work order to the MES:
 
 ```python
-from opentelemetry.trace.propagation import TraceContextTextMapPropagator
+from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 import datetime
 
 propagator = TraceContextTextMapPropagator()
+
+def utc_now():
+    return datetime.datetime.now(datetime.timezone.utc)
 
 def create_work_order(wo_number, product_id, quantity, due_date, bom_id):
     """
@@ -106,7 +109,7 @@ def create_work_order(wo_number, product_id, quantity, due_date, bom_id):
             "due_date": due_date,
             "bom_id": bom_id,
             "trace_context": carrier,
-            "created_at": datetime.datetime.utcnow().isoformat(),
+            "created_at": utc_now().isoformat(),
             "status": "created"
         }
         save_work_order(work_order)
@@ -134,14 +137,15 @@ def start_operation(wo_number, operation_id, workstation_id, operator_id):
     span.set_attribute("mes.operation_id", operation_id)
     span.set_attribute("mes.workstation_id", workstation_id)
     span.set_attribute("mes.operator_id", operator_id)
-    span.set_attribute("mes.operation_start", datetime.datetime.utcnow().isoformat())
+    span.set_attribute("mes.operation_start", utc_now().isoformat())
 
     # Store the span reference so we can end it when the operation completes
     operation_context = {
         "span": span,
-        "start_time": datetime.datetime.utcnow(),
+        "start_time": utc_now(),
         "wo_number": wo_number,
-        "operation_id": operation_id
+        "operation_id": operation_id,
+        "workstation_id": workstation_id
     }
     save_operation_context(wo_number, operation_id, operation_context)
     return operation_context
@@ -154,7 +158,7 @@ def complete_operation(wo_number, operation_id, good_count, scrap, notes=""):
     ctx = get_operation_context(wo_number, operation_id)
     span = ctx["span"]
 
-    duration_minutes = (datetime.datetime.utcnow() - ctx["start_time"]).total_seconds() / 60.0
+    duration_minutes = (utc_now() - ctx["start_time"]).total_seconds() / 60.0
 
     span.set_attribute("mes.good_count", good_count)
     span.set_attribute("mes.scrap_count", scrap)
@@ -191,16 +195,16 @@ def place_quality_hold(wo_number, reason, inspector_id):
     span.set_attribute("mes.wo_number", wo_number)
     span.set_attribute("mes.hold_reason", reason)
     span.set_attribute("mes.inspector_id", inspector_id)
-    span.set_attribute("mes.hold_start", datetime.datetime.utcnow().isoformat())
+    span.set_attribute("mes.hold_start", utc_now().isoformat())
 
-    save_hold_context(wo_number, {"span": span, "start": datetime.datetime.utcnow()})
+    save_hold_context(wo_number, {"span": span, "start": utc_now()})
 
 def release_quality_hold(wo_number, disposition, inspector_id):
     """Release a quality hold with a disposition decision."""
     hold_ctx = get_hold_context(wo_number)
     span = hold_ctx["span"]
 
-    hold_duration = (datetime.datetime.utcnow() - hold_ctx["start"]).total_seconds() / 60.0
+    hold_duration = (utc_now() - hold_ctx["start"]).total_seconds() / 60.0
     span.set_attribute("mes.disposition", disposition)  # "accept", "rework", "scrap"
     span.set_attribute("mes.hold_duration_minutes", hold_duration)
     span.set_attribute("mes.releasing_inspector", inspector_id)
