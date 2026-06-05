@@ -24,7 +24,7 @@ graph TD
     B --> C[Parse Fields]
     C --> D[Type Coercion]
     D --> E[Field Validators]
-    E --> F[Root Validators]
+    E --> F[Model Validators]
     F --> G[Model Instance]
     C --> H[Validation Error]
     D --> H
@@ -37,8 +37,9 @@ graph TD
 The simplest approach to instrumenting Pydantic models is wrapping the validation call with a span. This gives you timing and success/failure information for each validation operation.
 
 ```python
-from pydantic import BaseModel, validator, ValidationError
+from pydantic import BaseModel, field_validator, ValidationError
 from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import ConsoleSpanExporter, BatchSpanProcessor
 from typing import Optional
@@ -59,13 +60,15 @@ class User(BaseModel):
     age: Optional[int] = None
     created_at: datetime
 
-    @validator('email')
+    @field_validator('email')
+    @classmethod
     def validate_email(cls, v):
         if '@' not in v:
             raise ValueError('Invalid email address')
         return v
 
-    @validator('age')
+    @field_validator('age')
+    @classmethod
     def validate_age(cls, v):
         if v is not None and (v < 0 or v > 150):
             raise ValueError('Age must be between 0 and 150')
@@ -82,7 +85,7 @@ def validate_user_data(data: dict) -> Optional[User]:
 
         try:
             # Perform validation
-            user = User(**data)
+            user = User.model_validate(data)
 
             # Record successful validation
             span.set_attribute("validation.success", True)
@@ -104,7 +107,7 @@ def validate_user_data(data: dict) -> Optional[User]:
 
             # Record exception for error tracking
             span.record_exception(e)
-            span.set_status(trace.Status(trace.StatusCode.ERROR, str(e)))
+            span.set_status(Status(StatusCode.ERROR, str(e)))
 
             return None
 
@@ -143,14 +146,14 @@ def traced_validator(validator_name: str):
     """
     def decorator(func):
         @wraps(func)
-        def wrapper(cls, v, values=None, **kwargs):
+        def wrapper(cls, v, *args, **kwargs):
             with tracer.start_as_current_span(f"validator.{validator_name}") as span:
                 span.set_attribute("validator.name", validator_name)
                 span.set_attribute("validator.value_type", type(v).__name__)
 
                 try:
                     # Execute the validator
-                    result = func(cls, v, values, **kwargs) if values is not None else func(cls, v, **kwargs)
+                    result = func(cls, v, *args, **kwargs)
 
                     span.set_attribute("validator.success", True)
                     return result
@@ -173,7 +176,8 @@ class Product(BaseModel):
     stock: int
     category: str
 
-    @validator('price')
+    @field_validator('price')
+    @classmethod
     @traced_validator('price_validation')
     def validate_price(cls, v):
         """Ensures price is positive and reasonable."""
@@ -183,7 +187,8 @@ class Product(BaseModel):
             raise ValueError('Price exceeds maximum allowed value')
         return round(v, 2)
 
-    @validator('stock')
+    @field_validator('stock')
+    @classmethod
     @traced_validator('stock_validation')
     def validate_stock(cls, v):
         """Ensures stock is non-negative."""
@@ -191,7 +196,8 @@ class Product(BaseModel):
             raise ValueError('Stock cannot be negative')
         return v
 
-    @validator('category')
+    @field_validator('category')
+    @classmethod
     @traced_validator('category_validation')
     def validate_category(cls, v):
         """Ensures category is from allowed list."""
@@ -206,7 +212,7 @@ def validate_product(data: dict) -> Optional[Product]:
         span.set_attribute("model.type", "Product")
 
         try:
-            product = Product(**data)
+            product = Product.model_validate(data)
             span.set_attribute("validation.success", True)
             return product
 
@@ -226,15 +232,16 @@ product_data = {
 product = validate_product(product_data)
 ```
 
-## Instrumenting Root Validators
+## Instrumenting Model Validators
 
-Root validators have access to all fields and often perform complex cross-field validation. Instrumenting them provides visibility into these complex validation scenarios.
+Model validators have access to the whole model and often perform complex cross-field validation. Instrumenting them provides visibility into these complex validation scenarios.
 
 ```python
-from pydantic import root_validator
+from typing_extensions import Self
+from pydantic import model_validator
 
 class Order(BaseModel):
-    """Order model with instrumented root validator."""
+    """Order model with instrumented model validator."""
     order_id: int
     items: list[dict]
     subtotal: float
@@ -243,26 +250,26 @@ class Order(BaseModel):
     total: float
     discount_code: Optional[str] = None
 
-    @root_validator
-    def validate_totals(cls, values):
+    @model_validator(mode='after')
+    def validate_totals(self) -> Self:
         """
         Validates that totals add up correctly.
         This is a complex validator that benefits from instrumentation.
         """
-        with tracer.start_as_current_span("root_validator.validate_totals") as span:
-            span.set_attribute("validator.type", "root")
+        with tracer.start_as_current_span("model_validator.validate_totals") as span:
+            span.set_attribute("validator.type", "model")
 
             try:
-                subtotal = values.get('subtotal', 0)
-                tax = values.get('tax', 0)
-                shipping = values.get('shipping', 0)
-                total = values.get('total', 0)
+                subtotal = self.subtotal
+                tax = self.tax
+                shipping = self.shipping
+                total = self.total
 
                 # Calculate expected total
                 expected_total = subtotal + tax + shipping
 
                 # Apply discount if present
-                discount_code = values.get('discount_code')
+                discount_code = self.discount_code
                 if discount_code:
                     span.set_attribute("discount.applied", True)
                     span.set_attribute("discount.code", discount_code)
@@ -277,20 +284,20 @@ class Order(BaseModel):
                     raise ValueError(f'Total mismatch: expected {expected_total:.2f}, got {total:.2f}')
 
                 span.set_attribute("validation.success", True)
-                return values
+                return self
 
             except Exception as e:
                 span.record_exception(e)
                 raise
 
 def validate_order(data: dict) -> Optional[Order]:
-    """Validates order with root validator instrumentation."""
+    """Validates order with model validator instrumentation."""
     with tracer.start_as_current_span("validate_order") as span:
         span.set_attribute("model.type", "Order")
         span.set_attribute("order.item_count", len(data.get('items', [])))
 
         try:
-            order = Order(**data)
+            order = Order.model_validate(data)
             span.set_attribute("validation.success", True)
             return order
 
@@ -337,7 +344,7 @@ def validate_batch(data_list: List[dict], model_class: type) -> Tuple[List, List
                 item_span.set_attribute("batch.index", i)
 
                 try:
-                    instance = model_class(**data)
+                    instance = model_class.model_validate(data)
                     successful.append(instance)
                     item_span.set_attribute("validation.success", True)
 
@@ -382,7 +389,8 @@ class Address(BaseModel):
     state: str
     zip_code: str
 
-    @validator('zip_code')
+    @field_validator('zip_code')
+    @classmethod
     def validate_zip(cls, v):
         """Validates US zip code format."""
         with tracer.start_as_current_span("validator.zip_code") as span:
@@ -403,15 +411,16 @@ class Customer(BaseModel):
     billing_address: Address
     shipping_address: Optional[Address] = None
 
-    @validator('billing_address', 'shipping_address', pre=False)
-    def validate_address(cls, v, field):
+    @field_validator('billing_address', 'shipping_address')
+    @classmethod
+    def validate_address(cls, v, info):
         """Instruments address validation within customer validation."""
         if v is None:
             return v
 
-        with tracer.start_as_current_span(f"validate_nested.{field.name}") as span:
+        with tracer.start_as_current_span(f"validate_nested.{info.field_name}") as span:
             span.set_attribute("nested.model", "Address")
-            span.set_attribute("nested.field", field.name)
+            span.set_attribute("nested.field", info.field_name)
 
             # Address is already validated by Pydantic at this point
             # This span just tracks that the nested validation occurred
@@ -429,7 +438,7 @@ def validate_customer(data: dict) -> Optional[Customer]:
         span.set_attribute("nested.has_shipping", "shipping_address" in data)
 
         try:
-            customer = Customer(**data)
+            customer = Customer.model_validate(data)
             span.set_attribute("validation.success", True)
             return customer
 
@@ -582,7 +591,7 @@ def validate_with_metrics(data: dict, model_class: Type[BaseModel]):
 
     with tracer.start_as_current_span(f"validate_with_metrics.{model_name}") as span:
         try:
-            instance = model_class(**data)
+            instance = model_class.model_validate(data)
             metrics.record_validation(model_name, True)
             span.set_attribute("validation.success", True)
             return instance
