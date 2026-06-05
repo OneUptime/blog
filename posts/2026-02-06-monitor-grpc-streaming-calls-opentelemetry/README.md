@@ -48,6 +48,8 @@ First, install the necessary packages.
 
 npm install @opentelemetry/sdk-node \
   @opentelemetry/exporter-trace-otlp-http \
+  @opentelemetry/exporter-metrics-otlp-http \
+  @opentelemetry/sdk-metrics \
   @opentelemetry/instrumentation-grpc \
   @grpc/grpc-js
 ```
@@ -58,16 +60,23 @@ Now set up the SDK with the gRPC instrumentation plugin.
 // tracing.js - Must be loaded before any gRPC imports
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
+const { OTLPMetricExporter } = require('@opentelemetry/exporter-metrics-otlp-http');
+const { PeriodicExportingMetricReader } = require('@opentelemetry/sdk-metrics');
 const { GrpcInstrumentation } = require('@opentelemetry/instrumentation-grpc');
-const { Resource } = require('@opentelemetry/resources');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 const { ATTR_SERVICE_NAME } = require('@opentelemetry/semantic-conventions');
 
 const sdk = new NodeSDK({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     [ATTR_SERVICE_NAME]: 'grpc-streaming-service',
   }),
   traceExporter: new OTLPTraceExporter({
     url: 'http://localhost:4318/v1/traces',
+  }),
+  metricReader: new PeriodicExportingMetricReader({
+    exporter: new OTLPMetricExporter({
+      url: 'http://localhost:4318/v1/metrics',
+    }),
   }),
   instrumentations: [
     // This automatically instruments all gRPC calls, including streams
@@ -87,12 +96,12 @@ Let's say you have a server streaming RPC that sends stock price updates. The au
 Here's how to add per-message tracing to a server streaming handler.
 
 ```javascript
-const { trace, SpanKind, context } = require('@opentelemetry/api');
+const { trace, SpanKind, SpanStatusCode, context } = require('@opentelemetry/api');
 
 const tracer = trace.getTracer('grpc-streaming-service');
 
 // Server streaming RPC handler - sends multiple price updates to client
-async function* streamPrices(call) {
+async function streamPrices(call) {
   const symbol = call.request.symbol;
 
   // The auto-instrumentation already creates a parent span for the RPC
@@ -121,16 +130,20 @@ async function* streamPrices(call) {
     );
 
     try {
-      call.write({ symbol, price: price.value, timestamp: price.timestamp });
-      messageSpan.setStatus({ code: 0 }); // OK
+      context.with(trace.setSpan(parentContext, messageSpan), () => {
+        call.write({ symbol, price: price.value, timestamp: price.timestamp });
+      });
+      messageSpan.setStatus({ code: SpanStatusCode.OK });
     } catch (err) {
       messageSpan.recordException(err);
-      messageSpan.setStatus({ code: 2, message: err.message }); // ERROR
+      messageSpan.setStatus({ code: SpanStatusCode.ERROR, message: err.message });
       throw err;
     } finally {
       messageSpan.end();
     }
   }
+
+  call.end();
 }
 ```
 
@@ -139,6 +152,8 @@ async function* streamPrices(call) {
 Client streaming is the reverse: the client sends a stream of messages and the server responds once after processing them all. A typical use case is uploading chunks of a file or sending batched telemetry data.
 
 ```javascript
+const { trace, SpanKind, SpanStatusCode, context } = require('@opentelemetry/api');
+
 // Client streaming RPC handler - receives multiple messages from client
 function uploadData(call, callback) {
   const tracer = trace.getTracer('grpc-streaming-service');
@@ -163,9 +178,18 @@ function uploadData(call, callback) {
       parentContext
     );
 
-    totalBytes += chunk.data.length;
-    processChunk(chunk); // Your processing logic
-    receiveSpan.end();
+    try {
+      context.with(trace.setSpan(parentContext, receiveSpan), () => {
+        totalBytes += chunk.data.length;
+        processChunk(chunk); // Your processing logic
+      });
+    } catch (err) {
+      receiveSpan.recordException(err);
+      receiveSpan.setStatus({ code: SpanStatusCode.ERROR, message: err.message });
+      throw err;
+    } finally {
+      receiveSpan.end();
+    }
   });
 
   call.on('end', () => {
@@ -195,6 +219,8 @@ function uploadData(call, callback) {
 Bidirectional streaming is the most complex pattern. Both sides send messages independently, and the order isn't necessarily correlated. Think of a chat service or a real-time collaboration tool.
 
 ```javascript
+const { trace, SpanKind, SpanStatusCode, context } = require('@opentelemetry/api');
+
 // Bidirectional streaming RPC - both client and server send messages
 function chat(call) {
   const tracer = trace.getTracer('grpc-streaming-service');
@@ -223,8 +249,20 @@ function chat(call) {
       parentContext
     );
 
-    // Process the message and potentially send a response
-    const response = processMessage(message);
+    let response;
+
+    try {
+      // Process the message and potentially send a response
+      response = context.with(trace.setSpan(parentContext, inSpan), () =>
+        processMessage(message)
+      );
+    } catch (err) {
+      inSpan.recordException(err);
+      inSpan.setStatus({ code: SpanStatusCode.ERROR, message: err.message });
+      throw err;
+    } finally {
+      inSpan.end();
+    }
 
     if (response) {
       sentCount++;
@@ -243,11 +281,19 @@ function chat(call) {
         parentContext
       );
 
-      call.write(response);
-      outSpan.end();
+      try {
+        context.with(trace.setSpan(parentContext, outSpan), () => {
+          call.write(response);
+        });
+        outSpan.setStatus({ code: SpanStatusCode.OK });
+      } catch (err) {
+        outSpan.recordException(err);
+        outSpan.setStatus({ code: SpanStatusCode.ERROR, message: err.message });
+        throw err;
+      } finally {
+        outSpan.end();
+      }
     }
-
-    inSpan.end();
   });
 
   call.on('end', () => {
@@ -304,14 +350,21 @@ Many gRPC services are written in Go. Here's how to add streaming instrumentatio
 package main
 
 import (
-    "context"
+    "go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/attribute"
     "go.opentelemetry.io/otel/trace"
+    "google.golang.org/grpc"
     pb "your-project/proto"
 )
 
 var tracer = otel.Tracer("grpc-streaming-service")
+
+func newGRPCServer() *grpc.Server {
+    return grpc.NewServer(
+        grpc.StatsHandler(otelgrpc.NewServerHandler()),
+    )
+}
 
 // Server streaming implementation with per-message tracing
 func (s *server) StreamUpdates(req *pb.StreamRequest, stream pb.Service_StreamUpdatesServer) error {
@@ -378,7 +431,7 @@ parentSpan.addEvent('stream.message.sent', {
 });
 ```
 
-**Watch for backpressure.** If your server is producing messages faster than the client can consume them, gRPC flow control kicks in. Instrument the send path to detect when writes block, as that's often the first sign of a problem.
+**Watch for backpressure.** If your server is producing messages faster than the client can consume them, gRPC flow control kicks in. In Node.js, instrument the send path to detect when `write()` returns `false` and how long it takes for the stream to drain, as that's often the first sign of a problem.
 
 ## Wrapping Up
 
