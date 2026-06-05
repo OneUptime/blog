@@ -28,6 +28,13 @@ Add Spring Boot scheduling and OpenTelemetry dependencies:
     <version>3.2.1</version>
 </dependency>
 
+<!-- Spring AOP for the scheduling aspect -->
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-aop</artifactId>
+    <version>3.2.1</version>
+</dependency>
+
 <!-- OpenTelemetry Spring Boot Starter -->
 <dependency>
     <groupId>io.opentelemetry.instrumentation</groupId>
@@ -46,6 +53,27 @@ Add Spring Boot scheduling and OpenTelemetry dependencies:
 <dependency>
     <groupId>org.springframework</groupId>
     <artifactId>spring-context</artifactId>
+</dependency>
+
+<!-- Spring Retry for retry templates -->
+<dependency>
+    <groupId>org.springframework.retry</groupId>
+    <artifactId>spring-retry</artifactId>
+</dependency>
+
+<!-- Test support for tracing assertions -->
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-test</artifactId>
+    <version>3.2.1</version>
+    <scope>test</scope>
+</dependency>
+
+<dependency>
+    <groupId>io.opentelemetry</groupId>
+    <artifactId>opentelemetry-sdk-testing</artifactId>
+    <version>1.34.1</version>
+    <scope>test</scope>
 </dependency>
 ```
 
@@ -94,7 +122,6 @@ import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.SpanKind;
 import io.opentelemetry.api.trace.StatusCode;
 import io.opentelemetry.api.trace.Tracer;
-import io.opentelemetry.context.Context;
 import io.opentelemetry.context.Scope;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
@@ -421,6 +448,9 @@ For tasks that run for extended periods, add periodic checkpoints:
 
 ```java
 import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.StatusCode;
+import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.context.Scope;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -489,8 +519,10 @@ Add retry capabilities with full trace visibility:
 
 ```java
 import io.opentelemetry.api.trace.Span;
-import org.springframework.retry.annotation.Backoff;
-import org.springframework.retry.annotation.Retryable;
+import io.opentelemetry.api.trace.StatusCode;
+import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.context.Scope;
+import org.springframework.retry.support.RetryTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -499,10 +531,15 @@ public class ResilientScheduledTasks {
 
     private final Tracer tracer;
     private final ExternalApiClient apiClient;
+    private final RetryTemplate retryTemplate;
 
     public ResilientScheduledTasks(Tracer tracer, ExternalApiClient apiClient) {
         this.tracer = tracer;
         this.apiClient = apiClient;
+        this.retryTemplate = RetryTemplate.builder()
+            .maxAttempts(3)
+            .exponentialBackoff(2000, 2, 10000)
+            .build();
     }
 
     @Scheduled(fixedDelay = 60000)
@@ -516,33 +553,33 @@ public class ResilientScheduledTasks {
         } catch (Exception e) {
             span.setAttribute("sync.status", "failed_after_retries");
             span.recordException(e);
+            throw new RuntimeException("Sync failed after retries", e);
         }
     }
 
-    @Retryable(
-        maxAttempts = 3,
-        backoff = @Backoff(delay = 2000, multiplier = 2),
-        retryFor = {Exception.class}
-    )
     private void performSyncWithRetry() {
-        Span span = tracer.spanBuilder("sync.attempt")
-            .startSpan();
+        retryTemplate.execute(context -> {
+            Span span = tracer.spanBuilder("sync.attempt")
+                .setAttribute("retry.attempt", context.getRetryCount() + 1)
+                .startSpan();
 
-        try (Scope scope = span.makeCurrent()) {
-            span.addEvent("Attempting sync");
+            try (Scope scope = span.makeCurrent()) {
+                span.addEvent("Attempting sync");
 
-            apiClient.syncData();
+                apiClient.syncData();
 
-            span.addEvent("Sync successful");
-            span.setStatus(StatusCode.OK);
-        } catch (Exception e) {
-            span.addEvent("Sync attempt failed");
-            span.setStatus(StatusCode.ERROR);
-            span.recordException(e);
-            throw e;
-        } finally {
-            span.end();
-        }
+                span.addEvent("Sync successful");
+                span.setStatus(StatusCode.OK);
+                return null;
+            } catch (Exception e) {
+                span.addEvent("Sync attempt failed");
+                span.setStatus(StatusCode.ERROR);
+                span.recordException(e);
+                throw new RuntimeException("Sync attempt failed", e);
+            } finally {
+                span.end();
+            }
+        });
     }
 }
 ```
@@ -557,6 +594,8 @@ Combine traces with metrics for comprehensive observability:
 import io.opentelemetry.api.metrics.LongCounter;
 import io.opentelemetry.api.metrics.LongHistogram;
 import io.opentelemetry.api.metrics.Meter;
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.Tracer;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -669,6 +708,7 @@ Implement conditional execution with trace visibility:
 
 ```java
 import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.Tracer;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -729,27 +769,38 @@ Traces show why tasks were skipped or executed.
 Write tests that verify tracing behavior:
 
 ```java
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.sdk.testing.junit5.OpenTelemetryExtension;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.EnableAspectJAutoProxy;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.stereotype.Component;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-@SpringBootTest
+@SpringBootTest(classes = {
+    ScheduledTaskTracingAspect.class,
+    ScheduledTaskTracingTest.TestTasks.class,
+    ScheduledTaskTracingTest.OtelTestConfig.class
+})
 class ScheduledTaskTracingTest {
 
     @RegisterExtension
     static final OpenTelemetryExtension otelTesting = OpenTelemetryExtension.create();
 
     @Autowired
-    private DataProcessingTasks dataProcessingTasks;
+    private TestTasks testTasks;
 
     @Test
     void shouldTraceScheduledTaskExecution() {
         // Manually trigger the scheduled method
-        dataProcessingTasks.processRecentData();
+        testTasks.processRecentData();
 
         var spans = otelTesting.getSpans();
 
@@ -768,17 +819,42 @@ class ScheduledTaskTracingTest {
     void shouldRecordTaskFailure() {
         try {
             // Trigger task that will fail
-            dataProcessingTasks.failingTask();
+            testTasks.failingTask();
             fail("Expected exception");
         } catch (Exception e) {
             // Expected
         }
 
         var spans = otelTesting.getSpans();
-        var failedSpan = spans.get(0);
+        var failedSpan = spans.stream()
+            .filter(span -> span.getName().contains("failingTask"))
+            .findFirst()
+            .orElseThrow();
 
         assertEquals("ERROR", failedSpan.getStatus().getStatusCode().name());
         assertFalse(failedSpan.getEvents().isEmpty());
+    }
+
+    @TestConfiguration
+    @EnableAspectJAutoProxy(proxyTargetClass = true)
+    static class OtelTestConfig {
+        @Bean
+        Tracer tracer() {
+            return otelTesting.getOpenTelemetry().getTracer("scheduled-task-tests");
+        }
+    }
+
+    @Component
+    public static class TestTasks {
+        @Scheduled(fixedRate = 5000)
+        public void processRecentData() {
+            Span.current().setAttribute("processing.type", "recent");
+        }
+
+        @Scheduled(fixedRate = 5000)
+        public void failingTask() {
+            throw new IllegalStateException("Task failed");
+        }
     }
 }
 ```
