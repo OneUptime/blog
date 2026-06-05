@@ -40,10 +40,10 @@ class ErrorFingerprinter:
     # Patterns to strip from error messages to normalize them
     DYNAMIC_PATTERNS = [
         r'\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b',  # UUIDs
-        r'\b\d{10,}\b',   # Long numeric IDs
+        r'\b\d+\.\d+\.\d+\.\d+\b',  # IP addresses
+        r'\b\d+\b',       # Numeric IDs
         r"'[^']*'",       # Single-quoted strings
         r'"[^"]*"',       # Double-quoted strings
-        r'\b\d+\.\d+\.\d+\.\d+\b',  # IP addresses
     ]
 
     def generate(self, span_data):
@@ -135,6 +135,7 @@ class ErrorFingerprinter:
 ```python
 # grouping_processor.py
 from opentelemetry.sdk.trace import SpanProcessor
+from opentelemetry.trace import StatusCode
 from fingerprint import ErrorFingerprinter
 
 class ErrorGroupingProcessor(SpanProcessor):
@@ -145,7 +146,7 @@ class ErrorGroupingProcessor(SpanProcessor):
         self.error_groups = {}  # fingerprint -> count and metadata
 
     def on_end(self, span):
-        if span.status.status_code.name != "ERROR":
+        if span.status.status_code is not StatusCode.ERROR:
             return
 
         span_data = {
