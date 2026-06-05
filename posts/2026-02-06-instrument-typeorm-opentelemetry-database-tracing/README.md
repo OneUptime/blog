@@ -32,9 +32,11 @@ Set up the OpenTelemetry SDK and required instrumentation packages:
 npm install @opentelemetry/sdk-node \
             @opentelemetry/api \
             @opentelemetry/instrumentation \
+            @opentelemetry/auto-instrumentations-node \
             @opentelemetry/resources \
             @opentelemetry/semantic-conventions \
             @opentelemetry/exporter-trace-otlp-http \
+            @opentelemetry/sdk-trace-base \
             typeorm reflect-metadata
 ```
 
@@ -44,8 +46,12 @@ Initialize OpenTelemetry before your application code loads:
 // tracing.js
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const {
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+  ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
+} = require('@opentelemetry/semantic-conventions');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
 
 // Configure the trace exporter
@@ -55,10 +61,10 @@ const traceExporter = new OTLPTraceExporter({
 
 // Initialize SDK with service information
 const sdk = new NodeSDK({
-  resource: new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: 'typeorm-service',
-    [SemanticResourceAttributes.SERVICE_VERSION]: '1.0.0',
-    [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: process.env.NODE_ENV || 'development',
+  resource: resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: 'typeorm-service',
+    [ATTR_SERVICE_VERSION]: '1.0.0',
+    [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: process.env.NODE_ENV || 'development',
   }),
   traceExporter,
   instrumentations: [getNodeAutoInstrumentations()],
@@ -80,8 +86,14 @@ Implement a custom QueryRunner that wraps the original and adds tracing:
 
 ```typescript
 // instrumented-query-runner.ts
-import { QueryRunner, SelectQueryBuilder } from 'typeorm';
-import { trace, context, SpanStatusCode, Span } from '@opentelemetry/api';
+import { QueryRunner } from 'typeorm';
+import { trace, SpanStatusCode, Span } from '@opentelemetry/api';
+import {
+  ATTR_DB_NAMESPACE,
+  ATTR_DB_OPERATION_NAME,
+  ATTR_DB_QUERY_TEXT,
+  ATTR_DB_SYSTEM_NAME,
+} from '@opentelemetry/semantic-conventions';
 
 const tracer = trace.getTracer('typeorm-instrumentation', '1.0.0');
 
@@ -89,42 +101,58 @@ const tracer = trace.getTracer('typeorm-instrumentation', '1.0.0');
  * Wraps a TypeORM QueryRunner to add OpenTelemetry tracing
  * Intercepts all query execution methods
  */
-export class InstrumentedQueryRunner implements QueryRunner {
-  constructor(private readonly originalRunner: QueryRunner) {}
+export class InstrumentedQueryRunner {
+  constructor(private readonly originalRunner: QueryRunner) {
+    return new Proxy(this, {
+      get: (target, property, receiver) => {
+        if (property in target) {
+          return Reflect.get(target, property, receiver);
+        }
 
-  // Delegate all properties to the original runner
+        const value = Reflect.get(originalRunner, property, originalRunner);
+        return typeof value === 'function' ? value.bind(originalRunner) : value;
+      },
+      set: (_target, property, value) => {
+        Reflect.set(originalRunner, property, value, originalRunner);
+        return true;
+      },
+    });
+  }
+
   get connection() { return this.originalRunner.connection; }
-  get manager() { return this.originalRunner.manager; }
-  get isReleased() { return this.originalRunner.isReleased; }
-  get isTransactionActive() { return this.originalRunner.isTransactionActive; }
-  get data() { return this.originalRunner.data; }
 
   /**
    * Wraps query execution with OpenTelemetry span
    * Captures SQL, parameters, and execution time
    */
-  async query(query: string, parameters?: any[]): Promise<any> {
-    const spanName = 'typeorm.query';
+  async query(query: string, parameters?: any[] | object, useStructuredResult?: boolean): Promise<any> {
+    const operation = this.extractOperation(query);
+    const spanName = operation === 'UNKNOWN' ? 'typeorm.query' : `typeorm.query ${operation}`;
 
     return tracer.startActiveSpan(spanName, async (span: Span) => {
       try {
         // Add database semantic conventions
-        span.setAttribute('db.system', this.connection.options.type);
-        span.setAttribute('db.statement', query);
-        span.setAttribute('db.operation', this.extractOperation(query));
+        span.setAttribute(ATTR_DB_SYSTEM_NAME, this.mapDatabaseSystem(this.connection.options.type));
+        span.setAttribute(ATTR_DB_QUERY_TEXT, query);
+        span.setAttribute(ATTR_DB_OPERATION_NAME, operation);
 
         // Add database name if available
         if ('database' in this.connection.options) {
-          span.setAttribute('db.name', this.connection.options.database as string);
+          span.setAttribute(ATTR_DB_NAMESPACE, this.connection.options.database as string);
         }
 
         // Add parameter count (not values to avoid sensitive data)
         if (parameters) {
-          span.setAttribute('db.parameter.count', parameters.length);
+          const parameterCount = Array.isArray(parameters)
+            ? parameters.length
+            : Object.keys(parameters).length;
+          span.setAttribute('db.parameter.count', parameterCount);
         }
 
         // Execute the query
-        const result = await this.originalRunner.query(query, parameters);
+        const result = useStructuredResult === true
+          ? await this.originalRunner.query(query, parameters as any, true)
+          : await this.originalRunner.query(query, parameters as any);
 
         // Add result metadata
         if (Array.isArray(result)) {
@@ -159,6 +187,15 @@ export class InstrumentedQueryRunner implements QueryRunner {
     if (normalized.startsWith('DROP')) return 'DROP';
     if (normalized.startsWith('ALTER')) return 'ALTER';
     return 'UNKNOWN';
+  }
+
+  /**
+   * Maps TypeORM driver names to OpenTelemetry database system names.
+   */
+  private mapDatabaseSystem(type: string): string {
+    if (type === 'postgres') return 'postgresql';
+    if (type === 'mssql') return 'microsoft.sql_server';
+    return type;
   }
 
   // Transaction methods with tracing
@@ -246,7 +283,7 @@ export class InstrumentedDataSource extends DataSource {
    */
   createQueryRunner(mode?: 'master' | 'slave'): any {
     const originalRunner = super.createQueryRunner(mode);
-    return new InstrumentedQueryRunner(originalRunner);
+    return new InstrumentedQueryRunner(originalRunner) as unknown as ReturnType<DataSource['createQueryRunner']>;
   }
 }
 ```
@@ -501,6 +538,15 @@ export function setupPoolMonitoring() {
       }
     }
   });
+
+  waitingConnectionsGauge.addCallback(async (observableResult) => {
+    if (AppDataSource.isInitialized) {
+      const driver = AppDataSource.driver as any;
+      if (driver.master && driver.master.waitingCount !== undefined) {
+        observableResult.observe(driver.master.waitingCount);
+      }
+    }
+  });
 }
 ```
 
@@ -547,18 +593,21 @@ Configure sampling and batch processing for production:
 // tracing-prod.ts
 import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
 import { TraceIdRatioBasedSampler } from '@opentelemetry/sdk-trace-base';
+import { resourceFromAttributes } from '@opentelemetry/resources';
+import { ATTR_SERVICE_NAME } from '@opentelemetry/semantic-conventions';
 
 const sdk = new NodeSDK({
-  resource: new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: 'typeorm-service',
+  resource: resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: 'typeorm-service',
   }),
-  spanProcessor: new BatchSpanProcessor(traceExporter, {
-    maxQueueSize: 2048,
-    maxExportBatchSize: 512,
-    scheduledDelayMillis: 5000,
-  }),
+  spanProcessors: [
+    new BatchSpanProcessor(traceExporter, {
+      maxQueueSize: 2048,
+      maxExportBatchSize: 512,
+      scheduledDelayMillis: 5000,
+    }),
+  ],
   sampler: new TraceIdRatioBasedSampler(0.1), // Sample 10% of traces
-  traceExporter,
 });
 ```
 
@@ -604,6 +653,6 @@ function shouldSampleQuery(query: string, duration: number): boolean {
 
 ## Conclusion
 
-Instrumenting TypeORM with OpenTelemetry provides comprehensive visibility into your database layer. The QueryRunner-based approach captures every SQL query, transaction, and connection operation without requiring changes to your application code. By extending TypeORM's architecture with OpenTelemetry, you gain the observability needed to optimize database performance, debug production issues, and maintain responsive applications at scale.
+Instrumenting TypeORM with OpenTelemetry provides comprehensive visibility into your database layer. The QueryRunner-based approach captures SQL queries and transaction operations without requiring changes at every query call site. By extending TypeORM's architecture with OpenTelemetry, you gain the observability needed to optimize database performance, debug production issues, and maintain responsive applications at scale.
 
 Start with basic query tracing, then add custom spans for business operations and repository methods. Monitor connection pool utilization and adjust pool sizes based on observed patterns. Use the detailed traces to identify N+1 queries, optimize slow queries, and understand the true cost of your ORM operations.
