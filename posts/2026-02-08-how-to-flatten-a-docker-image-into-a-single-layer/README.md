@@ -113,7 +113,7 @@ docker export $(docker create myapp:latest) | \
         - myapp:flat
 ```
 
-The `--change` flag accepts standard Dockerfile instructions. You can pass multiple `--change` flags to set multiple configuration options.
+The `--change` flag accepts supported metadata Dockerfile instructions such as CMD, ENTRYPOINT, ENV, EXPOSE, USER, VOLUME, WORKDIR, LABEL, ONBUILD, STOPSIGNAL, and HEALTHCHECK. You can pass multiple `--change` flags to set multiple configuration options.
 
 ### Extracting Config Automatically
 
@@ -138,39 +138,37 @@ WORKDIR=$(docker image inspect "$SOURCE_IMAGE" --format '{{.Config.WorkingDir}}'
 USER=$(docker image inspect "$SOURCE_IMAGE" --format '{{.Config.User}}')
 
 # Build the --change arguments
-CHANGES=""
+CHANGES=()
 if [ "$CMD" != "null" ] && [ "$CMD" != "[]" ]; then
-    CHANGES="$CHANGES --change \"CMD $CMD\""
+    CHANGES+=(--change "CMD $CMD")
 fi
 if [ "$ENTRYPOINT" != "null" ] && [ "$ENTRYPOINT" != "[]" ]; then
-    CHANGES="$CHANGES --change \"ENTRYPOINT $ENTRYPOINT\""
+    CHANGES+=(--change "ENTRYPOINT $ENTRYPOINT")
 fi
 if [ -n "$WORKDIR" ]; then
-    CHANGES="$CHANGES --change \"WORKDIR $WORKDIR\""
+    CHANGES+=(--change "WORKDIR $WORKDIR")
 fi
 if [ -n "$USER" ]; then
-    CHANGES="$CHANGES --change \"USER $USER\""
+    CHANGES+=(--change "USER $USER")
 fi
 
 # Add environment variables
-docker image inspect "$SOURCE_IMAGE" --format '{{range .Config.Env}}{{.}}{{"\n"}}{{end}}' | \
-    while read -r env; do
-        if [ -n "$env" ]; then
-            CHANGES="$CHANGES --change \"ENV $env\""
-        fi
-    done
+while read -r env; do
+    if [ -n "$env" ]; then
+        CHANGES+=(--change "ENV $env")
+    fi
+done < <(docker image inspect "$SOURCE_IMAGE" --format '{{range .Config.Env}}{{.}}{{"\n"}}{{end}}')
 
 # Add exposed ports
-docker image inspect "$SOURCE_IMAGE" --format '{{range $port, $_ := .Config.ExposedPorts}}{{$port}}{{"\n"}}{{end}}' | \
-    while read -r port; do
-        if [ -n "$port" ]; then
-            CHANGES="$CHANGES --change \"EXPOSE $port\""
-        fi
-    done
+while read -r port; do
+    if [ -n "$port" ]; then
+        CHANGES+=(--change "EXPOSE $port")
+    fi
+done < <(docker image inspect "$SOURCE_IMAGE" --format '{{range $port, $_ := .Config.ExposedPorts}}{{$port}}{{"\n"}}{{end}}')
 
 # Create container, export, and import with metadata
 CID=$(docker create "$SOURCE_IMAGE")
-eval "docker export $CID | docker import $CHANGES - $TARGET_IMAGE"
+docker export "$CID" | docker import "${CHANGES[@]}" - "$TARGET_IMAGE"
 docker rm "$CID" > /dev/null
 
 echo "Flattened $SOURCE_IMAGE to $TARGET_IMAGE"
@@ -189,8 +187,10 @@ Use a multi-stage build to minimize layers:
 FROM ubuntu:22.04 AS builder
 
 RUN apt-get update && \
-    apt-get install -y build-essential python3-dev && \
-    pip install -r requirements.txt
+    apt-get install -y build-essential python3-dev python3-pip
+
+COPY requirements.txt /tmp/requirements.txt
+RUN pip3 install -r /tmp/requirements.txt
 
 COPY . /app
 WORKDIR /app
