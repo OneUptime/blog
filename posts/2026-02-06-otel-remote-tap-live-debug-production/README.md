@@ -6,11 +6,11 @@ Tags: OpenTelemetry, Remote Tap, Live Debug, Production, Collector
 
 Description: Use the OpenTelemetry remote tap processor to tap into live production telemetry streams for debugging without disrupting existing pipelines.
 
-Debugging telemetry pipelines in production is tricky. You cannot just add a debug exporter because that would dump everything to stdout and potentially overwhelm the system. The remote tap processor lets you selectively tap into the live telemetry stream, inspect specific data matching your criteria, and disconnect when you are done. The existing pipeline continues undisturbed.
+Debugging telemetry pipelines in production is tricky. You cannot just add a debug exporter because that would dump everything to stdout and potentially overwhelm the system. The remote tap processor lets you tap into the live telemetry stream, inspect a rate-limited copy of the data, and disconnect when you are done. The existing pipeline continues undisturbed.
 
 ## What Is Remote Tap?
 
-Remote tap exposes a WebSocket or gRPC endpoint on the collector. When you connect to it, you start receiving a copy of telemetry flowing through the processor. When you disconnect, the tap stops. No data is buffered while you are not connected, so there is zero overhead when the tap is idle.
+Remote tap exposes a WebSocket endpoint on the collector. When you connect to it, you start receiving a rate-limited copy of telemetry flowing through the processor. When you disconnect, the tap stops sending data to that client. The processor continues passing telemetry through the pipeline.
 
 ## Basic Configuration
 
@@ -32,7 +32,7 @@ processors:
   remotetap:
     # Endpoint where you connect to tap into the stream
     endpoint: "localhost:12001"
-    # Maximum number of simultaneous tap connections
+    # Maximum tapped messages per second
     limit: 5
 
   batch:
@@ -53,7 +53,7 @@ service:
       exporters: [otlp]
 ```
 
-The `remotetap` processor sits in the pipeline and normally does nothing. It just passes data through. When someone connects to port 12001, it starts copying matching data to that connection.
+The `remotetap` processor sits in the pipeline and passes data through. It writes a rate-limited copy of telemetry to WebSocket clients connected to port 12001.
 
 ## Connecting to the Tap
 
@@ -61,27 +61,32 @@ Use a WebSocket client to connect and start receiving data:
 
 ```bash
 # Using websocat (install with: cargo install websocat)
-websocat ws://localhost:12001/v1/traces
-
-# Or use curl for a quick check
-curl -N http://localhost:12001/v1/traces
+websocat ws://localhost:12001
 ```
 
 You will see JSON-formatted trace data streaming in real time.
 
 ## Filtering the Tap
 
-The real power is in filtering. You do not want to see all telemetry, just the spans you are debugging:
+The remote tap processor itself does not filter by query parameters. It streams a rate-limited copy of telemetry passing through that processor. Filter what you see in the client, or place Collector filtering processors before a dedicated tap point when you need server-side filtering:
 
 ```bash
-# Tap only traces from a specific service
-websocat "ws://localhost:12001/v1/traces?service.name=payment-service"
+# Show payloads that include a specific service
+websocat "ws://localhost:12001" | \
+  jq --arg service "payment-service" \
+    'select(any(.. | objects; .key? == "service.name" and .value.stringValue? == $service))'
 
-# Tap only error spans
-websocat "ws://localhost:12001/v1/traces?otel.status_code=ERROR"
+# Show payloads that include error spans
+websocat "ws://localhost:12001" | \
+  jq 'select(any(.. | objects; .code? == "STATUS_CODE_ERROR"))'
 
 # Combine filters
-websocat "ws://localhost:12001/v1/traces?service.name=api-gateway&http.status_code=500"
+websocat "ws://localhost:12001" | \
+  jq --arg service "api-gateway" \
+    'select(
+      any(.. | objects; .key? == "service.name" and .value.stringValue? == $service) and
+      any(.. | objects; .key? == "http.status_code" and (.value.intValue? == "500" or .value.stringValue? == "500"))
+    )'
 ```
 
 ## Building a Debug Script
@@ -102,11 +107,9 @@ echo "---"
 
 # Connect to the remote tap and format output
 timeout ${DURATION} websocat \
-  "ws://localhost:12001/v1/traces?service.name=${SERVICE}" | \
-  while IFS= read -r line; do
-    echo "${line}" | python3 -m json.tool
-    echo "---"
-  done
+  "ws://localhost:12001" | \
+  jq --arg service "${SERVICE}" \
+    'select(any(.. | objects; .key? == "service.name" and .value.stringValue? == $service))'
 
 echo "Tap complete. Captured traces for ${DURATION}s."
 ```
@@ -121,7 +124,7 @@ kubectl port-forward -n monitoring \
   deployment/otel-collector 12001:12001
 
 # In another terminal, connect to the tap
-websocat ws://localhost:12001/v1/traces
+websocat ws://localhost:12001
 ```
 
 For security, the remote tap endpoint should only be accessible within the cluster. Never expose it to the public internet.
@@ -170,13 +173,13 @@ Remote tap is designed to be safe for production, but keep these things in mind:
 processors:
   remotetap:
     endpoint: "localhost:12001"
-    # Limit concurrent connections to prevent resource abuse
+    # Limit tapped messages per second to prevent resource abuse
     limit: 3
 ```
 
-- **Connection limit**: Always set a limit. Each connection consumes CPU to copy and serialize data.
+- **Rate limit**: Always set a limit. Tapped telemetry is serialized and sent to connected clients at this message-per-second rate.
 - **Bind to localhost**: Only bind to `localhost`, not `0.0.0.0`, to prevent external access.
-- **No buffering**: Data is only sent while a client is connected. No disk or memory overhead when idle.
+- **No persistent buffering**: Data is only sent while a client is connected. The processor does not store missed telemetry for later replay.
 - **Read-only**: The tap is purely observational. It cannot modify data flowing through the pipeline.
 
 ## Practical Debugging Workflow
@@ -185,21 +188,28 @@ Here is how you would use remote tap during an incident:
 
 ```bash
 # Step 1: Connect and look for errors from the affected service
-websocat "ws://localhost:12001/v1/traces?service.name=checkout&otel.status_code=ERROR" | head -5
+websocat "ws://localhost:12001" | \
+  jq --arg service "checkout" \
+    'select(
+      any(.. | objects; .key? == "service.name" and .value.stringValue? == $service) and
+      any(.. | objects; .code? == "STATUS_CODE_ERROR")
+    )' | head -5
 
 # Step 2: Grab a trace ID from the output
 TRACE_ID="abc123..."
 
 # Step 3: Look for all spans in that trace
-websocat "ws://localhost:12001/v1/traces" | \
+websocat "ws://localhost:12001" | \
   grep "${TRACE_ID}" | python3 -m json.tool
 
 # Step 4: Check if metrics show the issue
-websocat "ws://localhost:12002/v1/metrics?service.name=checkout" | head -10
+websocat "ws://localhost:12002" | \
+  jq --arg service "checkout" \
+    'select(any(.. | objects; .key? == "service.name" and .value.stringValue? == $service))' | head -10
 
 # Step 5: Disconnect when done (Ctrl+C)
 ```
 
 ## Wrapping Up
 
-Remote tap is an underrated tool for production debugging. It gives you real-time visibility into what the collector is processing without adding permanent overhead to your pipeline. Keep it configured in every production collector so it is ready when you need it. The zero-cost-when-idle design means there is no reason not to have it available.
+Remote tap is an underrated tool for production debugging. It gives you real-time visibility into what the collector is processing without adding a debug exporter to your production pipeline. Keep it configured where you can secure and rate-limit it appropriately so it is ready when you need it.
