@@ -17,13 +17,18 @@ The core idea: define your conventions in structured YAML files, then use Weaver
 ## Installing Weaver
 
 ```bash
-# Install via cargo (Rust toolchain required)
+# Download the latest Linux binary
 
-cargo install weaver
+curl -L -o /tmp/weaver.tar.xz \
+  https://github.com/open-telemetry/weaver/releases/latest/download/weaver-x86_64-unknown-linux-gnu.tar.xz
+tar -xJf /tmp/weaver.tar.xz -C /tmp
+sudo install /tmp/weaver-x86_64-unknown-linux-gnu/weaver /usr/local/bin/weaver
 
-# Or download a pre-built binary from the releases page
-curl -L https://github.com/open-telemetry/weaver/releases/latest/download/weaver-x86_64-linux.tar.gz \
-  | tar xz -C /usr/local/bin/
+# Or build from source with the Rust toolchain
+git clone https://github.com/open-telemetry/weaver.git
+cd weaver
+cargo build --release
+sudo install target/release/weaver /usr/local/bin/weaver
 ```
 
 Verify the installation:
@@ -38,16 +43,26 @@ Create a directory structure for your semantic conventions:
 
 ```text
 semantic-conventions/
+  manifest.yaml
   groups/
     order.yaml
     payment.yaml
     shipping.yaml
-  templates/
-    python/
-      attributes.py.j2
-    typescript/
-      attributes.ts.j2
-  weaver.yaml
+templates/
+  python/
+    weaver.yaml
+    attributes.py.j2
+  typescript/
+    weaver.yaml
+    attributes.ts.j2
+```
+
+For a custom registry, include a `manifest.yaml` file:
+
+```yaml
+name: commerce
+description: Commerce domain semantic conventions
+schema_url: https://example.com/schemas/commerce/1.0.0
 ```
 
 Here is an example convention file for your order domain:
@@ -58,38 +73,44 @@ groups:
   - id: order
     type: attribute_group
     brief: "Attributes describing an order in the commerce domain"
-    prefix: order
     attributes:
-      - id: id
+      - id: order.id
         type: string
+        stability: development
         brief: "Unique order identifier"
         requirement_level: required
         examples: ["ord_abc123", "ord_def456"]
 
-      - id: type
+      - id: order.type
         type:
           allow_custom_values: false
           members:
             - id: one_time
               value: "one-time"
+              stability: development
               brief: "Single purchase order"
             - id: subscription
               value: "subscription"
+              stability: development
               brief: "Recurring subscription order"
             - id: trial
               value: "trial"
+              stability: development
               brief: "Trial period order"
+        stability: development
         brief: "The type of order"
         requirement_level: required
 
-      - id: item_count
+      - id: order.item_count
         type: int
+        stability: development
         brief: "Number of items in the order"
         requirement_level: recommended
         examples: [1, 5, 20]
 
-      - id: total_amount
+      - id: order.total_amount
         type: double
+        stability: development
         brief: "Total order amount in the specified currency"
         requirement_level: recommended
         examples: [29.99, 149.00]
@@ -101,30 +122,40 @@ The real power of Weaver is code generation. Instead of developers manually typi
 
 Create a Jinja2 template for Python:
 
-```python
+```jinja2
 # templates/python/attributes.py.j2
 """
 Auto-generated OpenTelemetry attribute constants.
-DO NOT EDIT MANUALLY. Run 'weaver generate' to update.
+DO NOT EDIT MANUALLY. Run 'weaver registry generate python' to update.
 """
 
-{% for group in groups %}
-class {{ group.id | capitalize }}Attributes:
+{% for group in ctx.groups %}
+class {{ group.id | pascal_case }}Attributes:
     """{{ group.brief }}"""
-    {% for attr in group.attributes %}
-    {{ attr.id | upper }}: str = "{{ group.prefix }}.{{ attr.id }}"
+{% for attr in group.attributes %}
+    {{ attr.name | screaming_snake_case }}: str = "{{ attr.name }}"
     """{{ attr.brief }}"""
-    {% endfor %}
 {% endfor %}
+{% endfor %}
+```
+
+Configure that template as a generation target:
+
+```yaml
+# templates/python/weaver.yaml
+templates:
+  - template: attributes.py.j2
+    application_mode: single
+    file_name: attributes.py
 ```
 
 Run the generation:
 
 ```bash
-weaver generate \
-  --semantic-conventions ./semantic-conventions/groups/ \
-  --templates ./semantic-conventions/templates/python/ \
-  --output ./shared-libs/python/otel_conventions/
+weaver registry generate python \
+  --registry ./semantic-conventions \
+  --templates ./templates \
+  ./shared-libs/python/otel_conventions/
 ```
 
 This produces a Python module that your teams import:
@@ -133,9 +164,9 @@ This produces a Python module that your teams import:
 from otel_conventions.attributes import OrderAttributes
 
 # Now developers use typed constants instead of raw strings
-span.set_attribute(OrderAttributes.ID, order_id)
-span.set_attribute(OrderAttributes.TYPE, "subscription")
-span.set_attribute(OrderAttributes.ITEM_COUNT, len(items))
+span.set_attribute(OrderAttributes.ORDER_ID, order_id)
+span.set_attribute(OrderAttributes.ORDER_TYPE, "subscription")
+span.set_attribute(OrderAttributes.ORDER_ITEM_COUNT, len(items))
 ```
 
 Typos become import errors. Missing attributes become obvious during code review.
@@ -158,18 +189,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Weaver
-        run: cargo install weaver
+      - name: Set up Weaver
+        uses: open-telemetry/weaver/.github/actions/setup-weaver@main
 
       - name: Validate convention definitions
-        run: weaver check ./semantic-conventions/groups/
+        run: weaver registry check --registry ./semantic-conventions
 
       - name: Check generated code is up to date
         run: |
-          weaver generate \
-            --semantic-conventions ./semantic-conventions/groups/ \
-            --templates ./semantic-conventions/templates/python/ \
-            --output ./tmp-generated/
+          weaver registry generate python \
+            --registry ./semantic-conventions \
+            --templates ./templates \
+            ./tmp-generated/
           diff -r ./tmp-generated/ ./shared-libs/python/otel_conventions/
 ```
 
@@ -183,7 +214,7 @@ The key to cross-team consistency is making Weaver part of your shared infrastru
 
 **Published packages**: Generate and publish typed attribute packages for every language your organization uses. Teams add them as dependencies rather than defining their own attribute strings.
 
-**Collector-level validation**: Use the generated convention data to configure OpenTelemetry Collector processors that warn on or reject non-conforming attributes:
+**Collector-level checks**: Use the generated convention data to feed a custom processor, policy, or filter configuration that flags or drops non-conforming telemetry:
 
 ```python
 # Script to generate a collector transform config from conventions
@@ -194,7 +225,8 @@ with open("semantic-conventions/groups/order.yaml") as f:
 
 valid_prefixes = set()
 for group in conventions["groups"]:
-    valid_prefixes.add(group["prefix"])
+    for attr in group["attributes"]:
+        valid_prefixes.add(attr["id"].split(".")[0])
 
 # Generate a list of known valid attribute prefixes for collector validation
 print("Known attribute prefixes:", valid_prefixes)
@@ -208,11 +240,16 @@ Conventions change over time. Weaver helps manage this by supporting deprecation
 attributes:
   - id: old_field_name
     type: string
-    deprecated: "Use new_field_name instead. Removal planned for v3.0."
+    stability: development
+    deprecated:
+      reason: renamed
+      renamed_to: new_field_name
+      note: "Removal planned for v3.0."
     brief: "Legacy field"
+    examples: ["legacy_value"]
 ```
 
-When you regenerate code, the deprecated attributes get marked with language-appropriate deprecation annotations, so developers see warnings in their IDEs.
+When you regenerate code, your templates can use that deprecation metadata to emit language-appropriate annotations, so developers see warnings in their IDEs.
 
 ## Practical Tips
 
