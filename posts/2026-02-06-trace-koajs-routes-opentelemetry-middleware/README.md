@@ -76,24 +76,26 @@ const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumenta
 const { KoaInstrumentation } = require('@opentelemetry/instrumentation-koa');
 const { HttpInstrumentation } = require('@opentelemetry/instrumentation-http');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const {
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+  ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
+} = require('@opentelemetry/semantic-conventions');
 
 // Configure OTLP exporter for trace export
 const traceExporter = new OTLPTraceExporter({
-  url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4318/v1/traces',
+  url: process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT || 'http://localhost:4318/v1/traces',
   headers: {},
 });
 
 // Define resource attributes for service identification
-const resource = Resource.default().merge(
-  new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: process.env.SERVICE_NAME || 'koa-api',
-    [SemanticResourceAttributes.SERVICE_VERSION]: process.env.SERVICE_VERSION || '1.0.0',
-    [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: process.env.NODE_ENV || 'development',
-    'service.framework': 'koa',
-  })
-);
+const resource = resourceFromAttributes({
+  [ATTR_SERVICE_NAME]: process.env.SERVICE_NAME || 'koa-api',
+  [ATTR_SERVICE_VERSION]: process.env.SERVICE_VERSION || '1.0.0',
+  [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: process.env.NODE_ENV || 'development',
+  'service.framework': 'koa',
+});
 
 // Initialize OpenTelemetry SDK with Koa instrumentation
 const sdk = new NodeSDK({
@@ -108,8 +110,8 @@ const sdk = new NodeSDK({
       },
       requestHook: (span, request) => {
         // Enrich HTTP spans with additional context
-        span.setAttribute('http.user_agent', request.headers['user-agent'] || 'unknown');
-        span.setAttribute('http.client_ip', request.headers['x-forwarded-for'] || request.socket?.remoteAddress || 'unknown');
+        span.setAttribute('user_agent.original', request.headers['user-agent'] || 'unknown');
+        span.setAttribute('client.address', request.headers['x-forwarded-for'] || request.socket?.remoteAddress || 'unknown');
       },
     }),
     // Koa-specific instrumentation for middleware and routing
@@ -126,6 +128,12 @@ const sdk = new NodeSDK({
     }),
     // Additional auto-instrumentations
     getNodeAutoInstrumentations({
+      '@opentelemetry/instrumentation-http': {
+        enabled: false, // Configured explicitly above
+      },
+      '@opentelemetry/instrumentation-koa': {
+        enabled: false, // Configured explicitly above
+      },
       '@opentelemetry/instrumentation-fs': {
         enabled: false, // Reduce noise
       },
@@ -162,7 +170,7 @@ require('./instrumentation');
 const Koa = require('koa');
 const Router = require('@koa/router');
 const bodyParser = require('koa-bodyparser');
-const { trace, context } = require('@opentelemetry/api');
+const { trace, SpanStatusCode } = require('@opentelemetry/api');
 
 const tracer = trace.getTracer('koa-app');
 
@@ -178,7 +186,7 @@ app.use(async (ctx, next) => {
     // Record exception in active span
     if (span) {
       span.recordException(err);
-      span.setStatus({ code: 2, message: err.message });
+      span.setStatus({ code: SpanStatusCode.ERROR, message: err.message });
     }
 
     ctx.status = err.status || 500;
@@ -255,7 +263,7 @@ Build reusable middleware that creates custom spans for specific concerns like a
 // middleware/auth.js
 // Authentication middleware with OpenTelemetry tracing
 
-const { trace } = require('@opentelemetry/api');
+const { trace, SpanStatusCode } = require('@opentelemetry/api');
 
 const tracer = trace.getTracer('koa-middleware');
 
@@ -271,7 +279,7 @@ function authMiddleware() {
 
         if (!token) {
           span.setAttribute('auth.result', 'missing_token');
-          span.setStatus({ code: 2, message: 'No authentication token' });
+          span.setStatus({ code: SpanStatusCode.ERROR, message: 'No authentication token' });
           ctx.throw(401, 'Authentication required');
           return;
         }
@@ -292,12 +300,12 @@ function authMiddleware() {
 
             const userData = { id: 'user-123', email: 'user@example.com' };
             verifySpan.setAttribute('user.id', userData.id);
-            verifySpan.setStatus({ code: 1 });
+            verifySpan.setStatus({ code: SpanStatusCode.OK });
 
             return userData;
           } catch (error) {
             verifySpan.recordException(error);
-            verifySpan.setStatus({ code: 2, message: error.message });
+            verifySpan.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
             throw error;
           } finally {
             verifySpan.end();
@@ -308,12 +316,12 @@ function authMiddleware() {
         ctx.state.user = user;
         span.setAttribute('auth.result', 'success');
         span.setAttribute('user.id', user.id);
-        span.setStatus({ code: 1 });
+        span.setStatus({ code: SpanStatusCode.OK });
 
         await next();
       } catch (err) {
         span.recordException(err);
-        span.setStatus({ code: 2, message: err.message });
+        span.setStatus({ code: SpanStatusCode.ERROR, message: err.message });
         throw err;
       } finally {
         span.end();
@@ -334,7 +342,7 @@ Implement comprehensive tracing in route handlers to monitor business logic, dat
 // Product routes with OpenTelemetry tracing
 
 const Router = require('@koa/router');
-const { trace } = require('@opentelemetry/api');
+const { trace, SpanStatusCode } = require('@opentelemetry/api');
 
 const router = new Router({ prefix: '/api/products' });
 const tracer = trace.getTracer('koa-routes');
@@ -376,12 +384,12 @@ router.get('/', async (ctx) => {
           }));
 
           dbSpan.setAttribute('db.result.count', result.length);
-          dbSpan.setStatus({ code: 1 });
+          dbSpan.setStatus({ code: SpanStatusCode.OK });
 
           return result;
         } catch (error) {
           dbSpan.recordException(error);
-          dbSpan.setStatus({ code: 2, message: error.message });
+          dbSpan.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
           throw error;
         } finally {
           dbSpan.end();
@@ -397,11 +405,11 @@ router.get('/', async (ctx) => {
           await new Promise(resolve => setTimeout(resolve, 15));
           const count = 250;
           countSpan.setAttribute('db.result', count);
-          countSpan.setStatus({ code: 1 });
+          countSpan.setStatus({ code: SpanStatusCode.OK });
           return count;
         } catch (error) {
           countSpan.recordException(error);
-          countSpan.setStatus({ code: 2, message: error.message });
+          countSpan.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
           throw error;
         } finally {
           countSpan.end();
@@ -410,7 +418,7 @@ router.get('/', async (ctx) => {
 
       span.setAttribute('response.product_count', products.length);
       span.setAttribute('response.total_products', total);
-      span.setStatus({ code: 1 });
+      span.setStatus({ code: SpanStatusCode.OK });
 
       ctx.body = {
         products,
@@ -423,7 +431,7 @@ router.get('/', async (ctx) => {
       };
     } catch (error) {
       span.recordException(error);
-      span.setStatus({ code: 2, message: error.message });
+      span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
       ctx.throw(500, 'Failed to fetch products');
     } finally {
       span.end();
@@ -462,11 +470,11 @@ router.get('/:id', async (ctx) => {
             stock: 100,
           };
 
-          dbSpan.setStatus({ code: 1 });
+          dbSpan.setStatus({ code: SpanStatusCode.OK });
           return result;
         } catch (error) {
           dbSpan.recordException(error);
-          dbSpan.setStatus({ code: 2, message: error.message });
+          dbSpan.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
           throw error;
         } finally {
           dbSpan.end();
@@ -475,7 +483,7 @@ router.get('/:id', async (ctx) => {
 
       if (!product) {
         span.setAttribute('product.found', false);
-        span.setStatus({ code: 2, message: 'Product not found' });
+        span.setStatus({ code: SpanStatusCode.ERROR, message: 'Product not found' });
         ctx.throw(404, 'Product not found');
         return;
       }
@@ -496,12 +504,12 @@ router.get('/:id', async (ctx) => {
           }));
 
           relatedSpan.setAttribute('db.result.count', results.length);
-          relatedSpan.setStatus({ code: 1 });
+          relatedSpan.setStatus({ code: SpanStatusCode.OK });
 
           return results;
         } catch (error) {
           relatedSpan.recordException(error);
-          relatedSpan.setStatus({ code: 2, message: error.message });
+          relatedSpan.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
           return []; // Related products are optional
         } finally {
           relatedSpan.end();
@@ -510,12 +518,12 @@ router.get('/:id', async (ctx) => {
 
       span.setAttribute('product.found', true);
       span.setAttribute('related.count', related.length);
-      span.setStatus({ code: 1 });
+      span.setStatus({ code: SpanStatusCode.OK });
 
       ctx.body = { product, related };
     } catch (error) {
       span.recordException(error);
-      span.setStatus({ code: 2, message: error.message });
+      span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
       throw error;
     } finally {
       span.end();
@@ -557,10 +565,10 @@ router.post('/', async (ctx) => {
             throw new Error(errors.join(', '));
           }
 
-          validationSpan.setStatus({ code: 1 });
+          validationSpan.setStatus({ code: SpanStatusCode.OK });
         } catch (error) {
           validationSpan.recordException(error);
-          validationSpan.setStatus({ code: 2, message: error.message });
+          validationSpan.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
           throw error;
         } finally {
           validationSpan.end();
@@ -577,12 +585,12 @@ router.post('/', async (ctx) => {
 
           const id = `prod-${Date.now()}`;
           insertSpan.setAttribute('product.id', id);
-          insertSpan.setStatus({ code: 1 });
+          insertSpan.setStatus({ code: SpanStatusCode.OK });
 
           return id;
         } catch (error) {
           insertSpan.recordException(error);
-          insertSpan.setStatus({ code: 2, message: error.message });
+          insertSpan.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
           throw error;
         } finally {
           insertSpan.end();
@@ -590,7 +598,7 @@ router.post('/', async (ctx) => {
       });
 
       span.setAttribute('product.id', productId);
-      span.setStatus({ code: 1 });
+      span.setStatus({ code: SpanStatusCode.OK });
 
       ctx.status = 201;
       ctx.body = {
@@ -602,7 +610,7 @@ router.post('/', async (ctx) => {
       };
     } catch (error) {
       span.recordException(error);
-      span.setStatus({ code: 2, message: error.message });
+      span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
       ctx.throw(400, error.message);
     } finally {
       span.end();
@@ -659,7 +667,7 @@ Configure OpenTelemetry behavior through environment variables.
 # OpenTelemetry configuration for Koa production deployment
 
 # OTLP exporter endpoint
-OTEL_EXPORTER_OTLP_ENDPOINT=https://otel-collector.example.com:4318/v1/traces
+OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=https://otel-collector.example.com:4318/v1/traces
 
 # Service identification
 SERVICE_NAME=koa-api
@@ -670,7 +678,7 @@ OTEL_TRACES_SAMPLER=parentbased_traceidratio
 OTEL_TRACES_SAMPLER_ARG=0.1
 
 # Resource attributes
-OTEL_RESOURCE_ATTRIBUTES=deployment.environment=production,team=backend
+OTEL_RESOURCE_ATTRIBUTES=deployment.environment.name=production,team=backend
 
 # Application settings
 NODE_ENV=production
