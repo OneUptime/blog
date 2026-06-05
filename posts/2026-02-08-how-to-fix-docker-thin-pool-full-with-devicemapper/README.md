@@ -118,7 +118,7 @@ docker info | grep "Data Space"
 
 ## Fix 2: Configure Automatic Pool Extension
 
-LVM supports automatic thin pool extension when usage reaches a threshold. This prevents the "pool full" scenario entirely.
+LVM supports automatic thin pool extension when usage reaches a threshold. This reduces the chance of a "pool full" scenario, as long as the volume group still has free space available.
 
 Edit the LVM configuration:
 
@@ -148,6 +148,9 @@ sudo systemctl start lvm2-monitor
 
 # Verify monitoring is active
 sudo lvs -o+seg_monitor
+
+# If the Monitor column says "not monitored", enable monitoring explicitly
+sudo lvchange --monitor y docker/thinpool
 ```
 
 The `seg_monitor` column should show "monitored" for your thin pool.
@@ -195,6 +198,9 @@ Apply the profile:
 # Apply the profile to the thin pool
 sudo lvchange --metadataprofile docker-thinpool docker/thinpool
 
+# Ensure monitoring is enabled so automatic extension can occur
+sudo lvchange --monitor y docker/thinpool
+
 # Verify the profile is applied
 sudo lvs -o+seg_monitor docker/thinpool
 ```
@@ -219,20 +225,24 @@ The devicemapper storage driver is deprecated and has been removed from newer Do
 Check if your kernel supports overlay2:
 
 ```bash
-# Check kernel version (overlay2 requires 4.0+)
+# Check kernel version (overlay2 requires 4.0+, or RHEL/CentOS 3.10.0-514+)
 uname -r
 
-# Check if the overlay module is available
+# Check if the overlay module is loaded, or load it
 lsmod | grep overlay
+sudo modprobe overlay
+
+# If /var/lib/docker is on XFS, make sure ftype is 1
+xfs_info /var/lib/docker | grep ftype
 ```
 
 Back up your data and migrate:
 
 ```bash
-# Stop all containers
-docker stop $(docker ps -aq)
+# Stop all running containers
+docker ps -q | xargs -r docker stop
 
-# Export any important containers or save important images
+# Save any important images
 docker save myimage:latest > myimage.tar
 
 # Stop Docker
