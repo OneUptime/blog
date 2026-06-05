@@ -19,7 +19,7 @@ The OpenTelemetry .NET SDK needs a specific instrumentation library to bridge EF
 You need the `OpenTelemetry.Instrumentation.EntityFrameworkCore` NuGet package and it must be registered in your pipeline:
 
 ```bash
-dotnet add package OpenTelemetry.Instrumentation.EntityFrameworkCore
+dotnet add package --prerelease OpenTelemetry.Instrumentation.EntityFrameworkCore
 ```
 
 Then add it to your tracing configuration:
@@ -84,24 +84,17 @@ If your EF Core version is significantly newer than the instrumentation library,
     <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer"
                       Version="8.0.11" />
     <PackageReference Include="OpenTelemetry.Instrumentation.EntityFrameworkCore"
-                      Version="1.9.0" />
+                      Version="1.15.1-beta.1" />
 </ItemGroup>
 ```
 
 ## Configuring What Gets Captured
 
-By default, the EF Core instrumentation captures basic query information. You can configure it to include more detail:
+By default, the EF Core instrumentation captures basic query information for relational database commands. You can configure it to include more detail:
 
 ```csharp
 tracing.AddEntityFrameworkCoreInstrumentation(options =>
 {
-    // Include the SQL command text in the span
-    // WARNING: this may include sensitive data (parameters)
-    options.SetDbStatementForText = true;
-
-    // Include stored procedure names
-    options.SetDbStatementForStoredProcedure = true;
-
     // Enrich spans with additional data
     options.EnrichWithIDbCommand = (activity, command) =>
     {
@@ -114,6 +107,8 @@ tracing.AddEntityFrameworkCoreInstrumentation(options =>
 });
 ```
 
+Query parameter attributes are controlled separately with the `OTEL_DOTNET_EXPERIMENTAL_EFCORE_ENABLE_TRACE_DB_QUERY_PARAMETERS` environment variable. Enable it only when you are sure query parameters will not contain sensitive data.
+
 ## Verifying Spans Are Being Created
 
 Write a quick integration test to confirm EF Core spans appear:
@@ -123,10 +118,12 @@ Write a quick integration test to confirm EF Core spans appear:
 public async Task EFCore_CreatesSpans()
 {
     var exportedActivities = new List<Activity>();
+    await using var connection = new SqliteConnection("Data Source=:memory:");
+    await connection.OpenAsync();
 
     var services = new ServiceCollection();
     services.AddDbContext<AppDbContext>(options =>
-        options.UseInMemoryDatabase("test"));
+        options.UseSqlite(connection));
 
     services.AddOpenTelemetry()
         .WithTracing(tracing =>
@@ -138,6 +135,7 @@ public async Task EFCore_CreatesSpans()
 
     using var sp = services.BuildServiceProvider();
     var db = sp.GetRequiredService<AppDbContext>();
+    await db.Database.EnsureCreatedAsync();
 
     // Execute a query
     await db.Users.ToListAsync();
