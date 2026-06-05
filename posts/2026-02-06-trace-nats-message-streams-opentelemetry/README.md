@@ -8,7 +8,7 @@ Description: Learn how to instrument NATS Core and JetStream messaging with Open
 
 ---
 
-NATS is built for speed. It delivers messages with minimal latency and almost no configuration overhead, which is why it has become a popular choice for microservice communication. But that simplicity comes with a tracing gap. Out of the box, NATS does not carry trace context between publishers and subscribers. If you want end-to-end visibility across NATS message flows, you need to set that up yourself.
+NATS is built for speed. It delivers messages with minimal latency and almost no configuration overhead, which is why it has become a popular choice for microservice communication. But that simplicity comes with a tracing gap. Out of the box, NATS clients do not automatically inject or extract OpenTelemetry trace context between publishers and subscribers. If you want end-to-end visibility across NATS message flows, you need to set that up yourself.
 
 OpenTelemetry provides the framework to bridge this gap. By injecting trace context into NATS message headers when publishing and extracting it when subscribing, you can build traces that span your entire NATS-based architecture. This works for both NATS Core (fire-and-forget) and NATS JetStream (persistent, at-least-once delivery).
 
@@ -43,10 +43,10 @@ package main
 
 import (
     "context"
-    "log"
 
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+    "go.opentelemetry.io/otel/propagation"
     "go.opentelemetry.io/otel/sdk/resource"
     sdktrace "go.opentelemetry.io/otel/sdk/trace"
     semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
@@ -72,6 +72,7 @@ func initTracer() (*sdktrace.TracerProvider, error) {
         )),
     )
     otel.SetTracerProvider(tp)
+    otel.SetTextMapPropagator(propagation.TraceContext{})
     return tp, nil
 }
 ```
@@ -81,8 +82,6 @@ Now create a helper that injects trace context into NATS message headers. NATS h
 ```go
 import (
     "github.com/nats-io/nats.go"
-    "go.opentelemetry.io/otel"
-    "go.opentelemetry.io/otel/propagation"
 )
 
 // natsHeaderCarrier adapts nats.Header to the TextMapCarrier interface
@@ -133,7 +132,8 @@ func publishOrder(ctx context.Context, nc *nats.Conn, order Order) error {
         trace.WithAttributes(
             attribute.String("messaging.system", "nats"),
             attribute.String("messaging.destination.name", "orders.new"),
-            attribute.String("messaging.operation", "publish"),
+            attribute.String("messaging.operation.name", "publish"),
+            attribute.String("messaging.operation.type", "send"),
         ),
     )
     defer span.End()
@@ -164,12 +164,12 @@ func publishOrder(ctx context.Context, nc *nats.Conn, order Order) error {
         return err
     }
 
-    span.SetAttribute("messaging.message.payload_size_bytes", len(data))
+    span.SetAttributes(attribute.Int("messaging.message.body.size", len(data)))
     return nil
 }
 ```
 
-The propagator injects `traceparent` and `tracestate` headers into the NATS message. Any subscriber that knows how to extract these headers can continue the trace.
+The propagator injects W3C Trace Context headers such as `traceparent` and, when present, `tracestate` into the NATS message. Any subscriber that knows how to extract these headers can continue the trace.
 
 ## Subscribing with Trace Context Extraction
 
@@ -191,7 +191,8 @@ func subscribeOrders(nc *nats.Conn) {
             trace.WithAttributes(
                 attribute.String("messaging.system", "nats"),
                 attribute.String("messaging.destination.name", "orders.new"),
-                attribute.String("messaging.operation", "process"),
+                attribute.String("messaging.operation.name", "process"),
+                attribute.String("messaging.operation.type", "process"),
             ),
         )
         defer span.End()
@@ -228,6 +229,8 @@ func publishToJetStream(ctx context.Context, js nats.JetStreamContext) error {
         trace.WithAttributes(
             attribute.String("messaging.system", "nats"),
             attribute.String("messaging.destination.name", "ORDERS"),
+            attribute.String("messaging.operation.name", "publish"),
+            attribute.String("messaging.operation.type", "send"),
             attribute.String("messaging.nats.stream", "ORDERS"),
         ),
     )
@@ -251,13 +254,15 @@ func publishToJetStream(ctx context.Context, js nats.JetStreamContext) error {
     }
 
     // Record JetStream-specific metadata from the publish ack
-    span.SetAttribute("messaging.nats.sequence", int64(ack.Sequence))
-    span.SetAttribute("messaging.nats.stream", ack.Stream)
+    span.SetAttributes(
+        attribute.Int64("messaging.nats.sequence", int64(ack.Sequence)),
+        attribute.String("messaging.nats.stream", ack.Stream),
+    )
     return nil
 }
 ```
 
-For JetStream consumers, you get an additional benefit: since messages are persistent and can be replayed, the trace context survives replays. If a message is redelivered due to a NAK or timeout, the consumer will still extract the original trace context, and you can see the full redelivery chain in your traces.
+For JetStream consumers, you get an additional benefit: since messages are persistent and can be replayed, the trace context survives replays. If a message is redelivered due to a NAK or timeout, the consumer will still extract the original trace context, so each delivery attempt can be associated with the original publish trace.
 
 ```go
 // JetStream pull consumer with tracing
@@ -280,6 +285,9 @@ func consumeJetStream(ctx context.Context, sub *nats.Subscription) {
                 trace.WithSpanKind(trace.SpanKindConsumer),
                 trace.WithAttributes(
                     attribute.String("messaging.system", "nats"),
+                    attribute.String("messaging.destination.name", "ORDERS.new"),
+                    attribute.String("messaging.operation.name", "process"),
+                    attribute.String("messaging.operation.type", "process"),
                     attribute.String("messaging.nats.stream", "ORDERS"),
                     attribute.String("messaging.nats.consumer", "order-processor"),
                 ),
@@ -329,7 +337,7 @@ func requestPrice(ctx context.Context, nc *nats.Conn, productID string) (float64
     }
 
     price, _ := strconv.ParseFloat(string(reply.Data), 64)
-    span.SetAttribute("pricing.result", price)
+    span.SetAttributes(attribute.Float64("pricing.result", price))
     return price, nil
 }
 ```
