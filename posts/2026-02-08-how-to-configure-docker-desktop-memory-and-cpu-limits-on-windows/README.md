@@ -26,7 +26,7 @@ graph TD
     D --> G[Container N]
 ```
 
-WSL 2 manages memory dynamically by default. It can claim up to 50% of your system memory (or 8 GB, whichever is less) and grows on demand. It can also reclaim unused memory and return it to Windows. CPU cores are shared, meaning WSL 2 can use all cores but Windows processes can preempt it.
+WSL 2 manages memory dynamically by default. It can grow up to 50% of your system memory unless you set a different limit. It can also reclaim unused memory and return it to Windows. CPU cores are shared, meaning WSL 2 can use all logical processors by default but Windows processes can preempt it.
 
 ## Configuring Docker Desktop Resource Settings
 
@@ -35,11 +35,13 @@ Open Docker Desktop, click the gear icon, and go to "Resources." On Windows with
 Newer versions of Docker Desktop on WSL 2 defer resource management to the WSL 2 configuration file (`.wslconfig`). You may see a message saying "Resource allocation is managed by WSL 2."
 
 ```bash
-# Check which backend Docker Desktop uses
+# Check that Docker Desktop is the active Docker engine
 
-docker info --format '{{.OperatingSystem}}'
-# Output: Docker Desktop (if using Docker Desktop with WSL 2)
+docker info --format '{{.OperatingSystem}} ({{.OSType}})'
+# Output: Docker Desktop (linux)
 ```
+
+To confirm the backend, check Docker Desktop Settings > General. When **Use the WSL 2 based engine** is enabled, WSL 2 is the backend.
 
 ## Configuring WSL 2 Resource Limits
 
@@ -67,11 +69,12 @@ swapFile=C:\\temp\\wsl-swap.vhdx
 # Enable localhost forwarding (access container ports from Windows)
 localhostForwarding=true
 
-# Disable page reporting to reclaim memory more aggressively
-pageReporting=false
-
-# Nested virtualization (needed for some container workloads)
+# Nested virtualization (needed for workloads that run nested VMs)
 nestedVirtualization=true
+
+[experimental]
+# Automatically reclaim cached memory in newer WSL versions
+autoMemoryReclaim=gradual
 ```
 
 After saving the file, restart WSL 2 for changes to take effect.
@@ -130,7 +133,7 @@ Always leave at least 4 GB of RAM for Windows itself. Running Windows with too l
 Check how Docker containers use resources on Windows.
 
 ```powershell
-# From PowerShell: Check WSL 2 memory usage
+# From PowerShell: Check WSL status and default configuration
 wsl --status
 
 # From PowerShell: Check Docker resource usage
@@ -180,18 +183,18 @@ memory=8GB
 autoMemoryReclaim=gradual
 ```
 
-The `autoMemoryReclaim` option (available in newer Windows builds) tells WSL 2 to periodically release cached memory back to Windows.
+The `autoMemoryReclaim` option (available in newer WSL versions) tells WSL 2 to periodically release cached memory back to Windows.
 
 ## Hyper-V Backend (Legacy)
 
 If you use the older Hyper-V backend instead of WSL 2, resource settings are configured directly in Docker Desktop.
 
 ```powershell
-# Check if using Hyper-V or WSL 2 backend
-docker info --format '{{.Isolation}}'
+# Check WSL distributions and versions
+wsl --list --verbose
 ```
 
-For Hyper-V backend, open Docker Desktop Settings > Resources and use the sliders:
+To confirm the Hyper-V backend, check Docker Desktop Settings > General. If **Use the WSL 2 based engine** is disabled, open Docker Desktop Settings > Resources and use the sliders:
 
 - **CPUs**: Number of virtual processors
 - **Memory**: RAM allocated to the Docker VM
@@ -252,7 +255,7 @@ cd ~ && git clone https://github.com/org/myapp.git
 
 ```powershell
 # Check what is consuming CPU inside WSL 2
-wsl -d docker-desktop top -bn1 | head -20
+wsl -d docker-desktop -- top -bn1 | Select-Object -First 20
 
 # If buildkit is consuming CPU, prune its cache
 docker builder prune -f
@@ -281,10 +284,10 @@ docker system prune -a -f --volumes
 # Find Docker's virtual disk file (WSL 2)
 wsl --list --verbose
 # The disk is typically at:
-# C:\Users\<username>\AppData\Local\Docker\wsl\disk\docker_data.vhdx
+# C:\Users\<username>\AppData\Local\Docker\wsl\data\docker_data.vhdx
 
 # Check its size
-Get-Item "$env:LOCALAPPDATA\Docker\wsl\disk\docker_data.vhdx" | Select-Object Length, @{N='SizeGB';E={[math]::Round($_.Length/1GB, 2)}}
+Get-Item "$env:LOCALAPPDATA\Docker\wsl\data\docker_data.vhdx" | Select-Object Length, @{N='SizeGB';E={[math]::Round($_.Length/1GB, 2)}}
 ```
 
 To reclaim space after pruning Docker resources:
@@ -294,7 +297,7 @@ To reclaim space after pruning Docker resources:
 wsl --shutdown
 
 # Compact the virtual disk (requires admin PowerShell)
-Optimize-VHD -Path "$env:LOCALAPPDATA\Docker\wsl\disk\docker_data.vhdx" -Mode Full
+Optimize-VHD -Path "$env:LOCALAPPDATA\Docker\wsl\data\docker_data.vhdx" -Mode Full
 ```
 
 Proper resource configuration on Windows requires attention to both Docker Desktop settings and WSL 2 configuration. The `.wslconfig` file is your primary tool for controlling how much of your system Docker can consume. Start with reasonable limits, monitor the Vmmem process in Task Manager, and adjust based on your workflow's actual needs.
