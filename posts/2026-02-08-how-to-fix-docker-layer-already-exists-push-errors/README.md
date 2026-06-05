@@ -22,7 +22,7 @@ Most of the time, "layer already exists" is perfectly normal. It means the regis
 
 ## When "Layer Already Exists" Is Normal
 
-Docker images are composed of layers. Each instruction in a Dockerfile creates a layer. When you push an image, Docker checks each layer against the registry. If the registry already has a layer with the same digest, it skips the upload.
+Docker images are composed of layers. Most build instructions that change the filesystem create layers, while metadata instructions such as `CMD` update the image configuration. When you push an image, Docker checks each layer against the registry. If the registry already has a layer with the same digest, it skips the upload.
 
 This is expected and desirable in these situations:
 
@@ -46,7 +46,7 @@ The error becomes a real problem in these scenarios:
 
 You rebuild an image, push it, and every layer says "already exists" - but the image in the registry does not reflect your latest code changes.
 
-This happens when Docker's build cache produces the same layer digests as before. If your Dockerfile copies source code with a `COPY . .` instruction and the layer cache still considers it valid (perhaps because the build context was not updated), the "new" image is identical to the old one.
+This happens when Docker's build cache produces the same layer digests as before. If your Dockerfile copies source code with a `COPY . .` instruction and the files in the build context have not changed from Docker's perspective (for example, because you built from the wrong directory or excluded the files with `.dockerignore`), the "new" image is identical to the old one. When copied file content or relevant metadata changes, Docker invalidates the `COPY` cache.
 
 Fix by invalidating the build cache:
 
@@ -67,7 +67,7 @@ WORKDIR /app
 
 # These layers rarely change - cached across builds
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 # This layer changes with every code update
 COPY . .
@@ -165,7 +165,7 @@ Docker Hub handles layer deduplication well. If pushes fail, check your rate lim
 docker login
 
 # Check your Docker Hub plan for push limits
-# Free accounts: 200 pulls/6h, unlimited pushes
+# Personal accounts: 200 pulls/6h; Pro, Team, and Business accounts have unlimited pulls
 ```
 
 ### Amazon ECR
@@ -223,7 +223,7 @@ docker buildx build \
   .
 ```
 
-Each platform's layers are independent. You might see "layer already exists" for one platform but not the other. This is normal because the AMD64 and ARM64 variants share no layers (different binaries, different filesystem contents).
+Each platform variant has its own manifest with its own configuration and layer list. You might see "layer already exists" for one platform but not the other. This is normal because AMD64 and ARM64 variants often have different binaries and filesystem contents, although identical layer blobs can still be deduplicated by digest.
 
 ## Cleaning Up for a Fresh Push
 
@@ -248,7 +248,7 @@ docker push myapp:v1.0
 1. **Use immutable tags** (git SHA, build number, timestamp) instead of mutable tags like `latest` or `stable`.
 2. **Structure Dockerfiles for cache efficiency.** Put rarely changing layers first and frequently changing layers last.
 3. **Use `--no-cache` in CI/CD** if you want guaranteed fresh builds.
-4. **Monitor push output.** A successful push shows at least one `Pushed` layer (not all "already exists") when you have made actual changes.
+4. **Monitor push output.** A successful push usually shows at least one `Pushed` layer when filesystem changes create a new layer, but image configuration or manifest-only changes can still update what clients pull.
 5. **Verify after pushing.** Pull the image on a different machine and confirm it has your changes.
 
 ```bash
