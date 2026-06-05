@@ -67,7 +67,7 @@ spec:
 ```
 
 **CPU Guidelines**:
-- 1 CPU core can process approximately 10,000-15,000 spans/second
+- Collector throughput per CPU core depends heavily on processors, exporters, payload size, and backend latency; benchmark your own pipeline before capacity planning
 - Allocate at least 4 cores for production workloads
 - Enable GOMAXPROCS to match allocated CPU
 
@@ -141,6 +141,7 @@ extensions:
   file_storage:
     directory: /var/lib/otel-collector/storage
     timeout: 10s
+    create_directory: true
     # Limit storage size
     compaction:
       directory: /var/lib/otel-collector/storage
@@ -156,7 +157,12 @@ service:
   telemetry:
     metrics:
       level: detailed
-      address: :8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: '0.0.0.0'
+                port: 8888
 
   pipelines:
     traces:
@@ -269,10 +275,10 @@ spec:
       - name: config
         configMap:
           name: otel-collector-config
-      # Persistent storage for queues
+      # Use a StatefulSet with per-pod PVCs for persistent queues.
+      # This example uses ephemeral storage for a multi-replica Deployment.
       - name: storage
-        persistentVolumeClaim:
-          claimName: otel-collector-storage
+        emptyDir: {}
 ```
 
 ### NGINX Load Balancer for External Deployments
@@ -314,13 +320,10 @@ server {
     server_name _;
 
     # gRPC specific settings
-    grpc_pass grpc://otel_collectors_grpc;
-    grpc_next_upstream error timeout http_500 http_502 http_503 http_504;
-    grpc_next_upstream_tries 2;
-
-    # Health check
-    location /health {
+    location / {
         grpc_pass grpc://otel_collectors_grpc;
+        grpc_next_upstream error timeout http_500 http_502 http_503 http_504;
+        grpc_next_upstream_tries 2;
     }
 }
 
@@ -423,7 +426,7 @@ spec:
   - type: Pods
     pods:
       metric:
-        name: otelcol_receiver_accepted_spans
+        name: otelcol_receiver_accepted_spans_per_second
       target:
         type: AverageValue
         averageValue: "10000"
@@ -485,6 +488,8 @@ exporters:
   otlp/gateway:
     endpoint: otel-gateway.internal:4317
     compression: gzip
+    tls:
+      insecure: true
     sending_queue:
       queue_size: 10000
 
@@ -545,6 +550,7 @@ exporters:
 extensions:
   file_storage:
     directory: /var/lib/otel-collector/storage
+    create_directory: true
 
 service:
   extensions: [file_storage]
@@ -585,7 +591,7 @@ exporters:
       # Use Kubernetes service discovery
       dns:
         hostname: gateway-service.observability.svc.cluster.local
-        port: 4317
+        port: "4317"
 
     routing_key: "traceID"
 
@@ -662,7 +668,8 @@ WORKERS=20
 
 # Test different throughput levels
 for RATE in 10000 50000 100000 200000; do
-    echo "Testing ${RATE} spans/second..."
+    RATE_PER_WORKER=$((RATE / WORKERS))
+    echo "Testing approximately ${RATE} spans/second total (${RATE_PER_WORKER} per worker)..."
 
     docker run --rm \
       ghcr.io/open-telemetry/opentelemetry-collector-contrib/telemetrygen:latest \
@@ -670,7 +677,7 @@ for RATE in 10000 50000 100000 200000; do
       --otlp-endpoint ${ENDPOINT} \
       --otlp-insecure \
       --duration ${DURATION}s \
-      --rate ${RATE} \
+      --rate ${RATE_PER_WORKER} \
       --workers ${WORKERS} \
       --span-duration 1ms
 
@@ -773,7 +780,12 @@ service:
   telemetry:
     metrics:
       level: detailed
-      address: :8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: '0.0.0.0'
+                port: 8888
 
   pipelines:
     metrics/internal:
