@@ -16,49 +16,55 @@ Every tracer, meter, and logger in OpenTelemetry is created with a name and vers
 # Python: creating scoped instruments
 
 from opentelemetry import trace, metrics
+from opentelemetry._logs import get_logger
 import logging
 
 # Each component gets its own tracer with a distinct scope
 http_tracer = trace.get_tracer(
     "com.example.http-client",
-    version="1.2.0",
+    "1.2.0",
     schema_url="https://opentelemetry.io/schemas/1.21.0"
 )
 
 db_tracer = trace.get_tracer(
     "com.example.database",
-    version="2.0.1"
+    "2.0.1"
 )
 
 # Same for meters
 http_meter = metrics.get_meter(
     "com.example.http-client",
-    version="1.2.0"
+    "1.2.0"
 )
 
 db_meter = metrics.get_meter(
     "com.example.database",
-    version="2.0.1"
+    "2.0.1"
 )
 
-# And loggers
-http_logger = logging.getLogger("com.example.http-client")
-db_logger = logging.getLogger("com.example.database")
+# And OpenTelemetry loggers
+http_logger = get_logger("com.example.http-client", "1.2.0")
+db_logger = get_logger("com.example.database", "2.0.1")
+
+# If you bridge Python's standard logging module to OpenTelemetry,
+# the Python logger name is recorded as the instrumentation scope name.
+python_http_logger = logging.getLogger("com.example.http-client")
+python_db_logger = logging.getLogger("com.example.database")
 ```
 
 Every span created by `http_tracer` carries the instrumentation scope `{name: "com.example.http-client", version: "1.2.0"}`. Every metric from `db_meter` carries `{name: "com.example.database", version: "2.0.1"}`.
 
 ## How Instrumentation Scope Appears in Telemetry
 
-In the OTLP protocol, telemetry is grouped by instrumentation scope:
+In the OTLP data model, telemetry is grouped by instrumentation scope. A simplified OTLP-shaped payload looks like this:
 
 ```json
 {
-  "resource_spans": [{
+  "resourceSpans": [{
     "resource": {
       "attributes": [{"key": "service.name", "value": "order-service"}]
     },
-    "scope_spans": [
+    "scopeSpans": [
       {
         "scope": {
           "name": "com.example.http-client",
@@ -114,18 +120,17 @@ processors:
   # Filter out noisy spans from a specific instrumentation library
   filter/scope:
     error_mode: ignore
-    traces:
-      span:
-        # Drop spans from the Spring Scheduling instrumentation
-        - 'instrumentation_scope.name == "io.opentelemetry.spring-scheduling-3.1"'
+    trace_conditions:
+      # Drop spans from the Spring Scheduling instrumentation
+      - 'scope.name == "io.opentelemetry.spring-scheduling-3.1"'
 
   # Transform: add scope info as span attributes for easier querying
   transform/scope:
     trace_statements:
       - context: span
         statements:
-          - set(attributes["otel.scope.name"], instrumentation_scope.name)
-          - set(attributes["otel.scope.version"], instrumentation_scope.version)
+          - set(attributes["otel.scope.name"], scope.name)
+          - set(attributes["otel.scope.version"], scope.version)
 ```
 
 ## Using Metric Views with Instrumentation Scope
@@ -173,23 +178,23 @@ meter_provider:
 
 ## Cross-Signal Correlation Using Scope
 
-The instrumentation scope is the link between different signal types from the same library. Here is how to use it:
+The instrumentation scope is the link between different signal types from the same library. If your span-metrics pipeline exposes scope fields as labels, or you copy them to span attributes as shown above and configure those attributes as span-metrics dimensions, you can query them in Prometheus:
 
 ```promql
 # Query: which instrumentation library generates the most spans?
-sum(rate(traces_spanmetrics_calls_total[5m])) by (instrumentation_scope_name)
+sum(rate(traces_span_metrics_calls_total[5m])) by (otel_scope_name)
 
 # Query: what is the error rate per instrumentation library?
-sum(rate(traces_spanmetrics_calls_total{status_code="STATUS_CODE_ERROR"}[5m])) by (instrumentation_scope_name)
+sum(rate(traces_span_metrics_calls_total{status_code="STATUS_CODE_ERROR"}[5m])) by (otel_scope_name)
 /
-sum(rate(traces_spanmetrics_calls_total[5m])) by (instrumentation_scope_name)
+sum(rate(traces_span_metrics_calls_total[5m])) by (otel_scope_name)
 ```
 
 In TraceQL:
 
 ```text
 # Find all spans from a specific instrumentation scope
-{ scope.name = "io.opentelemetry.jdbc" && duration > 1s }
+{ instrumentation:name = "io.opentelemetry.jdbc" && span:duration > 1s }
 ```
 
 ## Tracking Library Version Upgrades
@@ -199,18 +204,18 @@ Instrumentation scope versions let you compare behavior before and after a libra
 ```promql
 # Compare latency between library versions
 histogram_quantile(0.99,
-  sum(rate(traces_spanmetrics_duration_seconds_bucket{
-    instrumentation_scope_name="io.opentelemetry.spring-webmvc-6.0",
-    instrumentation_scope_version="2.1.0"
+  sum(rate(traces_span_metrics_duration_seconds_bucket{
+    otel_scope_name="io.opentelemetry.spring-webmvc-6.0",
+    otel_scope_version="2.1.0"
   }[5m])) by (le)
 )
 
 # vs.
 
 histogram_quantile(0.99,
-  sum(rate(traces_spanmetrics_duration_seconds_bucket{
-    instrumentation_scope_name="io.opentelemetry.spring-webmvc-6.0",
-    instrumentation_scope_version="2.2.0"
+  sum(rate(traces_span_metrics_duration_seconds_bucket{
+    otel_scope_name="io.opentelemetry.spring-webmvc-6.0",
+    otel_scope_version="2.2.0"
   }[5m])) by (le)
 )
 ```
@@ -221,11 +226,11 @@ When you write your own instrumentation, follow the OpenTelemetry naming convent
 
 ```python
 # Good: reverse domain name, identifies the component
-tracer = trace.get_tracer("com.example.payment-gateway", version="1.0.0")
-meter = metrics.get_meter("com.example.payment-gateway", version="1.0.0")
+tracer = trace.get_tracer("com.example.payment-gateway", "1.0.0")
+meter = metrics.get_meter("com.example.payment-gateway", "1.0.0")
 
 # Good: for application-level instrumentation
-tracer = trace.get_tracer("com.example.order-service.checkout", version="3.2.1")
+tracer = trace.get_tracer("com.example.order-service.checkout", "3.2.1")
 
 # Bad: vague, non-unique names
 tracer = trace.get_tracer("tracer")
