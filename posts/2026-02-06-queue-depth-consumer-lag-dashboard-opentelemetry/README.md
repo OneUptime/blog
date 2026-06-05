@@ -8,7 +8,7 @@ Description: Monitor message queue depth and consumer lag using OpenTelemetry me
 
 Message queues are the connective tissue of distributed systems, and when they back up, everything downstream suffers. Consumer lag - the gap between what producers have written and what consumers have processed - is one of the most important operational metrics for any event-driven architecture. Yet it is often the last thing teams instrument properly.
 
-OpenTelemetry has semantic conventions for messaging systems that standardize how queue metrics are reported. This means you can build a single dashboard that covers Kafka, RabbitMQ, SQS, or any other broker, all using the same metric names and attribute schemas.
+OpenTelemetry has semantic conventions for messaging client spans and metrics, and the Collector has broker-specific receivers for queue and consumer group metrics. This means you can build a single dashboard model for Kafka, RabbitMQ, SQS, or other brokers, while normalizing the broker-specific metric names that each receiver emits.
 
 ## What to Measure
 
@@ -41,7 +41,7 @@ Here is how to instrument a Kafka producer and consumer with OpenTelemetry metri
 
 from opentelemetry import metrics
 from opentelemetry import trace
-from confluent_kafka import Producer, Consumer
+from confluent_kafka import Producer, Consumer, KafkaException
 import time
 
 meter = metrics.get_meter("messaging.kafka")
@@ -49,68 +49,95 @@ tracer = trace.get_tracer("messaging.kafka")
 
 # Counter for messages published
 messages_published = meter.create_counter(
-    name="messaging.publish.messages",
-    description="Number of messages published",
+    name="messaging.client.sent.messages",
+    description="Number of messages the producer attempted to send",
     unit="{message}",
 )
 
 # Histogram for publish latency
 publish_duration = meter.create_histogram(
-    name="messaging.publish.duration",
-    description="Time taken to publish a message",
-    unit="ms",
+    name="messaging.client.operation.duration",
+    description="Duration of the Kafka send operation",
+    unit="s",
 )
 
 # Counter for messages consumed
 messages_consumed = meter.create_counter(
-    name="messaging.receive.messages",
+    name="messaging.client.consumed.messages",
     description="Number of messages consumed",
     unit="{message}",
 )
 
-# Gauge for consumer lag per partition
-consumer_lag_gauge = meter.create_observable_gauge(
-    name="messaging.kafka.consumer.lag",
-    description="Consumer group lag in number of offsets",
-    unit="{offset}",
-    callbacks=[lambda options: get_consumer_lag()],
+# Histogram for consumer processing time
+process_duration = meter.create_histogram(
+    name="messaging.process.duration",
+    description="Duration of processing a consumed message",
+    unit="s",
 )
 
 def instrumented_produce(producer, topic, message):
     """Produce a message with OpenTelemetry instrumentation."""
-    start = time.time()
+    start = time.perf_counter()
+    attributes = {
+        "messaging.system": "kafka",
+        "messaging.destination.name": topic,
+        "messaging.operation.name": "send",
+        "messaging.operation.type": "send",
+        "topic": topic,
+    }
 
     with tracer.start_as_current_span(
-        f"{topic} publish",
-        attributes={
-            "messaging.system": "kafka",
-            "messaging.destination.name": topic,
-            "messaging.operation": "publish",
-        }
+        f"{topic} send",
+        attributes=attributes,
     ):
         producer.produce(topic, value=message)
         producer.flush()
 
-    elapsed_ms = (time.time() - start) * 1000
-    labels = {
+    elapsed_s = time.perf_counter() - start
+    messages_published.add(1, attributes)
+    publish_duration.record(elapsed_s, attributes)
+
+def instrumented_consume(consumer, handler, timeout=1.0):
+    """Consume and process one Kafka message with OpenTelemetry instrumentation."""
+    message = consumer.poll(timeout)
+    if message is None:
+        return None
+    if message.error():
+        raise KafkaException(message.error())
+
+    start = time.perf_counter()
+    attributes = {
         "messaging.system": "kafka",
-        "messaging.destination.name": topic,
+        "messaging.destination.name": message.topic(),
+        "messaging.destination.partition.id": str(message.partition()),
+        "messaging.operation.name": "process",
+        "messaging.operation.type": "process",
+        "topic": message.topic(),
     }
-    messages_published.add(1, labels)
-    publish_duration.record(elapsed_ms, labels)
+
+    with tracer.start_as_current_span(
+        f"{message.topic()} process",
+        attributes=attributes,
+    ):
+        messages_consumed.add(1, attributes)
+        handler(message)
+
+    elapsed_s = time.perf_counter() - start
+    process_duration.record(elapsed_s, attributes)
+    return message
 ```
 
 ## Collecting Queue Depth from the Broker
 
 Consumer-side instrumentation tells you about processing, but queue depth and lag need to be collected from the broker itself. The OpenTelemetry Collector has receivers for this purpose.
 
-For Kafka, use the `kafkametricsreceiver` that connects directly to the broker and scrapes topic and consumer group metrics.
+For Kafka, use the Kafka Metrics receiver that connects directly to the broker and scrapes topic and consumer group metrics.
 
 ```yaml
 # otel-collector-kafka-metrics.yaml
 receivers:
   # Scrape Kafka broker metrics directly
-  kafkametrics:
+  kafka_metrics:
     brokers:
       - kafka-broker-1:9092
       - kafka-broker-2:9092
@@ -140,16 +167,22 @@ processors:
         action: upsert
 
 exporters:
-  prometheusremotewrite:
+  prometheus_remote_write:
     endpoint: http://prometheus:9090/api/v1/write
+    tls:
+      insecure: true
+    resource_to_telemetry_conversion:
+      enabled: true
 
 service:
   pipelines:
     metrics:
-      receivers: [kafkametrics, otlp]
+      receivers: [kafka_metrics, otlp]
       processors: [resource, batch]
-      exporters: [prometheusremotewrite]
+      exporters: [prometheus_remote_write]
 ```
+
+If you send remote write data to a vanilla Prometheus server, start Prometheus with `--web.enable-remote-write-receiver` so `/api/v1/write` accepts samples.
 
 For RabbitMQ, use the `rabbitmqreceiver` which collects queue-level metrics via the management API.
 
@@ -159,7 +192,7 @@ receivers:
   rabbitmq:
     endpoint: http://rabbitmq:15672
     username: monitoring
-    password: "${RABBITMQ_PASSWORD}"
+    password: "${env:RABBITMQ_PASSWORD}"
     collection_interval: 30s
 ```
 
@@ -168,8 +201,13 @@ receivers:
 These PromQL queries power the key panels of the messaging dashboard.
 
 ```promql
-# Queue depth across all topics
-sum by (topic) (kafka_topic_partition_current_offset - kafka_consumer_group_offset)
+# Kafka backlog per topic and consumer group
+sum by (group, topic) (kafka_consumer_group_lag)
+
+# RabbitMQ ready messages per queue
+sum by (rabbitmq_queue_name, rabbitmq_vhost_name) (
+  rabbitmq_message_current{state="ready"}
+)
 
 # Consumer lag per consumer group
 sum by (group, topic) (
@@ -178,28 +216,28 @@ sum by (group, topic) (
 
 # Publish rate per topic (messages per second)
 sum by (topic) (
-  rate(messaging_publish_messages_total[5m])
+  rate(messaging_client_sent_messages_total[5m])
 )
 
 # Consume rate per consumer group
-sum by (group, topic) (
-  rate(messaging_receive_messages_total[5m])
+sum by (topic) (
+  rate(messaging_client_consumed_messages_total[5m])
 )
 
 # Publish vs consume rate difference (positive means queue is growing)
-sum by (topic) (rate(messaging_publish_messages_total[5m]))
+sum by (topic) (rate(messaging_client_sent_messages_total[5m]))
 -
-sum by (topic) (rate(messaging_receive_messages_total[5m]))
+sum by (topic) (rate(messaging_client_consumed_messages_total[5m]))
 
 # Publish latency p99
 histogram_quantile(0.99,
-  sum(rate(messaging_publish_duration_bucket[5m])) by (le, topic)
+  sum(rate(messaging_client_operation_duration_seconds_bucket[5m])) by (le, topic)
 )
 ```
 
 ## Dashboard Layout
 
-**Row 1 - Queue Health at a Glance**: A stat panel per critical topic showing current queue depth with threshold coloring (green under 1000, yellow under 10000, red above). Next to it, a gauge showing the oldest unprocessed message age.
+**Row 1 - Queue Health at a Glance**: A stat panel per critical topic or queue showing current backlog with threshold coloring (green under 1000, yellow under 10000, red above). Next to it, show oldest unprocessed message age if your broker or application instrumentation exports that metric.
 
 **Row 2 - Consumer Lag Trends**: Time series of consumer lag per consumer group. This is the most important panel - a steadily increasing line means consumers are falling behind and you need to scale them up or investigate processing bottlenecks.
 
@@ -227,14 +265,14 @@ groups:
         annotations:
           summary: "Consumer group {{ $labels.group }} lag on {{ $labels.topic }} is {{ $value }}"
 
-      # Alert when queue depth is growing continuously
+      # Alert when Kafka consumer lag is growing continuously
       - alert: QueueDepthGrowing
-        expr: deriv(sum by (topic) (kafka_consumer_group_lag)[15m:1m]) > 100
+        expr: deriv((sum by (topic) (kafka_consumer_group_lag))[15m:1m]) > 100
         for: 10m
         labels:
           severity: critical
         annotations:
-          summary: "Queue depth for {{ $labels.topic }} is growing at {{ $value }} per minute"
+          summary: "Consumer lag for {{ $labels.topic }} is growing at {{ $value }} offsets per second"
 ```
 
 These alerts, combined with the dashboard, give you full visibility into your messaging infrastructure. When an alert fires, the dashboard provides the context you need to determine whether the issue is a slow consumer, a traffic spike, or a partition imbalance.
