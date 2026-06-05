@@ -53,13 +53,15 @@ The following command pulls and runs the collector using Docker. We mount a loca
 ```bash
 # Pull the contrib distribution which includes Datadog-compatible components
 
-# We use contrib instead of core because it has the hostmetrics receiver,
-# the filelog receiver, and the datadog exporter built in
+# We use contrib instead of core because it includes components such as
+# the filelog receiver, Datadog receiver, and Datadog exporter
 docker run -d \
   --name otel-collector \
   -v $(pwd)/otel-config.yaml:/etc/otelcol-contrib/config.yaml \
+  -v /var/lib/docker/containers:/var/lib/docker/containers:ro \
   -p 4317:4317 \
   -p 4318:4318 \
+  -p 8126:8126 \
   -p 8888:8888 \
   otel/opentelemetry-collector-contrib:latest
 ```
@@ -100,7 +102,7 @@ receivers:
       load: {}
 ```
 
-The metric names differ between Datadog and OpenTelemetry. For example, Datadog reports `system.cpu.user` while OpenTelemetry reports `system.cpu.utilization` with a `state` attribute. If you are sending to a new backend, this does not matter. If you want to continue sending to Datadog while you transition, use the Datadog exporter which handles the translation automatically.
+The metric names differ between Datadog and OpenTelemetry. For example, Datadog reports `system.cpu.user` while OpenTelemetry reports `system.cpu.utilization` with a `state` attribute. If you are sending to a new backend, this does not matter. If you want to continue sending to Datadog while you transition, use the Datadog exporter, but plan to update dashboards and alerts because host metrics from the Collector are reported with `otel.system.*` and `otel.process.*` names in Datadog.
 
 ## Step 3: Migrate Application Traces
 
@@ -172,19 +174,12 @@ receivers:
   filelog:
     # Watch all JSON log files from Docker containers
     include:
-      - /var/log/containers/*.log
+      - /var/lib/docker/containers/*/*-json.log
     # Start reading from the end of the file so we don't replay old logs
     start_at: end
-    # Parse Docker JSON log format to extract timestamp and message
+    # Parse Docker JSON log format to extract timestamp, stream, and message
     operators:
-      - type: json_parser
-        # Docker wraps each log line in a JSON object with log, stream, and time fields
-        timestamp:
-          parse_from: attributes.time
-          layout: "%Y-%m-%dT%H:%M:%S.%LZ"
-      - type: move
-        from: attributes.log
-        to: body
+      - type: container
 ```
 
 ## Step 5: Build the Complete Pipeline
@@ -201,6 +196,9 @@ receivers:
         endpoint: 0.0.0.0:4317
       http:
         endpoint: 0.0.0.0:4318
+  datadog:
+    endpoint: 0.0.0.0:8126
+    read_timeout: 60s
   hostmetrics:
     collection_interval: 15s
     scrapers:
@@ -211,8 +209,10 @@ receivers:
       load: {}
   filelog:
     include:
-      - /var/log/containers/*.log
+      - /var/lib/docker/containers/*/*-json.log
     start_at: end
+    operators:
+      - type: container
 
 processors:
   # Prevent the collector from running out of memory
@@ -243,17 +243,17 @@ exporters:
 service:
   pipelines:
     traces:
-      receivers: [otlp]
+      receivers: [otlp, datadog]
       processors: [memory_limiter, batch]
-      exporters: [otlphttp]
+      exporters: [otlphttp, datadog]
     metrics:
       receivers: [otlp, hostmetrics]
       processors: [memory_limiter, batch]
-      exporters: [otlphttp]
+      exporters: [otlphttp, datadog]
     logs:
       receivers: [filelog]
       processors: [memory_limiter, batch]
-      exporters: [otlphttp]
+      exporters: [otlphttp, datadog]
 ```
 
 ## Step 6: Validate and Cut Over
@@ -273,7 +273,7 @@ Once you are confident the OpenTelemetry pipeline captures everything you need, 
 
 **Tag vs. attribute mapping**: Datadog uses flat tags like `env:production`. OpenTelemetry uses structured resource attributes like `deployment.environment: production`. The semantics are similar but the structure differs.
 
-**Custom checks**: If you have written custom Datadog Agent checks in Python, you will need to rewrite them. The OpenTelemetry Collector does not run Python checks. Look at custom receivers or the script processor as alternatives.
+**Custom checks**: If you have written custom Datadog Agent checks in Python, you will need to rewrite them. The OpenTelemetry Collector does not run Python checks. Look at custom receivers or the transform processor as alternatives.
 
 ## Conclusion
 
