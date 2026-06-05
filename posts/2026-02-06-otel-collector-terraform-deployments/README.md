@@ -26,7 +26,7 @@ variable "namespace" {
 }
 
 variable "collector_mode" {
-  description = "Deployment mode: daemonset or deployment"
+  description = "Deployment mode: daemonset"
   type        = string
   default     = "daemonset"
 }
@@ -69,7 +69,7 @@ resource "kubernetes_namespace" "observability" {
 resource "kubernetes_config_map" "collector_config" {
   metadata {
     name      = "otel-collector-config"
-    namespace = var.namespace
+    namespace = kubernetes_namespace.observability.metadata[0].name
   }
 
   data = {
@@ -83,7 +83,7 @@ resource "kubernetes_daemon_set_v1" "collector_agent" {
 
   metadata {
     name      = "otel-collector-agent"
-    namespace = var.namespace
+    namespace = kubernetes_namespace.observability.metadata[0].name
     labels = {
       app        = "otel-collector"
       mode       = "agent"
@@ -209,7 +209,7 @@ resource "aws_ecs_task_definition" "collector" {
       name  = "otel-collector"
       image = "otel/opentelemetry-collector-contrib:${var.image_tag}"
       essential = true
-      command = ["--config", "/etc/otel/config.yaml"]
+      command = ["--config", "env:OTEL_CONFIG"]
 
       portMappings = [
         { containerPort = 4317, protocol = "tcp" },
@@ -228,7 +228,7 @@ resource "aws_ecs_task_definition" "collector" {
       environment = [
         {
           name  = "OTEL_CONFIG"
-          value = var.collector_config_base64
+          value = var.collector_config
         }
       ]
     }
@@ -248,9 +248,6 @@ resource "aws_ecs_service" "collector" {
     assign_public_ip = false
   }
 
-  service_registries {
-    registry_arn = aws_service_discovery_service.collector.arn
-  }
 }
 ```
 
