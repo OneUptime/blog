@@ -39,8 +39,8 @@ frontend http_front
 
 backend servers
     balance roundrobin
-    server s1 backend1:8080 check
-    server s2 backend2:8080 check
+    server s1 backend1:80 check
+    server s2 backend2:80 check
 ```
 
 Verify the metrics endpoint:
@@ -63,14 +63,14 @@ haproxy_frontend_request_errors_total  - Request errors
 
 # Backend metrics
 haproxy_backend_current_sessions       - Active connections to backend
-haproxy_backend_response_time_average  - Average response time
+haproxy_backend_response_time_average_seconds - Average response time
 haproxy_backend_http_responses_total   - Response count by status code
 haproxy_backend_connection_errors_total - Backend connection errors
 
 # Server metrics
-haproxy_server_status                  - Server health (1=UP, 0=DOWN)
+haproxy_server_status                  - Server state (labeled by UP, DOWN, MAINT, DRAIN, NOLB)
 haproxy_server_current_sessions        - Active connections per server
-haproxy_server_response_time_average   - Response time per server
+haproxy_server_response_time_average_seconds - Response time per server
 haproxy_server_weight                  - Server weight in load balancing
 ```
 
@@ -109,14 +109,14 @@ processors:
         action: upsert
 
   # Rename metrics to follow OpenTelemetry conventions
-  metricstransform:
+  metrics_transform:
     transforms:
       - include: haproxy_frontend_current_sessions
         action: update
         new_name: haproxy.frontend.connections.active
-      - include: haproxy_backend_response_time_average
+      - include: haproxy_backend_response_time_average_seconds
         action: update
-        new_name: haproxy.backend.response_time.avg
+        new_name: haproxy.backend.response_time.avg.seconds
 
 exporters:
   otlp:
@@ -128,7 +128,7 @@ service:
   pipelines:
     metrics:
       receivers: [prometheus/haproxy]
-      processors: [resource, metricstransform, batch]
+      processors: [resource, metrics_transform, batch]
       exporters: [otlp]
 ```
 
@@ -166,8 +166,6 @@ scrape_configs:
 ## Docker Compose Example
 
 ```yaml
-version: "3.8"
-
 services:
   haproxy:
     image: haproxy:latest
@@ -199,40 +197,47 @@ Create alerts based on HAProxy metrics:
 # Example alert rules
 # Backend server down
 - alert: HAProxyServerDown
-  condition: haproxy_server_status == 0
+  expr: haproxy_server_status{state="DOWN"} == 1
   for: 1m
-  severity: critical
-  message: "Server {{ server }} in backend {{ backend }} is DOWN"
+  labels:
+    severity: critical
+  annotations:
+    summary: "Server {{ $labels.server }} in backend {{ $labels.proxy }} is DOWN"
 
 # High error rate
 - alert: HAProxyHighErrorRate
-  condition: rate(haproxy_frontend_request_errors_total[5m]) > 10
-  severity: warning
+  expr: rate(haproxy_frontend_request_errors_total[5m]) > 10
+  labels:
+    severity: warning
 
 # Connection queue building up
 - alert: HAProxyQueueBacklog
-  condition: haproxy_backend_current_queue > 50
+  expr: haproxy_backend_current_queue > 50
   for: 2m
-  severity: warning
+  labels:
+    severity: warning
 
 # Response time spike
 - alert: HAProxySlowResponses
-  condition: haproxy_backend_response_time_average > 5000
+  expr: haproxy_backend_response_time_average_seconds > 5
   for: 5m
-  severity: warning
+  labels:
+    severity: warning
 ```
 
 ## Using the Stats Socket for Additional Data
 
 The Prometheus endpoint covers most use cases, but the stats socket provides additional runtime information:
 
-```bash
-# Enable the stats socket
-echo "stats socket /var/run/haproxy.sock mode 660 level admin" >> haproxy.cfg
+```text
+# Add this in the global section of haproxy.cfg
+stats socket /var/run/haproxy.sock mode 660 level admin
+```
 
+```bash
 # Query the socket
-echo "show stat" | socat /var/run/haproxy.sock stdio
-echo "show info" | socat /var/run/haproxy.sock stdio
+echo "show stat" | socat stdio /var/run/haproxy.sock
+echo "show info" | socat stdio /var/run/haproxy.sock
 ```
 
 For metrics not available through Prometheus, you can write a custom script that queries the stats socket and exports to the Collector:
