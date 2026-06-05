@@ -14,7 +14,7 @@ This guide covers practical patterns for monitoring queue backlog and consumer l
 
 ## Understanding Backlog vs Consumer Lag
 
-These two terms are related but distinct. Backlog is the total number of unprocessed messages sitting in a queue or topic partition. Consumer lag is the difference between the latest produced offset and the latest consumed offset for a specific consumer group. In systems like RabbitMQ where there are no offsets, backlog and lag are effectively the same thing (the number of ready messages). In Kafka, you can have different lag values for different consumer groups reading from the same topic.
+These two terms are related but distinct. Backlog is the total number of unprocessed messages sitting in a queue or topic partition. Consumer lag is the difference between the latest produced offset and the latest consumed offset for a specific consumer group. In systems like RabbitMQ where there are no offsets, queue depth is the closest equivalent, usually split into ready messages and unacknowledged messages. In Kafka, you can have different lag values for different consumer groups reading from the same topic.
 
 ```mermaid
 graph LR
@@ -28,7 +28,7 @@ graph LR
     style H fill:#ff9800,color:#fff
 ```
 
-Understanding this distinction matters for your monitoring strategy. A topic might have zero backlog from one consumer group's perspective but massive lag from another's.
+Understanding this distinction matters for your monitoring strategy. A topic might have zero lag from one consumer group's perspective but massive lag from another's.
 
 ## Monitoring Kafka Consumer Lag
 
@@ -36,10 +36,10 @@ Kafka consumer lag is the most commonly monitored messaging metric, and for good
 
 ```python
 from opentelemetry import metrics
-from confluent_kafka.admin import AdminClient, ConsumerGroupTopicPartitions
 from confluent_kafka import TopicPartition
 
 meter = metrics.get_meter("kafka.lag.monitor")
+KAFKA_BOOTSTRAP_SERVERS = "localhost:9092"
 
 # Create a gauge that reports consumer lag per partition
 
@@ -52,18 +52,16 @@ lag_gauge = meter.create_observable_gauge(
 
 def collect_kafka_lag(options):
     """Collect consumer lag for all monitored consumer groups."""
-    admin = AdminClient({"bootstrap.servers": "localhost:9092"})
-
     # Define which consumer groups and topics to monitor
     groups_to_monitor = ["order-processor", "analytics-pipeline", "notification-sender"]
 
     for group_id in groups_to_monitor:
         try:
             # Get the committed offsets for this consumer group
-            committed = get_committed_offsets(admin, group_id)
+            committed = get_committed_offsets(group_id)
 
             # Get the latest offsets (high watermarks) for each partition
-            for tp, committed_offset in committed.items():
+            for tp, committed_offset in committed:
                 # Fetch the high watermark for this partition
                 high_watermark = get_high_watermark(tp.topic, tp.partition)
 
@@ -74,26 +72,27 @@ def collect_kafka_lag(options):
                         value=lag,
                         attributes={
                             "messaging.system": "kafka",
-                            "messaging.kafka.consumer_group": group_id,
+                            "messaging.consumer.group.name": group_id,
                             "messaging.destination.name": tp.topic,
-                            "messaging.kafka.partition": tp.partition,
+                            "messaging.destination.partition.id": str(tp.partition),
                         }
                     )
         except Exception:
             # Log but do not crash the metric collection
             pass
 
-def get_committed_offsets(admin, group_id):
+def get_committed_offsets(group_id):
     """Fetch committed offsets for a consumer group."""
     from confluent_kafka import Consumer
 
     consumer = Consumer({
-        "bootstrap.servers": "localhost:9092",
+        "bootstrap.servers": KAFKA_BOOTSTRAP_SERVERS,
         "group.id": group_id,
+        "enable.auto.commit": False,
     })
 
-    # List all topics this group is subscribed to
-    committed_offsets = {}
+    # Query committed offsets for all non-internal topic partitions.
+    committed_offsets = []
     topics = consumer.list_topics()
 
     for topic_name, topic_metadata in topics.topics.items():
@@ -108,7 +107,7 @@ def get_committed_offsets(admin, group_id):
         committed = consumer.committed(partitions, timeout=10)
         for tp in committed:
             if tp.offset >= 0:
-                committed_offsets[tp] = tp.offset
+                committed_offsets.append((tp, tp.offset))
 
     consumer.close()
     return committed_offsets
@@ -118,8 +117,9 @@ def get_high_watermark(topic, partition):
     from confluent_kafka import Consumer
 
     consumer = Consumer({
-        "bootstrap.servers": "localhost:9092",
+        "bootstrap.servers": KAFKA_BOOTSTRAP_SERVERS,
         "group.id": "_lag_monitor_internal",
+        "enable.auto.commit": False,
     })
 
     tp = TopicPartition(topic, partition)
@@ -316,8 +316,9 @@ def process_with_latency_tracking(message, queue_name):
         kind=trace.SpanKind.CONSUMER,
         attributes={
             "messaging.system": "generic",
-            "messaging.source.name": queue_name,
-            "messaging.operation": "process",
+            "messaging.destination.name": queue_name,
+            "messaging.operation.name": "process",
+            "messaging.operation.type": "process",
         }
     ) as span:
         # Record how long the message waited in the queue
@@ -340,7 +341,7 @@ def process_with_latency_tracking(message, queue_name):
             process_time_ms = (time.time() - process_start) * 1000
             span.set_attribute("messaging.processing.duration_ms", process_time_ms)
             span.set_attribute("messaging.processing.outcome", "error")
-            span.set_status(trace.StatusCode.ERROR, str(e))
+            span.set_status(trace.Status(trace.StatusCode.ERROR, str(e)))
             span.record_exception(e)
             raise
 ```
