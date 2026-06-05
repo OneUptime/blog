@@ -263,7 +263,7 @@ Use `live_update` in your Tiltfile to skip full rebuilds when possible. For inte
 docker_build('service-a', './service-a',
   live_update=[
     sync('./service-a', '/app'),
-    run('pip install -r requirements.txt', trigger='requirements.txt'),
+    run('pip install -r /app/requirements.txt', trigger='./service-a/requirements.txt'),
   ]
 )
 ```
