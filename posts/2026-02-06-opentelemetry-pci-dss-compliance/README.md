@@ -12,7 +12,7 @@ PCI DSS (Payment Card Industry Data Security Standard) is a set of security requ
 
 But there is a catch. OpenTelemetry can also be a compliance liability if misconfigured. Traces and logs can accidentally capture card numbers, CVVs, or other sensitive cardholder data. You need to be deliberate about what gets collected, how it is transported, and where it is stored.
 
-This guide maps specific PCI DSS requirements to OpenTelemetry configurations that help you meet them.
+This guide maps specific PCI DSS requirements to OpenTelemetry configurations that can help you meet them.
 
 ## PCI DSS Requirements Relevant to OpenTelemetry
 
@@ -43,8 +43,14 @@ Use the OpenTelemetry Collector's transform processor to detect and redact PANs 
 # Collector configuration that scrubs cardholder data from all signals
 
 # This prevents PAN, CVV, and expiry dates from reaching telemetry storage
+receivers:
+  otlp:
+    protocols:
+      grpc:
+
 processors:
   transform/pci-redact:
+    error_mode: ignore
     trace_statements:
       - context: span
         statements:
@@ -67,6 +73,12 @@ processors:
           # Scrub from log attributes as well
           - replace_pattern(attributes["message"], "\\b(?:\\d[ -]*?){13,19}\\b", "[PAN_REDACTED]")
 
+  batch:
+
+exporters:
+  otlp/backend:
+    endpoint: telemetry-backend.internal:4317
+
 service:
   pipelines:
     traces:
@@ -82,31 +94,18 @@ service:
 Beyond the collector, you should also sanitize data at the SDK level. Do not wait for the collector to catch it.
 
 ```python
-# Custom SpanProcessor that strips cardholder data before export
+# Helper that strips cardholder data before adding span attributes
 # This acts as a safety net at the application level
 import re
-from opentelemetry.sdk.trace import SpanProcessor
 
 # Pattern matching common credit card number formats
 PAN_PATTERN = re.compile(r'\b(?:\d[ -]*?){13,19}\b')
 
-class PCIRedactingProcessor(SpanProcessor):
-    """Strips PAN data from span attributes before export."""
-
-    def on_end(self, span):
-        # Check each attribute for potential cardholder data
-        for key, value in span.attributes.items():
-            if isinstance(value, str) and PAN_PATTERN.search(value):
-                span.attributes[key] = PAN_PATTERN.sub("[PAN_REDACTED]", value)
-
-    def on_start(self, span, parent_context=None):
-        pass
-
-    def shutdown(self):
-        pass
-
-    def force_flush(self, timeout_millis=None):
-        pass
+def set_redacted_attribute(span, key, value):
+    """Set a span attribute after replacing PAN-like values."""
+    if isinstance(value, str):
+        value = PAN_PATTERN.sub("[PAN_REDACTED]", value)
+    span.set_attribute(key, value)
 ```
 
 ## Requirement 4: Encrypting Telemetry in Transit
@@ -138,11 +137,14 @@ exporters:
       key_file: /etc/otel/certs/client.key
       min_version: "1.2"
 
+processors:
+  batch:
+
 service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [transform/pci-redact, batch]
+      processors: [batch]
       exporters: [otlp/secure]
 ```
 
@@ -218,38 +220,23 @@ def log_pci_event(user_id, event_type, success, source_ip, affected_data, detail
 
 ### 10.4: Synchronize Clocks
 
-PCI DSS requires time synchronization using NTP. OpenTelemetry spans automatically include high-resolution timestamps from the host clock. Ensure your hosts use NTP.
+PCI DSS requires clock synchronization using time-synchronization technology such as NTP. OpenTelemetry spans automatically include high-resolution timestamps from the host clock. Ensure your hosts use a reliable time source.
 
 ```yaml
-# Kubernetes DaemonSet that ensures NTP is running on all nodes
+# Prometheus alerting rules that detect clock synchronization issues
 # Synchronized clocks are required by PCI DSS 10.4
-apiVersion: apps/v1
-kind: DaemonSet
-metadata:
-  name: ntp-sync-check
-  namespace: monitoring
-spec:
-  selector:
-    matchLabels:
-      app: ntp-check
-  template:
-    metadata:
-      labels:
-        app: ntp-check
-    spec:
-      containers:
-        - name: ntp-check
-          image: alpine:latest
-          command:
-            - /bin/sh
-            - -c
-            # Check NTP synchronization status every hour
-            # Alert if clock drift exceeds 1 second
-            - |
-              while true; do
-                ntpdate -q pool.ntp.org 2>&1 | grep "offset" || echo "NTP check failed"
-                sleep 3600
-              done
+groups:
+  - name: pci-dss-time-sync
+    rules:
+      # Requires node_exporter's timex collector or an equivalent host time metric
+      - alert: NodeClockNotSynchronized
+        expr: min_over_time(node_timex_sync_status[5m]) == 0
+        for: 10m
+        labels:
+          severity: critical
+          pci_requirement: "10.4"
+        annotations:
+          summary: "Host clock is not synchronized to a reliable time source"
 ```
 
 ### 10.5: Secure Audit Trails
@@ -272,12 +259,9 @@ receivers:
 processors:
   # Filter to only pass through PCI-tagged events
   filter/pci:
-    logs:
-      include:
-        match_type: strict
-        record_attributes:
-          - key: pci_event
-            value: "true"
+    error_mode: ignore
+    log_conditions:
+      - log.attributes["pci_event"] != true
 
   batch:
     timeout: 1s
@@ -300,7 +284,7 @@ service:
 
 ## Requirement 11: Monitoring for Anomalies
 
-PCI DSS Requirement 11 covers intrusion detection and monitoring. Use OpenTelemetry metrics to track anomalous patterns in your cardholder data environment.
+PCI DSS Requirement 11 covers testing the security of systems and networks, including detection controls. Use OpenTelemetry metrics to track anomalous patterns in your cardholder data environment, but do not treat this as a replacement for required vulnerability scanning, penetration testing, intrusion-detection, or change-detection controls.
 
 ```python
 # Create custom metrics that track CDE access patterns
@@ -311,7 +295,7 @@ meter = metrics.get_meter("pci-monitoring")
 
 # Counter for total CDE access events
 cde_access_counter = meter.create_counter(
-    name="cde.access.total",
+    name="cde.access",
     description="Total access events to cardholder data environment",
     unit="1",
 )
@@ -320,7 +304,7 @@ cde_access_counter = meter.create_counter(
 cde_access_rate = meter.create_histogram(
     name="cde.access.rate",
     description="Rate of access events to detect unusual spikes",
-    unit="events/min",
+    unit="1",
 )
 
 def track_cde_access(user_id: str, action: str, success: bool):
@@ -365,7 +349,7 @@ groups:
 
 ## Putting It All Together
 
-Here is how the complete PCI-compliant OpenTelemetry architecture looks.
+Here is how a PCI-supporting OpenTelemetry architecture looks.
 
 ```mermaid
 flowchart TD
@@ -390,4 +374,4 @@ The key principles are:
 4. **Protect audit trails** in immutable, access-controlled storage.
 5. **Monitor for anomalies** using custom metrics and alerting rules.
 
-OpenTelemetry gives you the tools to satisfy these requirements, but the configuration must be deliberate. A default OpenTelemetry setup will not be PCI compliant. You need to actively prevent sensitive data from entering the pipeline, enforce encryption, structure your audit events, and separate PCI audit data from general telemetry. Do this correctly, and your OpenTelemetry infrastructure becomes an asset during PCI DSS assessments rather than a liability.
+OpenTelemetry gives you tools that can help satisfy these requirements, but the configuration must be deliberate. A default OpenTelemetry setup will not be PCI compliant. You need to actively prevent sensitive data from entering the pipeline, enforce encryption, structure your audit events, and separate PCI audit data from general telemetry. Do this correctly, and your OpenTelemetry infrastructure becomes an asset during PCI DSS assessments rather than a liability.
