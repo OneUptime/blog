@@ -28,28 +28,53 @@ package main
 import (
     "context"
     "fmt"
+    stdlog "log"
     "net/http"
     "net/http/httputil"
     "net/url"
+    "os"
     "time"
 
-    "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc"
+    otellog "go.opentelemetry.io/otel/log"
     sdklog "go.opentelemetry.io/otel/sdk/log"
-    "go.opentelemetry.io/otel/log"
 )
 
-var auditLogger log.Logger
+var auditLogger otellog.Logger
 
-func initLogger() {
-    exporter, _ := otlploggrpc.New(context.Background(),
-        otlploggrpc.WithEndpoint("otel-collector:4317"),
+func initLogger() func(context.Context) error {
+    exporter, err := otlploggrpc.New(context.Background(),
         otlploggrpc.WithInsecure(),
     )
+    if err != nil {
+        stdlog.Fatalf("failed to create OTLP log exporter: %v", err)
+    }
+
     provider := sdklog.NewLoggerProvider(
         sdklog.WithProcessor(sdklog.NewBatchProcessor(exporter)),
     )
     auditLogger = provider.Logger("telemetry.access.audit")
+    return provider.Shutdown
+}
+
+func main() {
+    backendURL := os.Getenv("BACKEND_URL")
+    if backendURL == "" {
+        stdlog.Fatal("BACKEND_URL is required")
+    }
+
+    target, err := url.Parse(backendURL)
+    if err != nil {
+        stdlog.Fatalf("invalid BACKEND_URL: %v", err)
+    }
+
+    shutdown := initLogger()
+    defer func() {
+        _ = shutdown(context.Background())
+    }()
+
+    http.Handle("/", auditHandler(target))
+    stdlog.Fatal(http.ListenAndServe(":8080", nil))
 }
 
 func auditHandler(target *url.URL) http.HandlerFunc {
@@ -71,20 +96,20 @@ func auditHandler(target *url.URL) http.HandlerFunc {
         duration := time.Since(start)
 
         // Emit the access audit log record
-        var record log.Record
-        record.SetBody(log.StringValue(fmt.Sprintf(
+        var record otellog.Record
+        record.SetBody(otellog.StringValue(fmt.Sprintf(
             "user=%s method=%s path=%s query=%s status=%d duration=%s",
             user, r.Method, r.URL.Path, r.URL.RawQuery,
             recorder.statusCode, duration,
         )))
         record.AddAttributes(
-            log.String("audit.user", user),
-            log.String("audit.method", r.Method),
-            log.String("audit.path", r.URL.Path),
-            log.String("audit.query_params", r.URL.RawQuery),
-            log.Int("audit.response_status", recorder.statusCode),
-            log.String("audit.backend", target.Host),
-            log.String("audit.duration", duration.String()),
+            otellog.String("audit.user", user),
+            otellog.String("audit.method", r.Method),
+            otellog.String("audit.path", r.URL.Path),
+            otellog.String("audit.query_params", r.URL.RawQuery),
+            otellog.Int("audit.response_status", recorder.statusCode),
+            otellog.String("audit.backend", target.Host),
+            otellog.String("audit.duration", duration.String()),
         )
         auditLogger.Emit(r.Context(), record)
     }
@@ -145,7 +170,7 @@ exporters:
       region: us-east-1
       s3_bucket: telemetry-access-audit
       s3_prefix: "access-logs"
-      s3_partition: "hour"
+      s3_partition_format: "year=%Y/month=%m/day=%d/hour=%H"
 
 service:
   pipelines:
@@ -188,7 +213,7 @@ spec:
               value: "http://prometheus.monitoring.svc:9090"
             # Where to send OTel audit logs
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: "otel-collector.monitoring.svc:4317"
+              value: "http://otel-collector.monitoring.svc:4317"
 ---
 apiVersion: v1
 kind: Service
@@ -226,7 +251,7 @@ def generate_weekly_report():
             "bool": {
                 "filter": [
                     {"range": {"@timestamp": {"gte": week_ago.isoformat(), "lte": now.isoformat()}}},
-                    {"term": {"attributes.audit.type": "data_access"}},
+                    {"term": {"resource.attributes.audit.type": "data_access"}},
                 ]
             }
         },
