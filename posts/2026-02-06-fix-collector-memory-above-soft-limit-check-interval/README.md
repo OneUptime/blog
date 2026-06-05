@@ -12,7 +12,7 @@ You check your Collector logs and see this warning repeated every second:
 warn  memorylimiter/memorylimiter.go:186  Memory usage is above soft limit. Refusing data.
 ```
 
-Your applications are getting transient export errors. Data is being lost. But the Collector is not actually close to its container memory limit. The problem is that `check_interval` is not tuned for your workload.
+Your applications are getting transient export errors. Data may be retried, but it can be lost if clients or upstream components do not retry long enough. The Collector is not actually close to its container memory limit. The problem is that `check_interval` is not tuned for your workload.
 
 ## How check_interval Works
 
@@ -30,7 +30,7 @@ processors:
     spike_limit_mib: 100       # too conservative
 ```
 
-With a 5-second check interval, the processor might see a GC spike at 410 MiB, start refusing data for the next 5 seconds, even though GC finishes and memory drops to 250 MiB within a second.
+With a 5-second check interval, the processor might see a GC spike at 310 MiB, start refusing data for the next 5 seconds, even though GC finishes and memory drops to 250 MiB within a second.
 
 ## Fix 1: Reduce check_interval
 
@@ -48,7 +48,7 @@ This way, the processor quickly detects when memory drops below the limit and re
 
 ## Fix 2: Increase spike_limit_mib
 
-The `spike_limit_mib` creates a buffer zone. The soft limit is `limit_mib - spike_limit_mib`. Increasing the spike limit moves the soft limit lower, but gives more headroom before refusing data:
+The `spike_limit_mib` creates a buffer zone. The soft limit is `limit_mib - spike_limit_mib`. Increasing the spike limit moves the soft limit lower, so the processor starts refusing data earlier and leaves more headroom before the hard limit:
 
 ```yaml
 processors:
@@ -78,23 +78,23 @@ This adapts automatically if you change the container memory limit.
 
 ## Fix 4: Align GOMEMLIMIT with the Memory Limiter
 
-Make sure `GOMEMLIMIT` is set between the memory limiter's hard limit and the container limit:
+Make sure `GOMEMLIMIT` is set below the memory limiter's hard limit. A common starting point is about 80% of the Collector's hard memory limit:
 
 ```text
 Container limit: 1024 MiB
-GOMEMLIMIT:       850 MiB   (83% of container)
 memory_limiter:   800 MiB   (limit_mib)
+GOMEMLIMIT:       640 MiB   (80% of memory_limiter hard limit)
 Soft limit:       500 MiB   (limit_mib - spike_limit_mib)
 ```
 
 With this setup:
 1. At 500 MiB, the memory limiter starts refusing new data
-2. Go's GC becomes aggressive at 850 MiB (GOMEMLIMIT)
+2. Go's GC becomes more aggressive around 640 MiB (GOMEMLIMIT)
 3. At 1024 MiB, the container is OOM-killed (should never happen)
 
 ## Diagnosing False Positive Refusals
 
-If the Collector is refusing data but actual memory usage is well below the limit, it might be a measurement issue. The memory limiter uses Go's `runtime.MemStats` to measure memory, which includes all Go-managed memory including cached objects waiting for GC.
+If the Collector is refusing data but RSS is well below the container limit, compare RSS with the Go heap allocation. The memory limiter checks Go's `runtime.MemStats.Alloc`, which is the currently allocated heap objects, while RSS is the process's resident memory.
 
 Add the Collector's internal metrics to your monitoring:
 
@@ -102,7 +102,12 @@ Add the Collector's internal metrics to your monitoring:
 service:
   telemetry:
     metrics:
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 ```
 
 Then query these metrics:
@@ -111,6 +116,7 @@ Then query these metrics:
 # Current memory usage as seen by the memory limiter
 
 otelcol_process_memory_rss
+otelcol_process_runtime_heap_alloc_bytes
 
 # Number of times data was refused
 rate(otelcol_processor_refused_spans[5m])
@@ -118,7 +124,7 @@ rate(otelcol_processor_refused_metric_points[5m])
 rate(otelcol_processor_refused_log_records[5m])
 ```
 
-If `refused` metrics show spikes that correlate with brief RSS spikes, increase `spike_limit_mib`.
+If `refused` metrics show spikes that correlate with brief heap allocation spikes, increase `spike_limit_mib`.
 
 ## Complete Tuned Configuration
 
@@ -149,4 +155,4 @@ service:
       exporters: [otlp]
 ```
 
-The key takeaway: use `check_interval: 1s`, set a reasonable `spike_limit_mib` or `spike_limit_percentage`, and align your `GOMEMLIMIT` with the memory limiter's hard limit. This prevents false positive refusals while still protecting against actual OOM situations.
+The key takeaway: use `check_interval: 1s`, set a reasonable `spike_limit_mib` or `spike_limit_percentage`, and align your `GOMEMLIMIT` below the memory limiter's hard limit. This prevents false positive refusals while still protecting against actual OOM situations.
