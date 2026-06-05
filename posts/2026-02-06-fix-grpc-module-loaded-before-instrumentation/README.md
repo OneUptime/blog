@@ -6,14 +6,14 @@ Tags: OpenTelemetry, gRPC, Node.js, Instrumentation
 
 Description: Resolve the warning about grpc-js being loaded before OpenTelemetry instrumentation and restore gRPC span generation.
 
-The `@grpc/grpc-js` module is commonly used both by your application code and by the OpenTelemetry SDK itself (specifically the OTLP gRPC exporter). This creates a chicken-and-egg problem: the SDK needs gRPC to export telemetry, but loading gRPC before the instrumentation hooks are registered means the instrumentation cannot patch it.
+The `@grpc/grpc-js` module is commonly used both by your application code and by OpenTelemetry OTLP gRPC exporter paths. Current OpenTelemetry JavaScript releases lazy-load gRPC in common exporter paths, but older releases or custom exporter configuration can still create a chicken-and-egg problem: the SDK needs gRPC to export telemetry, but loading gRPC before the instrumentation hooks are registered means the instrumentation cannot patch it.
 
 ## The Specific Problem
 
-When you use the OTLP gRPC exporter, the SDK imports `@grpc/grpc-js` during initialization:
+In affected setups, the OTLP gRPC exporter or custom exporter configuration can import `@grpc/grpc-js` during tracing setup:
 
 ```javascript
-// This import chain loads @grpc/grpc-js internally
+// In affected versions or custom exporter setup, this can load @grpc/grpc-js internally
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc');
 ```
 
@@ -39,7 +39,7 @@ You will see:
 
 ```text
 @opentelemetry/instrumentation-grpc Module @grpc/grpc-js has been loaded before
-@opentelemetry/instrumentation-grpc can patch it.
+@opentelemetry/instrumentation-grpc so it might not work, please initialize it before requiring @grpc/grpc-js
 ```
 
 ## Fix 1: Switch to the HTTP Exporter
@@ -87,16 +87,18 @@ registerInstrumentations({
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc');
 const { NodeTracerProvider } = require('@opentelemetry/sdk-trace-node');
 const { BatchSpanProcessor } = require('@opentelemetry/sdk-trace-base');
-const { Resource } = require('@opentelemetry/resources');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 const { ATTR_SERVICE_NAME } = require('@opentelemetry/semantic-conventions');
 
 const provider = new NodeTracerProvider({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     [ATTR_SERVICE_NAME]: 'grpc-service',
   }),
+  spanProcessors: [
+    new BatchSpanProcessor(new OTLPTraceExporter()),
+  ],
 });
 
-provider.addSpanProcessor(new BatchSpanProcessor(new OTLPTraceExporter()));
 provider.register();
 ```
 
@@ -121,7 +123,7 @@ This gives you protobuf efficiency without the gRPC dependency conflict.
 After applying any of the fixes above, restart your application with debug logging and confirm you see:
 
 ```text
-@opentelemetry/instrumentation-grpc Applying instrumentation patch for module @grpc/grpc-js
+@opentelemetry/instrumentation-grpc Applying instrumentation patch for module on require hook
 ```
 
 Then make a gRPC call and verify that spans appear. A successful gRPC call should produce spans like:
