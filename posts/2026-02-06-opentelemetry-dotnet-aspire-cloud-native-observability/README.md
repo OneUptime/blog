@@ -41,13 +41,11 @@ dotnet new aspire-starter -n DistributedEcommerce
 cd DistributedEcommerce
 ```
 
-This creates an AppHost project and a default service project. The AppHost includes OpenTelemetry configuration by default.
+This creates an AppHost project, a Service Defaults project, and default service projects. The Service Defaults project contains the OpenTelemetry configuration used by the services.
 
-Examine the AppHost Program.cs to see the built-in observability setup.
+Examine the AppHost Program.cs to see the built-in resource and dependency setup.
 
 ```csharp
-using Microsoft.Extensions.Hosting;
-
 var builder = DistributedApplication.CreateBuilder(args);
 
 // Add PostgreSQL with automatic instrumentation
@@ -78,17 +76,18 @@ var frontend = builder.AddProject<Projects.WebFrontend>("frontend")
     .WithReference(apiService)
     .WithReference(redis);
 
-// All services automatically export telemetry to Aspire Dashboard
+// The AppHost starts the dashboard and injects OTLP environment variables
 builder.Build().Run();
 ```
 
-Aspire automatically configures OpenTelemetry exporters for all services. No manual OTLP exporter configuration needed during development.
+Aspire configures OTLP environment variables for project resources during local development, and the Service Defaults project enables the OpenTelemetry exporters when those variables are present. No manual OTLP exporter configuration is needed during development.
 
 ## Instrumenting an Aspire Service Project
 
 Service projects in Aspire use standard ASP.NET Core patterns but benefit from enhanced component integrations.
 
 ```csharp
+using System.Diagnostics;
 using Microsoft.Extensions.ServiceDiscovery;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -106,12 +105,11 @@ builder.Services.AddHttpClient<IOrderService, OrderServiceClient>(client =>
 {
     // Service discovery automatically resolves service endpoints
     client.BaseAddress = new Uri("https+http://api");
-})
-.AddStandardResilienceHandler(); // Polly with telemetry
+});
 
 // Add custom instrumentation
 builder.Services.AddSingleton<ActivitySource>(sp =>
-    new ActivitySource("EcommerceApi", "1.0.0"));
+    new ActivitySource(builder.Environment.ApplicationName, "1.0.0"));
 
 var app = builder.Build();
 
@@ -148,8 +146,11 @@ The `AddServiceDefaults()` extension method adds comprehensive telemetry configu
 Aspire components wrap common infrastructure dependencies with automatic instrumentation and configuration.
 
 ```csharp
-using Aspire.Npgsql;
+using System.Diagnostics;
 using Npgsql;
+
+// Register this in Program.cs:
+// builder.AddNpgsqlDataSource("catalogdb");
 
 // Example: Custom database operations with automatic tracing
 public class ProductRepository
@@ -165,9 +166,9 @@ public class ProductRepository
         _activitySource = activitySource;
     }
 
-    public async Task<Product> GetProductAsync(int productId)
+    public async Task<Product?> GetProductAsync(int productId)
     {
-        // NpgsqlDataSource automatically creates traced connections
+        // Aspire's Npgsql integration configures tracing for database operations
         using var activity = _activitySource.StartActivity("GetProduct");
         activity?.SetTag("product.id", productId);
 
@@ -202,7 +203,7 @@ public class ProductRepository
 
 ## Distributed Tracing Across Aspire Services
 
-Service-to-service communication in Aspire automatically propagates trace context using service discovery.
+Service-to-service communication in Aspire propagates trace context through instrumented HTTP clients. Service discovery resolves service endpoints, while OpenTelemetry instrumentation handles the trace context headers.
 
 ```csharp
 // In the API service
@@ -250,7 +251,8 @@ public class OrderController : ControllerBase
             CreatedAt = DateTime.UtcNow
         };
 
-        // Publish order created event (trace context propagates)
+        // Publish order created event. Your messaging abstraction should add
+        // the current trace context to the message metadata.
         await _messagePublisher.PublishAsync("orders.created", order);
 
         activity?.SetTag("order.id", order.Id);
@@ -270,7 +272,7 @@ public class OrderProcessorWorker : BackgroundService
             "orders.created",
             async (order, context) =>
             {
-                // Extract trace context from message
+                // Extract trace context from message metadata
                 using var activity = _activitySource.StartActivity(
                     "ProcessOrder",
                     ActivityKind.Consumer,
@@ -455,44 +457,43 @@ When you run your Aspire application, the dashboard automatically starts and sho
 - Service dependency graphs
 - Resource health status
 
-Access the dashboard at the URL shown in the console output (typically http://localhost:15888).
+Access the dashboard at the URL shown in the console output. In standalone mode, the dashboard frontend defaults to http://localhost:18888.
 
 The dashboard uses OpenTelemetry Protocol (OTLP) to receive telemetry from all services. In production, replace the dashboard with your observability backend.
 
 ## Production Deployment with Observability
 
-Configure production telemetry exporters in your AppHost for deployment environments.
+Configure production telemetry exporters with OpenTelemetry environment variables for each deployed service. The AppHost can set those variables on project resources, while the Service Defaults project enables the OTLP exporter when `OTEL_EXPORTER_OTLP_ENDPOINT` is present.
 
 ```csharp
 var builder = DistributedApplication.CreateBuilder(args);
 
-// Configure OpenTelemetry for production
+var postgres = builder.AddPostgres("postgres");
+var api = builder.AddProject<Projects.EcommerceApi>("api")
+    .WithReference(postgres);
+
 if (builder.Environment.IsProduction())
 {
-    builder.Services.Configure<OpenTelemetryOptions>(options =>
+    var otlpEndpoint = builder.Configuration["Observability:OtlpEndpoint"];
+
+    if (!string.IsNullOrWhiteSpace(otlpEndpoint))
     {
-        // Export to production OTLP endpoint
-        options.OtlpEndpoint = builder.Configuration["Observability:OtlpEndpoint"];
-
-        // Configure sampling for high-volume environments
-        options.TraceSampler = new TraceIdRatioBasedSampler(0.1); // 10% sampling
-    });
+        api.WithEnvironment("OTEL_EXPORTER_OTLP_ENDPOINT", otlpEndpoint);
+        api.WithEnvironment("OTEL_TRACES_SAMPLER", "traceidratio");
+        api.WithEnvironment("OTEL_TRACES_SAMPLER_ARG", "0.1");
+    }
 }
-
-// Rest of service definitions
-var postgres = builder.AddPostgres("postgres");
-var api = builder.AddProject<Projects.EcommerceApi>("api");
 
 builder.Build().Run();
 ```
 
-Generate deployment manifests that include observability configuration.
+For current Aspire deployments, prefer `aspire deploy` or `aspire publish` with the appropriate deployment integration. The legacy manifest format can still be generated when you need to inspect an existing Azure Developer CLI workflow.
 
 ```bash
-dotnet run --project AppHost -- --publisher manifest --output-path ../deploy
+aspire do publish-manifest --output-path ./aspire-manifest.json
 ```
 
-This generates Kubernetes manifests or Docker Compose files with proper OpenTelemetry configuration preserved.
+This generates the legacy Aspire manifest JSON consumed by older deployment tooling.
 
 ## Monitoring Aspire Service Health
 
@@ -510,8 +511,8 @@ builder.Services.AddHealthChecks()
 
 var app = builder.Build();
 
-// Health check endpoints are automatically mapped
-app.MapDefaultEndpoints(); // Includes /health, /alive, /ready
+// Health check endpoints are mapped in Development
+app.MapDefaultEndpoints(); // Includes /health and /alive
 
 app.Run();
 ```
