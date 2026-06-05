@@ -6,17 +6,17 @@ Tags: OpenTelemetry, Multi-Tenant, SaaS, Resource Attributes
 
 Description: Learn how to isolate observability data per tenant in a multi-tenant SaaS platform using OpenTelemetry resource attributes and context propagation.
 
-Multi-tenant SaaS platforms face a unique challenge: you need to observe everything happening in your system while keeping each tenant's data logically separated. If a tenant reports slowness, you need to filter down to their traces, metrics, and logs without wading through noise from other tenants. OpenTelemetry resource attributes give you a clean way to tag all telemetry data with tenant identity from the very start.
+Multi-tenant SaaS platforms face a unique challenge: you need to observe everything happening in your system while keeping each tenant's data logically separated. If a tenant reports slowness, you need to filter down to their traces, metrics, and logs without wading through noise from other tenants. OpenTelemetry attributes give you a clean way to tag telemetry data with tenant identity from the very start.
 
 ## Why Resource Attributes Matter for Tenant Isolation
 
-Resource attributes in OpenTelemetry describe the entity producing telemetry. Unlike span attributes (which apply to individual operations), resource attributes apply to every signal emitted by a service instance. When you set `tenant.id` as a resource attribute, every trace, metric, and log from that request pipeline carries the tenant context automatically.
+Resource attributes in OpenTelemetry describe the entity producing telemetry. Unlike span attributes (which apply to individual operations), resource attributes apply to every signal emitted by a service instance. That makes resource attributes a good fit for stable service-level identity, but a poor fit for request-scoped tenant identity in a shared service process.
 
-The alternative is manually adding tenant IDs to every span and metric. That approach is fragile and easy to forget in new code paths.
+The alternative is manually adding tenant IDs to every span and metric measurement. That approach is fragile and easy to forget in new code paths.
 
 ## Setting Up a Tenant-Aware Resource Provider
 
-Here is how you can build a custom resource detector that pulls tenant information from the incoming request context:
+Here is why a custom resource detector that pulls tenant information from the incoming request context is not the right shape for most shared multi-tenant services:
 
 ```python
 # tenant_resource.py
@@ -35,7 +35,7 @@ class TenantResourceDetector(ResourceDetector):
         if tenant is None:
             return Resource.get_empty()
 
-        return Resource.create({
+        return Resource({
             "tenant.id": tenant["id"],
             "tenant.name": tenant["name"],
             "tenant.plan": tenant["plan"],  # free, pro, enterprise
@@ -49,6 +49,7 @@ Since resource attributes are typically set at SDK initialization (and tenants c
 # tenant_span_processor.py
 from opentelemetry.sdk.trace import SpanProcessor
 from opentelemetry.trace import Span
+from tenant_resource import current_tenant
 
 class TenantSpanProcessor(SpanProcessor):
     """Injects tenant context into every span automatically."""
@@ -67,7 +68,7 @@ class TenantSpanProcessor(SpanProcessor):
         pass
 
     def force_flush(self, timeout_millis=None):
-        pass
+        return True
 ```
 
 ## Middleware to Extract Tenant Context
@@ -110,7 +111,7 @@ Wire the custom processor into your SDK configuration:
 # tracing_setup.py
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanExporter
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from tenant_span_processor import TenantSpanProcessor
 
@@ -122,33 +123,27 @@ def setup_tracing():
 
     # Then add the export processor
     otlp_exporter = OTLPSpanExporter(endpoint="http://otel-collector:4317")
-    provider.add_span_processor(BatchSpanExporter(otlp_exporter))
+    provider.add_span_processor(BatchSpanProcessor(otlp_exporter))
 
     trace.set_tracer_provider(provider)
 ```
 
 ## Filtering Telemetry by Tenant in the Collector
 
-On the OpenTelemetry Collector side, you can use the `filter` processor to route tenant data to different backends or apply sampling:
+On the OpenTelemetry Collector side, you can use the `filter` processor to route tenant trace data to different backends or apply sampling. Because the processor above writes tenant data as span attributes, filter on `span.attributes`:
 
 ```yaml
 # otel-collector-config.yaml
 processors:
   filter/enterprise:
-    traces:
-      include:
-        match_type: strict
-        resource_attributes:
-          - key: tenant.plan
-            value: enterprise
+    error_mode: ignore
+    trace_conditions:
+      - span.attributes["tenant.plan"] != "enterprise"
 
   filter/free:
-    traces:
-      include:
-        match_type: strict
-        resource_attributes:
-          - key: tenant.plan
-            value: free
+    error_mode: ignore
+    trace_conditions:
+      - span.attributes["tenant.plan"] != "free"
 
   # Sample free-tier tenants more aggressively to control costs
   probabilistic_sampler/free:
@@ -176,7 +171,7 @@ service:
 
 With tenant attributes on every span, you can query your observability backend with precision. For example, in a system like OneUptime, you can filter traces by `tenant.id = "acme-123"` to see exactly what that tenant experienced, including latency, errors, and dependency calls.
 
-You can also build per-tenant SLO dashboards by grouping metrics on the `tenant.id` attribute. This is particularly useful when you have contractual SLAs with enterprise customers and need to prove compliance.
+You can also build per-tenant SLO dashboards by grouping metrics on the `tenant.id` attribute when your metric instruments record that attribute on measurements. This is particularly useful when you have contractual SLAs with enterprise customers and need to prove compliance.
 
 ## Key Takeaways
 
