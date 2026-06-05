@@ -77,7 +77,7 @@ exporters:
     # No /v1/traces path needed for gRPC
 
   # HTTP exporter targets port 4318
-  otlphttp:
+  otlp_http:
     endpoint: http://backend:4318
     # Path is automatically appended: /v1/traces, /v1/metrics, /v1/logs
 ```
@@ -125,19 +125,18 @@ If you are running behind a reverse proxy like nginx, make sure it is not stripp
 location /v1/ {
     # Pass all headers through unchanged
     proxy_pass http://collector:4318;
-    proxy_set_header Content-Type $content_type;
+    proxy_set_header Content-Type $http_content_type;
     # Do NOT add default_type or override Content-Type
 }
 ```
 
 ## Error 3: Protobuf Version Mismatch
 
-OpenTelemetry's protobuf definitions evolve between versions. If the sender is using a newer proto definition than the receiver supports, or if there are incompatible changes, you will see serialization errors.
+OpenTelemetry's protobuf definitions evolve between versions, but stable OTLP fields are designed for protobuf wire compatibility. Newer fields are normally ignored by older receivers. Version problems are more likely when you are using a very old Collector, an unstable signal such as profiles, or generated protobuf code that is out of sync with the OTLP exporter package.
 
 ```text
 # Error indicating proto schema mismatch
-proto: wrong wireframe type for field
-Cannot parse message: unknown field number
+proto: wrong wire type for field
 ```
 
 This typically happens when you upgrade the SDK but not the Collector, or vice versa. Check your versions:
@@ -157,7 +156,7 @@ npm list @opentelemetry/exporter-trace-otlp-grpc @opentelemetry/otlp-transformer
 # io.opentelemetry:opentelemetry-exporter-otlp version
 ```
 
-The fix is to ensure compatible versions. As a general rule, keep your SDK and Collector within one minor version of each other. The protobuf definitions maintain backward compatibility, so newer receivers can usually handle older senders, but the reverse is not always true.
+The fix is to ensure compatible versions of the SDK exporter, generated protobuf package, and Collector. You do not usually need the SDK and Collector to be on the same minor version for stable OTLP signals, but you should upgrade very old Collectors and avoid mixing generated protobuf packages from different OpenTelemetry releases.
 
 ## Error 4: Corrupted Data in Transit
 
@@ -260,7 +259,7 @@ You can also use the collector's debug exporter to verify that data is being par
 # Add a debug exporter to verify data is being received properly
 exporters:
   debug:
-    # Print the first span from each batch to stdout
+    # Print a single-line summary for each batch to stdout
     verbosity: basic
 
 service:
@@ -290,4 +289,4 @@ export OTEL_EXPORTER_OTLP_ENDPOINT=http://collector:4318
 export OTEL_EXPORTER_OTLP_COMPRESSION=gzip
 ```
 
-Keep your SDK and Collector versions in lockstep, and test configuration changes in staging before rolling them out to production. Protobuf errors are almost always configuration problems, and once you know what to look for, they are quick to resolve.
+Keep your SDK exporter packages and generated OpenTelemetry protobuf packages compatible, keep the Collector reasonably current, and test configuration changes in staging before rolling them out to production. Protobuf errors are almost always configuration problems, and once you know what to look for, they are quick to resolve.
