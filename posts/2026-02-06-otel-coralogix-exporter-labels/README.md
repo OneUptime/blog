@@ -48,11 +48,11 @@ processors:
 exporters:
   coralogix:
     # Your Coralogix private key for data ingestion
-    private_key: "${CORALOGIX_PRIVATE_KEY}"
+    private_key: "${env:CORALOGIX_PRIVATE_KEY}"
 
     # Domain based on your Coralogix region
-    domain: "coralogix.com"  # US1
-    # Other options: coralogix.us, eu2.coralogix.com, coralogix.in, coralogixsg.com
+    domain: "us1.coralogix.com"  # US1
+    # Other options: us2.coralogix.com, eu1.coralogix.com, eu2.coralogix.com, ap1.coralogix.com, ap2.coralogix.com
 
     # Map resource attributes to Coralogix application/subsystem
     application_name_attributes:
@@ -65,14 +65,6 @@ exporters:
     # Fallback values if attributes are missing
     application_name: "default-app"
     subsystem_name: "default-subsystem"
-
-    # Separate endpoints per signal type
-    traces:
-      endpoint: "ingress.coralogix.com:443"
-    metrics:
-      endpoint: "ingress.coralogix.com:443"
-    logs:
-      endpoint: "ingress.coralogix.com:443"
 
 service:
   pipelines:
@@ -106,7 +98,7 @@ This is useful in multi-service deployments. Each service sets its own `service.
 
 ## Dynamic Label Assignment per Service
 
-If you have multiple services sending to the same Collector and you want different application labels per service, use the resource processor with conditions:
+If you have multiple services sending to the same Collector and you want different application labels per service, use the resource processor to set defaults without overwriting service-provided values:
 
 ```yaml
 processors:
@@ -129,10 +121,10 @@ You can also set the Coralogix labels from your application code:
 // Node.js OpenTelemetry SDK setup
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc');
-const { Resource } = require('@opentelemetry/resources');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 
 const sdk = new NodeSDK({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     'service.name': 'checkout-service',
     'service.namespace': 'ecommerce-platform',
     // These attributes will be picked up by the Coralogix exporter
@@ -155,22 +147,22 @@ Coralogix has different endpoints per region. Make sure you use the correct one:
 ```yaml
 # US1
 
-domain: "coralogix.com"
+domain: "us1.coralogix.com"
 
 # US2
-domain: "coralogix.us"
+domain: "us2.coralogix.com"
 
 # EU1
-domain: "coralogix.com"  # with eu1 ingress
+domain: "eu1.coralogix.com"
 
 # EU2
 domain: "eu2.coralogix.com"
 
 # AP1 (India)
-domain: "coralogix.in"
+domain: "ap1.coralogix.com"
 
 # AP2 (Singapore)
-domain: "coralogixsg.com"
+domain: "ap2.coralogix.com"
 ```
 
 Using the wrong region endpoint will result in authentication failures even if your private key is correct.
@@ -182,8 +174,8 @@ For production deployments, configure retries and a sending queue:
 ```yaml
 exporters:
   coralogix:
-    private_key: "${CORALOGIX_PRIVATE_KEY}"
-    domain: "coralogix.com"
+    private_key: "${env:CORALOGIX_PRIVATE_KEY}"
+    domain: "us1.coralogix.com"
     application_name_attributes: ["cx.application.name"]
     subsystem_name_attributes: ["service.name"]
     retry_on_failure:
