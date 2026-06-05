@@ -53,13 +53,12 @@ health:
     threshold: 3
 ```
 
-The metrics endpoint runs on a separate port (5001) so you can keep it isolated from the main registry port. This prevents unauthorized users from scraping your metrics.
+The metrics endpoint runs on a separate port (5001) so you can bind it to localhost or keep it on a private network. This prevents unauthorized users from scraping your metrics.
 
 ## Docker Compose with Monitoring Stack
 
 ```yaml
 # Registry with Prometheus and Grafana monitoring
-version: "3.8"
 
 services:
   # Docker Registry with metrics enabled
@@ -67,8 +66,7 @@ services:
     image: registry:2
     ports:
       - "5000:5000"
-    expose:
-      - "5001"
+      - "127.0.0.1:5001:5001"
     volumes:
       - ./config.yml:/etc/docker/registry/config.yml:ro
       - registry-data:/var/lib/registry
@@ -183,14 +181,14 @@ registry_storage_action_seconds_bucket
 registry_storage_action_seconds_count{action="GetContent"}
 ```
 
-### Upload and Blob Metrics
+### Upload and Blob Handler Metrics
 
 ```promql
-# Blob upload duration
-registry_storage_blob_upload_seconds_bucket
+# Blob upload request duration
+registry_http_request_duration_seconds_bucket{handler=~"blob_upload|blob_upload_chunk"}
 
-# Number of active blob uploads
-registry_storage_blob_upload_in_progress
+# Active blob upload requests
+registry_http_in_flight_requests{handler=~"blob_upload|blob_upload_chunk"}
 ```
 
 ## Grafana Data Source Provisioning
@@ -213,14 +211,14 @@ datasources:
 
 ```promql
 # Requests per second by method
-rate(registry_http_requests_total[5m])
+sum by (method) (rate(registry_http_requests_total[5m]))
 ```
 
 ### Request Latency (P95)
 
 ```promql
 # 95th percentile request latency
-histogram_quantile(0.95, rate(registry_http_request_duration_seconds_bucket[5m]))
+histogram_quantile(0.95, sum by (le) (rate(registry_http_request_duration_seconds_bucket[5m])))
 ```
 
 ### Error Rate
@@ -236,19 +234,19 @@ sum(rate(registry_http_requests_total[5m]))
 
 ```promql
 # Average storage operation latency by action type
-rate(registry_storage_action_seconds_sum[5m])
+sum by (action) (rate(registry_storage_action_seconds_sum[5m]))
 /
-rate(registry_storage_action_seconds_count[5m])
+sum by (action) (rate(registry_storage_action_seconds_count[5m]))
 ```
 
 ### Push vs Pull Traffic
 
 ```promql
 # Pull requests (GET on blobs and manifests)
-sum(rate(registry_http_requests_total{method="GET", handler=~".*blobs.*|.*manifests.*"}[5m]))
+sum(rate(registry_http_requests_total{method="get", handler=~"blob|manifest"}[5m]))
 
 # Push requests (PUT/PATCH on blobs and manifests)
-sum(rate(registry_http_requests_total{method=~"PUT|PATCH", handler=~".*blobs.*|.*manifests.*"}[5m]))
+sum(rate(registry_http_requests_total{method=~"put|patch", handler=~"blob_upload|blob_upload_chunk|manifest"}[5m]))
 ```
 
 ## Alert Rules
@@ -276,7 +274,7 @@ groups:
       # Alert when P95 latency exceeds 5 seconds
       - alert: RegistryHighLatency
         expr: |
-          histogram_quantile(0.95, rate(registry_http_request_duration_seconds_bucket[5m])) > 5
+          histogram_quantile(0.95, sum by (le) (rate(registry_http_request_duration_seconds_bucket[5m]))) > 5
         for: 5m
         labels:
           severity: warning
@@ -286,9 +284,9 @@ groups:
       # Alert when storage operations are slow
       - alert: RegistrySlowStorage
         expr: |
-          rate(registry_storage_action_seconds_sum[5m])
+          sum by (action) (rate(registry_storage_action_seconds_sum[5m]))
           /
-          rate(registry_storage_action_seconds_count[5m]) > 1
+          sum by (action) (rate(registry_storage_action_seconds_count[5m])) > 1
         for: 10m
         labels:
           severity: critical
@@ -331,8 +329,8 @@ Beyond registry-specific metrics, monitor the container itself:
 # Check container resource usage in real time
 docker stats registry
 
-# Get detailed resource stats as JSON
-docker inspect --format='{{json .State}}' registry
+# Get container resource usage as JSON
+docker stats --no-stream --format json registry
 ```
 
 For automated collection, add cAdvisor to your compose stack:
@@ -370,7 +368,7 @@ When you spot a problem on the dashboard, here is how to drill down:
 curl -s http://localhost:5001/metrics | grep storage_action_seconds
 
 # Look for slow individual requests in registry logs
-docker compose logs registry 2>&1 | grep -E "duration=[0-9]+\.[0-9]s"
+docker compose logs registry 2>&1 | grep -E "http\\.response\\.duration="
 
 # Check disk I/O on the host
 iostat -x 1 5
