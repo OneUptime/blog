@@ -38,13 +38,13 @@ The `rt-tokio` feature enables the batch span processor to use Tokio's runtime f
 The batch span processor is your primary tool for non-blocking telemetry:
 
 ```rust
-use opentelemetry::global;
-use opentelemetry_sdk::trace::{self, BatchConfig, RandomIdGenerator, Sampler};
+use opentelemetry_otlp::WithExportConfig;
+use opentelemetry_sdk::trace::{self, BatchConfigBuilder, RandomIdGenerator, Sampler};
 use opentelemetry_sdk::{runtime, Resource};
 use opentelemetry::KeyValue;
 use std::time::Duration;
 
-fn init_non_blocking_tracer() -> Result<(), Box<dyn std::error::Error>> {
+fn init_non_blocking_tracer() -> Result<opentelemetry_sdk::trace::Tracer, Box<dyn std::error::Error>> {
     // Configure the OTLP exporter to use async gRPC
     let exporter = opentelemetry_otlp::new_exporter()
         .tonic()
@@ -52,13 +52,14 @@ fn init_non_blocking_tracer() -> Result<(), Box<dyn std::error::Error>> {
         .with_timeout(Duration::from_secs(3));
 
     // Create a batch processor with optimized settings
-    let batch_config = BatchConfig::default()
+    let batch_config = BatchConfigBuilder::default()
         .with_max_queue_size(4096)           // Buffer up to 4096 spans
         .with_scheduled_delay(Duration::from_secs(5))  // Export every 5 seconds
         .with_max_export_batch_size(512)      // Send up to 512 spans per batch
-        .with_max_concurrent_exports(1);      // One export operation at a time
+        .with_max_concurrent_exports(1)       // One export operation at a time
+        .build();
 
-    let tracer = opentelemetry_otlp::new_pipeline()
+    opentelemetry_otlp::new_pipeline()
         .tracing()
         .with_exporter(exporter)
         .with_trace_config(
@@ -71,11 +72,8 @@ fn init_non_blocking_tracer() -> Result<(), Box<dyn std::error::Error>> {
                 ]))
         )
         .with_batch_config(batch_config)
-        .install_batch(runtime::Tokio)?;
-
-    global::set_tracer_provider(tracer);
-
-    Ok(())
+        .install_batch(runtime::Tokio)
+        .map_err(Into::into)
 }
 ```
 
@@ -86,43 +84,47 @@ These settings ensure spans are queued in memory and exported asynchronously, wi
 Different workloads require different batch configurations. Here's how to tune for various scenarios:
 
 ```rust
-use opentelemetry_sdk::trace::BatchConfig;
+use opentelemetry_sdk::trace::{BatchConfig, BatchConfigBuilder};
 use std::time::Duration;
 
 // High-throughput configuration (thousands of requests per second)
 fn high_throughput_config() -> BatchConfig {
-    BatchConfig::default()
+    BatchConfigBuilder::default()
         .with_max_queue_size(8192)           // Larger buffer for burst traffic
         .with_scheduled_delay(Duration::from_secs(2))  // Export more frequently
         .with_max_export_batch_size(1024)    // Larger batches reduce overhead
         .with_max_concurrent_exports(2)      // Allow parallel exports
+        .build()
 }
 
 // Low-latency configuration (minimize data staleness)
 fn low_latency_config() -> BatchConfig {
-    BatchConfig::default()
+    BatchConfigBuilder::default()
         .with_max_queue_size(2048)
         .with_scheduled_delay(Duration::from_millis(500))  // Export every 500ms
         .with_max_export_batch_size(256)
         .with_max_concurrent_exports(1)
+        .build()
 }
 
 // Resource-constrained configuration (minimize memory usage)
 fn resource_constrained_config() -> BatchConfig {
-    BatchConfig::default()
+    BatchConfigBuilder::default()
         .with_max_queue_size(1024)           // Smaller buffer
         .with_scheduled_delay(Duration::from_secs(10))  // Less frequent exports
         .with_max_export_batch_size(256)
         .with_max_concurrent_exports(1)
+        .build()
 }
 
 // Production-balanced configuration
 fn production_config() -> BatchConfig {
-    BatchConfig::default()
+    BatchConfigBuilder::default()
         .with_max_queue_size(4096)
         .with_scheduled_delay(Duration::from_secs(5))
         .with_max_export_batch_size(512)
         .with_max_concurrent_exports(1)
+        .build()
 }
 ```
 
@@ -130,29 +132,26 @@ Monitor your queue utilization to determine if you need larger buffers or more f
 
 ## Handling Exporter Failures Gracefully
 
-When exporters fail, you don't want to lose spans or crash your service. Implement proper error handling:
+When tracer setup fails, you don't want to crash your service. Implement proper error handling:
 
 ```rust
-use opentelemetry_sdk::trace::{SpanProcessor, Tracer};
+use opentelemetry_otlp::WithExportConfig;
+use opentelemetry_sdk::trace::BatchConfigBuilder;
+use opentelemetry_sdk::runtime;
+use std::time::Duration;
 use tracing::{error, warn};
 
-fn init_resilient_tracer() -> Result<(), Box<dyn std::error::Error>> {
+fn init_resilient_tracer() -> Option<opentelemetry_sdk::trace::Tracer> {
     let exporter = opentelemetry_otlp::new_exporter()
         .tonic()
         .with_endpoint("http://localhost:4317")
         .with_timeout(Duration::from_secs(3));
 
-    // Configure retry behavior
-    let export_config = opentelemetry_otlp::ExportConfig {
-        endpoint: "http://localhost:4317".to_string(),
-        timeout: Duration::from_secs(3),
-        protocol: opentelemetry_otlp::Protocol::Grpc,
-    };
-
-    let batch_config = BatchConfig::default()
+    let batch_config = BatchConfigBuilder::default()
         .with_max_queue_size(4096)
         .with_scheduled_delay(Duration::from_secs(5))
-        .with_max_export_batch_size(512);
+        .with_max_export_batch_size(512)
+        .build();
 
     match opentelemetry_otlp::new_pipeline()
         .tracing()
@@ -160,21 +159,18 @@ fn init_resilient_tracer() -> Result<(), Box<dyn std::error::Error>> {
         .with_batch_config(batch_config)
         .install_batch(runtime::Tokio)
     {
-        Ok(tracer) => {
-            global::set_tracer_provider(tracer);
-            Ok(())
-        }
+        Ok(tracer) => Some(tracer),
         Err(err) => {
             error!("Failed to initialize tracer: {}", err);
             warn!("Service will continue without tracing");
             // Don't crash the service if tracing fails
-            Ok(())
+            None
         }
     }
 }
 ```
 
-This approach lets your service start even if the collector is unavailable, preventing observability issues from causing outages.
+This approach lets your service start even if tracer initialization fails, preventing observability setup issues from causing outages.
 
 ## Implementing Backpressure Handling
 
@@ -197,6 +193,7 @@ async fn handler_with_backpressure_awareness() -> actix_web::HttpResponse {
 
 // Monitor queue metrics to detect backpressure
 fn setup_queue_monitoring() {
+    use opentelemetry::global;
     use opentelemetry::metrics::{self, MeterProvider};
 
     let meter = global::meter("actix-service");
@@ -230,7 +227,12 @@ Monitor the queue size metric to detect when backpressure occurs and adjust your
 Sometimes you need to send telemetry to multiple destinations without blocking:
 
 ```rust
-use opentelemetry_sdk::trace::{BatchSpanProcessor, SpanProcessor};
+use opentelemetry::global;
+use opentelemetry::KeyValue;
+use opentelemetry_otlp::WithExportConfig;
+use opentelemetry_sdk::trace::{self, BatchConfigBuilder, BatchSpanProcessor, SpanProcessor};
+use opentelemetry_sdk::{runtime, Resource};
+use std::time::Duration;
 
 fn init_multi_exporter_tracer() -> Result<(), Box<dyn std::error::Error>> {
     // Create first exporter for production collector
@@ -253,9 +255,10 @@ fn init_multi_exporter_tracer() -> Result<(), Box<dyn std::error::Error>> {
         runtime::Tokio
     )
     .with_batch_config(
-        BatchConfig::default()
+        BatchConfigBuilder::default()
             .with_max_queue_size(4096)
             .with_scheduled_delay(Duration::from_secs(5))
+            .build()
     )
     .build();
 
@@ -264,9 +267,10 @@ fn init_multi_exporter_tracer() -> Result<(), Box<dyn std::error::Error>> {
         runtime::Tokio
     )
     .with_batch_config(
-        BatchConfig::default()
+        BatchConfigBuilder::default()
             .with_max_queue_size(1024)
             .with_scheduled_delay(Duration::from_secs(2))
+            .build()
     )
     .build();
 
@@ -296,18 +300,20 @@ Wire everything together in your Actix-web application:
 
 ```rust
 use actix_web::{web, App, HttpResponse, HttpServer, middleware};
+use opentelemetry::global;
+use std::time::Duration;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     // Initialize non-blocking tracer
-    init_non_blocking_tracer()
+    let tracer = init_non_blocking_tracer()
         .expect("Failed to initialize tracer");
 
     // Set up tracing subscriber
     let telemetry = tracing_opentelemetry::layer()
-        .with_tracer(global::tracer("actix-web"));
+        .with_tracer(tracer);
 
     tracing_subscriber::registry()
         .with(tracing_subscriber::EnvFilter::from_default_env())
@@ -352,6 +358,7 @@ Request handlers complete immediately after the span is created, with export hap
 Track key metrics to ensure your async exporters are healthy:
 
 ```rust
+use opentelemetry::global;
 use opentelemetry::metrics::{self, MeterProvider};
 
 fn setup_exporter_metrics() {
