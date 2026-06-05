@@ -18,7 +18,7 @@ When you collect items for a batch, record the span context from each original r
 
 ```python
 from opentelemetry import trace
-from opentelemetry.trace import Link, SpanContext, TraceFlags
+from opentelemetry.trace import Link, Status, StatusCode
 
 tracer = trace.get_tracer("batch-processor")
 
@@ -68,6 +68,9 @@ class OrderBatchProcessor:
             except Exception as e:
                 batch_span.set_attribute("batch.success", False)
                 batch_span.set_attribute("error", True)
+                batch_span.set_status(
+                    Status(StatusCode.ERROR, description=str(e))
+                )
                 batch_span.record_exception(e)
                 raise
             finally:
@@ -102,7 +105,7 @@ async def create_order(request):
 
 ## Also Linking From Individual Items Back to the Batch
 
-For bidirectional debugging, also add a link from the original order span to the batch span once the batch is processed:
+For debugging both the batch and individual order work, create per-item follow-up spans that link to both the original order span and the batch span:
 
 ```python
 def process_batch(self):
@@ -113,7 +116,7 @@ def process_batch(self):
         batch_context = batch_span.get_span_context()
 
         # For each pending order, create a follow-up span linked
-        # back to the batch
+        # to both the original request and the batch
         for order, original_ctx in zip(
             self.pending_orders, self.pending_contexts
         ):
@@ -175,7 +178,7 @@ def debug_failed_batch(trace_backend, batch_trace_id):
 
 ## Handling High-Volume Batches
 
-Span links have practical limits. If your batch contains 10,000 items, creating 10,000 links on a single span will bloat the trace data. For large batches, use a sampling approach:
+Span links have practical limits. If your batch contains 10,000 items, creating 10,000 links on a single span can bloat the trace data and exceed SDK or backend limits. The OpenTelemetry SDK specification defines a default span link count limit of 128. For large batches, use a sampling approach:
 
 ```python
 import random
