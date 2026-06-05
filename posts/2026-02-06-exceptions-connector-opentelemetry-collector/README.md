@@ -27,15 +27,15 @@ graph TB
     A[Trace Spans] --> B[Exceptions Connector]
     B --> C{Has Exception Event?}
     C -->|Yes| D[Extract Exception Data]
-    C -->|No| E[Pass Through]
+    C -->|No| E[No Exception Log Emitted]
     D --> F[Create Log Record]
     F --> G[Log Pipeline]
-    E --> H[Trace Exporter]
+    A --> H[Trace Exporter]
     F --> I[Preserve Trace Context]
     I --> G
 ```
 
-Each extracted exception log contains the exception type, message, stack trace, and the original trace context, enabling full correlation.
+Each extracted exception log contains the exception type, message, stack trace, span metadata, and the original trace context, enabling full correlation.
 
 ## Basic Configuration
 
@@ -102,7 +102,7 @@ OpenTelemetry records exceptions as span events with specific attributes. The Ex
 
 ## Configuring Exception Extraction Rules
 
-You can control which exceptions get extracted based on severity, type, or other span attributes:
+The connector extracts recorded exception events. You can control which generated logs continue through the logs pipeline based on severity, type, or other attributes:
 
 ```yaml
 connectors:
@@ -113,15 +113,10 @@ connectors:
 processors:
   # Filter exception logs by severity or attributes
   filter/exceptions:
-    logs:
-      # Only keep errors and above
-      exclude:
-        match_type: strict
-        record_attributes:
-          - key: severity_text
-            value: DEBUG
-          - key: severity_text
-            value: INFO
+    error_mode: ignore
+    # Only keep errors and above
+    log_conditions:
+      - log.severity_number < SEVERITY_NUMBER_ERROR
 
   # Add additional context to exception logs
   resource/exceptions:
@@ -136,9 +131,9 @@ processors:
       - context: log
         statements:
           # Extract exception class from fully qualified name
-          - set(attributes["exception.class"], Split(attributes["exception.type"], ".")[-1])
+          - set(log.attributes["exception.class"], Split(log.attributes["exception.type"], ".")[-1]) where log.attributes["exception.type"] != nil
           # Truncate long stack traces
-          - set(body, Substring(body, 0, 10000)) where len(body) > 10000
+          - set(log.attributes["exception.stacktrace"], Substring(log.attributes["exception.stacktrace"], 0, 10000)) where Len(log.attributes["exception.stacktrace"]) > 10000
 
 exporters:
   otlp/traces:
@@ -180,8 +175,8 @@ exporters:
     endpoint: logs-backend:4317
 
   # Send to multiple destinations for different use cases
-  loki:
-    endpoint: http://loki:3100/loki/api/v1/push
+  otlphttp/loki:
+    endpoint: http://loki:3100/otlp
     # Trace context enables jumping from logs to traces
 
 service:
@@ -195,7 +190,7 @@ service:
       receivers: [exceptions]
       processors: [batch]
       # Export to multiple backends
-      exporters: [otlp/logs, loki]
+      exporters: [otlp/logs, otlphttp/loki]
 ```
 
 When viewing exception logs, you can use the trace ID to retrieve the full distributed trace that contains the exception.
@@ -229,7 +224,7 @@ processors:
       - context: log
         statements:
           # Create a fingerprint from exception type and first line of message
-          - set(attributes["exception.fingerprint"], MD5(Concat([attributes["exception.type"], Split(attributes["exception.message"], "\n")[0]])))
+          - set(log.attributes["exception.fingerprint"], MD5(Concat([log.attributes["exception.type"], Split(log.attributes["exception.message"], "\n")[0]], ":"))) where log.attributes["exception.type"] != nil and log.attributes["exception.message"] != nil
 
   # Classify exceptions by severity
   transform/classify:
@@ -237,11 +232,11 @@ processors:
       - context: log
         statements:
           # Mark critical exceptions
-          - set(attributes["exception.critical"], true) where attributes["exception.type"] == "OutOfMemoryError"
-          - set(attributes["exception.critical"], true) where attributes["exception.type"] == "StackOverflowError"
+          - set(log.attributes["exception.critical"], true) where log.attributes["exception.type"] == "OutOfMemoryError"
+          - set(log.attributes["exception.critical"], true) where log.attributes["exception.type"] == "StackOverflowError"
           # Mark transient errors
-          - set(attributes["exception.transient"], true) where IsMatch(attributes["exception.type"], ".*Timeout.*")
-          - set(attributes["exception.transient"], true) where IsMatch(attributes["exception.type"], ".*Connection.*")
+          - set(log.attributes["exception.transient"], true) where IsMatch(log.attributes["exception.type"], ".*Timeout.*")
+          - set(log.attributes["exception.transient"], true) where IsMatch(log.attributes["exception.type"], ".*Connection.*")
 
 exporters:
   otlp/logs:
@@ -273,26 +268,26 @@ connectors:
   exceptions:
     # Extract all exceptions
 
-processors:
-  # Use routing processor to send exceptions to different destinations
   routing:
-    from_attribute: exception.destination
-    default_exporters: [otlp/logs]
+    default_pipelines: [logs/default]
     table:
-      - value: security
-        exporters: [otlp/security]
-      - value: performance
-        exporters: [otlp/performance]
+      - context: log
+        condition: attributes["exception.destination"] == "security"
+        pipelines: [logs/security]
+      - context: log
+        condition: attributes["exception.destination"] == "performance"
+        pipelines: [logs/performance]
 
+processors:
   # Classify exceptions to determine routing
   transform/classify:
     log_statements:
       - context: log
         statements:
           # Route security exceptions
-          - set(attributes["exception.destination"], "security") where IsMatch(attributes["exception.type"], ".*(Authentication|Authorization|Security).*")
+          - set(log.attributes["exception.destination"], "security") where IsMatch(log.attributes["exception.type"], ".*(Authentication|Authorization|Security).*")
           # Route performance exceptions
-          - set(attributes["exception.destination"], "performance") where IsMatch(attributes["exception.type"], ".*(Timeout|OutOfMemory|Performance).*")
+          - set(log.attributes["exception.destination"], "performance") where IsMatch(log.attributes["exception.type"], ".*(Timeout|OutOfMemory|Performance).*")
 
 exporters:
   otlp/traces:
@@ -313,8 +308,20 @@ service:
 
     logs:
       receivers: [exceptions]
-      processors: [transform/classify, routing, batch]
-      exporters: [otlp/logs, otlp/security, otlp/performance]
+      processors: [transform/classify, batch]
+      exporters: [routing]
+
+    logs/default:
+      receivers: [routing]
+      exporters: [otlp/logs]
+
+    logs/security:
+      receivers: [routing]
+      exporters: [otlp/security]
+
+    logs/performance:
+      receivers: [routing]
+      exporters: [otlp/performance]
 ```
 
 ## Sampling High-Volume Exceptions
@@ -327,36 +334,26 @@ connectors:
     # Extract all exceptions first
 
 processors:
-  # Sample based on exception type
+  # Mark critical exceptions so they bypass sampling
+  transform/sampling_priority:
+    log_statements:
+      - context: log
+        statements:
+          - set(log.attributes["exception.sampling_priority"], 100) where log.attributes["exception.critical"] == true
+
+  # Sample exception logs
   probabilistic_sampler/exceptions:
-    # Attribute-based sampling coming in future versions
-    # For now, apply global sampling rate
     sampling_percentage: 10.0
+    sampling_priority: exception.sampling_priority
 
-  # Tail sampling: keep all critical exceptions
-  tail_sampling:
-    policies:
-      # Always keep critical exceptions
-      - name: critical-exceptions
-        type: string_attribute
-        string_attribute:
-          key: exception.critical
-          values: ["true"]
-
-      # Sample common exceptions at 5%
-      - name: common-exceptions
-        type: probabilistic
-        probabilistic:
-          sampling_percentage: 5.0
-
-  # Count exceptions before sampling
+  # Mark sampled exception logs
   transform/count:
     log_statements:
       - context: log
         statements:
           # Add metadata indicating this was sampled
-          - set(attributes["exception.sampled"], true)
-          - set(attributes["exception.sample_rate"], 10.0)
+          - set(log.attributes["exception.sampled"], true)
+          - set(log.attributes["exception.sample_rate"], 10.0)
 
 exporters:
   otlp/traces:
@@ -376,7 +373,7 @@ service:
 
     logs:
       receivers: [exceptions]
-      processors: [probabilistic_sampler/exceptions, transform/count, batch]
+      processors: [transform/sampling_priority, probabilistic_sampler/exceptions, transform/count, batch]
       exporters: [otlp/logs]
 ```
 
@@ -423,7 +420,7 @@ processors:
     log_statements:
       - context: log
         statements:
-          - set(attributes["exception.critical"], "true") where attributes["exception.type"] == "OutOfMemoryError"
+          - set(log.attributes["exception.critical"], "true") where log.attributes["exception.type"] == "OutOfMemoryError"
 
 exporters:
   otlp/traces:
@@ -499,23 +496,20 @@ processors:
       - context: log
         statements:
           # Create exception fingerprint for deduplication
-          - set(attributes["exception.fingerprint"], MD5(Concat([attributes["exception.type"], attributes["service.name"], Split(attributes["exception.message"], "\n")[0]])))
+          - set(log.attributes["exception.fingerprint"], SHA256(Concat([log.attributes["exception.type"], log.attributes["service.name"], Split(log.attributes["exception.message"], "\n")[0]], ":"))) where log.attributes["exception.type"] != nil and log.attributes["exception.message"] != nil
           # Mark critical exceptions
-          - set(attributes["exception.critical"], "true") where IsMatch(attributes["exception.type"], ".*(OutOfMemory|StackOverflow|Fatal).*")
-          - set(attributes["exception.critical"], "false") where attributes["exception.critical"] == nil
+          - set(log.attributes["exception.critical"], "true") where IsMatch(log.attributes["exception.type"], ".*(OutOfMemory|StackOverflow|Fatal).*")
+          - set(log.attributes["exception.critical"], "false") where log.attributes["exception.critical"] == nil
           # Extract exception class name
-          - set(attributes["exception.class"], Split(attributes["exception.type"], ".")[-1]) where attributes["exception.type"] != nil
+          - set(log.attributes["exception.class"], Split(log.attributes["exception.type"], ".")[-1]) where log.attributes["exception.type"] != nil
           # Limit stack trace length
-          - set(body, Substring(body, 0, 8000)) where len(body) > 8000
+          - set(log.attributes["exception.stacktrace"], Substring(log.attributes["exception.stacktrace"], 0, 8000)) where Len(log.attributes["exception.stacktrace"]) > 8000
 
   filter/noise:
-    logs:
-      exclude:
-        match_type: regexp
-        record_attributes:
-          # Filter known non-critical exceptions
-          - key: exception.type
-            value: ".*NotFoundException"
+    error_mode: ignore
+    log_conditions:
+      # Filter known non-critical exceptions
+      - IsMatch(log.attributes["exception.type"], ".*NotFoundException")
 
   memory_limiter:
     check_interval: 1s
@@ -547,7 +541,12 @@ service:
   telemetry:
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 
   pipelines:
     traces:
@@ -583,14 +582,9 @@ exporters:
     headers:
       x-api-key: ${ERROR_TRACKING_API_KEY}
 
-  # Traditional log aggregation
-  loki:
-    endpoint: http://loki:3100/loki/api/v1/push
-    labels:
-      resource:
-        service.name: "service_name"
-      attributes:
-        exception.type: "exception_type"
+  # Loki with OTLP ingestion enabled
+  otlphttp/loki:
+    endpoint: http://loki:3100/otlp
 
 service:
   pipelines:
@@ -603,7 +597,7 @@ service:
       receivers: [exceptions]
       processors: [transform/exceptions, batch]
       # Multiple destinations for different use cases
-      exporters: [otlp/logs, otlp/errors, loki]
+      exporters: [otlp/logs, otlp/errors, otlphttp/loki]
 ```
 
 ## Correlation with Service Performance
