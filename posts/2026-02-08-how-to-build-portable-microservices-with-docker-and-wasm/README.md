@@ -10,7 +10,7 @@ Description: Build truly portable microservices that run anywhere using Docker a
 
 Microservices promise flexibility, but in practice they tie you to specific operating systems, architectures, and runtime environments. A Go binary compiled for Linux amd64 will not run on ARM. A Python service depends on the right interpreter version and system libraries. Docker helps by packaging dependencies, but the images themselves remain platform-specific.
 
-WebAssembly (Wasm) solves the portability problem at the binary level. A Wasm module runs identically on any platform that has a Wasm runtime. Docker now supports Wasm as a first-class workload type, combining true binary portability with Docker's container distribution and orchestration capabilities.
+WebAssembly (Wasm) solves the portability problem at the binary level. A Wasm module runs identically on any platform that has a compatible Wasm runtime. Docker Desktop can run Wasm workloads side by side with containers through containerd shims, combining binary portability with Docker's container distribution workflow. As of 2026, Docker marks this Wasm workload feature as beta and deprecated in Docker Desktop, so check the current Docker support status before adopting it for production.
 
 This guide shows you how to build microservices that are genuinely portable across clouds, architectures, and edge devices.
 
@@ -23,7 +23,7 @@ Traditional Docker images contain a Linux userspace. Even "multi-arch" images ar
 - Base image vulnerabilities affect every service built on that base
 - Image sizes range from 50MB to several gigabytes
 
-Wasm eliminates these issues. One Wasm binary runs on x86, ARM, RISC-V, or any architecture with a Wasm runtime.
+Wasm reduces these issues. One Wasm binary can run on x86, ARM, RISC-V, or any architecture with a compatible Wasm runtime and the WASI interfaces your application uses.
 
 ## Project Setup
 
@@ -56,7 +56,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-wasi = "0.12"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 ```
@@ -64,7 +63,7 @@ serde_json = "1.0"
 Implement a simple user handler:
 
 ```rust
-// src/main.rs - User service that handles CRUD operations over HTTP
+// src/main.rs - Request handler core for a user service
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -118,7 +117,8 @@ fn handle_request(path: &str, method: &str) -> (u16, String) {
 }
 
 fn main() {
-    // In a real Wasm HTTP service, this would bind to the WASI HTTP interface
+    // In a real Wasm HTTP service, wire handle_request into a runtime or
+    // framework that supports WASI HTTP or runtime-specific server networking.
     println!("User service ready");
 }
 ```
@@ -127,7 +127,8 @@ Build for the Wasm target:
 
 ```bash
 # Compile the user service to WebAssembly
-cargo build --target wasm32-wasi --release
+rustup target add wasm32-wasip1
+cargo build --target wasm32-wasip1 --release
 ```
 
 ## Dockerizing the Wasm Microservices
@@ -137,7 +138,7 @@ Create a Dockerfile for each service. Because Wasm binaries are self-contained, 
 ```dockerfile
 # Dockerfile - Package the user service as a Wasm container
 FROM scratch
-COPY target/wasm32-wasi/release/user-service.wasm /user-service.wasm
+COPY target/wasm32-wasip1/release/user-service.wasm /user-service.wasm
 ENTRYPOINT ["/user-service.wasm"]
 ```
 
@@ -156,6 +157,8 @@ Repeat for the other services. The pattern stays the same, only the binary name 
 ## Multi-Service Docker Compose
 
 Bring all three services together:
+
+The Compose examples below assume each Wasm module actually starts an HTTP listener through a Docker-supported Wasm runtime or framework. The Rust snippet above only demonstrates the request-handling logic you would wire into that runtime layer.
 
 ```yaml
 # docker-compose.yml - Portable microservices running on Wasm
@@ -208,11 +211,11 @@ docker run --runtime=io.containerd.wasmtime.v1 \
   registry.example.com/user-service:v1
 ```
 
-The same image, byte-for-byte identical, runs on both x86 and ARM. No cross-compilation, no multi-arch builds, no platform-specific base images.
+The same image, byte-for-byte identical, runs on both x86 and ARM when both hosts have a compatible Wasm runtime and the required Docker Wasm support enabled. No cross-compilation, no multi-arch builds, no platform-specific base images.
 
 ## Service Communication Patterns
 
-Wasm microservices communicate the same way traditional microservices do. HTTP and gRPC both work through the WASI networking interfaces.
+Wasm microservices can communicate over familiar protocols such as HTTP and gRPC, but the details depend on the runtime and WASI version. WASI 0.2 defines component-model interfaces for HTTP and sockets; older WASI preview 1 modules often rely on runtime-specific networking support.
 
 For synchronous HTTP communication between services:
 
@@ -301,17 +304,17 @@ jobs:
       - name: Install Rust and Wasm target
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: wasm32-wasi
+          targets: wasm32-wasip1
 
       - name: Build Wasm binary
         working-directory: ./${{ matrix.service }}
-        run: cargo build --target wasm32-wasi --release
+        run: cargo build --target wasm32-wasip1 --release
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Build and push Wasm image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: ./${{ matrix.service }}
           platforms: wasi/wasm
@@ -321,28 +324,28 @@ jobs:
 
 ## Performance Characteristics
 
-Wasm microservices behave differently from traditional containers in production:
+Wasm microservices can behave differently from traditional containers in production. The exact numbers depend heavily on the runtime, language, workload, and host, but small Wasm services often have a smaller footprint:
 
 | Aspect | Traditional Container | Wasm Container |
 |--------|----------------------|----------------|
-| Startup time | 1-10 seconds | 1-5 milliseconds |
-| Memory per instance | 50-500 MB | 5-30 MB |
-| Image size | 100 MB - 1 GB | 1-10 MB |
+| Startup time | Often hundreds of milliseconds to seconds | Often milliseconds for small modules |
+| Memory per instance | Often tens to hundreds of MB | Often lower for small modules |
+| Image size | Often tens of MB to 1 GB+ | Often a few MB for small modules |
 | Architecture support | Per-build | Universal |
-| Cold scaling | Slow | Near-instant |
+| Cold scaling | Depends on image size and runtime | Can be faster for small modules |
 
-These characteristics make Wasm microservices ideal for auto-scaling workloads. You can scale from zero to hundreds of instances in seconds, not minutes.
+These characteristics can make Wasm microservices useful for auto-scaling workloads, especially where cold-start time and image size matter.
 
 ## Limitations to Consider
 
 Wasm microservices are not a universal replacement:
 
 - **File system access** is limited to explicitly granted directories through WASI
-- **Network sockets** work through WASI but may not cover all protocols yet
+- **Network sockets** and HTTP depend on the WASI version and runtime support; WASI 0.2 defines networking interfaces, while preview 1 support is runtime-specific
 - **Native libraries** (OpenSSL, image processing) need Wasm-compatible alternatives
 - **Debugging tools** are less mature than traditional container debugging
 - **Language support** varies - Rust and Go have the best Wasm toolchains
 
 ## Conclusion
 
-Docker and Wasm together deliver on the original promise of "build once, run anywhere" for microservices. The workflow feels familiar to anyone who already uses Docker. The key difference is that your images are smaller, start faster, and genuinely run on any architecture without rebuilding. Start by converting one stateless service to Wasm, verify it works alongside your existing containers, and expand from there.
+Docker and Wasm together can deliver on the original promise of "build once, run anywhere" for microservices when your target environments provide compatible Wasm runtime support. The workflow feels familiar to anyone who already uses Docker. The key difference is that your images can be smaller, start faster, and run on multiple architectures without rebuilding. Start by converting one stateless service to Wasm, verify it works alongside your existing containers, and expand from there.
