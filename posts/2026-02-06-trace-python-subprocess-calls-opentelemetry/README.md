@@ -180,7 +180,6 @@ The real power comes from propagating trace context to child processes:
 import os
 import json
 from opentelemetry.propagate import inject, extract
-from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 
 def run_with_context_propagation(command, shell=False):
     """Execute subprocess with trace context propagation"""
@@ -236,6 +235,22 @@ child_script = """
 import os
 import json
 from opentelemetry import trace
+from opentelemetry.propagate import extract
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.sdk.resources import Resource, SERVICE_NAME
+
+# Configure OpenTelemetry in the child process too
+resource = Resource(attributes={
+    SERVICE_NAME: "subprocess-child"
+})
+provider = TracerProvider(resource=resource)
+provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(
+    endpoint="http://localhost:4317",
+    insecure=True
+)))
+trace.set_tracer_provider(provider)
 
 # Extract trace context from environment
 carrier = json.loads(os.environ.get('OTEL_TRACE_CONTEXT', '{}'))
@@ -273,6 +288,7 @@ def run_long_process_with_monitoring(command, check_interval=5):
         span.set_attribute("subprocess.monitoring.interval_seconds", check_interval)
 
         start_time = time.time()
+        process = None
 
         try:
             # Start process without waiting
@@ -326,13 +342,16 @@ def run_long_process_with_monitoring(command, check_interval=5):
 
         except subprocess.TimeoutExpired:
             process.kill()
+            process.communicate()
             span.set_attribute("subprocess.killed", True)
             span.set_attribute("subprocess.reason", "timeout")
             span.set_status(trace.Status(trace.StatusCode.ERROR, "Process timeout"))
             raise
 
         except Exception as e:
-            process.kill()
+            if process is not None and process.poll() is None:
+                process.kill()
+                process.communicate()
             span.record_exception(e)
             span.set_status(trace.Status(trace.StatusCode.ERROR, str(e)))
             raise
@@ -349,7 +368,8 @@ result = run_long_process_with_monitoring(
 When running multiple subprocesses concurrently, trace the entire pool:
 
 ```python
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
+from contextvars import copy_context
 
 def run_parallel_commands(commands, max_workers=4):
     """Execute multiple commands in parallel with tracing"""
@@ -368,7 +388,8 @@ def run_parallel_commands(commands, max_workers=4):
                     submit_span.set_attribute("subprocess.command", str(cmd))
                     submit_span.set_attribute("subprocess.index", i)
 
-                    future = executor.submit(run_command_traced, cmd)
+                    ctx = copy_context()
+                    future = executor.submit(ctx.run, run_command_traced, cmd)
                     futures.append((i, future))
 
             # Collect results
