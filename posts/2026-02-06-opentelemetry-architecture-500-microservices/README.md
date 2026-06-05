@@ -29,20 +29,20 @@ The foundation of a scalable architecture is a multi-tier collector deployment:
 
 ```mermaid
 graph TD
-    subgraph Tier 1 - Agents
+    subgraph "Tier 1 - Agents"
         A1[Agent Collector] --- S1[Service 1..50]
         A2[Agent Collector] --- S2[Service 51..100]
         A3[Agent Collector] --- S3[Service 101..150]
         AN[Agent Collector x N] --- SN[Service N..500+]
     end
 
-    subgraph Tier 2 - Gateways
+    subgraph "Tier 2 - Gateways"
         G1[Gateway Collector 1]
         G2[Gateway Collector 2]
         G3[Gateway Collector 3]
     end
 
-    subgraph Tier 3 - Backends
+    subgraph "Tier 3 - Backends"
         B1[Trace Backend]
         B2[Metrics Backend]
         B3[Log Backend]
@@ -99,34 +99,49 @@ processors:
   resource:
     attributes:
       - key: k8s.node.name
-        from_attribute: ""
         action: insert
-        value: "${K8S_NODE_NAME}"
+        value: "${env:K8S_NODE_NAME}"
 
 exporters:
-  # Use load-balanced exporter to distribute across gateway instances
-  loadbalancing:
+  # Use the load-balancing exporter for traces so each trace stays on one gateway
+  load_balancing/traces:
+    routing_key: traceID
     protocol:
       otlp:
         timeout: 5s
+        tls:
+          insecure: true
     resolver:
       dns:
-        hostname: otel-gateway.observability.svc
+        hostname: otel-gateway-headless.observability.svc
         port: 4317
+  # Metrics and logs can use the normal Kubernetes Service load balancer
+  otlp/metrics:
+    endpoint: otel-gateway.observability.svc:4317
+    tls:
+      insecure: true
+  otlp/logs:
+    endpoint: otel-gateway.observability.svc:4317
+    tls:
+      insecure: true
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, resource, batch]
-      exporters: [loadbalancing]
+      exporters: [load_balancing/traces]
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, resource, batch]
-      exporters: [loadbalancing]
+      exporters: [otlp/metrics]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlp/logs]
 ```
 
-The load-balancing exporter is crucial. It distributes telemetry across all gateway instances, and for traces, it routes spans with the same trace ID to the same gateway. This is important for tail-based sampling, which needs to see all spans of a trace in one place.
+The load-balancing exporter is crucial for traces. It distributes trace traffic across gateway instances, and it routes spans with the same trace ID to the same gateway. This is important for tail-based sampling, which needs to see all spans of a trace in one place.
 
 ## Gateway Collector Configuration
 
@@ -177,6 +192,10 @@ processors:
         - k8s.namespace.name
         - k8s.deployment.name
         - k8s.pod.name
+    pod_association:
+      - sources:
+          - from: resource_attribute
+            name: k8s.pod.ip
 
   batch:
     timeout: 5s
@@ -193,6 +212,9 @@ exporters:
   otlphttp/metrics:
     endpoint: https://oneuptime.com/otlp
 
+  otlphttp/logs:
+    endpoint: https://oneuptime.com/otlp
+
 service:
   pipelines:
     traces:
@@ -203,6 +225,10 @@ service:
       receivers: [otlp]
       processors: [memory_limiter, k8sattributes, batch]
       exporters: [otlphttp/metrics]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, k8sattributes, batch]
+      exporters: [otlphttp/logs]
 ```
 
 ## Kubernetes Deployment
@@ -227,7 +253,18 @@ spec:
     spec:
       containers:
         - name: collector
-          image: otel/opentelemetry-collector-contrib:0.96.0
+          image: otel/opentelemetry-collector-contrib:0.153.0
+          args:
+            - "--config=/etc/otelcol-contrib/config.yaml"
+          ports:
+            - name: otlp-grpc
+              containerPort: 4317
+              hostPort: 4317
+            - name: otlp-http
+              containerPort: 4318
+              hostPort: 4318
+            - name: metrics
+              containerPort: 8888
           resources:
             requests:
               cpu: 200m
@@ -240,9 +277,17 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
+          volumeMounts:
+            - name: otel-agent-config
+              mountPath: /etc/otelcol-contrib
       # Use hostNetwork for performance on high-traffic nodes
-      hostNetwork: false
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
       serviceAccountName: otel-agent
+      volumes:
+        - name: otel-agent-config
+          configMap:
+            name: otel-agent-config
 ```
 
 Deploy gateway collectors as a scalable Deployment:
@@ -266,7 +311,14 @@ spec:
     spec:
       containers:
         - name: collector
-          image: otel/opentelemetry-collector-contrib:0.96.0
+          image: otel/opentelemetry-collector-contrib:0.153.0
+          args:
+            - "--config=/etc/otelcol-contrib/config.yaml"
+          ports:
+            - name: otlp-grpc
+              containerPort: 4317
+            - name: metrics
+              containerPort: 8888
           resources:
             requests:
               cpu: "1"
@@ -274,6 +326,49 @@ spec:
             limits:
               cpu: "2"
               memory: 8Gi
+          volumeMounts:
+            - name: otel-gateway-config
+              mountPath: /etc/otelcol-contrib
+      volumes:
+        - name: otel-gateway-config
+          configMap:
+            name: otel-gateway-config
+---
+# Regular Service for metrics/logs and Prometheus scraping
+apiVersion: v1
+kind: Service
+metadata:
+  name: otel-gateway
+  namespace: observability
+  labels:
+    app: otel-gateway
+spec:
+  selector:
+    app: otel-gateway
+  ports:
+    - name: otlp-grpc
+      port: 4317
+      targetPort: otlp-grpc
+    - name: metrics
+      port: 8888
+      targetPort: metrics
+---
+# Headless Service so the load-balancing exporter can resolve gateway pod IPs
+apiVersion: v1
+kind: Service
+metadata:
+  name: otel-gateway-headless
+  namespace: observability
+  labels:
+    app: otel-gateway-headless
+spec:
+  clusterIP: None
+  selector:
+    app: otel-gateway
+  ports:
+    - name: otlp-grpc
+      port: 4317
+      targetPort: otlp-grpc
 ---
 # HPA scales gateway collectors based on CPU usage
 apiVersion: autoscaling/v2
@@ -302,22 +397,28 @@ spec:
 With 500+ services, you cannot configure each one individually. Use environment variable injection through Kubernetes:
 
 ```yaml
-# MutatingWebhookConfiguration or simply a namespace-level ConfigMap
-# that all services reference. This provides consistent OTel configuration
-# without modifying each service's deployment spec.
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: otel-sdk-config
-  namespace: default
-data:
-  OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-agent.observability.svc:4318"
-  OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf"
-  OTEL_TRACES_SAMPLER: "parentbased_always_on"
-  OTEL_RESOURCE_ATTRIBUTES: "deployment.environment=production"
+# Example environment variables injected by a MutatingWebhookConfiguration.
+# HOST_IP routes each pod to the agent collector running on the same node.
+env:
+  - name: HOST_IP
+    valueFrom:
+      fieldRef:
+        fieldPath: status.hostIP
+  - name: POD_IP
+    valueFrom:
+      fieldRef:
+        fieldPath: status.podIP
+  - name: OTEL_EXPORTER_OTLP_ENDPOINT
+    value: "http://$(HOST_IP):4318"
+  - name: OTEL_EXPORTER_OTLP_PROTOCOL
+    value: "http/protobuf"
+  - name: OTEL_TRACES_SAMPLER
+    value: "parentbased_always_on"
+  - name: OTEL_RESOURCE_ATTRIBUTES
+    value: "deployment.environment=production,k8s.pod.ip=$(POD_IP)"
 ```
 
-Use the OpenTelemetry Operator to handle auto-instrumentation for services that support it. This reduces the number of services that need code changes to zero for languages with agent-based instrumentation like Java and Python.
+Use the OpenTelemetry Operator to handle auto-instrumentation for services that support it. This reduces the number of services that need code changes to zero for languages with supported auto-instrumentation, such as Java and Python.
 
 ## Monitoring the Observability Infrastructure
 
@@ -340,10 +441,10 @@ spec:
 ```
 
 Key metrics to watch:
-- `otelcol_exporter_sent_spans`: spans successfully exported
-- `otelcol_exporter_send_failed_spans`: export failures
-- `otelcol_processor_dropped_spans`: spans dropped by processors
-- `otelcol_receiver_accepted_spans`: spans received from applications
+- `otelcol_exporter_sent_spans_total`: spans successfully exported
+- `otelcol_exporter_send_failed_spans_total`: export failures
+- `otelcol_processor_dropped_spans_total`: spans dropped by processors
+- `otelcol_receiver_accepted_spans_total`: spans received from applications
 
 ## Conclusion
 
