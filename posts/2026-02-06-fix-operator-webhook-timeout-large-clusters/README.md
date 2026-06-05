@@ -74,9 +74,10 @@ webhooks:
 Apply the patch:
 
 ```bash
-kubectl patch mutatingwebhookconfiguration \
-  opentelemetry-operator-mutating-webhook-configuration \
-  --type='json' -p='[{"op": "replace", "path": "/webhooks/0/timeoutSeconds", "value": 30}]'
+kubectl get mutatingwebhookconfiguration \
+  opentelemetry-operator-mutating-webhook-configuration -o json \
+  | jq '(.webhooks[] | select(.name == "mpod.kb.io").timeoutSeconds) = 30' \
+  | kubectl replace -f -
 ```
 
 ## Fix 3: Scale the Operator
@@ -88,14 +89,14 @@ kubectl scale deployment opentelemetry-operator-controller-manager \
   -n opentelemetry-operator-system --replicas=3
 ```
 
-Make sure the Operator supports leader election (it does by default) so that multiple replicas can serve webhook requests:
+Make sure leader election is enabled (it is by default) so that multiple replicas do not run conflicting controller reconciliation loops:
 
 ```yaml
 # In the Operator deployment
 args:
-  - --leader-elect=true
-  - --health-probe-bind-address=:8081
-  - --metrics-bind-address=127.0.0.1:8080
+  - --enable-leader-election
+  - --health-probe-addr=:8081
+  - --metrics-addr=0.0.0.0:8443
 ```
 
 Add a PodDisruptionBudget to keep the webhook available during upgrades:
@@ -127,7 +128,7 @@ resources:
     memory: 512Mi
 ```
 
-## Fix 5: Change failurePolicy to Ignore
+## Fix 5: Verify failurePolicy is Ignore
 
 If auto-instrumentation is not critical and you prefer pod creation to succeed even when the webhook is slow:
 
@@ -137,7 +138,7 @@ webhooks:
     failurePolicy: Ignore  # Pod creation succeeds even if webhook times out
 ```
 
-The trade-off: pods created during webhook failures will not get auto-instrumentation injected. But at least they will start.
+This is the default for the Operator's `mpod.kb.io` pod mutating webhook. The trade-off: pods created during webhook failures will not get auto-instrumentation injected. But at least they will start.
 
 ## Fix 6: Use objectSelector for Finer Control
 
@@ -148,8 +149,8 @@ webhooks:
   - name: mpod.kb.io
     objectSelector:
       matchExpressions:
-        # Only intercept pods that have an OTel annotation
-        - key: instrumentation.opentelemetry.io/inject-java
+        # Only intercept pods that have this label
+        - key: otel-auto-instrumentation
           operator: Exists
 ```
 
@@ -162,9 +163,11 @@ This is the most precise approach because the webhook only fires for pods that a
 kubectl get --raw /metrics | grep apiserver_admission_webhook_admission_duration_seconds
 
 # Check the Operator's own metrics
+TOKEN=$(kubectl create token opentelemetry-operator-controller-manager \
+  -n opentelemetry-operator-system)
 kubectl port-forward -n opentelemetry-operator-system \
-  deployment/opentelemetry-operator-controller-manager 8080:8080
-curl localhost:8080/metrics | grep webhook
+  service/opentelemetry-operator-controller-manager-metrics-service 8443:8443 &
+curl -k -H "Authorization: Bearer $TOKEN" https://localhost:8443/metrics | grep webhook
 ```
 
 Set up alerts for high webhook latency:
@@ -175,7 +178,7 @@ Set up alerts for high webhook latency:
   expr: |
     histogram_quantile(0.99,
       rate(apiserver_admission_webhook_admission_duration_seconds_bucket{
-        name="opentelemetry-operator-mutating-webhook-configuration"
+        name="mpod.kb.io"
       }[5m])
     ) > 5
   for: 5m
@@ -185,4 +188,4 @@ Set up alerts for high webhook latency:
 
 ## Summary
 
-Webhook timeouts in large clusters are primarily a scaling problem. Start by scoping the webhook to only the namespaces that need it (Fix 1), as this alone often resolves the issue. If that is not enough, scale the Operator replicas and increase its resources. Changing failurePolicy to Ignore is a quick workaround but should not be the permanent solution.
+Webhook timeouts in large clusters are primarily a scaling problem. Start by scoping the webhook to only the namespaces that need it (Fix 1), as this alone often resolves the issue. If that is not enough, scale the Operator replicas and increase its resources. Keeping the pod webhook's failurePolicy set to Ignore limits the blast radius, but it should not be the permanent solution for an overloaded webhook.
