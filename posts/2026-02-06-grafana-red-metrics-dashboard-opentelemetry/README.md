@@ -35,20 +35,23 @@ receivers:
         endpoint: "0.0.0.0:4317"
 
 connectors:
-  spanmetrics:
-    # Histogram buckets for duration measurement (in seconds)
+  span_metrics:
+    # Keep Prometheus metric names as calls_total and duration_milliseconds_*
+    namespace: ""
+    # Histogram buckets for duration measurement (in milliseconds)
     histogram:
+      unit: ms
       explicit:
-        buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0]
+        buckets: [5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 2.5s, 5s, 10s]
     # Dimensions to include as metric labels
     dimensions:
-      - name: http.method
+      - name: http.request.method
       - name: http.route
-      - name: http.status_code
+      - name: http.response.status_code
       - name: rpc.method
       - name: rpc.service
-    # Only generate metrics from server and consumer spans (skip internal spans)
-    dimensions_cache_size: 1000
+    # Limit tracked dimension combinations to reduce cardinality risk
+    aggregation_cardinality_limit: 1000
     aggregation_temporality: "AGGREGATION_TEMPORALITY_CUMULATIVE"
     metrics_flush_interval: 15s
 
@@ -71,9 +74,9 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlp/tempo, spanmetrics]
+      exporters: [otlp/tempo, span_metrics]
     metrics:
-      receivers: [spanmetrics]
+      receivers: [span_metrics]
       processors: [batch]
       exporters: [prometheus]
 ```
@@ -133,10 +136,10 @@ For HTTP-specific error breakdown by status code:
 
 ```promql
 # HTTP error rate broken down by status code family
-sum by (service_name, http_status_code) (
+sum by (service_name, http_response_status_code) (
   rate(calls_total{
     span_kind="SPAN_KIND_SERVER",
-    http_status_code=~"5.."
+    http_response_status_code=~"5.."
   }[5m])
 )
 ```
@@ -194,10 +197,9 @@ providers:
     folder: 'OpenTelemetry'
     type: file
     disableDeletion: false
-    editable: true
+    allowUiUpdates: true
     options:
       path: /var/lib/grafana/dashboards
-      foldersFromFilesStructure: true
 ```
 
 ```json
