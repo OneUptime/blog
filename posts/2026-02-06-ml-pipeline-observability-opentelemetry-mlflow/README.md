@@ -69,6 +69,7 @@ Now configure both OpenTelemetry and MLflow.
 
 ```python
 import mlflow
+import mlflow.sklearn
 from opentelemetry import trace, metrics
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
@@ -218,10 +219,9 @@ def preprocess_data(df: pd.DataFrame) -> tuple:
 
             encoders = {}
             for col in categorical_cols:
-                if col != "target_column":
-                    le = LabelEncoder()
-                    df[col] = le.fit_transform(df[col].astype(str))
-                    encoders[col] = le
+                le = LabelEncoder()
+                df[col] = le.fit_transform(df[col].astype(str))
+                encoders[col] = le
 
         # Step 3: Scale numerical features
         with tracer.start_as_current_span("ml.pipeline.preprocess.scaling") as scale_span:
@@ -382,7 +382,7 @@ def register_model(model, mlflow_run_id: str, model_name: str, eval_metrics: dic
             # Log the model artifact to MLflow
             model_info = mlflow.sklearn.log_model(
                 model,
-                artifact_path="model",
+                name="model",
                 registered_model_name=model_name,
             )
 
