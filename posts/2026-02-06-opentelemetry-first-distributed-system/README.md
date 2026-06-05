@@ -50,8 +50,8 @@ processors:
     send_batch_size: 1024
 
 exporters:
-  logging:
-    loglevel: debug
+  debug:
+    verbosity: detailed
   otlp:
     endpoint: jaeger:4317
     tls:
@@ -62,21 +62,17 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [logging, otlp]
+      exporters: [debug, otlp]
 ```
 
 Run the collector and Jaeger for trace visualization using Docker Compose:
 
 ```yaml
-# docker-compose.yaml
-version: '3.8'
-
 services:
   jaeger:
     image: jaegertracing/all-in-one:latest
     ports:
       - "16686:16686"  # Jaeger UI
-      - "4317:4317"    # OTLP gRPC receiver
     environment:
       - COLLECTOR_OTLP_ENABLED=true
 
@@ -92,7 +88,7 @@ services:
       - jaeger
 ```
 
-Start the infrastructure with `docker-compose up -d`. You can access the Jaeger UI at http://localhost:16686 to view traces once your services start sending data.
+Start the infrastructure with `docker compose up -d`. You can access the Jaeger UI at http://localhost:16686 to view traces once your services start sending data.
 
 ## Instrumenting the API Gateway
 
@@ -103,14 +99,17 @@ The API gateway is the entry point for requests. It needs to create the root spa
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const {
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+} = require('@opentelemetry/semantic-conventions');
 
 // Initialize OpenTelemetry SDK before any other imports
 const sdk = new NodeSDK({
-  resource: new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: 'api-gateway',
-    [SemanticResourceAttributes.SERVICE_VERSION]: '1.0.0',
+  resource: resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: 'api-gateway',
+    [ATTR_SERVICE_VERSION]: '1.0.0',
   }),
   traceExporter: new OTLPTraceExporter({
     url: 'http://localhost:4318/v1/traces',
@@ -175,13 +174,16 @@ Each downstream service needs similar instrumentation. The difference is that th
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const {
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+} = require('@opentelemetry/semantic-conventions');
 
 const sdk = new NodeSDK({
-  resource: new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: 'auth-service',
-    [SemanticResourceAttributes.SERVICE_VERSION]: '1.0.0',
+  resource: resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: 'auth-service',
+    [ATTR_SERVICE_VERSION]: '1.0.0',
   }),
   traceExporter: new OTLPTraceExporter({
     url: 'http://localhost:4318/v1/traces',
@@ -201,27 +203,27 @@ const tracer = trace.getTracer('auth-service');
 
 app.post('/validate', async (req, res) => {
   // Create a custom span for the validation logic
-  const span = tracer.startSpan('validate_token');
+  return tracer.startActiveSpan('validate_token', async (span) => {
+    try {
+      const token = req.body.token;
 
-  try {
-    const token = req.body.token;
+      if (!token) {
+        span.setAttribute('validation.result', 'missing_token');
+        return res.json({ valid: false, reason: 'missing_token' });
+      }
 
-    if (!token) {
-      span.setAttribute('validation.result', 'missing_token');
-      return res.json({ valid: false, reason: 'missing_token' });
+      // Simulate token validation
+      const isValid = token.startsWith('Bearer ');
+      span.setAttribute('validation.result', isValid ? 'valid' : 'invalid');
+
+      res.json({ valid: isValid });
+    } catch (error) {
+      span.recordException(error);
+      res.status(500).json({ valid: false, reason: 'internal_error' });
+    } finally {
+      span.end();
     }
-
-    // Simulate token validation
-    const isValid = token.startsWith('Bearer ');
-    span.setAttribute('validation.result', isValid ? 'valid' : 'invalid');
-
-    res.json({ valid: isValid });
-  } catch (error) {
-    span.recordException(error);
-    res.status(500).json({ valid: false, reason: 'internal_error' });
-  } finally {
-    span.end();
-  }
+  });
 });
 
 app.listen(3001, () => {
@@ -240,13 +242,16 @@ The user service demonstrates how database operations are automatically instrume
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const {
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+} = require('@opentelemetry/semantic-conventions');
 
 const sdk = new NodeSDK({
-  resource: new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: 'user-service',
-    [SemanticResourceAttributes.SERVICE_VERSION]: '1.0.0',
+  resource: resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: 'user-service',
+    [ATTR_SERVICE_VERSION]: '1.0.0',
   }),
   traceExporter: new OTLPTraceExporter({
     url: 'http://localhost:4318/v1/traces',
@@ -323,14 +328,17 @@ One common pitfall in distributed tracing is losing context across async boundar
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
-const { context, trace } = require('@opentelemetry/api');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const {
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+} = require('@opentelemetry/semantic-conventions');
+const { context, propagation, trace, SpanStatusCode } = require('@opentelemetry/api');
 
 const sdk = new NodeSDK({
-  resource: new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: 'notification-service',
-    [SemanticResourceAttributes.SERVICE_VERSION]: '1.0.0',
+  resource: resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: 'notification-service',
+    [ATTR_SERVICE_VERSION]: '1.0.0',
   }),
   traceExporter: new OTLPTraceExporter({
     url: 'http://localhost:4318/v1/traces',
@@ -361,36 +369,34 @@ app.post('/notifications', async (req, res) => {
   const tracer = trace.getTracer('notification-service');
 
   // Create a span for queueing the notification
-  const span = tracer.startSpan('queue_notification');
-  span.setAttribute('notification.type', req.body.type);
-  span.setAttribute('user.id', req.body.userId);
+  return tracer.startActiveSpan('queue_notification', async (span) => {
+    span.setAttribute('notification.type', req.body.type);
+    span.setAttribute('user.id', req.body.userId);
 
-  try {
-    // Get the current context to propagate to the message queue
-    const currentContext = context.active();
+    try {
+      // Inject the active trace context into message metadata
+      const carrier = {};
+      propagation.inject(context.active(), carrier);
 
-    // Inject trace context into message metadata
-    const carrier = {};
-    trace.getSpan(currentContext)?.spanContext();
+      channel.sendToQueue(
+        'notifications',
+        Buffer.from(JSON.stringify(req.body)),
+        {
+          persistent: true,
+          headers: carrier,
+        }
+      );
 
-    await channel.sendToQueue(
-      'notifications',
-      Buffer.from(JSON.stringify(req.body)),
-      {
-        persistent: true,
-        headers: carrier,
-      }
-    );
-
-    span.setStatus({ code: 1 }); // OK
-    res.json({ queued: true });
-  } catch (error) {
-    span.recordException(error);
-    span.setStatus({ code: 2, message: error.message }); // ERROR
-    res.status(500).json({ error: 'Failed to queue notification' });
-  } finally {
-    span.end();
-  }
+      span.setStatus({ code: SpanStatusCode.OK });
+      res.json({ queued: true });
+    } catch (error) {
+      span.recordException(error);
+      span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
+      res.status(500).json({ error: 'Failed to queue notification' });
+    } finally {
+      span.end();
+    }
+  });
 });
 
 app.listen(3003, () => {
