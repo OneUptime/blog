@@ -27,11 +27,11 @@ flowchart TD
     end
 
     subgraph RAGTrace["RAG Chain Trace"]
-        E[RetrievalQA Span] --> F[Retriever Span]
+        E[RAG Chain Span] --> F[Retriever Span]
         F --> G[Embedding Span]
         F --> H[Vector Search Span]
-        E --> I[Stuff Documents Span]
-        E --> J[LLM Call Span]
+        E --> I[Prompt Template Span]
+        E --> J[Chat Model Span]
     end
 ```
 
@@ -44,8 +44,9 @@ First, install the required packages. LangChain has a callback system that we'll
 ```bash
 # Install LangChain and OpenTelemetry packages
 
-pip install langchain langchain-openai langchain-community
+pip install langchain langchain-openai langchain-chroma
 pip install opentelemetry-api opentelemetry-sdk opentelemetry-exporter-otlp
+pip install fastapi opentelemetry-instrumentation-fastapi
 ```
 
 Configure the OpenTelemetry tracer provider before creating any LangChain components.
@@ -96,10 +97,11 @@ LangChain's callback system is the hook point for OpenTelemetry instrumentation.
 
 ```python
 import time
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 from uuid import UUID
 
-from langchain.callbacks.base import BaseCallbackHandler
+from langchain_core.callbacks import BaseCallbackHandler
+from langchain_core.messages import BaseMessage
 from opentelemetry import trace
 from opentelemetry.trace import StatusCode
 
@@ -117,35 +119,75 @@ class OpenTelemetryCallbackHandler(BaseCallbackHandler):
         self._spans: Dict[UUID, trace.Span] = {}
         self._timers: Dict[UUID, float] = {}
 
+    def _name_from_serialized(self, serialized: Dict[str, Any]) -> str:
+        name = serialized.get("name")
+        if name:
+            return name
+
+        serialized_id = serialized.get("id")
+        if isinstance(serialized_id, list) and serialized_id:
+            return str(serialized_id[-1])
+
+        return "unknown"
+
+    def _start_span(self, name: str, run_id: UUID,
+                    parent_run_id: Optional[UUID] = None) -> trace.Span:
+        parent_span = self._spans.get(parent_run_id) if parent_run_id else None
+        parent_context = trace.set_span_in_context(parent_span) if parent_span else None
+        span = tracer.start_span(name, context=parent_context)
+        span.set_attribute("langchain.run_id", str(run_id))
+        if parent_run_id:
+            span.set_attribute("langchain.parent_run_id", str(parent_run_id))
+
+        self._spans[run_id] = span
+        self._timers[run_id] = time.perf_counter()
+        return span
+
+    def _end_span(self, run_id: UUID) -> Optional[tuple[trace.Span, float]]:
+        span = self._spans.pop(run_id, None)
+        start_time = self._timers.pop(run_id, None)
+        if not span:
+            return None
+
+        elapsed_ms = (time.perf_counter() - start_time) * 1000 if start_time else 0
+        return span, elapsed_ms
+
+    def _end_span_with_error(self, run_id: UUID, error: BaseException) -> None:
+        ended = self._end_span(run_id)
+        if ended:
+            span, _ = ended
+            span.set_status(StatusCode.ERROR, str(error))
+            span.record_exception(error)
+            span.end()
+
     # --- Chain callbacks ---
 
     def on_chain_start(self, serialized: Dict[str, Any],
                        inputs: Dict[str, Any],
-                       run_id: UUID, **kwargs) -> None:
+                       run_id: UUID,
+                       parent_run_id: Optional[UUID] = None,
+                       **kwargs) -> None:
         """Called when a chain starts running."""
-        chain_name = serialized.get("name", serialized.get("id", ["unknown"])[-1])
+        chain_name = self._name_from_serialized(serialized)
 
         # Create a span for this chain invocation
-        span = tracer.start_span(f"langchain.chain.{chain_name}")
+        span = self._start_span(
+            f"langchain.chain.{chain_name}", run_id, parent_run_id
+        )
         span.set_attribute("langchain.component", "chain")
         span.set_attribute("langchain.chain.name", chain_name)
-        span.set_attribute("langchain.run_id", str(run_id))
 
         # Record input keys but not values (which may be large or sensitive)
         if isinstance(inputs, dict):
             span.set_attribute("langchain.chain.input_keys", str(list(inputs.keys())))
 
-        self._spans[run_id] = span
-        self._timers[run_id] = time.perf_counter()
-
     def on_chain_end(self, outputs: Dict[str, Any],
                      run_id: UUID, **kwargs) -> None:
         """Called when a chain finishes successfully."""
-        span = self._spans.pop(run_id, None)
-        start_time = self._timers.pop(run_id, None)
+        ended = self._end_span(run_id)
 
-        if span:
-            elapsed_ms = (time.perf_counter() - start_time) * 1000 if start_time else 0
+        if ended:
+            span, elapsed_ms = ended
             span.set_attribute("langchain.chain.duration_ms", elapsed_ms)
             if isinstance(outputs, dict):
                 span.set_attribute("langchain.chain.output_keys",
@@ -156,40 +198,54 @@ class OpenTelemetryCallbackHandler(BaseCallbackHandler):
     def on_chain_error(self, error: BaseException,
                        run_id: UUID, **kwargs) -> None:
         """Called when a chain encounters an error."""
-        span = self._spans.pop(run_id, None)
-        if span:
-            span.set_status(StatusCode.ERROR, str(error))
-            span.record_exception(error)
-            span.end()
+        self._end_span_with_error(run_id, error)
 
     # --- LLM callbacks ---
 
     def on_llm_start(self, serialized: Dict[str, Any],
                      prompts: List[str],
-                     run_id: UUID, **kwargs) -> None:
+                     run_id: UUID,
+                     parent_run_id: Optional[UUID] = None,
+                     **kwargs) -> None:
         """Called when an LLM call starts."""
-        model_name = serialized.get("name", "unknown")
+        model_name = self._name_from_serialized(serialized)
 
-        span = tracer.start_span("langchain.llm.call")
+        span = self._start_span("langchain.llm.call", run_id, parent_run_id)
         span.set_attribute("langchain.component", "llm")
         span.set_attribute("langchain.llm.model", model_name)
         span.set_attribute("langchain.llm.num_prompts", len(prompts))
-        span.set_attribute("langchain.run_id", str(run_id))
 
         # Track prompt sizes without logging the actual content
         total_chars = sum(len(p) for p in prompts)
         span.set_attribute("langchain.llm.total_input_chars", total_chars)
 
-        self._spans[run_id] = span
-        self._timers[run_id] = time.perf_counter()
+    def on_chat_model_start(self, serialized: Dict[str, Any],
+                            messages: List[List[BaseMessage]],
+                            run_id: UUID,
+                            parent_run_id: Optional[UUID] = None,
+                            **kwargs) -> None:
+        """Called when a chat model call starts."""
+        model_name = self._name_from_serialized(serialized)
+
+        span = self._start_span("langchain.chat_model.call",
+                                run_id, parent_run_id)
+        span.set_attribute("langchain.component", "chat_model")
+        span.set_attribute("langchain.llm.model", model_name)
+        span.set_attribute("langchain.llm.num_prompts", len(messages))
+
+        total_chars = sum(
+            len(str(message.content))
+            for message_list in messages
+            for message in message_list
+        )
+        span.set_attribute("langchain.llm.total_input_chars", total_chars)
 
     def on_llm_end(self, response, run_id: UUID, **kwargs) -> None:
         """Called when an LLM call completes."""
-        span = self._spans.pop(run_id, None)
-        start_time = self._timers.pop(run_id, None)
+        ended = self._end_span(run_id)
 
-        if span:
-            elapsed_ms = (time.perf_counter() - start_time) * 1000 if start_time else 0
+        if ended:
+            span, elapsed_ms = ended
             span.set_attribute("langchain.llm.duration_ms", elapsed_ms)
 
             # Extract token usage if available
@@ -209,32 +265,27 @@ class OpenTelemetryCallbackHandler(BaseCallbackHandler):
     def on_llm_error(self, error: BaseException,
                      run_id: UUID, **kwargs) -> None:
         """Called when an LLM call fails."""
-        span = self._spans.pop(run_id, None)
-        if span:
-            span.set_status(StatusCode.ERROR, str(error))
-            span.record_exception(error)
-            span.end()
+        self._end_span_with_error(run_id, error)
 
     # --- Retriever callbacks ---
 
     def on_retriever_start(self, serialized: Dict[str, Any],
-                           query: str, run_id: UUID, **kwargs) -> None:
+                           query: str, run_id: UUID,
+                           parent_run_id: Optional[UUID] = None,
+                           **kwargs) -> None:
         """Called when a retriever starts fetching documents."""
-        span = tracer.start_span("langchain.retriever.query")
+        span = self._start_span(
+            "langchain.retriever.query", run_id, parent_run_id
+        )
         span.set_attribute("langchain.component", "retriever")
         span.set_attribute("langchain.retriever.query_length", len(query))
-        span.set_attribute("langchain.run_id", str(run_id))
-
-        self._spans[run_id] = span
-        self._timers[run_id] = time.perf_counter()
 
     def on_retriever_end(self, documents, run_id: UUID, **kwargs) -> None:
         """Called when a retriever returns documents."""
-        span = self._spans.pop(run_id, None)
-        start_time = self._timers.pop(run_id, None)
+        ended = self._end_span(run_id)
 
-        if span:
-            elapsed_ms = (time.perf_counter() - start_time) * 1000 if start_time else 0
+        if ended:
+            span, elapsed_ms = ended
             span.set_attribute("langchain.retriever.duration_ms", elapsed_ms)
             span.set_attribute("langchain.retriever.documents_count", len(documents))
 
@@ -245,29 +296,33 @@ class OpenTelemetryCallbackHandler(BaseCallbackHandler):
             span.set_status(StatusCode.OK)
             span.end()
 
+    def on_retriever_error(self, error: BaseException,
+                           run_id: UUID, **kwargs) -> None:
+        """Called when a retriever encounters an error."""
+        self._end_span_with_error(run_id, error)
+
     # --- Tool callbacks ---
 
     def on_tool_start(self, serialized: Dict[str, Any],
-                      input_str: str, run_id: UUID, **kwargs) -> None:
+                      input_str: str, run_id: UUID,
+                      parent_run_id: Optional[UUID] = None,
+                      **kwargs) -> None:
         """Called when a tool starts executing."""
-        tool_name = serialized.get("name", "unknown")
+        tool_name = self._name_from_serialized(serialized)
 
-        span = tracer.start_span(f"langchain.tool.{tool_name}")
+        span = self._start_span(
+            f"langchain.tool.{tool_name}", run_id, parent_run_id
+        )
         span.set_attribute("langchain.component", "tool")
         span.set_attribute("langchain.tool.name", tool_name)
         span.set_attribute("langchain.tool.input_length", len(input_str))
-        span.set_attribute("langchain.run_id", str(run_id))
-
-        self._spans[run_id] = span
-        self._timers[run_id] = time.perf_counter()
 
     def on_tool_end(self, output: str, run_id: UUID, **kwargs) -> None:
         """Called when a tool finishes executing."""
-        span = self._spans.pop(run_id, None)
-        start_time = self._timers.pop(run_id, None)
+        ended = self._end_span(run_id)
 
-        if span:
-            elapsed_ms = (time.perf_counter() - start_time) * 1000 if start_time else 0
+        if ended:
+            span, elapsed_ms = ended
             span.set_attribute("langchain.tool.duration_ms", elapsed_ms)
             span.set_attribute("langchain.tool.output_length", len(str(output)))
             span.set_status(StatusCode.OK)
@@ -276,11 +331,7 @@ class OpenTelemetryCallbackHandler(BaseCallbackHandler):
     def on_tool_error(self, error: BaseException,
                       run_id: UUID, **kwargs) -> None:
         """Called when a tool encounters an error."""
-        span = self._spans.pop(run_id, None)
-        if span:
-            span.set_status(StatusCode.ERROR, str(error))
-            span.record_exception(error)
-            span.end()
+        self._end_span_with_error(run_id, error)
 ```
 
 ---
@@ -295,8 +346,8 @@ Here's a basic chain with tracing enabled.
 
 ```python
 from langchain_openai import ChatOpenAI
-from langchain.prompts import ChatPromptTemplate
-from langchain.schema.output_parser import StrOutputParser
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.prompts import ChatPromptTemplate
 
 # Create the callback handler instance
 otel_handler = OpenTelemetryCallbackHandler()
@@ -307,7 +358,7 @@ prompt = ChatPromptTemplate.from_messages([
     ("human", "{question}")
 ])
 
-llm = ChatOpenAI(model="gpt-4", temperature=0)
+llm = ChatOpenAI(model="gpt-5.5")
 chain = prompt | llm | StrOutputParser()
 
 # Invoke the chain with the OpenTelemetry callback handler
@@ -323,15 +374,16 @@ response = chain.invoke(
 For a retrieval-augmented chain, the handler automatically traces the retriever alongside the LLM calls.
 
 ```python
+from langchain_chroma import Chroma
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
-from langchain_community.vectorstores import Chroma
-from langchain.chains import RetrievalQA
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.runnables import RunnablePassthrough
 
 otel_handler = OpenTelemetryCallbackHandler()
 
 # Set up the vector store with documents
-embeddings = OpenAIEmbeddings()
+embeddings = OpenAIEmbeddings(model="text-embedding-3-large")
 vectorstore = Chroma.from_texts(
     texts=["OpenTelemetry is an observability framework...",
            "LangChain is a framework for LLM applications..."],
@@ -339,17 +391,26 @@ vectorstore = Chroma.from_texts(
     collection_name="docs"
 )
 
-# Build a RetrievalQA chain
-# The retriever, stuff-documents chain, and LLM will all be traced
-qa_chain = RetrievalQA.from_chain_type(
-    llm=ChatOpenAI(model="gpt-4", temperature=0),
-    chain_type="stuff",
-    retriever=vectorstore.as_retriever(search_kwargs={"k": 3})
+def format_docs(docs):
+    return "\n\n".join(doc.page_content for doc in docs)
+
+prompt = ChatPromptTemplate.from_template(
+    "Answer the question using only this context:\n\n{context}\n\nQuestion: {question}"
+)
+retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
+
+# Build a RAG chain
+# The retriever, prompt, LLM, and output parser will all be traced
+qa_chain = (
+    {"context": retriever | format_docs, "question": RunnablePassthrough()}
+    | prompt
+    | ChatOpenAI(model="gpt-5.5")
+    | StrOutputParser()
 )
 
 # Run with tracing enabled
 result = qa_chain.invoke(
-    {"query": "How does OpenTelemetry work with LangChain?"},
+    "How does OpenTelemetry work with LangChain?",
     config={"callbacks": [otel_handler]}
 )
 ```
@@ -439,10 +500,9 @@ class MetricAwareCallbackHandler(OpenTelemetryCallbackHandler):
 Agents add complexity because they loop through think-act-observe cycles. The callback handler we built handles this automatically since agents use chains and tools internally.
 
 ```python
-from langchain_openai import ChatOpenAI
-from langchain.agents import AgentExecutor, create_openai_tools_agent
+from langchain.agents import create_agent
 from langchain.tools import tool
-from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_openai import ChatOpenAI
 
 otel_handler = MetricAwareCallbackHandler()
 
@@ -463,20 +523,19 @@ def calculate(expression: str) -> str:
         return f"Error: {e}"
 
 # Create the agent with tools
-llm = ChatOpenAI(model="gpt-4", temperature=0)
-prompt = ChatPromptTemplate.from_messages([
-    ("system", "You are a helpful assistant with access to tools."),
-    ("human", "{input}"),
-    MessagesPlaceholder(variable_name="agent_scratchpad")
-])
-
-agent = create_openai_tools_agent(llm, [search_database, calculate], prompt)
-agent_executor = AgentExecutor(agent=agent, tools=[search_database, calculate])
+llm = ChatOpenAI(model="gpt-5.5")
+agent = create_agent(
+    model=llm,
+    tools=[search_database, calculate],
+    system_prompt="You are a helpful assistant with access to tools."
+)
 
 # Run the agent with full tracing
 # Each think-act-observe loop will produce nested spans
-result = agent_executor.invoke(
-    {"input": "Search for revenue data and calculate the total"},
+result = agent.invoke(
+    {"messages": [
+        {"role": "user", "content": "Search for revenue data and calculate the total"}
+    ]},
     config={"callbacks": [otel_handler]}
 )
 ```
@@ -522,10 +581,11 @@ This produces a trace tree like:
 ```mermaid
 flowchart TD
     A["POST /ask (FastAPI span)"] --> B["langchain.pipeline"]
-    B --> C["langchain.chain.RetrievalQA"]
+    B --> C["langchain.chain.RunnableSequence"]
     C --> D["langchain.retriever.query"]
-    C --> E["langchain.chain.StuffDocumentsChain"]
-    E --> F["langchain.llm.call"]
+    C --> E["langchain.chain.ChatPromptTemplate"]
+    C --> F["langchain.chat_model.call"]
+    C --> G["langchain.chain.StrOutputParser"]
 ```
 
 ---
