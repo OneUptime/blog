@@ -44,26 +44,26 @@ Key metrics to examine:
 
 ```bash
 # Go runtime memory statistics
-# process_runtime_total_alloc_bytes: total bytes allocated (cumulative)
-# process_runtime_heap_alloc_bytes: current heap allocation
-# process_runtime_heap_sys_bytes: total heap memory obtained from OS
+# otelcol_process_runtime_total_alloc_bytes: total bytes allocated (cumulative)
+# otelcol_process_runtime_heap_alloc_bytes: current heap allocation
+# otelcol_process_runtime_total_sys_memory_bytes: total runtime memory obtained from OS
 curl -s http://localhost:8888/metrics | grep "process_runtime"
 ```
 
 These metrics tell you how much memory the Go runtime has allocated and how much is actually in use:
 
 ```text
-# HELP process_runtime_total_alloc_bytes Cumulative bytes allocated for heap objects
-process_runtime_total_alloc_bytes 4.523e+10
+# HELP otelcol_process_runtime_total_alloc_bytes Cumulative bytes allocated for heap objects
+otelcol_process_runtime_total_alloc_bytes 4.523e+10
 
-# HELP process_runtime_heap_alloc_bytes Bytes of allocated heap objects
-process_runtime_heap_alloc_bytes 8.912e+08
+# HELP otelcol_process_runtime_heap_alloc_bytes Bytes of allocated heap objects
+otelcol_process_runtime_heap_alloc_bytes 8.912e+08
 
-# HELP process_runtime_heap_sys_bytes Bytes of heap memory obtained from the OS
-process_runtime_heap_sys_bytes 1.234e+09
+# HELP otelcol_process_runtime_total_sys_memory_bytes Total bytes of memory obtained from the OS
+otelcol_process_runtime_total_sys_memory_bytes 1.234e+09
 ```
 
-If `heap_alloc_bytes` is close to `heap_sys_bytes`, the heap is nearly full. If `total_alloc_bytes` is growing rapidly, the collector is allocating (and discarding) objects at a high rate, which puts pressure on the garbage collector.
+If `otelcol_process_runtime_heap_alloc_bytes` and `otelcol_process_memory_rss` are both high, the collector is retaining a large live heap and resident memory. If `otelcol_process_runtime_total_alloc_bytes` is growing rapidly, the collector is allocating (and discarding) objects at a high rate, which puts pressure on the garbage collector.
 
 ## Step 2: Check Exporter Queue Depth
 
@@ -212,11 +212,11 @@ Span #0
         user.session: sess_abcdefg12345                            <- unique per session
 ```
 
-Reduce cardinality with an attributes processor:
+Reduce cardinality with attributes and transform processors:
 
 ```yaml
 processors:
-  # Remove or truncate high-cardinality attributes
+  # Remove or hash high-cardinality attributes
   attributes:
     actions:
       # Delete attributes that add no analytical value
@@ -225,16 +225,15 @@ processors:
       # Hash sensitive or high-cardinality values
       - key: user.session
         action: hash
-      # Truncate long URLs to reduce per-span memory
-      - key: http.url
-        action: truncate
-        max_length: 200
 
-  # Transform processor can also extract and simplify attributes
+  # Transform processor can also truncate and simplify attributes
   transform:
+    error_mode: ignore
     trace_statements:
       - context: span
         statements:
+          # Truncate long URLs to reduce per-span memory
+          - set(attributes["http.url"], Substring(attributes["http.url"], 0, 200)) where IsString(attributes["http.url"]) and Len(attributes["http.url"]) > 200
           # Replace full URL with just the path template
           # This collapses thousands of unique URLs into a few patterns
           - replace_pattern(attributes["http.url"], "\\?.*", "")
@@ -369,7 +368,7 @@ Set up a Grafana dashboard or equivalent to track collector memory metrics:
 
 ```yaml
 # Key metrics to graph on your dashboard
-# 1. process_runtime_heap_alloc_bytes - actual heap usage
+# 1. otelcol_process_runtime_heap_alloc_bytes - actual heap usage
 # 2. otelcol_exporter_queue_size - queue depth per exporter
 # 3. otelcol_processor_batch_batch_size_trigger_send - batch sizes
 # 4. otelcol_receiver_accepted_spans - incoming throughput
@@ -382,7 +381,12 @@ service:
       # Detailed level exposes per-component metrics
       level: detailed
       # Expose metrics on port 8888
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 ```
 
 When incoming throughput exceeds outgoing throughput, the difference accumulates as memory. Track this gap to predict memory issues before they become OOM kills.
