@@ -40,19 +40,17 @@ def get_user(user_id):
         except ValueError as e:
             # This is a handled exception - we know about this case
             span.record_exception(e, attributes={
-                "exception.escaped": False,  # Did not escape the span
                 "error.handled": True,
                 "error.expected": True,
-            })
+            }, escaped=False)
             span.set_status(trace.StatusCode.ERROR, str(e))
             return None
         except DatabaseConnectionError as e:
             # This is also handled, but less expected
             span.record_exception(e, attributes={
-                "exception.escaped": False,
                 "error.handled": True,
                 "error.expected": False,
-            })
+            }, escaped=False)
             span.set_status(trace.StatusCode.ERROR, str(e))
             raise  # Re-raise for the caller to handle
 ```
@@ -67,6 +65,7 @@ For unhandled exceptions, you need a global catch mechanism. Here is how to set 
 # flask_error_handling.py
 from flask import Flask, request
 from opentelemetry import trace
+from werkzeug.exceptions import HTTPException
 
 app = Flask(__name__)
 tracer = trace.get_tracer("flask-service")
@@ -77,15 +76,17 @@ def handle_unhandled_exception(error):
     Catch all exceptions that were not handled by route handlers.
     Record them as unhandled exceptions on the current span.
     """
+    if isinstance(error, HTTPException):
+        return error
+
     span = trace.get_current_span()
 
     if span and span.is_recording():
         span.record_exception(error, attributes={
-            "exception.escaped": True,
             "error.handled": False,
             "error.expected": False,
             "http.route": request.url_rule.rule if request.url_rule else "unknown",
-        })
+        }, escaped=True)
         span.set_status(
             trace.StatusCode.ERROR,
             f"Unhandled exception: {type(error).__name__}: {error}"
@@ -115,6 +116,10 @@ app.get("/api/data", async (req, res, next) => {
 
 // Global error handler - catches everything that was not handled
 app.use((err, req, res, next) => {
+  if (res.headersSent) {
+    return next(err);
+  }
+
   const span = trace.getActiveSpan();
 
   if (span) {
@@ -214,17 +219,17 @@ def record_enriched_exception(span, exception):
 
 ## Filtering in Your Dashboards
 
-With `error.handled` and `exception.escaped` attributes on your spans, you can build separate dashboard panels and alerts:
+With `error.handled` attributes on your spans, you can build separate dashboard panels and alerts. If you use the OpenTelemetry Collector span metrics connector for Prometheus metrics, add `error.handled` as a spanmetrics dimension so it is available as the `error_handled` Prometheus label:
 
 ```promql
 # Rate of unhandled exceptions (the scary ones)
-sum(rate(traces_spanmetrics_calls_total{
+sum(rate(traces_span_metrics_calls_total{
   status_code="STATUS_CODE_ERROR",
   error_handled="false"
 }[5m]))
 
 # Rate of handled exceptions (expected failures)
-sum(rate(traces_spanmetrics_calls_total{
+sum(rate(traces_span_metrics_calls_total{
   status_code="STATUS_CODE_ERROR",
   error_handled="true"
 }[5m]))
