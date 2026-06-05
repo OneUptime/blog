@@ -149,7 +149,7 @@ def publish_event(event, message_broker):
     stored_context = event.get("trace_context", {})
     parent_context = extract(stored_context)
 
-    # Create a PRODUCER span linked to the original command trace
+    # Create a PRODUCER span parented to the original command trace
     with tracer.start_as_current_span(
         f"es.event.publish.{event['event_type']}",
         context=parent_context,
@@ -159,7 +159,10 @@ def publish_event(event, message_broker):
             "es.event.id": event["event_id"],
             "es.aggregate.id": event["aggregate_id"],
             "messaging.system": "rabbitmq",
-            "messaging.operation": "publish",
+            "messaging.destination.name": "domain.events",
+            "messaging.operation.name": "publish",
+            "messaging.operation.type": "send",
+            "messaging.message.id": event["event_id"],
         }
     ):
         # Inject updated trace context into message headers
@@ -202,7 +205,9 @@ class OrderSummaryProjection:
                 "es.event.id": event["event_id"],
                 "es.aggregate.id": event["aggregate_id"],
                 "es.projection.name": "OrderSummary",
-                "messaging.operation": "process",
+                "messaging.operation.name": "process",
+                "messaging.operation.type": "process",
+                "messaging.message.id": event["event_id"],
             }
         ) as span:
             # Route to the appropriate handler method
@@ -328,7 +333,10 @@ Traces are great for understanding individual event flows, but you also need agg
 
 ```python
 # es_metrics.py - Custom metrics for event sourcing health
+from typing import Iterable
+
 from opentelemetry import metrics
+from opentelemetry.metrics import CallbackOptions, Observation
 
 meter = metrics.get_meter("eventsourcing.metrics")
 
@@ -346,11 +354,12 @@ projection_lag = meter.create_histogram(
     unit="ms",
 )
 
-# Track projection position (how far behind the projection is)
-projection_position = meter.create_up_down_counter(
+# Track projection position (how far each projection has advanced in the event stream)
+projection_position = meter.create_observable_gauge(
     name="es.projection.position",
     description="Current position of each projection in the event stream",
     unit="events",
+    callbacks=[lambda options: get_projection_positions(options)],
 )
 
 # Track event store size
@@ -358,7 +367,7 @@ event_store_size = meter.create_observable_gauge(
     name="es.eventstore.size",
     description="Total number of events in the event store",
     unit="events",
-    callbacks=[lambda: get_event_store_count()],
+    callbacks=[lambda options: [Observation(get_event_store_count())]],
 )
 
 
@@ -377,6 +386,13 @@ def record_projection_lag(projection_name, lag_ms):
     })
 
 
+def get_projection_positions(options: CallbackOptions) -> Iterable[Observation]:
+    # Query each projection for its current stream position
+    return [
+        Observation(0, {"es.projection.name": "OrderSummary"}),
+    ]
+
+
 def get_event_store_count():
     # Query your event store for the total count
     return 0
@@ -384,28 +400,30 @@ def get_event_store_count():
 
 ## Connecting the Trace Across Time
 
-One of the trickiest aspects of event-sourced systems is that the command and the projection might run minutes apart. The trace technically spans that entire duration. In practice, you have a few options for how to handle this:
+One of the trickiest aspects of event-sourced systems is that the command and the projection might run minutes apart. If you use a parent-child relationship across the asynchronous boundary, the trace's overall time range spans that entire duration. In practice, you have a few options for how to handle this:
 
-**Option 1: Single long trace.** Store the trace context in the event, and have the projection link back to it. This produces a trace that might span minutes. It works, but your trace backend needs to handle long-lived traces well.
+**Option 1: Single long trace.** Store the trace context in the event, and have the projection use it as the parent context. This produces a trace that might span minutes. It works for single-message scenarios, but your trace backend needs to handle long-lived traces well.
 
 **Option 2: Linked traces.** Create a new trace for each projection processing, but add a span link to the original command trace. This keeps traces short and self-contained while maintaining the connection.
 
 ```python
 # Using span links to connect related but separate traces
+from opentelemetry.context import Context
 from opentelemetry import trace
+from opentelemetry.propagate import extract
 from opentelemetry.trace import Link
 
 tracer = trace.get_tracer("eventsourcing.projection")
 
 
 def handle_event_with_link(event, message_headers):
-    """Process event in a new trace, linked to the original command trace."""
-    # Extract the original trace context
-    original_context = extract(message_headers)
-    original_span_context = trace.get_current_span(original_context).get_span_context()
+    """Process event in a new trace, linked to the message creation context."""
+    # Extract the propagated message creation context
+    message_context = extract(message_headers)
+    message_span_context = trace.get_current_span(message_context).get_span_context()
 
-    # Create a link to the original trace instead of making it the parent
-    link = Link(original_span_context, attributes={
+    # Create a link to the message context instead of making it the parent
+    link = Link(message_span_context, attributes={
         "link.relationship": "caused_by",
         "es.event.type": event["event_type"],
     })
@@ -413,11 +431,15 @@ def handle_event_with_link(event, message_headers):
     # Start a new trace with the link
     with tracer.start_as_current_span(
         f"es.projection.process.{event['event_type']}",
+        context=Context(),
         links=[link],
         kind=trace.SpanKind.CONSUMER,
         attributes={
             "es.projection.name": "OrderSummary",
             "es.event.id": event["event_id"],
+            "messaging.operation.name": "process",
+            "messaging.operation.type": "process",
+            "messaging.message.id": event["event_id"],
         }
     ) as span:
         # Process the event in this new trace context
