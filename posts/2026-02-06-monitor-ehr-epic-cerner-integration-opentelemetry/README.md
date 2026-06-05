@@ -28,8 +28,8 @@ import (
 
     "go.opentelemetry.io/collector/component"
     "go.opentelemetry.io/collector/consumer"
+    "go.opentelemetry.io/collector/pdata/pcommon"
     "go.opentelemetry.io/collector/pdata/pmetric"
-    "go.opentelemetry.io/collector/receiver"
 )
 
 // Config holds the configuration for the Epic receiver
@@ -68,6 +68,14 @@ func (r *epicReceiver) Start(ctx context.Context, host component.Host) error {
     return nil
 }
 
+// Shutdown stops the polling loop when the collector shuts down
+func (r *epicReceiver) Shutdown(ctx context.Context) error {
+    if r.cancel != nil {
+        r.cancel()
+    }
+    return nil
+}
+
 func (r *epicReceiver) pollLoop(ctx context.Context) {
     ticker := time.NewTicker(r.config.PollInterval)
     defer ticker.Stop()
@@ -103,7 +111,15 @@ func (r *epicReceiver) collectMetrics(ctx context.Context) {
         url := r.config.EpicBaseURL + endpoint
 
         start := time.Now()
-        resp, err := r.client.Get(url)
+        req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+        if err == nil {
+            req.Header.Set("Accept", "application/fhir+json")
+        }
+
+        var resp *http.Response
+        if err == nil {
+            resp, err = r.client.Do(req)
+        }
         duration := time.Since(start)
 
         // Record response time metric
@@ -114,7 +130,7 @@ func (r *epicReceiver) collectMetrics(ctx context.Context) {
         gauge := latencyMetric.SetEmptyGauge()
         dp := gauge.DataPoints().AppendEmpty()
         dp.SetDoubleValue(float64(duration.Milliseconds()))
-        dp.SetTimestamp(pmetric.Timestamp(time.Now().UnixNano()))
+        dp.SetTimestamp(pcommon.Timestamp(time.Now().UnixNano()))
         dp.Attributes().PutStr("ehr.endpoint", endpoint)
 
         if err != nil {
@@ -122,7 +138,11 @@ func (r *epicReceiver) collectMetrics(ctx context.Context) {
             dp.Attributes().PutStr("ehr.error", err.Error())
         } else {
             dp.Attributes().PutInt("http.status_code", int64(resp.StatusCode))
-            dp.Attributes().PutStr("ehr.status", "ok")
+            if resp.StatusCode >= 400 {
+                dp.Attributes().PutStr("ehr.status", "error")
+            } else {
+                dp.Attributes().PutStr("ehr.status", "ok")
+            }
             resp.Body.Close()
         }
     }
@@ -191,7 +211,6 @@ Many hospitals use Mirth Connect as their integration engine. You can scrape Mir
 
 ```python
 import requests
-import time
 from opentelemetry import metrics
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
@@ -216,16 +235,19 @@ channel_error_count = meter.create_counter(
     unit="errors"
 )
 
-channel_queue_depth = meter.create_up_down_counter(
+channel_queue_depth = meter.create_gauge(
     "mirth.channel.queue_depth",
     description="Current queue depth per channel",
     unit="messages"
 )
 
+previous_totals = {}
+
 def poll_mirth_statistics(mirth_url, api_key):
     """Poll Mirth Connect for channel statistics and record as OTel metrics."""
     headers = {"X-Requested-With": "OpenTelemetry", "Authorization": f"Bearer {api_key}"}
-    resp = requests.get(f"{mirth_url}/api/channels/statistics", headers=headers)
+    resp = requests.get(f"{mirth_url}/api/channels/statistics", headers=headers, timeout=10)
+    resp.raise_for_status()
     stats = resp.json()
 
     for channel in stats.get("list", {}).get("channelStatistics", []):
@@ -237,9 +259,11 @@ def poll_mirth_statistics(mirth_url, api_key):
         errored = int(channel.get("error", 0))
         queued = int(channel.get("queued", 0))
 
-        channel_message_count.add(received, attrs)
-        channel_error_count.add(errored, attrs)
-        channel_queue_depth.add(queued, attrs)
+        previous = previous_totals.get(channel_id, {"received": received, "errored": errored})
+        channel_message_count.add(max(0, received - previous["received"]), attrs)
+        channel_error_count.add(max(0, errored - previous["errored"]), attrs)
+        channel_queue_depth.set(queued, attrs)
+        previous_totals[channel_id] = {"received": received, "errored": errored}
 ```
 
 ## What to Alert On
