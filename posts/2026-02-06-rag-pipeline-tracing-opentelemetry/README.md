@@ -40,12 +40,13 @@ Each of these steps is a candidate for its own span. The goal is to create a tra
 Start by configuring the tracer provider. We'll use a single tracer for the entire RAG pipeline to keep span relationships clean.
 
 ```python
-# pip install opentelemetry-api opentelemetry-sdk opentelemetry-exporter-otlp
+# pip install opentelemetry-api opentelemetry-sdk opentelemetry-exporter-otlp-proto-http
 
+import os
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import Resource
 
 # Define the service resource so traces are labeled correctly
@@ -58,8 +59,19 @@ resource = Resource.create({
 
 # Set up the tracer with batch export for efficiency
 provider = TracerProvider(resource=resource)
+headers = {}
+oneuptime_token = os.getenv("ONEUPTIME_TOKEN")
+if oneuptime_token:
+    headers["x-oneuptime-token"] = oneuptime_token
+
 processor = BatchSpanProcessor(
-    OTLPSpanExporter(endpoint="https://oneuptime.com/otlp")
+    OTLPSpanExporter(
+        endpoint=os.getenv(
+            "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT",
+            "https://oneuptime.com/otlp/v1/traces"
+        ),
+        headers=headers
+    )
 )
 provider.add_span_processor(processor)
 trace.set_tracer_provider(provider)
@@ -76,7 +88,6 @@ Here's a complete instrumented RAG pipeline. Each step creates a child span, so 
 
 ```python
 import time
-import numpy as np
 from opentelemetry import trace
 from opentelemetry.trace import StatusCode
 
