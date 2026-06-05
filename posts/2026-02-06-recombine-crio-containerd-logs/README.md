@@ -33,6 +33,7 @@ receivers:
     include:
       - /var/log/pods/*/*/*.log
     start_at: end
+    include_file_path: true
     operators:
       # Step 1: Parse the CRI log format
       - type: regex_parser
@@ -40,7 +41,7 @@ receivers:
         regex: '^(?P<time>[^ ]+) (?P<stream>stdout|stderr) (?P<logtag>[^ ]+) (?P<log>.*)'
         timestamp:
           parse_from: attributes.time
-          layout: "%Y-%m-%dT%H:%M:%S.%LZ"
+          layout: "%Y-%m-%dT%H:%M:%S.%sZ"
 
       # Step 2: Recombine partial logs
       - type: recombine
@@ -88,7 +89,7 @@ receivers:
         regex: '^(?P<time>[^ ]+) (?P<stream>stdout|stderr) (?P<logtag>[^ ]+) (?P<log>.*)'
         timestamp:
           parse_from: attributes.time
-          layout: "%Y-%m-%dT%H:%M:%S.%LZ"
+          layout: "%Y-%m-%dT%H:%M:%S.%sZ"
 
       - type: recombine
         id: recombine_cri
@@ -105,7 +106,6 @@ receivers:
         parse_from: attributes["log.file.path"]
         regex: '/var/log/pods/(?P<namespace>[^_]+)_(?P<pod_name>[^_]+)_(?P<pod_uid>[^/]+)/(?P<container_name>[^/]+)/'
         on_error: send
-        preserve_to: attributes["log.file.path"]
 
       - type: move
         from: attributes.log
@@ -202,7 +202,7 @@ The timestamp format might differ. Update the timestamp layout accordingly:
 
 timestamp:
   parse_from: attributes.time
-  layout: "%Y-%m-%dT%H:%M:%S.%L%z"
+  layout: "%Y-%m-%dT%H:%M:%S.%s%j"
 ```
 
 ## Testing with Partial Logs
