@@ -8,7 +8,7 @@ Description: Explore OpenTelemetry auto-instrumentation for Go using eBPF techno
 
 Traditional OpenTelemetry instrumentation requires adding SDK imports, creating spans manually, and modifying code throughout your application. This approach works well for new projects but becomes challenging with legacy codebases, third-party applications, or microservices where changing every service proves impractical.
 
-OpenTelemetry auto-instrumentation for Go solves this problem using eBPF (extended Berkeley Packet Filter) technology. eBPF allows injecting instrumentation into running processes without code changes or recompilation. You get distributed tracing, metrics collection, and observability for existing Go applications without touching source code.
+OpenTelemetry auto-instrumentation for Go solves this problem using eBPF (extended Berkeley Packet Filter) technology. eBPF allows attaching instrumentation to running processes without code changes or recompilation. You get distributed tracing and observability for existing Go applications without touching source code.
 
 This guide covers OpenTelemetry auto-instrumentation for Go, explaining how it works, when to use it, and how to deploy it in production environments.
 
@@ -22,7 +22,7 @@ Auto-instrumentation operates at the binary level, intercepting function calls a
 
 **Context Propagation** works by intercepting HTTP headers, gRPC metadata, and other communication channels to maintain distributed trace context across service boundaries.
 
-**Automatic Discovery** identifies instrumentation targets by analyzing binary symbols and detecting common patterns like HTTP handlers, database clients, and RPC frameworks.
+**Automatic Discovery** identifies instrumentation targets by analyzing the target process and detecting supported libraries like HTTP handlers, database clients, and RPC frameworks.
 
 ## How Go Auto-Instrumentation Works
 
@@ -60,18 +60,18 @@ graph TB
 The OpenTelemetry Go auto-instrumentation runs as a sidecar or separate process alongside your application:
 
 ```bash
-# Download the auto-instrumentation binary
+# Build the auto-instrumentation binary
+git clone https://github.com/open-telemetry/opentelemetry-go-instrumentation.git
+cd opentelemetry-go-instrumentation
+make build
 
-wget https://github.com/open-telemetry/opentelemetry-go-instrumentation/releases/latest/download/otel-go-auto-linux-amd64
-
-chmod +x otel-go-auto-linux-amd64
-mv otel-go-auto-linux-amd64 /usr/local/bin/otel-go-auto
+sudo install -m 0755 otel-go-instrumentation /usr/local/bin/otel-go-instrumentation
 ```
 
 Verify the installation:
 
 ```bash
-otel-go-auto --version
+otel-go-instrumentation -h
 ```
 
 ## Basic Usage
@@ -86,10 +86,11 @@ Run your Go application with auto-instrumentation:
 PID=$(pgrep your-go-application)
 
 # Attach auto-instrumentation
-otel-go-auto \
-  --service-name=my-service \
-  --endpoint=localhost:4317 \
-  --pid=$PID
+sudo OTEL_SERVICE_NAME=my-service \
+  OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317 \
+  OTEL_EXPORTER_OTLP_PROTOCOL=grpc \
+  OTEL_GO_AUTO_TARGET_PID=$PID \
+  otel-go-instrumentation
 ```
 
 The auto-instrumentation agent attaches to the running process and begins generating traces automatically.
@@ -103,8 +104,6 @@ Configure auto-instrumentation through environment variables or command-line fla
 
 # Service identification
 export OTEL_SERVICE_NAME="my-service"
-export OTEL_SERVICE_VERSION="1.0.0"
-export OTEL_DEPLOYMENT_ENVIRONMENT="production"
 
 # Exporter configuration
 export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4317"
@@ -115,10 +114,10 @@ export OTEL_TRACES_SAMPLER="parentbased_traceidratio"
 export OTEL_TRACES_SAMPLER_ARG="0.1"  # Sample 10% of traces
 
 # Resource attributes
-export OTEL_RESOURCE_ATTRIBUTES="deployment.environment=production,service.namespace=backend"
+export OTEL_RESOURCE_ATTRIBUTES="deployment.environment=production,service.namespace=backend,service.version=1.0.0"
 
 # Start application with auto-instrumentation
-otel-go-auto --pid=$(pgrep your-app)
+sudo OTEL_GO_AUTO_TARGET_PID=$(pgrep your-app) otel-go-instrumentation
 ```
 
 ## Instrumentation Scope
@@ -133,7 +132,7 @@ Auto-instrumentation captures different types of operations:
 
 **Database Operations** trace SQL queries and database interactions when using standard database/sql package.
 
-**Goroutines** track goroutine creation and execution context propagation.
+**Kafka Clients** trace producers and consumers when using the supported `github.com/segmentio/kafka-go` versions.
 
 ## Kubernetes Deployment
 
@@ -162,6 +161,7 @@ spec:
       annotations:
         # Enable auto-instrumentation
         instrumentation.opentelemetry.io/inject-go: "true"
+        instrumentation.opentelemetry.io/otel-go-auto-target-exe: "/usr/local/bin/myapp"
     spec:
       containers:
       - name: app
@@ -190,7 +190,7 @@ spec:
     image: ghcr.io/open-telemetry/opentelemetry-go-instrumentation/autoinstrumentation-go:latest
 ```
 
-The OpenTelemetry Operator automatically injects the auto-instrumentation agent when it detects the annotation.
+The OpenTelemetry Operator injects the auto-instrumentation sidecar when it detects the annotation and a valid target executable path. Go auto-instrumentation uses eBPF, so the injected sidecar runs as root with privileged permissions.
 
 ## Docker Deployment
 
@@ -206,17 +206,14 @@ RUN go build -o myapp .
 # Runtime stage with auto-instrumentation
 FROM ubuntu:22.04
 
-# Install auto-instrumentation
-RUN apt-get update && apt-get install -y wget ca-certificates && \
-    wget https://github.com/open-telemetry/opentelemetry-go-instrumentation/releases/latest/download/otel-go-auto-linux-amd64 -O /usr/local/bin/otel-go-auto && \
-    chmod +x /usr/local/bin/otel-go-auto
-
 # Copy application
 COPY --from=builder /app/myapp /usr/local/bin/myapp
 
 # Environment configuration
 ENV OTEL_SERVICE_NAME=my-service
 ENV OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+ENV OTEL_EXPORTER_OTLP_PROTOCOL=grpc
+ENV OTEL_GO_AUTO_TARGET_EXE=/usr/local/bin/myapp
 
 # Create startup script
 COPY <<'EOF' /start.sh
@@ -227,17 +224,16 @@ set -e
 /usr/local/bin/myapp &
 APP_PID=$!
 
-# Wait for application to start
-sleep 2
-
-# Attach auto-instrumentation
-/usr/local/bin/otel-go-auto --pid=$APP_PID &
+# Run this container with the privileges required for eBPF.
+OTEL_GO_AUTO_TARGET_PID=$APP_PID /otel-go-instrumentation &
 
 # Wait for application
 wait $APP_PID
 EOF
 
 RUN chmod +x /start.sh
+
+COPY --from=otel/autoinstrumentation-go:latest /otel-go-instrumentation /otel-go-instrumentation
 
 CMD ["/start.sh"]
 ```
@@ -269,7 +265,6 @@ package main
 
 import (
     "context"
-    "log"
     "net/http"
 
     "go.opentelemetry.io/otel"
@@ -315,9 +310,9 @@ func processOrder(ctx context.Context, orderID string) {
 
 Auto-instrumentation has some limitations to understand:
 
-**Performance Overhead**: eBPF instrumentation adds CPU and memory overhead, typically 5-15% depending on application workload and instrumentation scope.
+**Performance Overhead**: eBPF instrumentation adds CPU and memory overhead. Measure the impact on your workload before deploying broadly.
 
-**Binary Requirements**: The Go binary must include symbol information (not stripped) for uprobe attachment. Build without `-ldflags="-s -w"` that strips symbols.
+**Binary Requirements**: OpenTelemetry Go auto-instrumentation supports stripped binaries, but the binary must be built with supported Go and library versions.
 
 **Version Compatibility**: Auto-instrumentation targets specific Go runtime versions. Check compatibility before deploying.
 
@@ -336,21 +331,17 @@ Common issues and solutions:
 # Check if eBPF programs are loaded
 sudo bpftool prog list | grep otel
 
-# Verify permissions (eBPF requires CAP_BPF or root)
-sudo setcap cap_bpf+ep /usr/local/bin/otel-go-auto
+# Verify permissions (the official deployment examples run with root/privileged permissions)
+sudo OTEL_GO_AUTO_TARGET_PID=$PID otel-go-instrumentation
 
 # Check logs
-otel-go-auto --verbose --pid=$PID
+OTEL_LOG_LEVEL=debug sudo OTEL_GO_AUTO_TARGET_PID=$PID otel-go-instrumentation
 ```
 
 **Incomplete Traces:**
 ```bash
-# Verify binary has symbols
-go tool nm your-binary | grep http.Handler
-
-# Check Go version compatibility
-go version
-otel-go-auto --supported-versions
+# Check the Go version and module information embedded in the binary
+go version -m your-binary
 ```
 
 **High Overhead:**
@@ -358,8 +349,8 @@ otel-go-auto --supported-versions
 # Reduce sampling rate
 export OTEL_TRACES_SAMPLER_ARG="0.01"  # Sample 1%
 
-# Disable specific instrumentations
-export OTEL_GO_AUTO_DISABLE_INSTRUMENTATIONS="grpc,database/sql"
+# Reduce exported data volume
+export OTEL_TRACES_EXPORTER="none"
 ```
 
 ## Monitoring Auto-Instrumentation
@@ -370,10 +361,6 @@ Monitor the auto-instrumentation agent itself:
 package main
 
 import (
-    "context"
-    "log"
-    "time"
-
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/metric"
 )
@@ -462,15 +449,21 @@ subjects:
   namespace: observability
 ---
 apiVersion: v1
-kind: SecurityContext
+kind: Pod
+metadata:
+  name: my-service
+  namespace: observability
 spec:
-  capabilities:
-    add:
-    - SYS_PTRACE
-    - SYS_ADMIN
-  privileged: false
-  runAsNonRoot: true
-  runAsUser: 1000
+  serviceAccountName: otel-auto-instrument
+  containers:
+  - name: autoinstrumentation-go
+    image: otel/autoinstrumentation-go
+    env:
+    - name: OTEL_GO_AUTO_TARGET_EXE
+      value: /usr/local/bin/myapp
+    securityContext:
+      privileged: true
+      runAsUser: 0
 ```
 
 ## Performance Benchmarking
@@ -481,12 +474,9 @@ Measure auto-instrumentation overhead:
 package main
 
 import (
-    "context"
-    "fmt"
     "net/http"
     "net/http/httptest"
     "testing"
-    "time"
 )
 
 // BenchmarkWithoutInstrumentation establishes baseline performance
@@ -500,7 +490,10 @@ func BenchmarkWithoutInstrumentation(b *testing.B) {
 
     b.ResetTimer()
     for i := 0; i < b.N; i++ {
-        resp, _ := http.Get(server.URL)
+        resp, err := http.Get(server.URL)
+        if err != nil {
+            b.Fatal(err)
+        }
         resp.Body.Close()
     }
 }
@@ -517,14 +510,17 @@ func BenchmarkWithAutoInstrumentation(b *testing.B) {
 
     b.ResetTimer()
     for i := 0; i < b.N; i++ {
-        resp, _ := http.Get(server.URL)
+        resp, err := http.Get(server.URL)
+        if err != nil {
+            b.Fatal(err)
+        }
         resp.Body.Close()
     }
 }
 
 // Run benchmarks:
 // go test -bench=BenchmarkWithoutInstrumentation -benchmem
-// otel-go-auto --pid=$(pgrep test) &
+// sudo OTEL_GO_AUTO_TARGET_PID=$(pgrep test) otel-go-instrumentation &
 // go test -bench=BenchmarkWithAutoInstrumentation -benchmem
 ```
 
@@ -532,7 +528,7 @@ func BenchmarkWithAutoInstrumentation(b *testing.B) {
 
 The OpenTelemetry Go auto-instrumentation project continues evolving:
 
-**Expanded Coverage**: Support for more libraries and frameworks including Kafka clients, Redis, MongoDB drivers.
+**Expanded Coverage**: Support for more libraries and frameworks beyond the current HTTP, gRPC, database/sql, and kafka-go instrumentation.
 
 **Better Performance**: Optimizations to reduce overhead through selective instrumentation and smarter sampling.
 
