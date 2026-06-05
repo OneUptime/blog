@@ -32,10 +32,13 @@ gem 'grape'
 gem 'rack'
 gem 'opentelemetry-sdk'
 gem 'opentelemetry-exporter-otlp'
+gem 'opentelemetry-metrics-sdk'
 gem 'opentelemetry-instrumentation-rack'
 gem 'opentelemetry-instrumentation-grape'
 gem 'opentelemetry-instrumentation-redis'
 gem 'opentelemetry-instrumentation-pg'
+gem 'opentelemetry-instrumentation-faraday'
+gem 'faraday'
 ```
 
 Install dependencies:
@@ -50,25 +53,20 @@ Configure OpenTelemetry in your application:
 # config/opentelemetry.rb
 require 'opentelemetry/sdk'
 require 'opentelemetry/exporter/otlp'
-require 'opentelemetry/instrumentation/all'
 
 OpenTelemetry::SDK.configure do |c|
   c.service_name = 'grape-api-service'
   c.service_version = '1.0.0'
 
-  c.use_all({
-    'OpenTelemetry::Instrumentation::Rack' => {},
-    'OpenTelemetry::Instrumentation::Grape' => {
-      # Enable detailed tracing
-      enable_route_namespace: true
-    },
-    'OpenTelemetry::Instrumentation::Redis' => {},
-    'OpenTelemetry::Instrumentation::PG' => {}
-  })
+  c.use 'OpenTelemetry::Instrumentation::Rack'
+  c.use 'OpenTelemetry::Instrumentation::Grape'
+  c.use 'OpenTelemetry::Instrumentation::Redis'
+  c.use 'OpenTelemetry::Instrumentation::PG'
+  c.use 'OpenTelemetry::Instrumentation::Faraday'
 end
 ```
 
-Note: At the time of writing, there is no official OpenTelemetry instrumentation for Grape, but Rack instrumentation covers HTTP requests. We will implement custom Grape-specific instrumentation.
+Note: The OpenTelemetry Grape instrumentation is community-maintained and works by using Grape's ActiveSupport notifications together with Rack instrumentation. You can use it for automatic Grape spans, and you can still add custom instrumentation when you need application-specific attributes or events.
 
 ## Implementing Custom Grape Instrumentation
 
@@ -83,31 +81,29 @@ class GrapeOpenTelemetryMiddleware < Grape::Middleware::Base
   end
 
   def before
-    route = env['api.endpoint'].route
+    route = @env['api.endpoint'].route
 
     @span = @tracer.start_span(
       "#{route.request_method} #{route.pattern.path}",
       kind: :server,
       attributes: {
-        'http.method' => route.request_method,
+        'http.request.method' => route.request_method,
         'http.route' => route.pattern.path,
-        'http.target' => env['PATH_INFO'],
+        'url.path' => @env['PATH_INFO'],
         'grape.version' => route.version,
         'grape.namespace' => route.namespace
       }
     )
-
-    # Set the span as current
-    OpenTelemetry::Trace.with_span(@span) do
-      # Continue processing
-    end
   end
 
-  def call(env)
+  def call!(env)
+    @env = env
     before
 
     begin
-      @app_response = @app.call(env)
+      OpenTelemetry::Trace.with_span(@span) do
+        @app_response = @app.call(@env)
+      end
       after
       @app_response
     rescue StandardError => e
@@ -121,7 +117,7 @@ class GrapeOpenTelemetryMiddleware < Grape::Middleware::Base
   def after
     if @span && @app_response
       status = @app_response[0]
-      @span.set_attribute('http.status_code', status)
+      @span.set_attribute('http.response.status_code', status)
 
       if status >= 400 && status < 600
         @span.status = OpenTelemetry::Trace::Status.error("HTTP #{status}")
@@ -428,14 +424,16 @@ class PaymentProcessor
 
       # Call external API
       response = @tracer.in_span('call_payment_api') do |api_span|
+        duration_start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         res = @client.post('/v1/charges') do |req|
           req.headers['Authorization'] = "Bearer #{ENV['PAYMENT_API_KEY']}"
           req.headers['Content-Type'] = 'application/json'
           req.body = payload.to_json
         end
+        duration_ms = (Process.clock_gettime(Process::CLOCK_MONOTONIC) - duration_start) * 1000
 
-        api_span.set_attribute('http.status_code', res.status)
-        api_span.set_attribute('http.response_time_ms', res.env.duration * 1000)
+        api_span.set_attribute('http.response.status_code', res.status)
+        api_span.set_attribute('http.response_time_ms', duration_ms.round(2))
 
         res
       end
@@ -532,6 +530,8 @@ Create comprehensive metrics for API endpoints:
 
 ```ruby
 # lib/grape_metrics_middleware.rb
+require 'opentelemetry-metrics-sdk'
+
 class GrapeMetricsMiddleware < Grape::Middleware::Base
   def initialize(app, options = {})
     super
@@ -556,20 +556,21 @@ class GrapeMetricsMiddleware < Grape::Middleware::Base
     )
   end
 
-  def call(env)
-    start_time = Time.now
-    route = env['api.endpoint'].route
+  def call!(env)
+    @env = env
+    start_time = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    route = @env['api.endpoint'].route
 
-    result = @app.call(env)
+    result = @app.call(@env)
 
-    duration_ms = ((Time.now - start_time) * 1000).round(2)
+    duration_ms = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - start_time) * 1000).round(2)
     status = result[0]
 
     # Record metrics
     attributes = {
-      'http.method' => route.request_method,
+      'http.request.method' => route.request_method,
       'http.route' => route.pattern.path,
-      'http.status_code' => status,
+      'http.response.status_code' => status,
       'api.version' => route.version
     }
 
@@ -577,7 +578,13 @@ class GrapeMetricsMiddleware < Grape::Middleware::Base
     @request_duration.record(duration_ms, attributes: attributes)
 
     if result[2]
-      body_size = result[2].respond_to?(:bytesize) ? result[2].bytesize : 0
+      body_size = if result[2].respond_to?(:bytesize)
+                    result[2].bytesize
+                  elsif result[2].respond_to?(:each)
+                    result[2].sum { |chunk| chunk.to_s.bytesize }
+                  else
+                    0
+                  end
       @response_size.record(body_size, attributes: attributes)
     end
 
