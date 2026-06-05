@@ -40,7 +40,7 @@ In the tracing backend, the HTTP request trace and the Celery task trace are com
 The `opentelemetry-instrumentation-celery` package handles context propagation automatically:
 
 ```bash
-pip install opentelemetry-instrumentation-celery
+pip install opentelemetry-distro opentelemetry-exporter-otlp opentelemetry-instrumentation-celery opentelemetry-instrumentation-django
 ```
 
 ```python
@@ -97,7 +97,7 @@ opentelemetry-instrument celery -A myapp worker -l info
 If you cannot use the auto-instrumentation, propagate context manually:
 
 ```python
-from opentelemetry import trace, context
+from opentelemetry import context
 from opentelemetry.propagate import inject, extract
 
 # Producer side - inject context into headers
@@ -111,16 +111,36 @@ send_task_with_context(process_order, order.id)
 ```
 
 ```python
-# Consumer side - extract context from headers
-from celery.signals import task_prerun
+# Consumer side - extract context from the Celery request
+from celery.signals import task_prerun, task_postrun
+from opentelemetry.propagators.textmap import Getter
+
+
+class CeleryRequestGetter(Getter):
+    def get(self, carrier, key):
+        value = getattr(carrier, key, None)
+        if value is None:
+            return None
+        return [value] if isinstance(value, str) else [str(value)]
+
+    def keys(self, carrier):
+        return []
+
 
 @task_prerun.connect
-def extract_context(sender, headers=None, **kwargs):
-    if headers:
-        ctx = extract(headers)
-        token = context.attach(ctx)
-        # Store token for later detach
-        sender.request._otel_token = token
+def extract_context(sender=None, task=None, **kwargs):
+    task = task or sender
+    if task and getattr(task, "request", None):
+        ctx = extract(task.request, getter=CeleryRequestGetter())
+        task.request._otel_token = context.attach(ctx)
+
+
+@task_postrun.connect
+def detach_context(sender=None, task=None, **kwargs):
+    task = task or sender
+    token = getattr(getattr(task, "request", None), "_otel_token", None)
+    if token:
+        context.detach(token)
 ```
 
 ## Celery Worker Configuration
@@ -132,6 +152,7 @@ Start the Celery worker with OpenTelemetry:
 opentelemetry-instrument \
     --service_name celery-worker \
     --exporter_otlp_endpoint http://collector:4318 \
+    --exporter_otlp_protocol http/protobuf \
     celery -A myapp worker -l info -c 4
 ```
 
@@ -172,8 +193,8 @@ When context propagation works correctly:
 ```text
 POST /api/orders                    [==================] 100ms  (web server)
   django.view create_order          [================]    95ms
-    celery.apply process_order      [=]                    5ms  (enqueue)
-      celery.run process_order        [==============] 2000ms  (worker)
+    apply_async/myapp.tasks.process_order [=]              5ms  (enqueue)
+      run/myapp.tasks.process_order       [==============] 2000ms  (worker)
         db.query charge_payment         [========]      500ms
         send_confirmation                      [====]   200ms
 ```
@@ -184,7 +205,7 @@ The entire flow from HTTP request through Celery task execution is in a single c
 
 1. **Celery with prefork pool**: Each worker process needs its own TracerProvider. Use `worker_process_init` signal.
 2. **Celery with eventlet/gevent**: Context propagation behaves differently with green threads. Test thoroughly.
-3. **Task retries**: Each retry should create a new span linked to the original context.
-4. **Task chains and groups**: Context propagates through chains but may not through groups unless each task in the group has the header.
+3. **Task retries**: Retries can publish another task message, so verify the retried execution still carries the trace headers and retry metadata.
+4. **Task chains and groups**: Canvas workflows publish multiple task messages, so verify each task in the workflow carries the trace headers.
 
 The key is that both the producer (web app) and consumer (Celery worker) must have the Celery instrumentation active. The instrumentation handles injecting and extracting trace context through Celery's header mechanism.
