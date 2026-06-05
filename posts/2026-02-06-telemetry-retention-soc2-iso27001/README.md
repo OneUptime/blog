@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Data Retention, SOC 2, ISO 27001
 
 Description: Implement telemetry data retention policies using OpenTelemetry that satisfy both SOC 2 and ISO 27001 audit requirements.
 
-SOC 2 and ISO 27001 both require that your organization define and enforce data retention policies. SOC 2 Trust Services Criteria CC6.5 addresses logical access to information assets including their disposal, and ISO 27001 Annex A.8.10 covers information deletion. When applied to telemetry data, this means you need a clear policy for how long traces, logs, and metrics are retained, and you need to prove that data is actually deleted when the retention period expires.
+SOC 2 and ISO 27001 both require that your organization define and enforce controls for retaining and deleting information. SOC 2 Trust Services Criteria CC6.5 addresses disposal of assets containing data and software, and ISO 27001 Annex A.8.10 covers information deletion. When applied to telemetry data, this means you need a clear policy for how long traces, logs, and metrics are retained, and you need to prove that data is actually deleted when the retention period expires.
 
 Most teams set a blanket 30-day retention and call it done. But compliance frameworks require a more thoughtful approach - different data categories may need different retention periods, and you need the ability to demonstrate enforcement.
 
@@ -14,7 +14,7 @@ Most teams set a blanket 30-day retention and call it done. But compliance frame
 
 Not all telemetry data has the same compliance value. Break your telemetry into categories with different retention requirements:
 
-- **Security audit telemetry**: Authentication events, access control decisions, admin actions. SOC 2 typically needs 1 year. ISO 27001 does not specify a duration but requires a documented policy.
+- **Security audit telemetry**: Authentication events, access control decisions, admin actions. Many SOC 2 programs retain security audit logs for about 1 year, but SOC 2 does not prescribe a fixed duration. ISO 27001 does not specify a duration but requires a documented policy.
 - **Operational telemetry**: Performance metrics, error traces, debugging logs. Usually 30-90 days is sufficient.
 - **Compliance evidence**: Telemetry that directly serves as compliance evidence (PII redaction metrics, access reviews). Retain for the audit cycle plus one year.
 - **Personal data telemetry**: Any telemetry containing personal identifiers. Subject to GDPR/privacy law minimization - keep only as long as necessary.
@@ -54,7 +54,7 @@ def handle_login(request):
         # Security events get long retention
         span.set_attribute("retention.category", "security_audit")
         span.set_attribute("retention.days", 365)
-        span.set_attribute("retention.reason", "soc2_cc6.1")
+        span.set_attribute("retention.reason", "soc2_cc6.5")
 
         result = authenticate(request)
         span.set_attribute("auth.outcome", result.status)
@@ -83,25 +83,65 @@ receivers:
         endpoint: 0.0.0.0:4317
 
 connectors:
-  routing/retention:
+  routing/traces_retention:
     table:
       # Security audit data - 365 day retention backend
-      - statement: route()
-          where resource.attributes["retention.category"] == "security_audit"
-        pipelines: [traces/long_retention, logs/long_retention]
+      - context: resource
+        condition: attributes["retention.category"] == "security_audit"
+        pipelines: [traces/long_retention]
 
       # Compliance evidence - 730 day retention
-      - statement: route()
-          where resource.attributes["retention.category"] == "compliance_evidence"
-        pipelines: [traces/compliance, logs/compliance]
+      - context: resource
+        condition: attributes["retention.category"] == "compliance_evidence"
+        pipelines: [traces/compliance]
 
       # Personal data - 30 day retention (data minimization)
-      - statement: route()
-          where resource.attributes["retention.category"] == "personal_data"
-        pipelines: [traces/short_retention, logs/short_retention]
+      - context: resource
+        condition: attributes["retention.category"] == "personal_data"
+        pipelines: [traces/short_retention]
 
     # Default - operational data, 90 day retention
-    default_pipelines: [traces/default, logs/default]
+    default_pipelines: [traces/default]
+
+  routing/logs_retention:
+    table:
+      # Security audit data - 365 day retention backend
+      - context: resource
+        condition: attributes["retention.category"] == "security_audit"
+        pipelines: [logs/long_retention]
+
+      # Compliance evidence - 730 day retention
+      - context: resource
+        condition: attributes["retention.category"] == "compliance_evidence"
+        pipelines: [logs/compliance]
+
+      # Personal data - 30 day retention (data minimization)
+      - context: resource
+        condition: attributes["retention.category"] == "personal_data"
+        pipelines: [logs/short_retention]
+
+    # Default - operational data, 90 day retention
+    default_pipelines: [logs/default]
+
+  routing/metrics_retention:
+    table:
+      # Security audit data - 365 day retention backend
+      - context: resource
+        condition: attributes["retention.category"] == "security_audit"
+        pipelines: [metrics/long_retention]
+
+      # Compliance evidence - 730 day retention
+      - context: resource
+        condition: attributes["retention.category"] == "compliance_evidence"
+        pipelines: [metrics/compliance]
+
+      # Personal data - 30 day retention (data minimization)
+      - context: resource
+        condition: attributes["retention.category"] == "personal_data"
+        pipelines: [metrics/short_retention]
+
+    # Default - operational data, 90 day retention
+    default_pipelines: [metrics/default]
 
 processors:
   batch/fast:
@@ -120,6 +160,15 @@ processors:
         action: upsert
       - key: retention.tier
         value: "long"
+        action: upsert
+
+  attributes/retention_730:
+    actions:
+      - key: retention.enforced_days
+        value: "730"
+        action: upsert
+      - key: retention.tier
+        value: "compliance"
         action: upsert
 
   attributes/retention_90:
@@ -169,50 +218,74 @@ service:
   pipelines:
     traces/ingress:
       receivers: [otlp]
-      exporters: [routing/retention]
+      exporters: [routing/traces_retention]
 
     logs/ingress:
       receivers: [otlp]
-      exporters: [routing/retention]
+      exporters: [routing/logs_retention]
+
+    metrics/ingress:
+      receivers: [otlp]
+      exporters: [routing/metrics_retention]
 
     traces/long_retention:
-      receivers: [routing/retention]
+      receivers: [routing/traces_retention]
       processors: [attributes/retention_365, batch/slow]
       exporters: [otlp/long]
 
     traces/default:
-      receivers: [routing/retention]
+      receivers: [routing/traces_retention]
       processors: [attributes/retention_90, batch/fast]
       exporters: [otlp/standard]
 
     traces/short_retention:
-      receivers: [routing/retention]
+      receivers: [routing/traces_retention]
       processors: [attributes/retention_30, batch/fast]
       exporters: [otlp/short]
 
     traces/compliance:
-      receivers: [routing/retention]
-      processors: [attributes/retention_365, batch/slow]
+      receivers: [routing/traces_retention]
+      processors: [attributes/retention_730, batch/slow]
       exporters: [otlp/compliance]
 
     logs/long_retention:
-      receivers: [routing/retention]
+      receivers: [routing/logs_retention]
       processors: [attributes/retention_365, batch/slow]
       exporters: [otlp/long]
 
     logs/default:
-      receivers: [routing/retention]
+      receivers: [routing/logs_retention]
       processors: [attributes/retention_90, batch/fast]
       exporters: [otlp/standard]
 
     logs/short_retention:
-      receivers: [routing/retention]
+      receivers: [routing/logs_retention]
       processors: [attributes/retention_30, batch/fast]
       exporters: [otlp/short]
 
     logs/compliance:
-      receivers: [routing/retention]
+      receivers: [routing/logs_retention]
+      processors: [attributes/retention_730, batch/slow]
+      exporters: [otlp/compliance]
+
+    metrics/long_retention:
+      receivers: [routing/metrics_retention]
       processors: [attributes/retention_365, batch/slow]
+      exporters: [otlp/long]
+
+    metrics/default:
+      receivers: [routing/metrics_retention]
+      processors: [attributes/retention_90, batch/fast]
+      exporters: [otlp/standard]
+
+    metrics/short_retention:
+      receivers: [routing/metrics_retention]
+      processors: [attributes/retention_30, batch/fast]
+      exporters: [otlp/short]
+
+    metrics/compliance:
+      receivers: [routing/metrics_retention]
+      processors: [attributes/retention_730, batch/slow]
       exporters: [otlp/compliance]
 ```
 
@@ -224,7 +297,7 @@ Routing telemetry to different backends is only half the battle. You also need t
 # Retention enforcement validation script
 # Run daily via cron to verify data is being deleted on schedule
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 RETENTION_TIERS = {
     "short": {"days": 30, "backend": "telemetry-ephemeral.internal"},
@@ -242,13 +315,14 @@ def check_retention_enforcement():
         backend = config["backend"]
 
         # Query for data older than the retention period
-        cutoff = datetime.utcnow() - timedelta(days=retention_days + 1)
+        now = datetime.now(timezone.utc)
+        cutoff = now - timedelta(days=retention_days + 1)
 
         response = requests.get(
             f"https://{backend}:4318/api/v1/count",
             params={
                 "start": "2020-01-01T00:00:00Z",
-                "end": cutoff.isoformat() + "Z",
+                "end": cutoff.isoformat().replace("+00:00", "Z"),
             },
             verify="/etc/ssl/certs/ca-bundle.crt",
         )
@@ -261,7 +335,7 @@ def check_retention_enforcement():
             "retention_days": retention_days,
             "records_past_retention": count,
             "compliant": compliant,
-            "checked_at": datetime.utcnow().isoformat(),
+            "checked_at": now.isoformat().replace("+00:00", "Z"),
         })
 
         if not compliant:
@@ -278,7 +352,7 @@ def check_retention_enforcement():
 
 def write_audit_report(results):
     """Generate a retention compliance report for auditors."""
-    report_date = datetime.utcnow().strftime("%Y-%m-%d")
+    report_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     report = {
         "report_type": "retention_compliance",
         "report_date": report_date,
@@ -312,7 +386,7 @@ def should_delete(record, tier_config):
     if record.attributes.get("legal_hold") == "true":
         return False
 
-    age_days = (datetime.utcnow() - record.timestamp).days
+    age_days = (datetime.now(timezone.utc) - record.timestamp).days
     return age_days > tier_config["days"]
 ```
 
