@@ -51,10 +51,12 @@ dotnet add package OpenTelemetry.Extensions.Hosting
 
 # HttpClient instrumentation
 dotnet add package OpenTelemetry.Instrumentation.Http
+dotnet add package OpenTelemetry.Instrumentation.AspNetCore
 
 # Exporters
 dotnet add package OpenTelemetry.Exporter.OpenTelemetryProtocol
 dotnet add package OpenTelemetry.Exporter.Console
+dotnet add package OpenTelemetry.Exporter.InMemory
 ```
 
 Configure OpenTelemetry in Program.cs with HttpClient instrumentation:
@@ -80,6 +82,8 @@ builder.Services.AddOpenTelemetry()
             ["deployment.environment"] = builder.Environment.EnvironmentName
         }))
     .WithTracing(tracing => tracing
+        .AddSource("HttpClientDemo.ExternalApi")
+        .AddSource("HttpClientDemo.MultiApi")
         // Add HttpClient instrumentation
         .AddHttpClientInstrumentation(options =>
         {
@@ -123,6 +127,7 @@ Build a service class that uses HttpClient with proper instrumentation practices
 
 ```csharp
 using System.Diagnostics;
+using System.Net.Http.Json;
 using System.Text.Json;
 
 namespace HttpClientDemo.Services;
@@ -167,7 +172,8 @@ public class ExternalApiService : IExternalApiService
             _logger.LogInformation("Fetching weather data for {City}", city);
 
             // HttpClient call is automatically instrumented
-            var response = await _httpClient.GetAsync($"/weather?city={city}");
+            var response = await _httpClient.GetAsync(
+                $"/weather?city={Uri.EscapeDataString(city)}");
 
             activity?.SetTag("http.response.status", (int)response.StatusCode);
 
@@ -568,9 +574,9 @@ public class HeaderPropagationHandler : DelegatingHandler
             request.Headers.Add("X-Span-ID", activity.SpanId.ToString());
 
             // Add business context
-            if (activity.GetTagItem("user.id") is string userId)
+            if (activity.GetTagItem("user.id") is { } userId)
             {
-                request.Headers.Add("X-User-ID", userId);
+                request.Headers.Add("X-User-ID", userId.ToString());
             }
 
             // Add timestamp
@@ -687,20 +693,21 @@ public class HttpClientInstrumentationTests
         Assert.NotEmpty(exportedItems);
 
         var httpSpan = exportedItems.FirstOrDefault(a =>
-            a.DisplayName.Contains("GET"));
+            a.Kind == ActivityKind.Client);
 
         Assert.NotNull(httpSpan);
         Assert.Equal(ActivityKind.Client, httpSpan.Kind);
-        Assert.Contains("http", httpSpan.Tags.Select(t => t.Key));
+        Assert.Contains(httpSpan.Tags, tag =>
+            tag.Key.StartsWith("http.") || tag.Key == "url.full");
     }
 }
 ```
 
 ## Best Practices
 
-Always use IHttpClientFactory instead of creating HttpClient instances directly. This ensures proper handler lifecycle management and enables instrumentation to work correctly.
+Use IHttpClientFactory for application-managed HttpClient instances. This ensures proper handler lifecycle management and works well with instrumentation, while OpenTelemetry can also instrument directly created HttpClient instances when the tracer provider is configured.
 
-Set reasonable timeouts for all HttpClient instances. Without timeouts, hung requests can accumulate and exhaust resources while creating orphaned spans in your tracing system.
+Set reasonable timeouts for all HttpClient instances. Without timeouts, hung requests can accumulate, exhaust resources, and leave long-running spans in your tracing system until the request completes or is canceled.
 
 Use named or typed clients to organize different API endpoints with appropriate configurations. Each client can have different retry policies, timeouts, and authentication mechanisms while maintaining consistent instrumentation.
 
