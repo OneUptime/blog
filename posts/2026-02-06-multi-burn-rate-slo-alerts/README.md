@@ -34,7 +34,7 @@ The standard configuration from Google's SRE workbook uses these window pairs:
 
 ## Recording Rules for Burn Rates
 
-First, create Prometheus recording rules for error rates at each required window size. These build on the OpenTelemetry metrics exported through your collector.
+First, create Prometheus recording rules for error rates at each required window size. These build on the OpenTelemetry metrics exported through your collector. The examples below use the standard `http.server.request.duration` histogram after Prometheus name translation, where the `_count` series represents total requests and `http_response_status_code` identifies 5xx responses.
 
 ```yaml
 # prometheus-rules/burn-rate-recording.yaml
@@ -46,51 +46,51 @@ groups:
       # 5-minute error rate
       - record: slo:error_rate:ratio_rate5m
         expr: |
-          sum(rate(http_server_request_errors_total{service="payment-service"}[5m]))
+          sum(rate(http_server_request_duration_seconds_count{job="payment-service", http_response_status_code=~"5.."}[5m]))
           /
-          sum(rate(http_server_request_total{service="payment-service"}[5m]))
+          sum(rate(http_server_request_duration_seconds_count{job="payment-service"}[5m]))
 
       # 30-minute error rate
       - record: slo:error_rate:ratio_rate30m
         expr: |
-          sum(rate(http_server_request_errors_total{service="payment-service"}[30m]))
+          sum(rate(http_server_request_duration_seconds_count{job="payment-service", http_response_status_code=~"5.."}[30m]))
           /
-          sum(rate(http_server_request_total{service="payment-service"}[30m]))
+          sum(rate(http_server_request_duration_seconds_count{job="payment-service"}[30m]))
 
       # 1-hour error rate
       - record: slo:error_rate:ratio_rate1h
         expr: |
-          sum(rate(http_server_request_errors_total{service="payment-service"}[1h]))
+          sum(rate(http_server_request_duration_seconds_count{job="payment-service", http_response_status_code=~"5.."}[1h]))
           /
-          sum(rate(http_server_request_total{service="payment-service"}[1h]))
+          sum(rate(http_server_request_duration_seconds_count{job="payment-service"}[1h]))
 
       # 2-hour error rate
       - record: slo:error_rate:ratio_rate2h
         expr: |
-          sum(rate(http_server_request_errors_total{service="payment-service"}[2h]))
+          sum(rate(http_server_request_duration_seconds_count{job="payment-service", http_response_status_code=~"5.."}[2h]))
           /
-          sum(rate(http_server_request_total{service="payment-service"}[2h]))
+          sum(rate(http_server_request_duration_seconds_count{job="payment-service"}[2h]))
 
       # 6-hour error rate
       - record: slo:error_rate:ratio_rate6h
         expr: |
-          sum(rate(http_server_request_errors_total{service="payment-service"}[6h]))
+          sum(rate(http_server_request_duration_seconds_count{job="payment-service", http_response_status_code=~"5.."}[6h]))
           /
-          sum(rate(http_server_request_total{service="payment-service"}[6h]))
+          sum(rate(http_server_request_duration_seconds_count{job="payment-service"}[6h]))
 
       # 1-day error rate
       - record: slo:error_rate:ratio_rate1d
         expr: |
-          sum(rate(http_server_request_errors_total{service="payment-service"}[1d]))
+          sum(rate(http_server_request_duration_seconds_count{job="payment-service", http_response_status_code=~"5.."}[1d]))
           /
-          sum(rate(http_server_request_total{service="payment-service"}[1d]))
+          sum(rate(http_server_request_duration_seconds_count{job="payment-service"}[1d]))
 
       # 3-day error rate
       - record: slo:error_rate:ratio_rate3d
         expr: |
-          sum(rate(http_server_request_errors_total{service="payment-service"}[3d]))
+          sum(rate(http_server_request_duration_seconds_count{job="payment-service", http_response_status_code=~"5.."}[3d]))
           /
-          sum(rate(http_server_request_total{service="payment-service"}[3d]))
+          sum(rate(http_server_request_duration_seconds_count{job="payment-service"}[3d]))
 ```
 
 ## Alerting Rules for Multi-Burn-Rate
@@ -116,8 +116,8 @@ groups:
         annotations:
           summary: "High error budget burn rate for payment-service"
           description: >
-            Error budget is burning at {{ $value | humanizePercentage }} per hour.
-            At this rate, the entire 30-day budget will be exhausted in less than 2 days.
+            Error budget is burning at 14.4x the normal rate.
+            At this rate, the entire 30-day budget will be exhausted in about 2 days.
           runbook: "https://wiki.internal/runbooks/payment-service-availability"
 
       # Warning page: 6x burn rate (5% budget consumed in 6 hours)
@@ -186,9 +186,9 @@ The same multi-burn-rate approach works for latency SLOs. Replace the error rate
 ```promql
 # Latency burn rate: fraction of requests slower than 200ms
 1 - (
-  sum(rate(http_server_request_duration_bucket{service="payment-service", le="200"}[1h]))
+  sum(rate(http_server_request_duration_seconds_bucket{job="payment-service", le="0.2"}[1h]))
   /
-  sum(rate(http_server_request_duration_count{service="payment-service"}[1h]))
+  sum(rate(http_server_request_duration_seconds_count{job="payment-service"}[1h]))
 )
 ```
 
