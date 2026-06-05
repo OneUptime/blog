@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Kubernetes, HPA, Autoscaling, Custom Metric
 
 Description: Configure Kubernetes HPA to scale pods based on custom OpenTelemetry application metrics instead of just CPU and memory.
 
-The default Kubernetes Horizontal Pod Autoscaler (HPA) scales based on CPU and memory utilization. This works for compute-bound workloads, but most real applications need to scale on application-level signals - request latency, queue depth, active connections, or business metrics like orders per second. OpenTelemetry lets you collect these custom metrics and feed them to the HPA through the Kubernetes custom metrics API.
+Basic Kubernetes Horizontal Pod Autoscaler (HPA) configurations often scale based on CPU or memory utilization. This works for compute-bound workloads, but most real applications need to scale on application-level signals - request latency, queue depth, active connections, or business metrics like orders per second. OpenTelemetry lets you collect these custom metrics and feed them to the HPA through the Kubernetes custom metrics API.
 
 This post covers the full pipeline: instrumenting your app with OpenTelemetry metrics, collecting them with the OTel Collector, storing them in Prometheus, and configuring the Prometheus Adapter to expose them as custom metrics the HPA can use.
 
@@ -29,6 +29,8 @@ First, instrument your application with the metrics that reflect real load. For 
 
 ```python
 # metrics.py - Application metrics for autoscaling
+
+import time
 
 from opentelemetry import metrics
 
@@ -61,13 +63,13 @@ class MetricsMiddleware:
         self.app = app
 
     async def __call__(self, request, call_next):
-        labels = {"http.method": request.method, "http.route": request.url.path}
+        labels = {"http.request.method": request.method, "http.route": request.url.path}
         inflight_requests.add(1, labels)
         try:
             start = time.time()
             response = await call_next(request)
             elapsed = time.time() - start
-            request_duration.record(elapsed, {**labels, "http.status_code": str(response.status_code)})
+            request_duration.record(elapsed, {**labels, "http.response.status_code": response.status_code})
             return response
         finally:
             inflight_requests.add(-1, labels)
@@ -76,6 +78,8 @@ class MetricsMiddleware:
 ## OTel Collector Configuration
 
 The collector receives OTLP metrics and writes them to Prometheus. Make sure the metric names are preserved in a format the Prometheus Adapter can query.
+
+If you are writing directly to a Prometheus server, start Prometheus with `--web.enable-remote-write-receiver` so `/api/v1/write` accepts remote-write samples.
 
 ```yaml
 # otel-collector-hpa.yaml
@@ -136,32 +140,32 @@ prometheus:
 rules:
   custom:
     # Rule 1: Requests per second per pod
-    - seriesQuery: 'http_server_request_duration_count{namespace!="",pod!=""}'
+    - seriesQuery: 'http_server_request_duration_seconds_count{k8s_namespace_name!="",k8s_pod_name!=""}'
       resources:
         overrides:
-          namespace: {resource: "namespace"}
-          pod: {resource: "pod"}
+          k8s_namespace_name: {resource: "namespace"}
+          k8s_pod_name: {resource: "pod"}
       name:
         matches: "^(.*)_count$"
         as: "requests_per_second"
       metricsQuery: 'sum(rate(<<.Series>>{<<.LabelMatchers>>}[2m])) by (<<.GroupBy>>)'
 
     # Rule 2: Active in-flight requests per pod
-    - seriesQuery: 'http_server_active_requests{namespace!="",pod!=""}'
+    - seriesQuery: 'http_server_active_requests{k8s_namespace_name!="",k8s_pod_name!=""}'
       resources:
         overrides:
-          namespace: {resource: "namespace"}
-          pod: {resource: "pod"}
+          k8s_namespace_name: {resource: "namespace"}
+          k8s_pod_name: {resource: "pod"}
       name:
         as: "active_requests"
       metricsQuery: 'sum(<<.Series>>{<<.LabelMatchers>>}) by (<<.GroupBy>>)'
 
     # Rule 3: Request latency p99 per pod
-    - seriesQuery: 'http_server_request_duration_bucket{namespace!="",pod!=""}'
+    - seriesQuery: 'http_server_request_duration_seconds_bucket{k8s_namespace_name!="",k8s_pod_name!=""}'
       resources:
         overrides:
-          namespace: {resource: "namespace"}
-          pod: {resource: "pod"}
+          k8s_namespace_name: {resource: "namespace"}
+          k8s_pod_name: {resource: "pod"}
       name:
         as: "request_latency_p99"
       metricsQuery: 'histogram_quantile(0.99, sum(rate(<<.Series>>{<<.LabelMatchers>>}[2m])) by (le, <<.GroupBy>>))'
@@ -247,10 +251,10 @@ kubectl get hpa api-service-hpa --watch
 kubectl describe hpa api-service-hpa
 ```
 
-For a more complete view, scrape the `kube_hpa_*` metrics from kube-state-metrics and add them to your dashboard. Key metrics include `kube_hpa_status_current_replicas`, `kube_hpa_status_desired_replicas`, and `kube_hpa_spec_target_metric`. Overlaying these with your application metrics on the same dashboard shows you exactly why the HPA made each scaling decision.
+For a more complete view, scrape the `kube_horizontalpodautoscaler_*` metrics from kube-state-metrics and add them to your dashboard. Key metrics include `kube_horizontalpodautoscaler_status_current_replicas`, `kube_horizontalpodautoscaler_status_desired_replicas`, and `kube_horizontalpodautoscaler_spec_target_metric`. Overlaying these with your application metrics on the same dashboard shows you exactly why the HPA made each scaling decision.
 
 ## Pitfalls to Watch For
 
-A few things to be careful about. First, make sure your metric resolution is fine-grained enough. If the Prometheus scrape interval is 60 seconds but traffic spikes last 30 seconds, the HPA will never see the spike. Set the OTel Collector batch timeout and the Prometheus scrape interval to 15 seconds or less for scaling-critical metrics.
+A few things to be careful about. First, make sure your metric resolution is fine-grained enough. If metrics only arrive every 60 seconds but traffic spikes last 30 seconds, the HPA may never see the spike. Set your application metric export interval, the OTel Collector batch timeout, and any Prometheus scrape interval in a scrape-based pipeline to 15 seconds or less for scaling-critical metrics.
 
 Second, choose the right metric for scaling. CPU-based scaling fails for I/O-bound services. Request-rate scaling fails for services with highly variable request costs. Active in-flight requests is often the most reliable general-purpose signal because it directly reflects how saturated the service is, regardless of whether the load is CPU-bound or I/O-bound.
