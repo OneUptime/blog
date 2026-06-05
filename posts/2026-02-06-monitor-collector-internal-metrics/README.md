@@ -20,7 +20,7 @@ The OpenTelemetry Collector instruments itself using OpenTelemetry metrics, expo
 - **Queues**: Buffer states and capacity
 - **System Resources**: Memory and CPU usage
 
-These metrics follow OpenTelemetry semantic conventions and are exposed in Prometheus format, making them easy to scrape and visualize.
+These metrics use OpenTelemetry Collector internal metric names and can be exposed in Prometheus format, making them easy to scrape and visualize.
 
 ## Enabling Internal Metrics
 
@@ -66,8 +66,15 @@ service:
       # Metric detail level: none, basic, normal, detailed
       level: detailed
 
-      # Address to expose Prometheus metrics
-      address: :8888
+      # Expose Prometheus metrics
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+                without_type_suffix: true
+                without_units: true
 
   pipelines:
     traces:
@@ -123,6 +130,11 @@ scrape_configs:
       - source_labels: [__meta_kubernetes_pod_name]
         action: replace
         target_label: instance
+      # Scrape the collector telemetry port
+      - source_labels: [__meta_kubernetes_pod_ip]
+        action: replace
+        target_label: __address__
+        replacement: $1:8888
       # Add namespace label
       - source_labels: [__meta_kubernetes_namespace]
         action: replace
@@ -171,8 +183,10 @@ exporters:
     endpoint: backend.example.com:4317
 
   # Export collector metrics to monitoring backend
-  prometheusremotewrite:
+  prometheus_remote_write:
     endpoint: http://prometheus:9090/api/v1/write
+    tls:
+      insecure: true
     # Optional: add external labels
     external_labels:
       cluster: production
@@ -182,7 +196,14 @@ service:
   telemetry:
     metrics:
       level: detailed
-      address: :8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+                without_type_suffix: true
+                without_units: true
 
   pipelines:
     # Application traces
@@ -195,7 +216,7 @@ service:
     metrics/internal:
       receivers: [prometheus]
       processors: [resource, batch]
-      exporters: [prometheusremotewrite]
+      exporters: [prometheus_remote_write]
 ```
 
 This creates a self-contained monitoring solution where the collector monitors itself and exports the data to your metrics backend.
@@ -227,8 +248,8 @@ Indicates back-pressure or capacity issues:
 # Spans refused per second (back-pressure indicator)
 rate(otelcol_receiver_refused_spans{receiver="otlp"}[5m])
 
-# Alert when any data is being refused
-otelcol_receiver_refused_spans > 0
+# Alert when data is being refused
+rate(otelcol_receiver_refused_spans[5m]) > 0
 ```
 
 If data is being refused, the collector is overloaded. Consider scaling or adjusting batch processor settings.
@@ -256,12 +277,11 @@ A high ratio of timeout-triggered sends suggests your batch size settings may be
 Monitor memory pressure:
 
 ```promql
-# Memory limiter is dropping data (critical alert)
-rate(otelcol_processor_refused_spans{processor="memory_limiter"}[5m]) > 0
+# Receiver refusals can indicate memory limiter back-pressure
+rate(otelcol_receiver_refused_spans[5m]) > 0
 
-# Memory usage percentage
-otelcol_processor_memory_limiter_memory_usage_bytes /
-otelcol_processor_memory_limiter_memory_limit_bytes
+# Collector process memory usage
+otelcol_process_memory_rss
 ```
 
 ## Key Exporter Metrics
@@ -314,10 +334,10 @@ otelcol_exporter_queue_size / otelcol_exporter_queue_capacity
 Track export retry behavior:
 
 ```promql
-# Items in retry queue
-otelcol_exporter_retry_queue_length{exporter="otlp"}
+# Export requests currently in flight, including retry backoff
+otelcol_exporter_in_flight_requests{exporter="otlp"}
 
-# Retry operations per second
+# Failed enqueue operations per second
 rate(otelcol_exporter_enqueue_failed_spans[5m])
 ```
 
@@ -332,11 +352,11 @@ otelcol_process_memory_rss
 # CPU time
 rate(otelcol_process_cpu_seconds[5m])
 
-# Goroutine count (high counts may indicate leaks)
+# Runtime memory obtained from the OS
 otelcol_process_runtime_total_sys_memory_bytes
 
-# Garbage collection duration
-rate(otelcol_process_runtime_gc_duration_microseconds_sum[5m])
+# Heap memory allocated
+otelcol_process_runtime_heap_alloc_bytes
 ```
 
 ## Metric Flow Visualization
@@ -352,7 +372,7 @@ graph LR
 
     subgraph "Processing"
         C[otelcol_processor_batch_batch_send_size]
-        D[otelcol_processor_memory_limiter_refused_spans]
+        D[otelcol_processor_incoming_items]
     end
 
     subgraph "Exporting"
@@ -369,13 +389,12 @@ graph LR
     A --> C
     B -.->|Data Loss| X[Dropped]
     C --> E
-    D -.->|Data Loss| X
+    D --> E
     E --> F
     E --> G
     G -.->|Retry| E
 
     style B fill:#ff9999
-    style D fill:#ff9999
     style G fill:#ff9999
     style X fill:#ff0000
 ```
@@ -473,15 +492,15 @@ groups:
   - name: otel_collector
     interval: 30s
     rules:
-      # Critical: Data is being dropped
-      - alert: CollectorDroppingData
+      # Critical: Data is being refused
+      - alert: CollectorRefusingData
         expr: rate(otelcol_receiver_refused_spans[5m]) > 0
         for: 5m
         labels:
           severity: critical
         annotations:
-          summary: "OpenTelemetry Collector dropping data"
-          description: "Collector {{ $labels.instance }} is refusing spans due to overload"
+          summary: "OpenTelemetry Collector refusing data"
+          description: "Collector {{ $labels.instance }} is refusing spans due to back-pressure"
 
       # Critical: Export failures
       - alert: CollectorExportFailing
@@ -528,7 +547,7 @@ groups:
 
       # Info: Collector restarted
       - alert: CollectorRestarted
-        expr: time() - otelcol_process_uptime < 300
+        expr: otelcol_process_uptime < 300
         labels:
           severity: info
         annotations:
@@ -548,7 +567,7 @@ Basic liveness check:
 # Check if collector is alive
 curl http://localhost:13133/
 
-# Response: {"status":"Server available"}
+# Response: {}
 ```
 
 Configure the health check extension:
@@ -558,11 +577,6 @@ extensions:
   health_check:
     endpoint: :13133
     path: /health
-    # Check specific pipelines
-    check_collector_pipeline:
-      enabled: true
-      interval: 5m
-      exporter_failure_threshold: 5
 
 service:
   extensions: [health_check]
@@ -596,7 +610,7 @@ Some processors expose additional metrics for their specific functionality:
 
 ```promql
 # Number of traces in the decision buffer
-otelcol_processor_tail_sampling_num_traces_in_memory
+otelcol_processor_tail_sampling_sampling_traces_on_memory
 
 # Traces sampled per policy
 rate(otelcol_processor_tail_sampling_count_traces_sampled[5m])
@@ -663,8 +677,10 @@ exporters:
       queue_size: 10000
 
   # Collector metrics
-  prometheusremotewrite:
+  prometheus_remote_write:
     endpoint: http://prometheus:9090/api/v1/write
+    tls:
+      insecure: true
     external_labels:
       cluster: ${CLUSTER_NAME}
       region: ${REGION}
@@ -672,10 +688,6 @@ exporters:
 extensions:
   health_check:
     endpoint: :13133
-    check_collector_pipeline:
-      enabled: true
-      interval: 5m
-      exporter_failure_threshold: 5
 
   zpages:
     endpoint: :55679
@@ -692,7 +704,14 @@ service:
 
     metrics:
       level: detailed
-      address: :8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+                without_type_suffix: true
+                without_units: true
 
   pipelines:
     # Application traces
@@ -705,7 +724,7 @@ service:
     metrics/internal:
       receivers: [prometheus]
       processors: [resource, batch]
-      exporters: [prometheusremotewrite]
+      exporters: [prometheus_remote_write]
 ```
 
 ## Troubleshooting with Internal Metrics
@@ -742,7 +761,7 @@ otelcol_process_memory_rss
 # Queue sizes
 otelcol_exporter_queue_size
 
-# Number of goroutines (potential leak indicator)
+# Runtime memory allocated over the process lifetime
 otelcol_process_runtime_total_alloc_bytes
 ```
 
@@ -759,8 +778,8 @@ Identify where data is being dropped:
 # Receiver refusing data
 rate(otelcol_receiver_refused_spans[5m])
 
-# Memory limiter dropping data
-rate(otelcol_processor_refused_spans{processor="memory_limiter"}[5m])
+# Receiver refusing data due to back-pressure
+rate(otelcol_receiver_refused_spans[5m])
 
 # Export failures
 rate(otelcol_exporter_send_failed_spans[5m])
