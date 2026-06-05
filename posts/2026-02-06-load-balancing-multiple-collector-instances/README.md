@@ -231,25 +231,27 @@ server {
     listen 4317 http2;
     server_name otel-lb.example.com;
 
-    # Enable gRPC
-    grpc_pass grpc://otel_collectors_grpc;
+    location / {
+        # Enable gRPC
+        grpc_pass grpc://otel_collectors_grpc;
 
-    # Retry on failures
-    grpc_next_upstream error timeout http_500 http_502 http_503 http_504;
-    grpc_next_upstream_tries 2;
-    grpc_next_upstream_timeout 10s;
+        # Retry on failures
+        grpc_next_upstream error timeout http_500 http_502 http_503 http_504;
+        grpc_next_upstream_tries 2;
+        grpc_next_upstream_timeout 10s;
 
-    # Timeouts
-    grpc_connect_timeout 5s;
-    grpc_send_timeout 60s;
-    grpc_read_timeout 60s;
+        # Timeouts
+        grpc_connect_timeout 5s;
+        grpc_send_timeout 60s;
+        grpc_read_timeout 60s;
 
-    # Buffer settings
-    grpc_buffer_size 4k;
+        # Buffer settings
+        grpc_buffer_size 4k;
 
-    # Logging
-    access_log /var/log/nginx/otel-grpc-access.log;
-    error_log /var/log/nginx/otel-grpc-error.log warn;
+        # Logging
+        access_log /var/log/nginx/otel-grpc-access.log;
+        error_log /var/log/nginx/otel-grpc-error.log warn;
+    }
 }
 
 # HTTP load balancer
@@ -298,7 +300,7 @@ server {
 ```
 
 This configuration provides:
-- Health checking with automatic removal of failed instances
+- Passive failure handling with automatic removal of failed instances after failed requests
 - Connection keepalive for performance
 - Automatic retry on failures
 - Separate handling for gRPC and HTTP protocols
@@ -390,7 +392,7 @@ HAProxy provides robust health checking and a built-in stats interface for monit
 
 For AWS deployments, use Application Load Balancer for HTTP traffic:
 
-```yaml
+```hcl
 # Terraform configuration for ALB
 resource "aws_lb" "otel_collector" {
   name               = "otel-collector-alb"
@@ -465,7 +467,7 @@ resource "aws_lb_target_group_attachment" "collectors" {
 
 For gRPC traffic, use Network Load Balancer:
 
-```yaml
+```hcl
 # Terraform configuration for NLB
 resource "aws_lb" "otel_collector_grpc" {
   name               = "otel-collector-nlb"
@@ -539,7 +541,7 @@ processors:
 
 exporters:
   # Load balancing exporter with trace-aware routing
-  loadbalancing:
+  load_balancing:
     protocol:
       otlp:
         # Don't use TLS for internal communication
@@ -571,7 +573,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [loadbalancing]
+      exporters: [load_balancing]
 ```
 
 Gateway collectors receive complete traces and perform tail-based sampling:
@@ -635,7 +637,7 @@ otel-collector.example.com.  300  IN  A  10.0.1.13
 otel-collector.example.com.  300  IN  A  10.0.1.14
 ```
 
-Clients resolve the DNS name and connect to one of the returned IPs. Most gRPC clients automatically distribute connections across all resolved addresses.
+Clients resolve the DNS name and connect to one of the returned IPs. gRPC clients commonly use `pick_first` by default, so configure a client-side policy such as `round_robin` if you need one client process to distribute requests across all resolved addresses.
 
 **Pros**: Simple, no additional infrastructure
 **Cons**: No health checking, clients must support DNS load balancing, long DNS cache times can delay traffic redistribution
@@ -676,7 +678,7 @@ spec:
 
     # Circuit breaker
     outlierDetection:
-      consecutiveErrors: 5
+      consecutive5xxErrors: 5
       interval: 30s
       baseEjectionTime: 30s
       maxEjectionPercent: 50
@@ -695,38 +697,32 @@ package main
 
 import (
     "context"
-    "math/rand"
-    "time"
 
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
     "go.opentelemetry.io/otel/sdk/trace"
     "google.golang.org/grpc"
-    "google.golang.org/grpc/balancer/roundrobin"
+    _ "google.golang.org/grpc/balancer/roundrobin"
+    "google.golang.org/grpc/credentials/insecure"
 )
 
 func main() {
-    // Multiple collector endpoints
-    collectorEndpoints := []string{
-        "collector1.example.com:4317",
-        "collector2.example.com:4317",
-        "collector3.example.com:4317",
+    ctx := context.Background()
+
+    // Use gRPC's built-in load balancing with DNS.
+    conn, err := grpc.NewClient(
+        "dns:///otel-collector.example.com:4317",
+        grpc.WithTransportCredentials(insecure.NewCredentials()),
+        grpc.WithDefaultServiceConfig(`{"loadBalancingConfig":[{"round_robin":{}}]}`),
+    )
+    if err != nil {
+        panic(err)
     }
-
-    // Select random endpoint (client-side load balancing)
-    endpoint := collectorEndpoints[rand.Intn(len(collectorEndpoints))]
-
-    // Or use gRPC's built-in load balancing with DNS
-    // endpoint := "dns:///otel-collector.example.com:4317"
+    defer conn.Close()
 
     exporter, err := otlptracegrpc.New(
-        context.Background(),
-        otlptracegrpc.WithEndpoint(endpoint),
-        otlptracegrpc.WithInsecure(),
-        // Enable gRPC load balancing
-        otlptracegrpc.WithDialOption(
-            grpc.WithDefaultServiceConfig(`{"loadBalancingPolicy":"round_robin"}`),
-        ),
+        ctx,
+        otlptracegrpc.WithGRPCConn(conn),
     )
     if err != nil {
         panic(err)
