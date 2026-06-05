@@ -16,7 +16,7 @@ If you want a Datadog-like experience without the Datadog price tag, and you wan
 
 SigNoz is not just a storage backend. It is a complete observability platform that bundles several components together.
 
-The SigNoz OTel Collector is a customized version of the OpenTelemetry Collector that is preconfigured to receive OTLP data and write it to ClickHouse. The Query Service provides APIs for the frontend to query trace, metric, and log data. The Frontend is a React-based web application that provides dashboards, trace exploration, log viewing, and alerting. And ClickHouse serves as the storage engine for all telemetry data.
+The SigNoz OTel Collector is a customized version of the OpenTelemetry Collector that is preconfigured to receive OTLP data and write it to ClickHouse. The SigNoz service provides the web UI and APIs for querying trace, metric, and log data, dashboards, trace exploration, log viewing, and alerting. And ClickHouse serves as the storage engine for all telemetry data.
 
 ```mermaid
 graph TD
@@ -26,12 +26,11 @@ graph TD
     B -->|Traces| E[(ClickHouse)]
     B -->|Metrics| E
     B -->|Logs| E
-    F[Query Service] -->|SQL| E
-    G[SigNoz Frontend] -->|API| F
-    G --> H[Traces View]
-    G --> I[Metrics Dashboards]
-    G --> J[Logs Explorer]
-    G --> K[Alerts]
+    F[SigNoz Service] -->|SQL| E
+    F --> G[Traces View]
+    F --> H[Metrics Dashboards]
+    F --> I[Logs Explorer]
+    F --> J[Alerts]
 ```
 
 ## Deploying with Docker Compose
@@ -46,7 +45,7 @@ First, clone the SigNoz repository which contains the Docker Compose configurati
 git clone -b main https://github.com/SigNoz/signoz.git
 
 # Navigate to the Docker deployment directory
-cd signoz/deploy/docker/clickhouse-setup
+cd signoz/deploy/docker
 ```
 
 Before starting the stack, take a look at the Docker Compose file to understand the services. The key files are the main compose file and the environment configuration.
@@ -57,20 +56,20 @@ ls -la
 # You will see:
 #   docker-compose.yaml    - Main service definitions
 #   otel-collector-config.yaml - Collector configuration
-#   clickhouse-config.xml  - ClickHouse settings
+#   ../common/clickhouse/ - ClickHouse settings
 ```
 
-Now start the entire stack. This will pull images for ClickHouse, the SigNoz Collector, the query service, and the frontend.
+Now start the entire stack. This will pull images for ClickHouse, the SigNoz Collector, and the SigNoz service.
 
 ```bash
 # Start SigNoz with all components
-docker compose up -d
+docker compose up -d --remove-orphans
 
 # Watch the logs to see when everything is ready
 docker compose logs -f --tail=50
 ```
 
-The startup takes a few minutes because ClickHouse needs to initialize its schema. Once everything is running, access the SigNoz UI at http://localhost:3301. You will be prompted to create an admin account on first login.
+The startup takes a few minutes because ClickHouse needs to initialize its schema. Once everything is running, access the SigNoz UI at http://localhost:8080. You will be prompted to create an admin account on first login.
 
 ## Deploying with Kubernetes
 
@@ -115,7 +114,7 @@ clickhouse:
   coldStorage:
     enabled: false
 
-queryService:
+signoz:
   resources:
     requests:
       memory: 512Mi
@@ -123,15 +122,6 @@ queryService:
     limits:
       memory: 1Gi
       cpu: 1
-
-frontend:
-  resources:
-    requests:
-      memory: 128Mi
-      cpu: 100m
-    limits:
-      memory: 256Mi
-      cpu: 200m
 
 otelCollector:
   resources:
@@ -148,9 +138,9 @@ Install the chart with these values.
 ```bash
 # Install SigNoz using Helm
 helm install signoz signoz/signoz \
-  --namespace signoz \
+  --namespace signoz --create-namespace \
   --values signoz-values.yaml \
-  --wait --timeout 10m
+  --wait --timeout 1h
 
 # Check that all pods are running
 kubectl get pods -n signoz
@@ -160,7 +150,7 @@ To access the UI from outside the cluster, create a port forward or set up an In
 
 ```bash
 # Quick access via port-forward
-kubectl port-forward svc/signoz-frontend -n signoz 3301:3301
+kubectl port-forward svc/signoz -n signoz 8080:8080
 ```
 
 ## Connecting Your Applications
@@ -176,19 +166,18 @@ Here is an example for a Node.js application using the OpenTelemetry Node SDK.
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc');
 const { OTLPMetricExporter } = require('@opentelemetry/exporter-metrics-otlp-grpc');
-const { OTLPLogExporter } = require('@opentelemetry/exporter-logs-otlp-grpc');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
 const { PeriodicExportingMetricReader } = require('@opentelemetry/sdk-metrics');
-const { Resource } = require('@opentelemetry/resources');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 const { ATTR_SERVICE_NAME } = require('@opentelemetry/semantic-conventions');
 
 // Point all exporters at the SigNoz Collector endpoint
 const collectorEndpoint = 'http://localhost:4317';
 
 const sdk = new NodeSDK({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     [ATTR_SERVICE_NAME]: 'my-node-service',
-    'deployment.environment': 'production',
+    'deployment.environment.name': 'production',
   }),
   // Trace exporter sends spans to SigNoz
   traceExporter: new OTLPTraceExporter({
@@ -240,7 +229,7 @@ COLLECTOR_ENDPOINT = "http://localhost:4317"
 # Create a resource identifying this service
 resource = Resource.create({
     "service.name": "my-python-service",
-    "deployment.environment": "production",
+    "deployment.environment.name": "production",
 })
 
 # Configure trace export to SigNoz
