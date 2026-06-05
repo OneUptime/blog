@@ -10,7 +10,7 @@ OpenTelemetry .NET auto-instrumentation lets you add observability without chang
 
 ## How Auto-Instrumentation Works in .NET
 
-The .NET auto-instrumentation agent uses CLR profiling APIs to inject bytecode into your application at runtime. It ships with its own set of assemblies that get loaded alongside your application's assemblies. When the agent's version of a library differs from your application's version, the .NET runtime has to pick one, and that decision can cause problems.
+The .NET auto-instrumentation agent uses CLR profiling APIs to inject bytecode into your application at runtime. It ships with its own set of assemblies that get loaded alongside your application's assemblies. When the agent's version of a library differs from your application's version, resolution depends on the deployment mode: standalone profiler deployments can redirect references to the instrumentation's versions, while NuGet package deployments rely on normal build-time NuGet resolution. If the resolved version is not compatible with either side, that decision can cause problems.
 
 ## Common Conflict Scenarios
 
@@ -27,11 +27,11 @@ This happens when the agent expects a newer version of the assembly than what yo
 
 ### Scenario 2: gRPC Client Conflict
 
-Your application uses `Grpc.Net.Client` v2.60, but the agent bundles v2.55 for its OTLP exporter:
+Your application uses a `Grpc.Net.Client` version that is outside the range supported by the auto-instrumentation package, or it resolves a different version than the one used by the auto-instrumentation assemblies:
 
 ```text
 System.IO.FileLoadException: Could not load file or assembly
-'Grpc.Net.Client, Version=2.55.0.0'. The located assembly's
+'Grpc.Net.Client, Version=2.60.0.0'. The located assembly's
 manifest definition does not match the assembly reference.
 ```
 
@@ -67,7 +67,7 @@ ls /opt/opentelemetry-dotnet-instrumentation/
 
 # Or check the OTEL_DOTNET_AUTO_HOME environment variable
 echo $OTEL_DOTNET_AUTO_HOME
-ls $OTEL_DOTNET_AUTO_HOME/lib/net8.0/
+find "$OTEL_DOTNET_AUTO_HOME" -maxdepth 3 -type f -name "*.dll"
 ```
 
 ### Step 3: Compare Versions
@@ -88,13 +88,13 @@ Update your application's NuGet packages to match the versions expected by the a
 <ItemGroup>
     <!-- Match the version the auto-instrumentation agent expects -->
     <PackageReference Include="System.Diagnostics.DiagnosticSource"
-                      Version="8.0.1" />
+                      Version="10.0.0" />
     <PackageReference Include="Grpc.Net.Client"
                       Version="2.60.0" />
 </ItemGroup>
 ```
 
-Check the agent's release notes for the exact dependency versions it uses.
+Check the agent's release notes or `Directory.Packages.props` files for the exact dependency versions it uses. Another option is to add the `OpenTelemetry.AutoInstrumentation` NuGet package to the application so NuGet resolves the same versions at build time.
 
 ## Fix 2: Use Assembly Binding Redirects
 
@@ -107,22 +107,18 @@ For .NET Framework applications, add binding redirects in `app.config`:
       <dependentAssembly>
         <assemblyIdentity name="System.Diagnostics.DiagnosticSource"
                           publicKeyToken="cc7b13ffcd2ddd51" />
-        <bindingRedirect oldVersion="0.0.0.0-8.0.1.0"
-                         newVersion="8.0.1.0" />
+        <bindingRedirect oldVersion="0.0.0.0-10.0.0.0"
+                         newVersion="10.0.0.0" />
       </dependentAssembly>
     </assemblyBinding>
   </runtime>
 </configuration>
 ```
 
-For .NET 6+ applications, the runtime usually handles this automatically, but you can force it with a `runtimeconfig.template.json`:
+For standalone .NET 6+ profiler deployments, the auto-instrumentation package can redirect assembly references to versions not lower than the versions it uses. This is controlled with an environment variable:
 
-```json
-{
-  "configProperties": {
-    "System.Runtime.Loader.UseRidGraph": true
-  }
-}
+```bash
+export OTEL_DOTNET_AUTO_REDIRECT_ENABLED=true
 ```
 
 ## Fix 3: Exclude Conflicting Instrumentation
@@ -131,8 +127,7 @@ If a specific instrumentation library causes the conflict, you can disable it:
 
 ```bash
 # Disable specific instrumentations via environment variables
-export OTEL_DOTNET_AUTO_TRACES_DISABLED_INSTRUMENTATIONS="Grpc"
-export OTEL_DOTNET_AUTO_METRICS_DISABLED_INSTRUMENTATIONS="Grpc"
+export OTEL_DOTNET_AUTO_TRACES_GRPCNETCLIENT_INSTRUMENTATION_ENABLED=false
 ```
 
 Then add manual instrumentation for that library instead:
