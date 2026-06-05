@@ -45,7 +45,7 @@ required_instrumentation:
   - opentelemetry-instrumentation-flask
   - opentelemetry-instrumentation-requests
 
-# Expected metric names (from OTel semantic conventions)
+# Expected metric names as exposed by a Prometheus-compatible OTel pipeline
 expected_metrics:
   - http_server_request_duration_seconds
   - http_server_active_requests
@@ -70,7 +70,7 @@ contents:
 # Variables that get substituted during installation
 parameters:
   - name: service_name
-    description: "The OTEL service name to filter on"
+    description: "The Prometheus job label for the service, usually derived from the OTEL service.name"
     required: true
   - name: error_rate_threshold
     description: "Error rate percentage to trigger alerts"
@@ -91,13 +91,13 @@ Dashboard definitions use template variables that get replaced during installati
     {
       "title": "Request Rate",
       "type": "timeseries",
-      "query": "sum(rate(http_server_request_duration_seconds_count{service_name=\"{{ service_name }}\"}[5m]))",
+      "query": "sum(rate(http_server_request_duration_seconds_count{job=\"{{ service_name }}\"}[5m]))",
       "description": "Total requests per second across all endpoints"
     },
     {
       "title": "Error Rate (%)",
       "type": "timeseries",
-      "query": "sum(rate(http_server_request_duration_seconds_count{service_name=\"{{ service_name }}\", http_response_status_code=~\"5..\"}[5m])) / sum(rate(http_server_request_duration_seconds_count{service_name=\"{{ service_name }}\"}[5m])) * 100",
+      "query": "sum(rate(http_server_request_duration_seconds_count{job=\"{{ service_name }}\", http_response_status_code=~\"5..\"}[5m])) / sum(rate(http_server_request_duration_seconds_count{job=\"{{ service_name }}\"}[5m])) * 100",
       "thresholds": [
         {"value": "{{ error_rate_threshold }}", "color": "red"}
       ]
@@ -105,13 +105,13 @@ Dashboard definitions use template variables that get replaced during installati
     {
       "title": "p99 Latency",
       "type": "timeseries",
-      "query": "histogram_quantile(0.99, sum(rate(http_server_request_duration_seconds_bucket{service_name=\"{{ service_name }}\"}[5m])) by (le))",
+      "query": "histogram_quantile(0.99, sum(rate(http_server_request_duration_seconds_bucket{job=\"{{ service_name }}\"}[5m])) by (le))",
       "unit": "seconds"
     },
     {
       "title": "Top Endpoints by Latency",
       "type": "table",
-      "query": "topk(10, histogram_quantile(0.99, sum(rate(http_server_request_duration_seconds_bucket{service_name=\"{{ service_name }}\"}[5m])) by (le, http_route)))",
+      "query": "topk(10, histogram_quantile(0.99, sum(rate(http_server_request_duration_seconds_bucket{job=\"{{ service_name }}\"}[5m])) by (le, http_route)))",
       "unit": "seconds"
     }
   ]
@@ -134,12 +134,12 @@ groups:
         expr: |
           (
             sum(rate(http_server_request_duration_seconds_count{
-              service_name="{{ service_name }}",
+              job="{{ service_name }}",
               http_response_status_code=~"5.."
             }[5m]))
             /
             sum(rate(http_server_request_duration_seconds_count{
-              service_name="{{ service_name }}"
+              job="{{ service_name }}"
             }[5m]))
           ) * 100 > {{ error_rate_threshold }}
         for: 5m
@@ -181,6 +181,14 @@ def install_package(
         p["name"]: parameters.get(p["name"], p.get("default"))
         for p in manifest["parameters"]
     }
+    missing = [
+        p["name"]
+        for p in manifest["parameters"]
+        if p.get("required") and resolved_params.get(p["name"]) is None
+    ]
+    if missing:
+        raise ValueError(f"Missing required parameters: {', '.join(missing)}")
+
     resolved_params["team_name"] = team_name
 
     results = {"dashboards": [], "alerts": []}
