@@ -57,12 +57,12 @@ services:
     volumes:
       - vm_data:/storage
     command:
-      # Enable OpenTelemetry OTLP ingestion
-      - "--openTelemetryListenAddr=:8428"
       # Data retention period (how long metrics are kept)
       - "--retentionPeriod=90d"
       # Memory limit for the storage engine
       - "--memory.allowedPercent=60"
+      # Convert OTLP metric names and labels to Prometheus-compatible format
+      - "--opentelemetry.usePrometheusNaming"
       # Search settings for query performance
       - "--search.maxConcurrentRequests=16"
       - "--search.maxUniqueTimeseries=300000"
@@ -86,7 +86,7 @@ volumes:
   grafana_data:
 ```
 
-The `--openTelemetryListenAddr` flag enables the OTLP HTTP endpoint on the same port as the regular HTTP API. VictoriaMetrics accepts OTLP data at the `/opentelemetry/v1/metrics` path.
+VictoriaMetrics accepts OTLP data on the regular HTTP API port at the `/opentelemetry/v1/metrics` path. The `--opentelemetry.usePrometheusNaming` flag converts OpenTelemetry metric names and labels into Prometheus-compatible names, which makes the query examples below work as written.
 
 Start the services:
 
@@ -100,14 +100,14 @@ curl -s http://localhost:8428/health
 
 # Check OTLP endpoint availability
 curl -s -X POST http://localhost:8428/opentelemetry/v1/metrics \
-  -H "Content-Type: application/json" \
-  -d '{}'
-# Should return a response (even if empty data)
+  -H "Content-Type: application/x-protobuf" \
+  --data-binary ''
+# Should return an empty 200 response
 ```
 
 ## Configuring the OpenTelemetry Collector
 
-The Collector configuration uses the OTLP HTTP exporter to send metrics to VictoriaMetrics. This is straightforward since VictoriaMetrics exposes a standard OTLP endpoint.
+The Collector configuration uses the OTLP HTTP exporter to send metrics to VictoriaMetrics. This example uses the OpenTelemetry Collector Contrib distribution because it includes the `resourcedetection` processor.
 
 ```yaml
 # otel-collector-config.yml
@@ -149,9 +149,9 @@ processors:
 
 exporters:
   # OTLP HTTP exporter pointing to VictoriaMetrics
-  otlphttp/victoriametrics:
+  otlp_http/victoriametrics:
     # VictoriaMetrics OTLP endpoint
-    endpoint: http://localhost:8428/opentelemetry
+    metrics_endpoint: http://localhost:8428/opentelemetry/v1/metrics
     # Disable TLS for local development
     tls:
       insecure: true
@@ -167,10 +167,10 @@ service:
     metrics:
       receivers: [otlp, prometheus]
       processors: [memory_limiter, resourcedetection, batch]
-      exporters: [otlphttp/victoriametrics]
+      exporters: [otlp_http/victoriametrics]
 ```
 
-Notice the endpoint path. VictoriaMetrics expects OTLP data at `/opentelemetry/v1/metrics`, and the OTLP HTTP exporter appends `/v1/metrics` automatically. So we set the base endpoint to `http://localhost:8428/opentelemetry`.
+Notice the endpoint path. VictoriaMetrics expects OTLP data at `/opentelemetry/v1/metrics`, so the exporter uses `metrics_endpoint` to set the exact metrics URL.
 
 ## Instrumenting a Go Application
 
@@ -188,11 +188,12 @@ import (
     "time"
 
     "go.opentelemetry.io/otel"
+    "go.opentelemetry.io/otel/attribute"
     "go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
     "go.opentelemetry.io/otel/metric"
     sdkmetric "go.opentelemetry.io/otel/sdk/metric"
     "go.opentelemetry.io/otel/sdk/resource"
-    semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
+    semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
 )
 
 func initMetrics() (*sdkmetric.MeterProvider, error) {
@@ -213,7 +214,7 @@ func initMetrics() (*sdkmetric.MeterProvider, error) {
         resource.WithAttributes(
             semconv.ServiceName("my-go-service"),
             semconv.ServiceVersion("1.0.0"),
-            semconv.DeploymentEnvironment("production"),
+            semconv.DeploymentEnvironmentName("production"),
         ),
     )
     if err != nil {
@@ -262,11 +263,13 @@ func main() {
     http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
         start := time.Now()
 
-        // Increment the request counter
-        requestCounter.Add(r.Context(), 1)
-
         // Simulate some work
         time.Sleep(time.Duration(rand.Intn(100)) * time.Millisecond)
+
+        // Increment the request counter
+        requestCounter.Add(r.Context(), 1,
+            metric.WithAttributes(attribute.String("status_code", "200")),
+        )
 
         // Record the request duration
         duration := time.Since(start).Seconds()
@@ -284,7 +287,7 @@ func main() {
 
 VictoriaMetrics exposes a Prometheus-compatible query API. You can query it directly or through Grafana.
 
-OpenTelemetry metrics are stored with their original names but converted to Prometheus format. Dots in metric names are replaced with underscores, and the metric type suffix is appended automatically. For example, `http.request.duration` becomes `http_request_duration_seconds`.
+With `--opentelemetry.usePrometheusNaming` enabled, OpenTelemetry metrics are converted to Prometheus-compatible format. Dots in metric names are replaced with underscores, and the metric type suffix is appended automatically. For example, `http.request.duration` becomes `http_request_duration_seconds`.
 
 Here are some useful MetricsQL queries:
 
@@ -313,8 +316,9 @@ histogram_quantile(0.95,
 # Top 10 services by request volume
 # MetricsQL extension: topk_avg function
 topk_avg(10,
-  rate(http_requests_total[5m]),
-  "service_name"
+  sum by (service_name) (
+    rate(http_requests_total[5m])
+  )
 )
 ```
 
