@@ -195,15 +195,16 @@ processors:
         action: upsert
 
 exporters:
-  otlp/highlight:
-    endpoint: "otel.highlight.io:4317"
+  otlphttp/highlight:
+    endpoint: "https://otel.highlight.io"
+    compression: gzip
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
       processors: [resource, batch]
-      exporters: [otlp/highlight]
+      exporters: [otlphttp/highlight]
 ```
 
 ## Frontend Setup
@@ -215,9 +216,11 @@ For completeness, here is how the frontend Highlight.io SDK sends the header:
 import { H } from "highlight.run";
 
 H.init("abc123def456", {
+  // This tells Highlight which backend requests should receive x-highlight-request
+  tracingOrigins: true,
   networkRecording: {
     enabled: true,
-    // This automatically adds x-highlight-request to fetch/XHR requests
+    // This records request and response headers/bodies for fetch/XHR requests
     recordHeadersAndBody: true,
   },
 });
@@ -230,6 +233,6 @@ In the Highlight.io dashboard, navigate to a session replay. If the backend inte
 - Request traces showing up in the session timeline
 - Log entries correlated with both the session and the trace
 
-If traces appear but are not linked to sessions, verify that the `x-highlight-request` header is being sent by the frontend and captured by your middleware. Check your browser's network tab to confirm the header is present on API requests.
+If traces appear but are not linked to sessions, verify that the `x-highlight-request` header is being sent by the frontend and captured by your middleware. Check your browser's network tab to confirm the header is present on API requests, and ensure `tracingOrigins` and CORS are configured for cross-origin API calls.
 
 These two attributes are the bridge between Highlight.io's frontend session replay and OpenTelemetry's backend tracing. Without `highlight.project_id`, data is rejected. Without `highlight.session_id`, data arrives but cannot be correlated with user sessions.
