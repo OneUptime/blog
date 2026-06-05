@@ -10,7 +10,7 @@ When a production incident hits a distributed system, the root cause is rarely i
 
 ## Trace Context Propagation Basics
 
-OpenTelemetry automatically propagates trace context across service boundaries using the W3C Trace Context standard. Every outgoing HTTP request, gRPC call, or message carries a `traceparent` header that links child spans back to their parent. This creates a complete picture of a distributed request.
+OpenTelemetry instrumentation can propagate trace context across service boundaries using the W3C Trace Context standard. Outgoing HTTP requests carry `traceparent` and `tracestate` headers, while gRPC and messaging instrumentation use the equivalent metadata carrier for that transport. This links child spans back to their parent and creates a complete picture of a distributed request.
 
 ```python
 # No special code needed for context propagation with auto-instrumentation
@@ -26,7 +26,7 @@ from opentelemetry.instrumentation.flask import FlaskInstrumentor
 
 # Auto-instrumenting HTTP clients and servers propagates trace context
 RequestsInstrumentor().instrument()
-FlaskInstrumentor().instrument(app=app)
+FlaskInstrumentor().instrument_app(app)
 
 # When service A calls service B, the trace context flows automatically:
 # Service A (span) --traceparent header--> Service B (child span)
@@ -91,9 +91,9 @@ def handle_request(request):
     finally:
         duration_ms = (time.monotonic() - start) * 1000
 
-        # The OpenTelemetry SDK automatically attaches the current
-        # trace_id and span_id as exemplars on histogram recordings
-        # when there is an active span context
+        # The OpenTelemetry SDK can attach the current trace_id and span_id
+        # as exemplars on histogram recordings when exemplar sampling is
+        # enabled and there is an active span context
         request_duration.record(duration_ms, {
             "http.method": request.method,
             "http.route": request.path,
@@ -134,12 +134,19 @@ When an alert fires, query your trace backend for error traces within the incide
 
 ```python
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime
 from collections import Counter
 
 class IncidentInvestigator:
     def __init__(self, trace_api_url: str):
         self.api_url = trace_api_url
+
+    def _tag_value(self, span: dict, key: str):
+        """Return a tag value from Jaeger's list-of-key-value tag format."""
+        return next(
+            (tag.get("value") for tag in span.get("tags", []) if tag.get("key") == key),
+            None,
+        )
 
     def find_error_traces(
         self,
@@ -155,7 +162,7 @@ class IncidentInvestigator:
                 "service": service,
                 "start": int(start.timestamp() * 1_000_000),
                 "end": int(end.timestamp() * 1_000_000),
-                "tags": '{"error":"true"}',
+                "tags": '{"error":true}',
                 "limit": limit,
             },
         )
@@ -172,8 +179,9 @@ class IncidentInvestigator:
             spans = trace_data["spans"]
             error_span_ids = {
                 s["spanID"] for s in spans
-                if s.get("tags", {}).get("error") == "true"
+                if self._tag_value(s, "error") is True
             }
+            processes = trace_data.get("processes", {})
 
             for span in spans:
                 if span["spanID"] not in error_span_ids:
@@ -185,7 +193,8 @@ class IncidentInvestigator:
                     if any(r["spanID"] == span["spanID"] for r in s.get("references", []))
                 )
                 if not has_error_child:
-                    origin_counts[span["process"]["serviceName"]] += 1
+                    process = processes.get(span.get("processID"), {})
+                    origin_counts[process.get("serviceName", "unknown")] += 1
 
         return {
             "most_common_origin": origin_counts.most_common(1)[0] if origin_counts else None,
@@ -206,8 +215,8 @@ tracer = trace.get_tracer("payment-service")
 def process_payment(order_id: str, amount: float):
     with tracer.start_as_current_span("process-payment") as span:
         # Deployment context - "was this caused by a new release?"
-        span.set_attribute("deployment.version", os.getenv("APP_VERSION", "unknown"))
-        span.set_attribute("deployment.commit", os.getenv("GIT_COMMIT", "unknown"))
+        span.set_attribute("service.version", os.getenv("APP_VERSION", "unknown"))
+        span.set_attribute("deployment.commit.sha", os.getenv("GIT_COMMIT", "unknown"))
 
         # Infrastructure context - "is this a single-node issue?"
         span.set_attribute("host.name", os.getenv("HOSTNAME", "unknown"))
