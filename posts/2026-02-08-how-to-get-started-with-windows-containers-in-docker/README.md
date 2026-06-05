@@ -8,7 +8,7 @@ Description: Get started with Windows containers in Docker, from installation an
 
 ---
 
-Windows containers bring the same isolation and portability benefits of Linux containers to the Windows ecosystem. If you run .NET Framework applications, IIS web servers, SQL Server, or any Windows-specific workload, Windows containers let you package and deploy them consistently. The technology has matured significantly since its introduction in Windows Server 2016, and today it is a viable option for production workloads.
+Windows containers bring the same isolation and portability benefits of Linux containers to the Windows ecosystem. If you run .NET Framework applications, IIS web servers, or other Windows-specific workloads, Windows containers let you package and deploy them consistently. The technology has matured significantly since its introduction in Windows Server 2016, and today it is a viable option for production workloads.
 
 This guide takes you from zero to running your first Windows container, explains the different isolation modes, and covers the practical details you need to build Windows container workflows.
 
@@ -31,7 +31,7 @@ Windows containers share the Windows kernel, just as Linux containers share the 
 You need one of the following to run Windows containers:
 
 - **Windows Server 2019 or 2022** with the Containers feature enabled
-- **Windows 10/11 Pro or Enterprise** with Docker Desktop installed
+- **Windows 10/11 Pro or Enterprise** with Docker Desktop installed in all-users mode
 
 ### Windows Server Setup
 
@@ -40,9 +40,9 @@ You need one of the following to run Windows containers:
 
 Install-WindowsFeature -Name Containers
 
-# Install Docker Engine
-Install-Module -Name DockerMsftProvider -Repository PSGallery -Force
-Install-Package -Name docker -ProviderName DockerMsftProvider -Force
+# Install Docker CE / Moby
+Invoke-WebRequest -UseBasicParsing "https://raw.githubusercontent.com/microsoft/Windows-Containers/Main/helpful_tools/Install-DockerCE/install-docker-ce.ps1" -o install-docker-ce.ps1
+.\install-docker-ce.ps1
 
 # Restart the server to complete installation
 Restart-Computer
@@ -106,7 +106,7 @@ docker run mcr.microsoft.com/windows/nanoserver:ltsc2022 cmd /c "echo Hello from
 # Server Core - larger but supports more APIs, about 1.8 GB
 docker pull mcr.microsoft.com/windows/servercore:ltsc2022
 
-# Good for: .NET Framework apps, IIS, SQL Server, PowerShell scripts
+# Good for: .NET Framework apps, IIS, PowerShell scripts
 docker run mcr.microsoft.com/windows/servercore:ltsc2022 powershell -c "Get-WindowsFeature"
 ```
 
@@ -116,7 +116,7 @@ docker run mcr.microsoft.com/windows/servercore:ltsc2022 powershell -c "Get-Wind
 # Full Windows base image - largest, about 3.5 GB
 docker pull mcr.microsoft.com/windows:ltsc2022
 
-# Good for: Applications requiring full Windows API, GUI apps (rare in containers)
+# Good for: Applications requiring the full Windows API or GDI dependencies
 ```
 
 ## Building a Simple Windows Container Image
@@ -246,7 +246,7 @@ Windows containers have strict version matching requirements. The container OS v
 # 20H2    - Windows 10 20H2 hosts
 ```
 
-If you see an error like "The container operating system does not match the host operating system," you are trying to run a container built for a different Windows version. Either use Hyper-V isolation (which removes this restriction) or pull the image tag that matches your host.
+If you see an error like "The container operating system does not match the host operating system," you are trying to run a container built for a different Windows version. Either use Hyper-V isolation when the host and image combination supports it, or pull the image tag that matches your host.
 
 ## Common Troubleshooting
 
