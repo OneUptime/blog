@@ -49,7 +49,7 @@ exporters:
   otlp/last9_traces:
     endpoint: otlp.last9.io:443
     headers:
-      Authorization: "Basic ${LAST9_AUTH_TOKEN}"
+      Authorization: "${env:LAST9_OTLP_AUTH_HEADER}"
     tls:
       insecure: false
 
@@ -57,7 +57,7 @@ exporters:
   otlp/last9_metrics:
     endpoint: otlp.last9.io:443
     headers:
-      Authorization: "Basic ${LAST9_AUTH_TOKEN}"
+      Authorization: "${env:LAST9_OTLP_AUTH_HEADER}"
     tls:
       insecure: false
 
@@ -65,7 +65,7 @@ exporters:
   otlp/last9_logs:
     endpoint: otlp.last9.io:443
     headers:
-      Authorization: "Basic ${LAST9_AUTH_TOKEN}"
+      Authorization: "${env:LAST9_OTLP_AUTH_HEADER}"
     tls:
       insecure: false
 
@@ -103,7 +103,7 @@ from opentelemetry.sdk.resources import Resource
 import base64
 
 # Build auth header
-credentials = base64.b64encode(b"your-org-id:your-api-key").decode("utf-8")
+credentials = base64.b64encode(b"your-last9-username:your-last9-password").decode("utf-8")
 auth_headers = (("authorization", f"Basic {credentials}"),)
 
 # Create resource with service identification
@@ -164,9 +164,9 @@ def process_payment(amount, currency):
 
 When Last9 receives your traces, it automatically generates metrics like:
 
-- `trace.duration` histogram grouped by service, operation, and status
-- `trace.error.rate` tracking the percentage of error spans
-- `trace.throughput` measuring spans per second per service
+- Duration histograms grouped by service, operation, and status
+- Error-rate metrics derived from span status
+- Throughput metrics measuring spans or requests per service
 
 For logs, Last9 extracts:
 
