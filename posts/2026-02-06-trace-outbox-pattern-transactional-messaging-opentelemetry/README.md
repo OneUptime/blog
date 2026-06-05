@@ -8,7 +8,7 @@ Description: Learn how to trace the outbox pattern and transactional messaging w
 
 ---
 
-The outbox pattern solves one of the hardest problems in distributed systems: making sure a database write and a message publish either both happen or neither happens. Without it, you risk situations where you save an order to the database but the "OrderCreated" event never gets published, leaving downstream services out of sync.
+The outbox pattern solves one of the hardest problems in distributed systems: making sure a database write and the intent to publish a message are committed atomically, so a relay can publish the message later. Without it, you risk situations where you save an order to the database but the "OrderCreated" event never gets published, leaving downstream services out of sync.
 
 The pattern works by writing the outgoing event to an "outbox" table within the same database transaction as the business data. A separate process then reads from the outbox table and publishes the messages to the broker. It's reliable, but it introduces a tracing challenge. The database write and the message publish happen in different processes at different times. How do you keep the trace connected?
 
@@ -70,8 +70,7 @@ This Python example uses SQLAlchemy and the OpenTelemetry API:
 ```python
 # order_service.py
 
-import json
-from opentelemetry import trace, context
+from opentelemetry import trace
 from opentelemetry.propagate import inject
 from sqlalchemy.orm import Session
 
@@ -103,13 +102,13 @@ def create_order(db: Session, order_data: dict):
         outbox_entry = OutboxEvent(
             event_type="OrderCreated",
             aggregate_id=str(order.id),
-            payload=json.dumps({
+            payload={
                 "order_id": str(order.id),
                 "customer_id": order_data["customer_id"],
                 "total": order_data["total"],
                 "items": order_data["items"],
-            }),
-            trace_context=json.dumps(trace_headers),  # Store trace context as JSON
+            },
+            trace_context=trace_headers,  # Store trace context as JSON
         )
         db.add(outbox_entry)
 
@@ -126,7 +125,7 @@ def create_order(db: Session, order_data: dict):
 
 ## Building the Outbox Relay with Tracing
 
-The relay is the bridge between the database and the message broker. It polls the outbox table, extracts the stored trace context, creates a linked span, and publishes the event with the context propagated.
+The relay is the bridge between the database and the message broker. It polls the outbox table, extracts the stored trace context, creates a span connected to the original trace, and publishes the event with the context propagated.
 
 There's an important design decision here. You can either continue the original trace (making the relay span a child of the API handler span) or start a new trace and link it to the original. Continuing the original trace is usually better because it gives you a single, connected view of the entire flow.
 
@@ -134,7 +133,7 @@ There's an important design decision here. You can either continue the original 
 # outbox_relay.py
 import json
 import time
-from opentelemetry import trace, context
+from opentelemetry import trace
 from opentelemetry.propagate import extract, inject
 from opentelemetry.trace import SpanKind
 from sqlalchemy import create_engine, text
@@ -172,7 +171,10 @@ def publish_outbox_event(conn, row):
     event_id = row.id
     event_type = row.event_type
     payload = row.payload
-    stored_trace_context = json.loads(row.trace_context) if row.trace_context else {}
+    if isinstance(row.trace_context, str):
+        stored_trace_context = json.loads(row.trace_context)
+    else:
+        stored_trace_context = row.trace_context or {}
 
     # Extract the original trace context stored in the outbox row
     # This reconnects us to the trace started by the API handler
@@ -190,6 +192,8 @@ def publish_outbox_event(conn, row):
 
         topic = TOPIC_MAP.get(event_type, "events.unknown")
         span.set_attribute("messaging.destination.name", topic)
+        span.set_attribute("messaging.operation.name", "send")
+        span.set_attribute("messaging.operation.type", "send")
 
         # Inject the (now continued) trace context into Kafka headers
         kafka_headers = {}
@@ -204,7 +208,7 @@ def publish_outbox_event(conn, row):
             kafka_producer.produce(
                 topic=topic,
                 key=row.aggregate_id.encode('utf-8'),
-                value=payload.encode('utf-8') if isinstance(payload, str) else payload,
+                value=json.dumps(payload).encode('utf-8') if not isinstance(payload, (bytes, str)) else payload,
                 headers=kafka_header_list,
             )
             kafka_producer.flush()
@@ -244,6 +248,7 @@ On the consumer side, you extract the trace context from the Kafka message heade
 
 ```python
 # order_consumer.py
+import json
 from opentelemetry import trace
 from opentelemetry.propagate import extract
 from opentelemetry.trace import SpanKind
@@ -267,9 +272,11 @@ def handle_order_created(message):
         kind=SpanKind.CONSUMER,
     ) as span:
         span.set_attribute("messaging.system", "kafka")
-        span.set_attribute("messaging.source.name", message.topic())
+        span.set_attribute("messaging.destination.name", message.topic())
+        span.set_attribute("messaging.operation.name", "process")
+        span.set_attribute("messaging.operation.type", "process")
 
-        event = json.loads(message.value())
+        event = json.loads(message.value().decode("utf-8"))
         span.set_attribute("app.order.id", event["order_id"])
 
         # Reserve inventory for the order items
@@ -352,17 +359,19 @@ def publish_with_retry(conn, row, parent_ctx):
 
 Some teams use Change Data Capture (CDC) instead of polling for the outbox relay. Tools like Debezium watch the database transaction log and publish events when new outbox rows appear. The tracing approach is the same: store the trace context in the outbox row, and the CDC connector extracts it when creating the Kafka message.
 
-If you're using Debezium, you'll need a Single Message Transform (SMT) to move the trace context from the payload into the Kafka message headers:
+If you're using Debezium's Outbox Event Router SMT, configure its tracing options so the SMT reads the serialized span context field and propagates the trace into Kafka message headers:
 
 ```json
 {
-  "transforms": "extractTraceContext",
-  "transforms.extractTraceContext.type": "com.example.ExtractTraceContextSMT",
-  "transforms.extractTraceContext.trace.context.field": "trace_context"
+  "transforms": "outbox",
+  "transforms.outbox.type": "io.debezium.transforms.outbox.EventRouter",
+  "transforms.outbox.tracing.span.context.field": "trace_context",
+  "transforms.outbox.tracing.operation.name": "debezium-read",
+  "transforms.outbox.tracing.with.context.field.only": "true"
 }
 ```
 
-You'll typically need to write a custom SMT for this, but the concept is the same: get the trace context out of the row data and into the message headers where OpenTelemetry expects it.
+The concept is the same: get the trace context out of the row data and into the message headers where OpenTelemetry expects it.
 
 ## Monitoring Outbox Health
 
@@ -371,14 +380,18 @@ Beyond tracing individual events, you should monitor the outbox table's health. 
 ```python
 # outbox_metrics.py
 from opentelemetry import metrics
+from opentelemetry.metrics import Observation
 
 meter = metrics.get_meter("outbox-relay")
+
+def observe_backlog(options):
+    yield Observation(get_outbox_backlog_count())
 
 # Track the outbox backlog size
 outbox_backlog = meter.create_observable_gauge(
     name="outbox.backlog.size",
     description="Number of unpublished events in the outbox table",
-    callbacks=[lambda options: observe_backlog()],
+    callbacks=[observe_backlog],
 )
 
 # Track relay publish latency (time from creation to publish)
