@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Timestamp, Clock Skew, Kubernetes
 
 Description: Fix incorrect span timestamps and trace visualization issues caused by clock skew between containers in a Kubernetes cluster.
 
-Your traces look wrong. Child spans appear to start before their parent spans, span durations are negative, or the waterfall visualization in your tracing UI is completely jumbled. The most likely cause is clock skew between the machines (or containers) generating the spans.
+Your traces look wrong. Child spans appear to start before their parent spans, span durations are negative, or the waterfall visualization in your tracing UI is completely jumbled. The most likely cause is clock skew between the nodes or machines generating the spans.
 
 ## Understanding Clock Skew in Traces
 
@@ -27,23 +27,23 @@ The trace visualizer shows this as a child starting before its parent, which mak
 # Check the time on different nodes
 
 for node in $(kubectl get nodes -o name); do
-  echo "$node: $(kubectl debug $node -it --image=busybox -- date +%s%N 2>/dev/null | tail -1)"
+  echo "$node: $(kubectl debug "$node" -it --image=ubuntu --profile=sysadmin -- chroot /host date +%s%3N 2>/dev/null | tail -1)"
 done
 
 # Or check time from inside pods
-kubectl exec -it pod-on-node-1 -- date +%s%N
-kubectl exec -it pod-on-node-2 -- date +%s%N
+kubectl exec -it pod-on-node-1 -- date +%s%3N
+kubectl exec -it pod-on-node-2 -- date +%s%3N
 # Compare the outputs - they should be within a few milliseconds
 ```
 
 Check NTP synchronization:
 
 ```bash
-# On a node, check chrony or ntpd status
-kubectl debug node/my-node -it --image=ubuntu -- bash -c "apt-get update && apt-get install -y chrony && chronyc tracking"
+# On a node, check chrony status if chrony is installed on the host
+kubectl debug node/my-node -it --image=ubuntu --profile=sysadmin -- chroot /host chronyc tracking
 
-# Or check timedatectl
-kubectl debug node/my-node -it --image=busybox -- sh -c "cat /proc/driver/rtc 2>/dev/null; date"
+# Or inspect the host clock from a debug container
+kubectl debug node/my-node -it --image=ubuntu --profile=sysadmin -- chroot /host date -u
 ```
 
 ## Fix 1: Ensure NTP Is Running on All Nodes
@@ -51,9 +51,9 @@ kubectl debug node/my-node -it --image=busybox -- sh -c "cat /proc/driver/rtc 2>
 The most fundamental fix is to make sure all nodes have proper time synchronization:
 
 For cloud providers:
-- **AWS**: EC2 instances use the Amazon Time Sync Service. Make sure `chrony` is configured to use `169.254.169.123`.
-- **GCP**: GKE nodes sync time automatically via NTP.
-- **Azure**: AKS nodes use Hyper-V time synchronization.
+- **AWS**: EC2 instances can use the Amazon Time Sync Service. Make sure `chrony` is configured to use `169.254.169.123`.
+- **GCP**: GKE node images use Google-provided time synchronization; Container-Optimized OS and Ubuntu nodes use the host RTC as a backup if the internal NTP server is unavailable.
+- **Azure**: AKS nodes run on Azure VMs. Linux VMs still need a time sync service such as `chronyd` or `ntpd`; newer Linux images can use the Azure host PTP clock through `/dev/ptp_hyperv`.
 
 For on-premises clusters, verify NTP configuration:
 
@@ -75,12 +75,13 @@ If the offset is more than a few milliseconds, NTP is not working correctly.
 
 The OpenTelemetry Collector does not have a built-in clock correction feature, but you can implement it using a custom processor or by normalizing timestamps in your backend.
 
-Some backends (like Jaeger) have clock skew adjustment built in:
+Some backends (like Jaeger) can apply clock skew adjustment in the query layer:
 
 ```yaml
 # Jaeger backend clock skew adjustment
-# This is configured on the Jaeger side, not the Collector
-# Jaeger UI automatically adjusts for detected clock skew
+# This is configured on the Jaeger query side, not the Collector.
+# Recent Jaeger releases default --query.max-clock-skew-adjustment to 0s,
+# which disables adjustment; set a non-zero duration to enable it.
 ```
 
 ## Fix 3: Deploy a Time-Sync DaemonSet
@@ -93,25 +94,33 @@ kind: DaemonSet
 metadata:
   name: time-sync-monitor
 spec:
+  selector:
+    matchLabels:
+      app: time-sync-monitor
   template:
+    metadata:
+      labels:
+        app: time-sync-monitor
     spec:
+      hostNetwork: true
       hostPID: true
       containers:
-        - name: time-check
-          image: busybox
-          command:
-            - sh
-            - -c
-            - |
-              while true; do
-                OFFSET=$(ntpdate -q pool.ntp.org 2>/dev/null | grep offset | awk '{print $NF}')
-                if [ -n "$OFFSET" ]; then
-                  echo "Node $(hostname): NTP offset = ${OFFSET}s"
-                fi
-                sleep 300
-              done
-          securityContext:
-            privileged: true
+        - name: node-exporter
+          image: quay.io/prometheus/node-exporter:latest
+          args:
+            - --path.rootfs=/host
+            - --collector.timex
+          ports:
+            - name: metrics
+              containerPort: 9100
+          volumeMounts:
+            - name: host
+              mountPath: /host
+              readOnly: true
+      volumes:
+        - name: host
+          hostPath:
+            path: /
 ```
 
 ## Fix 4: Use Monotonic Clocks for Duration Calculation
@@ -146,18 +155,18 @@ duration = time.monotonic_ns() - start
 
 ## Fix 5: Single-Point Timestamp Assignment
 
-For critical traces, consider having a single service assign timestamps:
+For critical traces, consider rejecting or quarantining spans with obviously invalid timestamps at the Collector. The Collector can rewrite timestamp fields, but it cannot reconstruct the true operation time for clock-skewed spans:
 
 ```yaml
-# Use the Collector as the single timestamp authority
-# The transform processor can override timestamps
+# The transform processor can override obviously invalid timestamps.
 processors:
   transform:
     trace_statements:
       - context: span
         statements:
-          # Only set timestamp if it seems unreasonable
-          - set(start_time, Now()) where Duration(start_time, Now()) > 60000000000
+          # Only replace timestamps that are clearly invalid.
+          - set(span.start_time, Now()) where UnixNano(span.start_time) <= 0
+          - set(span.end_time, Now()) where UnixNano(span.end_time) < UnixNano(span.start_time)
 ```
 
 This is a workaround, not a solution. The proper fix is always to fix NTP synchronization.
