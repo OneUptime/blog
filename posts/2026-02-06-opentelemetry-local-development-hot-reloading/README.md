@@ -52,11 +52,9 @@ Use Docker Compose to run a minimal observability stack. Include Jaeger for trac
 ```yaml
 # docker-compose.dev.yaml
 
-version: '3.8'
-
 services:
   jaeger:
-    image: jaegertracing/all-in-one:latest
+    image: jaegertracing/all-in-one:1.76.0
     ports:
       - "16686:16686"  # UI
       - "4317:4317"    # OTLP gRPC
@@ -68,13 +66,14 @@ services:
       - "--memory.max-traces=1000"  # Limit memory usage
 ```
 
-Start the stack with `docker-compose -f docker-compose.dev.yaml up -d`. The collector runs in the background, ready to receive telemetry whenever you enable instrumentation.
+Start the stack with `docker compose -f docker-compose.dev.yaml up -d`. The collector runs in the background, ready to receive telemetry whenever you enable instrumentation.
 
 For even faster startup, skip the collector entirely and export traces directly to the console during development:
 
 ```javascript
 const { NodeSDK } = require('@opentelemetry/sdk-node');
-const { ConsoleSpanExporter } = require('@opentelemetry/sdk-trace-base');
+const { ConsoleSpanExporter } = require('@opentelemetry/sdk-trace-node');
+const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
 
 const { isLocal } = require('./common/telemetry');
@@ -82,7 +81,7 @@ const { isLocal } = require('./common/telemetry');
 function initializeTelemetry() {
   const exporter = isLocal
     ? new ConsoleSpanExporter()
-    : new OTLPTraceExporter({ url: process.env.OTEL_EXPORTER_URL });
+    : new OTLPTraceExporter({ url: process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT });
 
   const sdk = new NodeSDK({
     traceExporter: exporter,
@@ -106,9 +105,13 @@ The key is properly shutting down the SDK when the process exits or when modules
 ```javascript
 // Initialize telemetry and handle cleanup
 const sdk = initializeTelemetry();
+let isShuttingDown = false;
 
 // Handle graceful shutdown
 async function shutdown() {
+  if (!sdk || isShuttingDown) return;
+  isShuttingDown = true;
+
   try {
     await sdk.shutdown();
     console.log('OpenTelemetry SDK shut down successfully');
@@ -118,13 +121,24 @@ async function shutdown() {
 }
 
 // Register shutdown handlers
-process.on('SIGTERM', shutdown);
-process.on('SIGINT', shutdown);
-process.on('exit', shutdown);
+process.once('SIGTERM', () => {
+  shutdown().finally(() => process.exit(0));
+});
+
+process.once('SIGINT', () => {
+  shutdown().finally(() => process.exit(0));
+});
+
+// nodemon uses SIGUSR2 for restarts and expects the app to re-send it
+process.once('SIGUSR2', () => {
+  shutdown().finally(() => process.kill(process.pid, 'SIGUSR2'));
+});
 
 // For nodemon and other dev tools that reload modules
 if (module.hot) {
-  module.hot.dispose(shutdown);
+  module.hot.dispose(() => {
+    void shutdown();
+  });
 }
 ```
 
@@ -138,6 +152,7 @@ In local development, you want traces exported immediately without batching dela
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { BatchSpanProcessor, SimpleSpanProcessor } = require('@opentelemetry/sdk-trace-base');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
+const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
 
 const { isLocal } = require('./common/telemetry');
 
@@ -160,7 +175,7 @@ const exporter = new OTLPTraceExporter({
 });
 
 const sdk = new NodeSDK({
-  spanProcessor: createSpanProcessor(exporter),
+  spanProcessors: [createSpanProcessor(exporter)],
   instrumentations: [getNodeAutoInstrumentations()],
 });
 ```
@@ -185,7 +200,10 @@ function getInstrumentations() {
     // Minimal instrumentation for development
     return [
       new HttpInstrumentation({
-        ignoreIncomingPaths: ['/health', '/metrics'],
+        ignoreIncomingRequestHook: (request) => {
+          const url = new URL(request.url || '/', 'http://localhost');
+          return ['/health', '/metrics'].includes(url.pathname);
+        },
       }),
       new ExpressInstrumentation(),
       // Add only the instrumentations you need for debugging
@@ -212,7 +230,6 @@ Implement request-based trace initiation. Instead of creating traces for every r
 
 ```javascript
 const { HttpInstrumentation } = require('@opentelemetry/instrumentation-http');
-const { context, trace, SpanStatusCode } = require('@opentelemetry/api');
 
 const { isLocal } = require('./common/telemetry');
 
@@ -224,13 +241,7 @@ function shouldSampleRequest(req) {
 }
 
 new HttpInstrumentation({
-  requestHook: (span, request) => {
-    if (!shouldSampleRequest(request)) {
-      // Set sampling decision to drop this trace
-      const spanContext = span.spanContext();
-      spanContext.traceFlags = 0; // TraceFlags.NONE
-    }
-  },
+  ignoreIncomingRequestHook: (request) => !shouldSampleRequest(request),
 })
 ```
 
@@ -270,7 +281,7 @@ Different frameworks require different approaches to hot reloading with OpenTele
 
 Next.js dev mode uses webpack HMR for fast refresh. Initialize OpenTelemetry in a way that survives module reloads:
 
-```javascript
+```typescript
 // instrumentation.ts (Next.js 13+ instrumentation hook)
 export async function register() {
   if (process.env.NEXT_RUNTIME === 'nodejs') {
@@ -280,6 +291,8 @@ export async function register() {
 }
 
 // telemetry.ts
+import { NodeSDK } from '@opentelemetry/sdk-node';
+
 let sdk: NodeSDK | undefined;
 
 export function registerOTel() {
@@ -393,9 +406,11 @@ test('creates span for user creation', async () => {
 
   const spans = global.spanExporter.getFinishedSpans();
   const userSpan = spans.find(s => s.name === 'POST /users');
+  const statusCode = userSpan?.attributes['http.response.status_code'] ??
+                     userSpan?.attributes['http.status_code'];
 
   expect(userSpan).toBeDefined();
-  expect(userSpan.attributes['http.status_code']).toBe(201);
+  expect(statusCode).toBe(201);
 });
 ```
 
@@ -442,24 +457,44 @@ Even in development, monitor the overhead of OpenTelemetry instrumentation. Crea
 
 ```javascript
 // scripts/benchmark-instrumentation.js
+const { spawn } = require('node:child_process');
 const autocannon = require('autocannon');
 
+async function waitForServer(url) {
+  for (let attempt = 0; attempt < 50; attempt++) {
+    try {
+      const response = await fetch(url);
+      if (response.ok) return;
+    } catch (error) {
+      // Server is not ready yet
+    }
+
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
+
+  throw new Error(`Server did not become ready at ${url}`);
+}
+
 async function benchmark(enableOtel) {
-  process.env.ENABLE_OTEL = enableOtel.toString();
+  const env = {
+    ...process.env,
+    ENABLE_OTEL: enableOtel.toString(),
+  };
+  const server = spawn('node', ['src/server.js'], { env, stdio: 'inherit' });
 
-  // Start server
-  const { server } = await import('../src/server');
+  try {
+    await waitForServer('http://localhost:3000/api/health');
 
-  // Run benchmark
-  const result = await autocannon({
-    url: 'http://localhost:3000/api/health',
-    connections: 10,
-    duration: 10,
-  });
-
-  await server.close();
-
-  return result;
+    // Run benchmark
+    return await autocannon({
+      url: 'http://localhost:3000/api/health',
+      connections: 10,
+      duration: 10,
+    });
+  } finally {
+    server.kill('SIGTERM');
+    await new Promise(resolve => server.once('exit', resolve));
+  }
 }
 
 async function main() {
@@ -486,21 +521,20 @@ For complex systems with multiple services, use Docker Compose to run everything
 
 ```yaml
 # docker-compose.full-stack.yaml
-version: '3.8'
-
 services:
   jaeger:
-    image: jaegertracing/all-in-one:latest
+    image: jaegertracing/all-in-one:1.76.0
     ports:
       - "16686:16686"
       - "4317:4317"
+      - "4318:4318"
 
   api-gateway:
     build: ./api-gateway
     environment:
       - NODE_ENV=development
       - ENABLE_OTEL=true
-      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4317
+      - OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://jaeger:4318/v1/traces
     ports:
       - "3000:3000"
     volumes:
@@ -512,7 +546,7 @@ services:
     environment:
       - NODE_ENV=development
       - ENABLE_OTEL=true
-      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4317
+      - OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://jaeger:4318/v1/traces
     volumes:
       - ./user-service/src:/app/src
     command: npm run dev
@@ -531,7 +565,7 @@ This stack includes all services with hot reloading enabled. Changes to source c
 
 With everything configured, your typical development workflow looks like this:
 
-1. Start the local observability stack: `docker-compose up jaeger`
+1. Start the local observability stack: `docker compose -f docker-compose.dev.yaml up -d jaeger`
 2. Start your services with hot reloading: `npm run dev`
 3. Make code changes and watch your services restart automatically
 4. Send test requests with tracing enabled: `curl -H "x-enable-trace: true" http://localhost:3000/api/endpoint`
