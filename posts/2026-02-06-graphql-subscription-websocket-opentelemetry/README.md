@@ -20,7 +20,7 @@ A typical GraphQL subscription flow looks like this:
 4. Server pushes `next` messages whenever data is available
 5. Client or server sends `complete` to end the subscription
 
-Each of these steps is worth tracing, but they happen asynchronously over a long period. You need a span structure that captures the full lifecycle without creating a single span that runs for hours.
+Each of these steps is worth tracing, but they happen asynchronously over a long period. You need a span structure that captures the full lifecycle without relying only on a single span that runs for hours.
 
 ## Span Strategy for Subscriptions
 
@@ -28,15 +28,17 @@ The approach that works best is to create a parent span for the subscription lif
 
 ```typescript
 // subscription-tracing.ts
-import { trace, SpanKind, context, SpanStatusCode } from '@opentelemetry/api';
+import { trace, SpanKind, context, type Context, type Span } from '@opentelemetry/api';
 
 const tracer = trace.getTracer('graphql-subscriptions');
 
 interface SubscriptionContext {
-  parentSpan: any;
-  parentContext: any;
+  parentSpan: Span;
+  parentContext: Context;
   eventCount: number;
   subscriptionId: string;
+  operationName: string;
+  startTime: number;
 }
 
 // Map to track active subscriptions
@@ -58,6 +60,8 @@ export function onSubscriptionStart(subscriptionId: string, operationName: strin
     parentContext: trace.setSpan(context.active(), span),
     eventCount: 0,
     subscriptionId,
+    operationName,
+    startTime: Date.now(),
   });
 
   return span;
@@ -112,7 +116,7 @@ export function onSubscriptionEnd(subscriptionId: string, reason: string) {
 The `graphql-ws` library is the standard for GraphQL over WebSocket. Here is how to hook in the tracing:
 
 ```typescript
-import { useServer } from 'graphql-ws/lib/use/ws';
+import { useServer } from 'graphql-ws/use/ws';
 import { WebSocketServer } from 'ws';
 
 const wsServer = new WebSocketServer({ port: 4000, path: '/graphql' });
@@ -120,28 +124,28 @@ const wsServer = new WebSocketServer({ port: 4000, path: '/graphql' });
 useServer(
   {
     schema,
-    onSubscribe(ctx, message) {
+    onSubscribe(ctx, id, payload) {
       // Called when a client starts a subscription
-      const operationName = message.payload.operationName || 'anonymous';
-      const subscriptionId = message.id;
+      const operationName = payload.operationName || 'anonymous';
+      const subscriptionId = id;
 
       onSubscriptionStart(subscriptionId, operationName);
 
       // Add a span event for the subscribe message
       const sub = activeSubscriptions.get(subscriptionId);
       sub?.parentSpan.addEvent('subscription.started', {
-        'graphql.query': message.payload.query,
+        'graphql.query': payload.query,
       });
     },
 
-    onNext(ctx, message, args, result) {
+    onNext(ctx, id, payload, args, result) {
       // Called for each event pushed to the client
-      onSubscriptionEvent(message.id, result);
+      onSubscriptionEvent(id, result);
     },
 
-    onComplete(ctx, message) {
+    onComplete(ctx, id, payload) {
       // Called when subscription ends normally
-      onSubscriptionEnd(message.id, 'completed');
+      onSubscriptionEnd(id, 'completed');
     },
 
     onClose(ctx, code, reason) {
@@ -178,15 +182,20 @@ activeConnectionsGauge.add(1);
 activeConnectionsGauge.add(-1);
 
 // When a subscription ends, record its duration
-const durationSeconds = (Date.now() - startTime) / 1000;
-subscriptionDuration.record(durationSeconds, {
-  'graphql.operation.name': operationName,
-});
+function recordSubscriptionDuration(subscriptionId: string) {
+  const sub = activeSubscriptions.get(subscriptionId);
+  if (!sub) return;
+
+  const durationSeconds = (Date.now() - sub.startTime) / 1000;
+  subscriptionDuration.record(durationSeconds, {
+    'graphql.operation.name': sub.operationName,
+  });
+}
 ```
 
 ## What to Look For in Your Traces
 
-Once this instrumentation is in place, your traces will show the full subscription lifecycle. The parent span duration tells you how long subscribers stay connected. The child span count tells you how many events were delivered. Gaps between child spans show you the interval between events.
+Once this instrumentation is in place, your traces will show the full subscription lifecycle. The parent span duration tells you how long subscriptions stay active. The child span count tells you how many events were delivered. Gaps between child spans show you the interval between events.
 
 If you see subscriptions that open and immediately close, that often indicates an authentication problem or a schema mismatch. If you see subscriptions that receive thousands of events, you might have a subscriber that is not filtering properly.
 
