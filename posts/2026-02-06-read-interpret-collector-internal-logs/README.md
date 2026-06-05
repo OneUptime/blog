@@ -10,7 +10,7 @@ The OpenTelemetry Collector generates internal logs that provide critical insigh
 
 ## Understanding Log Levels
 
-The collector supports five log levels, each providing different detail about operations. Choosing the appropriate level balances between information richness and log volume.
+The collector supports four common log levels, each providing different detail about operations. Choosing the appropriate level balances between information richness and log volume.
 
 **Log level hierarchy**:
 
@@ -18,7 +18,7 @@ The collector supports five log levels, each providing different detail about op
 service:
   telemetry:
     logs:
-      # Available levels: debug, info, warn, error, dpanic, panic, fatal
+      # Available levels: debug, info, warn, error
       level: info
       # Output format: console or json
       encoding: console
@@ -307,34 +307,28 @@ Exporter errors indicate backend connectivity or compatibility issues. Verify:
 
 ## Analyzing Throughput Metrics
 
-Some log messages include throughput information, helping understand collector load:
+Collector internal metrics include throughput information, helping understand collector load:
 
 ```text
-2026-02-06T11:00:00.123Z    info    service@v0.96.0/service.go:201    Received spans    {"spans_received": 15340, "spans_dropped": 0}
-2026-02-06T11:00:00.124Z    info    service@v0.96.0/service.go:202    Exported spans    {"spans_exported": 15340, "spans_failed": 0}
+otelcol_receiver_accepted_spans 15340
+otelcol_receiver_refused_spans 0
+otelcol_exporter_sent_spans 15340
+otelcol_exporter_send_failed_spans 0
 ```
 
-These periodic summaries show:
+These metrics show:
 - Total data received
-- Data dropped due to errors or backpressure
+- Data refused due to errors or backpressure
 - Data successfully exported
 - Export failures
 
-Calculate drop rate as `spans_dropped / (spans_received + spans_dropped)`. Non-zero drop rates indicate capacity or configuration issues.
+Calculate refusal rate as `otelcol_receiver_refused_spans / (otelcol_receiver_accepted_spans + otelcol_receiver_refused_spans)`. Non-zero refusal rates indicate capacity or configuration issues.
 
 ## Structured Logging for Automated Analysis
 
 JSON-formatted logs enable automated analysis and alerting:
 
 ```yaml
-service:
-  telemetry:
-    logs:
-      level: info
-      encoding: json
-      output_paths:
-        - /var/log/otelcol/collector.log
-
 receivers:
   otlp:
     protocols:
@@ -349,12 +343,19 @@ exporters:
   otlp:
     endpoint: backend.example.com:4317
 
-  # Export collector logs to observability backend
-  otlphttp/logs:
-    endpoint: http://logs-backend.example.com:4318
-    logs_endpoint: /v1/logs
-
 service:
+  telemetry:
+    logs:
+      level: info
+      encoding: json
+      output_paths:
+        - /var/log/otelcol/collector.log
+      processors:
+        - batch:
+            exporter:
+              otlp:
+                protocol: http/protobuf
+                endpoint: http://logs-backend.example.com:4318
   pipelines:
     traces:
       receivers: [otlp]
@@ -383,17 +384,6 @@ cat /var/log/otelcol/collector.log | jq 'select(.msg | contains("queue is full")
 Collector internal metrics complement logs. Correlating logs with metrics provides comprehensive troubleshooting context:
 
 ```yaml
-service:
-  telemetry:
-    logs:
-      level: info
-      encoding: json
-
-    # Enable detailed internal metrics
-    metrics:
-      level: detailed
-      address: 0.0.0.0:8888
-
 receivers:
   otlp:
     protocols:
@@ -422,6 +412,21 @@ exporters:
     endpoint: http://prometheus.example.com:9090/api/v1/write
 
 service:
+  telemetry:
+    logs:
+      level: info
+      encoding: json
+
+    # Enable detailed internal metrics
+    metrics:
+      level: detailed
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+
   pipelines:
     traces:
       receivers: [otlp]
@@ -443,7 +448,7 @@ When investigating an issue:
 
 Key metrics to correlate:
 - `otelcol_receiver_accepted_spans`: Compare with receiver logs
-- `otelcol_processor_refused_spans`: Correlate with memory pressure logs
+- `otelcol_receiver_refused_spans`: Correlate with memory pressure logs
 - `otelcol_exporter_sent_spans`: Match with exporter logs
 - `otelcol_process_uptime`: Verify against startup logs
 
@@ -642,7 +647,7 @@ exporters:
     endpoint: backend.example.com:4317
 
   # Export collector logs separately
-  otlphttp/logs:
+  otlp_http/logs:
     endpoint: http://logs-backend.example.com:4318
 
 service:
@@ -658,7 +663,7 @@ service:
     logs:
       receivers: [filelog]
       processors: [batch]
-      exporters: [otlphttp/logs]
+      exporters: [otlp_http/logs]
 ```
 
 This configuration sends collector logs to a separate backend for centralized monitoring.
@@ -713,7 +718,12 @@ service:
 
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 
   pipelines:
     traces:
