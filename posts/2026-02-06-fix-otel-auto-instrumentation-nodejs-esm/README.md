@@ -25,11 +25,11 @@ Node.js provides an experimental loader hook API that lets you intercept ESM imp
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
-import { Resource } from '@opentelemetry/resources';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 import { ATTR_SERVICE_NAME } from '@opentelemetry/semantic-conventions';
 
 const sdk = new NodeSDK({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     [ATTR_SERVICE_NAME]: 'my-esm-service',
   }),
   traceExporter: new OTLPTraceExporter(),
@@ -45,10 +45,10 @@ process.on('SIGTERM', () => {
 
 ### Step 2: Run with the Loader Hook
 
-For Node.js 18.19+ and Node.js 20+, use `--import`:
+For Node.js 18.19+ and Node.js 20+, use `--import` with the OpenTelemetry ESM loader hook:
 
 ```bash
-node --import ./tracing.mjs app.mjs
+node --experimental-loader=@opentelemetry/instrumentation/hook.mjs --import ./tracing.mjs app.mjs
 ```
 
 For older Node.js versions, use the experimental loader:
@@ -65,22 +65,21 @@ Note that with the loader approach, you may need a CommonJS version of your trac
 {
   "type": "module",
   "scripts": {
-    "start": "node --import ./tracing.mjs src/app.mjs"
+    "start": "node --experimental-loader=@opentelemetry/instrumentation/hook.mjs --import ./tracing.mjs src/app.mjs"
   }
 }
 ```
 
 ## For Node.js 20+ with the Registration API
 
-Starting with Node.js 20.6+ and `@opentelemetry/instrumentation` 0.46+, there is a cleaner approach using the `register` method:
+Starting with Node.js 20.6+ and `@opentelemetry/instrumentation` 0.46+, you can also use Node.js's `register` method instead of passing `--experimental-loader` directly:
 
 ```javascript
 // instrumentation.mjs
 import { register } from 'node:module';
-import { pathToFileURL } from 'node:url';
 
 // Register the OpenTelemetry ESM loader hook
-register('@opentelemetry/instrumentation/hook.mjs', pathToFileURL('./'));
+register('@opentelemetry/instrumentation/hook.mjs', import.meta.url);
 ```
 
 ```javascript
@@ -99,6 +98,8 @@ sdk.start();
 node --import ./tracing.mjs app.mjs
 ```
 
+Note that `module.register()` is deprecated in Node.js 25.9+ in favor of newer customization hook APIs, so for current LTS deployments the explicit OpenTelemetry loader hook remains the safest documented startup option.
+
 ## Common Pitfalls
 
 ### Pitfall 1: Missing the Loader Hook
@@ -114,9 +115,9 @@ node --import ./tracing.mjs app.mjs
 
 You need both the tracing setup AND the ESM loader hook.
 
-### Pitfall 2: Using --require with ESM
+### Pitfall 2: Using --require with ESM on older Node.js versions
 
-The `--require` flag only works with CommonJS files:
+On Node.js versions before `--require` gained ES module preload support, the `--require` flag only works with CommonJS files:
 
 ```bash
 # This fails if tracing.mjs uses import syntax
@@ -172,7 +173,7 @@ RUN npm ci --production
 COPY . .
 
 # Use --import for ESM applications
-ENV NODE_OPTIONS="--import ./tracing.mjs"
+ENV NODE_OPTIONS="--experimental-loader=@opentelemetry/instrumentation/hook.mjs --import ./tracing.mjs"
 CMD ["node", "src/app.mjs"]
 ```
 
