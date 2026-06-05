@@ -74,12 +74,14 @@ declare -A FAIL_COUNTS
 
 send_alert() {
     local message="$1"
+    local escaped_message
     echo "[ALERT] $message"
 
     if [ -n "$ALERT_WEBHOOK" ]; then
+        escaped_message=$(printf '%s' "$message" | sed 's/\\/\\\\/g; s/"/\\"/g')
         curl -s -X POST "$ALERT_WEBHOOK" \
             -H 'Content-type: application/json' \
-            -d "{\"text\": \"$message\"}" > /dev/null
+            -d "{\"text\": \"$escaped_message\"}" > /dev/null
     fi
 }
 
@@ -91,7 +93,7 @@ while true; do
         HEALTH=$(docker inspect --format '{{.State.Health.Status}}' "$CONTAINER_ID" 2>/dev/null)
         STATE=$(docker inspect --format '{{.State.Status}}' "$CONTAINER_ID")
 
-        # Track containers that are not running
+        # Skip containers that are no longer running
         if [ "$STATE" != "running" ]; then
             send_alert "Container $NAME is in state: $STATE"
             continue
@@ -105,7 +107,7 @@ while true; do
 
             if [ "$CURRENT_COUNT" -ge "$CONSECUTIVE_FAILURES" ]; then
                 # Get the last health check log for context
-                LAST_LOG=$(docker inspect --format '{{(index .State.Health.Log 0).Output}}' "$CONTAINER_ID" 2>/dev/null | head -1)
+                LAST_LOG=$(docker inspect --format '{{range .State.Health.Log}}{{.Output}}{{"\n"}}{{end}}' "$CONTAINER_ID" 2>/dev/null | tail -1)
                 send_alert "Container $NAME has been unhealthy for $CURRENT_COUNT consecutive checks. Last output: $LAST_LOG"
             fi
         else
@@ -115,11 +117,14 @@ while true; do
     done
 
     # Check for containers that recently stopped
-    for CONTAINER_ID in $(docker ps -a -q --filter status=exited --filter "since=$(date -d '5 minutes ago' +%Y-%m-%dT%H:%M:%S)" 2>/dev/null); do
+    SINCE_EPOCH=$(date -d '5 minutes ago' +%s)
+    for CONTAINER_ID in $(docker ps -a -q --filter status=exited); do
         NAME=$(docker inspect --format '{{.Name}}' "$CONTAINER_ID" | sed 's/^\//')
         EXIT_CODE=$(docker inspect --format '{{.State.ExitCode}}' "$CONTAINER_ID")
+        FINISHED_AT=$(docker inspect --format '{{.State.FinishedAt}}' "$CONTAINER_ID")
+        FINISHED_EPOCH=$(date -d "$FINISHED_AT" +%s 2>/dev/null || echo 0)
 
-        if [ "$EXIT_CODE" != "0" ]; then
+        if [ "$FINISHED_EPOCH" -ge "$SINCE_EPOCH" ] && [ "$EXIT_CODE" != "0" ]; then
             send_alert "Container $NAME exited with code $EXIT_CODE"
         fi
     done
@@ -140,6 +145,26 @@ Collect container metrics over time for analysis and capacity planning.
 METRICS_FILE="/var/log/docker-metrics.csv"
 INTERVAL=60  # Log metrics every 60 seconds
 
+to_mb() {
+    echo "$1" | awk '
+    {
+        value=$1
+        unit=$1
+        gsub(/[^0-9.]/, "", value)
+        gsub(/[0-9.]/, "", unit)
+
+        if (value == "") value = 0
+        if (unit == "B") factor = 1 / 1024 / 1024
+        else if (unit == "kB" || unit == "KiB") factor = 1 / 1024
+        else if (unit == "MB" || unit == "MiB") factor = 1
+        else if (unit == "GB" || unit == "GiB") factor = 1024
+        else if (unit == "TB" || unit == "TiB") factor = 1024 * 1024
+        else factor = 1
+
+        printf "%.2f", value * factor
+    }'
+}
+
 # Create the CSV header if the file does not exist
 if [ ! -f "$METRICS_FILE" ]; then
     echo "timestamp,container,cpu_percent,mem_percent,mem_usage_mb,net_rx_mb,net_tx_mb,block_read_mb,block_write_mb,pids" > "$METRICS_FILE"
@@ -157,15 +182,21 @@ while true; do
         CPU=$(echo "$CPU" | tr -d '%')
         MEM=$(echo "$MEM" | tr -d '%')
 
-        # Extract memory usage in MB
-        MEM_MB=$(echo "$MEM_USAGE" | grep -oP '[\d.]+(?=MiB|GiB)' | head -1)
-
-        # Extract network I/O (simplified)
+        # Convert resource usage values to MB
+        MEM_USED=$(echo "$MEM_USAGE" | cut -d'/' -f1 | tr -d ' ')
         NET_RX=$(echo "$NET_IO" | cut -d'/' -f1 | tr -d ' ')
         NET_TX=$(echo "$NET_IO" | cut -d'/' -f2 | tr -d ' ')
+        BLOCK_READ=$(echo "$BLOCK_IO" | cut -d'/' -f1 | tr -d ' ')
+        BLOCK_WRITE=$(echo "$BLOCK_IO" | cut -d'/' -f2 | tr -d ' ')
+
+        MEM_MB=$(to_mb "$MEM_USED")
+        NET_RX_MB=$(to_mb "$NET_RX")
+        NET_TX_MB=$(to_mb "$NET_TX")
+        BLOCK_READ_MB=$(to_mb "$BLOCK_READ")
+        BLOCK_WRITE_MB=$(to_mb "$BLOCK_WRITE")
 
         # Write the metrics row
-        echo "${TIMESTAMP},${NAME},${CPU},${MEM},${MEM_MB:-0},${NET_RX},${NET_TX},0,0,${PIDS}" >> "$METRICS_FILE"
+        echo "${TIMESTAMP},${NAME},${CPU},${MEM},${MEM_MB},${NET_RX_MB},${NET_TX_MB},${BLOCK_READ_MB},${BLOCK_WRITE_MB},${PIDS}" >> "$METRICS_FILE"
     done
 
     sleep "$INTERVAL"
@@ -231,9 +262,14 @@ Detect containers that keep crashing and restarting.
 MAX_RESTARTS_PER_HOUR=5
 CHECK_INTERVAL=300  # Check every 5 minutes
 
+declare -A LAST_RESTART_COUNT
+declare -A LAST_CHECK_EPOCH
+
 echo "Starting restart loop detector (threshold: $MAX_RESTARTS_PER_HOUR restarts/hour)"
 
 while true; do
+    NOW_EPOCH=$(date +%s)
+
     for CONTAINER_ID in $(docker ps -q); do
         NAME=$(docker inspect --format '{{.Name}}' "$CONTAINER_ID" | sed 's/^\//')
         RESTART_COUNT=$(docker inspect --format '{{.RestartCount}}' "$CONTAINER_ID")
@@ -241,13 +277,26 @@ while true; do
 
         # Calculate how long the container has been running since last start
         STARTED_EPOCH=$(date -d "$STARTED_AT" +%s 2>/dev/null || echo 0)
-        NOW_EPOCH=$(date +%s)
         UPTIME_SECONDS=$((NOW_EPOCH - STARTED_EPOCH))
         UPTIME_MINUTES=$((UPTIME_SECONDS / 60))
 
-        # Check if container has restarted too many times
-        if [ "$RESTART_COUNT" -gt "$MAX_RESTARTS_PER_HOUR" ]; then
-            echo "[$(date)] WARNING: $NAME has restarted $RESTART_COUNT times (uptime: ${UPTIME_MINUTES}m)"
+        PREVIOUS_COUNT=${LAST_RESTART_COUNT[$CONTAINER_ID]:-$RESTART_COUNT}
+        PREVIOUS_CHECK=${LAST_CHECK_EPOCH[$CONTAINER_ID]:-$NOW_EPOCH}
+        ELAPSED=$((NOW_EPOCH - PREVIOUS_CHECK))
+        RESTART_DELTA=$((RESTART_COUNT - PREVIOUS_COUNT))
+
+        LAST_RESTART_COUNT[$CONTAINER_ID]=$RESTART_COUNT
+        LAST_CHECK_EPOCH[$CONTAINER_ID]=$NOW_EPOCH
+
+        # Check if the restart rate exceeds the hourly threshold
+        if [ "$ELAPSED" -gt 0 ] && [ "$RESTART_DELTA" -gt 0 ]; then
+            RESTARTS_PER_HOUR=$((RESTART_DELTA * 3600 / ELAPSED))
+        else
+            RESTARTS_PER_HOUR=0
+        fi
+
+        if [ "$RESTARTS_PER_HOUR" -gt "$MAX_RESTARTS_PER_HOUR" ]; then
+            echo "[$(date)] WARNING: $NAME is restarting at about $RESTARTS_PER_HOUR restarts/hour (uptime: ${UPTIME_MINUTES}m)"
 
             # Get the last few lines of logs for context
             echo "  Recent logs:"
@@ -271,7 +320,7 @@ Track volume growth and alert before disk fills up.
 ```bash
 #!/bin/bash
 # monitor-volumes.sh
-# Monitors Docker volume disk usage and alerts when growth rate is unusual
+# Monitors Docker volume disk usage and alerts when volumes exceed a size threshold
 
 ALERT_SIZE_GB=10  # Alert when a volume exceeds this size
 LOG_FILE="/var/log/docker-volume-monitor.log"
@@ -327,8 +376,8 @@ while true; do
 
     # Container status summary
     RUNNING=$(docker ps -q | wc -l)
-    STOPPED=$(docker ps -q --filter status=exited | wc -l)
-    TOTAL=$((RUNNING + STOPPED))
+    STOPPED=$(docker ps -a -q --filter status=exited | wc -l)
+    TOTAL=$(docker ps -a -q | wc -l)
     echo "--- Containers: $RUNNING running, $STOPPED stopped, $TOTAL total ---"
     echo ""
 
