@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Ruby, Rails, ActionController, HTTP, Tracing
 
-Description: Complete guide to instrumenting Rails ActionController with OpenTelemetry for comprehensive HTTP request tracing, including custom spans, route recognition, and middleware tracking.
+Description: Complete guide to instrumenting Rails ActionController with OpenTelemetry for comprehensive HTTP request tracing, including custom spans, route recognition, and Rack request tracking.
 
-ActionController handles every HTTP request in your Rails application. OpenTelemetry instrumentation captures the complete request lifecycle, from routing through middleware to controller actions and view rendering, giving you detailed insights into request processing performance.
+ActionController handles every HTTP request in your Rails application. OpenTelemetry instrumentation captures the request lifecycle with a Rack HTTP server span that is enriched by ActionPack and related Rails instrumentation, giving you detailed insights into request processing performance.
 
 ## How ActionController Instrumentation Works
 
-OpenTelemetry hooks into Rails' request processing pipeline to create spans at key points:
+OpenTelemetry hooks into Rails' request processing pipeline to create and enrich spans at key points:
 
 ```mermaid
 graph TD
@@ -27,12 +27,12 @@ graph TD
     I --> E
     I --> F
 
-    J[Root Span] --> K[Middleware Spans]
-    J --> L[Controller Span]
-    L --> M[View Span]
+    J[Rack HTTP Server Span] --> K[ActionPack Route and Controller Attributes]
+    J --> L[ActionView Render Spans]
+    J --> M[Custom Application Spans]
 ```
 
-Each stage creates child spans under a root HTTP request span, revealing exactly where time is spent during request processing.
+Rack creates the HTTP request span, ActionPack updates that span with controller and route information, and ActionView or custom instrumentation can create child spans under it. This reveals where time is spent during request processing without relying on a separate automatic span for every Rails callback or middleware.
 
 ## Installing ActionController Instrumentation
 
@@ -44,7 +44,6 @@ Add the OpenTelemetry Rails instrumentation gem, which includes ActionController
 gem 'opentelemetry-sdk'
 gem 'opentelemetry-exporter-otlp'
 gem 'opentelemetry-instrumentation-rails'
-gem 'opentelemetry-instrumentation-action_pack'
 ```
 
 Install the dependencies:
@@ -53,7 +52,7 @@ Install the dependencies:
 bundle install
 ```
 
-The `opentelemetry-instrumentation-rails` gem provides comprehensive Rails instrumentation, including ActionController, ActionView, and ActiveSupport.
+The `opentelemetry-instrumentation-rails` gem provides Rails instrumentation packages for components such as ActionPack, ActionView, ActiveRecord, ActiveJob, and ActiveSupport.
 
 ## Basic Configuration
 
@@ -69,16 +68,16 @@ require 'opentelemetry/instrumentation/rails'
 OpenTelemetry::SDK.configure do |c|
   c.service_name = 'rails-app'
 
-  # Enable Rails instrumentation (includes ActionController)
-  c.use 'OpenTelemetry::Instrumentation::Rails'
+  # Enable installed Rails instrumentation
+  c.use_all
 end
 ```
 
-This configuration automatically creates spans for every controller action, capturing HTTP method, path, status code, and execution time.
+This configuration automatically creates a Rack HTTP server span for each request and enriches it with controller, route, HTTP method, path, status code, and timing information.
 
 ## Enabling Route Recognition
 
-Route recognition adds the matched route pattern to spans, making it easier to group requests by endpoint rather than specific URLs:
+Route recognition adds the matched route pattern to spans, making it easier to group requests by endpoint rather than specific URLs. In current OpenTelemetry ActionPack instrumentation, Rails 7.1+ applications populate `http.route` automatically:
 
 ```ruby
 # config/initializers/opentelemetry.rb
@@ -90,14 +89,11 @@ require 'opentelemetry/instrumentation/rails'
 OpenTelemetry::SDK.configure do |c|
   c.service_name = 'rails-app'
 
-  c.use 'OpenTelemetry::Instrumentation::Rails', {
-    # Enable route pattern recognition
-    enable_recognize_route: true
-  }
+  c.use_all
 end
 ```
 
-With route recognition enabled, requests to `/users/123` and `/users/456` both get tagged with the route pattern `/users/:id`, allowing you to analyze performance across all requests to that endpoint.
+Requests to `/users/123` and `/users/456` can both get tagged with the route pattern `/users/:id`, allowing you to analyze performance across all requests to that endpoint.
 
 ## Comprehensive Controller Configuration
 
@@ -109,33 +105,25 @@ Configure detailed controller instrumentation with custom options:
 require 'opentelemetry/sdk'
 require 'opentelemetry/exporter/otlp'
 require 'opentelemetry/instrumentation/rails'
-require 'opentelemetry/instrumentation/action_pack'
 
 OpenTelemetry::SDK.configure do |c|
   c.service_name = 'rails-app'
 
-  c.use 'OpenTelemetry::Instrumentation::Rails', {
-    # Enable route pattern in span names
-    enable_recognize_route: true,
+  c.use_all({
+    # Exclude exact Rack endpoints from tracing, such as health checks
+    'OpenTelemetry::Instrumentation::Rack' => {
+      untraced_endpoints: ['/health']
+    },
 
-    # Include middleware execution in traces
-    enable_middleware: true,
-
-    # Exclude specific paths from tracing (health checks, assets)
-    excluded_paths: ['/health', '/assets/*']
-  }
-
-  # Additional ActionPack instrumentation for view rendering
-  c.use 'OpenTelemetry::Instrumentation::ActionPack'
-
-  c.resource = OpenTelemetry::SDK::Resources::Resource.create({
-    'service.name' => 'rails-app',
-    'http.scheme' => 'https'
+    # Configure ActionView render spans
+    'OpenTelemetry::Instrumentation::ActionView' => {
+      disallowed_notification_payload_keys: [:locals]
+    }
   })
 end
 ```
 
-This configuration captures controller actions, middleware execution, and view rendering while excluding noise from health checks and static asset requests.
+This configuration captures controller actions and view rendering while excluding noise from health check requests.
 
 ## Understanding HTTP Span Attributes
 
@@ -144,22 +132,17 @@ ActionController instrumentation adds rich HTTP attributes to every request span
 ```ruby
 # Example span attributes for a controller request:
 {
-  'http.method' => 'GET',
+  'http.request.method' => 'GET',
   'http.route' => '/users/:id',
-  'http.target' => '/users/123',
-  'http.url' => 'https://example.com/users/123',
-  'http.scheme' => 'https',
-  'http.host' => 'example.com',
-  'http.status_code' => 200,
-  'http.user_agent' => 'Mozilla/5.0...',
+  'url.path' => '/users/123',
+  'url.scheme' => 'https',
+  'server.address' => 'example.com',
+  'http.response.status_code' => 200,
+  'user_agent.original' => 'Mozilla/5.0...',
 
-  # Rails-specific attributes
-  'rails.controller' => 'UsersController',
-  'rails.action' => 'show',
-  'rails.format' => 'html',
-
-  # Request identification
-  'http.request_id' => '550e8400-e29b-41d4-a716-446655440000'
+  # Rails controller attributes
+  'code.namespace' => 'UsersController',
+  'code.function' => 'show'
 }
 ```
 
@@ -167,7 +150,7 @@ These attributes enable powerful filtering in your observability platform. Searc
 
 ## Adding Custom Attributes to Controller Spans
 
-Enrich controller spans with business context by adding custom attributes:
+Enrich request spans with business context by adding custom attributes:
 
 ```ruby
 # app/controllers/application_controller.rb
@@ -201,7 +184,7 @@ class ApplicationController < ActionController::Base
 end
 ```
 
-Now every controller span includes user and organization context, making it easy to filter traces by customer, identify performance issues affecting specific user segments, or track usage by subscription tier.
+Now every request span includes user and organization context, making it easy to filter traces by customer, identify performance issues affecting specific user segments, or track usage by subscription tier.
 
 ## Creating Custom Spans in Controller Actions
 
@@ -257,7 +240,7 @@ class ReportsController < ApplicationController
 end
 ```
 
-The trace shows a clear hierarchy: the controller action span contains the report generation span, which contains spans for data fetching, processing, and rendering. This granularity reveals which stage takes the most time.
+The trace shows a clear hierarchy: the request span contains the report generation span, which contains spans for data fetching, processing, and rendering. This granularity reveals which stage takes the most time.
 
 ## Tracing Before and After Filters
 
@@ -442,7 +425,7 @@ class ApplicationController < ActionController::Base
       end
     end
 
-    span.set_attribute('http.status_code', response.status)
+    span.set_attribute('http.response.status_code', response.status)
   end
 end
 ```
@@ -473,12 +456,12 @@ RSpec.describe 'Users API', type: :request do
     get '/users'
 
     spans = exporter.finished_spans
-    controller_span = spans.find { |s| s.attributes['rails.controller'] == 'UsersController' }
+    controller_span = spans.find { |s| s.attributes['code.namespace'] == 'UsersController' }
 
     expect(controller_span).not_to be_nil
-    expect(controller_span.attributes['rails.action']).to eq('index')
-    expect(controller_span.attributes['http.method']).to eq('GET')
-    expect(controller_span.attributes['http.status_code']).to eq(200)
+    expect(controller_span.attributes['code.function']).to eq('index')
+    expect(controller_span.attributes['http.request.method']).to eq('GET')
+    expect(controller_span.attributes['http.response.status_code']).to eq(200)
   end
 
   it 'includes route pattern in spans' do
@@ -486,7 +469,7 @@ RSpec.describe 'Users API', type: :request do
     get "/users/#{user.id}"
 
     spans = exporter.finished_spans
-    controller_span = spans.find { |s| s.attributes['rails.action'] == 'show' }
+    controller_span = spans.find { |s| s.attributes['code.function'] == 'show' }
 
     expect(controller_span.attributes['http.route']).to eq('/users/:id')
   end
@@ -508,4 +491,3 @@ end
 These tests confirm that controller actions generate the expected spans with correct attributes and error handling.
 
 ActionController instrumentation provides comprehensive visibility into HTTP request processing in Rails applications. With automatic span creation, rich HTTP attributes, custom spans for business operations, and error tracking, you gain the insights needed to optimize controller performance, debug issues, and ensure your API meets performance requirements.
-
