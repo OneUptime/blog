@@ -10,9 +10,9 @@ Description: Learn how to instrument client-side routing in single-page applicat
 
 Single-page applications handle navigation differently from traditional websites. When a user clicks a link in a React, Angular, or Vue app, the browser does not make a full page request. Instead, the JavaScript router swaps components, fetches data, and updates the DOM without ever leaving the page. This is great for user experience, but it creates a blind spot in your monitoring.
 
-Traditional page load metrics like `DOMContentLoaded` and `load` only fire once. After that initial load, every subsequent navigation happens entirely in JavaScript. If you are only tracking the initial page load, you are missing the performance story for 90% of your user interactions.
+Traditional page load metrics like `DOMContentLoaded` and `load` only fire once. After that initial load, every subsequent navigation happens entirely in JavaScript. If you are only tracking the initial page load, you are missing the performance story for many of your user interactions.
 
-OpenTelemetry gives you the tools to fill this gap. By hooking into your router and wrapping each navigation in a span, you can track exactly how long each route transition takes, from the moment the user clicks to the moment the new view is fully rendered.
+OpenTelemetry gives you the tools to fill this gap. By hooking into your router and wrapping each navigation in a span, you can track route transitions, data fetching, and an approximation of when the new route has had a chance to paint.
 
 ## What Happens During a Client-Side Navigation
 
@@ -29,7 +29,7 @@ flowchart LR
     G --> H[Final render complete]
 ```
 
-Each of these steps contributes to the total navigation time. Without instrumentation, you only see the final result. With OpenTelemetry spans covering each phase, you can pinpoint exactly where slowdowns occur.
+Each of these steps contributes to the total navigation time. Without instrumentation, you only see the final result. With OpenTelemetry spans covering the major phases, you can narrow down where slowdowns occur.
 
 ## Base OpenTelemetry Setup
 
@@ -39,24 +39,23 @@ Start with the standard browser SDK configuration:
 // src/tracing.js
 import { WebTracerProvider } from '@opentelemetry/sdk-trace-web';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
-import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-web';
-import { Resource } from '@opentelemetry/resources';
+import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 import { ATTR_SERVICE_NAME } from '@opentelemetry/semantic-conventions';
-import { trace, context } from '@opentelemetry/api';
+import { trace } from '@opentelemetry/api';
 
 const provider = new WebTracerProvider({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     [ATTR_SERVICE_NAME]: 'my-spa-frontend',
   }),
+  spanProcessors: [
+    new BatchSpanProcessor(
+      new OTLPTraceExporter({
+        url: 'https://otel-collector.example.com/v1/traces',
+      })
+    ),
+  ],
 });
-
-provider.addSpanProcessor(
-  new BatchSpanProcessor(
-    new OTLPTraceExporter({
-      url: 'https://otel-collector.example.com/v1/traces',
-    })
-  )
-);
 
 provider.register();
 
@@ -71,26 +70,26 @@ React Router is the most common routing library for React applications. Here is 
 
 ```javascript
 // src/components/RouteTracer.jsx
-import { useEffect, useRef } from 'react';
+import { createContext, useContext, useLayoutEffect, useRef, useState } from 'react';
 import { useLocation, useNavigationType } from 'react-router-dom';
-import { SpanStatusCode, context, trace } from '@opentelemetry/api';
+import { SpanStatusCode } from '@opentelemetry/api';
 import { tracer } from '../tracing';
+
+const RouteSpanContext = createContext(null);
+
+export function useRouteSpan() {
+  return useContext(RouteSpanContext);
+}
 
 export function RouteTracer({ children }) {
   const location = useLocation();
   const navigationType = useNavigationType();
   const activeSpanRef = useRef(null);
-  const navigationStartRef = useRef(null);
+  const [activeSpan, setActiveSpan] = useState(null);
 
-  useEffect(() => {
-    // End any previous navigation span
-    if (activeSpanRef.current) {
-      activeSpanRef.current.setStatus({ code: SpanStatusCode.OK });
-      activeSpanRef.current.end();
-    }
-
-    // Record when this navigation started
-    navigationStartRef.current = performance.now();
+  useLayoutEffect(() => {
+    // Record when this route commit is observed
+    const navigationStart = performance.now();
 
     // Start a new span for this route change
     const span = tracer.startSpan('route.change', {
@@ -103,30 +102,36 @@ export function RouteTracer({ children }) {
     });
 
     activeSpanRef.current = span;
+    setActiveSpan(span);
 
     // Use requestAnimationFrame to measure time until the browser
-    // has actually painted the new route content
+    // has had a chance to paint the new route content
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
-        const renderTime = performance.now() - navigationStartRef.current;
-        span.setAttribute('route.render_duration_ms', renderTime);
+        const paintDelay = performance.now() - navigationStart;
+        span.setAttribute('route.paint_delay_ms', paintDelay);
       });
     });
 
     // Cleanup on unmount
     return () => {
       if (activeSpanRef.current) {
+        activeSpanRef.current.setStatus({ code: SpanStatusCode.OK });
         activeSpanRef.current.end();
         activeSpanRef.current = null;
       }
     };
-  }, [location.pathname]);
+  }, [location.pathname, location.search, location.hash, navigationType]);
 
-  return children;
+  return (
+    <RouteSpanContext.Provider value={activeSpan}>
+      {children}
+    </RouteSpanContext.Provider>
+  );
 }
 ```
 
-The double `requestAnimationFrame` trick is important. The first `requestAnimationFrame` fires before the browser paints. The second one fires after the paint has actually completed. This gives you a much more accurate measurement of when the user actually sees the new content.
+The double `requestAnimationFrame` trick is important. A `requestAnimationFrame` callback runs before a repaint, so scheduling the second callback pushes the measurement into the next frame. This gives you a closer approximation of when the user sees the new content, although it is still not a guaranteed paint-complete signal.
 
 Place this component at the top level of your router:
 
@@ -153,7 +158,7 @@ export function App() {
 }
 ```
 
-Every route change now produces a span with the path, navigation type (push, pop, or replace), and render duration.
+Every route change now produces a span with the path, navigation type (`PUSH`, `POP`, or `REPLACE`), and approximate paint delay.
 
 ## Tracking Data Fetching Per Route
 
@@ -162,28 +167,47 @@ Most routes need to fetch data before they can render meaningful content. You ca
 ```javascript
 // src/hooks/useTrackedFetch.js
 import { useEffect, useState } from 'react';
-import { SpanStatusCode } from '@opentelemetry/api';
+import { context, SpanStatusCode, trace } from '@opentelemetry/api';
 import { tracer } from '../tracing';
+import { useRouteSpan } from '../components/RouteTracer';
 
 export function useTrackedFetch(url, options = {}) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const routeSpan = useRouteSpan();
 
   useEffect(() => {
+    const requestUrl = new URL(url, window.location.href).href;
+    const method = options.method || 'GET';
+    const spanContext = routeSpan
+      ? trace.setSpan(context.active(), routeSpan)
+      : context.active();
+
     // Create a span specifically for this data fetch
     const fetchSpan = tracer.startSpan('route.data_fetch', {
       attributes: {
-        'http.url': url,
-        'http.method': options.method || 'GET',
+        'url.full': requestUrl,
+        'http.request.method': method,
       },
-    });
+    }, spanContext);
 
     const startTime = performance.now();
+    let spanEnded = false;
+    let cancelled = false;
+
+    const endFetchSpan = () => {
+      if (!spanEnded) {
+        fetchSpan.end();
+        spanEnded = true;
+      }
+    };
 
     fetch(url, options)
       .then((response) => {
-        fetchSpan.setAttribute('http.status_code', response.status);
+        if (cancelled) return null;
+
+        fetchSpan.setAttribute('http.response.status_code', response.status);
 
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -191,13 +215,17 @@ export function useTrackedFetch(url, options = {}) {
         return response.json();
       })
       .then((result) => {
+        if (cancelled || result === null) return;
+
         const duration = performance.now() - startTime;
         fetchSpan.setAttribute('route.fetch_duration_ms', duration);
-        fetchSpan.setAttribute('route.response_size', JSON.stringify(result).length);
+        fetchSpan.setAttribute('route.response_size_bytes', JSON.stringify(result).length);
         fetchSpan.setStatus({ code: SpanStatusCode.OK });
         setData(result);
       })
       .catch((err) => {
+        if (cancelled) return;
+
         fetchSpan.setStatus({
           code: SpanStatusCode.ERROR,
           message: err.message,
@@ -206,18 +234,22 @@ export function useTrackedFetch(url, options = {}) {
         setError(err);
       })
       .finally(() => {
-        fetchSpan.end();
-        setLoading(false);
+        endFetchSpan();
+        if (!cancelled) {
+          setLoading(false);
+        }
       });
 
     return () => {
+      cancelled = true;
+
       // If the component unmounts before fetch completes, end the span
-      if (!fetchSpan.ended) {
+      if (!spanEnded) {
         fetchSpan.setAttribute('route.fetch_cancelled', true);
-        fetchSpan.end();
+        endFetchSpan();
       }
     };
-  }, [url]);
+  }, [url, routeSpan]);
 
   return { data, loading, error };
 }
@@ -246,7 +278,7 @@ export function Profile() {
 }
 ```
 
-Now each route change produces a parent span for the navigation and child spans for each data fetch. You can see exactly how much of the total navigation time is spent fetching data versus rendering components.
+Now each route change produces a parent span for the navigation and child spans for each data fetch. You can see how much route activity is spent fetching data versus updating and painting components.
 
 ## Measuring Component Render Time
 
@@ -257,12 +289,13 @@ For more fine-grained performance data, measure how long individual components t
 import { useEffect, useRef } from 'react';
 import { tracer } from '../tracing';
 
-export function useRenderTimer(componentName) {
-  const startTime = useRef(performance.now());
+export function useRenderTimer(componentName, dependencies = []) {
+  const renderStart = useRef(performance.now());
+  renderStart.current = performance.now();
 
   useEffect(() => {
-    // This runs after the component mounts and paints
-    const renderDuration = performance.now() - startTime.current;
+    // This runs after React commits the render for this dependency change
+    const renderDuration = performance.now() - renderStart.current;
 
     const span = tracer.startSpan('component.render', {
       attributes: {
@@ -271,7 +304,7 @@ export function useRenderTimer(componentName) {
       },
     });
     span.end();
-  }, []);
+  }, dependencies);
 }
 ```
 
@@ -283,8 +316,8 @@ import { useRenderTimer } from '../hooks/useRenderTimer';
 import { useTrackedFetch } from '../hooks/useTrackedFetch';
 
 export function Dashboard() {
-  useRenderTimer('Dashboard');
   const { data, loading } = useTrackedFetch('/api/dashboard/stats');
+  useRenderTimer('Dashboard', [loading]);
 
   if (loading) return <div>Loading dashboard...</div>;
 
@@ -345,9 +378,9 @@ export class RouteErrorBoundary extends Component {
 
 With all this instrumentation in place, you can answer some important questions in your observability backend:
 
-- **Slowest routes by render time**: Group `route.change` spans by `route.path` and sort by `route.render_duration_ms` to find routes that need optimization.
+- **Slowest routes by paint delay**: Group `route.change` spans by `route.path` and sort by `route.paint_delay_ms` to find routes that need optimization.
 - **Data fetch bottlenecks**: Look at `route.data_fetch` spans to find which API calls slow down specific routes.
-- **Navigation type distribution**: The `route.navigation_type` attribute tells you whether users navigate via links (push), the back button (pop), or redirects (replace).
+- **Navigation type distribution**: The `route.navigation_type` attribute tells you whether users navigate via links (`PUSH`), the back button (`POP`), or redirects (`REPLACE`).
 - **Route error rates**: Count `route.error` spans grouped by path to find routes that crash frequently.
 
 ## Performance Considerations
@@ -356,10 +389,10 @@ Browser instrumentation needs to be lightweight. A few things to keep in mind:
 
 Do not create spans for every single re-render. Focus on route changes and data fetches. Use the batch span processor to avoid sending a network request for every span. Set a reasonable maximum queue size to prevent memory buildup in long-running sessions. Consider sampling if your application has very high traffic.
 
-The overhead of this instrumentation is negligible compared to the actual work of rendering components and fetching data. A few microseconds per span is nothing next to a 200ms API call.
+The overhead of this instrumentation is small compared to the actual work of rendering components and fetching data, but you should still measure it in your own application and tune sampling or batching for high-traffic frontends.
 
 ## Wrapping Up
 
-Client-side routing is the backbone of SPA user experience, and it deserves the same level of observability you give to server-side requests. By wrapping route changes, data fetches, and component renders in OpenTelemetry spans, you get a complete picture of navigation performance from the user's perspective.
+Client-side routing is the backbone of SPA user experience, and it deserves the same level of observability you give to server-side requests. By wrapping route changes, data fetches, and component render updates in OpenTelemetry spans, you get a better picture of navigation performance from the user's perspective.
 
-The combination of route-level spans with data fetching child spans is particularly powerful. Instead of just knowing that a page took 800ms to render, you can see that 600ms was spent waiting for an API call and 200ms was spent rendering the component tree. That level of detail tells you exactly where to focus your optimization efforts.
+The combination of route-level spans with data fetching child spans is particularly powerful. Instead of just knowing that a route feels slow, you can separate API latency from component updates and paint delay. That level of detail tells you where to focus your optimization efforts.
