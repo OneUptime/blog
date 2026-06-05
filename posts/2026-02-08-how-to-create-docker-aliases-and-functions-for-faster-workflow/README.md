@@ -170,8 +170,7 @@ Combine stop and remove into one action:
 ```bash
 # Stop and remove a container in one command
 dstoprem() {
-  docker stop "$1" && docker rm "$1"
-  echo "Stopped and removed $1"
+  docker stop "$1" && docker rm "$1" && echo "Stopped and removed $1"
 }
 ```
 
@@ -180,12 +179,12 @@ dstoprem() {
 A comprehensive cleanup function:
 
 ```bash
-# Remove all stopped containers, unused images, networks, and build cache
+# Remove all stopped containers, dangling images, unused networks, and build cache
 dclean() {
   echo "Removing stopped containers..."
   docker container prune -f
 
-  echo "Removing unused images..."
+  echo "Removing dangling images..."
   docker image prune -f
 
   echo "Removing unused networks..."
@@ -199,12 +198,12 @@ dclean() {
   docker system df
 }
 
-# Nuclear option: remove absolutely everything including volumes
+# Bigger cleanup: remove unused Docker data including anonymous volumes
 dcleanall() {
-  read -p "This will remove ALL Docker data including volumes. Continue? [y/N] " confirm
+  read -p "This will remove unused Docker data including anonymous volumes. Continue? [y/N] " confirm
   if [ "$confirm" = "y" ] || [ "$confirm" = "Y" ]; then
     docker system prune -a -f --volumes
-    echo "All Docker data removed."
+    echo "Unused Docker data removed."
   else
     echo "Cancelled."
   fi
@@ -260,8 +259,7 @@ Tear down a Compose stack and bring it back with clean volumes:
 ```bash
 # Full reset: down with volumes, rebuild, and start fresh
 dcreset() {
-  docker compose down -v --remove-orphans
-  docker compose up -d --build
+  docker compose down -v --remove-orphans && docker compose up -d --build
 }
 ```
 
