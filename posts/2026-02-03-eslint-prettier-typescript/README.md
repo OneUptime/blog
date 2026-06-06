@@ -241,9 +241,6 @@ Add to `package.json` to run linting only on staged files.
 Create `.husky/pre-commit` to run lint-staged before each commit.
 
 ```bash
-#!/usr/bin/env sh
-. "$(dirname -- "$0")/_/husky.sh"
-
 npx lint-staged
 ```
 
