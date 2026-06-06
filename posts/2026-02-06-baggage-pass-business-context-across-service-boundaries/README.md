@@ -39,7 +39,7 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.propagators.composite import CompositePropagator
 from opentelemetry.baggage.propagation import W3CBaggagePropagator
-from opentelemetry.trace.propagation import TraceContextTextMapPropagator
+from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 from opentelemetry.propagate import set_global_textmap
 import requests
 
@@ -59,7 +59,7 @@ trace.set_tracer_provider(provider)
 tracer = trace.get_tracer("api-gateway")
 ```
 
-The `CompositePropagator` is essential here. Without it, only trace context gets propagated, and your baggage values never leave the current process.
+The `CompositePropagator` is the important part here when you override propagation settings. OpenTelemetry Python defaults to W3C Trace Context plus W3C Baggage, but if you replace the global propagator with trace context only, your baggage values will not leave the current process.
 
 Now, in your request handler, set baggage values after authentication:
 
@@ -69,7 +69,7 @@ def handle_request(request):
     user = authenticate(request)
 
     # Set baggage values for downstream services
-    # Each call returns a new context token
+    # Each call returns a new context
     ctx = baggage.set_baggage("tenant.id", user.tenant_id)
     ctx = baggage.set_baggage("user.tier", user.tier, context=ctx)
     ctx = baggage.set_baggage("request.region", user.region, context=ctx)
@@ -108,6 +108,7 @@ On the receiving side, the downstream service extracts baggage from the incoming
 
 ```python
 from opentelemetry import baggage
+from opentelemetry.context import attach, detach
 from opentelemetry.propagate import extract
 from flask import Flask, request
 
