@@ -1,4 +1,4 @@
-# How to Use Contract Testing for OpenTelemetry Spans to Prevent Instrumentation
+# How to Use Contract Testing for OpenTelemetry Spans to Prevent Instrumentation Regressions
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
@@ -23,7 +23,7 @@ A contract includes:
 
 ## Defining Span Contracts
 
-Create a JSON schema for your span contracts:
+Create a JSON contract file for your span contracts:
 
 ```json
 {
@@ -34,9 +34,9 @@ Create a JSON schema for your span contracts:
       "span_name": "POST /api/v1/orders",
       "span_kind": "SERVER",
       "required_attributes": {
-        "http.method": {"type": "string", "values": ["POST"]},
+        "http.request.method": {"type": "string", "values": ["POST"]},
         "http.route": {"type": "string", "values": ["/api/v1/orders"]},
-        "http.status_code": {"type": "int"},
+        "http.response.status_code": {"type": "int"},
         "order.id": {"type": "string", "pattern": "^ord-[a-z0-9]+$"},
         "order.total_amount": {"type": "float"},
         "order.currency": {"type": "string", "values": ["USD", "EUR", "GBP"]},
@@ -52,8 +52,8 @@ Create a JSON schema for your span contracts:
           "span_name": "INSERT orders",
           "span_kind": "CLIENT",
           "required_attributes": {
-            "db.system": {"type": "string", "values": ["postgresql"]},
-            "db.operation": {"type": "string", "values": ["INSERT"]}
+            "db.system.name": {"type": "string", "values": ["postgresql"]},
+            "db.operation.name": {"type": "string", "values": ["INSERT"]}
           }
         }
       ]
@@ -70,13 +70,12 @@ Here is a Python implementation that validates spans against contracts:
 import json
 import re
 from dataclasses import dataclass
-from typing import Optional
 
 @dataclass
 class ContractViolation:
     contract_name: str
     span_name: str
-    violation_type: str  # "missing_attribute", "wrong_type", "invalid_value"
+    violation_type: str  # "missing_attribute", "wrong_type", "invalid_value", "wrong_kind"
     attribute: str
     expected: str
     actual: str
@@ -93,7 +92,7 @@ class SpanContractValidator:
             data = json.load(f)
         self.contracts = data["contracts"]
 
-    def validate_span(self, span):
+    def validate_span(self, span, all_spans=None):
         """
         Check a span against all matching contracts.
         Returns a list of violations.
@@ -103,6 +102,16 @@ class SpanContractValidator:
         for contract in self.contracts:
             if not self.span_matches_contract(span, contract):
                 continue
+
+            if "span_kind" in contract and span.kind.name != contract["span_kind"]:
+                violations.append(ContractViolation(
+                    contract_name=contract["operation"],
+                    span_name=span.name,
+                    violation_type="wrong_kind",
+                    attribute="span.kind",
+                    expected=contract["span_kind"],
+                    actual=span.kind.name,
+                ))
 
             # Check required attributes
             for attr_name, attr_spec in contract["required_attributes"].items():
@@ -122,11 +131,21 @@ class SpanContractValidator:
                         violations.append(violation)
 
             # Check child span contracts
+            child_spans = self.find_child_spans(span, all_spans or [])
             for child_contract in contract.get("child_spans", []):
                 child_found = False
-                for child_span in span.children:
+                for child_span in child_spans:
                     if child_span.name == child_contract["span_name"]:
                         child_found = True
+                        if "span_kind" in child_contract and child_span.kind.name != child_contract["span_kind"]:
+                            violations.append(ContractViolation(
+                                contract_name=contract["operation"],
+                                span_name=child_span.name,
+                                violation_type="wrong_kind",
+                                attribute="span.kind",
+                                expected=child_contract["span_kind"],
+                                actual=child_span.kind.name,
+                            ))
                         for attr_name, attr_spec in child_contract["required_attributes"].items():
                             violation = self.validate_attribute(
                                 child_span, child_contract,
@@ -151,8 +170,31 @@ class SpanContractValidator:
         """Check if a span should be validated by this contract."""
         return (
             span.name == contract["span_name"]
-            and span.resource_attrs.get("service.name") == contract["service"]
+            and span.resource.attributes.get("service.name") == contract["service"]
         )
+
+    def find_child_spans(self, span, all_spans):
+        """Find direct child spans from a list of exported spans."""
+        span_id = span.context.span_id
+        return [
+            candidate for candidate in all_spans
+            if candidate.parent and candidate.parent.span_id == span_id
+        ]
+
+    def value_matches_type(self, value, expected_type):
+        """Match OpenTelemetry attribute primitive types without treating bool as int."""
+        if expected_type == "string":
+            return isinstance(value, str)
+        if expected_type == "int":
+            return isinstance(value, int) and not isinstance(value, bool)
+        if expected_type == "float":
+            return (
+                isinstance(value, (int, float))
+                and not isinstance(value, bool)
+            )
+        if expected_type == "bool":
+            return isinstance(value, bool)
+        return False
 
     def validate_attribute(self, span, contract, attr_name, attr_spec, required):
         """Validate a single attribute against its spec."""
@@ -173,14 +215,8 @@ class SpanContractValidator:
 
         # Check type
         expected_type = attr_spec["type"]
-        type_map = {
-            "string": str,
-            "int": int,
-            "float": (int, float),
-            "bool": bool,
-        }
 
-        if not isinstance(value, type_map.get(expected_type, str)):
+        if not self.value_matches_type(value, expected_type):
             return ContractViolation(
                 contract_name=contract.get("operation", contract["span_name"]),
                 span_name=span.name,
@@ -222,21 +258,24 @@ Integrate the contract validator into your test suite:
 
 ```python
 import pytest
+from opentelemetry import trace
+from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory import InMemorySpanExporter
 
 # Use an in-memory exporter to capture spans during tests
 
 exporter = InMemorySpanExporter()
+provider = TracerProvider(
+    resource=Resource.create({"service.name": "order-service"})
+)
+provider.add_span_processor(SimpleSpanProcessor(exporter))
+trace.set_tracer_provider(provider)
 
 @pytest.fixture(autouse=True)
 def setup_tracing():
-    """Set up a test tracer provider that captures spans in memory."""
-    provider = TracerProvider()
-    provider.add_span_processor(
-        SimpleSpanProcessor(exporter)
-    )
-    trace.set_tracer_provider(provider)
+    """Clear the in-memory exporter before and after each test."""
     exporter.clear()
     yield
     exporter.clear()
@@ -263,7 +302,7 @@ def test_create_order_span_contract(client, contract_validator):
     # Validate each span against contracts
     all_violations = []
     for span in spans:
-        violations = contract_validator.validate_span(span)
+        violations = contract_validator.validate_span(span, spans)
         all_violations.extend(violations)
 
     # Report violations clearly
