@@ -334,8 +334,11 @@ func main() {
             return a + b
         },
 
-        // Truncate string with ellipsis
-        "truncate": func(s string, maxLen int) string {
+        // Truncate string with ellipsis.
+        // Note: maxLen is first because template pipelines pass the
+        // piped value as the LAST argument (e.g. `{{.Title | truncate 50}}`
+        // calls truncate(50, .Title)).
+        "truncate": func(maxLen int, s string) string {
             if len(s) <= maxLen {
                 return s
             }
@@ -573,7 +576,7 @@ flowchart TB
 
     subgraph Output
         HTML["HTML Context: &amp;lt;script&amp;gt;..."]
-        JS["JS Context: \\x3cscript\\x3e..."]
+        JS["JS Context: \\u003cscript\\u003e..."]
         URL["URL Context: %3Cscript%3E..."]
     end
 
