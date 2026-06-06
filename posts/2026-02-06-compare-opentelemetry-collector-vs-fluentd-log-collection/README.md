@@ -143,7 +143,7 @@ The OpenTelemetry Collector's contrib repository has grown rapidly, but its log-
 | File tailing | Mature, battle-tested | Solid, actively improved |
 | Syslog collection | Native plugin | Syslog receiver |
 | Windows Event Log | Plugin available | Receiver available |
-| Docker/Container logs | Native plugin | Container log receiver |
+| Docker/Container logs | Native plugin | Filelog receiver with container log parsing |
 | Custom parsing | Regexp, JSON, CSV, etc. | Operator-based parsing |
 | Community plugins | 800+ | Growing, fewer log-specific |
 
@@ -155,6 +155,7 @@ Fluentd provides rich log processing through its filter plugins. You can modify 
 <!-- Fluentd filter to mask sensitive data in logs -->
 <filter app.logs>
   @type record_transformer
+  enable_ruby true
   <record>
     <!-- Remove sensitive fields before forwarding -->
     password ${record["password"] ? "***REDACTED***" : nil}
@@ -174,17 +175,17 @@ processors:
       - context: log
         statements:
           # Replace sensitive field values with redacted placeholder
-          - replace_pattern(attributes["password"], ".*", "***REDACTED***")
-          - replace_pattern(attributes["credit_card"], ".*", "***REDACTED***")
+          - set(log.attributes["password"], "***REDACTED***") where log.attributes["password"] != nil
+          - set(log.attributes["credit_card"], "***REDACTED***") where log.attributes["credit_card"] != nil
 ```
 
 The OTel Collector's OTTL (OpenTelemetry Transformation Language) is powerful but has a learning curve. Fluentd's approach with Ruby expressions in record_transformer is more flexible for complex transformations, though it comes with the overhead of Ruby evaluation.
 
 ## Performance and Resource Usage
 
-Fluentd is written in Ruby with CRuby extensions for hot paths. Its memory usage can be unpredictable under heavy load, especially when using complex Ruby-based filters. A typical Fluentd instance processing 10,000 logs per second uses around 200-400 MB of memory.
+Fluentd is written in Ruby with CRuby extensions for hot paths. Its memory usage can vary under heavy load, especially when using complex Ruby-based filters.
 
-The OpenTelemetry Collector, written in Go, generally uses less memory and CPU for equivalent workloads. The same 10,000 logs per second typically requires 100-200 MB. Go's garbage collector is also more predictable than Ruby's, which means fewer latency spikes.
+The OpenTelemetry Collector, written in Go, often uses less memory and CPU for equivalent workloads, but the actual numbers depend heavily on receivers, processors, exporters, batching, and payload size. Go's garbage collector is also generally more predictable than Ruby's, which can mean fewer latency spikes.
 
 For high-throughput scenarios, the OTel Collector has a clear advantage in resource efficiency. This matters when you are running collection agents on every node in a large cluster.
 
@@ -225,19 +226,22 @@ exporters:
 extensions:
   file_storage:
     directory: /var/lib/otelcol/queue
+
+service:
+  extensions: [file_storage]
 ```
 
 Both approaches work, but Fluentd's buffering system is more mature and offers more granular control over buffer behavior.
 
 ## Migration Path
 
-If you are currently running Fluentd and considering a move to the OpenTelemetry Collector, you do not need to do it all at once. The OTel Collector has a Fluentd receiver that can accept Forward protocol messages, allowing you to migrate incrementally.
+If you are currently running Fluentd and considering a move to the OpenTelemetry Collector, you do not need to do it all at once. The OTel Collector has a Fluent Forward receiver that can accept Forward protocol messages, allowing you to migrate incrementally.
 
 ```yaml
 # OTel Collector receiving logs from existing Fluentd instances
-# Uses the fluentforward receiver to accept Forward protocol
+# Uses the fluent_forward receiver to accept Forward protocol
 receivers:
-  fluentforward:
+  fluent_forward:
     endpoint: 0.0.0.0:24224
 
 exporters:
@@ -247,7 +251,7 @@ exporters:
 service:
   pipelines:
     logs:
-      receivers: [fluentforward]
+      receivers: [fluent_forward]
       processors: [batch]
       exporters: [otlp]
 ```
