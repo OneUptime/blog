@@ -50,31 +50,30 @@ processors:
   # Filter processor to drop low-value traces
   filter/drop_health_checks:
     error_mode: ignore
-    traces:
-      span:
-        # Drop health check endpoints
-        - 'attributes["http.route"] == "/health"'
-        - 'attributes["http.route"] == "/healthz"'
-        - 'attributes["http.route"] == "/ready"'
-        - 'attributes["http.route"] == "/alive"'
-        - 'attributes["http.route"] == "/ping"'
+    trace_conditions:
+      # Drop health check endpoints
+      - 'span.attributes["http.route"] == "/health"'
+      - 'span.attributes["http.route"] == "/healthz"'
+      - 'span.attributes["http.route"] == "/ready"'
+      - 'span.attributes["http.route"] == "/alive"'
+      - 'span.attributes["http.route"] == "/ping"'
 
   # Filter internal monitoring traffic
   filter/drop_internal:
-    traces:
-      span:
-        - 'attributes["service.name"] == "prometheus"'
-        - 'attributes["service.name"] == "grafana"'
-        - 'attributes["http.user_agent"] matches ".*prometheus.*"'
-        - 'attributes["http.user_agent"] matches ".*pingdom.*"'
+    error_mode: ignore
+    trace_conditions:
+      - 'resource.attributes["service.name"] == "prometheus"'
+      - 'resource.attributes["service.name"] == "grafana"'
+      - 'IsMatch(span.attributes["user_agent.original"], ".*prometheus.*")'
+      - 'IsMatch(span.attributes["user_agent.original"], ".*pingdom.*")'
 
   # Filter by status code (keep errors, sample success)
   filter/errors_only:
-    traces:
-      span:
-        # Drop successful requests (2xx, 3xx status codes)
-        # These will be sampled separately at lower rate
-        - 'attributes["http.status_code"] >= 200 and attributes["http.status_code"] < 400'
+    error_mode: ignore
+    trace_conditions:
+      # Drop successful requests (2xx, 3xx status codes)
+      # These will be sampled separately at lower rate
+      - 'span.attributes["http.response.status_code"] >= 200 and span.attributes["http.response.status_code"] < 400'
 
   batch:
     timeout: 10s
@@ -120,7 +119,6 @@ processors:
         status_code:
           status_codes:
             - ERROR
-            - UNSET  # Unset often indicates errors
 
       # Policy 2: Always keep slow requests (100% sampling)
       - name: slow-traces
@@ -159,49 +157,49 @@ service:
       exporters: [otlp]
 ```
 
-This multi-tier approach ensures you never miss critical issues while dramatically reducing volume for routine operations.
+This multi-tier approach keeps configured critical categories while dramatically reducing volume for routine operations.
 
 ## Strategy 3: Head Sampling at the SDK
 
-Head sampling makes decisions early, before spans are even created. This is more efficient but less sophisticated than tail sampling.
+Head sampling makes decisions early, before spans are recorded and exported. This is more efficient but less sophisticated than tail sampling.
 
 ```python
 # Python SDK configuration with head sampling
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.sampling import (
-    ParentBasedTraceIdRatioBased,
+    ALWAYS_OFF,
+    ALWAYS_ON,
+    ParentBased,
+    Sampler,
     TraceIdRatioBased,
-    StaticSampler,
-    Decision,
 )
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 
 # Custom sampler that combines multiple strategies
-class CustomSampler(StaticSampler):
+class CustomSampler(Sampler):
     def __init__(self, default_sampling_rate=0.1):
         self.default_sampling_rate = default_sampling_rate
-        self.error_sampler = StaticSampler(Decision.RECORD_AND_SAMPLE)
         self.default_sampler = TraceIdRatioBased(default_sampling_rate)
 
     def should_sample(self, parent_context, trace_id, name, kind, attributes, links, trace_state):
-        # Always sample errors
+        # Always sample errors that are known at span creation time
         if attributes and attributes.get("error"):
-            return self.error_sampler.should_sample(
+            return ALWAYS_ON.should_sample(
                 parent_context, trace_id, name, kind, attributes, links, trace_state
             )
 
         # Always sample critical endpoints
         route = attributes.get("http.route", "") if attributes else ""
         if route in ["/api/payment", "/api/checkout", "/api/auth"]:
-            return self.error_sampler.should_sample(
+            return ALWAYS_ON.should_sample(
                 parent_context, trace_id, name, kind, attributes, links, trace_state
             )
 
         # Drop health checks entirely
         if route in ["/health", "/healthz", "/ready", "/ping"]:
-            return StaticSampler(Decision.DROP).should_sample(
+            return ALWAYS_OFF.should_sample(
                 parent_context, trace_id, name, kind, attributes, links, trace_state
             )
 
@@ -210,11 +208,12 @@ class CustomSampler(StaticSampler):
             parent_context, trace_id, name, kind, attributes, links, trace_state
         )
 
+    def get_description(self):
+        return f"CustomSampler{{{self.default_sampling_rate}}}"
+
 # Initialize tracer provider with custom sampler
 provider = TracerProvider(
-    sampler=ParentBasedTraceIdRatioBased(
-        root=CustomSampler(default_sampling_rate=0.1)
-    )
+    sampler=ParentBased(root=CustomSampler(default_sampling_rate=0.1))
 )
 
 # Add span processor
@@ -225,7 +224,7 @@ provider.add_span_processor(
 trace.set_tracer_provider(provider)
 ```
 
-This SDK-level sampling prevents unnecessary span creation, reducing CPU and memory overhead.
+This SDK-level sampling prevents unnecessary span recording and export work, reducing CPU and memory overhead.
 
 ## Strategy 4: Metric Filtering
 
@@ -236,35 +235,27 @@ Metrics can be filtered based on name patterns, attributes, or values:
 processors:
   # Filter metrics by name
   filter/drop_metrics:
-    metrics:
+    error_mode: ignore
+    metric_conditions:
       # Drop metrics matching these patterns
-      exclude:
-        match_type: regexp
-        metric_names:
-          # Drop internal runtime metrics
-          - runtime\..*
-          # Drop detailed GC metrics
-          - jvm\.gc\..*\.time
-          # Drop process metrics
-          - process\..*
+      - 'IsMatch(metric.name, "runtime\\..*")'
+      - 'IsMatch(metric.name, "jvm\\.gc\\..*\\.time")'
+      - 'IsMatch(metric.name, "process\\..*")'
 
-      # Alternative: include only specific metrics
-      include:
-        match_type: strict
-        metric_names:
-          - http.server.request.duration
-          - http.server.request.count
-          - db.client.operation.duration
-          - redis.client.operation.duration
+  # Alternative: include only specific metrics
+  filter/keep_key_metrics:
+    error_mode: ignore
+    metric_conditions:
+      - 'metric.name != "http.server.request.duration" and metric.name != "db.client.operation.duration" and metric.name != "redis.client.operation.duration"'
 
   # Filter metrics by attribute values
   filter/drop_by_attributes:
-    metrics:
-      datapoint:
-        # Drop metrics from test environments
-        - 'resource.attributes["deployment.environment"] == "test"'
-        # Drop metrics from internal services
-        - 'resource.attributes["service.name"] matches ".*-internal"'
+    error_mode: ignore
+    metric_conditions:
+      # Drop metrics from test environments
+      - 'resource.attributes["deployment.environment"] == "test"'
+      # Drop metrics from internal services
+      - 'IsMatch(resource.attributes["service.name"], ".*-internal")'
 
   # Transform processor to remove high-cardinality attributes
   transform/reduce_cardinality:
@@ -293,36 +284,37 @@ Logs often consume the most storage and provide the least value. Filter aggressi
 processors:
   # Filter logs by severity
   filter/drop_debug_logs:
-    logs:
+    error_mode: ignore
+    log_conditions:
       # Only keep warning and above in production
-      log_record:
-        - 'severity_number < SEVERITY_NUMBER_WARN'
+      - 'log.severity_number < SEVERITY_NUMBER_WARN'
 
   # Filter logs by content
   filter/drop_noisy_logs:
-    logs:
-      log_record:
-        # Drop health check logs
-        - 'body matches ".*health.*check.*"'
-        # Drop successful authentication logs
-        - 'body matches ".*auth.*success.*"'
-        # Drop routine database connection logs
-        - 'body matches ".*connection.*pool.*"'
+    error_mode: ignore
+    log_conditions:
+      # Drop health check logs
+      - 'IsMatch(log.body, ".*health.*check.*")'
+      # Drop successful authentication logs
+      - 'IsMatch(log.body, ".*auth.*success.*")'
+      # Drop routine database connection logs
+      - 'IsMatch(log.body, ".*connection.*pool.*")'
 
   # Filter logs by source
   filter/drop_by_source:
-    logs:
-      log_record:
-        # Drop logs from internal monitoring
-        - 'resource.attributes["service.name"] == "prometheus"'
-        # Drop logs from specific components
-        - 'attributes["component"] == "health_checker"'
+    error_mode: ignore
+    log_conditions:
+      # Drop logs from internal monitoring
+      - 'resource.attributes["service.name"] == "prometheus"'
+      # Drop logs from specific components
+      - 'log.attributes["component"] == "health_checker"'
 
   # Sampling for high-volume logs
   probabilistic_sampler:
     # Keep only 10% of remaining logs
     sampling_percentage: 10
-    # Hash on trace_id to maintain trace consistency
+    # Use the trace ID when present to keep sampling decisions consistent
+    attribute_source: traceID
     hash_seed: 22
 
 service:
@@ -356,6 +348,8 @@ processors:
     decision_wait: 10s
     num_traces: 50000
     policies:
+      - name: always-keep-critical
+        type: always_sample
       - name: errors
         type: status_code
         status_code:
@@ -386,16 +380,17 @@ processors:
         probabilistic:
           sampling_percentage: 1
 
-  # Router to split traffic
+connectors:
+  # Router to split traffic by resource attribute
   routing:
-    from_attribute: priority
+    default_pipelines: [traces/normal]
     table:
-      - value: critical
-        exporters: [otlp/critical]
-      - value: normal
-        exporters: [otlp/normal]
-      - value: low
-        exporters: [otlp/low]
+      - context: resource
+        condition: 'attributes["priority"] == "critical"'
+        pipelines: [traces/critical]
+      - context: resource
+        condition: 'attributes["priority"] == "low"'
+        pipelines: [traces/low]
 
 exporters:
   otlp/critical:
@@ -407,21 +402,25 @@ exporters:
 
 service:
   pipelines:
+    traces/in:
+      receivers: [otlp]
+      exporters: [routing]
+
     # Critical data pipeline (no sampling)
     traces/critical:
-      receivers: [otlp]
+      receivers: [routing]
       processors: [tail_sampling/critical, batch]
       exporters: [otlp/critical]
 
     # Normal data pipeline (10% sampling)
     traces/normal:
-      receivers: [otlp]
+      receivers: [routing]
       processors: [tail_sampling/normal, batch]
       exporters: [otlp/normal]
 
     # Low priority pipeline (1% sampling)
     traces/low:
-      receivers: [otlp]
+      receivers: [routing]
       processors: [tail_sampling/low, batch]
       exporters: [otlp/low]
 ```
@@ -449,9 +448,9 @@ Their configuration:
 processors:
   # Drop health checks (30% of traffic)
   filter/health:
-    traces:
-      span:
-        - 'attributes["http.route"] matches "/(health|ready|alive)"'
+    error_mode: ignore
+    trace_conditions:
+      - 'IsMatch(span.attributes["http.route"], "/(health|ready|alive)")'
 
   # Tail sampling with multiple tiers
   tail_sampling:
@@ -490,17 +489,17 @@ processors:
 
   # Metric filtering
   filter/metrics:
-    metrics:
-      datapoint:
-        - 'resource.attributes["deployment.environment"] == "staging"'
-        - 'attributes["http.route"] matches "/(health|ready)"'
+    error_mode: ignore
+    metric_conditions:
+      - 'resource.attributes["deployment.environment"] == "staging"'
+      - 'IsMatch(datapoint.attributes["http.route"], "/(health|ready)")'
 
   # Log filtering
   filter/logs:
-    logs:
-      log_record:
-        - 'severity_number < SEVERITY_NUMBER_INFO'
-        - 'body matches ".*health.*check.*"'
+    error_mode: ignore
+    log_conditions:
+      - 'log.severity_number < SEVERITY_NUMBER_INFO'
+      - 'IsMatch(log.body, ".*health.*check.*")'
 
   batch:
     timeout: 10s
@@ -529,37 +528,24 @@ service:
 Track the effectiveness of your filtering and sampling:
 
 ```yaml
-# Add metrics to monitor data reduction
-processors:
-  # Count spans before filtering
-  spanmetrics/before:
-    metrics_exporter: prometheus
-    dimensions:
-      - name: service.name
-
-  filter/your_filter:
-    # ... your filter config
-
-  # Count spans after filtering
-  spanmetrics/after:
-    metrics_exporter: prometheus
-    dimensions:
-      - name: service.name
-
 # Calculate reduction percentage
-# reduction = (before - after) / before * 100
+# reduction = (receiver accepted - exporter sent) / receiver accepted * 100
 
 # Monitor these key metrics
-# - otelcol_processor_dropped_spans
-# - otelcol_processor_dropped_metric_points
-# - otelcol_processor_dropped_log_records
-# - otelcol_exporter_sent_spans (compare to received)
+# - otelcol_receiver_accepted_spans
+# - otelcol_receiver_accepted_metric_points
+# - otelcol_receiver_accepted_log_records
+# - otelcol_processor_incoming_items
+# - otelcol_processor_outgoing_items
+# - otelcol_exporter_sent_spans
+# - otelcol_exporter_sent_metric_points
+# - otelcol_exporter_sent_log_records
 ```
 
 ## Best Practices
 
 1. **Start with head sampling** - Configure SDK sampling before implementing collector filtering
-2. **Always keep errors** - Never filter or sample error traces/logs
+2. **Always keep errors** - Configure rules to retain error traces/logs, and route error logs around probabilistic sampling if necessary
 3. **Test in staging first** - Validate you're not losing critical data
 4. **Monitor sampling rates** - Track what percentage of data is being kept
 5. **Document your filters** - Explain why each filter exists
