@@ -51,11 +51,9 @@ Start with a Docker Compose setup for local development and testing:
 ```yaml
 # docker-compose.yml
 
-version: '3.8'
-
 services:
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.92.0
+    image: otel/opentelemetry-collector-contrib:0.153.0
     container_name: otel-collector
     command: ["--config=/etc/otel-collector-config.yml"]
     volumes:
@@ -78,6 +76,10 @@ Create the collector configuration file:
 
 ```yaml
 # otel-collector-config.yml
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
 receivers:
   # OTLP receiver accepts traces, metrics, and logs
   otlp:
@@ -129,36 +131,43 @@ exporters:
     tls:
       insecure: true
 
-  # Export logs to Loki
-  loki:
-    endpoint: http://loki:3100/loki/api/v1/push
+  # Export logs to Loki's native OTLP endpoint
+  otlphttp/loki:
+    endpoint: http://loki:3100/otlp
 
   # Debug exporter for troubleshooting
-  logging:
-    loglevel: info
+  debug:
+    verbosity: basic
 
 service:
+  extensions: [health_check]
+
   pipelines:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, resourcedetection, batch]
-      exporters: [otlp/jaeger, logging]
+      exporters: [otlp/jaeger, debug]
 
     metrics:
       receivers: [otlp, prometheus]
       processors: [memory_limiter, resourcedetection, batch]
-      exporters: [prometheus, logging]
+      exporters: [prometheus, debug]
 
     logs:
       receivers: [otlp]
       processors: [memory_limiter, resourcedetection, batch]
-      exporters: [loki, logging]
+      exporters: [otlphttp/loki, debug]
 
   telemetry:
     logs:
       level: info
     metrics:
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 ```
 
 This configuration sets up receivers for OTLP and Prometheus, processes data through batching and resource detection, and exports to appropriate backends.
@@ -170,7 +179,7 @@ Prometheus stores and queries metrics. Add it to your Docker Compose stack:
 ```yaml
 # Add to docker-compose.yml
   prometheus:
-    image: prom/prometheus:v2.48.0
+    image: prom/prometheus:v3.12.0
     container_name: prometheus
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
@@ -211,10 +220,10 @@ scrape_configs:
     static_configs:
       - targets: ['localhost:9090']
 
-  # Add your application endpoints
-  - job_name: 'applications'
+  # Optional: scrape applications that expose Prometheus-format metrics
+  - job_name: 'prometheus-applications'
     static_configs:
-      - targets: ['app:8080']
+      - targets: ['prometheus-exporting-app:9464']
 ```
 
 Prometheus scrapes the collector's Prometheus exporter endpoint, pulling metrics that applications sent via OTLP.
@@ -226,19 +235,15 @@ Jaeger provides distributed tracing capabilities. Add all-in-one deployment for 
 ```yaml
 # Add to docker-compose.yml
   jaeger:
-    image: jaegertracing/all-in-one:1.53
+    image: cr.jaegertracing.io/jaegertracing/jaeger:2.19.0
     container_name: jaeger
-    environment:
-      - COLLECTOR_OTLP_ENABLED=true
     ports:
       - "16686:16686" # Jaeger UI
-      - "4317:4317"   # OTLP gRPC
-      - "4318:4318"   # OTLP HTTP
     networks:
       - observability
 ```
 
-The all-in-one image includes the collector, query service, and UI. For production, deploy these components separately with persistent storage.
+The Jaeger image starts an all-in-one configuration with the collector, query service, UI, and in-memory storage. For production, deploy these components separately with persistent storage.
 
 ## Deploying Loki for Logs
 
@@ -247,7 +252,7 @@ Loki stores and queries logs with a Prometheus-like query language:
 ```yaml
 # Add to docker-compose.yml
   loki:
-    image: grafana/loki:2.9.3
+    image: grafana/loki:3.7.2
     container_name: loki
     ports:
       - "3100:3100"
@@ -271,50 +276,41 @@ auth_enabled: false
 server:
   http_listen_port: 3100
 
-ingester:
-  lifecycler:
-    ring:
-      kvstore:
-        store: inmemory
-      replication_factor: 1
-  chunk_idle_period: 15m
-  chunk_retain_period: 30s
-  max_chunk_age: 1h
-  chunk_target_size: 1048576
+common:
+  ring:
+    instance_addr: 127.0.0.1
+    kvstore:
+      store: inmemory
+  replication_factor: 1
+  path_prefix: /loki
 
 schema_config:
   configs:
     - from: 2024-01-01
-      store: boltdb-shipper
+      store: tsdb
       object_store: filesystem
-      schema: v11
+      schema: v13
       index:
         prefix: index_
         period: 24h
 
 storage_config:
-  boltdb_shipper:
-    active_index_directory: /loki/index
-    cache_location: /loki/cache
-    shared_store: filesystem
   filesystem:
     directory: /loki/chunks
 
+compactor:
+  working_directory: /loki/compactor
+  retention_enabled: true
+  delete_request_store: filesystem
+
 limits_config:
   retention_period: 168h # 7 days
-  enforce_metric_name: false
+  allow_structured_metadata: true
   reject_old_samples: true
   reject_old_samples_max_age: 168h
-
-chunk_store_config:
-  max_look_back_period: 0s
-
-table_manager:
-  retention_deletes_enabled: true
-  retention_period: 168h
 ```
 
-This configuration retains logs for 7 days with filesystem storage, suitable for development and small deployments.
+This configuration retains logs for 7 days with TSDB indexes and filesystem storage, suitable for development and small deployments.
 
 ## Setting Up Grafana
 
@@ -323,7 +319,7 @@ Grafana provides unified dashboards for metrics, traces, and logs:
 ```yaml
 # Add to docker-compose.yml
   grafana:
-    image: grafana/grafana:10.2.3
+    image: grafana/grafana:13.0.1
     container_name: grafana
     ports:
       - "3000:3000"
@@ -358,6 +354,7 @@ datasources:
   # Jaeger data source for traces
   - name: Jaeger
     type: jaeger
+    uid: jaeger
     access: proxy
     url: http://jaeger:16686
     editable: true
@@ -370,7 +367,7 @@ datasources:
     editable: true
     jsonData:
       derivedFields:
-        - datasourceUid: Jaeger
+        - datasourceUid: jaeger
           matcherRegex: "traceID=(\\w+)"
           name: TraceID
           url: "$${__value.raw}"
@@ -384,13 +381,13 @@ Launch all components with Docker Compose:
 
 ```bash
 # Start all services
-docker-compose up -d
+docker compose up -d
 
 # Verify all containers are running
-docker-compose ps
+docker compose ps
 
 # Check collector logs
-docker-compose logs -f otel-collector
+docker compose logs -f otel-collector
 ```
 
 Access the services:
@@ -405,22 +402,24 @@ With infrastructure running, instrument a sample application. Here's a Node.js e
 
 ```javascript
 // app.js - Sample instrumented application
-const express = require('express');
-const { metrics, trace } = require('@opentelemetry/api');
+const { metrics } = require('@opentelemetry/api');
 const { NodeSDK } = require('@opentelemetry/sdk-node');
+const { PeriodicExportingMetricReader } = require('@opentelemetry/sdk-metrics');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
 const { OTLPMetricExporter } = require('@opentelemetry/exporter-metrics-otlp-http');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
+
+const otlpEndpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4318';
 
 // Initialize OpenTelemetry SDK
 const sdk = new NodeSDK({
   serviceName: 'demo-app',
   traceExporter: new OTLPTraceExporter({
-    url: 'http://localhost:4318/v1/traces',
+    url: `${otlpEndpoint}/v1/traces`,
   }),
   metricReader: new PeriodicExportingMetricReader({
     exporter: new OTLPMetricExporter({
-      url: 'http://localhost:4318/v1/metrics',
+      url: `${otlpEndpoint}/v1/metrics`,
     }),
     exportIntervalMillis: 10000,
   }),
@@ -429,12 +428,13 @@ const sdk = new NodeSDK({
 
 sdk.start();
 
+const express = require('express');
 const app = express();
 const meter = metrics.getMeter('demo-app');
 const requestCounter = meter.createCounter('http_requests_total');
 
 app.get('/api/hello', (req, res) => {
-  requestCounter.add(1, { method: 'GET', endpoint: '/api/hello' });
+  requestCounter.add(1, { method: 'GET', endpoint: '/api/hello', status: '200' });
   res.json({ message: 'Hello from instrumented app!' });
 });
 
@@ -476,7 +476,7 @@ Create a dashboard in Grafana for application metrics:
 1. Navigate to Dashboards > New Dashboard
 2. Add a new panel
 3. Select Prometheus as the data source
-4. Query: `rate(http_requests_total[5m])`
+4. Query: `rate(otel_http_requests_total[5m])`
 5. Set visualization type to Time series
 6. Add another panel for error rates, latency percentiles, etc.
 
@@ -489,7 +489,7 @@ groups:
     interval: 30s
     rules:
       - alert: HighErrorRate
-        expr: rate(http_requests_total{status="500"}[5m]) > 0.05
+        expr: rate(otel_http_requests_total{status="500"}[5m]) > 0.05
         for: 5m
         labels:
           severity: warning
@@ -520,7 +520,7 @@ For production Kubernetes deployment, use Helm charts:
 # Add Helm repositories
 helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
-helm repo add grafana https://grafana.github.io/helm-charts
+helm repo add grafana-community https://grafana-community.github.io/helm-charts
 helm repo add jaegertracing https://jaegertracing.github.io/helm-charts
 helm repo update
 
@@ -536,10 +536,10 @@ helm install prometheus prometheus-community/kube-prometheus-stack
 helm install jaeger jaegertracing/jaeger
 
 # Install Loki
-helm install loki grafana/loki-stack
+helm install loki grafana-community/loki
 
 # Install Grafana (if not included in kube-prometheus-stack)
-helm install grafana grafana/grafana
+helm install grafana grafana-community/grafana
 ```
 
 Customize values files for your specific requirements.
