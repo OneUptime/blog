@@ -509,9 +509,9 @@ Read dynamically generated credentials from the database secrets engine.
 # dynamic_credentials.tf
 # Request dynamic database credentials from Vault
 # These credentials are generated on-demand and expire automatically
-data "vault_database_secret" "app_db" {
-  backend = "database"
-  role    = "app-readwrite"
+# Use vault_generic_secret to read from the database/creds/<role> path
+data "vault_generic_secret" "app_db" {
+  path = "database/creds/app-readwrite"
 }
 
 # Use the dynamic credentials in your infrastructure
@@ -523,11 +523,11 @@ resource "kubernetes_secret" "db_credentials" {
 
   data = {
     # Dynamic credentials from Vault
-    username = data.vault_database_secret.app_db.username
-    password = data.vault_database_secret.app_db.password
+    username = data.vault_generic_secret.app_db.data["username"]
+    password = data.vault_generic_secret.app_db.data["password"]
 
     # Connection string for the application
-    connection_string = "postgresql://${data.vault_database_secret.app_db.username}:${data.vault_database_secret.app_db.password}@${var.db_host}:5432/${var.db_name}"
+    connection_string = "postgresql://${data.vault_generic_secret.app_db.data["username"]}:${data.vault_generic_secret.app_db.data["password"]}@${var.db_host}:5432/${var.db_name}"
   }
 
   type = "Opaque"
@@ -536,7 +536,7 @@ resource "kubernetes_secret" "db_credentials" {
 # Output lease information for monitoring
 output "credential_lease_duration" {
   description = "Time until credentials expire"
-  value       = data.vault_database_secret.app_db.lease_duration
+  value       = data.vault_generic_secret.app_db.lease_duration
 }
 ```
 
