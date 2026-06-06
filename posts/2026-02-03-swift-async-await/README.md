@@ -213,10 +213,11 @@ func downloadImages(urls: [URL], maxConcurrency: Int = 4) async throws -> [UIIma
     try await withThrowingTaskGroup(of: (Int, UIImage).self) { group in
         var results = [UIImage?](repeating: nil, count: urls.count)
         var nextIndex = 0
+        let limit = max(1, maxConcurrency)
 
         // Start initial batch up to maxConcurrency
         // This seeds the group with the first N tasks
-        for _ in 0..<min(maxConcurrency, urls.count) {
+        for _ in 0..<min(limit, urls.count) {
             let index = nextIndex
             group.addTask {
                 let image = try await self.downloadImage(from: urls[index])
@@ -241,7 +242,7 @@ func downloadImages(urls: [URL], maxConcurrency: Int = 4) async throws -> [UIIma
             }
         }
 
-        // compactMap removes any nil values (shouldn't be any in this case)
+        // compactMap removes any nil values (shouldn't be any when all tasks succeed)
         return results.compactMap { $0 }
     }
 }
@@ -249,7 +250,7 @@ func downloadImages(urls: [URL], maxConcurrency: Int = 4) async throws -> [UIIma
 
 ## How Structured Concurrency Works
 
-Swift's structured concurrency ties the lifetime of child tasks to their parent scope. When a scope exits, all child tasks are automatically cancelled and awaited. This prevents resource leaks and ensures predictable behavior.
+Swift's structured concurrency ties the lifetime of child tasks to their parent scope. A scope can't exit until its child tasks have completed, and outstanding child tasks are cancelled when the scope exits early because of cancellation or an error. This prevents resource leaks and ensures predictable behavior.
 
 This diagram shows how task lifetimes are scoped:
 
@@ -265,7 +266,7 @@ graph TD
     C --> G
     E --> G
     F --> G
-    G --> H[All children cancelled/awaited]
+    G --> H[Children completed or cancelled, then awaited]
     H --> I[Parent continues or returns]
 ```
 
@@ -274,18 +275,18 @@ The key rules are:
 1. Child tasks cannot outlive their parent scope
 2. If a parent is cancelled, all children are automatically cancelled
 3. A scope waits for all child tasks before exiting
-4. Errors in children propagate to the parent
+4. Errors in children propagate when their results are awaited
 
 ```swift
 // Structured concurrency ensures cleanup even when errors occur
-// If any fetch fails, the other tasks are cancelled automatically
+// If an awaited child throws, remaining unawaited children are cancelled as the scope exits
 func loadDashboard() async throws -> Dashboard {
     // These child tasks are bound to this function's scope
     async let stats = fetchStats()
     async let notifications = fetchNotifications()
     async let recentActivity = fetchRecentActivity()
 
-    // If fetchStats throws, the other two are cancelled immediately
+    // If fetchStats throws, the other two are cancelled as the scope exits
     // The function won't return until all three are resolved
     return try await Dashboard(
         stats: stats,
@@ -311,7 +312,7 @@ func startBackgroundSync() {
 }
 
 // Prefer regular Task when possible - it inherits actor context and priority
-// Regular tasks are still tied to structured concurrency
+// Regular tasks are unstructured, but keep more context than detached tasks
 func startSync() {
     Task {
         // Inherits the current actor context (e.g., MainActor)
@@ -429,10 +430,10 @@ actor ImageCache {
 
 ## MainActor: UI Thread Safety
 
-`MainActor` is a special actor that runs on the main thread. Use it for UI updates and any code that must run on the main thread.
+`MainActor` is a special actor closely related to the main thread. Use it for UI updates and any code that must be isolated to the app's main execution context.
 
 ```swift
-// @MainActor ensures all methods run on the main thread
+// @MainActor ensures all methods run on the main actor
 // Perfect for view controllers and UI-related classes
 @MainActor
 class ProfileViewModel: ObservableObject {
@@ -440,15 +441,15 @@ class ProfileViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var errorMessage: String?
 
-    // This method runs on the main thread automatically
+    // This method runs on the main actor automatically
     // UI updates happen safely without dispatch calls
     func loadUser(id: String) async {
         isLoading = true
         errorMessage = nil
 
         do {
-            // Network call runs on background thread
-            // The result is automatically marshalled back to main thread
+            // The network request suspends this method while URLSession does its work
+            // After the await, execution resumes on the main actor
             user = try await fetchUser(id: id)
         } catch {
             errorMessage = error.localizedDescription
@@ -458,10 +459,10 @@ class ProfileViewModel: ObservableObject {
     }
 }
 
-// Mark individual functions to run on main thread
-// Useful when only specific methods need main thread
+// Mark individual functions to run on the main actor
+// Useful when only specific methods need main-actor isolation
 class DataProcessor {
-    // This specific method runs on main thread
+    // This specific method runs on the main actor
     @MainActor
     func updateUI(with results: [ProcessedItem]) {
         // Safe to update UI here
@@ -469,10 +470,10 @@ class DataProcessor {
     }
 
     func processData(_ items: [Item]) async -> [ProcessedItem] {
-        // Runs on background thread
+        // This work is not main-actor isolated unless the type or caller adds isolation
         let results = await heavyProcessing(items)
 
-        // Explicitly switch to main thread for UI update
+        // Explicitly switch to the main actor for UI update
         await updateUI(with: results)
 
         return results
@@ -487,7 +488,7 @@ You can isolate specific properties to MainActor while keeping the rest of the c
 ```swift
 class ImageLoader {
     // Only this property is main-actor isolated
-    // Access from background requires await
+    // Access from outside the main actor requires await
     @MainActor var loadedImages: [UIImage] = []
 
     func loadImages(urls: [URL]) async throws {
@@ -533,7 +534,7 @@ func fetchUserLegacy(id: String) async throws -> User {
 // Non-throwing version for APIs that don't fail
 func getCurrentLocation() async -> CLLocation {
     await withCheckedContinuation { continuation in
-        locationManager.requestLocation { location in
+        LegacyLocationAPI.requestLocation { location in
             // resume(returning:) for successful completion
             continuation.resume(returning: location)
         }
@@ -583,12 +584,12 @@ class LocationFetcher: NSObject, CLLocationManagerDelegate {
 
 ### Unsafe Continuations
 
-For performance-critical code where you guarantee correct usage, use unsafe continuations. They skip runtime checks but crash if misused.
+For performance-critical code where you guarantee correct usage, use unsafe continuations. They skip runtime checks, so misuse can hang the task or cause undefined behavior.
 
 ```swift
 // withUnsafeContinuation skips runtime safety checks
 // Only use when you're certain about correct usage
-// Faster than checked variants but crashes on misuse
+// Faster than checked variants but unsafe on misuse
 func fastFetch() async -> Data {
     await withUnsafeContinuation { continuation in
         // CRITICAL: Must call resume exactly once
@@ -669,15 +670,15 @@ func loadUserData() async {
 
 ### Error Handling in Task Groups
 
-In task groups, the first error cancels remaining tasks by default. Use `withThrowingTaskGroup` when errors should propagate, or handle errors within tasks to continue processing.
+In throwing task groups, an error is propagated when you await a throwing group result. Once the error leaves the group body, remaining child tasks are cancelled and awaited before the group returns. Use `withThrowingTaskGroup` when errors should propagate, or handle errors within tasks to continue processing.
 
 ```swift
-// First error cancels all tasks and propagates immediately
+// First observed error cancels remaining tasks as the group exits
 func fetchAllOrFail(ids: [String]) async throws -> [User] {
     try await withThrowingTaskGroup(of: User.self) { group in
         for id in ids {
             group.addTask {
-                try await fetchUser(id: id)  // First failure cancels all
+                try await fetchUser(id: id)
             }
         }
 
