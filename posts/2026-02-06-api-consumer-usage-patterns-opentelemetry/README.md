@@ -89,7 +89,7 @@ const requestsByConsumer = meter.createCounter('api.usage.requests', {
 });
 
 // Data transfer by consumer
-const responseSize = meter.createHistogram('api.usage.response_size_bytes', {
+const responseSize = meter.createHistogram('api.usage.response_size', {
   description: 'Response body size in bytes by consumer',
   unit: 'bytes',
 });
@@ -100,7 +100,7 @@ const latencyByTier = meter.createHistogram('api.usage.latency_by_tier', {
   unit: 'ms',
 });
 
-// Unique endpoints accessed per consumer (tracked via spans, queried from trace backend)
+// Endpoint accesses per consumer
 const endpointBreadth = meter.createCounter('api.usage.endpoint_access', {
   description: 'Tracks which endpoints each consumer accesses',
 });
@@ -113,7 +113,7 @@ export function usageMetricsMiddleware(req: any, res: any, next: any) {
   const originalJson = res.json.bind(res);
   res.json = (body: any) => {
     const bodyStr = JSON.stringify(body);
-    responseSize.record(bodyStr.length, {
+    responseSize.record(Buffer.byteLength(bodyStr, 'utf8'), {
       'api.consumer.id': consumer.id,
       'api.consumer.tier': consumer.tier,
       'http.route': req.route?.path || 'unknown',
@@ -130,8 +130,8 @@ export function usageMetricsMiddleware(req: any, res: any, next: any) {
       'api.consumer.tier': consumer.tier,
       'api.consumer.organization': consumer.organization,
       'http.route': route,
-      'http.method': req.method,
-      'http.status_code': res.statusCode,
+      'http.request.method': req.method,
+      'http.response.status_code': res.statusCode,
     });
 
     latencyByTier.record(duration, {
@@ -169,14 +169,17 @@ topk(10,
 sum(rate(api_usage_requests_total[1h])) by (api_consumer_tier)
 
 # Consumers with the highest error rates
+# OpenTelemetry attributes with dots are translated to Prometheus label names with underscores
 topk(5,
-  sum(rate(api_usage_requests_total{http_status_code=~"5.."}[1h])) by (api_consumer_id)
+  sum(rate(api_usage_requests_total{http_response_status_code=~"5.."}[1h])) by (api_consumer_id)
   /
   sum(rate(api_usage_requests_total[1h])) by (api_consumer_id)
 )
 
 # Average response size by consumer (identify data-heavy consumers)
-avg(api_usage_response_size_bytes) by (api_consumer_id)
+sum(rate(api_usage_response_size_bytes_sum[1h])) by (api_consumer_id)
+/
+sum(rate(api_usage_response_size_bytes_count[1h])) by (api_consumer_id)
 ```
 
 ## Detecting Usage Anomalies
@@ -195,24 +198,29 @@ const anomalyCounter = meter.createCounter('api.usage.anomalies', {
 
 // Simple rate change detection
 class UsageTracker {
-  private hourlyRates: Map<string, number[]> = new Map();
+  private hourlyCounts: Map<string, Map<number, number>> = new Map();
 
   recordRequest(consumerId: string) {
-    const rates = this.hourlyRates.get(consumerId) || [];
     const currentHour = Math.floor(Date.now() / 3600000);
+    const counts = this.hourlyCounts.get(consumerId) || new Map<number, number>();
 
     // Keep last 168 hours (1 week) of hourly rates
     // This is simplified - in production use a proper time series
-    rates.push(currentHour);
-    this.hourlyRates.set(consumerId, rates.slice(-168));
+    counts.set(currentHour, (counts.get(currentHour) || 0) + 1);
+    for (const hour of counts.keys()) {
+      if (hour < currentHour - 167) {
+        counts.delete(hour);
+      }
+    }
+    this.hourlyCounts.set(consumerId, counts);
   }
 
   checkForAnomaly(consumerId: string, currentRate: number): boolean {
-    const rates = this.hourlyRates.get(consumerId) || [];
-    if (rates.length < 24) return false; // Need at least 24 hours of data
+    const counts = this.hourlyCounts.get(consumerId);
+    if (!counts || counts.size < 24) return false; // Need at least 24 hours of data
 
-    // Calculate average and standard deviation
-    const avg = rates.length; // Simplified
+    // Calculate the average hourly request count
+    const avg = Array.from(counts.values()).reduce((sum, count) => sum + count, 0) / counts.size;
     const threshold = avg * 3; // Alert at 3x normal
 
     if (currentRate > threshold) {
@@ -264,7 +272,7 @@ function getMetricConsumerId(consumerId: string, isTopConsumer: boolean): string
 
 // Option 2: Use consumer tier instead of individual ID for high-cardinality metrics
 // This reduces cardinality from thousands to a handful
-requestsByTier.add(1, {
+requestsByConsumer.add(1, {
   'api.consumer.tier': consumer.tier, // "free", "pro", "enterprise"
   'http.route': route,
 });
