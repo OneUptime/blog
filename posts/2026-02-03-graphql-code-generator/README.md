@@ -545,17 +545,15 @@ Usually means a custom scalar is not mapped. Check your schema for custom scalar
 
 **Watch mode misses changes**
 
-Some editors save to temp files first. Try increasing the debounce time:
+Some editors save to temp files first, which can confuse native filesystem events. Switching to polling (and tuning the interval) usually fixes it:
 
 ```typescript
 const config: CodegenConfig = {
   // ...
   watch: true,
   watchConfig: {
-    chokidar: {
-      usePolling: true,
-      interval: 1000,
-    },
+    usePolling: true,
+    interval: 1000,
   },
 };
 ```
