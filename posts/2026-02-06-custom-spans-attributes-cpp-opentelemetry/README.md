@@ -15,7 +15,7 @@ A span represents a single operation within a trace. Each span has:
 - A name describing the operation
 - Start and end timestamps
 - Attributes (key-value pairs)
-- Events (timestamped logs)
+- Events (timestamped annotations)
 - A status code (OK, ERROR, or UNSET)
 - Links to other spans
 - A parent-child relationship with other spans
@@ -42,12 +42,12 @@ namespace trace_api = opentelemetry::trace;
 // Get tracer from global provider
 auto provider = trace_api::Provider::GetTracerProvider();
 auto tracer = provider->GetTracer(
-    "my-application",  // instrumentation library name
-    "1.0.0"           // instrumentation library version
+    "my-application",  // instrumentation scope name
+    "1.0.0"           // instrumentation scope version
 );
 ```
 
-The instrumentation library name and version help identify which component generated spans.
+The instrumentation scope name and version help identify which component generated spans.
 
 ## Creating Basic Spans
 
@@ -72,7 +72,7 @@ Always end spans to ensure telemetry is exported. Forgetting to call `End()` cau
 
 ## Using Span Scope
 
-RAII-style scope management automatically ends spans:
+Scope management makes spans active for the lifetime of a block:
 
 ```cpp
 void ProcessOrder(const std::string& order_id) {
@@ -84,11 +84,12 @@ void ProcessOrder(const std::string& order_id) {
     CalculateTotal(order_id);
     ChargePayment(order_id);
 
-    // Span ends when scope is destroyed
+    // End the span when the operation is complete
+    span->End();
 }
 ```
 
-The scope makes the span "active," allowing child operations to create nested spans automatically.
+The scope makes the span "active," allowing child operations to create nested spans automatically. Destroying the scope only restores the previous active span; call `End()` when the operation is complete.
 
 ## Adding Attributes
 
@@ -116,33 +117,37 @@ void ProcessOrder(const std::string& order_id, double amount) {
 }
 ```
 
-Attributes accept strings, numbers (int, double), and booleans. They can be added anytime before the span ends.
+Attributes accept strings, numbers (int, double), booleans, and homogeneous arrays of those primitive types. They can be added anytime before the span ends.
 
 ## Using Semantic Conventions
 
 OpenTelemetry defines standard attribute names for common concepts:
 
 ```cpp
-#include "opentelemetry/trace/semantic_conventions.h"
+#include "opentelemetry/semconv/http_attributes.h"
+#include "opentelemetry/semconv/url_attributes.h"
+
+namespace http_semconv = opentelemetry::semconv::http;
+namespace url_semconv = opentelemetry::semconv::url;
 
 void HandleHttpRequest(const std::string& method, const std::string& url) {
     auto span = tracer->StartSpan("http_request");
 
     // Use semantic convention constants
     span->SetAttribute(
-        trace_api::SemanticConventions::kHttpMethod,
+        http_semconv::kHttpRequestMethod,
         method
     );
     span->SetAttribute(
-        trace_api::SemanticConventions::kHttpUrl,
+        url_semconv::kUrlFull,
         url
     );
     span->SetAttribute(
-        trace_api::SemanticConventions::kHttpScheme,
+        url_semconv::kUrlScheme,
         "https"
     );
     span->SetAttribute(
-        trace_api::SemanticConventions::kHttpTarget,
+        http_semconv::kHttpRoute,
         "/api/v1/users"
     );
 
@@ -174,6 +179,7 @@ void ProcessPayment(const std::string& payment_id) {
         );
 
         // Re-throw to propagate error
+        span->End();
         throw;
     }
 
@@ -185,7 +191,7 @@ Setting status to `kError` marks the span as failed in tracing UIs.
 
 ## Adding Events
 
-Events are timestamped logs within a span:
+Events are timestamped annotations within a span:
 
 ```cpp
 void ProcessOrder(const std::string& order_id) {
@@ -302,6 +308,12 @@ auto producer_span = tracer->StartSpan("publish_event", {}, producer_options);
 trace_api::StartSpanOptions consumer_options;
 consumer_options.kind = trace_api::SpanKind::kConsumer;
 auto consumer_span = tracer->StartSpan("process_message", {}, consumer_options);
+
+server_span->End();
+client_span->End();
+internal_span->End();
+producer_span->End();
+consumer_span->End();
 ```
 
 ## Setting Start Time
@@ -315,6 +327,7 @@ void RecordHistoricalEvent() {
 
     trace_api::StartSpanOptions options;
     options.start_system_time = event_time;
+    options.start_steady_time = std::chrono::steady_clock::now() - std::chrono::hours(1);
 
     auto span = tracer->StartSpan("historical_event", {}, options);
     span->SetAttribute("event.recorded_late", true);
@@ -324,22 +337,30 @@ void RecordHistoricalEvent() {
 
 ## Complex Attribute Types
 
-Add arrays and nested structures:
+Add homogeneous arrays of primitive values:
 
 ```cpp
 void ProcessBatch(const std::vector<std::string>& item_ids) {
     auto span = tracer->StartSpan("process_batch");
 
     // Array of strings
-    std::vector<opentelemetry::common::AttributeValue> items;
+    std::vector<opentelemetry::nostd::string_view> items;
     for (const auto& id : item_ids) {
-        items.push_back(id);
+        items.push_back(opentelemetry::nostd::string_view{id.data(), id.size()});
     }
-    span->SetAttribute("batch.item_ids", items);
+    span->SetAttribute(
+        "batch.item_ids",
+        opentelemetry::nostd::span<const opentelemetry::nostd::string_view>{
+            items.data(),
+            items.size()
+        }
+    );
 
     // Array of numbers
-    span->SetAttribute("batch.sizes",
-        std::vector<int64_t>{10, 20, 30, 40}
+    std::vector<int64_t> sizes{10, 20, 30, 40};
+    span->SetAttribute(
+        "batch.sizes",
+        opentelemetry::nostd::span<const int64_t>{sizes.data(), sizes.size()}
     );
 
     span->End();
@@ -367,6 +388,7 @@ void ProcessRequest(const std::string& request_id) {
         });
 
         span->SetStatus(trace_api::StatusCode::kError, "Request failed");
+        span->End();
         throw;
     }
 
@@ -381,7 +403,10 @@ Link spans that are causally related but not in a parent-child relationship:
 ```cpp
 void ProcessBatch(const std::vector<trace_api::SpanContext>& related_contexts) {
     // Create links to related spans
-    std::vector<trace_api::SpanContextKeyValueIterable::Entry> links;
+    std::vector<std::pair<
+        trace_api::SpanContext,
+        std::vector<std::pair<opentelemetry::nostd::string_view, opentelemetry::common::AttributeValue>>
+    >> links;
     for (const auto& context : related_contexts) {
         links.push_back({
             context,
@@ -389,10 +414,7 @@ void ProcessBatch(const std::vector<trace_api::SpanContext>& related_contexts) {
         });
     }
 
-    trace_api::StartSpanOptions options;
-    options.links = links;
-
-    auto span = tracer->StartSpan("batch_operation", {}, options);
+    auto span = tracer->StartSpan("batch_operation", {}, links);
 
     // Process batch
     span->End();
@@ -411,7 +433,7 @@ private:
 public:
     void ProcessRequest(const std::string& id) {
         // Only create span if tracing is enabled
-        if (!IsTracingEnabled()) {
+        if (!tracer_->Enabled()) {
             ProcessInternal(id);
             return;
         }
@@ -432,10 +454,6 @@ private:
         // Core logic without tracing overhead
     }
 
-    bool IsTracingEnabled() {
-        return trace_api::Provider::GetTracerProvider() !=
-               trace_api::Provider::GetNoopTracerProvider();
-    }
 };
 ```
 
@@ -443,7 +461,7 @@ private:
 
 1. Use descriptive span names that indicate the operation (verbs, not nouns)
 2. Set attributes early to ensure they appear even if the operation fails
-3. Always end spans, preferably using RAII scope guards
+3. Always end spans, including on exception paths
 4. Use semantic conventions for standard operations
 5. Add events for significant milestones within a span
 6. Set error status and include error details
@@ -457,8 +475,11 @@ Here's a comprehensive example demonstrating all concepts:
 ```cpp
 #include "opentelemetry/trace/provider.h"
 #include "opentelemetry/trace/span.h"
+#include <exception>
 #include <memory>
+#include <stdexcept>
 #include <string>
+#include <typeinfo>
 #include <vector>
 
 namespace trace_api = opentelemetry::trace;
@@ -504,6 +525,7 @@ public:
                 {"exception.message", e.what()}
             });
             span->SetStatus(trace_api::StatusCode::kError, e.what());
+            span->End();
             throw;
         }
 
@@ -518,6 +540,7 @@ private:
         // Validation logic
         if (amount <= 0) {
             span->SetStatus(trace_api::StatusCode::kError, "Invalid amount");
+            span->End();
             throw std::runtime_error("Invalid amount");
         }
 
