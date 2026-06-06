@@ -83,8 +83,8 @@ ps aux | grep otelcol
 # otelcol  12345  0.5  2.1  500000 43000  ?  Ssl  10:00  0:05  /usr/local/bin/otelcol --config=/etc/otelcol/config.yaml
 
 # Or use systemd
-systemctl status otelcol-collector
-# Look for "Main PID" and "User" in output
+systemctl status otelcol
+systemctl show otelcol -p User -p Group -p MainPID
 ```
 
 ### Step 2: Check File Ownership and Permissions
@@ -219,6 +219,7 @@ sudo chmod 400 /etc/otelcol/env
 # 400 = only owner can read
 
 # Update systemd to load env file
+sudo mkdir -p /etc/systemd/system/otelcol.service.d
 sudo tee /etc/systemd/system/otelcol.service.d/override.conf > /dev/null <<EOF
 [Service]
 EnvironmentFile=/etc/otelcol/env
@@ -273,6 +274,9 @@ exporters:
     sending_queue:
       enabled: true
       storage: file_storage  # References extension above
+
+service:
+  extensions: [file_storage]
 ```
 
 ### Scenario 3: Cannot Create Log Files
@@ -335,14 +339,10 @@ When Collector needs to read host-level metrics (CPU, memory, disk), it needs ac
 # Edit systemd service
 sudo systemctl edit otelcol
 
-# Add these directives
+# If your service hardening restricted /proc, override it
 [Service]
-# Allow reading /proc files
-ProtectSystem=true
-# Allow reading /sys files
-ProtectHome=true
-# Don't restrict /proc access
-PrivateTmp=false
+ProtectProc=default
+ProcSubset=all
 
 # Reload and restart
 sudo systemctl daemon-reload
@@ -356,14 +356,8 @@ services:
   otel-collector:
     image: otel/opentelemetry-collector-contrib:latest
     volumes:
-      # Mount host /proc as read-only
-      - /proc:/host/proc:ro
-      # Mount host /sys as read-only
-      - /sys:/host/sys:ro
-    environment:
-      # Tell Collector where to find host proc
-      - HOST_PROC=/host/proc
-      - HOST_SYS=/host/sys
+      # Mount host filesystem as read-only
+      - /:/hostfs:ro
 ```
 
 ```yaml
@@ -371,7 +365,7 @@ services:
 receivers:
   hostmetrics:
     collection_interval: 30s
-    root_path: /host
+    root_path: /hostfs
     scrapers:
       cpu:
       disk:
@@ -402,8 +396,8 @@ sudo ausearch -m avc -ts recent | grep otelcol
 # Check current context
 ls -Z /var/lib/otelcol
 
-# Set appropriate context
-sudo semanage fcontext -a -t usr_t "/var/lib/otelcol(/.*)?"
+# Restore the default var/lib context if files were mislabeled
+sudo semanage fcontext -a -t var_lib_t "/var/lib/otelcol(/.*)?"
 sudo restorecon -Rv /var/lib/otelcol
 
 # For log directory
@@ -600,20 +594,28 @@ metadata:
   name: otel-collector
   namespace: observability
 spec:
+  selector:
+    matchLabels:
+      app: otel-collector
   template:
+    metadata:
+      labels:
+        app: otel-collector
     spec:
       # Run as non-root user
       securityContext:
         runAsUser: 10001
         runAsGroup: 10001
         fsGroup: 10001
-        # Prevent privilege escalation
+        # Use the default runtime seccomp profile
         seccompProfile:
           type: RuntimeDefault
 
       containers:
       - name: otel-collector
         image: otel/opentelemetry-collector-contrib:latest
+        args:
+          - --config=/etc/otelcol/config.yaml
 
         # Container-level security
         securityContext:
@@ -649,37 +651,42 @@ spec:
 
 **For Host Metrics in Kubernetes:**
 ```yaml
-# Need privileged access to read host /proc
+# Mount the host filesystem read-only so hostmetrics reads the node, not the container
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
   name: otel-collector-host
 spec:
+  selector:
+    matchLabels:
+      app: otel-collector-host
   template:
+    metadata:
+      labels:
+        app: otel-collector-host
     spec:
-      # Host metrics require host access
-      hostPID: true
-      hostNetwork: true
-
       containers:
       - name: otel-collector
+        image: otel/opentelemetry-collector-contrib:latest
         securityContext:
-          privileged: true  # Required for host metrics
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsUser: 10001
+          runAsGroup: 10001
+          runAsNonRoot: true
+          capabilities:
+            drop:
+              - ALL
         volumeMounts:
-        - name: host-proc
-          mountPath: /host/proc
+        - name: hostfs
+          mountPath: /hostfs
           readOnly: true
-        - name: host-sys
-          mountPath: /host/sys
-          readOnly: true
+          mountPropagation: HostToContainer
 
       volumes:
-      - name: host-proc
+      - name: hostfs
         hostPath:
-          path: /proc
-      - name: host-sys
-        hostPath:
-          path: /sys
+          path: /
 ```
 
 ---
@@ -728,7 +735,7 @@ File permission issues in OpenTelemetry Collector on Linux typically involve:
 2. Data directories not writable
 3. Log directories not accessible
 4. SELinux or AppArmor blocking access
-5. Missing capabilities for host metrics
+5. Overly restrictive service or container sandboxing for host metrics
 
 Fix permission issues by:
 - Running Collector as dedicated non-root user
