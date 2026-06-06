@@ -732,7 +732,12 @@ return new class extends Migration
             $table->softDeletes();
 
             // Unique constraint includes deleted_at
-            // This allows the same slug for active and deleted posts
+            // This allows the same slug for active and deleted posts.
+            // Caveat: on MySQL and PostgreSQL, NULLs in a unique index are
+            // treated as distinct per the SQL standard, so this does NOT
+            // prevent two active rows (deleted_at IS NULL) from sharing a slug.
+            // On PostgreSQL, prefer a partial unique index:
+            //   CREATE UNIQUE INDEX posts_slug_active ON posts (slug) WHERE deleted_at IS NULL;
             $table->unique(['slug', 'deleted_at']);
         });
     }
@@ -978,6 +983,7 @@ namespace App\Models\Scopes;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Scope;
+use Illuminate\Database\Eloquent\SoftDeletingScope;
 
 class VisibleToUserScope implements Scope
 {
@@ -987,6 +993,11 @@ class VisibleToUserScope implements Scope
      */
     public function apply(Builder $builder, Model $model): void
     {
+        // Remove the default SoftDeletingScope so we can include deleted rows
+        // for the current user. Without this, the default scope ANDs in
+        // `deleted_at IS NULL` and our OR branch can never match.
+        $builder->withoutGlobalScope(SoftDeletingScope::class);
+
         $user = auth()->user();
 
         if ($user) {
@@ -1041,6 +1052,7 @@ Write comprehensive tests for your soft delete logic:
 
 namespace Tests\Feature;
 
+use App\Models\Comment;
 use App\Models\Post;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
