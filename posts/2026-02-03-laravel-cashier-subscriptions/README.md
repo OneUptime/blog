@@ -854,7 +854,7 @@ class FeatureController extends Controller
             'subscription' => $user->subscribed('default') ? [
                 'status' => $user->subscription('default')->stripe_status,
                 'on_grace_period' => $user->subscription('default')->onGracePeriod(),
-                'cancelled' => $user->subscription('default')->cancelled(),
+                'canceled' => $user->subscription('default')->canceled(),
                 'ended' => $user->subscription('default')->ended(),
                 'recurring' => $user->subscription('default')->recurring(),
             ] : null,
@@ -1119,7 +1119,7 @@ class CancellationController extends Controller
         $user = $request->user();
         $subscription = $user->subscription('default');
 
-        if (!$subscription || $subscription->cancelled()) {
+        if (!$subscription || $subscription->canceled()) {
             return response()->json([
                 'message' => 'No active subscription to cancel',
             ], 422);
@@ -1161,12 +1161,12 @@ class CancellationController extends Controller
     }
 
     /**
-     * Cancel and refund prorated amount.
+     * Cancel immediately and invoice any pending proration or metered usage.
      *
      * @param Request $request
      * @return JsonResponse
      */
-    public function cancelNowAndRefund(Request $request): JsonResponse
+    public function cancelNowAndInvoice(Request $request): JsonResponse
     {
         $user = $request->user();
         $subscription = $user->subscription('default');
@@ -1177,11 +1177,12 @@ class CancellationController extends Controller
             ], 422);
         }
 
-        // Cancel immediately and issue prorated refund
+        // Cancel immediately and invoice any remaining un-invoiced
+        // metered usage or pending proration invoice items
         $subscription->cancelNowAndInvoice();
 
         return response()->json([
-            'message' => 'Subscription cancelled and prorated amount refunded',
+            'message' => 'Subscription cancelled and final invoice issued',
         ]);
     }
 
@@ -1242,7 +1243,7 @@ public function cancellationStatus(Request $request): JsonResponse
 
     return response()->json([
         'has_subscription' => true,
-        'cancelled' => $subscription->cancelled(),
+        'canceled' => $subscription->canceled(),
         'on_grace_period' => $subscription->onGracePeriod(),
         'ended' => $subscription->ended(),
         'ends_at' => $subscription->ends_at?->toISOString(),
