@@ -37,8 +37,6 @@ func main() {
         ServerAddress:   "http://pyroscope.internal:4040",
         ProfileTypes: []pyroscope.ProfileType{
             pyroscope.ProfileCPU,
-            pyroscope.ProfileAllocObjects,
-            pyroscope.ProfileAllocSpace,
         },
     })
 
@@ -47,8 +45,7 @@ func main() {
     tp := otel.GetTracerProvider()
     otel.SetTracerProvider(otelpyroscope.NewTracerProvider(tp))
 
-    // Now every span created through the tracer will have
-    // associated CPU profile data
+    // CPU samples collected during spans are labeled with span IDs
     startServer()
 }
 ```
@@ -62,7 +59,7 @@ import one.profiler.AsyncProfiler;
 public class OrderService {
     private static final AsyncProfiler profiler = AsyncProfiler.getInstance();
 
-    public OrderResult calculateTotals(Order order) {
+    public OrderResult calculateTotals(Order order) throws Exception {
         Span span = tracer.spanBuilder("order.calculate_totals").startSpan();
         try (Scope scope = span.makeCurrent()) {
             span.setAttribute("order.id", order.getId());
@@ -77,16 +74,16 @@ public class OrderService {
                 ));
             }
 
-            OrderResult result = doExpensiveCalculation(order);
-
-            // Stop profiling and attach reference to span
-            if (profileId != null) {
-                profiler.execute("stop");
-                span.setAttribute("profile.id", profileId);
-                span.setAttribute("profile.type", "cpu");
+            try {
+                return doExpensiveCalculation(order);
+            } finally {
+                // Stop profiling and attach reference to span
+                if (profileId != null) {
+                    profiler.execute("stop");
+                    span.setAttribute("profile.id", profileId);
+                    span.setAttribute("profile.type", "cpu");
+                }
             }
-
-            return result;
         } finally {
             span.end();
         }
@@ -94,10 +91,10 @@ public class OrderService {
 }
 ```
 
-### Using perf with Node.js
+### Using Node.js inspector
 
 ```javascript
-const { Session } = require('inspector');
+const { Session } = require('node:inspector/promises');
 const { trace } = require('@opentelemetry/api');
 
 const tracer = trace.getTracer('order-service');
@@ -106,32 +103,37 @@ async function calculateTotals(order) {
   return tracer.startActiveSpan('order.calculate_totals', async (span) => {
     span.setAttribute('order.id', order.id);
 
-    // Start CPU profiling for this span
     const session = new Session();
     session.connect();
-    session.post('Profiler.enable');
-    session.post('Profiler.start');
+    let profiling = false;
+    try {
+      // Start CPU profiling for this span
+      await session.post('Profiler.enable');
+      await session.post('Profiler.start');
+      profiling = true;
 
-    const result = await doExpensiveCalculation(order);
+      const result = await doExpensiveCalculation(order);
 
-    // Stop profiling and collect results
-    const profile = await new Promise((resolve) => {
-      session.post('Profiler.stop', (err, { profile }) => {
-        resolve(profile);
-      });
-    });
+      // Stop profiling and collect results
+      const { profile } = await session.post('Profiler.stop');
+      profiling = false;
 
-    // Attach profile metadata to the span
-    span.setAttribute('profile.sample_count', profile.samples.length);
-    span.setAttribute('profile.duration_us', profile.endTime - profile.startTime);
+      // Attach profile metadata to the span
+      span.setAttribute('profile.sample_count', profile.samples?.length ?? 0);
+      span.setAttribute('profile.duration_us', profile.endTime - profile.startTime);
 
-    // Save profile with trace ID as reference
-    const traceId = span.spanContext().traceId;
-    saveProfile(traceId, profile);
+      // Save profile with trace ID as reference
+      const traceId = span.spanContext().traceId;
+      saveProfile(traceId, profile);
 
-    session.disconnect();
-    span.end();
-    return result;
+      return result;
+    } finally {
+      if (profiling) {
+        await session.post('Profiler.stop').catch(() => {});
+      }
+      session.disconnect();
+      span.end();
+    }
   });
 }
 ```
@@ -157,10 +159,16 @@ Once you have both trace and profile data linked by trace ID, the debugging work
 ```bash
 # Retrieve the profile linked to a specific trace
 # If using Pyroscope:
-curl "http://pyroscope.internal:4040/api/v1/profile?\
-app=order-service&\
-span_id=abc123def456&\
-format=flamegraph"
+curl \
+  -H "Content-Type: application/json" \
+  -d '{
+    "start": 1767672000000,
+    "end": 1767675600000,
+    "labelSelector": "{service_name=\"order-service\"}",
+    "profileTypeID": "process_cpu:cpu:nanoseconds:cpu:nanoseconds",
+    "spanSelector": ["abc123def456"]
+  }' \
+  "http://pyroscope.internal:4040/querier.v1.QuerierService/SelectMergeSpanProfile"
 ```
 
 ### Step 3: Read the Flame Graph
@@ -198,7 +206,7 @@ You do not want to profile every request. Profile sampling should be selective:
 import random
 from opentelemetry import trace
 
-# Profile 1% of requests, or 100% of requests that are already slow
+# Profile 1% of requests, or traces already selected for debugging
 PROFILE_SAMPLE_RATE = 0.01
 
 def should_profile(span):
@@ -223,7 +231,7 @@ datasources:
     jsonData:
       tracesToProfiles:
         datasourceUid: pyroscope-uid
-        profileTypeId: "process_cpu:cpu:nanoseconds"
+        profileTypeId: "process_cpu:cpu:nanoseconds:cpu:nanoseconds"
         tags:
           - key: service.name
             value: service_name
