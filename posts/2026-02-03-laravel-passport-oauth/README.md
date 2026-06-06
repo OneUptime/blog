@@ -38,22 +38,24 @@ Before we dive in, make sure you have:
 
 ## Installation
 
-Let us start by installing Passport via Composer.
+In Laravel 11, the recommended way to install Passport is via the `install:api` Artisan command, which publishes the API routes file, installs Passport, and runs the migrations in one step:
 
 ```bash
-# Install Laravel Passport via Composer
-
-composer require laravel/passport
+# Install Passport (Laravel 11) - publishes API routes, installs Passport, runs migrations
+php artisan install:api --passport
 ```
 
-Once installed, run the migrations to create the necessary database tables:
+If you are on Laravel 10, install Passport via Composer and run the migrations manually:
 
 ```bash
+# Install Laravel Passport via Composer (Laravel 10)
+composer require laravel/passport
+
 # Run Passport migrations to create OAuth tables
 php artisan migrate
 ```
 
-This creates several tables in your database:
+The migrations create several tables in your database:
 
 - `oauth_auth_codes` - Stores authorization codes
 - `oauth_access_tokens` - Stores access tokens
@@ -61,14 +63,14 @@ This creates several tables in your database:
 - `oauth_clients` - Stores OAuth clients
 - `oauth_personal_access_clients` - Links personal access clients
 
-Next, generate the encryption keys that Passport uses to generate secure tokens:
+On Laravel 10, after running migrations, generate the encryption keys and default clients with:
 
 ```bash
-# Generate encryption keys for secure token generation
+# Generate encryption keys and create default clients (Laravel 10)
 php artisan passport:install
 ```
 
-This command creates the encryption keys needed to generate secure access tokens. It also creates "personal access" and "password grant" clients which will be used to generate access tokens.
+This command creates the encryption keys needed to generate secure access tokens. It also creates "personal access" and "password grant" clients which can be used to generate access tokens. On Laravel 11, `install:api --passport` performs the equivalent setup for you.
 
 ## Configuring Your User Model
 
@@ -124,9 +126,9 @@ class User extends Authenticatable
 }
 ```
 
-## Registering Passport Routes
+## Configuring Passport
 
-In Laravel 11, you need to register Passport routes in your `AppServiceProvider`. Add the following to the `boot` method:
+In Laravel 11 with Passport 12, the OAuth routes are registered automatically by Passport's service provider — there is no longer a `Passport::routes()` method to call. You can still customize Passport behavior (like token lifetimes) in the `boot` method of your `AppServiceProvider`:
 
 ```php
 <?php
@@ -151,9 +153,6 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        // Register Passport routes for OAuth endpoints
-        Passport::routes();
-
         // Optional: Set token expiration times
         Passport::tokensExpireIn(now()->addDays(15));
         Passport::refreshTokensExpireIn(now()->addDays(30));
@@ -162,7 +161,7 @@ class AppServiceProvider extends ServiceProvider
 }
 ```
 
-For Laravel 10, you would typically do this in `AuthServiceProvider` instead.
+For Laravel 10, you would typically configure Passport in `AuthServiceProvider` instead.
 
 ## Configuring the API Guard
 
@@ -275,7 +274,19 @@ class TokenController extends Controller
 
 The password grant allows your first-party clients (like your mobile app) to exchange a username and password for an access token. This is useful when you control both the client and the server.
 
-First, create a password grant client:
+Note that the OAuth2 Server Working Group no longer recommends the password grant, and in Passport 12+ it is disabled by default. To enable it, call `Passport::enablePasswordGrant()` in the `boot` method of your `AppServiceProvider`:
+
+```php
+use Laravel\Passport\Passport;
+
+public function boot(): void
+{
+    // Enable the password grant (disabled by default in Passport 12)
+    Passport::enablePasswordGrant();
+}
+```
+
+If you have already run `passport:install`, a password grant client has been created for you. Otherwise, create one with:
 
 ```bash
 # Create a password grant client for first-party applications
@@ -590,9 +601,6 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        // Register Passport routes
-        Passport::routes();
-
         // Define available scopes
         // Each scope has a key and a human-readable description
         Passport::tokensCan([
@@ -1120,62 +1128,51 @@ class LoginController extends Controller
 
 ## Handling Token Errors
 
-Create a custom exception handler for Passport errors:
+In Laravel 11, exception handling is configured in `bootstrap/app.php` using the `withExceptions` callback. Customize responses for Passport's `MissingScopeException` and Laravel's `AuthenticationException` like so:
 
 ```php
 <?php
 
-namespace App\Exceptions;
-
 use Illuminate\Auth\AuthenticationException;
-use Illuminate\Foundation\Exceptions\Handler as ExceptionHandler;
+use Illuminate\Foundation\Application;
+use Illuminate\Foundation\Configuration\Exceptions;
+use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Request;
 use Laravel\Passport\Exceptions\MissingScopeException;
-use Throwable;
 
-class Handler extends ExceptionHandler
-{
-    /**
-     * Render an exception into an HTTP response.
-     *
-     * @param \Illuminate\Http\Request $request
-     * @param \Throwable $e
-     * @return \Symfony\Component\HttpFoundation\Response
-     */
-    public function render($request, Throwable $e)
-    {
+return Application::configure(basePath: dirname(__DIR__))
+    ->withRouting(
+        web: __DIR__.'/../routes/web.php',
+        api: __DIR__.'/../routes/api.php',
+        commands: __DIR__.'/../routes/console.php',
+        health: '/up',
+    )
+    ->withMiddleware(function (Middleware $middleware) {
+        //
+    })
+    ->withExceptions(function (Exceptions $exceptions) {
         // Handle missing scope exceptions
-        if ($e instanceof MissingScopeException) {
+        $exceptions->render(function (MissingScopeException $e, Request $request) {
             return response()->json([
                 'message' => 'Insufficient permissions',
                 'error' => 'missing_scope',
                 'required_scopes' => $e->scopes(),
             ], 403);
-        }
+        });
 
-        return parent::render($request, $e);
-    }
-
-    /**
-     * Convert an authentication exception into a response.
-     *
-     * @param \Illuminate\Http\Request $request
-     * @param \Illuminate\Auth\AuthenticationException $exception
-     * @return \Symfony\Component\HttpFoundation\Response
-     */
-    protected function unauthenticated($request, AuthenticationException $exception)
-    {
-        // Always return JSON for API requests
-        if ($request->expectsJson() || $request->is('api/*')) {
-            return response()->json([
-                'message' => 'Unauthenticated',
-                'error' => 'invalid_token',
-            ], 401);
-        }
-
-        return redirect()->guest(route('login'));
-    }
-}
+        // Customize the unauthenticated response for API requests
+        $exceptions->render(function (AuthenticationException $e, Request $request) {
+            if ($request->expectsJson() || $request->is('api/*')) {
+                return response()->json([
+                    'message' => 'Unauthenticated',
+                    'error' => 'invalid_token',
+                ], 401);
+            }
+        });
+    })->create();
 ```
+
+For Laravel 10, equivalent customizations belong in the `register` method of `App\Exceptions\Handler`.
 
 ## Testing Your Passport Implementation
 
