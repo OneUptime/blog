@@ -38,7 +38,7 @@ sequenceDiagram
     OTel->>Exp: Export telemetry
 ```
 
-On a typical Node.js Lambda function, OpenTelemetry auto-instrumentation can add anywhere from 200ms to 800ms of cold start latency depending on how many libraries you instrument and which exporter you use.
+On a typical Node.js Lambda function, OpenTelemetry auto-instrumentation can add measurable cold start latency depending on how many libraries you instrument and which exporter you use.
 
 ## Measuring Cold Start Overhead Accurately
 
@@ -48,7 +48,19 @@ Before you optimize, you need to measure. The first step is to record cold start
 // cold-start-metric.js
 // Records cold start duration as an OpenTelemetry metric
 const { metrics } = require('@opentelemetry/api');
-const { MeterProvider } = require('@opentelemetry/sdk-metrics');
+const { MeterProvider, PeriodicExportingMetricReader } = require('@opentelemetry/sdk-metrics');
+const { OTLPMetricExporter } = require('@opentelemetry/exporter-metrics-otlp-http');
+
+metrics.setGlobalMeterProvider(
+  new MeterProvider({
+    readers: [
+      new PeriodicExportingMetricReader({
+        exporter: new OTLPMetricExporter(),
+        exportIntervalMillis: 60000,
+      }),
+    ],
+  })
+);
 
 const meter = metrics.getMeter('lambda-cold-start');
 
@@ -69,7 +81,7 @@ module.exports.handler = async (event, context) => {
     coldStartDuration.record(duration, {
       'faas.name': context.functionName,
       'faas.version': context.functionVersion,
-      'faas.cold_start': true,
+      'faas.coldstart': true,
     });
 
     isColdStart = false;
@@ -98,21 +110,20 @@ function getTracer() {
   if (!initialized) {
     // Only import and configure when first span is needed
     const { NodeTracerProvider } = require('@opentelemetry/sdk-trace-node');
-    const { SimpleSpanProcessor } = require('@opentelemetry/sdk-trace-base');
+    const { BatchSpanProcessor } = require('@opentelemetry/sdk-trace-base');
     const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
+    const { resourceFromAttributes } = require('@opentelemetry/resources');
 
     tracerProvider = new NodeTracerProvider({
       // Use resource detectors that are fast to resolve
-      resource: new Resource({
+      resource: resourceFromAttributes({
         'service.name': process.env.AWS_LAMBDA_FUNCTION_NAME,
         'faas.instance': process.env.AWS_LAMBDA_LOG_STREAM_NAME,
       }),
+      spanProcessors: [
+        new BatchSpanProcessor(new OTLPTraceExporter()),
+      ],
     });
-
-    // SimpleSpanProcessor exports synchronously, avoiding batching delays
-    tracerProvider.addSpanProcessor(
-      new SimpleSpanProcessor(new OTLPTraceExporter())
-    );
 
     tracerProvider.register();
     initialized = true;
@@ -182,7 +193,7 @@ const exporter = new OTLPTraceExporter({
 });
 ```
 
-This pattern consistently shaves 100-300ms off cold start times because the function no longer needs to establish outbound HTTPS connections during initialization.
+This pattern can reduce cold start and invocation latency because the function no longer needs to establish outbound HTTPS connections during initialization.
 
 ## Reducing Instrumentation Library Overhead
 
@@ -217,7 +228,7 @@ registerInstrumentations({
 });
 ```
 
-By cherry-picking only the instrumentations you need, you avoid the overhead of loading and initializing libraries that produce no useful telemetry for your function. In a Node.js function, dropping unused instrumentations can save 50-150ms of cold start time.
+By cherry-picking only the instrumentations you need, you avoid the overhead of loading and initializing libraries that produce no useful telemetry for your function. In a Node.js function, dropping unused instrumentations can reduce cold start time.
 
 ## Provisioned Concurrency as a Pragmatic Solution
 
@@ -229,7 +240,7 @@ Sometimes the engineering effort to squeeze out every last millisecond of cold s
 functions:
   api-handler:
     handler: src/handler.main
-    runtime: nodejs20.x
+    runtime: nodejs22.x
     memorySize: 512
     # Keep 5 warm instances ready at all times
     provisionedConcurrency: 5
@@ -253,6 +264,7 @@ Even after cold start, each invocation pays a cost for creating and exporting sp
 // sampling-config.js
 // Configure head-based sampling to reduce telemetry volume
 const { TraceIdRatioBasedSampler, ParentBasedSampler } = require('@opentelemetry/sdk-trace-base');
+const { NodeTracerProvider } = require('@opentelemetry/sdk-trace-node');
 
 const sampler = new ParentBasedSampler({
   // Sample 10% of traces that have no parent
@@ -264,10 +276,10 @@ const provider = new NodeTracerProvider({
 });
 ```
 
-A 10% sampling rate means 90% of invocations skip span creation and export entirely. The traces you do capture are still complete because `ParentBasedSampler` respects the sampling decision of the parent span. This approach works especially well for Lambda functions processing queue messages or handling high-volume API traffic.
+A 10% sampling rate means 90% of root traces use non-recording spans and are not exported. The traces you do capture are still complete because `ParentBasedSampler` respects the sampling decision of the parent span. This approach works especially well for Lambda functions processing queue messages or handling high-volume API traffic.
 
 ## Putting It All Together
 
 The optimal strategy depends on your specific constraints. For most teams, the combination that works best is: use the collector extension for export, selectively instrument only the libraries you use, and apply sampling appropriate to your traffic volume. If cold start latency is truly critical, add provisioned concurrency to the mix.
 
-Monitor your cold start metrics over time. As the OpenTelemetry ecosystem evolves, SDK initialization continues to get faster. What takes 500ms today might take 200ms in the next major release. The measurement infrastructure you build now will help you track these improvements automatically.
+Monitor your cold start metrics over time. As the OpenTelemetry ecosystem evolves, SDK initialization behavior can change across releases. The measurement infrastructure you build now will help you track these improvements automatically.
