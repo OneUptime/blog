@@ -10,13 +10,13 @@ Description: Learn how to automatically instrument Java, Python, and Node.js app
 
 One of the biggest barriers to adopting observability is the effort required to instrument your applications. You have to add SDKs, initialize tracers, wrap HTTP clients, annotate database calls, and so on. For teams running dozens or hundreds of microservices in Kubernetes, that kind of work doesn't scale.
 
-The OpenTelemetry Operator for Kubernetes solves this problem. It lets you inject auto-instrumentation into Java, Python, and Node.js workloads using nothing more than a Kubernetes annotation. No code changes. No redeployment of your application images. Just a label on your pod spec, and traces start flowing.
+The OpenTelemetry Operator for Kubernetes solves this problem. It lets you inject auto-instrumentation into Java, Python, and Node.js workloads using nothing more than a Kubernetes annotation. No code changes. No rebuilding of your application images. Just an annotation on your pod spec, and traces start flowing.
 
 In this guide, we'll walk through the full setup: installing the operator, creating instrumentation resources, and annotating your workloads.
 
 ## How Auto-Instrumentation Works in Kubernetes
 
-The OpenTelemetry Operator uses a Kubernetes admission webhook to intercept pod creation. When it sees the right annotation on a pod, it injects an init container that downloads the appropriate instrumentation agent (Java JAR, Python packages, or Node.js modules) into a shared volume. It then modifies the pod's environment variables to load that agent at startup.
+The OpenTelemetry Operator uses a Kubernetes admission webhook to intercept pod creation. When it sees the right annotation on a pod, it injects an init container that copies the appropriate instrumentation agent (Java JAR, Python packages, or Node.js modules) into a shared volume. It then modifies the pod's environment variables to load that agent at startup.
 
 Here's a simplified flow of what happens:
 
@@ -31,9 +31,9 @@ sequenceDiagram
     Dev->>K8s: Deploy pod with annotation
     K8s->>Op: Admission webhook triggered
     Op->>Pod: Inject init container + env vars
-    Pod->>Pod: Init container downloads agent
+    Pod->>Pod: Init container copies agent
     Pod->>Pod: App starts with agent loaded
-    Pod->>Col: Traces, metrics, logs exported
+    Pod->>Col: Traces and metrics exported
 ```
 
 Your application code stays completely untouched. The agent handles all the instrumentation for popular frameworks and libraries automatically.
@@ -42,7 +42,7 @@ Your application code stays completely untouched. The agent handles all the inst
 
 Before you begin, make sure you have:
 
-- A running Kubernetes cluster (1.21+)
+- A running Kubernetes cluster supported by your OpenTelemetry Operator and cert-manager versions
 - kubectl configured and pointing at your cluster
 - Helm 3 installed
 - cert-manager installed (the operator depends on it for webhook certificates)
@@ -52,7 +52,7 @@ If you don't have cert-manager yet, install it first:
 ```bash
 # Install cert-manager, which the OTel Operator needs for TLS certificates
 
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.4/cert-manager.yaml
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml
 ```
 
 Wait for cert-manager pods to become ready before proceeding.
@@ -154,7 +154,10 @@ metadata:
 spec:
   # Where the instrumentation agent should send data
   exporter:
-    endpoint: http://otel-collector-collector.observability.svc.cluster.local:4317
+    endpoint: http://otel-collector-collector.observability.svc.cluster.local:4318
+  env:
+    - name: OTEL_EXPORTER_OTLP_PROTOCOL
+      value: http/protobuf
   propagators:
     - tracecontext
     - baggage
@@ -254,7 +257,7 @@ spec:
             - containerPort: 5000
 ```
 
-The operator injects the `opentelemetry-instrument` wrapper and sets environment variables so that `opentelemetry-distro` and the relevant instrumentors are loaded when your Python process starts. Django, Flask, FastAPI, requests, urllib3, psycopg2, and many other libraries get instrumented automatically.
+The operator injects the Python auto-instrumentation packages and sets environment variables so that `opentelemetry-distro` and the relevant instrumentors are loaded when your Python process starts. Django, Flask, FastAPI, requests, urllib3, psycopg2, and many other libraries get instrumented automatically.
 
 ### Node.js Applications
 
@@ -304,7 +307,7 @@ kubectl exec -it deploy/order-service -- env | grep OTEL
 kubectl logs -n observability deploy/otel-collector-collector --tail=50
 ```
 
-If everything is working, you should see `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_SERVICE_NAME`, and language-specific variables like `JAVA_TOOL_OPTIONS` or `NODE_OPTIONS` set on the pod.
+If everything is working, you should see `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_RESOURCE_ATTRIBUTES`, and language-specific variables like `JAVA_TOOL_OPTIONS` or `NODE_OPTIONS` set on the pod.
 
 ## Customizing Service Names and Resource Attributes
 
@@ -316,9 +319,9 @@ metadata:
   annotations:
     instrumentation.opentelemetry.io/inject-java: "true"
     # Override the default service name
-    resource.opentelemetry.io/service-name: "order-service-v2"
+    resource.opentelemetry.io/service.name: "order-service-v2"
     # Add custom resource attributes
-    resource.opentelemetry.io/deployment.environment: "production"
+    resource.opentelemetry.io/deployment.environment.name: "production"
     resource.opentelemetry.io/team: "backend-platform"
 ```
 
