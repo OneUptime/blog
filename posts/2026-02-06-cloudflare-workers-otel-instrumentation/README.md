@@ -11,7 +11,7 @@ Cloudflare Workers run at the edge, close to your users. Adding OpenTelemetry tr
 ## Installing the Library
 
 ```bash
-npm install @microlabs/otel-cf-workers
+npm install @microlabs/otel-cf-workers @opentelemetry/api
 ```
 
 This library provides an OpenTelemetry SDK that works within the Cloudflare Workers runtime. It handles the differences between the Workers environment (no long-running processes, no filesystem, limited globals) and standard Node.js.
@@ -22,12 +22,12 @@ Here is a simple instrumented Worker:
 
 ```javascript
 // src/index.js
-import { instrument, ResolveConfigFn } from '@microlabs/otel-cf-workers';
+import { instrument } from '@microlabs/otel-cf-workers';
 
 // Define the handler for the Worker
 const handler = {
   async fetch(request, env, ctx) {
-    // Create a span for the incoming request
+    // The instrument() wrapper creates a span for the incoming request
     const url = new URL(request.url);
 
     // Your application logic
@@ -73,6 +73,7 @@ Set environment variables in your `wrangler.toml`:
 name = "my-worker"
 main = "src/index.js"
 compatibility_date = "2026-02-01"
+compatibility_flags = [ "nodejs_compat" ]
 
 [vars]
 OTEL_EXPORTER_OTLP_ENDPOINT = "https://collector.example.com/v1/traces"
@@ -87,7 +88,8 @@ OTEL_EXPORTER_OTLP_ENDPOINT = "https://collector.example.com/v1/traces"
 Create custom spans for specific operations within your Worker:
 
 ```javascript
-import { instrument, trace } from '@microlabs/otel-cf-workers';
+import { SpanStatusCode, trace } from '@opentelemetry/api';
+import { instrument } from '@microlabs/otel-cf-workers';
 
 const handler = {
   async fetch(request, env, ctx) {
@@ -104,7 +106,7 @@ const handler = {
         return result;
       } catch (error) {
         span.recordException(error);
-        span.setStatus({ code: 2, message: error.message });
+        span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
         throw error;
       } finally {
         span.end();
@@ -113,16 +115,23 @@ const handler = {
 
     // Create a span for an external API call
     const enrichedUser = await tracer.startActiveSpan('enrich-user', async (span) => {
-      span.setAttribute('http.url', 'https://enrichment-api.example.com');
+      try {
+        span.setAttribute('http.url', 'https://enrichment-api.example.com');
 
-      const response = await fetch('https://enrichment-api.example.com/profile', {
-        method: 'POST',
-        body: JSON.stringify({ userId: user.id }),
-      });
+        const response = await fetch('https://enrichment-api.example.com/profile', {
+          method: 'POST',
+          body: JSON.stringify({ userId: user.id }),
+        });
 
-      span.setAttribute('http.status_code', response.status);
-      span.end();
-      return response.json();
+        span.setAttribute('http.status_code', response.status);
+        return response.json();
+      } catch (error) {
+        span.recordException(error);
+        span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
+        throw error;
+      } finally {
+        span.end();
+      }
     });
 
     return new Response(JSON.stringify(enrichedUser), {
@@ -147,22 +156,27 @@ export default instrument(handler, config);
 If your Worker uses Durable Objects, trace those interactions:
 
 ```javascript
+import { trace } from '@opentelemetry/api';
+
 const handler = {
   async fetch(request, env, ctx) {
     const tracer = trace.getTracer('my-worker');
 
     return tracer.startActiveSpan('durable-object-call', async (span) => {
-      const id = env.COUNTER.idFromName('global-counter');
-      const obj = env.COUNTER.get(id);
+      try {
+        const id = env.COUNTER.idFromName('global-counter');
+        const obj = env.COUNTER.get(id);
 
-      span.setAttribute('durable_object.name', 'global-counter');
-      span.setAttribute('durable_object.id', id.toString());
+        span.setAttribute('durable_object.name', 'global-counter');
+        span.setAttribute('durable_object.id', id.toString());
 
-      const response = await obj.fetch(request);
+        const response = await obj.fetch(request);
 
-      span.setAttribute('http.status_code', response.status);
-      span.end();
-      return response;
+        span.setAttribute('http.status_code', response.status);
+        return response;
+      } finally {
+        span.end();
+      }
     });
   },
 };
@@ -173,7 +187,7 @@ const handler = {
 When your Worker calls upstream services, propagate the trace context:
 
 ```javascript
-import { propagation, context } from '@microlabs/otel-cf-workers';
+import { context, propagation } from '@opentelemetry/api';
 
 async function fetchWithTracing(url, options = {}) {
     // Inject trace context into outgoing request headers
@@ -208,7 +222,7 @@ processors:
         value: cloudflare
         action: upsert
       - key: cloud.platform
-        value: cloudflare_workers
+        value: cloudflare.workers
         action: upsert
 
 exporters:
@@ -225,25 +239,28 @@ service:
 
 ## Performance Considerations
 
-Workers have a CPU time limit (typically 10ms for free plans, 30s for paid). Tracing adds a small overhead:
+Workers have a CPU time limit (typically 10ms for free plans, with paid Workers defaulting to 30s and configurable up to 5 minutes). Tracing adds a small overhead:
 
 - Span creation: microseconds
 - HTTP export at the end of the request: a few milliseconds
 
-Use `ctx.waitUntil()` to send traces after the response, so export latency does not affect response time:
+The `instrument()` wrapper uses `ctx.waitUntil()` to export traces after the response, so export latency does not affect response time:
 
 ```javascript
+import { instrument } from '@microlabs/otel-cf-workers';
+
 const handler = {
   async fetch(request, env, ctx) {
-    // Handle the request quickly
-    const response = new Response('OK');
-
-    // Export traces asynchronously after the response
-    ctx.waitUntil(flushTraces());
-
-    return response;
+    return new Response('OK');
   },
 };
+
+const config = (env) => ({
+  exporter: { url: env.OTEL_EXPORTER_OTLP_ENDPOINT },
+  service: { name: 'cloudflare-worker' },
+});
+
+export default instrument(handler, config);
 ```
 
 ## Summary
