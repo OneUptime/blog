@@ -528,7 +528,7 @@ Using it for a search input:
 
 ```vue
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, computed } from 'vue'
 import { useDebounce } from '@/composables/useDebounce'
 import { useFetch } from '@/composables/useFetch'
 
