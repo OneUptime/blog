@@ -100,7 +100,7 @@ spec:
         - "linux/amd64"
         - "linux/arm64"
 
-    # Object type - key-value pairs (Tekton v0.40+)
+    # Object type - key-value pairs (Tekton v0.38+ alpha, beta in v0.49+)
     - name: config
       type: object
       properties:
@@ -146,6 +146,11 @@ spec:
     - name: REPLICAS
       type: string
       default: "2"
+    - name: IMAGE
+      type: string
+    - name: KUBECTL_VERSION
+      type: string
+      default: "latest"
 
   steps:
     # Parameters in the image field - useful for version pinning
@@ -416,7 +421,7 @@ spec:
         user: "admin"
 ```
 
-### Parameter Validation with CEL
+### Parameter Validation with Shell Scripts
 
 Custom validation ensures parameters meet requirements.
 
@@ -434,7 +439,7 @@ spec:
       type: string
       description: Number of replicas (1-10)
 
-  # Validation using CEL expressions
+  # Validation using shell expressions in a step
   steps:
     - name: validate
       image: alpine
