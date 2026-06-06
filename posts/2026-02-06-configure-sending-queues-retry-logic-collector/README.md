@@ -51,6 +51,12 @@ sequenceDiagram
 Enable and configure the sending queue in your exporter:
 
 ```yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+
 exporters:
   otlp/backend:
     endpoint: backend.example.com:4317
@@ -67,10 +73,6 @@ exporters:
       # Number of concurrent workers sending data
       # More workers = higher throughput, more connections
       num_consumers: 10
-
-exporters:
-  otlp/backend:
-    endpoint: backend.example.com:4317
 
 processors:
   batch:
@@ -92,6 +94,12 @@ This basic configuration provides in-memory buffering for up to 5,000 batches wi
 For critical deployments, enable persistent queues that survive collector restarts:
 
 ```yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+
 exporters:
   otlp/backend:
     endpoint: backend.example.com:4317
@@ -121,6 +129,10 @@ extensions:
       rebound_trigger_threshold_mib: 10
       max_transaction_size: 65536
 
+processors:
+  batch:
+    timeout: 10s
+
 service:
   # Enable the file_storage extension
   extensions: [file_storage]
@@ -144,7 +156,7 @@ Storage Needed = Queue Size × Average Batch Size × Safety Factor
 
 Example:
 - Queue size: 10,000 batches
-- Average batch size: 100 KB (after compression)
+- Average serialized batch size: 100 KB
 - Safety factor: 1.5x
 - Storage needed: 10,000 × 100 KB × 1.5 = 1.5 GB
 ```
@@ -156,6 +168,12 @@ Ensure your storage volume has adequate space and consider using fast storage (S
 Configure exponential backoff retry logic for handling transient failures:
 
 ```yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+
 exporters:
   otlp/backend:
     endpoint: backend.example.com:4317
@@ -184,6 +202,10 @@ exporters:
 extensions:
   file_storage:
     directory: /var/lib/otel-collector/storage
+
+processors:
+  batch:
+    timeout: 10s
 
 service:
   extensions: [file_storage]
@@ -305,6 +327,12 @@ exporters:
 Configure different retry and queue settings for different backends:
 
 ```yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+
 exporters:
   # Primary backend: aggressive retries
   otlp/primary:
@@ -354,6 +382,10 @@ extensions:
   file_storage:
     directory: /var/lib/otel-collector/storage
 
+processors:
+  batch:
+    timeout: 10s
+
 service:
   extensions: [file_storage]
 
@@ -387,20 +419,27 @@ processors:
     timeout: 30s
 
 exporters:
-  prometheusremotewrite:
+  prometheus_remote_write:
     endpoint: http://prometheus:9090/api/v1/write
 
 service:
   telemetry:
     metrics:
       level: detailed
-      address: :8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+                without_type_suffix: true
+                without_units: true
 
   pipelines:
     metrics/internal:
       receivers: [prometheus]
       processors: [batch]
-      exporters: [prometheusremotewrite]
+      exporters: [prometheus_remote_write]
 ```
 
 Key metrics to monitor:
@@ -485,6 +524,12 @@ groups:
 When backends implement rate limiting, configure retry logic to respect limits:
 
 ```yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+
 exporters:
   otlp/rate-limited-backend:
     endpoint: backend.example.com:4317
@@ -531,7 +576,7 @@ service:
 
 ## Kubernetes Deployment with Persistent Queues
 
-Deploy collectors with persistent storage in Kubernetes:
+Deploy a collector with persistent storage in Kubernetes:
 
 ```yaml
 apiVersion: v1
@@ -553,7 +598,7 @@ metadata:
   name: otel-collector
   namespace: observability
 spec:
-  replicas: 3
+  replicas: 1
   selector:
     matchLabels:
       app: otel-collector
@@ -644,7 +689,14 @@ data:
       telemetry:
         metrics:
           level: detailed
-          address: :8888
+          readers:
+            - pull:
+                exporter:
+                  prometheus:
+                    host: 0.0.0.0
+                    port: 8888
+                    without_type_suffix: true
+                    without_units: true
 
       pipelines:
         traces:
@@ -714,20 +766,19 @@ spec:
 
 ## Compression for Efficient Queue Usage
 
-Enable compression to fit more data in memory/disk queues:
+Enable compression to reduce network usage when exporting queued data:
 
 ```yaml
 exporters:
   otlp/backend:
     endpoint: backend.example.com:4317
 
-    # Compression reduces queue memory/disk usage
+    # Compression reduces the size of outgoing export requests
     # Options: gzip, zstd, snappy, none
     compression: gzip
 
     sending_queue:
       enabled: true
-      # With compression, effective capacity is 2-5x larger
       queue_size: 10000
       storage: file_storage
 
@@ -743,7 +794,7 @@ Compression trade-offs:
 - **gzip**: Good compression ratio (2-3x), moderate CPU usage
 - **zstd**: Better compression (3-5x), higher CPU usage
 - **snappy**: Fast, lower compression (1.5-2x), lowest CPU usage
-- **none**: No compression, fastest, largest queue usage
+- **none**: No compression, fastest, largest network payloads
 
 ## Production-Ready Configuration
 
@@ -829,10 +880,6 @@ extensions:
 
   health_check:
     endpoint: :13133
-    check_collector_pipeline:
-      enabled: true
-      interval: 5m
-      exporter_failure_threshold: 5
 
   zpages:
     endpoint: :55679
@@ -845,7 +892,14 @@ service:
       level: info
     metrics:
       level: detailed
-      address: :8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+                without_type_suffix: true
+                without_units: true
 
   pipelines:
     traces:
