@@ -49,6 +49,7 @@ go get go.opentelemetry.io/collector/component
 go get go.opentelemetry.io/collector/consumer
 go get go.opentelemetry.io/collector/receiver
 go get go.opentelemetry.io/collector/pdata
+go get go.opentelemetry.io/collector/receiver/receivertest
 go get go.uber.org/zap
 ```
 
@@ -65,16 +66,12 @@ import (
 	"time"
 
 	"go.opentelemetry.io/collector/component"
-	"go.opentelemetry.io/collector/config/confighttp"
 )
 
 // Config defines the configuration for the custom receiver
 type Config struct {
-	// HTTPServerSettings embeds common HTTP server configuration
-	confighttp.HTTPServerSettings `mapstructure:",squash"`
-
-	// Endpoint specifies the data source endpoint to scrape
-	Endpoint string `mapstructure:"endpoint"`
+	// DataSourceEndpoint specifies the data source endpoint to scrape
+	DataSourceEndpoint string `mapstructure:"data_source_endpoint"`
 
 	// CollectionInterval defines how often to collect data
 	CollectionInterval time.Duration `mapstructure:"collection_interval"`
@@ -87,12 +84,15 @@ type Config struct {
 
 	// MetricPrefix prepends a prefix to all collected metrics
 	MetricPrefix string `mapstructure:"metric_prefix"`
+
+	// HealthCheckEndpoint specifies the HTTP endpoint for health checks
+	HealthCheckEndpoint string `mapstructure:"health_check_endpoint"`
 }
 
 // Validate checks if the configuration is valid
 func (cfg *Config) Validate() error {
-	if cfg.Endpoint == "" {
-		return errors.New("endpoint must be specified")
+	if cfg.DataSourceEndpoint == "" {
+		return errors.New("data_source_endpoint must be specified")
 	}
 
 	if cfg.CollectionInterval <= 0 {
@@ -109,12 +109,11 @@ func (cfg *Config) Validate() error {
 // defaultConfig returns default configuration values
 func defaultConfig() component.Config {
 	return &Config{
-		HTTPServerSettings: confighttp.HTTPServerSettings{
-			Endpoint: "localhost:8080",
-		},
+		DataSourceEndpoint:  "http://localhost:8080/metrics",
 		CollectionInterval: 30 * time.Second,
 		Timeout:            10 * time.Second,
 		MetricPrefix:       "custom_",
+		HealthCheckEndpoint: "localhost:8081",
 	}
 }
 ```
@@ -137,11 +136,13 @@ import (
 )
 
 const (
-	// typeStr is the name used in the Collector configuration
-	typeStr = "custom"
-
 	// stability level of the receiver
 	stability = component.StabilityLevelAlpha
+)
+
+var (
+	// typeStr is the name used in the Collector configuration
+	typeStr = component.MustNewType("custom")
 )
 
 // NewFactory creates a factory for the custom receiver
@@ -158,7 +159,7 @@ func NewFactory() receiver.Factory {
 // createMetricsReceiver creates a metrics receiver based on the configuration
 func createMetricsReceiver(
 	ctx context.Context,
-	params receiver.CreateSettings,
+	params receiver.Settings,
 	cfg component.Config,
 	consumer consumer.Metrics,
 ) (receiver.Metrics, error) {
@@ -174,7 +175,7 @@ func createMetricsReceiver(
 // createTracesReceiver creates a traces receiver based on the configuration
 func createTracesReceiver(
 	ctx context.Context,
-	params receiver.CreateSettings,
+	params receiver.Settings,
 	cfg component.Config,
 	consumer consumer.Traces,
 ) (receiver.Traces, error) {
@@ -190,7 +191,7 @@ func createTracesReceiver(
 // createLogsReceiver creates a logs receiver based on the configuration
 func createLogsReceiver(
 	ctx context.Context,
-	params receiver.CreateSettings,
+	params receiver.Settings,
 	cfg component.Config,
 	consumer consumer.Logs,
 ) (receiver.Logs, error) {
@@ -230,17 +231,18 @@ import (
 
 // metricsReceiver implements the receiver.Metrics interface
 type metricsReceiver struct {
-	config   *Config
-	settings receiver.CreateSettings
-	consumer consumer.Metrics
-	cancel   context.CancelFunc
-	client   *http.Client
+	config            *Config
+	settings          receiver.Settings
+	consumer          consumer.Metrics
+	cancel            context.CancelFunc
+	client            *http.Client
+	healthCheckServer *http.Server
 }
 
 // newMetricsReceiver creates a new metrics receiver instance
 func newMetricsReceiver(
 	config *Config,
-	settings receiver.CreateSettings,
+	settings receiver.Settings,
 	consumer consumer.Metrics,
 ) (receiver.Metrics, error) {
 	return &metricsReceiver{
@@ -255,13 +257,13 @@ func newMetricsReceiver(
 
 // Start begins the receiver's operation
 func (r *metricsReceiver) Start(ctx context.Context, host component.Host) error {
-	ctx, r.cancel = context.WithCancel(ctx)
+	ctx, r.cancel = context.WithCancel(context.Background())
 
 	// Start collection goroutine
 	go r.startCollection(ctx)
 
 	r.settings.Logger.Info("Custom metrics receiver started",
-		zap.String("endpoint", r.config.Endpoint),
+		zap.String("data_source_endpoint", r.config.DataSourceEndpoint),
 		zap.Duration("interval", r.config.CollectionInterval),
 	)
 
@@ -320,7 +322,7 @@ func (r *metricsReceiver) collectMetrics(ctx context.Context) error {
 
 // fetchData retrieves data from the external source
 func (r *metricsReceiver) fetchData(ctx context.Context) (map[string]interface{}, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, r.config.Endpoint, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, r.config.DataSourceEndpoint, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -362,7 +364,7 @@ func (r *metricsReceiver) convertToMetrics(data map[string]interface{}) pmetric.
 	// Set resource attributes
 	resource := resourceMetrics.Resource()
 	resource.Attributes().PutStr("service.name", "custom-receiver")
-	resource.Attributes().PutStr("receiver.type", typeStr)
+	resource.Attributes().PutStr("receiver.type", typeStr.String())
 
 	// Set instrumentation scope
 	scopeMetrics.Scope().SetName("github.com/yourorg/customreceiver")
@@ -484,13 +486,13 @@ import (
 
 type tracesReceiver struct {
 	config   *Config
-	settings receiver.CreateSettings
+	settings receiver.Settings
 	consumer consumer.Traces
 }
 
 func newTracesReceiver(
 	config *Config,
-	settings receiver.CreateSettings,
+	settings receiver.Settings,
 	consumer consumer.Traces,
 ) (receiver.Traces, error) {
 	return &tracesReceiver{
@@ -525,13 +527,13 @@ import (
 
 type logsReceiver struct {
 	config   *Config
-	settings receiver.CreateSettings
+	settings receiver.Settings
 	consumer consumer.Logs
 }
 
 func newLogsReceiver(
 	config *Config,
-	settings receiver.CreateSettings,
+	settings receiver.Settings,
 	consumer consumer.Logs,
 ) (receiver.Logs, error) {
 	return &logsReceiver{
@@ -584,7 +586,7 @@ func TestMetricsReceiver(t *testing.T) {
 
 	// Create receiver configuration
 	cfg := &Config{
-		Endpoint:           server.URL,
+		DataSourceEndpoint: server.URL,
 		CollectionInterval: 100 * time.Millisecond,
 		Timeout:            5 * time.Second,
 		MetricPrefix:       "test_",
@@ -596,7 +598,7 @@ func TestMetricsReceiver(t *testing.T) {
 	// Create the receiver
 	receiver, err := newMetricsReceiver(
 		cfg,
-		receivertest.NewNopCreateSettings(),
+		receivertest.NewNopSettings(component.NewID(typeStr)),
 		sink,
 	)
 	require.NoError(t, err)
@@ -625,7 +627,7 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "valid config",
 			config: Config{
-				Endpoint:           "http://localhost:8080",
+				DataSourceEndpoint: "http://localhost:8080",
 				CollectionInterval: 30 * time.Second,
 				Timeout:            10 * time.Second,
 			},
@@ -642,7 +644,7 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "invalid collection interval",
 			config: Config{
-				Endpoint:           "http://localhost:8080",
+				DataSourceEndpoint: "http://localhost:8080",
 				CollectionInterval: 0,
 				Timeout:            10 * time.Second,
 			},
@@ -699,31 +701,47 @@ dist:
   name: otelcol-custom
   description: Collector with custom receiver
   output_path: ./dist
-  otelcol_version: 0.95.0
+  version: 1.0.0
 
 receivers:
   # Include your custom receiver
-  - gomod: github.com/yourorg/customreceiver v1.0.0
+  - gomod:
+      github.com/yourorg/customreceiver v1.0.0
     path: ../customreceiver
 
   # Include standard receivers
-  - gomod: go.opentelemetry.io/collector/receiver/otlpreceiver v0.95.0
+  - gomod:
+      go.opentelemetry.io/collector/receiver/otlpreceiver v0.153.0
 
 processors:
-  - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.95.0
+  - gomod:
+      go.opentelemetry.io/collector/processor/batchprocessor v0.153.0
 
 exporters:
-  - gomod: go.opentelemetry.io/collector/exporter/loggingexporter v0.95.0
+  - gomod:
+      go.opentelemetry.io/collector/exporter/debugexporter v0.153.0
+
+providers:
+  - gomod:
+      go.opentelemetry.io/collector/confmap/provider/envprovider v1.48.0
+  - gomod:
+      go.opentelemetry.io/collector/confmap/provider/fileprovider v1.48.0
+  - gomod:
+      go.opentelemetry.io/collector/confmap/provider/httpprovider v1.48.0
+  - gomod:
+      go.opentelemetry.io/collector/confmap/provider/httpsprovider v1.48.0
+  - gomod:
+      go.opentelemetry.io/collector/confmap/provider/yamlprovider v1.48.0
 ```
 
 Build the custom Collector:
 
 ```bash
 # Install OCB if not already installed
-go install go.opentelemetry.io/collector/cmd/builder@latest
+go install go.opentelemetry.io/collector/cmd/builder@v0.153.0
 
 # Build the Collector
-builder --config=builder-config.yaml
+builder --config builder-config.yaml
 ```
 
 For details on building custom distributions, see https://oneuptime.com/blog/post/2026-02-06-build-custom-opentelemetry-collector-distribution-ocb/view.
@@ -738,26 +756,27 @@ Create a Collector configuration that uses your custom receiver.
 receivers:
   # Configure your custom receiver
   custom:
-    endpoint: https://api.example.com/metrics
+    data_source_endpoint: https://api.example.com/metrics
     collection_interval: 30s
     api_key: your-api-key-here
     timeout: 10s
     metric_prefix: myapp_
+    health_check_endpoint: localhost:8081
 
 processors:
   batch:
     timeout: 10s
 
 exporters:
-  logging:
-    loglevel: info
+  debug:
+    verbosity: normal
 
 service:
   pipelines:
     metrics:
       receivers: [custom]
       processors: [batch]
-      exporters: [logging]
+      exporters: [debug]
 ```
 
 Run the Collector:
@@ -774,6 +793,8 @@ Automatically detect and add resource attributes.
 
 ```go
 import (
+	"os"
+
 	"go.opentelemetry.io/collector/pdata/pcommon"
 )
 
@@ -793,6 +814,11 @@ func (r *metricsReceiver) addResourceAttributes(resource pcommon.Resource) {
 		attrs.PutStr("cloud.provider", cloudProvider)
 	}
 }
+
+func detectCloudProvider() string {
+	// Add cloud provider detection logic for your environment.
+	return ""
+}
 ```
 
 ### Implement Health Checks
@@ -801,26 +827,41 @@ Add health check endpoints for monitoring receiver status.
 
 ```go
 func (r *metricsReceiver) Start(ctx context.Context, host component.Host) error {
-	ctx, r.cancel = context.WithCancel(ctx)
+	ctx, r.cancel = context.WithCancel(context.Background())
 
 	// Start HTTP health check server
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", r.healthHandler)
 	mux.HandleFunc("/ready", r.readyHandler)
 
-	server := &http.Server{
-		Addr:    r.config.HTTPServerSettings.Endpoint,
+	r.healthCheckServer = &http.Server{
+		Addr:    r.config.HealthCheckEndpoint,
 		Handler: mux,
 	}
 
 	go func() {
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := r.healthCheckServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			r.settings.Logger.Error("Health check server failed", zap.Error(err))
 		}
 	}()
 
 	go r.startCollection(ctx)
 
+	return nil
+}
+
+func (r *metricsReceiver) Shutdown(ctx context.Context) error {
+	if r.cancel != nil {
+		r.cancel()
+	}
+
+	if r.healthCheckServer != nil {
+		if err := r.healthCheckServer.Shutdown(ctx); err != nil {
+			return err
+		}
+	}
+
+	r.settings.Logger.Info("Custom metrics receiver stopped")
 	return nil
 }
 
@@ -838,6 +879,10 @@ func (r *metricsReceiver) readyHandler(w http.ResponseWriter, req *http.Request)
 		w.WriteHeader(http.StatusServiceUnavailable)
 		w.Write([]byte("Not Ready"))
 	}
+}
+
+func (r *metricsReceiver) isReady() bool {
+	return true
 }
 ```
 
