@@ -29,11 +29,11 @@ With a custom clock, you can make this deterministic.
 
 ## Python Custom Clock Implementation
 
-The Python SDK does not have a built-in clock abstraction, but you can monkey-patch the time source or use a custom SpanProcessor that overrides timestamps:
+The Python SDK does not have a built-in clock abstraction for the tracer provider, but spans accept explicit start and end timestamps. A small test helper can use your fake clock and pass those timestamps through the public API:
 
 ```python
 # test_clock.py
-import time as time_module
+from contextlib import contextmanager
 
 
 class FakeClock:
@@ -58,32 +58,19 @@ class FakeClock:
         self._current_time_ns = time_ns
 
 
-class ClockOverrideSpanProcessor:
-    """SpanProcessor that overrides span timestamps with a fake clock.
-
-    This processor intercepts span start and end events and
-    records the fake clock's current time instead of the real time.
-    """
-
-    def __init__(self, clock):
-        self._clock = clock
-        self._span_start_times = {}
-
-    def on_start(self, span, parent_context=None):
-        # Record the fake start time
-        self._span_start_times[span.context.span_id] = self._clock.now_ns()
-        # Override the span's start time
-        span._start_time = self._clock.now_ns()
-
-    def on_end(self, span):
-        # Override the span's end time
-        span._end_time = self._clock.now_ns()
-
-    def shutdown(self):
-        pass
-
-    def force_flush(self, timeout_millis=None):
-        pass
+@contextmanager
+def start_span_with_clock(tracer, name, clock, **kwargs):
+    """Start and end a span using timestamps from the fake clock."""
+    with tracer.start_as_current_span(
+        name,
+        start_time=clock.now_ns(),
+        end_on_exit=False,
+        **kwargs,
+    ) as span:
+        try:
+            yield span
+        finally:
+            span.end(end_time=clock.now_ns())
 ```
 
 ## Using the Custom Clock in Tests
@@ -91,47 +78,42 @@ class ClockOverrideSpanProcessor:
 ```python
 # test_order_processing.py
 import pytest
-from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export.in_memory import InMemorySpanExporter
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
-from test_clock import FakeClock, ClockOverrideSpanProcessor
+from test_clock import FakeClock, start_span_with_clock
 
 
 @pytest.fixture
 def traced_env():
     clock = FakeClock(start_time_ns=1700000000_000000000)
     exporter = InMemorySpanExporter()
-    clock_processor = ClockOverrideSpanProcessor(clock)
 
     provider = TracerProvider()
-    # Clock processor must be added before the export processor
-    provider.add_span_processor(clock_processor)
     provider.add_span_processor(SimpleSpanProcessor(exporter))
-    trace.set_tracer_provider(provider)
 
-    yield clock, exporter
+    yield clock, exporter, provider
 
     provider.shutdown()
 
 
 def test_order_processing_duration(traced_env):
-    clock, exporter = traced_env
-    tracer = trace.get_tracer("test")
+    clock, exporter, provider = traced_env
+    tracer = provider.get_tracer("test")
 
     # Start the parent span at t=0
-    with tracer.start_as_current_span("process_order") as order_span:
+    with start_span_with_clock(tracer, "process_order", clock) as order_span:
         # Advance clock by 50ms for validation step
         clock.advance(milliseconds=50)
 
-        with tracer.start_as_current_span("validate_order"):
+        with start_span_with_clock(tracer, "validate_order", clock):
             # Validation takes 20ms
             clock.advance(milliseconds=20)
 
         # Advance clock by 30ms for payment step
         clock.advance(milliseconds=30)
 
-        with tracer.start_as_current_span("charge_payment"):
+        with start_span_with_clock(tracer, "charge_payment", clock):
             # Payment takes 100ms
             clock.advance(milliseconds=100)
 
@@ -154,48 +136,12 @@ def test_order_processing_duration(traced_env):
 
 ## Java Custom Clock
 
-The Java SDK has better support for custom clocks through the `Clock` interface:
+The Java SDK has better support for custom clocks through the `Clock` interface, and the SDK testing artifact includes a mutable `TestClock` for tests:
 
 ```java
-import io.opentelemetry.sdk.common.Clock;
-import java.util.concurrent.atomic.AtomicLong;
+import io.opentelemetry.sdk.testing.time.TestClock;
 
-public class TestClock implements Clock {
-    private final AtomicLong currentNanos;
-
-    public TestClock(long startNanos) {
-        this.currentNanos = new AtomicLong(startNanos);
-    }
-
-    public TestClock() {
-        this(1_700_000_000_000_000_000L);
-    }
-
-    @Override
-    public long now() {
-        return currentNanos.get();
-    }
-
-    @Override
-    public long nanoTime() {
-        return currentNanos.get();
-    }
-
-    // Advance the clock by a specified number of milliseconds
-    public void advanceMillis(long millis) {
-        currentNanos.addAndGet(millis * 1_000_000);
-    }
-
-    // Advance by nanoseconds for precise control
-    public void advanceNanos(long nanos) {
-        currentNanos.addAndGet(nanos);
-    }
-
-    // Set to a specific time
-    public void setNanos(long nanos) {
-        currentNanos.set(nanos);
-    }
-}
+TestClock clock = TestClock.create();
 ```
 
 Register it with the TracerProvider:
@@ -204,10 +150,12 @@ Register it with the TracerProvider:
 import io.opentelemetry.sdk.trace.SdkTracerProvider;
 import io.opentelemetry.sdk.trace.export.SimpleSpanProcessor;
 import io.opentelemetry.sdk.testing.exporter.InMemorySpanExporter;
+import io.opentelemetry.sdk.testing.time.TestClock;
+import java.time.Duration;
 
 public class TraceTestSetup {
     public static void main(String[] args) {
-        TestClock clock = new TestClock();
+        TestClock clock = TestClock.create();
         InMemorySpanExporter exporter = InMemorySpanExporter.create();
 
         SdkTracerProvider provider = SdkTracerProvider.builder()
@@ -219,7 +167,7 @@ public class TraceTestSetup {
         var tracer = provider.get("test");
         var span = tracer.spanBuilder("operation").startSpan();
 
-        clock.advanceMillis(250);  // Simulate 250ms of work
+        clock.advance(Duration.ofMillis(250));  // Simulate 250ms of work
         span.end();
 
         // Assert exact duration
@@ -236,10 +184,10 @@ For integration tests where you want to test time-dependent behavior like timeou
 
 ```python
 def test_slow_request_flagged(traced_env):
-    clock, exporter = traced_env
-    tracer = trace.get_tracer("test")
+    clock, exporter, provider = traced_env
+    tracer = provider.get_tracer("test")
 
-    with tracer.start_as_current_span("http_request") as span:
+    with start_span_with_clock(tracer, "http_request", clock) as span:
         # Simulate a request that takes 5 seconds
         clock.advance(seconds=5)
         span.set_attribute("http.status_code", 200)
