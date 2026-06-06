@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Collector, Prometheus, Receiver, Metric Scraping
 
 Description: Complete guide to configuring the Prometheus receiver in the OpenTelemetry Collector for scraping metrics from Prometheus-compatible endpoints.
 
-The Prometheus receiver transforms the OpenTelemetry Collector into a Prometheus-compatible scraper. This allows you to collect metrics from existing Prometheus exporters, /metrics endpoints, and any application exposing Prometheus-formatted metrics, without changing your instrumentation. The collector becomes a drop-in replacement for Prometheus server while adding the flexibility of OpenTelemetry's processing and exporting capabilities.
+The Prometheus receiver transforms the OpenTelemetry Collector into a Prometheus-compatible scraper. This allows you to collect metrics from existing Prometheus exporters, /metrics endpoints, and any application exposing Prometheus-formatted metrics, without changing your instrumentation. For scraping workloads, the collector can replace Prometheus server while adding the flexibility of OpenTelemetry's processing and exporting capabilities.
 
 Understanding the Prometheus receiver enables you to gradually migrate from Prometheus to OpenTelemetry, or run a hybrid system that leverages both ecosystems.
 
@@ -44,8 +44,8 @@ processors:
     send_batch_size: 1024
 
 exporters:
-  logging:
-    loglevel: info
+  debug:
+    verbosity: normal
 
   prometheusremotewrite:
     endpoint: http://prometheus:9090/api/v1/write
@@ -55,10 +55,10 @@ service:
     metrics:
       receivers: [prometheus]
       processors: [batch]
-      exporters: [logging, prometheusremotewrite]
+      exporters: [debug, prometheusremotewrite]
 ```
 
-This configuration scrapes a node exporter every 30 seconds. The `labels` section adds static labels to all metrics from these targets, useful for adding environment or region context.
+This configuration scrapes a node exporter every 30 seconds. The `labels` section adds static labels to all metrics from these targets, useful for adding environment or region context. If the remote write endpoint is a Prometheus server, start Prometheus with `--web.enable-remote-write-receiver`; hosted remote write backends usually expose their own write endpoint.
 
 ## Multi-Target Scrape Configuration
 
@@ -120,7 +120,7 @@ receivers:
             - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
               action: replace
               regex: ([^:]+)(?::\d+)?;(\d+)
-              replacement: $1:$2
+              replacement: $$1:$$2
               target_label: __address__
             # Add pod metadata as labels
             - source_labels: [__meta_kubernetes_namespace]
@@ -162,18 +162,19 @@ receivers:
               action: drop
               regex: kube-system|kube-public
 
-            # Use annotation-specified port or default to pod port
-            - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
+            # Use annotation-specified port or default to the discovered pod port
+            - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
               action: replace
-              regex: (\d+)
-              target_label: __meta_kubernetes_pod_container_port_number
+              regex: ([^:]+)(?::\d+)?;(\d+)
+              replacement: $$1:$$2
+              target_label: __address__
 
             # Set metrics path from annotation
             - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
               action: replace
               target_label: __metrics_path__
               regex: (.+)
-              replacement: $1
+              replacement: $$1
 
             # Set scheme (http/https) from annotation
             - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scheme]
@@ -206,7 +207,7 @@ receivers:
             - source_labels: [__address__, __meta_kubernetes_service_annotation_prometheus_io_port]
               action: replace
               regex: ([^:]+)(?::\d+)?;(\d+)
-              replacement: $1:$2
+              replacement: $$1:$$2
               target_label: __address__
 
         # Scrape node exporters via endpoints
@@ -217,7 +218,7 @@ receivers:
           relabel_configs:
             - source_labels: [__address__]
               regex: '(.*):10250'
-              replacement: '${1}:9100'
+              replacement: '$$1:9100'
               target_label: __address__
             - source_labels: [__meta_kubernetes_node_name]
               target_label: node
@@ -285,8 +286,8 @@ receivers:
           static_configs:
             - targets: ['secure-app:8080']
           basic_auth:
-            username: ${METRICS_USERNAME}
-            password: ${METRICS_PASSWORD}
+            username: ${env:METRICS_USERNAME}
+            password: ${env:METRICS_PASSWORD}
 ```
 
 ## Advanced Relabeling
@@ -310,7 +311,7 @@ receivers:
             # Extract hostname from target address
             - source_labels: [__address__]
               regex: '([^:]+):\d+'
-              replacement: '$1'
+              replacement: '$$1'
               target_label: instance_hostname
 
             # Drop targets based on label
@@ -332,7 +333,7 @@ receivers:
             # Add computed labels
             - source_labels: [datacenter]
               regex: 'us-(.*)'
-              replacement: 'america-$1'
+              replacement: 'america-$$1'
               target_label: region
 
           metric_relabel_configs:
@@ -395,7 +396,7 @@ receivers:
             - targets: ['app:9090']
 ```
 
-The `sample_limit` parameter prevents scraping targets that expose excessive numbers of metrics, protecting against cardinality explosions that can overwhelm storage.
+The `sample_limit` parameter fails scrapes that exceed the configured number of samples, protecting against cardinality explosions that can overwhelm storage.
 
 ## Handling Prometheus Exporters
 
@@ -517,7 +518,6 @@ receivers:
                 - '_metrics._tcp.service.consul'
                 - 'metrics.example.internal'
               type: SRV
-              port: 9090
               refresh_interval: 30s
 
           relabel_configs:
@@ -526,7 +526,7 @@ receivers:
               target_label: dns_name
 ```
 
-This queries DNS SRV records to discover targets dynamically. Works with Consul, etcd, and standard DNS servers.
+This queries DNS SRV records to discover targets dynamically. It works with DNS servers and service registries that publish SRV records.
 
 ## Metric Filtering and Transformation
 
@@ -553,7 +553,7 @@ receivers:
               action: drop
 
             # Remove PII from labels
-            - source_labels: [user_id]
+            - regex: 'user_id'
               action: labeldrop
 
             # Aggregate high-cardinality labels
@@ -572,23 +572,24 @@ Understanding how scraped metrics flow through the collector helps with debuggin
 ```mermaid
 graph TD
     A[Service Discovery] --> B[Target List]
-    B --> C[Scrape Scheduler]
-    C --> D[HTTP GET /metrics]
-    D --> E[Parse Prometheus Format]
-    E --> F[Convert to OTLP]
-    F --> G[Apply Relabeling]
-    G --> H[Metrics Pipeline]
+    B --> C[Apply Target Relabeling]
+    C --> D[Scrape Scheduler]
+    D --> E[HTTP GET /metrics]
+    E --> F[Parse Prometheus Format]
+    F --> G[Apply Metric Relabeling]
+    G --> H[Convert to OTLP]
+    H --> I[Metrics Pipeline]
 
-    H --> I[Processors]
-    I --> J[Exporters]
+    I --> J[Processors]
+    J --> K[Exporters]
 
     style A fill:#e1f5ff
-    style E fill:#ffe1f5
-    style F fill:#fff5e1
-    style J fill:#f5ffe1
+    style F fill:#ffe1f5
+    style H fill:#fff5e1
+    style K fill:#f5ffe1
 ```
 
-Service discovery generates targets, the scheduler scrapes them, the parser converts Prometheus format to OpenTelemetry metrics, and the pipeline processes them.
+Service discovery generates targets, target relabeling determines what to scrape, metric relabeling filters or transforms scraped samples, and the pipeline processes the converted OpenTelemetry metrics.
 
 ## Performance Tuning
 
@@ -666,7 +667,12 @@ service:
   telemetry:
     metrics:
       level: detailed
-      address: localhost:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: localhost
+                port: 8888
 
   pipelines:
     metrics:
@@ -707,6 +713,6 @@ service:
       exporters: [prometheusremotewrite, otlp]
 ```
 
-The configuration syntax is compatible with Prometheus, making migration a matter of copying your `scrape_configs` section.
+The configuration syntax for scraping is compatible with Prometheus, making migration a matter of copying your `scrape_configs` section.
 
 The Prometheus receiver enables the OpenTelemetry Collector to work with the extensive Prometheus ecosystem. Whether you're migrating from Prometheus, integrating existing exporters, or building a hybrid observability stack, understanding how to configure scraping, service discovery, and relabeling unlocks the full power of both platforms. Start with simple static targets and progressively add dynamic discovery and advanced filtering as your deployment grows.
