@@ -388,6 +388,7 @@ You can use a custom factory to configure channels with complex requirements. Th
 namespace App\Logging;
 
 use Monolog\Logger;
+use Monolog\Level;
 use Monolog\Handler\StreamHandler;
 use Monolog\Handler\RotatingFileHandler;
 use Monolog\Formatter\LineFormatter;
@@ -416,8 +417,8 @@ class CustomLogger
         // Add a rotating file handler - creates new file daily
         $fileHandler = new RotatingFileHandler(
             storage_path('logs/custom.log'),
-            30,                        // Keep 30 days of logs
-            Monolog\Level::Debug       // Log everything debug and above
+            30,                  // Keep 30 days of logs
+            Level::Debug         // Log everything debug and above
         );
         $fileHandler->setFormatter($formatter);
         $logger->pushHandler($fileHandler);
@@ -425,7 +426,7 @@ class CustomLogger
         // Add a stream handler for errors - separate file for errors only
         $errorHandler = new StreamHandler(
             storage_path('logs/errors.log'),
-            Monolog\Level::Error       // Only errors and above
+            Level::Error         // Only errors and above
         );
         $errorHandler->setFormatter($formatter);
         $logger->pushHandler($errorHandler);
@@ -436,7 +437,7 @@ class CustomLogger
 
         // IntrospectionProcessor adds file, line, class, function
         $logger->pushProcessor(new IntrospectionProcessor(
-            Monolog\Level::Debug,
+            Level::Debug,
             ['Illuminate\\']  // Skip Laravel framework classes
         ));
 
@@ -613,6 +614,7 @@ Buffers logs in memory and writes them in batches. Improves performance by reduc
 namespace App\Logging;
 
 use Monolog\Logger;
+use Monolog\Level;
 use Monolog\Handler\StreamHandler;
 use Monolog\Handler\BufferHandler;
 
@@ -625,17 +627,18 @@ class BufferedLogger
         // Create the base file handler
         $streamHandler = new StreamHandler(
             storage_path('logs/buffered.log'),
-            Monolog\Level::Debug
+            Level::Debug
         );
 
         // Wrap it in a buffer handler
         // Logs are held in memory until buffer fills or request ends
+        // (BufferHandler flushes automatically on shutdown via __destruct)
         $bufferHandler = new BufferHandler(
             $streamHandler,
-            100,    // Buffer up to 100 log entries
-            Monolog\Level::Debug,
-            true,   // Flush on overflow (when buffer is full)
-            true    // Flush on shutdown (end of request)
+            100,            // Buffer up to 100 log entries
+            Level::Debug,
+            true,           // Bubble records to other handlers
+            true            // Flush on overflow (when buffer is full)
         );
 
         $logger->pushHandler($bufferHandler);
@@ -656,6 +659,7 @@ Filters logs by level before passing to another handler. Useful for sending only
 namespace App\Logging;
 
 use Monolog\Logger;
+use Monolog\Level;
 use Monolog\Handler\StreamHandler;
 use Monolog\Handler\FilterHandler;
 
@@ -668,21 +672,21 @@ class FilteredLogger
         // Handler that receives all logs
         $allLogsHandler = new StreamHandler(
             storage_path('logs/all.log'),
-            Monolog\Level::Debug
+            Level::Debug
         );
         $logger->pushHandler($allLogsHandler);
 
         // Handler that only receives warnings and errors (not critical/emergency)
         $warningsHandler = new StreamHandler(
             storage_path('logs/warnings.log'),
-            Monolog\Level::Warning
+            Level::Warning
         );
 
         // Wrap in filter to accept Warning to Error only
         $filteredHandler = new FilterHandler(
             $warningsHandler,
-            Monolog\Level::Warning,  // Minimum level
-            Monolog\Level::Error     // Maximum level
+            Level::Warning,  // Minimum level
+            Level::Error     // Maximum level
         );
         $logger->pushHandler($filteredHandler);
 
@@ -702,6 +706,7 @@ Publishes logs to a Redis channel for real-time log streaming or processing.
 namespace App\Logging;
 
 use Monolog\Logger;
+use Monolog\Level;
 use Monolog\Handler\RedisHandler;
 use Monolog\Formatter\JsonFormatter;
 use Predis\Client as RedisClient;
@@ -723,7 +728,7 @@ class RedisLogger
         $handler = new RedisHandler(
             $redis,
             'logs:application',      // Redis key (list name)
-            Monolog\Level::Debug,
+            Level::Debug,
             true,                    // Bubble to other handlers
             1000                     // Max list length (RPUSH + LTRIM)
         );
@@ -753,6 +758,7 @@ Send logs directly to Elasticsearch for powerful search and visualization capabi
 namespace App\Logging;
 
 use Monolog\Logger;
+use Monolog\Level;
 use Monolog\Handler\ElasticsearchHandler;
 use Monolog\Formatter\ElasticsearchFormatter;
 use Elastic\Elasticsearch\ClientBuilder;
@@ -780,7 +786,7 @@ class ElasticsearchLogger
                 'type' => '_doc',               // Document type
                 'ignore_error' => true,         // Don't throw on ES errors
             ],
-            Monolog\Level::Debug
+            Level::Debug
         );
 
         // Use Elasticsearch formatter for proper field mapping
@@ -807,6 +813,7 @@ Integrate with OpenTelemetry for distributed tracing and log correlation across 
 namespace App\Logging;
 
 use Monolog\Logger;
+use Monolog\Level;
 use Monolog\Handler\StreamHandler;
 use Monolog\Processor\ProcessorInterface;
 use Monolog\LogRecord;
@@ -855,7 +862,7 @@ class OpenTelemetryLogger
         // Use JSON handler for structured output
         $handler = new StreamHandler(
             storage_path('logs/otel.log'),
-            Monolog\Level::Debug
+            Level::Debug
         );
         $handler->setFormatter(new \Monolog\Formatter\JsonFormatter());
 
@@ -877,6 +884,7 @@ Send logs to OneUptime for centralized observability with automatic correlation 
 namespace App\Logging;
 
 use Monolog\Logger;
+use Monolog\Level;
 use Monolog\Handler\AbstractProcessingHandler;
 use Monolog\LogRecord;
 use Illuminate\Support\Facades\Http;
@@ -886,7 +894,7 @@ class OneUptimeHandler extends AbstractProcessingHandler
     private string $endpoint;
     private string $token;
 
-    public function __construct(string $endpoint, string $token, $level = Monolog\Level::Debug)
+    public function __construct(string $endpoint, string $token, int|string|Level $level = Level::Debug)
     {
         parent::__construct($level, true);
         $this->endpoint = $endpoint;
@@ -914,10 +922,9 @@ class OneUptimeHandler extends AbstractProcessingHandler
             ),
         ];
 
-        // Send asynchronously to avoid blocking
+        // For production, push this to a queued job to avoid blocking the request
         Http::withToken($this->token)
             ->timeout(5)
-            ->async()
             ->post($this->endpoint, [
                 'resourceLogs' => [
                     [
@@ -941,7 +948,7 @@ class OneUptimeLogger
         $handler = new OneUptimeHandler(
             config('services.oneuptime.endpoint'),
             config('services.oneuptime.token'),
-            Monolog\Level::fromName($config['level'] ?? 'debug')
+            Level::fromName($config['level'] ?? 'debug')
         );
 
         $logger->pushHandler($handler);
@@ -987,6 +994,7 @@ The default formatter that outputs logs as single lines of text.
 namespace App\Logging;
 
 use Monolog\Logger;
+use Monolog\Level;
 use Monolog\Handler\StreamHandler;
 use Monolog\Formatter\LineFormatter;
 
@@ -1009,7 +1017,7 @@ class FormattedLogger
 
         $handler = new StreamHandler(
             storage_path('logs/formatted.log'),
-            Monolog\Level::Debug
+            Level::Debug
         );
         $handler->setFormatter($formatter);
 
