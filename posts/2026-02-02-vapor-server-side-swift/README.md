@@ -101,8 +101,9 @@ sudo mv .build/release/vapor /usr/local/bin
 With the toolbox installed, creating a new project takes just one command:
 
 ```bash
-# Create a new Vapor project with Fluent ORM and PostgreSQL
-vapor new HelloVapor --fluent --db postgres
+# Create a new Vapor project - the toolbox will prompt you to choose
+# a Fluent driver (e.g. Postgres), Leaf, and other template options
+vapor new HelloVapor
 
 # Navigate into the project directory
 cd HelloVapor
@@ -1021,7 +1022,7 @@ final class TodoTests: XCTestCase {
 
     // Clean up after each test
     override func tearDown() async throws {
-        app.shutdown()
+        try await app.asyncShutdown()
     }
 
     // Test creating a todo
@@ -1298,9 +1299,11 @@ struct HealthController: RouteCollection {
     func ready(req: Request) async throws -> HealthStatus {
         var status = HealthStatus(status: "ok")
 
-        // Check database connection
+        // Check database connection - cast to SQLDatabase to run raw SQL
         do {
-            _ = try await req.db.execute(query: .raw("SELECT 1"))
+            if let sql = req.db as? SQLDatabase {
+                try await sql.raw("SELECT 1").run()
+            }
             status.database = "connected"
         } catch {
             status.database = "disconnected"
@@ -1365,16 +1368,18 @@ app.redis.configuration = try RedisConfiguration(
 func getCachedTodos(req: Request) async throws -> [Todo] {
     let cacheKey = RedisKey("todos:all")
 
-    // Try cache first
-    if let cached = try await req.redis.get(cacheKey, as: [Todo].self) {
+    // Try cache first - use asJSON to decode a Codable value
+    if let cached = try await req.redis.get(cacheKey, asJSON: [Todo].self) {
         return cached
     }
 
     // Fetch from database
     let todos = try await Todo.query(on: req.db).all()
 
-    // Store in cache for 5 minutes
-    try await req.redis.setex(cacheKey, toJSON: todos, expirationInSeconds: 300)
+    // Store in cache with a 5 minute TTL.
+    // set(_:toJSON:) and expire(_:after:) are separate calls
+    try await req.redis.set(cacheKey, toJSON: todos).get()
+    _ = try await req.redis.expire(cacheKey, after: .seconds(300)).get()
 
     return todos
 }
