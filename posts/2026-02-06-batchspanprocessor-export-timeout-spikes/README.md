@@ -69,7 +69,9 @@ exporter = OTLPSpanExporter(
 
 processor = BatchSpanProcessor(
     exporter,
-    export_timeout_millis=15000,  # Processor timeout
+    # The Python SDK currently accepts this option but does not enforce it.
+    # Use the exporter timeout above as the effective request timeout.
+    export_timeout_millis=15000,
     max_queue_size=16384,
     schedule_delay_millis=2000,
     max_export_batch_size=1024,
@@ -116,12 +118,12 @@ func setupTracing() (*sdktrace.TracerProvider, error) {
 
 ## Two Levels of Timeout
 
-There are actually two timeouts at play:
+In SDKs that enforce both settings, there are two timeouts at play:
 
 1. **Exporter timeout**: How long the HTTP/gRPC call waits for a response from the backend. This is set on the exporter itself.
 2. **Processor export timeout**: How long the BatchSpanProcessor waits for the entire export operation (including serialization and the network call) to complete.
 
-The processor timeout should always be larger than the exporter timeout. If the exporter timeout is 10 seconds, set the processor timeout to 15 seconds to give room for serialization overhead.
+The processor timeout should be larger than the exporter timeout. If the exporter timeout is 10 seconds, set the processor timeout to 15 seconds to give room for serialization overhead. One important caveat: in the current Python SDK, `export_timeout_millis` and `OTEL_BSP_EXPORT_TIMEOUT` are accepted but not enforced by `BatchSpanProcessor`, so the exporter timeout is the effective timeout there.
 
 ## Calculating the Right Timeout
 
@@ -141,7 +143,7 @@ processor_timeout = exporter_timeout + 5 seconds
 
 ## Combining Timeout with Queue Sizing
 
-The timeout and queue must work together. During a backend slowdown, the queue needs to be large enough to buffer spans while exports are retried:
+The timeout and queue must work together. During a backend slowdown, the queue needs to be large enough to buffer new spans while export attempts are blocked:
 
 ```text
 buffer_duration = timeout * (maxQueueSize / maxExportBatchSize)
@@ -153,7 +155,7 @@ With a 15-second timeout, queue of 16384, and batch size of 1024:
 buffer_duration = 15 * (16384 / 1024) = 240 seconds = 4 minutes
 ```
 
-This means you can survive a 4-minute backend outage without dropping spans. Adjust the queue size based on how long your backend outages typically last.
+This is a rough upper bound on how long new spans can wait in the queue while exports are blocked. It does not mean a full 4-minute backend outage is lossless: batches whose export attempts fail are dropped by the SDK, and new spans can still be dropped if the queue fills. Adjust the queue size based on how long your backend slowdowns typically last and how much memory you can allocate.
 
 ## Environment Variable Configuration
 
@@ -167,6 +169,8 @@ export OTEL_BSP_MAX_EXPORT_BATCH_SIZE=1024
 
 # Set exporter timeout
 export OTEL_EXPORTER_OTLP_TIMEOUT=10000
+
+# Note: Python currently accepts OTEL_BSP_EXPORT_TIMEOUT but does not enforce it.
 ```
 
 ## Monitoring Timeout Events
