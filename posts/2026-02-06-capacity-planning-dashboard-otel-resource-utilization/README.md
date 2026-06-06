@@ -6,18 +6,18 @@ Tags: OpenTelemetry, Capacity Planning, Infrastructure, Grafana
 
 Description: Build a capacity planning dashboard from OpenTelemetry resource utilization metrics to forecast when you need to scale.
 
-Capacity planning is about answering a simple question: when will you run out of resources? Whether it is CPU, memory, disk, or network bandwidth, you need to see current utilization trends and project them forward. OpenTelemetry provides standardized resource utilization metrics through the Host Metrics Receiver and Kubelet Stats Receiver, giving you a consistent data source for capacity planning across bare-metal servers, VMs, and Kubernetes clusters.
+Capacity planning is about answering a simple question: when will you run out of resources? Whether it is CPU, memory, disk, or network bandwidth, you need to see current utilization trends and project them forward. OpenTelemetry provides standardized resource utilization metrics through the Host Metrics Receiver, Kubelet Stats Receiver, and Kubernetes Cluster Receiver, giving you a consistent data source for capacity planning across bare-metal servers, VMs, and Kubernetes clusters.
 
 ## Collecting Resource Metrics
 
-The Host Metrics Receiver captures system-level metrics from the machine where the collector runs. For Kubernetes environments, the Kubelet Stats Receiver provides pod and container-level resource data.
+The Host Metrics Receiver captures system-level metrics from the machine where the collector runs. For Kubernetes environments, the Kubelet Stats Receiver provides pod and container-level resource data, and the Kubernetes Cluster Receiver provides resource requests and node allocatable capacity.
 
 ```yaml
 # otel-collector-config.yaml
 
 receivers:
   # Host-level metrics for VMs and bare metal
-  hostmetrics:
+  host_metrics:
     collection_interval: 30s
     scrapers:
       cpu:
@@ -42,13 +42,22 @@ receivers:
             enabled: true
 
   # Kubernetes pod-level metrics (use on DaemonSet collectors)
-  kubeletstats:
+  kubelet_stats:
     auth_type: serviceAccount
+    endpoint: "${env:K8S_NODE_NAME}:10250"
+    insecure_skip_verify: true
     collection_interval: 30s
     metric_groups:
       - node
       - pod
       - container
+
+  # Kubernetes API metrics for requests and allocatable capacity
+  k8s_cluster:
+    auth_type: serviceAccount
+    allocatable_types_to_report:
+      - cpu
+      - memory
 
 processors:
   # Tag metrics with hostname for per-node breakdowns
@@ -62,15 +71,17 @@ processors:
     timeout: 10s
 
 exporters:
-  prometheusremotewrite:
+  prometheus_remote_write:
     endpoint: "http://prometheus:9090/api/v1/write"
+    resource_to_telemetry_conversion:
+      enabled: true
 
 service:
   pipelines:
     metrics:
-      receivers: [hostmetrics]
+      receivers: [host_metrics, kubelet_stats, k8s_cluster]
       processors: [resourcedetection, batch]
-      exporters: [prometheusremotewrite]
+      exporters: [prometheus_remote_write]
 ```
 
 ## Key Capacity Metrics
@@ -95,7 +106,7 @@ graph TD
 
 ```promql
 # Average CPU utilization across all cores per host
-avg by (host_name) (system_cpu_utilization)
+avg by (host_name) (1 - system_cpu_utilization{state="idle"})
 ```
 
 For the projection, use Grafana's built-in trend line feature or the `predict_linear` function:
@@ -103,7 +114,7 @@ For the projection, use Grafana's built-in trend line feature or the `predict_li
 ```promql
 # Predict CPU utilization 7 days from now based on the last 30 days
 predict_linear(
-  avg by (host_name) (system_cpu_utilization)[30d:1h],
+  (avg by (host_name) (1 - system_cpu_utilization{state="idle"}))[30d:1h],
   7 * 24 * 3600
 )
 ```
@@ -121,6 +132,7 @@ system_memory_utilization{state="used"}
 /
 deriv(system_memory_utilization{state="used"}[14d])
 / 86400
+and deriv(system_memory_utilization{state="used"}[14d]) > 0
 ```
 
 This returns the number of days until you hit 90% memory utilization. Display it as a stat panel with thresholds: green above 30 days, yellow between 7-30 days, red below 7 days.
@@ -129,23 +141,24 @@ This returns the number of days until you hit 90% memory utilization. Display it
 
 ```promql
 # Current filesystem utilization per mount point
-system_filesystem_utilization{state="used"}
+system_filesystem_utilization
 ```
 
 ```promql
 # Days until disk is full, based on 7-day trend
-(1 - system_filesystem_utilization{state="used"})
+(1 - system_filesystem_utilization)
 /
-deriv(system_filesystem_utilization{state="used"}[7d])
+deriv(system_filesystem_utilization[7d])
 / 86400
+and deriv(system_filesystem_utilization[7d]) > 0
 ```
 
-**Network Bandwidth Utilization** - Percentage of available bandwidth in use:
+**Network Throughput** - Bytes per second sent by each interface:
 
 ```promql
 # Network throughput in bytes per second per interface
 sum by (host_name, device) (
-  rate(system_network_io_total{direction="transmit"}[5m])
+  rate(system_network_io_bytes_total{direction="transmit"}[5m])
 )
 ```
 
@@ -157,18 +170,18 @@ For Kubernetes clusters, capacity planning also involves tracking resource reque
 
 ```promql
 # Ratio of actual CPU usage to requested CPU per namespace
-sum by (k8s_namespace_name) (k8s_pod_cpu_utilization)
+sum by (k8s_namespace_name) (k8s_pod_cpu_usage)
 /
-sum by (k8s_namespace_name) (k8s_pod_cpu_request)
+sum by (k8s_namespace_name) (k8s_container_cpu_request)
 ```
 
-A value below 0.5 suggests the namespace is over-provisioned. A value above 0.9 means it is close to its requested limits.
+A value below 0.5 suggests the namespace is over-provisioned. A value above 0.9 means it is close to its requested CPU.
 
 **Node Allocatable Headroom** - How much room is left on each node:
 
 ```promql
 # Percentage of allocatable CPU already requested
-sum by (k8s_node_name) (k8s_pod_cpu_request)
+sum by (k8s_node_name) (k8s_container_cpu_request)
 /
 k8s_node_allocatable_cpu
 * 100
@@ -196,11 +209,13 @@ groups:
       # Alert when disk will be full within 7 days
       - alert: DiskFullIn7Days
         expr: >
-          (1 - system_filesystem_utilization{state="used"})
-          /
-          deriv(system_filesystem_utilization{state="used"}[7d])
-          / 86400
-          < 7
+          (
+            (1 - system_filesystem_utilization)
+            /
+            deriv(system_filesystem_utilization[7d])
+            / 86400
+          ) < 7
+          and deriv(system_filesystem_utilization[7d]) > 0
         for: 1h
         labels:
           severity: warning
