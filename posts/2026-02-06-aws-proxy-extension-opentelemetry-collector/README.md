@@ -8,96 +8,72 @@ Description: Master the AWS Proxy Extension in OpenTelemetry Collector to enable
 
 ---
 
-The AWS Proxy Extension in the OpenTelemetry Collector provides seamless integration with AWS services through automatic IAM authentication, credential management, and AWS Signature Version 4 (SigV4) request signing. This extension eliminates the complexity of managing AWS credentials and enables secure, native integration with AWS observability services.
+The AWS Proxy Extension in the OpenTelemetry Collector provides a local HTTP proxy that accepts unsigned requests and forwards them to an AWS service after applying AWS Signature Version 4 (SigV4) signing. This lets applications or local SDKs send AWS API requests to the Collector without carrying AWS credentials themselves.
 
 ## What is the AWS Proxy Extension?
 
-The AWS Proxy Extension is an OpenTelemetry Collector component that acts as an authentication proxy for AWS services. It automatically handles AWS credential discovery, session management, and SigV4 request signing, allowing exporters to communicate with AWS services without embedding AWS-specific authentication logic.
+The AWS Proxy Extension is an OpenTelemetry Collector extension that listens on a configured TCP endpoint, signs incoming HTTP requests with SigV4, and forwards them to a configured AWS service endpoint. The proxy uses the Collector process's AWS credentials, which can come from the standard AWS credential lookup or from a configured IAM role ARN.
 
 The extension provides:
 
-- Automatic AWS credential discovery from multiple sources (IAM roles, environment variables, credential files)
-- SigV4 request signing for API authentication
-- Session token management and automatic credential rotation
-- Regional endpoint configuration and routing
-- Support for AWS services including CloudWatch, X-Ray, Kinesis, S3, and more
-- Cross-account access through IAM role assumption
-- Proxy configuration for restricted network environments
+- SigV4 request signing for forwarded AWS API requests
+- AWS region configuration or region discovery from environment variables, ECS metadata, or EC2 instance metadata
+- Optional IAM role assumption through `role_arn`
+- Optional AWS service endpoint override through `aws_endpoint`
+- Optional outbound proxy configuration through `proxy_address`
+- TLS client settings for connections from the proxy to AWS
 
-This extension is essential for running OpenTelemetry Collector in AWS environments where IAM-based authentication is required or preferred over static API keys.
+The AWS Proxy Extension is useful when an application or SDK can call a local proxy endpoint but should not receive AWS credentials directly. It is not a general-purpose authentication layer for all AWS exporters. AWS exporters such as `awscloudwatchlogs` and `awsxray` already use AWS SDK credential resolution and their own exporter-specific configuration.
 
 ## Why Use the AWS Proxy Extension?
 
-AWS environments have unique security and operational requirements that the AWS Proxy Extension addresses:
+AWS environments have unique security and operational requirements that the AWS Proxy Extension can help address:
 
-**IAM-Based Security**: AWS best practices mandate using IAM roles rather than long-lived access keys. The extension seamlessly integrates with IAM, automatically discovering and using instance profiles, EKS service accounts, or assumed roles without manual credential management.
+**IAM-Based Security**: Instead of placing AWS access keys in an application, you can run the Collector with an IAM role or another supported AWS credential source and have applications send unsigned AWS API requests to the proxy.
 
-**Credential Rotation**: Static credentials create security risks and operational overhead. The extension automatically refreshes temporary credentials from AWS STS (Security Token Service), ensuring continuous operation without manual intervention.
+**Credential Rotation**: When the Collector runs on temporary AWS credentials, the AWS SDK credential provider refreshes those credentials as needed. The application calling the proxy does not need to manage that process.
 
-**Regional Optimization**: AWS services are regional. The extension automatically routes requests to the correct regional endpoints based on configuration or instance metadata, reducing latency and ensuring compliance with data residency requirements.
+**Regional Configuration**: The proxy signs requests for the configured AWS region. If `region` is not set, the extension attempts to resolve it from `AWS_DEFAULT_REGION`, `AWS_REGION`, ECS metadata, or EC2 instance metadata unless `local_mode` disables metadata lookup.
 
-**Multi-Account Access**: Enterprise AWS environments often span multiple accounts. The extension supports IAM role assumption, enabling centralized telemetry collection from workloads across different AWS accounts.
+**Cross-Account Access**: The proxy can assume an IAM role by setting `role_arn`. If `role_arn` is empty, it uses the standard AWS credential lookup for the Collector process.
 
-**Compliance**: Many regulatory frameworks require eliminating long-lived credentials. The extension's integration with temporary IAM credentials helps meet compliance requirements like SOC 2, PCI-DSS, and HIPAA.
+**Compliance**: Keeping AWS credentials in the Collector process instead of distributing them to applications can help reduce long-lived credential exposure.
 
 ## Architecture and AWS Integration
 
-The AWS Proxy Extension integrates with AWS services and the Collector pipeline:
+The AWS Proxy Extension integrates with AWS services as a local signing proxy:
 
 ```mermaid
 graph TB
-    subgraph AWS Account
-        subgraph EC2/EKS/ECS
-            A[Application] -->|OTLP| C[OpenTelemetry Collector]
-
-            subgraph Collector
-                C --> AP[AWS Proxy Extension]
-                AP -->|Fetch Credentials| IAM[IAM Role/Instance Profile]
-                AP -->|Sign Requests| SIG[SigV4 Signer]
-                SIG --> EXP[AWS Exporter]
-            end
-        end
-
-        EXP -->|Signed Requests| CW[CloudWatch Logs/Metrics]
-        EXP -->|Signed Requests| XR[X-Ray]
-        EXP -->|Signed Requests| KIN[Kinesis]
-        EXP -->|Signed Requests| S3[S3]
+    subgraph Runtime
+        A[Application or AWS SDK] -->|Unsigned AWS API request| AP[AWS Proxy Extension]
+        AP -->|Resolve credentials| IAM[IAM role or AWS credential chain]
+        AP -->|SigV4 signed request| AWS[AWS service endpoint]
     end
-
-    IAM -.->|Temporary Credentials| STS[AWS STS]
 ```
 
-The extension discovers credentials from the AWS credential chain, signs outbound requests using SigV4, and automatically refreshes credentials before expiration. Exporters remain credential-agnostic, relying entirely on the extension for authentication.
+The extension does not automatically attach itself to every exporter in the Collector pipeline. To use it, a client must send AWS API requests to the proxy's `endpoint`, and the proxy forwards those requests to the configured AWS service.
 
 ## Basic Configuration for EC2 Instances
 
-The simplest configuration uses EC2 instance profiles for automatic authentication:
+The simplest configuration uses the EC2 instance profile attached to the Collector host:
 
 ```yaml
-# extensions section configures AWS proxy
-
 extensions:
-  # AWS proxy extension with instance profile authentication
   awsproxy:
-    # AWS region (auto-detected if not specified)
+    endpoint: 0.0.0.0:2000
     region: us-east-1
+    service_name: xray
 
-    # Credential discovery order
-    # 1. Environment variables (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)
-    # 2. Shared credentials file (~/.aws/credentials)
-    # 3. IAM instance profile
-    # 4. ECS task role
-    # 5. EKS service account
-    credential_chain:
-      - environment
-      - instance_profile
+service:
+  extensions: [awsproxy]
+```
 
-    # Endpoint configuration
-    endpoint:
-      # Use AWS default endpoints
-      use_default: true
+In this configuration, clients send unsigned AWS X-Ray API requests to the Collector at `http://<collector-host>:2000`. The proxy signs the requests with credentials resolved by the AWS SDK and forwards them to the regional X-Ray endpoint.
 
-# receivers accept telemetry
+If you want the Collector itself to export telemetry directly to CloudWatch Logs or X-Ray, configure the AWS exporters directly. Those exporters use AWS credential resolution themselves:
+
+```yaml
 receivers:
   otlp:
     protocols:
@@ -106,30 +82,20 @@ receivers:
       http:
         endpoint: 0.0.0.0:4318
 
-# processors transform data
 processors:
   batch:
     timeout: 10s
-    send_batch_size: 1024
 
-# exporters for AWS services
 exporters:
-  # CloudWatch Logs exporter
   awscloudwatchlogs:
     region: us-east-1
     log_group_name: /aws/otel-collector/logs
     log_stream_name: collector-stream
-    # Authentication handled by awsproxy extension
 
-  # X-Ray exporter for traces
   awsxray:
     region: us-east-1
-    # Authentication handled by awsproxy extension
 
 service:
-  # Enable AWS proxy extension
-  extensions: [awsproxy]
-
   pipelines:
     logs:
       receivers: [otlp]
@@ -142,66 +108,19 @@ service:
       exporters: [awsxray]
 ```
 
-This configuration automatically discovers credentials from the EC2 instance profile and signs all requests to CloudWatch and X-Ray. No explicit credential configuration is required.
-
 ## EKS Configuration with IRSA
 
-For Kubernetes on EKS, use IAM Roles for Service Accounts (IRSA) for secure, pod-level authentication:
+For Kubernetes on EKS, use IAM Roles for Service Accounts (IRSA) to provide AWS credentials to the Collector pod. The AWS Proxy Extension does not need a `credential_chain` or web identity token setting; the AWS SDK reads the IRSA environment variables and projected token file.
 
 ```yaml
 extensions:
   awsproxy:
+    endpoint: 0.0.0.0:2000
     region: us-east-1
-
-    # Credential chain for EKS
-    credential_chain:
-      - environment            # Check for explicit credentials
-      - web_identity           # IRSA web identity token
-      - instance_profile       # Fallback to node instance profile
-
-    # IRSA configuration
-    assume_role:
-      # Enable automatic role assumption from web identity
-      enable_web_identity: true
-      # Token file path (automatically set by EKS)
-      web_identity_token_file: /var/run/secrets/eks.amazonaws.com/serviceaccount/token
-      # Role ARN (injected via environment variable)
-      role_arn: ${AWS_ROLE_ARN}
-      # Session name for auditing
-      role_session_name: otel-collector-${POD_NAME}
-
-receivers:
-  otlp:
-    protocols:
-      grpc:
-        endpoint: 0.0.0.0:4317
-
-processors:
-  batch:
-    timeout: 10s
-
-exporters:
-  awscloudwatchlogs:
-    region: us-east-1
-    log_group_name: /eks/otel-collector
-    log_stream_name: ${POD_NAME}
-
-  awsxray:
-    region: us-east-1
+    service_name: xray
 
 service:
   extensions: [awsproxy]
-
-  pipelines:
-    logs:
-      receivers: [otlp]
-      processors: [batch]
-      exporters: [awscloudwatchlogs]
-
-    traces:
-      receivers: [otlp]
-      processors: [batch]
-      exporters: [awsxray]
 ```
 
 **Kubernetes Deployment Configuration**:
@@ -213,7 +132,6 @@ metadata:
   name: otel-collector
   namespace: observability
   annotations:
-    # Associate IAM role with service account
     eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/OtelCollectorRole
 
 ---
@@ -232,36 +150,21 @@ spec:
       labels:
         app: otel-collector
     spec:
-      # Use service account with IRSA
       serviceAccountName: otel-collector
-
       containers:
         - name: otel-collector
           image: otel/opentelemetry-collector-contrib:0.93.0
-
+          args:
+            - --config=/etc/otel-collector/config.yaml
           env:
-            # Pod name for log stream naming
-            - name: POD_NAME
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.name
-
-            # AWS region
             - name: AWS_REGION
               value: us-east-1
-
-            # Role ARN (automatically injected by IRSA webhook)
-            - name: AWS_ROLE_ARN
-              value: arn:aws:iam::123456789012:role/OtelCollectorRole
-
-            # Web identity token file (automatically mounted)
-            - name: AWS_WEB_IDENTITY_TOKEN_FILE
-              value: /var/run/secrets/eks.amazonaws.com/serviceaccount/token
-
+          ports:
+            - name: awsproxy
+              containerPort: 2000
           volumeMounts:
             - name: config
               mountPath: /etc/otel-collector
-
           resources:
             limits:
               memory: 2Gi
@@ -269,488 +172,161 @@ spec:
             requests:
               memory: 1Gi
               cpu: 500m
-
       volumes:
         - name: config
           configMap:
             name: otel-collector-config
 ```
 
-This configuration enables secure, pod-level authentication using IRSA without storing any credentials in configuration or environment variables.
+This configuration enables pod-level authentication without storing static AWS credentials in the Collector configuration.
 
 ## Cross-Account Access Configuration
 
-For enterprise environments spanning multiple AWS accounts, configure cross-account role assumption:
+For cross-account access, set `role_arn` on the proxy. The Collector's base credentials must be allowed to call `sts:AssumeRole` for that role.
 
 ```yaml
 extensions:
-  # AWS proxy for primary account
   awsproxy/primary:
+    endpoint: 0.0.0.0:2000
     region: us-east-1
+    service_name: xray
 
-    credential_chain:
-      - environment
-      - instance_profile
-
-    # Primary account endpoints
-    endpoint:
-      use_default: true
-
-  # AWS proxy for secondary account
   awsproxy/secondary:
+    endpoint: 0.0.0.0:2001
     region: us-east-1
-
-    credential_chain:
-      - environment
-      - instance_profile
-
-    # Assume role in secondary account
-    assume_role:
-      # Role in secondary account
-      role_arn: arn:aws:iam::987654321098:role/CrossAccountOtelRole
-      # Session name for auditing
-      role_session_name: otel-collector-cross-account
-      # External ID for additional security
-      external_id: ${CROSS_ACCOUNT_EXTERNAL_ID}
-      # Session duration (max 12 hours)
-      duration_seconds: 3600
-
-receivers:
-  otlp:
-    protocols:
-      grpc:
-        endpoint: 0.0.0.0:4317
-
-processors:
-  batch:
-    timeout: 10s
-
-exporters:
-  # Export to primary account CloudWatch
-  awscloudwatchlogs/primary:
-    region: us-east-1
-    log_group_name: /primary/otel-collector
-    # Uses awsproxy/primary extension
-
-  # Export to secondary account CloudWatch
-  awscloudwatchlogs/secondary:
-    region: us-east-1
-    log_group_name: /secondary/otel-collector
-    # Uses awsproxy/secondary extension
-
-  # Export to primary account X-Ray
-  awsxray/primary:
-    region: us-east-1
-    # Uses awsproxy/primary extension
+    service_name: xray
+    role_arn: arn:aws:iam::987654321098:role/CrossAccountOtelRole
 
 service:
-  # Enable both AWS proxy extensions
   extensions: [awsproxy/primary, awsproxy/secondary]
-
-  pipelines:
-    # Logs to both accounts
-    logs/primary:
-      receivers: [otlp]
-      processors: [batch]
-      exporters: [awscloudwatchlogs/primary]
-
-    logs/secondary:
-      receivers: [otlp]
-      processors: [batch]
-      exporters: [awscloudwatchlogs/secondary]
-
-    # Traces to primary account
-    traces:
-      receivers: [otlp]
-      processors: [batch]
-      exporters: [awsxray/primary]
 ```
 
-Cross-account access enables centralized telemetry collection while maintaining account-level data isolation.
+Clients that should use the primary account call port `2000`; clients that should use the secondary account call port `2001`.
 
 ## Advanced Regional Configuration
 
-Optimize performance with regional endpoint routing:
+Configure one proxy instance per AWS service and region that you need to expose:
 
 ```yaml
 extensions:
-  # Regional AWS proxy for US East
-  awsproxy/us_east:
+  awsproxy/xray_us_east:
+    endpoint: 0.0.0.0:2000
     region: us-east-1
+    service_name: xray
 
-    credential_chain:
-      - instance_profile
-
-    endpoint:
-      # Custom endpoints for specific services
-      cloudwatch_logs:
-        url: https://logs.us-east-1.amazonaws.com
-      xray:
-        url: https://xray.us-east-1.amazonaws.com
-      kinesis:
-        url: https://kinesis.us-east-1.amazonaws.com
-
-    # Retry configuration for network resilience
-    retry:
-      max_attempts: 3
-      initial_backoff: 1s
-      max_backoff: 30s
-
-  # Regional AWS proxy for US West
-  awsproxy/us_west:
+  awsproxy/xray_us_west:
+    endpoint: 0.0.0.0:2001
     region: us-west-2
+    service_name: xray
 
-    credential_chain:
-      - instance_profile
-
-    endpoint:
-      cloudwatch_logs:
-        url: https://logs.us-west-2.amazonaws.com
-      xray:
-        url: https://xray.us-west-2.amazonaws.com
-
-receivers:
-  otlp:
-    protocols:
-      grpc:
-        endpoint: 0.0.0.0:4317
-
-processors:
-  batch:
-    timeout: 10s
-
-  # Route telemetry based on source region
-  routing:
-    from_attribute: region
-    default_exporters: [awscloudwatchlogs/us_east]
-    table:
-      - value: us-east-1
-        exporters: [awscloudwatchlogs/us_east]
-      - value: us-west-2
-        exporters: [awscloudwatchlogs/us_west]
-
-exporters:
-  # US East exporters
-  awscloudwatchlogs/us_east:
+  awsproxy/logs_us_east:
+    endpoint: 0.0.0.0:2002
     region: us-east-1
-    log_group_name: /otel/us-east-1
-
-  awsxray/us_east:
-    region: us-east-1
-
-  # US West exporters
-  awscloudwatchlogs/us_west:
-    region: us-west-2
-    log_group_name: /otel/us-west-2
-
-  awsxray/us_west:
-    region: us-west-2
+    service_name: logs
+    aws_endpoint: https://logs.us-east-1.amazonaws.com
 
 service:
-  extensions: [awsproxy/us_east, awsproxy/us_west]
-
-  pipelines:
-    logs:
-      receivers: [otlp]
-      processors: [batch, routing]
-      exporters: [awscloudwatchlogs/us_east, awscloudwatchlogs/us_west]
-
-    traces:
-      receivers: [otlp]
-      processors: [batch]
-      exporters: [awsxray/us_east, awsxray/us_west]
+  extensions: [awsproxy/xray_us_east, awsproxy/xray_us_west, awsproxy/logs_us_east]
 ```
 
-Regional routing reduces latency and ensures data residency compliance by keeping telemetry within specific AWS regions.
+Each proxy listener signs requests for its configured `service_name` and region.
 
 ## Proxy and VPC Endpoint Configuration
 
-For secure VPC environments with restricted internet access:
+For restricted networks, use `proxy_address` to forward the proxy's outbound requests through an HTTP proxy. Use `aws_endpoint` when forwarding to a specific AWS endpoint, such as a VPC endpoint DNS name.
 
 ```yaml
 extensions:
   awsproxy:
+    endpoint: 0.0.0.0:2000
     region: us-east-1
-
-    credential_chain:
-      - instance_profile
-
-    # HTTP proxy configuration
-    proxy:
-      # Proxy URL for outbound requests
-      http_proxy: http://proxy.internal.company.com:8080
-      https_proxy: http://proxy.internal.company.com:8080
-      # Bypass proxy for VPC endpoints
-      no_proxy: .amazonaws.com,.internal
-
-    # VPC endpoint configuration
-    endpoint:
-      # Use VPC endpoints for private connectivity
-      cloudwatch_logs:
-        url: https://vpce-123abc.logs.us-east-1.vpce.amazonaws.com
-      xray:
-        url: https://vpce-456def.xray.us-east-1.vpce.amazonaws.com
-
-      # Custom DNS resolver for VPC endpoints
-      dns_resolver:
-        servers:
-          - 10.0.0.2:53
-        timeout: 5s
-
-    # TLS configuration for VPC endpoints
+    service_name: xray
+    aws_endpoint: https://vpce-456def.xray.us-east-1.vpce.amazonaws.com
+    proxy_address: http://proxy.internal.company.com:8080
     tls:
-      # Verify VPC endpoint certificates
-      insecure_skip_verify: false
-      # Custom CA bundle for internal certificates
-      ca_file: /etc/ssl/certs/company-ca.pem
-
-receivers:
-  otlp:
-    protocols:
-      grpc:
-        endpoint: 0.0.0.0:4317
-
-processors:
-  batch:
-    timeout: 10s
-
-exporters:
-  awscloudwatchlogs:
-    region: us-east-1
-    log_group_name: /vpc/otel-collector
-
-  awsxray:
-    region: us-east-1
+      insecure: false
 
 service:
   extensions: [awsproxy]
-
-  pipelines:
-    logs:
-      receivers: [otlp]
-      processors: [batch]
-      exporters: [awscloudwatchlogs]
-
-    traces:
-      receivers: [otlp]
-      processors: [batch]
-      exporters: [awsxray]
 ```
 
-This configuration enables secure, private connectivity to AWS services through VPC endpoints, eliminating internet exposure for telemetry traffic.
+This configuration keeps AWS credentials in the Collector while forwarding signed requests through the configured private network path.
 
 ## Performance Optimization
 
 ### Credential Caching
 
-Reduce authentication overhead with credential caching:
+The AWS Proxy Extension does not expose a `cache` or `parallel_refresh` configuration block. Credential reuse and refresh behavior come from the AWS SDK credential providers used by the Collector process.
 
 ```yaml
 extensions:
   awsproxy:
+    endpoint: 0.0.0.0:2000
     region: us-east-1
-
-    credential_chain:
-      - instance_profile
-
-    # Credential caching configuration
-    cache:
-      enabled: true
-      # Cache credentials until 5 minutes before expiration
-      refresh_before_expiry: 300s
-      # Maximum cache size
-      max_entries: 1000
-      # Cache eviction policy
-      eviction: lru
-
-    # Parallel credential refresh
-    parallel_refresh:
-      enabled: true
-      # Number of workers for credential refresh
-      workers: 4
-
-receivers:
-  otlp:
-    protocols:
-      grpc:
-        endpoint: 0.0.0.0:4317
-
-processors:
-  batch:
-    timeout: 10s
-    send_batch_size: 1024
-
-exporters:
-  awscloudwatchlogs:
-    region: us-east-1
-    log_group_name: /otel-collector
+    service_name: xray
+    local_mode: false
 
 service:
   extensions: [awsproxy]
-
-  pipelines:
-    logs:
-      receivers: [otlp]
-      processors: [batch]
-      exporters: [awscloudwatchlogs]
 ```
 
-Credential caching eliminates redundant STS calls, reducing latency and improving throughput.
+Set `local_mode: true` only when you want to prevent region lookup through ECS or EC2 metadata. When `local_mode` is true, provide `region` explicitly.
 
 ### Request Batching and Rate Limiting
 
-Optimize API usage with batching and rate limiting:
+The AWS Proxy Extension does not expose `rate_limit` or `connection_pool` settings. If the Collector is exporting telemetry directly, use exporter-supported batching, queueing, and retry settings instead. For example, the CloudWatch Logs exporter supports the Collector `sending_queue` and `retry_on_failure` settings:
 
 ```yaml
-extensions:
-  awsproxy:
-    region: us-east-1
-
-    credential_chain:
-      - instance_profile
-
-    # Rate limiting configuration
-    rate_limit:
-      # Maximum requests per second
-      requests_per_second: 100
-      # Burst capacity
-      burst: 200
-
-    # Connection pooling
-    connection_pool:
-      max_idle_connections: 100
-      max_connections_per_host: 10
-      idle_connection_timeout: 90s
-
-receivers:
-  otlp:
-    protocols:
-      grpc:
-        endpoint: 0.0.0.0:4317
-
-processors:
-  batch:
-    # Larger batches reduce API calls
-    timeout: 30s
-    send_batch_size: 5000
-
 exporters:
   awscloudwatchlogs:
     region: us-east-1
     log_group_name: /otel-collector
-
-    # CloudWatch-specific batching
-    max_events_per_batch: 10000
-    max_batch_size_bytes: 1048576
-
-service:
-  extensions: [awsproxy]
-
-  pipelines:
-    logs:
-      receivers: [otlp]
-      processors: [batch]
-      exporters: [awscloudwatchlogs]
+    log_stream_name: collector-stream
+    sending_queue:
+      enabled: true
+      num_consumers: 10
+      queue_size: 1000
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 120s
 ```
-
-Rate limiting prevents API throttling while batching reduces total API calls, lowering costs and improving performance.
 
 ## Monitoring and Troubleshooting
 
 ### Enable Detailed Logging
 
-Debug AWS authentication and signing issues:
+Use the Collector's own telemetry log level to debug proxy startup, credential resolution, and forwarding errors:
 
 ```yaml
 extensions:
   awsproxy:
+    endpoint: 0.0.0.0:2000
     region: us-east-1
-
-    credential_chain:
-      - instance_profile
-
-    # Logging configuration
-    logging:
-      level: debug
-      # Log credential discovery process
-      log_credential_discovery: true
-      # Log SigV4 signing operations
-      log_signing: true
-      # Redact sensitive information
-      redact_credentials: true
-
-receivers:
-  otlp:
-    protocols:
-      grpc:
-        endpoint: 0.0.0.0:4317
-
-processors:
-  batch:
-    timeout: 10s
-
-exporters:
-  # Use logging exporter for debugging
-  logging:
-    loglevel: debug
-
-  awscloudwatchlogs:
-    region: us-east-1
-    log_group_name: /otel-collector
+    service_name: xray
 
 service:
-  # Enable debug telemetry
   telemetry:
     logs:
       level: debug
-
   extensions: [awsproxy]
-
-  pipelines:
-    logs:
-      receivers: [otlp]
-      processors: [batch]
-      exporters: [logging, awscloudwatchlogs]
 ```
 
-Debug logs show credential discovery, role assumption, and signing operations, helping diagnose authentication failures.
+The AWS Proxy Extension does not define `logging`, `log_credential_discovery`, or `log_signing` settings of its own.
 
 ### Metrics and Health Monitoring
 
-Track AWS proxy performance with internal metrics:
+The AWS Proxy Extension does not document component-specific metrics such as `otelcol_awsproxy_credential_refresh_total`. Use Collector telemetry for process-level monitoring, and use AWS service-side metrics and CloudTrail events to monitor API calls that reach AWS.
 
 ```yaml
 extensions:
   awsproxy:
+    endpoint: 0.0.0.0:2000
     region: us-east-1
-
-    credential_chain:
-      - instance_profile
-
-    # Metrics configuration
-    metrics:
-      enabled: true
-      detailed: true
-
-receivers:
-  otlp:
-    protocols:
-      grpc:
-        endpoint: 0.0.0.0:4317
-
-processors:
-  batch:
-    timeout: 10s
-
-exporters:
-  awscloudwatchlogs:
-    region: us-east-1
-    log_group_name: /otel-collector
+    service_name: xray
 
 service:
-  extensions: [awsproxy]
-
-  # Configure Collector self-monitoring
   telemetry:
     metrics:
       level: detailed
@@ -762,48 +338,19 @@ service:
                 endpoint: https://oneuptime.com/otlp
                 headers:
                   x-oneuptime-token: ${ONEUPTIME_TOKEN}
-
-  pipelines:
-    logs:
-      receivers: [otlp]
-      processors: [batch]
-      exporters: [awscloudwatchlogs]
+  extensions: [awsproxy]
 ```
-
-**Key Metrics**:
-
-- **otelcol_awsproxy_credential_refresh_total**: Credential refresh attempts
-- **otelcol_awsproxy_credential_refresh_errors**: Failed credential refreshes
-- **otelcol_awsproxy_signing_duration_milliseconds**: SigV4 signing duration
-- **otelcol_awsproxy_requests_total**: Total signed requests
-- **otelcol_awsproxy_requests_errors**: Failed request signings
-
-These metrics help identify authentication issues, performance bottlenecks, and credential rotation problems.
 
 ## Security Best Practices
 
 ### Principle of Least Privilege
 
-Grant minimal IAM permissions required for telemetry export:
+Grant minimal IAM permissions required for the AWS APIs that clients call through the proxy. For an X-Ray proxy, that commonly includes write permissions for segments and telemetry records:
 
 ```json
 {
   "Version": "2012-10-17",
   "Statement": [
-    {
-      "Sid": "CloudWatchLogsWrite",
-      "Effect": "Allow",
-      "Action": [
-        "logs:CreateLogGroup",
-        "logs:CreateLogStream",
-        "logs:PutLogEvents",
-        "logs:DescribeLogGroups",
-        "logs:DescribeLogStreams"
-      ],
-      "Resource": [
-        "arn:aws:logs:us-east-1:123456789012:log-group:/otel-collector/*"
-      ]
-    },
     {
       "Sid": "XRayWrite",
       "Effect": "Allow",
@@ -812,152 +359,55 @@ Grant minimal IAM permissions required for telemetry export:
         "xray:PutTelemetryRecords"
       ],
       "Resource": "*"
-    },
-    {
-      "Sid": "CloudWatchMetricsWrite",
-      "Effect": "Allow",
-      "Action": [
-        "cloudwatch:PutMetricData"
-      ],
-      "Resource": "*",
-      "Condition": {
-        "StringEquals": {
-          "cloudwatch:namespace": "OTel/Collector"
-        }
-      }
     }
   ]
 }
 ```
 
-Minimal permissions reduce blast radius if credentials are compromised.
+If you configure the proxy for CloudWatch Logs, add only the CloudWatch Logs actions required by the client requests you forward.
 
 ### Audit and Monitoring
 
-Enable CloudTrail logging for authentication audit:
+CloudTrail records supported AWS API activity after signed requests reach AWS. The AWS Proxy Extension does not expose an `audit` or `cloudtrail` configuration block; enable and configure CloudTrail in AWS.
 
-```yaml
-extensions:
-  awsproxy:
-    region: us-east-1
-
-    credential_chain:
-      - instance_profile
-
-    # Audit configuration
-    audit:
-      enabled: true
-      # Log all credential operations to CloudTrail
-      cloudtrail:
-        enabled: true
-        # Custom event source
-        event_source: otel-collector
-
-      # Session tagging for attribution
-      session_tags:
-        - key: Application
-          value: otel-collector
-        - key: Environment
-          value: ${ENVIRONMENT}
-        - key: Team
-          value: observability
-
-receivers:
-  otlp:
-    protocols:
-      grpc:
-        endpoint: 0.0.0.0:4317
-
-processors:
-  batch:
-    timeout: 10s
-
-exporters:
-  awscloudwatchlogs:
-    region: us-east-1
-    log_group_name: /otel-collector
-
-service:
-  extensions: [awsproxy]
-
-  pipelines:
-    logs:
-      receivers: [otlp]
-      processors: [batch]
-      exporters: [awscloudwatchlogs]
-```
-
-Session tags and CloudTrail integration enable detailed audit trails for security analysis and compliance.
+When using `role_arn`, make sure the trust policy and permissions policy for the target role allow only the expected Collector identity to assume the role.
 
 ## Production Deployment Example
 
-Complete production configuration with all best practices:
+Complete production configuration with supported AWS Proxy Extension settings:
 
 ```yaml
 extensions:
-  awsproxy:
+  awsproxy/xray:
+    endpoint: 0.0.0.0:2000
     region: ${AWS_REGION}
-
-    credential_chain:
-      - environment
-      - web_identity
-      - instance_profile
-
-    # IRSA configuration for EKS
-    assume_role:
-      enable_web_identity: true
-      role_arn: ${AWS_ROLE_ARN}
-      role_session_name: otel-collector-${POD_NAME}
-      duration_seconds: 3600
-
-    # Credential caching
-    cache:
-      enabled: true
-      refresh_before_expiry: 300s
-
-    # VPC endpoint configuration
-    endpoint:
-      cloudwatch_logs:
-        url: ${CLOUDWATCH_ENDPOINT}
-      xray:
-        url: ${XRAY_ENDPOINT}
-
-    # TLS configuration
+    service_name: xray
+    aws_endpoint: ${XRAY_ENDPOINT}
+    role_arn: ${AWS_ROLE_ARN}
+    local_mode: false
     tls:
-      insecure_skip_verify: false
-      ca_file: /etc/ssl/certs/ca-bundle.crt
+      insecure: false
 
-    # Rate limiting
-    rate_limit:
-      requests_per_second: 100
-      burst: 200
+  health_check:
+    endpoint: 0.0.0.0:13133
 
-    # Connection pooling
-    connection_pool:
-      max_idle_connections: 100
-      max_connections_per_host: 10
-
-    # Retry configuration
-    retry:
-      max_attempts: 3
-      initial_backoff: 1s
-      max_backoff: 30s
-
-    # Logging
-    logging:
+service:
+  telemetry:
+    logs:
       level: info
-      redact_credentials: true
-
-    # Metrics
     metrics:
-      enabled: true
+      level: detailed
+  extensions: [awsproxy/xray, health_check]
+```
 
+For direct telemetry export from the Collector to AWS services, configure the AWS exporters separately:
+
+```yaml
 receivers:
   otlp:
     protocols:
       grpc:
         endpoint: 0.0.0.0:4317
-        max_concurrent_streams: 100
       http:
         endpoint: 0.0.0.0:4318
 
@@ -965,61 +415,34 @@ processors:
   memory_limiter:
     check_interval: 1s
     limit_mib: 2048
-
   batch:
     timeout: 30s
     send_batch_size: 5000
-
-  resource:
-    attributes:
-      - key: aws.region
-        value: ${AWS_REGION}
-        action: upsert
-      - key: k8s.cluster.name
-        value: ${CLUSTER_NAME}
-        action: upsert
 
 exporters:
   awscloudwatchlogs:
     region: ${AWS_REGION}
     log_group_name: /eks/otel-collector
     log_stream_name: ${POD_NAME}
-    max_events_per_batch: 10000
 
   awsxray:
     region: ${AWS_REGION}
     index_all_attributes: true
 
 service:
-  extensions: [awsproxy]
-
-  telemetry:
-    logs:
-      level: info
-    metrics:
-      level: detailed
-      readers:
-        - periodic:
-            exporter:
-              otlp:
-                protocol: http/protobuf
-                endpoint: https://oneuptime.com/otlp
-                headers:
-                  x-oneuptime-token: ${ONEUPTIME_TOKEN}
-
   pipelines:
     logs:
       receivers: [otlp]
-      processors: [memory_limiter, resource, batch]
+      processors: [memory_limiter, batch]
       exporters: [awscloudwatchlogs]
 
     traces:
       receivers: [otlp]
-      processors: [memory_limiter, resource, batch]
+      processors: [memory_limiter, batch]
       exporters: [awsxray]
 ```
 
-This production configuration includes IAM authentication, caching, VPC endpoints, rate limiting, and comprehensive monitoring.
+This keeps the AWS Proxy Extension use case separate from the direct AWS exporter use case.
 
 ## Related Resources
 
@@ -1031,10 +454,10 @@ For comprehensive AWS observability with OpenTelemetry, explore these related to
 
 ## Summary
 
-The AWS Proxy Extension enables seamless integration between OpenTelemetry Collector and AWS services through automatic IAM authentication, SigV4 signing, and credential management. By eliminating manual credential handling and providing native AWS integration, the extension simplifies security, improves operational efficiency, and enables scalable telemetry export to AWS observability services.
+The AWS Proxy Extension enables a Collector instance to act as a local SigV4 signing proxy for AWS API requests. It listens on a TCP endpoint, resolves AWS credentials for the Collector process, signs incoming requests, and forwards them to the configured AWS service endpoint.
 
-Start with basic instance profile authentication for EC2 deployments or IRSA for EKS workloads. As requirements grow, implement cross-account access, regional optimization, and VPC endpoint integration for enhanced security and performance. Credential caching and rate limiting optimize resource usage in high-throughput environments.
+Start with an instance profile or IRSA for the Collector process, configure `region` and `service_name`, and expose only the proxy endpoint that trusted local clients need. Use `role_arn` when the proxy must assume a different IAM role, and use `aws_endpoint` or `proxy_address` for private endpoint and network proxy requirements.
 
-Monitor AWS proxy operations through internal metrics to identify authentication issues and performance bottlenecks. Follow least privilege principles when defining IAM policies, and enable CloudTrail logging for comprehensive audit trails. The extension's flexibility enables sophisticated AWS integration patterns while maintaining security and operational simplicity.
+For normal OpenTelemetry pipelines that send logs or traces directly to AWS, configure the AWS exporters themselves. The AWS Proxy Extension does not replace exporter authentication configuration or provide unsupported settings such as `credential_chain`, `cache`, `rate_limit`, `metrics`, or `audit`.
 
 Need a vendor-neutral observability platform that works alongside AWS services? OneUptime provides native OpenTelemetry support with seamless AWS integration, eliminating vendor lock-in while preserving native AWS authentication and security capabilities.
