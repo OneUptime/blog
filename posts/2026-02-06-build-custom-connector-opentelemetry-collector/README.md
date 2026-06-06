@@ -53,16 +53,12 @@ First, define the connector configuration structure:
 // config.go
 package tracetometricsconnector
 
-import (
-    "go.opentelemetry.io/collector/component"
-)
-
 // Config defines the configuration for the trace-to-metrics connector
 type Config struct {
     // MetricPrefix is the prefix for generated metrics
     MetricPrefix string `mapstructure:"metric_prefix"`
 
-    // Dimensions are the span attributes to include as metric dimensions
+    // Dimensions are the span fields, span attributes, or resource attributes to include as metric dimensions
     Dimensions []string `mapstructure:"dimensions"`
 
     // HistogramBuckets defines custom histogram buckets for latency
@@ -149,11 +145,12 @@ import (
     "go.opentelemetry.io/collector/pdata/pcommon"
     "go.opentelemetry.io/collector/pdata/pmetric"
     "go.opentelemetry.io/collector/pdata/ptrace"
+    "go.uber.org/zap"
 )
 
 type traceToMetrics struct {
     config *Config
-    logger component.Logger
+    logger *zap.Logger
 
     // metricsConsumer is the next consumer in the metrics pipeline
     metricsConsumer consumer.Metrics
@@ -271,9 +268,7 @@ func (c *traceToMetrics) processSpan(span ptrace.Span, resourceAttrs pcommon.Map
 func (c *traceToMetrics) buildDimensionKey(span ptrace.Span, resourceAttrs pcommon.Map) string {
     key := ""
     for _, dim := range c.config.Dimensions {
-        if val, ok := span.Attributes().Get(dim); ok {
-            key += dim + "=" + val.AsString() + ","
-        } else if val, ok := resourceAttrs.Get(dim); ok {
+        if val, ok := c.dimensionValue(dim, span, resourceAttrs); ok {
             key += dim + "=" + val.AsString() + ","
         }
     }
@@ -285,14 +280,31 @@ func (c *traceToMetrics) buildAttributes(span ptrace.Span, resourceAttrs pcommon
     attrs := pcommon.NewMap()
 
     for _, dim := range c.config.Dimensions {
-        if val, ok := span.Attributes().Get(dim); ok {
-            val.CopyTo(attrs.PutEmpty(dim))
-        } else if val, ok := resourceAttrs.Get(dim); ok {
+        if val, ok := c.dimensionValue(dim, span, resourceAttrs); ok {
             val.CopyTo(attrs.PutEmpty(dim))
         }
     }
 
     return attrs
+}
+
+// dimensionValue resolves configured dimensions from span fields, span attributes, or resource attributes
+func (c *traceToMetrics) dimensionValue(dim string, span ptrace.Span, resourceAttrs pcommon.Map) (pcommon.Value, bool) {
+    switch dim {
+    case "span.kind":
+        return pcommon.NewValueStr(span.Kind().String()), true
+    case "status.code":
+        return pcommon.NewValueStr(span.Status().Code().String()), true
+    }
+
+    if val, ok := span.Attributes().Get(dim); ok {
+        return val, true
+    }
+    if val, ok := resourceAttrs.Get(dim); ok {
+        return val, true
+    }
+
+    return pcommon.Value{}, false
 }
 
 // generateMetrics creates pmetric.Metrics from aggregated data
@@ -342,26 +354,33 @@ dist:
   output_path: ./dist
 
 exporters:
-  - gomod: go.opentelemetry.io/collector/exporter/otlpexporter v0.91.0
-  - gomod: go.opentelemetry.io/collector/exporter/debugexporter v0.91.0
+  - gomod: go.opentelemetry.io/collector/exporter/otlpexporter v0.153.0
+  - gomod: go.opentelemetry.io/collector/exporter/debugexporter v0.153.0
 
 receivers:
-  - gomod: go.opentelemetry.io/collector/receiver/otlpreceiver v0.91.0
+  - gomod: go.opentelemetry.io/collector/receiver/otlpreceiver v0.153.0
 
 processors:
-  - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.91.0
+  - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.153.0
+
+providers:
+  - gomod: go.opentelemetry.io/collector/confmap/provider/envprovider v1.48.0
+  - gomod: go.opentelemetry.io/collector/confmap/provider/fileprovider v1.48.0
+  - gomod: go.opentelemetry.io/collector/confmap/provider/yamlprovider v1.48.0
 
 connectors:
   # Your custom connector
-  - gomod: github.com/yourusername/otel-custom-connector v1.0.0
-    path: ./tracetometricsconnector
+  - gomod: github.com/yourusername/otel-custom-connector v0.0.0
+
+replaces:
+  - github.com/yourusername/otel-custom-connector => .
 ```
 
 Build your custom collector:
 
 ```bash
 # Install the builder
-go install go.opentelemetry.io/collector/cmd/builder@latest
+go install go.opentelemetry.io/collector/cmd/builder@v0.153.0
 
 # Build the custom collector
 builder --config builder-config.yaml
@@ -446,7 +465,7 @@ func TestTraceToMetrics(t *testing.T) {
 
     connector, err := factory.CreateTracesToMetrics(
         context.Background(),
-        connectortest.NewNopSettings(),
+        connectortest.NewNopSettings(factory.Type()),
         cfg,
         sink,
     )
@@ -464,9 +483,10 @@ func TestTraceToMetrics(t *testing.T) {
     ss := rs.ScopeSpans().AppendEmpty()
     span := ss.Spans().AppendEmpty()
     span.SetName("test-span")
+    span.SetKind(ptrace.SpanKindServer)
     span.SetStartTimestamp(pcommon.NewTimestampFromTime(time.Now()))
     span.SetEndTimestamp(pcommon.NewTimestampFromTime(time.Now().Add(100 * time.Millisecond)))
-    span.Attributes().PutStr("span.kind", "server")
+    span.Status().SetCode(ptrace.StatusCodeOk)
 
     // Consume traces
     err = connector.ConsumeTraces(context.Background(), traces)
@@ -474,7 +494,7 @@ func TestTraceToMetrics(t *testing.T) {
 
     // Verify metrics were generated
     assert.Eventually(t, func() bool {
-        return sink.MetricCount() > 0
+        return len(sink.AllMetrics()) > 0
     }, 5*time.Second, 100*time.Millisecond)
 
     metrics := sink.AllMetrics()[0]
