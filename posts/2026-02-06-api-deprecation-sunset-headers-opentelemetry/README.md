@@ -18,7 +18,7 @@ First, set up middleware that adds standard deprecation headers to responses fro
 // deprecation-middleware.ts
 import { trace } from '@opentelemetry/api';
 
-interface DeprecationConfig {
+export interface DeprecationConfig {
   route: string;
   method: string;
   deprecatedSince: string;    // ISO date when the endpoint was deprecated
@@ -28,7 +28,7 @@ interface DeprecationConfig {
 }
 
 // Registry of deprecated endpoints
-const deprecatedEndpoints: DeprecationConfig[] = [
+export const deprecatedEndpoints: DeprecationConfig[] = [
   {
     route: '/api/v1/users',
     method: 'GET',
@@ -46,6 +46,10 @@ const deprecatedEndpoints: DeprecationConfig[] = [
   },
 ];
 
+function toStructuredFieldDate(date: string): string {
+  return `@${Math.floor(new Date(date).getTime() / 1000)}`;
+}
+
 export function deprecationMiddleware(req: any, res: any, next: any) {
   const matchedRoute = req.route?.path || req.path;
   const config = deprecatedEndpoints.find(
@@ -58,7 +62,7 @@ export function deprecationMiddleware(req: any, res: any, next: any) {
   }
 
   // Set standard HTTP headers
-  res.setHeader('Deprecation', config.deprecatedSince);
+  res.setHeader('Deprecation', toStructuredFieldDate(config.deprecatedSince));
   res.setHeader('Sunset', new Date(config.sunsetDate).toUTCString());
 
   if (config.replacement) {
@@ -90,6 +94,7 @@ Span events give you trace-level data. For dashboards and alerts, add counters:
 ```typescript
 // deprecation-metrics.ts
 import { metrics } from '@opentelemetry/api';
+import type { DeprecationConfig } from './deprecation-middleware';
 
 const meter = metrics.getMeter('api-deprecation');
 
@@ -97,9 +102,8 @@ const deprecatedCallsCounter = meter.createCounter('api.deprecated.requests', {
   description: 'Requests to deprecated API endpoints',
 });
 
-const daysUntilSunsetHistogram = meter.createHistogram('api.deprecated.days_until_sunset', {
+const daysUntilSunsetGauge = meter.createGauge('api.deprecated.days_until_sunset', {
   description: 'Days remaining until the deprecated endpoint is removed',
-  unit: 'days',
 });
 
 export function recordDeprecationMetrics(config: DeprecationConfig, consumerId: string) {
@@ -115,7 +119,7 @@ export function recordDeprecationMetrics(config: DeprecationConfig, consumerId: 
     (new Date(config.sunsetDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
   );
 
-  daysUntilSunsetHistogram.record(daysUntilSunset, {
+  daysUntilSunsetGauge.record(daysUntilSunset, {
     'api.route': config.route,
   });
 }
@@ -131,51 +135,66 @@ import { trace } from '@opentelemetry/api';
 
 const tracer = trace.getTracer('http-client');
 
+function parseStructuredFieldDate(value: string): Date | null {
+  if (!value.startsWith('@')) {
+    return null;
+  }
+
+  const seconds = Number(value.slice(1));
+  return Number.isFinite(seconds) ? new Date(seconds * 1000) : null;
+}
+
 async function instrumentedFetch(url: string, options: RequestInit = {}) {
   return tracer.startActiveSpan(`HTTP ${options.method || 'GET'}`, async (span) => {
-    const response = await fetch(url, options);
+    try {
+      const response = await fetch(url, options);
 
-    // Check for deprecation headers
-    const deprecation = response.headers.get('Deprecation');
-    const sunset = response.headers.get('Sunset');
-    const link = response.headers.get('Link');
+      // Check for deprecation headers
+      const deprecation = response.headers.get('Deprecation');
+      const sunset = response.headers.get('Sunset');
+      const link = response.headers.get('Link');
 
-    if (deprecation) {
-      span.setAttribute('api.deprecated', true);
-      span.setAttribute('api.deprecated_since', deprecation);
+      if (deprecation) {
+        const deprecationDate = parseStructuredFieldDate(deprecation);
+        const deprecationDateText = deprecationDate?.toISOString() || deprecation;
 
-      span.addEvent('api.deprecation_detected', {
-        'api.deprecated_since': deprecation,
-        'api.sunset': sunset || 'unknown',
-        'api.url': url,
-      });
+        span.setAttribute('api.deprecated', true);
+        span.setAttribute('api.deprecated_since', deprecationDateText);
 
-      // Log a warning so developers notice during development
-      console.warn(
-        `WARNING: ${url} is deprecated since ${deprecation}. ` +
-        `Sunset date: ${sunset || 'unknown'}. ` +
-        `${link ? 'Replacement: ' + link : ''}`
-      );
-    }
-
-    if (sunset) {
-      const sunsetDate = new Date(sunset);
-      const daysLeft = Math.ceil((sunsetDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-
-      span.setAttribute('api.sunset_days_remaining', daysLeft);
-
-      // Add urgent warning if sunset is approaching
-      if (daysLeft < 30) {
-        span.addEvent('api.sunset_approaching', {
-          'api.days_remaining': daysLeft,
+        span.addEvent('api.deprecation_detected', {
+          'api.deprecated_since': deprecationDateText,
+          'api.sunset': sunset || 'unknown',
           'api.url': url,
-          'severity': daysLeft < 7 ? 'critical' : 'warning',
         });
-      }
-    }
 
-    span.end();
-    return response;
+        // Log a warning so developers notice during development
+        console.warn(
+          `WARNING: ${url} is deprecated since ${deprecationDateText}. ` +
+          `Sunset date: ${sunset || 'unknown'}. ` +
+          `${link ? 'Replacement: ' + link : ''}`
+        );
+      }
+
+      if (sunset) {
+        const sunsetDate = new Date(sunset);
+        const daysLeft = Math.ceil((sunsetDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+
+        span.setAttribute('api.sunset_days_remaining', daysLeft);
+
+        // Add urgent warning if sunset is approaching
+        if (daysLeft < 30) {
+          span.addEvent('api.sunset_approaching', {
+            'api.days_remaining': daysLeft,
+            'api.url': url,
+            'severity': daysLeft < 7 ? 'critical' : 'warning',
+          });
+        }
+      }
+
+      return response;
+    } finally {
+      span.end();
+    }
   });
 }
 ```
@@ -193,8 +212,8 @@ sum(rate(api_deprecated_requests_total[1h])) by (api_route)
 topk(10, sum(rate(api_deprecated_requests_total[24h])) by (api_consumer_id, api_route))
 
 # How many days until each endpoint's sunset date
-# (from the histogram or a simple gauge)
-api_deprecated_days_until_sunset by (api_route)
+# (from the gauge)
+min(api_deprecated_days_until_sunset) by (api_route)
 ```
 
 ## Automated Sunset Enforcement
@@ -202,6 +221,9 @@ api_deprecated_days_until_sunset by (api_route)
 When the sunset date arrives, do not just delete the endpoint. Replace it with a 410 Gone response that still reports metrics:
 
 ```typescript
+import { trace } from '@opentelemetry/api';
+import { deprecatedEndpoints } from './deprecation-middleware';
+
 function sunsetEnforcementMiddleware(req: any, res: any, next: any) {
   const matchedRoute = req.route?.path || req.path;
   const config = deprecatedEndpoints.find(
