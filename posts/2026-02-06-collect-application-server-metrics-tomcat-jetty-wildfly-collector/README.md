@@ -51,48 +51,37 @@ export CATALINA_OPTS="$CATALINA_OPTS \
 
 ### Enabling JMX on Jetty
 
-For Jetty, add the JMX flags to the start configuration:
+For Jetty, enable the remote JMX module:
 
 ```bash
-# start.ini or start.d/jmx.ini for Jetty
-# Enable the JMX module first
---module=jmx
---module=jmx-remote
+java -jar $JETTY_HOME/start.jar --add-modules=jmx-remote-auth
 
-# JVM arguments for JMX remote
--Dcom.sun.management.jmxremote.port=9011
--Dcom.sun.management.jmxremote.rmi.port=9011
--Dcom.sun.management.jmxremote.ssl=false
--Dcom.sun.management.jmxremote.authenticate=true
+# Then configure $JETTY_BASE/start.d/jmx-remote.ini and
+# $JETTY_BASE/etc/jmxremote.password / jmxremote.access
+# for the remote port, username, and permissions.
 ```
 
 ### Enabling JMX on WildFly
 
-WildFly uses a different remoting protocol. Enable JMX through the management interface:
+WildFly uses a different remoting protocol. In standalone mode, the JMX subsystem is exposed through the management interface on port `9990` by default:
 
 ```bash
-# standalone.conf - WildFly JMX configuration
-# Add to JAVA_OPTS
-JAVA_OPTS="$JAVA_OPTS \
-  -Dcom.sun.management.jmxremote \
-  -Dcom.sun.management.jmxremote.port=9012 \
-  -Dcom.sun.management.jmxremote.rmi.port=9012 \
-  -Dcom.sun.management.jmxremote.ssl=false \
-  -Dcom.sun.management.jmxremote.authenticate=true"
+# WildFly remote JMX service URL format
+service:jmx:remote+http://wildfly-host:9990
 ```
 
-For production deployments, always enable authentication and consider using SSL for the JMX connection. The examples above include authentication flags pointing to password files. Running JMX without authentication is only appropriate in isolated development environments.
+For production deployments, always enable authentication and consider using SSL for the JMX connection. Running JMX without authentication is only appropriate in isolated development environments.
 
 ## Configuring the Collector
 
-The OpenTelemetry Collector's JMX receiver requires the Contrib distribution. It uses a JMX metrics gatherer JAR file that runs alongside the collector to handle the actual JMX connections. Here is a configuration that monitors all three application servers:
+The OpenTelemetry Collector's JMX receiver requires the Contrib distribution. It uses a JMX scraper JAR file that runs alongside the collector to handle the actual JMX connections. Here is a configuration that monitors all three application servers:
 
 ```yaml
 # config.yaml - OpenTelemetry Collector configuration for Java app servers
 receivers:
   # Tomcat JMX receiver
   jmx/tomcat:
-    jar_path: /opt/otelcol/opentelemetry-jmx-metrics.jar
+    jar_path: /opt/otelcol/opentelemetry-jmx-scraper.jar
     endpoint: "service:jmx:rmi:///jndi/rmi://tomcat-host:9010/jmxrmi"
     target_system: tomcat
     collection_interval: 30s
@@ -101,7 +90,7 @@ receivers:
 
   # Jetty JMX receiver
   jmx/jetty:
-    jar_path: /opt/otelcol/opentelemetry-jmx-metrics.jar
+    jar_path: /opt/otelcol/opentelemetry-jmx-scraper.jar
     endpoint: "service:jmx:rmi:///jndi/rmi://jetty-host:9011/jmxrmi"
     target_system: jetty
     collection_interval: 30s
@@ -110,9 +99,11 @@ receivers:
 
   # WildFly JMX receiver
   jmx/wildfly:
-    jar_path: /opt/otelcol/opentelemetry-jmx-metrics.jar
-    endpoint: "service:jmx:rmi:///jndi/rmi://wildfly-host:9012/jmxrmi"
+    jar_path: /opt/otelcol/opentelemetry-jmx-scraper.jar
+    endpoint: "service:jmx:remote+http://wildfly-host:9990"
     target_system: wildfly
+    additional_jars:
+      - /opt/wildfly/bin/client/jboss-client.jar
     collection_interval: 30s
     username: monitor
     password: "${env:JMX_WILDFLY_PASSWORD}"
@@ -186,28 +177,28 @@ Each application server exposes different MBeans, but the critical metrics fall 
 
 The Tomcat target system collects metrics from the Catalina MBeans:
 
-- `tomcat.sessions.active` tracks the number of active HTTP sessions. A steady increase without a corresponding decrease means sessions are not being invalidated, which can lead to memory pressure.
-- `tomcat.threads.busy` and `tomcat.threads.config.max` tell you how close the thread pool is to capacity. When busy threads approach the maximum, new requests start queuing.
-- `tomcat.request.count` and `tomcat.errors` give you throughput and error rates at the connector level.
-- `tomcat.traffic.sent` and `tomcat.traffic.received` measure network I/O through the server.
+- `tomcat.session.active.count` tracks the number of active HTTP sessions. A steady increase without a corresponding decrease means sessions are not being invalidated, which can lead to memory pressure.
+- `tomcat.thread.busy.count` and `tomcat.thread.limit` tell you how close the thread pool is to capacity. When busy threads approach the maximum, new requests start queuing.
+- `tomcat.request.count` and `tomcat.error.count` give you throughput and error rates at the connector level.
+- `tomcat.network.io` measures network I/O through the server, with the direction recorded as an attribute.
 
 ### Jetty Metrics
 
 Jetty exposes metrics through its own MBean structure:
 
-- `jetty.sessions.active` tracks session count, similar to Tomcat.
-- `jetty.threads.busy` and `jetty.threads.idle` show thread pool utilization.
-- `jetty.io.traffic.received` and `jetty.io.traffic.sent` measure bytes flowing through Jetty's I/O layer.
-- `jetty.select.sessions.open` tracks open NIO selector sessions, which is specific to Jetty's non-blocking I/O architecture.
+- `jetty.session.count` tracks session count on Jetty 12 and later.
+- `jetty.thread.busy.count` and `jetty.thread.idle.count` show thread pool utilization.
+- `jetty.thread.queue.size` shows how many jobs are waiting in the thread pool queue.
+- `jetty.io.select.count` tracks NIO selector activity, which is specific to Jetty's non-blocking I/O architecture.
 
 ### WildFly Metrics
 
 WildFly provides detailed subsystem metrics:
 
-- `wildfly.session.count` tracks active sessions across deployed applications.
-- `wildfly.request.count` and `wildfly.request.time` measure request throughput and latency.
-- `wildfly.datasource.pool.active` and `wildfly.datasource.pool.max` monitor JDBC connection pool usage, which is critical for database-backed applications.
-- `wildfly.undertow.request.count` tracks requests through the Undertow web subsystem that WildFly uses internally.
+- `wildfly.session.active.count` tracks active sessions across deployed applications.
+- `wildfly.request.count` and `wildfly.request.duration.sum` measure request throughput and cumulative request processing time.
+- `wildfly.db.client.connection.count` monitors JDBC connection pool usage by connection state, which is critical for database-backed applications.
+- `wildfly.error.count` tracks requests that resulted in 5xx responses.
 
 ## Adding JVM Metrics
 
@@ -216,7 +207,7 @@ Regardless of which application server you use, JVM-level metrics are universall
 ```yaml
 receivers:
   jmx/tomcat:
-    jar_path: /opt/otelcol/opentelemetry-jmx-metrics.jar
+    jar_path: /opt/otelcol/opentelemetry-jmx-scraper.jar
     endpoint: "service:jmx:rmi:///jndi/rmi://tomcat-host:9010/jmxrmi"
     # Comma-separated list to collect both Tomcat and JVM metrics
     target_system: tomcat,jvm
@@ -225,7 +216,7 @@ receivers:
     password: "${env:JMX_TOMCAT_PASSWORD}"
 ```
 
-This adds heap memory usage, garbage collection counts and durations, class loading statistics, and thread counts. JVM garbage collection pauses are one of the most common causes of application latency spikes, so having GC metrics alongside your application server metrics is invaluable.
+This adds heap memory usage, class loading statistics, thread counts, CPU metrics, and buffer pool metrics. JVM garbage collection pauses are one of the most common causes of application latency spikes, but GC duration is exposed through JVM notifications and is not collected by the JMX scraper's YAML-based JVM metric definitions. Use the OpenTelemetry Java agent runtime telemetry if you need GC duration metrics.
 
 ## Monitoring Multiple Instances
 
@@ -234,7 +225,7 @@ In production, you likely have multiple instances of each server behind a load b
 ```yaml
 receivers:
   jmx/tomcat-1:
-    jar_path: /opt/otelcol/opentelemetry-jmx-metrics.jar
+    jar_path: /opt/otelcol/opentelemetry-jmx-scraper.jar
     endpoint: "service:jmx:rmi:///jndi/rmi://tomcat-1.internal:9010/jmxrmi"
     target_system: tomcat,jvm
     collection_interval: 30s
@@ -244,7 +235,7 @@ receivers:
       deployment.environment: "production"
 
   jmx/tomcat-2:
-    jar_path: /opt/otelcol/opentelemetry-jmx-metrics.jar
+    jar_path: /opt/otelcol/opentelemetry-jmx-scraper.jar
     endpoint: "service:jmx:rmi:///jndi/rmi://tomcat-2.internal:9010/jmxrmi"
     target_system: tomcat,jvm
     collection_interval: 30s
