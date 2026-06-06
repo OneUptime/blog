@@ -41,7 +41,7 @@ meter = metrics.get_meter("checkout-service")
 request_duration = meter.create_histogram(
     name="http.server.request.duration",
     description="Duration of HTTP requests",
-    unit="ms",
+    unit="s",
 )
 
 # Error counter
@@ -56,16 +56,16 @@ request_counter = meter.create_counter(
     description="Total HTTP requests",
 )
 
-def record_request(method, route, status_code, duration_ms):
+def record_request(method, route, status_code, duration_s):
     """Record metrics for a single request."""
     attributes = {
-        "http.method": method,
+        "http.request.method": method,
         "http.route": route,
-        "http.status_code": status_code,
+        "http.response.status_code": status_code,
     }
 
     request_counter.add(1, attributes)
-    request_duration.record(duration_ms, attributes)
+    request_duration.record(duration_s, attributes)
 
     if status_code >= 500:
         error_counter.add(1, attributes)
@@ -121,11 +121,11 @@ sum(rate(http_server_requests_total{deployment_type="baseline"}[5m]))
 
 # P99 latency comparison
 histogram_quantile(0.99,
-  sum(rate(http_server_request_duration_bucket{deployment_type="canary"}[5m])) by (le)
+  sum(rate(http_server_request_duration_seconds_bucket{deployment_type="canary"}[5m])) by (le)
 )
 /
 histogram_quantile(0.99,
-  sum(rate(http_server_request_duration_bucket{deployment_type="baseline"}[5m])) by (le)
+  sum(rate(http_server_request_duration_seconds_bucket{deployment_type="baseline"}[5m])) by (le)
 )
 ```
 
@@ -137,7 +137,6 @@ Write a script that queries Prometheus and decides whether to promote or rollbac
 # canary_analysis.py
 import requests
 import sys
-import time
 
 PROMETHEUS_URL = "http://localhost:9090"
 ANALYSIS_WINDOW = "10m"
@@ -147,6 +146,7 @@ LATENCY_THRESHOLD = 1.15     # Canary p99 must be < 115% of baseline
 def query_prometheus(query):
     """Execute a PromQL query and return the scalar result."""
     resp = requests.get(f"{PROMETHEUS_URL}/api/v1/query", params={"query": query})
+    resp.raise_for_status()
     result = resp.json()["data"]["result"]
     if not result:
         return None
@@ -163,7 +163,7 @@ def get_error_rate(deployment_type):
 def get_p99_latency(deployment_type):
     query = f'''
     histogram_quantile(0.99,
-      sum(rate(http_server_request_duration_bucket{{deployment_type="{deployment_type}"}}[{ANALYSIS_WINDOW}])) by (le)
+      sum(rate(http_server_request_duration_seconds_bucket{{deployment_type="{deployment_type}"}}[{ANALYSIS_WINDOW}])) by (le)
     )
     '''
     return query_prometheus(query)
@@ -175,11 +175,19 @@ def analyze_canary():
     baseline_p99 = get_p99_latency("baseline")
     canary_p99 = get_p99_latency("canary")
 
+    if None in (baseline_errors, canary_errors, baseline_p99, canary_p99):
+        print("FAIL: Missing baseline or canary metrics. Rolling back.")
+        return "rollback"
+
     print(f"Error rates - Baseline: {baseline_errors:.4f}, Canary: {canary_errors:.4f}")
-    print(f"P99 latency - Baseline: {baseline_p99:.1f}ms, Canary: {canary_p99:.1f}ms")
+    print(f"P99 latency - Baseline: {baseline_p99:.3f}s, Canary: {canary_p99:.3f}s")
 
     # Check error rate
-    if baseline_errors and baseline_errors > 0:
+    if baseline_errors == 0:
+        if canary_errors > 0:
+            print("FAIL: Canary has errors while baseline has none. Rolling back.")
+            return "rollback"
+    else:
         error_ratio = canary_errors / baseline_errors
         print(f"Error rate ratio: {error_ratio:.2f}x")
         if error_ratio > ERROR_RATE_THRESHOLD:
@@ -211,7 +219,7 @@ Trigger the analysis from your deployment pipeline:
 # canary-deploy.sh
 
 # Deploy the canary
-kubectl set image deployment/checkout checkout=checkout:1.5.0 --record
+kubectl set image deployment/checkout-canary checkout=checkout:1.5.0
 kubectl scale deployment/checkout-canary --replicas=1
 
 # Wait for metrics to accumulate
