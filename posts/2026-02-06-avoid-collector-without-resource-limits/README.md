@@ -25,7 +25,7 @@ Without resource limits, the Collector grows until it consumes all available mem
 ```yaml
 services:
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.96.0
+    image: otel/opentelemetry-collector-contrib:0.153.0
     deploy:
       resources:
         limits:
@@ -46,11 +46,17 @@ kind: Deployment
 metadata:
   name: otel-collector
 spec:
+  selector:
+    matchLabels:
+      app: otel-collector
   template:
+    metadata:
+      labels:
+        app: otel-collector
     spec:
       containers:
         - name: collector
-          image: otel/opentelemetry-collector-contrib:0.96.0
+          image: otel/opentelemetry-collector-contrib:0.153.0
           resources:
             requests:
               cpu: 500m
@@ -69,11 +75,20 @@ Container limits alone are not enough. The Collector needs internal limits that 
 ```yaml
 # Collector config that matches a 2Gi container limit
 
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
 processors:
   memory_limiter:
     check_interval: 1s
     limit_mib: 1536    # 75% of 2048 MiB
     spike_limit_mib: 384
+  batch:
 
 exporters:
   otlp:
@@ -116,23 +131,30 @@ The Collector exposes its own metrics. Use them to right-size your resource limi
 service:
   telemetry:
     metrics:
-      address: ":8888"
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: "0.0.0.0"
+                port: 8888
+                without_type_suffix: true
+                without_units: true
 ```
 
 Key metrics to monitor:
 
 ```bash
 # Memory usage
-process_runtime_total_alloc_bytes
+otelcol_process_memory_rss
 
 # CPU usage
-process_cpu_seconds_total
+otelcol_process_cpu_seconds
 
 # Queue depth (are queues backing up?)
 otelcol_exporter_queue_size
 
 # Dropped data (is the memory limiter active?)
-otelcol_processor_refused_spans_total
+otelcol_processor_refused_spans
 ```
 
 Create dashboards and alerts based on these metrics:
@@ -140,7 +162,7 @@ Create dashboards and alerts based on these metrics:
 ```yaml
 # Alert if Collector memory exceeds 80% of limit
 alert: CollectorHighMemory
-expr: process_runtime_total_alloc_bytes{job="otel-collector"} > 1.6e9
+expr: otelcol_process_memory_rss{job="otel-collector"} > 1.6e9
 for: 5m
 labels:
   severity: warning
@@ -157,10 +179,17 @@ metadata:
   name: otel-collector
 spec:
   replicas: 3  # Multiple Collector instances
+  selector:
+    matchLabels:
+      app: otel-collector
   template:
+    metadata:
+      labels:
+        app: otel-collector
     spec:
       containers:
         - name: collector
+          image: otel/opentelemetry-collector-contrib:0.153.0
           resources:
             limits:
               cpu: "2"
