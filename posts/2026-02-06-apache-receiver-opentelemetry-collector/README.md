@@ -21,7 +21,7 @@ Key metrics include:
 - Current connections and workers
 - Request rate and bytes served
 - CPU load and uptime
-- Worker states (busy, idle, reading, writing)
+- Worker and scoreboard states (busy, idle, reading, sending)
 - Scoreboard statistics
 - Traffic and request counters
 
@@ -105,10 +105,8 @@ The following diagram illustrates metric flow from Apache through the Collector:
 
 ```mermaid
 graph LR
-    A[Apache HTTP Server] -->|/server-status?auto| B[OTel Collector
-    Apache Receiver]
-    B --> C[Processors
-    Transform/Enrich]
+    A[Apache HTTP Server] -->|/server-status?auto| B[OTel Collector<br/>Apache Receiver]
+    B --> C[Processors<br/>Transform/Enrich]
     C --> D[Exporters]
     D --> E[(OneUptime)]
     D --> F[(Prometheus)]
@@ -135,7 +133,7 @@ receivers:
 # exporters: Define where telemetry is sent
 exporters:
   # Export to OneUptime using OTLP over HTTP
-  otlphttp:
+  otlp_http:
     endpoint: https://oneuptime.com/otlp
     headers:
       x-oneuptime-token: ${ONEUPTIME_TOKEN}
@@ -146,7 +144,7 @@ service:
     # Metrics pipeline for Apache data
     metrics:
       receivers: [apache]
-      exporters: [otlphttp]
+      exporters: [otlp_http]
 ```
 
 This basic setup scrapes the local Apache status endpoint every 30 seconds and exports metrics to OneUptime. The `?auto` parameter is critical - it returns machine-readable output instead of HTML.
@@ -222,13 +220,13 @@ processors:
   # Transform metric names or values if needed
   # metricstransform:
   #   transforms:
-  #     - metric_name: apache.workers.busy
+  #     - metric_name: apache.cpu.load
   #       action: update
-  #       new_name: apache.workers.active
+  #       new_name: apache.cpu.utilization
 
 exporters:
   # Export to OneUptime with retry and queuing
-  otlphttp:
+  otlp_http:
     endpoint: https://oneuptime.com/otlp
     headers:
       x-oneuptime-token: ${ONEUPTIME_TOKEN}
@@ -252,7 +250,7 @@ service:
     metrics:
       receivers: [apache]
       processors: [memory_limiter, resource, batch]
-      exporters: [otlphttp]
+      exporters: [otlp_http]
 ```
 
 This production configuration includes resource tagging, batching, memory protection, and reliable export with automatic retries.
@@ -361,7 +359,7 @@ processors:
     timeout: 10s
 
 exporters:
-  otlphttp:
+  otlp_http:
     endpoint: https://oneuptime.com/otlp
     headers:
       x-oneuptime-token: ${ONEUPTIME_TOKEN}
@@ -378,18 +376,18 @@ service:
         - apache/api-02
         - apache/staging
       processors: [batch]
-      exporters: [otlphttp]
+      exporters: [otlp_http]
 
     # Option 2: Separate pipelines for granular control
     metrics/web-01:
       receivers: [apache/web-01]
       processors: [resource/web-01, batch]
-      exporters: [otlphttp]
+      exporters: [otlp_http]
 
     metrics/web-02:
       receivers: [apache/web-02]
       processors: [resource/web-02, batch]
-      exporters: [otlphttp]
+      exporters: [otlp_http]
 
     # ... repeat for other instances
 ```
@@ -405,12 +403,12 @@ The Apache receiver exposes these critical metrics:
 - High values indicate heavy load
 - Alert when approaching MaxClients/MaxRequestWorkers
 
-**apache.workers.busy**
+**apache.workers** with `state=busy`
 - Number of workers actively processing requests
 - Should correlate with traffic patterns
 - High values relative to total workers indicate saturation
 
-**apache.workers.idle**
+**apache.workers** with `state=idle`
 - Number of idle workers ready to handle requests
 - Consistently low values indicate need to increase workers
 - Too many idle workers wastes memory
@@ -425,7 +423,7 @@ The Apache receiver exposes these critical metrics:
 - Calculate throughput as derivative
 - Useful for bandwidth planning
 
-**apache.cpu**
+**apache.cpu.load**
 - CPU utilization percentage
 - High values may indicate CPU-bound workload
 - Consider optimization or horizontal scaling
@@ -436,8 +434,8 @@ The Apache receiver exposes these critical metrics:
 - Unexpected drops indicate crashes
 
 **Scoreboard Metrics**
-- `apache.workers.{state}` for each worker state
-- States: waiting, starting, reading, writing, keepalive, dnslookup, closing, logging, finishing, idle_cleanup
+- `apache.scoreboard` with a `state` attribute for each scoreboard state
+- States: open, waiting, starting, reading, sending, keepalive, dnslookup, closing, logging, finishing, idle_cleanup, unknown
 - Analyze distribution to understand bottlenecks
 
 ## Deployment Patterns
@@ -633,7 +631,7 @@ Apache supports different Multi-Processing Modules (MPMs) with different perform
 **prefork MPM** (process-based):
 - One process per connection
 - High memory usage
-- Monitor: `apache.workers.busy` approaching `MaxRequestWorkers`
+- Monitor: `apache.workers` with `state=busy` approaching `MaxRequestWorkers`
 
 **worker MPM** (hybrid):
 - Multiple threads per process
@@ -659,7 +657,7 @@ Configure worker limits appropriately:
 </IfModule>
 ```
 
-Set alerts when `apache.workers.busy` exceeds 80% of `MaxRequestWorkers`.
+Set alerts when `apache.workers` with `state=busy` exceeds 80% of `MaxRequestWorkers`.
 
 ## Integration with OneUptime
 
