@@ -8,7 +8,7 @@ Description: A practical guide to implementing OAuth2 authentication in Spring B
 
 ---
 
-OAuth2 has become the standard for securing modern web applications. Instead of managing passwords yourself, you delegate authentication to trusted providers and receive tokens that prove a user's identity. Spring Security makes this surprisingly straightforward once you understand the moving parts.
+OAuth2 has become the standard for authorizing access in modern web applications. When combined with OpenID Connect, you can delegate authentication to trusted providers and receive ID tokens that prove a user's identity. Spring Security makes this surprisingly straightforward once you understand the moving parts.
 
 This guide walks through implementing OAuth2 in a Spring Boot application - from basic concepts to production-ready configurations with social login providers.
 
@@ -106,7 +106,7 @@ Spring auto-configures Google's endpoints because it is a well-known provider. T
 
 ### GitHub Login Setup
 
-GitHub requires explicit endpoint configuration since it uses a slightly different OAuth2 flow.
+Spring can auto-configure GitHub because it is also a well-known provider. If you need to customize the provider settings, the explicit endpoint configuration looks like this:
 
 ```yaml
 spring:
@@ -152,7 +152,6 @@ public class SecurityConfig {
             )
             // Enable OAuth2 login with default settings
             .oauth2Login(oauth2 -> oauth2
-                .loginPage("/login")
                 .defaultSuccessUrl("/dashboard", true)
                 .failureUrl("/login?error=true")
             )
@@ -167,13 +166,13 @@ public class SecurityConfig {
 }
 ```
 
-This configuration creates a login page at `/login` that shows buttons for each configured provider (Google, GitHub). After successful authentication, users land on `/dashboard`.
+This configuration uses Spring Security's generated login page, which shows links for each configured provider (Google, GitHub). After successful authentication, users land on `/dashboard`.
 
 ---
 
 ## Custom User Info Handling
 
-OAuth2 providers return different user attributes. Google sends `sub`, `email`, and `name`. GitHub sends `login`, `id`, and `avatar_url`. You need to normalize these into your application's user model.
+OAuth2 providers return different user attributes. Google sends `sub`, `email`, and `name`. GitHub sends `login`, `id`, and `avatar_url`; its `email` field can be `null` unless the user has a public email address, so production applications often fetch the primary verified email from GitHub's `/user/emails` endpoint when using the `user:email` scope. You need to normalize these into your application's user model.
 
 ### OAuth2 User Service
 
@@ -211,11 +210,19 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
     }
 
     private String extractEmail(OAuth2User oauth2User, String registrationId) {
-        return switch (registrationId) {
+        String email = switch (registrationId) {
             case "google" -> oauth2User.getAttribute("email");
             case "github" -> oauth2User.getAttribute("email");
             default -> throw new OAuth2AuthenticationException("Unknown provider");
         };
+
+        if (email == null || email.isBlank()) {
+            throw new OAuth2AuthenticationException(
+                "Email not available from " + registrationId + ". Fetch it from the provider's email API."
+            );
+        }
+
+        return email;
     }
 
     private String extractName(OAuth2User oauth2User, String registrationId) {
@@ -308,7 +315,7 @@ When your Spring Boot application serves as an API, it acts as a resource server
 ```mermaid
 flowchart LR
     A[Mobile App] -->|Access Token| B[Spring Resource Server]
-    B -->|Validate JWT| C[Authorization Server]
+    B -->|Fetch JWKs / metadata| C[Authorization Server]
     B -->|Return Data| A
 
     D[Web Client] -->|Access Token| B
@@ -409,12 +416,6 @@ public class CustomJwtValidator implements OAuth2TokenValidator<Jwt> {
             errors.add("Missing issuer");
         }
 
-        // Validate expiration with clock skew tolerance
-        Instant expiration = jwt.getExpiresAt();
-        if (expiration != null && expiration.isBefore(Instant.now().minusSeconds(30))) {
-            errors.add("Token expired");
-        }
-
         // Check for required custom claims
         if (jwt.getClaim("tenant_id") == null) {
             errors.add("Missing tenant_id claim");
@@ -437,12 +438,13 @@ Wire the custom validator into your JWT decoder bean.
 
 ```java
 @Bean
-public JwtDecoder jwtDecoder(CustomJwtValidator customValidator) {
+public JwtDecoder jwtDecoder(
+        @Value("${spring.security.oauth2.resourceserver.jwt.issuer-uri}") String issuerUri,
+        CustomJwtValidator customValidator) {
     NimbusJwtDecoder decoder = JwtDecoders.fromIssuerLocation(issuerUri);
 
-    // Chain validators: timestamp, signature, then custom rules
+    // Chain validators: standard issuer/timestamp checks, then custom rules
     OAuth2TokenValidator<Jwt> validator = new DelegatingOAuth2TokenValidator<>(
-        new JwtTimestampValidator(),
         JwtValidators.createDefaultWithIssuer(issuerUri),
         customValidator
     );
@@ -477,6 +479,7 @@ public class TokenCustomizerConfig {
                 // Add user roles to the token
                 Set<String> roles = principal.getAuthorities().stream()
                     .map(GrantedAuthority::getAuthority)
+                    .map(authority -> authority.replaceFirst("^ROLE_", ""))
                     .collect(Collectors.toSet());
                 context.getClaims().claim("roles", roles);
 
@@ -493,25 +496,20 @@ public class TokenCustomizerConfig {
 
 ### ID Token Customization
 
-Customize ID tokens for OpenID Connect flows.
+Customize ID tokens for OpenID Connect flows. Spring Authorization Server should have only one `OAuth2TokenCustomizer<JwtEncodingContext>` bean, so combine this logic with your access-token customizer.
 
 ```java
-@Bean
-public OAuth2TokenCustomizer<JwtEncodingContext> idTokenCustomizer() {
-    return context -> {
-        if (context.getTokenType().getValue().equals("id_token")) {
-            Authentication principal = context.getPrincipal();
+if (OidcParameterNames.ID_TOKEN.equals(context.getTokenType().getValue())) {
+    Authentication principal = context.getPrincipal();
 
-            // Add profile information to ID token
-            if (principal.getPrincipal() instanceof CustomOAuth2User customUser) {
-                User user = customUser.getUser();
-                context.getClaims()
-                    .claim("name", user.getName())
-                    .claim("picture", user.getAvatarUrl())
-                    .claim("email_verified", user.isEmailVerified());
-            }
-        }
-    };
+    // Add profile information to ID token
+    if (principal.getPrincipal() instanceof CustomOAuth2User customUser) {
+        User user = customUser.getUser();
+        context.getClaims()
+            .claim("name", user.getName())
+            .claim("picture", user.getAvatarUrl())
+            .claim("email_verified", user.isEmailVerified());
+    }
 }
 ```
 
@@ -625,16 +623,19 @@ public class TokenRefreshService {
             refreshToken
         );
 
-        DefaultRefreshTokenTokenResponseClient tokenResponseClient =
-            new DefaultRefreshTokenTokenResponseClient();
+        RestClientRefreshTokenTokenResponseClient tokenResponseClient =
+            new RestClientRefreshTokenTokenResponseClient();
         OAuth2AccessTokenResponse response = tokenResponseClient.getTokenResponse(refreshRequest);
 
         // Update stored authorized client
+        OAuth2RefreshToken updatedRefreshToken = response.getRefreshToken() != null
+            ? response.getRefreshToken()
+            : refreshToken;
         OAuth2AuthorizedClient updatedClient = new OAuth2AuthorizedClient(
             clientRegistration,
             principalName,
             response.getAccessToken(),
-            response.getRefreshToken()
+            updatedRefreshToken
         );
         authorizedClientService.saveAuthorizedClient(updatedClient,
             SecurityContextHolder.getContext().getAuthentication());
@@ -729,7 +730,7 @@ class OAuth2ControllerTest {
             .with(jwt()
                 .jwt(jwt -> jwt
                     .claim("sub", "user@example.com")
-                    .claim("roles", List.of("ROLE_USER"))
+                    .claim("roles", List.of("USER"))
                     .claim("tenant_id", "tenant-123")
                 )
             ))
@@ -741,7 +742,7 @@ class OAuth2ControllerTest {
     void adminEndpoint_withUserRole_shouldReturn403() throws Exception {
         mockMvc.perform(get("/api/admin/settings")
             .with(jwt()
-                .jwt(jwt -> jwt.claim("roles", List.of("ROLE_USER")))
+                .jwt(jwt -> jwt.claim("roles", List.of("USER")))
             ))
             .andExpect(status().isForbidden());
     }
