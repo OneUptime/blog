@@ -334,27 +334,22 @@ trivy:
       cpu: 500m
       memory: 512Mi
 
-# Configure scanning schedule (cron format)
+# Configure operator behavior
 operator:
-  # Rescan interval for vulnerability reports
+  # Only scan the current revision of each workload
   vulnerabilityScannerScanOnlyCurrentRevisions: true
 
-  # Number of concurrent scans
-  concurrentScanJobsLimit: 5
+  # Number of concurrent scan jobs
+  scanJobsConcurrentLimit: 5
 
-  # Scan timeout in seconds
-  scanJobTimeout: 300
+  # Scan job timeout (Go duration string)
+  scanJobTimeout: 5m
 
-# Enable specific scanners
-scanners:
-  vulnerability:
-    enabled: true
-  misconfiguration:
-    enabled: true
-  rbac:
-    enabled: true
-  secret:
-    enabled: true
+  # Enable specific scanners
+  vulnerabilityScannerEnabled: true
+  configAuditScannerEnabled: true
+  rbacAssessmentScannerEnabled: true
+  exposedSecretScannerEnabled: true
 ```
 
 Install with custom values:
@@ -844,27 +839,20 @@ trivy:
 
 operator:
   # Limit concurrent scans to avoid resource contention
-  concurrentScanJobsLimit: 3
+  scanJobsConcurrentLimit: 3
 
-  # Set reasonable timeout
-  scanJobTimeout: 600
+  # Set reasonable timeout (Go duration string)
+  scanJobTimeout: 10m
 
-  # Batch scan updates
-  batchIdleTimeout: 30s
+  # Delay between batch deletes of completed scan jobs
   batchDeleteDelay: 10s
 
-# Enable all relevant scanners
-scanners:
-  vulnerability:
-    enabled: true
-  misconfiguration:
-    enabled: true
-  rbac:
-    enabled: true
-  secret:
-    enabled: true
-  exposedSecret:
-    enabled: true
+  # Enable all relevant scanners
+  vulnerabilityScannerEnabled: true
+  configAuditScannerEnabled: true
+  rbacAssessmentScannerEnabled: true
+  exposedSecretScannerEnabled: true
+  infraAssessmentScannerEnabled: true
 
 # Configure resource usage
 resources:
@@ -948,7 +936,7 @@ helm upgrade trivy-operator aqua/trivy-operator \
 # Reduce concurrent scans
 helm upgrade trivy-operator aqua/trivy-operator \
     --namespace trivy-system \
-    --set operator.concurrentScanJobsLimit=2
+    --set operator.scanJobsConcurrentLimit=2
 ```
 
 ---
