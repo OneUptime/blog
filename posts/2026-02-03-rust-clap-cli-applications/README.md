@@ -316,12 +316,32 @@ enum OutputFormat {
     PlainText,
 }
 
+// Display is required when using default_value_t with a variant
+// We delegate to the ValueEnum-provided possible value name
+impl std::fmt::Display for OutputFormat {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.to_possible_value()
+            .expect("no values are skipped")
+            .get_name()
+            .fmt(f)
+    }
+}
+
 #[derive(Clone, ValueEnum)]
 enum LogLevel {
     Debug,
     Info,
     Warn,
     Error,
+}
+
+impl std::fmt::Display for LogLevel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.to_possible_value()
+            .expect("no values are skipped")
+            .get_name()
+            .fmt(f)
+    }
 }
 
 #[derive(Parser)]
@@ -1077,7 +1097,7 @@ use std::path::PathBuf;
 
 // === Enums for validated choices ===
 
-#[derive(Clone, ValueEnum)]
+#[derive(Debug, Clone, ValueEnum)]
 enum OutputFormat {
     Json,
     Yaml,
@@ -1085,11 +1105,30 @@ enum OutputFormat {
     Text,
 }
 
+// Display is required for default_value_t with enum variants
+impl std::fmt::Display for OutputFormat {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.to_possible_value()
+            .expect("no values are skipped")
+            .get_name()
+            .fmt(f)
+    }
+}
+
 #[derive(Clone, ValueEnum)]
 enum Encoding {
     Utf8,
     Ascii,
     Latin1,
+}
+
+impl std::fmt::Display for Encoding {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.to_possible_value()
+            .expect("no values are skipped")
+            .get_name()
+            .fmt(f)
+    }
 }
 
 // === Argument groups ===
