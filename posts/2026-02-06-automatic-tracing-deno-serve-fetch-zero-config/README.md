@@ -12,7 +12,7 @@ The key difference between Deno's approach and traditional Node.js instrumentati
 
 ## Understanding Deno's OpenTelemetry Integration
 
-Deno 1.40 and later versions include native OpenTelemetry support through the `--unstable-otel` flag. When enabled, the runtime automatically creates spans for HTTP server requests and outgoing fetch calls without requiring you to modify application code.
+Deno 2.2 and later versions include native OpenTelemetry support. In Deno 2.4 and later, enable it with the `OTEL_DENO=true` environment variable; older Deno 2.2 and 2.3 releases also require the `--unstable-otel` flag. When enabled, the runtime automatically creates spans for HTTP server requests and outgoing fetch calls without requiring you to modify application code.
 
 The runtime integration works by intercepting specific APIs at the engine level:
 
@@ -81,15 +81,15 @@ To enable automatic tracing, run the server with OpenTelemetry configuration:
 ```bash
 # Export traces to a local OTLP collector
 
-deno run --unstable-otel \
-  --allow-net \
-  --allow-env \
-  -E OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 \
-  -E OTEL_SERVICE_NAME=deno-api-server \
-  server.ts
+OTEL_DENO=true \
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 \
+OTEL_SERVICE_NAME=deno-api-server \
+deno run --allow-net --allow-env server.ts
 ```
 
-The `--unstable-otel` flag activates the runtime's OpenTelemetry integration. No code changes are needed in your application.
+For Deno 2.2 and 2.3, add the `--unstable-otel` flag to the `deno run` command.
+
+The `OTEL_DENO=true` setting activates the runtime's OpenTelemetry integration. No code changes are needed in your application.
 
 ## Configuring the OTLP Exporter
 
@@ -97,13 +97,12 @@ Deno uses environment variables to configure OpenTelemetry behavior. Here are th
 
 ```bash
 # Basic configuration for OTLP HTTP exporter
+export OTEL_DENO=true
 export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
 export OTEL_SERVICE_NAME=my-deno-service
-export OTEL_TRACES_EXPORTER=otlp
 
-# Configure sampling - useful for high-traffic services
-export OTEL_TRACES_SAMPLER=parentbased_traceidratio
-export OTEL_TRACES_SAMPLER_ARG=0.1  # Sample 10% of traces
+# Deno currently samples all traces; use collector or backend sampling
+# if you need to reduce trace volume.
 
 # Add resource attributes for better filtering
 export OTEL_RESOURCE_ATTRIBUTES=environment=production,version=1.0.0
@@ -118,11 +117,10 @@ Create a shell script to manage these settings:
 
 export OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_ENDPOINT:-http://localhost:4318}
 export OTEL_SERVICE_NAME=${SERVICE_NAME:-deno-service}
-export OTEL_TRACES_EXPORTER=otlp
+export OTEL_DENO=true
 export OTEL_RESOURCE_ATTRIBUTES="environment=${ENV:-development},host=$(hostname)"
 
 deno run \
-  --unstable-otel \
   --allow-net \
   --allow-env \
   "$@"
@@ -226,11 +224,11 @@ Open Jaeger UI at `http://localhost:16686` to view the traces. You'll see spans 
 - The incoming HTTP request to `Deno.serve`
 - Each outgoing `fetch` call
 - Timing information for all operations
-- Error status if requests failed
+- HTTP status metadata for requests
 
 ## Advanced Configuration Options
 
-For production deployments, you'll want more control over trace behavior. Deno respects all standard OpenTelemetry environment variables:
+For production deployments, you'll want more control over trace behavior. Deno supports standard OpenTelemetry environment variables for exporter endpoints, protocols, headers, resource attributes, service names, propagators, and batch span processor settings:
 
 ```typescript
 // config.ts
@@ -240,7 +238,6 @@ export interface TracingConfig {
   enabled: boolean;
   endpoint: string;
   serviceName: string;
-  sampleRate: number;
   attributes: Record<string, string>;
 }
 
@@ -248,10 +245,9 @@ export function getTracingConfig(): TracingConfig {
   const env = Deno.env.get("ENVIRONMENT") || "development";
 
   return {
-    enabled: Deno.env.get("OTEL_ENABLED") === "true",
+    enabled: Deno.env.get("OTEL_DENO") === "true",
     endpoint: Deno.env.get("OTEL_EXPORTER_OTLP_ENDPOINT") || "http://localhost:4318",
     serviceName: Deno.env.get("OTEL_SERVICE_NAME") || "deno-service",
-    sampleRate: parseFloat(Deno.env.get("OTEL_TRACES_SAMPLER_ARG") || "1.0"),
     attributes: {
       environment: env,
       version: Deno.env.get("APP_VERSION") || "unknown",
@@ -267,7 +263,7 @@ console.log("Tracing configuration:", JSON.stringify(config, null, 2));
 
 ## Handling Errors and Edge Cases
 
-Automatic tracing captures errors, but you should still implement proper error handling. The trace will show failed spans when exceptions occur:
+Automatic tracing records request timing and HTTP metadata, but you should still implement proper error handling. For application-specific error details, use logs or add manual spans and attributes where needed:
 
 ```typescript
 // error-handling.ts
@@ -277,20 +273,20 @@ Deno.serve({
   port: 8000,
   handler: async (req: Request) => {
     try {
-      // This fetch might fail - the span will be marked as error
+      // This fetch might fail - the fetch span will include request timing and status metadata
       const response = await fetch("https://api.example.com/might-fail", {
         signal: AbortSignal.timeout(5000), // 5 second timeout
       });
 
       if (!response.ok) {
-        // Non-2xx responses are recorded in the span
+        // Non-2xx responses are visible through HTTP response metadata
         console.error(`HTTP ${response.status} from upstream`);
         return new Response("Upstream error", { status: response.status });
       }
 
       return new Response(await response.text());
     } catch (error) {
-      // Exceptions are recorded in the span with error status
+      // Log application errors so they can be correlated with the active trace
       console.error("Request failed:", error);
 
       if (error instanceof DOMException && error.name === "TimeoutError") {
@@ -307,7 +303,7 @@ Deno.serve({
 
 Automatic tracing adds minimal overhead, but there are some considerations for high-throughput services:
 
-1. **Sampling**: Use trace sampling to reduce data volume. Set `OTEL_TRACES_SAMPLER=parentbased_traceidratio` and adjust the sample rate based on traffic.
+1. **Sampling**: Deno's built-in integration currently samples all traces. Use sampling in your OpenTelemetry collector or observability backend to reduce data volume for high-traffic services.
 
 2. **Batch Export**: The OTLP exporter batches spans by default. Configure batch size and timeout via environment variables:
 
