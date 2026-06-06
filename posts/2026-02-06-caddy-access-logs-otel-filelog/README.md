@@ -8,7 +8,7 @@ Description: Collect Caddy's structured JSON access logs and convert them into O
 
 ---
 
-Caddy Server writes structured access logs in JSON format by default. Each log entry contains the request method, URI, status code, response size, and timing information. The OpenTelemetry Collector's filelog receiver can tail these log files and convert them into proper OpenTelemetry log records for centralized analysis.
+Caddy Server can write structured access logs in JSON format. Each log entry contains the request method, URI, status code, response size, and timing information. The OpenTelemetry Collector's filelog receiver can tail these log files and convert them into proper OpenTelemetry log records for centralized analysis.
 
 ## Configuring Caddy Access Logs
 
@@ -17,7 +17,7 @@ Enable structured access logging in your Caddyfile:
 ```text
 # Caddyfile
 
-{
+:80 {
     log {
         output file /var/log/caddy/access.log {
             roll_size 100mb
@@ -27,10 +27,7 @@ Enable structured access logging in your Caddyfile:
         format json
         level INFO
     }
-}
 
-:80 {
-    log
     reverse_proxy backend:8080
 }
 ```
@@ -90,35 +87,43 @@ receivers:
 
       # Flatten nested request fields into top-level attributes
       - type: move
+        id: move_method
         from: attributes.request.method
-        to: attributes["http.method"]
+        to: attributes["http.request.method"]
 
       - type: move
+        id: move_uri
         from: attributes.request.uri
-        to: attributes["http.url"]
+        to: attributes["url.path"]
 
       - type: move
+        id: move_remote_ip
         from: attributes.request.remote_ip
-        to: attributes["net.peer.ip"]
+        to: attributes["client.address"]
 
       - type: move
+        id: move_host
         from: attributes.request.host
-        to: attributes["http.host"]
+        to: attributes["server.address"]
 
       - type: move
+        id: move_status
         from: attributes.status
-        to: attributes["http.status_code"]
+        to: attributes["http.response.status_code"]
 
       - type: move
+        id: move_duration
         from: attributes.duration
-        to: attributes["http.duration_seconds"]
+        to: attributes["caddy.duration_seconds"]
 
       - type: move
+        id: move_size
         from: attributes.size
-        to: attributes["http.response_content_length"]
+        to: attributes["http.response.body.size"]
 
       # Set the log body to the message
       - type: move
+        id: move_msg
         from: attributes.msg
         to: body
 
@@ -155,24 +160,20 @@ service:
 When Caddy has tracing enabled, you can include the trace ID in the access log and correlate logs with traces. Caddy includes the trace ID in its log output when the `tracing` directive is active:
 
 ```text
-{
-    tracing {
-        span "caddy"
-    }
+:80 {
     log {
         output file /var/log/caddy/access.log
         format json
     }
-}
 
-:80 {
-    tracing
-    log
+    tracing {
+        span caddy
+    }
     reverse_proxy backend:8080
 }
 ```
 
-The log entry will include `tracing_span` and `tracing_trace` fields. Parse them in the Collector:
+The log entry will include `traceID` and `spanID` fields. Parse them in the Collector:
 
 ```yaml
 operators:
@@ -185,9 +186,9 @@ operators:
   # Extract trace context from the log entry
   - type: trace_parser
     trace_id:
-      parse_from: attributes.tracing_trace
+      parse_from: attributes.traceID
     span_id:
-      parse_from: attributes.tracing_span
+      parse_from: attributes.spanID
 ```
 
 This links each access log entry to its corresponding trace, allowing you to jump from a log record directly to the trace in your observability UI.
@@ -234,10 +235,12 @@ operators:
 
   # Drop health check requests
   - type: filter
+    id: filter_health_checks
     expr: 'attributes.request.uri == "/health" or attributes.request.uri == "/ready"'
 
   # Drop static asset requests
   - type: filter
+    id: filter_static_assets
     expr: 'attributes.request.uri matches "\\.(css|js|png|jpg|ico)$"'
 ```
 
@@ -252,9 +255,9 @@ processors:
       - context: log
         statements:
           # Flag slow requests (over 2 seconds)
-          - set(attributes["slow_request"], "true") where attributes["http.duration_seconds"] > 2.0
+          - set(attributes["slow_request"], "true") where attributes["caddy.duration_seconds"] > 2.0
 ```
 
 ## Summary
 
-Caddy's structured JSON access logs pair naturally with the OpenTelemetry Collector's filelog receiver. Parse the JSON format, extract HTTP attributes into standard fields, and optionally correlate logs with traces using Caddy's built-in trace ID logging. Share the log directory between containers using Docker volumes, and filter out noise from health checks and static assets.
+Caddy's structured JSON access logs pair naturally with the OpenTelemetry Collector's filelog receiver. Parse the JSON format, extract HTTP attributes into semantic convention fields, and optionally correlate logs with traces using Caddy's built-in trace ID logging. Share the log directory between containers using Docker volumes, and filter out noise from health checks and static assets.
