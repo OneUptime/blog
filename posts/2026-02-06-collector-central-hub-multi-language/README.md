@@ -62,8 +62,8 @@ The collector needs to accept telemetry from all your languages. Configure both 
 # collector-config.yaml
 
 # Configure receivers to accept OTLP over both gRPC and HTTP.
-# Java and Go SDKs typically default to gRPC, while Python and
-# Node.js often use HTTP. Supporting both avoids SDK reconfiguration.
+# Some SDKs and applications use OTLP/gRPC, while others use
+# OTLP/HTTP. Supporting both avoids unnecessary SDK reconfiguration.
 receivers:
   otlp:
     protocols:
@@ -82,7 +82,7 @@ receivers:
             - "X-Requested-With"
 ```
 
-This configuration accepts telemetry from any OpenTelemetry SDK. The gRPC receiver on port 4317 is preferred by Java and Go SDKs for its efficiency. The HTTP receiver on port 4318 works well for Python, Node.js, and browser applications.
+This configuration accepts telemetry from any OpenTelemetry SDK that exports OTLP. The gRPC receiver on port 4317 supports SDKs configured for OTLP/gRPC. The HTTP receiver on port 4318 works well for SDKs configured for OTLP/HTTP, including browser applications that need CORS.
 
 ## Processing Pipeline
 
@@ -105,7 +105,7 @@ processors:
         value: production
         action: upsert
       - key: collector.version
-        value: "0.96.0"
+        value: "0.153.0"
         action: insert
 
   # Normalize span names from different languages.
@@ -139,24 +139,24 @@ service:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, resource, transform, batch]
-      exporters: [otlphttp/traces]
+      exporters: [otlp_http/traces]
 
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, resource, batch]
-      exporters: [otlphttp/metrics]
+      exporters: [otlp_http/metrics]
 
     logs:
       receivers: [otlp]
       processors: [memory_limiter, resource, batch]
-      exporters: [otlphttp/logs]
+      exporters: [otlp_http/logs]
 
 exporters:
-  otlphttp/traces:
+  otlp_http/traces:
     endpoint: https://oneuptime.com/otlp
-  otlphttp/metrics:
+  otlp_http/metrics:
     endpoint: https://oneuptime.com/otlp
-  otlphttp/logs:
+  otlp_http/logs:
     endpoint: https://oneuptime.com/otlp
 ```
 
@@ -170,7 +170,7 @@ For Java, use environment variables with the Java agent:
 
 ```bash
 # Configure the Java agent to send to the central collector.
-# OTLP/gRPC is the default and most efficient protocol for Java.
+# Java agent 2.x defaults to OTLP/HTTP, so set grpc explicitly if you use port 4317.
 export OTEL_SERVICE_NAME=payment-service
 export OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
 export OTEL_EXPORTER_OTLP_PROTOCOL=grpc
@@ -208,7 +208,7 @@ export OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
 export OTEL_RESOURCE_ATTRIBUTES=service.version=1.2.0,team=messaging
 ```
 
-Using environment variables for SDK configuration is the recommended approach because it works identically across all languages and fits naturally into container orchestration systems like Kubernetes.
+Using environment variables for SDK configuration is the recommended approach where the SDK or auto-instrumentation supports them, and it fits naturally into container orchestration systems like Kubernetes.
 
 ## Health Monitoring for the Collector
 
@@ -229,7 +229,12 @@ service:
       level: info
     metrics:
       # The collector exposes its own metrics in Prometheus format
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 ```
 
 The health check extension provides a `/` endpoint that Kubernetes liveness and readiness probes can hit. The zpages extension gives you a web UI to inspect the collector's internal state, including pipeline status and recent traces.
@@ -250,10 +255,13 @@ spec:
     matchLabels:
       app: otel-gateway-collector
   template:
+    metadata:
+      labels:
+        app: otel-gateway-collector
     spec:
       containers:
         - name: collector
-          image: otel/opentelemetry-collector-contrib:0.96.0
+          image: otel/opentelemetry-collector-contrib:0.153.0
           resources:
             requests:
               cpu: "1"
@@ -276,6 +284,8 @@ spec:
 ```
 
 Put a Kubernetes Service in front of the deployment so that agent collectors and application SDKs have a stable DNS name to target.
+
+If you use tail-based sampling with multiple gateway collectors, make sure all spans for a trace reach the same gateway instance. A common approach is to use the load-balancing exporter in the agent tier with trace-ID routing.
 
 ## Conclusion
 
