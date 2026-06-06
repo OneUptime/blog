@@ -8,7 +8,7 @@ Description: Learn how to build custom resource detectors in OpenTelemetry to au
 
 ---
 
-Resources in OpenTelemetry represent the entity producing telemetry data. Every span, metric, and log record carries resource attributes that describe where the data came from. While the SDK ships with built-in detectors for common environments like AWS, GCP, and Kubernetes, real-world deployments often need custom detectors that pull metadata from internal systems, configuration files, or proprietary infrastructure.
+Resources in OpenTelemetry represent the entity producing telemetry data. Every span, metric, and log record carries resource attributes that describe where the data came from. While OpenTelemetry SDKs and contrib packages provide detectors for common environments like AWS, GCP, and Kubernetes, real-world deployments often need custom detectors that pull metadata from internal systems, configuration files, or proprietary infrastructure.
 
 This guide walks through building custom resource detectors from scratch, covering the detector interface, async detection patterns, merging strategies, and practical examples you can adapt to your own infrastructure.
 
@@ -52,15 +52,15 @@ class DeploymentDetector(ResourceDetector):
 
         deploy_env = os.environ.get("DEPLOY_ENVIRONMENT")
         if deploy_env:
-            attributes["deployment.environment"] = deploy_env
+            attributes["deployment.environment.name"] = deploy_env
 
         deploy_version = os.environ.get("DEPLOY_VERSION")
         if deploy_version:
-            attributes["deployment.version"] = deploy_version
+            attributes["service.version"] = deploy_version
 
         deploy_region = os.environ.get("DEPLOY_REGION")
         if deploy_region:
-            attributes["deployment.region"] = deploy_region
+            attributes["cloud.region"] = deploy_region
 
         return Resource(attributes)
 ```
@@ -107,7 +107,7 @@ class InternalMetadataDetector(ResourceDetector):
                 "service.namespace": data.get("team_namespace", ""),
                 "service.version": data.get("deployed_version", ""),
                 "host.name": data.get("hostname", ""),
-                "deployment.environment": data.get("environment", ""),
+                "deployment.environment.name": data.get("environment", ""),
                 # Custom attributes for internal tracking
                 "internal.cost_center": data.get("cost_center", ""),
                 "internal.team": data.get("owning_team", ""),
@@ -146,9 +146,9 @@ import (
 	"net/http"
 	"time"
 
-	"go.opentelemetry.io/otel/sdk/resource"
-	semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/sdk/resource"
+	semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
 )
 
 // InternalDetector queries an internal API for resource attributes.
@@ -194,7 +194,7 @@ func (d *InternalDetector) Detect(ctx context.Context) (*resource.Resource, erro
 	return resource.NewWithAttributes(
 		semconv.SchemaURL,
 		semconv.ServiceName(meta.ServiceName),
-		semconv.DeploymentEnvironment(meta.Environment),
+		semconv.DeploymentEnvironmentName(meta.Environment),
 		semconv.ServiceVersion(meta.Version),
 		attribute.String("internal.team", meta.Team),
 	), nil
@@ -245,8 +245,11 @@ Some environments require async detection patterns, especially when querying clo
 ```python
 # Parallel resource detection for faster SDK initialization
 import concurrent.futures
+import logging
 from opentelemetry.sdk.resources import Resource, ResourceDetector
 from typing import List
+
+logger = logging.getLogger(__name__)
 
 
 def detect_resources_parallel(
@@ -257,13 +260,20 @@ def detect_resources_parallel(
     base = Resource.create()
 
     # Run all detectors concurrently with a shared timeout
-    with concurrent.futures.ThreadPoolExecutor(max_workers=len(detectors)) as pool:
-        futures = {
-            pool.submit(detector.detect): detector
-            for detector in detectors
-        }
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=len(detectors))
+    futures = {
+        pool.submit(detector.detect): detector
+        for detector in detectors
+    }
 
-        for future in concurrent.futures.as_completed(futures, timeout=timeout):
+    try:
+        done, pending = concurrent.futures.wait(
+            futures,
+            timeout=timeout,
+            return_when=concurrent.futures.ALL_COMPLETED,
+        )
+
+        for future in done:
             detector = futures[future]
             try:
                 detected = future.result()
@@ -274,6 +284,16 @@ def detect_resources_parallel(
                     "Detector %s failed: %s",
                     detector.__class__.__name__, e
                 )
+
+        for future in pending:
+            detector = futures[future]
+            future.cancel()
+            logger.warning(
+                "Detector %s did not finish within %.1f seconds",
+                detector.__class__.__name__, timeout
+            )
+    finally:
+        pool.shutdown(wait=False, cancel_futures=True)
 
     return base
 ```
@@ -287,6 +307,7 @@ Detectors are straightforward to test since they implement a simple interface:
 ```python
 # Testing a custom resource detector
 import unittest
+import requests
 from unittest.mock import patch, MagicMock
 
 
@@ -311,10 +332,10 @@ class TestInternalMetadataDetector(unittest.TestCase):
         # Verify the resource contains expected attributes
         attrs = dict(resource.attributes)
         assert attrs["service.name"] == "payment-service"
-        assert attrs["deployment.environment"] == "production"
+        assert attrs["deployment.environment.name"] == "production"
         assert attrs["internal.team"] == "payments"
 
-    @patch("requests.get", side_effect=ConnectionError("no route"))
+    @patch("requests.get", side_effect=requests.ConnectionError("no route"))
     def test_detection_failure_returns_empty(self, mock_get):
         """Verify detector returns empty resource when API is unreachable."""
         detector = InternalMetadataDetector()
@@ -330,7 +351,7 @@ Testing the failure path is just as important as the success path. Your detector
 
 When building custom resource detectors, keep these guidelines in mind. First, always set aggressive timeouts on network calls. SDK initialization blocks your application, and a 30-second timeout on a metadata API call means 30 seconds of downtime on every restart.
 
-Second, follow OpenTelemetry semantic conventions for attribute names wherever possible. Use `service.name`, `deployment.environment`, and `host.name` instead of inventing your own keys. This ensures compatibility with observability backends that rely on well-known attribute names for indexing and visualization.
+Second, follow OpenTelemetry semantic conventions for attribute names wherever possible. Use `service.name`, `deployment.environment.name`, and `host.name` instead of inventing your own keys. This ensures compatibility with observability backends that rely on well-known attribute names for indexing and visualization.
 
 Third, keep detectors focused. Each detector should be responsible for one source of metadata. A Kubernetes detector reads pod labels. A deployment detector reads CI/CD metadata. Splitting responsibilities makes detectors easier to test and reuse across services.
 
