@@ -25,14 +25,14 @@ This guide walks through the practical steps: what breaks, what works out of the
 
 ## Node Compatibility Mode
 
-Deno includes a compatibility layer that lets you run many Node.js programs without modification. Enable it via the `--unstable-node-compat` flag or by using `node:` prefixed imports.
+Deno 2.x includes a built-in compatibility layer that lets you run many Node.js programs without modification. Node compatibility is automatic - use `node:` prefixed imports to explicitly access Node.js core modules.
 
 This command runs a Node.js script directly in Deno:
 
 ```bash
 # Run an existing Node.js file in Deno
 
-deno run --allow-all --unstable-node-compat server.js
+deno run --allow-all server.js
 ```
 
 For projects using package.json, Deno can resolve dependencies automatically:
@@ -88,7 +88,7 @@ Key conversion patterns:
 | `module.exports = { a, b }` | `export { a, b }` |
 | `exports.foo = bar` | `export const foo = bar` |
 
-For large codebases, tools like [cjs-to-esm](https://github.com/nicolo-ribaudo/cjs-to-esm) or [lebab](https://lebab.io/) can automate most of the conversion.
+For large codebases, tools like [cjstoesm](https://github.com/wessberg/cjstoesm) or [lebab](https://lebab.io/) can automate most of the conversion.
 
 ## Using npm Packages in Deno
 
@@ -310,11 +310,11 @@ flowchart TD
 
 ### Phase 1: Assessment
 
-Start by testing your existing code with Deno's compatibility mode:
+Start by testing your existing code in Deno using its built-in Node.js compatibility:
 
 ```bash
-# Test if your app runs in Deno compat mode
-deno run --allow-all --unstable-node-compat src/index.ts
+# Test if your app runs in Deno
+deno run --allow-all src/index.ts
 ```
 
 Create a compatibility checklist:
@@ -599,7 +599,7 @@ Migrating from Node.js to Deno is no longer the all-or-nothing proposition it wa
 
 | Step | Action |
 |------|--------|
-| 1 | Test existing code with `--unstable-node-compat` |
+| 1 | Test existing code in Deno using built-in Node.js compatibility |
 | 2 | Convert CommonJS to ESM |
 | 3 | Replace `require()` with `import` |
 | 4 | Use `npm:` specifier for npm packages |
