@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Azure Event Hub, OpenTelemetry Collector, Observability, Azure, Streaming, Telemetry Pipeline
 
-Description: A step-by-step guide to using Azure Event Hubs as a receiver and exporter with the OpenTelemetry Collector for scalable telemetry pipelines.
+Description: A step-by-step guide to using Azure Event Hubs with the OpenTelemetry Collector Kafka receiver and exporter for scalable telemetry pipelines.
 
 ---
 
-> Azure Event Hubs is a high-throughput event streaming platform that can handle millions of events per second. When paired with the OpenTelemetry Collector, it becomes a powerful buffer and routing layer in your telemetry pipeline. This combination is especially useful in large-scale deployments where you need to decouple telemetry producers from consumers.
+> Azure Event Hubs is a high-throughput event streaming platform that can handle millions of events per second. When paired with the OpenTelemetry Collector Kafka receiver and exporter, it becomes a powerful buffer and routing layer in your telemetry pipeline. This combination is especially useful in large-scale deployments where you need to decouple telemetry producers from consumers.
 
-This guide covers two scenarios: using Azure Event Hubs as a receiver (ingesting telemetry data from Event Hubs) and as an exporter (sending telemetry data to Event Hubs). Both patterns have valid use cases, and you might even use them together in different parts of your infrastructure.
+This guide covers two scenarios: sending telemetry data to Event Hubs and ingesting telemetry data from Event Hubs by using the Collector's Kafka components against the Event Hubs Kafka endpoint. Both patterns have valid use cases, and you might even use them together in different parts of your infrastructure.
 
 ---
 
@@ -48,13 +48,13 @@ The benefits of this architecture include:
 - An Azure Event Hubs namespace with at least one Event Hub created
 - A shared access policy or managed identity for authentication
 - Docker (for running the Collector) or the Collector binary
-- The OpenTelemetry Collector Contrib distribution (the core distribution does not include the Event Hubs components)
+- An OpenTelemetry Collector distribution with the Kafka receiver and exporter. The contrib distribution is a good default and is also required if you use the native Azure Event Hub receiver for Azure Monitor diagnostic data.
 
 ---
 
 ## Setting Up Azure Event Hubs
 
-First, create an Event Hubs namespace and an Event Hub if you do not already have one.
+First, create an Event Hubs namespace and Event Hubs if you do not already have them.
 
 ```bash
 # Create a resource group for the Event Hubs resources
@@ -69,19 +69,33 @@ az eventhubs namespace create \
   --sku Standard \
   --location eastus
 
-# Create an Event Hub with 4 partitions for parallel processing
+# Create Event Hubs with 4 partitions for parallel processing
 # More partitions allow higher throughput
 az eventhubs eventhub create \
   --name telemetry-traces \
   --namespace-name otel-telemetry-ns \
   --resource-group otel-telemetry-rg \
   --partition-count 4 \
-  --message-retention 1
+  --retention-time-in-hours 24
 
-# Create a shared access policy with Send and Listen permissions
-az eventhubs eventhub authorization-rule create \
+az eventhubs eventhub create \
+  --name telemetry-metrics \
+  --namespace-name otel-telemetry-ns \
+  --resource-group otel-telemetry-rg \
+  --partition-count 4 \
+  --retention-time-in-hours 24
+
+az eventhubs eventhub create \
+  --name telemetry-logs \
+  --namespace-name otel-telemetry-ns \
+  --resource-group otel-telemetry-rg \
+  --partition-count 4 \
+  --retention-time-in-hours 24
+
+# Create a namespace-level shared access policy with Send and Listen permissions
+# The Kafka endpoint uses a namespace connection string as its SASL password
+az eventhubs namespace authorization-rule create \
   --name otel-collector-policy \
-  --eventhub-name telemetry-traces \
   --namespace-name otel-telemetry-ns \
   --resource-group otel-telemetry-rg \
   --rights Send Listen
@@ -91,9 +105,8 @@ Grab the connection string for use in the Collector configuration.
 
 ```bash
 # Get the connection string for the shared access policy
-az eventhubs eventhub authorization-rule keys list \
+az eventhubs namespace authorization-rule keys list \
   --name otel-collector-policy \
-  --eventhub-name telemetry-traces \
   --namespace-name otel-telemetry-ns \
   --resource-group otel-telemetry-rg \
   --query primaryConnectionString \
@@ -104,13 +117,13 @@ az eventhubs eventhub authorization-rule keys list \
 
 ## Scenario 1: Exporting Telemetry to Event Hubs
 
-In this pattern, the Collector receives telemetry from your applications via OTLP and forwards it to Azure Event Hubs. Another Collector (or any Event Hubs consumer) picks it up downstream.
+In this pattern, the Collector receives telemetry from your applications via OTLP and forwards it to Azure Event Hubs through the Event Hubs Kafka endpoint. Another Collector (or any Event Hubs consumer) picks it up downstream.
 
 ### Collector Configuration for Export
 
 ```yaml
 # otel-collector-export.yaml
-# Collector configuration that exports traces to Azure Event Hubs
+# Collector configuration that exports telemetry to Azure Event Hubs
 
 receivers:
   otlp:
@@ -131,34 +144,47 @@ processors:
     spike_limit_mib: 128  # Allow 128 MB spike headroom
 
 exporters:
-  azureeventhub:
-    # Connection string with the Event Hub name appended
-    connection_string: "Endpoint=sb://otel-telemetry-ns.servicebus.windows.net/;SharedAccessKeyName=otel-collector-policy;SharedAccessKey=YOUR_KEY;EntityPath=telemetry-traces"
-    # Format for serializing telemetry data
-    # "otlp_proto" preserves the full OTLP structure
-    format: otlp_proto
+  kafka/eventhubs:
+    brokers:
+      - otel-telemetry-ns.servicebus.windows.net:9093
+    tls:
+      insecure: false
+    auth:
+      sasl:
+        username: "$ConnectionString"
+        password: "Endpoint=sb://otel-telemetry-ns.servicebus.windows.net/;SharedAccessKeyName=otel-collector-policy;SharedAccessKey=YOUR_KEY"
+        mechanism: PLAIN
+    traces:
+      topic: telemetry-traces
+      encoding: otlp_proto
+    metrics:
+      topic: telemetry-metrics
+      encoding: otlp_proto
+    logs:
+      topic: telemetry-logs
+      encoding: otlp_proto
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [azureeventhub]
+      exporters: [kafka/eventhubs]
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [azureeventhub]
+      exporters: [kafka/eventhubs]
     logs:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [azureeventhub]
+      exporters: [kafka/eventhubs]
 ```
 
 ### Running the Export Collector
 
 ```bash
 # Run the Collector with the export configuration
-# Use the contrib image which includes the Azure Event Hubs components
+# Use the contrib image, which includes the Kafka components used here
 docker run -d \
   --name otel-collector-export \
   -p 4317:4317 \
@@ -171,23 +197,39 @@ docker run -d \
 
 ## Scenario 2: Receiving Telemetry from Event Hubs
 
-In this pattern, the Collector reads telemetry from Azure Event Hubs and forwards it to one or more backends. This is the consumer side of the pipeline.
+In this pattern, the Collector reads OTLP-encoded telemetry from Azure Event Hubs through the Kafka endpoint and forwards it to one or more backends. This is the consumer side of the pipeline.
 
 ### Collector Configuration for Receive
 
 ```yaml
 # otel-collector-receive.yaml
-# Collector configuration that reads traces from Azure Event Hubs
+# Collector configuration that reads telemetry from Azure Event Hubs
 
 receivers:
-  azureeventhub:
-    # Connection string for consuming from the Event Hub
-    connection_string: "Endpoint=sb://otel-telemetry-ns.servicebus.windows.net/;SharedAccessKeyName=otel-collector-policy;SharedAccessKey=YOUR_KEY;EntityPath=telemetry-traces"
-    # Format must match what the exporter used
-    format: otlp_proto
-    # Consumer group for this Collector instance
-    # Use different groups for different consumers
-    group: "$Default"
+  kafka/eventhubs:
+    brokers:
+      - otel-telemetry-ns.servicebus.windows.net:9093
+    tls:
+      insecure: false
+    auth:
+      sasl:
+        username: "$ConnectionString"
+        password: "Endpoint=sb://otel-telemetry-ns.servicebus.windows.net/;SharedAccessKeyName=otel-collector-policy;SharedAccessKey=YOUR_KEY"
+        mechanism: PLAIN
+    # Consumer group for this Collector instance.
+    # Use different group IDs for independent consumers.
+    group_id: otel-collector-consumer
+    initial_offset: earliest
+    use_leader_epoch: false
+    traces:
+      topics: [telemetry-traces]
+      encoding: otlp_proto
+    metrics:
+      topics: [telemetry-metrics]
+      encoding: otlp_proto
+    logs:
+      topics: [telemetry-logs]
+      encoding: otlp_proto
 
 processors:
   batch:
@@ -207,22 +249,22 @@ exporters:
     headers:
       Authorization: "Bearer your-api-token"
 
-  logging:
+  debug:
     # Also log a summary to stdout for debugging
-    loglevel: info
+    verbosity: basic
 
 service:
   pipelines:
     traces:
-      receivers: [azureeventhub]
+      receivers: [kafka/eventhubs]
       processors: [batch, resource]
-      exporters: [otlphttp, logging]
+      exporters: [otlphttp, debug]
     metrics:
-      receivers: [azureeventhub]
+      receivers: [kafka/eventhubs]
       processors: [batch, resource]
       exporters: [otlphttp]
     logs:
-      receivers: [azureeventhub]
+      receivers: [kafka/eventhubs]
       processors: [batch, resource]
       exporters: [otlphttp]
 ```
@@ -277,7 +319,7 @@ flowchart TB
 
 ## Using Separate Event Hubs for Each Signal
 
-For better isolation and independent scaling, create separate Event Hubs for traces, metrics, and logs. The Collector supports multiple exporter and receiver instances.
+For better isolation and independent scaling, create separate Event Hubs for traces, metrics, and logs. The Collector Kafka exporter and receiver support separate topics for each signal.
 
 ```yaml
 # otel-collector-multi.yaml
@@ -291,17 +333,44 @@ receivers:
 
 exporters:
   # Separate exporter for each signal type
-  azureeventhub/traces:
-    connection_string: "Endpoint=sb://otel-telemetry-ns.servicebus.windows.net/;SharedAccessKeyName=policy;SharedAccessKey=KEY;EntityPath=telemetry-traces"
-    format: otlp_proto
+  kafka/traces:
+    brokers: [otel-telemetry-ns.servicebus.windows.net:9093]
+    tls:
+      insecure: false
+    auth:
+      sasl:
+        username: "$ConnectionString"
+        password: "Endpoint=sb://otel-telemetry-ns.servicebus.windows.net/;SharedAccessKeyName=policy;SharedAccessKey=KEY"
+        mechanism: PLAIN
+    traces:
+      topic: telemetry-traces
+      encoding: otlp_proto
 
-  azureeventhub/metrics:
-    connection_string: "Endpoint=sb://otel-telemetry-ns.servicebus.windows.net/;SharedAccessKeyName=policy;SharedAccessKey=KEY;EntityPath=telemetry-metrics"
-    format: otlp_proto
+  kafka/metrics:
+    brokers: [otel-telemetry-ns.servicebus.windows.net:9093]
+    tls:
+      insecure: false
+    auth:
+      sasl:
+        username: "$ConnectionString"
+        password: "Endpoint=sb://otel-telemetry-ns.servicebus.windows.net/;SharedAccessKeyName=policy;SharedAccessKey=KEY"
+        mechanism: PLAIN
+    metrics:
+      topic: telemetry-metrics
+      encoding: otlp_proto
 
-  azureeventhub/logs:
-    connection_string: "Endpoint=sb://otel-telemetry-ns.servicebus.windows.net/;SharedAccessKeyName=policy;SharedAccessKey=KEY;EntityPath=telemetry-logs"
-    format: otlp_proto
+  kafka/logs:
+    brokers: [otel-telemetry-ns.servicebus.windows.net:9093]
+    tls:
+      insecure: false
+    auth:
+      sasl:
+        username: "$ConnectionString"
+        password: "Endpoint=sb://otel-telemetry-ns.servicebus.windows.net/;SharedAccessKeyName=policy;SharedAccessKey=KEY"
+        mechanism: PLAIN
+    logs:
+      topic: telemetry-logs
+      encoding: otlp_proto
 
 processors:
   batch:
@@ -313,15 +382,15 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [azureeventhub/traces]
+      exporters: [kafka/traces]
     metrics:
       receivers: [otlp]
       processors: [batch]
-      exporters: [azureeventhub/metrics]
+      exporters: [kafka/metrics]
     logs:
       receivers: [otlp]
       processors: [batch]
-      exporters: [azureeventhub/logs]
+      exporters: [kafka/logs]
 ```
 
 ---
@@ -330,32 +399,39 @@ service:
 
 When running this at scale, a few settings make a big difference:
 
-- **Partition count**: More partitions in your Event Hub allow more parallel consumers. Start with 4 and increase based on throughput needs.
-- **Batch size**: The `batch` processor in the Collector should match your Event Hub message size limits. The default max message size is 1 MB for Standard tier and 1 MB (single event) for Premium.
+- **Partition count**: More partitions in your Event Hub allow more parallel consumers in the same consumer group. Start with 4 and increase based on throughput needs.
+- **Batch size**: The `batch` processor in the Collector should stay within your Event Hub publication size limits. Standard and Premium support 1 MB publications; Dedicated supports larger publications.
 - **Memory limiter**: Always use the `memory_limiter` processor to prevent the Collector from running out of memory during traffic spikes.
-- **Consumer groups**: If multiple Collectors read from the same Event Hub, give each a unique consumer group to avoid message competition.
+- **Consumer groups**: If multiple independent consumer applications read from the same Event Hub, give each a unique consumer group. Collectors in the same group share partitions.
 - **Message retention**: Set retention based on your recovery needs. One day is fine for real-time pipelines. Seven days gives you more buffer for outage recovery.
 
 ---
 
 ## Authentication with Managed Identity
 
-For production deployments, avoid connection strings and use Azure Managed Identity instead. This is more secure and does not require rotating keys.
+The Kafka receiver and exporter path shown above uses the Event Hubs Kafka endpoint with SASL credentials. The native `azure_event_hub` receiver supports managed identity through the Collector's Azure Auth extension, which is useful when reading Azure Monitor diagnostic data sent to Event Hubs.
 
 ```yaml
-# Using managed identity authentication instead of connection strings
-exporters:
-  azureeventhub:
-    connection_string: "Endpoint=sb://otel-telemetry-ns.servicebus.windows.net/;EntityPath=telemetry-traces"
-    # When no SharedAccessKey is in the connection string,
-    # the exporter falls back to DefaultAzureCredential
-    # which supports managed identity automatically
+# Using managed identity authentication with the native Azure Event Hub receiver
+extensions:
+  azure_auth:
+    managed_identity:
+
+receivers:
+  azure_event_hub:
+    event_hub:
+      name: telemetry-traces
+      namespace: otel-telemetry-ns.servicebus.windows.net
+    auth: azure_auth
+
+service:
+  extensions: [azure_auth]
 ```
 
-Make sure the managed identity has the "Azure Event Hubs Data Sender" role for exporters and "Azure Event Hubs Data Receiver" role for receivers.
+Make sure the managed identity has the "Azure Event Hubs Data Receiver" role for native receivers. For Kafka exporter and receiver configurations that use SAS, grant the shared access policy Send and Listen permissions as needed.
 
 ---
 
 ## Summary
 
-Azure Event Hubs fits naturally into large-scale OpenTelemetry pipelines. As an exporter, it buffers telemetry and protects your backends from traffic spikes. As a receiver, it lets you build flexible consumer architectures where multiple systems process the same telemetry data independently. The OpenTelemetry Collector Contrib distribution makes both patterns straightforward to configure. Start with a single Event Hub for all signals, and split into separate hubs per signal type as your throughput grows.
+Azure Event Hubs fits naturally into large-scale OpenTelemetry pipelines. With the Collector Kafka exporter, it buffers telemetry and protects your backends from traffic spikes. With the Collector Kafka receiver, it lets you build flexible consumer architectures where multiple systems process the same telemetry data independently. The OpenTelemetry Collector makes both patterns straightforward to configure. Start with separate Event Hubs for traces, metrics, and logs, and scale each signal independently as your throughput grows.
