@@ -10,7 +10,7 @@ A customer submits a support ticket: "I tried to place an order at 2:15 PM and i
 
 ## Setting Up User ID Attributes
 
-The foundation is adding user identity information to your spans. Do this at the request entry point so that all child spans inherit the context:
+The foundation is adding user identity information to your spans. Do this at the request entry point so the entry span carries the user attributes and the child spans remain linked in the same trace:
 
 ```typescript
 // Express middleware that adds user context to the current span
@@ -139,7 +139,7 @@ With the user ID and approximate time, query your trace backend:
 # Jaeger API query
 curl "http://jaeger:16686/api/traces?\
 service=frontend&\
-tags=user.id%3Dusr_k8x9m2&\
+tags=%7B%22user.id%22%3A%22usr_k8x9m2%22%7D&\
 start=$(date -d '2026-02-06T14:00:00Z' +%s)000000&\
 end=$(date -d '2026-02-06T14:30:00Z' +%s)000000&\
 limit=20" | jq '.data[] | {traceID, spans: [.spans[] | {operation: .operationName, duration: .duration, tags: [.tags[] | select(.key == "http.response.status_code" or .key == "error")]}]}'
@@ -190,10 +190,15 @@ For frequent lookups, build a simple internal tool that support agents can use d
 
 ```python
 from flask import Flask, request, jsonify
+from datetime import datetime
 import requests
 
 app = Flask(__name__)
 TEMPO_URL = "http://tempo.internal:3200"
+
+def to_unix_seconds(timestamp):
+    """Convert an ISO 8601 timestamp to Unix epoch seconds for Tempo search."""
+    return int(datetime.fromisoformat(timestamp.replace("Z", "+00:00")).timestamp())
 
 @app.route("/lookup")
 def lookup_user_traces():
@@ -202,19 +207,29 @@ def lookup_user_traces():
     start_time = request.args.get("start")  # ISO format
     end_time = request.args.get("end")      # ISO format
 
-    if not user_id or not start_time:
-        return jsonify({"error": "user_id and start are required"}), 400
+    if not user_id or not start_time or not end_time:
+        return jsonify({"error": "user_id, start, and end are required"}), 400
 
     # Query Tempo for traces matching this user
-    query = f'{{ span.user.id = "{user_id}" }}'
-    response = requests.get(f"{TEMPO_URL}/api/search", params={
-        "q": query,
-        "start": start_time,
-        "end": end_time,
-        "limit": 50,
-    })
+    escaped_user_id = user_id.replace("\\", "\\\\").replace('"', '\\"')
+    start = to_unix_seconds(start_time)
+    end = to_unix_seconds(end_time)
 
-    traces = response.json().get("traces", [])
+    def search_traces(query):
+        response = requests.get(f"{TEMPO_URL}/api/search", params={
+            "q": query,
+            "start": start,
+            "end": end,
+            "limit": 50,
+        })
+        response.raise_for_status()
+        return response.json().get("traces", [])
+
+    traces = search_traces(f'{{ span.user.id = "{escaped_user_id}" }}')
+    error_trace_ids = {
+        t["traceID"]
+        for t in search_traces(f'{{ span.user.id = "{escaped_user_id}" && status = error }}')
+    }
 
     # Return a simplified view for support agents
     results = []
@@ -223,7 +238,7 @@ def lookup_user_traces():
             "trace_id": t["traceID"],
             "timestamp": t["startTimeUnixNano"],
             "duration_ms": t["durationMs"],
-            "has_error": any(s.get("status") == "error" for s in t.get("spans", [])),
+            "has_error": t["traceID"] in error_trace_ids,
             "jaeger_url": f"http://jaeger.internal:16686/trace/{t['traceID']}",
         })
 
