@@ -57,7 +57,10 @@ go mod init github.com/yourorg/customextension
 go get go.opentelemetry.io/collector/component
 go get go.opentelemetry.io/collector/extension
 go get go.opentelemetry.io/collector/config/confighttp
+go get go.opentelemetry.io/collector/extension/extensiontest
+go get go.opentelemetry.io/collector/component/componenttest
 go get go.uber.org/zap
+go get github.com/stretchr/testify
 ```
 
 ## Define the Configuration Structure
@@ -173,13 +176,11 @@ import (
 	"go.opentelemetry.io/collector/extension"
 )
 
-const (
-	// typeStr is the name used in the Collector configuration
-	typeStr = "custom"
+// typeStr is the name used in the Collector configuration
+var typeStr = component.MustNewType("custom")
 
-	// stability level of the extension
-	stability = component.StabilityLevelAlpha
-)
+// stability level of the extension
+const stability = component.StabilityLevelAlpha
 
 // NewFactory creates a factory for the custom extension
 func NewFactory() extension.Factory {
@@ -194,7 +195,7 @@ func NewFactory() extension.Factory {
 // createExtension creates an extension based on the configuration
 func createExtension(
 	ctx context.Context,
-	params extension.CreateSettings,
+	params extension.Settings,
 	cfg component.Config,
 ) (extension.Extension, error) {
 	extensionCfg, ok := cfg.(*Config)
@@ -218,6 +219,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -232,15 +234,16 @@ import (
 // customExtension implements the extension.Extension interface
 type customExtension struct {
 	config   *Config
-	settings extension.CreateSettings
+	settings extension.Settings
 	server   *http.Server
 	storage  *storageManager
 	mu       sync.RWMutex
-	started  bool
+	started   bool
+	startTime time.Time
 }
 
 // newExtension creates a new extension instance
-func newExtension(config *Config, settings extension.CreateSettings) (extension.Extension, error) {
+func newExtension(config *Config, settings extension.Settings) (extension.Extension, error) {
 	ext := &customExtension{
 		config:   config,
 		settings: settings,
@@ -309,17 +312,23 @@ func (e *customExtension) Start(ctx context.Context, host component.Host) error 
 		WriteTimeout: 10 * time.Second,
 	}
 
+	listener, err := net.Listen("tcp", e.config.HTTPServerSettings.Endpoint)
+	if err != nil {
+		return fmt.Errorf("failed to listen on %s: %w", e.config.HTTPServerSettings.Endpoint, err)
+	}
+
 	go func() {
 		e.settings.Logger.Info("Starting custom extension server",
 			zap.String("endpoint", e.config.HTTPServerSettings.Endpoint),
 		)
 
-		if err := e.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := e.server.Serve(listener); err != nil && err != http.ErrServerClosed {
 			e.settings.Logger.Error("Server failed", zap.Error(err))
 		}
 	}()
 
 	e.started = true
+	e.startTime = time.Now()
 	e.settings.Logger.Info("Custom extension started")
 
 	return nil
@@ -419,7 +428,7 @@ func (e *customExtension) metricsHandler(w http.ResponseWriter, r *http.Request)
 	}
 
 	metrics := map[string]interface{}{
-		"uptime_seconds": time.Since(time.Now()).Seconds(),
+		"uptime_seconds": time.Since(e.startTime).Seconds(),
 		"started":        e.started,
 	}
 
@@ -659,7 +668,7 @@ func TestExtension(t *testing.T) {
 	}
 
 	// Create the extension
-	ext, err := newExtension(cfg, extensiontest.NewNopCreateSettings())
+	ext, err := newExtension(cfg, extensiontest.NewNopSettings(typeStr))
 	require.NoError(t, err)
 
 	// Start the extension
@@ -697,7 +706,7 @@ func TestAuthMiddleware(t *testing.T) {
 		AuthTokens:        []string{"test-token"},
 	}
 
-	ext, err := newExtension(cfg, extensiontest.NewNopCreateSettings())
+	ext, err := newExtension(cfg, extensiontest.NewNopSettings(typeStr))
 	require.NoError(t, err)
 
 	err = ext.Start(context.Background(), componenttest.NewNopHost())
@@ -726,7 +735,7 @@ func TestAuthMiddleware(t *testing.T) {
 func TestStorageManager(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	logger := extensiontest.NewNopCreateSettings().Logger
+	logger := extensiontest.NewNopSettings(typeStr).Logger
 	sm, err := newStorageManager(tmpDir, 5*time.Second, logger)
 	require.NoError(t, err)
 
@@ -783,24 +792,40 @@ dist:
   name: otelcol-custom
   description: Collector with custom extension
   output_path: ./dist
-  otelcol_version: 0.95.0
 
 receivers:
-  - gomod: go.opentelemetry.io/collector/receiver/otlpreceiver v0.95.0
+  - gomod:
+      go.opentelemetry.io/collector/receiver/otlpreceiver v0.153.0
 
 processors:
-  - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.95.0
+  - gomod:
+      go.opentelemetry.io/collector/processor/batchprocessor v0.153.0
 
 exporters:
-  - gomod: go.opentelemetry.io/collector/exporter/loggingexporter v0.95.0
+  - gomod:
+      go.opentelemetry.io/collector/exporter/debugexporter v0.153.0
 
 extensions:
   # Include your custom extension
-  - gomod: github.com/yourorg/customextension v1.0.0
+  - gomod:
+      github.com/yourorg/customextension v1.0.0
     path: ../customextension
 
   # Include standard extensions
-  - gomod: go.opentelemetry.io/collector/extension/zpagesextension v0.95.0
+  - gomod:
+      go.opentelemetry.io/collector/extension/zpagesextension v0.153.0
+
+providers:
+  - gomod:
+      go.opentelemetry.io/collector/confmap/provider/envprovider v1.59.0
+  - gomod:
+      go.opentelemetry.io/collector/confmap/provider/fileprovider v1.59.0
+  - gomod:
+      go.opentelemetry.io/collector/confmap/provider/httpprovider v1.59.0
+  - gomod:
+      go.opentelemetry.io/collector/confmap/provider/httpsprovider v1.59.0
+  - gomod:
+      go.opentelemetry.io/collector/confmap/provider/yamlprovider v1.59.0
 ```
 
 For details on building custom distributions, see https://oneuptime.com/blog/post/2026-02-06-build-custom-opentelemetry-collector-distribution-ocb/view.
@@ -845,8 +870,8 @@ processors:
     timeout: 10s
 
 exporters:
-  logging:
-    loglevel: info
+  debug:
+    verbosity: basic
 
 service:
   # Extensions are loaded first
@@ -856,7 +881,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [logging]
+      exporters: [debug]
 ```
 
 ## Advanced Features
