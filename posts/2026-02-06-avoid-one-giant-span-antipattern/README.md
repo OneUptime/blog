@@ -36,7 +36,7 @@ When this operation takes 850ms, which step is responsible? Is it the payment ga
 
 ## Break It Into Child Spans
 
-Each logical step should be its own span. The OpenTelemetry context propagation automatically creates parent-child relationships:
+Each logical step should be its own span. The active OpenTelemetry context automatically creates parent-child relationships:
 
 ```python
 from opentelemetry import trace
@@ -102,6 +102,9 @@ Not every function call needs its own span. Here are the guidelines:
 ## JavaScript Example
 
 ```javascript
+const opentelemetry = require('@opentelemetry/api');
+const { SpanStatusCode } = opentelemetry;
+
 const tracer = opentelemetry.trace.getTracer('order-service');
 
 async function handleOrder(orderData) {
