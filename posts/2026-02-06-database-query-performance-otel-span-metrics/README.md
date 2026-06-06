@@ -10,7 +10,7 @@ Database queries are often the biggest contributor to API latency. A query that 
 
 ## How the Span Metrics Connector Works
 
-The Span Metrics Connector sits inside the OpenTelemetry Collector pipeline. It receives trace data, extracts span attributes (like database operation, table name, and query text), and emits histogram and counter metrics. These metrics then flow to your time-series database (Prometheus, etc.) for long-term storage and querying.
+The Span Metrics Connector sits inside the OpenTelemetry Collector pipeline. It receives trace data, extracts span attributes (like database operation, table name, and query summary), and emits histogram and counter metrics. These metrics then flow to your time-series database (Prometheus, etc.) for long-term storage and querying.
 
 ## Instrumenting Database Calls
 
@@ -21,7 +21,7 @@ First, make sure your database calls generate proper spans. Most OpenTelemetry a
 
 import psycopg2
 from opentelemetry import trace
-from opentelemetry.semconv.trace import SpanAttributes
+from opentelemetry.trace import SpanKind, Status, StatusCode
 
 tracer = trace.get_tracer("db-instrumentation")
 
@@ -33,32 +33,33 @@ class InstrumentedDB:
         # Determine the operation type from the query
         op = operation_name or query.strip().split()[0].upper()
 
-        # Extract the table name for better metric grouping
+        # Extract the table name for better metric grouping in simple single-table queries
         table = self._extract_table(query)
 
         with tracer.start_as_current_span(
-            f"db.query.{op}",
+            f"{op} {table}",
+            kind=SpanKind.CLIENT,
             attributes={
-                SpanAttributes.DB_SYSTEM: "postgresql",
-                SpanAttributes.DB_OPERATION: op,
-                SpanAttributes.DB_STATEMENT: self._sanitize_query(query),
-                "db.table": table,
-                "db.rows_affected": 0,  # updated after execution
+                "db.system.name": "postgresql",
+                "db.operation.name": op,
+                "db.collection.name": table,
+                "db.query.text": self._sanitize_query(query),
+                "db.response.returned_rows": 0,  # updated after execution
             },
         ) as span:
             cursor = self.conn.cursor()
             try:
                 cursor.execute(query, params)
                 rows = cursor.rowcount
-                span.set_attribute("db.rows_affected", rows)
+                span.set_attribute("db.response.returned_rows", rows)
                 return cursor
             except Exception as e:
-                span.set_status(trace.StatusCode.ERROR, str(e))
+                span.set_status(Status(StatusCode.ERROR, str(e)))
                 span.record_exception(e)
                 raise
 
     def _extract_table(self, query):
-        """Extract the primary table name from a SQL query."""
+        """Best-effort extraction of the primary table name from simple SQL."""
         words = query.upper().split()
         for i, word in enumerate(words):
             if word in ("FROM", "INTO", "UPDATE", "TABLE"):
@@ -88,40 +89,39 @@ receivers:
         endpoint: 0.0.0.0:4317
 
 connectors:
-  spanmetrics:
+  span_metrics:
+    namespace: db
     histogram:
       explicit:
         buckets: [1ms, 5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 2.5s, 5s, 10s]
     # Only generate metrics for database spans
     dimensions:
-      - name: db.system
-      - name: db.operation
-      - name: db.table
+      - name: db.system.name
+      - name: db.operation.name
+      - name: db.collection.name
       - name: service.name
-    # Filter to only process database spans
-    dimensions_cache_size: 1000
+    aggregation_cardinality_limit: 1000
     aggregation_temporality: "AGGREGATION_TEMPORALITY_CUMULATIVE"
 
 processors:
   filter/db-spans:
-    spans:
-      include:
-        match_type: regexp
-        span_names: ["db\\.query\\..*"]
+    error_mode: ignore
+    trace_conditions:
+      # The filter processor drops matching spans, so this keeps only database spans.
+      - 'span.kind != SPAN_KIND_CLIENT or span.attributes["db.system.name"] == nil'
 
 exporters:
   prometheus:
     endpoint: "0.0.0.0:8889"
-    namespace: "db"
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
       processors: [filter/db-spans]
-      exporters: [spanmetrics]
+      exporters: [span_metrics]
     metrics/spanmetrics:
-      receivers: [spanmetrics]
+      receivers: [span_metrics]
       exporters: [prometheus]
 ```
 
@@ -133,27 +133,27 @@ Now you can write PromQL queries that show how database performance changes over
 # Average query duration by table, over the past 7 days
 avg_over_time(
   histogram_quantile(0.95,
-    sum(rate(db_duration_milliseconds_bucket{db_system="postgresql"}[1h])) by (le, db_table)
+    sum(rate(db_duration_milliseconds_bucket{db_system_name="postgresql"}[1h])) by (le, db_collection_name)
   )[7d:1h]
 )
 
 # Query volume by operation type (SELECT, INSERT, UPDATE, DELETE)
-sum(rate(db_duration_milliseconds_count{db_system="postgresql"}[5m])) by (db_operation)
+sum(rate(db_calls_total{db_system_name="postgresql"}[5m])) by (db_operation_name)
 
 # Slowest tables ranked by P95 latency
 topk(10,
   histogram_quantile(0.95,
-    sum(rate(db_duration_milliseconds_bucket[5m])) by (le, db_table)
+    sum(rate(db_duration_milliseconds_bucket[5m])) by (le, db_collection_name)
   )
 )
 
 # Week-over-week P95 comparison for a specific table
 histogram_quantile(0.95,
-  sum(rate(db_duration_milliseconds_bucket{db_table="orders"}[1h])) by (le)
+  sum(rate(db_duration_milliseconds_bucket{db_collection_name="orders"}[1h])) by (le)
 )
 /
 histogram_quantile(0.95,
-  sum(rate(db_duration_milliseconds_bucket{db_table="orders"}[1h] offset 7d)) by (le)
+  sum(rate(db_duration_milliseconds_bucket{db_collection_name="orders"}[1h] offset 7d)) by (le)
 )
 ```
 
@@ -168,8 +168,8 @@ Create a Grafana dashboard dedicated to database query trends:
       "title": "Query P95 Latency by Table (7-day trend)",
       "type": "timeseries",
       "targets": [{
-        "expr": "histogram_quantile(0.95, sum(rate(db_duration_milliseconds_bucket[1h])) by (le, db_table))",
-        "legendFormat": "{{db_table}}"
+        "expr": "histogram_quantile(0.95, sum(rate(db_duration_milliseconds_bucket[1h])) by (le, db_collection_name))",
+        "legendFormat": "{{db_collection_name}}"
       }],
       "fieldConfig": {
         "defaults": {
@@ -181,16 +181,16 @@ Create a Grafana dashboard dedicated to database query trends:
       "title": "Query Volume by Operation",
       "type": "piechart",
       "targets": [{
-        "expr": "sum(rate(db_duration_milliseconds_count[5m])) by (db_operation)",
-        "legendFormat": "{{db_operation}}"
+        "expr": "sum(rate(db_calls_total[5m])) by (db_operation_name)",
+        "legendFormat": "{{db_operation_name}}"
       }]
     },
     {
       "title": "Tables with Degrading Performance",
       "type": "table",
       "targets": [{
-        "expr": "histogram_quantile(0.95, sum(rate(db_duration_milliseconds_bucket[1h])) by (le, db_table)) / histogram_quantile(0.95, sum(rate(db_duration_milliseconds_bucket[1h] offset 7d)) by (le, db_table))",
-        "legendFormat": "{{db_table}}"
+        "expr": "histogram_quantile(0.95, sum(rate(db_duration_milliseconds_bucket[1h])) by (le, db_collection_name)) / histogram_quantile(0.95, sum(rate(db_duration_milliseconds_bucket[1h] offset 7d)) by (le, db_collection_name))",
+        "legendFormat": "{{db_collection_name}}"
       }]
     }
   ]
@@ -209,23 +209,23 @@ groups:
       - alert: DatabaseQuerySlowdown
         expr: |
           histogram_quantile(0.95,
-            sum(rate(db_duration_milliseconds_bucket[1h])) by (le, db_table))
+            sum(rate(db_duration_milliseconds_bucket[1h])) by (le, db_collection_name))
           >
           histogram_quantile(0.95,
-            sum(rate(db_duration_milliseconds_bucket[1h] offset 7d)) by (le, db_table))
+            sum(rate(db_duration_milliseconds_bucket[1h] offset 7d)) by (le, db_collection_name))
           * 1.5
         for: 2h
         labels:
           severity: warning
         annotations:
-          summary: "Query P95 for table {{ $labels.db_table }} is 50% slower than last week"
+          summary: "Query P95 for table {{ $labels.db_collection_name }} is 50% slower than last week"
 
       - alert: HighQueryVolume
         expr: |
-          sum(rate(db_duration_milliseconds_count{db_table!=""}[5m])) by (db_table) > 1000
+          sum(rate(db_calls_total{db_collection_name!=""}[5m])) by (db_collection_name) > 1000
         for: 15m
         annotations:
-          summary: "Table {{ $labels.db_table }} receiving over 1000 queries/sec"
+          summary: "Table {{ $labels.db_collection_name }} receiving over 1000 queries/sec"
 ```
 
 ## What to Do When Trends Go Bad
