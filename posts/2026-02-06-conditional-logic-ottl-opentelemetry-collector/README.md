@@ -66,7 +66,7 @@ processors:
           - set(attributes["is_server_error"], true) where Int(attributes["http.status_code"]) >= 500
 
           # Flag recent logs (within last hour)
-          - set(attributes["recent"], true) where time_now() - observed_time_unix_nano < 3600000000000
+          - set(attributes["recent"], true) where UnixNano(Now()) - observed_time_unix_nano < 3600000000000
 ```
 
 ### Nil Checks
@@ -90,8 +90,8 @@ processors:
           - set(attributes["error_code"], body["error"]["code"]) where body["error"] != nil
 
           # Process trace-enabled logs differently
-          - set(attributes["trace_enabled"], true) where trace_id != nil
-          - set(attributes["trace_enabled"], false) where trace_id == nil
+          - set(attributes["trace_enabled"], true) where trace_id != TraceID(0x00000000000000000000000000000000)
+          - set(attributes["trace_enabled"], false) where trace_id == TraceID(0x00000000000000000000000000000000)
 ```
 
 ## Logical Operators
@@ -158,7 +158,7 @@ processors:
           - set(attributes["failed"], true) where not (Int(attributes["http.status_code"]) >= 200 and Int(attributes["http.status_code"]) < 300)
 
           # Identify logs without trace context
-          - set(attributes["missing_trace"], true) where not (trace_id != nil)
+          - set(attributes["missing_trace"], true) where not (trace_id != TraceID(0x00000000000000000000000000000000))
 ```
 
 ### Complex Compound Conditions
@@ -223,15 +223,15 @@ processors:
       - context: log
         statements:
           # Payment service transformations
-          - set(attributes["transaction_type"], ExtractPatterns(body, "type=([a-z]+)")) where resource.attributes["service.name"] == "payment"
+          - set(attributes["transaction_type"], ExtractPatterns(body, "type=(?P<transaction_type>[a-z]+)")["transaction_type"]) where resource.attributes["service.name"] == "payment"
           - set(attributes["team"], "payments") where resource.attributes["service.name"] == "payment"
 
           # Auth service transformations
-          - set(attributes["auth_method"], ExtractPatterns(body, "method=([a-z]+)")) where resource.attributes["service.name"] == "auth"
+          - set(attributes["auth_method"], ExtractPatterns(body, "method=(?P<auth_method>[a-z]+)")["auth_method"]) where resource.attributes["service.name"] == "auth"
           - set(attributes["team"], "security") where resource.attributes["service.name"] == "auth"
 
           # Frontend service transformations
-          - set(attributes["page"], ExtractPatterns(body, "page=([^\\s]+)")) where resource.attributes["service.name"] == "frontend"
+          - set(attributes["page"], ExtractPatterns(body, "page=(?P<page>[^\\s]+)")["page"]) where resource.attributes["service.name"] == "frontend"
           - set(attributes["team"], "frontend") where resource.attributes["service.name"] == "frontend"
 ```
 
@@ -301,10 +301,10 @@ processors:
       - context: log
         statements:
           # Add business hours flag
-          - set(attributes["business_hours"], true) where Hour(time_now()) >= 9 and Hour(time_now()) < 17
+          - set(attributes["business_hours"], true) where Hour(Now()) >= 9 and Hour(Now()) < 17
 
           # Add weekend flag
-          - set(attributes["is_weekend"], true) where DayOfWeek(time_now()) == 0 or DayOfWeek(time_now()) == 6
+          - set(attributes["is_weekend"], true) where Weekday(Now()) == 0 or Weekday(Now()) == 6
 
           # Enrich with customer tier information
           - set(attributes["customer_tier"], "enterprise") where attributes["customer_id"] != nil and IsMatch(attributes["customer_id"], "^ENT-")
@@ -409,18 +409,17 @@ processors:
           - replace_pattern(body, "token=[^&\\s]+", "token=[REDACTED]") where attributes["environment"] == "production"
 
           # Step 9: Trace context enrichment
-          - set(attributes["has_trace"], true) where trace_id != nil
-          - set(attributes["trace_sampled"], true) where trace_id != nil and trace_flags == 1
+          - set(attributes["has_trace"], true) where trace_id != TraceID(0x00000000000000000000000000000000)
+          - set(attributes["trace_sampled"], true) where trace_id != TraceID(0x00000000000000000000000000000000) and flags == 1
 
           # Step 10: Time-based attributes
-          - set(attributes["business_hours"], true) where Hour(time_now()) >= 9 and Hour(time_now()) < 17 and DayOfWeek(time_now()) > 0 and DayOfWeek(time_now()) < 6
+          - set(attributes["business_hours"], true) where Hour(Now()) >= 9 and Hour(Now()) < 17 and Weekday(Now()) > 0 and Weekday(Now()) < 6
 
   # Filter processor to drop low-priority logs in production
   filter:
-    logs:
+    log_conditions:
       # Drop debug logs in production
-      log_record:
-        - 'attributes["environment"] == "production" and severity_number < 9'
+      - 'attributes["environment"] == "production" and severity_number < 9'
 
   batch:
     timeout: 10s
@@ -432,7 +431,7 @@ exporters:
     tls:
       insecure: false
 
-  # Conditional routing based on severity
+  # Additional OTLP exporter
   otlp/high_priority:
     endpoint: https://priority-backend:4317
     tls:
@@ -518,24 +517,24 @@ processors:
       - context: log
         statements:
           # Determine state
-          - set(temp_is_error, severity_number >= 17)
-          - set(temp_is_production, attributes["environment"] == "production")
-          - set(temp_is_critical_service, resource.attributes["service.name"] == "payment" or resource.attributes["service.name"] == "auth")
+          - set(log.cache["is_error"], true) where severity_number >= 17
+          - set(log.cache["is_production"], true) where attributes["environment"] == "production"
+          - set(log.cache["is_critical_service"], true) where resource.attributes["service.name"] == "payment" or resource.attributes["service.name"] == "auth"
 
           # Use state for complex conditions
-          - set(attributes["alert_immediately"], true) where temp_is_error and temp_is_production and temp_is_critical_service
+          - set(attributes["alert_immediately"], true) where log.cache["is_error"] == true and log.cache["is_production"] == true and log.cache["is_critical_service"] == true
 
           # Clean up temporary state
-          - delete_key(temp_is_error, "")
-          - delete_key(temp_is_production, "")
-          - delete_key(temp_is_critical_service, "")
+          - delete_key(log.cache, "is_error")
+          - delete_key(log.cache, "is_production")
+          - delete_key(log.cache, "is_critical_service")
 ```
 
 ## Best Practices for Conditional Logic
 
 1. **Keep Conditions Readable**: Break complex conditions into multiple simpler statements when possible.
 
-2. **Check for Nil First**: Always verify a field exists before comparing its value.
+2. **Check for Nil First**: Always verify a field exists before passing it to functions or converting its value.
 
 3. **Use Explicit Comparisons**: Prefer `== true` over implicit boolean checks for clarity.
 
@@ -555,13 +554,13 @@ processors:
 
 1. **Forgetting Type Conversions**: Comparing string "200" with integer 200 will fail.
 
-2. **Not Handling Nil**: Accessing nil values causes errors; always check first.
+2. **Not Handling Nil**: Passing nil values to converters or string functions can cause errors; check first.
 
 3. **Overly Complex Conditions**: Very long compound conditions are hard to debug and maintain.
 
 4. **Incorrect Operator Precedence**: Use parentheses to make precedence explicit.
 
-5. **Case Sensitivity**: String comparisons are case-sensitive unless you use functions like `Lower()`.
+5. **Case Sensitivity**: String comparisons are case-sensitive unless you use functions like `ToLowerCase()`.
 
 ## Conclusion
 
