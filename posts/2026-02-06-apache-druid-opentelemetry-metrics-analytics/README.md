@@ -14,7 +14,7 @@ Apache Druid is a real-time analytics database designed for fast aggregations on
 
 OpenTelemetry metrics come with rich dimensional data. A single metric like `http.server.request.duration` might have attributes for service name, HTTP method, route, status code, and deployment environment. Querying across these dimensions at scale is exactly what Druid was built for.
 
-Druid stores data in a columnar format with automatic indexing on every column. This means you can filter, group, and aggregate across any combination of attributes without defining indexes upfront. It also supports real-time ingestion alongside historical queries, so new metrics are queryable within seconds of arrival.
+Druid stores data in a columnar format and creates bitmap indexes for string dimensions. This means you can filter, group, and aggregate across metric attributes without defining secondary indexes upfront. It also supports real-time ingestion alongside historical queries, so new metrics are queryable within seconds of arrival.
 
 Compared to traditional time-series databases, Druid shines when you need to run ad-hoc analytical queries across many dimensions rather than just retrieving pre-defined metric series.
 
@@ -38,9 +38,20 @@ Kafka acts as a buffer between the Collector and Druid. This decouples ingestion
 Start by deploying Druid using Docker Compose. This configuration brings up a single-server Druid cluster suitable for development and testing.
 
 ```yaml
-# docker-compose.yml for Apache Druid single-server deployment
+# docker-compose.yml for Apache Druid development deployment
 
-version: "3"
+x-druid-env: &druid-env
+  DRUID_SINGLE_NODE_CONF: micro-quickstart
+  druid_zk_service_host: zookeeper
+  druid_metadata_storage_type: postgresql
+  druid_metadata_storage_connector_connectURI: jdbc:postgresql://postgres:5432/druid
+  druid_metadata_storage_connector_user: druid
+  druid_metadata_storage_connector_password: FoolishPassword
+  druid_storage_type: local
+  druid_storage_storageDirectory: /opt/shared/segments
+  druid_indexer_logs_type: file
+  druid_indexer_logs_directory: /opt/shared/indexing-logs
+  druid_extensions_loadList: '["druid-kafka-indexing-service","druid-datasketches","postgresql-metadata-storage"]'
 
 services:
   # ZooKeeper is required for Druid cluster coordination
@@ -51,6 +62,15 @@ services:
     environment:
       ZOO_MY_ID: 1
 
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: druid
+      POSTGRES_USER: druid
+      POSTGRES_PASSWORD: FoolishPassword
+    volumes:
+      - metadata_data:/var/lib/postgresql/data
+
   # Kafka serves as the intermediate message broker
   kafka:
     image: confluentinc/cp-kafka:7.5.0
@@ -59,31 +79,81 @@ services:
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
     depends_on:
       - zookeeper
 
-  # Druid single-server includes all Druid processes
-  druid:
-    image: apache/druid:28.0.0
-    ports:
-      # Router port for the web console and query endpoint
-      - "8888:8888"
-      # Broker port for direct queries
-      - "8082:8082"
+  coordinator:
+    image: apache/druid:37.0.0
+    command: ["coordinator"]
     environment:
-      # Memory settings for a development deployment
-      DRUID_SINGLE_NODE_CONF: micro-quickstart
-      druid_extensions_loadList: '["druid-kafka-indexing-service","druid-datasketches"]'
+      <<: *druid-env
     volumes:
-      - druid_data:/opt/druid/var
+      - druid_shared:/opt/shared
+      - coordinator_var:/opt/druid/var
     depends_on:
       - zookeeper
+      - postgres
+
+  broker:
+    image: apache/druid:37.0.0
+    command: ["broker"]
+    ports:
+      - "8082:8082"
+    environment:
+      <<: *druid-env
+    volumes:
+      - broker_var:/opt/druid/var
+    depends_on:
+      - coordinator
+
+  historical:
+    image: apache/druid:37.0.0
+    command: ["historical"]
+    environment:
+      <<: *druid-env
+    volumes:
+      - druid_shared:/opt/shared
+      - historical_var:/opt/druid/var
+    depends_on:
+      - coordinator
+
+  middlemanager:
+    image: apache/druid:37.0.0
+    command: ["middleManager"]
+    environment:
+      <<: *druid-env
+    volumes:
+      - druid_shared:/opt/shared
+      - middle_var:/opt/druid/var
+    depends_on:
+      - coordinator
+
+  router:
+    image: apache/druid:37.0.0
+    command: ["router"]
+    ports:
+      - "8888:8888"
+    environment:
+      <<: *druid-env
+    volumes:
+      - router_var:/opt/druid/var
+    depends_on:
+      - coordinator
+      - broker
 
 volumes:
-  druid_data:
+  metadata_data:
+  druid_shared:
+  coordinator_var:
+  broker_var:
+  historical_var:
+  middle_var:
+  router_var:
 ```
 
 Start the services and wait for Druid to become available:
@@ -152,7 +222,7 @@ service:
       exporters: [kafka]
 ```
 
-The `otlp_json` encoding writes metrics in the OpenTelemetry JSON format. Druid can parse this during ingestion using a JSON input format with a flattenSpec.
+The `otlp_json` encoding writes metrics in the OpenTelemetry JSON format. Druid can parse this during ingestion using a JSON input format with a flattenSpec, but a production pipeline should flatten OTLP batches into one metric data point per Kafka message before ingestion.
 
 ## Creating a Kafka Topic
 
@@ -173,7 +243,7 @@ docker compose exec kafka kafka-topics --list \
 
 ## Configuring Druid Ingestion
 
-Now we need to tell Druid how to ingest data from the Kafka topic. Druid uses a supervisor spec to define Kafka ingestion tasks. Submit this spec through the Druid web console or the API.
+Now we need to tell Druid how to ingest data from the Kafka topic. Druid uses a supervisor spec to define Kafka ingestion tasks. Submit this spec through the Druid web console or the API. This example extracts gauge data from the first metric data point in each OTLP JSON message; if your Collector batches multiple metrics or uses sums, histograms, or summaries, flatten those records before they reach this supervisor.
 
 ```json
 {
@@ -196,9 +266,9 @@ Now we need to tell Druid how to ingest data from the Kafka topic. Druid uses a 
               "expr": "$.resourceMetrics[0].scopeMetrics[0].metrics[0].name"
             },
             {
-              "type": "path",
+              "type": "jq",
               "name": "service_name",
-              "expr": "$.resourceMetrics[0].resource.attributes[?(@.key=='service.name')].value.stringValue"
+              "expr": ".resourceMetrics[0].resource.attributes[] | select(.key == \"service.name\") | .value.stringValue"
             },
             {
               "type": "path",
@@ -272,7 +342,7 @@ curl -X POST http://localhost:8888/druid/indexer/v1/supervisor \
   -d @druid-supervisor.json
 ```
 
-The `granularitySpec` with `rollup: true` is important. It tells Druid to pre-aggregate metrics at minute granularity, which dramatically reduces storage requirements and speeds up queries. The `metricsSpec` defines how values are aggregated during rollup: we keep the sum, min, max, and count so we can compute averages and percentiles at query time.
+The `granularitySpec` with `rollup: true` is important. It tells Druid to pre-aggregate metrics at minute granularity, which dramatically reduces storage requirements and speeds up queries. The `metricsSpec` defines how values are aggregated during rollup: we keep the sum, min, max, and count so we can compute averages, peaks, and sample counts at query time.
 
 ## Running Analytical Queries
 
@@ -291,7 +361,7 @@ SELECT
 FROM otel_metrics
 WHERE __time >= CURRENT_TIMESTAMP - INTERVAL '1' HOUR
 GROUP BY service_name, metric_name
-ORDER BY avg_value DESC
+ORDER BY avg_value DESC;
 
 -- Time-series aggregation at 5-minute intervals
 -- Useful for charting metric trends
@@ -305,19 +375,19 @@ WHERE
   __time >= CURRENT_TIMESTAMP - INTERVAL '6' HOUR
   AND metric_name = 'system.cpu.utilization'
 GROUP BY 1, 2
-ORDER BY time_bucket
+ORDER BY time_bucket;
 
 -- Top services by metric volume
 -- Helps identify which services generate the most data
 SELECT
   service_name,
-  COUNT(*) AS segment_count,
+  COUNT(*) AS rolled_rows,
   SUM(count) AS total_data_points
 FROM otel_metrics
 WHERE __time >= CURRENT_TIMESTAMP - INTERVAL '24' HOUR
 GROUP BY service_name
 ORDER BY total_data_points DESC
-LIMIT 20
+LIMIT 20;
 ```
 
 ## Connecting Grafana to Druid
@@ -357,4 +427,4 @@ Rollup is essential for metrics data. Without rollup, Druid stores every individ
 
 ## Summary
 
-Apache Druid provides a powerful analytics engine for OpenTelemetry metrics when you need sub-second query performance across high-cardinality dimensions. By routing metrics through Kafka and into Druid with real-time ingestion, you get a pipeline that handles both high-volume ingestion and fast analytical queries. The combination of rollup, columnar storage, and automatic indexing makes Druid particularly effective for the kind of ad-hoc exploratory analysis that observability teams need when investigating production issues.
+Apache Druid provides a powerful analytics engine for OpenTelemetry metrics when you need sub-second query performance across high-cardinality dimensions. By routing metrics through Kafka and into Druid with real-time ingestion, you get a pipeline that handles both high-volume ingestion and fast analytical queries. The combination of rollup, columnar storage, and bitmap indexes on dimensions makes Druid particularly effective for the kind of ad-hoc exploratory analysis that observability teams need when investigating production issues.
