@@ -22,10 +22,10 @@ The websockets library provides a clean async API built on top of asyncio. Insta
 pip install websockets
 ```
 
-For additional features like SSL certificate handling:
+The library is pure-Python and has no required dependencies. SSL/TLS support is provided by Python's standard library `ssl` module, and if you need a trusted CA bundle you can install `certifi` separately:
 
 ```bash
-pip install websockets[speedups]
+pip install certifi
 ```
 
 ---
@@ -246,7 +246,7 @@ from websockets.exceptions import (
     ConnectionClosed,
     ConnectionClosedError,
     ConnectionClosedOK,
-    InvalidStatusCode,
+    InvalidStatus,
     InvalidHandshake
 )
 
@@ -265,13 +265,13 @@ async def connect_with_error_handling():
             async for message in websocket:
                 print(f"Received: {message}")
 
-    except InvalidHandshake as e:
-        # Server rejected the WebSocket handshake
-        print(f"Handshake failed: {e}")
+    except InvalidStatus as e:
+        # Server returned an unexpected HTTP status during the handshake
+        print(f"Invalid status: {e.response.status_code}")
 
-    except InvalidStatusCode as e:
-        # Server returned unexpected HTTP status code
-        print(f"Invalid status code: {e.status_code}")
+    except InvalidHandshake as e:
+        # Server rejected the WebSocket handshake (other handshake failures)
+        print(f"Handshake failed: {e}")
 
     except ConnectionClosedError as e:
         # Connection closed with an error (non-1000 status code)
@@ -389,11 +389,14 @@ class ReconnectingWebSocket:
                 await asyncio.sleep(1)
 
     async def send(self, data: dict):
-        """Send a message, with connection check"""
-        if self.websocket and self.websocket.open:
-            await self.websocket.send(json.dumps(data))
-        else:
+        """Send a message, catching ConnectionClosed if the socket is gone"""
+        if not self.websocket:
             print("Cannot send: not connected")
+            return
+        try:
+            await self.websocket.send(json.dumps(data))
+        except websockets.ConnectionClosed:
+            print("Cannot send: connection closed")
 
     async def stop(self):
         """Stop the client gracefully"""
@@ -458,7 +461,7 @@ Some WebSocket servers require periodic heartbeat messages to keep connections a
 import asyncio
 import websockets
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 class HeartbeatClient:
     """WebSocket client with custom heartbeat mechanism"""
@@ -476,13 +479,13 @@ class HeartbeatClient:
             try:
                 await asyncio.sleep(self.heartbeat_interval)
 
-                if not self.websocket or not self.websocket.open:
+                if not self.websocket:
                     continue
 
                 # Send heartbeat with timestamp
                 heartbeat = {
                     "type": "ping",
-                    "timestamp": datetime.utcnow().isoformat()
+                    "timestamp": datetime.now(timezone.utc).isoformat()
                 }
                 await self.websocket.send(json.dumps(heartbeat))
                 print(f"Sent heartbeat at {heartbeat['timestamp']}")
@@ -502,7 +505,7 @@ class HeartbeatClient:
 
                 # Handle heartbeat response
                 if data.get("type") == "pong":
-                    self.last_pong = datetime.utcnow()
+                    self.last_pong = datetime.now(timezone.utc)
                     latency = self._calculate_latency(data.get("timestamp"))
                     print(f"Received pong, latency: {latency}ms")
                 else:
@@ -518,7 +521,7 @@ class HeartbeatClient:
         if not sent_timestamp:
             return 0
         sent = datetime.fromisoformat(sent_timestamp)
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         return int((now - sent).total_seconds() * 1000)
 
     async def _handle_message(self, data: dict):
@@ -569,13 +572,13 @@ async def connect_with_header_auth():
     """Connect with Bearer token in Authorization header"""
     token = "your-jwt-token-here"
 
-    extra_headers = {
+    additional_headers = {
         "Authorization": f"Bearer {token}"
     }
 
     async with websockets.connect(
         "wss://api.example.com/ws",
-        extra_headers=extra_headers
+        additional_headers=additional_headers
     ) as websocket:
         print("Connected with header auth")
         async for message in websocket:
@@ -628,13 +631,13 @@ async def connect_with_basic_auth():
     # Encode credentials as base64
     credentials = base64.b64encode(f"{username}:{password}".encode()).decode()
 
-    extra_headers = {
+    additional_headers = {
         "Authorization": f"Basic {credentials}"
     }
 
     async with websockets.connect(
         "wss://api.example.com/ws",
-        extra_headers=extra_headers
+        additional_headers=additional_headers
     ) as websocket:
         print("Connected with basic auth")
         async for message in websocket:
@@ -656,7 +659,7 @@ This production-ready example demonstrates a client for streaming live data - si
 import asyncio
 import websockets
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Callable, Dict, List, Optional
 from dataclasses import dataclass
 import logging
@@ -720,7 +723,7 @@ class LiveDataClient:
         auth_msg = {
             "action": "auth",
             "api_key": self.api_key,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
         await self.websocket.send(json.dumps(auth_msg))
 
@@ -872,7 +875,7 @@ This chat client demonstrates room-based messaging with typing indicators, messa
 import asyncio
 import websockets
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Callable, Optional, Dict, List
 from enum import Enum
 
@@ -943,7 +946,7 @@ class ChatClient:
             "type": MessageType.CHAT.value,
             "room": self.current_room,
             "text": text,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         })
 
     async def send_typing_indicator(self, is_typing: bool = True):
@@ -1254,7 +1257,7 @@ async def test_client_sends_message():
     """Test that client correctly sends messages"""
     mock_ws = MockWebSocket()
 
-    with patch('websockets.connect', return_value=mock_ws):
+    with patch('websockets.connect', new=AsyncMock(return_value=mock_ws)):
         client = SimpleClient("ws://test.local")
         await client.connect()
 
@@ -1273,7 +1276,7 @@ async def test_client_receives_message():
     mock_ws = MockWebSocket()
     mock_ws.add_response({"type": "response", "status": "ok"})
 
-    with patch('websockets.connect', return_value=mock_ws):
+    with patch('websockets.connect', new=AsyncMock(return_value=mock_ws)):
         client = SimpleClient("ws://test.local")
         await client.connect()
 
@@ -1292,7 +1295,7 @@ async def test_client_handles_multiple_messages():
     mock_ws.add_response({"seq": 2})
     mock_ws.add_response({"seq": 3})
 
-    with patch('websockets.connect', return_value=mock_ws):
+    with patch('websockets.connect', new=AsyncMock(return_value=mock_ws)):
         client = SimpleClient("ws://test.local")
         await client.connect()
 
