@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, SpanProcessor, Request Context, SDK
 
-Description: Build a custom OpenTelemetry SpanProcessor that adds request-scoped attributes to spans at end time for complete request context.
+Description: Build a custom OpenTelemetry SpanProcessor that adds request-scoped attributes to spans before they end for complete request context.
 
-Some attributes are not available when a span starts. The HTTP response status code, the number of database rows returned, or the total bytes processed are only known when the operation completes. While you can set these in your application code before calling `span.end()`, a custom SpanProcessor can centralize this logic and ensure every span gets the right attributes automatically at end time.
+Some attributes are not available when a span starts. The HTTP response status code, the number of database rows returned, or the total bytes processed are only known when the operation completes. While you can set these in your application code before calling `span.end()`, a custom SpanProcessor can centralize this logic and ensure every span gets the right attributes automatically before export.
 
 ## The Challenge with on_end
 
-In the OpenTelemetry SDK, the `on_end` callback receives a `ReadableSpan`, which is immutable. You cannot add attributes in `on_end`. The trick is to use a different approach: store the data you want to add, and inject it into the span before `end()` is called, or use the `on_start` callback to install hooks.
+In the OpenTelemetry SDK, the `on_end` callback receives a `ReadableSpan`, which is immutable. You cannot add attributes in `on_end`. The trick is to use a different approach: store the data you want to add, and inject it into the span before it becomes readable. In Python, the SDK's `_on_ending` hook is called during `end()` while the span is still writable.
 
 There is a better pattern: use a SpanProcessor that works with a context-based attribute store.
 
@@ -19,13 +19,12 @@ There is a better pattern: use a SpanProcessor that works with a context-based a
 ```python
 # attribute_store.py
 
-import threading
 from contextvars import ContextVar
-from typing import Dict, Any
+from typing import Any, Dict, Optional
 
 # Context variable for request-scoped attributes
 # Each async task or thread gets its own value
-_request_attributes: ContextVar[Dict[str, Any]] = ContextVar(
+_request_attributes: ContextVar[Optional[Dict[str, Any]]] = ContextVar(
     'request_attributes', default=None
 )
 
@@ -34,7 +33,7 @@ class RequestAttributeStore:
     """Thread-safe, context-aware store for request-scoped attributes.
 
     Attributes added here will be applied to spans by the
-    RequestAttributeProcessor at span end time.
+    RequestAttributeProcessor before the span ends.
     """
 
     @staticmethod
@@ -72,12 +71,12 @@ class RequestAttributeProcessor(SpanProcessor):
     """Applies request-scoped attributes to spans.
 
     This processor reads attributes from the RequestAttributeStore
-    at span start and installs a finalizer that reads additional
-    attributes that were set during the span's lifetime.
+    at span start and again while the span is ending, before it
+    becomes read-only.
 
-    Since on_end receives a read-only span, we use a wrapper
-    approach: store pending attributes and apply them via
-    middleware before the span ends.
+    Since on_end receives a read-only span, attributes must be
+    applied from on_start, _on_ending, or application middleware
+    before on_end runs.
     """
 
     def __init__(self, attribute_keys=None):
@@ -88,16 +87,23 @@ class RequestAttributeProcessor(SpanProcessor):
         """
         self._attribute_keys = set(attribute_keys) if attribute_keys else None
 
-    def on_start(self, span, parent_context=None):
-        # Apply any attributes already set for this request
+    def _apply_attributes(self, span):
         attrs = RequestAttributeStore.get_all()
         for key, value in attrs.items():
             if self._attribute_keys is None or key in self._attribute_keys:
                 span.set_attribute(key, value)
 
+    def on_start(self, span, parent_context=None):
+        # Apply any attributes already set for this request
+        self._apply_attributes(span)
+
+    def _on_ending(self, span):
+        # Called during span.end(), before on_end receives a ReadableSpan
+        self._apply_attributes(span)
+
     def on_end(self, span):
         # on_end is read-only, so we cannot modify the span here
-        # Attributes must be set before span.end() is called
+        # Attributes must be set before this callback runs
         pass
 
     def shutdown(self):
@@ -107,14 +113,14 @@ class RequestAttributeProcessor(SpanProcessor):
         return True
 ```
 
-## A Better Approach: Span Finalizer Middleware
+## Alternative Approach: Span Finalizer Middleware
 
-Since we cannot modify spans in `on_end`, the practical approach is middleware that adds attributes right before `span.end()`:
+Since we cannot modify spans in `on_end`, another practical approach is middleware that adds attributes right before `span.end()`:
 
 ```python
 # middleware.py
-from flask import Flask, request, g
-from opentelemetry import trace, context
+from flask import Flask, request
+from opentelemetry import trace
 from attribute_store import RequestAttributeStore
 
 app = Flask(__name__)
@@ -164,15 +170,17 @@ def get_order(order_id):
     return order
 ```
 
-## Java: End-Time Attribute Injection
+## Java: Start-Time Attribute Injection
 
-Java's SpanProcessor gives you a `ReadWriteSpan` in `onStart`, which you can use to set up attribute injection:
+Java's SpanProcessor gives you a `ReadWriteSpan` in `onStart`, which you can use to apply attributes that are already known when the span starts:
 
 ```java
+import io.opentelemetry.context.Context;
 import io.opentelemetry.sdk.trace.SpanProcessor;
 import io.opentelemetry.sdk.trace.ReadWriteSpan;
 import io.opentelemetry.sdk.trace.ReadableSpan;
-import io.opentelemetry.context.Context;
+import java.util.HashMap;
+import java.util.Map;
 
 public class RequestAttributeProcessor implements SpanProcessor {
 
@@ -197,6 +205,12 @@ public class RequestAttributeProcessor implements SpanProcessor {
                 span.setAttribute(entry.getKey(), (String) entry.getValue());
             } else if (entry.getValue() instanceof Long) {
                 span.setAttribute(entry.getKey(), (Long) entry.getValue());
+            } else if (entry.getValue() instanceof Integer) {
+                span.setAttribute(entry.getKey(), ((Integer) entry.getValue()).longValue());
+            } else if (entry.getValue() instanceof Double) {
+                span.setAttribute(entry.getKey(), (Double) entry.getValue());
+            } else if (entry.getValue() instanceof Boolean) {
+                span.setAttribute(entry.getKey(), (Boolean) entry.getValue());
             }
         }
     }
@@ -208,7 +222,7 @@ public class RequestAttributeProcessor implements SpanProcessor {
 
     @Override
     public void onEnd(ReadableSpan span) {
-        // Cannot modify span here - read only
+        // Cannot modify span here - ReadableSpan is read only
     }
 
     @Override
@@ -249,7 +263,7 @@ trace.set_tracer_provider(provider)
 def test_request_attributes_applied():
     from opentelemetry.sdk.trace import TracerProvider
     from opentelemetry.sdk.trace.export import SimpleSpanProcessor
-    from opentelemetry.sdk.trace.export.in_memory import InMemorySpanExporter
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
     exporter = InMemorySpanExporter()
     provider = TracerProvider()
@@ -265,9 +279,6 @@ def test_request_attributes_applied():
     with tracer.start_as_current_span("handle_request") as span:
         # Attributes set via the store during processing
         RequestAttributeStore.set("result.count", 42)
-        # Apply remaining attributes before span ends
-        for k, v in RequestAttributeStore.get_all().items():
-            span.set_attribute(k, v)
 
     RequestAttributeStore.clear()
 
