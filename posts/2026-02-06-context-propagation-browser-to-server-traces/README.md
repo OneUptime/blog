@@ -45,10 +45,14 @@ Start by installing the OpenTelemetry web packages. You need the core SDK, the f
 # Install browser-specific OpenTelemetry packages
 
 npm install @opentelemetry/sdk-trace-web \
+  @opentelemetry/sdk-trace-base \
   @opentelemetry/instrumentation-fetch \
   @opentelemetry/instrumentation-xml-http-request \
+  @opentelemetry/instrumentation \
   @opentelemetry/context-zone \
   @opentelemetry/exporter-trace-otlp-http \
+  @opentelemetry/api \
+  @opentelemetry/core \
   @opentelemetry/resources \
   @opentelemetry/semantic-conventions
 ```
@@ -64,7 +68,7 @@ import { FetchInstrumentation } from '@opentelemetry/instrumentation-fetch';
 import { XMLHttpRequestInstrumentation } from '@opentelemetry/instrumentation-xml-http-request';
 import { ZoneContextManager } from '@opentelemetry/context-zone';
 import { registerInstrumentations } from '@opentelemetry/instrumentation';
-import { Resource } from '@opentelemetry/resources';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 import { ATTR_SERVICE_NAME } from '@opentelemetry/semantic-conventions';
 import { W3CTraceContextPropagator } from '@opentelemetry/core';
 import { propagation } from '@opentelemetry/api';
@@ -74,20 +78,19 @@ import { propagation } from '@opentelemetry/api';
 propagation.setGlobalPropagator(new W3CTraceContextPropagator());
 
 const provider = new WebTracerProvider({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     [ATTR_SERVICE_NAME]: 'frontend-web',
   }),
+  // Export spans to your collector via OTLP/HTTP.
+  // The browser cannot use gRPC, so use the HTTP exporter.
+  spanProcessors: [
+    new BatchSpanProcessor(
+      new OTLPTraceExporter({
+        url: 'https://otel-collector.example.com/v1/traces',
+      })
+    ),
+  ],
 });
-
-// Export spans to your collector via OTLP/HTTP.
-// The browser cannot use gRPC, so use the HTTP exporter.
-provider.addSpanProcessor(
-  new BatchSpanProcessor(
-    new OTLPTraceExporter({
-      url: 'https://otel-collector.example.com/v1/traces',
-    })
-  )
-);
 
 // The ZoneContextManager uses Zone.js to maintain context
 // across async operations in the browser. Without it,
@@ -177,8 +180,8 @@ app.use(cors({
   origin: 'https://app.example.com',
 
   // Allow the traceparent and tracestate headers in requests.
-  // Without this, the browser will strip these headers
-  // from preflight requests.
+  // Without this, the CORS preflight will fail for requests
+  // that include these headers.
   allowedHeaders: [
     'Content-Type',
     'Authorization',
@@ -222,29 +225,26 @@ app.add_middleware(
 )
 ```
 
-If you forget to add `traceparent` to `allow_headers`, the browser will make the request without the header. Your backend will still work, but it will start a new trace instead of continuing the one from the browser. This is a silent failure that is easy to miss.
+If you forget to add `traceparent` to `allow_headers` for a cross-origin API, the browser's CORS preflight can fail and block the actual request. For same-origin requests, or cross-origin setups where the header is not injected, your backend will still work, but it will start a new trace instead of continuing the one from the browser.
 
-## Server-Timing Header for Response Correlation
+## Server-Timing Header for Response Metadata
 
-The `Server-Timing` header lets the backend send trace information back to the browser. This is useful because it allows the browser SDK to correlate the outgoing request span with the server-side span, even in cases where response headers are the only available channel.
+The `Server-Timing` header lets the backend send timing information back to the browser. This can be useful for adding server-side timing metadata to browser performance entries, but it is not how OpenTelemetry JavaScript connects browser spans to backend spans. The parent-child relationship is created by the backend extracting the incoming `traceparent` request header.
 
 ```javascript
-// Express middleware to add Server-Timing header with trace info
+// Express middleware to add Server-Timing metadata
 const { trace } = require('@opentelemetry/api');
 
 function serverTimingMiddleware(req, res, next) {
   // After the backend SDK creates a span for this request,
-  // read the span context and include it in Server-Timing.
+  // include timing metadata that browser performance APIs can read.
   const originalEnd = res.end;
   res.end = function(...args) {
     const span = trace.getActiveSpan();
     if (span) {
-      const spanContext = span.spanContext();
-      // The Server-Timing header format includes the trace ID
-      // and span ID so the browser can link its span to the server span
       res.setHeader(
         'Server-Timing',
-        `traceparent;desc="00-${spanContext.traceId}-${spanContext.spanId}-01"`
+        'app;dur=42;desc="Application processing"'
       );
     }
     originalEnd.apply(this, args);
@@ -253,7 +253,7 @@ function serverTimingMiddleware(req, res, next) {
 }
 ```
 
-The browser fetch instrumentation can read this header (if it is in `exposedHeaders`) and use it to create a more accurate parent-child relationship between the browser fetch span and the server request span.
+If frontend code needs to read this header through `fetch` or XHR APIs, keep `Server-Timing` in `exposedHeaders`. For trace correlation, focus on the request-side `traceparent` header and backend extraction.
 
 ## Creating Custom User Interaction Spans
 
@@ -273,33 +273,42 @@ class CheckoutFlow {
       try {
         // Step 1: Validate the cart
         await tracer.startActiveSpan('validate-cart', async (span) => {
-          await fetch('https://api.example.com/cart/validate', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(cart),
-          });
-          span.end();
+          try {
+            await fetch('https://api.example.com/cart/validate', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(cart),
+            });
+          } finally {
+            span.end();
+          }
         });
 
         // Step 2: Process payment
         await tracer.startActiveSpan('process-payment', async (span) => {
-          span.setAttribute('payment.method', cart.paymentMethod);
-          await fetch('https://api.example.com/payments', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(cart.payment),
-          });
-          span.end();
+          try {
+            span.setAttribute('payment.method', cart.paymentMethod);
+            await fetch('https://api.example.com/payments', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(cart.payment),
+            });
+          } finally {
+            span.end();
+          }
         });
 
         // Step 3: Confirm order
         await tracer.startActiveSpan('confirm-order', async (span) => {
-          await fetch('https://api.example.com/orders/confirm', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ cartId: cart.id }),
-          });
-          span.end();
+          try {
+            await fetch('https://api.example.com/orders/confirm', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ cartId: cart.id }),
+            });
+          } finally {
+            span.end();
+          }
         });
 
         flowSpan.setStatus({ code: 1 });
@@ -334,8 +343,8 @@ export function RouteTracer() {
 
   useEffect(() => {
     // Create a span for each route change.
-    // Any fetch calls triggered by components mounting
-    // on the new route will be children of this span.
+    // Fetch calls are only children of this span if they are started
+    // while this span is the active context.
     const span = tracer.startSpan('route-change', {
       attributes: {
         'http.route': location.pathname,
@@ -344,7 +353,7 @@ export function RouteTracer() {
     });
 
     // End the span after the next frame paint,
-    // giving data-fetching components time to start their requests
+    // giving the route transition enough time to paint
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         span.end();
