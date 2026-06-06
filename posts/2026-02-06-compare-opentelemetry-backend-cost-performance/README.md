@@ -55,29 +55,29 @@ Here is a rough cost comparison for self-hosted options processing 100,000 spans
 # Jaeger + Elasticsearch
 jaeger_elasticsearch:
   # 9 data nodes at i3.2xlarge (8 vCPU, 61GB RAM, 1.9TB NVMe)
-  compute: "$9,396/month"
+  compute: "$4,101/month"
   # EBS storage for replicas and overhead
   storage: "$2,400/month"
-  total: "$11,796/month"
+  total: "$6,501/month"
   storage_per_span: "~500 bytes"
   query_latency_p50: "200ms"
 
 # Jaeger + Cassandra
 jaeger_cassandra:
   # 6 nodes at i3.xlarge (4 vCPU, 30.5GB RAM, 950GB NVMe)
-  compute: "$3,132/month"
+  compute: "$1,367/month"
   storage: "$1,200/month"
-  total: "$4,332/month"
+  total: "$2,567/month"
   storage_per_span: "~350 bytes"
   query_latency_p50: "500ms"
 
 # ClickHouse
 clickhouse:
   # 3 nodes at m5.4xlarge (16 vCPU, 64GB RAM)
-  compute: "$3,312/month"
+  compute: "$1,682/month"
   # gp3 EBS with high compression ratio
   storage: "$600/month"
-  total: "$3,912/month"
+  total: "$2,282/month"
   storage_per_span: "~80 bytes"
   query_latency_p50: "150ms for aggregations"
 ```
@@ -141,13 +141,14 @@ The operational cost is where most comparisons fall apart. A team of two enginee
 Cost only tells half the story. You also need to benchmark query performance for your actual query patterns. Here are the queries you should test.
 
 ```bash
-# Benchmark script for trace backend query performance
+# Benchmark script for Jaeger-style trace query performance.
+# Replace the paths and query parameters for backends that do not expose Jaeger's HTTP API.
 # Run each query 100 times and record P50, P95, P99 latency
 
 # Query 1: Find traces by service name in the last hour
 # This is the most common query pattern
 # Target: < 500ms P95
-time curl -s "http://backend:port/api/traces?service=payment-service&lookback=1h&limit=20"
+time curl -s "http://backend:port/api/traces?service=payment-service&lookback=3600000&limit=20"
 
 # Query 2: Get a full trace by trace ID
 # Used when investigating a specific request
@@ -157,12 +158,12 @@ time curl -s "http://backend:port/api/traces/abc123def456"
 # Query 3: Find error traces with attribute filtering
 # Used during incident investigation
 # Target: < 2s P95
-time curl -s "http://backend:port/api/traces?service=api-gateway&tags=error%3Dtrue&lookback=6h"
+time curl -s "http://backend:port/api/traces?service=api-gateway&tags=%7B%22error%22%3A%22true%22%7D&lookback=21600000"
 
 # Query 4: Aggregate latency statistics
 # Used for dashboards and SLO tracking
 # Target: < 3s P95
-time curl -s "http://backend:port/api/metrics?operation=checkout&lookback=24h&step=5m"
+time curl -s "http://backend:port/api/metrics/latencies?service=checkout&quantile=95"
 ```
 
 Run these benchmarks at your expected data volume, not on an empty database. Backend performance often degrades as data accumulates, so load at least a week of realistic data before benchmarking.
@@ -196,6 +197,25 @@ During migration, run both backends in parallel using the multi-exporter pattern
 ```yaml
 # Migration collector config: dual-write to old and new backends
 # Run this for 2+ weeks to validate the new backend
+receivers:
+  otlp:
+    protocols:
+      grpc:
+      http:
+
+processors:
+  batch:
+
+exporters:
+  otlp/old-backend:
+    endpoint: old-backend:4317
+    tls:
+      insecure: true
+  otlp/new-backend:
+    endpoint: new-backend:4317
+    tls:
+      insecure: true
+
 service:
   pipelines:
     traces:
