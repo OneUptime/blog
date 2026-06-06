@@ -62,7 +62,7 @@ require("./tracing");
 
 const Bugsnag = require("@bugsnag/js");
 const BugsnagPluginExpress = require("@bugsnag/plugin-express");
-const { trace, context } = require("@opentelemetry/api");
+const { trace, context, SpanStatusCode } = require("@opentelemetry/api");
 const express = require("express");
 
 // Initialize Bugsnag
@@ -100,17 +100,16 @@ Build a middleware that records errors in both systems with shared context.
 
 ```javascript
 // error-handler.js - Record errors in both Bugsnag and OpenTelemetry
-const Bugsnag = require("@bugsnag/js");
-const { trace } = require("@opentelemetry/api");
+const { trace, context, SpanStatusCode } = require("@opentelemetry/api");
 
 function unifiedErrorHandler(err, req, res, next) {
-  const activeSpan = trace.getSpan(require("@opentelemetry/api").context.active());
+  const activeSpan = trace.getSpan(context.active());
 
   if (activeSpan) {
     // Record the exception as an OpenTelemetry span event
     activeSpan.recordException(err);
     activeSpan.setStatus({
-      code: 2, // ERROR
+      code: SpanStatusCode.ERROR,
       message: err.message,
     });
 
@@ -120,17 +119,17 @@ function unifiedErrorHandler(err, req, res, next) {
     activeSpan.setAttribute("bugsnag.notified", true);
   }
 
-  // Bugsnag will capture this through its error handler middleware
-  // but we can add extra context here
-  Bugsnag.notify(err, function (event) {
-    event.addMetadata("request", {
+  // Add request-specific metadata before passing the error to Bugsnag's
+  // Express error handler middleware.
+  if (req.bugsnag) {
+    req.bugsnag.addMetadata("request", {
       method: req.method,
       url: req.originalUrl,
       params: req.params,
     });
-  });
+  }
 
-  res.status(500).json({ error: "Something went wrong" });
+  next(err);
 }
 
 module.exports = unifiedErrorHandler;
@@ -147,10 +146,19 @@ app.get("/api/orders/:id", async (req, res, next) => {
 
   try {
     const order = await tracer.startActiveSpan("fetch-order", async (span) => {
-      span.setAttribute("order.id", req.params.id);
-      const result = await database.getOrder(req.params.id);
-      span.end();
-      return result;
+      try {
+        span.setAttribute("order.id", req.params.id);
+        return await database.getOrder(req.params.id);
+      } catch (err) {
+        span.recordException(err);
+        span.setStatus({
+          code: SpanStatusCode.ERROR,
+          message: err.message,
+        });
+        throw err;
+      } finally {
+        span.end();
+      }
     });
 
     res.json(order);
@@ -159,9 +167,15 @@ app.get("/api/orders/:id", async (req, res, next) => {
   }
 });
 
-// Bugsnag error handler must be the last middleware
+// Record the error on the active OpenTelemetry span first.
 app.use(unifiedErrorHandler);
+
+// Bugsnag's error handler should run before your final Express error handler.
 app.use(bugsnagMiddleware.errorHandler);
+
+app.use((err, req, res, next) => {
+  res.status(500).json({ error: "Something went wrong" });
+});
 
 app.listen(3000);
 ```
