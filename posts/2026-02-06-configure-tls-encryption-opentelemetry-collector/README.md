@@ -232,7 +232,7 @@ exporters:
       key_file: /etc/certs/client.key
 
   # Prometheus remote write with TLS
-  prometheusremotewrite:
+  prometheus_remote_write:
     endpoint: https://prometheus.example.com/api/v1/write
     tls:
       ca_file: /etc/certs/ca.crt
@@ -255,7 +255,7 @@ service:
 
     metrics:
       receivers: [otlp]
-      exporters: [prometheusremotewrite]
+      exporters: [prometheus_remote_write]
 ```
 
 ## Implementing Mutual TLS (mTLS)
@@ -275,27 +275,9 @@ receivers:
           cert_file: /etc/certs/server.crt
           key_file: /etc/certs/server.key
 
-          # CA certificate for client verification
+          # CA certificate for client verification.
+          # Setting client_ca_file requires and verifies client certificates.
           client_ca_file: /etc/certs/ca.crt
-
-          # Require client certificates (mTLS)
-          # Options: NoClientCert, RequestClientCert, RequireAnyClientCert,
-          #          VerifyClientCertIfGiven, RequireAndVerifyClientCert
-          client_auth_type: RequireAndVerifyClientCert
-
-processors:
-  # Extract client certificate information
-  attributes:
-    actions:
-      # Add client certificate subject as attribute
-      - key: tls.client.subject
-        from_context: tls.client.subject
-        action: insert
-
-      # Add client certificate issuer
-      - key: tls.client.issuer
-        from_context: tls.client.issuer
-        action: insert
 
 exporters:
   debug:
@@ -305,11 +287,10 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [attributes]
       exporters: [debug]
 ```
 
-Configure applications to send data with client certificates:
+Configure client collectors or SDKs that support equivalent TLS settings to send data with client certificates:
 
 ```yaml
 # application-otel-config.yaml
@@ -370,14 +351,17 @@ Create a script to rotate certificates automatically:
 CERT_DIR="/etc/certs"
 BACKUP_DIR="/etc/certs/backup"
 NEW_CERT_DIR="/tmp/new-certs"
+SCRIPT_DIR="$(pwd)"
 
 # Create backup of current certificates
 mkdir -p ${BACKUP_DIR}
 cp ${CERT_DIR}/*.crt ${CERT_DIR}/*.key ${BACKUP_DIR}/
 
 # Generate new certificates (using previously defined scripts)
-./generate-server-cert.sh otel-collector
-./generate-client-cert.sh otel-client
+mkdir -p ${NEW_CERT_DIR}
+cd ${NEW_CERT_DIR}
+${SCRIPT_DIR}/generate-server-cert.sh otel-collector
+${SCRIPT_DIR}/generate-client-cert.sh otel-client
 
 # Copy new certificates to certificate directory
 cp ${NEW_CERT_DIR}/*.crt ${NEW_CERT_DIR}/*.key ${CERT_DIR}/
@@ -561,7 +545,6 @@ data:
               cert_file: /etc/certs/server/tls.crt
               key_file: /etc/certs/server/tls.key
               client_ca_file: /etc/certs/ca/ca.crt
-              client_auth_type: RequireAndVerifyClientCert
               reload_interval: 1h
 
           http:
