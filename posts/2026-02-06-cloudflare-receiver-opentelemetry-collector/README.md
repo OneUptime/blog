@@ -25,7 +25,7 @@ Instead of sending these logs to Cloudflare's partner destinations or S3 buckets
 - Supports authentication via secret tokens
 - Parses Cloudflare's log format into OpenTelemetry log records
 - Extracts structured fields from Cloudflare logs as attributes
-- Works with all Cloudflare log datasets (HTTP requests, firewall events, spectrum events, etc.)
+- Can support Cloudflare datasets beyond HTTP requests when you configure the appropriate `timestamp_field` and fields for that dataset
 
 ---
 
@@ -53,7 +53,7 @@ Cloudflare continuously generates logs at the edge and uses Logpush to send batc
 Before configuring the Cloudflare receiver, ensure you have:
 
 1. **An OpenTelemetry Collector instance** running (version 0.80.0 or later recommended)
-2. **Cloudflare Logpush enabled** on your Cloudflare account (available on Pro, Business, and Enterprise plans)
+2. **Cloudflare Logpush enabled** on your Cloudflare account (available for datasets included in your Cloudflare plan)
 3. **Network access** from Cloudflare to your Collector endpoint (publicly accessible or via Cloudflare Tunnel)
 4. **A secret token** for authenticating Cloudflare requests
 
@@ -61,7 +61,7 @@ Before configuring the Cloudflare receiver, ensure you have:
 
 ## Basic Configuration
 
-The Cloudflare receiver configuration requires defining an HTTP endpoint and authentication method. Here's a minimal configuration:
+The Cloudflare receiver configuration requires defining a logs endpoint and authentication method. Cloudflare requires HTTPS with a trusted certificate for HTTP Logpush destinations, so terminate TLS at the receiver or at a reverse proxy/load balancer in front of it. Here's a minimal receiver configuration:
 
 ```yaml
 # RECEIVERS: Define how telemetry enters the Collector
@@ -69,11 +69,12 @@ The Cloudflare receiver configuration requires defining an HTTP endpoint and aut
 receivers:
   # Cloudflare receiver listens for HTTP logs from Cloudflare Logpush
   cloudflare:
-    # HTTP endpoint configuration
-    endpoint: 0.0.0.0:8080
+    logs:
+      # HTTP endpoint configuration
+      endpoint: 0.0.0.0:8080
 
-    # Secret token for authentication (Cloudflare includes this in headers)
-    secret: ${CLOUDFLARE_SECRET}
+      # Secret token for authentication (Cloudflare includes this in headers)
+      secret: ${CLOUDFLARE_SECRET}
 
 # EXPORTERS: Define where logs are sent
 exporters:
@@ -95,7 +96,7 @@ service:
 **Configuration breakdown:**
 
 - `endpoint`: The address and port where the receiver listens for incoming Cloudflare logs. Use `0.0.0.0` to listen on all interfaces.
-- `secret`: A shared secret that Cloudflare includes in the `X-Auth-Token` header. The receiver validates this token to ensure requests are authentic.
+- `secret`: A shared secret that Cloudflare includes in the `X-CF-Secret` header. The receiver validates this token to ensure requests are authentic.
 
 ---
 
@@ -103,7 +104,7 @@ service:
 
 The Cloudflare receiver uses a simple token-based authentication mechanism to verify that incoming requests originate from Cloudflare Logpush.
 
-When you configure Cloudflare Logpush, you provide a secret token. Cloudflare includes this token in the `X-Auth-Token` header of every HTTP request. The receiver compares this header value against the configured `secret`. If they don't match, the request is rejected with a 401 Unauthorized response.
+When you configure Cloudflare Logpush, you provide a secret token. Cloudflare includes this token in the `X-CF-Secret` header of every HTTP request when you add `header_X-CF-Secret` to the destination URL. The receiver compares this header value against the configured `secret`. If they don't match, the request is rejected.
 
 **Best practices for security:**
 
@@ -116,8 +117,8 @@ When you configure Cloudflare Logpush, you provide a secret token. Cloudflare in
 Example of generating a secure token:
 
 ```bash
-# Generate a 32-character random token
-openssl rand -base64 32
+# Generate a URL-safe 64-character random token
+openssl rand -hex 32
 ```
 
 ---
@@ -130,8 +131,16 @@ In production environments, you'll want to add processors for batching, memory m
 receivers:
   # Cloudflare receiver with authentication
   cloudflare:
-    endpoint: 0.0.0.0:8080
-    secret: ${CLOUDFLARE_SECRET}
+    logs:
+      endpoint: 0.0.0.0:8080
+      secret: ${CLOUDFLARE_SECRET}
+      timestamp_field: EdgeStartTimestamp
+      timestamp_format: rfc3339
+      attributes:
+        ClientIP: http.client_ip
+        ClientCountry: geo.country_iso_code
+        ClientRequestMethod: http.request.method
+        EdgeResponseStatus: http.response.status_code
 
 processors:
   # Protect Collector from memory exhaustion
@@ -154,17 +163,6 @@ processors:
       - key: deployment.environment
         value: production
         action: upsert
-
-  # Transform specific attributes for better querying
-  attributes:
-    actions:
-      # Rename Cloudflare-specific fields to standard semantic conventions
-      - key: ClientIP
-        action: insert
-        from_attribute: http.client_ip
-      - key: ClientCountry
-        action: insert
-        from_attribute: geo.country_iso_code
 
 exporters:
   # Export to OneUptime with retry and timeout configuration
@@ -194,7 +192,7 @@ service:
   pipelines:
     logs:
       receivers: [cloudflare]
-      processors: [memory_limiter, resource, attributes, batch]
+      processors: [memory_limiter, resource, batch]
       exporters: [otlphttp]
 ```
 
@@ -202,7 +200,7 @@ service:
 
 1. **Memory limiter** prevents the Collector from consuming too much memory under high load
 2. **Resource processor** adds identifying attributes to all logs (service name, environment)
-3. **Attributes processor** transforms Cloudflare-specific field names to standard semantic conventions
+3. **Receiver attributes mapping** copies selected Cloudflare fields to query-friendly attribute names
 4. **Batch processor** groups logs into batches to reduce network overhead and improve throughput
 
 ---
@@ -215,24 +213,40 @@ After configuring your Collector, you need to set up Cloudflare Logpush to send 
 
 ```bash
 # Create a Logpush job that sends HTTP request logs to your Collector
+DESTINATION_CONF="https://your-collector-endpoint.com:8080?header_X-CF-Secret=${CLOUDFLARE_SECRET}"
+
 curl -X POST "https://api.cloudflare.com/client/v4/zones/${ZONE_ID}/logpush/jobs" \
-  -H "X-Auth-Email: ${CLOUDFLARE_EMAIL}" \
-  -H "X-Auth-Key: ${CLOUDFLARE_API_KEY}" \
+  -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
   -H "Content-Type: application/json" \
-  -d '{
-    "name": "otel-collector-http-logs",
-    "destination_conf": "https://your-collector-endpoint.com:8080?header_X-Auth-Token=${CLOUDFLARE_SECRET}",
-    "dataset": "http_requests",
-    "logpull_options": "fields=ClientIP,ClientRequestHost,ClientRequestMethod,ClientRequestURI,EdgeStartTimestamp,EdgeEndTimestamp,EdgeResponseStatus,EdgeResponseBytes,RayID",
-    "enabled": true
-  }'
+  -d @- <<EOF
+{
+  "name": "otel-collector-http-logs",
+  "destination_conf": "${DESTINATION_CONF}",
+  "dataset": "http_requests",
+  "output_options": {
+    "field_names": [
+      "ClientIP",
+      "ClientRequestHost",
+      "ClientRequestMethod",
+      "ClientRequestURI",
+      "EdgeStartTimestamp",
+      "EdgeEndTimestamp",
+      "EdgeResponseStatus",
+      "EdgeResponseBytes",
+      "RayID"
+    ],
+    "timestamp_format": "rfc3339"
+  },
+  "enabled": true
+}
+EOF
 ```
 
 **Configuration parameters:**
 
-- `destination_conf`: Your Collector endpoint URL with the secret token in the query string
+- `destination_conf`: Your Collector endpoint URL with a `header_X-CF-Secret` parameter that Cloudflare converts into an HTTP request header
 - `dataset`: The type of logs to push (http_requests, firewall_events, spectrum_events, etc.)
-- `logpull_options`: Comma-separated list of fields to include in the logs
+- `output_options`: The fields and timestamp format to include in the logs
 - `enabled`: Set to true to start sending logs immediately
 
 **Via Cloudflare Dashboard:**
@@ -249,7 +263,7 @@ curl -X POST "https://api.cloudflare.com/client/v4/zones/${ZONE_ID}/logpush/jobs
 
 ## Data Flow and Log Structure
 
-When Cloudflare sends logs to your receiver, each HTTP request contains a JSON array of log records. The receiver parses each record and converts it into an OpenTelemetry log record.
+When Cloudflare sends logs to your receiver, each HTTP request contains newline-delimited JSON (NDJSON) log records. The receiver parses each record and converts it into an OpenTelemetry log record.
 
 **Example Cloudflare log entry:**
 
@@ -259,8 +273,8 @@ When Cloudflare sends logs to your receiver, each HTTP request contains a JSON a
   "ClientRequestHost": "example.com",
   "ClientRequestMethod": "GET",
   "ClientRequestURI": "/api/users",
-  "EdgeStartTimestamp": 1675270800000000000,
-  "EdgeEndTimestamp": 1675270800123000000,
+  "EdgeStartTimestamp": "2023-02-01T15:40:00Z",
+  "EdgeEndTimestamp": "2023-02-01T15:40:00.123Z",
   "EdgeResponseStatus": 200,
   "EdgeResponseBytes": 1234,
   "RayID": "7d1f2a3b4c5d6e7f"
@@ -269,13 +283,13 @@ When Cloudflare sends logs to your receiver, each HTTP request contains a JSON a
 
 **Converted to OpenTelemetry log record:**
 
-The receiver maps these fields to OpenTelemetry log attributes:
+The receiver can map these fields to OpenTelemetry log attributes using its `attributes` configuration:
 
-- `ClientIP` becomes `http.client_ip`
-- `ClientRequestMethod` becomes `http.request.method`
-- `EdgeResponseStatus` becomes `http.response.status_code`
+- `ClientIP` can become `http.client_ip`
+- `ClientRequestMethod` can become `http.request.method`
+- `EdgeResponseStatus` can become `http.response.status_code`
 - `EdgeStartTimestamp` becomes the log record's timestamp
-- All other fields are preserved as attributes
+- When the `attributes` map is empty, supported field values are ingested as attributes using their original Cloudflare field names
 
 This conversion allows you to query and analyze Cloudflare logs using standard OpenTelemetry tooling and semantic conventions.
 
@@ -287,17 +301,20 @@ To ensure your Cloudflare receiver is working correctly, monitor these key indic
 
 **Collector internal metrics:**
 
-The Collector exposes metrics about the receiver's operation. Enable the Prometheus exporter to scrape these metrics:
+The Collector exposes metrics about the receiver's operation. Configure the Collector's internal metrics endpoint and scrape it with Prometheus:
 
 ```yaml
 receivers:
   cloudflare:
-    endpoint: 0.0.0.0:8080
-    secret: ${CLOUDFLARE_SECRET}
+    logs:
+      endpoint: 0.0.0.0:8080
+      secret: ${CLOUDFLARE_SECRET}
 
 exporters:
-  prometheus:
-    endpoint: 0.0.0.0:8889
+  otlphttp:
+    endpoint: https://oneuptime.com/otlp
+    headers:
+      x-oneuptime-token: ${ONEUPTIME_TOKEN}
 
 service:
   telemetry:
@@ -308,11 +325,9 @@ service:
     logs:
       receivers: [cloudflare]
       exporters: [otlphttp]
-
-    metrics:
-      receivers: [prometheus]
-      exporters: [prometheus]
 ```
+
+Then configure Prometheus to scrape the Collector's internal metrics endpoint, such as `http://localhost:8888/metrics`.
 
 **Key metrics to watch:**
 
@@ -324,7 +339,7 @@ service:
 
 1. **Authentication failures (401 errors):**
    - Verify the secret matches in both Cloudflare Logpush configuration and Collector configuration
-   - Check that Cloudflare is sending the `X-Auth-Token` header
+   - Check that Cloudflare is sending the `X-CF-Secret` header
 
 2. **Connection timeouts:**
    - Ensure your Collector endpoint is publicly accessible or accessible via Cloudflare Tunnel
@@ -358,34 +373,24 @@ service:
 
 ## Multi-Dataset Configuration
 
-You can receive multiple types of Cloudflare logs by creating separate Logpush jobs that all point to the same receiver endpoint. The receiver will process all datasets identically.
-
-If you want to route different datasets to different backends, use the filter processor:
+You can receive multiple types of Cloudflare logs by creating separate Logpush jobs. If you want to route different datasets to different backends, expose separate receiver instances and point each Logpush job at the appropriate endpoint:
 
 ```yaml
 receivers:
-  cloudflare:
-    endpoint: 0.0.0.0:8080
-    secret: ${CLOUDFLARE_SECRET}
+  cloudflare/http:
+    logs:
+      endpoint: 0.0.0.0:8080
+      secret: ${CLOUDFLARE_SECRET}
+      timestamp_field: EdgeStartTimestamp
+
+  cloudflare/firewall:
+    logs:
+      endpoint: 0.0.0.0:8081
+      secret: ${CLOUDFLARE_SECRET}
+      timestamp_field: Datetime
 
 processors:
-  # Filter for HTTP request logs
-  filter/http:
-    logs:
-      include:
-        match_type: strict
-        resource_attributes:
-          - key: cloudflare.dataset
-            value: http_requests
-
-  # Filter for firewall event logs
-  filter/firewall:
-    logs:
-      include:
-        match_type: strict
-        resource_attributes:
-          - key: cloudflare.dataset
-            value: firewall_events
+  batch:
 
 exporters:
   otlphttp/security:
@@ -402,18 +407,18 @@ service:
   pipelines:
     # Route HTTP logs to analytics backend
     logs/http:
-      receivers: [cloudflare]
-      processors: [filter/http, batch]
+      receivers: [cloudflare/http]
+      processors: [batch]
       exporters: [otlphttp/analytics]
 
     # Route firewall logs to security backend
     logs/firewall:
-      receivers: [cloudflare]
-      processors: [filter/firewall, batch]
+      receivers: [cloudflare/firewall]
+      processors: [batch]
       exporters: [otlphttp/security]
 ```
 
-This configuration demonstrates how to use filtering to route different log types to specialized backends based on your requirements.
+This configuration demonstrates how to route different log types to specialized backends based on your requirements.
 
 ---
 
@@ -422,7 +427,7 @@ This configuration demonstrates how to use filtering to route different log type
 When running the Cloudflare receiver in production, consider these performance factors:
 
 **Batching:**
-Cloudflare sends logs in batches every few seconds. Adjust your batch processor timeout to match Cloudflare's cadence:
+Cloudflare sends logs in batches. Adjust your batch processor timeout based on the upload pattern you observe for your Logpush job:
 
 ```yaml
 processors:
@@ -432,7 +437,7 @@ processors:
 ```
 
 **Scaling:**
-If you're receiving high volumes of logs, run multiple Collector instances behind a load balancer. Cloudflare Logpush supports sending to multiple endpoints for redundancy.
+If you're receiving high volumes of logs, run multiple Collector instances behind a load balancer and point the Logpush job at the load-balanced HTTPS endpoint.
 
 **Memory management:**
 Cloudflare logs can be large. Set appropriate memory limits to prevent OOM kills:
@@ -446,7 +451,7 @@ processors:
 ```
 
 **Network bandwidth:**
-Monitor egress bandwidth from your Collector. If costs are a concern, use sampling or filtering processors to reduce data volume before export.
+Monitor egress bandwidth from your Collector. If costs are a concern, use filtering or field selection to reduce data volume before export.
 
 ---
 
