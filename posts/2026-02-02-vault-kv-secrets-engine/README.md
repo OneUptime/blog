@@ -427,7 +427,7 @@ curl -X POST \
     "$VAULT_ADDR/v1/secret/undelete/myapp/database"
 
 # Permanently destroy versions
-curl -X POST \
+curl -X PUT \
     -H "X-Vault-Token: $VAULT_TOKEN" \
     -H "Content-Type: application/json" \
     -d '{"versions": [1]}' \
@@ -1190,6 +1190,7 @@ def rotate_database_password(client, path):
     Returns the new password for updating the database.
     """
     import secrets
+    from datetime import datetime
 
     # Generate new password
     new_password = secrets.token_urlsafe(32)
