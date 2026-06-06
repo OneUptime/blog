@@ -274,9 +274,9 @@ resource "aws_instance" "web" {
     encrypted   = true
   }
   
-  user_data = base64encode(templatefile("${path.module}/scripts/user_data.sh", {
+  user_data = templatefile("${path.module}/scripts/user_data.sh", {
     environment = var.environment
-  }))
+  })
   
   tags = {
     Name = "${var.project_name}-web-${count.index + 1}"
