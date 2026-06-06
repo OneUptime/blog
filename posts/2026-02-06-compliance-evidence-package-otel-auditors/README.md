@@ -53,7 +53,7 @@ Auditors want proof that your monitoring is active and comprehensive. Pull alert
 # Pulls alert rules and firing history from Prometheus for audit evidence
 import requests
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 PROMETHEUS_URL = "http://prometheus.monitoring.svc:9090"
 EVIDENCE_DIR = "audit-evidence-2026-Q1/monitoring"
@@ -85,14 +85,14 @@ def export_alert_rules():
 
 def export_alert_history(days=90):
     """Export recent alert firings as evidence of active detection."""
-    end = datetime.utcnow()
+    end = datetime.now(timezone.utc)
     start = end - timedelta(days=days)
 
-    # Query ALERTS_FOR_STATE metric to get alert firing history
+    # Query the ALERTS metric to get alert firing history
     resp = requests.get(f"{PROMETHEUS_URL}/api/v1/query_range", params={
         "query": 'ALERTS{alertstate="firing"}',
-        "start": start.isoformat() + "Z",
-        "end": end.isoformat() + "Z",
+        "start": start.isoformat(),
+        "end": end.isoformat(),
         "step": "1h",
     })
 
@@ -114,6 +114,7 @@ Traces from OpenTelemetry can demonstrate incident detection timelines. This scr
 # Exports trace data from Tempo for documented incidents
 import requests
 import json
+from datetime import datetime
 
 TEMPO_URL = "http://tempo.monitoring.svc:3200"
 EVIDENCE_DIR = "audit-evidence-2026-Q1/incident-response"
@@ -137,11 +138,14 @@ INCIDENTS = [
 ]
 
 for incident in INCIDENTS:
+    start = datetime.fromisoformat(incident["start"].replace("Z", "+00:00"))
+    end = datetime.fromisoformat(incident["end"].replace("Z", "+00:00"))
+
     # Search for traces matching the incident window and service
     resp = requests.get(f"{TEMPO_URL}/api/search", params={
-        "tags": f'service.name="{incident["service"]}"',
-        "start": incident["start"],
-        "end": incident["end"],
+        "tags": f'service.name={incident["service"]}',
+        "start": int(start.timestamp()),
+        "end": int(end.timestamp()),
         "limit": 100,
     })
 
@@ -202,7 +206,8 @@ Prove that your telemetry data follows retention policies by checking actual dat
 # verify_retention.py
 # Verifies that telemetry backends enforce configured retention periods
 import requests
-from datetime import datetime, timedelta
+import json
+from datetime import datetime, timezone
 
 EVIDENCE_DIR = "audit-evidence-2026-Q1/retention"
 EXPECTED_RETENTION_DAYS = 90
@@ -210,12 +215,12 @@ EXPECTED_RETENTION_DAYS = 90
 def check_prometheus_retention():
     """Verify Prometheus is not retaining data beyond the policy."""
     resp = requests.get("http://prometheus.monitoring.svc:9090/api/v1/query", params={
-        "query": "prometheus_tsdb_lowest_timestamp"
+        "query": "prometheus_tsdb_lowest_timestamp_seconds"
     })
     result = resp.json()
-    oldest_ts = float(result["data"]["result"][0]["value"][1]) / 1000
-    oldest_date = datetime.fromtimestamp(oldest_ts)
-    retention_days = (datetime.utcnow() - oldest_date).days
+    oldest_ts = float(result["data"]["result"][0]["value"][1])
+    oldest_date = datetime.fromtimestamp(oldest_ts, tz=timezone.utc)
+    retention_days = (datetime.now(timezone.utc) - oldest_date).days
 
     return {
         "backend": "Prometheus",
@@ -226,6 +231,9 @@ def check_prometheus_retention():
     }
 
 evidence = check_prometheus_retention()
+with open(f"{EVIDENCE_DIR}/prometheus-retention.json", "w") as f:
+    json.dump(evidence, f, indent=2)
+
 print(f"Prometheus retention: {evidence['actual_retention_days']} days "
       f"(policy: {evidence['policy_retention_days']} days) "
       f"- {'COMPLIANT' if evidence['compliant'] else 'NON-COMPLIANT'}")
