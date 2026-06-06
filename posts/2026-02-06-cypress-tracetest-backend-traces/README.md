@@ -24,16 +24,33 @@ First, get Tracetest running alongside your application:
 ```yaml
 # docker-compose.yaml
 
-version: '3.8'
 services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: tracetest
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d tracetest"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   tracetest:
-    image: kubeshop/tracetest:latest
+    image: kubeshop/tracetest:v1.7.1
     ports:
       - "11633:11633"
     volumes:
       - ./tracetest-config.yaml:/app/config.yaml
+    command: ["--config", "/app/config.yaml"]
     environment:
       TRACETEST_DEV: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   otel-collector:
     image: otel/opentelemetry-collector-contrib:latest
@@ -45,21 +62,64 @@ services:
     command: ["--config", "/etc/otel/config.yaml"]
 ```
 
-Configure Tracetest to read traces from your collector:
+Configure Tracetest to use Postgres:
 
 ```yaml
 # tracetest-config.yaml
 postgres:
   host: postgres
   port: 5432
+  user: postgres
+  password: postgres
   dbname: tracetest
+  params: sslmode=disable
+```
 
-telemetry:
-  exporters:
-    collector:
-      exporter:
-        collector:
-          endpoint: otel-collector:4317
+Then configure the OpenTelemetry Collector to forward traces to Tracetest's OTLP ingestion endpoint:
+
+```yaml
+# otel-collector.yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 100ms
+
+exporters:
+  otlp/tracetest:
+    endpoint: http://tracetest:4317
+    tls:
+      insecure: true
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp/tracetest]
+```
+
+Tell Tracetest that it should use OTLP ingestion as its default trace data store:
+
+```yaml
+# tracetest-datastore.yaml
+type: DataStore
+spec:
+  name: OpenTelemetry Collector pipeline
+  type: otlp
+  default: true
+```
+
+Apply the datastore definition before applying tests:
+
+```bash
+tracetest apply datastore --file tracetest-datastore.yaml
 ```
 
 ## Writing a Cypress Custom Command for Tracetest
@@ -69,49 +129,59 @@ Create a custom Cypress command that triggers a Tracetest run and waits for the 
 ```javascript
 // cypress/support/commands.js
 
-Cypress.Commands.add('verifyTrace', (testId, options = {}) => {
-  const tracetestUrl = Cypress.env('TRACETEST_URL') || 'http://localhost:11633';
-  const timeout = options.timeout || 30000;
+Cypress.Commands.add('verifyTrace', (testId, traceId, options = {}) => {
+  return cy.env(['TRACETEST_URL']).then(({ TRACETEST_URL }) => {
+    const tracetestUrl = TRACETEST_URL || 'http://localhost:11633';
+    const timeout = options.timeout || 30000;
 
-  // Trigger a test run in Tracetest
-  cy.request({
-    method: 'POST',
-    url: `${tracetestUrl}/api/tests/${testId}/run`,
-    body: {},
-    timeout: 10000,
-  }).then((response) => {
-    const runId = response.body.id;
+    // Trigger a test run in Tracetest
+    return cy.request({
+      method: 'POST',
+      url: `${tracetestUrl}/api/tests/${testId}/run`,
+      body: {
+        variables: [
+          { key: 'TRACE_ID', value: traceId, type: 'raw' },
+        ],
+      },
+      timeout: 10000,
+    }).then((response) => {
+      const runId = response.body.id;
 
-    // Poll for the result
-    const pollForResult = (attempts = 0) => {
-      if (attempts > timeout / 1000) {
-        throw new Error(`Tracetest run ${runId} did not complete within ${timeout}ms`);
-      }
-
-      return cy.request({
-        method: 'GET',
-        url: `${tracetestUrl}/api/tests/${testId}/run/${runId}`,
-        failOnStatusCode: false,
-      }).then((res) => {
-        if (res.body.state === 'FINISHED') {
-          // Check if all assertions passed
-          const allPassed = res.body.result.allPassed;
-          if (!allPassed) {
-            const failures = res.body.result.results
-              .filter(r => !r.passed)
-              .map(r => `${r.selector}: ${r.assertion}`)
-              .join('\n');
-            throw new Error(`Trace assertions failed:\n${failures}`);
-          }
-          return res.body;
+      // Poll for the result
+      const pollForResult = (attempts = 0) => {
+        if (attempts > timeout / 1000) {
+          throw new Error(`Tracetest run ${runId} did not complete within ${timeout}ms`);
         }
-        // Not finished yet, wait and retry
-        cy.wait(1000);
-        return pollForResult(attempts + 1);
-      });
-    };
 
-    return pollForResult();
+        return cy.request({
+          method: 'GET',
+          url: `${tracetestUrl}/api/tests/${testId}/run/${runId}`,
+          failOnStatusCode: false,
+        }).then((res) => {
+          if (res.body.state === 'FINISHED') {
+            // Check if all assertions passed
+            const allPassed = res.body.result.allPassed;
+            if (!allPassed) {
+              const failures = res.body.result.results.flatMap((specResult) =>
+                specResult.results
+                  .filter(assertionResult => !assertionResult.allPassed)
+                  .map(assertionResult =>
+                    `${specResult.selector.query}: ${assertionResult.assertion.attribute} ${assertionResult.assertion.comparator} ${assertionResult.assertion.expected}`
+                  )
+                )
+                .join('\n');
+              throw new Error(`Trace assertions failed:\n${failures}`);
+            }
+            return res.body;
+          }
+          // Not finished yet, wait and retry
+          cy.wait(1000);
+          return pollForResult(attempts + 1);
+        });
+      };
+
+      return pollForResult();
+    });
   });
 });
 ```
@@ -128,6 +198,8 @@ spec:
   name: Order Placement Backend Validation
   trigger:
     type: traceid
+    traceid:
+      id: ${var:TRACE_ID}
   specs:
     # Verify the order service created an order
     - selector: span[name="POST /api/orders" service.name="order-service"]
@@ -161,10 +233,18 @@ tracetest apply test --file tracetest/order-placement.yaml
 
 ## Writing the Cypress Test
 
-Now write a Cypress test that exercises the UI and then validates the backend trace:
+Now write a Cypress test that exercises the UI and then validates the backend trace. This assumes your API exposes the trace ID in either the W3C `traceparent` response header or an `x-trace-id` response header:
 
 ```javascript
 // cypress/e2e/checkout.cy.js
+
+const getTraceIdFromResponse = (response) => {
+  const traceparent = response.headers.traceparent;
+  const traceId = response.headers['x-trace-id'] || traceparent?.split('-')[1];
+
+  expect(traceId, 'trace id').to.match(/^[a-f0-9]{32}$/);
+  return traceId;
+};
 
 describe('Checkout Flow', () => {
   beforeEach(() => {
@@ -196,6 +276,8 @@ describe('Checkout Flow', () => {
     cy.get('#card-expiry').type('12/27');
     cy.get('#card-cvv').type('123');
 
+    cy.intercept('POST', '/api/orders').as('createOrder');
+
     // Step 6: Submit the order
     cy.get('[data-cy="place-order"]').click();
 
@@ -205,7 +287,10 @@ describe('Checkout Flow', () => {
 
     // Step 8: Verify backend traces via Tracetest
     // This checks that the payment was processed, DB was written to, etc.
-    cy.verifyTrace('order-placement-test', { timeout: 30000 });
+    cy.wait('@createOrder').then(({ response }) => {
+      const traceId = getTraceIdFromResponse(response);
+      cy.verifyTrace('order-placement-test', traceId, { timeout: 30000 });
+    });
   });
 
   it('handles payment failure gracefully', () => {
@@ -219,13 +304,18 @@ describe('Checkout Flow', () => {
     cy.get('#shipping-address').type('456 Elm St');
     cy.get('#card-number').type('4000000000000002'); // Decline card
 
+    cy.intercept('POST', '/api/orders').as('createOrder');
+
     cy.get('[data-cy="place-order"]').click();
 
     // UI should show error
     cy.get('[data-cy="payment-error"]').should('be.visible');
 
     // Backend trace should show the payment failure was handled correctly
-    cy.verifyTrace('payment-failure-test', { timeout: 30000 });
+    cy.wait('@createOrder').then(({ response }) => {
+      const traceId = getTraceIdFromResponse(response);
+      cy.verifyTrace('payment-failure-test', traceId, { timeout: 30000 });
+    });
   });
 });
 ```
@@ -245,6 +335,15 @@ jobs:
 
       - name: Start services
         run: docker compose up -d --wait
+
+      - name: Install Tracetest CLI
+        run: curl -L https://raw.githubusercontent.com/kubeshop/tracetest/main/install-cli.sh | bash
+
+      - name: Configure Tracetest CLI
+        run: tracetest configure --server-url http://localhost:11633
+
+      - name: Apply Tracetest datastore
+        run: tracetest apply datastore --file tracetest-datastore.yaml
 
       - name: Apply Tracetest definitions
         run: |
