@@ -103,12 +103,16 @@ For operations that require authentication, check early and fail fast.
 
 ```javascript
 // Resolver that requires authentication
+import { GraphQLError } from 'graphql';
+
 const resolvers = {
   Query: {
     me: (parent, args, context) => {
       // Throw if no authenticated user in context
       if (!context.user) {
-        throw new AuthenticationError('You must be logged in');
+        throw new GraphQLError('You must be logged in', {
+          extensions: { code: 'UNAUTHENTICATED' },
+        });
       }
       return context.user;
     },
@@ -172,7 +176,7 @@ Implement the directive transformer to enforce these rules.
 ```javascript
 // Directive implementation for authorization
 import { mapSchema, getDirective, MapperKind } from '@graphql-tools/utils';
-import { defaultFieldResolver } from 'graphql';
+import { defaultFieldResolver, GraphQLError } from 'graphql';
 
 function authDirectiveTransformer(schema) {
   return mapSchema(schema, {
@@ -189,7 +193,9 @@ function authDirectiveTransformer(schema) {
 
           // No user means not authenticated
           if (!user) {
-            throw new AuthenticationError('Not authenticated');
+            throw new GraphQLError('Not authenticated', {
+              extensions: { code: 'UNAUTHENTICATED' },
+            });
           }
 
           // Check if user has required role
@@ -198,8 +204,9 @@ function authDirectiveTransformer(schema) {
           const requiredRoleIndex = roleHierarchy.indexOf(requires);
 
           if (userRoleIndex < requiredRoleIndex) {
-            throw new ForbiddenError(
-              `Requires ${requires} role, you have ${user.role}`
+            throw new GraphQLError(
+              `Requires ${requires} role, you have ${user.role}`,
+              { extensions: { code: 'FORBIDDEN' } }
             );
           }
 
@@ -661,16 +668,15 @@ const server = new ApolloServer({
   cache,
   persistedQueries: {
     cache,
-    // Only allow persisted queries in production
+    // In production, keep persisted query entries indefinitely
     ...(process.env.NODE_ENV === 'production' && {
-      // Reject queries that aren't persisted
-      ttl: null, // Never auto-expire
+      ttl: null, // Never auto-expire cached queries
     }),
   },
 });
 ```
 
-For strict security, only allow pre-registered queries.
+Note that APQ on its own still accepts arbitrary new queries from clients — it just caches them by hash. To actually reject non-persisted queries, add a plugin that rejects requests without a known hash.
 
 ```javascript
 // Strict persisted queries - only allow pre-registered queries
