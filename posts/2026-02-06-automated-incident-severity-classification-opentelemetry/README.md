@@ -21,7 +21,7 @@ SEVERITY_RULES = {
         "conditions": {
             "any_of": [
                 # Complete service unavailability
-                {"metric": "http.server.request.count", "condition": "rate_drop > 95%"},
+                {"metric": "http.server.request.duration_count", "condition": "rate_drop > 95%"},
                 # Error rate above 50% for customer-facing services
                 {"metric": "http.server.error_rate", "condition": "> 0.50",
                  "filter": {"service.tier": "customer-facing"}},
@@ -74,18 +74,18 @@ SEVERITY_RULES = {
 
 ## The Classification Engine
 
-This engine receives OpenTelemetry metrics from the Collector and evaluates them against the severity rules in real time.
+This engine queries Prometheus-compatible metrics produced from OpenTelemetry HTTP metrics and evaluates them against the severity rules in real time.
 
 ```python
 # Automated severity classification engine
 from opentelemetry import metrics
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 import requests
 
 meter = metrics.get_meter("incident.classifier")
 
 classification_counter = meter.create_counter(
-    "incident.classification.total",
+    "incident.classification",
     description="Number of incidents classified by severity",
     unit="1"
 )
@@ -114,7 +114,7 @@ class SeverityClassifier:
             "severity": severity,
             "signals": signals,
             "matched_rules": matched_rules,
-            "classified_at": datetime.utcnow().isoformat(),
+            "classified_at": datetime.now(timezone.utc).isoformat(),
         }
 
     def _gather_signals(self, alert):
@@ -124,20 +124,22 @@ class SeverityClassifier:
 
         # Current error rate
         error_rate = self._query_metric(
-            f'sum(rate(http_server_request_count_total{{service_name="{service}",'
-            f'status_code=~"5.."}}[5m])) / '
-            f'sum(rate(http_server_request_count_total{{service_name="{service}"}}[5m]))'
+            f'sum(rate(http_server_request_duration_seconds_count{{service_name="{service}",'
+            f'http_response_status_code=~"5.."}}[5m])) / '
+            f'sum(rate(http_server_request_duration_seconds_count{{service_name="{service}"}}[5m]))'
         )
         signals["error_rate"] = error_rate
 
         # Latency p99 compared to baseline
         current_p99 = self._query_metric(
-            f'histogram_quantile(0.99, rate(http_server_duration_bucket'
-            f'{{service_name="{service}"}}[5m]))'
+            f'histogram_quantile(0.99, sum by (le) '
+            f'(rate(http_server_request_duration_seconds_bucket'
+            f'{{service_name="{service}"}}[5m])))'
         )
         baseline_p99 = self._query_metric(
-            f'histogram_quantile(0.99, rate(http_server_duration_bucket'
-            f'{{service_name="{service}"}}[5m] offset 1d))'
+            f'histogram_quantile(0.99, sum by (le) '
+            f'(rate(http_server_request_duration_seconds_bucket'
+            f'{{service_name="{service}"}}[5m] offset 1d)))'
         )
         signals["latency_multiplier"] = (
             current_p99 / baseline_p99 if baseline_p99 > 0 else 1.0
@@ -145,8 +147,13 @@ class SeverityClassifier:
 
         # Count of affected services (services with elevated error rates)
         affected = self._query_metric(
-            'count(sum by (service_name) '
-            '(rate(http_server_request_count_total{status_code=~"5.."}[5m])) > 0.05)'
+            'count(('
+            'sum by (service_name) '
+            '(rate(http_server_request_duration_seconds_count{http_response_status_code=~"5.."}[5m])) '
+            '/ '
+            'sum by (service_name) '
+            '(rate(http_server_request_duration_seconds_count[5m]))'
+            ') > 0.05)'
         )
         signals["affected_services_count"] = int(affected)
 
@@ -155,10 +162,10 @@ class SeverityClassifier:
 
         # Request rate drop (potential outage indicator)
         current_rate = self._query_metric(
-            f'sum(rate(http_server_request_count_total{{service_name="{service}"}}[5m]))'
+            f'sum(rate(http_server_request_duration_seconds_count{{service_name="{service}"}}[5m]))'
         )
         baseline_rate = self._query_metric(
-            f'sum(rate(http_server_request_count_total{{service_name="{service}"}}[5m] offset 1h))'
+            f'sum(rate(http_server_request_duration_seconds_count{{service_name="{service}"}}[5m] offset 1h))'
         )
         signals["request_rate_drop_pct"] = (
             max(0, (1 - current_rate / baseline_rate) * 100)
@@ -166,6 +173,17 @@ class SeverityClassifier:
         )
 
         return signals
+
+    def _query_metric(self, query):
+        """Run an instant PromQL query and return the first scalar value."""
+        response = requests.get(
+            f"{self.prometheus_url}/api/v1/query",
+            params={"query": query},
+            timeout=5,
+        )
+        response.raise_for_status()
+        result = response.json()["data"]["result"]
+        return float(result[0]["value"][1]) if result else 0.0
 
     def _evaluate_rules(self, signals):
         """Match signals against severity rules, highest severity first."""
@@ -181,6 +199,48 @@ class SeverityClassifier:
                 return severity, matched
 
         return "P4", []  # Default to lowest severity
+
+    def _check_condition(self, condition, signals):
+        """Evaluate one rule condition against the gathered signal values."""
+        service_tier = signals["service_tier"]
+        tier_filter = condition.get("filter", {}).get("service.tier")
+        if tier_filter and tier_filter != service_tier:
+            return False
+
+        metric = condition["metric"]
+        threshold = condition["condition"]
+
+        if metric == "http.server.error_rate":
+            value = signals["error_rate"]
+            if threshold == "> 0.50":
+                return value > 0.50
+            if threshold == "0.10 to 0.50":
+                return 0.10 <= value <= 0.50
+            if threshold == "0.01 to 0.10":
+                return 0.01 <= value <= 0.10
+            if threshold == "< 0.01":
+                return value < 0.01
+
+        if metric == "http.server.duration_p99":
+            value = signals["latency_multiplier"]
+            if threshold == "> 5x baseline":
+                return value > 5
+            if threshold == "2x to 5x baseline":
+                return 2 <= value <= 5
+
+        if metric == "http.server.request.duration_count":
+            return signals["request_rate_drop_pct"] > 95
+
+        if metric == "affected_services_count":
+            value = signals["affected_services_count"]
+            if threshold == ">= 3":
+                return value >= 3
+            if threshold == "1-2":
+                return 1 <= value <= 2
+            if threshold == ">= 1":
+                return value >= 1
+
+        return False
 ```
 
 ## Collector Pipeline for Classification
@@ -210,8 +270,12 @@ processors:
 exporters:
   otlp/backend:
     endpoint: "metrics-backend:4317"
+    tls:
+      insecure: true
   otlp/classifier:
     endpoint: "severity-classifier:4317"
+    tls:
+      insecure: true
 
 service:
   pipelines:
