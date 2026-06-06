@@ -34,8 +34,8 @@ processors:
     timeout: 5s
   memory_limiter:
     check_interval: 1s
-    limit_mib: 1024
-    spike_limit_mib: 256
+    limit_mib: 1600
+    spike_limit_mib: 400
 
 exporters:
   otlphttp:
@@ -49,7 +49,13 @@ service:
   telemetry:
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+                without_units: true
   pipelines:
     traces:
       receivers: [otlp]
@@ -111,7 +117,7 @@ spec:
     spec:
       containers:
         - name: collector
-          image: otel/opentelemetry-collector-contrib:0.96.0
+          image: otel/opentelemetry-collector-contrib:0.153.0
           args: ["--config=/etc/otel/config.yaml"]
           ports:
             - containerPort: 4317
@@ -223,10 +229,10 @@ rules:
 
 Auto-scaling takes time. Pods need to start, pass health checks, and begin accepting traffic. During that ramp-up window, you need the `memory_limiter` processor to protect your existing collectors from OOM kills.
 
-The `memory_limiter` config from earlier will start refusing data when memory hits the limit. Your sending applications should handle OTLP errors by retrying with backoff. The key settings are:
+The `memory_limiter` config from earlier will start refusing data when memory usage exceeds the soft limit. Your sending applications should handle OTLP errors by retrying with backoff. The key settings are:
 
-- `limit_mib`: Hard ceiling on collector memory usage
-- `spike_limit_mib`: Buffer reserved to handle sudden bursts
+- `limit_mib`: Hard limit for the collector heap target
+- `spike_limit_mib`: Expected maximum memory spike between checks; the soft limit is `limit_mib - spike_limit_mib`
 - `check_interval`: How often the limiter evaluates memory usage
 
 Set `limit_mib` to about 80% of your container memory limit. The remaining 20% gives the Go garbage collector room to operate without the container getting OOM killed.
