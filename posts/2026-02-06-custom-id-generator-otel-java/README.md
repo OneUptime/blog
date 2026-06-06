@@ -10,19 +10,19 @@ The OpenTelemetry SDK generates trace IDs (128-bit) and span IDs (64-bit) using 
 
 ## The IdGenerator Interface
 
-In the Java SDK, the `IdGenerator` interface defines two methods:
+In the Java SDK, the `IdGenerator` interface defines two required methods:
 
 ```java
 public interface IdGenerator {
-    // Generate a 128-bit trace ID as a 32-character hex string
-    String generateTraceId();
-
     // Generate a 64-bit span ID as a 16-character hex string
     String generateSpanId();
+
+    // Generate a 128-bit trace ID as a 32-character hex string
+    String generateTraceId();
 }
 ```
 
-Both methods must return lowercase hex strings. Trace IDs are 32 characters (128 bits), and span IDs are 16 characters (64 bits). The IDs must not be all zeros, as the zero ID has special meaning (invalid/not-sampled).
+Both methods must return lowercase hex strings. Trace IDs are 32 characters (128 bits), and span IDs are 16 characters (64 bits). The IDs must not be all zeros, as the zero ID is treated as invalid. Recent OpenTelemetry Java SDK versions also include a default `generatesRandomTraceIds()` method that custom generators can override when their trace IDs meet the W3C randomness requirements.
 
 ## Example: Timestamp-Prefixed Trace IDs
 
@@ -82,13 +82,14 @@ public class DatacenterAwareIdGenerator implements IdGenerator {
     @Override
     public String generateTraceId() {
         // Bytes 0-1: datacenter identifier
-        // Bytes 2-7: timestamp in seconds (enough for ~8900 years)
+        // Bytes 2-7: timestamp in seconds (enough for ~8.9 million years)
         // Bytes 8-15: random component
         long timestamp = System.currentTimeMillis() / 1000;
         long random = ThreadLocalRandom.current().nextLong();
 
         // Pack datacenter ID and timestamp into first 8 bytes
-        long high = ((long) datacenterId << 48) | (timestamp & 0x0000FFFFFFFFFFFFL);
+        long high = ((datacenterId & 0xFFFFL) << 48)
+            | (timestamp & 0x0000FFFFFFFFFFFFL);
 
         return String.format("%016x%016x", high, random);
     }
@@ -110,6 +111,7 @@ Wire the custom generator into your TracerProvider:
 
 ```java
 import io.opentelemetry.sdk.trace.SdkTracerProvider;
+import io.opentelemetry.sdk.trace.IdGenerator;
 import io.opentelemetry.sdk.trace.export.BatchSpanProcessor;
 import io.opentelemetry.exporter.otlp.trace.OtlpGrpcSpanExporter;
 
@@ -138,7 +140,7 @@ Your custom IDs must follow the W3C Trace Context specification:
 1. **Trace IDs must be 16 bytes (32 hex characters)**. Not more, not less.
 2. **Span IDs must be 8 bytes (16 hex characters)**.
 3. **Neither can be all zeros**. Zero IDs are treated as invalid.
-4. **IDs should have sufficient randomness**. At least 8 bytes of randomness is recommended to avoid collisions in distributed systems.
+4. **IDs should have sufficient randomness**. W3C Trace Context Level 2 recommends randomly or pseudo-randomly generating at least the right-most 7 bytes of the trace ID to support global uniqueness.
 
 ```java
 // Validation helper to ensure your generator produces valid IDs
@@ -172,7 +174,7 @@ long random = ThreadLocalRandom.current().nextLong();
 
 // Avoid: Shared Random instance causes contention under load
 // private final Random random = new Random();
-// long value = random.nextLong(); // Synchronized internally
+// long value = random.nextLong(); // Thread-safe, but can contend across threads
 ```
 
 ## Testing Your Generator
@@ -181,6 +183,7 @@ Write tests that verify your generator produces valid, unique IDs:
 
 ```java
 import org.junit.jupiter.api.Test;
+import io.opentelemetry.sdk.trace.IdGenerator;
 import java.util.HashSet;
 import java.util.Set;
 import static org.junit.jupiter.api.Assertions.*;
