@@ -8,7 +8,7 @@ Description: Learn how to configure minimum TLS versions and restrict cipher sui
 
 ---
 
-The OpenTelemetry Collector handles your telemetry data in transit. If that data includes traces from payment systems, logs from healthcare applications, or metrics from financial services, the transport layer needs to be locked down. Using outdated TLS versions or weak cipher suites means your telemetry traffic can be intercepted and read. Compliance frameworks like PCI DSS, HIPAA, and SOC 2 all require strong encryption in transit, and the Collector is no exception.
+The OpenTelemetry Collector handles your telemetry data in transit. If that data includes traces from payment systems, logs from healthcare applications, or metrics from financial services, the transport layer needs to be locked down. Using outdated TLS versions or weak cipher suites means your telemetry traffic can be intercepted and read. Compliance frameworks like PCI DSS, HIPAA, and SOC 2 require or expect appropriate protection for sensitive data in transit, and the Collector is no exception.
 
 This post covers how to configure the Collector's TLS settings on both the receiver and exporter sides, how to choose the right minimum TLS version, and how to restrict cipher suites to only the strong ones.
 
@@ -31,18 +31,18 @@ Both sides need proper configuration. A common mistake is hardening the receiver
 
 ## Why TLS 1.2 is the Minimum
 
-TLS 1.0 and 1.1 have known vulnerabilities. The BEAST, POODLE, and other attacks make them unsuitable for protecting sensitive data. Every major compliance standard now requires TLS 1.2 as the minimum. TLS 1.3 is preferred when both sides support it, as it removes legacy algorithms and simplifies the handshake.
+TLS 1.0 and 1.1 have known vulnerabilities. The BEAST, POODLE, and other attacks make them unsuitable for protecting sensitive data. For modern production and compliance-oriented deployments, TLS 1.2 is the practical minimum, and TLS 1.3 is preferred when both sides support it because it removes legacy algorithms and simplifies the handshake.
 
 Here is a quick comparison:
 
 | TLS Version | Status | Compliance |
 |-------------|--------|------------|
-| TLS 1.0 | Deprecated | Not compliant with PCI DSS, HIPAA |
-| TLS 1.1 | Deprecated | Not compliant with PCI DSS, HIPAA |
+| TLS 1.0 | Deprecated | Not accepted as strong cryptography for modern compliance-oriented deployments |
+| TLS 1.1 | Deprecated | Not accepted as strong cryptography for modern compliance-oriented deployments |
 | TLS 1.2 | Current | Meets minimum requirements |
 | TLS 1.3 | Current | Recommended, strongest security |
 
-The Collector defaults to Go's TLS defaults, which already disable TLS 1.0 and 1.1 in recent Go versions. But relying on defaults is not a good compliance strategy. Explicitly setting the minimum version documents your intent and protects against future changes.
+The Collector's TLS configuration defaults `min_version` to `"1.2"`. But relying on defaults is not a good compliance strategy. Explicitly setting the minimum version documents your intent and protects against future changes.
 
 ## Configuring TLS on the OTLP Receiver
 
@@ -173,7 +173,7 @@ With `client_ca_file` set, the Collector requires connecting clients to present 
 
 ## Configuring TLS for Extensions
 
-Do not forget the Collector's extensions. The health check, zPages, and pprof extensions can also expose HTTP endpoints. These need TLS too.
+Do not forget the Collector's extensions. The health check and zPages extensions can expose HTTP endpoints and support TLS configuration. The pprof extension also exposes an HTTP endpoint, but its current configuration does not include a `tls` block, so it should be bound to localhost or protected by another network control.
 
 ```yaml
 extensions:
@@ -300,8 +300,8 @@ If the TLS 1.1 connection succeeds, your configuration is not being applied corr
 You can also verify cipher suites by specifying a weak cipher.
 
 ```bash
-# Attempt connection with a weak cipher - should be rejected
-openssl s_client -connect localhost:4317 -cipher RC4-SHA -brief
+# Attempt connection with a weak TLS 1.2 CBC/RSA cipher - should be rejected
+openssl s_client -connect localhost:4317 -tls1_2 -cipher AES128-SHA -brief
 ```
 
 ## Certificate Management Tips
