@@ -14,7 +14,7 @@ OpenTelemetry SDKs provide built-in safeguards for this. The problem is that the
 
 ## What Attributes Actually Cost You
 
-Every attribute you attach to a span, log record, or metric data point consumes memory. The cost depends on the attribute type and size, but here is a rough breakdown:
+Every attribute you attach to a span, log record, or metric measurement consumes memory. The cost depends on the attribute type and size, but here is a rough breakdown:
 
 ```mermaid
 flowchart TD
@@ -38,7 +38,7 @@ The real danger comes from attributes with unpredictable sizes. Request bodies, 
 
 OpenTelemetry SDKs expose three categories of limits that control attribute behavior:
 
-1. **Maximum number of attributes** per span/log/metric data point
+1. **Maximum number of attributes** per span, span event, span link, or log record
 2. **Maximum length of attribute values** (for string and array types)
 3. **Maximum number of events and links** per span (which also carry attributes)
 
@@ -55,7 +55,7 @@ from opentelemetry.sdk.resources import Resource
 # Define strict limits to prevent memory issues
 span_limits = SpanLimits(
     # Maximum number of attributes per span
-    max_attributes=64,
+    max_span_attributes=64,
     # Maximum number of events (like exceptions, logs) per span
     max_events=64,
     # Maximum number of links to other spans
@@ -116,7 +116,7 @@ import (
 // Create a TracerProvider with explicit attribute limits
 tp := trace.NewTracerProvider(
     // Set the maximum number of attributes, events, and links per span
-    trace.WithSpanLimits(trace.SpanLimits{
+    trace.WithRawSpanLimits(trace.SpanLimits{
         AttributeCountLimit:         64,    // max attributes per span
         EventCountLimit:             64,    // max events per span
         LinkCountLimit:              32,    // max links per span
@@ -157,7 +157,7 @@ Understanding the behavior when limits are exceeded is important. The SDK does n
 
 - **Attribute count exceeded**: New attributes are dropped. The first N attributes are kept.
 - **Attribute value too long**: The string is truncated to the maximum length. No error is raised.
-- **Event/link count exceeded**: New events or links are dropped.
+- **Event/link count exceeded**: Events or links are discarded. Some SDKs keep the newest entries by dropping the oldest ones.
 
 This means your application keeps running normally, but you lose some telemetry data. That is the correct tradeoff. It is far better to lose some attributes than to have your application OOM.
 
@@ -173,7 +173,7 @@ flowchart TD
 
 ## Environment Variable Configuration
 
-All OpenTelemetry SDKs respect a common set of environment variables for attribute limits. This is often the easiest way to configure limits across all your services, especially if you deploy in Kubernetes where you can set environment variables in your pod spec.
+Many OpenTelemetry SDKs support a common set of environment variables for attribute limits. This is often the easiest way to configure limits across your services, especially if you deploy in Kubernetes where you can set environment variables in your pod spec.
 
 ```yaml
 # Kubernetes deployment snippet - Set OTEL attribute limits via env vars
@@ -187,25 +187,34 @@ spec:
       containers:
         - name: app
           env:
-            # Global attribute value length limit (applies to all signals)
+            # Global attribute value length limit (applies to spans and log records)
             - name: OTEL_ATTRIBUTE_VALUE_LENGTH_LIMIT
               value: "1024"
-            # Global attribute count limit (applies to all signals)
+            # Global attribute count limit (applies to spans, span events,
+            # span links, and log records)
             - name: OTEL_ATTRIBUTE_COUNT_LIMIT
               value: "64"
             # Span-specific overrides (take precedence over global)
+            - name: OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT
+              value: "1024"
             - name: OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT
               value: "64"
             - name: OTEL_SPAN_EVENT_COUNT_LIMIT
               value: "64"
             - name: OTEL_SPAN_LINK_COUNT_LIMIT
               value: "32"
+            - name: OTEL_EVENT_ATTRIBUTE_COUNT_LIMIT
+              value: "16"
+            - name: OTEL_LINK_ATTRIBUTE_COUNT_LIMIT
+              value: "16"
             # Log-specific override
+            - name: OTEL_LOGRECORD_ATTRIBUTE_VALUE_LENGTH_LIMIT
+              value: "1024"
             - name: OTEL_LOGRECORD_ATTRIBUTE_COUNT_LIMIT
               value: "32"
 ```
 
-The hierarchy is: signal-specific environment variables override the global ones. So if you set `OTEL_ATTRIBUTE_COUNT_LIMIT=128` and `OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT=64`, spans will use 64 while logs (if no log-specific override is set) will use 128.
+The hierarchy is: model-specific environment variables override the global ones. So if you set `OTEL_ATTRIBUTE_COUNT_LIMIT=128` and `OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT=64`, spans will use 64 while log records (if no log-specific override is set) will use 128.
 
 ## Recommended Limits by Workload
 
@@ -242,7 +251,7 @@ There is no single right answer for attribute limits. It depends on your applica
 
 Metrics deserve special attention because attribute cardinality has a different impact on metrics than on traces. For traces, each span is independent. For metrics, each unique combination of attribute values creates a new time series. This means unbounded metric attributes do not just consume SDK memory - they create cardinality explosions in your backend.
 
-The OpenTelemetry Metrics SDK has a concept called "cardinality limit" or "attribute filter" that you can configure:
+The common attribute-count and value-length limits do not apply to metric attributes. The OpenTelemetry Metrics SDK instead uses views, attribute filters, and SDK-specific cardinality limits:
 
 ```python
 # Python SDK - Configure metric view to limit attributes on a specific metric
@@ -267,18 +276,18 @@ This is arguably more important than span attribute limits. A single metric with
 
 Rather than waiting for production memory issues, you can proactively detect attribute limit violations during development and testing.
 
-Enable SDK debug logging to see when attributes are dropped:
+Enable SDK debug logging to help catch cases where attributes are dropped:
 
 ```python
-# Python - Enable debug logging to see attribute truncation warnings
+# Python - Enable debug logging to see SDK diagnostics
 import logging
 
 # Set OpenTelemetry SDK logging to DEBUG level
-# This will log warnings when attributes are dropped or truncated
+# Some SDKs log when attributes are dropped or truncated
 logging.getLogger("opentelemetry.sdk").setLevel(logging.DEBUG)
 ```
 
-You can also monitor the SDK's internal metrics. The OpenTelemetry specification defines standard metrics for SDK behavior, including counters for dropped attributes.
+You can also monitor SDK behavior where your SDK exposes self-telemetry. The OpenTelemetry semantic conventions define SDK metrics for spans, logs, processors, exporters, and metric readers, but support and exact signals vary by implementation.
 
 ## Wrapping Up
 
