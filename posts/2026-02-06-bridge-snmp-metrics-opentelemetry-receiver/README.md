@@ -33,7 +33,7 @@ receivers:
     resource_attributes:
       # Identify the device by its sysName
       resource.name:
-        oid: "1.3.6.1.2.1.1.5.0"  # sysName
+        scalar_oid: "1.3.6.1.2.1.1.5.0"  # sysName
 
     attributes:
       # Interface index for per-interface metrics
@@ -92,21 +92,21 @@ receivers:
               - name: if_index
               - name: if_descr
 
-      # CPU utilization (Cisco-specific OID)
-      system.cpu.utilization:
-        unit: "%"
+      # System uptime
+      system.uptime:
+        unit: "{time_tick}"
         gauge:
           value_type: int
         scalar_oids:
-          - oid: "1.3.6.1.4.1.9.9.109.1.1.1.1.6.1"  # cpmCPUTotal5minRev
+          - oid: "1.3.6.1.2.1.1.3.0"  # sysUpTime
 
-      # Memory utilization (Cisco-specific OID)
-      system.memory.used:
-        unit: "By"
+      # Number of interfaces
+      network.interface.count:
+        unit: "{interface}"
         gauge:
           value_type: int
         scalar_oids:
-          - oid: "1.3.6.1.4.1.9.9.48.1.1.1.5.1"  # ciscoMemoryPoolUsed
+          - oid: "1.3.6.1.2.1.2.1.0"  # ifNumber
 
 processors:
   batch:
@@ -141,7 +141,7 @@ service:
 
 ## Monitoring Multiple Devices
 
-In a real network, you have hundreds or thousands of devices. Rather than configuring each one individually, use the SNMP receiver's discovery capabilities or define multiple receiver instances.
+In a real network, you have hundreds or thousands of devices. Rather than putting every device in one receiver, define multiple receiver instances or generate this configuration from your inventory system.
 
 ```yaml
 # Multiple SNMP targets using separate receiver instances
@@ -188,9 +188,8 @@ SNMP traps are asynchronous notifications that devices send when something goes 
 # snmp_trap_to_otel.py
 from pysnmp.hlapi import *
 from pysnmp.carrier.asyncio.dgram import udp
-from opentelemetry import trace
 from opentelemetry._logs import set_logger_provider
-from opentelemetry.sdk._logs import LoggerProvider, LogRecord
+from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
 from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
 import logging
@@ -202,6 +201,8 @@ logger_provider.add_log_record_processor(
 )
 set_logger_provider(logger_provider)
 
+handler = LoggingHandler(level=logging.WARNING, logger_provider=logger_provider)
+logging.basicConfig(handlers=[handler], level=logging.WARNING)
 otel_logger = logging.getLogger("snmp.traps")
 
 # Map well-known trap OIDs to human-readable names
