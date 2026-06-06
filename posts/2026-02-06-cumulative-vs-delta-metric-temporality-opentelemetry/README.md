@@ -33,7 +33,7 @@ graph TD
     end
 ```
 
-Both representations encode the same information. You can derive delta values from cumulative by subtracting consecutive data points. You can derive cumulative values from delta by summing all deltas from the start. The difference is in what gets sent over the wire and what your backend expects.
+For sums and histogram counts, both representations can encode the same information when the stream is continuous and start times are preserved. You can derive delta values from cumulative by subtracting consecutive data points. You can derive cumulative values from delta by summing all deltas from the start. For histograms, cumulative min and max values cannot be converted exactly to delta min and max, so collectors may drop those fields during cumulative-to-delta conversion. The difference is in what gets sent over the wire and what your backend expects.
 
 ## How Temporality Affects Different Metric Types
 
@@ -87,6 +87,8 @@ With cumulative temporality, the reported value is the net sum of all additions 
 **Histogram**: Records the distribution of measurements, like request latency.
 
 ```python
+import time
+
 # Histogram records distributions
 request_duration = meter.create_histogram(
     name="http.server.request.duration",
@@ -113,7 +115,9 @@ With cumulative temporality, each export contains the histogram buckets with cou
 The temporality is configured on the metric exporter, not on individual instruments. This is because temporality is a property of how data is exported, not how it is collected internally.
 
 ```python
+from opentelemetry import metrics
 from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics import Counter, Histogram, UpDownCounter
 from opentelemetry.sdk.metrics.export import (
     PeriodicExportingMetricReader,
     AggregationTemporality,
@@ -127,11 +131,11 @@ delta_exporter = OTLPMetricExporter(
     # Set preferred temporality per instrument type
     preferred_temporality={
         # Counters report deltas (change since last export)
-        metrics.Counter: AggregationTemporality.DELTA,
+        Counter: AggregationTemporality.DELTA,
         # UpDownCounters report cumulative (net total)
-        metrics.UpDownCounter: AggregationTemporality.CUMULATIVE,
+        UpDownCounter: AggregationTemporality.CUMULATIVE,
         # Histograms report deltas (distribution since last export)
-        metrics.Histogram: AggregationTemporality.DELTA,
+        Histogram: AggregationTemporality.DELTA,
     },
 )
 
@@ -153,7 +157,7 @@ For a Prometheus-compatible setup, use cumulative temporality:
 ```python
 from opentelemetry.exporter.prometheus import PrometheusMetricReader
 
-# Prometheus always expects cumulative temporality
+# The Prometheus scrape model expects cumulative temporality
 # The PrometheusMetricReader handles this automatically
 prometheus_reader = PrometheusMetricReader()
 
@@ -161,7 +165,7 @@ provider = MeterProvider(metric_readers=[prometheus_reader])
 metrics.set_meter_provider(provider)
 ```
 
-Prometheus is a pull-based system that expects to scrape cumulative counters and compute rates itself. It has no concept of delta temporality in its data model.
+Prometheus is a pull-based system that expects to scrape cumulative counters and compute rates itself. Its storage model uses cumulative counters; when Prometheus receives delta OTLP metrics, they must be converted to cumulative form before storage.
 
 ## Configuring Temporality in the OpenTelemetry Collector
 
@@ -209,13 +213,13 @@ service:
       exporters: [prometheusremotewrite]
 ```
 
-The `cumulativetodelta` processor is particularly useful when your applications export cumulative metrics but your backend prefers delta. The reverse transformation (delta to cumulative) is more complex because the collector needs to maintain state to reconstruct the running total.
+The `cumulativetodelta` processor is particularly useful when your applications export cumulative metrics but your backend prefers delta. The reverse transformation (delta to cumulative) is available through the `deltatocumulative` processor in the contrib and Kubernetes Collector distributions, but it is stateful because the collector needs to accumulate samples in memory to reconstruct the running total.
 
 ## When to Use Cumulative Temporality
 
 Cumulative temporality works best in these scenarios:
 
-**Prometheus and Prometheus-compatible backends.** Prometheus was designed around cumulative counters. It scrapes the current total and computes rates using the `rate()` and `increase()` functions. Sending delta values to Prometheus breaks this model.
+**Prometheus and Prometheus-compatible backends.** Prometheus was designed around cumulative counters. It scrapes the current total and computes rates using the `rate()` and `increase()` functions. Sending delta values to a Prometheus scrape endpoint breaks this model unless an OTLP ingestion path or collector converts them to cumulative form first.
 
 **Environments with unreliable delivery.** If a data point gets dropped in transit, cumulative temporality self-corrects on the next successful delivery. The backend sees the updated total and can compute the correct rate. With delta, a dropped data point means that chunk of data is permanently lost.
 
@@ -234,7 +238,7 @@ Cumulative temporality works best in these scenarios:
 
 Delta temporality works best in these scenarios:
 
-**Stateless or serverless environments.** Functions-as-a-service and short-lived containers cannot maintain cumulative state across invocations. Each invocation starts fresh, so cumulative values always start from zero, making them useless. Delta temporality lets each invocation report just its own contribution.
+**Stateless or serverless environments.** Functions-as-a-service and short-lived containers cannot maintain cumulative state across invocations. Each invocation starts fresh, so cumulative streams reset frequently, which can make rate calculations noisy or backend-dependent. Delta temporality lets each invocation report just its own contribution.
 
 ```python
 # In a serverless function, delta makes sense
@@ -244,7 +248,7 @@ Delta temporality works best in these scenarios:
 # Each is independent; no need to maintain running totals
 ```
 
-**OTLP-native backends.** Many modern observability backends (including OneUptime) that accept OTLP natively can handle both temporalities but prefer delta because it is more efficient. Delta data points are smaller and do not require the backend to compute differences.
+**OTLP-native backends.** Many modern observability backends (including OneUptime) that accept OTLP natively can handle both temporalities but prefer delta because it can reduce client-side state and does not require the backend to compute differences for each cumulative stream.
 
 **High-cardinality metric streams.** With cumulative temporality, the SDK must maintain the running total for every unique combination of attribute values. If you have a counter with 10,000 unique attribute combinations, that is 10,000 running totals in memory. Delta temporality lets the SDK flush and forget, reducing memory usage.
 
@@ -265,7 +269,7 @@ graph LR
     style D fill:#f99,stroke:#333,stroke-width:2px
 ```
 
-Most backends handle this by comparing consecutive data points. If the current value is less than the previous one, they infer a reset and treat the new value as a delta from zero. But this heuristic fails in some edge cases:
+OTLP metric points include a `StartTimeUnixNano` field that lets consumers identify resets and gaps in an unbroken stream. Backends that do not use start timestamps often fall back to comparing consecutive data points. If the current value is less than the previous one, they infer a reset and treat the new value as a delta from zero. But this heuristic fails in some edge cases:
 
 If a process restarts and quickly reaches a value higher than the last exported value before the reset, the backend might not detect the reset at all. This leads to undercounting. For example, if the last value before restart was 100 and the first value after restart is 150, the backend might think 50 new events happened when actually 150 happened.
 
@@ -280,11 +284,12 @@ import io.opentelemetry.sdk.metrics.SdkMeterProvider;
 import io.opentelemetry.sdk.metrics.export.PeriodicMetricReader;
 import io.opentelemetry.exporter.otlp.metrics.OtlpGrpcMetricExporter;
 import io.opentelemetry.sdk.metrics.export.AggregationTemporalitySelector;
+import java.time.Duration;
 
-// Create an OTLP exporter with delta temporality preference
+// Create an OTLP exporter with delta-preferred temporality
 OtlpGrpcMetricExporter exporter = OtlpGrpcMetricExporter.builder()
     .setEndpoint("http://localhost:4317")
-    // Use delta temporality for all instrument types
+    // Use delta for counters and histograms, cumulative for up/down counters
     .setAggregationTemporalitySelector(
         AggregationTemporalitySelector.deltaPreferred()
     )
@@ -301,7 +306,7 @@ SdkMeterProvider meterProvider = SdkMeterProvider.builder()
     .build();
 ```
 
-The `AggregationTemporalitySelector` provides factory methods for common configurations: `deltaPreferred()` for backends that prefer delta, `cumulativePreferred()` for Prometheus-style backends, and custom selectors for mixed requirements.
+The `AggregationTemporalitySelector` provides factory methods for common configurations: `deltaPreferred()` for backends that prefer delta, `alwaysCumulative()` for Prometheus-style backends, `lowMemory()` for lower-memory export behavior, and custom selectors for mixed requirements.
 
 ## Practical Decision Framework
 
