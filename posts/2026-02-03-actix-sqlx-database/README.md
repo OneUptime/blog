@@ -149,7 +149,7 @@ SQLx includes a migration system. Migrations live in the `migrations` folder and
 Install the SQLx CLI to manage migrations.
 
 ```bash
-cargo install sqlx-cli --no-default-features --features postgres
+cargo install sqlx-cli --no-default-features --features native-tls,postgres
 ```
 
 Create your first migration.
