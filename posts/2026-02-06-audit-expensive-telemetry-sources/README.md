@@ -29,20 +29,27 @@ service:
   telemetry:
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+                without_type_suffix: true
+                without_units: true
 ```
 
 The `detailed` level exposes metrics like `otelcol_receiver_accepted_spans`, `otelcol_receiver_accepted_metric_points`, and `otelcol_receiver_accepted_log_records`, broken down by receiver and transport.
 
 ## Step 2: Add Resource Attributes for Cost Attribution
 
-To attribute telemetry volume to specific services, make sure every application sets the `service.name` and `service.namespace` resource attributes. The OpenTelemetry SDK does this by default, but you should also add a cost-attribution attribute like `team.name` or `department`.
+To attribute telemetry volume to specific services, make sure every application explicitly sets the `service.name` and `service.namespace` resource attributes. OpenTelemetry SDKs fall back to an `unknown_service` value for `service.name` when you do not set one, so you should also add a cost-attribution attribute like `team.name` or `department`.
 
 Here is an example using the OpenTelemetry Python SDK:
 
 ```python
 # Configure the SDK with cost-attribution resource attributes
-# These attributes will be attached to every span, metric, and log record
+# Use the same resource on your trace, metric, and log providers
 
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
@@ -93,8 +100,8 @@ connectors:
         attributes:
           - key: service.name
           - key: team.name
-    metrics:
-      otel.metric.count:
+    datapoints:
+      otel.datapoint.count:
         description: "Count of metric data points by service"
         conditions:
           - "true"
@@ -199,18 +206,19 @@ Once you have your ranked list, the typical actions are:
 1. **Drop debug-level logs** from the top offenders using the `filter` processor
 2. **Sample traces** from high-volume, low-value services using the `tail_sampling` processor
 3. **Reduce metric cardinality** by dropping unused labels with the `metricstransform` processor
-4. **Set per-service rate limits** using the `rate_limiter` extension
+4. **Set trace rate limits** using the `tail_sampling` processor's `rate_limiting` policy where appropriate
 
 Here is a quick filter processor config to drop debug logs from a noisy service:
 
 ```yaml
 processors:
   filter/drop-debug:
+    error_mode: ignore
     logs:
       # Drop debug and trace level logs from the payment-service
       # which was identified as the top log producer
       log_record:
-        - 'severity_number < 9 and resource.attributes["service.name"] == "payment-service"'
+        - 'severity_number < SEVERITY_NUMBER_INFO and resource.attributes["service.name"] == "payment-service"'
 ```
 
 ## Making This Repeatable
