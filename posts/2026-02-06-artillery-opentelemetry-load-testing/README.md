@@ -6,20 +6,19 @@ Tags: OpenTelemetry, Artillery, Load Testing, Distributed System, Trace Correlat
 
 Description: Set up Artillery load tests that propagate OpenTelemetry trace context, letting you correlate load test traffic with backend traces.
 
-Artillery is a popular load testing tool that supports HTTP, WebSocket, and Socket.io protocols. By adding OpenTelemetry trace propagation to your Artillery scripts, every virtual user request becomes traceable through your entire distributed system. This gives you precise answers about which services slow down under load and why.
+Artillery is a popular load testing tool that supports HTTP, WebSocket, and Socket.io protocols. By adding OpenTelemetry tracing to your Artillery scripts, every virtual user request can be traced from the load generator and correlated with backend telemetry. If you also propagate W3C trace context to instrumented backend services, this gives you precise answers about which services slow down under load and why.
 
-## Installing Artillery with the OpenTelemetry Plugin
+## Installing Artillery with OpenTelemetry Support
 
-Artillery supports plugins that hook into the request lifecycle. You can use this to inject trace context headers:
+Artillery includes OpenTelemetry support through the built-in `publish-metrics` plugin:
 
 ```bash
 npm install -g artillery
-npm install -g artillery-plugin-opentelemetry
 ```
 
 ## Basic Artillery Configuration with Tracing
 
-Create an Artillery test script that enables the OpenTelemetry plugin:
+Create an Artillery test script that enables the built-in OpenTelemetry reporter:
 
 ```yaml
 # load-test.yaml
@@ -38,15 +37,20 @@ config:
       name: "Peak load"
 
   plugins:
-    opentelemetry:
-      exporter:
-        type: otlp
-        endpoint: "http://localhost:4318/v1/traces"
-      propagate: true  # Inject traceparent headers into requests
-      serviceName: "artillery-load-test"
-      attributes:
-        test.suite: "checkout-flow"
-        test.environment: "staging"
+    expect: {}
+    publish-metrics:
+      - type: "open-telemetry"
+        serviceName: "artillery-load-test"
+        resourceAttributes:
+          test.suite: "checkout-flow"
+          test.environment: "staging"
+        traces:
+          exporter: "otlp-http"
+          endpoint: "http://localhost:4318/v1/traces"
+          sampleRate: 1
+          attributes:
+            test.suite: "checkout-flow"
+            test.environment: "staging"
 
 scenarios:
   - name: "Browse and checkout"
@@ -71,101 +75,117 @@ scenarios:
             - statusCode: 200
 ```
 
-## Custom Plugin for Trace Propagation
+## Custom Processor for Trace Propagation
 
-If the community plugin does not fit your needs, write a custom Artillery plugin that handles trace propagation:
+If the built-in plugin does not fit your needs, write a custom Artillery processor that handles trace propagation:
+
+```bash
+npm install @opentelemetry/api @opentelemetry/sdk-trace-node @opentelemetry/sdk-trace-base @opentelemetry/exporter-trace-otlp-http @opentelemetry/resources
+```
 
 ```javascript
-// artillery-otel-plugin.js
-const { trace, context, propagation } = require('@opentelemetry/api');
+// artillery-otel-processor.js
+const { trace, context: otelContext, propagation, SpanKind, SpanStatusCode } = require('@opentelemetry/api');
 const { NodeTracerProvider } = require('@opentelemetry/sdk-trace-node');
 const { BatchSpanProcessor } = require('@opentelemetry/sdk-trace-base');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
-const { Resource } = require('@opentelemetry/resources');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 
-class OpenTelemetryPlugin {
-  constructor(script, events) {
-    // Set up the tracer provider
-    const exporter = new OTLPTraceExporter({
-      url: script.config.plugins.otel.endpoint || 'http://localhost:4318/v1/traces',
-    });
+const exporter = new OTLPTraceExporter({
+  url: process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT || 'http://localhost:4318/v1/traces',
+});
 
-    const provider = new NodeTracerProvider({
-      resource: new Resource({
-        'service.name': 'artillery-load-test',
-        'test.id': Date.now().toString(),
-      }),
-    });
+const provider = new NodeTracerProvider({
+  resource: resourceFromAttributes({
+    'service.name': 'artillery-load-test',
+    'test.id': Date.now().toString(),
+  }),
+  spanProcessors: [new BatchSpanProcessor(exporter)],
+});
 
-    provider.addSpanProcessor(new BatchSpanProcessor(exporter));
-    provider.register();
+provider.register();
 
-    this.tracer = trace.getTracer('artillery');
+const tracer = trace.getTracer('artillery');
+const activeSpans = new WeakMap();
+let shuttingDown = false;
 
-    // Hook into Artillery's request lifecycle
-    events.on('beforeRequest', this.beforeRequest.bind(this));
-    events.on('afterResponse', this.afterResponse.bind(this));
-    events.on('done', () => {
-      provider.forceFlush().then(() => provider.shutdown());
-    });
-
-    // Store active spans keyed by request ID
-    this.activeSpans = new Map();
+async function shutdownProvider() {
+  if (shuttingDown) {
+    return;
   }
 
-  beforeRequest(requestParams, eventContext, ee, next) {
+  shuttingDown = true;
+  await provider.forceFlush();
+  await provider.shutdown();
+}
+
+module.exports = {
+  beforeRequest(requestParams, vuContext, ee, next) {
     // Create a span for this request
-    const span = this.tracer.startSpan(`${requestParams.method} ${requestParams.url}`, {
+    const method = (requestParams.method || 'GET').toUpperCase();
+    const span = tracer.startSpan(`${method} ${requestParams.url}`, {
+      kind: SpanKind.CLIENT,
       attributes: {
-        'http.method': requestParams.method,
+        'http.request.method': method,
+        'http.method': method,
+        'url.full': requestParams.url,
         'http.url': requestParams.url,
-        'artillery.scenario': eventContext._scenario || 'default',
-        'artillery.vu_id': eventContext._uid,
+        'artillery.scenario': vuContext.scenario?.name || 'default',
       },
     });
 
     // Inject trace context into the request headers
-    const spanContext = trace.setSpan(context.active(), span);
+    const spanContext = trace.setSpan(otelContext.active(), span);
     const headers = requestParams.headers || {};
     propagation.inject(spanContext, headers);
     requestParams.headers = headers;
 
     // Store the span so we can end it in afterResponse
-    this.activeSpans.set(eventContext._uid + requestParams.url, span);
+    activeSpans.set(requestParams, span);
 
     next();
-  }
+  },
 
-  afterResponse(requestParams, response, eventContext, ee, next) {
-    const key = eventContext._uid + requestParams.url;
-    const span = this.activeSpans.get(key);
+  afterResponse(requestParams, response, vuContext, ee, next) {
+    const span = activeSpans.get(requestParams);
 
     if (span) {
+      span.setAttribute('http.response.status_code', response.statusCode);
       span.setAttribute('http.status_code', response.statusCode);
-      span.setAttribute('http.response_time_ms', response.timings.phases.total);
+
+      if (response.timings?.phases?.total) {
+        span.setAttribute('http.response_time_ms', response.timings.phases.total);
+      }
 
       if (response.statusCode >= 400) {
-        span.setStatus({ code: 2, message: `HTTP ${response.statusCode}` });
+        span.setStatus({ code: SpanStatusCode.ERROR, message: `HTTP ${response.statusCode}` });
       }
 
       span.end();
-      this.activeSpans.delete(key);
+      activeSpans.delete(requestParams);
     }
 
     next();
-  }
-}
+  },
+};
 
-module.exports = { Plugin: OpenTelemetryPlugin };
+process.once('beforeExit', shutdownProvider);
+process.once('SIGINT', shutdownProvider);
+process.once('SIGTERM', shutdownProvider);
 ```
 
-Register the plugin in your Artillery config:
+Register the processor and hooks in your Artillery config:
 
 ```yaml
 config:
-  plugins:
-    otel:
-      endpoint: "http://localhost:4318/v1/traces"
+  processor: "./artillery-otel-processor.js"
+
+scenarios:
+  - flow:
+      - get:
+          url: "/api/products"
+          beforeRequest: "beforeRequest"
+          afterResponse: "afterResponse"
 ```
 
 ## Analyzing Results with Traces
@@ -175,7 +195,7 @@ After the load test completes, you have two datasets: Artillery's aggregate metr
 First, check Artillery's output for high-level problems:
 
 ```bash
-artillery run load-test.yaml --output results.json
+artillery run --output results.json load-test.yaml
 
 # Summarize results
 artillery report results.json
