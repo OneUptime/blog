@@ -33,7 +33,7 @@ graph LR
 | Readable | Data source you read from | `fs.createReadStream`, HTTP response body, `process.stdin` |
 | Writable | Data sink you write to | `fs.createWriteStream`, HTTP request body, `process.stdout` |
 | Duplex | Both readable and writable (independent) | TCP socket, WebSocket connection |
-| Transform | Duplex that modifies data passing through | `zlib.createGzip`, `crypto.createCipher` |
+| Transform | Duplex that modifies data passing through | `zlib.createGzip`, `crypto.createCipheriv` |
 
 ## Reading Data with Readable Streams
 
