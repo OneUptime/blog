@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Exporter, Performance, Latency
 
-Description: Avoid blocking your application's request path by understanding the difference between synchronous and batch span exporters.
+Description: Avoid blocking your application's request path by understanding the difference between simple and batch span processors.
 
-Using a synchronous exporter means every span is sent to the backend immediately, inline with your application's request processing. If the backend takes 50ms to respond, you just added 50ms to every single request. This post explains how to identify synchronous exporters and replace them with batch processing.
+Using a simple processor means every ended span is handed to the exporter immediately, inline with your application's request processing. In SDKs or exporters where that export work is synchronous, a slow backend can add that delay to your request path. This post explains how to identify simple processors and replace them with batch processing.
 
-## Synchronous vs Batch Exporters
+## Simple vs Batch Span Processors
 
-**SimpleSpanProcessor** (synchronous): Calls the exporter's `export()` method every time a span ends. The call to `span.end()` blocks until the export completes.
+**SimpleSpanProcessor** (simple): Calls the exporter's `export()` method every time a span ends. In synchronous SDKs and exporters, the call to `span.end()` includes that export work.
 
 **BatchSpanProcessor** (asynchronous): Collects finished spans in an in-memory buffer and exports them in batches on a background thread or timer.
 
@@ -20,8 +20,8 @@ const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http')
 
 const exporter = new OTLPTraceExporter();
 
-// Bad - blocks on every span.end()
-const syncProcessor = new SimpleSpanProcessor(exporter);
+// Bad - exports on every span.end()
+const simpleProcessor = new SimpleSpanProcessor(exporter);
 
 // Good - batches spans and exports in the background
 const batchProcessor = new BatchSpanProcessor(exporter, {
@@ -34,7 +34,7 @@ const batchProcessor = new BatchSpanProcessor(exporter, {
 
 ## Measuring the Impact
 
-With a synchronous exporter, every request pays the cost of a network round-trip to the telemetry backend. Here is what that looks like:
+With a synchronous exporter behind a simple processor, every request can pay the cost of a network round-trip to the telemetry backend. Here is what that looks like:
 
 ```text
 Request without telemetry:     10ms
@@ -42,18 +42,19 @@ Request with sync exporter:    10ms + 50ms (export) = 60ms
 Request with batch exporter:   10ms + ~0.1ms (queuing) = ~10.1ms
 ```
 
-The batch exporter adds negligible overhead because it only enqueues the span in memory. The actual network call happens on a background timer, completely decoupled from the request.
+The batch processor adds negligible overhead because it only enqueues the span in memory. The actual network call happens on a background timer, decoupled from the request.
 
 ## When SimpleSpanProcessor Gets Used Accidentally
 
 ### Mistake 1: Using ConsoleSpanExporter for Testing
 
 ```javascript
-// This is synchronous! It blocks on every span to write to stdout
+// This exports every span directly to stdout
+const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { ConsoleSpanExporter, SimpleSpanProcessor } = require('@opentelemetry/sdk-trace-base');
 
 const sdk = new NodeSDK({
-  spanProcessor: new SimpleSpanProcessor(new ConsoleSpanExporter()),
+  spanProcessors: [new SimpleSpanProcessor(new ConsoleSpanExporter())],
 });
 ```
 
