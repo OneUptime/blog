@@ -65,9 +65,9 @@ class DeploymentEnrichmentProcessor(SpanProcessor):
 
     def on_start(self, span, parent_context=None):
         # on_start receives a writable span, so we can set attributes
-        span.set_attribute("deployment.environment", self.deployment_env)
-        span.set_attribute("deployment.version", self.app_version)
-        span.set_attribute("deployment.region", self.region)
+        span.set_attribute("deployment.environment.name", self.deployment_env)
+        span.set_attribute("service.version", self.app_version)
+        span.set_attribute("cloud.region", self.region)
         span.set_attribute("deployment.commit_sha", self.commit_sha)
 
     def on_end(self, span):
@@ -181,17 +181,18 @@ def inject_request_context():
 
 ## Building a Filtering Processor
 
-Sometimes you want to drop spans that are not useful, like health check endpoints that generate noise without providing insight. A filtering processor can suppress these before they reach the exporter.
+Sometimes you want to drop spans that are not useful, like health check endpoints that generate noise without providing insight. A span processor can inspect ended spans, but it cannot make an already-created span non-recording. To actually drop spans before export, use a sampler when the decision can be made at span creation time, or filter in an exporter wrapper or Collector pipeline.
 
 ```python
 from opentelemetry.sdk.trace import SpanProcessor
 
 class HealthCheckFilterProcessor(SpanProcessor):
-    """Filters out spans from health check and readiness probe endpoints.
+    """Inspects spans from health check and readiness probe endpoints.
 
     These endpoints are hit frequently by load balancers and Kubernetes
     probes, generating a lot of trace data that rarely helps with
-    debugging. This processor marks them as non-recording.
+    debugging. This processor shows why filtering is usually better done
+    in a sampler, exporter wrapper, or Collector pipeline.
     """
 
     # URL paths that should not generate trace data
@@ -202,7 +203,7 @@ class HealthCheckFilterProcessor(SpanProcessor):
 
     def on_end(self, span):
         # Check if the span represents an excluded endpoint
-        url_path = span.attributes.get("http.target", "")
+        url_path = span.attributes.get("url.path", "")
         if url_path in self.EXCLUDED_PATHS:
             # We cannot modify the span here since on_end receives
             # a read-only span. Instead, we use a different approach:
@@ -226,7 +227,7 @@ class HealthCheckMarkerProcessor(SpanProcessor):
     EXCLUDED_PATHS = {"/health", "/healthz", "/ready", "/ping"}
 
     def on_start(self, span, parent_context=None):
-        # At on_start, we might not have http.target yet since
+        # At on_start, we might not have url.path yet since
         # the HTTP instrumentation sets it later. Instead, check
         # the span name which is often set at creation.
         span_name = span.name.lower() if span.name else ""
@@ -309,9 +310,9 @@ def test_deployment_enrichment():
 
     attrs = dict(spans[0].attributes)
     # Verify the deployment attributes were injected
-    assert "deployment.environment" in attrs
-    assert "deployment.version" in attrs
-    assert "deployment.region" in attrs
+    assert "deployment.environment.name" in attrs
+    assert "service.version" in attrs
+    assert "cloud.region" in attrs
 ```
 
 The `InMemorySpanExporter` collects all finished spans in a list, making it simple to assert against their attributes without needing a real backend.
