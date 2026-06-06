@@ -51,7 +51,7 @@ from opentelemetry.sdk.trace.export import (
 
 # Any string attribute longer than 256 characters will be truncated
 span_limits = SpanLimits(
-    max_span_attribute_value_length=256,
+    max_span_attribute_length=256,
 )
 
 provider = TracerProvider(span_limits=span_limits)
@@ -70,7 +70,7 @@ long_query = "SELECT * FROM orders WHERE id IN (" + ", ".join(
 ) + ")"
 
 print(f"Original query length: {len(long_query)}")
-# Output: Original query length: 6893
+# Output: Original query length: 6923
 
 with tracer.start_as_current_span("db.query") as span:
     # Set the query as an attribute
@@ -116,6 +116,7 @@ public class TracingConfig {
         var tracer = sdk.getTracer("db.service");
 
         // Long attribute values will be truncated to 256 characters
+        String veryLongQuery = "SELECT * FROM orders WHERE id IN (" + "1, ".repeat(1000) + "1)";
         var span = tracer.spanBuilder("db.query").startSpan();
         span.setAttribute("db.statement", veryLongQuery);
         span.end();
@@ -123,7 +124,7 @@ public class TracingConfig {
 }
 ```
 
-The Java SDK also supports per-attribute-type limits. String attributes are the ones affected by length limits. Numeric, boolean, and array attributes are not truncated (though array attributes have their own count limit via `setMaxAttributeValueLength`).
+The Java SDK also supports per-attribute-type limits. String attributes are the ones affected by length limits. Numeric and boolean attributes are not truncated; for string array attributes, the limit applies to each string element.
 
 ## Setting Limits in Node.js
 
@@ -140,14 +141,20 @@ const provider = new NodeTracerProvider({
         // Also limit the number of attributes per span
         attributeCountLimit: 128,
     },
+    spanProcessors: [
+        new SimpleSpanProcessor(new ConsoleSpanExporter()),
+    ],
 });
 
-provider.addSpanProcessor(new SimpleSpanProcessor(new ConsoleSpanExporter()));
 provider.register();
 
 const tracer = provider.getTracer('db.service');
 
 // Create a span with a long attribute
+const veryLongSqlQuery = `SELECT * FROM orders WHERE id IN (${Array.from(
+    { length: 1000 },
+    (_, i) => `'${i}'`
+).join(', ')})`;
 const span = tracer.startSpan('db.query');
 span.setAttribute('db.statement', veryLongSqlQuery);
 // The value is truncated to 256 characters before storage
@@ -162,26 +169,26 @@ All major SDKs support environment variable configuration for attribute limits. 
 # Set the maximum attribute value length for spans
 export OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT=256
 
-# Set a global limit that applies to all signals (spans, logs, events)
+# Set a general attribute limit used when a signal-specific limit is not set
 export OTEL_ATTRIBUTE_VALUE_LENGTH_LIMIT=512
 
 # The span-specific limit takes precedence over the global limit
-# If both are set, spans use 256 and other signals use 512
+# If both are set through environment variables, spans use 256
 ```
 
-The precedence order is: signal-specific environment variable > global environment variable > code configuration > SDK default. By default, there is no length limit (the value is unlimited).
+For environment-based configuration, the precedence order is: signal-specific environment variable > global environment variable > SDK default. If you configure limits directly in code, those explicit constructor or builder values take precedence over environment variables in SDKs such as Python and Java. By default, there is no length limit (the value is unlimited).
 
 ```mermaid
 graph TD
-    A["OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT"] -->|Highest priority| E[Effective Limit]
+    Z["Code: SpanLimits(max_span_attribute_length=N)"] -->|Highest priority when set directly| E[Effective Limit]
+    A["OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT"] -->|Highest env priority| E
     B["OTEL_ATTRIBUTE_VALUE_LENGTH_LIMIT"] -->|If span-specific not set| E
-    C["Code: SpanLimits(max_span_attribute_value_length=N)"] -->|If env vars not set| E
     D["SDK Default: No limit"] -->|Fallback| E
 ```
 
 ## How Truncation Works
 
-When the SDK truncates an attribute value, it simply cuts the string at the limit boundary. There is no smart truncation that tries to break at word boundaries or add ellipsis markers. The truncation applies only to string values. Other attribute types like integers, floats, booleans, and arrays of primitives are not affected.
+When the SDK truncates an attribute value, it simply cuts the string at the limit boundary. There is no smart truncation that tries to break at word boundaries or add ellipsis markers. The truncation applies to string values and to string elements inside arrays. Other attribute types like integers, floats, and booleans are not affected.
 
 For array attributes (like `string[]`), the length limit applies to each element individually:
 
@@ -232,7 +239,7 @@ else:
     max_length = 8192
 
 span_limits = SpanLimits(
-    max_span_attribute_value_length=max_length,
+    max_span_attribute_length=max_length,
 )
 ```
 
@@ -312,7 +319,7 @@ span_limits = SpanLimits(
     # Maximum number of attributes per span
     max_attributes=64,
     # Maximum length of any string attribute value
-    max_span_attribute_value_length=256,
+    max_span_attribute_length=256,
     # Maximum number of events per span
     max_events=128,
     # Maximum number of attributes per event
