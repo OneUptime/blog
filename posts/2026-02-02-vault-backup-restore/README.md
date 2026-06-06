@@ -173,8 +173,8 @@ Type=oneshot
 User=vault
 Group=vault
 Environment="VAULT_ADDR=https://127.0.0.1:8200"
-Environment="VAULT_TOKEN_FILE=/etc/vault.d/backup-token"
-ExecStartPre=/bin/bash -c 'export VAULT_TOKEN=$(cat $VAULT_TOKEN_FILE)'
+# EnvironmentFile must be in KEY=VALUE format and contain VAULT_TOKEN=<token>
+EnvironmentFile=/etc/vault.d/backup-token.env
 ExecStart=/usr/local/bin/vault-backup.sh
 StandardOutput=journal
 StandardError=journal
@@ -517,7 +517,7 @@ Restoring from a Raft snapshot requires the unseal keys and careful coordination
 
 set -euo pipefail
 
-SNAPSHOT_FILE=$1
+SNAPSHOT_FILE=${1:-}
 FORCE=${2:-false}
 
 if [ -z "$SNAPSHOT_FILE" ]; then
@@ -633,7 +633,7 @@ For Consul-backed Vault, restore the Consul cluster first.
 
 set -euo pipefail
 
-SNAPSHOT_FILE=$1
+SNAPSHOT_FILE=${1:-}
 
 if [ -z "$SNAPSHOT_FILE" ]; then
     echo "Usage: $0 <consul-snapshot-file>"
@@ -813,7 +813,7 @@ Regular verification ensures backups are actually restorable.
 
 set -euo pipefail
 
-BACKUP_FILE=$1
+BACKUP_FILE=${1:-}
 REPORT_FILE="/var/log/vault-backup-verification.log"
 
 log() {
