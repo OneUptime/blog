@@ -1086,7 +1086,7 @@ $activeNames = $users->filter->isActive()->map->name;
 $result = $users
     ->reject->isInactive()
     ->map->name
-    ->map->toUpperCase();
+    ->map(fn ($name) => strtoupper($name));
 ```
 
 ## Real-World Examples
