@@ -55,10 +55,10 @@ exporters:
   datadog:
     # Datadog API key (required)
     api:
-      key: ${DD_API_KEY}
+      key: ${env:DD_API_KEY}
 
-    # Datadog site (default: datadoghq.com)
-    site: datadoghq.com
+      # Datadog site (default: datadoghq.com)
+      site: datadoghq.com
 
 receivers:
   otlp:
@@ -92,20 +92,21 @@ exporters:
   datadog:
     # API configuration
     api:
-      key: ${DD_API_KEY}
+      key: ${env:DD_API_KEY}
       site: datadoghq.com
 
       # Fail on invalid API key (default: false)
       fail_on_invalid_key: true
 
     # Hostname and tags
-    hostname: ${HOSTNAME}
+    hostname: ${env:HOSTNAME}
 
-    # Global tags applied to all telemetry
-    tags:
-      - env:production
-      - region:us-east-1
-      - team:platform
+    # Host tags applied through Datadog host metadata
+    host_metadata:
+      tags:
+        - env:production
+        - region:us-east-1
+        - team:platform
 
     # Trace configuration
     traces:
@@ -207,26 +208,20 @@ exporters:
   datadog:
     # API key still required for validation
     api:
-      key: ${DD_API_KEY}
+      key: ${env:DD_API_KEY}
 
     # Datadog Agent configuration
     traces:
       # Send traces to local Datadog Agent
       endpoint: http://localhost:8126
 
-    metrics:
-      # Send metrics to Datadog Agent
-      endpoint: http://localhost:8125
-
-      # Use DogStatsD protocol
-      resource_attributes_as_tags: true
-
     # Agent handles forwarding to Datadog platform
-    hostname: ${HOSTNAME}
+    hostname: ${env:HOSTNAME}
 
-    tags:
-      - env:production
-      - service:api
+    host_metadata:
+      tags:
+        - env:production
+        - service:api
 
 receivers:
   otlp:
@@ -250,7 +245,7 @@ service:
 This approach provides benefits:
 
 - **Local buffering**: Agent buffers data during network issues
-- **Reduced egress**: Single connection from Agent to Datadog
+- **Reduced egress**: Single trace connection from the Agent to Datadog
 - **Additional processing**: Agent can enrich data with host metadata
 - **Simplified networking**: Collector only needs to reach localhost
 
@@ -272,10 +267,10 @@ processors:
 exporters:
   datadog:
     api:
-      key: ${DD_API_KEY}
+      key: ${env:DD_API_KEY}
       site: datadoghq.com
 
-    hostname: ${HOSTNAME}
+    hostname: ${env:HOSTNAME}
 
 service:
   pipelines:
@@ -296,9 +291,9 @@ processors:
     detectors: [env, system, docker, ec2, ecs]
     timeout: 5s
 
-  # Attributes processor for Datadog tagging
-  attributes:
-    actions:
+  # Resource processor for Datadog tagging
+  resource:
+    attributes:
       # Map deployment.environment to env tag
       - key: env
         from_attribute: deployment.environment
@@ -317,20 +312,16 @@ processors:
 exporters:
   datadog:
     api:
-      key: ${DD_API_KEY}
+      key: ${env:DD_API_KEY}
       site: datadoghq.com
 
-    # Extract resource attributes as tags
-    traces:
-      resource_attributes_as_tags: true
-
-    hostname: ${HOSTNAME}
+    hostname: ${env:HOSTNAME}
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [resourcedetection, attributes, batch]
+      processors: [resourcedetection, resource, batch]
       exporters: [datadog]
 ```
 
@@ -387,10 +378,10 @@ processors:
 exporters:
   datadog:
     api:
-      key: ${DD_API_KEY}
+      key: ${env:DD_API_KEY}
       site: datadoghq.com
 
-    hostname: ${HOSTNAME}
+    hostname: ${env:HOSTNAME}
 
 service:
   pipelines:
@@ -464,16 +455,17 @@ processors:
 exporters:
   datadog:
     api:
-      key: ${DD_API_KEY}
+      key: ${env:DD_API_KEY}
       site: datadoghq.com
       fail_on_invalid_key: true
 
-    hostname: ${HOSTNAME}
+    hostname: ${env:HOSTNAME}
 
-    tags:
-      - env:production
-      - cluster:primary
-      - collector.version:v0.88.0
+    host_metadata:
+      tags:
+        - env:production
+        - cluster:primary
+        - collector.version:${env:OTEL_COLLECTOR_VERSION}
 
     traces:
       endpoint: https://trace.agent.datadoghq.com
@@ -494,8 +486,6 @@ exporters:
         - db.system
         - messaging.system
         - rpc.service
-
-      resource_attributes_as_tags: true
 
     metrics:
       endpoint: https://api.datadoghq.com
@@ -539,7 +529,12 @@ service:
 
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 
   pipelines:
     traces:
@@ -567,42 +562,49 @@ Configure the exporter for different Datadog regions:
 exporters:
   datadog/us1:
     api:
-      key: ${DD_API_KEY}
+      key: ${env:DD_API_KEY}
       site: datadoghq.com
 
 # US3
 exporters:
   datadog/us3:
     api:
-      key: ${DD_API_KEY}
+      key: ${env:DD_API_KEY}
       site: us3.datadoghq.com
 
 # US5
 exporters:
   datadog/us5:
     api:
-      key: ${DD_API_KEY}
+      key: ${env:DD_API_KEY}
       site: us5.datadoghq.com
 
 # EU
 exporters:
   datadog/eu:
     api:
-      key: ${DD_API_KEY}
+      key: ${env:DD_API_KEY}
       site: datadoghq.eu
 
 # AP1
 exporters:
   datadog/ap1:
     api:
-      key: ${DD_API_KEY}
+      key: ${env:DD_API_KEY}
       site: ap1.datadoghq.com
+
+# AP2
+exporters:
+  datadog/ap2:
+    api:
+      key: ${env:DD_API_KEY}
+      site: ap2.datadoghq.com
 
 # US1-FED (Government)
 exporters:
   datadog/gov:
     api:
-      key: ${DD_API_KEY}
+      key: ${env:DD_API_KEY}
       site: ddog-gov.com
 ```
 
@@ -614,7 +616,7 @@ Send data to both Datadog and another backend during migration:
 exporters:
   datadog:
     api:
-      key: ${DD_API_KEY}
+      key: ${env:DD_API_KEY}
       site: datadoghq.com
 
   otlp:
