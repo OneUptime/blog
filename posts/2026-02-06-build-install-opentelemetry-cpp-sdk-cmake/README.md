@@ -6,11 +6,11 @@ Tags: OpenTelemetry, C++, SDK, CMake, Build, Installation
 
 Description: A comprehensive guide to building and installing the OpenTelemetry C++ SDK from source using CMake, covering prerequisites, configuration options, and troubleshooting common build issues.
 
-Getting OpenTelemetry working in C++ applications requires building the SDK from source, as pre-built binaries are not consistently available across platforms. The build process involves CMake and several dependencies, but once you understand the configuration options, it becomes straightforward.
+Getting OpenTelemetry working in C++ applications often involves building the SDK from source, as officially maintained pre-built binaries are not consistently available across platforms. The build process involves CMake and several dependencies, but once you understand the configuration options, it becomes straightforward.
 
 ## Prerequisites
 
-Before building the OpenTelemetry C++ SDK, you need to ensure your system has the necessary tools and libraries. The SDK requires a C++14-compliant compiler at minimum, though C++17 or later is recommended for better compatibility.
+Before building the OpenTelemetry C++ SDK, you need to ensure your system has the necessary tools and libraries. The SDK requires a C++14-compliant compiler at minimum, though C++17 or later is recommended for better compatibility. CMake 3.16 or later is required.
 
 For Linux systems, install the build essentials:
 
@@ -31,7 +31,7 @@ For macOS, use Homebrew:
 brew install cmake git curl
 ```
 
-Windows users should install Visual Studio 2017 or later with C++ build tools and CMake.
+Windows users should install Visual Studio 2019 or later with C++ build tools and CMake.
 
 ## Cloning the Repository
 
@@ -46,7 +46,7 @@ cd opentelemetry-cpp
 git submodule update --init --recursive
 ```
 
-The `--recursive` flag is critical because OpenTelemetry C++ includes dependencies like Google Test, Abseil, and others as submodules.
+The `--recursive` flag is important because OpenTelemetry C++ includes dependencies like Google Test, Google Benchmark, opentelemetry-proto, nlohmann-json, and others as submodules. Some exporter dependencies, such as gRPC and Abseil, may also be fetched by CMake when they are not available as installed packages.
 
 ## Basic Build Configuration
 
@@ -83,7 +83,7 @@ cmake .. \
   -DCMAKE_INSTALL_PREFIX=/usr/local
 ```
 
-For Jaeger or Zipkin exporters:
+For Zipkin or Prometheus exporters:
 
 ```bash
 # Include additional exporters
@@ -92,48 +92,48 @@ cmake .. \
   -DBUILD_SHARED_LIBS=ON \
   -DWITH_OTLP_GRPC=ON \
   -DWITH_OTLP_HTTP=ON \
-  -DWITH_JAEGER=ON \
   -DWITH_ZIPKIN=ON \
+  -DWITH_PROMETHEUS=ON \
   -DCMAKE_INSTALL_PREFIX=/usr/local
 ```
 
 ## Configuring Dependencies
 
-The SDK can use system-installed dependencies or build them from the included submodules. Using system dependencies reduces build time:
+The SDK can use system-installed dependencies or fetch compatible versions during the CMake build. Using system dependencies reduces build time:
 
 ```bash
-# Use system-installed Abseil and Protobuf (if available)
+# Use system-installed gRPC, Protobuf, Abseil, and CURL packages from a custom prefix
 cmake .. \
   -DCMAKE_BUILD_TYPE=Release \
   -DBUILD_SHARED_LIBS=ON \
   -DWITH_OTLP_GRPC=ON \
-  -DWITH_ABSEIL=ON \
-  -DWITH_STL=ON \
+  -DWITH_OTLP_HTTP=ON \
+  -DCMAKE_PREFIX_PATH=/opt/otel-deps \
   -DCMAKE_INSTALL_PREFIX=/usr/local
 ```
 
-If you encounter dependency version conflicts, let CMake build the bundled versions:
+If the dependencies are not installed, CMake can fetch and build compatible versions:
 
 ```bash
-# Build all dependencies from submodules
+# Let CMake fetch missing exporter dependencies
 cmake .. \
   -DCMAKE_BUILD_TYPE=Release \
   -DBUILD_SHARED_LIBS=ON \
   -DWITH_OTLP_GRPC=ON \
-  -DWITH_ABSEIL=OFF \
+  -DWITH_OTLP_HTTP=ON \
   -DCMAKE_INSTALL_PREFIX=/usr/local
 ```
 
 ## Building the SDK
 
-After configuration, build the SDK using make or ninja:
+After configuration, build the SDK using the generated build system:
 
 ```bash
 # Build using all available CPU cores
-cmake --build . -j$(nproc)
+cmake --build . --parallel
 
 # Or specify a number of parallel jobs
-cmake --build . -j4
+cmake --build . --parallel 4
 ```
 
 The build process can take 10-30 minutes depending on your system and enabled features. Monitor for errors related to missing dependencies or compiler issues.
@@ -164,7 +164,7 @@ ls /usr/local/lib | grep opentelemetry
 After installing the SDK, configure your C++ project to use it. Create a `CMakeLists.txt`:
 
 ```cmake
-cmake_minimum_required(VERSION 3.14)
+cmake_minimum_required(VERSION 3.16)
 project(MyApp CXX)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -198,7 +198,7 @@ cmake .. \
   -DWITH_OTLP_GRPC=ON \
   -DCMAKE_INSTALL_PREFIX=$HOME/opentelemetry
 
-cmake --build . -j$(nproc)
+cmake --build . --parallel
 cmake --install .
 ```
 
@@ -231,28 +231,35 @@ Static libraries increase your binary size but eliminate runtime dependencies. S
 
 ## Troubleshooting Build Issues
 
-If CMake cannot find Abseil:
+If CMake cannot find Abseil, build and install a version compatible with the gRPC version you are using:
 
 ```bash
 # Install Abseil separately
 git clone https://github.com/abseil/abseil-cpp.git
 cd abseil-cpp
+git checkout 20250512.1
 mkdir build && cd build
 cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_CXX_STANDARD=17
-cmake --build . -j$(nproc)
+cmake --build . --parallel
 sudo cmake --install .
 ```
 
 For Protobuf version conflicts:
 
 ```bash
-# Install a compatible Protobuf version
-wget https://github.com/protocolbuffers/protobuf/releases/download/v21.12/protobuf-cpp-3.21.12.tar.gz
-tar -xzf protobuf-cpp-3.21.12.tar.gz
-cd protobuf-3.21.12
-./configure --prefix=/usr/local
-make -j$(nproc)
-sudo make install
+# Install a compatible Protobuf version with CMake
+git clone https://github.com/protocolbuffers/protobuf.git
+cd protobuf
+git checkout v6.31.1
+git submodule update --init --recursive
+mkdir build && cd build
+cmake .. \
+  -DCMAKE_BUILD_TYPE=Release \
+  -Dprotobuf_ABSL_PROVIDER=package \
+  -Dprotobuf_BUILD_TESTS=OFF \
+  -DCMAKE_INSTALL_PREFIX=/usr/local
+cmake --build . --parallel
+sudo cmake --install .
 ```
 
 ## Build Diagram
@@ -264,7 +271,7 @@ graph TD
     A[Clone Repository] --> B[Initialize Submodules]
     B --> C[Configure CMake]
     C --> D{Check Dependencies}
-    D -->|Missing| E[Build Bundled Dependencies]
+    D -->|Missing| E[Fetch Missing Dependencies]
     D -->|Found| F[Use System Dependencies]
     E --> G[Build OpenTelemetry SDK]
     F --> G
@@ -286,7 +293,7 @@ cmake .. \
   -DWITH_OTLP_GRPC=ON \
   -DBUILD_TESTING=ON
 
-cmake --build . -j$(nproc)
+cmake --build . --parallel
 
 # Run all tests
 ctest --output-on-failure
@@ -304,7 +311,6 @@ cmake .. \
   -DBUILD_SHARED_LIBS=ON \
   -DWITH_OTLP_GRPC=ON \
   -DWITH_OTLP_HTTP=ON \
-  -DWITH_ZPAGES=OFF \
   -DWITH_EXAMPLES=OFF \
   -DBUILD_TESTING=OFF \
   -DWITH_BENCHMARK=OFF \
