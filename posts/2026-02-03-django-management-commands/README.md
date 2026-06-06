@@ -237,7 +237,7 @@ class Command(BaseCommand):
             self.style.ERROR("Redis connection: FAILED")
         )
 
-        # NOTICE style - cyan text
+        # NOTICE style - red text (less prominent than ERROR)
         self.stdout.write(
             self.style.NOTICE("Running in DEBUG mode")
         )
