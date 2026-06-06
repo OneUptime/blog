@@ -20,7 +20,6 @@ sequenceDiagram
     participant Guard
     participant Interceptor
     participant Handler
-    participant Interceptor as Interceptor (after)
 
     Client->>Guard: HTTP Request
     Guard->>Interceptor: Passes if authorized
@@ -334,7 +333,7 @@ export class RedisCacheInterceptor implements NestInterceptor {
 
     return next.handle().pipe(
       tap((data) => {
-        this.cacheManager.set(cacheKey, data, 60); // 60 seconds TTL
+        this.cacheManager.set(cacheKey, data, 60000); // 60 seconds TTL (in ms)
       }),
     );
   }
