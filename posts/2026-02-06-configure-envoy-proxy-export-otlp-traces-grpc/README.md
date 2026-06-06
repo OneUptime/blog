@@ -16,7 +16,7 @@ This guide walks through configuring Envoy to emit traces using its native OpenT
 
 Envoy generates trace data at the connection manager level. Every HTTP request that passes through an Envoy listener gets a trace span created for it. The span captures the request's lifecycle: when it arrived, how long the upstream took to respond, the HTTP method and status code, and various other attributes.
 
-Envoy supports several tracing providers, including Zipkin, Jaeger, Datadog, and OpenTelemetry. The OpenTelemetry provider was added in later Envoy releases and supports exporting spans in OTLP format over gRPC. This is what we want.
+Envoy supports several tracing providers, including Zipkin, Jaeger, Datadog, and OpenTelemetry. The OpenTelemetry provider supports exporting spans in OTLP format over gRPC, but Envoy's own documentation still marks the extension as work-in-progress, so check the release notes and extension status for the Envoy version you deploy.
 
 ```mermaid
 flowchart LR
@@ -30,13 +30,13 @@ flowchart LR
 
 Before diving into the configuration, make sure you have:
 
-- Envoy 1.26 or later (the OpenTelemetry tracing provider has been stable since this version)
+- Envoy with the `envoy.tracers.opentelemetry` extension available; check your Envoy build and version because Envoy's documentation still marks this extension as work-in-progress
 - An OpenTelemetry Collector running and accessible on port 4317 (the default OTLP gRPC port)
 - Basic familiarity with Envoy's configuration structure (listeners, clusters, routes)
 
 ## Setting Up the OpenTelemetry Tracing Provider
 
-Envoy's tracing configuration lives in two places: the bootstrap config (where you define the tracing provider) and the HTTP connection manager (where you enable tracing on specific listeners).
+Envoy's tracing configuration lives in the HTTP connection manager for the listener where you want tracing enabled, and it references the upstream cluster that sends spans to the Collector.
 
 Let's start with a complete working configuration. This sets up Envoy to proxy HTTP traffic and export OTLP traces for every request.
 
@@ -147,10 +147,10 @@ The span name defaults to the route's `decorator.operation` value if set, or the
 
 ## Adding Resource Attributes
 
-You might want to enrich the trace data with additional context about where Envoy is running. You can do this through the `resource_attributes` field in the OpenTelemetry config.
+You might want to enrich the trace data with additional context about where Envoy is running. You can do this through `resource_detectors` in the OpenTelemetry config.
 
 ```yaml
-# Enhanced tracing provider config with resource attributes
+# Enhanced tracing provider config with environment resource attributes
 tracing:
   provider:
     name: envoy.tracers.opentelemetry
@@ -183,10 +183,10 @@ envoy -c /etc/envoy/envoy.yaml
 
 By default, Envoy propagates trace context using the W3C Trace Context format (`traceparent` and `tracestate` headers). This is the standard that OpenTelemetry also uses, so things work well out of the box.
 
-If you need to support additional propagation formats (for example, if some upstream services still use B3 headers from Zipkin), you can configure Envoy to inject multiple formats.
+Envoy's HTTP connection manager can disable context propagation with `no_context_propagation`. Extra propagation formats are tracer-specific; for example, the Zipkin tracer has B3/W3C propagation options, but `custom_tags` are span attributes, not propagation settings.
 
 ```yaml
-# Tracing config with custom context propagation headers
+# Tracing config that reports spans but does not propagate trace context upstream
 tracing:
   provider:
     name: envoy.tracers.opentelemetry
@@ -197,13 +197,8 @@ tracing:
         envoy_grpc:
           cluster_name: otel_collector
         timeout: 5s
-  # Specify which headers to use for context propagation
-  # Envoy will read and write these headers on requests
-  custom_tags:
-    - tag: "envoy.zone"
-      environment:
-        name: ENVOY_ZONE
-        default_value: "unknown"
+  # Disable injecting trace context headers such as traceparent/tracestate upstream
+  no_context_propagation: true
 ```
 
 ## Setting Up the OpenTelemetry Collector
@@ -274,7 +269,7 @@ tracing:
     value: 5.0
 ```
 
-You can also use client-driven sampling. If an incoming request already has a `traceparent` header with a sampling flag set, Envoy will respect that decision. This is useful when you want upstream services or load balancers to control which requests get traced.
+You can also use Envoy's client-driven tracing controls, such as `x-client-trace-id` and `x-envoy-force-trace`, or configure an OpenTelemetry sampler on the tracing provider when you want sampling behavior to follow OpenTelemetry sampler semantics.
 
 ## Testing the Setup
 
@@ -299,7 +294,7 @@ A few problems you might run into:
 
 **Missing spans.** If you see requests going through Envoy but no traces appearing, check the sampling rate. Also verify that the Collector is actually listening on port 4317 and that there are no network policies blocking the connection.
 
-**High latency from tracing.** The gRPC call to the Collector is asynchronous and shouldn't block request processing. However, if the Collector is slow or unreachable, Envoy's trace buffer can fill up. The `timeout` setting on the gRPC service config controls how long Envoy waits before dropping trace data.
+**Dropped spans when the Collector is slow.** The gRPC call to the Collector is asynchronous and shouldn't block request processing. However, if the Collector is slow or unreachable, Envoy can cache only a limited number of spans before dropping trace data. The `max_cache_size` setting on the OpenTelemetry config controls that cache size.
 
 ## Summary
 
