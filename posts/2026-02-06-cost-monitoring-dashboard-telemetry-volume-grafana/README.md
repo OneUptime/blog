@@ -16,7 +16,7 @@ The OpenTelemetry Collector already tracks how much data flows through it via it
 - `otelcol_exporter_sent_metric_points` - Number of metric data points exported
 - `otelcol_exporter_sent_log_records` - Number of log records exported
 
-These are broken down by exporter, but not by service name by default. To get per-service volume tracking, you need the `count` connector or a custom approach using the `routing` processor combined with internal metrics.
+These are broken down by exporter, but not by service name by default. To get per-service volume tracking, you need the `count` connector or a custom approach using the `routing` connector combined with internal metrics.
 
 ## Counting Telemetry per Service
 
@@ -27,17 +27,17 @@ The most reliable way to track per-service telemetry volume is using the Count C
 
 connectors:
   count:
-    traces:
+    spans:
       # Create a metric counting spans per service
       telemetry.spans.count:
         description: "Number of spans per service"
-        conditions:
-          - status.code != STATUS_CODE_UNSET
         attributes:
           - key: service.name
             default_value: unknown
+          - key: span.name
+            default_value: unknown
 
-    metrics:
+    datapoints:
       # Create a metric counting data points per service
       telemetry.datapoints.count:
         description: "Number of metric data points per service"
@@ -59,25 +59,33 @@ receivers:
       grpc:
         endpoint: "0.0.0.0:4317"
 
+processors:
+  transform/span_name:
+    trace_statements:
+      - set(span.attributes["span.name"], span.name)
+
 exporters:
   otlp/backend:
     endpoint: "backend:4317"
     tls:
       insecure: true
-  prometheusremotewrite:
+  prometheus_remote_write:
+    # Prometheus must be started with --web.enable-remote-write-receiver
+    # for this /api/v1/write endpoint to accept samples.
     endpoint: "http://prometheus:9090/api/v1/write"
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
+      processors: [transform/span_name]
       exporters: [otlp/backend, count]
     metrics/telemetry:
       receivers: [count]
-      exporters: [prometheusremotewrite]
+      exporters: [prometheus_remote_write]
     metrics:
       receivers: [otlp]
-      exporters: [otlp/backend]
+      exporters: [otlp/backend, count]
     logs:
       receivers: [otlp]
       exporters: [otlp/backend, count]
@@ -148,11 +156,9 @@ A value above 1.5 means a service's trace volume grew by 50% or more compared to
 ```promql
 # Top 5 services by total telemetry volume (spans + datapoints + logs)
 topk(5,
-  sum by (service_name) (increase(telemetry_spans_count_total[24h]))
-  +
-  sum by (service_name) (increase(telemetry_datapoints_count_total[24h]))
-  +
-  sum by (service_name) (increase(telemetry_logs_count_total[24h]))
+  sum by (service_name) (
+    increase({__name__=~"telemetry_(spans|datapoints|logs)_count_total"}[24h])
+  )
 )
 ```
 
