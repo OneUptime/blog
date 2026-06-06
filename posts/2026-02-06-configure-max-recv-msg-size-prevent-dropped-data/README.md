@@ -31,7 +31,7 @@ graph LR
 The OpenTelemetry Collector uses different default values depending on the receiver type:
 
 - OTLP gRPC receiver: 4 MiB default
-- OTLP HTTP receiver: No explicit limit (controlled by HTTP server settings)
+- OTLP HTTP receiver: 20 MiB default, configured with `max_request_body_size`
 
 For many production workloads, 4 MiB is insufficient. A single trace with hundreds of spans, each containing detailed attributes, can easily exceed this limit. Similarly, metric batches from applications with thousands of time series can grow large quickly.
 
@@ -115,7 +115,14 @@ service:
       level: info
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+                without_type_suffix: true
+                without_units: true
 ```
 
 Look for log entries indicating gRPC errors with status code `RESOURCE_EXHAUSTED` or messages about exceeding size limits.
@@ -142,6 +149,8 @@ package main
 
 import (
     "context"
+    "time"
+
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
     "go.opentelemetry.io/otel/sdk/trace"
@@ -154,14 +163,11 @@ func initTracer() (*trace.TracerProvider, error) {
         context.Background(),
         otlptracegrpc.WithEndpoint("collector:4317"),
         otlptracegrpc.WithInsecure(),
-        // Set max message size on client side to match receiver
-        otlptracegrpc.WithGRPCConn(
-            grpc.Dial(
-                "collector:4317",
-                grpc.WithDefaultCallOptions(
-                    grpc.MaxCallRecvMsgSize(16*1024*1024), // 16 MiB
-                    grpc.MaxCallSendMsgSize(16*1024*1024), // 16 MiB
-                ),
+        // Keep serialized export requests below the receiver limit.
+        otlptracegrpc.WithMaxRequestSize(16*1024*1024), // 16 MiB
+        otlptracegrpc.WithDialOption(
+            grpc.WithDefaultCallOptions(
+                grpc.MaxCallSendMsgSize(16*1024*1024), // 16 MiB
             ),
         ),
     )
@@ -189,21 +195,18 @@ func initTracer() (*trace.TracerProvider, error) {
 Set up monitoring to detect when messages are being rejected. The OpenTelemetry Collector exposes metrics that can help:
 
 ```yaml
-# Configure Prometheus exporter for collector metrics
-exporters:
-  prometheus:
-    endpoint: 0.0.0.0:8889
-
 service:
   telemetry:
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
-
-  pipelines:
-    metrics/internal:
-      receivers: [prometheus]
-      exporters: [prometheus]
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+                without_type_suffix: true
+                without_units: true
 ```
 
 Monitor these key metrics:
@@ -215,14 +218,14 @@ Create alerts when these metrics exceed zero, indicating data loss.
 
 ## Performance Considerations
 
-Increasing `max_recv_msg_size_mib` has memory implications. Each receiver connection can potentially use up to this amount of memory. Calculate your memory requirements:
+Increasing `max_recv_msg_size_mib` has memory implications. Each active receive request can require memory for a payload up to this limit, plus decoding and pipeline overhead. Use the limit as a starting point for capacity estimates:
 
 ```text
-total_memory = max_recv_msg_size_mib * max_concurrent_streams * num_receivers
+payload_memory = max_recv_msg_size_mib * concurrent_receive_requests * num_collector_instances
 ```
 
-For example, with `max_recv_msg_size_mib: 16`, `max_concurrent_streams: 100`, and 2 receivers:
-- Memory requirement: 16 MB * 100 * 2 = 3.2 GB
+For example, with `max_recv_msg_size_mib: 16`, 100 concurrent receive requests, and 2 collector instances:
+- Payload memory estimate: 16 MB * 100 * 2 = 3.2 GB
 
 Ensure your collector has sufficient memory, and use the `memory_limiter` processor to prevent OOM conditions.
 
@@ -265,7 +268,7 @@ For high-scale deployments, consider implementing tail-based sampling to reduce 
 ## Troubleshooting Common Issues
 
 **Problem**: Still seeing dropped data after increasing limits
-- **Solution**: Check SDK-side configuration and network MTU limits
+- **Solution**: Check SDK-side request size settings and any upstream proxy or backend message limits
 
 **Problem**: Collector running out of memory
 - **Solution**: Reduce `max_concurrent_streams` or implement `memory_limiter` processor
