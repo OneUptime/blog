@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Collector, Processor, Metric, Cumulative, Delta, Data Trans
 
 Description: Learn how to configure the cumulative to delta processor in OpenTelemetry Collector to convert cumulative metrics into delta metrics for backends that require rate-based data.
 
-The cumulative to delta processor converts cumulative metrics (monotonic counters and sums) into delta metrics by calculating the difference between consecutive data points. This is essential when your metrics source exports cumulative values but your observability backend expects delta values, or when you need to calculate rates and changes over time intervals.
+The cumulative to delta processor converts cumulative metrics (monotonic sums, histograms, and exponential histograms) into delta metrics by calculating the difference between consecutive data points. This is essential when your metrics source exports cumulative values but your observability backend expects delta values, or when you need to calculate rates and changes over time intervals.
 
 ## Why Cumulative to Delta Conversion Matters
 
@@ -49,7 +49,7 @@ graph LR
 
 ## How the Processor Works
 
-The processor maintains state for each unique metric time series (metric name + label combination). When a new data point arrives, it calculates the delta from the previous value and emits a delta metric. The first data point is emitted as-is since there's no previous value to compare against.
+The processor maintains state for each unique metric time series (including resource attributes, instrumentation scope, metric name, unit, start timestamp, and data point attributes). When a new data point arrives, it calculates the delta from the previous value and emits a delta metric. The first data point is handled according to the `initial_value` setting: `auto` by default, `keep` to emit it as-is, or `drop` to store it without sending it.
 
 ## Basic Configuration
 
@@ -58,7 +58,7 @@ Here's a minimal configuration that converts cumulative sums to deltas:
 ```yaml
 # Basic cumulative to delta processor configuration
 
-# Converts all cumulative sums to delta sums
+# Converts selected cumulative sums and histograms to delta temporality
 receivers:
   otlp:
     protocols:
@@ -69,12 +69,14 @@ processors:
   # Cumulative to delta processor
   # Tracks metric state and calculates deltas
   cumulativetodelta:
-    # List of metrics to convert
-    # Can use exact names or wildcards
-    metrics:
-      - http.server.request.count
-      - http.client.request.count
-      - db.client.operation.count
+    # List exact metric names to convert
+    include:
+      match_type: strict
+      metrics:
+        - http.server.request.count
+        - http.client.request.count
+        - db.client.operation.count
+    initial_value: keep
 
 exporters:
   otlp:
@@ -99,39 +101,43 @@ Convert specific metrics by name:
 ```yaml
 processors:
   cumulativetodelta:
-    metrics:
+    include:
+      match_type: strict
+      metrics:
       # List exact metric names to convert
-      - http.server.request.count
-      - http.server.response.count
-      - db.client.operation.count
-      - cache.hit.count
-      - cache.miss.count
-      - message.queue.published.count
-      - message.queue.consumed.count
+        - http.server.request.count
+        - http.server.response.count
+        - db.client.operation.count
+        - cache.hit.count
+        - cache.miss.count
+        - message.queue.published.count
+        - message.queue.consumed.count
 ```
 
-### Wildcard Patterns
+### Regular Expression Patterns
 
-Use wildcards to match multiple metrics:
+Use regular expressions to match multiple metrics:
 
 ```yaml
 processors:
   cumulativetodelta:
-    metrics:
+    include:
+      match_type: regexp
+      metrics:
       # Convert all HTTP metrics
-      - http.*
+        - ^http\.
 
       # Convert all database metrics
-      - db.*
+        - ^db\.
 
       # Convert all counter metrics
-      - *.count
+        - .*\.count$
 
       # Convert everything (use with caution)
-      - "*"
+        - .*
 ```
 
-Note: The processor only converts cumulative sum metrics. Gauges and other metric types are passed through unchanged.
+Note: The processor only converts cumulative monotonic sums, histograms, and exponential histograms. Gauges, summaries, non-monotonic sums, and already-delta metrics are passed through unchanged.
 
 ## Handling Metric Resets
 
@@ -140,12 +146,15 @@ When a process restarts, cumulative counters reset to zero. The processor detect
 ```yaml
 processors:
   cumulativetodelta:
-    metrics:
-      - http.server.request.count
+    include:
+      match_type: strict
+      metrics:
+        - http.server.request.count
+    initial_value: keep
 
     # How to handle counter resets
     # When current value < previous value
-    # Default behavior: emit delta as current value
+    # Monotonic sum reset points are dropped
 ```
 
 Example of reset handling:
@@ -155,7 +164,7 @@ Time    Cumulative    Delta Output
 10:00   100          100 (first value)
 10:01   150          50  (150 - 100)
 10:02   180          30  (180 - 150)
-10:03   50           50  (reset detected, use current value)
+10:03   50           dropped (reset detected)
 10:04   90           40  (90 - 50)
 ```
 
@@ -166,10 +175,13 @@ The first data point for each time series has no previous value to compare:
 ```yaml
 processors:
   cumulativetodelta:
-    metrics:
-      - http.server.request.count
+    include:
+      match_type: strict
+      metrics:
+        - http.server.request.count
 
-    # First data point is emitted as-is
+    # Set keep to emit the first data point as-is
+    initial_value: keep
     # Subsequent points are calculated as deltas
 ```
 
@@ -189,12 +201,15 @@ When multiple instances of the same application export metrics, each instance ha
 ```yaml
 processors:
   cumulativetodelta:
-    metrics:
-      - http.server.request.count
+    include:
+      match_type: strict
+      metrics:
+        - http.server.request.count
+    initial_value: keep
 
     # Processor tracks each unique time series separately
-    # Time series = metric name + all labels
-    # Each instance should have unique identifying labels
+    # Time series identity includes resource attributes and data point attributes
+    # Each instance should have unique identifying resource attributes
 ```
 
 Example with multiple instances:
@@ -213,7 +228,7 @@ Time    Cumulative    Delta
 10:02   155          35
 ```
 
-The processor maintains separate state for each `(metric, label set)` combination.
+The processor maintains separate state for each metric identity, including the metric name, resource attributes, instrumentation scope, start timestamp, unit, and data point attributes.
 
 ## State Management
 
@@ -222,21 +237,23 @@ The processor stores state in memory:
 ```yaml
 processors:
   cumulativetodelta:
-    metrics:
-      - http.server.request.count
+    include:
+      match_type: strict
+      metrics:
+        - http.server.request.count
 
     # State is maintained in memory
     # Lost on collector restart
-    # One state entry per unique time series
+    # Entries expire after max_staleness unless set to 0
+    max_staleness: 1h
 ```
 
 Memory considerations:
 
 ```text
-Memory per time series ≈ 100 bytes
-1000 time series ≈ 100 KB
-10,000 time series ≈ 1 MB
-100,000 time series ≈ 10 MB
+Memory usage grows with the number of unique metric identities.
+The exact per-series cost depends on attribute sizes and metric type.
+Reduce cardinality before conversion when many unique series are present.
 ```
 
 ## Converting Specific Metric Types
@@ -248,19 +265,21 @@ Convert monotonic counters to deltas:
 ```yaml
 processors:
   cumulativetodelta:
-    metrics:
+    include:
+      match_type: strict
+      metrics:
       # HTTP request counters
-      - http.server.request.count
-      - http.client.request.count
+        - http.server.request.count
+        - http.client.request.count
 
       # Error counters
-      - http.server.error.count
-      - db.client.error.count
+        - http.server.error.count
+        - db.client.error.count
 
       # Business metrics
-      - orders.created.count
-      - orders.completed.count
-      - payments.processed.count
+        - orders.created.count
+        - orders.completed.count
+        - payments.processed.count
 ```
 
 ### Sum Conversion
@@ -270,18 +289,20 @@ Convert cumulative sums to deltas:
 ```yaml
 processors:
   cumulativetodelta:
-    metrics:
+    include:
+      match_type: strict
+      metrics:
       # Byte counters
-      - http.server.request.body.size
-      - http.server.response.body.size
+        - http.server.request.body.size
+        - http.server.response.body.size
 
       # Duration sums (for calculating average)
-      - http.server.request.duration
-      - db.client.operation.duration
+        - http.server.request.duration
+        - db.client.operation.duration
 
       # Business value sums
-      - orders.total.amount
-      - revenue.total
+        - orders.total.amount
+        - revenue.total
 ```
 
 ## Production Configuration
@@ -321,34 +342,36 @@ processors:
   resource:
     attributes:
       - key: service.name
-        value: ${SERVICE_NAME}
+        value: ${env:SERVICE_NAME}
         action: insert
       - key: deployment.environment
-        value: ${ENVIRONMENT}
+        value: ${env:ENVIRONMENT}
         action: insert
 
   # Convert cumulative metrics to delta
   cumulativetodelta:
-    metrics:
+    include:
+      match_type: regexp
+      metrics:
       # HTTP metrics
-      - http.server.*
-      - http.client.*
+        - ^http\.server\.
+        - ^http\.client\.
 
       # Database metrics
-      - db.client.*
+        - ^db\.client\.
 
       # Cache metrics
-      - cache.*
+        - ^cache\.
 
       # Custom application metrics
-      - app.requests.*
-      - app.errors.*
-      - app.latency.*
+        - ^app\.requests\.
+        - ^app\.errors\.
+        - ^app\.latency\.
 
       # Business metrics
-      - orders.*
-      - payments.*
-      - users.*
+        - ^orders\.
+        - ^payments\.
+        - ^users\.
 
   # Transform metrics after conversion
   metricstransform:
@@ -365,9 +388,9 @@ processors:
 exporters:
   # Export to backend that prefers delta metrics
   otlp:
-    endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:https://oneuptime.com/otlp}
+    endpoint: ${env:OTEL_EXPORTER_OTLP_ENDPOINT:-https://oneuptime.com/otlp}
     headers:
-      x-oneuptime-token: ${OTEL_EXPORTER_OTLP_TOKEN}
+      x-oneuptime-token: ${env:OTEL_EXPORTER_OTLP_TOKEN}
 
     timeout: 30s
     retry_on_failure:
@@ -406,9 +429,9 @@ service:
             exporter:
               otlp:
                 protocol: http/protobuf
-                endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT}
+                endpoint: ${env:OTEL_EXPORTER_OTLP_ENDPOINT}
                 headers:
-                  x-oneuptime-token: ${OTEL_EXPORTER_OTLP_TOKEN}
+                  x-oneuptime-token: ${env:OTEL_EXPORTER_OTLP_TOKEN}
 ```
 
 ## Dual Export Strategy
@@ -428,21 +451,23 @@ processors:
     send_batch_size: 1024
 
   cumulativetodelta:
-    metrics:
-      - "*"
+    include:
+      match_type: regexp
+      metrics:
+        - .*
 
 exporters:
   # Backend that prefers delta metrics (Datadog, etc.)
   otlp/delta:
     endpoint: https://delta-backend.example.com/otlp
     headers:
-      api-key: ${DELTA_BACKEND_KEY}
+      api-key: ${env:DELTA_BACKEND_KEY}
 
   # Backend that prefers cumulative metrics (Prometheus, etc.)
   otlp/cumulative:
     endpoint: https://cumulative-backend.example.com/otlp
     headers:
-      api-key: ${CUMULATIVE_BACKEND_KEY}
+      api-key: ${env:CUMULATIVE_BACKEND_KEY}
 
 service:
   pipelines:
@@ -466,10 +491,12 @@ Convert only specific metrics while leaving others unchanged:
 ```yaml
 processors:
   cumulativetodelta:
-    metrics:
-      # Only convert counters, not sums
-      - http.server.request.count
-      - http.server.error.count
+    include:
+      match_type: strict
+      metrics:
+        # Only convert counters, not sums
+        - http.server.request.count
+        - http.server.error.count
 
       # Don't convert duration sums
       # (keep as cumulative for rate calculation)
@@ -500,12 +527,6 @@ processors:
       - include: http.server.request.count
         action: update
         operations:
-          # Remove high-cardinality labels
-          - action: delete_label_value
-            label: client_ip
-          - action: delete_label_value
-            label: user_id
-
           # Aggregate by important dimensions only
           - action: aggregate_labels
             label_set: [method, route, status]
@@ -513,8 +534,10 @@ processors:
 
   # Convert after cardinality reduction
   cumulativetodelta:
-    metrics:
-      - http.server.request.count
+    include:
+      match_type: strict
+      metrics:
+        - http.server.request.count
 
 exporters:
   otlp:
@@ -537,12 +560,15 @@ The processor detects counter resets automatically:
 ```yaml
 processors:
   cumulativetodelta:
-    metrics:
-      - http.server.request.count
+    include:
+      match_type: strict
+      metrics:
+        - http.server.request.count
+    initial_value: keep
 
     # Reset detection is automatic
     # When new value < previous value, assumes reset
-    # Emits the new value as delta (correct behavior)
+    # Monotonic sum reset points are dropped
 ```
 
 Example scenario:
@@ -553,7 +579,7 @@ App starts at 10:00:
 10:01   150 -> Output: 50
 
 App restarts at 10:02 (counter resets to 0):
-10:02   30  -> Output: 30 (reset detected)
+10:02   30  -> Output: dropped (reset detected)
 10:03   80  -> Output: 50 (normal delta)
 ```
 
@@ -572,8 +598,10 @@ processors:
 
   # Then convert
   cumulativetodelta:
-    metrics:
-      - http.server.request.count
+    include:
+      match_type: strict
+      metrics:
+        - http.server.request.count
 
 service:
   pipelines:
@@ -598,8 +626,10 @@ processors:
 
   # Convert cumulative to delta
   cumulativetodelta:
-    metrics:
-      - http.server.request.count
+    include:
+      match_type: strict
+      metrics:
+        - http.server.request.count
 
   # Transform after conversion (affects output)
   metricstransform/after:
@@ -644,7 +674,7 @@ service:
 - Remove unused labels from metrics
 - Use aggregation to combine time series
 - Monitor the number of unique time series
-- Consider horizontal scaling
+- Use sticky routing or a single collector instance per metric source when scaling
 
 ### Missing Deltas
 
@@ -662,9 +692,9 @@ service:
 **Issue**: First data point has wrong value.
 
 **Solutions**:
-- This is expected behavior (first point passed through)
+- This depends on the `initial_value` setting
 - Applications should start counters at 0
-- Alternatively, discard first data point using filter processor
+- Use `initial_value: drop` to discard first data points
 - Document this behavior for dashboard builders
 
 ## Performance Considerations
@@ -677,7 +707,7 @@ The cumulative to delta processor has minimal overhead:
 
 Optimize by:
 - Reducing metric cardinality before conversion
-- Using exact metric names instead of wildcards when possible
+- Using `match_type: strict` for exact metric names when possible
 - Batching metrics before processing
 - Monitoring memory usage with high cardinality
 
@@ -688,13 +718,13 @@ The processor does not persist state across restarts:
 ```yaml
 # When collector restarts:
 # - All state is lost
-# - First data point after restart is emitted as-is
+# - First data point after restart follows initial_value behavior
 # - Delta calculation resumes normally
 ```
 
 This means:
 - After collector restart, first data point might be incorrect
-- For critical metrics, consider redundant collectors
+- For critical metrics, use sticky routing or run the collector close to the metric source
 - Monitor collector uptime
 - Plan collector restarts during low-traffic periods
 
@@ -703,13 +733,13 @@ This means:
 | Feature | Behavior |
 |---------|----------|
 | **Conversion** | Cumulative → Delta |
-| **State** | In-memory, per time series |
-| **First value** | Passed through as-is |
-| **Reset detection** | Automatic (when value decreases) |
-| **Memory usage** | ~100 bytes per unique time series |
-| **Supported types** | Cumulative sums only |
-| **Wildcards** | Supported for metric selection |
+| **State** | In-memory, per metric identity, with `max_staleness` cleanup |
+| **First value** | Controlled by `initial_value` (`auto`, `keep`, or `drop`) |
+| **Reset detection** | Automatic; monotonic sum reset points are dropped |
+| **Memory usage** | Grows with unique metric identities |
+| **Supported types** | Cumulative monotonic sums, histograms, and exponential histograms |
+| **Metric selection** | `include`/`exclude` filters with strict or regexp matching |
 
-The cumulative to delta processor converts monotonic counters and cumulative sums into delta metrics by tracking state and calculating differences between consecutive data points. This is essential for backends that prefer delta metrics and enables proper rate calculations and aggregations across distributed systems.
+The cumulative to delta processor converts cumulative monotonic sums, histograms, and exponential histograms into delta metrics by tracking state and calculating differences between consecutive data points. This is essential for backends that prefer delta metrics and enables proper rate calculations and aggregations across distributed systems.
 
 For more on metrics handling, see our guides on [metrics transform processor](https://oneuptime.com/blog/post/2026-02-06-metrics-transform-processor-opentelemetry-collector/view) and [what are metrics in OpenTelemetry](https://oneuptime.com/blog/post/2025-08-26-what-are-metrics-in-opentelemetry/view).
