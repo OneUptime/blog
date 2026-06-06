@@ -52,11 +52,11 @@ receivers:
 connectors:
   # The count connector generates metrics from telemetry volume
   count:
-    traces:
+    spans:
       spans.per.team:
         description: "Number of spans received per team"
         conditions:
-          - 'attributes["team.name"] != ""'
+          - 'resource.attributes["team.name"] != nil'
         attributes:
           - key: team.name
           - key: service.name
@@ -66,16 +66,16 @@ connectors:
       logs.per.team:
         description: "Number of log records per team"
         conditions:
-          - 'resource.attributes["team.name"] != ""'
+          - 'resource.attributes["team.name"] != nil'
         attributes:
           - key: team.name
           - key: service.name
 
-    metrics:
+    datapoints:
       datapoints.per.team:
         description: "Number of metric data points per team"
         conditions:
-          - 'resource.attributes["team.name"] != ""'
+          - 'resource.attributes["team.name"] != nil'
         attributes:
           - key: team.name
           - key: service.name
@@ -101,9 +101,13 @@ service:
       processors: [batch]
       exporters: [otlphttp/backend, count]
     metrics:
-      receivers: [otlp, count]
+      receivers: [otlp]
       processors: [batch]
-      exporters: [otlphttp/backend, prometheus]
+      exporters: [otlphttp/backend, count]
+    metrics/counts:
+      receivers: [count]
+      processors: [batch]
+      exporters: [prometheus]
     logs:
       receivers: [otlp]
       processors: [batch]
