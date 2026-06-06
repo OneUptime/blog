@@ -21,15 +21,15 @@ OpenTelemetry defines a focused set of container attributes under the `container
 | Attribute | Type | Description |
 |-----------|------|-------------|
 | `container.name` | string | The container name as seen by the runtime |
-| `container.id` | string | The full container ID (typically the 64-character hex string) |
-| `container.runtime` | string | The container runtime, such as `docker`, `containerd`, or `cri-o` |
-| `container.image.name` | string | The image name without the tag or digest |
+| `container.id` | string | The container ID, which may be abbreviated |
+| `container.runtime.name` | string | The container runtime, such as `docker`, `containerd`, or `cri-o` |
+| `container.image.name` | string | The name of the image the container was built on |
 | `container.image.tags` | string[] | The image tags associated with the container |
 | `container.image.id` | string | The image ID, usually a sha256 digest |
 | `container.image.repo_digests` | string[] | Repo digests of the container image |
 | `container.command` | string | The command used to start the container |
 | `container.command_line` | string | The full command line used to start the container |
-| `container.command_args` | string[] | Arguments passed to the container command |
+| `container.command_args` | string[] | All command arguments, including the command or executable itself |
 
 These attributes complement the Kubernetes resource attributes covered in other guides. In a Kubernetes environment, you will typically have both `k8s.*` and `container.*` attributes on the same telemetry signal.
 
@@ -41,7 +41,7 @@ graph LR
         C[k8s.namespace.name] --> R
         D[container.id] --> R
         E[container.image.name] --> R
-        F[container.runtime] --> R
+        F[container.runtime.name] --> R
     end
     R --> G[Traces]
     R --> H[Metrics]
@@ -54,12 +54,12 @@ The trick to populating container attributes is knowing where the runtime stores
 
 ### Reading the Container ID from cgroup
 
-On Linux hosts, the container ID is available inside the container through the cgroup filesystem. The following Python function reads the container ID from `/proc/self/cgroup`, which is the standard location for Docker and containerd runtimes:
+On Linux hosts, the container ID is available inside the container through the cgroup filesystem. The following Python function reads the container ID from `/proc/self/cgroup`, which is a common location for Docker and containerd runtimes:
 
 ```python
 # Read the container ID from the Linux cgroup filesystem.
 
-# Docker and containerd write the full container ID into the
+# Docker and containerd commonly write the full container ID into the
 # cgroup path. This function extracts it by parsing the last
 # segment of the path.
 def get_container_id():
@@ -68,7 +68,7 @@ def get_container_id():
             for line in f:
                 parts = line.strip().split("/")
                 if len(parts) > 2:
-                    # The container ID is the last segment
+                    # The container ID is often the last segment
                     container_id = parts[-1]
                     # Docker sometimes appends a scope suffix
                     if container_id.endswith(".scope"):
@@ -85,9 +85,9 @@ For newer kernels using cgroup v2, the container ID may be in `/proc/self/mounti
 
 ### Using the OpenTelemetry Resource Detector
 
-Rather than parsing cgroup files yourself, you can use OpenTelemetry's built-in container resource detector. This detector automatically discovers container metadata and attaches it to your resource.
+Rather than parsing cgroup files yourself, you can use OpenTelemetry's container resource detector for Python. This detector automatically discovers the container ID and attaches it to your resource.
 
-The following example shows how to configure the Python SDK to use the container resource detector alongside a manually defined service resource. The detector handles the cgroup parsing internally and adds all available container attributes:
+The following example shows how to configure the Python SDK to use the container resource detector alongside a manually defined service resource. The detector handles the cgroup parsing internally and adds `container.id` when it is available:
 
 ```python
 # Configure the OpenTelemetry SDK with the container resource detector.
@@ -98,16 +98,14 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.resources import Resource, get_aggregated_resources
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-from opentelemetry.sdk.extension.aws.resource import AwsEcsResourceDetector
 
-# For container detection, use the process resource detector
-# or install opentelemetry-resource-detector-container
-from opentelemetry.resource.detector.container import ContainerResourceDetector
+# For container ID detection, install opentelemetry-resource-detector-containerid
+from opentelemetry.resource.detector.containerid import ContainerResourceDetector
 
 # Merge detected container attributes with service attributes
 resource = get_aggregated_resources([
     ContainerResourceDetector(),
-], base_resource=Resource.create({
+], initial_resource=Resource.create({
     "service.name": "payment-service",
     "service.version": "1.4.0",
 }))
@@ -129,13 +127,12 @@ Here is a Docker Compose file that sets container-related resource attributes di
 # Docker Compose configuration that passes container metadata
 # through the OTEL_RESOURCE_ATTRIBUTES environment variable.
 # Docker sets HOSTNAME to the short container ID by default.
-version: "3.8"
 services:
   api:
     image: myregistry/api-service:v3.2.1
     container_name: api-service
     environment:
-      - OTEL_RESOURCE_ATTRIBUTES=container.name=api-service,container.image.name=myregistry/api-service,container.image.tags=v3.2.1,container.runtime=docker
+      - OTEL_RESOURCE_ATTRIBUTES=container.name=api-service,container.image.name=myregistry/api-service,container.image.tags=v3.2.1,container.runtime.name=docker
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
       - OTEL_SERVICE_NAME=api-service
 
@@ -143,7 +140,7 @@ services:
     image: myregistry/worker-service:v1.8.0
     container_name: worker-service
     environment:
-      - OTEL_RESOURCE_ATTRIBUTES=container.name=worker-service,container.image.name=myregistry/worker-service,container.image.tags=v1.8.0,container.runtime=docker
+      - OTEL_RESOURCE_ATTRIBUTES=container.name=worker-service,container.image.name=myregistry/worker-service,container.image.tags=v1.8.0,container.runtime.name=docker
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
       - OTEL_SERVICE_NAME=worker-service
 
@@ -157,12 +154,12 @@ services:
 
 ## Enriching Container Data in the Collector
 
-The OpenTelemetry Collector can add container attributes to telemetry even when the application does not set them. The `resourcedetection` processor supports several detectors, including Docker and ECS.
+The OpenTelemetry Collector can add container attributes to telemetry even when the application does not set them. The `resource_detection` processor supports several detectors, including Docker and ECS.
 
-This Collector configuration uses the Docker resource detector to attach container metadata. The processor queries the Docker socket to resolve container details for each incoming telemetry signal:
+This Collector configuration uses the Docker resource detector to attach container metadata from the host where the Collector is running. The processor queries the Docker socket to retrieve resource attributes, so the Docker socket must be mounted into the Collector container:
 
 ```yaml
-# Collector configuration using the resourcedetection processor
+# Collector configuration using the resource_detection processor
 # to automatically discover container metadata from Docker.
 # The docker detector queries the Docker API for container info.
 receivers:
@@ -172,7 +169,7 @@ receivers:
         endpoint: 0.0.0.0:4317
 
 processors:
-  resourcedetection:
+  resource_detection/docker:
     detectors: [docker]
     timeout: 5s
     override: false
@@ -191,15 +188,15 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [resourcedetection, batch]
+      processors: [resource_detection/docker, batch]
       exporters: [otlp]
     metrics:
       receivers: [otlp]
-      processors: [resourcedetection, batch]
+      processors: [resource_detection/docker, batch]
       exporters: [otlp]
     logs:
       receivers: [otlp]
-      processors: [resourcedetection, batch]
+      processors: [resource_detection/docker, batch]
       exporters: [otlp]
 ```
 
@@ -230,7 +227,7 @@ In Kubernetes, pods can have sidecar containers. The `container.name` attribute 
 
 ## Working with Different Runtimes
 
-The `container.runtime` attribute tells you which runtime is managing the container. This matters more than you might expect. Different runtimes have different behaviors for resource limits, network configuration, and logging. When investigating performance issues, knowing whether a container runs on Docker, containerd, or CRI-O can change your troubleshooting approach.
+The `container.runtime.name` attribute tells you which runtime is managing the container. This matters more than you might expect. Different runtimes have different behaviors for resource limits, network configuration, and logging. When investigating performance issues, knowing whether a container runs on Docker, containerd, or CRI-O can change your troubleshooting approach.
 
 For containerd environments (common in modern Kubernetes clusters), the container ID format and cgroup path may differ from Docker. The OpenTelemetry resource detectors handle these differences, but if you are reading metadata manually, you need to account for the runtime.
 
@@ -242,10 +239,10 @@ Always include `container.image.name` and `container.image.tags` in your resourc
 
 Use the resource detector when possible. Manual configuration is error-prone and can fall out of sync when images are updated. The detector reads live metadata from the runtime.
 
-Set `container.runtime` explicitly if your organization uses multiple runtimes. This attribute helps you filter telemetry by runtime when debugging runtime-specific issues.
+Set `container.runtime.name` explicitly if your organization uses multiple runtimes. This attribute helps you filter telemetry by runtime when debugging runtime-specific issues.
 
 Do not rely on `container.id` for long-term correlation. Container IDs change on every restart. Use `k8s.pod.name` or `service.instance.id` for identifiers that persist across container recreations within the same pod lifecycle.
 
 ## Conclusion
 
-Container runtime semantic conventions give your telemetry the infrastructure context it needs. By consistently applying `container.*` attributes through resource detectors, environment variables, or the Collector's resourcedetection processor, you make it possible to trace issues from application behavior down to the specific container image and runtime that produced them. This level of visibility is essential for operating containerized workloads at scale.
+Container runtime semantic conventions give your telemetry the infrastructure context it needs. By consistently applying `container.*` attributes through resource detectors, environment variables, or the Collector's resource detection processor, you make it possible to trace issues from application behavior down to the specific container image and runtime that produced them. This level of visibility is essential for operating containerized workloads at scale.
