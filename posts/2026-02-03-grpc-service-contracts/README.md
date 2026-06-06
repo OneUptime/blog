@@ -519,6 +519,7 @@ gRPC uses a standardized set of status codes. Return the right code so clients c
 | 12 | UNIMPLEMENTED | Method not implemented |
 | 13 | INTERNAL | Internal server error |
 | 14 | UNAVAILABLE | Service temporarily unavailable |
+| 15 | DATA_LOSS | Unrecoverable data loss or corruption |
 | 16 | UNAUTHENTICATED | Missing or invalid credentials |
 
 ### Returning Errors in Go
@@ -758,7 +759,7 @@ message Product {
 }
 ```
 
-**Adding new enum values** - Old clients treat unknown values as the default (0).
+**Adding new enum values** - In modern proto3, old clients preserve unknown enum values as their integer value rather than collapsing them to 0. Handle unrecognized values with a `default` branch in your switch statements.
 
 ```protobuf
 enum OrderStatus {
