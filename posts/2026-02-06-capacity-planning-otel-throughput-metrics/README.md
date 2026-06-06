@@ -16,8 +16,8 @@ For capacity planning, you need two categories of metrics: throughput (how much 
 # capacity_metrics.py
 
 import psutil
-import os
 from opentelemetry import metrics
+from opentelemetry.metrics import Observation
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
@@ -31,39 +31,43 @@ meter = metrics.get_meter("capacity-planning")
 
 # Throughput metrics
 request_counter = meter.create_counter(
-    "app.requests.total",
+    "app_requests",
     description="Total incoming requests",
 )
 request_duration = meter.create_histogram(
-    "app.request.duration",
+    "app_request_duration_seconds",
     unit="s",
     description="Request processing duration",
 )
 
 # Resource utilization via observable gauges
 def cpu_callback(options):
-    yield metrics.Observation(
+    yield Observation(
         psutil.cpu_percent(interval=None) / 100.0,
-        {"cpu.state": "used"},
+        {"cpu_state": "used"},
     )
 
-def memory_callback(options):
+def memory_utilization_callback(options):
     mem = psutil.virtual_memory()
-    yield metrics.Observation(mem.percent / 100.0, {"memory.state": "used"})
-    yield metrics.Observation(mem.available, {"memory.state": "available_bytes"})
+    yield Observation(mem.percent / 100.0, {"memory_state": "used"})
+
+def memory_available_callback(options):
+    mem = psutil.virtual_memory()
+    yield Observation(mem.available, {"memory_state": "available"})
 
 def disk_callback(options):
     disk = psutil.disk_usage("/")
-    yield metrics.Observation(disk.percent / 100.0, {"disk.state": "used"})
+    yield Observation(disk.percent / 100.0, {"disk_state": "used"})
 
 def connection_callback(options):
     connections = len(psutil.net_connections(kind="tcp"))
-    yield metrics.Observation(connections, {"net.type": "tcp"})
+    yield Observation(connections, {"net_type": "tcp"})
 
-meter.create_observable_gauge("system.cpu.utilization", callbacks=[cpu_callback])
-meter.create_observable_gauge("system.memory.utilization", callbacks=[memory_callback])
-meter.create_observable_gauge("system.disk.utilization", callbacks=[disk_callback])
-meter.create_observable_gauge("system.network.connections", callbacks=[connection_callback])
+meter.create_observable_gauge("system_cpu_utilization", callbacks=[cpu_callback])
+meter.create_observable_gauge("system_memory_utilization", callbacks=[memory_utilization_callback])
+meter.create_observable_gauge("system_memory_available_bytes", callbacks=[memory_available_callback])
+meter.create_observable_gauge("system_disk_utilization", callbacks=[disk_callback])
+meter.create_observable_gauge("system_network_connections", callbacks=[connection_callback])
 ```
 
 ## Building the Capacity Model
@@ -74,7 +78,7 @@ A capacity model answers the question: "At what throughput level will we exhaust
 # capacity_model.py
 import numpy as np
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 PROMETHEUS_URL = "http://prometheus:9090"
 
@@ -86,15 +90,27 @@ def query_range(query, start, end, step="5m"):
         "end": end.timestamp(),
         "step": step,
     })
+    resp.raise_for_status()
     results = resp.json().get("data", {}).get("result", [])
     if results:
         values = [(float(ts), float(val)) for ts, val in results[0]["values"]]
         return values
     return []
 
+def align_series(reference, *series):
+    """Align series by timestamp so regression compares the same time windows."""
+    indexed = [{ts: val for ts, val in values} for values in series]
+    aligned = []
+    for ts, ref_val in reference:
+        if all(ts in values for values in indexed):
+            aligned.append((ref_val, *[values[ts] for values in indexed]))
+    if len(aligned) < 2:
+        raise ValueError("Not enough aligned samples to build a capacity model")
+    return np.array(aligned)
+
 def build_capacity_model(lookback_days=30):
     """Build a linear model of resource utilization vs throughput."""
-    end = datetime.utcnow()
+    end = datetime.now(timezone.utc)
     start = end - timedelta(days=lookback_days)
 
     # Get throughput data (requests per second)
@@ -116,9 +132,10 @@ def build_capacity_model(lookback_days=30):
     )
 
     # Align timestamps and build the model
-    throughput_values = np.array([v[1] for v in throughput_data])
-    cpu_values = np.array([v[1] for v in cpu_data[:len(throughput_values)]])
-    memory_values = np.array([v[1] for v in memory_data[:len(throughput_values)]])
+    aligned = align_series(throughput_data, cpu_data, memory_data)
+    throughput_values = aligned[:, 0]
+    cpu_values = aligned[:, 1]
+    memory_values = aligned[:, 2]
 
     # Linear regression: utilization = slope * throughput + intercept
     cpu_slope, cpu_intercept = np.polyfit(throughput_values, cpu_values, 1)
@@ -163,12 +180,12 @@ Combine the capacity model with traffic growth projections:
 ```python
 # capacity_forecast.py
 from capacity_model import build_capacity_model, query_range
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import numpy as np
 
 def forecast_traffic_growth(lookback_days=90):
     """Estimate traffic growth rate from historical data."""
-    end = datetime.utcnow()
+    end = datetime.now(timezone.utc)
     start = end - timedelta(days=lookback_days)
 
     # Get daily peak throughput
@@ -179,6 +196,8 @@ def forecast_traffic_growth(lookback_days=90):
 
     timestamps = np.array([v[0] for v in daily_peaks])
     peaks = np.array([v[1] for v in daily_peaks])
+    if len(peaks) < 2:
+        raise ValueError("Not enough daily peak samples to forecast traffic growth")
 
     # Linear fit to estimate daily growth
     days = (timestamps - timestamps[0]) / 86400
@@ -202,8 +221,27 @@ def days_until_capacity_exhaustion():
     current_peak = growth["current_peak_rps"]
     daily_growth = growth["daily_growth_rps"]
 
+    if current_peak >= max_throughput:
+        return {
+            "current_peak_rps": current_peak,
+            "max_safe_rps": max_throughput,
+            "daily_growth_rps": daily_growth,
+            "days_remaining": 0,
+            "bottleneck": model["bottleneck_resource"],
+            "estimated_date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+            "message": "Current peak traffic is already at or above modeled safe capacity",
+        }
+
     if daily_growth <= 0:
-        return {"days_remaining": float("inf"), "message": "Traffic is not growing"}
+        return {
+            "current_peak_rps": current_peak,
+            "max_safe_rps": max_throughput,
+            "daily_growth_rps": daily_growth,
+            "days_remaining": float("inf"),
+            "bottleneck": model["bottleneck_resource"],
+            "estimated_date": None,
+            "message": "Traffic is not growing",
+        }
 
     headroom = max_throughput - current_peak
     days = headroom / daily_growth
@@ -214,7 +252,7 @@ def days_until_capacity_exhaustion():
         "daily_growth_rps": daily_growth,
         "days_remaining": round(days, 0),
         "bottleneck": model["bottleneck_resource"],
-        "estimated_date": (datetime.utcnow() + timedelta(days=days)).strftime("%Y-%m-%d"),
+        "estimated_date": (datetime.now(timezone.utc) + timedelta(days=days)).strftime("%Y-%m-%d"),
     }
 
 if __name__ == "__main__":
@@ -242,6 +280,7 @@ groups:
           /
           deriv(avg(system_cpu_utilization{cpu_state="used"})[7d:1h])
           < 30 * 24 * 3600
+          and deriv(avg(system_cpu_utilization{cpu_state="used"})[7d:1h]) > 0
         for: 24h
         labels:
           severity: warning
@@ -254,6 +293,7 @@ groups:
           /
           deriv(avg(system_cpu_utilization{cpu_state="used"})[7d:1h])
           < 7 * 24 * 3600
+          and deriv(avg(system_cpu_utilization{cpu_state="used"})[7d:1h]) > 0
         for: 6h
         labels:
           severity: critical
@@ -263,4 +303,4 @@ groups:
 
 ## Wrapping Up
 
-Capacity planning is not about guessing. With OpenTelemetry throughput and resource utilization metrics, you can build data-driven models that predict exactly when you will run out of capacity and which resource will be the bottleneck. Run these models regularly, automate the alerts, and you will never be surprised by a capacity crunch again. The investment in collecting and modeling these metrics pays for itself the first time you scale proactively instead of reactively during an outage.
+Capacity planning is not about guessing. With OpenTelemetry throughput and resource utilization metrics, you can build data-driven models that estimate when you will run out of capacity and which resource will be the bottleneck. Run these models regularly, automate the alerts, and you are less likely to be surprised by a capacity crunch. The investment in collecting and modeling these metrics pays for itself the first time you scale proactively instead of reactively during an outage.
