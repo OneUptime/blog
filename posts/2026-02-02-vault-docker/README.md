@@ -80,8 +80,8 @@ Production deployments require persistent storage, proper TLS configuration, and
 ```mermaid
 flowchart LR
     subgraph Docker Compose Stack
-        V[Vault Server] --> C[Consul Backend]
-        V --> FS[File Storage Volume]
+        V[Vault Server] --> R[Raft Integrated Storage]
+        V --> FS[Data Volume]
         V --> TLS[TLS Certificates]
     end
 
@@ -97,10 +97,11 @@ Create a vault configuration file that defines the storage backend, listener set
 # vault-config.hcl
 # Vault server configuration for Docker deployment
 
-# Storage backend configuration using the integrated file storage
-# For production, consider using Consul, PostgreSQL, or cloud storage
-storage "file" {
-  path = "/vault/data"
+# Storage backend configuration using integrated storage (Raft)
+# Raft is HashiCorp's recommended production backend and supports HA and snapshots
+storage "raft" {
+  path    = "/vault/data"
+  node_id = "vault-1"
 }
 
 # HTTP listener configuration
