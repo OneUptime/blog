@@ -25,7 +25,7 @@ graph TD
     B --> F[cloud.region: us-east-1]
     B --> G[cloud.availability_zone: us-east-1a]
     C --> H[cloud.account.id: 123456789]
-    D --> I[cloud.platform: aws_ec2/gcp_compute_engine/azure_vm]
+    D --> I[cloud.platform: aws_ec2/gcp_compute_engine/azure.vm]
     D --> J[host.id / container.id / faas.name]
 ```
 
@@ -41,18 +41,18 @@ AWS has the richest set of compute platforms, and OpenTelemetry provides resourc
 // aws-ec2-resource.js - Automatic AWS EC2 resource detection
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
-const { AwsEc2DetectorSync } = require('@opentelemetry/resource-detector-aws');
-const { Resource } = require('@opentelemetry/resources');
+const { awsEc2Detector } = require('@opentelemetry/resource-detector-aws');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 
 // The EC2 detector queries the instance metadata service (IMDS)
 // to automatically populate cloud and host attributes
 const sdk = new NodeSDK({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     'service.name': 'payment-api',
     'service.version': '4.1.0',
   }),
   resourceDetectors: [
-    new AwsEc2DetectorSync(),
+    awsEc2Detector,
   ],
   traceExporter: new OTLPTraceExporter({
     url: 'https://otel-collector.internal/v1/traces',
@@ -86,7 +86,7 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import Resource
-from opentelemetry.resource.detector.aws import (
+from opentelemetry.sdk.extension.aws.resource import (
     AwsLambdaResourceDetector,
 )
 
@@ -112,11 +112,10 @@ trace.set_tracer_provider(provider)
 # cloud.provider: "aws"
 # cloud.platform: "aws_lambda"
 # cloud.region: "us-west-2"
-# cloud.account.id: "123456789012"
 # faas.name: "order-processor"
 # faas.version: "$LATEST"
 # faas.instance: "2024/01/15/[$LATEST]abc123"
-# faas.max_memory: 512  (in MB)
+# faas.max_memory: 536870912  (in bytes)
 ```
 
 The key difference for Lambda is the `faas.*` attributes (Function as a Service). These replace the `host.*` attributes used by EC2 because Lambda functions do not have persistent hosts. The `faas.name`, `faas.version`, and `faas.instance` attributes give you the context needed to debug cold starts, version mismatches, and memory issues.
@@ -128,17 +127,18 @@ For containerized workloads on ECS or EKS, the detectors capture both the cloud 
 ```javascript
 // aws-ecs-resource.js - ECS resource detection with container attributes
 const {
-  AwsEcsDetectorSync,
+  awsEcsDetector,
 } = require('@opentelemetry/resource-detector-aws');
-const { containerDetectorSync } = require('@opentelemetry/resource-detector-container');
+const { containerDetector } = require('@opentelemetry/resource-detector-container');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 
 const sdk = new NodeSDK({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     'service.name': 'user-api',
   }),
   resourceDetectors: [
-    new AwsEcsDetectorSync(),
-    containerDetectorSync,
+    awsEcsDetector,
+    containerDetector,
   ],
   traceExporter: new OTLPTraceExporter({ url: collectorUrl }),
 });
@@ -152,7 +152,7 @@ const sdk = new NodeSDK({
 // aws.ecs.task.arn: "arn:aws:ecs:us-east-1:123456789012:task/production/abc123"
 // aws.ecs.task.family: "user-api-task"
 // aws.ecs.task.revision: "42"
-// aws.ecs.launchtype: "FARGATE"
+// aws.ecs.launchtype: "fargate"
 //
 // Container detector adds:
 // container.id: "abc123def456..."
@@ -199,7 +199,7 @@ trace.set_tracer_provider(provider)
 # host.name: "inventory-vm-01"
 ```
 
-For GKE workloads, the detector captures both the GCP infrastructure context and Kubernetes-specific attributes.
+For GKE workloads, the detector captures the GCP infrastructure context and the GKE cluster identity.
 
 ```python
 # gke_resource.py - GKE resource detection
@@ -209,16 +209,13 @@ from opentelemetry.resourcedetector.gcp_resource_detector import (
 
 gke_resource = GoogleCloudResourceDetector().detect()
 
-# For a GKE pod, the resource contains both cloud and k8s attributes:
+# For a GKE pod, the resource contains cloud attributes and cluster identity:
 # cloud.provider: "gcp"
 # cloud.platform: "gcp_kubernetes_engine"
 # cloud.region: "us-central1"
 # cloud.account.id: "my-project-123456"
 # k8s.cluster.name: "production-cluster"
-# k8s.namespace.name: "default"
-# k8s.pod.name: "inventory-service-7f8b9c-xyz12"
-# k8s.deployment.name: "inventory-service"
-# container.name: "inventory"
+# host.id: "1234567890123456789"
 ```
 
 Cloud Run and Cloud Functions work similarly to AWS Lambda, using `faas.*` attributes for the serverless context.
@@ -243,17 +240,17 @@ Azure provides resource detectors for Virtual Machines, AKS, App Service, and Az
 // azure-resource.js - Azure resource detection in Node.js
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const {
-  AzureVmDetector,
+  azureVmDetector,
 } = require('@opentelemetry/resource-detector-azure');
-const { Resource } = require('@opentelemetry/resources');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 
 const sdk = new NodeSDK({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     'service.name': 'billing-service',
     'service.version': '1.2.0',
   }),
   resourceDetectors: [
-    new AzureVmDetector(),
+    azureVmDetector,
   ],
   traceExporter: exporter,
 });
@@ -262,9 +259,8 @@ sdk.start();
 
 // For an Azure VM, the resource will contain:
 // cloud.provider: "azure"
-// cloud.platform: "azure_vm"
+// cloud.platform: "azure.vm"
 // cloud.region: "eastus"
-// cloud.account.id: "subscription-uuid-here"
 // host.id: "vm-uuid-here"
 // host.type: "Standard_D4s_v3"
 // host.name: "billing-vm-01"
@@ -275,53 +271,52 @@ Azure App Service and Azure Functions use their own detectors that read from the
 
 ```javascript
 // azure-functions-resource.js - Azure Functions resource detection
-const { AzureFunctionsDetector } = require('@opentelemetry/resource-detector-azure');
+const { azureFunctionsDetector } = require('@opentelemetry/resource-detector-azure');
 
 // Azure Functions detector reads from environment variables:
-// WEBSITE_SITE_NAME, REGION_NAME, WEBSITE_INSTANCE_ID, etc.
+// WEBSITE_SITE_NAME, REGION_NAME, WEBSITE_INSTANCE_ID, FUNCTIONS_MEM_LIMIT, etc.
 
 // Detected attributes:
 // cloud.provider: "azure"
-// cloud.platform: "azure_functions"
+// cloud.platform: "azure.functions"
 // cloud.region: "eastus"
-// faas.name: "process-orders"
-// faas.version: "20240115.1"
+// service.name: "process-orders"
 // faas.instance: "instance-abc123"
+// faas.max_memory: 536870912
 ```
 
 ## Multi-Cloud Resource Configuration
 
-If you operate across multiple cloud providers, you can create a resource detection setup that works everywhere by chaining detectors. The first detector that successfully identifies the environment wins.
+If you operate across multiple cloud providers, you can create a resource detection setup that works everywhere by chaining detectors. Detectors that do not identify their environment return empty resources, while detected attributes are merged into the SDK resource.
 
 ```javascript
 // multi-cloud-resource.js - Resource detection that works across clouds
 const { NodeSDK } = require('@opentelemetry/sdk-node');
-const { AwsEc2DetectorSync, AwsEcsDetectorSync, AwsLambdaDetectorSync } = require('@opentelemetry/resource-detector-aws');
-const { gcpDetectorSync } = require('@opentelemetry/resource-detector-gcp');
-const { AzureVmDetector } = require('@opentelemetry/resource-detector-azure');
-const { envDetectorSync, hostDetectorSync, processDetectorSync } = require('@opentelemetry/resources');
-const { Resource } = require('@opentelemetry/resources');
+const { awsEc2Detector, awsEcsDetector, awsLambdaDetector } = require('@opentelemetry/resource-detector-aws');
+const { gcpDetector } = require('@opentelemetry/resource-detector-gcp');
+const { azureVmDetector } = require('@opentelemetry/resource-detector-azure');
+const { envDetector, hostDetector, processDetector, resourceFromAttributes } = require('@opentelemetry/resources');
 
 const sdk = new NodeSDK({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     'service.name': process.env.SERVICE_NAME || 'unknown',
     'service.version': process.env.SERVICE_VERSION || '0.0.0',
     'deployment.environment.name': process.env.DEPLOY_ENV || 'development',
   }),
-  // Detectors are tried in order; those that fail silently return empty resources
+  // Detectors run in order; those that fail silently return empty resources
   resourceDetectors: [
     // AWS detectors
-    new AwsLambdaDetectorSync(),
-    new AwsEcsDetectorSync(),
-    new AwsEc2DetectorSync(),
+    awsLambdaDetector,
+    awsEcsDetector,
+    awsEc2Detector,
     // GCP detector
-    gcpDetectorSync,
+    gcpDetector,
     // Azure detector
-    new AzureVmDetector(),
+    azureVmDetector,
     // Fallback: basic host and process info
-    envDetectorSync,
-    hostDetectorSync,
-    processDetectorSync,
+    envDetector,
+    hostDetector,
+    processDetector,
   ],
   traceExporter: exporter,
 });
@@ -329,7 +324,7 @@ const sdk = new NodeSDK({
 sdk.start();
 ```
 
-Each detector checks whether it is running in its respective environment. If it is not (for example, the AWS EC2 detector runs on a GCP instance), it returns an empty resource and the next detector gets a chance. This means you can use the same instrumentation code across all your deployments.
+Each detector checks whether it is running in its respective environment. If it is not (for example, the AWS EC2 detector runs on a GCP instance), it returns an empty resource and the remaining detectors still run. This means you can use the same instrumentation code across all your deployments.
 
 ## Querying Cloud Resource Telemetry
 
@@ -389,15 +384,20 @@ Third, be careful with resource detection in local development. The cloud detect
 
 ```javascript
 // conditional-detection.js - Only use cloud detectors in cloud environments
-const detectors = [envDetectorSync, hostDetectorSync, processDetectorSync];
+const { awsEc2Detector } = require('@opentelemetry/resource-detector-aws');
+const { gcpDetector } = require('@opentelemetry/resource-detector-gcp');
+const { azureVmDetector } = require('@opentelemetry/resource-detector-azure');
+const { envDetector, hostDetector, processDetector } = require('@opentelemetry/resources');
+
+const detectors = [envDetector, hostDetector, processDetector];
 
 // Only add cloud detectors when running in a cloud environment
 if (process.env.CLOUD_PROVIDER === 'aws') {
-  detectors.unshift(new AwsEc2DetectorSync());
+  detectors.unshift(awsEc2Detector);
 } else if (process.env.CLOUD_PROVIDER === 'gcp') {
-  detectors.unshift(gcpDetectorSync);
+  detectors.unshift(gcpDetector);
 } else if (process.env.CLOUD_PROVIDER === 'azure') {
-  detectors.unshift(new AzureVmDetector());
+  detectors.unshift(azureVmDetector);
 }
 ```
 
