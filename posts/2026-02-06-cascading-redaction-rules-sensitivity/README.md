@@ -13,7 +13,7 @@ Not all sensitive data deserves the same treatment. A credit card number should 
 Before configuring the Collector, define your sensitivity levels:
 
 - **Critical**: Must be completely removed (passwords, SSNs, credit cards)
-- **High**: Must be hashed for correlation without exposure (user IDs, email addresses)
+- **High**: Must be hashed for correlation with reduced direct exposure (user IDs, email addresses)
 - **Medium**: Must be partially masked (IP addresses, phone numbers)
 - **Low**: Safe to pass through (HTTP methods, status codes, service names)
 
@@ -59,12 +59,12 @@ processors:
       - context: span
         statements:
           # Mask IP addresses: 192.168.1.100 -> 192.168.x.x
-          - replace_pattern(attributes["net.peer.ip"], "([0-9]+\\.[0-9]+)\\.[0-9]+\\.[0-9]+", "$$1.x.x") where attributes["net.peer.ip"] != nil
+          - replace_pattern(attributes["server.address"], "([0-9]+\\.[0-9]+)\\.[0-9]+\\.[0-9]+", "$$1.x.x") where attributes["server.address"] != nil
           - replace_pattern(attributes["client.address"], "([0-9]+\\.[0-9]+)\\.[0-9]+\\.[0-9]+", "$$1.x.x") where attributes["client.address"] != nil
           # Mask phone numbers: keep area code, mask the rest
           - replace_pattern(attributes["user.phone"], "(\\+?[0-9]{1,3}[\\s.-]?\\(?[0-9]{3}\\)?)[\\s.-]?[0-9]{3}[\\s.-]?[0-9]{4}", "$$1-XXX-XXXX") where attributes["user.phone"] != nil
 
-  # Level 4: Catch-all regex scan for anything missed
+  # Level 4: Catch-all attribute-value regex scan for anything missed
   redaction/safety-net:
     allow_all_keys: true
     blocked_values:
@@ -98,7 +98,7 @@ processors:
       - key: auth.token
         action: delete
 
-  # HIGH: Hash with SHA-256
+  # HIGH: Hash with SHA-1
   attributes/hash-high:
     actions:
       - key: user.id
@@ -115,7 +115,7 @@ processors:
     trace_statements:
       - context: span
         statements:
-          - replace_pattern(attributes["net.peer.ip"], "([0-9]+\\.[0-9]+)\\.[0-9]+\\.[0-9]+", "$$1.x.x") where attributes["net.peer.ip"] != nil
+          - replace_pattern(attributes["server.address"], "([0-9]+\\.[0-9]+)\\.[0-9]+\\.[0-9]+", "$$1.x.x") where attributes["server.address"] != nil
           - replace_pattern(attributes["client.address"], "([0-9]+\\.[0-9]+)\\.[0-9]+\\.[0-9]+", "$$1.x.x") where attributes["client.address"] != nil
     log_statements:
       - context: log
@@ -125,7 +125,7 @@ processors:
           # Mask IPs in log bodies
           - replace_pattern(body, "([0-9]+\\.[0-9]+)\\.[0-9]+\\.[0-9]+", "$$1.x.x")
 
-  # SAFETY NET: Regex catch-all
+  # SAFETY NET: Attribute-value regex catch-all
   redaction/safety-net:
     allow_all_keys: true
     blocked_values:
@@ -162,7 +162,7 @@ The cascade order is intentional:
 1. **Block first** - remove the most dangerous data immediately so no downstream processor can accidentally leak it
 2. **Hash second** - convert high-sensitivity identifiers to hashes while they still have their original values
 3. **Mask third** - apply partial masking to medium-sensitivity data
-4. **Safety net last** - catch anything the explicit rules missed
+4. **Safety net last** - catch sensitive patterns in remaining attribute values that the explicit rules missed
 
 If you reverse the order (hash before block), you might hash a value that should have been deleted entirely. Keeping the strictest action first ensures correctness.
 
@@ -191,7 +191,7 @@ classifications:
     description: "Partially masked"
     action: mask
     attributes:
-      - net.peer.ip
+      - server.address
       - client.address
 ```
 
@@ -213,7 +213,7 @@ def test_high_data_hashed():
     span = create_test_span({"user.id": "john@example.com"})
     processed = send_through_pipeline(span)
     assert processed.attributes["user.id"] != "john@example.com"
-    assert len(processed.attributes["user.id"]) == 64  # SHA-256 hex length
+    assert len(processed.attributes["user.id"]) == 40  # SHA-1 hex length
 ```
 
 Cascading redaction rules give you fine-grained control over how different types of sensitive data are handled. The layered approach ensures that each piece of data receives appropriate treatment based on its sensitivity classification.
