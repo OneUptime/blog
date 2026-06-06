@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Collector, journald, Receiver, Linux, Systemd Logs
 
 Description: Configure the Journald Receiver to collect systemd logs from Linux systems, filter by units, and integrate system logs into OpenTelemetry pipelines.
 
-The Journald Receiver collects logs directly from systemd's journal on Linux systems. Instead of parsing text files, it queries the binary journal database using the journald API, providing efficient access to system logs with rich metadata. This receiver is essential for monitoring modern Linux systems where systemd manages services and captures all system and service logs.
+The Journald Receiver collects logs directly from systemd's journal on Linux systems. Instead of parsing text files, it runs `journalctl` to query the journal and read entries as structured JSON, providing access to system logs with rich metadata. This receiver is useful for monitoring modern Linux systems where systemd manages services and captures system and service logs.
 
 ## Why Journald Matters
 
@@ -35,7 +35,7 @@ Systemd-journald receives logs from multiple sources and stores them in a binary
 - System identifiers (hostname, boot ID, machine ID)
 - Custom fields added by the application
 
-The Journald Receiver uses the journal's C API (via CGO) to query these logs, filter by criteria, and transform them into OpenTelemetry log format. This approach is more efficient than parsing text because the journal maintains indexes for fast querying.
+The Journald Receiver uses `journalctl` to query these logs, filter by criteria, and transform them into OpenTelemetry log format. This approach avoids parsing plain text log files and lets journald apply its own indexed filtering.
 
 ## Architecture Overview
 
@@ -62,30 +62,29 @@ Start with a simple configuration that collects all journal entries:
 ```yaml
 # Basic Journald Receiver configuration
 
-# Collects all journal entries from the current boot
+# Collects journal entries, including debug priority entries
 receivers:
   journald:
     directory: /var/log/journal
-    units:
-      - all
+    priority: debug
 
 processors:
   batch:
     timeout: 10s
 
 exporters:
-  logging:
-    loglevel: debug
+  debug:
+    verbosity: detailed
 
 service:
   pipelines:
     logs:
       receivers: [journald]
       processors: [batch]
-      exporters: [logging]
+      exporters: [debug]
 ```
 
-This configuration reads from the default journal location and collects logs from all systemd units. The receiver starts from the end of the journal, processing only new entries.
+This configuration reads from the specified journal location and collects logs from all systemd units at debug priority or higher. The receiver starts from the end of the journal, processing only new entries.
 
 ## Directory Configuration
 
@@ -126,7 +125,7 @@ receivers:
       - myapp.service
 ```
 
-This configuration collects logs only from the specified units. The receiver ignores logs from other services, reducing processing overhead and metric cardinality.
+This configuration collects logs only from the specified units. The receiver ignores logs from other services, reducing processing overhead and log volume.
 
 Unit names must match exactly as they appear in journalctl. Check available units:
 
@@ -148,9 +147,6 @@ Filter by log priority (severity):
 receivers:
   journald:
     directory: /var/log/journal
-    units:
-      - all
-
     # Priority levels: emerg, alert, crit, err, warning, notice, info, debug
     # This collects warning and above (ignores info and debug)
     priority: warning
@@ -178,16 +174,13 @@ Control where the receiver begins reading:
 receivers:
   journald:
     directory: /var/log/journal
-    units:
-      - all
-
     # Options: 'end' or 'beginning'
     # 'end': Only process new entries (default)
     # 'beginning': Process all existing entries from this boot
     start_at: end
 ```
 
-Use `end` in production to avoid reprocessing old logs. The receiver maintains a cursor position so it resumes from where it left off after a restart.
+Use `end` in production to avoid reprocessing old logs. To resume from the same cursor after a collector restart, configure the receiver with a storage extension.
 
 Use `beginning` for initial deployment to backfill recent logs, or when troubleshooting issues that occurred before the collector started.
 
@@ -209,23 +202,23 @@ receivers:
     # Alternatively, use matches for more complex filtering
     # matches:
     #   # Filter by syslog identifier
-    #   - _SYSLOG_IDENTIFIER=myapp
+    #   - SYSLOG_IDENTIFIER: myapp
     #
     #   # Filter by process ID
-    #   - _PID=1234
+    #   - _PID: "1234"
     #
     #   # Filter by user ID
-    #   - _UID=1000
+    #   - _UID: "1000"
 ```
 
-The `matches` parameter uses journald's field matching syntax. Each match is an AND condition. Common fields include:
+The `matches` parameter is a list of maps. Fields within one map are ANDed together, and separate list items are ORed together. Common fields include:
 
 - `_SYSTEMD_UNIT`: Systemd unit name
 - `_PID`: Process ID
 - `_UID`: User ID
 - `_GID`: Group ID
 - `_HOSTNAME`: Hostname
-- `_SYSLOG_IDENTIFIER`: Syslog program name
+- `SYSLOG_IDENTIFIER`: Syslog program name
 - `_COMM`: Command name
 - `PRIORITY`: Message priority
 
@@ -234,39 +227,34 @@ The `matches` parameter uses journald's field matching syntax. Each match is an 
 The journal includes extensive metadata. Here's how it maps to OpenTelemetry:
 
 ```yaml
-# Journal fields are automatically mapped to log attributes
+# Journal fields are read into the log body and can be moved to attributes
 # Understanding this mapping helps with downstream processing
 receivers:
   journald:
     directory: /var/log/journal
-    units:
-      - all
+    operators:
+      # Move selected journal fields to OpenTelemetry attributes
+      - type: move
+        from: body._SYSTEMD_UNIT
+        to: attributes.systemd.unit
 
-processors:
-  # Access journal fields as log attributes
-  attributes:
-    actions:
-      # Journal MESSAGE field becomes log body
-      - key: body
-        action: insert
+      - type: move
+        from: body._PID
+        to: attributes.process.pid
 
-      # Add journal fields as attributes
-      - key: systemd.unit
-        from_attribute: _SYSTEMD_UNIT
-        action: upsert
+      - type: move
+        from: body._COMM
+        to: attributes.process.command
 
-      - key: process.pid
-        from_attribute: _PID
-        action: upsert
-
-      - key: process.command
-        from_attribute: _COMM
-        action: upsert
+      # Use the MESSAGE field as the log body after moving metadata fields
+      - type: move
+        from: body.MESSAGE
+        to: body
 ```
 
-Key journal fields automatically available:
+Key journal fields available in the journald entry body before operator processing:
 
-- `MESSAGE`: Log message text (becomes log body)
+- `MESSAGE`: Log message text
 - `_SYSTEMD_UNIT`: Systemd unit name
 - `_PID`: Process ID
 - `_COMM`: Command name
@@ -279,29 +267,17 @@ Key journal fields automatically available:
 
 ## Priority Mapping
 
-The receiver automatically maps journal priority to OpenTelemetry severity:
+The receiver preserves journal priority in the `PRIORITY` field. If you need OpenTelemetry severity fields, map `PRIORITY` in an operator or downstream processor:
 
 ```yaml
-# Priority to severity mapping happens automatically
-# This shows the mapping for reference
+# Journal priority -> typical OpenTelemetry severity mapping
 receivers:
   journald:
     directory: /var/log/journal
-    units:
-      - all
-
-    # Journal priority -> OpenTelemetry severity
-    # 0 (emerg)   -> Fatal (21)
-    # 1 (alert)   -> Fatal (21)
-    # 2 (crit)    -> Fatal (21)
-    # 3 (err)     -> Error (17)
-    # 4 (warning) -> Warn (13)
-    # 5 (notice)  -> Info (9)
-    # 6 (info)    -> Info (9)
-    # 7 (debug)   -> Debug (5)
+    priority: debug
 ```
 
-This automatic mapping ensures consistent severity levels across your observability pipeline, regardless of the original log source.
+A typical mapping is: 0-2 to fatal, 3 to error, 4 to warn, 5-6 to info, and 7 to debug.
 
 ## Collecting Kernel Logs
 
@@ -313,8 +289,7 @@ The journal captures kernel messages (dmesg):
 receivers:
   journald:
     directory: /var/log/journal
-    units:
-      - kernel
+    dmesg: true
 
     # Only collect errors and above from kernel
     priority: err
@@ -343,7 +318,7 @@ receivers:
 
     matches:
       # Collect only audit messages
-      - _TRANSPORT=audit
+      - _TRANSPORT: audit
 
 processors:
   attributes:
@@ -435,7 +410,7 @@ service:
 
 This pattern allows different processing and routing for different service types. Web services might need info-level logs, while databases only need warnings. Application logs might include debug information during troubleshooting.
 
-Resource Attributes
+## Resource Attributes
 
 Add resource attributes to identify the log source:
 
@@ -445,8 +420,6 @@ Add resource attributes to identify the log source:
 receivers:
   journald:
     directory: /var/log/journal
-    units:
-      - all
 
 processors:
   resource:
@@ -486,8 +459,6 @@ The Journald Receiver is generally efficient, but large journals can impact perf
 receivers:
   journald:
     directory: /var/log/journal
-    units:
-      - all
 
     # Start at end to avoid processing old logs
     start_at: end
@@ -524,22 +495,24 @@ Large batch sizes reduce the frequency of export operations, improving throughpu
 
 ## Cursor Persistence
 
-The receiver maintains its position in the journal using a cursor. This cursor persists across collector restarts:
+The receiver maintains its position in the journal using a cursor. To persist this cursor across collector restarts, configure a storage extension:
 
 ```yaml
-# Cursor persistence is automatic
-# The receiver remembers its position in the journal
+# Cursor persistence with the file storage extension
 receivers:
   journald:
     directory: /var/log/journal
-    units:
-      - all
+    storage: file_storage/journald
 
-    # Receiver stores cursor in collector state
-    # No configuration needed for persistence
+extensions:
+  file_storage/journald:
+    directory: /var/lib/otelcol/journald
+
+service:
+  extensions: [file_storage/journald]
 ```
 
-The cursor ensures you don't lose or duplicate logs during collector restarts. The receiver stores the cursor in its internal state directory, typically `/var/lib/otelcol/`.
+The cursor helps avoid duplicate logs during collector restarts. Without a storage extension, cursor state is kept in memory only and is lost when the collector process exits.
 
 ## Combining with File-Based Logs
 
@@ -586,7 +559,9 @@ Deploy the Journald Receiver as a DaemonSet to collect logs from all nodes:
 
 ```yaml
 # DaemonSet configuration for Kubernetes
-# Mounts host journal directory into collector pods
+# Mounts host journal directory into collector pods.
+# Use an image that includes journalctl, or configure root_path/journalctl_path
+# to use the host's journalctl binary.
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -604,11 +579,17 @@ spec:
       serviceAccountName: otel-collector
       containers:
       - name: otel-collector
-        image: otel/opentelemetry-collector-contrib:latest
+        image: your-registry/otelcol-contrib-with-journalctl:latest
+        securityContext:
+          runAsUser: 0
+          capabilities:
+            add:
+              - DAC_READ_SEARCH
+              - SYS_PTRACE
         volumeMounts:
         # Mount host journal directory
         - name: journal
-          mountPath: /var/log/journal
+          mountPath: /run/log/journal
           readOnly: true
         # Mount collector config
         - name: config
@@ -616,13 +597,13 @@ spec:
       volumes:
       - name: journal
         hostPath:
-          path: /var/log/journal
+          path: /run/log/journal
       - name: config
         configMap:
           name: otel-collector-config
 ```
 
-The DaemonSet runs one collector pod per node, each collecting that node's journal. The host path mount provides read-only access to the journal.
+The DaemonSet runs one collector pod per node, each collecting that node's journal. The host path mount provides read-only access to the journal, and the container image must include a compatible `journalctl` binary.
 
 ## Complete Production Example
 
@@ -654,8 +635,7 @@ receivers:
   # Kernel logs for hardware monitoring
   journald/kernel:
     directory: /var/log/journal
-    units:
-      - kernel
+    dmesg: true
     priority: err
     start_at: end
 
@@ -759,7 +739,10 @@ In containers, run with the appropriate security context:
 ```yaml
 securityContext:
   runAsUser: 0  # Root user for journal access
-  # Or mount journal with appropriate permissions
+  capabilities:
+    add:
+      - DAC_READ_SEARCH
+      - SYS_PTRACE
 ```
 
 ### High Memory Usage
