@@ -25,7 +25,7 @@ slos:
       type: "latency"
       percentile: 0.99
       threshold_ms: 500
-    objective: 0.995  # 99.5% of time windows must meet the P99 target
+    objective: 0.99   # 99% of requests must meet the latency target
     window: "30d"     # measured over a rolling 30-day window
     routes:
       - "/api/orders"
@@ -42,11 +42,22 @@ Make sure your application emits latency histograms with enough bucket granulari
 from opentelemetry import metrics
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+from opentelemetry.sdk.metrics.view import ExplicitBucketHistogramAggregation, View
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 
 exporter = OTLPMetricExporter(endpoint="otel-collector:4317", insecure=True)
 reader = PeriodicExportingMetricReader(exporter, export_interval_millis=10000)
-provider = MeterProvider(metric_readers=[reader])
+provider = MeterProvider(
+    metric_readers=[reader],
+    views=[
+        View(
+            instrument_name="http.server.request.duration",
+            aggregation=ExplicitBucketHistogramAggregation(
+                boundaries=[0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.75, 1.0, 2.0, 5.0]
+            ),
+        )
+    ],
+)
 metrics.set_meter_provider(provider)
 
 meter = metrics.get_meter("api-service")
@@ -65,8 +76,8 @@ slo_violation_counter = meter.create_counter(
     "slo.latency.violations",
     description="Count of requests that violated the latency SLO",
 )
-slo_total_counter = meter.create_counter(
-    "slo.latency.total",
+slo_request_counter = meter.create_counter(
+    "slo.latency.requests",
     description="Total requests evaluated against latency SLO",
 )
 
@@ -74,10 +85,10 @@ SLO_THRESHOLD_SECONDS = 0.5  # 500ms
 
 def record_request(route, duration_seconds, status_code):
     """Record a request and evaluate it against the SLO."""
-    attrs = {"http.route": route, "http.status_code": str(status_code)}
+    attrs = {"http.route": route, "http.response.status_code": status_code}
 
     request_duration.record(duration_seconds, attrs)
-    slo_total_counter.add(1, {"http.route": route})
+    slo_request_counter.add(1, {"http.route": route})
 
     if duration_seconds > SLO_THRESHOLD_SECONDS:
         slo_violation_counter.add(1, {"http.route": route})
@@ -97,35 +108,35 @@ groups:
         expr: |
           sum(rate(slo_latency_violations_total[1h])) by (http_route)
           /
-          sum(rate(slo_latency_total_total[1h])) by (http_route)
+          sum(rate(slo_latency_requests_total[1h])) by (http_route)
 
       - record: slo:latency:error_ratio_6h
         expr: |
           sum(rate(slo_latency_violations_total[6h])) by (http_route)
           /
-          sum(rate(slo_latency_total_total[6h])) by (http_route)
+          sum(rate(slo_latency_requests_total[6h])) by (http_route)
 
       - record: slo:latency:error_ratio_1d
         expr: |
           sum(rate(slo_latency_violations_total[1d])) by (http_route)
           /
-          sum(rate(slo_latency_total_total[1d])) by (http_route)
+          sum(rate(slo_latency_requests_total[1d])) by (http_route)
 
       - record: slo:latency:error_ratio_3d
         expr: |
           sum(rate(slo_latency_violations_total[3d])) by (http_route)
           /
-          sum(rate(slo_latency_total_total[3d])) by (http_route)
+          sum(rate(slo_latency_requests_total[3d])) by (http_route)
 
       # Fast burn: consuming error budget 14x faster than allowed
       # Alert if both 1h AND 5m windows show fast burn
       - alert: SLOLatencyFastBurn
         expr: |
-          slo:latency:error_ratio_1h > (14.4 * 0.005)
+          slo:latency:error_ratio_1h > (14.4 * 0.01)
           and
           sum(rate(slo_latency_violations_total[5m])) by (http_route)
-          / sum(rate(slo_latency_total_total[5m])) by (http_route)
-          > (14.4 * 0.005)
+          / sum(rate(slo_latency_requests_total[5m])) by (http_route)
+          > (14.4 * 0.01)
         for: 2m
         labels:
           severity: critical
@@ -133,18 +144,18 @@ groups:
           summary: "P99 latency SLO burning fast for {{ $labels.http_route }}"
           description: "Error budget is being consumed at 14x the sustainable rate"
 
-      # Slow burn: consuming error budget 3x faster than allowed
+      # Slow burn: consuming error budget 1x faster than allowed over a long window
       - alert: SLOLatencySlowBurn
         expr: |
-          slo:latency:error_ratio_1d > (3 * 0.005)
+          slo:latency:error_ratio_3d > (1 * 0.01)
           and
-          slo:latency:error_ratio_6h > (3 * 0.005)
+          slo:latency:error_ratio_6h > (1 * 0.01)
         for: 1h
         labels:
           severity: warning
         annotations:
           summary: "P99 latency SLO slowly degrading for {{ $labels.http_route }}"
-          description: "Error budget is being consumed at 3x the sustainable rate"
+          description: "Error budget is being consumed at the sustainable rate over multiple long windows"
 ```
 
 ## Error Budget Tracking Dashboard
@@ -153,12 +164,12 @@ Build a dashboard that shows how much error budget remains:
 
 ```promql
 # Error budget remaining (as a percentage)
-# Budget = 0.5% of requests can violate P99 over 30 days
+# Budget = 1% of requests can violate P99 over 30 days
 1 - (
   sum(increase(slo_latency_violations_total[30d])) by (http_route)
   /
-  sum(increase(slo_latency_total_total[30d])) by (http_route)
-) / 0.005
+  sum(increase(slo_latency_requests_total[30d])) by (http_route)
+) / 0.01
 
 # Current P99 latency (should be below SLO threshold)
 histogram_quantile(0.99,
@@ -168,9 +179,9 @@ histogram_quantile(0.99,
 # Error budget burn rate (1 = sustainable, >1 = burning too fast)
 (
   sum(rate(slo_latency_violations_total[1h])) by (http_route)
-  / sum(rate(slo_latency_total_total[1h])) by (http_route)
+  / sum(rate(slo_latency_requests_total[1h])) by (http_route)
 )
-/ 0.005
+/ 0.01
 ```
 
 ## Integrating with Incident Response
@@ -180,11 +191,14 @@ When an alert fires, automatically create an incident with context:
 ```python
 # slo_alert_handler.py
 import requests
-import json
 import os
+from datetime import datetime, timezone
 
 ONEUPTIME_API = os.environ.get("ONEUPTIME_API_URL")
 ONEUPTIME_API_KEY = os.environ.get("ONEUPTIME_API_KEY")
+ONEUPTIME_PROJECT_ID = os.environ.get("ONEUPTIME_PROJECT_ID")
+ONEUPTIME_INCIDENT_STATE_ID = os.environ.get("ONEUPTIME_INCIDENT_STATE_ID")
+ONEUPTIME_INCIDENT_SEVERITY_ID = os.environ.get("ONEUPTIME_INCIDENT_SEVERITY_ID")
 
 def handle_slo_alert(alert_data):
     """Handle an SLO alert by creating an incident with full context."""
@@ -199,28 +213,35 @@ def handle_slo_alert(alert_data):
     budget_remaining = query_error_budget(route)
 
     incident = {
-        "title": f"P99 Latency SLO Violation: {route}",
-        "description": (
-            f"The P99 latency SLO for {route} is being violated.\n\n"
-            f"Current P99: {current_p99:.0f}ms (target: 500ms)\n"
-            f"Error budget remaining: {budget_remaining:.1f}%\n"
-            f"Burn rate: {burn_rate}\n\n"
-            f"Investigate the traces for {route} to identify the root cause."
-        ),
-        "severity": severity,
+        "data": {
+            "title": f"P99 Latency SLO Violation: {route}",
+            "description": (
+                f"The P99 latency SLO for {route} is being violated.\n\n"
+                f"Current P99: {current_p99:.0f}ms (target: 500ms)\n"
+                f"Error budget remaining: {budget_remaining:.1f}%\n"
+                f"Burn rate: {burn_rate}\n"
+                f"Alert severity: {severity}\n\n"
+                f"Investigate the traces for {route} to identify the root cause."
+            ),
+            "projectId": ONEUPTIME_PROJECT_ID,
+            "currentIncidentStateId": ONEUPTIME_INCIDENT_STATE_ID,
+            "incidentSeverityId": ONEUPTIME_INCIDENT_SEVERITY_ID,
+            "declaredAt": datetime.now(timezone.utc).isoformat(),
+        }
     }
 
     resp = requests.post(
-        f"{ONEUPTIME_API}/incidents",
-        headers={"Authorization": f"Bearer {ONEUPTIME_API_KEY}"},
+        f"{ONEUPTIME_API}/api/incident",
+        headers={"ApiKey": ONEUPTIME_API_KEY},
         json=incident,
     )
+    resp.raise_for_status()
     print(f"Created incident: {resp.json().get('id')}")
 ```
 
 ## Tuning Your Alerts
 
-The burn rate multipliers (14.4x for fast burn, 3x for slow burn) and the time windows need tuning for your specific environment. Start with the defaults from Google's SRE book and adjust based on experience.
+The burn rate multipliers (14.4x for fast burn, 1x for slow burn) and the time windows need tuning for your specific environment. Start with the defaults from Google's SRE book and adjust based on experience.
 
 If you get too many false positive alerts, increase the `for` duration (how long the condition must hold before firing). If you miss real incidents, lower the burn rate multiplier.
 
