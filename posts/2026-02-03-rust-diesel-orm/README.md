@@ -421,8 +421,9 @@ use uuid::Uuid;
 
 use crate::schema::posts;
 
-#[derive(Debug, Clone, Queryable, Selectable, Serialize, Identifiable)]
+#[derive(Debug, Clone, Queryable, Selectable, Serialize, Identifiable, Associations)]
 #[diesel(table_name = posts)]
+#[diesel(belongs_to(crate::models::user::User))]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct Post {
     pub id: Uuid,
@@ -990,7 +991,8 @@ pub fn find_posts_with_filters(
 ### Aggregations and Grouping
 
 ```rust
-use diesel::dsl::{count, sum, avg};
+use diesel::dsl::{count, sql, sum};
+use diesel::sql_types::BigInt;
 
 // Get statistics about posts per user
 #[derive(Debug, Queryable)]
@@ -1010,7 +1012,9 @@ pub fn get_user_post_stats(conn: &mut DbConnection) -> Result<Vec<UserPostStats>
             users::id,
             users::username,
             count(posts::id),
-            count(posts::id.nullable()).filter(posts::published.eq(true)),
+            // PostgreSQL FILTER clause via raw SQL - the typed aggregate filter DSL
+            // is not yet exposed in Diesel 2.1, so we drop down to sql::<BigInt>()
+            sql::<BigInt>("COUNT(posts.id) FILTER (WHERE posts.published = true)"),
             sum(posts::view_count).nullable(),
         ))
         .load::<(Uuid, String, i64, i64, Option<i64>)>(conn)
@@ -1368,6 +1372,10 @@ Diesel works well with test databases and transactions that rollback after each 
 
 use diesel::pg::PgConnection;
 use diesel::Connection;
+use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
+
+// Embed migrations at compile time so tests do not depend on the working directory
+pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations/");
 
 pub fn establish_test_connection() -> PgConnection {
     dotenvy::from_filename(".env.test").ok();
@@ -1378,8 +1386,8 @@ pub fn establish_test_connection() -> PgConnection {
     let mut conn = PgConnection::establish(&database_url)
         .expect("Failed to connect to test database");
 
-    // Run migrations
-    diesel_migrations::run_pending_migrations(&mut conn)
+    // Run migrations using the MigrationHarness trait (Diesel 2.x API)
+    conn.run_pending_migrations(MIGRATIONS)
         .expect("Failed to run migrations");
 
     conn
