@@ -118,7 +118,7 @@ receivers:
     operators:
       # Parse the syslog hostname into a resource attribute
       - type: move
-        from: attributes["net.host.name"]
+        from: attributes["hostname"]
         to: resource["host.name"]
 
   # TCP syslog receiver for reliable delivery
@@ -130,7 +130,7 @@ receivers:
     protocol: rfc5424
     operators:
       - type: move
-        from: attributes["net.host.name"]
+        from: attributes["hostname"]
         to: resource["host.name"]
 
 processors:
@@ -149,15 +149,8 @@ processors:
     log_statements:
       - context: log
         statements:
-          # Extract severity text for easier filtering
-          - set(attributes["syslog.severity.text"], "emergency") where severity_number == 0
-          - set(attributes["syslog.severity.text"], "alert") where severity_number == 1
-          - set(attributes["syslog.severity.text"], "critical") where severity_number == 2
-          - set(attributes["syslog.severity.text"], "error") where severity_number == 3
-          - set(attributes["syslog.severity.text"], "warning") where severity_number == 4
-          - set(attributes["syslog.severity.text"], "notice") where severity_number == 5
-          - set(attributes["syslog.severity.text"], "info") where severity_number == 6
-          - set(attributes["syslog.severity.text"], "debug") where severity_number == 7
+          # Copy the parsed syslog severity text into an attribute for easier filtering
+          - set(log.attributes["syslog.severity.text"], log.severity_text) where log.severity_text != ""
 
 exporters:
   otlp:
@@ -186,21 +179,21 @@ processors:
       - context: log
         conditions:
           # Only apply to Cisco device messages
-          - 'IsMatch(body, "^%[A-Z]+-\\d+-[A-Z]+:")'
+          - 'IsMatch(log.attributes["message"], "^%[A-Z]+-\\d+-[A-Z]+:")'
         statements:
           # Parse Cisco IOS message format: %FACILITY-SEVERITY-MNEMONIC: message
           # Example: %LINK-3-UPDOWN: Interface GigabitEthernet0/1, changed state to down
-          - merge_maps(attributes, ExtractPatterns(body, "^%(?P<cisco_facility>[A-Z]+)-(?P<cisco_severity>\\d+)-(?P<cisco_mnemonic>[A-Z]+):"), "upsert")
+          - merge_maps(log.attributes, ExtractPatterns(log.attributes["message"], "^%(?P<cisco_facility>[A-Z]+)-(?P<cisco_severity>\\d+)-(?P<cisco_mnemonic>[A-Z]+):"), "upsert")
 
   transform/paloalto:
     log_statements:
       - context: log
         conditions:
-          - 'IsMatch(body, "TRAFFIC|THREAT|SYSTEM")'
+          - 'IsMatch(log.attributes["message"], "TRAFFIC|THREAT|SYSTEM")'
         statements:
           # Parse Palo Alto comma-separated log format
           # Extract key fields from the CSV structure
-          - merge_maps(attributes, ExtractPatterns(body, ",(?P<pa_log_type>TRAFFIC|THREAT|SYSTEM),"), "upsert")
+          - merge_maps(log.attributes, ExtractPatterns(log.attributes["message"], ",(?P<pa_log_type>TRAFFIC|THREAT|SYSTEM),"), "upsert")
 ```
 
 Parsing vendor-specific formats is valuable because it lets you create targeted alerts. For example, you can alert specifically on Cisco `%LINK-3-UPDOWN` messages that indicate a physical interface going down, or Palo Alto `THREAT` log entries that indicate a security event.
@@ -213,10 +206,8 @@ In a busy network, syslog volume can be enormous. Use the filter processor to re
 processors:
   # Drop debug-level messages to reduce volume
   filter/drop_debug:
-    logs:
-      log_record:
-        - 'severity_number > 6'
-        # severity_number 7 = debug
+    log_conditions:
+      - 'log.severity_text == "debug"'
         # Drop debug messages from network devices
 
   # Route different severity levels to different pipelines
@@ -251,7 +242,7 @@ Not all syslog messages deserve attention. Focus your alerting on these categori
   description: "Network interface went down on {{ host.name }}"
 
 - alert: AuthenticationFailure
-  condition: 'syslog.severity <= 4 AND (log contains "authentication failure" OR log contains "Login failed")'
+  condition: 'severity_number >= SEVERITY_NUMBER_WARN AND (log contains "authentication failure" OR log contains "Login failed")'
   severity: warning
   for: 0s
   description: "Authentication failure on {{ host.name }}"
@@ -264,7 +255,7 @@ Not all syslog messages deserve attention. Focus your alerting on these categori
 
 - alert: HighSeverityBurst
   # More than 10 error-or-above messages from a single device in 5 minutes
-  condition: count(severity_number <= 3 AND group_by host.name) > 10
+  condition: count(severity_number >= SEVERITY_NUMBER_ERROR AND group_by host.name) > 10
   for: 5m
   severity: warning
   description: "Burst of high-severity messages from {{ host.name }}"
