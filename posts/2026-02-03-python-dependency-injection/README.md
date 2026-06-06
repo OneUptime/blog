@@ -661,17 +661,18 @@ from typing import Annotated
 from functools import lru_cache
 import os
 
+from databases import Database
+
 # Pydantic settings for configuration
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     """Application settings loaded from environment"""
+    model_config = SettingsConfigDict(env_file=".env")
+
     database_url: str = "postgresql://localhost/myapp"
     redis_url: str = "redis://localhost:6379"
     jwt_secret: str = "change-me-in-production"
-
-    class Config:
-        env_file = ".env"
 
 # Cache settings so we do not reload from env on every request
 @lru_cache
@@ -687,8 +688,6 @@ app = FastAPI()
 # Database session dependency
 async def get_db(settings: SettingsDep):
     """Create database session for request"""
-    from databases import Database
-
     db = Database(settings.database_url)
     await db.connect()
     try:
@@ -709,6 +708,10 @@ class UserRepository:
     async def get_by_id(self, user_id: int) -> dict:
         query = "SELECT * FROM users WHERE id = :id"
         return await self.db.fetch_one(query, {"id": user_id})
+
+    async def get_by_email(self, email: str) -> dict:
+        query = "SELECT * FROM users WHERE email = :email"
+        return await self.db.fetch_one(query, {"email": email})
 
     async def create(self, email: str, name: str) -> dict:
         query = """
@@ -841,7 +844,7 @@ Create test doubles that implement your protocols.
 # test_doubles.py
 # Test doubles for unit testing
 from typing import Optional, List, Dict
-from datetime import datetime
+from datetime import datetime, timezone
 
 class FakeUserRepository:
     """In-memory fake repository for testing"""
@@ -856,7 +859,7 @@ class FakeUserRepository:
             id=self.next_id,
             email=email,
             name=name,
-            created_at=datetime.utcnow()
+            created_at=datetime.now(timezone.utc)
         )
         self.users[user.id] = user
         self.next_id += 1
