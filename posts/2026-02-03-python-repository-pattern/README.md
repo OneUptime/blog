@@ -520,6 +520,11 @@ class InMemoryCustomerRepository(AbstractRepository[Customer]):
             customer = self._storage[id]
             del self._email_index[customer.email]
             del self._storage[id]
+
+    def clear(self) -> None:
+        """Clear all stored customers - useful for test cleanup"""
+        self._storage.clear()
+        self._email_index.clear()
 ```
 
 ---
@@ -1066,7 +1071,7 @@ def create_order(
     """Create a new order"""
     order = service.create_order(
         customer_id=request.customer_id,
-        items=[item.dict() for item in request.items]
+        items=[item.model_dump() for item in request.items]
     )
     return OrderResponse(
         id=order.id,
