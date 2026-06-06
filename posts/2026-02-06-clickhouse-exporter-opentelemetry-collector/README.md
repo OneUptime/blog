@@ -12,7 +12,7 @@ ClickHouse is a high-performance columnar database management system designed fo
 
 ClickHouse offers several advantages for storing telemetry data:
 
-- **Columnar storage** provides excellent compression ratios, reducing storage costs by 10-100x compared to row-based databases
+- **Columnar storage** provides excellent compression ratios compared to row-based databases
 - **Vectorized query execution** delivers sub-second query performance on billions of rows
 - **Native time-series support** with specialized functions for temporal analysis
 - **Cost-effective scaling** through efficient resource utilization
@@ -43,7 +43,7 @@ graph TB
 Before configuring the exporter, ensure you have:
 
 - OpenTelemetry Collector Contrib distribution (version 0.88.0 or later)
-- ClickHouse server (version 22.x or later recommended)
+- A ClickHouse server version supported by the ClickHouse Go driver used by your collector build
 - Network connectivity on port 9000 (native protocol) or 8123 (HTTP protocol)
 - Appropriate database credentials with write permissions
 
@@ -91,7 +91,7 @@ This configuration connects to a local ClickHouse instance and writes telemetry 
 
 ## Database Schema Preparation
 
-Before sending data, create the necessary tables in ClickHouse. The exporter expects specific table structures:
+By default, the exporter creates the target database and tables automatically. For production deployments, manage the schema yourself and set `create_schema: false` in the exporter configuration to prevent multiple collector instances from racing to create or alter tables. The current default table structures are:
 
 ### Traces Table Schema
 
@@ -109,7 +109,7 @@ CREATE TABLE IF NOT EXISTS otel.otel_traces (
     ScopeName String CODEC(ZSTD(1)),
     ScopeVersion String CODEC(ZSTD(1)),
     SpanAttributes Map(LowCardinality(String), String) CODEC(ZSTD(1)),
-    Duration Int64 CODEC(ZSTD(1)),
+    Duration UInt64 CODEC(ZSTD(1)),
     StatusCode LowCardinality(String) CODEC(ZSTD(1)),
     StatusMessage String CODEC(ZSTD(1)),
     Events Nested (
@@ -124,11 +124,14 @@ CREATE TABLE IF NOT EXISTS otel.otel_traces (
         Attributes Map(LowCardinality(String), String)
     ) CODEC(ZSTD(1)),
     INDEX idx_trace_id TraceId TYPE bloom_filter(0.001) GRANULARITY 1,
-    INDEX idx_service_name ServiceName TYPE bloom_filter(0.01) GRANULARITY 1,
-    INDEX idx_span_name SpanName TYPE bloom_filter(0.01) GRANULARITY 1
+    INDEX idx_res_attr_key mapKeys(ResourceAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+    INDEX idx_res_attr_value mapValues(ResourceAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+    INDEX idx_span_attr_key mapKeys(SpanAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+    INDEX idx_span_attr_value mapValues(SpanAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+    INDEX idx_duration Duration TYPE minmax GRANULARITY 1
 ) ENGINE = MergeTree()
 PARTITION BY toDate(Timestamp)
-ORDER BY (ServiceName, SpanName, toUnixTimestamp(Timestamp), TraceId)
+ORDER BY (ServiceName, SpanName, toDateTime(Timestamp))
 TTL toDateTime(Timestamp) + INTERVAL 30 DAY DELETE
 SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1;
 ```
@@ -137,34 +140,48 @@ SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1;
 
 ```sql
 CREATE TABLE IF NOT EXISTS otel.otel_logs (
-    Timestamp DateTime64(9) CODEC(Delta, ZSTD(1)),
+    Timestamp DateTime64(9) CODEC(Delta(8), ZSTD(1)),
     TraceId String CODEC(ZSTD(1)),
     SpanId String CODEC(ZSTD(1)),
-    TraceFlags UInt32 CODEC(ZSTD(1)),
+    TraceFlags UInt8,
     SeverityText LowCardinality(String) CODEC(ZSTD(1)),
-    SeverityNumber Int32 CODEC(ZSTD(1)),
+    SeverityNumber UInt8,
     ServiceName LowCardinality(String) CODEC(ZSTD(1)),
     Body String CODEC(ZSTD(1)),
-    ResourceSchemaUrl String CODEC(ZSTD(1)),
+    ResourceSchemaUrl LowCardinality(String) CODEC(ZSTD(1)),
     ResourceAttributes Map(LowCardinality(String), String) CODEC(ZSTD(1)),
-    ScopeSchemaUrl String CODEC(ZSTD(1)),
+    ScopeSchemaUrl LowCardinality(String) CODEC(ZSTD(1)),
     ScopeName String CODEC(ZSTD(1)),
-    ScopeVersion String CODEC(ZSTD(1)),
+    ScopeVersion LowCardinality(String) CODEC(ZSTD(1)),
     ScopeAttributes Map(LowCardinality(String), String) CODEC(ZSTD(1)),
     LogAttributes Map(LowCardinality(String), String) CODEC(ZSTD(1)),
+    EventName String CODEC(ZSTD(1)),
+    `__otel_materialized_k8s.cluster.name` LowCardinality(String) MATERIALIZED ResourceAttributes['k8s.cluster.name'] CODEC(ZSTD(1)),
+    `__otel_materialized_k8s.container.name` LowCardinality(String) MATERIALIZED ResourceAttributes['k8s.container.name'] CODEC(ZSTD(1)),
+    `__otel_materialized_k8s.deployment.name` LowCardinality(String) MATERIALIZED ResourceAttributes['k8s.deployment.name'] CODEC(ZSTD(1)),
+    `__otel_materialized_k8s.namespace.name` LowCardinality(String) MATERIALIZED ResourceAttributes['k8s.namespace.name'] CODEC(ZSTD(1)),
+    `__otel_materialized_k8s.node.name` LowCardinality(String) MATERIALIZED ResourceAttributes['k8s.node.name'] CODEC(ZSTD(1)),
+    `__otel_materialized_k8s.pod.name` LowCardinality(String) MATERIALIZED ResourceAttributes['k8s.pod.name'] CODEC(ZSTD(1)),
+    `__otel_materialized_k8s.pod.uid` LowCardinality(String) MATERIALIZED ResourceAttributes['k8s.pod.uid'] CODEC(ZSTD(1)),
+    `__otel_materialized_deployment.environment.name` LowCardinality(String) MATERIALIZED ResourceAttributes['deployment.environment.name'] CODEC(ZSTD(1)),
     INDEX idx_trace_id TraceId TYPE bloom_filter(0.001) GRANULARITY 1,
-    INDEX idx_service_name ServiceName TYPE bloom_filter(0.01) GRANULARITY 1,
-    INDEX idx_body Body TYPE tokenbf_v1(32768, 3, 0) GRANULARITY 1
+    INDEX idx_res_attr_key mapKeys(ResourceAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+    INDEX idx_res_attr_value mapValues(ResourceAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+    INDEX idx_scope_attr_key mapKeys(ScopeAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+    INDEX idx_scope_attr_value mapValues(ScopeAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+    INDEX idx_log_attr_key mapKeys(LogAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+    INDEX idx_log_attr_value mapValues(LogAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
+    INDEX idx_lower_body lower(Body) TYPE tokenbf_v1(32768, 3, 0) GRANULARITY 8
 ) ENGINE = MergeTree()
 PARTITION BY toDate(Timestamp)
-ORDER BY (ServiceName, SeverityText, toUnixTimestamp(Timestamp), TraceId)
+ORDER BY (toStartOfFiveMinutes(Timestamp), ServiceName, Timestamp)
 TTL toDateTime(Timestamp) + INTERVAL 30 DAY DELETE
 SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1;
 ```
 
 These schemas use several ClickHouse optimizations:
 
-- **CODEC(ZSTD(1))**: Compression codec reduces storage by 70-90%
+- **CODEC(ZSTD(1))**: Compression codec can significantly reduce storage usage
 - **LowCardinality**: Optimizes columns with fewer than 10,000 unique values
 - **Bloom filters**: Enable fast filtering on high-cardinality columns
 - **Partitioning by date**: Improves query performance and enables efficient data management
@@ -180,19 +197,20 @@ exporters:
     endpoint: tcp://clickhouse.example.com:9000?database=otel
 
     # Authentication credentials
-    username: ${CLICKHOUSE_USERNAME}
-    password: ${CLICKHOUSE_PASSWORD}
+    username: ${env:CLICKHOUSE_USERNAME}
+    password: ${env:CLICKHOUSE_PASSWORD}
 
     timeout: 10s
 
     # Connection pool settings
-    connection_open_strategy: lifo
-    max_open_conns: 10
-    max_idle_conns: 5
-    conn_max_lifetime: 60s
+    connection_params:
+      connection_open_strategy: round_robin
+      max_open_conns: "10"
+      max_idle_conns: "5"
+      conn_max_lifetime: 60s
 ```
 
-The exporter supports environment variable substitution using `${VARIABLE_NAME}` syntax, which is recommended for sensitive credentials.
+The Collector supports environment variable substitution using `${env:VARIABLE_NAME}` syntax, which is recommended for sensitive credentials.
 
 ## Advanced Configuration with Custom Table Names
 
@@ -203,20 +221,31 @@ exporters:
   clickhouse:
     endpoint: tcp://clickhouse.example.com:9000?database=otel
 
-    username: ${CLICKHOUSE_USERNAME}
-    password: ${CLICKHOUSE_PASSWORD}
+    username: ${env:CLICKHOUSE_USERNAME}
+    password: ${env:CLICKHOUSE_PASSWORD}
 
     # Custom table names
     traces_table_name: otel_traces
     logs_table_name: otel_logs
-    metrics_table_name: otel_metrics
+    metrics_tables:
+      gauge:
+        name: otel_metrics_gauge
+      sum:
+        name: otel_metrics_sum
+      histogram:
+        name: otel_metrics_histogram
+      exponential_histogram:
+        name: otel_metrics_exponential_histogram
+      summary:
+        name: otel_metrics_summary
 
     # Enable async insert for better performance
     # This batches inserts on the ClickHouse side
     async_insert: true
 
     # Wait for async insert to complete
-    wait_for_async_insert: true
+    connection_params:
+      wait_for_async_insert: "1"
 
     # Timeout settings
     timeout: 30s
@@ -256,11 +285,11 @@ Enable TLS for encrypted communication:
 ```yaml
 exporters:
   clickhouse:
-    # Use clickhouses:// protocol for TLS
-    endpoint: clickhouses://clickhouse.example.com:9440?database=otel
+    # Use secure=true for TLS with the native protocol
+    endpoint: clickhouse://clickhouse.example.com:9440?secure=true&database=otel
 
-    username: ${CLICKHOUSE_USERNAME}
-    password: ${CLICKHOUSE_PASSWORD}
+    username: ${env:CLICKHOUSE_USERNAME}
+    password: ${env:CLICKHOUSE_PASSWORD}
 
     # TLS settings
     tls:
@@ -281,7 +310,7 @@ exporters:
     logs_table_name: otel_logs
 ```
 
-Note the `clickhouses://` protocol and port 9440, which are standard for TLS connections to ClickHouse.
+Note the `secure=true` parameter and port 9440, which are standard for TLS connections to ClickHouse over the native protocol.
 
 ## HTTP Protocol Configuration
 
@@ -293,16 +322,11 @@ exporters:
     # HTTP endpoint
     endpoint: https://clickhouse.example.com:8123?database=otel
 
-    username: ${CLICKHOUSE_USERNAME}
-    password: ${CLICKHOUSE_PASSWORD}
+    username: ${env:CLICKHOUSE_USERNAME}
+    password: ${env:CLICKHOUSE_PASSWORD}
 
-    # HTTP-specific settings
-    compression: gzip
-
-    # Custom HTTP headers
-    headers:
-      X-ClickHouse-User: ${CLICKHOUSE_USERNAME}
-      X-ClickHouse-Key: ${CLICKHOUSE_API_KEY}
+    # HTTP-specific compression setting
+    compress: gzip
 
     traces_table_name: otel_traces
     logs_table_name: otel_logs
@@ -320,6 +344,10 @@ Complete configuration optimized for high-volume production environments:
 extensions:
   health_check:
     endpoint: 0.0.0.0:13133
+
+  file_storage:
+    directory: /var/lib/otel/storage
+    timeout: 10s
 
 receivers:
   otlp:
@@ -340,7 +368,7 @@ processors:
   resource:
     attributes:
       - key: collector.name
-        value: ${HOSTNAME}
+        value: ${env:HOSTNAME}
         action: insert
       - key: collector.version
         value: v0.88.0
@@ -359,10 +387,10 @@ processors:
 
 exporters:
   clickhouse:
-    endpoint: tcp://clickhouse-01.prod.example.com:9000,clickhouse-02.prod.example.com:9000?database=otel
+    endpoint: clickhouse://clickhouse-01.prod.example.com:9000,clickhouse-02.prod.example.com:9000?database=otel
 
-    username: ${CLICKHOUSE_USERNAME}
-    password: ${CLICKHOUSE_PASSWORD}
+    username: ${env:CLICKHOUSE_USERNAME}
+    password: ${env:CLICKHOUSE_PASSWORD}
 
     # Table configuration
     traces_table_name: otel_traces
@@ -370,13 +398,13 @@ exporters:
 
     # Enable async insert for maximum throughput
     async_insert: true
-    wait_for_async_insert: false
-
     # Connection pooling
-    connection_open_strategy: lifo
-    max_open_conns: 20
-    max_idle_conns: 10
-    conn_max_lifetime: 120s
+    connection_params:
+      wait_for_async_insert: "0"
+      connection_open_strategy: round_robin
+      max_open_conns: "20"
+      max_idle_conns: "10"
+      conn_max_lifetime: 120s
 
     # Timeouts
     timeout: 30s
@@ -395,11 +423,6 @@ exporters:
       num_consumers: 20
       queue_size: 10000
       storage: file_storage
-
-extensions:
-  file_storage:
-    directory: /var/lib/otel/storage
-    timeout: 10s
 
 service:
   extensions: [health_check, file_storage]
@@ -434,16 +457,16 @@ ENGINE = Distributed('cluster_name', 'otel', 'otel_traces', rand());
 
 -- Create materialized view for common queries
 CREATE MATERIALIZED VIEW IF NOT EXISTS otel.otel_traces_by_service
-ENGINE = SummingMergeTree()
+ENGINE = AggregatingMergeTree()
 PARTITION BY toDate(Timestamp)
 ORDER BY (ServiceName, toStartOfHour(Timestamp))
 AS SELECT
     ServiceName,
     toStartOfHour(Timestamp) as Hour,
-    count() as TraceCount,
-    avg(Duration) as AvgDuration,
-    quantile(0.95)(Duration) as P95Duration,
-    quantile(0.99)(Duration) as P99Duration
+    countState() as TraceCount,
+    avgState(Duration) as AvgDuration,
+    quantileState(0.95)(Duration) as P95Duration,
+    quantileState(0.99)(Duration) as P99Duration
 FROM otel.otel_traces
 GROUP BY ServiceName, Hour;
 ```
@@ -454,19 +477,18 @@ Update the exporter configuration to use the distributed table:
 exporters:
   clickhouse:
     endpoint: tcp://clickhouse.example.com:9000?database=otel
-    username: ${CLICKHOUSE_USERNAME}
-    password: ${CLICKHOUSE_PASSWORD}
+    username: ${env:CLICKHOUSE_USERNAME}
+    password: ${env:CLICKHOUSE_PASSWORD}
     traces_table_name: otel_traces_distributed
-    logs_table_name: otel_logs_distributed
 ```
 
 ## Monitoring and Performance Tuning
 
 Monitor the exporter's performance using these metrics exposed on port 8888:
 
-- `otel_exporter_sent_spans`: Number of spans successfully sent
-- `otel_exporter_send_failed_spans`: Number of spans that failed to send
-- `otel_exporter_queue_size`: Current queue size
+- `otelcol_exporter_sent_spans`: Number of spans successfully sent
+- `otelcol_exporter_send_failed_spans`: Number of spans that failed to send
+- `otelcol_exporter_queue_size`: Current queue size
 
 Query ClickHouse system tables to monitor ingestion:
 
@@ -501,7 +523,7 @@ LIMIT 10;
 
 **Slow inserts**: Enable `async_insert` and increase `send_batch_size` for better throughput.
 
-**Table not found**: Ensure tables are created before starting the collector using the schemas provided earlier.
+**Table not found**: Ensure `create_schema` is enabled, or create the tables before starting the collector using schemas compatible with your collector version.
 
 ## Query Examples
 
@@ -522,7 +544,7 @@ LIMIT 10;
 -- Error rate by service
 SELECT
     ServiceName,
-    countIf(StatusCode = 'ERROR') / count() * 100 as ErrorRate
+    countIf(StatusCode = 'Error') / count() * 100 as ErrorRate
 FROM otel.otel_traces
 WHERE Timestamp >= now() - INTERVAL 1 HOUR
 GROUP BY ServiceName
