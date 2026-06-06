@@ -28,8 +28,9 @@ Let's trace a wire transfer through each middleware component.
 ```python
 # wire_transfer_pipeline.py
 
+import time
+
 from opentelemetry import trace, metrics
-from opentelemetry.trace.propagation import TraceContextTextMapPropagator
 
 tracer = trace.get_tracer("banking.wire.transfer")
 meter = metrics.get_meter("banking.wire.transfer")
@@ -47,7 +48,7 @@ wire_total_latency = meter.create_histogram(
     unit="ms"
 )
 
-wire_queue_depth = meter.create_up_down_counter(
+wire_queue_depth = meter.create_gauge(
     "wire.queue.depth",
     description="Current number of wires waiting in queue"
 )
@@ -135,6 +136,10 @@ def process_wire_transfer(request):
             queue_position = send_queue.enqueue(message, route, request.priority)
             span.set_attribute("wire.queue.position", queue_position)
             span.set_attribute("wire.queue.priority", request.priority)
+            wire_queue_depth.record(
+                send_queue.current_depth(priority=request.priority),
+                {"priority": request.priority}
+            )
 
             duration = (time.monotonic() - t0) * 1000
             stage_latency.record(duration, {"stage": "queue", "type": request.transfer_type})
@@ -154,7 +159,12 @@ ACH works differently from wire transfers. Transactions are collected into batch
 
 ```python
 # ach_batch_processor.py
+import time
+
+from opentelemetry import trace, metrics
+
 tracer = trace.get_tracer("banking.ach")
+meter = metrics.get_meter("banking.ach")
 
 ach_batch_size = meter.create_histogram(
     "ach.batch.size",
@@ -171,6 +181,7 @@ ach_batch_latency = meter.create_histogram(
 def process_ach_batch(batch_window: str):
     with tracer.start_as_current_span("ach.batch.process") as span:
         span.set_attribute("ach.window", batch_window)
+        start_time = time.monotonic()
 
         # Collect pending ACH transactions for this window
         with tracer.start_as_current_span("ach.collect_pending") as collect_span:
@@ -207,6 +218,10 @@ def process_ach_batch(batch_window: str):
                 str(result.settlement_date))
 
         ach_batch_size.record(len(pending), {"window": batch_window})
+        ach_batch_latency.record(
+            (time.monotonic() - start_time) * 1000,
+            {"window": batch_window}
+        )
         span.set_attribute("ach.outcome", "submitted" if result.accepted else "rejected")
 ```
 
@@ -223,8 +238,8 @@ def monitor_queue_wait_times():
     for queue_name in queues:
         stats = queue_manager.get_stats(queue_name)
 
-        wire_queue_depth.add(
-            stats.current_depth - stats.previous_depth,
+        wire_queue_depth.record(
+            stats.current_depth,
             {"queue": queue_name}
         )
 
