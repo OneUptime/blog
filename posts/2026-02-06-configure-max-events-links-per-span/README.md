@@ -14,7 +14,7 @@ Every span in OpenTelemetry can carry events and links. Events record things tha
 
 The OpenTelemetry specification defines default limits on how many events and links a span can hold. The defaults are 128 events per span and 128 links per span. These defaults exist for practical reasons. A span that accumulates thousands of events, such as one event per loop iteration in a tight loop, will consume large amounts of memory and generate massive payloads when exported. Similarly, a span that links to thousands of other spans creates unwieldy trace graphs.
 
-The limits act as a safety valve. Once the maximum is reached, additional events or links are silently dropped. This prevents a single poorly instrumented span from bringing down your application or overwhelming your backend.
+The limits act as a safety valve. Once the maximum is reached, additional events or links are dropped without raising an application error. This prevents a single poorly instrumented span from bringing down your application or overwhelming your backend.
 
 ```mermaid
 graph TD
@@ -65,7 +65,7 @@ trace.set_tracer_provider(provider)
 tracer = trace.get_tracer("example.service")
 ```
 
-The `SpanLimits` constructor also accepts `max_attributes`, `max_span_attribute_value_length`, `max_event_attributes`, and `max_link_attributes`, so you can control all dimension limits in one place.
+The `SpanLimits` constructor also accepts `max_attributes`, `max_span_attributes`, `max_attribute_length`, `max_span_attribute_length`, `max_event_attributes`, and `max_link_attributes`, so you can control all dimension limits in one place.
 
 After setting this up, any span created by this provider will enforce the limits. Let's test it by adding more events than allowed:
 
@@ -73,7 +73,7 @@ After setting this up, any span created by this provider will enforce the limits
 # Demonstrate the event limit in action
 with tracer.start_as_current_span("process-batch") as span:
     for i in range(100):
-        # Add events in a loop; only the first 64 will be kept
+        # Add events in a loop; only 64 will be kept
         span.add_event(f"processing-item-{i}", attributes={"item.id": i})
 
     # Check how many events the span actually holds
@@ -81,7 +81,7 @@ with tracer.start_as_current_span("process-batch") as span:
     print(f"Events recorded: {len(span.events)}")
 ```
 
-When you run this, the span will contain 64 events. The remaining 36 are dropped without raising an error. This is by design. The SDK does not throw exceptions for dropped events because doing so would disrupt application flow for what is essentially a telemetry concern.
+When you run this, the span will contain 64 events. The other 36 are counted as dropped without raising an error. This is by design. The SDK does not throw exceptions for dropped events because doing so would disrupt application flow for what is essentially a telemetry concern.
 
 ## Configuring Limits in Java
 
@@ -161,10 +161,12 @@ const provider = new NodeTracerProvider({
     attributeCountLimit: 128,
     attributeValueLengthLimit: 1024,
   },
+  // Register an exporter
+  spanProcessors: [
+    new SimpleSpanProcessor(new ConsoleSpanExporter()),
+  ],
 });
 
-// Register an exporter
-provider.addSpanProcessor(new SimpleSpanProcessor(new ConsoleSpanExporter()));
 provider.register();
 
 const tracer = provider.getTracer('example.service');
