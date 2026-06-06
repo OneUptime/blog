@@ -481,12 +481,22 @@ class UserRepositoryImpl @Inject()(
   import dbConfig._
   import profile.api._
 
+  implicit val userRoleColumnType: BaseColumnType[UserRole] =
+    MappedColumnType.base[UserRole, String](
+      _.toString.toLowerCase,
+      {
+        case "admin" => UserRole.Admin
+        case "editor" => UserRole.Editor
+        case "viewer" => UserRole.Viewer
+      }
+    )
+
   class UsersTable(tag: Tag) extends Table[User](tag, "users") {
     def id = column[Long]("id", O.PrimaryKey, O.AutoInc)
     def email = column[String]("email", O.Unique)
     def name = column[String]("name")
     def passwordHash = column[String]("password_hash")
-    def role = column[String]("role")
+    def role = column[UserRole]("role")
     def createdAt = column[Instant]("created_at")
     def updatedAt = column[Instant]("updated_at")
 
@@ -509,7 +519,7 @@ class UserRepositoryImpl @Inject()(
     val now = Instant.now()
     val insertQuery = (users.map(u => (u.email, u.name, u.passwordHash, u.role, u.createdAt, u.updatedAt))
       returning users.map(_.id)
-    ) += (email.toLowerCase, name, passwordHash, role.toString, now, now)
+    ) += (email.toLowerCase, name, passwordHash, role, now, now)
 
     db.run(insertQuery).map(id => User(id, email, name, role, now, now))
   }
@@ -518,7 +528,7 @@ class UserRepositoryImpl @Inject()(
     val now = Instant.now()
     val query = users.filter(_.id === user.id)
       .map(u => (u.email, u.name, u.role, u.updatedAt))
-      .update((user.email, user.name, user.role.toString, now))
+      .update((user.email, user.name, user.role, now))
     db.run(query).map(_ => user.copy(updatedAt = now))
   }
 
@@ -628,6 +638,7 @@ import play.api.libs.json._
 import play.api.inject.bind
 import play.api.inject.guice.GuiceApplicationBuilder
 import org.mockito.Mockito._
+import org.mockito.ArgumentMatchers.any
 import scala.concurrent.Future
 import models.{User, UserRole}
 import services.UserService
