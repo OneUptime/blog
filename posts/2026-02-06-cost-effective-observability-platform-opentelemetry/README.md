@@ -71,13 +71,14 @@ receivers:
 processors:
   # Filter out noisy, low-value telemetry
   filter:
+    error_mode: ignore
     traces:
       span:
         # Drop health check traces
         - 'attributes["http.target"] == "/health"'
         - 'attributes["http.target"] == "/ready"'
         # Drop static asset requests
-        - 'attributes["http.target"] matches ".*\\.(css|js|png|jpg)$"'
+        - 'IsMatch(attributes["http.target"], ".*\\.(css|js|png|jpg)$")'
 
   # Reduce attribute cardinality
   transform:
@@ -162,11 +163,17 @@ processors:
 
       # Sample 50% of moderately slow requests
       - name: moderate-latency
-        type: latency
-        latency:
-          threshold_ms: 1000
-        probabilistic:
-          sampling_percentage: 50
+        type: and
+        and:
+          and_sub_policy:
+            - name: moderate-latency-threshold
+              type: latency
+              latency:
+                threshold_ms: 1000
+            - name: moderate-latency-sample-rate
+              type: probabilistic
+              probabilistic:
+                sampling_percentage: 50
 
       # Sample only 5% of fast, successful requests
       - name: normal-requests
@@ -178,7 +185,7 @@ processors:
   # Convert high-cardinality metrics to lower cardinality
   metricstransform:
     transforms:
-      # Convert histogram to summary for lower storage cost
+      # Aggregate away unused labels for lower storage cost
       - include: http.server.duration
         action: update
         operations:
@@ -186,10 +193,19 @@ processors:
             label_set: [http.method, http.status_code]
             aggregation_type: sum
 
-  # Configure metric temporality for cost savings
-  # Delta temporality reduces storage requirements
-  deltatocumulative:
-    max_stale: 5m
+  # Convert cumulative metrics to delta where the backend supports delta temporality
+  cumulativetodelta:
+    include:
+      match_type: regexp
+      metrics:
+        - ^http\.server\..*
+
+  # Drop low-value logs before export
+  filter/logs:
+    error_mode: ignore
+    logs:
+      log_record:
+        - 'severity_number < SEVERITY_NUMBER_INFO'
 
   # Batch aggressively for network efficiency
   batch:
@@ -201,7 +217,7 @@ exporters:
   # Export to different backends based on data type and retention
   otlp/traces-short:
     endpoint: traces-hot-storage:4317
-    compression: zstd  # Better compression than gzip
+    compression: gzip
     sending_queue:
       enabled: true
       num_consumers: 20
@@ -209,15 +225,15 @@ exporters:
 
   otlp/traces-long:
     endpoint: traces-cold-storage:4317
-    compression: zstd
+    compression: gzip
 
   otlp/metrics:
     endpoint: metrics-storage:4317
-    compression: zstd
+    compression: gzip
 
-  # Use cost-effective object storage for logs
+  # Write compressed log files for later object-storage upload
   file:
-    path: /data/logs
+    path: /data/logs/otel-logs.jsonl
     compression: zstd
     rotation:
       max_megabytes: 512
@@ -246,7 +262,7 @@ service:
       processors:
         - memory_limiter
         - metricstransform
-        - deltatocumulative
+        - cumulativetodelta
         - batch
       exporters: [otlp/metrics]
 
@@ -254,7 +270,7 @@ service:
       receivers: [otlp]
       processors:
         - memory_limiter
-        - filter  # Drop debug logs in production
+        - filter/logs  # Drop debug logs in production
         - batch
       exporters: [file]
 ```
@@ -274,22 +290,21 @@ exporters:
   # Hot tier - Recent traces for active debugging
   otlp/hot:
     endpoint: tempo-hot:4317
-    compression: zstd
+    compression: gzip
     timeout: 10s
 
   # Warm tier - Aggregated metrics
-  prometheusremotewrite/warm:
+  prometheus_remote_write/warm:
     endpoint: http://prometheus:9090/api/v1/write
     compression: snappy
 
   # Cold tier - Archive to S3-compatible storage
-  s3:
-    region: us-west-2
-    s3_bucket: telemetry-archive
-    s3_prefix: traces/
+  awss3:
+    s3uploader:
+      region: us-west-2
+      s3_bucket: telemetry-archive
+      s3_prefix: traces/
     compression: zstd
-    file_rotation:
-      interval: 1h
 ```
 
 ## SDK Configuration for Cost Efficiency
@@ -304,11 +319,11 @@ import (
     "time"
 
     "go.opentelemetry.io/otel"
-    "go.opentelemetry.io/otel/attribute"
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
     "go.opentelemetry.io/otel/sdk/resource"
     "go.opentelemetry.io/otel/sdk/trace"
-    semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
+    oteltrace "go.opentelemetry.io/otel/trace"
+    semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
 )
 
 // Custom sampler that combines multiple strategies
@@ -325,14 +340,14 @@ func (s *CostOptimizedSampler) ShouldSample(
         if attr.Key == "error" && attr.Value.AsBool() {
             return trace.SamplingResult{
                 Decision:   trace.RecordAndSample,
-                Tracestate: p.ParentContext.TraceState(),
+                Tracestate: oteltrace.SpanContextFromContext(p.ParentContext).TraceState(),
             }
         }
         // Always sample high-priority requests
         if attr.Key == "priority" && attr.Value.AsString() == "high" {
             return trace.SamplingResult{
                 Decision:   trace.RecordAndSample,
-                Tracestate: p.ParentContext.TraceState(),
+                Tracestate: oteltrace.SpanContextFromContext(p.ParentContext).TraceState(),
             }
         }
     }
@@ -353,7 +368,7 @@ func initCostOptimizedTracer() (*trace.TracerProvider, error) {
             // Only include essential resource attributes
             semconv.ServiceNameKey.String("my-service"),
             semconv.ServiceVersionKey.String("1.0.0"),
-            semconv.DeploymentEnvironmentKey.String("production"),
+            semconv.DeploymentEnvironmentName("production"),
         ),
     )
     if err != nil {
@@ -390,7 +405,7 @@ func initCostOptimizedTracer() (*trace.TracerProvider, error) {
             trace.WithBatchTimeout(10*time.Second),
         ),
         // Limit span attributes to prevent unbounded growth
-        trace.WithSpanLimits(trace.SpanLimits{
+        trace.WithRawSpanLimits(trace.SpanLimits{
             AttributeCountLimit:        32,  // Max 32 attributes per span
             EventCountLimit:            32,  // Max 32 events per span
             LinkCountLimit:             32,  // Max 32 links per span
@@ -409,44 +424,35 @@ Metrics can be even more expensive than traces due to their continuous nature. O
 
 ```yaml
 processors:
-  # Reduce metric cardinality by aggregating labels
-  metricstransform:
-    transforms:
-      # Example: Reduce HTTP endpoint cardinality
-      - include: http.server.request.duration
-        match_type: strict
-        action: update
-        operations:
+  # Reduce metric cardinality by normalizing path labels
+  transform/metrics:
+    error_mode: ignore
+    metric_statements:
+      - context: datapoint
+        statements:
           # Group endpoints by pattern instead of exact path
-          - action: update_label
-            label: http.target
-            new_label: http.route
-            value_actions:
-              # Convert /users/123 to /users/:id
-              - value: '^/users/[0-9]+'
-                new_value: /users/:id
-              # Convert /orders/abc123 to /orders/:id
-              - value: '^/orders/[a-zA-Z0-9]+'
-                new_value: /orders/:id
+          - set(attributes["http.route"], "/users/:id") where IsMatch(attributes["http.target"], "^/users/[0-9]+$")
+          - set(attributes["http.route"], "/orders/:id") where IsMatch(attributes["http.target"], "^/orders/[a-zA-Z0-9]+$")
+          - delete_key(attributes, "http.target") where attributes["http.route"] != nil
 
   # Filter out unnecessary metrics
   filter/metrics:
+    error_mode: ignore
     metrics:
-      exclude:
-        match_type: regexp
-        metric_names:
-          # Drop runtime metrics that aren't used
-          - process\.runtime\..*\.gc\..*
-          # Drop overly granular percentiles
-          - .*\.p95
-          - .*\.p99
+      metric:
+        # Drop runtime metrics that aren't used
+        - 'IsMatch(name, "process\\.runtime\\..*\\.gc\\..*")'
+        # Drop overly granular percentile metrics
+        - 'IsMatch(name, ".*\\.(p95|p99)$")'
 
   # Use delta temporality to reduce storage
-  # Delta temporality only stores changes between intervals
+  # Delta temporality stores changes between intervals
   cumulativetodelta:
-    metrics:
-      - http.server.request.duration
-      - http.server.response.size
+    include:
+      match_type: strict
+      metrics:
+        - http.server.request.duration
+        - http.server.response.size
 ```
 
 ## Calculating Your Savings
@@ -568,7 +574,12 @@ service:
   telemetry:
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 
     # Enable internal metrics
     resource:
@@ -577,9 +588,9 @@ service:
 ```
 
 Create dashboards tracking:
-- Volume reduction: `rate(otelcol_processor_dropped_spans[5m])`
-- Compression efficiency: `otelcol_exporter_sent_bytes / otelcol_receiver_accepted_bytes`
-- Sampling rate: `otelcol_processor_probabilistic_sampler_count_traces_sampled`
+- Volume reduction: `rate(otelcol_processor_outgoing_items[5m]) / rate(otelcol_processor_incoming_items[5m])`
+- Export throughput: `rate(otelcol_exporter_sent_spans[5m])`
+- Sampling rate: compare `otelcol_processor_outgoing_items` with `otelcol_processor_incoming_items` for your sampling processor
 - Cost per request: `monthly_cost / total_requests`
 
 ## Best Practices Summary
