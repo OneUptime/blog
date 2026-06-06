@@ -137,18 +137,14 @@ import (
 	"go.opentelemetry.io/collector/processor"
 )
 
-const (
-	// typeStr is the name used in the Collector configuration
-	typeStr = "custom"
+var processorType = component.MustNewType("custom")
 
-	// stability level of the processor
-	stability = component.StabilityLevelAlpha
-)
+const stability = component.StabilityLevelAlpha
 
 // NewFactory creates a factory for the custom processor
 func NewFactory() processor.Factory {
 	return processor.NewFactory(
-		typeStr,
+		processorType,
 		defaultConfig,
 		processor.WithTraces(createTracesProcessor, stability),
 		processor.WithMetrics(createMetricsProcessor, stability),
@@ -159,7 +155,7 @@ func NewFactory() processor.Factory {
 // createTracesProcessor creates a traces processor based on the configuration
 func createTracesProcessor(
 	ctx context.Context,
-	params processor.CreateSettings,
+	params processor.Settings,
 	cfg component.Config,
 	nextConsumer consumer.Traces,
 ) (processor.Traces, error) {
@@ -174,7 +170,7 @@ func createTracesProcessor(
 // createMetricsProcessor creates a metrics processor based on the configuration
 func createMetricsProcessor(
 	ctx context.Context,
-	params processor.CreateSettings,
+	params processor.Settings,
 	cfg component.Config,
 	nextConsumer consumer.Metrics,
 ) (processor.Metrics, error) {
@@ -189,7 +185,7 @@ func createMetricsProcessor(
 // createLogsProcessor creates a logs processor based on the configuration
 func createLogsProcessor(
 	ctx context.Context,
-	params processor.CreateSettings,
+	params processor.Settings,
 	cfg component.Config,
 	nextConsumer consumer.Logs,
 ) (processor.Logs, error) {
@@ -226,14 +222,14 @@ import (
 // tracesProcessor implements the processor.Traces interface
 type tracesProcessor struct {
 	config       *Config
-	settings     processor.CreateSettings
+	settings     processor.Settings
 	nextConsumer consumer.Traces
 }
 
 // newTracesProcessor creates a new traces processor instance
 func newTracesProcessor(
 	config *Config,
-	settings processor.CreateSettings,
+	settings processor.Settings,
 	nextConsumer consumer.Traces,
 ) (processor.Traces, error) {
 	return &tracesProcessor{
@@ -283,19 +279,14 @@ func (p *tracesProcessor) ConsumeTraces(ctx context.Context, td ptrace.Traces) e
 		for j := 0; j < scopeSpans.Len(); j++ {
 			scopeSpan := scopeSpans.At(j)
 
-			// Process individual spans
 			spans := scopeSpan.Spans()
-			// Iterate in reverse to safely remove spans
-			for k := spans.Len() - 1; k >= 0; k-- {
-				span := spans.At(k)
+			spans.RemoveIf(func(span ptrace.Span) bool {
+				return !p.shouldKeepSpan(span)
+			})
 
-				// Filter spans by duration
-				if !p.shouldKeepSpan(span) {
-					spans.RemoveIf(func(s ptrace.Span) bool {
-						return s.SpanID() == span.SpanID()
-					})
-					continue
-				}
+			// Process remaining spans
+			for k := 0; k < spans.Len(); k++ {
+				span := spans.At(k)
 
 				// Redact sensitive attributes
 				p.redactAttributes(span.Attributes())
@@ -308,13 +299,11 @@ func (p *tracesProcessor) ConsumeTraces(ctx context.Context, td ptrace.Traces) e
 			}
 		}
 
-		// Drop empty resources if configured
-		if p.config.DropEmptyResources && p.isResourceEmpty(resourceSpan) {
-			resourceSpans.RemoveIf(func(rs ptrace.ResourceSpans) bool {
-				return rs.Resource().Attributes().AsRaw()["resource.id"] ==
-					resourceSpan.Resource().Attributes().AsRaw()["resource.id"]
-			})
-		}
+	}
+
+	// Drop empty resources if configured
+	if p.config.DropEmptyResources {
+		resourceSpans.RemoveIf(p.isResourceEmpty)
 	}
 
 	// Forward processed traces to the next consumer
@@ -348,6 +337,10 @@ func (p *tracesProcessor) shouldKeepSpan(span ptrace.Span) bool {
 	}
 
 	// Calculate span duration in milliseconds
+	if span.EndTimestamp() <= span.StartTimestamp() {
+		return false
+	}
+
 	durationNs := span.EndTimestamp() - span.StartTimestamp()
 	durationMs := durationNs / 1_000_000
 
@@ -406,6 +399,8 @@ package customprocessor
 
 import (
 	"context"
+	"crypto/rand"
+	"math/big"
 
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer"
@@ -418,14 +413,14 @@ import (
 // metricsProcessor implements the processor.Metrics interface
 type metricsProcessor struct {
 	config       *Config
-	settings     processor.CreateSettings
+	settings     processor.Settings
 	nextConsumer consumer.Metrics
 }
 
 // newMetricsProcessor creates a new metrics processor instance
 func newMetricsProcessor(
 	config *Config,
-	settings processor.CreateSettings,
+	settings processor.Settings,
 	nextConsumer consumer.Metrics,
 ) (processor.Metrics, error) {
 	return &metricsProcessor{
@@ -577,8 +572,18 @@ func (p *metricsProcessor) shouldSample() bool {
 	if p.config.SamplingRate >= 100.0 {
 		return true
 	}
-	// Implement sampling logic similar to traces processor
-	return true
+
+	if p.config.SamplingRate <= 0.0 {
+		return false
+	}
+
+	n, err := rand.Int(rand.Reader, big.NewInt(100))
+	if err != nil {
+		p.settings.Logger.Error("Failed to generate random number", zap.Error(err))
+		return true
+	}
+
+	return float64(n.Int64()) < p.config.SamplingRate
 }
 ```
 
@@ -592,6 +597,9 @@ package customprocessor
 
 import (
 	"context"
+	"crypto/rand"
+	"math/big"
+	"strings"
 
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer"
@@ -604,14 +612,14 @@ import (
 // logsProcessor implements the processor.Logs interface
 type logsProcessor struct {
 	config       *Config
-	settings     processor.CreateSettings
+	settings     processor.Settings
 	nextConsumer consumer.Logs
 }
 
 // newLogsProcessor creates a new logs processor instance
 func newLogsProcessor(
 	config *Config,
-	settings processor.CreateSettings,
+	settings processor.Settings,
 	nextConsumer consumer.Logs,
 ) (processor.Logs, error) {
 	return &logsProcessor{
@@ -693,28 +701,12 @@ func (p *logsProcessor) redactLogBody(logRecord plog.LogRecord) {
 	// Check if body contains sensitive attribute keys
 	for _, attrKey := range p.config.AttributesToRedact {
 		// Simple pattern matching - in production, use regex
-		if contains(body, attrKey) {
+		if strings.Contains(body, attrKey) {
 			// Replace the entire line or use more sophisticated redaction
 			bodyValue.SetStr(p.config.RedactionPattern)
 			return
 		}
 	}
-}
-
-// contains checks if a string contains a substring
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) &&
-		(s[:len(substr)] == substr || s[len(s)-len(substr):] == substr ||
-		containsMiddle(s, substr)))
-}
-
-func containsMiddle(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }
 
 // redactAttributes redacts sensitive attribute values
@@ -738,8 +730,18 @@ func (p *logsProcessor) shouldSample() bool {
 	if p.config.SamplingRate >= 100.0 {
 		return true
 	}
-	// Implement sampling logic
-	return true
+
+	if p.config.SamplingRate <= 0.0 {
+		return false
+	}
+
+	n, err := rand.Int(rand.Reader, big.NewInt(100))
+	if err != nil {
+		p.settings.Logger.Error("Failed to generate random number", zap.Error(err))
+		return true
+	}
+
+	return float64(n.Int64()) < p.config.SamplingRate
 }
 ```
 
@@ -783,7 +785,7 @@ func TestTracesProcessor(t *testing.T) {
 	// Create the processor
 	processor, err := newTracesProcessor(
 		cfg,
-		processortest.NewNopCreateSettings(),
+		processortest.NewNopSettings(processorType),
 		sink,
 	)
 	require.NoError(t, err)
@@ -838,7 +840,7 @@ func TestMinDurationFilter(t *testing.T) {
 	}
 
 	sink := new(consumertest.TracesSink)
-	processor, err := newTracesProcessor(cfg, processortest.NewNopCreateSettings(), sink)
+	processor, err := newTracesProcessor(cfg, processortest.NewNopSettings(processorType), sink)
 	require.NoError(t, err)
 
 	err = processor.Start(context.Background(), componenttest.NewNopHost())
@@ -896,10 +898,10 @@ dist:
   name: otelcol-custom
   description: Collector with custom processor
   output_path: ./dist
-  otelcol_version: 0.95.0
+  otelcol_version: 0.153.0
 
 receivers:
-  - gomod: go.opentelemetry.io/collector/receiver/otlpreceiver v0.95.0
+  - gomod: go.opentelemetry.io/collector/receiver/otlpreceiver v0.153.0
 
 processors:
   # Include your custom processor
@@ -907,10 +909,17 @@ processors:
     path: ../customprocessor
 
   # Include standard processors
-  - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.95.0
+  - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.153.0
 
 exporters:
-  - gomod: go.opentelemetry.io/collector/exporter/loggingexporter v0.95.0
+  - gomod: go.opentelemetry.io/collector/exporter/debugexporter v0.153.0
+
+providers:
+  - gomod: go.opentelemetry.io/collector/confmap/provider/envprovider v1.48.0
+  - gomod: go.opentelemetry.io/collector/confmap/provider/fileprovider v1.48.0
+  - gomod: go.opentelemetry.io/collector/confmap/provider/httpprovider v1.48.0
+  - gomod: go.opentelemetry.io/collector/confmap/provider/httpsprovider v1.48.0
+  - gomod: go.opentelemetry.io/collector/confmap/provider/yamlprovider v1.48.0
 ```
 
 For details on building custom distributions, see https://oneuptime.com/blog/post/2026-02-06-build-custom-opentelemetry-collector-distribution-ocb/view.
@@ -949,25 +958,25 @@ processors:
     timeout: 10s
 
 exporters:
-  logging:
-    loglevel: info
+  debug:
+    verbosity: normal
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
       processors: [custom, batch]
-      exporters: [logging]
+      exporters: [debug]
 
     metrics:
       receivers: [otlp]
       processors: [custom, batch]
-      exporters: [logging]
+      exporters: [debug]
 
     logs:
       receivers: [otlp]
       processors: [custom, batch]
-      exporters: [logging]
+      exporters: [debug]
 ```
 
 ## Advanced Features
@@ -979,11 +988,12 @@ Add state management for more complex processing logic.
 ```go
 import (
 	"sync"
+	"time"
 )
 
 type statefulProcessor struct {
 	config       *Config
-	settings     processor.CreateSettings
+	settings     processor.Settings
 	nextConsumer consumer.Traces
 	state        *processorState
 }
@@ -1030,7 +1040,7 @@ import (
 
 type instrumentedProcessor struct {
 	config            *Config
-	settings          processor.CreateSettings
+	settings          processor.Settings
 	nextConsumer      consumer.Traces
 	processedCounter  metric.Int64Counter
 	processingTime    metric.Float64Histogram
@@ -1069,7 +1079,7 @@ Process telemetry in batches for better performance.
 ```go
 type batchProcessor struct {
 	config       *Config
-	settings     processor.CreateSettings
+	settings     processor.Settings
 	nextConsumer consumer.Traces
 	buffer       []ptrace.Traces
 	mu           sync.Mutex
