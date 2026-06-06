@@ -14,7 +14,7 @@ This guide walks through configuring each SDK so they all speak the same propaga
 
 ## The Propagation Compatibility Problem
 
-Each OpenTelemetry SDK defaults to the W3C Trace Context propagator, which is great because it means they should work together out of the box. In practice, things are not always that simple. Teams often add extra propagators for backward compatibility with Jaeger or Zipkin headers, configure them in inconsistent orders, or forget to configure them at all in one service.
+OpenTelemetry SDKs commonly default to the W3C Trace Context and W3C Baggage propagators, which is great because it means they should work together out of the box. In practice, things are not always that simple. Teams often add extra propagators for backward compatibility with Jaeger or Zipkin headers, configure them in inconsistent orders, or forget to configure them at all in one service.
 
 ```mermaid
 graph LR
@@ -46,7 +46,7 @@ You can enforce this through a single environment variable that works across all
 ```bash
 # Set this in your deployment configuration for every service,
 
-# regardless of language. All OpenTelemetry SDKs read this variable.
+# regardless of language. The Java, Python, and Node.js SDKs read this variable.
 export OTEL_PROPAGATORS=tracecontext,baggage
 ```
 
@@ -115,6 +115,7 @@ java \
   -javaagent:/opt/opentelemetry-javaagent.jar \
   -Dotel.service.name=java-api-service \
   -Dotel.propagators=tracecontext,baggage \
+  -Dotel.exporter.otlp.protocol=grpc \
   -Dotel.exporter.otlp.endpoint=http://localhost:4317 \
   -jar api-service.jar
 ```
@@ -128,6 +129,8 @@ If you need programmatic control (for example, in a Spring Boot application wher
 ```java
 // TracingConfig.java - Spring Boot OpenTelemetry configuration
 import io.opentelemetry.api.OpenTelemetry;
+import io.opentelemetry.api.common.AttributeKey;
+import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.trace.propagation.W3CTraceContextPropagator;
 import io.opentelemetry.api.baggage.propagation.W3CBaggagePropagator;
 import io.opentelemetry.context.propagation.ContextPropagators;
@@ -137,7 +140,6 @@ import io.opentelemetry.sdk.OpenTelemetrySdk;
 import io.opentelemetry.sdk.trace.SdkTracerProvider;
 import io.opentelemetry.sdk.trace.export.BatchSpanProcessor;
 import io.opentelemetry.sdk.resources.Resource;
-import io.opentelemetry.semconv.ResourceAttributes;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -149,8 +151,8 @@ public class TracingConfig {
         // Build the resource with service name
         Resource resource = Resource.getDefault()
             .merge(Resource.create(
-                io.opentelemetry.api.common.Attributes.of(
-                    ResourceAttributes.SERVICE_NAME, "java-api-service"
+                Attributes.of(
+                    AttributeKey.stringKey("service.name"), "java-api-service"
                 )
             ));
 
@@ -203,7 +205,7 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import Resource, SERVICE_NAME
 from opentelemetry.propagators.composite import CompositePropagator
-from opentelemetry.trace.propagation import TraceContextTextMapPropagator
+from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 from opentelemetry.baggage.propagation import W3CBaggagePropagator
 
 def configure_tracing(service_name: str):
@@ -233,7 +235,7 @@ Then in your Flask or FastAPI application, wire up the instrumentation.
 
 ```python
 # app.py - Flask application with OpenTelemetry instrumentation
-from flask import Flask
+from flask import Flask, request
 from opentelemetry.instrumentation.flask import FlaskInstrumentor
 from opentelemetry.instrumentation.requests import RequestsInstrumentor
 from tracing_setup import configure_tracing
@@ -272,7 +274,7 @@ Baggage lets you attach key-value pairs to the trace context that propagate thro
 
 ```javascript
 // Node.js: Setting baggage that will propagate to Java and Python
-const { propagation, context, baggage } = require('@opentelemetry/api');
+const { propagation, context } = require('@opentelemetry/api');
 
 function handleRequest(req, res) {
   // Create a baggage entry for the tenant ID.
@@ -310,7 +312,7 @@ def process_prediction(request_data):
         return run_standard_model(request_data, tenant_id)
 ```
 
-Baggage propagation works because all three SDKs are configured with the `W3CBaggagePropagator`. The Node.js service sets the baggage, the baggage header flows through the Java service (which forwards it even if it does not read it), and the Python service reads it.
+Baggage propagation works because all three SDKs are configured with the `W3CBaggagePropagator`. The Node.js service sets the baggage, the Java service extracts it into context and re-injects it into downstream calls even if application code does not read it, and the Python service reads it.
 
 ## Testing Cross-Language Propagation
 
@@ -346,7 +348,7 @@ If your Java service uses RestTemplate and you see trace breaks, make sure Sprin
 
 If your Python service uses async frameworks like FastAPI with `httpx`, the synchronous `requests` instrumentation will not help. Install `opentelemetry-instrumentation-httpx` and instrument it separately.
 
-If baggage is not flowing through, check that all services have the baggage propagator configured. A service without the baggage propagator will still forward the `baggage` header if it uses auto-instrumentation (because the HTTP instrumentation typically forwards all headers), but it will not be able to read or modify the baggage values.
+If baggage is not flowing through, check that all services have the baggage propagator configured. A service without the baggage propagator will not automatically extract baggage into context or re-inject it into downstream calls. It will only pass the raw `baggage` header through if your application or proxy explicitly forwards that header.
 
 Watch header size limits. If you put too much data in baggage, the `baggage` header can grow large enough to hit proxy or load balancer header size limits (often 8KB). Keep baggage values small and use them for identifiers, not full data payloads.
 
