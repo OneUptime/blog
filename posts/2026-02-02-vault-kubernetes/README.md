@@ -909,15 +909,15 @@ spec:
             summary: "Vault is sealed"
             description: "Vault instance {{ $labels.instance }} is sealed"
 
-        # Alert on high request latency
+        # Alert on high request latency (metric is in milliseconds)
         - alert: VaultHighLatency
-          expr: vault_core_handle_request{quantile="0.99"} > 1
+          expr: vault_core_handle_request{quantile="0.99"} > 500
           for: 5m
           labels:
             severity: warning
           annotations:
             summary: "Vault request latency is high"
-            description: "P99 latency is {{ $value }}s"
+            description: "P99 latency is {{ $value }}ms"
 
         # Alert if leadership is lost
         - alert: VaultLeadershipLost
