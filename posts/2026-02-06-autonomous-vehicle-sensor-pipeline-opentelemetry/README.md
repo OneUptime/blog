@@ -187,7 +187,7 @@ def run_fusion(frame_id, lidar_objects, camera_objects, radar_objects):
         span.set_attribute("av.fusion.output_objects", len(fused))
         span.set_attribute("av.fusion.duration_ms", duration_ms)
         stage_latency.record(duration_ms, {"stage": "fusion"})
-        fusion_objects.set(len(fused))
+        fusion_objects.record(len(fused))
 
         return fused
 ```
