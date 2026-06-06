@@ -8,7 +8,7 @@ Description: A practical comparison of OpenTelemetry and Micrometer for Java app
 
 ---
 
-If you are building Java applications, especially with Spring Boot, you have likely encountered Micrometer. It has been the default metrics facade in the Spring ecosystem since Spring Boot 2.0. Now OpenTelemetry offers its own metrics API and SDK for Java. Both libraries let you create counters, gauges, histograms, and timers, but they come from different worlds. This article compares them so you can decide which fits your project.
+If you are building Java applications, especially with Spring Boot, you have likely encountered Micrometer. It has been the default metrics facade in the Spring ecosystem since Spring Boot 2.0. Now OpenTelemetry offers its own metrics API and SDK for Java. Both libraries let you create counters, gauges, histograms, and duration measurements, but they come from different worlds. This article compares them so you can decide which fits your project.
 
 ## Background
 
@@ -66,6 +66,7 @@ OpenTelemetry:
 // Uses the OTel Meter API with Attributes
 import io.opentelemetry.api.metrics.LongCounter;
 import io.opentelemetry.api.metrics.Meter;
+import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.GlobalOpenTelemetry;
 
@@ -112,8 +113,10 @@ Micrometer provides a Timer abstraction that combines duration measurement with 
 
 ```java
 // Micrometer Timer for measuring operation duration
-// Integrates cleanly with try-with-resources
+// Integrates cleanly with lambda-based recording
 import io.micrometer.core.instrument.Timer;
+import io.micrometer.core.instrument.MeterRegistry;
+import java.time.Duration;
 
 public class PaymentService {
     private final Timer paymentTimer;
@@ -145,6 +148,11 @@ OpenTelemetry uses a histogram instrument for the same purpose:
 // OpenTelemetry Histogram for measuring operation duration
 // Manual timing with explicit recording
 import io.opentelemetry.api.metrics.DoubleHistogram;
+import io.opentelemetry.api.metrics.Meter;
+import io.opentelemetry.api.common.AttributeKey;
+import io.opentelemetry.api.common.Attributes;
+import io.opentelemetry.api.GlobalOpenTelemetry;
+import java.util.Arrays;
 
 public class PaymentService {
     private final DoubleHistogram paymentDuration;
@@ -218,14 +226,25 @@ management:
         http.server.requests: true
 ```
 
-OpenTelemetry integration with Spring Boot requires the OpenTelemetry Spring Boot starter:
+OpenTelemetry integration with Spring Boot can use the OpenTelemetry Spring Boot starter. Import the OpenTelemetry instrumentation BOM for version alignment, then add the starter dependency:
 
 ```xml
-<!-- Maven dependency for OTel Spring Boot starter -->
+<!-- Maven dependency management for OTel Spring Boot starter -->
+<dependencyManagement>
+    <dependencies>
+        <dependency>
+            <groupId>io.opentelemetry.instrumentation</groupId>
+            <artifactId>opentelemetry-instrumentation-bom</artifactId>
+            <version>2.28.1</version>
+            <type>pom</type>
+            <scope>import</scope>
+        </dependency>
+    </dependencies>
+</dependencyManagement>
+
 <dependency>
     <groupId>io.opentelemetry.instrumentation</groupId>
     <artifactId>opentelemetry-spring-boot-starter</artifactId>
-    <version>2.12.0-alpha</version>
 </dependency>
 ```
 
@@ -247,12 +266,14 @@ The Micrometer integration is more mature and provides more auto-configured metr
 
 ## The Bridge: Micrometer to OpenTelemetry
 
-Here is the important news: you do not have to choose exclusively. The OpenTelemetry Java agent includes a Micrometer bridge that automatically converts Micrometer metrics into OpenTelemetry metrics:
+Here is the important news: you do not have to choose exclusively. The OpenTelemetry Java agent includes a Micrometer bridge that converts Micrometer metrics into OpenTelemetry metrics when the Micrometer instrumentation is enabled:
 
 ```java
-// When using the OTel Java agent, Micrometer metrics are
-// automatically bridged to OpenTelemetry metrics.
-// No code changes needed.
+// When using the OTel Java agent, enable Micrometer instrumentation:
+// -Dotel.instrumentation.micrometer.enabled=true
+//
+// Existing Micrometer metrics are then bridged to OpenTelemetry metrics.
+// No instrumentation code changes needed.
 
 // Your existing Micrometer code:
 Counter counter = Counter.builder("my.counter")
@@ -264,19 +285,19 @@ counter.increment();
 // OpenTelemetry metric that gets exported via OTLP.
 ```
 
-This bridge means you can keep all your existing Micrometer instrumentation and still export through the OpenTelemetry pipeline. It is the most pragmatic migration path for existing Spring Boot applications.
+This bridge means you can keep all your existing Micrometer instrumentation and still export through the OpenTelemetry pipeline after enabling the Micrometer instrumentation. It is the most pragmatic migration path for existing Spring Boot applications.
 
 ## Feature Comparison
 
 | Feature | Micrometer | OpenTelemetry Metrics |
 |---------|-----------|----------------------|
 | Counter | Yes | Yes |
-| Gauge | Yes | Yes (UpDownCounter) |
+| Gauge | Yes | Yes |
 | Histogram | Yes (Timer, DistSummary) | Yes |
 | Timer utility | Built-in | Manual timing |
 | Async instruments | Yes (via gauges) | Yes (Observable) |
 | Spring Boot auto-config | Excellent | Good (improving) |
-| Backend registries | 20+ | Via OTLP (any backend) |
+| Backend registries | 20+ | Via exporters such as OTLP and Prometheus |
 | Traces integration | No (separate concern) | Yes (unified) |
 | Logs integration | No (separate concern) | Yes (unified) |
 | Semantic conventions | Micrometer conventions | OTel conventions |
@@ -288,7 +309,7 @@ Use Micrometer when:
 - You have an existing Spring Boot application with Micrometer metrics
 - You want the richest auto-configured metrics for the Spring ecosystem
 - Your team is familiar with the Micrometer API
-- You are using the OTel Java agent (which bridges Micrometer automatically)
+- You are using the OTel Java agent with Micrometer instrumentation enabled
 
 Use OpenTelemetry Metrics API when:
 
@@ -306,4 +327,4 @@ Use both (the bridge approach) when:
 
 ## Conclusion
 
-Micrometer and OpenTelemetry Metrics are both solid choices for Java metrics. The Micrometer bridge in the OTel Java agent makes the choice less binary than it might seem. For Spring Boot applications, keeping Micrometer for framework-level metrics while using the OpenTelemetry API for custom business metrics is a practical approach that gives you the best of both worlds. Over time, as OpenTelemetry's Spring Boot integration matures, the gap will continue to narrow.
+Micrometer and OpenTelemetry Metrics are both solid choices for Java metrics. The Micrometer bridge in the OTel Java agent, when enabled, makes the choice less binary than it might seem. For Spring Boot applications, keeping Micrometer for framework-level metrics while using the OpenTelemetry API for custom business metrics is a practical approach that gives you the best of both worlds. Over time, as OpenTelemetry's Spring Boot integration matures, the gap will continue to narrow.
