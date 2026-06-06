@@ -37,26 +37,26 @@ processors:
     send_batch_size: 1024
 
 exporters:
-  logging:
-    loglevel: debug
+  debug:
+    verbosity: detailed
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [logging]
+      exporters: [debug]
     metrics:
       receivers: [otlp]
       processors: [batch]
-      exporters: [logging]
+      exporters: [debug]
     logs:
       receivers: [otlp]
       processors: [batch]
-      exporters: [logging]
+      exporters: [debug]
 ```
 
-This configuration enables OTLP over both gRPC and HTTP, listening on all network interfaces. The batch processor aggregates telemetry before export, and the logging exporter outputs to stdout for verification.
+This configuration enables OTLP over both gRPC and HTTP, listening on all network interfaces. The batch processor aggregates telemetry before export, and the debug exporter outputs telemetry to the console for verification.
 
 ## Configuring gRPC Transport Options
 
@@ -130,20 +130,22 @@ receivers:
             - Authorization
           max_age: 7200
 
-        # Maximum request body size (default: no limit)
+        # Maximum request body size (default: 20MiB)
         max_request_body_size: 16777216  # 16MB
 
         # Include metadata from HTTP headers
         include_metadata: true
 
-        # Path prefix for endpoints (default: /v1/traces, /v1/metrics, /v1/logs)
+        # Custom paths for endpoints (defaults: /v1/traces, /v1/metrics, /v1/logs)
         # Useful when running behind a reverse proxy
-        # endpoint: /otel/v1/traces
+        # traces_url_path: /otel/v1/traces
+        # metrics_url_path: /otel/v1/metrics
+        # logs_url_path: /otel/v1/logs
 ```
 
 CORS configuration is essential when the collector receives telemetry from browser-based applications. Without proper CORS headers, browsers block the requests.
 
-The HTTP receiver automatically handles both `/v1/traces`, `/v1/metrics`, and `/v1/logs` endpoints. You don't need separate receiver configurations for each signal type.
+The HTTP receiver automatically handles `/v1/traces`, `/v1/metrics`, and `/v1/logs` endpoints. You don't need separate receiver configurations for each signal type.
 
 ## TLS Configuration for Secure Communication
 
@@ -163,9 +165,6 @@ receivers:
           # Client certificate validation (mTLS)
           client_ca_file: /etc/otel/certs/ca.crt
 
-          # Require client certificates
-          client_auth_type: RequireAndVerifyClientCert
-
           # Minimum TLS version
           min_version: "1.2"
 
@@ -183,15 +182,9 @@ receivers:
           cert_file: /etc/otel/certs/server.crt
           key_file: /etc/otel/certs/server.key
           client_ca_file: /etc/otel/certs/ca.crt
-          client_auth_type: RequireAndVerifyClientCert
 ```
 
-The `client_auth_type` has several options:
-- `NoClientCert`: No client authentication (server TLS only)
-- `RequestClientCert`: Request but don't require client cert
-- `RequireAnyClientCert`: Require client cert but don't verify
-- `VerifyClientCertIfGiven`: Verify if provided
-- `RequireAndVerifyClientCert`: Require and verify (recommended for production)
+Setting `client_ca_file` on a receiver configures the server to require and verify client certificates against that CA.
 
 Mutual TLS provides strong authentication, ensuring only authorized clients can send telemetry to your collector.
 
@@ -204,7 +197,7 @@ Beyond mTLS, you can add application-level authentication using extensions.
 extensions:
   bearertokenauth:
     scheme: Bearer
-    bearer_token: "your-secret-token-here"
+    token: "your-secret-token-here"
 
   # Or use a file containing the token
   bearertokenauth/file:
@@ -223,12 +216,16 @@ receivers:
         auth:
           authenticator: bearertokenauth
 
+exporters:
+  debug:
+    verbosity: basic
+
 service:
   extensions: [bearertokenauth]
   pipelines:
     traces:
       receivers: [otlp]
-      exporters: [logging]
+      exporters: [debug]
 ```
 
 Clients must include the bearer token in their requests:
@@ -237,7 +234,7 @@ Clients must include the bearer token in their requests:
 
 For more sophisticated authentication, consider using the OAuth2 or OIDC authenticator extensions.
 
-Resource Limits and Rate Limiting
+## Resource Limits and Rate Limiting
 
 Protecting the collector from overload requires setting appropriate resource limits.
 
@@ -267,12 +264,16 @@ processors:
     send_batch_size: 1024
     send_batch_max_size: 2048
 
+exporters:
+  debug:
+    verbosity: basic
+
 service:
   pipelines:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [logging]
+      exporters: [debug]
 ```
 
 The memory limiter processor monitors memory usage and applies back pressure when limits are approached. It refuses new data or slows down processing to prevent out-of-memory crashes.
@@ -318,15 +319,19 @@ extensions:
     scheme: Bearer
     filename: /etc/otel/secrets/token
 
+exporters:
+  debug:
+    verbosity: basic
+
 service:
   extensions: [bearertokenauth]
   pipelines:
     traces:
       receivers: [otlp/public, otlp/internal]
-      exporters: [logging]
+      exporters: [debug]
     metrics:
       receivers: [otlp/public, otlp/internal, otlp/metrics]
-      exporters: [logging]
+      exporters: [debug]
 ```
 
 This configuration serves different client types: external clients with authentication, internal services without auth overhead, and a specialized metrics endpoint with higher limits.
@@ -356,15 +361,15 @@ receivers:
         endpoint: 0.0.0.0:4318
 
 exporters:
-  logging:
-    loglevel: info
+  debug:
+    verbosity: basic
 
 service:
   extensions: [health_check, pprof, zpages]
   pipelines:
     traces:
       receivers: [otlp]
-      exporters: [logging]
+      exporters: [debug]
 
   # Telemetry configuration for the collector itself
   telemetry:
@@ -372,7 +377,12 @@ service:
       level: info
     metrics:
       level: detailed
-      address: localhost:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: localhost
+                port: 8888
 ```
 
 The health check extension provides an HTTP endpoint for load balancer probes. The zpages extension offers debugging views showing current pipeline state and recent telemetry samples.
@@ -505,16 +515,21 @@ Verify the receiver works correctly before deploying to production.
 # Start the collector with your configuration
 ./otelcol --config collector-config.yaml
 
-# Test gRPC endpoint with grpcurl
-grpcurl -plaintext \
-  -d '{"resource_spans": []}' \
-  localhost:4317 \
-  opentelemetry.proto.collector.trace.v1.TraceService/Export
+# Install telemetrygen if you do not already have it
+go install github.com/open-telemetry/opentelemetry-collector-contrib/cmd/telemetrygen@latest
 
-# Test HTTP endpoint with curl
-curl -X POST http://localhost:4318/v1/traces \
-  -H "Content-Type: application/x-protobuf" \
-  --data-binary @sample-trace.pb
+# Test gRPC endpoint with telemetrygen
+telemetrygen traces \
+  --otlp-endpoint localhost:4317 \
+  --otlp-insecure \
+  --traces 1
+
+# Test HTTP endpoint with telemetrygen
+telemetrygen traces \
+  --otlp-http \
+  --otlp-endpoint localhost:4318 \
+  --otlp-insecure \
+  --traces 1
 
 # Check health endpoint
 curl http://localhost:13133/health
