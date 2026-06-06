@@ -55,7 +55,7 @@ Here is a standard initialization pattern that works in any cloud. The cloud-spe
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
-const { Resource } = require('@opentelemetry/resources');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 
 // Cloud-specific resource detectors - import what you need
 const { AwsEcsDetector, AwsEc2Detector } = require('@opentelemetry/resource-detector-aws');
@@ -63,7 +63,7 @@ const { GcpDetector } = require('@opentelemetry/resource-detector-gcp');
 // Azure detector is available via @azure/monitor-opentelemetry
 
 const sdk = new NodeSDK({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     // These attributes are mandatory for cross-cloud correlation
     'service.name': process.env.OTEL_SERVICE_NAME || 'my-service',
     'service.version': process.env.SERVICE_VERSION || '1.0.0',
@@ -96,7 +96,7 @@ Each cloud environment needs its own OpenTelemetry Collector deployment. The Col
 
 ### AWS Collector Configuration
 
-Deploy the Collector on ECS or EKS. Use the `resourcedetection` processor to automatically tag spans with AWS metadata.
+Deploy the Collector on ECS or EKS. Use the `resource_detection` processor to automatically tag spans with AWS metadata.
 
 ```yaml
 # aws-collector-config.yaml
@@ -111,8 +111,8 @@ receivers:
         endpoint: 0.0.0.0:4318
 
 processors:
-  resourcedetection:
-    detectors: [env, ec2, ecs, eks]
+  resource_detection:
+    detectors: [env, eks, ecs, ec2]
     # Add AWS-specific resource attributes automatically
     # Populates: cloud.provider, cloud.region, cloud.account.id,
     # host.id, container.id, k8s.cluster.name, etc.
@@ -148,11 +148,11 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [resourcedetection, resource, batch]
+      processors: [resource_detection, resource, batch]
       exporters: [otlp/central, awsxray]
     metrics:
       receivers: [otlp]
-      processors: [resourcedetection, resource, batch]
+      processors: [resource_detection, resource, batch]
       exporters: [otlp/central]
 ```
 
@@ -172,7 +172,7 @@ receivers:
         endpoint: 0.0.0.0:4318
 
 processors:
-  resourcedetection:
+  resource_detection:
     detectors: [env, gcp]
     # Add GCP-specific resource attributes automatically
     # Populates: cloud.provider, cloud.region, cloud.availability_zone,
@@ -207,17 +207,17 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [resourcedetection, resource, batch]
+      processors: [resource_detection, resource, batch]
       exporters: [otlp/central, googlecloud]
     metrics:
       receivers: [otlp]
-      processors: [resourcedetection, resource, batch]
+      processors: [resource_detection, resource, batch]
       exporters: [otlp/central]
 ```
 
 ### Azure Collector Configuration
 
-Deploy on AKS, Azure Container Apps, or a VM. The Azure resource detector reads from the Azure Instance Metadata Service.
+Deploy on Azure Container Apps or a VM. For AKS, use the `aks` detector or the `k8sattributes` processor to add Kubernetes metadata. The Azure resource detector reads from the Azure Instance Metadata Service.
 
 ```yaml
 # azure-collector-config.yaml
@@ -231,7 +231,7 @@ receivers:
         endpoint: 0.0.0.0:4318
 
 processors:
-  resourcedetection:
+  resource_detection:
     detectors: [env, azure]
     # Add Azure-specific resource attributes automatically
     # Populates: cloud.provider, cloud.region, host.id,
@@ -266,11 +266,11 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [resourcedetection, resource, batch]
+      processors: [resource_detection, resource, batch]
       exporters: [otlp/central, azuremonitor]
     metrics:
       receivers: [otlp]
-      processors: [resourcedetection, resource, batch]
+      processors: [resource_detection, resource, batch]
       exporters: [otlp/central]
 ```
 
@@ -470,6 +470,9 @@ exporters:
       queue_size: 5000
       # Persist the queue to disk so data survives Collector restarts
       storage: file_storage
+
+service:
+  extensions: [file_storage]
 ```
 
 **Security**: Always use TLS for cross-cloud communication. Each Collector should authenticate to the central backend using API keys or mutual TLS. Never send telemetry data over unencrypted connections across the public internet.
