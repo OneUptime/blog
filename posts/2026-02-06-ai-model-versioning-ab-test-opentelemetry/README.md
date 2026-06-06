@@ -18,7 +18,7 @@ AI models aren't like traditional software deployments. A new version of a REST 
 
 Here's what you need to track for every model interaction:
 
-- **Model identifier** - Which model are you calling? (gpt-4, claude-3-opus, etc.)
+- **Model identifier** - Which model are you calling? (gpt-4o, claude-opus-4-20250514, etc.)
 - **Model version** - What specific version or snapshot?
 - **Prompt template version** - Your system prompt and template change independently from the model.
 - **Experiment ID** - Which A/B test is this request part of?
@@ -39,10 +39,10 @@ class ModelConfig:
 
     # The LLM provider and model name
     provider: str          # e.g., "openai", "anthropic"
-    model_name: str        # e.g., "gpt-4-turbo"
+    model_name: str        # e.g., "gpt-4o"
 
     # Version tracking
-    model_version: str     # e.g., "2024-01-25" (provider's version)
+    model_version: str     # e.g., "2024-08-06" (provider's version)
     prompt_version: str    # e.g., "v3.2" (your prompt template version)
     config_hash: str       # Hash of the full config for exact reproducibility
 
@@ -77,8 +77,8 @@ EXPERIMENT_VARIANTS = {
     "exp-prompt-tone-2026-02": {
         "control": ModelConfig(
             provider="openai",
-            model_name="gpt-4-turbo",
-            model_version="2024-01-25",
+            model_name="gpt-4o",
+            model_version="2024-08-06",
             prompt_version="v3.1",
             config_hash="abc123",
             experiment_id="exp-prompt-tone-2026-02",
@@ -86,8 +86,8 @@ EXPERIMENT_VARIANTS = {
         ),
         "treatment_a": ModelConfig(
             provider="openai",
-            model_name="gpt-4-turbo",
-            model_version="2024-01-25",
+            model_name="gpt-4o",
+            model_version="2024-08-06",
             prompt_version="v3.2",  # New prompt version being tested
             config_hash="def456",
             experiment_id="exp-prompt-tone-2026-02",
@@ -95,8 +95,8 @@ EXPERIMENT_VARIANTS = {
         ),
         "treatment_b": ModelConfig(
             provider="anthropic",
-            model_name="claude-3-opus",
-            model_version="2024-02-29",
+            model_name="claude-opus-4-20250514",
+            model_version="2025-05-14",
             prompt_version="v3.2",  # Same prompt, different model
             config_hash="ghi789",
             experiment_id="exp-prompt-tone-2026-02",
@@ -146,6 +146,7 @@ import time
 import openai
 import anthropic
 from opentelemetry import trace, metrics
+from opentelemetry.trace import Status, StatusCode
 from model_version import ModelConfig
 from ab_router import get_variant_for_user
 
@@ -212,13 +213,19 @@ def call_llm_with_ab_test(
 
         start_time = time.perf_counter()
 
-        # Route to the correct provider
-        if config.provider == "openai":
-            result, tokens = _call_openai(config, system_prompt, user_message)
-        elif config.provider == "anthropic":
-            result, tokens = _call_anthropic(config, system_prompt, user_message)
-        else:
-            raise ValueError(f"Unknown provider: {config.provider}")
+        try:
+            # Route to the correct provider
+            if config.provider == "openai":
+                result, tokens = _call_openai(config, system_prompt, user_message)
+            elif config.provider == "anthropic":
+                result, tokens = _call_anthropic(config, system_prompt, user_message)
+            else:
+                raise ValueError(f"Unknown provider: {config.provider}")
+        except Exception as exc:
+            request_counter.add(1, attributes={**metric_attrs, "status": "error"})
+            span.record_exception(exc)
+            span.set_status(Status(StatusCode.ERROR))
+            raise
 
         duration_ms = (time.perf_counter() - start_time) * 1000
 
@@ -271,9 +278,9 @@ Here's how data flows through the system from request to analysis.
 flowchart LR
     A[User Request] --> B[A/B Router]
     B --> C{Variant Assignment}
-    C -->|50%| D[Control: GPT-4-Turbo + v3.1 Prompt]
-    C -->|30%| E[Treatment A: GPT-4-Turbo + v3.2 Prompt]
-    C -->|20%| F[Treatment B: Claude-3-Opus + v3.2 Prompt]
+    C -->|50%| D[Control: GPT-4o + v3.1 Prompt]
+    C -->|30%| E[Treatment A: GPT-4o + v3.2 Prompt]
+    C -->|20%| F[Treatment B: Claude Opus 4 + v3.2 Prompt]
     D --> G[Instrumented LLM Call]
     E --> G
     F --> G
@@ -370,7 +377,7 @@ The key queries for comparison:
 
 # Compare P95 latency across variants
 - title: "P95 Latency by Variant"
-  query: "histogram_quantile(0.95, rate(ai_ab_test_request_duration_bucket{experiment_id='exp-prompt-tone-2026-02'}[5m]))"
+  query: "histogram_quantile(0.95, sum by (variant, le) (rate(ai_ab_test_request_duration_bucket{experiment_id='exp-prompt-tone-2026-02'}[5m])))"
   group_by: ["variant"]
 
 # Compare average quality scores
@@ -393,7 +400,7 @@ The key queries for comparison:
 
 After running the experiment for a statistically meaningful period, you'll have data like this:
 
-| Metric | Control (v3.1 + GPT-4T) | Treatment A (v3.2 + GPT-4T) | Treatment B (v3.2 + Claude) |
+| Metric | Control (v3.1 + GPT-4o) | Treatment A (v3.2 + GPT-4o) | Treatment B (v3.2 + Claude Opus 4) |
 |--------|--------------------------|------------------------------|------------------------------|
 | P95 Latency | 3,200ms | 3,400ms | 2,800ms |
 | Avg Tokens | 420 | 580 | 510 |
