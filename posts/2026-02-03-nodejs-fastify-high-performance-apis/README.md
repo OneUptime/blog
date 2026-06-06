@@ -512,7 +512,7 @@ async function databasePlugin(
 // Use fastify-plugin to ensure decorators are available to parent scope
 export default fp(databasePlugin, {
   name: 'database-plugin',
-  fastify: '4.x',
+  fastify: '5.x',
 });
 ```
 
