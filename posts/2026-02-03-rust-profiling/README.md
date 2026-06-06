@@ -50,10 +50,10 @@ This lets profilers show you function names and line numbers without sacrificing
 Run your program under perf to collect samples:
 
 ```bash
-# Record CPU samples for 30 seconds
+# Record CPU samples for the lifetime of the process
 perf record -g --call-graph dwarf ./target/release/my_app
 
-# Or record for a specific duration while running benchmarks
+# Or record while running benchmarks
 perf record -g --call-graph dwarf -- cargo bench
 ```
 
@@ -189,8 +189,9 @@ cargo bench
 # Run specific benchmark
 cargo bench -- "fib 20"
 
-# Generate HTML report
-cargo bench -- --verbose
+# HTML reports are generated automatically at target/criterion/report/index.html
+# when the html_reports feature is enabled
+cargo bench
 ```
 
 Criterion outputs look like this:
@@ -432,9 +433,8 @@ struct Config {
 
 ```rust
 use std::collections::HashMap;
-use std::hash::{BuildHasherDefault, Hasher};
 
-// Default hasher is cryptographically secure but slow for non-adversarial data
+// Default hasher (SipHash 1-3) is HashDoS-resistant but slow for non-adversarial data
 let slow_map: HashMap<u64, String> = HashMap::new();
 
 // FxHash is faster for integer keys when you don't need DOS protection
@@ -481,11 +481,14 @@ PGO uses runtime data to optimize hot paths:
 # Step 1: Build with instrumentation
 RUSTFLAGS="-Cprofile-generate=/tmp/pgo-data" cargo build --release
 
-# Step 2: Run with representative workload
+# Step 2: Run with representative workload to produce .profraw files
 ./target/release/my_app < typical_input.txt
 
-# Step 3: Build with profile data
-RUSTFLAGS="-Cprofile-use=/tmp/pgo-data" cargo build --release
+# Step 3: Merge raw profile data into a single .profdata file
+llvm-profdata merge -o /tmp/pgo-data/merged.profdata /tmp/pgo-data
+
+# Step 4: Build using the merged profile data
+RUSTFLAGS="-Cprofile-use=/tmp/pgo-data/merged.profdata" cargo build --release
 ```
 
 PGO typically gives 10-20% improvement for CPU-bound applications.
@@ -540,7 +543,8 @@ cargo bloat --release
 # Profile-guided optimization
 RUSTFLAGS="-Cprofile-generate=/tmp/pgo" cargo build --release
 ./target/release/my_app # run workload
-RUSTFLAGS="-Cprofile-use=/tmp/pgo" cargo build --release
+llvm-profdata merge -o /tmp/pgo/merged.profdata /tmp/pgo
+RUSTFLAGS="-Cprofile-use=/tmp/pgo/merged.profdata" cargo build --release
 ```
 
 ## Summary
