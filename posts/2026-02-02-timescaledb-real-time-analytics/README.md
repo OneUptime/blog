@@ -74,6 +74,10 @@ After connecting to your database, enable the TimescaleDB extension. You only ne
 -- Enable TimescaleDB extension
 CREATE EXTENSION IF NOT EXISTS timescaledb;
 
+-- Enable Toolkit extension for percentile_agg, approx_percentile, rollup
+-- Required for the continuous aggregates shown later in this post
+CREATE EXTENSION IF NOT EXISTS timescaledb_toolkit;
+
 -- Verify installation
 SELECT extversion FROM pg_extension WHERE extname = 'timescaledb';
 ```
@@ -416,7 +420,7 @@ SELECT
     percentile_agg(value) AS percentile_data
 FROM metrics
 GROUP BY bucket, device_id, metric_name
--- Include data up to 1 hour ago (allows for late-arriving data)
+-- WITH NO DATA skips materializing existing rows at creation time
 WITH NO DATA;
 
 -- Enable automatic refresh policy
@@ -480,6 +484,9 @@ SELECT add_continuous_aggregate_policy('event_counts_hourly',
 );
 
 -- Page view analytics with engagement metrics
+-- Note: subqueries are not allowed inside continuous aggregates.
+-- Bounce rate (sessions with a single pageview) is therefore computed
+-- at query time against this view rather than materialized here.
 CREATE MATERIALIZED VIEW pageview_analytics_hourly
 WITH (timescaledb.continuous) AS
 SELECT
@@ -487,14 +494,7 @@ SELECT
     page_url,
     COUNT(*) AS views,
     COUNT(DISTINCT user_id) AS unique_visitors,
-    COUNT(DISTINCT session_id) AS sessions,
-    -- Calculate bounce rate (sessions with single pageview)
-    COUNT(DISTINCT session_id) FILTER (
-        WHERE session_id IN (
-            SELECT session_id FROM events
-            GROUP BY session_id HAVING COUNT(*) = 1
-        )
-    ) AS bounced_sessions
+    COUNT(DISTINCT session_id) AS sessions
 FROM events
 WHERE event_type = 'pageview'
 GROUP BY bucket, page_url
@@ -800,8 +800,10 @@ SELECT add_retention_policy('metrics_hourly', INTERVAL '365 days');
 SELECT add_retention_policy('metrics_daily', INTERVAL '5 years');
 
 -- View compression statistics
+-- chunk_compression_stats() is a set-returning function that takes
+-- the hypertable name and returns per-chunk before/after sizes.
 SELECT
-    hypertable_name,
+    chunk_schema,
     chunk_name,
     before_compression_total_bytes,
     after_compression_total_bytes,
@@ -810,8 +812,8 @@ SELECT
          before_compression_total_bytes) * 100,
         2
     ) AS compression_ratio_pct
-FROM timescaledb_information.compressed_chunk_stats
-WHERE hypertable_name = 'metrics';
+FROM chunk_compression_stats('metrics')
+WHERE after_compression_total_bytes IS NOT NULL;
 ```
 
 ### Tiered Storage Architecture
@@ -849,13 +851,17 @@ The following queries demonstrate how to identify and resolve performance issues
 
 ```sql
 -- Check chunk size and distribution
--- Chunks should be sized so queries touch minimal chunks
+-- Chunks should be sized so queries touch minimal chunks.
+-- The chunks view does not include sizes; use pg_total_relation_size
+-- on the chunk's qualified table name to get on-disk bytes.
 SELECT
     hypertable_name,
     chunk_name,
     range_start,
     range_end,
-    pg_size_pretty(total_bytes) AS size
+    pg_size_pretty(
+        pg_total_relation_size(format('%I.%I', chunk_schema, chunk_name)::regclass)
+    ) AS size
 FROM timescaledb_information.chunks
 WHERE hypertable_name = 'metrics'
 ORDER BY range_end DESC
@@ -950,34 +956,40 @@ Monitor your TimescaleDB deployment with these diagnostic queries.
 
 ```sql
 -- Check continuous aggregate refresh status
--- Ensure aggregates are being refreshed on schedule
+-- The continuous_aggregate_stats view was removed in TimescaleDB 2.x;
+-- refresh status now lives in job_stats, joined back to the CAGG via jobs.
 SELECT
-    view_name,
-    completed_threshold,
-    next_start,
-    last_run_status
-FROM timescaledb_information.continuous_aggregate_stats;
+    ca.view_name,
+    js.last_run_started_at,
+    js.last_successful_finish,
+    js.last_run_status,
+    js.next_start
+FROM timescaledb_information.continuous_aggregates ca
+JOIN timescaledb_information.jobs j
+    ON j.hypertable_name = ca.materialization_hypertable_name
+   AND j.proc_name = 'policy_refresh_continuous_aggregate'
+JOIN timescaledb_information.job_stats js USING (job_id);
 
 -- Monitor chunk count and size
 -- Alert if chunk count grows unexpectedly
 SELECT
     hypertable_name,
-    COUNT(*) AS chunk_count,
-    pg_size_pretty(SUM(total_bytes)) AS total_size,
-    pg_size_pretty(AVG(total_bytes)) AS avg_chunk_size
+    COUNT(*) AS chunk_count
 FROM timescaledb_information.chunks
 GROUP BY hypertable_name;
 
 -- Check for compression job failures
+-- jobs holds configuration; job_stats holds run history. Join on job_id.
 SELECT
-    job_id,
-    application_name,
-    last_run_status,
-    last_run_started_at,
-    next_start,
-    total_failures
-FROM timescaledb_information.jobs
-WHERE application_name LIKE 'Compression%';
+    j.job_id,
+    j.application_name,
+    js.last_run_status,
+    js.last_run_started_at,
+    js.next_start,
+    js.total_failures
+FROM timescaledb_information.jobs j
+JOIN timescaledb_information.job_stats js USING (job_id)
+WHERE j.proc_name = 'policy_compression';
 
 -- Monitor ingestion rate
 -- Compare against expected throughput
