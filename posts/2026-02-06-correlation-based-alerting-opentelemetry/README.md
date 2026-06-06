@@ -38,6 +38,12 @@ First, make sure your OpenTelemetry Collector exports resource attributes alongs
 ```yaml
 # otel-collector-config.yaml
 
+receivers:
+  otlp:
+    protocols:
+      grpc:
+      http:
+
 # This processor adds resource attributes to metrics so alerts carry service context
 processors:
   resource:
@@ -57,12 +63,11 @@ processors:
           - set(attributes["service.name"], resource.attributes["service.name"])
           - set(attributes["service.namespace"], resource.attributes["service.namespace"])
           - set(attributes["deployment.environment"], resource.attributes["deployment.environment"])
+          - set(attributes["service.tier"], resource.attributes["service.tier"])
 
 exporters:
   prometheus:
     endpoint: "0.0.0.0:8889"
-    resource_to_telemetry_conversion:
-      enabled: true
 
 service:
   pipelines:
@@ -134,7 +139,7 @@ JOIN spans AS parent
     AND child.trace_id = parent.trace_id
 WHERE child.start_time > NOW() - INTERVAL '1 hour'
 GROUP BY upstream_service, downstream_service
-HAVING call_count > 10;
+HAVING COUNT(*) > 10;
 ```
 
 ## Step 4: Implement Correlation in Alertmanager
@@ -153,16 +158,16 @@ route:
 
   routes:
     # Critical tier services get tighter correlation windows
-    - match:
-        service_tier: critical
+    - matchers:
+        - service_tier="critical"
       group_by: ['service_namespace', 'deployment_environment']
       group_wait: 15s
       group_interval: 1m
       receiver: 'oncall-team-critical'
 
     # Trace-correlated alerts when trace_id is present
-    - match_re:
-        trace_id: '.+'
+    - matchers:
+        - trace_id=~".+"
       group_by: ['trace_id']
       group_wait: 60s
       group_interval: 3m
@@ -184,13 +189,11 @@ Once alerts are grouped, enrich the notification with trace and log data. This P
 ```python
 # fetch_correlated_context.py
 # Pulls trace and log data for all services involved in a correlated alert group
-import requests
-from datetime import datetime, timedelta
 
-def enrich_alert_group(alert_group):
+def enrich_alert_group(alert_group, query_traces):
     services = set(a["labels"]["service_name"] for a in alert_group["alerts"])
-    start_time = min(a["starts_at"] for a in alert_group["alerts"])
-    end_time = max(a["starts_at"] for a in alert_group["alerts"])
+    start_time = min(a["startsAt"] for a in alert_group["alerts"])
+    end_time = max(a["startsAt"] for a in alert_group["alerts"])
 
     # Query for error traces spanning the alert window
     traces = query_traces(
@@ -201,7 +204,7 @@ def enrich_alert_group(alert_group):
     )
 
     # Build a summary showing which service triggered first
-    timeline = sorted(alert_group["alerts"], key=lambda a: a["starts_at"])
+    timeline = sorted(alert_group["alerts"], key=lambda a: a["startsAt"])
     root_cause_candidate = timeline[0]["labels"]["service_name"]
 
     return {
@@ -210,7 +213,7 @@ def enrich_alert_group(alert_group):
         "likely_root_cause": root_cause_candidate,
         "error_traces": traces[:5],
         "timeline": [
-            {"service": a["labels"]["service_name"], "time": a["starts_at"], "alert": a["labels"]["alertname"]}
+            {"service": a["labels"]["service_name"], "time": a["startsAt"], "alert": a["labels"]["alertname"]}
             for a in timeline
         ]
     }
