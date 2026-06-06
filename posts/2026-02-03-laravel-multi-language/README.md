@@ -170,7 +170,7 @@ echo __('messages.welcome', ['name' => 'john', 'code' => 'abc123']);
 
 ## Handling Pluralization
 
-Laravel handles pluralization rules for different languages. Use the `trans_choice()` function or the `Str::plural()` helper.
+Laravel handles pluralization rules for different languages. Use the `trans_choice()` function to select the correct form based on a count.
 
 Define plural forms using pipe-separated options:
 
@@ -480,8 +480,8 @@ use Carbon\Carbon;
 $date = Carbon::now();
 
 echo $date->translatedFormat('l, F j, Y');
-// English: Monday, February 3, 2026
-// Spanish: lunes, febrero 3, 2026
+// English: Tuesday, February 3, 2026
+// Spanish: martes, febrero 3, 2026
 
 echo $date->diffForHumans();
 // English: 2 hours ago
