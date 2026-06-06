@@ -31,12 +31,12 @@ The connector appears as an exporter in the traces pipeline and as a receiver in
 
 ## The Span Metrics Connector
 
-The `spanmetrics` connector is the most widely used connector. It generates request count, error count, and duration histogram metrics from span data. This gives you service-level indicators without writing a single line of metric instrumentation code.
+The `span_metrics` connector is the most widely used connector. It generates request count, error count, and duration histogram metrics from span data. This gives you service-level indicators without writing a single line of metric instrumentation code.
 
 Here is a basic configuration:
 
 ```yaml
-# Collector configuration with spanmetrics connector
+# Collector configuration with span_metrics connector
 
 receivers:
   otlp:
@@ -47,8 +47,8 @@ receivers:
         endpoint: 0.0.0.0:4318
 
 connectors:
-  # The spanmetrics connector generates metrics from trace spans
-  spanmetrics:
+  # The span_metrics connector generates metrics from trace spans
+  span_metrics:
     # Define histogram buckets for duration metrics
     histogram:
       explicit:
@@ -73,14 +73,14 @@ service:
     # Traces pipeline exports to both the trace backend and the connector
     traces:
       receivers: [otlp]
-      exporters: [otlp/traces, spanmetrics]
+      exporters: [otlp/traces, span_metrics]
     # Metrics pipeline receives from the connector and exports to metrics backend
     metrics:
-      receivers: [spanmetrics]
+      receivers: [span_metrics]
       exporters: [otlp/metrics]
 ```
 
-Notice how `spanmetrics` appears in the `exporters` list of the traces pipeline and in the `receivers` list of the metrics pipeline. This dual role is what makes it a connector. The traces pipeline processes spans normally and sends them to both the trace backend and the connector. The connector then produces metrics that flow through the metrics pipeline to the metrics backend.
+Notice how `span_metrics` appears in the `exporters` list of the traces pipeline and in the `receivers` list of the metrics pipeline. This dual role is what makes it a connector. The traces pipeline processes spans normally and sends them to both the trace backend and the connector. The connector then produces metrics that flow through the metrics pipeline to the metrics backend.
 
 ## Configuring Histogram Buckets
 
@@ -88,7 +88,7 @@ Getting histogram buckets right is important for useful latency metrics. The def
 
 ```yaml
 connectors:
-  spanmetrics:
+  span_metrics:
     histogram:
       explicit:
         # For a low-latency API service, use tighter buckets
@@ -107,7 +107,7 @@ Dimensions turn span attributes into metric labels. This is where the connector 
 
 ```yaml
 connectors:
-  spanmetrics:
+  span_metrics:
     histogram:
       explicit:
         buckets: [5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 5s]
@@ -122,11 +122,11 @@ connectors:
       # You can set a default value for when the attribute is missing
       - name: deployment.environment
         default: "unknown"
-      # Map span attribute to a different metric dimension name
+      # High-cardinality user dimensions are usually a bad idea
       - name: enduser.id
         default: "anonymous"
-    # Control dimension cardinality by limiting which spans generate metrics
-    dimensions_cache_size: 1000
+    # Limit aggregation cardinality for generated metrics
+    aggregation_cardinality_limit: 1000
     # Aggregation temporality for generated metrics
     aggregation_temporality: "AGGREGATION_TEMPORALITY_CUMULATIVE"
 ```
@@ -145,7 +145,7 @@ receivers:
         endpoint: 0.0.0.0:4317
 
 connectors:
-  spanmetrics:
+  span_metrics:
     histogram:
       explicit:
         buckets: [5ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 5s]
@@ -166,7 +166,7 @@ processors:
   resource/metrics:
     attributes:
       - key: service.pipeline
-        value: "spanmetrics"
+        value: "span_metrics"
         action: upsert
 
 exporters:
@@ -181,9 +181,9 @@ service:
       receivers: [otlp]
       # Filter health checks before they reach the connector
       processors: [filter/traces]
-      exporters: [otlp/traces, spanmetrics]
+      exporters: [otlp/traces, span_metrics]
     metrics:
-      receivers: [spanmetrics]
+      receivers: [span_metrics]
       # Enrich metrics with additional resource attributes
       processors: [resource/metrics]
       exporters: [otlp/metrics]
@@ -193,31 +193,30 @@ Filtering health check spans before the connector prevents them from polluting y
 
 ## The Count Connector
 
-Besides `spanmetrics`, the `count` connector is another useful option. It counts telemetry items based on conditions, producing simple counter metrics.
+Besides `span_metrics`, the `count` connector is another useful option. It counts telemetry items based on conditions, producing simple counter metrics.
 
 ```yaml
 connectors:
   # Count connector generates count metrics from traces
   count:
-    traces:
-      # Count spans matching specific conditions
-      spans:
-        # Count all error spans
-        errors.count:
-          description: "Count of error spans"
-          conditions:
-            - 'status.code == STATUS_CODE_ERROR'
-        # Count database spans specifically
-        db.request.count:
-          description: "Count of database operation spans"
-          conditions:
-            - 'attributes["db.system"] != nil'
-      # Count entire span events
-      spanevents:
-        exception.count:
-          description: "Count of exception events"
-          conditions:
-            - 'name == "exception"'
+    # Count spans matching specific conditions
+    spans:
+      # Count all error spans
+      errors.count:
+        description: "Count of error spans"
+        conditions:
+          - 'status.code == STATUS_CODE_ERROR'
+      # Count database spans specifically
+      db.request.count:
+        description: "Count of database operation spans"
+        conditions:
+          - 'attributes["db.system"] != nil'
+    # Count span events
+    spanevents:
+      exception.count:
+        description: "Count of exception events"
+        conditions:
+          - 'spanevent.name == "exception"'
 
 service:
   pipelines:
@@ -239,13 +238,12 @@ The `routing` connector routes telemetry to different pipelines based on content
 connectors:
   # Route traces to different pipelines based on attributes
   routing:
+    default_pipelines: [traces/default]
     table:
       # High-priority traces go to a dedicated pipeline
-      - statement: 'route() where attributes["priority"] == "high"'
+      - context: span
+        condition: 'attributes["priority"] == "high"'
         pipelines: [traces/priority]
-      # Everything else goes to the default pipeline
-      - statement: 'route()'
-        pipelines: [traces/default]
 
 service:
   pipelines:
@@ -274,9 +272,14 @@ service:
   telemetry:
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 ```
 
 Key metrics to watch include `otelcol_connector_accepted_spans` (how many spans the connector processed), `otelcol_connector_refused_spans` (how many were rejected), and the connector's own processing latency. If you see refused spans increasing, check whether the downstream metrics pipeline is backed up.
 
-Connectors are one of the most powerful features in the OpenTelemetry Collector. They let you derive new signals from existing telemetry without modifying application code, keep your instrumentation focused on traces while automatically getting standard metrics, and build sophisticated multi-pipeline architectures. Start with the `spanmetrics` connector for RED metrics, and expand to other connector types as your observability needs grow.
+Connectors are one of the most powerful features in the OpenTelemetry Collector. They let you derive new signals from existing telemetry without modifying application code, keep your instrumentation focused on traces while automatically getting standard metrics, and build sophisticated multi-pipeline architectures. Start with the `span_metrics` connector for RED metrics, and expand to other connector types as your observability needs grow.
