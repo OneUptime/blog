@@ -25,6 +25,7 @@ import (
     "context"
     "strings"
 
+    pb "example.com/yourapp/gen/pb"
     "go.opentelemetry.io/otel/attribute"
     "go.opentelemetry.io/otel/trace"
     "google.golang.org/grpc"
@@ -68,19 +69,28 @@ func BusinessAttributeInterceptor() grpc.UnaryServerInterceptor {
         operationType := classifyOperation(info.FullMethod)
         span.SetAttributes(attribute.String("business.operation_type", operationType))
 
-        // Extract attributes from the request payload
-        addRequestAttributes(span, req, info.FullMethod)
+        // Extract attributes from the request payload for sampled detailed traces
+        if detailedTracingEnabled(ctx) {
+            addRequestAttributes(span, req, info.FullMethod)
+        }
 
         // Call the handler
         resp, err := handler(ctx, req)
 
         // Add response attributes
-        if resp != nil {
+        if resp != nil && detailedTracingEnabled(ctx) {
             addResponseAttributes(span, resp, info.FullMethod)
         }
 
         return resp, err
     }
+}
+
+type detailedTracingKey struct{}
+
+func detailedTracingEnabled(ctx context.Context) bool {
+    detailed, ok := ctx.Value(detailedTracingKey{}).(bool)
+    return !ok || detailed
 }
 
 func classifyOperation(method string) string {
@@ -125,27 +135,17 @@ func addResponseAttributes(span trace.Span, resp interface{}, method string) {
 Filter out noisy RPCs that clutter your traces:
 
 ```go
-// FilteringInterceptor skips tracing for specified methods
-func FilteringInterceptor(skipMethods map[string]bool) grpc.UnaryServerInterceptor {
-    return func(
-        ctx context.Context,
-        req interface{},
-        info *grpc.UnaryServerInfo,
-        handler grpc.UnaryHandler,
-    ) (interface{}, error) {
-        if skipMethods[info.FullMethod] {
-            // Remove the span from context so downstream code
-            // does not add attributes to a filtered span
-            span := trace.SpanFromContext(ctx)
-            if span.IsRecording() {
-                // Mark as non-recording by not adding any attributes
-                // The span will still exist but will be very lightweight
-                span.SetAttributes(attribute.Bool("otel.filtered", true))
-            }
-        }
+import (
+    "go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+    "google.golang.org/grpc/stats"
+)
 
-        return handler(ctx, req)
-    }
+// FilteringOption skips OpenTelemetry instrumentation for specified methods.
+// It must be configured on otelgrpc.NewServerHandler before spans are created.
+func FilteringOption(skipMethods map[string]bool) otelgrpc.Option {
+    return otelgrpc.WithFilter(func(info *stats.RPCTagInfo) bool {
+        return !skipMethods[info.FullMethodName]
+    })
 }
 
 // Usage
@@ -158,12 +158,12 @@ skipMethods := map[string]bool{
 
 ## Sampling Interceptor
 
-For high-volume RPCs, you might want to sample rather than filter entirely:
+For high-volume RPCs, you might want to sample expensive business-detail attributes rather than filter traces entirely. OpenTelemetry trace sampling is decided when the span starts, so an interceptor cannot sample out an already-created span:
 
 ```go
 import "math/rand"
 
-func SamplingInterceptor(sampleRates map[string]float64) grpc.UnaryServerInterceptor {
+func DetailSamplingInterceptor(sampleRates map[string]float64) grpc.UnaryServerInterceptor {
     return func(
         ctx context.Context,
         req interface{},
@@ -172,16 +172,17 @@ func SamplingInterceptor(sampleRates map[string]float64) grpc.UnaryServerInterce
     ) (interface{}, error) {
         rate, exists := sampleRates[info.FullMethod]
         if exists && rand.Float64() > rate {
-            // Skip detailed tracing for this request
+            // Skip expensive business-specific attribute extraction for this request.
             span := trace.SpanFromContext(ctx)
-            span.SetAttributes(attribute.Bool("otel.sampled_out", true))
+            span.SetAttributes(attribute.Bool("business.detail_sampled", false))
+            ctx = context.WithValue(ctx, detailedTracingKey{}, false)
         }
 
         return handler(ctx, req)
     }
 }
 
-// Sample only 10% of ListProducts calls
+// Add detailed business attributes for only 10% of ListProducts calls
 sampleRates := map[string]float64{
     "/mypackage.ProductService/ListProducts": 0.1,
     "/mypackage.SearchService/Search":        0.05,
@@ -191,6 +192,8 @@ sampleRates := map[string]float64{
 ## Client-Side Business Interceptor
 
 ```go
+import "time"
+
 func BusinessClientInterceptor() grpc.UnaryClientInterceptor {
     return func(
         ctx context.Context,
@@ -232,11 +235,12 @@ Apply multiple interceptors in the right order:
 
 ```go
 server := grpc.NewServer(
-    grpc.StatsHandler(otelgrpc.NewServerHandler()),
+    grpc.StatsHandler(otelgrpc.NewServerHandler(
+        FilteringOption(skipMethods),          // Filter noise before spans are created
+    )),
     grpc.ChainUnaryInterceptor(
-        FilteringInterceptor(skipMethods),        // First: filter noise
+        DetailSamplingInterceptor(sampleRates),    // First: decide whether to add expensive details
         BusinessAttributeInterceptor(),            // Then: add business data
-        SamplingInterceptor(sampleRates),          // Then: sampling
     ),
 )
 ```
