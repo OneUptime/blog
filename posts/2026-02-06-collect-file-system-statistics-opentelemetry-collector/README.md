@@ -14,7 +14,7 @@ The OpenTelemetry Collector's host metrics receiver provides comprehensive file 
 
 ## What the Host Metrics Receiver Collects
 
-The host metrics receiver is part of the OpenTelemetry Collector Contrib distribution. It uses the operating system's native interfaces to collect system-level metrics, including file system data. On Linux, it reads from `/proc` and `/sys`. On macOS, it uses system calls. On Windows, it queries the Windows API.
+The host metrics receiver is available in the OpenTelemetry Collector core, contrib, and Kubernetes distributions. It uses the operating system's native interfaces to collect system-level metrics, including file system data. On Linux, it reads from `/proc` and `/sys`. On macOS, it uses system calls. On Windows, it queries the Windows API.
 
 For file system monitoring, the receiver collects three categories of data:
 
@@ -218,8 +218,8 @@ receivers:
         include_mount_points:
           match_type: regexp
           mount_points:
-            - "/hostfs"
-            - "/hostfs/var/.*"
+            - "/"
+            - "/var/.*"
       disk: {}
 ```
 
@@ -249,7 +249,7 @@ spec:
             path: /
 ```
 
-The `root_path: /hostfs` setting tells the host metrics receiver to look for file system information relative to `/hostfs` instead of `/`. This is necessary because inside the container, `/proc/mounts` shows the container's mount namespace, not the host's.
+The `root_path: /hostfs` setting tells the host metrics receiver where the host root file system is mounted inside the container. Mount point filters still use the host's mount paths, such as `/` and `/var`, not the `/hostfs`-prefixed container paths.
 
 ## Alerting on File System Issues
 
