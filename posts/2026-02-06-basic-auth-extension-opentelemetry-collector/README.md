@@ -83,8 +83,8 @@ processors:
 # Exporters send data to backends
 exporters:
   # OTLP HTTP exporter with basic auth
-  otlphttp:
-    endpoint: https://api.backend.com/v1/traces
+  otlp_http:
+    endpoint: https://api.backend.com
     # Reference the basic auth extension
     auth:
       authenticator: basicauth
@@ -98,7 +98,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlphttp]
+      exporters: [otlp_http]
 ```
 
 This configuration automatically adds the Authorization header with Basic Authentication credentials to all requests sent by the OTLP HTTP exporter.
@@ -145,8 +145,8 @@ exporters:
       environment: production
 
   # OTLP HTTP exporter with basic auth
-  otlphttp/traces:
-    endpoint: https://traces.backend.com/v1/traces
+  otlp_http/traces:
+    endpoint: https://traces.backend.com
     auth:
       authenticator: basicauth
 
@@ -157,7 +157,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [resource, batch]
-      exporters: [otlphttp/traces]
+      exporters: [otlp_http/traces]
 
     metrics:
       receivers: [otlp]
@@ -182,9 +182,9 @@ extensions:
   basicauth:
     client_auth:
       # Read username from file
-      username: "${file:/var/secrets/username}"
+      username_file: /var/secrets/username
       # Read password from file
-      password: "${file:/var/secrets/password}"
+      password_file: /var/secrets/password
 
 receivers:
   otlp:
@@ -205,17 +205,11 @@ processors:
     send_batch_size: 2048
 
 exporters:
-  # Loki exporter for logs
-  loki:
-    endpoint: https://loki.backend.com/loki/api/v1/push
+  # OTLP HTTP exporter for logs
+  otlp_http/logs:
+    logs_endpoint: https://logs.backend.com/v1/logs
     auth:
       authenticator: basicauth
-    # Loki-specific configuration
-    labels:
-      resource:
-        service.name: "service_name"
-      attributes:
-        level: "level"
 
 service:
   extensions: [basicauth]
@@ -224,7 +218,7 @@ service:
     logs:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [loki]
+      exporters: [otlp_http/logs]
 ```
 
 ## Multiple Basic Auth Configurations
@@ -266,14 +260,14 @@ processors:
 
 exporters:
   # Primary traces backend
-  otlphttp/primary:
-    endpoint: https://traces-primary.backend.com/v1/traces
+  otlp_http/primary:
+    endpoint: https://traces-primary.backend.com
     auth:
       authenticator: basicauth/primary
 
   # Secondary traces backend for redundancy
-  otlphttp/secondary:
-    endpoint: https://traces-secondary.backend.com/v1/traces
+  otlp_http/secondary:
+    endpoint: https://traces-secondary.backend.com
     auth:
       authenticator: basicauth/secondary
 
@@ -291,7 +285,7 @@ service:
       receivers: [otlp]
       processors: [batch/traces]
       # Send to both backends for redundancy
-      exporters: [otlphttp/primary, otlphttp/secondary]
+      exporters: [otlp_http/primary, otlp_http/secondary]
 
     metrics:
       receivers: [otlp]
@@ -311,12 +305,6 @@ extensions:
     htpasswd:
       # Path to htpasswd file
       file: /etc/otel/htpasswd
-      # Inline htpasswd entries (for testing only)
-      inline: |
-        # user1 with password 'pass1'
-        user1:$2y$05$gV5MRwvQl.Z5gC5x8HqZKuW4aQQQQQQQQQQQQQQQQQQQQQQ
-        # user2 with password 'pass2'
-        user2:$2y$05$aB3MxwvQm.A6hD6y9IsALvX5bRRRRRRRRRRRRRRRRRRRRRR
 
 receivers:
   otlp:
@@ -336,8 +324,8 @@ processors:
     timeout: 10s
 
 exporters:
-  logging:
-    loglevel: info
+  debug:
+    verbosity: basic
 
 service:
   extensions: [basicauth/server]
@@ -346,7 +334,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [logging]
+      exporters: [debug]
 ```
 
 Generate htpasswd entries using the htpasswd utility:
@@ -410,8 +398,8 @@ data:
         timeout: 10s
 
     exporters:
-      otlphttp:
-        endpoint: https://backend.com/v1/traces
+      otlp_http:
+        endpoint: https://backend.com
         auth:
           authenticator: basicauth
 
@@ -421,7 +409,7 @@ data:
         traces:
           receivers: [otlp]
           processors: [batch]
-          exporters: [otlphttp]
+          exporters: [otlp_http]
 ---
 # Deployment
 apiVersion: apps/v1
@@ -478,8 +466,8 @@ extensions:
   # Basic auth for backend communication
   basicauth:
     client_auth:
-      username: "${file:/var/secrets/username}"
-      password: "${file:/var/secrets/password}"
+      username_file: /var/secrets/username
+      password_file: /var/secrets/password
 
   # Health check endpoint
   health_check:
@@ -537,8 +525,8 @@ processors:
 
 exporters:
   # Primary backend with basic auth
-  otlphttp/backend:
-    endpoint: https://api.backend.com/v1/traces
+  otlp_http/backend:
+    endpoint: https://api.backend.com
     auth:
       authenticator: basicauth
     tls:
@@ -556,9 +544,9 @@ exporters:
       queue_size: 5000
     timeout: 30s
 
-  # Logging for troubleshooting
-  logging:
-    loglevel: info
+  # Debug exporter for troubleshooting
+  debug:
+    verbosity: basic
     sampling_initial: 5
     sampling_thereafter: 200
 
@@ -569,12 +557,12 @@ service:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, attributes, resource, batch]
-      exporters: [otlphttp/backend, logging]
+      exporters: [otlp_http/backend, debug]
 
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, resource, batch]
-      exporters: [otlphttp/backend]
+      exporters: [otlp_http/backend]
 ```
 
 ## Integration with Popular Backends
@@ -599,7 +587,7 @@ Configure the collector to work with these backends by setting the appropriate c
 
 **TLS Errors**: Basic Auth should always be used with TLS. Ensure TLS is properly configured and certificates are valid.
 
-**Credential Updates**: When rotating credentials, update environment variables or secret files, then restart the collector to load new values.
+**Credential Updates**: When rotating credentials from environment variables, restart the collector to load new values. When using `username_file` and `password_file`, the basic auth extension watches those files for changes.
 
 ## Security Best Practices
 
