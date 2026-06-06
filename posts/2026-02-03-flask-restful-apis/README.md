@@ -64,7 +64,7 @@ Run it and hit `http://localhost:5000` - you should see the JSON response.
 
 ---
 
-Resource Classes
+## Resource Classes
 
 Resources are the building blocks of your API. Each resource class maps HTTP methods to Python methods. This keeps your code organized and predictable.
 
@@ -341,6 +341,7 @@ Apply marshalling with the decorator:
 
 ```python
 # resources/user.py
+from flask import request
 from flask_restful import Resource, marshal_with, marshal
 from schemas.user_schema import user_fields, user_list_fields
 
@@ -583,7 +584,7 @@ Register error handlers with the API:
 
 ```python
 # api/v1/__init__.py
-from flask import Blueprint, jsonify
+from flask import Blueprint, current_app, jsonify
 from flask_restful import Api
 from errors import APIError, NotFoundError, ValidationError
 
@@ -616,7 +617,7 @@ def handle_not_found(error):
 def handle_server_error(error):
     """Handle unexpected server errors."""
     # Log the actual error for debugging
-    app.logger.error(f"Server error: {error}")
+    current_app.logger.error(f"Server error: {error}")
     return jsonify({
         "error": True,
         "message": "Internal server error"
