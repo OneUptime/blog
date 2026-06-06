@@ -45,10 +45,10 @@ template:
       query_type: metrics
       query: |
         topk(5,
-          sum by (http_status_code, http_route) (
+          sum by (http_response_status_code, http_route) (
             rate(http_server_request_duration_seconds_count{
               service_name="checkout-service",
-              http_status_code=~"5.."
+              http_response_status_code=~"5.."
             }[5m])
           )
         )
@@ -56,9 +56,7 @@ template:
     - name: "Sample Error Traces"
       description: "Recent traces with error status"
       query_type: traces
-      filters:
-        service.name: "checkout-service"
-        status: "ERROR"
+      query: '{ resource.service.name = "checkout-service" && status = error }'
       limit: 5
       time_range: "last_10m"
 
@@ -66,8 +64,8 @@ template:
       description: "Recent error-level log entries"
       query_type: logs
       filters:
-        service.name: "checkout-service"
-        severity: "ERROR"
+        service_name: "checkout-service"
+        severity_text: "ERROR"
       limit: 20
       time_range: "last_10m"
 
@@ -76,11 +74,11 @@ template:
       query_type: metrics
       query: |
         avg by (rpc_service) (
-          rate(rpc_client_duration_seconds_sum{
+          rate(rpc_client_call_duration_seconds_sum{
             service_name="checkout-service"
           }[5m])
           /
-          rate(rpc_client_duration_seconds_count{
+          rate(rpc_client_call_duration_seconds_count{
             service_name="checkout-service"
           }[5m])
         )
@@ -104,7 +102,7 @@ The runbook engine receives alert webhooks and executes the diagnostic queries b
 import yaml
 import httpx
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 class RunbookEngine:
     def __init__(self, runbook_dir: str, tempo_url: str, prom_url: str, loki_url: str):
@@ -125,6 +123,10 @@ class RunbookEngine:
 
     def process_alert(self, alert: dict) -> dict:
         """Take a raw alert and return an enriched version with diagnostic data."""
+        if "alerts" in alert:
+            alert["alerts"] = [self.process_alert(item) for item in alert["alerts"]]
+            return alert
+
         alert_name = alert["labels"]["alertname"]
         runbook = self.runbooks.get(alert_name)
         if not runbook:
@@ -147,34 +149,61 @@ class RunbookEngine:
         if section["query_type"] == "metrics":
             return self._query_prometheus(section["query"])
         elif section["query_type"] == "traces":
-            return self._query_tempo(section["filters"], section.get("limit", 5))
+            return self._query_tempo(
+                section["query"],
+                section.get("limit", 5),
+                section.get("time_range")
+            )
         elif section["query_type"] == "logs":
-            return self._query_loki(section["filters"], section.get("limit", 20))
+            return self._query_loki(
+                section["filters"],
+                section.get("limit", 20),
+                section.get("time_range")
+            )
+
+    def _time_range_params(self, time_range: str | None) -> dict:
+        """Convert values like last_10m into backend API start/end parameters."""
+        if not time_range or not time_range.startswith("last_"):
+            return {}
+
+        value = time_range.removeprefix("last_")
+        amount = int(value[:-1])
+        unit = value[-1]
+        delta = {
+            "m": timedelta(minutes=amount),
+            "h": timedelta(hours=amount),
+        }[unit]
+        end = datetime.now(timezone.utc)
+        start = end - delta
+        return {"start": int(start.timestamp()), "end": int(end.timestamp())}
 
     def _query_prometheus(self, query: str) -> dict:
         """Execute a PromQL query and return results."""
         resp = httpx.get(
             f"{self.prom_url}/api/v1/query",
-            params={"query": query, "time": datetime.utcnow().isoformat()}
+            params={"query": query}
         )
         return resp.json().get("data", {}).get("result", [])
 
-    def _query_tempo(self, filters: dict, limit: int) -> list:
-        """Search Tempo for traces matching the filters."""
-        search_tags = "&".join(f"{k}={v}" for k, v in filters.items())
+    def _query_tempo(self, query: str, limit: int, time_range: str | None) -> list:
+        """Search Tempo for traces matching the TraceQL query."""
+        params = {"q": query, "limit": limit}
+        params.update(self._time_range_params(time_range))
         resp = httpx.get(
             f"{self.tempo_url}/api/search",
-            params={"tags": search_tags, "limit": limit}
+            params=params
         )
         return resp.json().get("traces", [])
 
-    def _query_loki(self, filters: dict, limit: int) -> list:
+    def _query_loki(self, filters: dict, limit: int, time_range: str | None) -> list:
         """Query Loki for log lines matching the filters."""
         label_selectors = ",".join(f'{k}="{v}"' for k, v in filters.items())
         query = '{' + label_selectors + '}'
+        params = {"query": query, "limit": limit}
+        params.update(self._time_range_params(time_range))
         resp = httpx.get(
             f"{self.loki_url}/loki/api/v1/query_range",
-            params={"query": query, "limit": limit}
+            params=params
         )
         return resp.json().get("data", {}).get("result", [])
 ```
