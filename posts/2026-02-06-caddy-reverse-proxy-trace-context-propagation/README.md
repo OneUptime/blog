@@ -40,14 +40,10 @@ When you enable the `tracing` directive, Caddy automatically:
 ```text
 # Caddyfile
 
-{
+:80 {
     tracing {
         span "caddy-proxy"
     }
-}
-
-:80 {
-    tracing
     reverse_proxy backend:8080
 }
 ```
@@ -73,7 +69,7 @@ Caddy preserves the `baggage` header when proxying requests. This is important f
 import requests
 
 headers = {
-    "traceparent": "00-abc123-def456-01",
+    "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
     "baggage": "userId=alice,region=us-east-1,featureFlag=new-ui"
 }
 
@@ -84,18 +80,14 @@ The backend receives both the updated `traceparent` (with Caddy's span ID) and t
 
 ## Multi-Upstream Configuration
 
-When Caddy proxies to multiple backends, each upstream gets its own child span:
+When Caddy proxies to multiple backends, the selected route receives the active trace context:
 
 ```text
 # Caddyfile
-{
+:80 {
     tracing {
         span "caddy-api-gateway"
     }
-}
-
-:80 {
-    tracing
 
     # Route to different backends based on path
     handle /api/users/* {
@@ -112,7 +104,7 @@ When Caddy proxies to multiple backends, each upstream gets its own child span:
 }
 ```
 
-Each `reverse_proxy` directive creates a new child span with the correct `traceparent` header forwarded to the respective backend.
+The matched `reverse_proxy` directive forwards the propagated trace context to the respective backend.
 
 ## Testing Header Propagation
 
@@ -154,9 +146,12 @@ If your frontend sends tracing headers from the browser, configure CORS in Caddy
 
 ```text
 :80 {
-    tracing
+    tracing {
+        span "caddy-proxy"
+    }
 
     header Access-Control-Allow-Headers "traceparent, tracestate, baggage, Content-Type"
+    header Access-Control-Allow-Methods "GET, POST, OPTIONS"
     header Access-Control-Allow-Origin "*"
 
     @options method OPTIONS
@@ -168,7 +163,7 @@ If your frontend sends tracing headers from the browser, configure CORS in Caddy
 }
 ```
 
-Without this, browsers will strip the tracing headers in preflight checks.
+Without this, browsers can fail the CORS preflight and skip the actual request with the tracing headers.
 
 ## Combining with TLS Termination
 
@@ -176,17 +171,19 @@ Caddy often handles TLS termination. Tracing works with both HTTP and HTTPS:
 
 ```text
 example.com {
-    tracing
+    tracing {
+        span "caddy-proxy"
+    }
 
     # Caddy auto-manages TLS
-    reverse_proxy backend:8080
-
-    # Add upstream scheme info to traces
-    header_up X-Forwarded-Proto {http.request.scheme}
+    reverse_proxy backend:8080 {
+        # Explicitly pass the client-facing scheme to the upstream
+        header_up X-Forwarded-Proto {http.request.scheme}
+    }
 }
 ```
 
-The trace span will show `http.scheme: https` for the client-facing connection.
+The trace span uses the client-facing request details; with HTTPS, the request scheme is `https`.
 
 ## Verifying End-to-End Traces
 
