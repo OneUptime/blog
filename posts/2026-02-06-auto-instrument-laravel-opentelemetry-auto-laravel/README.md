@@ -21,7 +21,7 @@ Auto-instrumentation solves this by hooking into Laravel's lifecycle events and 
 Before starting, ensure you have:
 
 - Laravel 9.x or higher
-- PHP 8.0 or higher
+- PHP 8.1 or higher
 - Composer installed
 - An OpenTelemetry collector endpoint (local or remote)
 
@@ -49,62 +49,26 @@ php -m | grep opentelemetry
 Add the package to your Laravel project using Composer:
 
 ```bash
-composer require open-telemetry/opentelemetry-auto-laravel
+composer require \
+    open-telemetry/sdk \
+    open-telemetry/exporter-otlp \
+    open-telemetry/opentelemetry-auto-laravel
 ```
 
-The package uses Laravel's auto-discovery feature, so the service provider registers automatically. For manual registration, add the provider to `config/app.php`:
+The package registers its hooks through Composer's autoload files. After installing the package, make sure Composer's generated autoloader is loaded by your application, which is the default for Laravel applications.
 
-```php
-'providers' => [
-    // Other providers...
-    OpenTelemetry\Contrib\Instrumentation\Laravel\LaravelServiceProvider::class,
-],
-```
+## Configuring OpenTelemetry
 
-## Configuring the Service Provider
-
-Publish the OpenTelemetry configuration file:
-
-```bash
-php artisan vendor:publish --tag=opentelemetry-config
-```
-
-This creates `config/opentelemetry.php`. Configure your service name and exporter settings:
-
-```php
-<?php
-
-return [
-    // Service name appears in traces to identify your application
-    'service_name' => env('OTEL_SERVICE_NAME', 'laravel-app'),
-
-    // Service version for tracking deployments
-    'service_version' => env('OTEL_SERVICE_VERSION', '1.0.0'),
-
-    // Environment (production, staging, development)
-    'deployment_environment' => env('APP_ENV', 'production'),
-
-    // OTLP exporter endpoint
-    'exporter' => [
-        'endpoint' => env('OTEL_EXPORTER_OTLP_ENDPOINT', 'http://localhost:4318'),
-        'protocol' => env('OTEL_EXPORTER_OTLP_PROTOCOL', 'http/protobuf'),
-        'headers' => env('OTEL_EXPORTER_OTLP_HEADERS', ''),
-    ],
-
-    // Sampling configuration
-    'sampler' => [
-        'type' => env('OTEL_TRACES_SAMPLER', 'always_on'),
-        'ratio' => env('OTEL_TRACES_SAMPLER_ARG', 1.0),
-    ],
-];
-```
-
-Update your `.env` file with your collector details:
+Configure OpenTelemetry with environment variables. Update your `.env` file with your service and collector details:
 
 ```env
+OTEL_PHP_AUTOLOAD_ENABLED=true
 OTEL_SERVICE_NAME=laravel-shop-api
-OTEL_SERVICE_VERSION=2.1.0
+OTEL_RESOURCE_ATTRIBUTES=service.version=2.1.0,deployment.environment=production
+OTEL_TRACES_EXPORTER=otlp
+OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
 OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+OTEL_PROPAGATORS=baggage,tracecontext
 OTEL_TRACES_SAMPLER=parentbased_traceidratio
 OTEL_TRACES_SAMPLER_ARG=0.5
 ```
@@ -113,17 +77,17 @@ OTEL_TRACES_SAMPLER_ARG=0.5
 
 The package automatically instruments several Laravel components:
 
-**HTTP Requests**: Every incoming HTTP request generates a root span with HTTP method, route, status code, and duration.
+**HTTP Requests**: Every incoming HTTP request generates a server span with HTTP method, route, status code, and duration.
 
-**Database Queries**: All Eloquent queries and raw SQL statements create spans with query text, bindings, and execution time.
+**Database Queries**: Laravel database query events create spans with SQL text, database attributes, and execution time.
 
-**Cache Operations**: Cache hits, misses, reads, and writes generate spans with keys and store information.
+**Cache Operations**: Cache hits, misses, writes, and forget operations are added as events on the current span.
 
 **HTTP Client**: Outgoing HTTP requests made via Laravel's HTTP client create spans with URLs, methods, and response codes.
 
-**Queue Jobs**: Dispatched queue jobs create spans that connect to the parent request trace.
+**Queue Jobs**: Queue publish and processing operations create messaging spans. Jobs can use the package's queue tracing contracts to choose parent, linked, or isolated trace behavior.
 
-**Events**: Laravel event dispatching creates spans showing event propagation.
+**Logs and Exceptions**: Laravel log events and exceptions are recorded so they can be correlated with the active trace.
 
 ## Verifying Auto-Instrumentation Works
 
@@ -144,7 +108,7 @@ Check your OpenTelemetry collector logs or backend. You should see traces with s
 
 ## Trace Context Propagation
 
-Auto-instrumentation handles trace context propagation automatically. When your Laravel app receives a request with W3C Trace Context headers, it continues the existing trace rather than starting a new one.
+Auto-instrumentation extracts incoming trace context automatically. When your Laravel app receives a request with W3C Trace Context headers, it continues the existing trace rather than starting a new one.
 
 ```mermaid
 sequenceDiagram
@@ -172,138 +136,98 @@ sequenceDiagram
     deactivate Laravel
 ```
 
-When your Laravel app makes outbound HTTP calls, it automatically injects trace context headers:
+For outbound HTTP calls, use an instrumented client that injects context, such as a supported PSR-18 client with `open-telemetry/opentelemetry-auto-psr18`, or inject the headers explicitly before sending the request:
 
 ```php
-// This HTTP call automatically propagates trace context
-$response = Http::get('https://api.example.com/data');
+use Illuminate\Support\Facades\Http;
+use OpenTelemetry\API\Globals;
+use OpenTelemetry\Context\Propagation\ArrayAccessGetterSetter;
 
-// The external service receives traceparent and tracestate headers
+$headers = [];
+Globals::propagator()->inject($headers, ArrayAccessGetterSetter::getInstance());
+
+$response = Http::withHeaders($headers)->get('https://api.example.com/data');
+
+// The external service receives traceparent and, when present, tracestate headers
 // If instrumented, it continues the distributed trace
 ```
 
 ## Customizing Auto-Instrumentation Behavior
 
-While auto-instrumentation works out of the box, you can customize behavior by creating a custom instrumentation class.
+While auto-instrumentation works out of the box, you can add custom attributes to the active span from normal Laravel code, such as middleware.
 
-Create `app/Observability/CustomInstrumentation.php`:
+Create `app/Http/Middleware/EnrichOpenTelemetrySpan.php`:
 
 ```php
 <?php
 
-namespace App\Observability;
+namespace App\Http\Middleware;
 
-use OpenTelemetry\API\Trace\SpanInterface;
-use OpenTelemetry\API\Trace\StatusCode;
+use Closure;
+use Illuminate\Http\Request;
+use OpenTelemetry\API\Trace\Span;
+use Symfony\Component\HttpFoundation\Response;
 
-class CustomInstrumentation
+class EnrichOpenTelemetrySpan
 {
     /**
      * Add custom attributes to HTTP request spans
      */
-    public function enrichHttpSpan(SpanInterface $span, $request): void
+    public function handle(Request $request, Closure $next): Response
     {
+        $span = Span::getCurrent();
+
         // Add user information if authenticated
-        if (auth()->check()) {
-            $span->setAttribute('user.id', auth()->id());
-            $span->setAttribute('user.email', auth()->user()->email);
-            $span->setAttribute('user.role', auth()->user()->role);
+        if ($request->user()) {
+            $span->setAttribute('user.id', $request->user()->getAuthIdentifier());
+            $span->setAttribute('user.role', $request->user()->role ?? 'unknown');
         }
 
         // Add request metadata
-        $span->setAttribute('http.client_ip', $request->ip());
-        $span->setAttribute('http.user_agent', $request->userAgent());
+        $span->setAttribute('client.address', $request->ip());
+        $span->setAttribute('user_agent.original', $request->userAgent());
 
         // Add custom business context
         if ($request->header('X-Tenant-ID')) {
             $span->setAttribute('tenant.id', $request->header('X-Tenant-ID'));
         }
-    }
 
-    /**
-     * Add custom attributes to database query spans
-     */
-    public function enrichDatabaseSpan(SpanInterface $span, $query): void
-    {
-        // Add query metadata
-        $span->setAttribute('db.row_count', $query->count());
-        $span->setAttribute('db.slow_query', $query->time > 100);
-
-        // Mark slow queries
-        if ($query->time > 1000) {
-            $span->setStatus(StatusCode::ERROR, 'Slow query detected');
-            $span->setAttribute('db.performance_issue', true);
-        }
+        return $next($request);
     }
 }
 ```
 
-Register this instrumentation in `app/Providers/AppServiceProvider.php`:
+Register this middleware with your HTTP middleware stack. In Laravel 9 and 10, add it to `app/Http/Kernel.php`:
 
 ```php
 <?php
 
-namespace App\Providers;
+namespace App\Http;
 
-use Illuminate\Support\ServiceProvider;
-use App\Observability\CustomInstrumentation;
-use OpenTelemetry\Contrib\Instrumentation\Laravel\Watchers;
+use App\Http\Middleware\EnrichOpenTelemetrySpan;
+use Illuminate\Foundation\Http\Kernel as HttpKernel;
 
-class AppServiceProvider extends ServiceProvider
+class Kernel extends HttpKernel
 {
-    public function boot()
-    {
-        if (config('opentelemetry.enabled')) {
-            $instrumentation = new CustomInstrumentation();
-
-            // Hook into HTTP request watcher
-            Watchers\RequestWatcher::addEnricher(
-                fn($span, $request) => $instrumentation->enrichHttpSpan($span, $request)
-            );
-
-            // Hook into database query watcher
-            Watchers\QueryWatcher::addEnricher(
-                fn($span, $query) => $instrumentation->enrichDatabaseSpan($span, $query)
-            );
-        }
-    }
+    protected $middleware = [
+        // Other middleware...
+        EnrichOpenTelemetrySpan::class,
+    ];
 }
 ```
 
 ## Filtering Sensitive Data
 
-Avoid sending sensitive data in traces. Configure filtering for database queries:
+Avoid sending sensitive data in traces. The Laravel auto-instrumentation records database statements, URLs, and selected request metadata, so review the attributes your application emits and avoid adding sensitive values in custom attributes. You can also limit attribute size and count with standard OpenTelemetry environment variables:
 
-```php
-// config/opentelemetry.php
-
-return [
-    // Previous configuration...
-
-    'instrumentation' => [
-        'database' => [
-            'enabled' => true,
-            // Sanitize query bindings containing sensitive data
-            'sanitize_bindings' => true,
-            // Patterns to redact from queries
-            'redact_patterns' => [
-                '/password\s*=\s*[\'"][^\'"]*[\'"]/i' => 'password=***',
-                '/token\s*=\s*[\'"][^\'"]*[\'"]/i' => 'token=***',
-                '/api_key\s*=\s*[\'"][^\'"]*[\'"]/i' => 'api_key=***',
-            ],
-        ],
-        'http' => [
-            'enabled' => true,
-            // Headers to redact from HTTP spans
-            'redact_headers' => ['Authorization', 'Cookie', 'X-Api-Key'],
-        ],
-    ],
-];
+```env
+OTEL_ATTRIBUTE_VALUE_LENGTH_LIMIT=4096
+OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT=128
 ```
 
 ## Performance Considerations
 
-Auto-instrumentation adds minimal overhead, typically less than 5ms per request. However, consider these optimizations:
+Auto-instrumentation adds runtime overhead, so measure it in your own application. Consider these optimizations:
 
 **Sampling**: Don't trace every request in high-traffic applications. Use ratio-based sampling:
 
@@ -313,30 +237,19 @@ OTEL_TRACES_SAMPLER=parentbased_traceidratio
 OTEL_TRACES_SAMPLER_ARG=0.1
 ```
 
-**Selective Instrumentation**: Disable instrumentation for components you don't need:
+**Selective Instrumentation**: Disable the Laravel instrumentation if you need to isolate overhead while troubleshooting:
 
-```php
-// config/opentelemetry.php
-
-'instrumentation' => [
-    'http' => true,
-    'database' => true,
-    'cache' => false,  // Disable cache tracing
-    'events' => false, // Disable event tracing
-    'queue' => true,
-],
+```env
+OTEL_PHP_DISABLED_INSTRUMENTATIONS=laravel
 ```
 
 **Batch Exporting**: Export traces in batches rather than individually:
 
-```php
-'batch_exporter' => [
-    'enabled' => true,
-    'max_queue_size' => 2048,
-    'schedule_delay' => 5000, // milliseconds
-    'export_timeout' => 30000, // milliseconds
-    'max_export_batch_size' => 512,
-],
+```env
+OTEL_BSP_MAX_QUEUE_SIZE=2048
+OTEL_BSP_SCHEDULE_DELAY=5000
+OTEL_BSP_EXPORT_TIMEOUT=30000
+OTEL_BSP_MAX_EXPORT_BATCH_SIZE=512
 ```
 
 ## Troubleshooting Common Issues
@@ -348,7 +261,7 @@ php -m | grep opentelemetry
 curl http://localhost:4318/v1/traces
 ```
 
-**Missing spans**: Check that instrumentation is enabled for the component in `config/opentelemetry.php`.
+**Missing spans**: Check that `OTEL_PHP_AUTOLOAD_ENABLED=true` is set, the SDK and exporter packages are installed, and `OTEL_PHP_DISABLED_INSTRUMENTATIONS` does not include `laravel`.
 
 **High memory usage**: Reduce batch size or increase export frequency to prevent trace accumulation.
 
@@ -389,8 +302,8 @@ processors:
     send_batch_size: 1024
 
 exporters:
-  logging:
-    loglevel: debug
+  debug:
+    verbosity: detailed
   otlp:
     endpoint: your-backend:4317
     tls:
@@ -401,7 +314,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [logging, otlp]
+      exporters: [debug, otlp]
 ```
 
 ## Production Deployment Checklist
