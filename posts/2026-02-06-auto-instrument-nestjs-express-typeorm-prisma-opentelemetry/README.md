@@ -37,7 +37,10 @@ Install the core OpenTelemetry SDK and auto-instrumentation packages:
 
 ```bash
 npm install @opentelemetry/sdk-node \
+            @opentelemetry/api \
             @opentelemetry/auto-instrumentations-node \
+            @opentelemetry/resources \
+            @opentelemetry/semantic-conventions \
             @opentelemetry/instrumentation-express \
             @opentelemetry/instrumentation-http \
             @opentelemetry/instrumentation-nestjs-core \
@@ -53,7 +56,7 @@ npm install @opentelemetry/instrumentation-typeorm
 For Prisma auto-instrumentation:
 
 ```bash
-npm install @prisma/instrumentation
+npm install @prisma/instrumentation @opentelemetry/api
 ```
 
 ## Setting Up the Base Auto-Instrumentation
@@ -66,14 +69,14 @@ Create a centralized tracing setup that enables all auto-instrumentations:
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
-import { Resource } from '@opentelemetry/resources';
-import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
+import { resourceFromAttributes } from '@opentelemetry/resources';
+import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from '@opentelemetry/semantic-conventions';
 
-// This file must be imported before any other application code
+// This file must be preloaded before any other application code
 export function setupInstrumentation() {
-  const resource = new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: 'nestjs-auto-instrumented',
-    [SemanticResourceAttributes.SERVICE_VERSION]: '1.0.0',
+  const resource = resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: 'nestjs-auto-instrumented',
+    [ATTR_SERVICE_VERSION]: '1.0.0',
   });
 
   const traceExporter = new OTLPTraceExporter({
@@ -104,6 +107,8 @@ export function setupInstrumentation() {
       .finally(() => process.exit(0));
   });
 }
+
+setupInstrumentation();
 ```
 
 ## Configuring Express Auto-Instrumentation
@@ -125,21 +130,30 @@ export function setupInstrumentation() {
     resource,
     traceExporter,
     instrumentations: [
-      // HTTP instrumentation (captures outgoing HTTP requests)
+      // HTTP instrumentation (captures incoming and outgoing HTTP requests)
       new HttpInstrumentation({
         enabled: true,
-        ignoreIncomingPaths: [
-          '/health',
-          '/metrics',
-          '/favicon.ico',
-        ],
+        ignoreIncomingRequestHook: (request) => {
+          const path = request.url?.split('?')[0];
+          return path === '/health' || path === '/metrics' || path === '/favicon.ico';
+        },
         requestHook: (span, request) => {
           // Add custom attributes to HTTP spans
-          span.setAttribute('http.request.id', request.headers['x-request-id']);
+          const requestId = 'headers' in request ? request.headers['x-request-id'] : undefined;
+          if (typeof requestId === 'string') {
+            span.setAttribute('http.request.id', requestId);
+          } else if (Array.isArray(requestId) && requestId[0]) {
+            span.setAttribute('http.request.id', requestId[0]);
+          }
         },
         responseHook: (span, response) => {
           // Add response-specific attributes
-          span.setAttribute('http.response.content_length', response.headers['content-length']);
+          const contentLength = 'getHeader' in response
+            ? response.getHeader('content-length')
+            : response.headers['content-length'];
+          if (contentLength) {
+            span.setAttribute('http.response.content_length', String(contentLength));
+          }
         },
       }),
 
@@ -194,10 +208,10 @@ export function setupInstrumentation() {
         enabled: true,
         // Capture query parameters (be careful with sensitive data)
         enhancedDatabaseReporting: process.env.NODE_ENV !== 'production',
-        responseHook: (span, response) => {
+        responseHook: (span, info) => {
           // Add query execution metadata
-          if (response.records) {
-            span.setAttribute('db.result.count', response.records.length);
+          if (Array.isArray(info.response)) {
+            span.setAttribute('db.result.count', info.response.length);
           }
         },
       }),
@@ -312,9 +326,7 @@ export function setupInstrumentation() {
       // ... previous instrumentations ...
 
       // Prisma instrumentation
-      new PrismaInstrumentation({
-        middleware: true, // Enable Prisma middleware tracing
-      }),
+      new PrismaInstrumentation(),
     ],
   });
 
@@ -351,7 +363,6 @@ Example Prisma schema:
 
 generator client {
   provider = "prisma-client-js"
-  previewFeatures = ["tracing"]
 }
 
 datasource db {
@@ -418,7 +429,7 @@ export class PostsService {
     });
   }
 
-  // Transactions are traced as a single unit
+  // Interactive transactions are included in the trace with their child query spans
   async createPostWithUser(email: string, postTitle: string) {
     return this.prisma.$transaction(async (tx) => {
       const user = await tx.user.create({
@@ -440,16 +451,11 @@ export class PostsService {
 
 ## Initializing Instrumentation Before Application
 
-The instrumentation must be loaded before any application code:
+The instrumentation must be loaded before any application code. The most reliable approach is to preload the instrumentation file when starting Node.js:
 
 ```typescript
 // src/main.ts
 
-// CRITICAL: Import instrumentation FIRST
-import { setupInstrumentation } from './instrumentation';
-setupInstrumentation();
-
-// Now import NestJS and app code
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 
@@ -463,6 +469,18 @@ async function bootstrap() {
 }
 
 bootstrap();
+```
+
+Start the compiled application with instrumentation preloaded:
+
+```bash
+node --require ./dist/instrumentation.js dist/main.js
+```
+
+If you run TypeScript directly with Node.js 20 or later, you can use `--import`:
+
+```bash
+npx tsx --import ./src/instrumentation.ts src/main.ts
 ```
 
 ## Viewing Auto-Instrumented Traces
@@ -538,6 +556,7 @@ Control which queries and operations get traced:
 
 import { TypeormInstrumentation } from '@opentelemetry/instrumentation-typeorm';
 import { PrismaInstrumentation } from '@prisma/instrumentation';
+import { HttpInstrumentation } from '@opentelemetry/instrumentation-http';
 
 export function setupInstrumentation() {
   const sdk = new NodeSDK({
@@ -546,34 +565,28 @@ export function setupInstrumentation() {
     instrumentations: [
       new TypeormInstrumentation({
         enabled: true,
-        // Only capture slow queries in production
+        // Avoid capturing query parameters in production
         enhancedDatabaseReporting: false,
-        responseHook: (span, response) => {
-          // Add custom logic based on query performance
-          const duration = span.endTime ? span.endTime[0] - span.startTime[0] : 0;
-          if (duration > 1) { // More than 1 second
-            span.setAttribute('db.slow_query', true);
-          }
-        },
+        // Suppress spans created by the underlying database driver instrumentation
+        suppressInternalInstrumentation: true,
       }),
 
       new PrismaInstrumentation({
-        middleware: true,
+        ignoreSpanTypes: ['prisma:client:serialize'],
       }),
 
       new HttpInstrumentation({
         enabled: true,
         // Ignore specific endpoints
-        ignoreIncomingPaths: [
-          '/health',
-          '/metrics',
-          '/api/internal/*',
-        ],
+        ignoreIncomingRequestHook: (request) => {
+          const path = request.url?.split('?')[0] ?? '';
+          return path === '/health' || path === '/metrics' || path.startsWith('/api/internal/');
+        },
         // Don't trace outgoing requests to specific hosts
-        ignoreOutgoingUrls: [
-          /localhost:3000/,
-          /internal-service\.local/,
-        ],
+        ignoreOutgoingRequestHook: (request) => {
+          const hostname = String(request.hostname ?? request.host ?? '');
+          return hostname === 'localhost' || hostname === 'internal-service.local';
+        },
       }),
     ],
   });
@@ -584,7 +597,7 @@ export function setupInstrumentation() {
 
 ## Testing Auto-Instrumentation
 
-Verify that traces are being created correctly:
+Smoke-test that instrumentation is initialized before your application handles requests:
 
 ```typescript
 // test/tracing.e2e.spec.ts
@@ -592,15 +605,13 @@ Verify that traces are being created correctly:
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import * as request from 'supertest';
+import '../src/instrumentation';
 import { AppModule } from '../src/app.module';
-import { setupInstrumentation } from '../src/instrumentation';
 
 describe('Auto-Instrumentation (e2e)', () => {
   let app: INestApplication;
 
   beforeAll(async () => {
-    setupInstrumentation();
-
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
@@ -613,21 +624,21 @@ describe('Auto-Instrumentation (e2e)', () => {
     await app.close();
   });
 
-  it('should trace HTTP requests with database queries', async () => {
+  it('should handle HTTP requests while instrumentation is active', async () => {
     const response = await request(app.getHttpServer())
       .get('/api/users')
+      .set('traceparent', '00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01')
       .expect(200);
 
     expect(response.body).toBeDefined();
-    // Verify trace headers are present
-    expect(response.headers['traceparent']).toBeDefined();
+    // Verify spans in your configured exporter or collector.
   });
 });
 ```
 
 ## Common Auto-Instrumentation Issues
 
-**Missing Spans**: Ensure instrumentation is loaded before application code. The `setupInstrumentation()` call must be the first import in main.ts.
+**Missing Spans**: Ensure instrumentation is loaded before application code. Preload the instrumentation file with Node.js `--require` or `--import` so instrumented modules are patched before NestJS, Express, TypeORM, or Prisma are loaded.
 
 **Duplicate Spans**: Happens when you manually instrument code that's already auto-instrumented. Disable manual instrumentation or the auto-instrumentation for that library.
 
@@ -635,6 +646,6 @@ describe('Auto-Instrumentation (e2e)', () => {
 
 **TypeORM Spans Missing**: TypeORM instrumentation requires TypeORM 0.3.0 or higher. Check your version and update if needed.
 
-**Prisma Spans Missing**: Enable the tracing preview feature in your Prisma schema and ensure you're using @prisma/instrumentation version 5.0.0 or higher.
+**Prisma Spans Missing**: Use Prisma ORM 6.1.0 or higher with a matching @prisma/instrumentation version. For Prisma ORM versions from 4.2.0 up to 6.1.0, enable the `tracing` preview feature in your Prisma schema.
 
 Auto-instrumentation gives you comprehensive observability without touching your business logic. For NestJS applications using Express, TypeORM, and Prisma, this approach provides immediate value and scales from development through production.
