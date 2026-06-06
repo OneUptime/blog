@@ -407,8 +407,10 @@ terraform {
   }
 }
 
-# Resolution Option 2: Use provider aliases for different versions
-# Note: This only works when modules accept provider configuration
+# Resolution Option 2: Use provider aliases for different configurations
+# Note: Terraform allows only one version of a given provider per configuration;
+# aliases let you have multiple configurations (e.g., regions/accounts) of that
+# single version, not multiple versions
 provider "aws" {
   alias  = "current"
   region = "us-east-1"
@@ -445,14 +447,14 @@ Renovate can automatically create pull requests when new provider versions are a
     {
       "description": "Group all Terraform provider updates",
       "matchManagers": ["terraform"],
-      "matchDepTypes": ["provider"],
+      "matchDepTypes": ["required_provider"],
       "groupName": "terraform providers",
       "schedule": ["before 9am on monday"]
     },
     {
       "description": "Auto-merge patch updates for providers",
       "matchManagers": ["terraform"],
-      "matchDepTypes": ["provider"],
+      "matchDepTypes": ["required_provider"],
       "matchUpdateTypes": ["patch"],
       "automerge": true,
       "automergeType": "pr"
@@ -460,7 +462,7 @@ Renovate can automatically create pull requests when new provider versions are a
     {
       "description": "Require manual review for major provider updates",
       "matchManagers": ["terraform"],
-      "matchDepTypes": ["provider"],
+      "matchDepTypes": ["required_provider"],
       "matchUpdateTypes": ["major"],
       "labels": ["breaking-change", "requires-testing"],
       "reviewers": ["team:infrastructure"]
@@ -491,7 +493,8 @@ terraform {
     }
 
     # Private provider from Terraform Cloud private registry
-    # Format: <organization>/<namespace>/<provider>
+    # Format: <hostname>/<namespace>/<type>
+    # For Terraform Cloud, the organization name is the namespace
     internal = {
       source  = "app.terraform.io/myorg/internal"
       version = "~> 2.0"
@@ -536,7 +539,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: 1.6.0
 
@@ -576,7 +579,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
 
       - name: Initialize
         run: terraform init
