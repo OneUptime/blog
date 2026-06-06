@@ -8,9 +8,9 @@ Description: Learn how to deploy and configure the Datadog Distribution of OpenT
 
 ---
 
-Datadog has its own distribution of the OpenTelemetry Collector, sometimes referred to as DDOT. It is built on the upstream collector but includes the Datadog exporter and connector components, along with configuration defaults that map well to Datadog's data model. This gives you the ability to use standard OpenTelemetry instrumentation while sending data to Datadog without running the Datadog Agent.
+Datadog has its own distribution of the OpenTelemetry Collector, sometimes referred to as DDOT. It is built into the Datadog Agent and includes a curated set of OpenTelemetry components, Datadog-specific components, and configuration defaults that map well to Datadog's data model. This gives you the ability to use standard OpenTelemetry instrumentation and Collector-style pipelines while sending data to Datadog.
 
-That said, Datadog also supports receiving OTLP data through the standard Datadog Agent. So you have options. Let's walk through how DDOT works and when to use each approach.
+That said, Datadog also supports receiving OTLP data through the standard Datadog Agent without enabling the full DDOT Collector pipeline. So you have options. Let's walk through how DDOT works and when to use each approach.
 
 ## Two Ways to Send OTel Data to Datadog
 
@@ -31,58 +31,55 @@ flowchart TD
 
 **Option 1** uses the standard Datadog Agent with OTLP ingestion enabled. This is simpler if you already run the Datadog Agent for infrastructure monitoring.
 
-**Option 2** uses the DDOT Collector, which is a pure OpenTelemetry Collector with Datadog components baked in. This is better if you want to stay fully in the OTel ecosystem.
+**Option 2** uses the DDOT Collector embedded in the Datadog Agent. This is better if you want Collector-style pipelines, processors, and multi-backend export while still using Datadog's Agent-based features.
 
 ## Installing DDOT
 
-### Using Docker
+### On Linux
 
-Pull and run the DDOT Collector container:
+Install the Datadog Agent with the DDOT Collector enabled:
 
 ```bash
-# Run the Datadog Distribution of the OTel Collector
-
-docker run -d \
-  --name ddot-collector \
-  -e DD_API_KEY=your-datadog-api-key \
-  -e DD_SITE=datadoghq.com \
-  -p 4317:4317 \
-  -p 4318:4318 \
-  -v ./ddot-config.yaml:/etc/otelcol/config.yaml \
-  datadog/opentelemetry-collector-contrib:latest \
-  --config /etc/otelcol/config.yaml
+DD_API_KEY=your-datadog-api-key \
+DD_SITE=datadoghq.com \
+DD_OTELCOLLECTOR_ENABLED=true \
+DD_AGENT_MAJOR_VERSION=7 \
+bash -c "$(curl -L https://install.datadoghq.com/scripts/install_script_agent7.sh)"
 ```
 
 ### On Kubernetes with Helm
 
-Deploy DDOT on Kubernetes using the Datadog Helm chart:
+Deploy the Datadog Agent with the DDOT Collector enabled using the Datadog Helm chart:
 
 ```bash
 # Add the Datadog Helm repository
 helm repo add datadog https://helm.datadoghq.com
 helm repo update
 
-# Install DDOT Collector
-helm install ddot datadog/opentelemetry-collector \
+# Install the Datadog Agent with DDOT Collector enabled
+helm upgrade -i datadog datadog/datadog \
   --namespace monitoring \
   --create-namespace \
   --set datadog.apiKey=your-datadog-api-key \
-  --set datadog.site=datadoghq.com
+  --set datadog.site=datadoghq.com \
+  --set datadog.otelCollector.enabled=true \
+  --set datadog.otelCollector.ports[0].containerPort=4317 \
+  --set datadog.otelCollector.ports[0].hostPort=4317 \
+  --set datadog.otelCollector.ports[0].name=otel-grpc \
+  --set datadog.otelCollector.ports[1].containerPort=4318 \
+  --set datadog.otelCollector.ports[1].hostPort=4318 \
+  --set datadog.otelCollector.ports[1].name=otel-http
 ```
 
-### Using the Binary
+### Using a Custom Collector Configuration
 
-Download and run the binary directly:
+If you need custom Collector configuration, pass it to the Datadog Helm chart:
 
 ```bash
-# Download the DDOT Collector binary for Linux
-curl -L -o ddot-collector \
-  https://github.com/DataDog/datadog-otel-collector/releases/latest/download/ddot-collector-linux-amd64
-
-chmod +x ddot-collector
-
-# Run with your config
-./ddot-collector --config ddot-config.yaml
+helm upgrade -i datadog datadog/datadog \
+  --namespace monitoring \
+  -f datadog-values.yaml \
+  --set-file datadog.otelCollector.config=ddot-config.yaml
 ```
 
 ## Basic DDOT Configuration
@@ -134,8 +131,8 @@ exporters:
   # Send traces and metrics to Datadog
   datadog:
     api:
-      key: "${DD_API_KEY}"
-      site: "${DD_SITE}"
+      key: "${env:DD_API_KEY}"
+      site: "${env:DD_SITE}"
     traces:
       span_name_as_resource_name: true
     metrics:
@@ -183,7 +180,7 @@ flowchart LR
 
 ## Host Metrics Collection
 
-To replace the Datadog Agent's infrastructure monitoring, add host metrics collection:
+If you are using a Collector-style pipeline for infrastructure telemetry, add host metrics collection:
 
 ```yaml
 receivers:
@@ -206,12 +203,9 @@ receivers:
       paging:
       processes:
 
-  # Collect Docker container metrics
-  docker_stats:
-    endpoint: unix:///var/run/docker.sock
-    collection_interval: 15s
-
 processors:
+  batch:
+
   # Map OTel resource attributes to Datadog tags
   # Datadog expects specific tag formats
   resource/datadog:
@@ -226,8 +220,8 @@ processors:
 exporters:
   datadog:
     api:
-      key: "${DD_API_KEY}"
-      site: "${DD_SITE}"
+      key: "${env:DD_API_KEY}"
+      site: "${env:DD_SITE}"
     host_metadata:
       enabled: true
       hostname_source: config_or_system
@@ -235,24 +229,23 @@ exporters:
 service:
   pipelines:
     metrics:
-      receivers: [hostmetrics, docker_stats]
+      receivers: [hostmetrics]
       processors: [resource/datadog, batch]
       exporters: [datadog]
 ```
 
 ## Kubernetes Deployment
 
-Full Kubernetes DaemonSet for DDOT:
+Example Kubernetes configuration for DDOT using the Datadog Operator:
 
 ```yaml
-# ddot-configmap.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: ddot-config
+  name: otel-agent-config-map
   namespace: monitoring
 data:
-  config.yaml: |
+  otel-config.yaml: |
     receivers:
       otlp:
         protocols:
@@ -291,7 +284,7 @@ data:
       datadog:
         api:
           key: "${env:DD_API_KEY}"
-          site: datadoghq.com
+          site: "${env:DD_SITE}"
         traces:
           span_name_as_resource_name: true
 
@@ -314,52 +307,32 @@ data:
           processors: [memory_limiter, k8sattributes, batch]
           exporters: [datadog]
 ---
-apiVersion: apps/v1
-kind: DaemonSet
+apiVersion: datadoghq.com/v2alpha1
+kind: DatadogAgent
 metadata:
-  name: ddot-collector
+  name: datadog
   namespace: monitoring
 spec:
-  selector:
-    matchLabels:
-      app: ddot-collector
-  template:
-    metadata:
-      labels:
-        app: ddot-collector
-    spec:
-      serviceAccountName: ddot-collector
-      containers:
-        - name: collector
-          image: datadog/opentelemetry-collector-contrib:latest
-          args: ["--config", "/conf/config.yaml"]
-          env:
-            - name: DD_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: datadog-secret
-                  key: api-key
-            - name: NODE_NAME
-              valueFrom:
-                fieldRef:
-                  fieldPath: spec.nodeName
-          ports:
-            - containerPort: 4317
-            - containerPort: 4318
-          volumeMounts:
-            - name: config
-              mountPath: /conf
-          resources:
-            requests:
-              cpu: 200m
-              memory: 256Mi
-            limits:
-              cpu: 500m
-              memory: 512Mi
-      volumes:
-        - name: config
-          configMap:
-            name: ddot-config
+  global:
+    clusterName: my-cluster
+    site: datadoghq.com
+    credentials:
+      apiSecret:
+        secretName: datadog-secret
+        keyName: api-key
+  features:
+    otelCollector:
+      enabled: true
+      ports:
+        - containerPort: 4317
+          hostPort: 4317
+          name: otel-grpc
+        - containerPort: 4318
+          hostPort: 4318
+          name: otel-http
+      conf:
+        configMap:
+          name: otel-agent-config-map
 ```
 
 ## DDOT vs Datadog Agent with OTLP
@@ -368,13 +341,13 @@ The Datadog Agent can also receive OTLP data. Here is how the two compare:
 
 | Feature | DDOT Collector | Datadog Agent + OTLP |
 |---------|---------------|---------------------|
-| Infrastructure monitoring | Manual config | Built-in |
+| Infrastructure monitoring | Built-in through the Agent | Built-in |
 | APM stats computation | Via connector | Automatic |
-| Live processes | Not included | Built-in |
-| Network monitoring | Not included | Built-in |
+| Live processes | Available through Agent features | Built-in |
+| Network monitoring | Available through Agent features | Built-in |
 | Config language | OTel YAML | Datadog YAML |
 | Multi-backend export | Easy | Not supported |
-| OTel ecosystem | Full compatibility | OTLP receiver only |
+| OTel ecosystem | Collector pipelines and components | OTLP receiver only |
 
 ## When to Use DDOT
 
@@ -383,7 +356,7 @@ Choose DDOT when:
 - You want to use standard OTel configuration and tooling
 - You need to send data to Datadog and other backends simultaneously
 - You are standardizing on OTel across your organization
-- You do not need Datadog-specific features like NPM or Live Processes
+- You want Datadog Agent features together with OpenTelemetry Collector pipelines
 
 ## When to Use the Datadog Agent Instead
 
