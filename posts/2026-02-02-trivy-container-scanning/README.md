@@ -45,9 +45,9 @@ trivy --version
 
 ```bash
 # Add Trivy repository to apt sources
-sudo apt-get install wget apt-transport-https gnupg lsb-release
-wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
-echo deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main | sudo tee -a /etc/apt/sources.list.d/trivy.list
+sudo apt-get install wget gnupg
+wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --dearmor | sudo tee /usr/share/keyrings/trivy.gpg > /dev/null
+echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main" | sudo tee -a /etc/apt/sources.list.d/trivy.list
 
 # Update and install
 sudo apt-get update
@@ -353,7 +353,7 @@ vulnerabilities:
   # Mitigated by network policy - service not exposed
   - id: CVE-2024-5678
     statement: Mitigated by network isolation
-    expires: 2024-12-31  # Review this decision later
+    expired_at: 2024-12-31  # Review this decision later
 ```
 
 ### Use the Ignore File
