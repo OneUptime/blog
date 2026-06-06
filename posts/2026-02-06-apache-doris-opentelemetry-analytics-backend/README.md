@@ -16,7 +16,7 @@ Observability data has characteristics that make it challenging for traditional 
 
 Doris handles this well because of its architecture. It uses a massively parallel processing (MPP) engine that distributes queries across multiple nodes. Its columnar storage with smart indexing means queries that filter or aggregate over specific columns only read the data they need. And the MySQL protocol compatibility means you do not need specialized drivers or clients.
 
-Compared to ClickHouse, which is popular for similar workloads, Doris has the advantage of simpler operations. It does not require ZooKeeper for coordination and handles schema changes online without downtime.
+Compared to ClickHouse, which is popular for similar workloads, Doris can be simpler to operate for some teams. It does not require a separate ZooKeeper or ClickHouse Keeper service for replicated storage coordination, and it handles schema changes online without downtime.
 
 ## Architecture Overview
 
@@ -46,7 +46,7 @@ version: "3"
 services:
   # Frontend node handles queries and metadata
   doris-fe:
-    image: apache/doris:2.0.3-fe
+    image: apache/doris:2.0.3-fe-x86_64
     ports:
       # MySQL protocol port for queries
       - "9030:9030"
@@ -65,7 +65,7 @@ services:
 
   # Backend node stores data and executes queries
   doris-be:
-    image: apache/doris:2.0.3-be
+    image: apache/doris:2.0.3-be-x86_64
     ports:
       - "8040:8040"
     environment:
@@ -222,14 +222,16 @@ processors:
 
 exporters:
   # Export traces to the Doris bridge service
-  otlphttp/doris-traces:
+  otlp_http/doris-traces:
     endpoint: http://localhost:5000
+    encoding: json
     tls:
       insecure: true
 
   # Export metrics to the Doris bridge service
-  otlphttp/doris-metrics:
+  otlp_http/doris-metrics:
     endpoint: http://localhost:5001
+    encoding: json
     tls:
       insecure: true
 
@@ -238,12 +240,12 @@ service:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [otlphttp/doris-traces]
+      exporters: [otlp_http/doris-traces]
 
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [otlphttp/doris-metrics]
+      exporters: [otlp_http/doris-metrics]
 ```
 
 Here is a Python bridge service that receives OTLP trace data and loads it into Doris:
@@ -273,6 +275,8 @@ def stream_load(table, data):
         "format": "json",
         # Strip the outer array wrapper
         "strip_outer_array": "true",
+        # Let Doris validate headers before the request body is sent
+        "Expect": "100-continue",
         # Set a unique label to prevent duplicate loads
         "label": f"otel_{table}_{int(datetime.now().timestamp() * 1000)}",
     }
