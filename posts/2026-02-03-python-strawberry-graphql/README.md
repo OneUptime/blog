@@ -253,9 +253,9 @@ class Post(Node, Timestamped):
     id: strawberry.ID
     title: str
     content: str
+    author_id: strawberry.ID
     created_at: datetime
     updated_at: Optional[datetime] = None
-    author_id: strawberry.ID
 
 
 @strawberry.type
@@ -263,10 +263,10 @@ class Comment(Node, Timestamped):
     """Comments also implement the same interfaces"""
     id: strawberry.ID
     text: str
-    created_at: datetime
-    updated_at: Optional[datetime] = None
     post_id: strawberry.ID
     author_id: strawberry.ID
+    created_at: datetime
+    updated_at: Optional[datetime] = None
 ```
 
 ---
