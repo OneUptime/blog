@@ -25,14 +25,14 @@ Every time a pod makes an HTTP request to a service name like `payment-service.d
 
 ### Cache Performance
 - `coredns_cache_hits_total` - Number of cache hits by type (success, denial)
-- `coredns_cache_misses_total` - Number of cache misses
+- `coredns_cache_requests_total` - Number of cache lookup requests
 - `coredns_cache_entries` - Current number of cache entries
 - `coredns_cache_evictions_total` - Number of cache evictions
 
 ### Request Breakdown
 - `coredns_dns_requests_total` - Total DNS requests by protocol, family, and type
 - `coredns_dns_responses_total` - Total DNS responses by rcode (NOERROR, NXDOMAIN, SERVFAIL)
-- `coredns_forward_requests_total` - Requests forwarded to upstream servers
+- `coredns_proxy_request_duration_seconds_count{proxy_name="forward"}` - Requests forwarded to upstream servers
 
 ## Collector Configuration
 
@@ -79,6 +79,7 @@ processors:
           - "coredns_dns_responses_total"
           - "coredns_cache_.*"
           - "coredns_forward_.*"
+          - "coredns_proxy_.*"
           - "coredns_panics_total"
           - "coredns_health_request_failures_total"
           - "process_.*"
@@ -103,10 +104,10 @@ service:
 The cache hit rate is one of the most useful derived metrics. You can compute it in your backend, but you can also tag it at the Collector level:
 
 ```yaml
-# Cache hit rate = hits / (hits + misses)
+# Cache hit rate = hits / requests
 
 # This is best computed in your observability backend using the raw counters:
-# coredns_cache_hits_total and coredns_cache_misses_total
+# coredns_cache_hits_total and coredns_cache_requests_total
 
 # At the Collector level, you can add useful tags
 processors:
@@ -116,7 +117,7 @@ processors:
         statements:
           # Tag cache metrics with the cache type
           - set(attributes["cache.status"], "hit") where metric.name == "coredns_cache_hits_total"
-          - set(attributes["cache.status"], "miss") where metric.name == "coredns_cache_misses_total"
+          - set(attributes["cache.status"], "request") where metric.name == "coredns_cache_requests_total"
 ```
 
 ## Monitoring Forward Request Performance
@@ -125,11 +126,11 @@ CoreDNS forwards requests it cannot resolve locally to upstream DNS servers. Mon
 
 ```yaml
 # Key forward metrics:
-# coredns_forward_requests_total - Total forwarded requests
-# coredns_forward_responses_total - Total responses from upstreams (by rcode)
-# coredns_forward_request_duration_seconds - Latency of forwarded requests
-# coredns_forward_healthcheck_failures_total - Upstream health check failures
+# coredns_proxy_request_duration_seconds_count{proxy_name="forward"} - Total forwarded requests
+# coredns_proxy_request_duration_seconds{proxy_name="forward"} - Latency and responses from upstreams by rcode
+# coredns_proxy_healthcheck_failures_total{proxy_name="forward"} - Upstream health check failures
 # coredns_forward_max_concurrent_rejects_total - Requests rejected due to concurrency limit
+# coredns_forward_healthcheck_broken_total - Times all upstreams were unhealthy
 ```
 
 ## Static Target Configuration
@@ -169,10 +170,10 @@ Set up alerts for DNS issues that impact applications:
 # coredns_dns_request_duration_seconds p99 > 0.1
 
 # Warning: Cache hit rate below 80%
-# coredns_cache_hits_total / (coredns_cache_hits_total + coredns_cache_misses_total) < 0.8
+# coredns_cache_hits_total / coredns_cache_requests_total < 0.8
 
 # Warning: Forward health check failures
-# Rate of coredns_forward_healthcheck_failures_total > 0
+# Rate of coredns_proxy_healthcheck_failures_total{proxy_name="forward"} > 0
 
 # Critical: CoreDNS panics
 # Rate of coredns_panics_total > 0
