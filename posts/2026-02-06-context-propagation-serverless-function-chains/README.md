@@ -41,7 +41,7 @@ Before tackling propagation, let us establish a solid base configuration for Lam
 # This layer includes the SDK, auto-instrumentation, and a collector.
 aws lambda update-function-configuration \
   --function-name my-function \
-  --layers arn:aws:lambda:us-east-1:901920570463:layer:aws-otel-nodejs-amd64-ver-1-18-1:1 \
+  --layers arn:aws:lambda:us-east-1:901920570463:layer:aws-otel-nodejs-amd64-ver-1-30-2:1 \
   --environment "Variables={
     AWS_LAMBDA_EXEC_WRAPPER=/opt/otel-handler,
     OPENTELEMETRY_COLLECTOR_CONFIG_FILE=/var/task/collector.yaml,
@@ -63,16 +63,17 @@ const { propagation, context, trace } = require('@opentelemetry/api');
 // for manual injection and extraction
 propagation.setGlobalPropagator(new W3CTraceContextPropagator());
 
-const provider = new NodeTracerProvider();
-provider.addSpanProcessor(
-  new BatchSpanProcessor(new OTLPTraceExporter({
-    url: 'http://localhost:4318/v1/traces',
-  }))
-);
+const provider = new NodeTracerProvider({
+  spanProcessors: [
+    new BatchSpanProcessor(new OTLPTraceExporter({
+      url: 'http://localhost:4318/v1/traces',
+    })),
+  ],
+});
 provider.register();
 
 const tracer = trace.getTracer('order-service');
-module.exports = { tracer };
+module.exports = { tracer, provider };
 ```
 
 This gives you a configured tracer and a registered propagator that you can use to manually inject and extract context when communicating through message queues.
@@ -92,29 +93,32 @@ const tracer = trace.getTracer('order-service');
 async function sendOrderToQueue(order) {
   // Start a span for the send operation
   return tracer.startActiveSpan('send-order-to-queue', async (span) => {
-    // Create a carrier object to hold the propagation headers.
-    // We will convert these into SQS message attributes.
-    const carrier = {};
-    propagation.inject(context.active(), carrier);
+    try {
+      // Create a carrier object to hold the propagation headers.
+      // We will convert these into SQS message attributes.
+      const carrier = {};
+      propagation.inject(context.active(), carrier);
 
-    // Convert the carrier entries into SQS MessageAttributes format.
-    // SQS attributes have a specific structure with DataType and StringValue.
-    const messageAttributes = {};
-    for (const [key, value] of Object.entries(carrier)) {
-      messageAttributes[key] = {
-        DataType: 'String',
-        StringValue: value,
-      };
+      // Convert the carrier entries into SQS MessageAttributes format.
+      // SQS attributes have a specific structure with DataType and StringValue.
+      const messageAttributes = {};
+      for (const [key, value] of Object.entries(carrier)) {
+        messageAttributes[key] = {
+          DataType: 'String',
+          StringValue: value,
+        };
+      }
+
+      const command = new SendMessageCommand({
+        QueueUrl: process.env.ORDER_QUEUE_URL,
+        MessageBody: JSON.stringify(order),
+        MessageAttributes: messageAttributes,
+      });
+
+      await sqs.send(command);
+    } finally {
+      span.end();
     }
-
-    const command = new SendMessageCommand({
-      QueueUrl: process.env.ORDER_QUEUE_URL,
-      MessageBody: JSON.stringify(order),
-      MessageAttributes: messageAttributes,
-    });
-
-    await sqs.send(command);
-    span.end();
   });
 }
 ```
@@ -148,9 +152,12 @@ exports.handler = async (event) => {
     // This connects our processing span to the original trace.
     await context.with(parentContext, async () => {
       return tracer.startActiveSpan('process-payment', async (span) => {
-        const order = JSON.parse(record.body);
-        await processPayment(order);
-        span.end();
+        try {
+          const order = JSON.parse(record.body);
+          await processPayment(order);
+        } finally {
+          span.end();
+        }
       });
     });
   }
@@ -167,7 +174,7 @@ SNS works similarly to SQS but uses the `MessageAttributes` parameter on the pub
 # publish_to_sns.py - Inject trace context into SNS message attributes
 import json
 import boto3
-from opentelemetry import trace, context, propagate
+from opentelemetry import trace, propagate
 
 tracer = trace.get_tracer("confirmation-service")
 sns = boto3.client("sns", region_name="us-east-1")
@@ -198,7 +205,8 @@ When SNS delivers to a Lambda subscriber, the message attributes arrive inside t
 
 ```python
 # handle_sns_event.py - Extract trace context from SNS event in Lambda
-from opentelemetry import trace, context, propagate
+import json
+from opentelemetry import trace, propagate
 
 tracer = trace.get_tracer("notification-service")
 
@@ -238,23 +246,25 @@ const tracer = trace.getTracer('orchestrator');
 
 async function startOrderWorkflow(order) {
   return tracer.startActiveSpan('start-order-workflow', async (span) => {
-    // Inject trace context into a carrier
-    const traceContext = {};
-    propagation.inject(context.active(), traceContext);
+    try {
+      // Inject trace context into a carrier
+      const traceContext = {};
+      propagation.inject(context.active(), traceContext);
 
-    // Include the trace context alongside the business data.
-    // Each step in the state machine will pass this through.
-    const input = {
-      order: order,
-      _traceContext: traceContext,
-    };
+      // Include the trace context alongside the business data.
+      // Each step in the state machine will pass this through.
+      const input = {
+        order: order,
+        _traceContext: traceContext,
+      };
 
-    await sfn.send(new StartExecutionCommand({
-      stateMachineArn: process.env.STATE_MACHINE_ARN,
-      input: JSON.stringify(input),
-    }));
-
-    span.end();
+      await sfn.send(new StartExecutionCommand({
+        stateMachineArn: process.env.STATE_MACHINE_ARN,
+        input: JSON.stringify(input),
+      }));
+    } finally {
+      span.end();
+    }
   });
 }
 ```
@@ -276,22 +286,24 @@ exports.handler = async (event) => {
 
   return context.with(parentContext, () => {
     return tracer.startActiveSpan('validate-order', (span) => {
-      // Do the actual work for this step
-      const result = validateOrder(event.order);
+      try {
+        // Do the actual work for this step
+        const result = validateOrder(event.order);
 
-      // Re-inject the current context so downstream steps
-      // see this span as their parent
-      const updatedContext = {};
-      propagation.inject(context.active(), updatedContext);
+        // Re-inject the current context so downstream steps
+        // see this span as their parent
+        const updatedContext = {};
+        propagation.inject(context.active(), updatedContext);
 
-      span.end();
-
-      // Return the result with updated trace context
-      return {
-        order: event.order,
-        validationResult: result,
-        _traceContext: updatedContext,
-      };
+        // Return the result with updated trace context
+        return {
+          order: event.order,
+          validationResult: result,
+          _traceContext: updatedContext,
+        };
+      } finally {
+        span.end();
+      }
     });
   });
 };
@@ -305,7 +317,7 @@ Lambda functions can be shut down immediately after the handler returns. If your
 
 ```javascript
 // handler-with-flush.js - Ensure spans are exported before Lambda freezes
-const { trace } = require('@opentelemetry/api');
+const { provider } = require('./tracing');
 
 exports.handler = async (event) => {
   const result = await processEvent(event);
@@ -313,10 +325,7 @@ exports.handler = async (event) => {
   // Force flush all pending spans before the function returns.
   // Without this, buffered spans may be lost when Lambda
   // freezes the execution environment.
-  const provider = trace.getTracerProvider();
-  if (provider.forceFlush) {
-    await provider.forceFlush();
-  }
+  await provider.forceFlush();
 
   return result;
 };
