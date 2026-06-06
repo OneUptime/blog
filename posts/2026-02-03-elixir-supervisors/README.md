@@ -269,7 +269,7 @@ iex> MyApp.Counter.get()
 
 ## 4. Supervision Strategies
 
-Supervisors support four different restart strategies. The right choice depends on how your child processes relate to each other.
+Supervisors support three different restart strategies. The right choice depends on how your child processes relate to each other.
 
 ### :one_for_one
 
@@ -608,7 +608,8 @@ defmodule MyApp.Session do
   def handle_info(:check_timeout, state) do
     # Check if session has been inactive
     elapsed = System.monotonic_time() - state.last_activity
-    elapsed_minutes = System.convert_time_unit(elapsed, :native, :minute)
+    elapsed_seconds = System.convert_time_unit(elapsed, :native, :second)
+    elapsed_minutes = div(elapsed_seconds, 60)
 
     if elapsed_minutes > 30 do
       {:stop, :normal, state}  # Session expired, stop normally
@@ -1006,8 +1007,8 @@ Task.Supervisor options:
   name: MyApp.TaskSupervisor,
   max_restarts: 10,
   max_seconds: 60,
-  # Tasks should not restart by default
-  restart: :temporary
+  # Cap concurrent tasks - prevents runaway spawning
+  max_children: 1000
 }
 ```
 
@@ -1426,14 +1427,9 @@ Supervisor.which_children(MyApp.Supervisor)
 Supervisor.count_children(MyApp.WorkerSupervisor)
 # Returns: %{active: 5, specs: 5, supervisors: 0, workers: 5}
 
-# Get child specification
-Supervisor.get_all_specs(MyApp.Supervisor)
-
-# Check if a child exists
-case Supervisor.get_callback_module(MyApp.Supervisor) do
-  {:ok, module} -> IO.puts("Callback module: #{module}")
-  :error -> IO.puts("Not found")
-end
+# Inspect a specific child by looking through which_children/1
+Supervisor.which_children(MyApp.Supervisor)
+|> Enum.find(fn {id, _pid, _type, _modules} -> id == MyApp.Counter end)
 ```
 
 ### Tracing Process Restarts
