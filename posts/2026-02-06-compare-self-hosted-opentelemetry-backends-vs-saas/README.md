@@ -25,10 +25,10 @@ graph TD
     Loki --> Grafana
 ```
 
-Here is a minimal Kubernetes deployment for a self-hosted stack:
+Here is a minimal OpenTelemetry Collector configuration for a self-hosted stack:
 
 ```yaml
-# OTel Collector deployment that routes to self-hosted backends
+# OTel Collector configuration that routes to self-hosted backends
 
 # Central gateway that receives OTLP and fans out to storage
 receivers:
@@ -56,12 +56,12 @@ exporters:
       insecure: true
 
   # Metrics to Grafana Mimir via Prometheus remote write
-  prometheusremotewrite:
+  prometheus_remote_write:
     endpoint: "http://mimir-distributor.monitoring:8080/api/v1/push"
 
   # Logs to Grafana Loki
-  loki:
-    endpoint: "http://loki-distributor.monitoring:3100/loki/api/v1/push"
+  otlphttp/loki:
+    endpoint: "http://loki-distributor.monitoring:3100/otlp"
 
 service:
   pipelines:
@@ -72,11 +72,11 @@ service:
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [prometheusremotewrite]
+      exporters: [prometheus_remote_write]
     logs:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [loki]
+      exporters: [otlphttp/loki]
 ```
 
 Alternative self-hosted options include:
@@ -107,7 +107,7 @@ exporters:
     endpoint: "ingest.saas-vendor.com:443"
     headers:
       # Authentication via API key
-      "x-api-key": "${API_KEY}"
+      "x-api-key": "${env:API_KEY}"
 
 service:
   pipelines:
@@ -257,6 +257,12 @@ Many organizations use a hybrid model:
 ```yaml
 # OTel Collector with dual export for hybrid approach
 # High-value data goes to SaaS, bulk data stays self-hosted
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+
 exporters:
   # Self-hosted backend for high-volume, lower-priority data
   otlp/self-hosted:
@@ -268,14 +274,14 @@ exporters:
   otlp/saas:
     endpoint: "ingest.vendor.com:443"
     headers:
-      "x-api-key": "${API_KEY}"
+      "x-api-key": "${env:API_KEY}"
 
 processors:
-  # Filter to identify high-value traces
-  filter/critical:
-    traces:
-      span:
-        - 'attributes["app.tier"] == "critical"'
+  batch:
+  # Drop non-critical traces from the SaaS pipeline
+  filter/drop_non_critical:
+    trace_conditions:
+      - 'span.attributes["app.tier"] != "critical"'
 
 service:
   pipelines:
@@ -287,7 +293,7 @@ service:
     # Critical traces also go to SaaS for analysis
     traces/critical:
       receivers: [otlp]
-      processors: [filter/critical, batch]
+      processors: [filter/drop_non_critical, batch]
       exporters: [otlp/saas]
 ```
 
