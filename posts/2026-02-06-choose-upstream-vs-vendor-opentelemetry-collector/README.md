@@ -29,7 +29,7 @@ flowchart TD
     OTel --> DT[Dynatrace Distribution]
 ```
 
-**Upstream Core** has a minimal set of components: OTLP receiver/exporter, basic processors, and a few extensions. It is small and fast but limited.
+**Upstream Core** has a curated set of common components: OTLP receiver/exporters, basic processors, a few extensions, and common receivers/exporters such as Prometheus, Kafka, Jaeger, Zipkin, and file. It is smaller than contrib but not just OTLP.
 
 **Upstream Contrib** includes hundreds of community-contributed components. Most vendor-specific exporters live here. It is the Swiss army knife option.
 
@@ -78,7 +78,8 @@ This is where the rubber meets the road. Look at what receivers, processors, and
 **Upstream core** includes:
 - OTLP receiver and exporter
 - Batch, memory limiter, and attribute processors
-- Logging and debug exporters
+- Debug and file exporters
+- Prometheus receiver and exporters
 
 **Upstream contrib** adds hundreds more, including most vendor exporters.
 
@@ -112,7 +113,7 @@ graph LR
 
 ### 4. How important is the latest features?
 
-Upstream releases happen monthly. Vendor distributions often lag by weeks or months because they need to test and validate each release against their platform.
+Upstream releases happen frequently, roughly every two weeks in recent releases. Vendor distributions often lag by weeks or months because they need to test and validate each release against their platform.
 
 If you need a component that just landed in upstream, the vendor distribution might not have it yet.
 
@@ -199,7 +200,7 @@ Here is a side-by-side comparison of all distributions:
 | Multi-backend | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
 | Managed add-on | No | No | EKS | No | No | No | No | No | No |
 | Built-in UI | zpages | zpages | zpages | Yes | No | No | No | No | No |
-| Prometheus native | No | Receiver | Receiver | Yes | Receiver | Receiver | Receiver | Receiver | Receiver |
+| Prometheus components | Receiver/exporter | Receiver/exporter | Receiver | Yes | Receiver | Receiver | Receiver | Receiver | Receiver |
 | Installer script | No | No | No | No | Yes | No | No | Yes | No |
 | Supervised mode | No | No | No | No | No | No | No | Yes | No |
 
@@ -211,7 +212,7 @@ If all your telemetry goes to one vendor, use their distribution:
 
 ```yaml
 # Simple single-vendor pipeline
-# Use the vendor's pre-configured exporter
+# Use the vendor's documented exporter or OTLP ingest endpoint
 receivers:
   otlp:
     protocols:
@@ -223,17 +224,18 @@ processors:
     timeout: 5s
 
 exporters:
-  # This exporter comes pre-configured in the vendor distribution
-  vendor_specific_exporter:
-    api_key: "${API_KEY}"
-    region: us-east-1
+  # Replace this with the vendor's documented exporter or OTLP ingest endpoint.
+  otlphttp/vendor:
+    endpoint: https://otlp.vendor.example
+    headers:
+      authorization: "Bearer ${API_KEY}"
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [vendor_specific_exporter]
+      exporters: [otlphttp/vendor]
 ```
 
 ### Pattern 2: Multi-Backend, Use Upstream Contrib
@@ -270,6 +272,7 @@ exporters:
     s3uploader:
       region: us-east-1
       s3_bucket: telemetry-archive
+      s3_prefix: traces
 
 service:
   pipelines:
@@ -311,20 +314,28 @@ If none of the distributions include exactly the components you need, you can bu
 # builder-config.yaml
 # Defines which components to include in your custom build
 dist:
+  module: github.com/example/my-custom-collector
   name: my-custom-collector
   output_path: ./build
 
 receivers:
-  - gomod: go.opentelemetry.io/collector/receiver/otlpreceiver v0.96.0
-  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/hostmetricsreceiver v0.96.0
+  - gomod: go.opentelemetry.io/collector/receiver/otlpreceiver v0.153.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/hostmetricsreceiver v0.153.0
 
 processors:
-  - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.96.0
-  - gomod: go.opentelemetry.io/collector/processor/memorylimiterprocessor v0.96.0
+  - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.153.0
+  - gomod: go.opentelemetry.io/collector/processor/memorylimiterprocessor v0.153.0
 
 exporters:
-  - gomod: go.opentelemetry.io/collector/exporter/otlphttpexporter v0.96.0
-  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/awsxrayexporter v0.96.0
+  - gomod: go.opentelemetry.io/collector/exporter/otlphttpexporter v0.153.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/awsxrayexporter v0.153.0
+
+providers:
+  - gomod: go.opentelemetry.io/collector/confmap/provider/envprovider v1.59.0
+  - gomod: go.opentelemetry.io/collector/confmap/provider/fileprovider v1.59.0
+  - gomod: go.opentelemetry.io/collector/confmap/provider/httpprovider v1.59.0
+  - gomod: go.opentelemetry.io/collector/confmap/provider/httpsprovider v1.59.0
+  - gomod: go.opentelemetry.io/collector/confmap/provider/yamlprovider v1.59.0
 ```
 
 Build it with:
@@ -355,6 +366,6 @@ Here is a quick decision tree:
 
 ## The Pragmatic Answer
 
-For most teams, start with the upstream contrib collector. It gives you the most flexibility, the broadest component set, and no vendor lock-in. If you later find that a vendor distribution offers something you really need (like managed add-ons, supervised mode, or pre-built dashboards), you can switch. The config format is the same (except Alloy), so migration is usually just changing the container image.
+For most teams, start with the upstream contrib collector. It gives you the most flexibility, the broadest component set, and no vendor lock-in. If you later find that a vendor distribution offers something you really need (like managed add-ons, supervised mode, or pre-built dashboards), you can switch. The config format is the same (except Alloy), so migration often starts with changing the container image and then checking component names, options, and vendor-specific defaults.
 
 The vendor distributions are not bad choices. They are good choices for specific situations. But the upstream collector is the safe default that works everywhere.
