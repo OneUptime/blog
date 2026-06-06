@@ -32,13 +32,15 @@ First, make sure your application emits the metrics you want to alert on. Here i
 package main
 
 import (
-    "net/http"
+    "context"
     "time"
 
     "go.opentelemetry.io/otel"
-    "go.opentelemetry.io/otel/metric"
+    "go.opentelemetry.io/otel/attribute"
     "go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
+    "go.opentelemetry.io/otel/metric"
     sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+    "go.opentelemetry.io/otel/sdk/resource"
 )
 
 var (
@@ -49,6 +51,9 @@ var (
 func initMetrics() {
     exporter, _ := otlpmetricgrpc.New(context.Background())
     provider := sdkmetric.NewMeterProvider(
+        sdkmetric.WithResource(resource.NewSchemaless(
+            attribute.String("service.name", "api-server"),
+        )),
         sdkmetric.WithReader(sdkmetric.NewPeriodicReader(exporter,
             sdkmetric.WithInterval(15*time.Second))),
     )
@@ -131,7 +136,7 @@ groups:
           (
             sum(rate(http_server_errors_total[5m])) by (service_name)
             /
-            sum(rate(http_server_request_duration_count[5m])) by (service_name)
+            sum(rate(http_server_request_duration_seconds_count[5m])) by (service_name)
           ) > 0.05
         for: 5m
         labels:
@@ -146,7 +151,7 @@ groups:
       - alert: HighLatencyP99
         expr: |
           histogram_quantile(0.99,
-            sum(rate(http_server_request_duration_bucket[5m])) by (le, service_name)
+            sum(rate(http_server_request_duration_seconds_bucket[5m])) by (le, service_name)
           ) > 2.0
         for: 10m
         labels:
@@ -159,7 +164,7 @@ groups:
       # Fire when a service stops reporting metrics (possible crash)
       - alert: ServiceDown
         expr: |
-          absent_over_time(http_server_request_duration_count{service_name!=""}[5m])
+          absent_over_time(http_server_request_duration_seconds_count{service_name="api-server"}[5m])
         for: 3m
         labels:
           severity: critical
@@ -218,15 +223,15 @@ route:
 
   routes:
     # Critical alerts go to PagerDuty
-    - match:
-        severity: critical
+    - matchers:
+        - severity="critical"
       receiver: pagerduty-critical
       # Shorter repeat for critical alerts
       repeat_interval: 1h
 
     # Warning alerts go to Slack only
-    - match:
-        severity: warning
+    - matchers:
+        - severity="warning"
       receiver: slack-warnings
 
 receivers:
@@ -259,7 +264,6 @@ Here is a Docker Compose file to run the entire pipeline locally:
 # docker-compose.yaml
 # Full alerting pipeline: Collector, Prometheus, Alertmanager
 
-version: "3.8"
 services:
   otel-collector:
     image: otel/opentelemetry-collector-contrib:latest
