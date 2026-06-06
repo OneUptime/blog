@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Collector, Exporter, AWS, Kinesis, Streaming, Data Pipeline
 
 Description: Complete guide to configuring the AWS Kinesis exporter in OpenTelemetry Collector for real-time telemetry streaming with partition keys, encoding formats, and throughput optimization.
 
-AWS Kinesis is a fully managed streaming data service that enables real-time processing of telemetry data at scale. The OpenTelemetry Collector's Kinesis exporter allows you to stream traces, metrics, and logs to Kinesis Data Streams, where they can be consumed by downstream processing applications, Lambda functions, or analytics services like Kinesis Data Analytics and Amazon Athena.
+AWS Kinesis is a fully managed streaming data service that enables real-time processing of telemetry data at scale. The OpenTelemetry Collector's Kinesis exporter allows you to stream traces, metrics, and logs to Kinesis Data Streams, where they can be consumed by downstream processing applications, Lambda functions, or analytics services like Amazon Managed Service for Apache Flink and Amazon Athena.
 
 ## Why Use OpenTelemetry with Kinesis
 
@@ -17,7 +17,7 @@ Integrating OpenTelemetry with AWS Kinesis provides unique advantages for real-t
 - **Scalable ingestion**: Handle millions of events per second with automatic scaling
 - **Multiple consumers**: Enable multiple applications to process the same telemetry stream
 - **Replay capability**: Reprocess historical data from the stream for backfilling or analysis
-- **Integration ecosystem**: Connect to AWS Lambda, Kinesis Data Analytics, Firehose, and more
+- **Integration ecosystem**: Connect to AWS Lambda, Amazon Managed Service for Apache Flink, Amazon Data Firehose, and more
 
 ## Architecture Overview
 
@@ -30,10 +30,10 @@ graph TB
     C -->|Transform| D[Kinesis Exporter]
     D -->|PutRecords API| E[Kinesis Data Stream]
     E --> F[Lambda Function]
-    E --> G[Kinesis Data Analytics]
-    E --> H[Kinesis Data Firehose]
+    E --> G[Managed Service for Apache Flink]
+    E --> H[Amazon Data Firehose]
     H --> I[S3]
-    H --> J[Elasticsearch]
+    H --> J[Amazon OpenSearch Service]
     F --> K[DynamoDB]
     G --> L[Real-time Dashboards]
 ```
@@ -133,14 +133,16 @@ Here is a minimal configuration for sending traces to Kinesis:
 # Basic Kinesis exporter configuration
 exporters:
   awskinesis:
-    # AWS region
-    region: us-east-1
+    aws:
+      # AWS region
+      region: us-east-1
 
-    # Kinesis stream name
-    stream_name: otel-traces
+      # Kinesis stream name
+      stream_name: otel-traces
 
     # Encoding format (otlp_proto or otlp_json)
-    encoding: otlp_proto
+    encoding:
+      name: otlp_proto
 
 receivers:
   otlp:
@@ -163,23 +165,24 @@ service:
 
 This configuration sends trace data to the `otel-traces` stream using Protocol Buffers encoding.
 
-## Partition Key Configuration
+## Batching and Record Size Configuration
 
-Partition keys determine how data is distributed across Kinesis shards. Proper partitioning is crucial for throughput and even load distribution:
+The exporter uses the Kinesis `PutRecords` API and creates Kinesis records from the smallest telemetry resource groups it can marshal, keeping each record within the Kinesis record size limit. You can tune the Kinesis request size and record size limits:
 
 ```yaml
 exporters:
   awskinesis:
-    region: us-east-1
-    stream_name: otel-traces
-    encoding: otlp_proto
+    aws:
+      region: us-east-1
+      stream_name: otel-traces
+    encoding:
+      name: otlp_proto
 
-    # Partition key from resource attribute
-    # Routes data from same service to same shard
-    partition_key: service.name
+    # Maximum records per PutRecords request (Kinesis limit: 500)
+    max_records_per_batch: 500
 
-    # Alternative: Use trace ID for even distribution
-    # partition_key: trace_id
+    # Maximum Kinesis record size in bytes (Kinesis limit: 1 MiB)
+    max_record_size: 1048576
 
 receivers:
   otlp:
@@ -200,12 +203,7 @@ service:
       exporters: [awskinesis]
 ```
 
-Partition key strategies:
-
-- **service.name**: Groups data by service, useful for per-service consumers
-- **trace_id**: Distributes traces evenly across shards
-- **host.name**: Groups data by host for per-host analysis
-- **random**: Maximum distribution, prevents hot shards
+For OTLP encodings, the exporter generates randomized partition keys internally. If you need service-aware or tenant-aware stream separation, route data to separate exporter instances or streams before exporting.
 
 ## Multiple Streams Configuration
 
@@ -215,24 +213,27 @@ Route different telemetry types to separate Kinesis streams:
 exporters:
   # Traces stream
   awskinesis/traces:
-    region: us-east-1
-    stream_name: otel-traces
-    encoding: otlp_proto
-    partition_key: trace_id
+    aws:
+      region: us-east-1
+      stream_name: otel-traces
+    encoding:
+      name: otlp_proto
 
   # Metrics stream
   awskinesis/metrics:
-    region: us-east-1
-    stream_name: otel-metrics
-    encoding: otlp_json
-    partition_key: service.name
+    aws:
+      region: us-east-1
+      stream_name: otel-metrics
+    encoding:
+      name: otlp_json
 
   # Logs stream
   awskinesis/logs:
-    region: us-east-1
-    stream_name: otel-logs
-    encoding: otlp_json
-    partition_key: service.name
+    aws:
+      region: us-east-1
+      stream_name: otel-logs
+    encoding:
+      name: otlp_json
 
 receivers:
   otlp:
@@ -271,12 +272,13 @@ Configure encoding formats for optimal downstream processing:
 exporters:
   # Protocol Buffers encoding (most efficient)
   awskinesis/proto:
-    region: us-east-1
-    stream_name: otel-traces-proto
-    encoding: otlp_proto
-    partition_key: trace_id
+    aws:
+      region: us-east-1
+      stream_name: otel-traces-proto
+    encoding:
+      name: otlp_proto
 
-    # Maximum record size (max 1MB)
+    # Maximum record size (max 1 MiB)
     max_record_size: 1048576
 
     # Maximum records per batch (max 500)
@@ -284,13 +286,14 @@ exporters:
 
   # JSON encoding (more readable, easier to debug)
   awskinesis/json:
-    region: us-east-1
-    stream_name: otel-traces-json
-    encoding: otlp_json
-    partition_key: service.name
+    aws:
+      region: us-east-1
+      stream_name: otel-traces-json
+    encoding:
+      name: otlp_json
 
-    # Compression (none, gzip, snappy)
-    compression: gzip
+      # Compression (none, flate, gzip, zlib)
+      compression: gzip
 
 receivers:
   otlp:
@@ -324,6 +327,9 @@ Optimize for maximum throughput in production environments:
 extensions:
   health_check:
     endpoint: 0.0.0.0:13133
+  file_storage:
+    directory: /var/lib/otel/storage
+    timeout: 10s
 
 receivers:
   otlp:
@@ -365,14 +371,13 @@ processors:
 
 exporters:
   awskinesis:
-    region: us-east-1
-    stream_name: otel-traces
+    aws:
+      region: us-east-1
+      stream_name: otel-traces
 
     # Encoding
-    encoding: otlp_proto
-
-    # Partition key for even distribution
-    partition_key: trace_id
+    encoding:
+      name: otlp_proto
 
     # Maximum records per PutRecords call
     max_records_per_batch: 500
@@ -397,11 +402,6 @@ exporters:
     # Timeout
     timeout: 30s
 
-extensions:
-  file_storage:
-    directory: /var/lib/otel/storage
-    timeout: 10s
-
 service:
   extensions: [health_check, file_storage]
 
@@ -410,7 +410,6 @@ service:
       level: info
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
 
   pipelines:
     traces:
@@ -431,38 +430,44 @@ Deploy collectors in multiple regions, each writing to regional Kinesis streams:
 exporters:
   # US East 1
   awskinesis/us-east-1:
-    region: us-east-1
-    stream_name: otel-traces-use1
-    encoding: otlp_proto
-    partition_key: trace_id
+    aws:
+      region: us-east-1
+      stream_name: otel-traces-use1
+    encoding:
+      name: otlp_proto
 
   # US West 2
   awskinesis/us-west-2:
-    region: us-west-2
-    stream_name: otel-traces-usw2
-    encoding: otlp_proto
-    partition_key: trace_id
+    aws:
+      region: us-west-2
+      stream_name: otel-traces-usw2
+    encoding:
+      name: otlp_proto
 
   # EU West 1
   awskinesis/eu-west-1:
-    region: eu-west-1
-    stream_name: otel-traces-euw1
-    encoding: otlp_proto
-    partition_key: trace_id
+    aws:
+      region: eu-west-1
+      stream_name: otel-traces-euw1
+    encoding:
+      name: otlp_proto
 
-processors:
+connectors:
   # Route based on region attribute
   routing:
-    from_attribute: cloud.region
+    default_pipelines: [traces/us-east-1]
     table:
-      - value: us-east-1
-        exporters: [awskinesis/us-east-1]
-      - value: us-west-2
-        exporters: [awskinesis/us-west-2]
-      - value: eu-west-1
-        exporters: [awskinesis/eu-west-1]
-    default_exporters: [awskinesis/us-east-1]
+      - context: resource
+        condition: attributes["cloud.region"] == "us-east-1"
+        pipelines: [traces/us-east-1]
+      - context: resource
+        condition: attributes["cloud.region"] == "us-west-2"
+        pipelines: [traces/us-west-2]
+      - context: resource
+        condition: attributes["cloud.region"] == "eu-west-1"
+        pipelines: [traces/eu-west-1]
 
+processors:
   batch:
     timeout: 10s
     send_batch_size: 500
@@ -475,10 +480,19 @@ receivers:
 
 service:
   pipelines:
-    traces:
+    traces/in:
       receivers: [otlp]
-      processors: [batch, routing]
-      exporters: [awskinesis/us-east-1, awskinesis/us-west-2, awskinesis/eu-west-1]
+      processors: [batch]
+      exporters: [routing]
+    traces/us-east-1:
+      receivers: [routing]
+      exporters: [awskinesis/us-east-1]
+    traces/us-west-2:
+      receivers: [routing]
+      exporters: [awskinesis/us-west-2]
+    traces/eu-west-1:
+      receivers: [routing]
+      exporters: [awskinesis/eu-west-1]
 ```
 
 ## Dynamic Stream Selection
@@ -489,38 +503,44 @@ Route telemetry to different streams based on attributes:
 exporters:
   # Production stream
   awskinesis/prod:
-    region: us-east-1
-    stream_name: otel-traces-prod
-    encoding: otlp_proto
-    partition_key: trace_id
+    aws:
+      region: us-east-1
+      stream_name: otel-traces-prod
+    encoding:
+      name: otlp_proto
 
   # Staging stream
   awskinesis/staging:
-    region: us-east-1
-    stream_name: otel-traces-staging
-    encoding: otlp_proto
-    partition_key: trace_id
+    aws:
+      region: us-east-1
+      stream_name: otel-traces-staging
+    encoding:
+      name: otlp_proto
 
   # Development stream
   awskinesis/dev:
-    region: us-east-1
-    stream_name: otel-traces-dev
-    encoding: otlp_proto
-    partition_key: trace_id
+    aws:
+      region: us-east-1
+      stream_name: otel-traces-dev
+    encoding:
+      name: otlp_proto
 
-processors:
+connectors:
   # Route based on environment
   routing:
-    from_attribute: deployment.environment
+    default_pipelines: [traces/dev]
     table:
-      - value: production
-        exporters: [awskinesis/prod]
-      - value: staging
-        exporters: [awskinesis/staging]
-      - value: development
-        exporters: [awskinesis/dev]
-    default_exporters: [awskinesis/dev]
+      - context: resource
+        condition: attributes["deployment.environment"] == "production"
+        pipelines: [traces/prod]
+      - context: resource
+        condition: attributes["deployment.environment"] == "staging"
+        pipelines: [traces/staging]
+      - context: resource
+        condition: attributes["deployment.environment"] == "development"
+        pipelines: [traces/dev]
 
+processors:
   batch:
     timeout: 10s
     send_batch_size: 100
@@ -533,15 +553,24 @@ receivers:
 
 service:
   pipelines:
-    traces:
+    traces/in:
       receivers: [otlp]
-      processors: [batch, routing]
-      exporters: [awskinesis/prod, awskinesis/staging, awskinesis/dev]
+      processors: [batch]
+      exporters: [routing]
+    traces/prod:
+      receivers: [routing]
+      exporters: [awskinesis/prod]
+    traces/staging:
+      receivers: [routing]
+      exporters: [awskinesis/staging]
+    traces/dev:
+      receivers: [routing]
+      exporters: [awskinesis/dev]
 ```
 
-## Integration with Kinesis Data Firehose
+## Integration with Amazon Data Firehose
 
-Create a Kinesis Data Firehose delivery stream to archive data to S3:
+Create an Amazon Data Firehose delivery stream to archive data to S3. The AWS CLI command namespace is still `firehose`:
 
 ```bash
 aws firehose create-delivery-stream \
@@ -608,57 +637,11 @@ aws lambda create-event-source-mapping \
   --maximum-batching-window-in-seconds 10
 ```
 
-## Kinesis Data Analytics Integration
+## Amazon Managed Service for Apache Flink Integration
 
-Create a Kinesis Data Analytics application for real-time analysis:
+Use Amazon Managed Service for Apache Flink for real-time analytics on telemetry records from Kinesis Data Streams. AWS discontinued Amazon Kinesis Data Analytics for SQL applications, so new real-time analytics workloads should use Apache Flink instead of SQL applications.
 
-```sql
--- Create input stream
-CREATE OR REPLACE STREAM "INPUT_STREAM" (
-    trace_id VARCHAR(32),
-    span_id VARCHAR(16),
-    service_name VARCHAR(64),
-    span_name VARCHAR(128),
-    duration BIGINT,
-    status_code VARCHAR(16),
-    timestamp_ns BIGINT
-);
-
--- Parse JSON records from Kinesis
-CREATE OR REPLACE PUMP "STREAM_PUMP" AS
-    INSERT INTO "INPUT_STREAM"
-    SELECT STREAM
-        JSON_VALUE(payload, '$.traceId'),
-        JSON_VALUE(payload, '$.spanId'),
-        JSON_VALUE(payload, '$.resourceSpans[0].resource.attributes[?(@.key=="service.name")].value.stringValue'),
-        JSON_VALUE(payload, '$.resourceSpans[0].scopeSpans[0].spans[0].name'),
-        CAST(JSON_VALUE(payload, '$.resourceSpans[0].scopeSpans[0].spans[0].endTimeUnixNano') AS BIGINT) -
-        CAST(JSON_VALUE(payload, '$.resourceSpans[0].scopeSpans[0].spans[0].startTimeUnixNano') AS BIGINT),
-        JSON_VALUE(payload, '$.resourceSpans[0].scopeSpans[0].spans[0].status.code'),
-        CAST(JSON_VALUE(payload, '$.resourceSpans[0].scopeSpans[0].spans[0].startTimeUnixNano') AS BIGINT)
-    FROM "SOURCE_SQL_STREAM_001";
-
--- Calculate real-time metrics
-CREATE OR REPLACE STREAM "OUTPUT_STREAM" (
-    service_name VARCHAR(64),
-    avg_duration DOUBLE,
-    max_duration BIGINT,
-    error_count INTEGER,
-    total_count INTEGER
-);
-
-CREATE OR REPLACE PUMP "METRICS_PUMP" AS
-    INSERT INTO "OUTPUT_STREAM"
-    SELECT STREAM
-        service_name,
-        AVG(duration) as avg_duration,
-        MAX(duration) as max_duration,
-        SUM(CASE WHEN status_code = 'ERROR' THEN 1 ELSE 0 END) as error_count,
-        COUNT(*) as total_count
-    FROM "INPUT_STREAM"
-    GROUP BY service_name,
-             STEP("INPUT_STREAM".ROWTIME BY INTERVAL '60' SECOND);
-```
+When consuming records from this exporter, configure the Flink application to match the exporter encoding. Use a protobuf parser for `otlp_proto`, or use JSON parsing only when the exporter uses `encoding.name: otlp_json`.
 
 ## Monitoring and Troubleshooting
 
@@ -700,6 +683,6 @@ Reduce Kinesis costs with these strategies:
 
 The AWS Kinesis exporter enables real-time streaming of OpenTelemetry telemetry data, unlocking powerful use cases like live dashboards, anomaly detection, and automated alerting. By decoupling data collection from processing, Kinesis provides flexibility to build sophisticated data pipelines that can evolve independently.
 
-The configuration patterns shown here provide a foundation for building scalable real-time telemetry infrastructure on AWS. Whether you're processing data with Lambda, analyzing it with Kinesis Data Analytics, or archiving it to S3 with Firehose, the Kinesis exporter offers a robust starting point for your streaming observability architecture.
+The configuration patterns shown here provide a foundation for building scalable real-time telemetry infrastructure on AWS. Whether you're processing data with Lambda, analyzing it with Amazon Managed Service for Apache Flink, or archiving it to S3 with Amazon Data Firehose, the Kinesis exporter offers a robust starting point for your streaming observability architecture.
 
 For information about other AWS exporters, check out our guides on the [AWS X-Ray exporter](https://oneuptime.com/blog/post/2026-02-06-aws-xray-exporter-opentelemetry-collector/view) and [AWS CloudWatch Logs exporter](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view).
