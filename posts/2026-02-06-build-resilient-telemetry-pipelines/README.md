@@ -35,9 +35,9 @@ processors:
   memory_limiter:
     # How often to check memory usage
     check_interval: 1s
-    # Start dropping data when memory reaches 80% of the limit
+    # Set the hard memory limit to 80% of available memory
     limit_percentage: 80
-    # Allow spikes up to 25% above the soft limit before hard-refusing
+    # Reserve 25% of available memory for spikes between checks
     spike_limit_percentage: 25
 ```
 
@@ -78,7 +78,7 @@ sequenceDiagram
 
 ## Retry Logic in Exporters
 
-Every exporter supports configurable retry behavior. The default settings are conservative, and you should tune them for your environment:
+Most production exporters support configurable retry behavior through the Collector's exporter helper. The default settings are conservative, and you should tune them for your environment:
 
 ```yaml
 exporters:
@@ -191,10 +191,10 @@ exporters:
     sending_queue:
       # Enable the queue
       enabled: true
-      # Number of batches to keep in the queue
-      # Higher values tolerate longer outages but use more memory
+      # Number of consumers that dequeue batches
       num_consumers: 10
       # Maximum number of batches waiting in the queue
+      # Higher values tolerate longer outages but use more memory
       queue_size: 5000
 
     retry_on_failure:
@@ -295,7 +295,7 @@ processors:
 
 exporters:
   # Load-balanced export to the gateway tier
-  loadbalancing:
+  load_balancing:
     protocol:
       otlp:
         tls:
@@ -310,11 +310,11 @@ service:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [loadbalancing]
+      exporters: [load_balancing]
     metrics:
       receivers: [otlp, hostmetrics]
       processors: [memory_limiter, batch]
-      exporters: [loadbalancing]
+      exporters: [load_balancing]
 ```
 
 ```yaml
@@ -422,10 +422,6 @@ extensions:
   health_check:
     endpoint: "0.0.0.0:13133"
     path: "/health"
-    check_collector_pipeline:
-      enabled: true
-      # Report unhealthy if the exporter queue is 80% full
-      exporter_failure_threshold: 5
 
   # Expose internal metrics about the collector's performance
   zpages:
@@ -435,9 +431,14 @@ service:
   extensions: [health_check, zpages]
   telemetry:
     metrics:
-      # The collector can export metrics about itself
-      address: "0.0.0.0:8888"
+      # The collector can expose metrics about itself
       level: detailed
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: "0.0.0.0"
+                port: 8888
 ```
 
 Set up alerts on these key collector metrics:
@@ -445,8 +446,8 @@ Set up alerts on these key collector metrics:
 | Metric | Alert Threshold | What it Means |
 |---|---|---|
 | `otelcol_exporter_queue_size` | > 80% of capacity | Backend is slow, queue is filling up |
-| `otelcol_exporter_send_failed_requests` | Increasing | Exports are failing |
-| `otelcol_receiver_refused_spans` | > 0 | Memory limiter is active, data is being dropped |
+| `otelcol_exporter_send_failed_spans`, `otelcol_exporter_send_failed_metric_points`, `otelcol_exporter_send_failed_log_records` | Increasing | Exports are failing |
+| `otelcol_receiver_refused_spans` | > 0 | Memory limiter or another pipeline component is refusing trace data |
 | `otelcol_processor_batch_timeout_trigger_send` | Increasing | Batches are timing out before filling |
 
 ## Wrapping Up
