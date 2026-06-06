@@ -12,10 +12,10 @@ Database queries are often the biggest contributor to application latency. When 
 
 OpenTelemetry semantic conventions define standard attributes for database spans. When you instrument a service with an auto-instrumentation library (for Python, Java, Go, .NET, etc.), each SQL query generates a span with attributes like:
 
-- `db.system` - The database engine (postgresql, mysql, etc.)
-- `db.name` - The database name
-- `db.operation` - The SQL operation (SELECT, INSERT, UPDATE, DELETE)
-- `db.statement` - The full or sanitized SQL statement
+- `db.system.name` - The database engine (postgresql, mysql, etc.)
+- `db.namespace` - The database name or namespace
+- `db.operation.name` - The SQL operation (SELECT, INSERT, UPDATE, DELETE)
+- `db.query.text` - The full or sanitized SQL statement
 - `server.address` - The database host
 
 These spans have precise timing, which means you can derive latency distributions, throughput rates, and error rates per query type.
@@ -30,19 +30,18 @@ The Span Metrics Connector sits inside the OpenTelemetry Collector and generates
 # Connector that derives metrics from span data
 connectors:
   spanmetrics:
+    namespace: ""
     # Create histogram buckets suited for database query latency
     histogram:
       explicit:
         buckets: [1ms, 5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 5s]
     # Extract these span attributes as metric labels
     dimensions:
-      - name: db.system
-      - name: db.name
-      - name: db.operation
+      - name: db.system.name
+      - name: db.namespace
+      - name: db.operation.name
       - name: server.address
-    # Only process spans that represent database calls
-    # Filter by span kind = CLIENT and db.system attribute exists
-    dimensions_cache_size: 1000
+    aggregation_cardinality_limit: 1000
 
 receivers:
   otlp:
@@ -51,7 +50,7 @@ receivers:
         endpoint: "0.0.0.0:4317"
 
 exporters:
-  prometheusremotewrite:
+  prometheus_remote_write:
     endpoint: "http://prometheus:9090/api/v1/write"
 
 service:
@@ -63,7 +62,7 @@ service:
     # The spanmetrics connector produces metrics that get exported
     metrics:
       receivers: [spanmetrics]
-      exporters: [prometheusremotewrite]
+      exporters: [prometheus_remote_write]
 ```
 
 ## Data Flow
@@ -87,8 +86,8 @@ With the span metrics in Prometheus, you can build the following panels.
 
 ```promql
 # Queries per second broken down by SQL operation type
-sum by (db_operation) (
-  rate(duration_milliseconds_count{db_system!=""}[5m])
+sum by (db_operation_name) (
+  rate(duration_milliseconds_count{db_system_name!=""}[5m])
 )
 ```
 
@@ -97,8 +96,8 @@ sum by (db_operation) (
 ```promql
 # 95th percentile query latency per database
 histogram_quantile(0.95,
-  sum by (le, db_name) (
-    rate(duration_milliseconds_bucket{db_system!=""}[5m])
+  sum by (le, db_namespace) (
+    rate(duration_milliseconds_bucket{db_system_name!=""}[5m])
   )
 )
 ```
@@ -109,9 +108,9 @@ histogram_quantile(0.95,
 # Percentage of queries slower than 500ms
 (
   1 - (
-    sum by (db_name) (rate(duration_milliseconds_bucket{le="500", db_system!=""}[5m]))
+    sum by (db_namespace) (rate(duration_milliseconds_bucket{le="500", db_system_name!=""}[5m]))
     /
-    sum by (db_name) (rate(duration_milliseconds_count{db_system!=""}[5m]))
+    sum by (db_namespace) (rate(duration_milliseconds_count{db_system_name!=""}[5m]))
   )
 ) * 100
 ```
@@ -120,9 +119,9 @@ histogram_quantile(0.95,
 
 ```promql
 # Database error rate as a percentage
-sum by (db_name) (rate(duration_milliseconds_count{status_code="STATUS_CODE_ERROR", db_system!=""}[5m]))
+sum by (db_namespace) (rate(duration_milliseconds_count{status_code="STATUS_CODE_ERROR", db_system_name!=""}[5m]))
 /
-sum by (db_name) (rate(duration_milliseconds_count{db_system!=""}[5m]))
+sum by (db_namespace) (rate(duration_milliseconds_count{db_system_name!=""}[5m]))
 * 100
 ```
 
@@ -132,26 +131,27 @@ sum by (db_name) (rate(duration_milliseconds_count{db_system!=""}[5m]))
 # Top 5 services by database query volume
 topk(5,
   sum by (service_name) (
-    rate(duration_milliseconds_count{db_system!=""}[5m])
+    rate(duration_milliseconds_count{db_system_name!=""}[5m])
   )
 )
 ```
 
 ## Sanitizing SQL Statements
 
-If you want to group metrics by query pattern (e.g., all SELECT queries on the `users` table), you need to sanitize the `db.statement` attribute to remove literal values. The `transform` processor can help.
+If you want to group metrics by query pattern (e.g., all SELECT queries on the `users` table), you need to sanitize the `db.query.text` attribute to remove literal values. The `transform` processor can help.
 
 ```yaml
 # Add this processor to normalize SQL statements before spanmetrics
 processors:
   transform:
+    error_mode: ignore
     trace_statements:
       - context: span
         statements:
           # Replace numeric literals with ?
-          - replace_pattern(attributes["db.statement"], "[0-9]+", "?")
+          - replace_pattern(span.attributes["db.query.text"], "[0-9]+", "?")
           # Replace quoted string literals with ?
-          - replace_pattern(attributes["db.statement"], "'[^']*'", "?")
+          - replace_pattern(span.attributes["db.query.text"], "'[^']*'", "?")
 ```
 
 ## Dashboard Layout
