@@ -17,10 +17,10 @@ Custom span attributes bridge this gap. By attaching business-specific metadata 
 Consider a typical e-commerce trace. Auto-instrumentation gives you spans like:
 
 ```text
-POST /api/orders - 450ms (http.status_code=200)
-  SELECT * FROM products - 12ms (db.system=postgresql)
-  POST /payments/charge - 380ms (http.status_code=200)
-  POST /notifications/email - 45ms (http.status_code=202)
+POST /api/orders - 450ms (http.response.status_code=200)
+  SELECT * FROM products - 12ms (db.system.name=postgresql)
+  POST /payments/charge - 380ms (http.response.status_code=200)
+  POST /notifications/email - 45ms (http.response.status_code=202)
 ```
 
 You can see that the request took 450ms and the payment call was the bottleneck. But you cannot answer questions like: Was this a wholesale or retail order? Was the payment method a credit card or bank transfer? What was the order value? These questions matter far more to the business than raw latency numbers.
@@ -67,11 +67,11 @@ method
 tier
 ```
 
-Align with OpenTelemetry semantic conventions where possible. OpenTelemetry already defines conventions for common domains. Use the `app.` or your organization prefix for truly custom attributes to avoid collision with future official conventions.
+Align with OpenTelemetry semantic conventions where possible. OpenTelemetry already defines conventions for common domains. Use your application name, organization prefix, or reverse domain name for truly custom attributes to avoid collision with future official conventions.
 
 ```python
 # Standard OTel semantic conventions (use as-is)
-# http.method, http.status_code, db.system, rpc.method
+# http.request.method, http.response.status_code, db.system.name, rpc.method
 
 # Custom business attributes (use your domain prefix)
 # order.type, customer.tier, payment.method
@@ -175,13 +175,13 @@ For Java services, the same approach works with the OpenTelemetry Java SDK:
 
 ```java
 import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.StatusCode;
 import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.api.common.AttributeKey;
-import io.opentelemetry.api.common.Attributes;
 
 // Define attribute keys as typed constants
 // Using typed keys gives you compile-time type safety
-public class OrderAttributes {
+final class OrderAttributes {
     public static final AttributeKey<String> TYPE =
         AttributeKey.stringKey("order.type");
     public static final AttributeKey<Double> VALUE =
@@ -271,6 +271,7 @@ To keep attribute setting consistent across your codebase, create helper functio
 
 ```python
 from opentelemetry import trace
+from datetime import datetime
 from attributes import OrderAttributes, CustomerAttributes
 
 def set_order_context(span, order):
@@ -353,7 +354,7 @@ def process_order(order, customer):
         except PaymentError as e:
             # Business attributes are already on the span
             # so error analysis includes full business context
-            span.set_status(trace.StatusCode.ERROR, str(e))
+            span.set_status(trace.Status(trace.StatusCode.ERROR, str(e)))
             span.record_exception(e)
             raise
 ```
