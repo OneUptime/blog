@@ -8,7 +8,7 @@ Description: Step-by-step guide to configuring OpenTelemetry tracing and metrics
 
 ---
 
-Google Cloud Run lets you deploy containers without managing infrastructure. You push a container image, Cloud Run handles scaling, networking, and TLS. But when your service starts misbehaving, you need observability. Cloud Run gives you basic request logs and metrics out of the box, but for distributed tracing and custom metrics, you need something more.
+Google Cloud Run lets you deploy containers without managing infrastructure. You push a container image, Cloud Run handles scaling, networking, and TLS. But when your service starts misbehaving, you need observability. Cloud Run gives you basic request logs, metrics, and request traces out of the box, but for application-level spans and custom metrics, you need something more.
 
 OpenTelemetry is the answer. It integrates cleanly with Cloud Run's container-based model, and since Cloud Run services are just containers, you have full control over the instrumentation. This guide walks through configuring OpenTelemetry for a Cloud Run service, covering both tracing and metrics export to Google Cloud's native observability stack.
 
@@ -75,7 +75,7 @@ const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumenta
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc');
 const { OTLPMetricExporter } = require('@opentelemetry/exporter-metrics-otlp-grpc');
 const { PeriodicExportingMetricReader } = require('@opentelemetry/sdk-metrics');
-const { Resource } = require('@opentelemetry/resources');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 const { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } = require('@opentelemetry/semantic-conventions');
 
 // Determine the export endpoint from environment variables
@@ -83,7 +83,7 @@ const { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } = require('@opentelemetry/sema
 const collectorEndpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4317';
 
 // Build the resource that describes this service
-const resource = new Resource({
+const resource = resourceFromAttributes({
   [ATTR_SERVICE_NAME]: process.env.K_SERVICE || 'otel-cloudrun-demo',
   [ATTR_SERVICE_VERSION]: process.env.K_REVISION || '1.0.0',
   'cloud.provider': 'gcp',
@@ -108,7 +108,7 @@ const metricReader = new PeriodicExportingMetricReader({
 const sdk = new NodeSDK({
   resource,
   traceExporter,
-  metricReader,
+  metricReaders: [metricReader],
   instrumentations: [
     getNodeAutoInstrumentations({
       // Disable file system instrumentation to reduce noise
@@ -217,7 +217,7 @@ WORKDIR /app
 
 # Copy package files and install dependencies
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 # Copy application code
 COPY . .
@@ -244,8 +244,7 @@ gcloud run deploy otel-cloudrun-demo \
   --region us-central1 \
   --platform managed \
   --allow-unauthenticated \
-  --set-env-vars="OTEL_EXPORTER_OTLP_ENDPOINT=https://your-collector:4317" \
-  --set-env-vars="CLOUD_RUN_REGION=us-central1" \
+  --set-env-vars="OTEL_EXPORTER_OTLP_ENDPOINT=https://your-collector:4317,CLOUD_RUN_REGION=us-central1" \
   --memory 512Mi \
   --cpu 1
 ```
@@ -259,7 +258,7 @@ If you do not want to run a separate Collector, you can export traces directly t
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { TraceExporter } = require('@google-cloud/opentelemetry-cloud-trace-exporter');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
-const { Resource } = require('@opentelemetry/resources');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 const { ATTR_SERVICE_NAME } = require('@opentelemetry/semantic-conventions');
 
 // The Cloud Trace exporter uses the service account bound to the Cloud Run service
@@ -269,7 +268,7 @@ const traceExporter = new TraceExporter({
 });
 
 const sdk = new NodeSDK({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     [ATTR_SERVICE_NAME]: process.env.K_SERVICE || 'otel-cloudrun-demo',
     'cloud.provider': 'gcp',
     'cloud.platform': 'gcp_cloud_run',
@@ -309,7 +308,7 @@ gcloud run services update otel-cloudrun-demo \
 
 ## Running the Collector as a Sidecar
 
-Starting with Cloud Run's multi-container support (second generation), you can run the OpenTelemetry Collector as a sidecar container alongside your application. This is the best of both worlds: your app exports to localhost (fast, no network latency), and the Collector handles batching, retry, and export to multiple backends.
+Starting with Cloud Run's multi-container support, you can run the OpenTelemetry Collector as a sidecar container alongside your application. This is the best of both worlds: your app exports to localhost (fast, no network latency), and the Collector handles batching, retry, and export to multiple backends. Store the Collector configuration in Secret Manager and grant the Cloud Run service account access to that secret.
 
 ```yaml
 # service.yaml - Cloud Run service with OTel Collector sidecar
@@ -321,8 +320,9 @@ spec:
   template:
     metadata:
       annotations:
-        # Enable multi-container support
+        # Start the Collector before the app and mount the Collector config from Secret Manager
         run.googleapis.com/container-dependencies: '{"app":["collector"]}'
+        run.googleapis.com/secrets: otel-collector-config:projects/your-project-number/secrets/otel-collector-config
     spec:
       containers:
         # Your application container
@@ -339,19 +339,25 @@ spec:
         - name: collector
           image: otel/opentelemetry-collector-contrib:0.96.0
           args: ["--config=/etc/otelcol/config.yaml"]
+          startupProbe:
+            tcpSocket:
+              port: 4317
           volumeMounts:
             - name: otel-config
               mountPath: /etc/otelcol
 
       volumes:
         - name: otel-config
-          configMap:
-            name: otel-collector-config
+          secret:
+            secretName: otel-collector-config
+            items:
+              - key: latest
+                path: config.yaml
 ```
 
-## Trace Context from Cloud Run's Load Balancer
+## Trace Context from Google Cloud Headers
 
-Cloud Run's built-in load balancer adds an `X-Cloud-Trace-Context` header to incoming requests. OpenTelemetry does not parse this header by default because it uses the W3C `traceparent` format. If you want to connect Cloud Run's request logging with your OpenTelemetry traces, you can configure the Google Cloud propagator.
+Cloud Run automatically populates the standard W3C `traceparent` header for incoming requests, which OpenTelemetry can parse by default. If you also need to accept Google Cloud's legacy `X-Cloud-Trace-Context` header from other services, you can configure the Google Cloud propagator.
 
 ```bash
 # Install the GCP propagator package
