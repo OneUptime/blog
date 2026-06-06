@@ -44,7 +44,7 @@ sequenceDiagram
     ALB->>ALB: Generates X-Amzn-Trace-Id header
     ALB->>ServiceA: Request + X-Ray Header
     ServiceA->>ServiceB: Request + X-Ray Header (propagated)
-    ServiceB->>DynamoDB: SDK call + X-Ray Header
+    ServiceB->>DynamoDB: Instrumented SDK call (span/subsegment)
 ```
 
 AWS Application Load Balancers, API Gateway, and other managed services automatically generate or forward the `X-Amzn-Trace-Id` header. If your services do not propagate this header, you end up with broken traces where the ALB sees one trace and your backend starts a completely separate one.
@@ -58,7 +58,10 @@ The OpenTelemetry JavaScript SDK has a dedicated package for X-Ray propagation. 
 
 npm install @opentelemetry/sdk-node \
   @opentelemetry/api \
+  @opentelemetry/core \
   @opentelemetry/auto-instrumentations-node \
+  @opentelemetry/exporter-trace-otlp-grpc \
+  @opentelemetry/id-generator-aws-xray \
   @opentelemetry/propagator-aws-xray
 ```
 
@@ -94,7 +97,7 @@ const sdk = new NodeSDK({
 sdk.start();
 ```
 
-The `CompositePropagator` is the important piece here. When extracting context from an incoming request, it tries each propagator in order. When injecting context into an outgoing request, it writes headers for all propagators. This means your outgoing requests will carry both `traceparent` (W3C) and `X-Amzn-Trace-Id` (X-Ray) headers.
+The `CompositePropagator` is the important piece here. When extracting context from an incoming request, it invokes each propagator in order; if more than one incoming header format is present, the later propagator can overwrite the context extracted by an earlier one. When injecting context into an outgoing request, it writes headers for all propagators. This means your outgoing requests will carry both `traceparent` (W3C) and `X-Amzn-Trace-Id` (X-Ray) headers.
 
 ## Configuring the X-Ray Propagator in Python
 
@@ -117,11 +120,11 @@ from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExport
 from opentelemetry.propagators.aws import AwsXRayPropagator
 from opentelemetry.propagate import set_global_textmap
 from opentelemetry.propagators.composite import CompositePropagator
-from opentelemetry.trace.propagation import TraceContextTextMapPropagator
+from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 
 # Build a composite propagator that understands both formats.
-# The order matters for extraction: the first propagator that
-# finds valid context wins.
+# The order matters for extraction: if both formats are present,
+# the later propagator can overwrite context from an earlier one.
 composite_propagator = CompositePropagator([
     TraceContextTextMapPropagator(),
     AwsXRayPropagator(),
@@ -149,7 +152,7 @@ For Java services, you add the X-Ray propagator through the OpenTelemetry Java a
 <dependency>
     <groupId>io.opentelemetry.contrib</groupId>
     <artifactId>opentelemetry-aws-xray-propagator</artifactId>
-    <version>1.37.0-alpha</version>
+    <version>1.57.0-alpha</version>
 </dependency>
 ```
 
@@ -168,11 +171,11 @@ export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
 java -javaagent:opentelemetry-javaagent.jar -jar myapp.jar
 ```
 
-The `OTEL_PROPAGATORS` environment variable works across all OpenTelemetry SDKs. You can use it in Node.js and Python too, which is handy when you want to keep propagator configuration outside your application code.
+The `OTEL_PROPAGATORS` environment variable is the standard OpenTelemetry way to configure propagators through SDK autoconfiguration. You can use it in Node.js and Python too when the SDK autoconfiguration path and X-Ray propagator package you are using support the `xray` value.
 
 ## Handling the X-Ray ID Generator
 
-There is a subtle but important detail about trace ID generation. AWS X-Ray expects the first 8 characters of the trace ID (after the version prefix) to be a valid Unix timestamp. Standard OpenTelemetry ID generators produce fully random 128-bit trace IDs, which X-Ray will reject.
+There is a subtle but important detail about trace ID generation. AWS X-Ray formats the first 8 characters of the trace ID (after the version prefix) as a Unix timestamp. Standard OpenTelemetry ID generators produce fully random 128-bit trace IDs, which may not be valid X-Ray trace IDs when exported to X-Ray.
 
 If your service is the one starting traces (not receiving them from an ALB or API Gateway), you need to use an X-Ray-compatible ID generator.
 
@@ -232,7 +235,7 @@ service:
       exporters: [awsxray, otlp]
 ```
 
-The `awsxray` exporter handles the conversion between OpenTelemetry span format and X-Ray segment format. It also takes care of trace ID format differences, so you do not need to worry about that at the application level.
+The `awsxray` exporter handles the conversion between OpenTelemetry span format and X-Ray segment format. It can replace fully random trace IDs with X-Ray formatted trace IDs when necessary, but using an X-Ray-compatible ID generator at the application level is still the clearer option when you know the service will originate traces that are exported to X-Ray.
 
 ## Testing Your Propagation Setup
 
