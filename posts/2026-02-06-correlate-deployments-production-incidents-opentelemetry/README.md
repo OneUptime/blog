@@ -53,10 +53,12 @@ def create_service_resource():
 
         # Deployment-specific attributes
         "deployment.id": os.getenv("DEPLOY_ID", "unknown"),
-        "deployment.commit": os.getenv("GIT_COMMIT_SHA", "unknown"),
-        "deployment.branch": os.getenv("GIT_BRANCH", "main"),
-        "deployment.timestamp": os.getenv("DEPLOY_TIMESTAMP", "unknown"),
-        "deployment.triggered_by": os.getenv("DEPLOY_USER", "unknown"),
+        "deployment.environment.name": os.getenv("DEPLOY_ENV", "production"),
+        "vcs.ref.head.revision": os.getenv("GIT_COMMIT_SHA", "unknown"),
+        "vcs.ref.head.name": os.getenv("GIT_BRANCH", "main"),
+        "vcs.ref.head.type": "branch",
+        "deploy.timestamp": os.getenv("DEPLOY_TIMESTAMP", "unknown"),
+        "deploy.triggered_by": os.getenv("DEPLOY_USER", "unknown"),
     })
 ```
 
@@ -72,11 +74,19 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: api-server
+  labels:
+    app: api-server
   annotations:
     deploy.timestamp: "2026-02-06T14:32:00Z"
     deploy.commit: "abc123f"
 spec:
+  selector:
+    matchLabels:
+      app: api-server
   template:
+    metadata:
+      labels:
+        app: api-server
     spec:
       containers:
         - name: api-server
@@ -121,7 +131,7 @@ from opentelemetry.sdk.resources import Resource
 
 resource = Resource.create({
     "service.name": "deployment-pipeline",
-    "deployment.environment": os.getenv("DEPLOY_ENV", "production"),
+    "deployment.environment.name": os.getenv("DEPLOY_ENV", "production"),
 })
 
 provider = TracerProvider(resource=resource)
@@ -160,7 +170,7 @@ def execute_deployment(service_name, version):
     return True
 ```
 
-These deployment spans appear on the same timeline as your application traces. When you zoom into a period where errors spiked, the deployment marker is right there showing you exactly what changed.
+These deployment spans appear in the same trace backend as your application traces. When you zoom into a period where errors spiked, the deployment marker is right there showing you exactly what changed.
 
 ---
 
@@ -234,7 +244,7 @@ For a more automated approach, create a deployment webhook that sends annotation
 ```python
 # deploy_webhook.py
 # This webhook handler receives deployment notifications from your CI/CD
-# system and converts them into OpenTelemetry log events. These events
+# system and converts them into OpenTelemetry trace spans. Span events
 # show up as annotations on your dashboards, providing visual markers
 # for when deployments happened.
 
@@ -257,7 +267,7 @@ tracer = trace.get_tracer("deploy.annotator")
 
 @app.route("/deploy-event", methods=["POST"])
 def handle_deploy_event():
-    """Receive a deployment event and emit it as a trace annotation."""
+    """Receive a deployment event and emit it as a trace span."""
     data = request.json
 
     with tracer.start_as_current_span("deploy-annotation") as span:
@@ -312,7 +322,7 @@ The workflow becomes: alert fires, query your traces for recent deployment spans
 
 ## Practical Tips
 
-There are a few things to keep in mind as you build this out. First, always include the git commit SHA in your resource attributes. Version numbers are useful but commit hashes are unambiguous and let you jump straight to a diff. Second, emit deployment spans from your pipeline rather than from the application itself. The application does not know when it was deployed; the pipeline does. Third, keep your deployment annotations lightweight. You want the service name, version, commit, environment, and timestamp. Anything beyond that is noise during an incident.
+There are a few things to keep in mind as you build this out. First, always include the git commit SHA in your resource attributes, using `vcs.ref.head.revision` when it applies. Version numbers are useful but commit hashes are unambiguous and let you jump straight to a diff. Second, emit deployment spans from your pipeline rather than from the application itself. The application does not know when it was deployed; the pipeline does. Third, keep your deployment annotations lightweight. You want the service name, version, commit, environment, and timestamp. Anything beyond that is noise during an incident.
 
 Finally, consider setting up automated rollback triggers. If your error rate metric shows a significant increase for a new version within the first few minutes after deployment, that is a strong signal to roll back automatically. The versioned metrics you are collecting make this detection reliable.
 
