@@ -81,12 +81,12 @@ The `enable_commenter` option is particularly useful. It adds trace context as c
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { PrismaInstrumentation } from '@prisma/instrumentation';
-import { Resource } from '@opentelemetry/resources';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 import { ATTR_SERVICE_NAME } from '@opentelemetry/semantic-conventions';
 
 // Initialize the OpenTelemetry SDK with Prisma instrumentation
 const sdk = new NodeSDK({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     [ATTR_SERVICE_NAME]: 'user-service',
   }),
   traceExporter: new OTLPTraceExporter({
@@ -114,6 +114,8 @@ Auto-instrumentation handles the basics, but for serious database optimization y
 ```python
 # db_metrics.py
 from opentelemetry import metrics, trace
+from opentelemetry.trace import Status, StatusCode
+from functools import wraps
 import time
 
 meter = metrics.get_meter("database.performance")
@@ -121,65 +123,71 @@ tracer = trace.get_tracer("database.performance")
 
 # Histogram for query durations, bucketed for analysis
 query_duration = meter.create_histogram(
-    name="db.query.duration",
-    description="Duration of database queries in milliseconds",
-    unit="ms",
+    name="db.client.operation.duration",
+    description="Duration of database queries in seconds",
+    unit="s",
 )
 
 # Counter for queries by type and table
 query_count = meter.create_counter(
     name="db.query.count",
     description="Number of database queries executed",
-    unit="queries",
+    unit="{query}",
 )
 
 # Histogram for result set sizes
 result_size = meter.create_histogram(
-    name="db.query.result_size",
+    name="db.client.response.returned_rows",
     description="Number of rows returned by queries",
-    unit="rows",
+    unit="{row}",
 )
 
-def track_query(query_type: str, table: str, func):
+def track_query(query_type: str, table: str):
     """Decorator to track database query performance."""
-    def wrapper(*args, **kwargs):
-        attributes = {
-            "db.operation": query_type,
-            "db.sql.table": table,
-            "db.system": "postgresql",
-        }
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            attributes = {
+                "db.operation.name": query_type,
+                "db.collection.name": table,
+                "db.system.name": "postgresql",
+            }
 
-        start = time.perf_counter()
-        with tracer.start_as_current_span(
-            f"db.{query_type}.{table}",
-            attributes=attributes,
-        ) as span:
-            try:
-                result = func(*args, **kwargs)
-                elapsed_ms = (time.perf_counter() - start) * 1000
+            start = time.perf_counter()
+            with tracer.start_as_current_span(
+                f"db.{query_type}.{table}",
+                attributes=attributes,
+            ) as span:
+                try:
+                    result = func(*args, **kwargs)
+                    elapsed_s = time.perf_counter() - start
+                    elapsed_ms = elapsed_s * 1000
 
-                query_duration.record(elapsed_ms, attributes)
-                query_count.add(1, attributes)
+                    query_duration.record(elapsed_s, attributes)
+                    query_count.add(1, attributes)
 
-                # Track result set size if applicable
-                if hasattr(result, '__len__'):
-                    result_size.record(len(result), attributes)
-                    span.set_attribute("db.result.rows", len(result))
+                    # Track result set size if applicable
+                    if hasattr(result, '__len__'):
+                        row_count = len(result)
+                        result_size.record(row_count, attributes)
+                        span.set_attribute("db.response.returned_rows", row_count)
 
-                # Flag slow queries
-                if elapsed_ms > 100:
-                    span.set_attribute("db.slow_query", True)
-                    span.add_event("slow_query_detected", {
-                        "duration_ms": elapsed_ms,
-                        "threshold_ms": 100,
-                    })
+                    # Flag slow queries
+                    if elapsed_ms > 100:
+                        span.set_attribute("db.slow_query", True)
+                        span.add_event("slow_query_detected", {
+                            "duration_ms": elapsed_ms,
+                            "threshold_ms": 100,
+                        })
 
-                return result
-            except Exception as e:
-                span.set_attribute("db.error", True)
-                span.record_exception(e)
-                raise
-    return wrapper
+                    return result
+                except Exception as e:
+                    span.set_attribute("error.type", type(e).__name__)
+                    span.record_exception(e)
+                    span.set_status(Status(StatusCode.ERROR, str(e)))
+                    raise
+        return wrapper
+    return decorator
 ```
 
 This decorator wraps database calls to capture both spans and metrics. The key addition here is flagging slow queries with a `db.slow_query` attribute, which makes them easy to filter for in your observability backend.
@@ -194,6 +202,8 @@ Database connection pools are a common source of performance problems. When the 
 # pool_metrics.py
 from opentelemetry import metrics
 from sqlalchemy import event
+from db_setup import engine
+import time
 
 meter = metrics.get_meter("database.pool")
 
@@ -201,7 +211,7 @@ meter = metrics.get_meter("database.pool")
 pool_size_gauge = meter.create_observable_gauge(
     name="db.pool.size",
     description="Total number of connections in the pool",
-    unit="connections",
+    unit="{connection}",
     callbacks=[lambda options: [
         metrics.Observation(engine.pool.size(), {"pool": "default"})
     ]],
@@ -210,7 +220,7 @@ pool_size_gauge = meter.create_observable_gauge(
 pool_checked_out = meter.create_observable_gauge(
     name="db.pool.checked_out",
     description="Number of connections currently checked out",
-    unit="connections",
+    unit="{connection}",
     callbacks=[lambda options: [
         metrics.Observation(engine.pool.checkedout(), {"pool": "default"})
     ]],
@@ -219,20 +229,20 @@ pool_checked_out = meter.create_observable_gauge(
 pool_overflow = meter.create_observable_gauge(
     name="db.pool.overflow",
     description="Number of overflow connections created",
-    unit="connections",
+    unit="{connection}",
     callbacks=[lambda options: [
         metrics.Observation(engine.pool.overflow(), {"pool": "default"})
     ]],
 )
 
-# Track time spent waiting for a connection
-checkout_wait_time = meter.create_histogram(
-    name="db.pool.checkout_wait",
-    description="Time spent waiting for a connection from the pool",
+# Track time connections spend checked out from the pool
+checkout_duration = meter.create_histogram(
+    name="db.pool.checkout_duration",
+    description="Time a connection spends checked out from the pool",
     unit="ms",
 )
 
-# Use SQLAlchemy events to track checkout timing
+# Use SQLAlchemy events to track how long connections are held
 @event.listens_for(engine, "checkout")
 def on_checkout(dbapi_connection, connection_record, connection_proxy):
     connection_record.info["checkout_time"] = time.perf_counter()
@@ -241,7 +251,7 @@ def on_checkout(dbapi_connection, connection_record, connection_proxy):
 def on_checkin(dbapi_connection, connection_record):
     if "checkout_time" in connection_record.info:
         duration = (time.perf_counter() - connection_record.info["checkout_time"]) * 1000
-        checkout_wait_time.record(duration, {"pool": "default"})
+        checkout_duration.record(duration, {"pool": "default"})
 ```
 
 These pool metrics give you early warning signs of connection exhaustion. When `db.pool.checked_out` consistently approaches `db.pool.size`, it is time to either increase the pool size or investigate why connections are being held too long.
@@ -266,7 +276,8 @@ def analyze_trace_for_n_plus_one(span_data):
     parent_queries = {}
     for span in span_data:
         parent_id = span.get("parent_span_id")
-        query_template = normalize_query(span.get("db.statement", ""))
+        query_text = span.get("db.query.text") or span.get("db.statement", "")
+        query_template = normalize_query(query_text)
 
         if parent_id not in parent_queries:
             parent_queries[parent_id] = Counter()
