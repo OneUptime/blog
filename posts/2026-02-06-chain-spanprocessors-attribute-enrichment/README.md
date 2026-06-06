@@ -6,7 +6,7 @@ Tags: OpenTelemetry, SpanProcessor, Attribute Enrichment, SDK
 
 Description: Chain custom SpanProcessors to enrich span attributes with contextual data before the BatchSpanProcessor exports them.
 
-Adding contextual attributes to spans at export time is a common requirement. You might want to add the current user ID, request correlation headers, feature flag states, or infrastructure metadata that is only available at runtime. Custom SpanProcessors that run before the BatchSpanProcessor can inject these attributes into every span before it leaves the SDK.
+Adding contextual attributes to spans before export is a common requirement. You might want to add the current user ID, request correlation headers, feature flag states, or infrastructure metadata that is only available at runtime. Custom SpanProcessors that run before the BatchSpanProcessor can inject these attributes into every span before it leaves the SDK.
 
 ## The SpanProcessor Lifecycle
 
@@ -32,7 +32,6 @@ Here is a practical example with three enrichment processors that add different 
 # enrichment_processors.py
 import os
 import threading
-from opentelemetry.context import get_current
 from opentelemetry.sdk.trace import SpanProcessor
 
 
@@ -176,14 +175,14 @@ trace.set_tracer_provider(provider)
 
 ```python
 # middleware.py
-from flask import Flask, request, g
+from flask import Flask, request
 from enrichment_processors import RequestContextEnricher
 
 app = Flask(__name__)
 
 @app.before_request
 def set_request_context():
-    """Set request context before any spans are created."""
+    """Set request context before route handler spans are created."""
     RequestContextEnricher.set_request_context(
         user_id=request.headers.get("X-User-ID"),
         tenant_id=request.headers.get("X-Tenant-ID"),
@@ -218,7 +217,7 @@ public class TenantEnricher implements SpanProcessor {
 
     @Override
     public boolean isStartRequired() {
-        return true;  // We need on_start to add attributes
+        return true;  // We need onStart to add attributes
     }
 
     @Override
