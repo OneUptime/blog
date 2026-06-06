@@ -106,12 +106,12 @@ exporters:
 
 This gives you basic protection, but it is not a true circuit breaker because each batch independently goes through the full retry cycle. For real circuit breaker behavior, you need to track failure state across batches.
 
-## Building a Circuit Breaker with the Routing Connector
+## Building a Circuit Breaker with the Failover Connector
 
-A more sophisticated approach uses the routing connector to switch between a primary and fallback exporter based on the health of the primary backend. You combine this with a health check that probes the backend:
+A more sophisticated approach uses the failover connector to switch between a primary and fallback exporter based on downstream exporter errors. The connector routes to the highest-priority healthy pipeline and periodically retries higher-priority pipelines:
 
 ```yaml
-# Circuit breaker pattern using routing connector and health checks
+# Circuit breaker pattern using the failover connector
 
 receivers:
   otlp:
@@ -169,15 +169,30 @@ extensions:
   file_storage:
     directory: /var/lib/otel/queue
 
+connectors:
+  failover:
+    priority_levels:
+      - [traces/primary]
+      - [traces/fallback]
+      - [traces/dlq]
+    retry_interval: 30s
+
 service:
   extensions: [file_storage]
   pipelines:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      # Send to both primary and fallback
-      # The fallback has a larger queue and longer timeouts
-      exporters: [otlp/primary, otlp/fallback]
+      exporters: [failover]
+    traces/primary:
+      receivers: [failover]
+      exporters: [otlp/primary]
+    traces/fallback:
+      receivers: [failover]
+      exporters: [otlp/fallback]
+    traces/dlq:
+      receivers: [failover]
+      exporters: [file/dlq]
 ```
 
 ## Implementing a Circuit Breaker with an Envoy Sidecar
@@ -229,31 +244,31 @@ static_resources:
                       address: backend.example.com
                       port_value: 4317
 
-      # Circuit breaker thresholds
+      # Circuit breaker thresholds for resource limits
       circuit_breakers:
         thresholds:
           - priority: DEFAULT
             # Maximum number of concurrent connections
             max_connections: 100
-            # Maximum number of pending requests
+            # Maximum number of pending requests; for non-HTTP traffic,
+            # this is applied as a connection limit
             max_pending_requests: 500
-            # Maximum number of concurrent requests
+            # Maximum number of concurrent requests for HTTP traffic
             max_requests: 1000
             # Maximum number of retries
             max_retries: 3
 
-      # Outlier detection -- this is the real circuit breaker
+      # Outlier detection ejects unhealthy upstream hosts
       outlier_detection:
         # Check for outliers every 10 seconds
         interval: 10s
-        # Eject a host after 5 consecutive failures
+        # Eject a host after 5 consecutive connection failures for TCP
         consecutive_5xx: 5
         # Keep the host ejected for 30 seconds
         base_ejection_time: 30s
         # Never eject more than 50% of hosts
         max_ejection_percent: 50
-        # After ejection, start with a single probe request
-        # If it succeeds, the host is readmitted
+        # Enforce consecutive-5xx ejection 100% of the time
         enforcing_consecutive_5xx: 100
 ```
 
@@ -287,11 +302,8 @@ If you need full control, you can write a custom processor in Go that implements
 package circuitbreaker
 
 import (
-	"context"
 	"sync"
 	"time"
-
-	"go.opentelemetry.io/collector/pdata/ptrace"
 )
 
 // State represents the current state of the circuit breaker
@@ -341,7 +353,7 @@ func (cb *CircuitBreaker) Allow() bool {
 		if time.Since(cb.lastFailure) > cb.resetTimeout {
 			// Transition to half-open and allow a probe request
 			cb.state = StateHalfOpen
-			cb.halfOpenCount = 0
+			cb.halfOpenCount = 1
 			return true
 		}
 		// Still in cooldown, block the request
@@ -426,7 +438,7 @@ groups:
   - name: circuit-breaker
     rules:
       - alert: CircuitBreakerOpen
-        expr: circuit_breaker_state == 2
+        expr: circuit_breaker_state == 1
         for: 1m
         labels:
           severity: warning
