@@ -75,7 +75,7 @@ total_monthly_data_gb: 4200
 
 ## Step 2: Calculate Commercial APM Costs
 
-Commercial APM pricing models vary, but most follow similar patterns. Here is a realistic model:
+Commercial APM pricing models vary, but many use some combination of host, telemetry volume, retention, and user-based pricing. Here is a realistic model:
 
 ```python
 # Commercial APM cost calculator
@@ -136,8 +136,8 @@ result = calculate_commercial_apm_cost(
     custom_metrics=50_000,
 )
 
-# Monthly: ~$12,750
-# Annual: ~$153,000
+# Monthly: ~$15,250
+# Annual: ~$183,000
 ```
 
 Note: These are illustrative numbers. Actual vendor pricing varies significantly, and volume discounts can reduce costs by 30-60% with annual commitments. Always get a real quote from the vendor.
@@ -213,10 +213,10 @@ result = calculate_otel_self_hosted_cost(
     fte_fraction=0.5,
 )
 
-# Monthly infra: ~$3,500
+# Monthly infra: ~$3,140
 # Monthly engineering: ~$7,500
-# Monthly total: ~$11,000
-# Annual total: ~$132,000
+# Monthly total: ~$10,640
+# Annual total: ~$127,700
 ```
 
 ## Step 4: Account for Hidden Costs
@@ -294,7 +294,7 @@ TCO Comparison: 12-Month Projection
                           Commercial APM    OTel Self-Hosted
                           ---------------   ----------------
 Direct Costs:
-  Licensing/SaaS fees     $153,000          $0
+  Licensing/SaaS fees     $183,000          $0
   Infrastructure          $0                $42,000
   Storage                 $0                $12,000
 
@@ -304,17 +304,17 @@ Engineering Costs:
   Training                $3,000            $15,000
 
 Hidden Costs:
-  Overage buffer (15%)    $22,950           $0
+  Overage buffer (15%)    $27,450           $0
   Scaling overhead        $0                $6,000
   Migration insurance     $0                $0
 
                           ---------------   ----------------
-12-Month Total            $195,950          $195,000
+12-Month Total            $230,450          $195,000
 
-Cost per service/month    $217              $216
+Cost per service/month    $256              $217
 ```
 
-In this example, the costs are remarkably similar. The commercial APM spends more on licensing; the self-hosted approach spends more on engineering. The breakeven point shifts depending on scale:
+In this example, the self-hosted approach is lower over 12 months, but it spends more on engineering while the commercial APM spends more on licensing. The breakeven point shifts depending on scale:
 
 ```mermaid
 graph LR
