@@ -532,19 +532,28 @@ resource "aws_rds_cluster" "database" {
   master_username    = "admin"
   master_password    = var.db_password
 
-  # More instances in production for high availability
-  # Staging gets 2 instances, development gets 1
-  instance_count = (
-    var.environment == "production" ? 3 :
-    var.environment == "staging" ? 2 :
-    1
-  )
-
   # Enable deletion protection only in production
   deletion_protection = var.environment == "production"
 
   # Skip final snapshot only in development
   skip_final_snapshot = var.environment == "development"
+}
+
+# Aurora cluster instances are managed as separate resources
+# Use count with a conditional expression to size the cluster per environment
+# More instances in production for high availability; staging gets 2, development gets 1
+resource "aws_rds_cluster_instance" "database" {
+  count = (
+    var.environment == "production" ? 3 :
+    var.environment == "staging" ? 2 :
+    1
+  )
+
+  identifier         = "app-${var.environment}-${count.index}"
+  cluster_identifier = aws_rds_cluster.database.id
+  instance_class     = "db.r6g.large"
+  engine             = aws_rds_cluster.database.engine
+  engine_version     = aws_rds_cluster.database.engine_version
 }
 ```
 
