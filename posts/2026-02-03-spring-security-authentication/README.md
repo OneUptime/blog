@@ -41,7 +41,7 @@ The key components:
 
 ## Basic Setup
 
-Add the Spring Security starter to your project. This automatically secures all endpoints with HTTP Basic auth and generates a random password at startup.
+Add the Spring Security starter to your project. This automatically secures all endpoints with form login and HTTP Basic auth, and generates a random password at startup.
 
 ```xml
 <!-- Maven dependency for Spring Security -->
@@ -150,7 +150,8 @@ public class CustomUserDetailsService implements UserDetailsService {
                 "User not found: " + username
             ));
 
-        // Convert your user entity to Spring Security's UserDetails
+        // Convert your user entity to Spring Security's UserDetails.
+        // roles() expects names like "USER" or "ADMIN", not "ROLE_USER".
         return User.builder()
             .username(appUser.getUsername())
             .password(appUser.getPasswordHash())
@@ -245,6 +246,7 @@ package com.example.service;
 
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import java.util.Set;
 
 @Service
 public class UserService {
@@ -285,7 +287,7 @@ public class UserService {
 Form login is the classic username/password form. Spring Security can generate a default login page, or you can provide your own.
 
 ```java
-// Full form login configuration with all options
+// Form login configuration with common options
 .formLogin(form -> form
     // Custom login page URL - you need to create this controller/view
     .loginPage("/login")
@@ -294,22 +296,10 @@ Form login is the classic username/password form. Spring Security can generate a
     // Form field names if different from defaults
     .usernameParameter("email")
     .passwordParameter("pass")
-    // Where to go after successful login
-    .defaultSuccessUrl("/dashboard")
     // Force redirect to defaultSuccessUrl even if user requested another page
     .defaultSuccessUrl("/dashboard", true)
-    // Custom success handler for more control
-    .successHandler((request, response, authentication) -> {
-        // Log the login, update last-login timestamp, etc.
-        response.sendRedirect("/dashboard");
-    })
     // Where to go after failed login
     .failureUrl("/login?error=true")
-    // Custom failure handler
-    .failureHandler((request, response, exception) -> {
-        // Log failed attempt, implement lockout logic, etc.
-        response.sendRedirect("/login?error=" + exception.getMessage());
-    })
     // Allow everyone to see the login page
     .permitAll()
 )
@@ -339,12 +329,12 @@ A simple Thymeleaf login template:
     <!-- Login form - posts to loginProcessingUrl -->
     <form th:action="@{/perform_login}" method="post">
         <div>
-            <label>Username:</label>
-            <input type="text" name="username" required />
+            <label>Email:</label>
+            <input type="text" name="email" required />
         </div>
         <div>
             <label>Password:</label>
-            <input type="password" name="password" required />
+            <input type="password" name="pass" required />
         </div>
         <div>
             <input type="checkbox" name="remember-me" />
@@ -510,6 +500,7 @@ import org.springframework.security.access.annotation.Secured;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.access.prepost.PostAuthorize;
 import org.springframework.stereotype.Service;
+import jakarta.annotation.security.RolesAllowed;
 
 @Service
 public class DocumentService {
@@ -546,7 +537,7 @@ public class DocumentService {
         return documentRepository.save(document);
     }
 
-    // JSR-250 annotation - works the same as @Secured
+    // JSR-250 annotation - uses the default ROLE_ prefix
     @RolesAllowed({"ADMIN", "EDITOR"})
     public void publishDocument(Long documentId) {
         Document doc = documentRepository.findById(documentId).orElseThrow();
@@ -646,17 +637,11 @@ public class SecurityConfig {
     }
 
     @Bean
-    public AuthenticationManager authenticationManager(HttpSecurity http)
-            throws Exception {
-        AuthenticationManagerBuilder authBuilder =
-            http.getSharedObject(AuthenticationManagerBuilder.class);
-        authBuilder.authenticationProvider(authenticationProvider);
-        return authBuilder.build();
-    }
-
-    @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
-        // ... your filter chain configuration
+        http
+            // ... your filter chain configuration
+            .authenticationProvider(authenticationProvider);
+
         return http.build();
     }
 }
@@ -788,7 +773,8 @@ Remember me allows users to stay logged in across browser sessions by storing a 
 
 ```java
 @Bean
-public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+public SecurityFilterChain filterChain(HttpSecurity http,
+        UserDetailsService userDetailsService) throws Exception {
     http
         .authorizeHttpRequests(auth -> auth
             .anyRequest().authenticated()
@@ -817,7 +803,7 @@ For production, use persistent tokens stored in a database:
 
 ```java
 @Bean
-public PersistentTokenRepository persistentTokenRepository() {
+public PersistentTokenRepository persistentTokenRepository(DataSource dataSource) {
     JdbcTokenRepositoryImpl tokenRepository = new JdbcTokenRepositoryImpl();
     tokenRepository.setDataSource(dataSource);
     // Create table on first run (set to false after)
@@ -826,11 +812,13 @@ public PersistentTokenRepository persistentTokenRepository() {
 }
 
 @Bean
-public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+public SecurityFilterChain filterChain(HttpSecurity http,
+        UserDetailsService userDetailsService,
+        PersistentTokenRepository persistentTokenRepository) throws Exception {
     http
         // ... other config
         .rememberMe(remember -> remember
-            .tokenRepository(persistentTokenRepository())
+            .tokenRepository(persistentTokenRepository)
             .tokenValiditySeconds(7 * 24 * 60 * 60)
             .userDetailsService(userDetailsService)
         );
@@ -934,8 +922,6 @@ public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
             .frameOptions(frame -> frame.deny())
             // Prevent MIME type sniffing
             .contentTypeOptions(content -> {})
-            // Enable XSS filter
-            .xssProtection(xss -> xss.disable()) // Modern browsers handle this
             // HTTP Strict Transport Security
             .httpStrictTransportSecurity(hsts -> hsts
                 .maxAgeInSeconds(31536000)
