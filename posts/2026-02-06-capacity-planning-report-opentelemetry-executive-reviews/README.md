@@ -23,7 +23,7 @@ Everything in the report should map back to one of these questions. Let us build
 
 The report pulls from three categories of OpenTelemetry data: resource utilization, traffic volume, and cost allocation. Your collector should already be gathering these, but here is a configuration that ensures the right labels exist for grouping by team and service tier.
 
-This collector config adds team ownership and service tier labels that are essential for executive-level grouping:
+This collector config adds team ownership and service tier labels that are essential for executive-level grouping. The collector service account also needs permission to read pods and namespaces, and Prometheus must run with `--web.enable-remote-write-receiver` if you use `/api/v1/write` as the remote write endpoint:
 
 ```yaml
 # otel-collector-config.yaml
@@ -48,9 +48,9 @@ processors:
           key: service-tier
           from: pod
 
-  # Add cost metadata based on node type
-  attributes:
-    actions:
+  # Add cost metadata based on ownership
+  resource:
+    attributes:
       - key: cost_center
         from_attribute: team
         action: upsert
@@ -58,12 +58,14 @@ processors:
 exporters:
   prometheusremotewrite:
     endpoint: "http://prometheus:9090/api/v1/write"
+    resource_to_telemetry_conversion:
+      enabled: true
 
 service:
   pipelines:
     metrics:
       receivers: [otlp]
-      processors: [k8sattributes, attributes]
+      processors: [k8sattributes, resource]
       exporters: [prometheusremotewrite]
 ```
 
@@ -75,10 +77,11 @@ This is the main report generator that queries all necessary metrics and organiz
 
 ```python
 import requests
+import os
 from datetime import datetime, timedelta
 from collections import defaultdict
 
-PROM_URL = "http://prometheus:9090"
+PROM_URL = os.getenv("PROMETHEUS_URL", "http://prometheus:9090")
 REPORT_PERIOD_DAYS = 30
 
 def query_prom(promql):
@@ -115,9 +118,9 @@ def get_capacity_summary():
     # Get average CPU utilization by team
     cpu_results = query_prom("""
         avg by (team) (
-            rate(container_cpu_usage_seconds_total{container!="POD"}[7d])
-            / on(pod, namespace)
-            kube_pod_container_resource_requests{resource="cpu"}
+            rate(container_cpu_usage_seconds_total{container!="", container!="POD"}[7d])
+            / on(pod, namespace, container)
+            kube_pod_container_resource_requests{resource="cpu", unit="core"}
         )
     """)
 
@@ -125,13 +128,16 @@ def get_capacity_summary():
         team = r["metric"].get("team", "unassigned")
         summary[team]["cpu_avg_util"] = float(r["value"][1])
 
-    # Count services at risk (P95 CPU utilization > 80%)
+    # Count pods at risk (P95 CPU utilization > 80%)
     risk_results = query_prom("""
         count by (team) (
-            quantile_over_time(0.95,
-                (rate(container_cpu_usage_seconds_total{container!="POD"}[5m])
-                / on(pod,namespace) kube_pod_container_resource_requests{resource="cpu"})
-            [7d:1h]) > 0.80
+            max by (team, namespace, pod) (
+                quantile_over_time(0.95,
+                    (rate(container_cpu_usage_seconds_total{container!="", container!="POD"}[5m])
+                    / on(pod, namespace, container)
+                    kube_pod_container_resource_requests{resource="cpu", unit="core"})
+                [7d:1h])
+            ) > 0.80
         )
     """)
 
@@ -150,7 +156,7 @@ def estimate_cost_by_team():
 
     costs = {}
     cpu_results = query_prom("""
-        sum by (team) (kube_pod_container_resource_requests{resource="cpu"})
+        sum by (team) (kube_pod_container_resource_requests{resource="cpu", unit="core"})
     """)
 
     for r in cpu_results:
@@ -179,7 +185,7 @@ def generate_report(summary, costs, forecast):
 
 ## Executive Summary
 
-| Team | CPU Utilization | Services at Risk | Monthly Compute Cost | Potential Savings |
+| Team | CPU Utilization | Pods at Risk | Monthly Compute Cost | Potential Savings |
 |------|----------------|-------------------|---------------------|-------------------|
 """
     total_cost = 0
@@ -223,7 +229,7 @@ def generate_report(summary, costs, forecast):
     # Generate action items based on the data
     for team, data in summary.items():
         if data["at_risk"] > 2:
-            report += f"- **{team}**: Scale up {data['at_risk']} services immediately to reduce outage risk\n"
+            report += f"- **{team}**: Scale up {data['at_risk']} pods immediately to reduce outage risk\n"
         if data["cpu_avg_util"] < 0.15:
             cost_data = costs.get(team, {})
             report += f"- **{team}**: Right-size resources to save ~${cost_data.get('monthly_cpu_cost', 0) * 0.5:,.0f}/month\n"
