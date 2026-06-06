@@ -49,10 +49,10 @@ flowchart TB
 
 ### Built-in Policies
 
-Vault comes with two built-in policies that cannot be modified or deleted:
+Vault comes with two built-in policies that cannot be deleted:
 
-- **default** - Attached to all tokens by default, provides basic functionality
-- **root** - Grants unlimited access, should only be used for initial setup
+- **default** - Attached to all tokens by default, provides basic functionality. Can be modified, but Vault will not overwrite your changes on upgrade.
+- **root** - Grants unlimited access. Cannot be modified. Should only be used for initial setup.
 
 ## Policy Syntax Fundamentals
 
@@ -100,16 +100,16 @@ path "secret/data/myapp/*" {
 Vault supports glob patterns for flexible path matching.
 
 ```hcl
-# Single asterisk matches any single path segment
+# Asterisk matches any number of characters but must be the last character of the path
 # Matches: secret/data/myapp/config, secret/data/myapp/creds
-# Does NOT match: secret/data/myapp/nested/config
+# Matches: secret/data/myapp/nested/config
 path "secret/data/myapp/*" {
   capabilities = ["read"]
 }
 
-# Plus sign matches one or more path segments
+# Plus sign matches any number of characters within a single path segment
 # Matches: secret/data/myapp/config
-# Matches: secret/data/myapp/nested/deep/config
+# Does NOT match: secret/data/myapp/nested/config
 path "secret/data/myapp/+" {
   capabilities = ["read"]
 }
@@ -461,10 +461,10 @@ vault token capabilities -accessor <accessor> secret/data/myapp/config
 Validate policy syntax before applying to production.
 
 ```bash
-# Validate policy file syntax
+# Format policy file in place (fails on syntax errors)
 vault policy fmt myapp-policy.hcl
 
-# Parse and check for errors
+# Parse and check the policy without persisting changes
 vault policy write -output-policy myapp myapp-policy.hcl
 ```
 
@@ -661,13 +661,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Vault CLI
-        uses: hashicorp/setup-vault@v2
+      - name: Install Vault CLI
+        run: |
+          curl -fsSL https://apt.releases.hashicorp.com/gpg | sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
+          echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/hashicorp.list
+          sudo apt-get update && sudo apt-get install -y vault
 
       - name: Validate Policies
         run: |
           for policy in policies/**/*.hcl; do
-            vault policy fmt -check "$policy"
+            vault policy fmt "$policy"
           done
 
       - name: Deploy Policies
