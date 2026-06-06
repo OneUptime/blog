@@ -34,7 +34,7 @@ flowchart TD
     B3 -->|OTLP/gRPC| CG
 ```
 
-Each cluster has a local gateway that handles buffering and initial processing. The central gateway handles cross-cluster concerns like unified sampling decisions and routing.
+Each cluster has a local gateway that handles buffering and initial processing. The central gateway handles cross-cluster concerns like unified sampling decisions and routing. When the central gateway runs multiple replicas, route traces by trace ID so all spans for a trace reach the same gateway replica.
 
 ## Per-Cluster Collector Configuration
 
@@ -71,12 +71,37 @@ processors:
     send_batch_max_size: 1024
 
 exporters:
-  # Forward everything to the central gateway
+  # Forward traces with traceID-aware routing so tail sampling works with
+  # multiple central gateway replicas. The DNS name should resolve to the
+  # central gateway pod endpoints, such as a Kubernetes headless Service.
+  load_balancing/central:
+    routing_key: traceID
+    protocol:
+      otlp:
+        tls:
+          ca_file: /etc/tls/ca.crt
+          cert_file: /etc/tls/client.crt
+          key_file: /etc/tls/client.key
+    resolver:
+      dns:
+        hostname: telemetry-gateway-pods.example.com
+        port: "4317"
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+    sending_queue:
+      enabled: true
+      num_consumers: 10
+      queue_size: 5000
+
+  # Forward metrics and logs to the central gateway load balancer
   otlp/central:
-    endpoint: "telemetry-gateway.central.svc.cluster.local:4317"
+    endpoint: "telemetry-gateway.example.com:4317"
     tls:
-      insecure: false
       ca_file: /etc/tls/ca.crt
+      cert_file: /etc/tls/client.crt
+      key_file: /etc/tls/client.key
     retry_on_failure:
       enabled: true
       initial_interval: 5s
@@ -91,7 +116,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [resource, batch]
-      exporters: [otlp/central]
+      exporters: [load_balancing/central]
     metrics:
       receivers: [otlp]
       processors: [resource, batch]
@@ -115,10 +140,15 @@ receivers:
     protocols:
       grpc:
         endpoint: 0.0.0.0:4317
+        tls:
+          cert_file: /etc/tls/server.crt
+          key_file: /etc/tls/server.key
+          client_ca_file: /etc/tls/client-ca.crt
 
 processors:
   # Tail-based sampling across all clusters
-  # This ensures consistent sampling for traces that span clusters
+  # This requires traceID-aware routing from the per-cluster gateways
+  # so all spans for a trace arrive at the same central gateway replica
   tail_sampling:
     decision_wait: 10s
     policies:
@@ -135,13 +165,13 @@ processors:
         probabilistic:
           sampling_percentage: 10
 
-  # Normalize metric names across clusters that might use
-  # slightly different naming conventions
+  # Normalize metric descriptions across clusters that might use
+  # slightly different conventions
   transform/metrics:
     metric_statements:
       - context: metric
         statements:
-          - set(description, "") where description == "UNSET"
+          - set(metric.description, "") where metric.description == "UNSET"
 
   batch:
     timeout: 10s
@@ -204,11 +234,13 @@ spec:
               topologyKey: topology.kubernetes.io/zone
       containers:
         - name: otel-collector
-          image: otel/opentelemetry-collector-contrib:0.96.0
+          image: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib:0.153.0
           args: ["--config=/etc/otel/config.yaml"]
           ports:
             - containerPort: 4317
               name: otlp-grpc
+            - containerPort: 8888
+              name: metrics
           resources:
             requests:
               cpu: "2"
@@ -219,10 +251,16 @@ spec:
           volumeMounts:
             - name: config
               mountPath: /etc/otel
+            - name: tls
+              mountPath: /etc/tls
+              readOnly: true
       volumes:
         - name: config
           configMap:
             name: otel-central-gateway-config
+        - name: tls
+          secret:
+            secretName: otel-central-gateway-tls
 ---
 apiVersion: v1
 kind: Service
@@ -260,7 +298,7 @@ Place `memory_limiter` first in every pipeline so it can reject data before it g
 
 **Authentication between clusters.** Use mTLS for the gRPC connections between cluster gateways and the central gateway. Each cluster gets its own client certificate, which also lets you identify which cluster sent which data at the network level.
 
-**Monitor the gateway itself.** The OpenTelemetry Collector exposes Prometheus metrics at `/metrics` on port 8888 by default. Track `otelcol_exporter_queue_size`, `otelcol_receiver_refused_spans`, and `otelcol_processor_dropped_spans` to catch problems early.
+**Monitor the gateway itself.** The OpenTelemetry Collector exposes Prometheus metrics at `/metrics` on port 8888 by default, bound to localhost unless you configure the telemetry reader to listen on another interface. Track `otelcol_exporter_queue_size`, `otelcol_exporter_queue_capacity`, `otelcol_receiver_refused_spans`, and `otelcol_exporter_enqueue_failed_spans` to catch problems early.
 
 **Plan for failure.** If the central gateway goes down, per-cluster gateways will queue data up to their configured limits. Size those queues based on your expected downtime tolerance. For a 5-minute outage window, calculate your throughput and set `queue_size` accordingly.
 
