@@ -12,7 +12,7 @@ This post covers how to set up maintenance windows and alert suppression for Ope
 
 ## How Silences Work in Alertmanager
 
-Alertmanager silences are time-bounded rules that match alerts by label and prevent them from being dispatched to receivers. The alert still evaluates and appears in the Alertmanager UI, but no notification is sent. This is important because you can still see suppressed alerts after the maintenance window closes.
+Alertmanager silences are time-bounded rules that match alerts by label and prevent them from being dispatched to receivers. The alert still evaluates and appears in the Alertmanager UI as silenced while it is active, but no notification is sent.
 
 ```mermaid
 flowchart TD
@@ -178,12 +178,9 @@ This Collector configuration drops metrics from services tagged as being in main
 # otel-collector-config.yaml
 processors:
   filter/maintenance:
-    metrics:
-      exclude:
-        match_type: strict
-        resource_attributes:
-          - key: maintenance.mode
-            value: "true"
+    error_mode: ignore
+    metric_conditions:
+      - resource.attributes["maintenance.mode"] == "true"
 
 service:
   pipelines:
@@ -193,10 +190,10 @@ service:
       exporters: [prometheus]
 ```
 
-Your deployment script sets the resource attribute before deploying:
+Your deployment config starts the instrumented service with the resource attribute during maintenance:
 
 ```bash
-# Set maintenance mode on the service's OTel SDK config
+# Set maintenance mode in the service's OTel SDK process environment
 export OTEL_RESOURCE_ATTRIBUTES="service.name=checkout-service,maintenance.mode=true"
 # Deploy...
 # After deploy, remove the attribute
