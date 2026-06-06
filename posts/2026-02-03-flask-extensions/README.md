@@ -336,7 +336,10 @@ class Metrics:
         """Endpoint returning collected metrics"""
         result = []
         for key, data in self._metrics.items():
-            method, path, status = key.split(':')
+            # Path may contain ':' from URL converters like <int:user_id>,
+            # so split method from the left and status from the right.
+            method, rest = key.split(':', 1)
+            path, status = rest.rsplit(':', 1)
             avg_time = data['total_time'] / data['count'] if data['count'] > 0 else 0
             result.append({
                 'method': method,
@@ -637,6 +640,8 @@ target-version = ["py38"]
 
 [tool.ruff]
 line-length = 88
+
+[tool.ruff.lint]
 select = ["E", "F", "W", "I"]
 ```
 
