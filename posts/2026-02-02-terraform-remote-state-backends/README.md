@@ -298,7 +298,7 @@ resource "azurerm_storage_account" "terraform_state" {
 
   # Enable encryption and secure transfer
   min_tls_version               = "TLS1_2"
-  enable_https_traffic_only     = true
+  https_traffic_only_enabled    = true
 
   blob_properties {
     versioning_enabled = true
