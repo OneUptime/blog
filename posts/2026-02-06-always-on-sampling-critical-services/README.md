@@ -46,11 +46,11 @@ from opentelemetry.sdk.resources import Resource
 resource = Resource.create({
     "service.name": "payment-service",
     "service.version": "2.8.1",
-    "deployment.environment": "production",
+    "deployment.environment.name": "production",
 })
 
-# ALWAYS_ON is a built-in sampler that records and exports
-# every single span. No traces are dropped.
+# ALWAYS_ON is a built-in sampler that records every span
+# so it can be exported by the configured span processor.
 provider = TracerProvider(
     resource=resource,
     sampler=ALWAYS_ON,
@@ -81,9 +81,8 @@ The `BatchSpanProcessor` tuning matters when you are exporting every span. The d
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
-const { Resource } = require('@opentelemetry/resources');
-const { AlwaysOnSampler } = require('@opentelemetry/sdk-trace-base');
-const { BatchSpanProcessor } = require('@opentelemetry/sdk-trace-base');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const { AlwaysOnSampler, BatchSpanProcessor } = require('@opentelemetry/sdk-trace-base');
 
 const exporter = new OTLPTraceExporter({
   url: 'http://localhost:4318/v1/traces',
@@ -98,9 +97,9 @@ const spanProcessor = new BatchSpanProcessor(exporter, {
 });
 
 const sdk = new NodeSDK({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     'service.name': 'auth-service',
-    'deployment.environment': 'production',
+    'deployment.environment.name': 'production',
   }),
   // AlwaysOnSampler records every span
   sampler: new AlwaysOnSampler(),
@@ -121,15 +120,15 @@ import io.opentelemetry.sdk.trace.export.BatchSpanProcessor;
 import io.opentelemetry.exporter.otlp.trace.OtlpGrpcSpanExporter;
 import io.opentelemetry.sdk.resources.Resource;
 import io.opentelemetry.api.common.Attributes;
-import io.opentelemetry.semconv.ResourceAttributes;
+import io.opentelemetry.api.common.AttributeKey;
 
 public class TracingConfig {
 
     public static SdkTracerProvider createProvider() {
         Resource resource = Resource.getDefault().merge(
             Resource.create(Attributes.of(
-                ResourceAttributes.SERVICE_NAME, "order-service",
-                ResourceAttributes.DEPLOYMENT_ENVIRONMENT, "production"
+                AttributeKey.stringKey("service.name"), "order-service",
+                AttributeKey.stringKey("deployment.environment.name"), "production"
             ))
         );
 
@@ -172,7 +171,7 @@ import (
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-	semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
+	semconv "go.opentelemetry.io/otel/semconv/v1.36.0"
 )
 
 func InitTracing(ctx context.Context) func() {
@@ -189,7 +188,7 @@ func InitTracing(ctx context.Context) func() {
 		resource.NewWithAttributes(
 			semconv.SchemaURL,
 			semconv.ServiceName("fulfillment-service"),
-			semconv.DeploymentEnvironment("production"),
+			semconv.DeploymentEnvironmentName("production"),
 		),
 	)
 
@@ -230,7 +229,7 @@ export OTEL_SERVICE_NAME=payment-service
 export OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
 ```
 
-This is particularly useful when you want to temporarily enable full sampling during an incident without redeploying the service.
+This is particularly useful when you want to temporarily enable full sampling during an incident without changing application code.
 
 ---
 
@@ -244,8 +243,10 @@ from opentelemetry.sdk.trace.sampling import (
     Sampler,
     SamplingResult,
     Decision,
+    TraceIdRatioBased,
 )
 from opentelemetry.context import Context
+from opentelemetry import trace
 from opentelemetry.trace import SpanKind
 
 
@@ -276,6 +277,7 @@ class SelectiveAlwaysOnSampler(Sampler):
 
     def __init__(self, default_rate=0.1):
         self._default_rate = default_rate
+        self._fallback_sampler = TraceIdRatioBased(default_rate)
 
     def should_sample(
         self,
@@ -288,29 +290,38 @@ class SelectiveAlwaysOnSampler(Sampler):
     ) -> SamplingResult:
         attrs = attributes or {}
         route = attrs.get("http.route", "") or attrs.get("http.target", "")
+        parent_span_context = trace.get_current_span(parent_context).get_span_context()
+        trace_state = parent_span_context.trace_state
 
         # Always-on for critical routes
         if route in self.ALWAYS_SAMPLE_OPERATIONS:
             return SamplingResult(
                 Decision.RECORD_AND_SAMPLE,
                 {"sampling.strategy": "always_on"},
+                trace_state,
             )
 
         # Never sample noise
         if route in self.NEVER_SAMPLE_OPERATIONS:
-            return SamplingResult(Decision.DROP, {})
+            return SamplingResult(Decision.DROP, {}, trace_state)
 
         # Probabilistic for everything else
-        bound = int(self._default_rate * (2**64 - 1))
-        trace_id_lower = trace_id & 0xFFFFFFFFFFFFFFFF
-
-        if trace_id_lower < bound:
+        result = self._fallback_sampler.should_sample(
+            parent_context,
+            trace_id,
+            name,
+            kind,
+            attributes,
+            links,
+        )
+        if result.decision is Decision.RECORD_AND_SAMPLE:
             return SamplingResult(
                 Decision.RECORD_AND_SAMPLE,
                 {"sampling.strategy": "probabilistic"},
+                trace_state,
             )
 
-        return SamplingResult(Decision.DROP, {})
+        return SamplingResult(result.decision, result.attributes, trace_state)
 
     def get_description(self) -> str:
         return f"SelectiveAlwaysOnSampler(default_rate={self._default_rate})"
@@ -322,7 +333,7 @@ This approach gives you 100% visibility into payment and auth flows while keepin
 
 ## Collector-Level Always-On for Specific Services
 
-If you cannot modify the SDK configuration (for example, with third-party services that send you traces), you can implement always-on logic at the Collector level using the filter processor.
+If you cannot modify the SDK configuration (for example, with third-party services that send you traces), you can implement always-on logic at the Collector level using the tail sampling processor.
 
 ```yaml
 # otel-collector-config.yaml
