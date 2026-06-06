@@ -57,8 +57,6 @@ spec:
     jitter: "100ms"
     correlation: "50"
   duration: "5m"
-  scheduler:
-    cron: "@every 10m"
 ```
 
 Apply it:
@@ -72,7 +70,7 @@ kubectl apply -f network-delay-experiment.yaml
 Your services should already be instrumented with OpenTelemetry. The key is adding attributes that help you identify chaos-affected spans later. Add middleware that detects degraded conditions:
 
 ```python
-# middleware.py - Add to your Flask/FastAPI service
+# middleware.py - Add to your Flask/WSGI service
 import time
 from opentelemetry import trace
 
@@ -89,8 +87,9 @@ class ChaosAwareMiddleware:
         # Record the start time for upstream calls
         request_start = time.monotonic()
 
-        # Check if there is an active chaos experiment via annotation
-        # Chaos Mesh sets annotations on affected pods
+        # Check if your deployment exposes an active experiment marker.
+        # For example, mount a ConfigMap or Downward API annotation that your
+        # experiment automation updates before applying Chaos Mesh resources.
         chaos_experiment = self._get_active_experiment()
         if chaos_experiment:
             span.set_attribute("chaos.experiment.active", True)
@@ -105,13 +104,13 @@ class ChaosAwareMiddleware:
         return response
 
     def _get_active_experiment(self):
-        """Check Kubernetes annotations for active chaos experiments."""
+        """Check a mounted metadata file for the active chaos experiment."""
         try:
-            with open('/etc/podinfo/annotations', 'r') as f:
-                annotations = f.read()
-                if 'chaos-mesh' in annotations:
-                    return annotations.split('chaos-mesh.org/experiment=')[1].split('\n')[0]
-        except (FileNotFoundError, IndexError):
+            with open('/etc/podinfo/chaos-experiment', 'r', encoding='utf-8') as f:
+                experiment = f.read().strip()
+                if experiment:
+                    return experiment
+        except FileNotFoundError:
             pass
         return None
 ```
@@ -134,13 +133,14 @@ done
 
 CHAOS_END=$(date +%s)
 
-# Query traces that occurred during the chaos window
-curl -G "http://your-trace-backend/api/traces" \
+# Query traces that occurred during the chaos window.
+# This example uses Jaeger's JSON query API.
+curl -G "http://jaeger-query:16686/api/traces" \
   --data-urlencode "service=order-service" \
   --data-urlencode "start=${CHAOS_START}000000" \
   --data-urlencode "end=${CHAOS_END}000000" \
   --data-urlencode "minDuration=1s" \
-  | jq '.traces[] | {traceId: .traceID, duration: .spans[0].duration, services: [.spans[].process.serviceName] | unique}'
+  | jq '.data[] | {traceId: .traceID, duration: .spans[0].duration, services: [.processes[].serviceName] | unique}'
 ```
 
 ## Creating an OpenTelemetry Collector Pipeline for Chaos Analysis
@@ -204,7 +204,7 @@ def analyze_chaos_impact(trace_backend_url, start_time, end_time):
         "end": end_time,
         "limit": 500,
     })
-    traces = response.json()["traces"]
+    traces = response.json().get("data", [])
 
     error_count = 0
     timeout_count = 0
@@ -213,13 +213,14 @@ def analyze_chaos_impact(trace_backend_url, start_time, end_time):
     for t in traces:
         spans = t["spans"]
         for span in spans:
-            status = span.get("status", {}).get("code", 0)
-            if status == 2:  # ERROR status
+            tags = span.get("tags", [])
+            if any(tag.get("key") == "otel.status_code" and tag.get("value") == "ERROR"
+                   for tag in tags):
                 error_count += 1
             # Check for timeout indicators
-            if any(tag["value"] == "deadline_exceeded"
-                   for tag in span.get("tags", [])
-                   if tag["key"] == "rpc.grpc.status_code"):
+            if any(tag.get("value") == "DEADLINE_EXCEEDED"
+                   for tag in tags
+                   if tag.get("key") == "rpc.response.status_code"):
                 timeout_count += 1
 
         # Count retries by looking for duplicate operation names
