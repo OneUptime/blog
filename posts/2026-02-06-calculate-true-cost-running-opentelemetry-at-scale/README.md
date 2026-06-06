@@ -47,11 +47,33 @@ Enable the Collector's built-in telemetry endpoint and query the key throughput 
 # otel-collector-config.yaml
 
 # Enable the Collector's internal metrics endpoint for cost measurement
+receivers:
+  otlp:
+    protocols:
+      grpc:
+      http:
+
+processors:
+  batch:
+
+exporters:
+  otlp/backend:
+    endpoint: "backend.example.com:4317"
+    tls:
+      insecure: true
+
 service:
   telemetry:
     metrics:
-      address: ":8888"  # Prometheus-compatible metrics endpoint
       level: detailed    # Include per-pipeline breakdown
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: "0.0.0.0"
+                port: 8888  # Prometheus-compatible metrics endpoint
+                without_type_suffix: true
+                without_units: true
   pipelines:
     traces:
       receivers: [otlp]
@@ -85,11 +107,17 @@ metadata:
   name: otel-collector-gateway
 spec:
   replicas: 4  # Scale horizontally for higher throughput
+  selector:
+    matchLabels:
+      app: otel-collector-gateway
   template:
+    metadata:
+      labels:
+        app: otel-collector-gateway
     spec:
       containers:
         - name: collector
-          image: otel/opentelemetry-collector-contrib:0.96.0
+          image: otel/opentelemetry-collector-contrib:0.153.0
           resources:
             requests:
               cpu: "2"        # 2 cores per replica
@@ -130,26 +158,26 @@ Network costs are the hidden killer, especially in multi-AZ or multi-region depl
 
 ```mermaid
 graph LR
-    subgraph AZ-1
+    subgraph AZ1["AZ-1"]
         A1[App Pod] -->|cross-AZ: $0.01/GB| C1[Collector in AZ-2]
     end
-    subgraph AZ-2
+    subgraph AZ2["AZ-2"]
         C1 -->|egress to backend| B1[Backend]
     end
-    subgraph AZ-1 - Better
+    subgraph AZ1Better["AZ-1 - Better"]
         A2[App Pod] -->|same-AZ: free| C2[Collector DaemonSet in AZ-1]
         C2 -->|cross-AZ to gateway| G[Gateway Collector in AZ-2]
         G -->|egress| B2[Backend]
     end
 ```
 
-To minimize cross-AZ traffic, deploy Collectors as a DaemonSet so each node has a local Collector. Applications send telemetry to localhost, which is always free. The DaemonSet Collectors then forward to a gateway Collector, concentrating your cross-AZ traffic into fewer, larger streams.
+To minimize cross-AZ traffic, deploy Collectors as a DaemonSet so each node has a node-local Collector. Applications send telemetry to that node-local endpoint, usually through a sidecar, host networking, hostPort, or the node IP rather than plain `localhost` from another pod. The DaemonSet Collectors then forward to same-AZ gateways or backends where possible, keeping most telemetry traffic inside the availability zone.
 
 Estimate your network cost by measuring the data volume. A single span is typically 500 bytes to 2 KB, depending on how many attributes it carries. At 10,000 spans/second with an average size of 1 KB:
 
 - Data rate: 10 MB/second = 36 GB/hour = 25.9 TB/month
 - Cross-AZ cost at $0.01/GB: **$259/month** (if all traffic crosses AZs)
-- With DaemonSet optimization: reduce cross-AZ traffic by 60-80%
+- With node-local Collectors and same-AZ routing: reduce cross-AZ traffic substantially, depending on how much traffic can stay inside the same availability zone
 
 ## Step 5: Calculate Backend Storage Costs
 
@@ -232,6 +260,7 @@ Once you know where the money goes, you can target reductions.
 processors:
   # Drop health check spans - they add volume but no insight
   filter:
+    error_mode: ignore
     traces:
       span:
         - 'attributes["http.route"] == "/healthz"'
