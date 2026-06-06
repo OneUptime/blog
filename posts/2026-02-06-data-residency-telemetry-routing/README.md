@@ -31,7 +31,7 @@ Services (any region) -> Regional Collector -> Routing Gateway
 
 ## Step 1: Tag Services with Data Residency Attributes
 
-Add region annotations to your Kubernetes deployments:
+Add region labels to your Kubernetes deployments:
 
 ```yaml
 # eu-service-deployment.yaml
@@ -56,10 +56,7 @@ spec:
         - name: app
           env:
             - name: OTEL_RESOURCE_ATTRIBUTES
-              value: >
-                data.residency=eu,
-                data.classification=pii,
-                service.region=eu-west-1
+              value: "data.residency=eu,data.classification=pii,service.region=eu-west-1"
 ```
 
 ## Step 2: Collector Configuration for Compliant Routing
@@ -79,6 +76,7 @@ processors:
 
   # Extract and validate residency attributes
   k8sattributes:
+    auth_type: serviceAccount
     extract:
       labels:
         - tag_name: data.residency
@@ -90,47 +88,54 @@ processors:
 
   # Scrub PII from telemetry that crosses regions
   transform/scrub_pii:
+    error_mode: ignore
     trace_statements:
-      - context: span
-        statements:
-          # Remove PII attributes for non-compliant routing
-          - delete_key(attributes, "user.email")
-          - delete_key(attributes, "user.id")
-          - replace_pattern(attributes["http.url"],
-              "email=[^&]*", "email=REDACTED")
-          - replace_pattern(attributes["http.url"],
-              "token=[^&]*", "token=REDACTED")
+      # Remove PII attributes for non-compliant routing
+      - delete_key(span.attributes, "user.email")
+      - delete_key(span.attributes, "user.id")
+      - replace_pattern(span.attributes["http.url"],
+          "email=[^&]*", "email=REDACTED")
+      - replace_pattern(span.attributes["http.url"],
+          "token=[^&]*", "token=REDACTED")
     log_statements:
-      - context: log
-        statements:
-          - replace_pattern(body,
-              "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}",
-              "EMAIL_REDACTED")
+      - replace_pattern(log.body,
+          "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}",
+          "EMAIL_REDACTED")
 
-  # Route based on data residency attribute
-  routing/residency:
-    from_attribute: data.residency
-    attribute_source: resource
+connectors:
+  # Route traces based on resource attributes
+  routing/residency_traces:
     table:
-      - value: eu
-        exporters: [otlphttp/eu]
-      - value: us
-        exporters: [otlphttp/us]
-      - value: apac
-        exporters: [otlphttp/apac]
-    default_exporters: [otlphttp/us]
-
-  # For data that must go to a non-primary region,
-  # scrub PII first
-  routing/classification:
-    from_attribute: data.classification
-    attribute_source: resource
-    table:
-      - value: pii
+      - context: resource
+        condition: attributes["data.classification"] == "pii"
         pipelines: [traces/pii_handling]
-      - value: public
-        pipelines: [traces/public]
-    default_pipelines: [traces/public]
+      - context: resource
+        condition: attributes["data.residency"] == "eu"
+        pipelines: [traces/eu]
+      - context: resource
+        condition: attributes["data.residency"] == "us"
+        pipelines: [traces/us]
+      - context: resource
+        condition: attributes["data.residency"] == "apac"
+        pipelines: [traces/apac]
+    default_pipelines: [traces/us]
+
+  # Route logs based on resource attributes
+  routing/residency_logs:
+    table:
+      - context: resource
+        condition: attributes["data.classification"] == "pii"
+        pipelines: [logs/pii_handling]
+      - context: resource
+        condition: attributes["data.residency"] == "eu"
+        pipelines: [logs/eu]
+      - context: resource
+        condition: attributes["data.residency"] == "us"
+        pipelines: [logs/us]
+      - context: resource
+        condition: attributes["data.residency"] == "apac"
+        pipelines: [logs/apac]
+    default_pipelines: [logs/us]
 
 exporters:
   # EU backend - Frankfurt
@@ -163,26 +168,50 @@ exporters:
 service:
   pipelines:
     # Main intake pipeline
-    traces:
+    traces/in:
       receivers: [otlp]
-      processors: [k8sattributes, batch, routing/residency]
-      exporters: [otlphttp/eu, otlphttp/us, otlphttp/apac]
+      processors: [k8sattributes, batch]
+      exporters: [routing/residency_traces]
 
     # PII data gets extra scrubbing
     traces/pii_handling:
-      receivers: [routing/classification]
+      receivers: [routing/residency_traces]
       processors: [transform/scrub_pii, batch]
       exporters: [otlphttp/eu]  # PII always goes to EU
 
-    traces/public:
-      receivers: [routing/classification]
-      processors: [batch]
-      exporters: [otlphttp/us]  # Public data goes to US (cheapest)
+    traces/eu:
+      receivers: [routing/residency_traces]
+      exporters: [otlphttp/eu]
 
-    logs:
+    traces/us:
+      receivers: [routing/residency_traces]
+      exporters: [otlphttp/us]
+
+    traces/apac:
+      receivers: [routing/residency_traces]
+      exporters: [otlphttp/apac]
+
+    logs/in:
       receivers: [otlp]
-      processors: [k8sattributes, transform/scrub_pii, batch, routing/residency]
-      exporters: [otlphttp/eu, otlphttp/us, otlphttp/apac]
+      processors: [k8sattributes, batch]
+      exporters: [routing/residency_logs]
+
+    logs/pii_handling:
+      receivers: [routing/residency_logs]
+      processors: [transform/scrub_pii, batch]
+      exporters: [otlphttp/eu]  # PII always goes to EU
+
+    logs/eu:
+      receivers: [routing/residency_logs]
+      exporters: [otlphttp/eu]
+
+    logs/us:
+      receivers: [routing/residency_logs]
+      exporters: [otlphttp/us]
+
+    logs/apac:
+      receivers: [routing/residency_logs]
+      exporters: [otlphttp/apac]
 ```
 
 ## Step 3: Compliance Validation
@@ -204,6 +233,11 @@ COMPLIANCE_RULES = {
         "requires_pii_scrubbing_for_cross_region": True,
         "max_retention_days": 730,
     },
+    "apac": {
+        "allowed_regions": ["ap-southeast-1", "ap-northeast-1"],
+        "requires_pii_scrubbing_for_cross_region": True,
+        "max_retention_days": 365,
+    },
 }
 
 def validate_routing_config(config_path):
@@ -212,26 +246,32 @@ def validate_routing_config(config_path):
 
     errors = []
 
-    # Check that EU-tagged data goes to EU backends
-    routing = config.get("processors", {}).get("routing/residency", {})
+    pipelines = config.get("service", {}).get("pipelines", {})
+    routing = config.get("connectors", {}).get("routing/residency_traces", {})
     for route in routing.get("table", []):
-        region = route["value"]
-        exporters = route["exporters"]
+        condition = route.get("condition", "")
+        if 'attributes["data.residency"]' not in condition:
+            continue
 
-        for exporter in exporters:
-            endpoint = (config.get("exporters", {})
-                       .get(exporter, {}).get("endpoint", ""))
+        region = condition.rsplit('==', 1)[1].strip().strip('"')
+        route_pipelines = route["pipelines"]
 
-            # Verify the endpoint is in the correct region
-            rules = COMPLIANCE_RULES.get(region, {})
-            allowed = rules.get("allowed_regions", [])
+        for pipeline in route_pipelines:
+            exporters = pipelines.get(pipeline, {}).get("exporters", [])
+            for exporter in exporters:
+                endpoint = (config.get("exporters", {})
+                           .get(exporter, {}).get("endpoint", ""))
 
-            region_ok = any(r in endpoint for r in allowed)
-            if not region_ok:
-                errors.append(
-                    f"Route for '{region}' data points to "
-                    f"non-compliant endpoint: {endpoint}"
-                )
+                # Verify the endpoint is in the correct region
+                rules = COMPLIANCE_RULES.get(region, {})
+                allowed = rules.get("allowed_regions", [])
+
+                region_ok = any(r in endpoint for r in allowed)
+                if not region_ok:
+                    errors.append(
+                        f"Route for '{region}' data points to "
+                        f"non-compliant endpoint: {endpoint}"
+                    )
 
     # Check PII scrubbing exists
     if "transform/scrub_pii" not in config.get("processors", {}):
@@ -260,15 +300,14 @@ Log every routing decision for compliance audits:
 processors:
   # Log routing decisions
   transform/audit:
+    error_mode: ignore
     trace_statements:
-      - context: span
-        statements:
-          - set(attributes["compliance.routed_to"],
-              resource.attributes["data.residency"])
-          - set(attributes["compliance.classification"],
-              resource.attributes["data.classification"])
-          - set(attributes["compliance.routing_timestamp"],
-              Now())
+      - set(span.attributes["compliance.routed_to"],
+          resource.attributes["data.residency"])
+      - set(span.attributes["compliance.classification"],
+          resource.attributes["data.classification"])
+      - set(span.attributes["compliance.routing_timestamp"],
+          Now())
 ```
 
 ## Wrapping Up
