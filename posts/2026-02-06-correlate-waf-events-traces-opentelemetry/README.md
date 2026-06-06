@@ -6,7 +6,7 @@ Tags: OpenTelemetry, WAF, Syslog Receiver, Security Correlation
 
 Description: Correlate WAF events with application traces using the OpenTelemetry Collector syslog receiver to bridge network and application security data.
 
-Your WAF (Web Application Firewall) blocks malicious traffic at the network edge, but it operates blind to your application context. When a WAF rule triggers, you know a request was blocked, but not which user was affected or what the application would have done. By ingesting WAF syslog events into the OpenTelemetry Collector and correlating them with application traces, you bridge this gap.
+Your WAF (Web Application Firewall) blocks malicious traffic at the network edge, but it operates blind to your application context. When a WAF rule triggers, you know a request was blocked, but not which user or tenant may have been affected. By ingesting WAF syslog events into the OpenTelemetry Collector and correlating them with application traces, you bridge this gap.
 
 ## The Correlation Problem
 
@@ -28,6 +28,7 @@ receivers:
     operators:
       # Parse WAF-specific fields from the syslog message
       - type: regex_parser
+        parse_from: body.message
         regex: 'waf_rule_id=(?P<waf_rule_id>[^ ]+) action=(?P<waf_action>[^ ]+) src_ip=(?P<src_ip>[^ ]+) uri=(?P<request_uri>[^ ]+) method=(?P<http_method>[^ ]+)'
         on_error: drop
 
@@ -47,12 +48,6 @@ processors:
       - key: event.category
         value: "network_security"
         action: insert
-
-  # Group WAF events and traces by source IP for correlation
-  groupbyattrs:
-    keys:
-      - src_ip
-      - security.source_ip
 
   batch:
     send_batch_size: 256
@@ -105,13 +100,16 @@ waf_false_positives = meter.create_counter(
 
 async def request_middleware(request: Request, call_next):
     """Add WAF-relevant attributes to every request span."""
+    source_ip = request.client.host if request.client else ""
+
     with tracer.start_as_current_span(
         "http.request",
         attributes={
-            "security.source_ip": request.client.host,
-            "http.url": str(request.url),
-            "http.method": request.method,
-            "http.user_agent": request.headers.get("user-agent", ""),
+            "security.source_ip": source_ip,
+            "client.address": source_ip,
+            "url.full": str(request.url),
+            "http.request.method": request.method,
+            "user_agent.original": request.headers.get("user-agent", ""),
         }
     ) as span:
         # Check if WAF headers are present (some WAFs add headers)
@@ -125,10 +123,12 @@ async def request_middleware(request: Request, call_next):
         # Add user context for correlation
         if hasattr(request.state, "user_id"):
             span.set_attribute("user.id", request.state.user_id)
+
+        if hasattr(request.state, "tenant_id"):
             span.set_attribute("tenant.id", request.state.tenant_id)
 
         response = await call_next(request)
-        span.set_attribute("http.status_code", response.status_code)
+        span.set_attribute("http.response.status_code", response.status_code)
 
         return response
 ```
@@ -141,6 +141,8 @@ This service matches WAF events with application traces using shared attributes 
 # waf_correlator.py
 from dataclasses import dataclass
 from typing import Optional
+
+from waf_correlation import tracer, waf_blocks_correlated, waf_false_positives
 
 @dataclass
 class WAFEvent:
