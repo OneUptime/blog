@@ -613,15 +613,20 @@ app.config['REMEMBER_COOKIE_SECURE'] = True
 
 ### 2. Regenerate Session on Login
 
+Flask's default session does not expose a `regenerate()` method, so use Flask-Login's `SESSION_PROTECTION` setting and/or clear the existing session before logging the user in:
+
 ```python
 from flask import session
+
+# Enable Flask-Login session protection (default is 'basic')
+login_manager.session_protection = 'strong'
 
 @app.route('/login', methods=['POST'])
 def login():
     # ... validate credentials ...
 
-    # Regenerate session to prevent fixation attacks
-    session.regenerate()
+    # Clear any existing session data to prevent fixation attacks
+    session.clear()
 
     login_user(user)
     return redirect(url_for('dashboard'))
