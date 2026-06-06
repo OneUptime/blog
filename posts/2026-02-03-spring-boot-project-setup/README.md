@@ -17,7 +17,7 @@ This guide walks you through setting up a Spring Boot project from scratch. We w
 Before we start, make sure you have the following installed:
 
 - **Java Development Kit (JDK) 17 or later** - Spring Boot 3.x requires Java 17 as the minimum version
-- **Maven 3.6+** or **Gradle 7.5+** - for dependency management and building
+- **Maven 3.6.3+** or **Gradle 7.6.4+ (7.x) / 8.4+ (8.x)** - for dependency management and building with Spring Boot 3.5.x
 - **An IDE** - IntelliJ IDEA, Eclipse, or VS Code with Java extensions
 
 You can verify your Java installation by running this command in your terminal.
@@ -48,7 +48,7 @@ Navigate to [start.spring.io](https://start.spring.io) and configure your projec
 |---------|-------|-------------|
 | Project | Maven or Gradle | Build tool of your choice |
 | Language | Java | Programming language |
-| Spring Boot | 3.2.x | Latest stable version |
+| Spring Boot | 3.5.x | Current stable Spring Boot 3 version |
 | Group | com.example | Your organization's domain in reverse |
 | Artifact | demo | Project name (becomes the JAR name) |
 | Name | demo | Display name for the application |
@@ -78,7 +78,7 @@ If you prefer the command line, you can use curl to generate your project direct
 curl https://start.spring.io/starter.zip \
   -d type=maven-project \
   -d language=java \
-  -d bootVersion=3.2.2 \
+  -d bootVersion=3.5.14 \
   -d baseDir=my-spring-app \
   -d groupId=com.example \
   -d artifactId=my-spring-app \
@@ -143,7 +143,7 @@ Create the `pom.xml` file in the project root directory.
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.2.2</version>
+        <version>3.5.14</version>
         <relativePath/> <!-- Lookup parent from Maven repository -->
     </parent>
 
@@ -236,8 +236,8 @@ If you prefer Gradle, create `build.gradle` instead.
 // Apply the Spring Boot and Java plugins
 plugins {
     id 'java'
-    id 'org.springframework.boot' version '3.2.2'
-    id 'io.spring.dependency-management' version '1.1.4'
+    id 'org.springframework.boot' version '3.5.14'
+    id 'io.spring.dependency-management' version '1.1.7'
 }
 
 // Project coordinates
@@ -287,12 +287,10 @@ tasks.named('test') {
 For Kotlin DSL, create `build.gradle.kts` instead.
 
 ```kotlin
-import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
-
 plugins {
     java
-    id("org.springframework.boot") version "3.2.2"
-    id("io.spring.dependency-management") version "1.1.4"
+    id("org.springframework.boot") version "3.5.14"
+    id("io.spring.dependency-management") version "1.1.7"
 }
 
 group = "com.example"
@@ -479,7 +477,7 @@ management.endpoint.health.show-details=when-authorized
 # Custom actuator base path
 management.endpoints.web.base-path=/management
 
-# Application info displayed by /actuator/info
+# Application info displayed by /management/info
 management.info.env.enabled=true
 info.app.name=@project.name@
 info.app.version=@project.version@
@@ -1118,6 +1116,8 @@ public class CreateUserRequest {
 Enable validation in the controller with `@Valid`.
 
 ```java
+import jakarta.validation.Valid;
+
 @PostMapping
 @ResponseStatus(HttpStatus.CREATED)
 public User createUser(@Valid @RequestBody CreateUserRequest request) {
@@ -1268,7 +1268,7 @@ Once the application starts, you should see output like this.
  \\/  ___)| |_)| | | | | || (_| |  ) ) ) )
   '  |____| .__|_| |_|_| |_\__, | / / / /
  =========|_|==============|___/=/_/_/_/
- :: Spring Boot ::                (v3.2.2)
+ :: Spring Boot ::                (v3.5.14)
 
 2024-01-15T10:30:00.123  INFO 12345 --- [main] com.example.demo.DemoApplication : Starting DemoApplication
 2024-01-15T10:30:02.456  INFO 12345 --- [main] o.s.b.w.embedded.tomcat.TomcatWebServer : Tomcat started on port(s): 8080
@@ -1479,7 +1479,7 @@ As your project grows, you will likely need additional dependencies. Here are so
 <dependency>
     <groupId>org.springdoc</groupId>
     <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
-    <version>2.3.0</version>
+    <version>2.8.17</version>
 </dependency>
 ```
 
