@@ -26,29 +26,45 @@ Auto-instrumentation handles framework-level operations, while manual instrument
 
 ## Dependencies Setup
 
-Add the OpenTelemetry API to your `pom.xml`:
+Add the OpenTelemetry Spring Boot starter and API dependencies to your `pom.xml`:
 
 ```xml
+<dependencyManagement>
+    <dependencies>
+        <dependency>
+            <groupId>io.opentelemetry.instrumentation</groupId>
+            <artifactId>opentelemetry-instrumentation-bom</artifactId>
+            <version>2.28.1</version>
+            <type>pom</type>
+            <scope>import</scope>
+        </dependency>
+    </dependencies>
+</dependencyManagement>
+
 <dependencies>
+    <!-- OpenTelemetry Spring Boot starter for auto-instrumentation and OpenTelemetry bean autoconfiguration -->
+    <dependency>
+        <groupId>io.opentelemetry.instrumentation</groupId>
+        <artifactId>opentelemetry-spring-boot-starter</artifactId>
+    </dependency>
+
     <!-- OpenTelemetry API for manual instrumentation -->
     <dependency>
         <groupId>io.opentelemetry</groupId>
         <artifactId>opentelemetry-api</artifactId>
-        <version>1.33.0</version>
     </dependency>
 
-    <!-- OpenTelemetry SDK (usually added via Java agent or starter) -->
+    <!-- OpenTelemetry SDK, if you configure the SDK programmatically in the application -->
     <dependency>
         <groupId>io.opentelemetry</groupId>
         <artifactId>opentelemetry-sdk</artifactId>
-        <version>1.33.0</version>
     </dependency>
 
-    <!-- Semantic conventions for standard attribute names -->
+    <!-- Incubating semantic conventions for standard attribute names that are not stable yet -->
     <dependency>
         <groupId>io.opentelemetry.semconv</groupId>
-        <artifactId>opentelemetry-semconv</artifactId>
-        <version>1.23.1-alpha</version>
+        <artifactId>opentelemetry-semconv-incubating</artifactId>
+        <version>1.41.1-alpha</version>
     </dependency>
 
     <!-- Spring Boot starter -->
@@ -147,7 +163,7 @@ import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.context.Scope;
-import io.opentelemetry.semconv.SemanticAttributes;
+import io.opentelemetry.semconv.incubating.EnduserIncubatingAttributes;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -181,7 +197,7 @@ public class PaymentService {
             span.setAttribute(CURRENCY, request.getCurrency());
 
             // Use semantic conventions for standard attributes
-            span.setAttribute(SemanticAttributes.ENDUSER_ID,
+            span.setAttribute(EnduserIncubatingAttributes.ENDUSER_ID,
                 request.getCustomerId());
 
             // Add multiple attributes at once
