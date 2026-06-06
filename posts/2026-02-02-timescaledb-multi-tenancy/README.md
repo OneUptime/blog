@@ -99,6 +99,8 @@ CREATE INDEX idx_metrics_tenant_time ON metrics (tenant_id, time DESC);
 CREATE INDEX idx_metrics_tenant_metric ON metrics (tenant_id, metric_name, time DESC);
 
 -- For tag-based filtering within a tenant
+-- Requires the btree_gin extension to combine UUID (btree-only) with JSONB (GIN)
+CREATE EXTENSION IF NOT EXISTS btree_gin;
 CREATE INDEX idx_metrics_tenant_tags ON metrics
 USING GIN (tenant_id, tags);
 ```
@@ -467,6 +469,11 @@ Continuous aggregates pre-compute rollups, providing fast analytics queries. Con
 For shared schema deployments, include tenant_id in the continuous aggregate definition.
 
 ```sql
+-- Ordered-set aggregates like PERCENTILE_CONT are not allowed in continuous
+-- aggregates (no partial/combine function). Use percentile_agg from the
+-- timescaledb_toolkit extension instead.
+CREATE EXTENSION IF NOT EXISTS timescaledb_toolkit;
+
 -- Create continuous aggregate for hourly metrics by tenant
 CREATE MATERIALIZED VIEW metrics_hourly
 WITH (timescaledb.continuous) AS
@@ -478,7 +485,7 @@ SELECT
     AVG(value) AS avg_value,
     MIN(value) AS min_value,
     MAX(value) AS max_value,
-    PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY value) AS p95_value
+    percentile_agg(value) AS value_percentile_agg
 FROM metrics
 GROUP BY tenant_id, bucket, metric_name
 WITH NO DATA;
@@ -506,7 +513,7 @@ SELECT
     bucket,
     metric_name,
     avg_value,
-    p95_value
+    approx_percentile(0.95, value_percentile_agg) AS p95_value
 FROM metrics_hourly
 WHERE tenant_id = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890'
 AND bucket > NOW() - INTERVAL '24 hours'
@@ -514,7 +521,7 @@ AND metric_name IN ('cpu_usage', 'memory_usage', 'disk_io')
 ORDER BY bucket DESC;
 ```
 
-Resource Quotas and Fair Usage
+## Resource Quotas and Fair Usage
 
 Implement resource quotas to prevent noisy neighbors from affecting other tenants.
 
@@ -599,6 +606,7 @@ CREATE OR REPLACE FUNCTION get_tenant_storage_bytes(p_tenant_id UUID)
 RETURNS BIGINT AS $$
 DECLARE
     v_total_bytes BIGINT := 0;
+    v_chunk_bytes BIGINT;
     v_chunk RECORD;
 BEGIN
     -- Calculate storage across all chunks
@@ -611,7 +619,9 @@ BEGIN
             'SELECT COALESCE(SUM(pg_column_size(t.*)), 0)
              FROM %I.%I t WHERE tenant_id = $1',
             v_chunk.chunk_schema, v_chunk.chunk_name
-        ) INTO v_total_bytes USING p_tenant_id;
+        ) INTO v_chunk_bytes USING p_tenant_id;
+
+        v_total_bytes := v_total_bytes + COALESCE(v_chunk_bytes, 0);
     END LOOP;
 
     RETURN v_total_bytes;
@@ -763,10 +773,13 @@ Safely remove tenant data while maintaining referential integrity.
 
 ```sql
 -- Soft delete tenant data with archival option
-CREATE OR REPLACE FUNCTION offboard_tenant(
+-- Must be a PROCEDURE (not FUNCTION) because COMMIT is only allowed in
+-- procedures invoked via CALL.
+CREATE OR REPLACE PROCEDURE offboard_tenant(
     p_tenant_id UUID,
     p_archive BOOLEAN DEFAULT TRUE
-) RETURNS VOID AS $$
+)
+LANGUAGE plpgsql AS $$
 BEGIN
     -- Archive if requested (run export first)
     IF p_archive THEN
@@ -802,7 +815,10 @@ BEGIN
 
     RAISE NOTICE 'Offboarded tenant %', p_tenant_id;
 END;
-$$ LANGUAGE plpgsql;
+$$;
+
+-- Invoke with CALL since this is a procedure
+-- CALL offboard_tenant('a1b2c3d4-e5f6-7890-abcd-ef1234567890');
 ```
 
 ## Performance Optimization
