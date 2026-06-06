@@ -6,7 +6,7 @@ Tags: OpenTelemetry, OTLP, Protocol Mismatch, Debugging
 
 Description: Diagnose and fix the protocol mismatch error when your OTLP/HTTP exporter accidentally sends traffic to the gRPC port.
 
-Sending HTTP/1.1 requests to a gRPC endpoint (or vice versa) is one of the most common OpenTelemetry networking mistakes. The error messages are unhelpful, and the misconfiguration can persist for days in production without anyone noticing that telemetry data is being silently dropped.
+Sending OTLP/HTTP requests to a gRPC endpoint (or vice versa) is one of the most common OpenTelemetry networking mistakes. The error messages are unhelpful, and the misconfiguration can persist for days in production without anyone noticing that telemetry data is being silently dropped.
 
 ## How This Happens
 
@@ -34,6 +34,8 @@ When HTTP traffic hits the gRPC port, you might see:
 Failed to export spans: Request failed with status 0
 ```
 
+If the gRPC port is not listening or not exposed, you might also see:
+
 ```text
 Error: connect ECONNREFUSED 127.0.0.1:4317
 ```
@@ -42,7 +44,7 @@ Error: connect ECONNREFUSED 127.0.0.1:4317
 upstream connect error or disconnect/reset before headers
 ```
 
-The gRPC server receives an HTTP/1.1 request and does not know what to do with it. It might close the connection, return an empty response, or time out. None of these produce an error message that says "wrong protocol."
+The gRPC server receives an OTLP/HTTP request and does not know what to do with it. It might close the connection, return an error response, or time out. None of these produce an error message that says "wrong protocol."
 
 ## Diagnosing the Mismatch
 
@@ -58,7 +60,7 @@ Look at your `package.json` or `requirements.txt`:
 }
 ```
 
-If the package name contains `http`, you must use port 4318. If it contains `grpc`, use port 4317.
+If the package name contains `http`, use the OTLP/HTTP endpoint, which defaults to port 4318. If it contains `grpc`, use the OTLP/gRPC endpoint, which defaults to port 4317.
 
 ### Step 2: Check the Collector Receiver Config
 
@@ -90,7 +92,7 @@ curl -X POST http://localhost:4318/v1/traces \
 # Test if port 4317 (gRPC) is responding
 # This should fail with a protocol error from curl
 curl http://localhost:4317
-# Expected: binary garbage or connection reset (it is gRPC, not HTTP)
+# Expected: protocol error or connection closed/reset (it is gRPC, not OTLP/HTTP)
 ```
 
 ## The Fix
@@ -122,7 +124,7 @@ const exporter = new OTLPTraceExporter({
 
 ### Option 3: Use Environment Variables
 
-Let the SDK pick the right port based on the protocol:
+Set the protocol and endpoint together so the SDK uses the right transport:
 
 ```bash
 # For HTTP
@@ -147,7 +149,7 @@ exporter = OTLPSpanExporter(
 )
 ```
 
-The gRPC client tries to establish an HTTP/2 connection, but port 4318 expects HTTP/1.1. The error is typically:
+The gRPC client tries to call the OTLP gRPC service, but port 4318 expects OTLP/HTTP requests on paths like `/v1/traces`. The error is typically:
 
 ```text
 grpc._channel._InactiveRpcError: <_InactiveRpcError of RPC that terminated with:
