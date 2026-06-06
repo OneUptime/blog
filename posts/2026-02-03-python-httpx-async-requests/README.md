@@ -919,29 +919,31 @@ Route requests through HTTP or SOCKS proxies.
 ```python
 import httpx
 
-# HTTP proxy
+# HTTP proxy (note: as of httpx 0.28, the plural `proxies=` argument
+# has been removed - use `proxy=` for a single proxy, or `mounts=` for
+# per-scheme routing)
 async def http_proxy_example():
     async with httpx.AsyncClient(
-        proxies="http://proxy.example.com:8080"
+        proxy="http://proxy.example.com:8080"
     ) as client:
         response = await client.get("https://httpbin.org/ip")
         return response.json()
 
-# Different proxies for HTTP and HTTPS
+# Different proxies for HTTP and HTTPS via mounts
 async def multi_proxy_example():
-    proxies = {
-        "http://": "http://proxy.example.com:8080",
-        "https://": "http://secure-proxy.example.com:8080",
+    mounts = {
+        "http://": httpx.AsyncHTTPTransport(proxy="http://proxy.example.com:8080"),
+        "https://": httpx.AsyncHTTPTransport(proxy="http://secure-proxy.example.com:8080"),
     }
 
-    async with httpx.AsyncClient(proxies=proxies) as client:
+    async with httpx.AsyncClient(mounts=mounts) as client:
         response = await client.get("https://httpbin.org/ip")
         return response.json()
 
 # SOCKS proxy (requires httpx[socks])
 async def socks_proxy_example():
     async with httpx.AsyncClient(
-        proxies="socks5://proxy.example.com:1080"
+        proxy="socks5://proxy.example.com:1080"
     ) as client:
         response = await client.get("https://httpbin.org/ip")
         return response.json()
@@ -949,7 +951,7 @@ async def socks_proxy_example():
 # Authenticated proxy
 async def authenticated_proxy():
     async with httpx.AsyncClient(
-        proxies="http://user:password@proxy.example.com:8080"
+        proxy="http://user:password@proxy.example.com:8080"
     ) as client:
         response = await client.get("https://httpbin.org/ip")
         return response.json()
@@ -957,7 +959,7 @@ async def authenticated_proxy():
 # No proxy for specific hosts
 async def bypass_proxy():
     async with httpx.AsyncClient(
-        proxies="http://proxy.example.com:8080",
+        proxy="http://proxy.example.com:8080",
         # Skip proxy for these hosts
         # Set via NO_PROXY environment variable or trust_env=True
     ) as client:
