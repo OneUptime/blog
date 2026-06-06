@@ -37,37 +37,14 @@ data:
           - /var/log/pods/*/*/*.log
         exclude:
           # Skip the collector's own logs to avoid feedback loops
-          - /var/log/pods/monitoring_otel-collector*/**
+          - /var/log/pods/monitoring_otel-collector-*/*/*.log
         start_at: end
         include_file_path: true
         include_file_name: false
         operators:
           # Parse the container runtime log format (CRI)
-          - type: router
-            id: get-format
-            routes:
-              - output: parser-containerd
-                expr: 'body matches "^[^ Z]+ "'
-              - output: parser-cri
-                expr: 'body matches "^[^ Z]+Z"'
-          - type: regex_parser
-            id: parser-containerd
-            regex: '^(?P<time>[^ Z]+) (?P<stream>stdout|stderr) (?P<logtag>[^ ]*) ?(?P<log>.*)$'
-            output: extract-metadata
-            timestamp:
-              parse_from: attributes.time
-              layout: '%Y-%m-%dT%H:%M:%S.%LZ'
-          - type: regex_parser
-            id: parser-cri
-            regex: '^(?P<time>[^ Z]+Z) (?P<stream>stdout|stderr) (?P<logtag>[^ ]*) ?(?P<log>.*)$'
-            output: extract-metadata
-            timestamp:
-              parse_from: attributes.time
-              layout: '%Y-%m-%dT%H:%M:%S.%LZ'
-          - type: move
-            id: extract-metadata
-            from: attributes.log
-            to: body
+          - type: container
+            id: container-parser
 
     processors:
       # Enrich logs with Kubernetes metadata
@@ -130,7 +107,7 @@ spec:
       serviceAccountName: otel-collector
       containers:
         - name: collector
-          image: otel/opentelemetry-collector-contrib:0.96.0
+          image: otel/opentelemetry-collector-contrib:0.153.0
           args:
             - "--config=/etc/otelcol/config.yaml"
           resources:
@@ -153,6 +130,7 @@ spec:
         - name: varlogpods
           hostPath:
             path: /var/log/pods
+            type: Directory
 ```
 
 ## RBAC Setup
@@ -160,6 +138,7 @@ spec:
 The `k8sattributes` processor needs permissions to query the Kubernetes API. Create a ServiceAccount, ClusterRole, and ClusterRoleBinding:
 
 ```yaml
+# otel-collector-rbac.yaml
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -194,9 +173,9 @@ roleRef:
 
 ## Handling Log Rotation
 
-Kubernetes rotates container logs when they exceed a configured size (default is 10 MB). The filelog receiver handles this automatically by tracking file offsets in a checkpoint file. When a log file gets rotated, the receiver detects the new file and starts reading from the beginning, while finishing the old file.
+Kubernetes rotates container logs when they exceed a configured size (default is 10Mi). The filelog receiver can read files that are being rotated and tracks file offsets in memory by default. When a log file gets rotated, the receiver detects the new file and starts reading from the beginning, while finishing the old file.
 
-To persist the checkpoint across collector restarts, mount a `hostPath` volume:
+To persist offsets across collector restarts, mount a `hostPath` volume:
 
 ```yaml
 # Add to the DaemonSet container spec
@@ -222,6 +201,12 @@ receivers:
   filelog:
     storage: file_storage
     # ... rest of config
+
+service:
+  extensions: [file_storage]
+  pipelines:
+    logs:
+      # ... existing logs pipeline
 ```
 
 ## Verifying the Deployment
@@ -229,6 +214,8 @@ receivers:
 Apply the manifests and check that collector pods are running on every node:
 
 ```bash
+kubectl create namespace monitoring --dry-run=client -o yaml | kubectl apply -f -
+kubectl apply -f otel-collector-rbac.yaml
 kubectl apply -f otel-collector-config.yaml
 kubectl apply -f otel-collector-daemonset.yaml
 kubectl -n monitoring get pods -l app=otel-collector -o wide
