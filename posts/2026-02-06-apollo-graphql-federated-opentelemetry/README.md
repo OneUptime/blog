@@ -27,21 +27,17 @@ telemetry:
   instrumentation:
     spans:
       mode: spec_compliant
-      router:
-        attributes:
-          # Include the full GraphQL operation in the span
-          graphql.document:
-            request_header: false
       supergraph:
         attributes:
-          graphql.operation.name:
-            operation_name: string
-          graphql.operation.type:
-            operation_name: string
+          graphql.operation.name: true
+          graphql.operation.type: true
+          # Include the full GraphQL operation only if it is safe for your data
+          graphql.document: true
       subgraph:
         attributes:
-          subgraph.name:
-            subgraph_name: true
+          subgraph.name: true
+          subgraph.graphql.operation.name: true
+          subgraph.graphql.operation.type: true
 ```
 
 This gives you spans for the router-level processing, supergraph query planning, and individual subgraph fetches.
@@ -71,7 +67,7 @@ Then add a custom plugin to capture GraphQL-specific details:
 
 ```typescript
 // graphql-tracing-plugin.ts
-import { trace, SpanStatusCode } from '@opentelemetry/api';
+import { context, trace, SpanStatusCode } from '@opentelemetry/api';
 
 const tracer = trace.getTracer('apollo-subgraph');
 
@@ -83,6 +79,7 @@ export const subgraphTracingPlugin = {
         'graphql.source': request.query?.substring(0, 500),
       },
     });
+    const operationContext = trace.setSpan(context.active(), operationSpan);
 
     return {
       async executionDidStart() {
@@ -105,7 +102,8 @@ export const subgraphTracingPlugin = {
                   'graphql.parent.type': info.parentType.name,
                   'graphql.return.type': info.returnType.toString(),
                 },
-              }
+              },
+              operationContext
             );
 
             return (error: any) => {
@@ -140,7 +138,7 @@ In federation, entity resolution is how subgraphs look up data by reference. Thi
 
 ```typescript
 // user-subgraph-resolvers.ts
-import { trace } from '@opentelemetry/api';
+import { trace, SpanStatusCode } from '@opentelemetry/api';
 
 const tracer = trace.getTracer('user-subgraph');
 
@@ -148,23 +146,33 @@ const resolvers = {
   User: {
     __resolveReference: async (reference: { id: string }) => {
       return tracer.startActiveSpan('federation.resolveReference', async (span) => {
-        span.setAttribute('federation.entity.type', 'User');
-        span.setAttribute('federation.entity.id', reference.id);
+        try {
+          span.setAttribute('federation.entity.type', 'User');
+          span.setAttribute('federation.entity.id', reference.id);
 
-        const user = await db.users.findById(reference.id);
+          const user = await db.users.findById(reference.id);
 
-        if (!user) {
-          span.setAttribute('federation.entity.found', false);
+          if (!user) {
+            span.setAttribute('federation.entity.found', false);
+            span.setStatus({
+              code: SpanStatusCode.ERROR,
+              message: 'Entity not found',
+            });
+          } else {
+            span.setAttribute('federation.entity.found', true);
+          }
+
+          return user;
+        } catch (error) {
+          span.recordException(error as Error);
           span.setStatus({
             code: SpanStatusCode.ERROR,
-            message: 'Entity not found',
+            message: error instanceof Error ? error.message : 'Entity resolution failed',
           });
-        } else {
-          span.setAttribute('federation.entity.found', true);
+          throw error;
+        } finally {
+          span.end();
         }
-
-        span.end();
-        return user;
       });
     },
   },
@@ -173,23 +181,13 @@ const resolvers = {
 
 ## Tracking Query Plan Execution
 
-The Router creates a query plan that describes how to split the operation across subgraphs. Record it as a span event:
+The Router creates a query plan that describes how to split the operation across subgraphs. To inspect the generated plan while debugging, send the documented query-plan header to the router:
 
-```yaml
-# In router.yaml, enable query plan logging in traces
-telemetry:
-  instrumentation:
-    events:
-      supergraph:
-        # Log the query plan as a span event
-        QUERY_PLANNING:
-          message: "Query plan generated"
-          on: response
-          level: info
-          attributes:
-            query_plan:
-              query_plan: true
+```text
+Apollo-Expose-Query-Plan: true
 ```
+
+For timing, use the Router's standard query-planning metrics, such as `apollo.router.query_planning.plan.duration` and `apollo.router.query_planning.total.duration`, alongside your traces.
 
 ## Measuring Federation Overhead
 
