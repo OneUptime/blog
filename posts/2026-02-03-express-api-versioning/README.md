@@ -642,7 +642,7 @@ app.get('/api/versions', (req, res) => {
 | **URL Versioning** | `/api/v1/users` | Public APIs |
 | **Header Versioning** | `X-API-Version: 2` | Enterprise APIs |
 | **Query Versioning** | `?version=1` | Internal APIs |
-| **Deprecation** | RFC 8594 headers | All APIs |
+| **Deprecation** | Sunset/Deprecation headers | All APIs |
 | **Migration** | Transform layers | Version upgrades |
 
 API versioning involves communicating changes to clients, providing migration paths, and maintaining backward compatibility. Choose the strategy that fits your API consumers and apply it consistently.
