@@ -16,7 +16,7 @@ The masking pipeline uses a combination of processors in a specific order:
 
 1. **Attributes processor** - removes or hashes known PII attribute keys
 2. **Redaction processor** - catches PII in attribute values using regex
-3. **Transform processor** - scrubs PII from log bodies and metric descriptions using OTTL
+3. **Transform processor** - scrubs PII from string log bodies and metric labels using OTTL
 
 ```text
 Receiver --> Attributes Processor --> Redaction Processor --> Transform Processor --> Batch --> Exporter
@@ -61,6 +61,8 @@ Next, the redaction processor scans all remaining attribute values for PII patte
 processors:
   redaction/pii-values:
     allow_all_keys: true
+    redact_all_types: true
+    summary: info
     blocked_values:
       # Social Security Numbers (US)
       - "\\b[0-9]{3}-[0-9]{2}-[0-9]{4}\\b"
@@ -74,22 +76,23 @@ processors:
 
 ## Step 3: Log Body Scrubbing with OTTL
 
-The redaction processor does not touch log bodies. Use the transform processor with OTTL for that:
+The redaction processor is focused on span, log, and metric datapoint attributes; use the transform processor with OTTL for string log bodies:
 
 ```yaml
 processors:
   transform/scrub-log-bodies:
+    error_mode: ignore
     log_statements:
       - context: log
         statements:
           # Scrub email addresses from log body
-          - replace_pattern(body, "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}\\b", "[EMAIL]")
+          - replace_pattern(log.body, "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}\\b", "[EMAIL]")
           # Scrub SSNs from log body
-          - replace_pattern(body, "\\b[0-9]{3}-[0-9]{2}-[0-9]{4}\\b", "[SSN]")
+          - replace_pattern(log.body, "\\b[0-9]{3}-[0-9]{2}-[0-9]{4}\\b", "[SSN]")
           # Scrub credit cards from log body
-          - replace_pattern(body, "\\b(?:4[0-9]{12}(?:[0-9]{3})?|5[1-5][0-9]{14})\\b", "[CARD]")
+          - replace_pattern(log.body, "\\b(?:4[0-9]{12}(?:[0-9]{3})?|5[1-5][0-9]{14})\\b", "[CARD]")
           # Scrub phone numbers from log body
-          - replace_pattern(body, "\\+?[0-9]{1,3}[\\s.-]?\\(?[0-9]{3}\\)?[\\s.-]?[0-9]{3}[\\s.-]?[0-9]{4}", "[PHONE]")
+          - replace_pattern(log.body, "\\+?[0-9]{1,3}[\\s.-]?\\(?[0-9]{3}\\)?[\\s.-]?[0-9]{3}[\\s.-]?[0-9]{4}", "[PHONE]")
 ```
 
 ## Step 4: Metric Label Masking
@@ -99,12 +102,13 @@ Metrics can also carry PII in their attribute labels. Use OTTL to scrub metric a
 ```yaml
 processors:
   transform/scrub-metrics:
+    error_mode: ignore
     metric_statements:
       - context: datapoint
         statements:
           # Hash user-identifying labels on metrics
-          - set(attributes["user.id"], SHA256(attributes["user.id"])) where attributes["user.id"] != nil
-          - set(attributes["customer.email"], SHA256(attributes["customer.email"])) where attributes["customer.email"] != nil
+          - set(datapoint.attributes["user.id"], SHA256(datapoint.attributes["user.id"])) where datapoint.attributes["user.id"] != nil
+          - set(datapoint.attributes["customer.email"], SHA256(datapoint.attributes["customer.email"])) where datapoint.attributes["customer.email"] != nil
 ```
 
 ## Complete Configuration
@@ -135,9 +139,11 @@ processors:
       - key: user.ssn
         action: delete
 
-  # Layer 2: Value-based regex scanning for traces and logs
+  # Layer 2: Value-based regex scanning for traces, metrics, and logs
   redaction/pii-values:
     allow_all_keys: true
+    redact_all_types: true
+    summary: info
     blocked_values:
       - "\\b[0-9]{3}-[0-9]{2}-[0-9]{4}\\b"
       - "\\b(?:4[0-9]{12}(?:[0-9]{3})?|5[1-5][0-9]{14}|3[47][0-9]{13})\\b"
@@ -145,17 +151,19 @@ processors:
 
   # Layer 3: OTTL-based body and field scrubbing
   transform/scrub-logs:
+    error_mode: ignore
     log_statements:
       - context: log
         statements:
-          - replace_pattern(body, "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}\\b", "[EMAIL]")
-          - replace_pattern(body, "\\b[0-9]{3}-[0-9]{2}-[0-9]{4}\\b", "[SSN]")
+          - replace_pattern(log.body, "\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}\\b", "[EMAIL]")
+          - replace_pattern(log.body, "\\b[0-9]{3}-[0-9]{2}-[0-9]{4}\\b", "[SSN]")
 
   transform/scrub-metrics:
+    error_mode: ignore
     metric_statements:
       - context: datapoint
         statements:
-          - set(attributes["user.id"], SHA256(attributes["user.id"])) where attributes["user.id"] != nil
+          - set(datapoint.attributes["customer.email"], SHA256(datapoint.attributes["customer.email"])) where datapoint.attributes["customer.email"] != nil
 
   batch:
     timeout: 5s
@@ -172,7 +180,7 @@ service:
       exporters: [otlp]
     metrics:
       receivers: [otlp]
-      processors: [attributes/remove-pii-keys, transform/scrub-metrics, batch]
+      processors: [attributes/remove-pii-keys, redaction/pii-values, transform/scrub-metrics, batch]
       exporters: [otlp]
     logs:
       receivers: [otlp]
@@ -182,17 +190,22 @@ service:
 
 ## Monitoring the Masking Pipeline
 
-Add the Collector's internal telemetry to track how many values are being redacted:
+Expose the Collector's internal telemetry alongside redaction audit attributes so you can monitor the masking pipeline:
 
 ```yaml
 service:
   telemetry:
     metrics:
       level: detailed
-      address: "0.0.0.0:8888"
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: "0.0.0.0"
+                port: 8888
 ```
 
-The redaction processor emits metrics about blocked values. Monitor `otelcol_processor_redaction_blocked_values_total` to understand how much PII is flowing through your system. A sudden spike might indicate a new service that needs better instrumentation practices.
+When `summary` is set to `info` or `debug`, the redaction processor adds audit attributes such as `redaction.masked.count` and `redaction.redacted.count` to spans, log records, and metric datapoints it modifies. Track those audit attributes in your backend or derive custom metrics from them to understand how much PII is flowing through your system. A sudden spike might indicate a new service that needs better instrumentation practices.
 
 ## Processor Ordering Matters
 
