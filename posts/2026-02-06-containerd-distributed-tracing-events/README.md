@@ -6,11 +6,11 @@ Tags: OpenTelemetry, Containerd, Distributed Tracing, Container Events
 
 Description: Enable built-in OpenTelemetry distributed tracing in containerd to trace container create, start, and stop operations with OTLP export.
 
-containerd has built-in support for OpenTelemetry tracing. When enabled, it generates spans for container lifecycle operations like create, start, stop, and delete. These traces show you exactly where time is spent during container operations, making it easier to diagnose slow container starts or failing operations.
+containerd has built-in support for OpenTelemetry tracing. When enabled, it generates spans for containerd's gRPC calls and manually instrumented CRI operations like create, start, stop, and delete. These traces show you where time is spent during container operations, making it easier to diagnose slow container starts or failing operations.
 
 ## Enabling Tracing in containerd
 
-containerd supports OpenTelemetry tracing through its configuration file. Edit `/etc/containerd/config.toml`:
+containerd supports OpenTelemetry tracing through its OTLP tracing processor and OpenTelemetry environment variables. Edit `/etc/containerd/config.toml` to point the tracing processor at your Collector:
 
 ```toml
 # /etc/containerd/config.toml
@@ -22,17 +22,23 @@ version = 2
   endpoint = "localhost:4317"
   protocol = "grpc"
   insecure = true
-
-[plugins."io.containerd.internal.v1.tracing"]
-  sampling_ratio = 1.0
-  service_name = "containerd"
 ```
 
-The `sampling_ratio` of 1.0 traces every operation. In production, lower this to 0.1 or 0.01 to reduce overhead.
+Configure the service name and sampling rate in the containerd daemon's environment. For a systemd-managed containerd service, add a drop-in such as `/etc/systemd/system/containerd.service.d/otel.conf`:
+
+```text
+[Service]
+Environment="OTEL_SERVICE_NAME=containerd"
+Environment="OTEL_TRACES_SAMPLER=traceidratio"
+Environment="OTEL_TRACES_SAMPLER_ARG=1.0"
+```
+
+The `OTEL_TRACES_SAMPLER_ARG` value of 1.0 traces every operation when `OTEL_TRACES_SAMPLER` is `traceidratio`. In production, lower this to 0.1 or 0.01 to reduce overhead.
 
 Restart containerd to apply the changes:
 
 ```bash
+sudo systemctl daemon-reload
 sudo systemctl restart containerd
 ```
 
@@ -60,9 +66,8 @@ processors:
         value: containerd
         action: upsert
       - key: host.name
-        from_attribute: ""
-        action: upsert
         value: "node-01"
+        action: upsert
 
 exporters:
   otlp:
@@ -70,16 +75,16 @@ exporters:
     tls:
       insecure: false
 
-  # Use logging exporter to see traces in stdout during testing
-  logging:
-    loglevel: debug
+  # Use debug exporter to see traces in stdout during testing
+  debug:
+    verbosity: detailed
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
       processors: [resource, batch]
-      exporters: [otlp, logging]
+      exporters: [otlp, debug]
 ```
 
 ## What Gets Traced
@@ -88,10 +93,10 @@ With tracing enabled, containerd creates spans for these operations:
 
 ### Container Create
 When you run `ctr container create` or an orchestrator creates a container, containerd generates spans for:
-- Image resolution and unpacking
-- Snapshot preparation
+- gRPC calls made by the client or orchestrator
+- Snapshot preparation when the runtime path prepares a snapshot
 - Container metadata creation
-- Network namespace setup
+- CRI create operations when containerd is used through Kubernetes
 
 ### Container Start
 Starting a container produces spans for:
@@ -116,13 +121,13 @@ sudo ctr image pull docker.io/library/alpine:latest
 sudo ctr run --rm docker.io/library/alpine:latest test-container echo "hello"
 ```
 
-If you are using the logging exporter, you will see span data in the Collector output:
+If you are using the debug exporter with `verbosity: detailed`, you will see span data in the Collector output:
 
 ```text
 Span #0
     Trace ID       : abc123def456...
     Span ID        : 1234567890ab
-    Name           : containerd.services.containers.v1.Create
+    Name           : pkg.cri.sbserver.CreateContainer
     Start          : 2026-02-06 10:00:00.000
     End            : 2026-02-06 10:00:00.150
     Status         : Ok
@@ -180,18 +185,18 @@ This keeps all slow operations and errors while sampling routine operations at 1
 
 ## Debugging Slow Container Starts
 
-One practical use case is diagnosing slow container starts. The trace will show which phase takes the longest:
+One practical use case is diagnosing slow container starts. The trace can show which containerd or CRI phase takes the longest:
 
 ```text
-containerd.services.containers.v1.Create     [50ms]
-  containerd.services.snapshots.v1.Prepare   [30ms]
-  containerd.services.content.v1.Read        [15ms]
-containerd.runtime.v2.task.Create            [200ms]
-  runtime.mount                              [150ms]  <-- slow mount
-  runtime.create_process                     [40ms]
+pkg.cri.sbserver.CreateContainer             [50ms]
+  /containerd.services.snapshots.v1.Snapshots/Prepare [30ms]
+  /containerd.services.content.v1.Content/Read         [15ms]
+pkg.cri.sbserver.StartContainer              [200ms]
+  /containerd.tasks.v1.Tasks/Create          [150ms]  <-- slow runtime create
+  /containerd.tasks.v1.Tasks/Start           [40ms]
 ```
 
-In this example, the filesystem mount takes 150ms, suggesting a storage performance issue. Without tracing, you would only see that the container took 250ms to start without knowing why.
+In this example, the runtime create call takes 150ms, suggesting a runtime or storage performance issue. Without tracing, you would only see that the container took 250ms to start without knowing why.
 
 ## Monitoring Trace Volume
 
@@ -208,8 +213,8 @@ receivers:
             - targets: ["localhost:8888"]
 ```
 
-Watch `otelcol_receiver_accepted_spans` and `otelcol_exporter_sent_spans` to verify no data is being dropped.
+Watch `otelcol_receiver_accepted_spans`, `otelcol_receiver_refused_spans`, `otelcol_exporter_sent_spans`, and `otelcol_exporter_send_failed_spans` to verify data is flowing. When scraped through Prometheus, these counter names may also have a `_total` suffix.
 
 ## Summary
 
-containerd's built-in OpenTelemetry tracing gives you detailed visibility into container lifecycle operations. Enable it in the containerd config, point it at your Collector, and you get spans for every create, start, stop, and delete operation. Use tail sampling in production to keep trace volume manageable while still capturing slow operations and errors.
+containerd's built-in OpenTelemetry tracing gives you visibility into container lifecycle operations. Enable the OTLP tracing processor, set the OpenTelemetry environment variables, point it at your Collector, and you get spans for containerd gRPC calls and manually instrumented CRI operations. Use tail sampling in production to keep trace volume manageable while still capturing slow operations and errors.
