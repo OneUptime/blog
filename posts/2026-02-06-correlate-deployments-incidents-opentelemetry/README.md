@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Deployment, Incident Correlation, Change Management
 
 Description: Automatically link production incidents to recent deployments using OpenTelemetry resource attributes and deployment event tracking.
 
-The most common cause of production incidents is a recent change. Studies consistently show that 60-80% of outages are triggered by deployments, config changes, or infrastructure modifications. When an incident occurs, the first question should always be "What changed?" OpenTelemetry can answer this automatically by recording deployment events as part of your telemetry pipeline and correlating them with error signals.
+The most common cause of production incidents is a recent change. Many incident reviews find that outages are triggered by deployments, config changes, or infrastructure modifications. When an incident occurs, the first question should always be "What changed?" OpenTelemetry gives you the data to answer this automatically by recording deployment events as part of your telemetry pipeline and correlating them with error signals.
 
 ## Recording Deployments as OpenTelemetry Events
 
@@ -16,13 +16,12 @@ The OpenTelemetry resource semantic conventions include deployment-related attri
 # Set deployment attributes on the OTel resource
 
 from opentelemetry.sdk.resources import Resource
-from opentelemetry.semconv.resource import ResourceAttributes
 from opentelemetry.sdk.trace import TracerProvider
 
 resource = Resource.create({
-    ResourceAttributes.SERVICE_NAME: "checkout-service",
-    ResourceAttributes.SERVICE_VERSION: "2.4.1",
-    ResourceAttributes.DEPLOYMENT_ENVIRONMENT: "production",
+    "service.name": "checkout-service",
+    "service.version": "2.4.1",
+    "deployment.environment.name": "production",
     # Custom attributes for deployment tracking
     "deployment.id": "deploy-20260206-143022",
     "deployment.git_sha": "a1b2c3d4",
@@ -55,12 +54,12 @@ tracer = trace.get_tracer("deployment.tracker")
 def record_deployment(service, version, git_sha, deployer, environment):
     """Call this at the end of a successful deployment."""
     with tracer.start_as_current_span("deployment") as span:
-        span.set_attribute("deployment.service", service)
-        span.set_attribute("deployment.version", version)
+        span.set_attribute("service.name", service)
+        span.set_attribute("service.version", version)
         span.set_attribute("deployment.git_sha", git_sha)
         span.set_attribute("deployment.deployer", deployer)
-        span.set_attribute("deployment.environment", environment)
-        span.set_attribute("deployment.status", "completed")
+        span.set_attribute("deployment.environment.name", environment)
+        span.set_attribute("deployment.status", "succeeded")
 
         # Add an event with the rollback command for quick reference
         span.add_event("deployment.completed", attributes={
@@ -76,11 +75,14 @@ record_deployment(
     deployer="ci-bot",
     environment="production"
 )
+
+# Flush before the CI job exits so the deployment span is exported.
+provider.shutdown()
 ```
 
 ## Collector Configuration for Deployment Correlation
 
-Set up the OpenTelemetry Collector to store deployment events and annotate incoming telemetry with recent deployment information.
+Set up the OpenTelemetry Collector to forward deployment events and annotate incoming telemetry that carries deployment information. Store the deployment spans in your observability backend or correlation service so they can be queried later.
 
 ```yaml
 # otel-collector-deployment-correlation.yaml
@@ -97,13 +99,13 @@ processors:
         value: production-us-east
         action: upsert
 
-  # Use the transform processor to flag telemetry from recently deployed services
+  # Use the transform processor to flag telemetry that carries deployment context
   transform:
     trace_statements:
       - context: span
         statements:
-          # Mark spans with errors from recently deployed versions
-          - set(attributes["deployment.recent"], "true")
+          # Mark spans that include deployment context on their resource
+          - set(attributes["deployment.context_present"], true)
             where resource.attributes["deployment.timestamp"] != nil
 
   batch:
@@ -113,6 +115,8 @@ processors:
 exporters:
   otlp/backend:
     endpoint: "observability-backend:4317"
+    tls:
+      insecure: true
 
 service:
   pipelines:
@@ -222,15 +226,15 @@ A powerful validation technique is comparing error rates from the pre-deployment
 # Error rate change after deployment
 # Compare the 30-minute post-deploy window with the 30-minute pre-deploy window
 (
-  sum(rate(http_server_request_count_total{status_code=~"5..", service_name="checkout-service"}[30m]))
+  sum(rate(http_server_request_duration_seconds_count{http_response_status_code=~"5..", service_name="checkout-service"}[30m]))
   /
-  sum(rate(http_server_request_count_total{service_name="checkout-service"}[30m]))
+  sum(rate(http_server_request_duration_seconds_count{service_name="checkout-service"}[30m]))
 )
 /
 (
-  sum(rate(http_server_request_count_total{status_code=~"5..", service_name="checkout-service"}[30m] offset 1h))
+  sum(rate(http_server_request_duration_seconds_count{http_response_status_code=~"5..", service_name="checkout-service"}[30m] offset 1h))
   /
-  sum(rate(http_server_request_count_total{service_name="checkout-service"}[30m] offset 1h))
+  sum(rate(http_server_request_duration_seconds_count{service_name="checkout-service"}[30m] offset 1h))
 )
 ```
 
