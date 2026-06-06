@@ -26,7 +26,7 @@ Bearer token authentication provides several advantages for telemetry pipelines:
 
 **Compatibility**: Most modern observability backends and APIs support bearer token authentication, making it a universal choice for securing telemetry data.
 
-**Rotation**: Tokens can be easily rotated without changing collector configurations by reading from files or environment variables that get updated externally.
+**Rotation**: Tokens can be easily rotated without changing collector configurations by reading them from files that get updated externally.
 
 **Access Control**: Different tokens can be used for different environments or teams, enabling fine-grained access control at the backend level.
 
@@ -55,8 +55,8 @@ Here's a simple configuration that uses a static bearer token for authenticating
 # Define the bearer token auth extension
 
 extensions:
-  # bearertoken extension with inline token
-  bearertoken:
+  # bearertokenauth extension with inline token
+  bearertokenauth:
     # The token can be specified directly (not recommended for production)
     token: "your-api-token-here"
 
@@ -81,12 +81,12 @@ exporters:
     endpoint: https://api.observability-backend.com:4317
     # Reference the bearer token auth extension
     auth:
-      authenticator: bearertoken
+      authenticator: bearertokenauth
 
 # Service configuration
 service:
   # Include the extension in the service
-  extensions: [bearertoken]
+  extensions: [bearertokenauth]
 
   pipelines:
     traces:
@@ -103,7 +103,7 @@ For production environments, avoid hardcoding tokens in configuration files. Ins
 
 ```yaml
 extensions:
-  bearertoken:
+  bearertokenauth:
     # Use environment variable expansion
     # The collector will read the token from the OTEL_AUTH_TOKEN env var
     token: "${env:OTEL_AUTH_TOKEN}"
@@ -131,16 +131,16 @@ exporters:
   otlp/primary:
     endpoint: https://primary-backend.com:4317
     auth:
-      authenticator: bearertoken
+      authenticator: bearertokenauth
 
   # Secondary backend with the same auth
   otlp/secondary:
     endpoint: https://secondary-backend.com:4317
     auth:
-      authenticator: bearertoken
+      authenticator: bearertokenauth
 
 service:
-  extensions: [bearertoken]
+  extensions: [bearertokenauth]
 
   pipelines:
     traces:
@@ -167,10 +167,10 @@ For Kubernetes environments using secrets or Docker with mounted volumes, read t
 
 ```yaml
 extensions:
-  bearertoken:
+  bearertokenauth:
     # Read token from a file
     # This file could be mounted from a Kubernetes secret
-    token: "${file:/var/secrets/otel-token}"
+    filename: "/var/secrets/otel-token"
 
 receivers:
   otlp:
@@ -191,23 +191,23 @@ processors:
     send_batch_size: 2048
 
 exporters:
-  otlphttp:
+  otlp_http:
     # HTTP endpoint for the backend
-    endpoint: https://api.backend.com/v1/traces
+    endpoint: https://api.backend.com:4318
     auth:
-      authenticator: bearertoken
+      authenticator: bearertokenauth
     # Additional headers can still be added
     headers:
       X-Custom-Header: "custom-value"
 
 service:
-  extensions: [bearertoken]
+  extensions: [bearertokenauth]
 
   pipelines:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [otlphttp]
+      exporters: [otlp_http]
 ```
 
 ## Multiple Bearer Token Configurations
@@ -217,16 +217,16 @@ You can configure multiple bearer token auth extensions for different backends o
 ```yaml
 extensions:
   # Token for production backend
-  bearertoken/prod:
+  bearertokenauth/prod:
     token: "${env:PROD_AUTH_TOKEN}"
 
   # Token for staging backend
-  bearertoken/staging:
+  bearertokenauth/staging:
     token: "${env:STAGING_AUTH_TOKEN}"
 
   # Token for metrics backend (different from traces)
-  bearertoken/metrics:
-    token: "${file:/var/secrets/metrics-token}"
+  bearertokenauth/metrics:
+    filename: "/var/secrets/metrics-token"
 
 receivers:
   otlp:
@@ -238,47 +238,58 @@ processors:
   batch:
     timeout: 10s
 
+connectors:
   # Route data based on attributes
   routing:
-    from_attribute: environment
     table:
-      - value: production
-        exporters: [otlp/prod]
-      - value: staging
-        exporters: [otlp/staging]
+      - context: resource
+        condition: attributes["environment"] == "production"
+        pipelines: [traces/prod]
+      - context: resource
+        condition: attributes["environment"] == "staging"
+        pipelines: [traces/staging]
 
 exporters:
   # Production backend with dedicated token
   otlp/prod:
     endpoint: https://prod-backend.com:4317
     auth:
-      authenticator: bearertoken/prod
+      authenticator: bearertokenauth/prod
 
   # Staging backend with dedicated token
   otlp/staging:
     endpoint: https://staging-backend.com:4317
     auth:
-      authenticator: bearertoken/staging
+      authenticator: bearertokenauth/staging
 
   # Metrics backend with separate auth
-  otlphttp/metrics:
-    endpoint: https://metrics-backend.com/v1/metrics
+  otlp_http/metrics:
+    endpoint: https://metrics-backend.com:4318
     auth:
-      authenticator: bearertoken/metrics
+      authenticator: bearertokenauth/metrics
 
 service:
-  extensions: [bearertoken/prod, bearertoken/staging, bearertoken/metrics]
+  extensions: [bearertokenauth/prod, bearertokenauth/staging, bearertokenauth/metrics]
 
   pipelines:
-    traces:
+    traces/in:
       receivers: [otlp]
-      processors: [routing]
-      # Note: routing processor handles exporter selection
+      exporters: [routing]
+
+    traces/prod:
+      receivers: [routing]
+      processors: [batch]
+      exporters: [otlp/prod]
+
+    traces/staging:
+      receivers: [routing]
+      processors: [batch]
+      exporters: [otlp/staging]
 
     metrics:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlphttp/metrics]
+      exporters: [otlp_http/metrics]
 ```
 
 ## Kubernetes Deployment with Secrets
@@ -343,9 +354,9 @@ The collector configuration reads from the mounted secret:
 
 ```yaml
 extensions:
-  bearertoken:
+  bearertokenauth:
     # Token is mounted at /var/secrets/otel-token
-    token: "${file:/var/secrets/otel-token}"
+    filename: "/var/secrets/otel-token"
 
 receivers:
   otlp:
@@ -358,18 +369,18 @@ processors:
     timeout: 10s
 
 exporters:
-  otlphttp:
-    endpoint: https://backend.com/v1/traces
+  otlp_http:
+    endpoint: https://backend.com:4318
     auth:
-      authenticator: bearertoken
+      authenticator: bearertokenauth
 
 service:
-  extensions: [bearertoken]
+  extensions: [bearertokenauth]
   pipelines:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlphttp]
+      exporters: [otlp_http]
 ```
 
 ## Securing Receivers with Bearer Tokens
@@ -379,7 +390,7 @@ You can also use bearer token authentication to secure collector receivers, requ
 ```yaml
 extensions:
   # Expected token for incoming requests
-  bearertoken/server:
+  bearertokenauth/server:
     token: "${env:EXPECTED_CLIENT_TOKEN}"
 
 receivers:
@@ -389,24 +400,24 @@ receivers:
         endpoint: 0.0.0.0:4318
         # Require authentication for incoming requests
         auth:
-          authenticator: bearertoken/server
+          authenticator: bearertokenauth/server
 
 processors:
   batch:
     timeout: 10s
 
 exporters:
-  logging:
-    loglevel: info
+  debug:
+    verbosity: basic
 
 service:
-  extensions: [bearertoken/server]
+  extensions: [bearertokenauth/server]
 
   pipelines:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [logging]
+      exporters: [debug]
 ```
 
 Clients must now include the bearer token when sending data to the collector:
@@ -425,8 +436,8 @@ Here's a comprehensive production configuration combining multiple best practice
 ```yaml
 extensions:
   # Bearer token for backend authentication
-  bearertoken:
-    token: "${file:/var/secrets/backend-token}"
+  bearertokenauth:
+    filename: "/var/secrets/backend-token"
 
   # Health check extension for monitoring
   health_check:
@@ -475,10 +486,10 @@ processors:
 
 exporters:
   # Primary backend with bearer token
-  otlphttp/backend:
-    endpoint: https://api.backend.com/v1/traces
+  otlp_http/backend:
+    endpoint: https://api.backend.com:4318
     auth:
-      authenticator: bearertoken
+      authenticator: bearertokenauth
     tls:
       insecure: false
       ca_file: /etc/otel/certs/ca.crt
@@ -492,34 +503,34 @@ exporters:
       num_consumers: 10
       queue_size: 5000
 
-  # Logging for troubleshooting
-  logging:
-    loglevel: info
+  # Debug exporter for troubleshooting
+  debug:
+    verbosity: basic
     sampling_initial: 5
     sampling_thereafter: 200
 
 service:
-  extensions: [bearertoken, health_check, zpages]
+  extensions: [bearertokenauth, health_check, zpages]
 
   pipelines:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, resource, batch]
-      exporters: [otlphttp/backend, logging]
+      exporters: [otlp_http/backend, debug]
 
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, resource, batch]
-      exporters: [otlphttp/backend]
+      exporters: [otlp_http/backend]
 ```
 
 ## Troubleshooting
 
 **Authentication Failures**: If requests fail with 401 or 403 errors, verify that the token is correctly configured and matches what the backend expects. Check collector logs for authentication errors.
 
-**Token Not Found**: When using file or environment variable expansion, ensure the file exists and is readable, or that the environment variable is set before starting the collector.
+**Token Not Found**: When using file-based tokens or environment variable expansion, ensure the file exists and is readable, or that the environment variable is set before starting the collector.
 
-**Token Rotation**: To rotate tokens without restarting the collector, update the token file or environment variable, then send a SIGHUP signal to the collector process to reload the configuration.
+**Token Rotation**: To rotate file-based tokens without restarting the collector, update the file referenced by `filename`. Environment variable changes require restarting the collector process.
 
 ## Security Best Practices
 
