@@ -28,14 +28,13 @@ package main
 
 import (
     "context"
-    "log"
     "time"
 
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
     "go.opentelemetry.io/otel/sdk/metric"
     "go.opentelemetry.io/otel/sdk/resource"
-    semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
+    semconv "go.opentelemetry.io/otel/semconv/v1.34.0"
 )
 
 // Initialize OpenTelemetry metrics with OTLP exporter
@@ -56,7 +55,7 @@ func initMetrics(serviceName string) (*metric.MeterProvider, error) {
         resource.WithAttributes(
             semconv.ServiceNameKey.String(serviceName),
             semconv.ServiceVersionKey.String("1.0.0"),
-            semconv.DeploymentEnvironmentKey.String("production"),
+            semconv.DeploymentEnvironmentNameKey.String("production"),
         ),
     )
     if err != nil {
@@ -187,7 +186,6 @@ package main
 
 import (
     "context"
-    "fmt"
 
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/attribute"
@@ -279,6 +277,7 @@ package main
 
 import (
     "context"
+    "fmt"
     "time"
 
     "go.opentelemetry.io/otel"
@@ -380,7 +379,7 @@ func (lm *LatencyMetrics) MeasureOperation(ctx context.Context, name string, ope
 
 ## Building Asynchronous Gauges
 
-Gauges measure point-in-time values using callbacks. They're ideal for system metrics that you sample periodically.
+Observable gauges measure point-in-time values using callbacks. They're ideal for system metrics that you sample periodically.
 
 ```go
 package main
@@ -388,7 +387,6 @@ package main
 import (
     "context"
     "runtime"
-    "time"
 
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/attribute"
@@ -485,10 +483,10 @@ func (rm *RuntimeMetrics) observe(ctx context.Context, observer metric.Observer)
     )
 
     // Record GC pause time
-    if len(memStats.PauseNs) > 0 {
+    if memStats.NumGC > 0 {
         observer.ObserveFloat64(
             rm.gcPauseGauge,
-            float64(memStats.PauseNs[(memStats.NumGC+255)%256]),
+            float64(memStats.PauseNs[(memStats.NumGC-1)%256]),
         )
     }
 
@@ -516,7 +514,7 @@ type BusinessMetrics struct {
     orderCounter      metric.Int64Counter
     revenueCounter    metric.Float64Counter
     cartSizeHistogram metric.Float64Histogram
-    activeUsersGauge  metric.Int64ObservableGauge
+    activeUsersGauge  metric.Int64Gauge
 }
 
 // NewBusinessMetrics creates business metric instruments
@@ -555,7 +553,7 @@ func NewBusinessMetrics() (*BusinessMetrics, error) {
     }
 
     // Gauge for active users
-    activeUsersGauge, err := meter.Int64ObservableGauge(
+    activeUsersGauge, err := meter.Int64Gauge(
         "business.users.active",
         metric.WithDescription("Number of active users"),
         metric.WithUnit("{user}"),
@@ -596,6 +594,11 @@ func (bm *BusinessMetrics) RecordOrder(ctx context.Context, orderValue float64, 
     )
 }
 
+// RecordActiveUsers records the current number of active users
+func (bm *BusinessMetrics) RecordActiveUsers(ctx context.Context, activeUsers int64) {
+    bm.activeUsersGauge.Record(ctx, activeUsers)
+}
+
 // RecordCartAbandonment tracks abandoned shopping carts
 func (bm *BusinessMetrics) RecordCartAbandonment(ctx context.Context, cartValue float64, reason string) {
     meter := otel.Meter("business")
@@ -622,7 +625,14 @@ Views let you customize how metrics are aggregated and exported without changing
 package main
 
 import (
+    "context"
+
+    "go.opentelemetry.io/otel"
+    "go.opentelemetry.io/otel/attribute"
+    "go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
     "go.opentelemetry.io/otel/sdk/metric"
+    "go.opentelemetry.io/otel/sdk/resource"
+    semconv "go.opentelemetry.io/otel/semconv/v1.34.0"
 )
 
 // ConfigureMetricViews sets up custom aggregations
@@ -646,18 +656,15 @@ func ConfigureMetricViews() []metric.View {
                 Name: "http.server.requests",
             },
             metric.Stream{
-                AttributeFilter: attribute.NewSet(
-                    attribute.String("http.method", ""),
-                    attribute.String("http.route", ""),
-                    // Drop user_id to reduce cardinality
-                ),
+                // Keep bounded HTTP attributes and drop high-cardinality attributes like user_id.
+                AttributeFilter: attribute.NewAllowKeysFilter("http.method", "http.route", "http.status_code"),
             },
         ),
 
         // Rename a metric
         metric.NewView(
             metric.Instrument{
-                Name: "database.query.duration",
+                Name: "db.query.duration",
             },
             metric.Stream{
                 Name: "db.query.latency",
@@ -711,7 +718,6 @@ package main
 
 import (
     "context"
-    "fmt"
     "log"
     "math/rand"
     "time"
@@ -839,6 +845,7 @@ import (
     "time"
 
     "go.opentelemetry.io/otel"
+    "go.opentelemetry.io/otel/attribute"
     "go.opentelemetry.io/otel/metric"
 )
 
