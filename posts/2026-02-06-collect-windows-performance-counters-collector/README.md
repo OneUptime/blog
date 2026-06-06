@@ -34,7 +34,7 @@ Download the Collector Contrib distribution for Windows from the official releas
 ```powershell
 # Download the Collector Contrib MSI installer
 
-Invoke-WebRequest -Uri "https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.96.0/otelcol-contrib_0.96.0_windows_amd64.msi" -OutFile "otelcol-contrib.msi"
+Invoke-WebRequest -Uri "https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.153.0/otelcol-contrib_0.153.0_windows_x64.msi" -OutFile "otelcol-contrib.msi"
 
 # Install the collector as a Windows service
 msiexec /i otelcol-contrib.msi /quiet
@@ -120,7 +120,7 @@ Get-Counter -ListSet "Processor" | Select-Object -ExpandProperty Paths
 Get-Counter "\Processor(_Total)\% Processor Time" -SampleInterval 2 -MaxSamples 3
 ```
 
-These commands help you identify the exact object names, instance names, and counter names to use in the collector configuration. Counter names are locale-specific on older Windows versions, so always verify on the target machine.
+These commands help you identify the exact object names, instance names, and counter names to use in the collector configuration. The receiver uses English counter paths through PDH when the Windows API supports them, but you should still verify object, instance, and counter names on the target machine.
 
 ## Monitoring IIS Web Servers
 
@@ -147,6 +147,8 @@ receivers:
         description: "Total 404 Not Found errors"
         unit: "{errors}"
         sum:
+          aggregation: cumulative
+          monotonic: true
     perfcounters:
       # IIS Web Service counters
       - object: "Web Service"
@@ -162,7 +164,7 @@ receivers:
           - name: "Bytes Total/sec"
             metric: iis.bytes_total_per_sec
           # Count of 404 responses, useful for detecting broken links
-          - name: "Not Found Errors"
+          - name: "Total Not Found Errors"
             metric: iis.not_found_errors
 ```
 
@@ -170,7 +172,7 @@ You can replace `_Total` with specific site names to monitor individual IIS webs
 
 ## Monitoring .NET Applications
 
-.NET applications expose CLR performance counters for garbage collection, exceptions, and thread pool usage:
+.NET Framework applications expose CLR performance counters for garbage collection, exceptions, and thread usage:
 
 ```yaml
 receivers:
@@ -219,7 +221,7 @@ receivers:
             metric: dotnet.thread_count
 ```
 
-Replace `_Global_` with specific application process names to monitor individual .NET applications. The instance name matches the process name as it appears in Task Manager.
+Replace `_Global_` with specific CLR performance counter instance names to monitor individual .NET Framework applications. These usually include the process name, but duplicate process names or in-process side-by-side runtimes can add suffixes or process IDs, so verify the exact instance with `Get-Counter`.
 
 ## Collecting Per-Instance Metrics
 
@@ -287,7 +289,7 @@ service:
 
 **Permission denied**: The collector service must run under an account with permission to read performance counters. The default `Local System` account works for most counters. Some application-specific counters may require the service to run as a domain account or a user in the `Performance Monitor Users` group.
 
-**Localized counter names**: On non-English Windows installations, performance counter names may be in the local language. The collector uses the English names by default. If you encounter issues, check the registry key `HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Perflib` for the correct localized names.
+**Localized counter names**: On modern Windows versions, the receiver adds counters using PDH's English counter API. If you are troubleshooting localized counter names outside the collector, check the registry key `HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Perflib` for the local counter name mappings.
 
 ## Wrap Up
 
