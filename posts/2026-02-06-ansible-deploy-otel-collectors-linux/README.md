@@ -256,7 +256,7 @@ WantedBy=multi-user.target
   notify: restart otel-collector
 
 - name: Enable and start collector service
-  systemd:
+  ansible.builtin.systemd_service:
     name: otel-collector
     enabled: true
     state: started
@@ -264,7 +264,7 @@ WantedBy=multi-user.target
 
 # roles/otel-collector/handlers/main.yml
 - name: restart otel-collector
-  systemd:
+  ansible.builtin.systemd_service:
     name: otel-collector
     state: restarted
     daemon_reload: true
