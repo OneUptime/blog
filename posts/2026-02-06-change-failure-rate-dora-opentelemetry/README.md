@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, DORA Metric, Change Failure Rate, DevOps
 
-Description: Build automated Change Failure Rate measurement using OpenTelemetry to track one of the four key DORA metrics for engineering performance.
+Description: Build automated Change Failure Rate measurement using OpenTelemetry to track one of the key DORA metrics for engineering performance.
 
-Change Failure Rate (CFR) is one of the four DORA metrics that measure software delivery performance. It answers a specific question: what percentage of deployments result in a degraded service that requires remediation? Tracking this metric manually through spreadsheets or ticket labels is unreliable. OpenTelemetry provides the instrumentation to capture both sides of the equation - deployments and their outcomes - automatically and accurately.
+Change Failure Rate (CFR), also called Change Fail Rate in current DORA guidance, is one of the DORA metrics that measure software delivery performance. It answers a specific question: what percentage of deployments require immediate intervention following a deployment? Tracking this metric manually through spreadsheets or ticket labels is unreliable. OpenTelemetry provides the instrumentation to capture both sides of the equation - deployments and their outcomes - automatically and accurately.
 
 ## What Counts as a "Failed Change"
 
-Before measuring CFR, your team needs a clear definition. The DORA research defines a failed change as one that results in degraded service requiring remediation (hotfix, rollback, patch, or workaround). In OpenTelemetry terms, a change is "failed" if any of these conditions occur within a defined window after deployment:
+Before measuring CFR, your team needs a clear definition. DORA defines Change Fail Rate as the ratio of deployments that require immediate intervention following deployment, likely resulting in a rollback or hotfix. In OpenTelemetry terms, a change is "failed" if any of these conditions occur within a defined window after deployment:
 
 - Error rate increases by more than a threshold (e.g., 2x baseline)
 - A rollback is triggered
@@ -19,13 +19,13 @@ Before measuring CFR, your team needs a clear definition. The DORA research defi
 
 ## Recording Deployment Events
 
-Every deployment must be recorded as a structured event in your telemetry pipeline. This is the numerator denominator source for CFR.
+Every deployment must be recorded as a structured metric data point in your telemetry pipeline. This is the numerator and denominator source for CFR.
 
 ```python
 # Record every deployment with outcome tracking
 
 from opentelemetry import metrics
-from datetime import datetime
+from datetime import datetime, timezone
 
 meter = metrics.get_meter("dora.metrics")
 
@@ -51,8 +51,8 @@ class DeploymentRecorder:
         """Called when a deployment completes."""
         deployments_total.add(1, attributes={
             "service.name": service,
-            "deployment.environment": environment,
-            "deployment.version": version,
+            "deployment.environment.name": environment,
+            "service.version": version,
         })
 
         # Track this deployment for outcome evaluation
@@ -60,7 +60,7 @@ class DeploymentRecorder:
             "service": service,
             "version": version,
             "environment": environment,
-            "deployed_at": datetime.utcnow(),
+            "deployed_at": datetime.now(timezone.utc),
             "outcome": "pending"
         }
 
@@ -73,7 +73,7 @@ class DeploymentRecorder:
 
             deployments_failed.add(1, attributes={
                 "service.name": deploy["service"],
-                "deployment.environment": deploy["environment"],
+                "deployment.environment.name": deploy["environment"],
                 "failure.reason": failure_reason,
             })
 
@@ -145,13 +145,46 @@ class DeploymentEvaluator:
 
     def _query_error_rate(self, prometheus_url, service, start, end):
         query = (
-            f'sum(rate(http_server_request_count_total'
-            f'{{service_name="{service}",status_code=~"5.."}}[5m]))'
-            f' / sum(rate(http_server_request_count_total'
+            f'sum(rate(http_server_request_duration_seconds_count'
+            f'{{service_name="{service}",http_response_status_code=~"5.."}}[5m]))'
+            f' / sum(rate(http_server_request_duration_seconds_count'
             f'{{service_name="{service}"}}[5m]))'
         )
         # Execute against Prometheus and return average over window
         return self._avg_over_range(prometheus_url, query, start, end)
+
+    def _query_p99_latency(self, prometheus_url, service, start, end):
+        query = (
+            "histogram_quantile(0.99, "
+            f"sum by (le) (rate(http_server_request_duration_seconds_bucket"
+            f'{{service_name="{service}"}}[5m])))'
+        )
+        return self._avg_over_range(prometheus_url, query, start, end)
+
+    def _avg_over_range(self, prometheus_url, query, start, end):
+        response = requests.get(
+            f"{prometheus_url.rstrip('/')}/api/v1/query_range",
+            params={
+                "query": query,
+                "start": start.timestamp(),
+                "end": end.timestamp(),
+                "step": "60s",
+            },
+            timeout=10,
+        )
+        response.raise_for_status()
+        result = response.json()["data"]["result"]
+        values = [
+            float(value)
+            for series in result
+            for _, value in series["values"]
+            if value not in ("NaN", "+Inf", "-Inf")
+        ]
+        return sum(values) / len(values) if values else 0
+
+    def _rollback_detected(self, service, start, end):
+        # Replace with your deployment system or incident-management integration.
+        return False
 ```
 
 ## Collector Configuration
@@ -179,8 +212,10 @@ processors:
     timeout: 5s
 
 exporters:
-  otlp/metrics:
-    endpoint: "prometheus-remote-write:4317"
+  prometheusremotewrite:
+    endpoint: "http://prometheus:9090/api/v1/write"
+    resource_to_telemetry_conversion:
+      enabled: true
   otlp/dora-evaluator:
     endpoint: "dora-evaluator-service:4317"
 
@@ -189,7 +224,7 @@ service:
     metrics:
       receivers: [otlp]
       processors: [resource, batch]
-      exporters: [otlp/metrics, otlp/dora-evaluator]
+      exporters: [prometheusremotewrite, otlp/dora-evaluator]
 ```
 
 ## Computing and Visualizing CFR
@@ -215,14 +250,14 @@ sum(increase(dora_deployments_total[7d]))
 
 ## DORA Performance Benchmarks
 
-The DORA research classifies teams into four performance tiers based on their CFR:
+DORA research and assessment tools classify teams by overall software delivery performance. Treat CFR benchmarks as contextual rather than universal cutoffs:
 
 ```mermaid
 graph TD
-    A[Change Failure Rate Benchmarks] --> B[Elite: 0-5%]
-    A --> C[High: 5-10%]
-    A --> D[Medium: 10-15%]
-    A --> E[Low: 15%+]
+    A[Change Failure Rate Benchmarks] --> B[Elite: 0-15% in some DORA reports]
+    A --> C[High: Context-dependent]
+    A --> D[Medium: Context-dependent]
+    A --> E[Low: Higher failure rates]
 
     B --> B1[Excellent testing and deployment practices]
     C --> C1[Good practices with room for improvement]
