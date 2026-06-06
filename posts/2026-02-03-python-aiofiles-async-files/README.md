@@ -505,7 +505,7 @@ For images, archives, and other binary content:
 import asyncio
 import aiofiles
 import struct
-from typing import Optional
+from typing import Callable, Optional
 
 async def write_binary_file(filepath: str, data: bytes):
     """
@@ -540,7 +540,7 @@ async def copy_file_async(source: str, destination: str, chunk_size: int = 65536
 async def write_with_progress(
     filepath: str,
     data: bytes,
-    callback: Optional[callable] = None
+    callback: Optional[Callable] = None
 ):
     """
     Write binary data with progress reporting.
