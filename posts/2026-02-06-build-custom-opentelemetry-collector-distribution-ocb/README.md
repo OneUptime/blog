@@ -10,7 +10,7 @@ The OpenTelemetry Collector Builder (OCB) enables you to create custom Collector
 
 ## Why Build a Custom Distribution
 
-The default OpenTelemetry Collector distributions (core and contrib) include many components, but you might need a custom distribution when:
+The default OpenTelemetry Collector distributions include many components, but you might need a custom distribution when:
 
 - You want to minimize binary size for containerized deployments
 - You need to include custom receivers, processors, or exporters
@@ -22,7 +22,7 @@ The default OpenTelemetry Collector distributions (core and contrib) include man
 
 Before building a custom Collector distribution, ensure you have:
 
-- Go 1.21 or later installed
+- Go 1.25 or later installed
 - Git for version control
 - Basic understanding of YAML configuration
 - Familiarity with the OpenTelemetry Collector architecture
@@ -34,22 +34,22 @@ The OpenTelemetry Collector Builder is a standalone tool that generates Collecto
 ```bash
 # Install OCB using Go
 
-go install go.opentelemetry.io/collector/cmd/builder@latest
+go install go.opentelemetry.io/collector/cmd/builder@v0.153.0
 
 # Verify installation
 builder version
 
 # Alternative: Download pre-built binary
 # For Linux
-curl -L -o builder https://github.com/open-telemetry/opentelemetry-collector/releases/download/cmd%2Fbuilder%2Fv0.95.0/ocb_0.95.0_linux_amd64
+curl -L -o builder https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/cmd%2Fbuilder%2Fv0.153.0/ocb_0.153.0_linux_amd64
 chmod +x builder
 
 # For macOS
-curl -L -o builder https://github.com/open-telemetry/opentelemetry-collector/releases/download/cmd%2Fbuilder%2Fv0.95.0/ocb_0.95.0_darwin_amd64
+curl -L -o builder https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/cmd%2Fbuilder%2Fv0.153.0/ocb_0.153.0_darwin_amd64
 chmod +x builder
 
 # For Windows
-# Download from: https://github.com/open-telemetry/opentelemetry-collector/releases/
+# Download from: https://github.com/open-telemetry/opentelemetry-collector-releases/releases/
 ```
 
 ## Create a Builder Configuration File
@@ -67,102 +67,110 @@ dist:
   description: Custom OpenTelemetry Collector distribution
   # Output directory for the built binary
   output_path: ./dist
-  # Go version for building
-  go: 1.21.0
+  # Go binary to use for building
+  go: go
   # Module name for the generated code
   module: github.com/yourorg/otelcol-custom
   # Version of the distribution
   version: 1.0.0
-  # OTEL Collector core version to use as base
-  otelcol_version: 0.95.0
+  # OTEL Collector core version to use for strict version checks
+  otelcol_version: 0.153.0
 
 # Exporters send telemetry data to backends
 exporters:
   # OTLP exporter for native OpenTelemetry protocol
-  - gomod: go.opentelemetry.io/collector/exporter/otlpexporter v0.95.0
+  - gomod: go.opentelemetry.io/collector/exporter/otlpexporter v0.153.0
 
   # OTLP HTTP exporter
-  - gomod: go.opentelemetry.io/collector/exporter/otlphttpexporter v0.95.0
+  - gomod: go.opentelemetry.io/collector/exporter/otlphttpexporter v0.153.0
 
-  # Logging exporter for debugging
-  - gomod: go.opentelemetry.io/collector/exporter/loggingexporter v0.95.0
+  # Debug exporter for troubleshooting
+  - gomod: go.opentelemetry.io/collector/exporter/debugexporter v0.153.0
 
   # Prometheus exporter for metrics
-  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/prometheusexporter v0.95.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/prometheusexporter v0.153.0
 
-  # Jaeger exporter for traces
-  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/jaegerexporter v0.95.0
+  # Zipkin exporter for traces
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/zipkinexporter v0.153.0
 
   # File exporter for writing to local files
-  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/fileexporter v0.95.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/fileexporter v0.153.0
 
 # Receivers define how telemetry data enters the Collector
 receivers:
   # OTLP receiver for native OpenTelemetry protocol
-  - gomod: go.opentelemetry.io/collector/receiver/otlpreceiver v0.95.0
+  - gomod: go.opentelemetry.io/collector/receiver/otlpreceiver v0.153.0
 
   # Prometheus receiver for scraping metrics
-  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver v0.95.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver v0.153.0
 
   # Jaeger receiver for traces
-  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/jaegerreceiver v0.95.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/jaegerreceiver v0.153.0
 
   # Host metrics receiver for system metrics
-  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/hostmetricsreceiver v0.95.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/hostmetricsreceiver v0.153.0
 
   # Kafka receiver for consuming from Kafka topics
-  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/kafkareceiver v0.95.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/kafkareceiver v0.153.0
 
   # HTTP check receiver for availability monitoring
-  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/httpcheckreceiver v0.95.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/httpcheckreceiver v0.153.0
 
 # Processors transform and enrich telemetry data
 processors:
   # Batch processor groups data before export
-  - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.95.0
+  - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.153.0
 
   # Memory limiter prevents out-of-memory issues
-  - gomod: go.opentelemetry.io/collector/processor/memorylimiterprocessor v0.95.0
+  - gomod: go.opentelemetry.io/collector/processor/memorylimiterprocessor v0.153.0
 
   # Attributes processor modifies attributes
-  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/attributesprocessor v0.95.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/attributesprocessor v0.153.0
 
   # Resource processor adds resource attributes
-  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourceprocessor v0.95.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourceprocessor v0.153.0
 
   # Filter processor drops unwanted telemetry
-  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/filterprocessor v0.95.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/filterprocessor v0.153.0
 
   # Transform processor applies complex transformations
-  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformprocessor v0.95.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformprocessor v0.153.0
 
   # Tail sampling processor makes sampling decisions based on complete traces
-  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/tailsamplingprocessor v0.95.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/tailsamplingprocessor v0.153.0
 
 # Extensions provide additional capabilities
 extensions:
   # Health check extension provides liveness/readiness probes
-  - gomod: go.opentelemetry.io/collector/extension/healthcheckextension v0.95.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/healthcheckextension v0.153.0
 
-  # PPRof extension enables Go profiling
-  - gomod: go.opentelemetry.io/collector/extension/pprofextension v0.95.0
+  # pprof extension enables Go profiling
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/pprofextension v0.153.0
 
   # zPages extension provides diagnostic pages
-  - gomod: go.opentelemetry.io/collector/extension/zpagesextension v0.95.0
+  - gomod: go.opentelemetry.io/collector/extension/zpagesextension v0.153.0
 
   # File storage extension for persistent state
-  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/storage/filestorage v0.95.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/storage/filestorage v0.153.0
 
   # Basic auth extension for authentication
-  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/basicauthextension v0.95.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/basicauthextension v0.153.0
 
 # Connectors link pipelines together
 connectors:
   # Forward connector passes data between pipelines
-  - gomod: go.opentelemetry.io/collector/connector/forwardconnector v0.95.0
+  - gomod: go.opentelemetry.io/collector/connector/forwardconnector v0.153.0
 
   # Span metrics connector generates metrics from trace spans
-  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/connector/spanmetricsconnector v0.95.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/connector/spanmetricsconnector v0.153.0
+
+# Configuration providers let the Collector load config from files, env vars, URLs, and inline YAML
+providers:
+  - gomod: go.opentelemetry.io/collector/confmap/provider/envprovider v1.59.0
+  - gomod: go.opentelemetry.io/collector/confmap/provider/fileprovider v1.59.0
+  - gomod: go.opentelemetry.io/collector/confmap/provider/httpprovider v1.59.0
+  - gomod: go.opentelemetry.io/collector/confmap/provider/httpsprovider v1.59.0
+  - gomod: go.opentelemetry.io/collector/confmap/provider/yamlprovider v1.59.0
 ```
 
 ## Build the Custom Distribution
@@ -216,7 +224,7 @@ extensions:
   health_check:
     endpoint: 0.0.0.0:13133
 
-  # PPRof for performance profiling
+  # pprof for performance profiling
   pprof:
     endpoint: localhost:1777
 
@@ -285,11 +293,9 @@ processors:
 
   # Filter processor drops unwanted telemetry
   filter:
-    metrics:
-      exclude:
-        match_type: regexp
-        metric_names:
-          - ".*test.*"
+    error_mode: ignore
+    metric_conditions:
+      - IsMatch(metric.name, ".*test.*")
 
 # Exporters send telemetry to backends
 exporters:
@@ -305,14 +311,14 @@ exporters:
   prometheus:
     endpoint: 0.0.0.0:8889
 
-  # Logging exporter for debugging
-  logging:
-    loglevel: info
+  # Debug exporter for troubleshooting
+  debug:
+    verbosity: normal
 
 # Connectors link pipelines
 connectors:
   # Span metrics connector generates metrics from traces
-  spanmetrics:
+  span_metrics:
     dimensions:
       - name: http.method
       - name: http.status_code
@@ -328,19 +334,19 @@ service:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, batch, resource, attributes]
-      exporters: [otlp, spanmetrics, logging]
+      exporters: [otlp, span_metrics, debug]
 
     # Metrics pipeline (includes metrics from traces via connector)
     metrics:
-      receivers: [otlp, prometheus, hostmetrics, spanmetrics]
+      receivers: [otlp, prometheus, hostmetrics, span_metrics]
       processors: [memory_limiter, batch, resource, filter]
-      exporters: [otlp, prometheus, logging]
+      exporters: [otlp, prometheus, debug]
 
     # Logs pipeline
     logs:
       receivers: [otlp]
       processors: [memory_limiter, batch, resource]
-      exporters: [otlp, logging]
+      exporters: [otlp, debug]
 ```
 
 ## Run the Custom Collector
@@ -351,8 +357,8 @@ Test the custom Collector with your configuration.
 # Run the Collector
 ./dist/otelcol-custom --config=config.yaml
 
-# Run with verbose logging
-./dist/otelcol-custom --config=config.yaml --set=service.telemetry.logs.level=debug
+# Run with verbose debug
+./dist/otelcol-custom --config=config.yaml --set=service::telemetry::logs::level=debug
 
 # Validate configuration without running
 ./dist/otelcol-custom validate --config=config.yaml
@@ -371,11 +377,11 @@ dist:
   output_path: ./dist
   module: github.com/yourorg/otelcol-custom
   version: 1.0.0
-  otelcol_version: 0.95.0
+  otelcol_version: 0.153.0
 
 exporters:
   # Standard exporter
-  - gomod: go.opentelemetry.io/collector/exporter/otlpexporter v0.95.0
+  - gomod: go.opentelemetry.io/collector/exporter/otlpexporter v0.153.0
 
   # Custom exporter from your organization
   - gomod: github.com/yourorg/customexporter v1.2.3
@@ -383,7 +389,7 @@ exporters:
 
 receivers:
   # Standard receiver
-  - gomod: go.opentelemetry.io/collector/receiver/otlpreceiver v0.95.0
+  - gomod: go.opentelemetry.io/collector/receiver/otlpreceiver v0.153.0
 
   # Custom receiver from a private repository
   - gomod: github.com/yourorg/customreceiver v0.5.0
@@ -391,7 +397,7 @@ receivers:
 
 processors:
   # Standard processors
-  - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.95.0
+  - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.153.0
 
   # Custom processor with local path during development
   - gomod: example.com/customprocessor v0.0.0
@@ -445,11 +451,11 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.21'
+          go-version: '1.25'
 
       - name: Install OCB
         run: |
-          go install go.opentelemetry.io/collector/cmd/builder@latest
+          go install go.opentelemetry.io/collector/cmd/builder@v0.153.0
 
       - name: Build custom Collector
         run: |
@@ -487,10 +493,10 @@ Package your custom Collector in a Docker container for easy deployment.
 # Dockerfile
 
 # Build stage
-FROM golang:1.21 AS builder
+FROM golang:1.25 AS builder
 
 # Install OCB
-RUN go install go.opentelemetry.io/collector/cmd/builder@latest
+RUN go install go.opentelemetry.io/collector/cmd/builder@v0.153.0
 
 # Copy builder configuration
 WORKDIR /build
@@ -551,10 +557,10 @@ Pin specific versions of components for reproducible builds.
 ```yaml
 exporters:
   # Pin to exact version
-  - gomod: go.opentelemetry.io/collector/exporter/otlpexporter v0.95.0
+  - gomod: go.opentelemetry.io/collector/exporter/otlpexporter v0.153.0
 
-  # Use version range (not recommended for production)
-  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/prometheusexporter v0.95.0
+  # Pin contrib components to matching versions
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/prometheusexporter v0.153.0
 ```
 
 ### Use Replace Directives
@@ -565,7 +571,7 @@ Override component dependencies during development or testing.
 dist:
   name: otelcol-custom
   output_path: ./dist
-  otelcol_version: 0.95.0
+  otelcol_version: 0.153.0
 
 # Replace directives override module paths
 replaces:
@@ -573,7 +579,7 @@ replaces:
   - github.com/open-telemetry/opentelemetry-collector-contrib/processor/attributesprocessor => ../otel-contrib/processor/attributesprocessor
 
   # Use forked version
-  - go.opentelemetry.io/collector => github.com/yourorg/opentelemetry-collector v0.95.1
+  - go.opentelemetry.io/collector => github.com/yourorg/opentelemetry-collector v0.153.0
 ```
 
 ### Exclude Default Components
@@ -585,20 +591,23 @@ dist:
   name: otelcol-minimal
   description: Minimal Collector with only essential components
   output_path: ./dist
-  otelcol_version: 0.95.0
+  otelcol_version: 0.153.0
 
 # Include only essential components
 receivers:
-  - gomod: go.opentelemetry.io/collector/receiver/otlpreceiver v0.95.0
+  - gomod: go.opentelemetry.io/collector/receiver/otlpreceiver v0.153.0
 
 processors:
-  - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.95.0
+  - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.153.0
 
 exporters:
-  - gomod: go.opentelemetry.io/collector/exporter/otlpexporter v0.95.0
+  - gomod: go.opentelemetry.io/collector/exporter/otlpexporter v0.153.0
 
 extensions:
-  - gomod: go.opentelemetry.io/collector/extension/healthcheckextension v0.95.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/healthcheckextension v0.153.0
+
+providers:
+  - gomod: go.opentelemetry.io/collector/confmap/provider/fileprovider v1.59.0
 ```
 
 ## Troubleshooting Build Issues
