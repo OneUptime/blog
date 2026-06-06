@@ -19,121 +19,150 @@ Deploy ClickStack using Docker Compose:
 ```yaml
 # docker-compose.yaml
 
-version: "3.8"
 services:
-  clickhouse:
-    image: clickhouse/clickhouse-server:latest
+  clickstack:
+    image: clickhouse/clickstack-all-in-one:latest
+    command: ["clickstack"]
     ports:
-      - "8123:8123"
-      - "9000:9000"
+      - "8123:8123" # ClickHouse HTTP
+      - "8080:8080" # HyperDX UI
+      - "4317:4317" # OTLP gRPC
+      - "4318:4318" # OTLP HTTP
     volumes:
+      - clickstack-db:/data/db
       - clickhouse-data:/var/lib/clickhouse
-      - ./clickhouse-config.xml:/etc/clickhouse-server/config.d/custom.xml
-    environment:
-      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
-
-  otel-collector:
-    image: otel/opentelemetry-collector-contrib:latest
-    volumes:
-      - ./collector-config.yaml:/etc/otelcol-contrib/config.yaml
-    ports:
-      - "4317:4317"
-      - "4318:4318"
-    depends_on:
-      - clickhouse
-
-  clickstack-ui:
-    image: clickstack/ui:latest
-    ports:
-      - "3000:3000"
-    environment:
-      CLICKHOUSE_URL: http://clickhouse:8123
-      CLICKHOUSE_DATABASE: observability
+      - clickhouse-logs:/var/log/clickhouse-server
 
 volumes:
+  clickstack-db:
   clickhouse-data:
+  clickhouse-logs:
 ```
 
 ## ClickHouse Schema for All Signals
 
-ClickStack uses optimized tables for each signal type:
+ClickStack uses optimized tables for each signal type. The default database is `default`, unless you change `HYPERDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE`:
 
 ```sql
 -- Traces table
-CREATE TABLE otel_traces (
-    timestamp DateTime64(9) CODEC(Delta, ZSTD(1)),
-    trace_id FixedString(32),
-    span_id FixedString(16),
-    parent_span_id FixedString(16),
-    service_name LowCardinality(String),
-    operation_name LowCardinality(String),
-    kind LowCardinality(String),
-    duration_ns UInt64 CODEC(Delta, ZSTD(1)),
-    status_code UInt8,
-    status_message String CODEC(ZSTD(1)),
-    attributes Map(LowCardinality(String), String) CODEC(ZSTD(1)),
-    resource_attributes Map(LowCardinality(String), String) CODEC(ZSTD(1)),
-    events Nested (
-        timestamp DateTime64(9),
-        name LowCardinality(String),
-        attributes Map(String, String)
-    ) CODEC(ZSTD(1))
+CREATE TABLE default.otel_traces (
+    `Timestamp` DateTime64(9) CODEC(Delta(8), ZSTD(1)),
+    `TraceId` String CODEC(ZSTD(1)),
+    `SpanId` String CODEC(ZSTD(1)),
+    `ParentSpanId` String CODEC(ZSTD(1)),
+    `TraceState` String CODEC(ZSTD(1)),
+    `SpanName` LowCardinality(String) CODEC(ZSTD(1)),
+    `SpanKind` LowCardinality(String) CODEC(ZSTD(1)),
+    `ServiceName` LowCardinality(String) CODEC(ZSTD(1)),
+    `ResourceAttributes` Map(LowCardinality(String), String) CODEC(ZSTD(1)),
+    `ScopeName` String CODEC(ZSTD(1)),
+    `ScopeVersion` String CODEC(ZSTD(1)),
+    `SpanAttributes` Map(LowCardinality(String), String) CODEC(ZSTD(1)),
+    `Duration` UInt64 CODEC(ZSTD(1)),
+    `StatusCode` LowCardinality(String) CODEC(ZSTD(1)),
+    `StatusMessage` String CODEC(ZSTD(1)),
+    `Events.Timestamp` Array(DateTime64(9)) CODEC(ZSTD(1)),
+    `Events.Name` Array(LowCardinality(String)) CODEC(ZSTD(1)),
+    `Events.Attributes` Array(Map(LowCardinality(String), String)) CODEC(ZSTD(1)),
+    `Links.TraceId` Array(String) CODEC(ZSTD(1)),
+    `Links.SpanId` Array(String) CODEC(ZSTD(1)),
+    `Links.TraceState` Array(String) CODEC(ZSTD(1)),
+    `Links.Attributes` Array(Map(LowCardinality(String), String)) CODEC(ZSTD(1)),
+    INDEX idx_trace_id TraceId TYPE bloom_filter(0.001) GRANULARITY 1,
+    INDEX idx_duration Duration TYPE minmax GRANULARITY 1
 ) ENGINE = MergeTree()
-PARTITION BY toDate(timestamp)
-ORDER BY (service_name, timestamp, trace_id)
-TTL toDate(timestamp) + INTERVAL 30 DAY;
+PARTITION BY toDate(Timestamp)
+ORDER BY (ServiceName, SpanName, toDateTime(Timestamp))
+TTL toDateTime(Timestamp) + INTERVAL 30 DAY
+SETTINGS ttl_only_drop_parts = 1;
 
 -- Logs table with full-text indexing
-CREATE TABLE otel_logs (
-    timestamp DateTime64(9) CODEC(Delta, ZSTD(1)),
-    trace_id FixedString(32),
-    span_id FixedString(16),
-    severity_number UInt8,
-    severity_text LowCardinality(String),
-    service_name LowCardinality(String),
-    body String CODEC(ZSTD(1)),
-    attributes Map(LowCardinality(String), String) CODEC(ZSTD(1)),
-    resource_attributes Map(LowCardinality(String), String) CODEC(ZSTD(1)),
-    -- Full-text index on log body
-    INDEX body_idx body TYPE tokenbf_v1(32768, 3, 0) GRANULARITY 4
+CREATE TABLE default.otel_logs (
+    `Timestamp` DateTime64(9) CODEC(Delta(8), ZSTD(1)),
+    `TraceId` String CODEC(ZSTD(1)),
+    `SpanId` String CODEC(ZSTD(1)),
+    `TraceFlags` UInt8,
+    `SeverityText` LowCardinality(String) CODEC(ZSTD(1)),
+    `SeverityNumber` UInt8,
+    `ServiceName` LowCardinality(String) CODEC(ZSTD(1)),
+    `Body` String CODEC(ZSTD(1)),
+    `ResourceSchemaUrl` LowCardinality(String) CODEC(ZSTD(1)),
+    `ResourceAttributes` Map(LowCardinality(String), String) CODEC(ZSTD(1)),
+    `ScopeSchemaUrl` LowCardinality(String) CODEC(ZSTD(1)),
+    `ScopeName` String CODEC(ZSTD(1)),
+    `ScopeVersion` LowCardinality(String) CODEC(ZSTD(1)),
+    `ScopeAttributes` Map(LowCardinality(String), String) CODEC(ZSTD(1)),
+    `LogAttributes` Map(LowCardinality(String), String) CODEC(ZSTD(1)),
+    `EventName` String CODEC(ZSTD(1)),
+    INDEX idx_trace_id TraceId TYPE bloom_filter(0.001) GRANULARITY 1,
+    INDEX idx_lower_body lower(Body) TYPE tokenbf_v1(32768, 3, 0) GRANULARITY 8
 ) ENGINE = MergeTree()
-PARTITION BY toDate(timestamp)
-ORDER BY (service_name, severity_number, timestamp)
-TTL toDate(timestamp) + INTERVAL 14 DAY;
+PARTITION BY toDate(Timestamp)
+ORDER BY (toStartOfFiveMinutes(Timestamp), ServiceName, Timestamp)
+TTL toDateTime(Timestamp) + INTERVAL 14 DAY
+SETTINGS ttl_only_drop_parts = 1;
 
--- Metrics table using ClickHouse's native time series support
-CREATE TABLE otel_metrics (
-    timestamp DateTime64(9) CODEC(Delta, ZSTD(1)),
-    metric_name LowCardinality(String),
-    metric_type LowCardinality(String),
-    service_name LowCardinality(String),
-    value Float64 CODEC(ZSTD(1)),
-    attributes Map(LowCardinality(String), String) CODEC(ZSTD(1)),
-    resource_attributes Map(LowCardinality(String), String) CODEC(ZSTD(1))
+-- Gauge metrics table. Sum, histogram, exponential histogram, and summary
+-- metrics use separate tables with the same prefix.
+CREATE TABLE default.otel_metrics_gauge (
+    `ResourceAttributes` Map(LowCardinality(String), String) CODEC(ZSTD(1)),
+    `ResourceSchemaUrl` String CODEC(ZSTD(1)),
+    `ScopeName` String CODEC(ZSTD(1)),
+    `ScopeVersion` String CODEC(ZSTD(1)),
+    `ScopeAttributes` Map(LowCardinality(String), String) CODEC(ZSTD(1)),
+    `ScopeDroppedAttrCount` UInt32 CODEC(ZSTD(1)),
+    `ScopeSchemaUrl` String CODEC(ZSTD(1)),
+    `ServiceName` LowCardinality(String) CODEC(ZSTD(1)),
+    `MetricName` String CODEC(ZSTD(1)),
+    `MetricDescription` String CODEC(ZSTD(1)),
+    `MetricUnit` String CODEC(ZSTD(1)),
+    `Attributes` Map(LowCardinality(String), String) CODEC(ZSTD(1)),
+    `StartTimeUnix` DateTime64(9) CODEC(Delta(8), ZSTD(1)),
+    `TimeUnix` DateTime64(9) CODEC(Delta(8), ZSTD(1)),
+    `Value` Float64 CODEC(ZSTD(1)),
+    `Flags` UInt32 CODEC(ZSTD(1)),
+    `Exemplars.FilteredAttributes` Array(Map(LowCardinality(String), String)) CODEC(ZSTD(1)),
+    `Exemplars.TimeUnix` Array(DateTime64(9)) CODEC(ZSTD(1)),
+    `Exemplars.Value` Array(Float64) CODEC(ZSTD(1)),
+    `Exemplars.SpanId` Array(String) CODEC(ZSTD(1)),
+    `Exemplars.TraceId` Array(String) CODEC(ZSTD(1))
 ) ENGINE = MergeTree()
-PARTITION BY toDate(timestamp)
-ORDER BY (metric_name, service_name, timestamp)
-TTL toDate(timestamp) + INTERVAL 90 DAY;
+PARTITION BY toDate(TimeUnix)
+ORDER BY (ServiceName, MetricName, Attributes, toUnixTimestamp64Nano(TimeUnix))
+TTL toDateTime(TimeUnix) + INTERVAL 90 DAY
+SETTINGS ttl_only_drop_parts = 1;
 
 -- Session replay table
-CREATE TABLE session_replays (
-    session_id String CODEC(ZSTD(1)),
-    timestamp DateTime64(3) CODEC(Delta, ZSTD(1)),
-    user_id String CODEC(ZSTD(1)),
-    event_type LowCardinality(String),
-    event_data String CODEC(ZSTD(3)),
-    page_url String CODEC(ZSTD(1)),
-    service_name LowCardinality(String),
-    trace_id FixedString(32)
+CREATE TABLE default.hyperdx_sessions (
+    `Timestamp` DateTime64(9) CODEC(Delta(8), ZSTD(1)),
+    `TimestampTime` DateTime DEFAULT toDateTime(Timestamp),
+    `TraceId` String CODEC(ZSTD(1)),
+    `SpanId` String CODEC(ZSTD(1)),
+    `TraceFlags` UInt8,
+    `SeverityText` LowCardinality(String) CODEC(ZSTD(1)),
+    `SeverityNumber` UInt8,
+    `ServiceName` LowCardinality(String) CODEC(ZSTD(1)),
+    `Body` String CODEC(ZSTD(1)),
+    `ResourceSchemaUrl` LowCardinality(String) CODEC(ZSTD(1)),
+    `ResourceAttributes` Map(LowCardinality(String), String) CODEC(ZSTD(1)),
+    `ScopeSchemaUrl` LowCardinality(String) CODEC(ZSTD(1)),
+    `ScopeName` String CODEC(ZSTD(1)),
+    `ScopeVersion` LowCardinality(String) CODEC(ZSTD(1)),
+    `ScopeAttributes` Map(LowCardinality(String), String) CODEC(ZSTD(1)),
+    `LogAttributes` Map(LowCardinality(String), String) CODEC(ZSTD(1)),
+    INDEX idx_trace_id TraceId TYPE bloom_filter(0.001) GRANULARITY 1,
+    INDEX idx_lower_body lower(Body) TYPE tokenbf_v1(32768, 3, 0) GRANULARITY 8
 ) ENGINE = MergeTree()
-PARTITION BY toDate(timestamp)
-ORDER BY (session_id, timestamp)
-TTL toDate(timestamp) + INTERVAL 7 DAY;
+PARTITION BY toDate(TimestampTime)
+PRIMARY KEY (ServiceName, TimestampTime)
+ORDER BY (ServiceName, TimestampTime, Timestamp)
+TTL TimestampTime + INTERVAL 7 DAY
+SETTINGS ttl_only_drop_parts = 1;
 ```
 
 ## Collector Configuration
 
-Configure the Collector to route each signal to the appropriate ClickHouse table:
+If you run a separate OpenTelemetry Collector instead of the collector bundled with ClickStack, configure the ClickHouse exporter to route each signal to the appropriate ClickHouse tables:
 
 ```yaml
 # collector-config.yaml
@@ -147,13 +176,28 @@ receivers:
 
 exporters:
   clickhouse:
-    endpoint: tcp://clickhouse:9000
-    database: observability
+    endpoint: tcp://clickstack:9000?dial_timeout=10s&compress=lz4&async_insert=1
+    database: default
     traces_table_name: otel_traces
     logs_table_name: otel_logs
-    metrics_table_name: otel_metrics
+    metrics_tables:
+      gauge:
+        name: otel_metrics_gauge
+      sum:
+        name: otel_metrics_sum
+      summary:
+        name: otel_metrics_summary
+      histogram:
+        name: otel_metrics_histogram
+      exponential_histogram:
+        name: otel_metrics_exponential_histogram
     ttl: 720h
-    create_schema: false
+    create_schema: true
+    timeout: 5s
+    sending_queue:
+      queue_size: 1000
+    retry_on_failure:
+      enabled: true
 
 processors:
   batch:
@@ -186,31 +230,31 @@ The real power of unified storage is cross-signal queries. Find errors and their
 ```sql
 -- Find error traces and their logs in a single query
 SELECT
-    t.trace_id,
-    t.service_name,
-    t.operation_name,
-    t.duration_ns / 1e6 as duration_ms,
-    l.body as log_message,
-    l.severity_text
+    t.TraceId,
+    t.ServiceName,
+    t.SpanName,
+    t.Duration / 1e6 as duration_ms,
+    l.Body as log_message,
+    l.SeverityText
 FROM otel_traces t
-LEFT JOIN otel_logs l ON t.trace_id = l.trace_id
-WHERE t.status_code = 2  -- ERROR status
-  AND t.timestamp > now() - INTERVAL 1 HOUR
-ORDER BY t.timestamp DESC
+LEFT JOIN otel_logs l ON t.TraceId = l.TraceId
+WHERE t.StatusCode = 'Error'
+  AND t.Timestamp > now() - INTERVAL 1 HOUR
+ORDER BY t.Timestamp DESC
 LIMIT 50;
 
 -- Correlate high latency traces with their metrics
 SELECT
-    t.service_name,
-    t.operation_name,
-    quantile(0.99)(t.duration_ns) / 1e6 as p99_ms,
-    avg(m.value) as avg_cpu_usage
+    t.ServiceName,
+    t.SpanName,
+    quantile(0.99)(t.Duration) / 1e6 as p99_ms,
+    avg(m.Value) as avg_cpu_usage
 FROM otel_traces t
-JOIN otel_metrics m ON t.service_name = m.service_name
-  AND m.metric_name = 'process.cpu.utilization'
-  AND abs(dateDiff('second', t.timestamp, m.timestamp)) < 60
-WHERE t.timestamp > now() - INTERVAL 1 HOUR
-GROUP BY t.service_name, t.operation_name
+JOIN otel_metrics_gauge m ON t.ServiceName = m.ServiceName
+  AND m.MetricName = 'process.cpu.utilization'
+  AND abs(dateDiff('second', t.Timestamp, m.TimeUnix)) < 60
+WHERE t.Timestamp > now() - INTERVAL 1 HOUR
+GROUP BY t.ServiceName, t.SpanName
 ORDER BY p99_ms DESC;
 ```
 
