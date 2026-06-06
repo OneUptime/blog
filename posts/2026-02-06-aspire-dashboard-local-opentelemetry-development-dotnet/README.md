@@ -36,21 +36,20 @@ Key features include:
 
 ## Installing and Running the Aspire Dashboard
 
-The dashboard is distributed as a .NET tool that you can install globally:
+The dashboard can be started from the Aspire CLI:
 
 ```bash
-# Install the Aspire Dashboard as a global tool
-
-dotnet tool install -g aspire-dashboard
+# Install the Aspire CLI
+curl -sSL https://aspire.dev/install.sh | bash
 
 # Run the dashboard
-aspire-dashboard
+aspire dashboard run
 
 # Run on a specific port
-aspire-dashboard --urls http://localhost:18888
+aspire dashboard run --frontend-url http://localhost:18888
 
-# Enable authentication for team use
-aspire-dashboard --frontend-authmode BrowserToken
+# Allow anonymous access for local development only
+aspire dashboard run --allow-anonymous
 ```
 
 When you run the dashboard, it starts listening for OTLP data on the standard ports:
@@ -62,7 +61,7 @@ Alternatively, you can run it using Docker:
 
 ```bash
 # Run the Aspire Dashboard in Docker
-docker run -d -p 18888:18888 -p 4317:4317 -p 4318:4318 \
+docker run -d -p 18888:18888 -p 4317:18889 -p 4318:18890 \
   --name aspire-dashboard \
   mcr.microsoft.com/dotnet/aspire-dashboard:latest
 ```
@@ -73,6 +72,7 @@ Set up your application to send telemetry to the local Aspire Dashboard:
 
 ```csharp
 using OpenTelemetry;
+using OpenTelemetry.Exporter;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 using OpenTelemetry.Metrics;
@@ -140,21 +140,20 @@ var app = builder.Build();
 app.Run();
 ```
 
-For easier configuration, use environment variables or appsettings:
+For easier configuration, use environment variables:
 
 ```json
 {
-  "OpenTelemetry": {
-    "ServiceName": "MyLocalApp",
-    "Otlp": {
-      "Endpoint": "http://localhost:4317",
-      "Protocol": "Grpc"
-    }
-  },
-  "Logging": {
-    "LogLevel": {
-      "Default": "Information",
-      "Microsoft.AspNetCore": "Warning"
+  "profiles": {
+    "Development": {
+      "commandName": "Project",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "OTEL_EXPORTER_OTLP_ENDPOINT": "http://localhost:4317",
+        "OTEL_EXPORTER_OTLP_PROTOCOL": "grpc",
+        "OTEL_SERVICE_NAME": "MyLocalApp"
+      },
+      "applicationUrl": "http://localhost:5000"
     }
   }
 }
@@ -479,11 +478,12 @@ The Aspire Dashboard provides several views that help during development:
 - Search through log messages
 - Export logs for further analysis
 
-**Resources View**: Lists all services and their attributes:
+**Resource Attributes**: In standalone mode, resource attributes are available from the telemetry details:
 - Service names and versions
 - Deployment environment
 - Resource attributes
-- Health status
+
+The Aspire resource list, console logs, and health status views require a resource service and are not available in plain standalone mode.
 
 ## Creating a Development Workflow
 
@@ -496,8 +496,9 @@ Integrate the Aspire Dashboard into your daily development workflow:
 #!/bin/bash
 
 echo "Starting Aspire Dashboard..."
-aspire-dashboard --urls http://localhost:18888 &
+aspire dashboard run --frontend-url http://localhost:18888 &
 DASHBOARD_PID=$!
+trap "kill $DASHBOARD_PID" EXIT
 
 echo "Dashboard running at http://localhost:18888"
 echo "OTLP endpoint: http://localhost:4317"
@@ -507,23 +508,21 @@ sleep 2
 
 echo "Starting application..."
 dotnet run --project ./src/MyApp
-
-# Cleanup on exit
-trap "kill $DASHBOARD_PID" EXIT
 ```
 
 Use a development-specific configuration file:
 
 ```json
 {
-  "Profiles": {
+  "profiles": {
     "Development": {
       "commandName": "Project",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development",
         "OTEL_EXPORTER_OTLP_ENDPOINT": "http://localhost:4317",
         "OTEL_SERVICE_NAME": "MyApp-Dev",
-        "OTEL_TRACES_SAMPLER": "always_on"
+        "OTEL_TRACES_SAMPLER": "always_on",
+        "OTEL_EXPORTER_OTLP_PROTOCOL": "grpc"
       },
       "applicationUrl": "http://localhost:5000"
     }
@@ -543,7 +542,7 @@ graph LR
     B --> E[Traces View]
     B --> F[Metrics View]
     B --> G[Logs View]
-    B --> H[Resources View]
+    B --> H[Resource attributes]
     I[Developer Browser] --> E
     I --> F
     I --> G
@@ -574,7 +573,7 @@ graph LR
 
 **No Data Appearing**: Verify that your application is sending to the correct endpoint (localhost:4317) and that the dashboard is running. Check for any exporter errors in your application logs.
 
-**Dashboard Not Starting**: Ensure port 18888 is not already in use. You can specify a different port using the `--urls` parameter.
+**Dashboard Not Starting**: Ensure port 18888 is not already in use. You can specify a different port using the `--frontend-url` parameter.
 
 **High Memory Usage**: The dashboard keeps recent telemetry in memory. If you're generating large volumes of data, restart the dashboard periodically during development sessions.
 
