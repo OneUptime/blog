@@ -25,15 +25,12 @@ Key capabilities:
 Install telemetrygen using Go:
 
 ```bash
-# Requires Go 1.20 or later
+# Current telemetrygen releases require Go 1.25 or later
 
 go install github.com/open-telemetry/opentelemetry-collector-contrib/cmd/telemetrygen@latest
 
 # Verify installation
 telemetrygen --help
-
-# Check version
-telemetrygen --version
 ```
 
 Alternatively, build from source for the latest features:
@@ -91,13 +88,7 @@ processors:
         action: insert
 
 exporters:
-  # Logging exporter for debugging (disable for high-volume tests)
-  logging:
-    verbosity: normal
-    sampling_initial: 5
-    sampling_thereafter: 200
-
-  # Debug exporter drops data but reports stats
+  # Debug exporter writes received telemetry to collector logs
   # Useful for testing without backend bottlenecks
   debug:
     verbosity: basic
@@ -122,7 +113,14 @@ service:
       level: info
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+                without_type_suffix: true
+                without_units: true
 
   pipelines:
     traces:
@@ -133,6 +131,11 @@ service:
 
     # Enable metrics pipeline to monitor collector performance
     metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [debug]
+
+    logs:
       receivers: [otlp]
       processors: [memory_limiter, batch]
       exporters: [debug]
@@ -169,7 +172,7 @@ Parameters explained:
 - `--otlp-endpoint`: Collector gRPC endpoint
 - `--otlp-insecure`: Disable TLS (for local testing)
 - `--traces`: Total number of traces to generate
-- `--rate`: Traces per second
+- `--rate`: Approximate traces per second per worker
 
 ## High-Volume Load Testing
 
@@ -181,10 +184,10 @@ Test collector performance under sustained high load:
 telemetrygen traces \
   --otlp-endpoint localhost:4317 \
   --otlp-insecure \
-  --rate 10000 \
+  --rate 500 \
   --duration 100s \
   --workers 20 \
-  --spans 5
+  --child-spans 4
 
 # Monitor collector CPU and memory during test
 # In separate terminal:
@@ -195,7 +198,7 @@ Key parameters for high-volume testing:
 
 - `--duration`: Run for specified time instead of fixed count
 - `--workers`: Parallel goroutines for generation
-- `--spans`: Spans per trace (simulates realistic trace structure)
+- `--child-spans`: Child spans per trace (simulates realistic trace structure)
 
 ## Customizing Generated Data
 
@@ -209,19 +212,20 @@ telemetrygen traces \
   --rate 1000 \
   --duration 5m \
   --workers 10 \
-  --spans 8 \
-  --span-kind server \
-  --service-name benchmark-service \
-  --trace-attributes "environment=test,region=us-east-1,version=1.2.3" \
-  --span-attributes "http.method=GET,http.status_code=200"
+  --child-spans 7 \
+  --service benchmark-service \
+  --otlp-attributes 'environment="test"' \
+  --otlp-attributes 'region="us-east-1"' \
+  --otlp-attributes 'version="1.2.3"' \
+  --telemetry-attributes 'http.method="GET"' \
+  --telemetry-attributes 'http.status_code=200'
 ```
 
 Advanced customization options:
 
-- `--span-kind`: Set span kind (server, client, internal, producer, consumer)
-- `--service-name`: Service name in resource attributes
-- `--trace-attributes`: Key-value pairs for trace-level attributes
-- `--span-attributes`: Key-value pairs for span attributes
+- `--service`: Service name in resource attributes
+- `--otlp-attributes`: Resource-level attributes
+- `--telemetry-attributes`: Attributes on generated telemetry records
 - `--status-code`: Set span status (Unset, Ok, Error)
 
 ## Testing Different Protocols
@@ -239,7 +243,7 @@ telemetrygen traces \
 # Test OTLP/HTTP
 telemetrygen traces \
   --otlp-http \
-  --otlp-endpoint http://localhost:4318 \
+  --otlp-endpoint localhost:4318 \
   --rate 5000 \
   --duration 60s
 
@@ -251,15 +255,14 @@ telemetrygen traces \
 Generate synthetic metrics to test metrics pipelines:
 
 ```bash
-# Generate counter metrics
+# Generate sum metrics
 telemetrygen metrics \
   --otlp-endpoint localhost:4317 \
   --otlp-insecure \
   --rate 1000 \
   --duration 5m \
   --workers 5 \
-  --metrics 10 \
-  --metric-type Counter
+  --metric-type Sum
 
 # Generate gauge metrics
 telemetrygen metrics \
@@ -336,7 +339,7 @@ run_benchmark() {
 
     echo ""
     echo "Running: $test_name"
-    echo "Rate: $rate traces/sec, Workers: $workers"
+    echo "Rate: $rate traces/sec/worker, Workers: $workers"
 
     # Capture baseline metrics
     capture_metrics "${test_name}_before"
@@ -348,9 +351,10 @@ run_benchmark() {
         --rate ${rate} \
         --duration ${DURATION} \
         --workers ${workers} \
-        --spans 5 \
-        --service-name benchmark-service \
-        --trace-attributes "test=${test_name},rate=${rate}"
+        --child-spans 4 \
+        --service benchmark-service \
+        --telemetry-attributes "test=\"${test_name}\"" \
+        --telemetry-attributes "rate=${rate}"
 
     # Wait for pipeline to flush
     sleep 10
@@ -382,7 +386,7 @@ telemetrygen traces \
     --rate 50000 \
     --duration 30s \
     --workers 30 \
-    --spans 3
+    --child-spans 2
 
 echo ""
 echo "Benchmark Complete!"
@@ -450,7 +454,7 @@ telemetrygen traces \
     --rate 5000 \
     --duration ${DURATION} \
     --workers 10 \
-    --spans 5 &
+    --child-spans 4 &
 
 # Generate metrics in background
 telemetrygen metrics \
@@ -459,7 +463,7 @@ telemetrygen metrics \
     --rate 2000 \
     --duration ${DURATION} \
     --workers 5 \
-    --metrics 20 &
+    --metric-type Sum &
 
 # Generate logs in background
 telemetrygen logs \
@@ -484,23 +488,24 @@ Test collector configurations that require authentication:
 telemetrygen traces \
   --otlp-endpoint localhost:4317 \
   --otlp-insecure \
-  --otlp-headers "x-api-key=your-api-key-here" \
+  --otlp-header 'x-api-key="your-api-key-here"' \
   --rate 1000 \
   --duration 60s
 
 # Test with TLS enabled
 telemetrygen traces \
   --otlp-endpoint collector.example.com:4317 \
-  --otlp-certificate /path/to/ca-cert.pem \
+  --ca-cert /path/to/ca-cert.pem \
   --rate 1000 \
   --duration 60s
 
 # Test with client certificates
 telemetrygen traces \
   --otlp-endpoint collector.example.com:4317 \
-  --otlp-certificate /path/to/ca-cert.pem \
-  --otlp-client-certificate /path/to/client-cert.pem \
-  --otlp-client-key /path/to/client-key.pem \
+  --ca-cert /path/to/ca-cert.pem \
+  --mtls \
+  --client-cert /path/to/client-cert.pem \
+  --client-key /path/to/client-key.pem \
   --rate 1000 \
   --duration 60s
 ```
@@ -533,7 +538,7 @@ spec:
         - --rate=5000
         - --duration=300s
         - --workers=10
-        - --spans=5
+        - --child-spans=4
         resources:
           requests:
             cpu: 500m
