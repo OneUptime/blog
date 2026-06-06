@@ -25,9 +25,9 @@ const rateLimitDecisions = meter.createCounter('api.rate_limit.decisions', {
   description: 'Rate limit decisions (allowed or rejected)',
 });
 
-// Histogram for remaining quota at decision time
+// Histogram for remaining quota after the rate limit decision
 const remainingQuota = meter.createHistogram('api.rate_limit.remaining_quota', {
-  description: 'Remaining rate limit quota when request arrives',
+  description: 'Remaining rate limit quota after the decision',
 });
 
 // Counter specifically for 429 responses
@@ -36,10 +36,15 @@ const throttledRequests = meter.createCounter('api.rate_limit.throttled', {
 });
 
 interface RateLimitState {
+  allowed: boolean;
   remaining: number;
   limit: number;
   resetAt: number;
   consumerId: string;
+}
+
+interface RateLimiter {
+  check(consumerId: string, route: string): Promise<RateLimitState>;
 }
 
 export function rateLimitMiddleware(limiter: RateLimiter) {
@@ -67,7 +72,7 @@ export function rateLimitMiddleware(limiter: RateLimiter) {
       'http.route': route,
     });
 
-    if (result.remaining <= 0) {
+    if (!result.allowed) {
       // Request is throttled
       span?.setAttribute('rate_limit.throttled', true);
       span?.setStatus({
@@ -92,7 +97,7 @@ export function rateLimitMiddleware(limiter: RateLimiter) {
       });
 
       // Include Retry-After header
-      const retryAfter = Math.ceil((result.resetAt - Date.now()) / 1000);
+      const retryAfter = Math.max(0, Math.ceil((result.resetAt - Date.now()) / 1000));
       res.setHeader('Retry-After', retryAfter);
 
       return res.status(429).json({
@@ -133,6 +138,14 @@ import { trace } from '@opentelemetry/api';
 
 const tracer = trace.getTracer('rate-limiter');
 
+interface RateLimitState {
+  allowed: boolean;
+  remaining: number;
+  limit: number;
+  resetAt: number;
+  consumerId: string;
+}
+
 export class SlidingWindowLimiter {
   private redis: Redis;
   private windowMs: number;
@@ -146,28 +159,48 @@ export class SlidingWindowLimiter {
 
   async check(consumerId: string, route: string): Promise<RateLimitState> {
     return tracer.startActiveSpan('rate_limit.check', async (span) => {
-      const now = Date.now();
-      const windowStart = now - this.windowMs;
-      const key = `ratelimit:${consumerId}:${route}`;
+      try {
+        const now = Date.now();
+        const windowStart = now - this.windowMs;
+        const key = `ratelimit:${consumerId}:${route}`;
 
-      // Remove expired entries and count current window
-      const pipeline = this.redis.pipeline();
-      pipeline.zremrangebyscore(key, 0, windowStart);
-      pipeline.zcard(key);
-      pipeline.zadd(key, now.toString(), `${now}:${Math.random()}`);
-      pipeline.expire(key, Math.ceil(this.windowMs / 1000));
+        await this.redis.zremrangebyscore(key, 0, windowStart);
 
-      const results = await pipeline.exec();
-      const currentCount = (results?.[1]?.[1] as number) || 0;
+        const currentCount = await this.redis.zcard(key);
+        const oldestEntry = await this.redis.zrange(key, 0, 0, 'WITHSCORES');
+        const resetAt = oldestEntry[1]
+          ? Number(oldestEntry[1]) + this.windowMs
+          : now + this.windowMs;
 
-      const remaining = Math.max(0, this.maxRequests - currentCount);
-      const resetAt = now + this.windowMs;
+        span.setAttribute('rate_limit.current_count', currentCount);
+        span.setAttribute('rate_limit.window_ms', this.windowMs);
 
-      span.setAttribute('rate_limit.current_count', currentCount);
-      span.setAttribute('rate_limit.window_ms', this.windowMs);
-      span.end();
+        if (currentCount >= this.maxRequests) {
+          return {
+            allowed: false,
+            remaining: 0,
+            limit: this.maxRequests,
+            resetAt,
+            consumerId,
+          };
+        }
 
-      return { remaining, limit: this.maxRequests, resetAt, consumerId };
+        await this.redis
+          .pipeline()
+          .zadd(key, now.toString(), `${now}:${Math.random()}`)
+          .expire(key, Math.ceil(this.windowMs / 1000))
+          .exec();
+
+        return {
+          allowed: true,
+          remaining: this.maxRequests - currentCount - 1,
+          limit: this.maxRequests,
+          resetAt,
+          consumerId,
+        };
+      } finally {
+        span.end();
+      }
     });
   }
 }
@@ -179,7 +212,7 @@ If you use a managed API gateway (AWS API Gateway, Kong, Apigee), instrument the
 
 ```typescript
 // gateway-429-detector.ts
-import { trace, metrics, SpanStatusCode } from '@opentelemetry/api';
+import { trace, metrics } from '@opentelemetry/api';
 
 const meter = metrics.getMeter('api-client');
 
@@ -199,7 +232,7 @@ async function fetchWithRetry(url: string, options: RequestInit, maxRetries = 3)
 
     if (response.status === 429) {
       gatewayThrottles.add(1, {
-        'http.url': url,
+        'url.full': url,
         'attempt': attempt,
       });
 
@@ -209,8 +242,8 @@ async function fetchWithRetry(url: string, options: RequestInit, maxRetries = 3)
       });
 
       if (attempt < maxRetries) {
-        const retryAfter = parseInt(response.headers.get('Retry-After') || '1', 10);
-        retryAttempts.add(1, { 'http.url': url });
+        const retryAfter = parseRetryAfter(response.headers.get('Retry-After'));
+        retryAttempts.add(1, { 'url.full': url });
 
         // Wait before retrying with exponential backoff
         const delay = retryAfter * 1000 * Math.pow(2, attempt);
@@ -221,6 +254,24 @@ async function fetchWithRetry(url: string, options: RequestInit, maxRetries = 3)
 
     return response;
   }
+}
+
+function parseRetryAfter(value: string | null): number {
+  if (!value) {
+    return 1;
+  }
+
+  const delaySeconds = Number(value);
+  if (Number.isFinite(delaySeconds)) {
+    return Math.max(0, delaySeconds);
+  }
+
+  const retryAt = Date.parse(value);
+  if (Number.isFinite(retryAt)) {
+    return Math.max(0, Math.ceil((retryAt - Date.now()) / 1000));
+  }
+
+  return 1;
 }
 ```
 
