@@ -13,8 +13,8 @@ Your OpenTelemetry Collector pipeline is only as good as the backends storing th
 Each backend stores data differently, so each needs a different backup approach:
 
 - **Prometheus** - Time-series data in a local TSDB. Snapshot API for consistent backups.
-- **Loki** - Log chunks in object storage (S3/GCS) plus a BoltDB index. Object storage handles durability, but the index needs backup.
-- **Tempo** - Trace blocks in object storage with a local WAL. The WAL needs backup; blocks in object storage are already durable.
+- **Loki** - Log chunks in object storage plus an index. For older BoltDB Shipper deployments, the local active index directory should be persistent and backed up until it is shipped to object storage. For Loki 2.8 and newer, TSDB is the recommended index store.
+- **Tempo** - Trace blocks in object storage with recent data in memory and on local WAL in monolithic or older ingester-based deployments. Backing up the WAL protects recent data that has not reached long-term storage yet.
 
 ## Backing Up Prometheus
 
@@ -74,6 +74,8 @@ To restore, you stop Prometheus, replace the TSDB directory with the snapshot, a
 NAMESPACE="monitoring"
 S3_BUCKET="telemetry-backups"
 SNAPSHOT_FILE="$1"  # Pass the S3 key as an argument
+PVC_CLAIM="prometheus-server-data-prometheus-server-0"
+RESTORE_POD="prometheus-restore"
 
 if [ -z "$SNAPSHOT_FILE" ]; then
   echo "Usage: $0 <s3-snapshot-key>"
@@ -91,37 +93,41 @@ echo "Downloading backup..."
 aws s3 cp "s3://${S3_BUCKET}/${SNAPSHOT_FILE}" /tmp/prometheus-restore.tar.gz
 
 # Step 3: Create a temporary pod to access the PVC
-kubectl run prometheus-restore --rm -it \
-  --image=busybox \
-  --namespace="$NAMESPACE" \
-  --overrides='{
-    "spec": {
-      "containers": [{
-        "name": "restore",
-        "image": "busybox",
-        "command": ["sh"],
-        "volumeMounts": [{
-          "name": "storage",
-          "mountPath": "/prometheus"
-        }]
-      }],
-      "volumes": [{
-        "name": "storage",
-        "persistentVolumeClaim": {
-          "claimName": "prometheus-server-data"
-        }
-      }]
-    }
-  }' -- sh -c '
-    # Clear existing data
-    rm -rf /prometheus/*
-    echo "Old data cleared"
-  '
+kubectl apply -n "$NAMESPACE" -f - <<EOF
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ${RESTORE_POD}
+spec:
+  restartPolicy: Never
+  containers:
+    - name: restore
+      image: busybox
+      command: ["sleep", "3600"]
+      volumeMounts:
+        - name: storage
+          mountPath: /prometheus
+  volumes:
+    - name: storage
+      persistentVolumeClaim:
+        claimName: ${PVC_CLAIM}
+EOF
+
+kubectl wait --for=condition=Ready "pod/$RESTORE_POD" \
+  -n "$NAMESPACE" --timeout=120s
 
 # Step 4: Copy and extract backup data to the PVC
-# (Using a job for this since the run command above is limited)
 kubectl cp /tmp/prometheus-restore.tar.gz \
-  "$NAMESPACE/prometheus-restore:/tmp/restore.tar.gz" 2>/dev/null || true
+  "$NAMESPACE/$RESTORE_POD:/tmp/restore.tar.gz"
+
+kubectl exec -n "$NAMESPACE" "$RESTORE_POD" -- sh -c '
+  rm -rf /prometheus/*
+  tar xzf /tmp/restore.tar.gz -C /prometheus --strip-components=1
+  rm -f /tmp/restore.tar.gz
+  echo "Snapshot extracted"
+'
+
+kubectl delete pod "$RESTORE_POD" -n "$NAMESPACE"
 
 # Step 5: Scale Prometheus back up
 echo "Scaling Prometheus back up..."
@@ -132,11 +138,11 @@ echo "Restore complete. Verify data at http://prometheus:9090"
 
 ## Backing Up Loki
 
-Loki stores chunks in object storage (already durable) and index data in BoltDB. The BoltDB index is the critical piece to back up.
+Loki stores chunks in object storage and stores index data separately. For deployments still using BoltDB Shipper, Loki writes active index files locally before shipping them to the shared object store, so back up the active index directory to protect recent unshipped index data. For Loki 2.8 and newer, TSDB is the recommended index store instead of BoltDB Shipper.
 
 ```yaml
 # loki-backup-cronjob.yaml
-# CronJob that backs up the Loki BoltDB index daily
+# CronJob that backs up the Loki BoltDB Shipper active index daily
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -186,7 +192,7 @@ spec:
 
 ## Backing Up Tempo
 
-Tempo stores trace blocks in object storage, but its Write-Ahead Log (WAL) contains recent traces that have not been flushed yet. Back up the WAL to avoid losing the most recent data.
+Tempo stores trace blocks in object storage, but monolithic and older ingester-based deployments also keep recent trace data in memory and on a local Write-Ahead Log (WAL). Back up the WAL to avoid losing the most recent data that has not reached long-term storage yet. In newer Tempo microservices deployments, Kafka is the durable write-ahead log for ingestion, so protect Kafka according to your Kafka backup and retention policy.
 
 ```bash
 #!/bin/bash
@@ -198,8 +204,8 @@ TEMPO_POD="tempo-0"
 S3_BUCKET="telemetry-backups"
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 
-# Step 1: Flush the WAL to force blocks to object storage
-# This minimizes the amount of data only in the WAL
+# Step 1: Flush in-memory traces to the WAL
+# This protects traces that were still only in memory
 echo "Flushing Tempo WAL..."
 kubectl exec -n "$NAMESPACE" "$TEMPO_POD" -- \
   curl -s -X POST http://localhost:3200/flush
@@ -228,13 +234,13 @@ echo "Tempo WAL backup uploaded to s3://${S3_BUCKET}/tempo/"
 
 ## Automated Backup Verification
 
-Backups are useless if they are corrupt. Run periodic verification checks.
+Backups are useless if they are missing, stale, or corrupt. Run periodic verification checks.
 
 ```python
 # verify_backups.py
-# Verifies that telemetry backend backups are recent and valid
+# Verifies that telemetry backend backups are recent and plausibly sized
 import boto3
-from datetime import datetime, timedelta
+from datetime import datetime
 
 s3 = boto3.client("s3")
 BUCKET = "telemetry-backups"
@@ -242,17 +248,18 @@ MAX_AGE_HOURS = 26  # Alert if backup is older than 26 hours
 
 def check_latest_backup(prefix, name):
     """Check that a recent backup exists for the given backend."""
-    response = s3.list_objects_v2(
-        Bucket=BUCKET,
-        Prefix=prefix,
-        MaxKeys=10,
-    )
-    if not response.get("Contents"):
+    paginator = s3.get_paginator("list_objects_v2")
+    objects = []
+
+    for page in paginator.paginate(Bucket=BUCKET, Prefix=prefix):
+        objects.extend(page.get("Contents", []))
+
+    if not objects:
         print(f"FAIL: No backups found for {name} at {prefix}")
         return False
 
     # Sort by last modified to find the most recent
-    objects = sorted(response["Contents"], key=lambda x: x["LastModified"], reverse=True)
+    objects = sorted(objects, key=lambda x: x["LastModified"], reverse=True)
     latest = objects[0]
 
     age = datetime.now(latest["LastModified"].tzinfo) - latest["LastModified"]
