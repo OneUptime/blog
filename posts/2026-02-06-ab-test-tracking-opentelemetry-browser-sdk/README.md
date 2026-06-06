@@ -10,24 +10,24 @@ Description: Learn how to use OpenTelemetry Browser SDK to instrument A/B tests 
 
 A/B testing tools typically live in their own silo. They track variant assignments and conversions, but they have no connection to your application's performance data. When variant B increases conversion by 5% but also increases page load time by 300ms, you would never know unless you manually correlate data from two separate systems.
 
-OpenTelemetry changes this. By attaching experiment variant information to your existing traces and metrics, you get a unified view of both user behavior and application performance. You can answer questions like: Does the new checkout flow (variant B) cause more API errors? Is the redesigned dashboard (variant C) slower to render? Do users in the control group experience fewer JavaScript exceptions?
+OpenTelemetry changes this. By attaching experiment variant information to your existing traces, you get a unified view of both user behavior and application performance. You can answer questions like: Does the new checkout flow (variant B) cause more API errors? Is the redesigned dashboard (variant C) slower to render? Do users in the control group experience fewer JavaScript exceptions?
 
 This post walks through building A/B test instrumentation on top of the OpenTelemetry Browser SDK.
 
 ## The Architecture
 
-The basic idea is straightforward. When a user is assigned to an experiment variant, that information gets attached to every span and metric as attributes. Your observability backend can then filter and group data by variant.
+The basic idea is straightforward. When a user is assigned to an experiment variant, that information gets attached to spans as attributes. Your observability backend can then filter and group data by variant.
 
 ```mermaid
 flowchart TD
     A[User visits page] --> B[Experiment service assigns variants]
-    B --> C[Variants stored in OTel context]
+    B --> C[Variants stored in experiment manager]
     C --> D[All spans tagged with variant info]
-    C --> E[All metrics tagged with variant info]
+    C --> E[Experiment-specific spans emitted]
     D --> F[OTel Backend]
     E --> F
     F --> G[Filter traces by variant]
-    F --> H[Compare metrics across variants]
+    F --> H[Compare span attributes across variants]
     F --> I[Correlate errors with experiments]
 ```
 
@@ -37,7 +37,6 @@ Start with a simple experiment manager that handles variant assignment and integ
 
 ```javascript
 // src/experiments/experiment-manager.js
-import { trace, context } from '@opentelemetry/api';
 import { tracer } from '../tracing';
 
 class ExperimentManager {
@@ -75,6 +74,10 @@ class ExperimentManager {
 
   // Assign a user to a variant using deterministic hashing
   assign(experimentId, variants, userId) {
+    if (variants.length === 0) {
+      throw new Error(`Experiment ${experimentId} must define at least one variant`);
+    }
+
     // Return existing assignment if already assigned
     if (this.assignments.has(experimentId)) {
       return this.assignments.get(experimentId);
@@ -82,14 +85,14 @@ class ExperimentManager {
 
     // Simple hash-based assignment for consistent bucketing
     const hash = this._hashCode(`${userId}-${experimentId}`);
-    const index = Math.abs(hash) % variants.length;
+    const index = hash % variants.length;
     const variant = variants[index];
 
     // Store the assignment
     this.assignments.set(experimentId, variant);
     this._persistAssignments();
 
-    // Record the assignment as a span event
+    // Record the assignment as a span
     const span = tracer.startSpan('experiment.assign', {
       attributes: {
         'experiment.id': experimentId,
@@ -112,6 +115,10 @@ class ExperimentManager {
     return attributes;
   }
 
+  getAssignment(experimentId) {
+    return this.assignments.get(experimentId);
+  }
+
   // Simple string hash function
   _hashCode(str) {
     let hash = 0;
@@ -120,7 +127,7 @@ class ExperimentManager {
       hash = ((hash << 5) - hash) + char;
       hash = hash & hash; // Convert to 32-bit integer
     }
-    return hash;
+    return hash >>> 0;
   }
 }
 
@@ -174,17 +181,11 @@ Wire this processor into your tracer provider setup:
 // src/tracing.js
 import { WebTracerProvider } from '@opentelemetry/sdk-trace-web';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
-import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-web';
+import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
 import { ExperimentSpanProcessor } from './experiments/experiment-span-processor';
-import { Resource } from '@opentelemetry/resources';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 import { ATTR_SERVICE_NAME } from '@opentelemetry/semantic-conventions';
 import { trace } from '@opentelemetry/api';
-
-const provider = new WebTracerProvider({
-  resource: new Resource({
-    [ATTR_SERVICE_NAME]: 'my-frontend-app',
-  }),
-});
 
 // Wrap the batch processor with the experiment processor
 // Every span will automatically get experiment variant attributes
@@ -194,7 +195,13 @@ const batchProcessor = new BatchSpanProcessor(
   })
 );
 
-provider.addSpanProcessor(new ExperimentSpanProcessor(batchProcessor));
+const provider = new WebTracerProvider({
+  resource: resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: 'my-frontend-app',
+  }),
+  spanProcessors: [new ExperimentSpanProcessor(batchProcessor)],
+});
+
 provider.register();
 
 export const tracer = trace.getTracer('app', '1.0.0');
@@ -231,7 +238,7 @@ export function trackConversion(conversionType, metadata = {}) {
 
 // Track revenue-related conversions with monetary value
 export function trackRevenueConversion(experimentId, amount, currency = 'USD') {
-  const variant = experiments.assignments.get(experimentId);
+  const variant = experiments.getAssignment(experimentId);
   if (!variant) return;
 
   const span = tracer.startSpan('experiment.revenue', {
@@ -282,11 +289,11 @@ import { useEffect, useMemo } from 'react';
 import { experiments } from '../experiments/experiment-manager';
 import { tracer } from '../tracing';
 
-export function Experiment({ id, variants, userId, children }) {
+export function Experiment({ id, variants, userId }) {
   // Assign the variant once and memoize it
   const variant = useMemo(() => {
     return experiments.assign(id, Object.keys(variants), userId);
-  }, [id, userId]);
+  }, [id, variants, userId]);
 
   // Track an impression when the experiment renders
   useEffect(() => {
@@ -348,7 +355,7 @@ export function Landing() {
 
 ## Comparing Performance Across Variants
 
-One of the biggest advantages of using OpenTelemetry for A/B testing is the ability to compare performance metrics across variants. Add performance tracking to your variant components:
+One of the biggest advantages of using OpenTelemetry for A/B testing is the ability to compare performance data across variants. Add performance tracking to your variant components:
 
 ```javascript
 // src/experiments/performance-comparison.js
@@ -356,7 +363,7 @@ import { tracer } from '../tracing';
 import { experiments } from './experiment-manager';
 
 export function measureVariantPerformance(experimentId, metricName) {
-  const variant = experiments.assignments.get(experimentId);
+  const variant = experiments.getAssignment(experimentId);
   const startTime = performance.now();
 
   // Return a function to call when the measured operation completes
@@ -366,9 +373,9 @@ export function measureVariantPerformance(experimentId, metricName) {
     const span = tracer.startSpan('experiment.performance', {
       attributes: {
         'experiment.id': experimentId,
-        'experiment.variant': variant,
         'performance.metric': metricName,
         'performance.duration_ms': duration,
+        ...(variant ? { 'experiment.variant': variant } : {}),
         ...additionalAttributes,
       },
     });
@@ -412,7 +419,7 @@ export function CheckoutVariantB() {
 
 With all spans tagged with experiment attributes, you can run queries against your observability backend to answer key questions:
 
-**Conversion rate by variant**: Count `experiment.conversion` spans grouped by `experiment.variant` for a specific `experiment.id`. Divide by `experiment.impression` count to get the conversion rate.
+**Conversion rate by variant**: Count `experiment.conversion` spans grouped by the relevant `experiment.<experiment-id>` attribute. Divide by `experiment.impression` count for the same `experiment.id` to get the conversion rate.
 
 **Performance comparison**: Average the `performance.duration_ms` from `experiment.performance` spans, grouped by variant. This tells you if one variant is significantly faster or slower than others.
 
