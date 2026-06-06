@@ -33,29 +33,23 @@ receivers:
 
 connectors:
   count:
-    traces:
-      spans.total:
+    spans:
+      spans:
         description: "Total spans received"
         attributes:
           - key: team.name
           - key: service.name
           - key: deployment.environment
 
-      spans.bytes:
-        description: "Total span bytes received"
-        attributes:
-          - key: team.name
-          - key: service.name
-
     logs:
-      logs.total:
+      logs:
         description: "Total log records received"
         attributes:
           - key: team.name
           - key: service.name
 
-    metrics:
-      datapoints.total:
+    datapoints:
+      datapoints:
         description: "Total metric data points received"
         attributes:
           - key: team.name
@@ -128,15 +122,20 @@ groups:
       - record: telemetry:cost:total:per_hour
         expr: |
           sum by (team_name) (
-            telemetry:cost:ingestion:spans:per_hour
-            + telemetry:cost:ingestion:logs:per_hour
-            + telemetry:cost:ingestion:metrics:per_hour
+            {__name__=~"telemetry:cost:ingestion:(spans|logs|metrics):per_hour"}
           )
 
       # Projected monthly cost per team
       - record: telemetry:cost:projected:monthly
         expr: |
           telemetry:cost:total:per_hour * 24 * 30
+
+      # Projected monthly cost per service
+      - record: telemetry:cost:projected:monthly:service
+        expr: |
+          sum by (service_name) (
+            {__name__=~"telemetry:cost:ingestion:(spans|logs|metrics):per_hour"}
+          ) * 24 * 30
 
       # Storage cost estimate (based on average sizes)
       - record: telemetry:cost:storage:monthly
@@ -209,7 +208,7 @@ Create the dashboard using Terraform (or import directly into Grafana):
         "type": "bargauge",
         "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12},
         "targets": [{
-          "expr": "topk(10, sum by (service_name) (telemetry:cost:projected:monthly))",
+          "expr": "topk(10, telemetry:cost:projected:monthly:service)",
           "legendFormat": "{{service_name}}"
         }],
         "fieldConfig": {
@@ -345,7 +344,7 @@ groups:
       - alert: HighCardinalityMetric
         expr: |
           count by (team_name, service_name, __name__) (
-            {__name__=~".*"}
+            {__name__=~".+"}
           ) > 10000
         for: 1h
         annotations:
