@@ -39,14 +39,14 @@ Not every environment needs all of these. Start with data queries and configurat
 
 The OpenTelemetry Collector itself does not have built-in audit logging. But you can add it through a combination of extensions, processors, and external tooling.
 
-### Using the Headers Forwarder for Client Identity
+### Using Authentication for Client Identity
 
-When collectors receive data from instrumented applications, you can require an authentication header that identifies the sender. The `headers_setter` extension and authentication extensions let you capture this information.
+When collectors receive data from instrumented applications, you can require an authentication token that identifies the sender. Authentication extensions let you validate this identity before accepting telemetry.
 
 ```yaml
 # Collector config that uses the OIDC authenticator
 
-# to identify and log which service sent telemetry data
+# to identify which service sent telemetry data
 extensions:
   oidc:
     # Verify JWT tokens from clients sending telemetry
@@ -86,7 +86,7 @@ Enable structured logging on the collector to capture operational events.
 
 ```yaml
 # Enable detailed logging on the collector
-# This captures connection events, authentication results, and errors
+# This captures collector operations, component errors, and authentication failures
 service:
   telemetry:
     logs:
@@ -100,15 +100,15 @@ service:
         environment: "production"
 ```
 
-These logs capture when the collector starts, when pipelines change, when connections are established, and when authentication fails. Forward them to a tamper-resistant log store.
+These logs capture collector startup, component lifecycle events, configuration loading errors, and authentication or receiver errors emitted by the relevant components. Forward them to a tamper-resistant log store.
 
 ## Auditing Queries on Storage Backends
 
 The most important audit trail tracks who queries your telemetry data. This is where most compliance requirements focus.
 
-### Elasticsearch / OpenSearch Audit Logging
+### Elasticsearch Audit Logging
 
-Elasticsearch has built-in audit logging. Enable it to track all search queries against your telemetry indices.
+Elasticsearch has built-in audit logging on supported subscription levels. Enable it to track all search queries against your telemetry indices.
 
 ```yaml
 # elasticsearch.yml - Enable audit logging for telemetry access
@@ -121,15 +121,11 @@ xpack.security.audit.logfile.events.include:
   - connection_granted
   - connection_denied
 
-# Filter to only audit actions on telemetry indices
+# Include REST request bodies so search queries can be audited
 xpack.security.audit.logfile.events.emit_request_body: true
-xpack.security.audit.logfile.events.ignore_filters:
-  telemetry_filter:
-    indices: ["otel-traces-*", "otel-logs-*", "otel-metrics-*"]
-    actions: ["indices:data/read/*"]
 ```
 
-The audit log entries include the authenticated user, the action performed, the index accessed, and the query body. Here is what a typical entry looks like.
+The audit log entries include the authenticated user, the action performed, the index accessed, and the query body. If you only want telemetry index events in your reporting store, filter the audit logs downstream; Elasticsearch `ignore_filters` suppress matching events rather than selecting them. OpenSearch uses the Security plugin's audit log settings instead of the `xpack.security.audit.*` settings shown here. Here is what a typical entry looks like.
 
 ```json
 {
@@ -153,31 +149,23 @@ If you use Grafana to query your telemetry, enable Grafana's enterprise audit lo
 # grafana.ini - Enable audit logging for all data access
 [auditing]
 enabled = true
-# Log to both file and Grafana's internal database
+# Log to both file and a Loki-compatible endpoint
 loggers = file loki
+# Include data source query request bodies in audit events
+log_datasource_query_request_body = true
 
 [auditing.logs.file]
 path = /var/log/grafana/audit.log
-
-# Track these specific events
-[auditing.logs.filters]
-actions = "datasource:query,dashboard:view,alerting:read"
 ```
 
 ### Jaeger Query Audit Trail
 
 Jaeger's query service does not have native audit logging, but you can add it using a reverse proxy that logs all requests.
 
-```yaml
+```nginx
 # Nginx reverse proxy in front of Jaeger Query
 # Logs every API request with the authenticated user identity
-server {
-    listen 443 ssl;
-    server_name jaeger.internal.company.com;
-
-    ssl_certificate /etc/nginx/certs/server.crt;
-    ssl_certificate_key /etc/nginx/certs/server.key;
-
+http {
     # Log format that captures the authenticated user and request details
     log_format audit_log '{"timestamp":"$time_iso8601",'
                          '"remote_addr":"$remote_addr",'
@@ -187,15 +175,23 @@ server {
                          '"status":$status,'
                          '"user_agent":"$http_user_agent"}';
 
-    access_log /var/log/nginx/jaeger-audit.log audit_log;
+    server {
+        listen 443 ssl;
+        server_name jaeger.internal.company.com;
 
-    location / {
-        # Require authentication before proxying to Jaeger
-        auth_basic "Jaeger Access";
-        auth_basic_user_file /etc/nginx/.htpasswd;
+        ssl_certificate /etc/nginx/certs/server.crt;
+        ssl_certificate_key /etc/nginx/certs/server.key;
 
-        proxy_pass http://jaeger-query:16686;
-        proxy_set_header X-Forwarded-User $remote_user;
+        access_log /var/log/nginx/jaeger-audit.log audit_log;
+
+        location / {
+            # Require authentication before proxying to Jaeger
+            auth_basic "Jaeger Access";
+            auth_basic_user_file /etc/nginx/.htpasswd;
+
+            proxy_pass http://jaeger-query:16686;
+            proxy_set_header X-Forwarded-User $remote_user;
+        }
     }
 }
 ```
@@ -244,6 +240,12 @@ processors:
   batch:
     timeout: 1s
 
+extensions:
+  basicauth/audit:
+    client_auth:
+      username: ${env:AUDIT_ES_USERNAME}
+      password: ${env:AUDIT_ES_PASSWORD}
+
 exporters:
   # Send to a separate, protected audit log store
   elasticsearch/audit:
@@ -253,6 +255,7 @@ exporters:
       authenticator: basicauth/audit
 
 service:
+  extensions: [basicauth/audit]
   pipelines:
     logs:
       receivers: [filelog/collector-audit, filelog/elasticsearch-audit, filelog/nginx-audit]
@@ -266,23 +269,21 @@ Audit logs are only useful if they cannot be tampered with. Follow these princip
 
 1. **Separate storage**: Store audit logs in a different cluster than operational telemetry. Different access controls, different administrators.
 
-2. **Write-once policies**: Use immutable storage where possible. S3 Object Lock or Elasticsearch's append-only indices prevent deletion.
+2. **Write-once policies**: Use immutable storage where possible. S3 Object Lock can enforce write-once retention; Elasticsearch index privileges can restrict deletes, but they are not a substitute for WORM storage.
 
 3. **Access restrictions**: Only a small number of people should have read access to audit logs. Nobody except automated systems should have write access.
 
-```yaml
-# S3 bucket policy enforcing Object Lock for audit logs
-# Once written, audit logs cannot be deleted or modified
+S3 Object Lock configuration for audit logs:
+
+```json
 {
-  "Rules": [
-    {
-      "ObjectLockEnabled": "Enabled",
-      "DefaultRetention": {
-        "Mode": "COMPLIANCE",
-        "Days": 365
-      }
+  "ObjectLockEnabled": "Enabled",
+  "Rule": {
+    "DefaultRetention": {
+      "Mode": "COMPLIANCE",
+      "Days": 365
     }
-  ]
+  }
 }
 ```
 
