@@ -52,12 +52,16 @@ from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+import grpc
 
 # Point to the collector's TLS endpoint and provide the CA certificate
 # that signed the collector's server certificate
+with open("/etc/ssl/certs/ca.crt", "rb") as ca_file:
+    ca_cert = ca_file.read()
+
 exporter = OTLPSpanExporter(
     endpoint="https://localhost:4317",
-    credentials=None,  # Will use the certificate file below
+    credentials=grpc.ssl_channel_credentials(root_certificates=ca_cert),
     headers=None,
 )
 
@@ -258,7 +262,8 @@ exporters:
 Do not allow outdated TLS versions. The collector supports configuring the minimum TLS version and allowed cipher suites.
 
 ```yaml
-# Restrict TLS to version 1.3 and strong cipher suites only
+# Restrict TLS to version 1.3
+# TLS 1.3 cipher suites are selected by Go's TLS implementation and are not configurable
 # TLS 1.0 and 1.1 have known vulnerabilities and should never be used
 receivers:
   otlp:
@@ -269,10 +274,6 @@ receivers:
           cert_file: /etc/otel/certs/server.crt
           key_file: /etc/otel/certs/server.key
           min_version: "1.3"
-          cipher_suites:
-            - TLS_AES_128_GCM_SHA256
-            - TLS_AES_256_GCM_SHA384
-            - TLS_CHACHA20_POLY1305_SHA256
 ```
 
 ## Verifying Encryption is Working
@@ -291,11 +292,10 @@ openssl s_client -connect otel-gateway:4317 -servername otel-gateway \
 openssl s_client -connect otel-gateway:4317 2>/dev/null | grep -E "Protocol|Cipher"
 ```
 
-You can also check collector logs. When TLS is properly configured, the collector logs the TLS configuration at startup.
+You can also check collector logs. If TLS is misconfigured, startup or connection errors usually show certificate loading, handshake, or verification failures.
 
 ```bash
-# Look for TLS-related log entries in the collector
-# A successful setup will show the certificate being loaded
+# Look for TLS-related errors in the collector
 kubectl logs -n monitoring deployment/otel-gateway | grep -i tls
 ```
 
