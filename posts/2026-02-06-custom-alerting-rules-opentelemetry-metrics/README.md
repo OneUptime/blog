@@ -38,11 +38,11 @@ Start by instrumenting the metrics that drive your most important alerting rules
 # alertable_metrics.py
 
 from opentelemetry import metrics
+from opentelemetry.metrics import Observation
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
 from opentelemetry.sdk.resources import Resource, SERVICE_NAME
-import time
 
 resource = Resource.create({SERVICE_NAME: "api-gateway"})
 reader = PeriodicExportingMetricReader(
@@ -57,48 +57,49 @@ meter = metrics.get_meter("alerting")
 request_duration = meter.create_histogram(
     name="http.server.request.duration",
     description="Server request duration for alerting",
-    unit="ms",
+    unit="s",
 )
 
 # Error counter with detailed classification
 error_counter = meter.create_counter(
     name="http.server.errors",
     description="Server errors by type and endpoint",
-    unit="errors",
+    unit="{error}",
 )
 
 # Request counter for rate calculations
 request_counter = meter.create_counter(
     name="http.server.requests",
     description="Total server requests",
-    unit="requests",
+    unit="{request}",
 )
 
 # Saturation metrics for resource-based alerts
 queue_depth = meter.create_observable_gauge(
     name="app.queue.depth",
     description="Current queue depth",
-    unit="items",
+    unit="{item}",
     callbacks=[lambda options: [
-        metrics.Observation(get_queue_depth(), {"queue": "default"})
+        Observation(get_queue_depth(), {"queue": "default"})
     ]],
 )
 
-def track_request(endpoint: str, method: str, status_code: int, duration_ms: float):
+def track_request(endpoint: str, method: str, status_code: int, duration_s: float):
     """Record metrics for a completed request."""
     attributes = {
         "http.route": endpoint,
-        "http.method": method,
-        "http.status_code": str(status_code),
+        "http.request.method": method,
+        "http.response.status_code": status_code,
+        "url.scheme": "https",
     }
 
-    request_duration.record(duration_ms, attributes)
+    request_duration.record(duration_s, attributes)
     request_counter.add(1, attributes)
 
     if status_code >= 500:
         error_counter.add(1, {
             **attributes,
-            "error.category": classify_error(status_code),
+            "error.type": classify_error(status_code),
         })
 ```
 
@@ -183,7 +184,10 @@ The most useful alerts combine multiple conditions. "Latency is high AND error r
 ```python
 # multi_condition_alerts.py
 from dataclasses import dataclass
+from datetime import timedelta
 from typing import List
+
+from alert_rules import AlertSeverity
 
 @dataclass
 class MultiConditionRule:
@@ -238,7 +242,7 @@ checkout_degraded = MultiConditionRule(
         {
             "metric": "http.server.request.duration.p95{http.route='/checkout'}",
             "operator": ">",
-            "threshold": 500,  # P95 latency above 500ms
+            "threshold": 0.5,  # P95 latency above 500ms
         },
         {
             "metric": "http.server.errors.rate{http.route='/checkout'}",
@@ -264,6 +268,8 @@ Different alerts should go to different places based on severity and ownership.
 # alert_router.py
 from dataclasses import dataclass
 from typing import List
+
+from alert_rules import AlertSeverity
 
 @dataclass
 class AlertRoute:
