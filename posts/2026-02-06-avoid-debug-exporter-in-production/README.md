@@ -4,15 +4,23 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, Production, Best Practice
 
-Description: Learn why the OpenTelemetry debug exporter should never be used in production and how it can crash your Collector under load.
+Description: Learn why the OpenTelemetry debug exporter should not be left enabled in production and how it can overload your Collector under load.
 
-The debug exporter (previously called the logging exporter) is one of the first things you set up when getting started with the OpenTelemetry Collector. It prints every telemetry item to stdout, which is incredibly useful for development. However, leaving it enabled in production is a recipe for disaster. It can fill up disk space, increase CPU usage, and ultimately crash your Collector.
+The debug exporter (previously called the logging exporter before Collector v0.86.0) is one of the first things you set up when getting started with the OpenTelemetry Collector. It prints telemetry data to the Collector's configured log output, which is incredibly useful for development. However, leaving it enabled in production is a recipe for disaster. It can fill up disk space, increase CPU usage, and ultimately overload your Collector.
 
 ## What the Debug Exporter Does
 
-The debug exporter serializes every span, metric data point, and log record into a human-readable format and writes it to the Collector's stdout. Here is a typical config that includes it:
+The debug exporter serializes telemetry into a human-readable format and writes it through the Collector's internal logger by default. With `verbosity: detailed`, it outputs all details of every telemetry record, typically as multiple lines per record. Here is a typical config that includes it:
 
 ```yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+
+processors:
+  batch:
+
 exporters:
   debug:
     verbosity: detailed
@@ -27,17 +35,17 @@ service:
       exporters: [debug, otlp]  # Both exporters in the pipeline
 ```
 
-In development, where you might see a few dozen spans per minute, this is fine. In production, a busy service can generate thousands of spans per second. Each one gets formatted as a multi-line string and written to stdout.
+In development, where you might see a few dozen spans per minute, this is fine. In production, a busy service can generate thousands of spans per second. Each one gets formatted into human-readable output and written to the Collector's logs.
 
 ## The Failure Modes
 
 ### Disk Space Exhaustion
 
-If your Collector's stdout is captured by a logging system (systemd journal, Docker logs, Kubernetes container logs), every span becomes a log entry. A service doing 1,000 requests per second with 5 spans per request generates 5,000 log entries per second. At roughly 500 bytes per entry, that is 2.5 MB per second, or 216 GB per day, just from debug output.
+If your Collector's stdout or stderr is captured by a logging system (systemd journal, Docker logs, Kubernetes container logs), detailed debug output can turn every span into multiple log lines. A service doing 1,000 requests per second with 5 spans per request generates 5,000 spans per second. At roughly 500 bytes of debug output per span, that is 2.5 MB per second, or 216 GB per day, just from debug output.
 
 ### CPU Overhead
 
-Serializing telemetry data to a human-readable string is significantly more expensive than serializing it to protobuf for OTLP export. The debug exporter can consume 2-3x more CPU than the actual OTLP exporter for the same data.
+Serializing telemetry data to human-readable strings is extra work on top of normal collection and export. Under load, the debug exporter can consume significant CPU compared with exporting the same data through OTLP.
 
 ### Memory Pressure
 
@@ -49,6 +57,18 @@ Remove the debug exporter from your production pipeline entirely:
 
 ```yaml
 # production-config.yaml
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+
+processors:
+  memory_limiter:
+    check_interval: 5s
+    limit_mib: 4000
+    spike_limit_mib: 500
+  batch:
 
 exporters:
   otlp:
@@ -81,6 +101,14 @@ collector-config/
 
 ```yaml
 # dev.yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+
+processors:
+  batch:
+
 exporters:
   debug:
     verbosity: detailed
@@ -99,6 +127,18 @@ service:
 
 ```yaml
 # production.yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+
+processors:
+  memory_limiter:
+    check_interval: 5s
+    limit_mib: 4000
+    spike_limit_mib: 500
+  batch:
+
 exporters:
   otlp:
     endpoint: "https://your-backend:4317"
@@ -125,7 +165,7 @@ Sometimes you need to troubleshoot a production Collector. Instead of enabling t
 
 ### 1. Use the zpages Extension
 
-The zpages extension provides a web UI showing the Collector's internal state without writing to stdout:
+The zpages extension provides a web UI showing the Collector's internal state without writing telemetry data to the Collector's logs:
 
 ```yaml
 extensions:
@@ -136,16 +176,32 @@ service:
   extensions: [zpages]
 ```
 
-Visit `http://localhost:55679/debug/tracez` to see recent spans.
+Visit `http://localhost:55679/debug/tracez` to see recent internal Collector spans and error samples.
 
 ### 2. Temporarily Enable Debug with Sampling
 
 If you must use the debug exporter temporarily, add a probabilistic sampler to reduce the volume:
 
 ```yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+
+exporters:
+  debug:
+    verbosity: detailed
+  otlp:
+    endpoint: "https://your-backend:4317"
+
 processors:
+  memory_limiter:
+    check_interval: 5s
+    limit_mib: 4000
+    spike_limit_mib: 500
   probabilistic_sampler:
     sampling_percentage: 0.1  # Only 0.1% of traces
+  batch:
 
 service:
   pipelines:
@@ -167,7 +223,14 @@ The Collector exposes Prometheus metrics about its own operation. These tell you
 service:
   telemetry:
     metrics:
-      address: ":8888"
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: "0.0.0.0"
+                port: 8888
+                without_type_suffix: true
+                without_units: true
 ```
 
 Then query metrics like `otelcol_exporter_sent_spans` and `otelcol_receiver_accepted_spans` to verify data flow.
