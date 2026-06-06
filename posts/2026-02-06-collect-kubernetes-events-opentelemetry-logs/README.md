@@ -42,7 +42,7 @@ graph TB
 
 ## The Kubernetes Events Receiver
 
-The OpenTelemetry Collector Contrib distribution includes the `k8seventsreceiver`. This receiver watches the Kubernetes API for events and converts them into OpenTelemetry log records. Each event becomes a structured log entry with all the original event fields preserved as attributes.
+The OpenTelemetry Collector Contrib distribution includes the `k8seventsreceiver`. This receiver watches the Kubernetes API for events and converts them into OpenTelemetry log records. Each event becomes a structured log entry with the event message as the log body, event metadata as log attributes, and the involved Kubernetes object as resource attributes.
 
 Here is the basic configuration. The receiver connects to the Kubernetes API using the collector's service account.
 
@@ -77,7 +77,7 @@ service:
 
 Setting `namespaces: []` (an empty list) watches all namespaces. To limit collection to specific namespaces, list them explicitly.
 
-This configuration limits event collection to only the production and staging namespaces.
+This configuration limits event collection to only the production, staging, and kube-system namespaces.
 
 ```yaml
 receivers:
@@ -113,10 +113,6 @@ rules:
   - apiGroups: [""]
     resources: ["events"]
     verbs: ["get", "list", "watch"]
-  # Also need to watch namespaces for namespace-scoped watching
-  - apiGroups: [""]
-    resources: ["namespaces"]
-    verbs: ["get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -136,12 +132,13 @@ Use a `ClusterRole` and `ClusterRoleBinding` because events exist in all namespa
 
 ## What the Event Logs Look Like
 
-When a Kubernetes event gets converted to an OpenTelemetry log record, the receiver maps event fields to log attributes. Here is an example of what you get when a pod fails to pull an image.
+When a Kubernetes event gets converted to an OpenTelemetry log record, the receiver maps event fields to log and resource attributes. Here is an example of what you get when a pod fails to pull an image.
 
 ```json
 {
   "timestamp": "2026-02-06T10:15:30Z",
-  "severityText": "WARNING",
+  "severityText": "Warning",
+  "severityNumber": 13,
   "body": "Failed to pull image \"registry.example.com/myapp:v2.0.0\": rpc error: code = NotFound desc = failed to pull and unpack image",
   "attributes": {
     "k8s.event.reason": "Failed",
@@ -149,19 +146,22 @@ When a Kubernetes event gets converted to an OpenTelemetry log record, the recei
     "k8s.event.count": 3,
     "k8s.event.uid": "abc123-def456",
     "k8s.event.name": "myapp-pod-7f8b9.pulling-image",
+    "k8s.namespace.name": "production"
+  },
+  "resource": {
+    "k8s.cluster.name": "production-us-east-1",
+    "k8s.node.name": "worker-1",
     "k8s.object.kind": "Pod",
     "k8s.object.name": "myapp-pod-7f8b9d6c4-x2k9j",
     "k8s.object.uid": "pod-uid-789",
     "k8s.object.fieldpath": "spec.containers{myapp}",
-    "k8s.namespace.name": "production"
-  },
-  "resource": {
-    "k8s.cluster.name": "production-us-east-1"
+    "k8s.object.api_version": "v1",
+    "k8s.object.resource_version": "123456"
   }
 }
 ```
 
-The severity level maps from the Kubernetes event type: "Normal" events become INFO, and "Warning" events become WARNING.
+The severity number maps from the Kubernetes event type: "Normal" events become INFO, and "Warning" events become WARN. The severity text preserves the Kubernetes event type, such as "Normal" or "Warning".
 
 ## Enriching Events with Additional Context
 
@@ -192,12 +192,12 @@ processors:
       - context: log
         statements:
           # Mark certain event reasons as errors for alerting
-          - set(severity_number, 17) where attributes["k8s.event.reason"] == "OOMKilling"
-          - set(severity_text, "ERROR") where attributes["k8s.event.reason"] == "OOMKilling"
-          - set(severity_number, 17) where attributes["k8s.event.reason"] == "FailedScheduling"
-          - set(severity_text, "ERROR") where attributes["k8s.event.reason"] == "FailedScheduling"
-          - set(severity_number, 17) where attributes["k8s.event.reason"] == "NodeNotReady"
-          - set(severity_text, "ERROR") where attributes["k8s.event.reason"] == "NodeNotReady"
+          - set(log.severity_number, SEVERITY_NUMBER_ERROR) where log.attributes["k8s.event.reason"] == "OOMKilling"
+          - set(log.severity_text, "ERROR") where log.attributes["k8s.event.reason"] == "OOMKilling"
+          - set(log.severity_number, SEVERITY_NUMBER_ERROR) where log.attributes["k8s.event.reason"] == "FailedScheduling"
+          - set(log.severity_text, "ERROR") where log.attributes["k8s.event.reason"] == "FailedScheduling"
+          - set(log.severity_number, SEVERITY_NUMBER_ERROR) where log.attributes["k8s.event.reason"] == "NodeNotReady"
+          - set(log.severity_text, "ERROR") where log.attributes["k8s.event.reason"] == "NodeNotReady"
 
   batch:
     send_batch_size: 256
@@ -228,16 +228,15 @@ processors:
   # Drop noisy events that add little value
   filter:
     error_mode: ignore
-    logs:
-      log_record:
-        # Drop normal "Scheduled" events (too noisy in large clusters)
-        - 'attributes["k8s.event.reason"] == "Scheduled" and IsMatch(body, "Successfully assigned.*")'
-        # Drop normal "Pulled" events
-        - 'attributes["k8s.event.reason"] == "Pulled"'
-        # Drop normal "Created" container events
-        - 'attributes["k8s.event.reason"] == "Created" and attributes["k8s.object.kind"] == "Pod"'
-        # Drop normal "Started" container events
-        - 'attributes["k8s.event.reason"] == "Started" and attributes["k8s.object.kind"] == "Pod"'
+    log_conditions:
+      # Drop normal "Scheduled" events (too noisy in large clusters)
+      - 'log.attributes["k8s.event.reason"] == "Scheduled" and IsMatch(log.body, "Successfully assigned.*")'
+      # Drop normal "Pulled" events
+      - 'log.attributes["k8s.event.reason"] == "Pulled"'
+      # Drop normal "Created" container events
+      - 'log.attributes["k8s.event.reason"] == "Created" and resource.attributes["k8s.object.kind"] == "Pod"'
+      # Drop normal "Started" container events
+      - 'log.attributes["k8s.event.reason"] == "Started" and resource.attributes["k8s.object.kind"] == "Pod"'
 ```
 
 A good rule of thumb: keep Warning events and any Normal events related to scaling, restarts, or configuration changes. Drop Normal events for routine pod lifecycle operations that happen thousands of times per day in a healthy cluster.
@@ -271,7 +270,7 @@ spec:
       serviceAccountName: otel-collector
       containers:
         - name: collector
-          image: otel/opentelemetry-collector-contrib:0.96.0
+          image: otel/opentelemetry-collector-contrib:0.153.0
           args: ["--config=/etc/otel/config.yaml"]
           resources:
             requests:
@@ -336,9 +335,9 @@ severity == "ERROR"
 
 ## Handling Event Replay on Startup
 
-When the collector starts (or restarts), the K8s Events Receiver lists existing events before starting its watch stream. This means you may see a burst of events that already occurred. In most observability backends, this is harmless since events are idempotent based on their UID.
+When the collector starts (or restarts), the K8s Events Receiver avoids emitting events whose event timestamp is older than the receiver start time. This prevents a burst of old cluster events on startup.
 
-If duplicate events are a concern, you can use the receiver's configuration to limit the initial event window or rely on your backend's deduplication.
+If duplicate modified events are a concern, configure the receiver's `dedup_interval` to throttle repeated MODIFIED watch events for the same event UID. You can also configure the receiver's `storage` option with a storage extension to persist the latest resource version and resume from it after restarts.
 
 ## Complete Production Configuration
 
@@ -368,20 +367,19 @@ processors:
       - context: log
         statements:
           # Promote critical events to ERROR severity
-          - set(severity_number, 17) where attributes["k8s.event.reason"] == "OOMKilling"
-          - set(severity_text, "ERROR") where attributes["k8s.event.reason"] == "OOMKilling"
-          - set(severity_number, 17) where attributes["k8s.event.reason"] == "FailedScheduling"
-          - set(severity_text, "ERROR") where attributes["k8s.event.reason"] == "FailedScheduling"
+          - set(log.severity_number, SEVERITY_NUMBER_ERROR) where log.attributes["k8s.event.reason"] == "OOMKilling"
+          - set(log.severity_text, "ERROR") where log.attributes["k8s.event.reason"] == "OOMKilling"
+          - set(log.severity_number, SEVERITY_NUMBER_ERROR) where log.attributes["k8s.event.reason"] == "FailedScheduling"
+          - set(log.severity_text, "ERROR") where log.attributes["k8s.event.reason"] == "FailedScheduling"
 
   filter:
     error_mode: ignore
-    logs:
-      log_record:
-        # Drop routine lifecycle events
-        - 'attributes["k8s.event.reason"] == "Scheduled"'
-        - 'attributes["k8s.event.reason"] == "Pulled"'
-        - 'attributes["k8s.event.reason"] == "Created" and attributes["k8s.object.kind"] == "Pod"'
-        - 'attributes["k8s.event.reason"] == "Started" and attributes["k8s.object.kind"] == "Pod"'
+    log_conditions:
+      # Drop routine lifecycle events
+      - 'log.attributes["k8s.event.reason"] == "Scheduled"'
+      - 'log.attributes["k8s.event.reason"] == "Pulled"'
+      - 'log.attributes["k8s.event.reason"] == "Created" and resource.attributes["k8s.object.kind"] == "Pod"'
+      - 'log.attributes["k8s.event.reason"] == "Started" and resource.attributes["k8s.object.kind"] == "Pod"'
 
   batch:
     send_batch_size: 256
