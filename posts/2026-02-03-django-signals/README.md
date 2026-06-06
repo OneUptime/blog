@@ -24,9 +24,9 @@ sequenceDiagram
     participant Receiver2 as Receiver 2
 
     Model->>Signal: save() triggers post_save
-    Signal->>Receiver1: Notify (async)
-    Signal->>Receiver2: Notify (async)
+    Signal->>Receiver1: Notify (sync)
     Receiver1-->>Signal: Handler completes
+    Signal->>Receiver2: Notify (sync)
     Receiver2-->>Signal: Handler completes
 ```
 
@@ -370,11 +370,13 @@ class MyAppConfig(AppConfig):
         from . import receivers  # noqa: F401
 ```
 
-Make sure your app config is used in settings or `__init__.py`:
+Since Django 3.2, your `AppConfig` subclass is auto-detected as the default for the app, so no extra wiring is needed. If you have multiple `AppConfig` classes in `apps.py`, mark the default one explicitly with `default = True`:
 
 ```python
-# myapp/__init__.py
-default_app_config = 'myapp.apps.MyAppConfig'
+# myapp/apps.py
+class MyAppConfig(AppConfig):
+    default = True
+    name = 'myapp'
 ```
 
 ## Audit Logging with Signals
@@ -580,10 +582,10 @@ def calculate_order_total(sender, instance, **kwargs):
 
 ### Signals in Bulk Operations
 
-QuerySet methods like `update()`, `delete()`, and `bulk_create()` bypass signals by default. If you need signals, iterate:
+QuerySet methods like `update()` and `bulk_create()` bypass `pre_save`/`post_save` signals by default. Note that `QuerySet.delete()` is different - it still emits `pre_delete` and `post_delete` signals, even though it does not call each model's `delete()` method. If you need `save`-related signals to fire, iterate:
 
 ```python
-# This does NOT fire post_save signals
+# This does NOT fire pre_save / post_save signals
 Order.objects.filter(status='pending').update(status='cancelled')
 
 # This DOES fire signals (but is slower)
