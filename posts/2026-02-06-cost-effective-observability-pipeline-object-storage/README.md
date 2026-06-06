@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Observability, Object Storage, Cost Optimization
 
 Description: Learn how to architect an observability pipeline using the OpenTelemetry Collector with S3-compatible object storage to reduce telemetry storage costs dramatically.
 
-Observability backends are expensive. If you have ever looked at your monthly bill from a SaaS vendor and wondered where all that money went, the answer is usually storage. Traces, metrics, and logs pile up fast, and most vendors charge by volume. The good news is that you can build your own cost-effective pipeline using the OpenTelemetry Collector paired with object storage like Amazon S3, MinIO, or Google Cloud Storage.
+Observability backends are expensive. If you have ever looked at your monthly bill from a SaaS vendor and wondered where all that money went, the answer is usually storage. Traces, metrics, and logs pile up fast, and most vendors charge by volume. The good news is that you can build your own cost-effective pipeline using the OpenTelemetry Collector paired with object storage like Amazon S3, MinIO, or Google Cloud Storage with S3 interoperability configured.
 
 This post walks through the architecture, configuration, and trade-offs of routing telemetry data through the OpenTelemetry Collector directly into object storage.
 
@@ -14,7 +14,7 @@ This post walks through the architecture, configuration, and trade-offs of routi
 
 Object storage services like S3 cost roughly $0.023 per GB per month for standard tiers. Compare that to most observability SaaS platforms that charge $1.50 to $3.00 per GB ingested. For a team generating 500 GB of telemetry per day, the difference is staggering - potentially tens of thousands of dollars per month.
 
-The trade-off is that raw object storage does not give you a query engine out of the box. You need to pair it with something like Apache Parquet files and a query layer (ClickHouse, DuckDB, or Athena) to make the data useful.
+The trade-off is that raw object storage does not give you a query engine out of the box. You need to pair it with a query layer (ClickHouse, DuckDB, or Athena) to make the data useful, and columnar formats such as Apache Parquet can help when you need faster analytics.
 
 ## Architecture Overview
 
@@ -41,7 +41,7 @@ Here is a Collector configuration that receives OTLP data and writes it to S3 in
 ```yaml
 # otel-collector-config.yaml
 
-# This config receives OTLP telemetry and exports to S3 in batched Parquet-friendly format
+# This config receives OTLP telemetry and exports to S3 in batched OTLP JSON files
 
 receivers:
   otlp:
@@ -74,8 +74,12 @@ exporters:
       region: us-east-1
       s3_bucket: my-telemetry-bucket
       s3_prefix: otel-data
-      # Partition by signal type and date for efficient querying
-      s3_partition: "minute"
+      # For local MinIO testing. Omit these three fields when writing to AWS S3.
+      endpoint: http://minio:9000
+      s3_force_path_style: true
+      disable_ssl: true
+      # Partition by date for efficient querying; file names include the signal type
+      s3_partition_format: "year=%Y/month=%m/day=%d/hour=%H/minute=%M"
     marshaler: otlp_json
 
   # Keep a real-time exporter for alerting on critical signals
@@ -128,7 +132,6 @@ services:
       - "4317:4317"
       - "4318:4318"
     environment:
-      # Point the S3 exporter at MinIO instead of real AWS
       AWS_ACCESS_KEY_ID: minioadmin
       AWS_SECRET_ACCESS_KEY: minioadmin
     depends_on:
@@ -154,10 +157,16 @@ Once data lands in your bucket, you can query it with DuckDB directly against th
 INSTALL httpfs;
 LOAD httpfs;
 
-SET s3_region = 'us-east-1';
-SET s3_endpoint = 'localhost:9000';
-SET s3_use_ssl = false;
-SET s3_url_style = 'path';
+CREATE OR REPLACE SECRET local_minio (
+    TYPE s3,
+    PROVIDER config,
+    KEY_ID 'minioadmin',
+    SECRET 'minioadmin',
+    REGION 'us-east-1',
+    ENDPOINT 'localhost:9000',
+    URL_STYLE 'path',
+    USE_SSL false
+);
 
 SELECT *
 FROM read_json_auto('s3://my-telemetry-bucket/otel-data/**/*.json')
@@ -185,6 +194,9 @@ Set up S3 lifecycle rules to automatically tier or delete old data:
   "Rules": [
     {
       "ID": "TierToGlacierAfter30Days",
+      "Filter": {
+        "Prefix": "otel-data/"
+      },
       "Status": "Enabled",
       "Transitions": [
         {
