@@ -75,7 +75,7 @@ The most common scenario during migration is configuring OpenTelemetry to speak 
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import ConsoleSpanExporter, SimpleSpanProcessor
-from opentelemetry.propagate import set_global_textmap, inject, extract
+from opentelemetry.propagate import set_global_textmap, inject
 from opentelemetry.propagators.b3 import B3MultiFormat
 
 # Initialize the tracer provider
@@ -98,9 +98,9 @@ with tracer.start_as_current_span("my-operation") as span:
     for key, value in headers.items():
         print(f"  {key}: {value}")
     # Output:
-    #   X-B3-TraceId: 463ac35c9f6413ad48485a3953bb6124
-    #   X-B3-SpanId: 0020000000000001
-    #   X-B3-Sampled: 1
+    #   x-b3-traceid: ...
+    #   x-b3-spanid: ...
+    #   x-b3-sampled: 1
 ```
 
 When you set `B3MultiFormat` as the global propagator, all outgoing HTTP requests instrumented by OpenTelemetry will include B3 headers instead of the `traceparent` header. Zipkin services will be able to read these headers and continue the trace.
@@ -110,17 +110,25 @@ When you set `B3MultiFormat` as the global propagator, all outgoing HTTP request
 If your Zipkin services support the single-header format, you can use `B3SingleFormat` instead.
 
 ```python
+from opentelemetry import trace
+from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.propagators.b3 import B3SingleFormat
 from opentelemetry.propagate import set_global_textmap, inject
+
+provider = TracerProvider()
+trace.set_tracer_provider(provider)
 
 # Use B3 single-header format
 set_global_textmap(B3SingleFormat())
 
-# When injecting, this produces a single b3 header
-headers = {}
-inject(headers)
-# Output:
-#   b3: 463ac35c9f6413ad48485a3953bb6124-0020000000000001-1
+tracer = trace.get_tracer("b3-demo")
+
+with tracer.start_as_current_span("my-operation"):
+    # When injecting, this produces a single b3 header
+    headers = {}
+    inject(headers)
+    # Output:
+    #   b3: ...-...-1
 ```
 
 The single-header format is more compact but less widely supported among older Zipkin implementations. If you are not sure which format your existing services expect, stick with multi-header.
@@ -132,35 +140,42 @@ During a migration, you probably have some services on Zipkin and others on Open
 ```python
 from opentelemetry.propagate import set_global_textmap, inject
 from opentelemetry.propagators.composite import CompositePropagator
-from opentelemetry.trace.propagation import TraceContextTextMapPropagator
+from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 from opentelemetry.baggage.propagation import W3CBaggagePropagator
 from opentelemetry.propagators.b3 import B3MultiFormat
+from opentelemetry import trace
+from opentelemetry.sdk.trace import TracerProvider
 
 # Configure a composite propagator with both formats
 propagator = CompositePropagator([
+    B3MultiFormat(),                  # Zipkin B3 headers
     TraceContextTextMapPropagator(),  # W3C traceparent/tracestate
     W3CBaggagePropagator(),           # W3C baggage
-    B3MultiFormat(),                  # Zipkin B3 headers
 ])
 set_global_textmap(propagator)
 
-# Now inject produces both W3C and B3 headers
-headers = {}
-inject(headers)
+provider = TracerProvider()
+trace.set_tracer_provider(provider)
+tracer = trace.get_tracer("b3-demo")
 
-print("Combined headers:")
-for key, value in sorted(headers.items()):
-    print(f"  {key}: {value}")
-# Output includes both:
-#   X-B3-Sampled: 1
-#   X-B3-SpanId: ...
-#   X-B3-TraceId: ...
-#   traceparent: 00-...-...-01
+with tracer.start_as_current_span("my-operation"):
+    # Now inject produces both W3C and B3 headers
+    headers = {}
+    inject(headers)
+
+    print("Combined headers:")
+    for key, value in sorted(headers.items()):
+        print(f"  {key}: {value}")
+    # Output includes both:
+    #   traceparent: 00-...-...-01
+    #   x-b3-sampled: 1
+    #   x-b3-spanid: ...
+    #   x-b3-traceid: ...
 ```
 
 With this setup, every outgoing request carries both sets of headers. A Zipkin service reads the B3 headers and ignores `traceparent`. An OpenTelemetry service reads `traceparent` and ignores B3. Both see the same trace ID and can join the same trace.
 
-On extraction, the composite propagator tries each format in order. If it finds W3C headers, it uses those. If it only finds B3 headers, it uses B3. This means you do not need to know in advance which format an incoming request will use.
+On extraction, the composite propagator tries each format in order, and later propagators can override earlier trace context if both formats are present. In the example above, B3 is listed before W3C so `traceparent` wins when both are present. If a request only has B3 headers, it still uses B3. This means you do not need to know in advance which format an incoming request will use, but you should put your preferred format later in the list.
 
 ## Handling Trace ID Length Differences
 
@@ -183,6 +198,10 @@ incoming_headers = {
 
 from opentelemetry.propagate import extract
 from opentelemetry import trace
+from opentelemetry.propagators.b3 import B3MultiFormat
+from opentelemetry.propagate import set_global_textmap
+
+set_global_textmap(B3MultiFormat())
 
 ctx = extract(incoming_headers)
 span_ctx = trace.get_current_span(ctx).get_span_context()
@@ -280,15 +299,15 @@ from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.propagate import inject, extract, set_global_textmap
 from opentelemetry.propagators.composite import CompositePropagator
-from opentelemetry.trace.propagation import TraceContextTextMapPropagator
+from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 from opentelemetry.propagators.b3 import B3MultiFormat
 
 # Setup
 provider = TracerProvider()
 trace.set_tracer_provider(provider)
 set_global_textmap(CompositePropagator([
-    TraceContextTextMapPropagator(),
     B3MultiFormat(),
+    TraceContextTextMapPropagator(),
 ]))
 
 tracer = trace.get_tracer("test")
@@ -302,7 +321,7 @@ with tracer.start_as_current_span("test-span") as span:
 
     # Verify both header formats are present
     assert "traceparent" in headers, "Missing W3C header"
-    assert "X-B3-TraceId" in headers, "Missing B3 header"
+    assert "x-b3-traceid" in headers, "Missing B3 header"
 
     # Extract from headers and verify the context matches
     extracted_ctx_obj = extract(headers)
