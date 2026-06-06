@@ -221,6 +221,7 @@ Authentication middleware needs to inspect headers, validate tokens, and either 
 ```rust
 use actix_web::{
     dev::ServiceRequest, dev::ServiceResponse, Error, HttpResponse,
+    body::EitherBody,
     http::header::AUTHORIZATION,
 };
 use actix_service::{Service, Transform};
@@ -259,7 +260,9 @@ where
     Svc: Service<ServiceRequest, Response = ServiceResponse<Bd>, Error = Error> + 'static,
     Bd: 'static,
 {
-    type Response = ServiceResponse<Bd>;
+    // EitherBody is required because the middleware can return either the
+    // inner service's body (left) or its own error response body (right).
+    type Response = ServiceResponse<EitherBody<Bd>>;
     type Error = Error;
     type Transform = JwtAuthMiddleware<Svc>;
     type InitError = ();
@@ -293,7 +296,7 @@ where
     Svc: Service<ServiceRequest, Response = ServiceResponse<Bd>, Error = Error> + 'static,
     Bd: 'static,
 {
-    type Response = ServiceResponse<Bd>;
+    type Response = ServiceResponse<EitherBody<Bd>>;
     type Error = Error;
     type Future = LocalBoxFuture<'static, Result<Self::Response, Self::Error>>;
 
@@ -314,7 +317,7 @@ where
 
         if should_skip {
             return Box::pin(async move {
-                service.call(req).await
+                service.call(req).await.map(|res| res.map_into_left_body())
             });
         }
 
@@ -517,13 +520,12 @@ use actix_web::{
     middleware::from_fn,
     App, Error, HttpServer, web, HttpResponse,
 };
-use actix_web::body::EitherBody;
 
 // Simple middleware function - much less boilerplate
 async fn timing_middleware(
     req: ServiceRequest,
     next: actix_web::middleware::Next<impl actix_web::body::MessageBody>,
-) -> Result<ServiceResponse<EitherBody<impl actix_web::body::MessageBody>>, Error> {
+) -> Result<ServiceResponse<impl actix_web::body::MessageBody>, Error> {
     let start = std::time::Instant::now();
     let path = req.path().to_string();
 
@@ -532,14 +534,14 @@ async fn timing_middleware(
     let duration = start.elapsed();
     println!("{} completed in {:?}", path, duration);
 
-    Ok(response.map_into_left_body())
+    Ok(response)
 }
 
 // Request ID middleware
 async fn request_id_middleware(
     req: ServiceRequest,
     next: actix_web::middleware::Next<impl actix_web::body::MessageBody>,
-) -> Result<ServiceResponse<EitherBody<impl actix_web::body::MessageBody>>, Error> {
+) -> Result<ServiceResponse<impl actix_web::body::MessageBody>, Error> {
     let request_id = uuid::Uuid::new_v4().to_string();
 
     // Store in extensions for handlers to access
@@ -553,7 +555,7 @@ async fn request_id_middleware(
         actix_web::http::header::HeaderValue::from_str(&request_id).unwrap(),
     );
 
-    Ok(response.map_into_left_body())
+    Ok(response)
 }
 
 #[actix_web::main]
