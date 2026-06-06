@@ -28,7 +28,7 @@ eBPF (extended Berkeley Packet Filter) lets you attach programs to kernel and us
 ```yaml
 # Example: Deploying an eBPF-based instrumentation agent
 
-# This runs as a DaemonSet and instruments all pods on the node
+# This runs as a DaemonSet and instruments matching processes on the node
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -39,10 +39,12 @@ spec:
     matchLabels:
       app: ebpf-instrumentor
   template:
+    metadata:
+      labels:
+        app: ebpf-instrumentor
     spec:
       # eBPF requires privileged access to the host
       hostPID: true
-      hostNetwork: true
       containers:
         - name: instrumentor
           image: grafana/beyla:latest
@@ -50,20 +52,13 @@ spec:
             # eBPF needs elevated privileges
             privileged: true
           env:
-            - name: BEYLA_OPEN_PORT
-              value: "8080"
+            - name: BEYLA_AUTO_TARGET_EXE
+              value: "*/order-service"
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: "http://otel-collector:4318"
-          volumeMounts:
-            - name: proc
-              mountPath: /proc
-      volumes:
-        - name: proc
-          hostPath:
-            path: /proc
 ```
 
-eBPF-based tools like Grafana Beyla, Pixie, and Odigos can detect HTTP, gRPC, and database calls by observing system calls and network traffic at the kernel level. They work with any programming language because they operate below the application runtime.
+eBPF-based tools like Grafana Beyla, Pixie, and Odigos can detect HTTP, gRPC, and database calls by observing system calls and network traffic at the kernel level. They are largely language-agnostic for supported protocols because they operate below the application runtime, although exact language, protocol, kernel, and operating system support varies by tool.
 
 What eBPF captures:
 
@@ -82,7 +77,7 @@ What eBPF cannot capture:
 # eBPF cannot see inside application logic
 - Business-specific attributes (order ID, user tier, etc.)
 - Custom span names for internal operations
-- Application-level context propagation
+- Full application-level context propagation in every protocol
 - Semantic meaning of operations
 ```
 
@@ -99,24 +94,29 @@ spec:
   meshConfig:
     # Enable distributed tracing
     enableTracing: true
-    defaultConfig:
-      tracing:
-        # Sample 100% of traces (adjust for production)
-        sampling: 100
-        # Export using OpenTelemetry protocol
-        openCensusAgent:
-          address: otel-collector.monitoring:55678
     extensionProviders:
       - name: otel-tracing
         opentelemetry:
-          service: otel-collector.monitoring
+          service: otel-collector.monitoring.svc.cluster.local
           port: 4317
+---
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
+metadata:
+  name: mesh-default
+  namespace: istio-system
+spec:
+  tracing:
+    - providers:
+        - name: otel-tracing
+      # Sample 100% of traces (adjust for production)
+      randomSamplingPercentage: 100
 ```
 
 The service mesh approach gives you:
 
 - Span for every inter-service HTTP/gRPC call
-- Automatic context propagation between proxies
+- Proxy-generated spans for inter-service traffic, as long as applications propagate trace headers between inbound and outbound requests
 - mTLS and connection-level metrics
 - No changes to application code or container images
 
@@ -170,7 +170,7 @@ spec:
           image: my-registry/order-service:latest
 ```
 
-This OTel Operator approach is zero-code in the sense that you do not change your application code. But it works by injecting a language-specific agent into the container, which is fundamentally different from eBPF. The agent understands the application runtime and can capture library-level calls (database queries, HTTP clients, message queue operations) with full semantic context.
+This OTel Operator approach is zero-code in the sense that you do not change your application code. But it works by injecting language-specific instrumentation into the pod, which is fundamentally different from network-only eBPF collection. For supported libraries, the instrumentation understands the application runtime and can capture library-level calls (database queries, HTTP clients, message queue operations) with semantic context.
 
 ## SDK Integration: Full Control
 
@@ -250,8 +250,8 @@ This level of detail is impossible with any zero-code approach. You get business
 | Business attributes | No | No | No | Yes |
 | Custom spans | No | No | No | Yes |
 | Custom metrics | No | Limited | Limited | Yes |
-| Language support | All | All | Java, Python, .NET, Node.js | All with SDK |
-| Context propagation | Limited | Proxy-level | Full | Full |
+| Language support | Wide, tool-dependent Linux support | Protocol/language agnostic | Java, Python, .NET, Node.js, Go | Most major languages with SDKs |
+| Context propagation | Tool and protocol dependent | Requires application header forwarding | Full for instrumented libraries | Full |
 | Performance overhead | Very low | Low-medium | Low-medium | Controlled |
 | Setup complexity | Medium | High | Low | Medium |
 
