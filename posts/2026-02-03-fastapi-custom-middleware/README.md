@@ -33,7 +33,7 @@ sequenceDiagram
     Middleware1->>Client: Response (modified)
 ```
 
-Middleware forms a chain. The first middleware added is the outermost layer - it sees the request first and the response last. This "onion" model is important when you need to control execution order.
+Middleware forms a chain. In Starlette (and therefore FastAPI), the last middleware added is the outermost layer - it sees the request first and the response last. This is because `add_middleware` inserts each new middleware at the front of the stack. This "onion" model is important when you need to control execution order.
 
 ---
 
@@ -115,7 +115,7 @@ from middleware.timing import TimingMiddleware
 
 app = FastAPI()
 
-# Add middleware - first added is outermost (runs first on request, last on response)
+# Add middleware - last added is outermost (runs first on request, last on response)
 app.add_middleware(TimingMiddleware, header_name="X-Process-Time")
 ```
 
@@ -322,16 +322,16 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 ## Middleware Ordering
 
-The order you add middleware matters. FastAPI processes middleware in reverse order of registration - the last middleware added is the innermost layer.
+The order you add middleware matters. Starlette inserts each new middleware at the front of the stack, so the **last** middleware added is the outermost layer (first to see the request, last to see the response).
 
 ```mermaid
 flowchart TB
     subgraph Request Flow
         direction TB
-        A[Client Request] --> B[Error Handler - First Added]
+        A[Client Request] --> B[Error Handler - Last Added]
         B --> C[Logging]
         C --> D[Request ID]
-        D --> E[Timing - Last Added]
+        D --> E[Timing - First Added]
         E --> F[Route Handler]
     end
 
@@ -358,21 +358,23 @@ from middleware.security_headers import SecurityHeadersMiddleware
 
 app = FastAPI()
 
-# Order matters: first added is outermost, last added is innermost
-# Error handler should be outermost to catch all exceptions
-app.add_middleware(ErrorHandlerMiddleware, debug=False)
-
-# Logging should be early to capture all requests
-app.add_middleware(LoggingMiddleware, exclude_paths=["/health"])
-
-# Request ID should be early so other middleware can use it
-app.add_middleware(RequestIDMiddleware)
-
-# Security headers can be added late
-app.add_middleware(SecurityHeadersMiddleware)
+# Order matters: last added is outermost, first added is innermost
+# Add inner layers first, outer layers last.
 
 # Timing should be innermost for accurate route-only timing
 app.add_middleware(TimingMiddleware)
+
+# Security headers can be added next
+app.add_middleware(SecurityHeadersMiddleware)
+
+# Request ID should be outer to timing so it's available to other middleware
+app.add_middleware(RequestIDMiddleware)
+
+# Logging should be outer so it captures responses from inner middleware
+app.add_middleware(LoggingMiddleware, exclude_paths=["/health"])
+
+# Error handler should be outermost to catch all exceptions - add it last
+app.add_middleware(ErrorHandlerMiddleware, debug=False)
 ```
 
 ---
@@ -515,33 +517,36 @@ app = FastAPI(
 )
 
 # Configure middleware stack (order matters!)
-# 1. Error handler - outermost to catch all errors
-app.add_middleware(
-    ErrorHandlerMiddleware,
-    debug=os.getenv("DEBUG", "false").lower() == "true"
-)
+# Reminder: the LAST add_middleware call becomes the OUTERMOST layer.
+# So we add inner layers first and outer layers last.
 
-# 2. Logging - early for full request visibility
-app.add_middleware(
-    LoggingMiddleware,
-    exclude_paths=["/health", "/ready", "/metrics"]
-)
+# 1. Timing - innermost for accurate timing
+app.add_middleware(TimingMiddleware)
 
-# 3. Request ID - for tracing
-app.add_middleware(RequestIDMiddleware)
+# 2. Security headers
+app.add_middleware(SecurityHeadersMiddleware)
 
-# 4. Auth check - protect API routes
+# 3. Auth check - protect API routes
 app.add_middleware(
     AuthCheckMiddleware,
     api_key=os.getenv("API_KEY", "dev-key"),
     protected_prefixes=["/api/"]
 )
 
-# 5. Security headers
-app.add_middleware(SecurityHeadersMiddleware)
+# 4. Request ID - so outer middleware (logging, error handler) can use it
+app.add_middleware(RequestIDMiddleware)
 
-# 6. Timing - innermost for accurate timing
-app.add_middleware(TimingMiddleware)
+# 5. Logging - outer so it captures responses from inner middleware
+app.add_middleware(
+    LoggingMiddleware,
+    exclude_paths=["/health", "/ready", "/metrics"]
+)
+
+# 6. Error handler - outermost to catch all errors (added last)
+app.add_middleware(
+    ErrorHandlerMiddleware,
+    debug=os.getenv("DEBUG", "false").lower() == "true"
+)
 
 
 # Health check endpoint (not protected, not logged)
@@ -574,7 +579,7 @@ async def create_user(request: Request):
 | Practice | Why |
 |----------|-----|
 | Keep middleware focused | One middleware, one responsibility |
-| Order matters | Error handlers first, timing last |
+| Order matters | Add timing first, error handlers last (last added is outermost) |
 | Use `request.state` for context | Clean way to pass data to handlers |
 | Exclude health checks from logging | Reduces noise in production logs |
 | Handle exceptions in middleware | Prevent 500s from crashing the app |
@@ -603,7 +608,7 @@ Custom middleware in FastAPI gives you a clean way to handle cross-cutting conce
 
 - Use function-based middleware for simple cases
 - Use `BaseHTTPMiddleware` when you need initialization or complex logic
-- Order matters - first added is outermost
+- Order matters - last added is outermost (Starlette inserts middleware at the front of the stack)
 - Keep middleware focused and fast
 - Use `request.state` to pass data between middleware and handlers
 
