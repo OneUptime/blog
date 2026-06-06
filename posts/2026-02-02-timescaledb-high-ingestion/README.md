@@ -261,17 +261,21 @@ Adjust chunk interval based on your ingestion rate and query patterns.
 ```sql
 -- Check current chunk sizes to evaluate if interval is appropriate
 -- Each chunk should ideally be 10-100 million rows
+-- chunks_detailed_size returns per-chunk storage; join with the chunks view
+-- to include the time range covered by each chunk
 SELECT
-    hypertable_name,
-    chunk_name,
-    range_start,
-    range_end,
-    pg_size_pretty(total_bytes) as size,
-    pg_size_pretty(table_bytes) as table_size,
-    pg_size_pretty(index_bytes) as index_size
-FROM timescaledb_information.chunks
-WHERE hypertable_name = 'metrics'
-ORDER BY range_start DESC
+    c.hypertable_name,
+    s.chunk_name,
+    c.range_start,
+    c.range_end,
+    pg_size_pretty(s.total_bytes) as size,
+    pg_size_pretty(s.table_bytes) as table_size,
+    pg_size_pretty(s.index_bytes) as index_size
+FROM chunks_detailed_size('metrics') s
+JOIN timescaledb_information.chunks c
+    ON c.chunk_schema = s.chunk_schema
+    AND c.chunk_name = s.chunk_name
+ORDER BY c.range_start DESC
 LIMIT 10;
 
 -- Modify chunk interval for future chunks if needed
@@ -296,11 +300,9 @@ GROUP BY hypertable_name;
 
 -- View chunk statistics including compression status
 SELECT
-    hypertable_schema,
-    hypertable_name,
     chunk_schema,
     chunk_name,
-    is_compressed,
+    compression_status,
     before_compression_total_bytes,
     after_compression_total_bytes
 FROM chunk_compression_stats('metrics')
@@ -333,7 +335,9 @@ SELECT add_compression_policy('metrics', INTERVAL '7 days');
 SELECT compress_chunk('_timescaledb_internal._hyper_1_1_chunk');
 
 -- Compress all chunks older than a certain age
-SELECT compress_chunk(i.chunk_name::regclass)
+-- chunk_name in the view is not schema-qualified, so build a regclass
+-- using format() with chunk_schema and chunk_name
+SELECT compress_chunk(format('%I.%I', i.chunk_schema, i.chunk_name)::regclass)
 FROM timescaledb_information.chunks i
 WHERE i.hypertable_name = 'metrics'
   AND i.range_end < NOW() - INTERVAL '7 days'
@@ -356,7 +360,7 @@ SELECT
         2
     ) as compression_ratio_pct
 FROM chunk_compression_stats('metrics')
-WHERE is_compressed = true
+WHERE compression_status = 'Compressed'
 ORDER BY chunk_name DESC;
 ```
 
@@ -595,14 +599,23 @@ $$ LANGUAGE plpgsql;
 ### Essential Metrics to Track
 
 ```sql
--- Monitor insert rate per second
+-- Monitor approximate insert rate per second by dividing hypertable size
+-- by the elapsed time since the oldest chunk's range_start
 SELECT
-    hypertable_name,
-    total_bytes,
-    num_chunks,
-    ROUND(total_bytes / (EXTRACT(EPOCH FROM (NOW() - stats_start)) + 1)) as bytes_per_sec
-FROM hypertable_detailed_size('metrics')
-CROSS JOIN (SELECT MIN(range_start) as stats_start FROM timescaledb_information.chunks) t;
+    h.hypertable_name,
+    s.total_bytes,
+    h.num_chunks,
+    ROUND(s.total_bytes / (EXTRACT(EPOCH FROM (NOW() - t.stats_start)) + 1)) as bytes_per_sec
+FROM timescaledb_information.hypertables h
+CROSS JOIN LATERAL hypertable_detailed_size(
+    format('%I.%I', h.hypertable_schema, h.hypertable_name)::regclass
+) s
+CROSS JOIN (
+    SELECT MIN(range_start) as stats_start
+    FROM timescaledb_information.chunks
+    WHERE hypertable_name = 'metrics'
+) t
+WHERE h.hypertable_name = 'metrics';
 
 -- Check for lock contention during inserts
 SELECT
@@ -633,35 +646,37 @@ Create a comprehensive view of your ingestion health.
 
 ```sql
 -- Create a monitoring view for ingestion metrics
+-- hypertable_detailed_size() returns only size columns; pair it with
+-- timescaledb_information.hypertables for the hypertable_name / num_chunks
 CREATE OR REPLACE VIEW ingestion_dashboard AS
 SELECT
-    h.hypertable_name,
-    pg_size_pretty(h.total_bytes) as total_size,
-    h.num_chunks as chunk_count,
+    ht.hypertable_name,
+    pg_size_pretty(sz.total_bytes) as total_size,
+    ht.num_chunks as chunk_count,
     c.compressed_chunks,
     c.uncompressed_chunks,
     COALESCE(c.compression_ratio, 0) as avg_compression_ratio,
-    r.approximate_row_count as approx_rows
-FROM hypertable_detailed_size('metrics') h
-LEFT JOIN (
+    approximate_row_count(
+        format('%I.%I', ht.hypertable_schema, ht.hypertable_name)::regclass
+    ) as approx_rows
+FROM timescaledb_information.hypertables ht
+CROSS JOIN LATERAL hypertable_detailed_size(
+    format('%I.%I', ht.hypertable_schema, ht.hypertable_name)::regclass
+) sz
+LEFT JOIN LATERAL (
     SELECT
-        hypertable_name,
-        COUNT(*) FILTER (WHERE is_compressed) as compressed_chunks,
-        COUNT(*) FILTER (WHERE NOT is_compressed) as uncompressed_chunks,
+        COUNT(*) FILTER (WHERE compression_status = 'Compressed') as compressed_chunks,
+        COUNT(*) FILTER (WHERE compression_status = 'Uncompressed') as uncompressed_chunks,
         AVG(
-            CASE WHEN after_compression_total_bytes > 0
+            CASE WHEN before_compression_total_bytes > 0
             THEN 1 - (after_compression_total_bytes::numeric / before_compression_total_bytes)
             END
         ) as compression_ratio
-    FROM chunk_compression_stats('metrics')
-    GROUP BY hypertable_name
-) c ON h.hypertable_name = c.hypertable_name
-LEFT JOIN (
-    SELECT
-        hypertable_name,
-        approximate_row_count(format('%I.%I', hypertable_schema, hypertable_name)::regclass) as approximate_row_count
-    FROM timescaledb_information.hypertables
-) r ON h.hypertable_name = r.hypertable_name;
+    FROM chunk_compression_stats(
+        format('%I.%I', ht.hypertable_schema, ht.hypertable_name)::regclass
+    )
+) c ON true
+WHERE ht.hypertable_name = 'metrics';
 
 -- Query the dashboard
 SELECT * FROM ingestion_dashboard;
@@ -693,13 +708,10 @@ JOIN pg_catalog.pg_stat_activity blocking_activity
     ON blocking_activity.pid = blocking_locks.pid
 WHERE NOT blocked_locks.granted;
 
--- Add space partitioning to reduce contention
--- Only works for new data after the dimension is added
-SELECT add_dimension(
-    'metrics',
-    'device_id',
-    number_partitions => 8  -- Increase partitions for more parallelism
-);
+-- Increase partitions on the existing space dimension to spread writes
+-- across more chunks. add_dimension cannot be called twice on the same
+-- column; use set_number_partitions instead. Only new chunks are affected.
+SELECT set_number_partitions('metrics', 8, 'device_id');
 ```
 
 ### WAL Accumulation Issues
@@ -719,7 +731,9 @@ FROM pg_stat_replication;
 -- 1. Increasing max_wal_size
 -- 2. Reducing checkpoint_timeout
 -- 3. Using asynchronous commit for non-critical data
-ALTER TABLE metrics SET (synchronous_commit = off);
+-- synchronous_commit is a session/transaction-level setting, not a table
+-- storage parameter, so apply it on the session that runs the bulk inserts
+SET synchronous_commit = off;
 ```
 
 ## Summary
