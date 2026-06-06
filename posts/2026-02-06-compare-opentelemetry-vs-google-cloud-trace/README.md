@@ -71,6 +71,10 @@ func main() {
     // Your application logic here
     processRequest(ctx)
 }
+
+func processRequest(ctx context.Context) {
+    // Application logic goes here.
+}
 ```
 
 For Python applications:
@@ -100,6 +104,10 @@ def handle_request(request):
         span.set_attribute("http.method", request.method)
         span.set_attribute("http.url", request.url)
         return process(request)
+
+def process(request):
+    # Application logic goes here.
+    return {"ok": True}
 ```
 
 Notice that both examples use standard OpenTelemetry APIs. The only GCP-specific part is the exporter.
@@ -125,7 +133,7 @@ processors:
     send_batch_size: 200
 
   # Resource detection adds GCP-specific attributes automatically
-  resourcedetection:
+  resource_detection:
     detectors:
       - gcp
     timeout: 5s
@@ -145,11 +153,11 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [resourcedetection, batch]
+      processors: [resource_detection, batch]
       exporters: [googlecloud]
 ```
 
-The `resourcedetection` processor automatically adds GCP metadata like project ID, zone, and instance ID to your spans.
+The `resource_detection` processor automatically adds GCP metadata like project ID, zone, and instance ID to your spans.
 
 ## Cloud Trace Native Features
 
@@ -174,21 +182,26 @@ graph TD
 # Log entries automatically link to their associated traces
 import logging
 from opentelemetry import trace
+from opentelemetry.trace import format_span_id, format_trace_id
 
 logger = logging.getLogger(__name__)
+PROJECT_ID = "my-gcp-project"
 
 def process_order(order_id):
     tracer = trace.get_tracer("order-service")
     with tracer.start_as_current_span("process-order") as span:
-        # Cloud Logging agent automatically picks up trace context
-        # from the current span when structured logging is used
+        span_context = span.get_span_context()
+
+        # Cloud Logging uses these structured fields to correlate logs with traces.
         logger.info(
             "Processing order",
             extra={
                 "order_id": order_id,
                 # These fields enable log-trace correlation
-                "logging.googleapis.com/trace": span.get_span_context().trace_id,
-                "logging.googleapis.com/spanId": span.get_span_context().span_id,
+                "logging.googleapis.com/trace": (
+                    f"projects/{PROJECT_ID}/traces/{format_trace_id(span_context.trace_id)}"
+                ),
+                "logging.googleapis.com/spanId": format_span_id(span_context.span_id),
             }
         )
 ```
@@ -237,11 +250,11 @@ This sampling flexibility is a significant advantage of using the OpenTelemetry 
 
 ## GKE Integration
 
-On Google Kubernetes Engine, Cloud Trace integration is particularly smooth. GKE clusters can run the OTel Collector as a managed component:
+On Google Kubernetes Engine, Cloud Trace integration is particularly smooth. GKE clusters can run the Google-Built OpenTelemetry Collector:
 
 ```yaml
 # GKE workload with OTel auto-instrumentation
-# Uses the GKE OpenTelemetry add-on for managed collection
+# Uses the OpenTelemetry Operator for instrumentation and sends OTLP to a collector service
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -250,7 +263,7 @@ spec:
   template:
     metadata:
       annotations:
-        # Enable automatic instrumentation via GKE OTel operator
+        # Enable automatic instrumentation via the OpenTelemetry Operator
         instrumentation.opentelemetry.io/inject-python: "true"
     spec:
       containers:
@@ -259,7 +272,7 @@ spec:
           env:
             - name: OTEL_SERVICE_NAME
               value: "order-service"
-            # GKE collector endpoint is available in-cluster
+            # Send telemetry to the in-cluster collector service
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: "http://opentelemetry-collector.monitoring:4317"
 ```
