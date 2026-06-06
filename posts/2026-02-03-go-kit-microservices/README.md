@@ -533,8 +533,10 @@ package userservice
 import (
     "context"
     "encoding/json"
+    "fmt"
     "net/http"
 
+    "github.com/go-kit/kit/log"
     "github.com/go-kit/kit/transport"
     httptransport "github.com/go-kit/kit/transport/http"
     "github.com/gorilla/mux"
@@ -758,8 +760,6 @@ import (
     "context"
 
     "github.com/go-kit/kit/transport/grpc"
-    "google.golang.org/grpc/codes"
-    "google.golang.org/grpc/status"
 
     "github.com/yourorg/user-service/pb"
 )
@@ -1255,9 +1255,9 @@ package userservice
 import (
     "context"
     "errors"
+    "sync"
 
     "github.com/go-kit/kit/endpoint"
-    "github.com/go-kit/kit/ratelimit"
     "golang.org/x/time/rate"
 )
 
@@ -1287,6 +1287,7 @@ func RateLimitMiddleware(limit rate.Limit, burst int) endpoint.Middleware {
 // PerClientRateLimiter provides rate limiting per client.
 // This is useful when you want different limits for different clients.
 type PerClientRateLimiter struct {
+    mu       sync.Mutex
     limiters map[string]*rate.Limiter
     limit    rate.Limit
     burst    int
@@ -1303,6 +1304,9 @@ func NewPerClientRateLimiter(limit rate.Limit, burst int) *PerClientRateLimiter 
 
 // GetLimiter returns the rate limiter for a given client ID.
 func (p *PerClientRateLimiter) GetLimiter(clientID string) *rate.Limiter {
+    p.mu.Lock()
+    defer p.mu.Unlock()
+
     if limiter, exists := p.limiters[clientID]; exists {
         return limiter
     }
@@ -1338,6 +1342,8 @@ Proper error handling in Go-Kit distinguishes between transport errors and busin
 package userservice
 
 import (
+    "context"
+    "encoding/json"
     "net/http"
 )
 
@@ -1424,7 +1430,7 @@ For microservices to communicate, they need to find each other. Go-Kit supports 
 package userservice
 
 import (
-    "io"
+    "fmt"
     "time"
 
     "github.com/go-kit/kit/endpoint"
@@ -1515,7 +1521,6 @@ Here is the main entry point that wires everything together:
 package main
 
 import (
-    "context"
     "fmt"
     "net"
     "net/http"
@@ -1559,12 +1564,6 @@ func main() {
         Name:      "request_latency_seconds",
         Help:      "Request duration in seconds",
         Buckets:   []float64{0.001, 0.01, 0.1, 0.5, 1, 5},
-    }, fieldKeys)
-
-    requestErrors := prometheus.NewCounterFrom(stdprometheus.CounterOpts{
-        Namespace: "user_service",
-        Name:      "request_errors",
-        Help:      "Total number of request errors",
     }, fieldKeys)
 
     // Create the service
