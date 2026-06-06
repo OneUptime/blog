@@ -27,6 +27,7 @@ Temperature Sensors (in truck/container/warehouse)
 
 ```python
 from opentelemetry import trace, metrics
+from opentelemetry.trace import Status, StatusCode
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
@@ -187,7 +188,7 @@ def check_temperature_excursion(reading, shipment_config):
                 span.set_attribute("coldchain.min_allowed_c", min_temp)
                 span.set_attribute("coldchain.max_allowed_c", max_temp)
                 span.set_attribute("coldchain.product_type", product_type)
-                span.set_status(trace.StatusCode.ERROR, "Temperature excursion detected")
+                span.set_status(Status(StatusCode.ERROR, "Temperature excursion detected"))
         else:
             # Ongoing excursion, update peak deviation
             exc = active_excursions[key]
