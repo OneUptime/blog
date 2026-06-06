@@ -27,9 +27,9 @@ graph LR
     E --> F[OneUptime / Backend]
 ```
 
-## Approach: Using the Script Receiver
+## Approach: Using a Script and the Prometheus Receiver
 
-The most flexible way to collect systemd service status is the script receiver (also known as the scripted metric receiver or the exec receiver in some configurations). This approach runs a script at a defined interval, parses the output, and converts it into OpenTelemetry metrics.
+The most flexible way to collect systemd service status is to run a script that exposes Prometheus-style metrics, then scrape those metrics with the Prometheus receiver. This approach runs a script at a defined interval through a small HTTP wrapper, parses the output, and converts it into OpenTelemetry metrics.
 
 However, since the script-based approach requires a custom script, let us first look at how to write a small helper that queries systemd and outputs metrics in a format the Collector can consume. We will use a shell script that produces Prometheus-style metrics, then scrape those metrics with the Prometheus receiver.
 
@@ -65,12 +65,12 @@ for svc in $SERVICES; do
     echo "systemd_service_active{service=\"$svc\",state=\"$state\"} $value"
 done
 
-# Count total failed units
-failed_count=$(systemctl --state=failed --no-legend | wc -l)
-echo "systemd_failed_units_total $failed_count"
+# Count currently failed units
+failed_count=$(systemctl list-units --state=failed --no-legend --plain | wc -l)
+echo "systemd_failed_units $failed_count"
 
 # System boot time
-boot_ts=$(date -d "$(systemctl show --property=UserspaceTimestamp | cut -d= -f2)" +%s 2>/dev/null || echo 0)
+boot_ts=$(date -d "$(systemctl show --property=UserspaceTimestamp --value)" +%s 2>/dev/null || echo 0)
 echo "systemd_boot_timestamp_seconds $boot_ts"
 ```
 
@@ -92,7 +92,7 @@ systemd_service_active{service="postgresql",state="active"} 1
 systemd_service_active{service="redis",state="active"} 1
 systemd_service_active{service="docker",state="active"} 1
 systemd_service_active{service="grafana-server",state="inactive"} 0
-systemd_failed_units_total 0
+systemd_failed_units 0
 systemd_boot_timestamp_seconds 1707200400
 ```
 
@@ -141,9 +141,9 @@ processors:
     detectors: [system, env]
     timeout: 5s
 
-  # Tag with environment info
-  attributes/env:
-    actions:
+  # Tag resources with environment info
+  resource/env:
+    attributes:
       - key: deployment.environment
         value: "production"
         action: insert
@@ -168,7 +168,7 @@ service:
   pipelines:
     metrics:
       receivers: [prometheus/systemd, hostmetrics]
-      processors: [resourcedetection, attributes/env, batch]
+      processors: [resourcedetection, resource/env, batch]
       exporters: [otlphttp]
 ```
 
@@ -236,7 +236,7 @@ Once metrics are flowing into your backend, set up alerts for the conditions tha
 
 **Service down.** Alert when `systemd_service_active` drops to -1 (failed) or 0 (inactive) for any critical service. A service that should be running but is not is the most urgent condition.
 
-**Failed unit count increasing.** Alert when `systemd_failed_units_total` is greater than zero. This catches services you might not have explicitly listed in your monitoring script.
+**Failed unit count increasing.** Alert when `systemd_failed_units` is greater than zero. This catches services you might not have explicitly listed in your monitoring script.
 
 **Service flapping.** If a service rapidly alternates between active and failed states, it may be crash-looping. Track the rate of state changes and alert if a service transitions more than a few times in a short window.
 
