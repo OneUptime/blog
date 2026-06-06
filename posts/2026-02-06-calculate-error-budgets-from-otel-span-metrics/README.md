@@ -6,11 +6,11 @@ Tags: OpenTelemetry, Error Budget, SLO, Metric
 
 Description: Calculate error budgets from OpenTelemetry span metrics including error rate, success rate, and SLO burn rate tracking.
 
-Error budgets are at the core of SRE practice. They answer the question "how many errors can we tolerate before our users notice?" OpenTelemetry span metrics give you everything you need to calculate error budgets without any additional tooling. This post walks through computing error rates, success rates, and SLO burn rates directly from OpenTelemetry span data.
+Error budgets are at the core of SRE practice. They answer the question "how many errors can we tolerate before our users notice?" OpenTelemetry span data gives you everything you need to calculate error budgets once it is converted into metrics. This post walks through computing error rates, success rates, and SLO burn rates directly from OpenTelemetry span data.
 
 ## The Basics: Error Rate from Spans
 
-Every completed span in OpenTelemetry has a status code: `UNSET`, `OK`, or `ERROR`. By counting error spans versus total spans, you get your error rate. The OpenTelemetry SDK can generate these metrics automatically using the span metrics connector in the OpenTelemetry Collector, but you can also compute them in application code.
+Every completed span in OpenTelemetry has a status code: `UNSET`, `OK`, or `ERROR`. By counting error spans versus total spans, you get your span error rate. The OpenTelemetry Collector spanmetrics connector can generate request counts from spans and split them by the `status.code` dimension, but you can also compute request outcome metrics in application code.
 
 ```python
 # error_budget.py - Calculate error budgets from OpenTelemetry span metrics
@@ -175,7 +175,7 @@ print(f"Budget exhausted in: {calculator.time_until_budget_exhausted() / 3600:.1
 
 ## Querying Error Budgets with PromQL
 
-If you export OpenTelemetry metrics to Prometheus, you can compute error budgets using PromQL:
+If you export the custom OpenTelemetry metrics above to Prometheus, you can compute error budgets using PromQL:
 
 ```promql
 # Error rate over the last hour
@@ -192,12 +192,12 @@ sum(rate(http_server_request_total[1h]))
 /
 0.001
 
-# Error budget remaining (30-day window)
-1 - (
+# Error budget remaining percentage (30-day window)
+100 * clamp_min(1 - (
   sum(increase(http_server_request_errors_total[30d]))
   /
   (sum(increase(http_server_request_total[30d])) * 0.001)
-)
+), 0)
 ```
 
 ## Setting Up Multi-Window Burn Rate Alerts
@@ -209,26 +209,44 @@ Google's SRE book recommends multi-window burn rate alerts. Here is a practical 
 groups:
   - name: slo-burn-rate
     rules:
-      # Fast burn: high error rate over a short window
+      # Fast burn: sustained high error rate confirmed by a short window
       - alert: HighBurnRate_Fast
         expr: |
           (
-            sum(rate(http_server_request_errors_total{service="my-api"}[5m]))
-            / sum(rate(http_server_request_total{service="my-api"}[5m]))
-          ) / 0.001 > 14.4
+            (
+              sum(rate(http_server_request_errors_total{service_name="my-api"}[1h]))
+              / sum(rate(http_server_request_total{service_name="my-api"}[1h]))
+            ) / 0.001 > 14.4
+          )
+          and
+          (
+            (
+              sum(rate(http_server_request_errors_total{service_name="my-api"}[5m]))
+              / sum(rate(http_server_request_total{service_name="my-api"}[5m]))
+            ) / 0.001 > 14.4
+          )
         for: 2m
         labels:
           severity: critical
         annotations:
           summary: "Error budget burning 14.4x faster than allowed"
 
-      # Slow burn: sustained elevated error rate
+      # Slow burn: sustained elevated error rate confirmed by a short window
       - alert: HighBurnRate_Slow
         expr: |
           (
-            sum(rate(http_server_request_errors_total{service="my-api"}[6h]))
-            / sum(rate(http_server_request_total{service="my-api"}[6h]))
-          ) / 0.001 > 1
+            (
+              sum(rate(http_server_request_errors_total{service_name="my-api"}[6h]))
+              / sum(rate(http_server_request_total{service_name="my-api"}[6h]))
+            ) / 0.001 > 6
+          )
+          and
+          (
+            (
+              sum(rate(http_server_request_errors_total{service_name="my-api"}[30m]))
+              / sum(rate(http_server_request_total{service_name="my-api"}[30m]))
+            ) / 0.001 > 6
+          )
         for: 1h
         labels:
           severity: warning
