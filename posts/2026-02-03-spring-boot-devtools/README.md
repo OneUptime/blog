@@ -695,11 +695,7 @@ spring.freemarker.cache=false
 spring.groovy.template.cache=false
 spring.mustache.cache=false
 
-# Web caching disabled
-spring.resources.cache.period=0
-spring.resources.chain.cache=false
-
-# HTTP response caching disabled
+# Web resource caching disabled
 spring.web.resources.cache.period=0
 spring.web.resources.chain.cache=false
 
@@ -890,10 +886,6 @@ spring.devtools.remote.restart.enabled=true
 # Proxy configuration (if behind a proxy)
 spring.devtools.remote.proxy.host=
 spring.devtools.remote.proxy.port=
-
-# Debug settings
-spring.devtools.remote.debug.enabled=true
-spring.devtools.remote.debug.local-port=8000
 ```
 
 ### Running the Remote Client
@@ -1086,8 +1078,8 @@ Configure IntelliJ for optimal DevTools experience:
 
 Eclipse works well with DevTools out of the box. For additional configuration:
 
-**Window > Preferences > Java > Compiler**:
-- Enable "Build automatically"
+**Project menu**:
+- Enable "Build Automatically" (also available at Window > Preferences > General > Workspace)
 
 **Spring Tool Suite (STS)**:
 - Boot Dashboard provides DevTools status indicators
@@ -1101,7 +1093,7 @@ Eclipse works well with DevTools out of the box. For additional configuration:
 {
     "java.autobuild.enabled": true,
     "java.compile.nullAnalysis.mode": "automatic",
-    "spring-boot.ls.javahome": "/path/to/jdk21",
+    "spring-boot.ls.java.home": "/path/to/jdk21",
     "java.configuration.updateBuildConfiguration": "automatic"
 }
 ```
