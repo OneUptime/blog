@@ -15,9 +15,9 @@ The Kubernetes ecosystem has several metric sources:
 - **Kubelet Stats**: Resource usage per pod and container (CPU, memory, network, disk)
 - **Cluster Receiver**: Cluster state metrics (node count, pod phases, replica status)
 - **Node Exporter**: Host-level metrics (hardware, OS metrics)
-- **kube-state-metrics**: Original cluster metrics solution (now largely replaced by this receiver)
+- **kube-state-metrics**: Original cluster metrics solution; the Cluster Receiver provides a Collector-native alternative
 
-The Cluster Receiver collects metrics from the Kubernetes API server about cluster objects, not from individual nodes. It watches resources like Nodes, Pods, Deployments, ReplicaSets, StatefulSets, DaemonSets, Jobs, CronJobs, and more, converting their state into Prometheus-compatible metrics.
+The Cluster Receiver collects metrics from the Kubernetes API server about cluster objects, not from individual nodes. It watches resources like Nodes, Pods, Deployments, ReplicaSets, StatefulSets, DaemonSets, Jobs, CronJobs, and more, converting their state into OpenTelemetry metrics.
 
 ## Architecture Overview
 
@@ -63,15 +63,15 @@ processors:
     timeout: 10s
 
 exporters:
-  logging:
-    loglevel: debug
+  debug:
+    verbosity: detailed
 
 service:
   pipelines:
     metrics:
       receivers: [k8s_cluster]
       processors: [batch]
-      exporters: [logging]
+      exporters: [debug]
 ```
 
 This configuration collects cluster metrics every 30 seconds using the pod's service account for authentication.
@@ -116,7 +116,7 @@ receivers:
     collection_interval: 30s
 ```
 
-The collection interval affects API server load. Each collection queries multiple resource types, so shorter intervals increase API calls. For most production clusters, 30-60 seconds provides good balance.
+The collection interval controls how often watched state is emitted as metrics. The receiver still watches multiple resource types through the Kubernetes API, so very large clusters should use reasonable metric and metadata collection intervals. For most production clusters, 30-60 seconds provides good balance.
 
 ## Node Metrics Configuration
 
@@ -160,8 +160,8 @@ receivers:
     auth_type: serviceAccount
     collection_interval: 30s
 
-    # Report detailed distribution metrics
-    distribution_interval: 60s
+    # Collect entity metadata periodically
+    metadata_collection_interval: 60s
 
     node_conditions_to_report:
       - Ready
@@ -173,7 +173,7 @@ receivers:
       - memory
 ```
 
-Distribution metrics provide percentile breakdowns of resource allocations across nodes, helping identify unbalanced clusters where some nodes are heavily loaded while others sit idle.
+Resource request and limit metrics help show how workloads are distributed across the cluster, helping identify unbalanced clusters where some nodes are heavily loaded while others sit idle.
 
 ## Metric Details
 
@@ -185,20 +185,18 @@ The receiver generates numerous metrics. Here are the most important:
 # Node-related metrics automatically collected
 # These help monitor cluster capacity and node health
 
-# k8s.node.condition
-# Value: 1 (condition true) or 0 (condition false)
+# k8s.node.condition_ready, k8s.node.condition_memory_pressure, etc.
+# Value: 1 (condition true), 0 (condition false), or -1 (condition unknown)
 # Labels: node, condition (Ready, MemoryPressure, etc.)
 # Indicates node health status
 
-# k8s.node.allocatable
+# k8s.node.allocatable_cpu
+# k8s.node.allocatable_memory
+# k8s.node.allocatable_ephemeral_storage
+# k8s.node.allocatable_pods
 # Value: Amount of allocatable resource
-# Labels: node, resource (cpu, memory, ephemeral-storage, pods)
+# Labels: node
 # Shows resources available for scheduling
-
-# k8s.node.capacity
-# Value: Total node capacity
-# Labels: node, resource
-# Shows total node resources before system reservations
 ```
 
 ### Pod Metrics
@@ -207,13 +205,14 @@ The receiver generates numerous metrics. Here are the most important:
 # Pod state metrics for tracking pod lifecycle
 
 # k8s.pod.phase
-# Value: 1 (pod in this phase) or 0 (not in this phase)
-# Labels: namespace, pod, phase (Pending, Running, Succeeded, Failed, Unknown)
+# Value: 1 (Pending), 2 (Running), 3 (Succeeded), 4 (Failed), or 5 (Unknown)
+# Labels: namespace, pod
 # Tracks pod lifecycle state
 
 # k8s.pod.status_reason
-# Value: 1 if pod has this status reason
-# Labels: namespace, pod, reason (Evicted, NodeLost, etc.)
+# Value: 1 (Evicted), 2 (NodeAffinity), 3 (NodeLost), 4 (Shutdown),
+# 5 (UnexpectedAdmissionError), or 6 (Unknown)
+# Labels: namespace, pod
 # Indicates why pod is in current state
 ```
 
@@ -232,10 +231,6 @@ The receiver generates numerous metrics. Here are the most important:
 # Labels: namespace, deployment
 # How many replicas are ready and available
 
-# k8s.deployment.unavailable
-# Value: Number of unavailable replicas
-# Labels: namespace, deployment
-# How many replicas are not ready
 ```
 
 ### ReplicaSet Metrics
@@ -253,10 +248,6 @@ The receiver generates numerous metrics. Here are the most important:
 # Labels: namespace, replicaset
 # Ready replicas
 
-# k8s.replicaset.ready
-# Value: Ready replica count
-# Labels: namespace, replicaset
-# Replicas passing readiness checks
 ```
 
 ### StatefulSet Metrics
@@ -362,22 +353,32 @@ metadata:
 rules:
   # Node metrics
   - apiGroups: [""]
-    resources: ["nodes", "nodes/stats"]
+    resources: ["nodes", "nodes/spec"]
     verbs: ["get", "list", "watch"]
 
   # Pod metrics
   - apiGroups: [""]
-    resources: ["pods"]
+    resources: ["pods", "pods/status"]
     verbs: ["get", "list", "watch"]
 
   # Namespace metrics
   - apiGroups: [""]
-    resources: ["namespaces"]
+    resources: ["namespaces", "namespaces/status"]
     verbs: ["get", "list", "watch"]
 
   # ReplicationController metrics
   - apiGroups: [""]
-    resources: ["replicationcontrollers"]
+    resources: ["replicationcontrollers", "replicationcontrollers/status"]
+    verbs: ["get", "list", "watch"]
+
+  # Event metrics and entity events
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["get", "list", "watch"]
+
+  # Service endpoint metrics
+  - apiGroups: ["discovery.k8s.io"]
+    resources: ["endpointslices"]
     verbs: ["get", "list", "watch"]
 
   # Service metrics
@@ -398,6 +399,11 @@ rules:
   # Deployment metrics
   - apiGroups: ["apps"]
     resources: ["deployments", "replicasets"]
+    verbs: ["get", "list", "watch"]
+
+  # Legacy extensions API metrics
+  - apiGroups: ["extensions"]
+    resources: ["daemonsets", "deployments", "replicasets"]
     verbs: ["get", "list", "watch"]
 
   # StatefulSet metrics
@@ -442,23 +448,25 @@ Resource Filtering
 Collect metrics for specific resources:
 
 ```yaml
-# Filter which resource types to monitor
-# Reduces API load and metric cardinality
+# Disable metric groups you do not need
+# Reduces metric volume and cardinality
 receivers:
   k8s_cluster:
     auth_type: serviceAccount
     collection_interval: 30s
 
-    # Only collect metrics for these resource types
-    resource_types:
-      - nodes
-      - pods
-      - deployments
-      - statefulsets
-      - daemonsets
+    metrics:
+      k8s.service.endpoint.count:
+        enabled: false
+      k8s.service.load_balancer.ingress.count:
+        enabled: false
+      k8s.container.cpu_limit:
+        enabled: false
+      k8s.container.memory_limit:
+        enabled: false
 ```
 
-If you only care about certain resource types, filtering reduces the number of API calls and the volume of metrics generated.
+If you only care about certain metric groups, disabling metrics reduces the volume generated.
 
 ## Namespace Filtering
 
@@ -471,27 +479,19 @@ receivers:
     auth_type: serviceAccount
     collection_interval: 30s
 
-    # Namespace filter (not directly supported in receiver)
-    # Use processor filtering instead
-
-processors:
-  filter:
-    metrics:
-      exclude:
-        match_type: regexp
-        resource_attributes:
-          - key: k8s.namespace.name
-            value: ^(kube-system|kube-public|kube-node-lease)$
+    # Only watch namespaced resources in these namespaces
+    namespaces:
+      - production
+      - payments
 
 service:
   pipelines:
     metrics:
       receivers: [k8s_cluster]
-      processors: [filter]
       exporters: [otlp]
 ```
 
-System namespaces often generate many metrics that aren't relevant for application monitoring. Filtering them reduces metric volume.
+Namespace filtering reduces metric volume. When `namespaces` is set, cluster-scoped resources such as Nodes, Namespaces, PersistentVolumes, and ClusterResourceQuotas are not observed.
 
 ## Metadata Enrichment
 
@@ -505,15 +505,11 @@ receivers:
     auth_type: serviceAccount
     collection_interval: 30s
 
-    # Add metadata as resource attributes
-    metadata_exporters:
-      - resource
-
 processors:
   resource:
     attributes:
       - key: k8s.cluster.name
-        value: ${CLUSTER_NAME}
+        value: ${env:CLUSTER_NAME}
         action: insert
 
       - key: cloud.provider
@@ -521,7 +517,7 @@ processors:
         action: insert
 
       - key: cloud.region
-        value: ${AWS_REGION}
+        value: ${env:AWS_REGION}
         action: insert
 
       - key: deployment.environment
@@ -565,7 +561,8 @@ receivers:
   kubeletstats:
     auth_type: serviceAccount
     collection_interval: 30s
-    endpoint: https://${K8S_NODE_IP}:10250
+    # Set K8S_NODE_NAME from spec.nodeName via the Kubernetes Downward API
+    endpoint: https://${env:K8S_NODE_NAME}:10250
     insecure_skip_verify: true
     metric_groups:
       - node
@@ -576,7 +573,7 @@ processors:
   resource:
     attributes:
       - key: k8s.cluster.name
-        value: ${CLUSTER_NAME}
+        value: ${env:CLUSTER_NAME}
         action: insert
 
   batch:
@@ -594,7 +591,7 @@ service:
       exporters: [otlp]
 ```
 
-Cluster metrics tell you about object states (pods pending, deployments scaled), while Kubelet Stats tells you about resource consumption (CPU usage, memory pressure).
+Cluster metrics tell you about object states (pods pending, deployments scaled), while Kubelet Stats tells you about resource consumption (CPU usage, memory pressure). Run Kubelet Stats on each node, typically as part of a DaemonSet.
 
 ## Complete Production Configuration
 
@@ -622,40 +619,37 @@ receivers:
       - ephemeral-storage
       - pods
 
-    # Enable distribution metrics for capacity planning
-    distribution_interval: 60s
+    # Collect entity metadata periodically
+    metadata_collection_interval: 60s
 
 processors:
   # Filter out system namespaces
   filter:
-    metrics:
-      exclude:
-        match_type: regexp
-        resource_attributes:
-          - key: k8s.namespace.name
-            value: ^(kube-system|kube-public|kube-node-lease)$
+    error_mode: ignore
+    metric_conditions:
+      - resource.attributes["k8s.namespace.name"] != nil and IsMatch(resource.attributes["k8s.namespace.name"], "^(kube-system|kube-public|kube-node-lease)$")
 
   # Add cluster identification
   resource:
     attributes:
       - key: k8s.cluster.name
-        value: ${CLUSTER_NAME}
+        value: ${env:CLUSTER_NAME}
         action: insert
 
       - key: k8s.cluster.uid
-        value: ${CLUSTER_UID}
+        value: ${env:CLUSTER_UID}
         action: insert
 
       - key: deployment.environment
-        value: ${ENVIRONMENT}
+        value: ${env:ENVIRONMENT}
         action: insert
 
       - key: cloud.provider
-        value: ${CLOUD_PROVIDER}
+        value: ${env:CLOUD_PROVIDER}
         action: insert
 
       - key: cloud.region
-        value: ${CLOUD_REGION}
+        value: ${env:CLOUD_REGION}
         action: insert
 
   # Batch for efficiency
@@ -670,7 +664,7 @@ processors:
 
 exporters:
   otlp:
-    endpoint: ${OTLP_ENDPOINT}
+    endpoint: ${env:OTLP_ENDPOINT}
     compression: gzip
     retry_on_failure:
       enabled: true
@@ -681,7 +675,7 @@ service:
   pipelines:
     metrics:
       receivers: [k8s_cluster]
-      processors: [filter, resource, memory_limiter, batch]
+      processors: [memory_limiter, filter, resource, batch]
       exporters: [otlp]
 
   # Collector self-monitoring
@@ -689,8 +683,7 @@ service:
     logs:
       level: info
     metrics:
-      level: detailed
-      address: localhost:8888
+      level: normal
 ```
 
 ## Deployment Configuration
@@ -718,7 +711,7 @@ spec:
       serviceAccountName: otel-collector-cluster
       containers:
       - name: otel-collector
-        image: otel/opentelemetry-collector-contrib:0.93.0
+        image: otel/opentelemetry-collector-contrib:0.153.0
         args:
           - --config=/etc/otelcol/config.yaml
         env:
@@ -760,15 +753,15 @@ Set up alerts on these critical metrics:
 # Critical metrics to monitor
 
 # Node health
-# k8s.node.condition{condition="Ready"} == 0
+# k8s.node.condition_ready == 0
 # Alert when nodes become NotReady
 
 # Memory pressure
-# k8s.node.condition{condition="MemoryPressure"} == 1
+# k8s.node.condition_memory_pressure == 1
 # Alert on memory pressure
 
 # Disk pressure
-# k8s.node.condition{condition="DiskPressure"} == 1
+# k8s.node.condition_disk_pressure == 1
 # Alert on disk pressure
 
 # Deployment availability
@@ -776,7 +769,7 @@ Set up alerts on these critical metrics:
 # Alert when deployments are under-replicated
 
 # Pod failures
-# k8s.pod.phase{phase="Failed"} > 0
+# k8s.pod.phase == 4
 # Alert on failed pods
 
 # StatefulSet readiness
@@ -803,8 +796,8 @@ Check these issues:
 
 If the receiver creates excessive API server load:
 
-1. Increase collection interval (60s or more)
-2. Limit resource types being monitored
+1. Increase collection interval and metadata collection interval
+2. Disable metrics you do not need
 3. Check for excessive metric cardinality
 4. Verify you're running only one replica
 
@@ -826,7 +819,7 @@ Add missing permissions to the ClusterRole.
 If the collector consumes too much memory:
 
 1. Add the `memory_limiter` processor
-2. Reduce collection interval
+2. Increase collection interval
 3. Filter out unnecessary namespaces
 4. Increase batch processor timeout
 
