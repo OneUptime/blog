@@ -34,15 +34,21 @@ openssl req -new -x509 -days 365 -key ca-key.pem -out ca-cert.pem \
 openssl genrsa -out server-key.pem 4096
 openssl req -new -key server-key.pem -out server.csr \
   -subj "/CN=otel-collector"
+printf "subjectAltName=DNS:otel-collector\nextendedKeyUsage=serverAuth\n" \
+  > server-ext.cnf
 openssl x509 -req -days 365 -in server.csr -CA ca-cert.pem \
-  -CAkey ca-key.pem -CAcreateserial -out server-cert.pem
+  -CAkey ca-key.pem -CAcreateserial -out server-cert.pem \
+  -extfile server-ext.cnf
 
 # Generate client certificate for applications
 openssl genrsa -out client-key.pem 4096
 openssl req -new -key client-key.pem -out client.csr \
   -subj "/CN=otel-client"
+printf "subjectAltName=DNS:otel-client\nextendedKeyUsage=clientAuth\n" \
+  > client-ext.cnf
 openssl x509 -req -days 365 -in client.csr -CA ca-cert.pem \
-  -CAkey ca-key.pem -CAcreateserial -out client-cert.pem
+  -CAkey ca-key.pem -CAcreateserial -out client-cert.pem \
+  -extfile client-ext.cnf
 ```
 
 For production environments, use certificates from a trusted Certificate Authority or your organization's PKI infrastructure.
@@ -71,8 +77,7 @@ receivers:
           # This enables client certificate validation
           client_ca_file: /etc/otel/certs/ca-cert.pem
 
-          # Require clients to present valid certificates
-          # Options: "require_and_verify_client_cert", "verify_client_cert_if_given", "no_client_cert"
+          # Reload the client CA file when it is modified
           client_ca_file_reload: true
 
       http:
@@ -90,19 +95,19 @@ processors:
     send_batch_size: 1024
 
 exporters:
-  logging:
-    loglevel: info
+  debug:
+    verbosity: normal
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [logging]
+      exporters: [debug]
     metrics:
       receivers: [otlp]
       processors: [batch]
-      exporters: [logging]
+      exporters: [debug]
 ```
 
 With this configuration, the collector will reject any connection attempts from clients that don't present a valid certificate signed by the specified CA.
@@ -131,7 +136,7 @@ exporters:
       # Client private key
       key_file: /etc/otel/certs/client-key.pem
 
-      # Server name for certificate validation (must match server cert CN or SAN)
+      # Server name for certificate validation (must match a server certificate SAN)
       server_name_override: backend.example.com
 
   otlphttp/secure-backend:
