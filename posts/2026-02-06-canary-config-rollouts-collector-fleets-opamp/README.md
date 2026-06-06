@@ -35,16 +35,16 @@ type FleetManager struct {
     groups map[string]*AgentGroup
 }
 
-// AssignAgentToGroup places an agent into a group based on its labels
+// AssignAgentToGroup places an agent into a group based on its attributes
 func (fm *FleetManager) AssignAgentToGroup(agent *Agent) {
     fm.mu.Lock()
     defer fm.mu.Unlock()
 
-    // Determine group from agent description labels
+    // Determine group from agent description attributes
     groupName := "default"
     if desc := agent.AgentDescription; desc != nil {
-        for _, attr := range desc.IdentifyingAttributes {
-            if attr.Key == "service.environment" {
+        for _, attr := range desc.NonIdentifyingAttributes {
+            if attr.Key == "deployment.environment.name" {
                 groupName = attr.Value.GetStringValue()
             }
         }
@@ -97,16 +97,31 @@ func DefaultRolloutPlan(config string, group string) *RolloutPlan {
 
 ## Executing the Rollout
 
+In a real OpAMP server, `pushConfigToAgent` should send `ServerToAgent.remote_config` as an `AgentRemoteConfig` containing an `AgentConfigMap` and `config_hash`.
+
 ```go
 func (fm *FleetManager) ExecuteRollout(plan *RolloutPlan) error {
-    group := fm.groups[plan.Group]
+    fm.mu.RLock()
+    group, exists := fm.groups[plan.Group]
+    fm.mu.RUnlock()
+    if !exists {
+        return fmt.Errorf("group %q not found", plan.Group)
+    }
+
     agents := fm.getAgentList(group)
+    if len(agents) == 0 {
+        return fmt.Errorf("group %q has no agents", plan.Group)
+    }
+
     previousConfig := group.Config
 
     for _, phase := range plan.Phases {
         targetCount := int(float64(len(agents)) * phase.Percentage)
         if targetCount < 1 {
             targetCount = 1
+        }
+        if targetCount > len(agents) {
+            targetCount = len(agents)
         }
 
         log.Printf("Rollout phase '%s': updating %d/%d agents",
