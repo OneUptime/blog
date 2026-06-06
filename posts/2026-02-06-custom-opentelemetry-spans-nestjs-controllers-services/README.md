@@ -33,13 +33,15 @@ First, install the OpenTelemetry API package:
 npm install @opentelemetry/api
 ```
 
-Create a tracer provider service that you can inject anywhere:
+This guide assumes you have already initialized the OpenTelemetry SDK for your NestJS application. The `@opentelemetry/api` package provides the API surface, but it uses no-op implementations until an SDK and tracer provider are registered.
+
+Create a tracer service that you can inject anywhere:
 
 ```typescript
 // src/tracing/tracer.service.ts
 
 import { Injectable } from '@nestjs/common';
-import { trace, Tracer, Span, SpanStatusCode, Context, context } from '@opentelemetry/api';
+import { trace, Tracer, Span, SpanStatusCode, context, AttributeValue } from '@opentelemetry/api';
 
 @Injectable()
 export class TracerService {
@@ -55,7 +57,7 @@ export class TracerService {
   }
 
   // Helper method to start a span with common setup
-  startSpan(name: string, attributes?: Record<string, any>): Span {
+  startSpan(name: string, attributes?: Record<string, AttributeValue>): Span {
     const span = this.tracer.startSpan(name);
 
     if (attributes) {
@@ -71,7 +73,7 @@ export class TracerService {
   async withSpan<T>(
     spanName: string,
     fn: (span: Span) => Promise<T>,
-    attributes?: Record<string, any>,
+    attributes?: Record<string, AttributeValue>,
   ): Promise<T> {
     const span = this.startSpan(spanName, attributes);
 
@@ -81,11 +83,12 @@ export class TracerService {
         span.setStatus({ code: SpanStatusCode.OK });
         return result;
       } catch (error) {
+        const exception = error instanceof Error ? error : new Error(String(error));
         span.setStatus({
           code: SpanStatusCode.ERROR,
-          message: error.message,
+          message: exception.message,
         });
-        span.recordException(error);
+        span.recordException(exception);
         throw error;
       } finally {
         span.end();
@@ -345,7 +348,7 @@ For computationally intensive or multi-step operations, add detailed spans:
 
 import { Injectable } from '@nestjs/common';
 import { TracerService } from '../tracing/tracer.service';
-import { SpanStatusCode, context, trace } from '@opentelemetry/api';
+import { context, trace } from '@opentelemetry/api';
 
 @Injectable()
 export class RecommendationsService {
@@ -514,11 +517,12 @@ export function Traced(spanName?: string) {
           span.setStatus({ code: SpanStatusCode.OK });
           return result;
         } catch (error) {
+          const exception = error instanceof Error ? error : new Error(String(error));
           span.setStatus({
             code: SpanStatusCode.ERROR,
-            message: error.message,
+            message: exception.message,
           });
-          span.recordException(error);
+          span.recordException(exception);
           throw error;
         } finally {
           span.end();
@@ -681,22 +685,23 @@ export class PaymentService {
 
           return result;
         } catch (error) {
+          const exception = error instanceof Error ? error : new Error(String(error));
           // Record the error in the span
-          span.recordException(error);
+          span.recordException(exception);
           span.setStatus({
             code: SpanStatusCode.ERROR,
-            message: error.message,
+            message: exception.message,
           });
 
           // Add error details as attributes
-          span.setAttribute('error.type', error.constructor.name);
-          span.setAttribute('error.message', error.message);
+          span.setAttribute('error.type', exception.constructor.name);
+          span.setAttribute('error.message', exception.message);
           span.setAttribute('payment.status', 'failed');
 
           // Log error event
           span.addEvent('Payment processing failed', {
-            errorType: error.constructor.name,
-            errorMessage: error.message,
+            errorType: exception.constructor.name,
+            errorMessage: exception.message,
           });
 
           throw error;
