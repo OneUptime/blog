@@ -159,10 +159,10 @@ Vault can generate short-lived database credentials on demand. This eliminates l
 # Configure Vault to generate dynamic PostgreSQL credentials
 # First, set up the database secrets engine in Vault
 
-# Request dynamic credentials from Vault
-data "vault_database_credentials" "app" {
-  backend = "database"
-  role    = "app-readonly"
+# Request dynamic credentials from Vault using the generic secret data source
+# The path follows the convention: <mount>/creds/<role-name>
+data "vault_generic_secret" "db_credentials" {
+  path = "database/creds/app-readonly"
 }
 
 # Use the dynamic credentials
@@ -174,8 +174,8 @@ resource "kubernetes_secret" "db_credentials" {
   }
 
   data = {
-    username = data.vault_database_credentials.app.username
-    password = data.vault_database_credentials.app.password
+    username = data.vault_generic_secret.db_credentials.data["username"]
+    password = data.vault_generic_secret.db_credentials.data["password"]
   }
 }
 ```
@@ -473,7 +473,7 @@ resource "google_secret_manager_secret_iam_member" "app_access" {
 
 ## Method 6: SOPS for Encrypted Files
 
-Mozilla SOPS encrypts files while keeping keys visible, making diffs and code review possible.
+SOPS (a CNCF Sandbox project, originally created by Mozilla) encrypts files while keeping keys visible, making diffs and code review possible.
 
 ### Setting Up SOPS with AWS KMS
 
