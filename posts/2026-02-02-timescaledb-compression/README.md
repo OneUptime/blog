@@ -152,11 +152,15 @@ WHERE proc_name = 'policy_compression';
 Monitor your compression policies to ensure they are running successfully.
 
 ```sql
--- Check compression policy details
+-- Check compression policy details (compress_after lives in the job's config)
 SELECT
     hypertable_name,
-    compress_after
-FROM timescaledb_information.compression_settings;
+    config->>'compress_after' AS compress_after
+FROM timescaledb_information.jobs
+WHERE proc_name = 'policy_compression';
+
+-- Inspect the segmentby/orderby configuration
+SELECT * FROM timescaledb_information.compression_settings;
 
 -- View recent compression job runs
 SELECT
@@ -196,11 +200,11 @@ Sometimes you need to compress or decompress specific chunks manually, such as d
 The following query identifies uncompressed chunks and compresses them.
 
 ```sql
--- Find all uncompressed chunks older than 7 days
-SELECT show_chunks('metrics', older_than => INTERVAL '7 days')
-EXCEPT
-SELECT chunk_name FROM timescaledb_information.chunks
-WHERE hypertable_name = 'metrics' AND is_compressed = true;
+-- Find all uncompressed chunks for the metrics hypertable
+SELECT format('%I.%I', chunk_schema, chunk_name) AS chunk
+FROM timescaledb_information.chunks
+WHERE hypertable_name = 'metrics'
+  AND is_compressed = false;
 
 -- Compress a specific chunk
 SELECT compress_chunk('_timescaledb_internal._hyper_1_10_chunk');
@@ -237,12 +241,11 @@ Tracking compression ratios and status helps you optimize settings and plan capa
 The following query provides detailed compression statistics for each hypertable.
 
 ```sql
--- Comprehensive compression statistics
+-- Comprehensive compression statistics for the metrics hypertable
 SELECT
-    hypertable_name,
     total_chunks,
-    compressed_chunks,
-    uncompressed_chunks,
+    number_compressed_chunks AS compressed_chunks,
+    (total_chunks - number_compressed_chunks) AS uncompressed_chunks,
     pg_size_pretty(before_compression_total_bytes) AS before_compression,
     pg_size_pretty(after_compression_total_bytes) AS after_compression,
     ROUND(
@@ -250,17 +253,7 @@ SELECT
              NULLIF(before_compression_total_bytes, 0)) * 100,
         2
     ) AS compression_ratio_pct
-FROM (
-    SELECT
-        hypertable_name,
-        COUNT(*) AS total_chunks,
-        COUNT(*) FILTER (WHERE is_compressed) AS compressed_chunks,
-        COUNT(*) FILTER (WHERE NOT is_compressed) AS uncompressed_chunks,
-        SUM(before_compression_total_bytes) AS before_compression_total_bytes,
-        SUM(after_compression_total_bytes) AS after_compression_total_bytes
-    FROM timescaledb_information.chunks
-    GROUP BY hypertable_name
-) stats;
+FROM hypertable_compression_stats('metrics');
 ```
 
 ### Per-Chunk Compression Details
@@ -269,22 +262,27 @@ Examine individual chunks to identify compression issues or outliers.
 
 ```sql
 -- Detailed chunk-level statistics
+-- chunk_compression_stats() returns per-chunk byte sizes;
+-- join with the chunks view to include the time range.
 SELECT
-    chunk_name,
-    is_compressed,
-    pg_size_pretty(before_compression_total_bytes) AS original_size,
-    pg_size_pretty(after_compression_total_bytes) AS compressed_size,
+    c.chunk_name,
+    c.is_compressed,
+    pg_size_pretty(s.before_compression_total_bytes) AS original_size,
+    pg_size_pretty(s.after_compression_total_bytes) AS compressed_size,
     CASE
-        WHEN before_compression_total_bytes > 0 THEN
-            ROUND((1 - after_compression_total_bytes::numeric /
-                   before_compression_total_bytes) * 100, 2)
+        WHEN s.before_compression_total_bytes > 0 THEN
+            ROUND((1 - s.after_compression_total_bytes::numeric /
+                   s.before_compression_total_bytes) * 100, 2)
         ELSE 0
     END AS savings_pct,
-    range_start,
-    range_end
-FROM timescaledb_information.chunks
-WHERE hypertable_name = 'metrics'
-ORDER BY range_start DESC
+    c.range_start,
+    c.range_end
+FROM timescaledb_information.chunks c
+LEFT JOIN chunk_compression_stats('metrics') s
+    ON c.chunk_schema = s.chunk_schema
+   AND c.chunk_name = s.chunk_name
+WHERE c.hypertable_name = 'metrics'
+ORDER BY c.range_start DESC
 LIMIT 20;
 ```
 
@@ -294,27 +292,28 @@ Create a monitoring view for ongoing observability.
 
 ```sql
 -- Create a view for compression monitoring
+-- hypertable_compression_stats() exposes per-hypertable byte totals.
 CREATE OR REPLACE VIEW compression_dashboard AS
 SELECT
     h.hypertable_name,
-    COUNT(c.chunk_name) AS total_chunks,
-    COUNT(c.chunk_name) FILTER (WHERE c.is_compressed) AS compressed,
-    COUNT(c.chunk_name) FILTER (WHERE NOT c.is_compressed) AS uncompressed,
-    pg_size_pretty(SUM(c.before_compression_total_bytes)) AS raw_size,
-    pg_size_pretty(SUM(c.after_compression_total_bytes)) AS compressed_size,
+    s.total_chunks,
+    s.number_compressed_chunks AS compressed,
+    (s.total_chunks - s.number_compressed_chunks) AS uncompressed,
+    pg_size_pretty(s.before_compression_total_bytes) AS raw_size,
+    pg_size_pretty(s.after_compression_total_bytes) AS compressed_size,
     pg_size_pretty(
-        SUM(c.before_compression_total_bytes) -
-        COALESCE(SUM(c.after_compression_total_bytes), 0)
+        s.before_compression_total_bytes -
+        COALESCE(s.after_compression_total_bytes, 0)
     ) AS space_saved,
     ROUND(
-        100.0 * SUM(c.after_compression_total_bytes) /
-        NULLIF(SUM(c.before_compression_total_bytes), 0),
+        100.0 * s.after_compression_total_bytes /
+        NULLIF(s.before_compression_total_bytes, 0),
         1
     ) AS compression_pct
-FROM timescaledb_information.hypertables h
-LEFT JOIN timescaledb_information.chunks c
-    ON h.hypertable_name = c.hypertable_name
-GROUP BY h.hypertable_name;
+FROM timescaledb_information.hypertables h,
+     LATERAL hypertable_compression_stats(
+         format('%I.%I', h.hypertable_schema, h.hypertable_name)::regclass
+     ) s;
 
 -- Query the dashboard
 SELECT * FROM compression_dashboard;
@@ -567,9 +566,8 @@ SELECT
         NULLIF(before_compression_total_bytes, 0),
         1
     ) AS ratio_pct
-FROM timescaledb_information.chunks
-WHERE hypertable_name = 'metrics'
-  AND is_compressed = true
+FROM chunk_compression_stats('metrics')
+WHERE compression_status = 'Compressed'
   AND after_compression_total_bytes::numeric /
       NULLIF(before_compression_total_bytes, 0) > 0.5
 ORDER BY ratio_pct DESC;
