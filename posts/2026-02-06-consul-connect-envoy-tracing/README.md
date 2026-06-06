@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Consul Connect, Envoy, Distributed Tracing, Service Mesh
 
 Description: Configure Consul Connect Envoy sidecar proxies to export OpenTelemetry distributed traces for full service mesh observability.
 
-Consul Connect uses Envoy as its sidecar proxy, and Envoy has built-in support for distributed tracing. By configuring Envoy to export traces via OpenTelemetry, you get visibility into every service-to-service call flowing through the mesh without modifying your application code.
+Consul Connect uses Envoy as its sidecar proxy, and Envoy has built-in support for distributed tracing. Envoy's OpenTelemetry tracer is currently marked work-in-progress by the Envoy project and is not intended for production use, so treat this setup as an experimental option; for production Consul tracing, HashiCorp's current documentation still recommends supported Envoy tracers such as Zipkin. When configured, Envoy can export proxy spans so you get visibility into service-to-service calls flowing through the mesh.
 
 ## How It Works
 
@@ -17,7 +17,7 @@ When a request flows through Consul Connect:
 3. The destination's Envoy sidecar creates a span for the inbound request
 4. Both sidecars export their spans to the OpenTelemetry Collector
 
-This gives you end-to-end traces showing the full path of requests through your service mesh.
+This gives you mesh-level traces showing the proxy hops in your service mesh. For true end-to-end traces that include application work, the applications still need to propagate trace context and create their own spans.
 
 ## Configuring Consul for Tracing
 
@@ -29,12 +29,15 @@ Add tracing configuration to your Consul proxy defaults:
 Kind = "proxy-defaults"
 Name = "global"
 Config {
+  # Tracing is only generated for HTTP, HTTP/2, and gRPC service traffic
+  protocol = "http"
+
   # Tell Envoy to use the OpenTelemetry tracer
   envoy_tracing_json = <<EOF
 {
   "http": {
     "name": "envoy.tracers.opentelemetry",
-    "typed_config": {
+    "typedConfig": {
       "@type": "type.googleapis.com/envoy.config.trace.v3.OpenTelemetryConfig",
       "grpc_service": {
         "envoy_grpc": {
@@ -53,6 +56,7 @@ EOF
 {
   "name": "otel_collector",
   "type": "STRICT_DNS",
+  "connect_timeout": "3s",
   "lb_policy": "ROUND_ROBIN",
   "typed_extension_protocol_options": {
     "envoy.extensions.upstreams.http.v3.HttpProtocolOptions": {
@@ -92,6 +96,8 @@ Apply the configuration:
 consul config write consul-proxy-defaults.hcl
 ```
 
+Because this changes Envoy bootstrap and listener configuration, restart the affected sidecar proxies after writing the Consul config.
+
 ## Per-Service Tracing Configuration
 
 Override tracing settings for specific services:
@@ -106,7 +112,7 @@ Config {
 {
   "http": {
     "name": "envoy.tracers.opentelemetry",
-    "typed_config": {
+    "typedConfig": {
       "@type": "type.googleapis.com/envoy.config.trace.v3.OpenTelemetryConfig",
       "grpc_service": {
         "envoy_grpc": {
@@ -191,16 +197,25 @@ Envoy sidecars will resolve `otel-collector.observability.svc.cluster.local` and
 
 ## Controlling Trace Sampling at the Mesh Level
 
-Envoy supports trace sampling configuration. Set the sampling rate in the proxy defaults:
+Envoy supports trace sampling configuration. In Consul, use `envoy_listener_tracing_json` to set HTTP connection manager tracing options such as `random_sampling` and `overall_sampling`:
 
 ```hcl
 Kind = "proxy-defaults"
 Name = "global"
 Config {
-  # Sample 10% of traces
-  envoy_tracing_json = <<EOF
+  # Sample up to 10% of traces on HTTP listeners
+  envoy_listener_tracing_json = <<EOF
 {
-  "http": {
+  "@type": "type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager.Tracing",
+  "random_sampling": {
+    "numerator": 10,
+    "denominator": "HUNDRED"
+  },
+  "overall_sampling": {
+    "numerator": 10,
+    "denominator": "HUNDRED"
+  },
+  "provider": {
     "name": "envoy.tracers.opentelemetry",
     "typed_config": {
       "@type": "type.googleapis.com/envoy.config.trace.v3.OpenTelemetryConfig",
@@ -214,9 +229,6 @@ Config {
   }
 }
 EOF
-
-  # Set the overall sampling rate
-  envoy_extra_static_listeners_json = ""
 }
 ```
 
@@ -230,7 +242,7 @@ processors:
 
 ## Trace Context Propagation
 
-Envoy automatically propagates trace context headers (W3C Trace Context by default). Make sure your applications also propagate these headers for end-to-end traces that span both mesh-level and application-level instrumentation:
+Envoy propagates the tracing headers used by the configured tracer. For the OpenTelemetry tracer, make sure your applications propagate W3C Trace Context headers for end-to-end traces that span both mesh-level and application-level instrumentation:
 
 ```text
 Client App -> Client Envoy Sidecar -> Server Envoy Sidecar -> Server App
@@ -245,7 +257,7 @@ Check that Envoy is configured correctly:
 
 ```bash
 # Check Envoy admin interface for the tracing config
-curl http://localhost:19000/config_dump | jq '.configs[] | select(.tracing)'
+curl http://localhost:19000/config_dump | jq '.. | objects | select(has("tracing")) | .tracing'
 
 # Verify the OTel Collector cluster is connected
 curl http://localhost:19000/clusters | grep otel_collector
