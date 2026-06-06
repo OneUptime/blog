@@ -53,18 +53,24 @@ When a collector pod crashes and restarts, anything in its in-memory queues is g
 
 # Persistent queue configuration for crash recovery
 extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
   # The file storage extension provides persistent storage
   # for the sending queue
   file_storage/queue:
-    directory: /var/lib/otel/queue
-    # Limit the total size on disk to prevent filling the volume
-    max_file_size_mib: 4096
+    directory: /var/lib/otel/file_storage
     # Timeout for individual file operations
     timeout: 10s
     # Use fsync to ensure data is written to disk, not just
     # the OS buffer cache. This is slower but guarantees
     # durability across crashes
     fsync: true
+    # Reclaim disk space after a backlog has drained
+    compaction:
+      on_start: true
+      on_rebound: true
+      directory: /var/lib/otel/file_storage_compaction
 
 receivers:
   otlp:
@@ -98,7 +104,7 @@ exporters:
       storage: file_storage/queue
 
 service:
-  extensions: [file_storage/queue]
+  extensions: [health_check, file_storage/queue]
   pipelines:
     traces:
       receivers: [otlp]
@@ -137,6 +143,16 @@ spec:
         app: otel-collector
     spec:
       terminationGracePeriodSeconds: 120
+      initContainers:
+        - name: init-queue-dirs
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - mkdir -p /var/lib/otel/file_storage /var/lib/otel/file_storage_compaction
+          volumeMounts:
+            - name: queue-data
+              mountPath: /var/lib/otel
       containers:
         - name: collector
           image: otel/opentelemetry-collector-contrib:0.96.0
@@ -171,7 +187,7 @@ spec:
             - name: config
               mountPath: /etc/otel
             - name: queue-data
-              mountPath: /var/lib/otel/queue
+              mountPath: /var/lib/otel
       volumes:
         - name: config
           configMap:
@@ -192,7 +208,7 @@ spec:
 
 When a node dies, the agent collector on that node dies with it. Applications on that node cannot send telemetry. For the applications that survive (because Kubernetes reschedules them to other nodes), they need to find their new local agent.
 
-The standard approach uses a DaemonSet with hostPort, so applications always connect to `localhost:4317`:
+The standard approach uses a DaemonSet with `hostPort`, so applications connect to the node IP on port `4317`. In Kubernetes, `localhost` inside an application pod is the application pod itself, not the DaemonSet pod, so pass the node IP with the downward API:
 
 ```yaml
 # agent-daemonset.yaml
@@ -226,7 +242,7 @@ spec:
           args: ["--config=/etc/otel/config.yaml"]
           ports:
             # hostPort makes the agent accessible at the node's
-            # IP address, so pods connect to localhost:4317
+            # IP address, so pods connect to their node IP on 4317
             - containerPort: 4317
               hostPort: 4317
               name: otlp-grpc
@@ -242,7 +258,19 @@ spec:
               memory: 384Mi
 ```
 
-When a node goes down and pods get rescheduled to a new node, the DaemonSet guarantees there is already an agent on that new node. The application pods just connect to `localhost:4317` on whatever node they land on.
+Configure application pods to read their node IP and use it as the OTLP endpoint:
+
+```yaml
+env:
+  - name: NODE_IP
+    valueFrom:
+      fieldRef:
+        fieldPath: status.hostIP
+  - name: OTEL_EXPORTER_OTLP_ENDPOINT
+    value: "http://$(NODE_IP):4317"
+```
+
+When a node goes down and pods get rescheduled to a new node, the DaemonSet guarantees there is already an agent on that new node. The application pods connect to the node IP on whatever node they land on.
 
 ## Multi-Backend Failover
 
@@ -304,6 +332,7 @@ exporters:
 
 extensions:
   file_storage:
+    # Ensure this directory exists before the collector starts
     directory: /var/lib/otel/queue
 
 service:
@@ -319,21 +348,18 @@ service:
 
 Wait, the above sends to all three destinations simultaneously, which is wasteful. If you want true failover (primary first, then secondary only if primary fails), you need to use the failover connector or a routing strategy.
 
-Here is how to set up proper failover ordering with the `failover` connector:
+Here is how to set up proper failover ordering with the alpha `failover` connector in current Collector Contrib releases:
 
 ```yaml
-# Using the experimental failover connector for ordered failover
+# Using the alpha failover connector for ordered failover
 connectors:
   failover/traces:
-    # Try exporters in order. If the first fails, try the second.
-    # Only move to the next tier after retry_gap expires.
+    # Try pipelines in order. If the first fails, try the second.
     priority_levels:
-      - [otlp/primary]
-      - [otlp/secondary]
-      - [file/emergency]
-    retry_gap: 30s
+      - [traces/primary]
+      - [traces/secondary]
+      - [traces/emergency]
     retry_interval: 15s
-    max_retries: 5
 
 service:
   pipelines:
@@ -466,21 +492,22 @@ Set up comprehensive health monitoring so failover decisions are based on real d
 extensions:
   health_check:
     endpoint: 0.0.0.0:13133
-    # Include detailed component health information
     path: /health
-    # Check interval for internal health evaluation
-    check_collector_pipeline:
-      enabled: true
-      interval: 30s
-      exporter_failure_threshold: 5
 
 service:
   extensions: [health_check]
   telemetry:
     metrics:
       # Expose internal metrics for monitoring
-      address: 0.0.0.0:8888
       level: detailed
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+                without_type_suffix: true
+                without_units: true
 ```
 
 Use these Prometheus alerts to detect when failover is needed:
@@ -538,24 +565,24 @@ kubectl logs -f otel-collector-0 -n observability | grep -i "queue"
 
 # Test 2: Simulate backend failure by blocking network
 echo "Test 2: Backend failure"
-kubectl exec -n observability otel-collector-0 -- \
-  iptables -A OUTPUT -d backend.observability.svc -j DROP
+kubectl scale deployment/backend -n observability --replicas=0
 # Wait and check that the queue is growing
 sleep 60
-kubectl exec -n observability otel-collector-0 -- \
-  curl -s localhost:8888/metrics | grep queue_size
+kubectl port-forward -n observability pod/otel-collector-0 8888:8888 &
+PF_PID=$!
+sleep 2
+curl -s localhost:8888/metrics | grep otelcol_exporter_queue_size
 # Restore network and verify queue drains
-kubectl exec -n observability otel-collector-0 -- \
-  iptables -D OUTPUT -d backend.observability.svc -j DROP
+kubectl scale deployment/backend -n observability --replicas=1
+kill "$PF_PID"
 
 # Test 3: Verify persistent queue survives restart
 echo "Test 3: Queue persistence"
-kubectl exec -n observability otel-collector-0 -- \
-  ls -la /var/lib/otel/queue/
+kubectl logs otel-collector-0 -n observability | grep -i "file_storage"
 kubectl delete pod otel-collector-0 -n observability
-# After restart, check that queue files are still there
-kubectl exec -n observability otel-collector-0 -- \
-  ls -la /var/lib/otel/queue/
+# After restart, check that file_storage opened the existing queue
+kubectl wait --for=condition=Ready pod/otel-collector-0 -n observability --timeout=120s
+kubectl logs otel-collector-0 -n observability | grep -i "file_storage"
 ```
 
 ## Wrapping Up
