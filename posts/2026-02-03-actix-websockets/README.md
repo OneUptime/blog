@@ -49,6 +49,8 @@ serde_json = "1"
 uuid = { version = "1", features = ["v4"] }
 log = "0.4"
 env_logger = "0.10"
+# Required for the graceful shutdown example below (tokio::signal::ctrl_c)
+tokio = { version = "1", features = ["signal"] }
 ```
 
 ---
@@ -206,6 +208,7 @@ Real applications need structured messages. Define message types and process the
 // src/messages.rs
 // Custom message types for the WebSocket protocol
 
+use actix::prelude::*;
 use serde::{Deserialize, Serialize};
 
 /// Incoming messages from clients
@@ -223,7 +226,10 @@ pub enum ClientMessage {
 }
 
 /// Outgoing messages to clients
-#[derive(Debug, Serialize, Clone)]
+// The `Message` derive (with `rtype`) is required so this enum can be sent
+// through `Addr` / `Recipient<ServerMessage>` to the WebSocket session actor.
+#[derive(Debug, Serialize, Clone, Message)]
+#[rtype(result = "()")]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ServerMessage {
     // Confirmation of successful action
@@ -470,23 +476,29 @@ impl Handler<LeaveRoom> for ChatServer {
     fn handle(&mut self, msg: LeaveRoom, _ctx: &mut Context<Self>) {
         log::info!("Client {} leaving room {}", msg.id, msg.room);
 
-        if let Some(members) = self.rooms.get_mut(&msg.room) {
-            members.remove(&msg.id);
-
-            // Notify remaining members
-            self.broadcast_to_room(
-                &msg.room,
-                ServerMessage::UserLeft {
-                    room: msg.room.clone(),
-                    user: msg.id,
-                },
-                None,
-            );
-
-            // Remove empty room
-            if members.is_empty() {
-                self.rooms.remove(&msg.room);
+        // Update room membership in a scoped borrow so the &mut on
+        // self.rooms is released before we call &self methods below.
+        let should_remove = match self.rooms.get_mut(&msg.room) {
+            Some(members) => {
+                members.remove(&msg.id);
+                members.is_empty()
             }
+            None => return,
+        };
+
+        // Notify remaining members
+        self.broadcast_to_room(
+            &msg.room,
+            ServerMessage::UserLeft {
+                room: msg.room.clone(),
+                user: msg.id,
+            },
+            None,
+        );
+
+        // Remove empty room
+        if should_remove {
+            self.rooms.remove(&msg.room);
         }
     }
 }
