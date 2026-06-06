@@ -18,7 +18,7 @@ This guide walks through building a composite sampling pipeline where the SDK pe
 
 Head sampling makes its decision at span creation time, before you know anything about how the request will end. You cannot check for errors, measure latency, or inspect downstream spans. It is fast and low-overhead, but it throws away interesting traces just as readily as boring ones.
 
-Tail sampling waits until the entire trace is assembled, then decides. This means you can keep every error, every slow request, and every trace with unusual attributes. The problem is that tail sampling requires buffering complete traces in memory on the Collector, which gets expensive when you have millions of spans per second.
+Tail sampling waits for spans in a trace to arrive before it decides. This means you can keep errors, slow requests, and traces with unusual attributes from the traces the Collector has seen. The problem is that tail sampling requires buffering trace data in memory on the Collector, which gets expensive when you have millions of spans per second.
 
 The composite approach solves this. Use head sampling to filter out a large percentage of traffic before it reaches the Collector, then use tail sampling on the remaining traces to ensure you keep what matters.
 
@@ -56,7 +56,7 @@ import {
   AlwaysOnSampler,
 } from '@opentelemetry/sdk-trace-base';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
-import { Resource } from '@opentelemetry/resources';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 
 // Head sampler: keep 25% of root spans
 // Child spans inherit the parent decision automatically
@@ -73,7 +73,7 @@ const headSampler = new ParentBasedSampler({
 });
 
 const sdk = new NodeSDK({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     'service.name': 'order-service',
     'service.version': '3.2.1',
   }),
@@ -139,7 +139,7 @@ processors:
             - /api/v1/payment
             - /api/v1/order
 
-      # Policy 4: Sample 20% of remaining traces as baseline
+      # Policy 4: Sample 20% of other traces as baseline
       - name: probabilistic-baseline
         type: probabilistic
         probabilistic:
@@ -165,7 +165,7 @@ service:
       exporters: [otlp]
 ```
 
-The tail sampling processor evaluates each complete trace against the policies in order. If any policy matches, the trace is kept. The `decision_wait` of 30 seconds gives enough time for late-arriving spans to be included before the decision is made.
+The tail sampling processor groups spans by trace ID and evaluates the accumulated trace against the configured policies. If any policy returns a sample decision, and no drop policy overrides it, the trace is kept. The `decision_wait` of 30 seconds gives time for late-arriving spans to be included before the decision is made.
 
 ---
 
@@ -193,15 +193,17 @@ To avoid dropping errors at the head, add a custom sampler that checks for known
 ```typescript
 // error-aware-sampler.ts
 import {
-  Sampler,
-  SamplingResult,
-  SamplingDecision,
   Context,
   SpanKind,
   Attributes,
   Link,
 } from '@opentelemetry/api';
-import { TraceIdRatioBasedSampler } from '@opentelemetry/sdk-trace-base';
+import {
+  Sampler,
+  SamplingResult,
+  SamplingDecision,
+  TraceIdRatioBasedSampler,
+} from '@opentelemetry/sdk-trace-base';
 
 class ErrorAwareHeadSampler implements Sampler {
   private ratioSampler: TraceIdRatioBasedSampler;
@@ -224,7 +226,7 @@ class ErrorAwareHeadSampler implements Sampler {
     const statusCode = attributes['http.status_code'];
     if (typeof statusCode === 'number' && statusCode >= 500) {
       return {
-        decision: SamplingDecision.RECORD_AND_SAMPLE,
+        decision: SamplingDecision.RECORD_AND_SAMPLED,
         attributes: { 'sampling.reason': 'error_head' },
       };
     }
@@ -241,7 +243,7 @@ class ErrorAwareHeadSampler implements Sampler {
 }
 ```
 
-This helps catch server errors that are visible at span creation time (like known 5xx routes), but it cannot catch errors that happen mid-request. That is exactly where tail sampling fills the gap.
+Use this kind of sampler as the root sampler inside `ParentBasedSampler` so child spans still follow the parent decision. It helps catch server errors that are visible at span creation time, but it cannot catch errors that happen mid-request. That is exactly where tail sampling fills the gap.
 
 ---
 
@@ -255,8 +257,15 @@ service:
   telemetry:
     metrics:
       # Expose Collector internal metrics
-      address: 0.0.0.0:8888
       level: detailed
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+                without_type_suffix: true
+                without_units: true
 
   pipelines:
     traces:
@@ -268,7 +277,7 @@ service:
 Key metrics to watch:
 
 - `otelcol_processor_tail_sampling_count_traces_sampled`: how many traces the tail sampler kept
-- `otelcol_processor_tail_sampling_count_traces_dropped`: how many traces the tail sampler dropped
+- `otelcol_processor_tail_sampling_count_traces_sampled{sampled="false"}`: how many traces the tail sampler did not keep, grouped by policy
 - `otelcol_processor_tail_sampling_sampling_trace_dropped_too_early`: traces that were evicted before all spans arrived (increase `decision_wait` or `num_traces` if this happens)
 - `otelcol_receiver_accepted_spans`: total spans arriving at the Collector (this reflects the head sampling rate)
 
