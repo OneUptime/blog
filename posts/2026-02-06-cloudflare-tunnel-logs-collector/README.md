@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Cloudflare Tunnel, Access Logs, Observability
 
 Description: Route Cloudflare Tunnel (cloudflared) access logs to the OpenTelemetry Collector for centralized log collection and observability.
 
-Cloudflare Tunnel (cloudflared) creates secure connections between your origin servers and the Cloudflare network. The tunnel daemon generates access logs for every request it proxies. By routing these logs to the OpenTelemetry Collector, you get centralized visibility into tunnel traffic alongside your application telemetry.
+Cloudflare Tunnel (cloudflared) creates secure connections between your origin servers and the Cloudflare network. The tunnel daemon records activity between `cloudflared`, the Cloudflare network, and your origin server. At `debug` log level, it can include request details such as the request URL and method. By routing these logs to the OpenTelemetry Collector, you get centralized visibility into tunnel traffic alongside your application telemetry.
 
 ## How cloudflared Logging Works
 
@@ -40,8 +40,8 @@ ingress:
 cloudflared logs look like this:
 
 ```text
-2026-02-06T10:30:00Z INF Request connection connIndex=0 ip=198.41.200.10 location=DFW
-2026-02-06T10:30:01Z INF  GET  https://app.example.com/api/users 200 origin=http://localhost:8080 originTime=45ms
+2026-02-06T10:30:00Z INF Registered tunnel connection connIndex=0 connection=2dafc029-273d-4b94-905b-da28be28c49d event=0 ip=198.41.200.10 location=DFW protocol=quic
+2026-02-06T10:30:01Z DBG GET http://localhost:8080/api/users HTTP/2.0 connIndex=0 content-length=-1 event=1
 2026-02-06T10:30:02Z ERR  error proxying request to origin error="connection refused" connIndex=0
 ```
 
@@ -56,7 +56,8 @@ receivers:
     start_at: end
     operators:
       # Parse the timestamp and log level
-      - type: regex_parser
+      - id: parse_header
+        type: regex_parser
         regex: '^(?P<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)\s+(?P<level>\w+)\s+(?P<message>.*)'
         timestamp:
           parse_from: attributes.timestamp
@@ -76,10 +77,11 @@ receivers:
         to: body
 
       # Extract HTTP request details from request logs
-      - type: regex_parser
-        regex: '(?P<method>GET|POST|PUT|DELETE|PATCH)\s+(?P<url>https?://\S+)\s+(?P<status>\d+)\s+origin=(?P<origin>\S+)\s+originTime=(?P<origin_time>\S+)'
+      - id: parse_request
+        type: regex_parser
+        regex: '^(?P<method>GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\s+(?P<url>https?://\S+)\s+(?P<protocol>HTTP/\S+)\s+connIndex=(?P<conn_index>\d+)\s+content-length=(?P<content_length>-?\d+)\s+event=(?P<event>\d+)'
         parse_from: body
-        if: 'body matches "GET|POST|PUT|DELETE|PATCH"'
+        if: 'body matches "^(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\\s"'
 
       # Add a source label
       - type: add
@@ -124,7 +126,7 @@ version: "3.8"
 services:
   cloudflared:
     image: cloudflare/cloudflared:latest
-    command: tunnel --config /etc/cloudflared/config.yml run
+    command: tunnel --config /etc/cloudflared/config.yml --metrics 0.0.0.0:2000 run
     volumes:
       - ./cloudflared-config.yml:/etc/cloudflared/config.yml
       - ./credentials.json:/etc/cloudflared/credentials.json
@@ -162,13 +164,15 @@ operators:
   # ... existing operators ...
 
   # Extract connection events
-  - type: regex_parser
-    regex: 'Request connection connIndex=(?P<conn_index>\d+) ip=(?P<edge_ip>\S+) location=(?P<edge_location>\w+)'
+  - id: parse_registered_connection
+    type: regex_parser
+    regex: 'Registered tunnel connection connIndex=(?P<conn_index>\d+) connection=(?P<connection_id>\S+) event=(?P<event>\d+) ip=(?P<edge_ip>\S+) location=(?P<edge_location>\w+) protocol=(?P<protocol>\S+)'
     parse_from: body
-    if: 'body contains "Request connection"'
+    if: 'body contains "Registered tunnel connection"'
 
   # Extract disconnection events
-  - type: regex_parser
+  - id: parse_unregistered_connection
+    type: regex_parser
     regex: 'Unregistered tunnel connection connIndex=(?P<conn_index>\d+)'
     parse_from: body
     if: 'body contains "Unregistered tunnel"'
@@ -182,8 +186,10 @@ cloudflared exposes Prometheus metrics that you can scrape:
 
 ```bash
 # Enable metrics endpoint
-cloudflared tunnel --metrics localhost:2000 run my-tunnel
+cloudflared tunnel --metrics 0.0.0.0:2000 run my-tunnel
 ```
+
+In the Docker Compose setup above, scrape the `cloudflared` service name:
 
 ```yaml
 receivers:
@@ -193,12 +199,12 @@ receivers:
         - job_name: cloudflared
           scrape_interval: 15s
           static_configs:
-            - targets: ["localhost:2000"]
+            - targets: ["cloudflared:2000"]
 ```
 
 Key metrics include:
-- `cloudflared_tunnel_request_per_second`: Request throughput
-- `cloudflared_tunnel_response_by_code`: Response codes from origin
+- `cloudflared_tunnel_total_requests`: Total requests proxied through all tunnels
+- `cloudflared_tunnel_concurrent_requests_per_tunnel`: Concurrent requests proxied through each tunnel
 - `cloudflared_tunnel_request_errors`: Proxy errors
 - `cloudflared_tunnel_server_locations`: Connected edge locations
 
@@ -219,7 +225,7 @@ Set up alerts for common tunnel problems:
 
 # Alert on high error rate (from metrics)
 - alert: HighErrorRate
-  condition: rate(cloudflared_tunnel_request_errors) > 10
+  condition: rate(cloudflared_tunnel_request_errors[5m]) > 10
   severity: warning
 ```
 
