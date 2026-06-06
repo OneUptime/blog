@@ -10,7 +10,7 @@ Description: Learn how to build a centralized configuration management system fo
 
 As your OpenTelemetry deployment grows beyond a few services, configuration management becomes a real challenge. Each service needs SDK settings (exporter endpoint, sampling rate, resource attributes). Each collector needs pipeline configuration. Each environment (dev, staging, production) needs different values for the same settings. Without centralization, you end up with configuration scattered across Dockerfiles, Kubernetes manifests, CI/CD pipelines, and application code. A simple change like updating the collector endpoint requires touching dozens of places.
 
-A centralized configuration management system provides a single source of truth for all OpenTelemetry settings. Services and collectors pull their configuration from this central system, and changes propagate automatically. This post covers how to design and implement such a system.
+A centralized configuration management system provides a single source of truth for all OpenTelemetry settings. Services and collectors pull their configuration from this central system, and changes propagate through your rollout process. This post covers how to design and implement such a system.
 
 ## Architecture
 
@@ -63,7 +63,7 @@ levels:
 
   4_service:
     # Overrides per individual service
-    payment-gateway:
+    payment-service:
       OTEL_TRACES_SAMPLER_ARG: "1.0"  # Full sampling for this specific service
 ```
 
@@ -106,8 +106,16 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: payment-service
+  labels:
+    otel-config: global
 spec:
+  selector:
+    matchLabels:
+      app: payment-service
   template:
+    metadata:
+      labels:
+        app: payment-service
     spec:
       containers:
         - name: payment-service
@@ -142,7 +150,7 @@ app = Flask(__name__)
 
 # Load the configuration hierarchy
 with open("config-hierarchy.yaml") as f:
-    hierarchy = yaml.safe_load(f)
+    hierarchy = yaml.safe_load(f)["levels"]
 
 def resolve_config(service_name, environment, team):
     """Resolve the configuration for a specific service by merging
@@ -192,17 +200,24 @@ kind: Deployment
 metadata:
   name: payment-service
 spec:
+  selector:
+    matchLabels:
+      app: payment-service
   template:
+    metadata:
+      labels:
+        app: payment-service
     spec:
       initContainers:
         - name: otel-config-loader
-          image: curlimages/curl:latest
+          image: alpine:3.20
           command:
             - sh
             - -c
             - |
               # Fetch configuration from the config server
-              curl -s "http://otel-config-server.observability:8080/config/payment-service?env=production&team=payments" \
+              apk add --no-cache curl jq
+              curl -fsS "http://otel-config-server.observability:8080/config/payment-service?env=production&team=payments" \
                 | jq -r 'to_entries[] | "\(.key)=\(.value)"' \
                 > /shared/otel.env
           volumeMounts:
@@ -213,7 +228,7 @@ spec:
         - name: payment-service
           image: mycompany/payment-service:latest
           # Source the environment variables from the config file
-          command: ["sh", "-c", "set -a && source /shared/otel.env && set +a && exec java -jar app.jar"]
+          command: ["sh", "-c", "set -a && . /shared/otel.env && set +a && exec java -jar app.jar"]
           volumeMounts:
             - name: otel-env
               mountPath: /shared
@@ -232,10 +247,18 @@ The same centralized approach works for collector configurations. Instead of mai
 # Generates collector configurations from a template and service catalog.
 import yaml
 
+def get_backend_endpoint(environment):
+    """Return the backend endpoint for the target environment."""
+    endpoints = {
+        "staging": "https://observability-backend.staging.example.com",
+        "production": "https://observability-backend.production.example.com",
+    }
+    return endpoints[environment]
+
 def generate_collector_config(services, environment):
     """Generate a collector configuration that handles all registered services."""
 
-    # Build filter processors for each team
+    # Build common processors
     processors = {
         "memory_limiter": {
             "check_interval": "1s",
@@ -246,18 +269,6 @@ def generate_collector_config(services, environment):
             "send_batch_size": 1024,
         },
     }
-
-    # Add team-specific processors
-    teams = set(s["team"] for s in services)
-    for team in teams:
-        team_services = [s for s in services if s["team"] == team]
-        processors[f"filter/{team}"] = {
-            "traces": {
-                "span": [
-                    f'attributes["service.team"] != "{team}"'
-                ]
-            }
-        }
 
     config = {
         "receivers": {
@@ -295,16 +306,17 @@ Every configuration change should be logged for compliance and debugging:
 ```python
 # Every configuration resolution is logged with full context.
 # This creates an audit trail of what config each service received.
+import hashlib
 import logging
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 audit_logger = logging.getLogger("otel-config-audit")
 
 def log_config_resolution(service_name, environment, team, resolved_config):
     """Log a configuration resolution event for audit purposes."""
     audit_logger.info(json.dumps({
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "event": "config_resolved",
         "service": service_name,
         "environment": environment,
@@ -318,9 +330,7 @@ def log_config_resolution(service_name, environment, team, resolved_config):
 
 ## Change Propagation
 
-When a configuration changes, services need to pick up the new values. There are two approaches:
-
-**Restart-based propagation:** Update the ConfigMap and trigger a rolling restart. This is the simplest approach and works well for infrequent changes:
+When a configuration changes, services and collectors need to pick up the new values. The simplest approach is restart-based propagation: update the ConfigMap and trigger a rolling restart. This works well for infrequent changes:
 
 ```bash
 # Update the ConfigMap and restart affected pods
@@ -328,18 +338,21 @@ kubectl apply -f otel-global-config.yaml
 kubectl rollout restart deployment -l otel-config=global
 ```
 
-**Live reload for collectors:** The OpenTelemetry Collector supports configuration reload through a file watcher. Mount the config as a volume and the collector picks up changes automatically:
+For collector configurations, mount the generated config as a file and restart the collector deployment after updating the ConfigMap:
 
 ```yaml
-# Collector deployment with config file watching enabled
+# Collector deployment with config mounted from a ConfigMap
 containers:
   - name: collector
-    image: otel/opentelemetry-collector-contrib:0.96.0
-    # The --config flag with a file path enables automatic reload
+    image: otel/opentelemetry-collector-contrib:0.153.0
     args: ["--config=/etc/otel/config.yaml"]
     volumeMounts:
       - name: config
         mountPath: /etc/otel
+```
+
+```bash
+kubectl rollout restart deployment/otel-collector
 ```
 
 ## Conclusion
