@@ -17,7 +17,7 @@ Consider a global SaaS application deployed across US, EU, and APAC regions. Tel
 The solution involves two layers:
 
 1. **Regional routing** - Send raw telemetry to region-specific backends
-2. **Anonymized aggregation** - Forward scrubbed, aggregated data to a global backend
+2. **Anonymized forwarding** - Forward scrubbed data to a global backend
 
 ## Tagging Telemetry with Region Information
 
@@ -44,7 +44,7 @@ spec:
             - name: OTEL_RESOURCE_ATTRIBUTES
               value: >-
                 service.name=user-service,
-                deployment.environment=production,
+                deployment.environment.name=production,
                 cloud.region=eu-west-1,
                 data_residency.region=eu,
                 data_residency.classification=personal
@@ -70,39 +70,81 @@ receivers:
 
 connectors:
   # The routing connector inspects attributes and forwards
-  # to the appropriate pipeline
-  routing:
+  # to the appropriate pipeline. Configure one connector per signal
+  # so traces, logs, and metrics route to same-signal pipelines.
+  routing/traces:
     table:
-      - statement: route()
-          where resource.attributes["data_residency.region"] == "eu"
-        pipelines: [traces/eu, logs/eu, metrics/eu]
-      - statement: route()
-          where resource.attributes["data_residency.region"] == "us"
-        pipelines: [traces/us, logs/us, metrics/us]
-      - statement: route()
-          where resource.attributes["data_residency.region"] == "apac"
-        pipelines: [traces/apac, logs/apac, metrics/apac]
-    default_pipelines: [traces/us, logs/us, metrics/us]
+      - context: resource
+        condition: "true"
+        action: copy
+        pipelines: [traces/global]
+      - context: resource
+        condition: attributes["data_residency.region"] == "eu"
+        pipelines: [traces/eu]
+      - context: resource
+        condition: attributes["data_residency.region"] == "us"
+        pipelines: [traces/us]
+      - context: resource
+        condition: attributes["data_residency.region"] == "apac"
+        pipelines: [traces/apac]
+    default_pipelines: [traces/us]
+
+  routing/logs:
+    table:
+      - context: resource
+        condition: "true"
+        action: copy
+        pipelines: [logs/global]
+      - context: resource
+        condition: attributes["data_residency.region"] == "eu"
+        pipelines: [logs/eu]
+      - context: resource
+        condition: attributes["data_residency.region"] == "us"
+        pipelines: [logs/us]
+      - context: resource
+        condition: attributes["data_residency.region"] == "apac"
+        pipelines: [logs/apac]
+    default_pipelines: [logs/us]
+
+  routing/metrics:
+    table:
+      - context: resource
+        condition: "true"
+        action: copy
+        pipelines: [metrics/global]
+      - context: resource
+        condition: attributes["data_residency.region"] == "eu"
+        pipelines: [metrics/eu]
+      - context: resource
+        condition: attributes["data_residency.region"] == "us"
+        pipelines: [metrics/us]
+      - context: resource
+        condition: attributes["data_residency.region"] == "apac"
+        pipelines: [metrics/apac]
+    default_pipelines: [metrics/us]
 
 processors:
   batch/regional:
     timeout: 5s
     send_batch_size: 500
 
-  # Strip personal data for the global aggregation pipeline
+  # Strip personal data for the global pipeline
   transform/anonymize:
+    error_mode: ignore
     trace_statements:
-      - context: span
-        statements:
-          - delete_key(attributes, "enduser.id")
-          - delete_key(attributes, "http.client_ip")
-          - delete_key(attributes, "net.peer.ip")
-          - replace_pattern(attributes["url.path"],
-              "/users/[^/]+", "/users/{id}")
+      - delete_key(span.attributes, "enduser.id")
+      - delete_key(span.attributes, "http.client_ip")
+      - delete_key(span.attributes, "net.peer.ip")
+      - delete_key(span.attributes, "client.address")
+      - replace_pattern(span.attributes["url.path"], "/users/[^/]+", "/users/{id}") where IsString(span.attributes["url.path"])
+    log_statements:
+      - delete_key(log.attributes, "enduser.id")
+      - delete_key(log.attributes, "http.client_ip")
+      - delete_key(log.attributes, "net.peer.ip")
+      - delete_key(log.attributes, "client.address")
+      - replace_pattern(log.attributes["url.path"], "/users/[^/]+", "/users/{id}") where IsString(log.attributes["url.path"])
     metric_statements:
-      - context: datapoint
-        statements:
-          - delete_key(attributes, "enduser.id")
+      - delete_key(datapoint.attributes, "enduser.id")
 
   batch/global:
     timeout: 30s
@@ -130,7 +172,7 @@ exporters:
       cert_file: /etc/ssl/certs/apac-collector.crt
       key_file: /etc/ssl/private/apac-collector.key
 
-  # Global aggregated backend - anonymized data only
+  # Global backend - anonymized data only
   otlp/global:
     endpoint: https://telemetry-global.example.com:4317
 
@@ -139,63 +181,79 @@ service:
     # Ingestion pipeline - receives everything, routes by region
     traces/ingress:
       receivers: [otlp]
-      exporters: [routing]
+      exporters: [routing/traces]
 
     logs/ingress:
       receivers: [otlp]
-      exporters: [routing]
+      exporters: [routing/logs]
 
     metrics/ingress:
       receivers: [otlp]
-      exporters: [routing]
+      exporters: [routing/metrics]
 
     # EU regional pipelines
     traces/eu:
-      receivers: [routing]
+      receivers: [routing/traces]
       processors: [batch/regional]
       exporters: [otlp/eu]
 
     logs/eu:
-      receivers: [routing]
+      receivers: [routing/logs]
       processors: [batch/regional]
       exporters: [otlp/eu]
 
     metrics/eu:
-      receivers: [routing]
+      receivers: [routing/metrics]
       processors: [batch/regional]
       exporters: [otlp/eu]
 
     # US regional pipelines
     traces/us:
-      receivers: [routing]
+      receivers: [routing/traces]
       processors: [batch/regional]
       exporters: [otlp/us]
 
     logs/us:
-      receivers: [routing]
+      receivers: [routing/logs]
       processors: [batch/regional]
       exporters: [otlp/us]
 
     metrics/us:
-      receivers: [routing]
+      receivers: [routing/metrics]
       processors: [batch/regional]
       exporters: [otlp/us]
 
     # APAC regional pipelines
     traces/apac:
-      receivers: [routing]
+      receivers: [routing/traces]
       processors: [batch/regional]
       exporters: [otlp/apac]
 
     logs/apac:
-      receivers: [routing]
+      receivers: [routing/logs]
       processors: [batch/regional]
       exporters: [otlp/apac]
 
     metrics/apac:
-      receivers: [routing]
+      receivers: [routing/metrics]
       processors: [batch/regional]
       exporters: [otlp/apac]
+
+    # Global anonymized pipelines
+    traces/global:
+      receivers: [routing/traces]
+      processors: [transform/anonymize, batch/global]
+      exporters: [otlp/global]
+
+    logs/global:
+      receivers: [routing/logs]
+      processors: [transform/anonymize, batch/global]
+      exporters: [otlp/global]
+
+    metrics/global:
+      receivers: [routing/metrics]
+      processors: [transform/anonymize, batch/global]
+      exporters: [otlp/global]
 ```
 
 ## Handling Cross-Region Traces
@@ -208,7 +266,7 @@ You have two options:
 
 2. **Split the trace by region**: Each regional backend only gets the spans that originated in its region. Trace continuity is maintained via trace IDs, but you need to query both backends to see the complete trace.
 
-Option 2 is the safer choice for strict data residency compliance. The collector config above already handles this because routing is per-span, not per-trace.
+Option 2 is the safer choice for strict data residency compliance. The collector config above handles this for spans because the trace routing connector evaluates span data against the configured routes instead of requiring whole traces to stay together.
 
 ## Validating Data Residency at the Network Level
 
@@ -244,10 +302,12 @@ Before going to production, validate that routing works correctly. Send test tel
 
 ```python
 # Test script to validate regional routing
-from opentelemetry import trace
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.resources import Resource
+from datetime import datetime, timezone
+
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
 def send_test_span(region):
     """Send a test span with a specific region attribute."""
@@ -258,14 +318,14 @@ def send_test_span(region):
     provider = TracerProvider(resource=resource)
     provider.add_span_processor(
         BatchSpanProcessor(OTLPSpanExporter(
-            endpoint="otel-collector.observability:4317"
+            endpoint="http://otel-collector.observability:4317"
         ))
     )
     tracer = provider.get_tracer("routing-test")
 
     with tracer.start_as_current_span(f"test-{region}") as span:
         span.set_attribute("test.region", region)
-        span.set_attribute("test.timestamp", datetime.utcnow().isoformat())
+        span.set_attribute("test.timestamp", datetime.now(timezone.utc).isoformat())
 
     provider.shutdown()
 
