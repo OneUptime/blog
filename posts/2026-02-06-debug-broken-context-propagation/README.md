@@ -79,7 +79,7 @@ def call_downstream_service(url: str, payload: dict):
 If the `traceparent` header is missing from outgoing requests, the problem is on the injection side. Common causes include:
 
 - The HTTP client library is not instrumented. For Python `requests`, you need `opentelemetry-instrumentation-requests` installed and activated.
-- The propagator is not configured. Check that `W3CTraceContextTextMapPropagator` is set as the global propagator.
+- The propagator is not configured. Check that `TraceContextTextMapPropagator` is set as the global propagator.
 - There is no active span when the request is made. If the call happens outside a span context, there is nothing to propagate.
 
 ```python
@@ -89,8 +89,8 @@ from opentelemetry.propagate import get_global_textmap
 # This should print the configured propagator
 propagator = get_global_textmap()
 print(f"Global propagator: {type(propagator).__name__}")
-# Expected: CompositePropagator or W3CTraceContextTextMapPropagator
-# If this shows NoOpTextMapPropagator, propagation is disabled
+# Expected: CompositePropagator with TraceContextTextMapPropagator
+# If OTEL_PROPAGATORS is set to "none", automatic propagation is disabled
 ```
 
 ## Step 2: Verify Header Extraction
@@ -125,8 +125,9 @@ def log_trace_headers():
     )
 
     # Compare: the trace_id from traceparent should match the active span's trace_id
-    if traceparent:
-        incoming_trace_id = traceparent.split("-")[1]
+    parts = traceparent.split("-") if traceparent else []
+    if len(parts) == 4:
+        incoming_trace_id = parts[1]
         active_trace_id = format(ctx.trace_id, "032x")
         if incoming_trace_id == active_trace_id:
             logger.info("Context propagation is WORKING")
@@ -148,21 +149,21 @@ If the headers arrive but the trace IDs do not match, the extraction is failing.
 API gateways, load balancers, reverse proxies, and middleware layers can all strip or modify trace context headers. This is one of the most common causes of broken propagation in production.
 
 ```bash
-# Use curl to verify headers pass through your infrastructure
-# Send a request with a known traceparent and check if it arrives
+# Use curl to send a known traceparent, then check the receiving service logs
+# or a header-echo/debug endpoint to confirm the same value arrived.
 
 # First, test directly against the service (bypassing proxy)
 curl -v -H "traceparent: 00-11111111111111111111111111111111-2222222222222222-01" \
-  http://service-b:8080/api/test 2>&1 | grep -i traceparent
+  http://service-b:8080/api/test
 
 # Then test through your proxy/gateway
 curl -v -H "traceparent: 00-11111111111111111111111111111111-2222222222222222-01" \
-  http://gateway:8080/api/test 2>&1 | grep -i traceparent
+  http://gateway:8080/api/test
 ```
 
 If the direct call works but the proxy call does not, you have found your culprit. Common infrastructure that strips headers:
 
-- **Nginx**: Does not forward custom headers by default in some configurations. Add `proxy_pass_request_headers on;` or explicitly pass the headers.
+- **Nginx**: For proxied HTTP requests, Nginx forwards request headers by default, except for headers it rewrites such as `Host` and `Connection` and headers with empty values. Check for `proxy_pass_request_headers off;` or `proxy_set_header` rules that remove or overwrite trace headers.
 - **AWS ALB/API Gateway**: Some configurations filter non-standard headers.
 - **Service meshes**: Istio and Linkerd have their own trace context handling that can interfere with application-level propagation.
 
@@ -189,7 +190,7 @@ The fix is to make sure all services agree on the propagation format. The safest
 # configure_composite_propagator.py
 from opentelemetry.propagate import set_global_textmap
 from opentelemetry.propagators.composite import CompositePropagator
-from opentelemetry.trace.propagation import TraceContextTextMapPropagator
+from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 from opentelemetry.propagators.b3 import B3MultiFormat
 
 # Support both W3C and B3 formats for maximum compatibility
@@ -301,6 +302,7 @@ def propagation_check():
 
     current_span = trace.get_current_span()
     ctx = current_span.get_span_context()
+    parts = incoming_traceparent.split("-") if incoming_traceparent != "none" else []
 
     return jsonify({
         "incoming_traceparent": incoming_traceparent,
@@ -308,8 +310,8 @@ def propagation_check():
         "active_span_id": format(ctx.span_id, "016x"),
         "context_valid": ctx.is_valid,
         "propagation_working": (
-            incoming_traceparent != "none"
-            and incoming_traceparent.split("-")[1] == format(ctx.trace_id, "032x")
+            len(parts) == 4
+            and parts[1] == format(ctx.trace_id, "032x")
         ),
     })
 ```
