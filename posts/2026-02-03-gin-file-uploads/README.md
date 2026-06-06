@@ -21,7 +21,6 @@ The simplest way to handle a file upload in Gin uses the `FormFile` method. This
 package main
 
 import (
-    "fmt"
     "net/http"
     "path/filepath"
 
@@ -405,6 +404,7 @@ import (
     "fmt"
     "io"
     "mime/multipart"
+    "net/http"
     "path/filepath"
     "time"
 
