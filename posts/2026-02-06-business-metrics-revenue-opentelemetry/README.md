@@ -68,21 +68,21 @@ tracer = trace.get_tracer("business.metrics")
 revenue_counter = meter.create_counter(
     name="business.revenue.total",
     description="Total revenue from completed transactions",
-    unit="cents",  # Track in cents to avoid floating point issues
+    unit="{cent}",  # Track in cents to avoid floating point issues
 )
 
 # Counter for number of completed transactions
 transaction_counter = meter.create_counter(
     name="business.transactions.completed",
     description="Number of completed transactions",
-    unit="transactions",
+    unit="{transaction}",
 )
 
 # Histogram for order values to understand distribution
 order_value_histogram = meter.create_histogram(
     name="business.order.value",
     description="Distribution of order values",
-    unit="cents",
+    unit="{cent}",
 )
 
 def record_completed_transaction(order):
@@ -91,7 +91,7 @@ def record_completed_transaction(order):
     Call this after payment confirmation, not at checkout initiation.
     """
     # Convert to cents for integer precision
-    amount_cents = int(order.total_amount * 100)
+    amount_cents = int(Decimal(str(order.total_amount)) * Decimal("100"))
 
     attributes = {
         "business.product_category": order.primary_category,
@@ -136,32 +136,32 @@ meter = metrics.get_meter("business.funnel")
 funnel_step = meter.create_counter(
     name="business.funnel.step",
     description="Number of users reaching each funnel step",
-    unit="events",
+    unit="{event}",
 )
 
 # Specific counters for key conversion events
 page_views = meter.create_counter(
     name="business.page_views",
     description="Product page views",
-    unit="views",
+    unit="{view}",
 )
 
 add_to_cart = meter.create_counter(
     name="business.add_to_cart",
     description="Add to cart events",
-    unit="events",
+    unit="{event}",
 )
 
 checkout_started = meter.create_counter(
     name="business.checkout.started",
     description="Checkout flow initiations",
-    unit="events",
+    unit="{event}",
 )
 
 checkout_completed = meter.create_counter(
     name="business.checkout.completed",
     description="Completed checkouts",
-    unit="events",
+    unit="{event}",
 )
 
 class FunnelTracker:
@@ -220,6 +220,7 @@ Cart abandonment is a critical metric for e-commerce. OpenTelemetry can track ab
 ```python
 # abandonment_metrics.py
 from opentelemetry import metrics
+from decimal import Decimal
 import time
 
 meter = metrics.get_meter("business.abandonment")
@@ -228,27 +229,27 @@ meter = metrics.get_meter("business.abandonment")
 cart_created = meter.create_counter(
     name="business.cart.created",
     description="Number of shopping carts created",
-    unit="carts",
+    unit="{cart}",
 )
 
 cart_abandoned = meter.create_counter(
     name="business.cart.abandoned",
     description="Number of shopping carts abandoned",
-    unit="carts",
+    unit="{cart}",
 )
 
 # Track the value of abandoned carts
 abandoned_value = meter.create_counter(
     name="business.cart.abandoned_value",
     description="Total value of abandoned carts",
-    unit="cents",
+    unit="{cent}",
 )
 
 # Track time spent before abandonment
 time_to_abandon = meter.create_histogram(
     name="business.cart.time_to_abandon",
     description="Time between cart creation and abandonment",
-    unit="minutes",
+    unit="s",
 )
 
 def on_cart_abandoned(cart):
@@ -260,11 +261,11 @@ def on_cart_abandoned(cart):
     }
 
     cart_abandoned.add(1, attributes)
-    abandoned_value.add(int(cart.total * 100), attributes)
+    abandoned_value.add(int(Decimal(str(cart.total)) * Decimal("100")), attributes)
 
     # Calculate time since cart creation
-    abandon_minutes = (time.time() - cart.created_at.timestamp()) / 60
-    time_to_abandon.record(abandon_minutes, attributes)
+    abandon_seconds = time.time() - cart.created_at.timestamp()
+    time_to_abandon.record(abandon_seconds, attributes)
 ```
 
 ---
@@ -284,7 +285,7 @@ meter = metrics.get_meter("business.correlation")
 revenue_impact = meter.create_counter(
     name="business.error.revenue_impact",
     description="Estimated revenue lost due to technical errors",
-    unit="cents",
+    unit="{cent}",
 )
 
 def checkout_handler(request):
