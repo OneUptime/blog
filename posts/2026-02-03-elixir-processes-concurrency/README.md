@@ -549,8 +549,9 @@ defmodule SpawnMonitor do
     {pid, ref} = spawn_monitor(fn ->
       IO.puts("Short-lived process running")
       Process.sleep(500)
-      # Return value becomes exit reason for normal exit
-      :completed
+      # Exit with a custom reason (normal returns from the function
+      # would produce an exit reason of :normal regardless of the return value)
+      exit(:completed)
     end)
 
     IO.puts("Spawned #{inspect(pid)} with monitor #{inspect(ref)}")
