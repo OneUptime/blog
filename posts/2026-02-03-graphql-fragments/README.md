@@ -648,7 +648,7 @@ Relay takes colocated fragments to the extreme with its compiler. Each component
 
 ```tsx
 // Relay-style fragment declaration
-const UserAvatar = graphql`
+const userFragment = graphql`
   fragment UserAvatar_user on User {
     displayName
     avatarUrl
@@ -656,7 +656,7 @@ const UserAvatar = graphql`
 `;
 
 function UserAvatar(props) {
-  const user = useFragment(UserAvatar, props.user);
+  const user = useFragment(userFragment, props.user);
   return <img src={user.avatarUrl} alt={user.displayName} />;
 }
 ```
