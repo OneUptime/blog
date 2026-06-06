@@ -401,10 +401,8 @@ func TestSlowOperation(t *testing.T) {
     }
 
     for _, tc := range tests {
-        // Capture range variable for goroutine safety.
-        // Without this, all subtests would use the last tc value.
-        tc := tc
-
+        // Note: Go 1.22+ scopes loop variables per-iteration,
+        // so the old `tc := tc` capture is no longer required.
         t.Run(tc.name, func(t *testing.T) {
             // Mark this subtest as safe to run in parallel.
             // It will run concurrently with other parallel subtests.
@@ -615,7 +613,10 @@ Benchmark both implementations:
 // fibonacci_test.go
 package fibonacci
 
-import "testing"
+import (
+    "fmt"
+    "testing"
+)
 
 // Benchmark function names start with Benchmark.
 // The testing framework determines how many times to run the loop.
