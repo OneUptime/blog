@@ -462,9 +462,9 @@ Use the official Vault API client for Go applications.
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
-	"os"
 
 	vault "github.com/hashicorp/vault/api"
 )
@@ -479,7 +479,7 @@ func main() {
 	}
 
 	// Read a secret from KV v2
-	// For KV v2, the path must include 'data' after the mount point
+	// The KVv2 helper handles the 'data' path prefix automatically
 	secret, err := client.KVv2("myapp").Get(
 		context.Background(),
 		"database/production",
