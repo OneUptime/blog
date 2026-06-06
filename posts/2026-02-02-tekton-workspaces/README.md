@@ -214,7 +214,6 @@ spec:
     - name: clone
       taskRef:
         name: git-clone
-        kind: ClusterTask
       workspaces:
         # Map pipeline workspace to task workspace
         - name: output
@@ -229,7 +228,6 @@ spec:
     - name: build
       taskRef:
         name: maven
-        kind: ClusterTask
       runAfter:
         - clone
       workspaces:
@@ -248,7 +246,6 @@ spec:
     - name: test
       taskRef:
         name: maven
-        kind: ClusterTask
       runAfter:
         - build
       workspaces:
@@ -265,7 +262,6 @@ spec:
     - name: build-image
       taskRef:
         name: kaniko
-        kind: ClusterTask
       runAfter:
         - test
       workspaces:
@@ -489,7 +485,6 @@ spec:
     - name: clone
       taskRef:
         name: git-clone
-        kind: ClusterTask
       workspaces:
         - name: output
           workspace: source
