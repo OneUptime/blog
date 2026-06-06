@@ -933,7 +933,9 @@ Configure assembly to handle duplicate files:
 ```scala
 // Add to build.sbt
 assembly / assemblyMergeStrategy := {
-  case PathList("META-INF", xs @ _*) => MergeStrategy.discard
+  // Keep ServiceLoader files (SLF4J 2.x binding lives here) - concatenate them
+  case PathList("META-INF", "services", _*) => MergeStrategy.concat
+  case PathList("META-INF", _*) => MergeStrategy.discard
   case "reference.conf" => MergeStrategy.concat
   case x => MergeStrategy.first
 }
