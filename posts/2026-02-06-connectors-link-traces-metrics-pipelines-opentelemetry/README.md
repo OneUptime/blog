@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Collector, Connector, Trace, Metric, Pipeline Architecture
 
 Description: Master the art of linking traces and metrics pipelines in OpenTelemetry Collector using connectors to create unified observability workflows and derive metrics from traces.
 
-Connectors in the OpenTelemetry Collector represent a paradigm shift in how we process and correlate telemetry data. Unlike traditional receivers and exporters that communicate with external systems, connectors link pipelines within the same Collector instance, enabling sophisticated data transformations and correlations. This capability is particularly powerful when linking traces and metrics pipelines, allowing you to derive metrics from traces, enrich traces with metric context, and create unified observability workflows.
+Connectors in the OpenTelemetry Collector represent a paradigm shift in how we process and correlate telemetry data. Unlike traditional receivers and exporters that communicate with external systems, connectors link pipelines within the same Collector instance, enabling sophisticated data transformations and correlations. This capability is particularly powerful when linking traces and metrics pipelines, allowing you to derive metrics from traces, add trace context to generated metrics, and create unified observability workflows.
 
 ## Understanding Connectors in OpenTelemetry
 
@@ -66,7 +66,7 @@ processors:
 
 connectors:
   # Span metrics connector generates metrics from traces
-  spanmetrics:
+  span_metrics:
     # Define histogram buckets for latency metrics
     histogram:
       explicit:
@@ -74,7 +74,6 @@ connectors:
 
     # Define dimensions for generated metrics
     dimensions:
-      - name: service.name
       - name: http.method
       - name: http.status_code
 
@@ -98,11 +97,11 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [spanmetrics, otlp/traces]
+      exporters: [span_metrics, otlp/traces]
 
     # Metrics pipeline receives from connector
     metrics:
-      receivers: [spanmetrics]
+      receivers: [span_metrics]
       processors: [batch]
       exporters: [prometheusremotewrite]
 ```
@@ -135,7 +134,7 @@ processors:
     send_batch_size: 1024
 
 connectors:
-  spanmetrics/red:
+  span_metrics/red:
     # Configure histogram for duration (D in RED)
     histogram:
       explicit:
@@ -143,32 +142,12 @@ connectors:
 
     # Dimensions for all generated metrics
     dimensions:
-      - name: service.name
-      - name: span.kind
       - name: http.method
       - name: http.route
       - name: http.status_code
-      - name: status.code
-
-    # Exclude internal spans from metrics
-    exclude_dimensions:
-      - name: span.name
-        value: "internal.*"
 
     # Metrics configuration
     metrics_expiration: 5m
-
-    # Generate call metrics (R in RED)
-    aggregation:
-      # Count all requests
-      calls:
-        enabled: true
-      # Track errors (E in RED)
-      errors:
-        enabled: true
-        conditions:
-          - key: status.code
-            value: ERROR
 
 exporters:
   otlp/traces:
@@ -184,18 +163,18 @@ service:
     traces:
       receivers: [otlp]
       processors: [resource, batch]
-      exporters: [spanmetrics/red, otlp/traces]
+      exporters: [span_metrics/red, otlp/traces]
 
     metrics/from-traces:
-      receivers: [spanmetrics/red]
+      receivers: [span_metrics/red]
       processors: [batch]
       exporters: [prometheusremotewrite/metrics]
 ```
 
 This configuration automatically generates:
 
-- Request rate (calls per second)
-- Error rate (errors per second)
+- Request rate from the generated calls counter
+- Error rate by filtering the generated calls counter on error status
 - Duration distribution (latency histogram)
 
 All derived from trace data, eliminating the need for separate metric instrumentation.
@@ -231,24 +210,6 @@ connectors:
       - service.name
       - service.namespace
 
-    # Generate specific graph metrics
-    metrics:
-      # Track calls between services
-      calls:
-        enabled: true
-
-      # Track request duration between services
-      duration:
-        enabled: true
-
-      # Track request sizes
-      request_size:
-        enabled: true
-
-      # Track response sizes
-      response_size:
-        enabled: true
-
 exporters:
   otlp/traces:
     endpoint: tempo:4317
@@ -269,7 +230,7 @@ service:
       exporters: [prometheusremotewrite/graph]
 ```
 
-The service graph connector analyzes parent-child relationships in traces to understand which services call which other services, generating metrics like `traces_service_graph_request_total{client="frontend", server="api"}`.
+The service graph connector analyzes parent-child relationships in traces to understand which services call which other services, generating metrics with labels such as `client`, `server`, `failed`, and `connection_type`.
 
 ## Multi-Connector Pipeline Architecture
 
@@ -299,24 +260,22 @@ processors:
 
 connectors:
   # Generate HTTP metrics from traces
-  spanmetrics/http:
+  span_metrics/http:
     histogram:
       explicit:
         buckets: [10ms, 50ms, 100ms, 250ms, 500ms, 1s, 2.5s, 5s]
     dimensions:
-      - name: service.name
       - name: http.method
       - name: http.route
       - name: http.status_code
     namespace: http
 
   # Generate database metrics from traces
-  spanmetrics/database:
+  span_metrics/database:
     histogram:
       explicit:
         buckets: [1ms, 5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s]
     dimensions:
-      - name: service.name
       - name: db.system
       - name: db.operation
       - name: db.name
@@ -340,28 +299,27 @@ service:
       receivers: [otlp]
       processors: [batch]
       exporters: [otlp/traces, servicegraph]
-      # Send to multiple downstream pipelines
 
     # HTTP trace processing
     traces/http:
       receivers: [otlp]
       processors: [filter/http-only, batch]
-      exporters: [spanmetrics/http]
+      exporters: [span_metrics/http]
 
     # Database trace processing
     traces/database:
       receivers: [otlp]
       processors: [filter/db-only, batch]
-      exporters: [spanmetrics/database]
+      exporters: [span_metrics/database]
 
     # HTTP metrics pipeline
     metrics/http:
-      receivers: [spanmetrics/http]
+      receivers: [span_metrics/http]
       exporters: [prometheusremotewrite]
 
     # Database metrics pipeline
     metrics/database:
-      receivers: [spanmetrics/database]
+      receivers: [span_metrics/database]
       exporters: [prometheusremotewrite]
 
     # Service graph metrics pipeline
@@ -372,9 +330,9 @@ service:
 
 This architecture splits trace processing into specialized paths, each generating domain-specific metrics through dedicated connectors.
 
-## Enriching Traces with Metric Context
+## Correlating Metrics with Trace Context
 
-While the primary flow is traces to metrics, you can also use connectors to enrich traces with metric-derived information:
+While the primary connector flow is traces to metrics, you can also preserve trace context in generated metrics by enabling exemplars. Exemplars let compatible metrics backends attach representative trace and span identifiers to metric points for correlation.
 
 ```yaml
 receivers:
@@ -383,33 +341,16 @@ receivers:
       grpc:
         endpoint: 0.0.0.0:4317
 
-  prometheus:
-    config:
-      scrape_configs:
-        - job_name: 'app-metrics'
-          scrape_interval: 15s
-          static_configs:
-            - targets: ['app:8080']
-
-processors:
-  # Enrich traces with metric data
-  attributes/from-metrics:
-    actions:
-      - key: current.load
-        from_context: metric.cpu.usage
-        action: insert
-      - key: memory.pressure
-        from_context: metric.memory.usage
-        action: insert
-
 connectors:
-  # Generate metrics from traces
-  spanmetrics:
+  # Generate metrics from traces and attach exemplars
+  span_metrics:
     histogram:
       explicit:
         buckets: [10ms, 50ms, 100ms, 250ms, 500ms, 1s, 2.5s, 5s]
     dimensions:
-      - name: service.name
+      - name: http.route
+    exemplars:
+      enabled: true
 
 exporters:
   otlp/traces:
@@ -420,28 +361,22 @@ exporters:
 
 service:
   pipelines:
-    # Metrics input
-    metrics/input:
-      receivers: [prometheus]
-      exporters: [prometheusremotewrite]
-
-    # Traces with metric enrichment
+    # Traces are exported and also feed generated metrics
     traces:
       receivers: [otlp]
-      processors: [attributes/from-metrics]
-      exporters: [spanmetrics, otlp/traces]
+      exporters: [span_metrics, otlp/traces]
 
     # Generated metrics from traces
     metrics/from-traces:
-      receivers: [spanmetrics]
+      receivers: [span_metrics]
       exporters: [prometheusremotewrite]
 ```
 
-This bidirectional flow allows traces to carry metric context, useful for understanding system state at the time of trace capture.
+This flow keeps the direction traces-to-metrics, but preserves trace correlation in the generated metric stream.
 
-## Sampling Decisions Based on Metrics
+## Monitoring Sampling with Derived Metrics
 
-Use connectors to implement intelligent sampling based on derived metrics:
+Use connectors alongside sampling processors to measure the traces that pass through a sampling policy:
 
 ```yaml
 receivers:
@@ -451,11 +386,7 @@ receivers:
         endpoint: 0.0.0.0:4317
 
 processors:
-  # Probabilistic sampling based on derived metrics
-  probabilistic_sampler:
-    sampling_percentage: 10.0
-
-  # Tail-based sampling using connector-generated metrics
+  # Tail-based sampling evaluates trace content before export
   tail_sampling:
     policies:
       - name: sample-errors
@@ -474,18 +405,14 @@ processors:
           sampling_percentage: 5.0
 
 connectors:
-  # Generate metrics to inform sampling
-  spanmetrics/sampling:
+  # Generate metrics for the sampled trace stream
+  span_metrics/sampling:
     histogram:
       explicit:
         buckets: [10ms, 50ms, 100ms, 250ms, 500ms, 1s, 2.5s, 5s]
     dimensions:
-      - name: service.name
-      - name: sampled
-
-    # Track sampling rates
-    sampling:
-      enabled: true
+      - name: http.route
+    enable_metrics_sampling_method: true
 
 exporters:
   otlp/traces:
@@ -496,28 +423,23 @@ exporters:
 
 service:
   pipelines:
-    # Pre-sampling traces
-    traces/pre-sample:
-      receivers: [otlp]
-      exporters: [spanmetrics/sampling]
-
     # Sampled traces
     traces/sampled:
       receivers: [otlp]
       processors: [tail_sampling]
-      exporters: [otlp/traces]
+      exporters: [span_metrics/sampling, otlp/traces]
 
     # Sampling metrics
     metrics/sampling:
-      receivers: [spanmetrics/sampling]
+      receivers: [span_metrics/sampling]
       exporters: [prometheusremotewrite]
 ```
 
-This configuration generates metrics about sampling decisions, helping you understand what portion of traces are being captured and why.
+This configuration generates RED metrics for the sampled trace stream, helping you understand the traffic represented by the traces that are exported.
 
-## Chaining Connectors for Complex Workflows
+## Combining Connectors for Complex Workflows
 
-Connectors can be chained to create multi-stage processing:
+Connectors can be combined to create multi-stage processing:
 
 ```yaml
 receivers:
@@ -528,22 +450,21 @@ receivers:
 
 connectors:
   # Stage 1: Generate basic span metrics
-  spanmetrics:
+  span_metrics:
     histogram:
       explicit:
         buckets: [10ms, 50ms, 100ms, 250ms, 500ms, 1s, 2.5s, 5s]
     dimensions:
-      - name: service.name
       - name: http.method
 
-  # Stage 2: Aggregate metrics across services
-  sum:
-    metrics:
-      - name: span.duration
-      - name: span.count
-    aggregation:
-      group_by:
-        - http.method
+  # Stage 2: Sum numeric span attributes into a metrics stream
+  sum/request-size:
+    spans:
+      http.request.size:
+        source_attribute: http.request.body.size
+        attributes:
+          - key: service.name
+          - key: http.method
 
   # Stage 3: Generate service graph from traces
   servicegraph:
@@ -568,16 +489,16 @@ service:
     # Stage 1: Process traces
     traces:
       receivers: [otlp]
-      exporters: [spanmetrics, servicegraph, otlp/traces]
+      exporters: [span_metrics, sum/request-size, servicegraph, otlp/traces]
 
     # Stage 2: Process span metrics
     metrics/detailed:
-      receivers: [spanmetrics]
-      exporters: [prometheusremotewrite/detailed, sum]
+      receivers: [span_metrics]
+      exporters: [prometheusremotewrite/detailed]
 
-    # Stage 3: Process aggregated metrics
-    metrics/aggregated:
-      receivers: [sum]
+    # Stage 3: Process summed request-size metrics
+    metrics/request-size:
+      receivers: [sum/request-size]
       exporters: [prometheusremotewrite/aggregated]
 
     # Stage 3: Process service graph metrics
@@ -586,7 +507,7 @@ service:
       exporters: [prometheusremotewrite/detailed]
 ```
 
-This multi-stage pipeline creates both detailed and aggregated views of your telemetry, with each stage building on the previous one.
+This multi-stage pipeline creates detailed span metrics, service graph metrics, and a separate summed metric from a numeric span attribute.
 
 ## Real-World Example: Comprehensive Microservices Monitoring
 
@@ -626,18 +547,15 @@ processors:
 
 connectors:
   # Generate RED metrics from traces
-  spanmetrics/red:
+  span_metrics/red:
     histogram:
       explicit:
         buckets: [5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 2.5s, 5s, 10s]
     dimensions:
-      - name: service.name
       - name: service.namespace
-      - name: span.kind
       - name: http.method
       - name: http.route
       - name: http.status_code
-      - name: status.code
     namespace: traces.span.metrics
     metrics_expiration: 5m
 
@@ -650,21 +568,15 @@ connectors:
     dimensions:
       - service.name
       - service.namespace
-    metrics:
-      calls:
-        enabled: true
-      duration:
-        enabled: true
 
-  # Aggregate metrics by service
-  sum/by-service:
-    metrics:
-      - name: span.duration
-      - name: span.count
-    aggregation:
-      group_by:
-        - service.name
-        - service.namespace
+  # Sum numeric request-size span attributes by service
+  sum/request-size-by-service:
+    spans:
+      http.request.size:
+        source_attribute: http.request.body.size
+        attributes:
+          - key: service.name
+          - key: service.namespace
 
 exporters:
   # Export traces to Tempo
@@ -690,24 +602,23 @@ service:
       level: info
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
 
   pipelines:
     # Main traces pipeline
     traces/main:
       receivers: [otlp]
       processors: [memory_limiter, resourcedetection, resource, batch]
-      exporters: [spanmetrics/red, servicegraph, otlp/tempo]
+      exporters: [span_metrics/red, servicegraph, sum/request-size-by-service, otlp/tempo]
 
     # Detailed metrics from traces
     metrics/detailed:
-      receivers: [spanmetrics/red, servicegraph]
+      receivers: [span_metrics/red, servicegraph]
       processors: [batch]
-      exporters: [prometheusremotewrite/prom, sum/by-service]
+      exporters: [prometheusremotewrite/prom]
 
-    # Aggregated service-level metrics
-    metrics/aggregated:
-      receivers: [sum/by-service]
+    # Summed service-level request-size metrics
+    metrics/request-size:
+      receivers: [sum/request-size-by-service]
       processors: [batch]
       exporters: [prometheusremotewrite/aggregated]
 ```
@@ -717,7 +628,7 @@ This configuration creates a complete observability pipeline:
 1. Traces are ingested and processed
 2. RED metrics are automatically generated from traces
 3. Service dependency graphs are created
-4. Metrics are aggregated at the service level
+4. Request-size metrics are summed at the service level
 5. All data is exported to appropriate backends
 
 ## Performance Optimization
@@ -744,24 +655,23 @@ processors:
     check_interval: 1s
     limit_mib: 512
 
-  # Filter high-value traces
+  # Drop lower-value spans before connector processing
   filter/important:
     traces:
       span:
-        - 'attributes["http.status_code"] >= 400'
-        - 'duration > 1000000000'  # 1 second in nanoseconds
+        - 'attributes["http.status_code"] < 400 and end_time_unix_nano - start_time_unix_nano <= 1000000000'  # 1 second in nanoseconds
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, filter/important, batch]
-      exporters: [spanmetrics]
+      exporters: [span_metrics]
 ```
 
 ## Monitoring Connector Health
 
-Monitor your connectors to ensure they're functioning correctly:
+Monitor your connectors to ensure they're functioning correctly. Add internal telemetry settings to your existing Collector configuration:
 
 ```yaml
 service:
@@ -770,23 +680,12 @@ service:
       level: info
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
-
-exporters:
-  prometheus:
-    endpoint: 0.0.0.0:8889
-
-service:
-  pipelines:
-    metrics/internal:
-      receivers: [prometheus]
-      exporters: [prometheus]
 ```
 
 Key metrics to monitor:
 
-- `otelcol_connector_spanmetrics_spans_processed`: Spans processed by spanmetrics connector
-- `otelcol_connector_servicegraph_edges`: Number of service relationships tracked
+- `otelcol_exporter_sent_spans`: Spans sent by trace exporters
+- `otelcol_exporter_sent_metric_points`: Metric points sent by metric exporters
 - `otelcol_processor_batch_batch_send_size`: Batch sizes in metric pipelines
 
 ## Related Resources
