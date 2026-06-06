@@ -23,7 +23,7 @@ Start by identifying what your compliance framework requires from telemetry pipe
 - Data must be sent to approved destinations only
 - Logging pipelines must include a persistent queue
 
-Here is a Rego policy file that checks whether all exporters in an OTel Collector config enforce TLS.
+Here is a Rego policy file that checks whether all OTLP exporters in an OTel Collector config have explicit TLS settings.
 
 ```rego
 # policy/otel_compliance.rego
@@ -33,7 +33,7 @@ Here is a Rego policy file that checks whether all exporters in an OTel Collecto
 package otel.compliance
 
 # Deny if any OTLP exporter is missing TLS configuration
-deny[msg] {
+deny contains msg if {
     some exporter_name
     exporter := input.exporters[exporter_name]
     startswith(exporter_name, "otlp")
@@ -42,7 +42,7 @@ deny[msg] {
 }
 
 # Deny if any exporter uses an unapproved endpoint
-deny[msg] {
+deny contains msg if {
     some exporter_name
     exporter := input.exporters[exporter_name]
     endpoint := exporter.endpoint
@@ -51,7 +51,7 @@ deny[msg] {
 }
 
 # List of approved endpoints for your organization
-approved_endpoint(ep) {
+approved_endpoint(ep) if {
     approved := {
         "otel-gateway.internal:4317",
         "otel-backup.internal:4317",
@@ -77,7 +77,7 @@ opa eval \
   --format pretty
 ```
 
-If there are violations, OPA returns the denial messages. An empty result means the config passes all checks.
+If there are violations, OPA returns the denial messages. An empty list (`[]`) means the config passes all checks.
 
 ## Adding a PII Redaction Check
 
@@ -90,16 +90,21 @@ Many compliance frameworks require that sensitive data never leaves your network
 package otel.pii
 
 # Check that at least one processor handles PII redaction
-deny[msg] {
+deny contains msg if {
     some pipeline_name
     pipeline := input.service.pipelines[pipeline_name]
     not has_redaction_processor(pipeline.processors)
     msg := sprintf("Pipeline '%s' has no PII redaction processor", [pipeline_name])
 }
 
-has_redaction_processor(processors) {
+has_redaction_processor(processors) if {
     some i
-    contains(processors[i], "attributes")
+    processor_name := processors[i]
+    startswith(processor_name, "attributes")
+    processor := input.processors[processor_name]
+    some j
+    action := processor.actions[j]
+    {"delete", "hash"}[action.action]
 }
 ```
 
@@ -137,16 +142,19 @@ jobs:
       # Convert each collector config to JSON and run compliance checks
       - name: Run compliance checks
         run: |
+          shopt -s nullglob globstar
           FAILED=0
-          for config in config/otel-collector*.yaml; do
+          for config in deploy/otel/**/*.yaml config/otel-collector*.yaml; do
             echo "Checking $config..."
             yq eval -o=json "$config" > /tmp/config.json
             RESULT=$(opa eval --input /tmp/config.json \
               --data policy/ \
-              "data.otel.compliance.deny" --format json)
-            if echo "$RESULT" | grep -q '"value"'; then
+              '{"compliance": data.otel.compliance.deny, "pii": data.otel.pii.deny}' \
+              --format json)
+            VIOLATIONS=$(echo "$RESULT" | jq -c '[.result[0].expressions[0].value[] | .[]]')
+            if echo "$VIOLATIONS" | jq -e 'length > 0' >/dev/null; then
               echo "FAIL: $config has compliance violations"
-              echo "$RESULT" | jq '.result[0].expressions[0].value'
+              echo "$VIOLATIONS" | jq -r '.[]'
               FAILED=1
             fi
           done
@@ -159,39 +167,44 @@ Beyond CI checks, it helps to maintain a running record of compliance status. Yo
 
 ```python
 # compliance_scanner.py
-# Scans running OTel Collector instances and checks their configs
-import requests
+# Scans deployed OTel Collector config files and checks them
 import subprocess
 import json
 from datetime import datetime
+from pathlib import Path
 
-COLLECTOR_ENDPOINTS = [
-    "http://otel-collector-1:13133",
-    "http://otel-collector-2:13133",
+COLLECTOR_CONFIGS = [
+    Path("/etc/otelcol/config.yaml"),
+    Path("/etc/otelcol-contrib/config.yaml"),
 ]
 
-def fetch_effective_config(endpoint):
-    """Fetch the running config from the collector's zpages endpoint."""
-    resp = requests.get(f"{endpoint}/debug/configz")
-    resp.raise_for_status()
-    return resp.json()
+OPA_QUERY = '{"compliance": data.otel.compliance.deny, "pii": data.otel.pii.deny}'
+
+def load_config(config_path):
+    """Load a collector YAML config as JSON-compatible data."""
+    result = subprocess.run(
+        ["yq", "eval", "-o=json", str(config_path)],
+        capture_output=True, text=True, check=True
+    )
+    return json.loads(result.stdout)
 
 def run_opa_check(config_json):
     """Run OPA compliance check against a config."""
     result = subprocess.run(
-        ["opa", "eval", "--input", "/dev/stdin",
-         "--data", "policy/", "data.otel.compliance.deny",
+        ["opa", "eval", "--stdin-input",
+         "--data", "policy/", OPA_QUERY,
          "--format", "json"],
         input=json.dumps(config_json),
-        capture_output=True, text=True
+        capture_output=True, text=True, check=True
     )
-    return json.loads(result.stdout)
+    decision = json.loads(result.stdout)["result"][0]["expressions"][0]["value"]
+    return [msg for messages in decision.values() for msg in messages]
 
-for endpoint in COLLECTOR_ENDPOINTS:
-    config = fetch_effective_config(endpoint)
+for config_path in COLLECTOR_CONFIGS:
+    config = load_config(config_path)
     violations = run_opa_check(config)
-    print(f"[{datetime.now().isoformat()}] {endpoint}: "
-          f"{len(violations.get('result', []))} violations found")
+    print(f"[{datetime.now().isoformat()}] {config_path}: "
+          f"{len(violations)} violations found")
 ```
 
 ## Wrapping Up
