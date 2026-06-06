@@ -248,15 +248,18 @@ WHERE j.proc_name = 'policy_retention';
 
 -- View chunks and their sizes for a hypertable
 SELECT
-    chunk_schema,
-    chunk_name,
-    range_start,
-    range_end,
-    pg_size_pretty(total_bytes) AS size,
-    pg_size_pretty(table_bytes) AS table_size,
-    pg_size_pretty(index_bytes) AS index_size
-FROM chunks_detailed_size('sensor_metrics')
-ORDER BY range_start DESC;
+    c.chunk_schema,
+    c.chunk_name,
+    c.range_start,
+    c.range_end,
+    pg_size_pretty(cs.total_bytes) AS size,
+    pg_size_pretty(cs.table_bytes) AS table_size,
+    pg_size_pretty(cs.index_bytes) AS index_size
+FROM timescaledb_information.chunks c
+JOIN chunks_detailed_size('sensor_metrics') cs
+  ON c.chunk_schema = cs.chunk_schema AND c.chunk_name = cs.chunk_name
+WHERE c.hypertable_name = 'sensor_metrics'
+ORDER BY c.range_start DESC;
 
 -- Check total hypertable size
 SELECT
@@ -433,14 +436,25 @@ The following SQL helps estimate storage requirements based on current data patt
 
 ```sql
 -- Calculate average chunk size and estimate future storage
-WITH chunk_stats AS (
+WITH chunk_sizes AS (
+    SELECT
+        c.hypertable_name,
+        cs.total_bytes,
+        c.range_start,
+        c.range_end
+    FROM timescaledb_information.chunks c
+    JOIN chunks_detailed_size('sensor_metrics') cs
+      ON c.chunk_schema = cs.chunk_schema AND c.chunk_name = cs.chunk_name
+    WHERE c.hypertable_name = 'sensor_metrics'
+),
+chunk_stats AS (
     SELECT
         hypertable_name,
         AVG(total_bytes) AS avg_chunk_bytes,
         COUNT(*) AS chunk_count,
         MIN(range_start) AS oldest_chunk,
         MAX(range_end) AS newest_chunk
-    FROM chunks_detailed_size('sensor_metrics')
+    FROM chunk_sizes
     GROUP BY hypertable_name
 )
 SELECT
