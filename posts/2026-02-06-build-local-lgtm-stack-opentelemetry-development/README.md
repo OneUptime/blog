@@ -135,17 +135,6 @@ distributor:
         grpc:
           endpoint: 0.0.0.0:4317
 
-# Ingester writes traces to the backend
-ingester:
-  trace_idle_period: 10s
-  max_block_bytes: 1048576
-  max_block_duration: 5m
-
-# Compactor merges blocks for efficient storage
-compactor:
-  compaction:
-    block_retention: 48h
-
 # Storage configuration using local filesystem
 storage:
   trace:
@@ -164,6 +153,12 @@ metrics_generator:
     path: /var/tempo/generator/wal
     remote_write:
       - url: http://mimir:9009/api/v1/push
+
+# Enable metrics-generator processors for the default tenant
+overrides:
+  defaults:
+    metrics_generator:
+      processors: [span-metrics, service-graphs]
 ```
 
 The `metrics_generator` section is particularly useful. It automatically creates RED metrics (Rate, Errors, Duration) from your traces and sends them to Mimir. This gives you service-level metrics without any additional instrumentation.
@@ -317,9 +312,9 @@ exporters:
     tls:
       insecure: true
 
-  # Send logs to Loki via the loki exporter
-  loki:
-    endpoint: http://loki:3100/loki/api/v1/push
+  # Send logs to Loki via its native OTLP HTTP endpoint
+  otlphttp/loki:
+    endpoint: http://loki:3100/otlp
 
   # Keep debug output for development visibility
   debug:
@@ -338,7 +333,7 @@ service:
     logs:
       receivers: [otlp]
       processors: [resource, batch]
-      exporters: [loki, debug]
+      exporters: [otlphttp/loki, debug]
 ```
 
 Each pipeline routes one signal type to its corresponding backend. The `resource` processor adds an `environment` attribute to everything, which helps distinguish local development data from other sources if you ever connect to a shared backend.
@@ -356,6 +351,7 @@ apiVersion: 1
 datasources:
   # Tempo for traces
   - name: Tempo
+    uid: tempo
     type: tempo
     access: proxy
     url: http://tempo:3200
@@ -373,6 +369,7 @@ datasources:
 
   # Mimir for metrics
   - name: Mimir
+    uid: mimir
     type: prometheus
     access: proxy
     url: http://mimir:9009/prometheus
@@ -384,6 +381,7 @@ datasources:
 
   # Loki for logs
   - name: Loki
+    uid: loki
     type: loki
     access: proxy
     url: http://loki:3100
