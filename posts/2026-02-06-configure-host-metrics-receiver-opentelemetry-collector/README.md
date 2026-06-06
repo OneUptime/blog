@@ -47,7 +47,7 @@ Here's a minimal configuration to get started:
 
 # The collection_interval determines how often metrics are scraped
 receivers:
-  hostmetrics:
+  host_metrics:
     collection_interval: 30s
     scrapers:
       cpu:
@@ -58,28 +58,28 @@ processors:
     timeout: 10s
 
 exporters:
-  logging:
-    loglevel: debug
+  debug:
+    verbosity: detailed
 
 service:
   pipelines:
     metrics:
-      receivers: [hostmetrics]
+      receivers: [host_metrics]
       processors: [batch]
-      exporters: [logging]
+      exporters: [debug]
 ```
 
-This configuration scrapes CPU and memory metrics every 30 seconds. The batch processor aggregates metrics before exporting to reduce network overhead. In production, you would replace the logging exporter with your actual backend (Prometheus, OTLP, etc.).
+This configuration scrapes CPU and memory metrics every 30 seconds. The batch processor aggregates metrics before exporting to reduce network overhead. In production, you would replace the debug exporter with your actual backend (Prometheus, OTLP, etc.).
 
 ## Comprehensive Scraper Configuration
 
-Each scraper has specific options. Here's a production-ready configuration with all scrapers enabled:
+Each scraper has specific options. Here's a production-ready configuration with common scrapers enabled:
 
 ```yaml
-# Production configuration with all available scrapers
+# Production configuration with common host metrics scrapers
 # Each scraper collects different aspects of host performance
 receivers:
-  hostmetrics:
+  host_metrics:
     collection_interval: 60s
     scrapers:
       # CPU metrics: usage per core, wait time, system vs user time
@@ -126,7 +126,7 @@ receivers:
           system.network.connections:
             enabled: true
 
-      # Load average (Linux/Unix only)
+      # Load average
       load:
         metrics:
           system.cpu.load_average.1m:
@@ -153,12 +153,9 @@ receivers:
             enabled: true
 
 processors:
-  # Add resource attributes to identify the host
+  # Add static resource attributes
   resource:
     attributes:
-      - key: host.name
-        from_attribute: host.name
-        action: upsert
       - key: environment
         value: production
         action: insert
@@ -177,7 +174,7 @@ exporters:
 service:
   pipelines:
     metrics:
-      receivers: [hostmetrics]
+      receivers: [host_metrics]
       processors: [resource, batch]
       exporters: [otlp]
 ```
@@ -186,23 +183,24 @@ service:
 
 ### CPU Scraper Configuration
 
-The CPU scraper can report per-core metrics or aggregate across all cores:
+The CPU scraper reports per-core metrics by default for metrics with the `cpu` attribute. You can remove the `cpu` attribute and choose an aggregation strategy when you want aggregate CPU metrics:
 
 ```yaml
-# Collect detailed CPU metrics including per-core utilization
-# This is useful for detecting CPU pinning issues or core imbalances
+# Collect CPU metrics aggregated across cores
 receivers:
-  hostmetrics:
+  host_metrics:
     collection_interval: 30s
     scrapers:
       cpu:
-        # Report metrics for each CPU core separately
-        report_per_cpu: true
         metrics:
           system.cpu.utilization:
             enabled: true
+            attributes: [state]
+            aggregation_strategy: avg
           system.cpu.time:
             enabled: true
+            attributes: [state]
+            aggregation_strategy: sum
           # Physical vs logical CPU metrics
           system.cpu.physical.count:
             enabled: true
@@ -218,7 +216,7 @@ When you have many mount points, you can filter which ones to monitor:
 # Filter filesystems to avoid monitoring temporary or virtual filesystems
 # This reduces metric cardinality and focuses on important storage
 receivers:
-  hostmetrics:
+  host_metrics:
     collection_interval: 60s
     scrapers:
       filesystem:
@@ -246,7 +244,7 @@ On hosts with many network interfaces, you can filter which ones to monitor:
 # Monitor only specific network interfaces
 # Useful for focusing on external-facing or high-traffic interfaces
 receivers:
-  hostmetrics:
+  host_metrics:
     collection_interval: 30s
     scrapers:
       network:
@@ -268,8 +266,8 @@ receivers:
 The CPU scraper provides several metric types:
 
 - `system.cpu.time`: Cumulative CPU time in seconds, broken down by state (user, system, idle, wait)
-- `system.cpu.utilization`: CPU usage as a percentage (0-1 range)
-- `system.cpu.load_average.*`: Average number of processes waiting for CPU time
+- `system.cpu.utilization`: CPU usage as a fraction of time in the interval [0, 1]
+- `system.cpu.load_average.*`: Average system load over 1, 5, and 15 minutes
 
 CPU utilization above 80% sustained over time typically indicates you need more compute capacity. High wait times suggest I/O bottlenecks rather than CPU limitations.
 
@@ -277,10 +275,10 @@ CPU utilization above 80% sustained over time typically indicates you need more 
 
 Memory metrics help identify when applications are consuming too much RAM:
 
-- `system.memory.usage`: Bytes of memory in use, available, cached, or buffered
-- `system.memory.utilization`: Memory usage as a percentage
+- `system.memory.usage`: Bytes of memory in use, free, cached, buffered, or other reported states
+- `system.memory.utilization`: Memory usage as a fraction of total memory in the interval [0, 1]
 
-On Linux, "cached" memory is not a problem. The kernel uses unused RAM for caching disk reads, but releases it immediately when applications need it. Focus on the "available" metric rather than "free" to get accurate memory pressure information.
+On Linux, "cached" memory is not a problem. The kernel uses unused RAM for caching disk reads, but releases it when applications need it. Enable and focus on `system.linux.memory.available` rather than only `free` memory to get more accurate memory pressure information.
 
 ### Disk Metrics
 
@@ -288,7 +286,8 @@ Disk I/O metrics reveal storage bottlenecks:
 
 - `system.disk.io`: Bytes read from and written to disk
 - `system.disk.operations`: Number of read and write operations
-- `system.disk.io_time`: Time spent on I/O operations
+- `system.disk.io_time`: Time the disk spent active
+- `system.disk.operation_time`: Time spent in disk operations, broken down by read and write direction
 - `system.disk.weighted_io_time`: Weighted time accounting for concurrent operations
 
 High I/O wait times combined with low throughput suggests you're hitting disk IOPS limits. Modern NVMe drives can handle hundreds of thousands of IOPS, while traditional spinning disks max out around 100-200 IOPS.
@@ -302,7 +301,7 @@ On Linux systems, the receiver reads from `/proc` and `/sys`:
 ```yaml
 # Linux-specific scrapers provide additional system insights
 receivers:
-  hostmetrics:
+  host_metrics:
     collection_interval: 60s
     scrapers:
       cpu:
@@ -310,12 +309,12 @@ receivers:
       disk:
       filesystem:
       network:
-      load:  # Linux/Unix only
+      load:
       paging:
       processes:
 ```
 
-The load average scraper is particularly useful on Linux. Load average represents the average number of processes in a runnable state. A load average higher than your CPU count indicates CPU saturation.
+The load average scraper is particularly useful on Linux and Unix-like systems. Load average represents the average system load over time. A load average higher than your CPU count can indicate CPU saturation, although I/O wait can also contribute on Unix-like systems.
 
 ### Windows
 
@@ -323,9 +322,8 @@ On Windows, some scrapers behave differently:
 
 ```yaml
 # Windows configuration uses Performance Data Helper APIs
-# Some scrapers like 'load' are not available on Windows
 receivers:
-  hostmetrics:
+  host_metrics:
     collection_interval: 60s
     scrapers:
       cpu:
@@ -333,11 +331,11 @@ receivers:
       disk:
       filesystem:
       network:
+      load:
       paging:  # Available on Windows
-      processes:
 ```
 
-The load average scraper is not available on Windows because the operating system doesn't expose this metric. Instead, focus on CPU utilization and queue length metrics.
+On Windows, the load scraper estimates load average from the Processor Queue Length performance counter. CPU utilization and queue length metrics are still the primary signals for CPU pressure.
 
 ## Integration with Resource Detection
 
@@ -347,7 +345,7 @@ Combine the Host Metrics Receiver with the resource detection processor to autom
 # Automatically detect and add cloud provider information
 # This enriches metrics with instance type, region, availability zone
 receivers:
-  hostmetrics:
+  host_metrics:
     collection_interval: 60s
     scrapers:
       cpu:
@@ -355,7 +353,7 @@ receivers:
       disk:
 
 processors:
-  resourcedetection:
+  resource_detection:
     detectors: [env, system, docker, ec2, gcp, azure]
     timeout: 5s
     override: false
@@ -370,8 +368,8 @@ exporters:
 service:
   pipelines:
     metrics:
-      receivers: [hostmetrics]
-      processors: [resourcedetection, batch]
+      receivers: [host_metrics]
+      processors: [resource_detection, batch]
       exporters: [otlp]
 ```
 
@@ -400,7 +398,7 @@ Only enable scrapers you actually need:
 # Minimal configuration for basic monitoring
 # Reduces overhead and metric cardinality
 receivers:
-  hostmetrics:
+  host_metrics:
     collection_interval: 60s
     scrapers:
       cpu:
@@ -417,17 +415,15 @@ Use the filter processor to drop unnecessary metrics:
 # Filter out metrics you don't need to reduce cardinality
 processors:
   filter:
-    metrics:
-      exclude:
-        match_type: regexp
-        metric_names:
-          - system.cpu.time  # Keep only utilization, not raw time
-          - system.disk.weighted_io_time  # Simplify disk metrics
+    error_mode: ignore
+    metric_conditions:
+      - metric.name == "system.cpu.time"  # Keep only utilization, not raw time
+      - metric.name == "system.disk.weighted_io_time"  # Simplify disk metrics
 
 service:
   pipelines:
     metrics:
-      receivers: [hostmetrics]
+      receivers: [host_metrics]
       processors: [filter, batch]
       exporters: [otlp]
 ```
@@ -447,7 +443,7 @@ If you're not seeing expected metrics, check:
 
 If you're experiencing high metric cardinality:
 
-1. Use `report_per_cpu: false` to aggregate CPU metrics
+1. Remove the `cpu` attribute from CPU metrics and set an aggregation strategy
 2. Filter filesystems and network interfaces
 3. Disable detailed metrics you don't need
 4. Increase collection interval
@@ -456,11 +452,7 @@ If you're experiencing high metric cardinality:
 
 On Linux, some metrics require elevated permissions:
 
-```bash
-# Run collector with capabilities instead of full root access
-# This follows the principle of least privilege
-sudo setcap 'cap_net_admin,cap_net_bind_service+eip' /usr/local/bin/otelcol
-```
+Run the collector as a user that can read the host paths it scrapes, especially `/proc` and `/sys` when collecting process, network, disk, and filesystem metrics. If the collector runs in a container, mount the host filesystem and configure the receiver's `root_path` so it reads host metrics rather than container-local metrics.
 
 ## Complete Production Example
 
@@ -470,14 +462,15 @@ Here's a complete, production-ready configuration:
 # Production configuration for the Host Metrics Receiver
 # Optimized for real-world use with reasonable defaults
 receivers:
-  hostmetrics:
+  host_metrics:
     collection_interval: 60s
     scrapers:
       cpu:
-        report_per_cpu: false
         metrics:
           system.cpu.utilization:
             enabled: true
+            attributes: [state]
+            aggregation_strategy: avg
       memory:
       disk:
       filesystem:
@@ -492,7 +485,11 @@ receivers:
       paging:
 
 processors:
-  resourcedetection:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 512
+
+  resource_detection:
     detectors: [env, system, docker, ec2]
     timeout: 5s
 
@@ -506,10 +503,6 @@ processors:
     timeout: 10s
     send_batch_size: 1024
 
-  memory_limiter:
-    check_interval: 1s
-    limit_mib: 512
-
 exporters:
   otlp:
     endpoint: ${OTLP_ENDPOINT}
@@ -522,8 +515,8 @@ exporters:
 service:
   pipelines:
     metrics:
-      receivers: [hostmetrics]
-      processors: [resourcedetection, attributes, memory_limiter, batch]
+      receivers: [host_metrics]
+      processors: [memory_limiter, resource_detection, attributes, batch]
       exporters: [otlp]
 
   telemetry:
@@ -531,7 +524,12 @@ service:
       level: info
     metrics:
       level: detailed
-      address: localhost:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: localhost
+                port: 8888
 ```
 
 ## Next Steps
