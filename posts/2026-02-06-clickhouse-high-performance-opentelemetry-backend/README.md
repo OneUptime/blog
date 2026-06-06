@@ -50,11 +50,11 @@ docker run -d \
   clickhouse/clickhouse-server:latest
 ```
 
-Port 8123 is the HTTP interface (used by the ClickHouse exporter), and port 9000 is the native TCP protocol (used by the clickhouse-client CLI). For production, you will want to look at ClickHouse Keeper for clustering, but a single node can handle a surprising amount of data.
+Port 8123 is the HTTP interface, and port 9000 is the native TCP protocol (used by the clickhouse-client CLI and by the Collector configuration below). The ClickHouse exporter supports both protocols. For production, you will want to look at ClickHouse Keeper for clustering, but a single node can handle a surprising amount of data.
 
 ## Creating the Schema
 
-The ClickHouse exporter for the OpenTelemetry Collector can auto-create tables, but defining your own schema gives you control over partitioning, ordering, and TTL policies. Here are schemas for traces, logs, and metrics.
+The ClickHouse exporter for the OpenTelemetry Collector can auto-create tables, but defining your own schema gives you control over partitioning, ordering, and TTL policies. Here are schemas for traces and logs. Metrics use separate tables by metric type, so the Collector configuration below keeps the exporter responsible for creating those metric tables.
 
 The traces table uses the MergeTree engine with time-based partitioning and is ordered by service name and timestamp for fast lookups.
 
@@ -74,7 +74,7 @@ CREATE TABLE IF NOT EXISTS otel.traces (
     ScopeName String CODEC(ZSTD(1)),
     ScopeVersion String CODEC(ZSTD(1)),
     SpanAttributes Map(LowCardinality(String), String) CODEC(ZSTD(1)),
-    Duration Int64 CODEC(Delta, ZSTD(1)),
+    Duration UInt64 CODEC(ZSTD(1)),
     StatusCode LowCardinality(String) CODEC(ZSTD(1)),
     StatusMessage String CODEC(ZSTD(1)),
     Events Nested (
@@ -90,9 +90,9 @@ CREATE TABLE IF NOT EXISTS otel.traces (
     ) CODEC(ZSTD(1))
 ) ENGINE = MergeTree()
 PARTITION BY toDate(Timestamp)
-ORDER BY (ServiceName, SpanName, toUnixTimestamp(Timestamp))
+ORDER BY (ServiceName, SpanName, toDateTime(Timestamp))
 TTL toDateTime(Timestamp) + INTERVAL 30 DAY
-SETTINGS index_granularity = 8192;
+SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1;
 ```
 
 The logs table follows a similar structure optimized for log data patterns.
@@ -103,18 +103,23 @@ CREATE TABLE IF NOT EXISTS otel.logs (
     Timestamp DateTime64(9) CODEC(Delta, ZSTD(1)),
     TraceId String CODEC(ZSTD(1)),
     SpanId String CODEC(ZSTD(1)),
-    TraceFlags UInt32 CODEC(ZSTD(1)),
+    TraceFlags UInt8 CODEC(ZSTD(1)),
     SeverityText LowCardinality(String) CODEC(ZSTD(1)),
-    SeverityNumber Int32 CODEC(ZSTD(1)),
+    SeverityNumber UInt8 CODEC(ZSTD(1)),
     ServiceName LowCardinality(String) CODEC(ZSTD(1)),
     Body String CODEC(ZSTD(1)),
+    ResourceSchemaUrl LowCardinality(String) CODEC(ZSTD(1)),
     ResourceAttributes Map(LowCardinality(String), String) CODEC(ZSTD(1)),
+    ScopeSchemaUrl LowCardinality(String) CODEC(ZSTD(1)),
+    ScopeName String CODEC(ZSTD(1)),
+    ScopeVersion LowCardinality(String) CODEC(ZSTD(1)),
+    ScopeAttributes Map(LowCardinality(String), String) CODEC(ZSTD(1)),
     LogAttributes Map(LowCardinality(String), String) CODEC(ZSTD(1))
 ) ENGINE = MergeTree()
 PARTITION BY toDate(Timestamp)
-ORDER BY (ServiceName, SeverityText, toUnixTimestamp(Timestamp))
+ORDER BY (toStartOfFiveMinutes(Timestamp), ServiceName, Timestamp)
 TTL toDateTime(Timestamp) + INTERVAL 14 DAY
-SETTINGS index_granularity = 8192;
+SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1;
 ```
 
 ## Configuring the OpenTelemetry Collector
@@ -157,7 +162,7 @@ processors:
 
 exporters:
   clickhouse:
-    # ClickHouse HTTP endpoint with credentials
+    # ClickHouse native protocol endpoint with credentials
     endpoint: tcp://clickhouse:9000?dial_timeout=10s&compress=lz4
     database: otel
     username: otel
@@ -166,7 +171,17 @@ exporters:
     # Table name configuration
     traces_table_name: traces
     logs_table_name: logs
-    metrics_table_name: metrics
+    metrics_tables:
+      gauge:
+        name: metrics_gauge
+      sum:
+        name: metrics_sum
+      summary:
+        name: metrics_summary
+      histogram:
+        name: metrics_histogram
+      exponential_histogram:
+        name: metrics_exp_histogram
 
     # Connection pool settings for high throughput
     connection_params:
@@ -238,7 +253,7 @@ SELECT
     quantile(0.99)(Duration / 1000000) AS p99_ms
 FROM otel.traces
 WHERE Timestamp > now() - INTERVAL 24 HOUR
-    AND SpanKind = 'SPAN_KIND_SERVER'
+    AND SpanKind = 'Server'
 GROUP BY ServiceName
 ORDER BY p99_ms DESC;
 ```
