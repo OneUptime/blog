@@ -35,6 +35,12 @@ This Collector configuration filters out metrics from known noisy sources and li
 ```yaml
 # otel-collector-config.yaml
 
+receivers:
+  otlp:
+    protocols:
+      grpc:
+      http:
+
 processors:
   # Drop specific noisy metrics entirely
   filter/drop_noisy:
@@ -54,24 +60,32 @@ processors:
           # Remove high-cardinality attributes that cause alert storms
           - delete_key(attributes, "http.url")
           - delete_key(attributes, "http.target")
+          # Copy service.name from the resource so it can be used as a Prometheus label
+          - set(attributes["service.name"], resource.attributes["service.name"])
           # Keep only the path template, not the full URL
-          - keep_keys(attributes, ["http.method", "http.status_code", "http.route", "service.name"])
+          - keep_keys(attributes, ["http.request.method", "http.response.status_code", "http.route", "service.name"])
 
   # Aggregate metrics to reduce volume
   metricstransform/aggregate:
     transforms:
-      - include: otel_http_server_request_duration_seconds
+      - include: http.server.request.duration
         action: update
         operations:
           - action: aggregate_labels
-            label_set: ["service_name", "http_method", "http_status_code"]
+            label_set: ["service.name", "http.request.method", "http.response.status_code"]
             aggregation_type: sum
+
+  batch:
+
+exporters:
+  prometheus:
+    endpoint: "0.0.0.0:8889"
 
 service:
   pipelines:
     metrics:
       receivers: [otlp]
-      processors: [filter/drop_noisy, transform/limit_cardinality, batch]
+      processors: [filter/drop_noisy, transform/limit_cardinality, metricstransform/aggregate, batch]
       exporters: [prometheus]
 ```
 
@@ -90,11 +104,11 @@ groups:
       - alert: HighErrorRate
         expr: |
           sum by (service_name) (
-            rate(otel_http_server_request_duration_seconds_count{http_status_code=~"5.."}[5m])
+            rate(http_server_request_duration_seconds_count{http_response_status_code=~"5.."}[5m])
           )
           /
           sum by (service_name) (
-            rate(otel_http_server_request_duration_seconds_count[5m])
+            rate(http_server_request_duration_seconds_count[5m])
           ) > 0.05
         for: 3m  # Must be true for 3 consecutive minutes
         labels:
@@ -103,9 +117,9 @@ groups:
       # Noisy metric - longer for duration filters out flapping
       - alert: HighMemoryUsage
         expr: |
-          otel_process_runtime_memory_usage_bytes{type="heap"}
+          jvm_memory_used_bytes{jvm_memory_type="heap"}
           /
-          otel_process_runtime_memory_limit_bytes > 0.85
+          jvm_memory_limit_bytes{jvm_memory_type="heap"} > 0.85
         for: 10m  # Must be true for 10 minutes to suppress GC noise
         labels:
           severity: warning
@@ -113,9 +127,9 @@ groups:
       # Very noisy metric - require sustained condition
       - alert: ConnectionPoolExhaustion
         expr: |
-          otel_db_client_connections_usage{state="used"}
+          db_client_connection_count{db_client_connection_state="used"}
           /
-          otel_db_client_connections_max > 0.9
+          ignoring(db_client_connection_state) db_client_connection_max > 0.9
         for: 15m  # Connection pools fluctuate; require 15 min sustained
         labels:
           severity: critical
@@ -138,20 +152,20 @@ route:
 
   routes:
     # Critical alerts: moderate throttling
-    - match:
-        severity: critical
+    - matchers:
+        - severity="critical"
       receiver: pagerduty
       repeat_interval: 1h  # re-page every hour at most
 
     # Warning alerts: heavy throttling
-    - match:
-        severity: warning
+    - matchers:
+        - severity="warning"
       receiver: slack-warnings
       repeat_interval: 6h  # repeat at most every 6 hours
 
     # Known noisy alerts: maximum throttling
-    - match_re:
-        alertname: "(HighMemoryUsage|ConnectionPoolFluctuation|GCPressure)"
+    - matchers:
+        - alertname=~"HighMemoryUsage|ConnectionPoolFluctuation|GCPressure"
       receiver: slack-noisy
       group_wait: 120s      # wait longer to collect related alerts
       group_interval: 30m   # batch updates every 30 minutes
@@ -242,7 +256,7 @@ count by (service_name) (ALERTS{alertstate="firing"})
 # Notification rate from Alertmanager
 rate(alertmanager_notifications_total[1h])
 
-# Failed notifications (throttled or errored)
+# Failed notifications (errors only)
 rate(alertmanager_notifications_failed_total[1h])
 ```
 
