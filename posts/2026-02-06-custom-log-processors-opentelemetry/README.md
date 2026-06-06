@@ -8,24 +8,24 @@ Description: Learn how to build custom log processors in OpenTelemetry to enrich
 
 ---
 
-OpenTelemetry's logging SDK processes log records through a pipeline before exporting them. The default pipeline handles batching and export, but the real power comes from inserting your own processors into this pipeline. Custom log processors let you enrich logs with contextual data, filter out noise, redact sensitive information, and route logs to different destinations based on their content.
+OpenTelemetry's logging SDK processes log records through a pipeline before exporting them. A common pipeline handles batching and export, but the real power comes from adding your own processors to this pipeline. Custom log processors let you enrich logs with contextual data, filter out noise, redact sensitive information, and route logs to different destinations based on their content.
 
 If you have worked with OpenTelemetry span processors, the log processor model will feel familiar. The concepts are similar, but log processors have their own interface and lifecycle.
 
 ## The Log Processor Interface
 
-A log processor in OpenTelemetry implements a simple interface with four methods:
+A log processor in OpenTelemetry implements a simple interface with three methods:
 
 ```python
-from opentelemetry.sdk._logs import LogRecordProcessor, LogData
+from opentelemetry.sdk._logs import LogRecordProcessor, ReadWriteLogRecord
 
 class MyLogProcessor(LogRecordProcessor):
 
-    def emit(self, log_data: LogData) -> None:
+    def on_emit(self, log_record: ReadWriteLogRecord) -> None:
         """Called when a log record is emitted.
 
         This is where you inspect, modify, or filter the log record.
-        The log_data parameter contains the log record and its
+        The log_record parameter contains the log record and its
         associated instrumentation scope.
         """
         pass
@@ -46,7 +46,7 @@ class MyLogProcessor(LogRecordProcessor):
         return True
 ```
 
-The `emit` method is the core of the processor. It receives every log record before it reaches the exporter. What you do in this method determines the behavior of your processor.
+The `on_emit` method is the core of the processor. It receives every log record before it reaches the exporter. What you do in this method determines the behavior of your processor.
 
 ## Setting Up the Logging Pipeline
 
@@ -57,7 +57,6 @@ from opentelemetry.sdk._logs import LoggerProvider
 from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
 from opentelemetry._logs import set_logger_provider
-import logging
 
 # Create the OTLP log exporter
 
@@ -75,13 +74,13 @@ provider.add_log_record_processor(
 set_logger_provider(provider)
 ```
 
-Custom processors get inserted before the batch export processor. The log record flows through each processor in the order they were added.
+Custom processors can be registered before the batch export processor. The OpenTelemetry Python SDK invokes registered processors in the order they were added.
 
 ```mermaid
 graph LR
     A[Application<br/>Log Call] --> B[Custom Processor 1<br/>Enrichment]
-    B --> C[Custom Processor 2<br/>Filtering]
-    C --> D[Custom Processor 3<br/>Redaction]
+    B --> C[Custom Processor 2<br/>Redaction]
+    C --> D[Filtering or Routing Processor<br/>Controls Export Target]
     D --> E[BatchLogRecordProcessor<br/>Batching + Export]
     E --> F[OTLP Exporter<br/>Send to Backend]
 ```
@@ -92,7 +91,7 @@ The most common custom processor adds contextual information to log records. For
 
 ```python
 import os
-from opentelemetry.sdk._logs import LogRecordProcessor, LogData
+from opentelemetry.sdk._logs import LogRecordProcessor, ReadWriteLogRecord
 
 class EnvironmentEnrichmentProcessor(LogRecordProcessor):
     """Adds deployment environment metadata to every log record.
@@ -110,9 +109,9 @@ class EnvironmentEnrichmentProcessor(LogRecordProcessor):
         self.region = os.getenv("AWS_REGION", os.getenv("CLOUD_REGION", "unknown"))
         self.commit_sha = os.getenv("GIT_COMMIT_SHA", "unknown")
 
-    def emit(self, log_data: LogData) -> None:
-        # Access the log record from log_data
-        record = log_data.log_record
+    def on_emit(self, log_record: ReadWriteLogRecord) -> None:
+        # Access the API log record from the SDK wrapper
+        record = log_record.log_record
 
         # Add environment attributes to the log record
         if record.attributes is None:
@@ -153,8 +152,7 @@ Now every log record automatically carries deployment metadata without any chang
 Not every log record needs to be exported. Debug logs in production, health check noise, and repetitive status messages can overwhelm your backend and drive up costs. A filtering processor drops unwanted records before they reach the exporter.
 
 ```python
-from opentelemetry.sdk._logs import LogRecordProcessor, LogData
-from opentelemetry.semconv.trace import SpanAttributes
+from opentelemetry.sdk._logs import LogRecordProcessor, ReadWriteLogRecord
 import re
 
 class FilteringLogProcessor(LogRecordProcessor):
@@ -165,8 +163,10 @@ class FilteringLogProcessor(LogRecordProcessor):
     silently discarded.
     """
 
-    def __init__(self, min_severity=None, drop_patterns=None,
-                 drop_attributes=None):
+    def __init__(self, target_processor, min_severity=None,
+                 drop_patterns=None, drop_attributes=None):
+        self.target_processor = target_processor
+
         # Minimum severity number (logs below this are dropped)
         # Severity numbers: TRACE=1, DEBUG=5, INFO=9, WARN=13, ERROR=17
         self.min_severity = min_severity
@@ -181,14 +181,14 @@ class FilteringLogProcessor(LogRecordProcessor):
 
         self._dropped_count = 0
 
-    def emit(self, log_data: LogData) -> None:
-        record = log_data.log_record
+    def on_emit(self, log_record: ReadWriteLogRecord) -> None:
+        record = log_record.log_record
 
         # Check severity level
         if self.min_severity and record.severity_number:
             if record.severity_number.value < self.min_severity:
                 self._dropped_count += 1
-                return  # Drop the record by not forwarding it
+                return  # Drop the record by not sending it to the target processor
 
         # Check body patterns
         body_str = str(record.body) if record.body else ""
@@ -204,24 +204,30 @@ class FilteringLogProcessor(LogRecordProcessor):
                     self._dropped_count += 1
                     return  # Drop records with matching attributes
 
+        self.target_processor.on_emit(log_record)
+
     def shutdown(self) -> None:
         if self._dropped_count > 0:
             print(f"FilteringLogProcessor dropped {self._dropped_count} records")
+        self.target_processor.shutdown()
 
     def force_flush(self, timeout_millis: int = 30000) -> bool:
-        return True
+        return self.target_processor.force_flush(timeout_millis)
 ```
 
-The key insight here is that the filtering processor does not forward the log record to the next processor. When a record matches a drop rule, the `emit` method simply returns without doing anything. The record never reaches the batch processor or exporter.
+The key insight here is that the filtering processor owns the target processor it forwards to. OpenTelemetry Python invokes every processor registered on the provider, so returning from `on_emit` only drops a record if the filter is the component responsible for calling the export processor. When a record matches a drop rule, the `on_emit` method returns before calling the target batch processor, so the record never reaches the exporter.
 
 Configure the filter for your environment:
 
 ```python
 provider = LoggerProvider()
 
-# Add filtering processor
+# Add filtering processor with its export target
 provider.add_log_record_processor(
     FilteringLogProcessor(
+        target_processor=BatchLogRecordProcessor(
+            OTLPLogExporter(endpoint="http://localhost:4317")
+        ),
         # Drop DEBUG and TRACE level logs
         min_severity=9,  # INFO level
         # Drop health check logs
@@ -236,11 +242,6 @@ provider.add_log_record_processor(
         },
     )
 )
-
-# Then export the remaining logs
-provider.add_log_record_processor(
-    BatchLogRecordProcessor(OTLPLogExporter(endpoint="http://localhost:4317"))
-)
 ```
 
 ## Building a Redaction Processor
@@ -249,7 +250,7 @@ Logs often accidentally contain sensitive information like email addresses, cred
 
 ```python
 import re
-from opentelemetry.sdk._logs import LogRecordProcessor, LogData
+from opentelemetry.sdk._logs import LogRecordProcessor, ReadWriteLogRecord
 
 class RedactionLogProcessor(LogRecordProcessor):
     """Redacts sensitive data from log record bodies and attributes.
@@ -303,8 +304,8 @@ class RedactionLogProcessor(LogRecordProcessor):
 
         return text
 
-    def emit(self, log_data: LogData) -> None:
-        record = log_data.log_record
+    def on_emit(self, log_record: ReadWriteLogRecord) -> None:
+        record = log_record.log_record
 
         # Redact the log body
         if record.body:
@@ -357,7 +358,7 @@ Now a log like `"User john@example.com failed login with token Bearer eyJhbG..."
 Sometimes you need to send different logs to different destinations. Error logs might go to a high-priority pipeline while debug logs go to cold storage. A routing processor directs log records to different exporters based on rules.
 
 ```python
-from opentelemetry.sdk._logs import LogRecordProcessor, LogData
+from opentelemetry.sdk._logs import LogRecordProcessor, ReadWriteLogRecord
 from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 
 class RoutingLogProcessor(LogRecordProcessor):
@@ -373,17 +374,17 @@ class RoutingLogProcessor(LogRecordProcessor):
         self.routes = routes
         self.default_processor = default_processor
 
-    def emit(self, log_data: LogData) -> None:
-        record = log_data.log_record
+    def on_emit(self, log_record: ReadWriteLogRecord) -> None:
+        record = log_record.log_record
 
         # Check each route's condition
         for condition_fn, processor in self.routes:
             if condition_fn(record):
-                processor.emit(log_data)
+                processor.on_emit(log_record)
                 return
 
         # No route matched; use the default
-        self.default_processor.emit(log_data)
+        self.default_processor.on_emit(log_record)
 
     def shutdown(self) -> None:
         for _, processor in self.routes:
@@ -451,49 +452,46 @@ provider.add_log_record_processor(
     EnvironmentEnrichmentProcessor()
 )
 
-# 2. Filtering: drop noise before spending CPU on redaction
-provider.add_log_record_processor(
-    FilteringLogProcessor(
-        min_severity=9,
-        drop_patterns=[r"GET /health", r"GET /ready"],
-    )
-)
-
-# 3. Redaction: scrub sensitive data from remaining logs
+# 2. Redaction: scrub sensitive data before export
 provider.add_log_record_processor(
     RedactionLogProcessor(
         redact_attribute_keys=["user.email", "auth.token"],
     )
 )
 
-# 4. Export: batch and send to backend
+# 3. Filtering + export: drop noise before sending to backend
 provider.add_log_record_processor(
-    BatchLogRecordProcessor(
-        OTLPLogExporter(endpoint="http://localhost:4317"),
-        max_queue_size=2048,
-        max_export_batch_size=512,
-        schedule_delay_millis=5000,
+    FilteringLogProcessor(
+        target_processor=BatchLogRecordProcessor(
+            OTLPLogExporter(endpoint="http://localhost:4317"),
+            max_queue_size=2048,
+            max_export_batch_size=512,
+            schedule_delay_millis=5000,
+        ),
+        min_severity=9,
+        drop_patterns=[r"GET /health", r"GET /ready"],
     )
 )
 ```
 
-The pipeline flows like this: enrichment adds metadata, filtering drops noise (which also reduces load on downstream processors), redaction scrubs the remaining records, and finally the batch processor buffers and exports.
+The pipeline flows like this: enrichment adds metadata, redaction scrubs sensitive data, filtering drops noise before export, and finally the batch processor buffers and exports the remaining records.
 
 ## Performance Considerations
 
-Custom log processors run in the hot path of your application. Every log statement passes through every processor synchronously (in the default simple configuration). Keep these guidelines in mind:
+Custom log processors run in the hot path of your application. Every log statement passes through registered processors synchronously, while the batch processor hands export work to a background worker. Keep these guidelines in mind:
 
-Avoid blocking operations in `emit`. Do not make network calls, read files, or acquire locks that might be contended. If you need to look up enrichment data, load it at initialization time and refresh it periodically in a background thread.
+Avoid blocking operations in `on_emit`. Do not make network calls, read files, or acquire locks that might be contended. If you need to look up enrichment data, load it at initialization time and refresh it periodically in a background thread.
 
 ```python
 import threading
 import time
+from opentelemetry.sdk._logs import LogRecordProcessor, ReadWriteLogRecord
 
 class CachedEnrichmentProcessor(LogRecordProcessor):
     """Enrichment processor that refreshes context from a config service.
 
     The enrichment data is loaded at startup and refreshed every 5 minutes
-    in a background thread, avoiding any blocking in the emit path.
+    in a background thread, avoiding any blocking in the on_emit path.
     """
 
     def __init__(self, config_url):
@@ -501,7 +499,7 @@ class CachedEnrichmentProcessor(LogRecordProcessor):
         self.enrichment_data = self._load_config()
         self._running = True
 
-        # Refresh config periodically without blocking emit
+        # Refresh config periodically without blocking on_emit
         self._refresh_thread = threading.Thread(
             target=self._refresh_loop, daemon=True
         )
@@ -509,7 +507,7 @@ class CachedEnrichmentProcessor(LogRecordProcessor):
 
     def _load_config(self):
         # Load enrichment data from config service
-        # This runs in the background thread, not in emit
+        # This runs in the background thread, not in on_emit
         try:
             import requests
             response = requests.get(self.config_url, timeout=5)
@@ -522,8 +520,8 @@ class CachedEnrichmentProcessor(LogRecordProcessor):
             time.sleep(300)  # Refresh every 5 minutes
             self.enrichment_data = self._load_config()
 
-    def emit(self, log_data: LogData) -> None:
-        record = log_data.log_record
+    def on_emit(self, log_record: ReadWriteLogRecord) -> None:
+        record = log_record.log_record
         if record.attributes is None:
             record.attributes = {}
 
@@ -535,7 +533,7 @@ class CachedEnrichmentProcessor(LogRecordProcessor):
         self._running = False
 ```
 
-Keep filtering processors early in the chain. If 80% of your logs are debug level and you filter them out, the redaction and enrichment processors only need to process 20% of the volume.
+Keep filtering close to the export processor, or wrap an expensive custom processor behind a filter when you need to avoid doing that work for dropped records.
 
 ## Testing Custom Processors
 
@@ -545,12 +543,13 @@ Test your processors with the `SimpleLogRecordProcessor` and an in-memory export
 from opentelemetry.sdk._logs import LoggerProvider
 from opentelemetry.sdk._logs.export import (
     SimpleLogRecordProcessor,
-    InMemoryLogExporter,
+    InMemoryLogRecordExporter,
 )
+from opentelemetry._logs import SeverityNumber
 
 def test_redaction_processor():
     # Set up in-memory export for testing
-    memory_exporter = InMemoryLogExporter()
+    memory_exporter = InMemoryLogRecordExporter()
 
     provider = LoggerProvider()
 
@@ -565,10 +564,8 @@ def test_redaction_processor():
     # Emit a log record with sensitive data
     logger = provider.get_logger("test")
     logger.emit(
-        LogRecord(
-            body="User john@example.com logged in",
-            severity_number=SeverityNumber.INFO,
-        )
+        body="User john@example.com logged in",
+        severity_number=SeverityNumber.INFO,
     )
 
     # Verify redaction worked
@@ -582,4 +579,4 @@ Testing with in-memory exporters gives you fast, deterministic tests without req
 
 ## Conclusion
 
-Custom log processors give you fine-grained control over your OpenTelemetry logging pipeline. Enrichment processors add valuable context automatically, filtering processors reduce noise and cost, redaction processors protect sensitive data, and routing processors direct logs to appropriate backends. By chaining these processors in the right order and keeping the emit path fast, you build a logging pipeline that delivers clean, enriched, and safe log data to your observability backend. Start with the specific problem you need to solve, whether that is missing context, too much noise, or data privacy requirements, and build a targeted processor for it.
+Custom log processors give you fine-grained control over your OpenTelemetry logging pipeline. Enrichment processors add valuable context automatically, filtering processors reduce noise and cost, redaction processors protect sensitive data, and routing processors direct logs to appropriate backends. By chaining these processors in the right order and keeping the `on_emit` path fast, you build a logging pipeline that delivers clean, enriched, and safe log data to your observability backend. Start with the specific problem you need to solve, whether that is missing context, too much noise, or data privacy requirements, and build a targeted processor for it.
