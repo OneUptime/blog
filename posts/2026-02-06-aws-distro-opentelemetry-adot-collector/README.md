@@ -42,6 +42,7 @@ Before getting started, make sure you have:
 - AWS CLI v2 installed and configured
 - Docker installed (for local testing)
 - kubectl configured (if deploying to EKS)
+- A OneUptime telemetry ingestion token if you are exporting to OneUptime
 - Basic familiarity with OpenTelemetry Collector configuration
 
 ## Installing ADOT Locally with Docker
@@ -73,9 +74,10 @@ processors:
     timeout: 5s          # Flush batch every 5 seconds
     send_batch_size: 256 # Or when 256 items accumulate
 
-  # Adds resource attributes useful for AWS environments
+  # Adds resource attributes useful for local, EC2, and ECS environments.
+  # Add the eks detector only when the collector is running inside Kubernetes.
   resourcedetection:
-    detectors: [env, ec2, ecs, eks]
+    detectors: [env, ec2, ecs]
     timeout: 5s
 
 exporters:
@@ -90,22 +92,24 @@ exporters:
     log_group_name: /aws/otel/metrics
 
   # Export to an OTLP-compatible backend like OneUptime
-  otlphttp:
+  otlp_http:
     endpoint: "https://oneuptime.com/otlp"
+    headers:
+      x-oneuptime-token: "${env:ONEUPTIME_TOKEN}"
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
       processors: [resourcedetection, batch]
-      exporters: [awsxray, otlphttp]
+      exporters: [awsxray, otlp_http]
     metrics:
       receivers: [otlp]
       processors: [resourcedetection, batch]
-      exporters: [awsemf, otlphttp]
+      exporters: [awsemf, otlp_http]
 ```
 
-Now run the collector container, mounting your config file and passing AWS credentials through environment variables.
+Now run the collector container, mounting your config file and passing AWS credentials through environment variables. If you are exporting to OneUptime, set `ONEUPTIME_TOKEN` to your telemetry ingestion token.
 
 ```bash
 # Run the ADOT Collector with your custom config
@@ -117,6 +121,7 @@ docker run --rm \
   -e AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID \
   -e AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY \
   -e AWS_REGION=us-east-1 \
+  -e ONEUPTIME_TOKEN=$ONEUPTIME_TOKEN \
   public.ecr.aws/aws-observability/aws-otel-collector:latest \
   --config /etc/otel-config.yaml
 ```
@@ -159,7 +164,12 @@ Here is a simplified ECS task definition that runs your app container alongside 
       "name": "adot-collector",
       "image": "public.ecr.aws/aws-observability/aws-otel-collector:latest",
       "essential": true,
-      "command": ["--config", "/etc/otel-config.yaml"],
+      "environment": [
+        {
+          "name": "AOT_CONFIG_CONTENT",
+          "value": "receivers:\n  otlp:\n    protocols:\n      grpc:\n        endpoint: 0.0.0.0:4317\n      http:\n        endpoint: 0.0.0.0:4318\nprocessors:\n  batch: {}\nexporters:\n  awsxray:\n    region: us-east-1\nservice:\n  pipelines:\n    traces:\n      receivers: [otlp]\n      processors: [batch]\n      exporters: [awsxray]"
+        }
+      ],
       "portMappings": [
         { "containerPort": 4317, "protocol": "tcp" },
         { "containerPort": 4318, "protocol": "tcp" }
@@ -182,15 +192,14 @@ Enable the ADOT addon on your EKS cluster with this command.
 # This installs the OpenTelemetry Operator which manages collector instances
 aws eks create-addon \
   --cluster-name my-cluster \
-  --addon-name adot \
-  --addon-version v0.92.1-eksbuild.1
+  --addon-name adot
 ```
 
 Once the operator is running, you can deploy collector instances using the `OpenTelemetryCollector` custom resource. The operator handles scaling, upgrades, and lifecycle management.
 
 ```yaml
 # otel-collector-cr.yaml - Deploys an ADOT Collector via the operator
-apiVersion: opentelemetry.io/v1alpha1
+apiVersion: opentelemetry.io/v1beta1
 kind: OpenTelemetryCollector
 metadata:
   name: adot-collector
@@ -199,7 +208,13 @@ spec:
   mode: deployment          # Can be deployment, daemonset, or sidecar
   replicas: 2               # Run two collector replicas for availability
   serviceAccount: adot-sa   # Service account with IRSA for AWS permissions
-  config: |
+  env:
+    - name: ONEUPTIME_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: oneuptime-otel
+          key: token
+  config:
     receivers:
       otlp:
         protocols:
@@ -215,20 +230,26 @@ spec:
     exporters:
       awsxray:
         region: us-east-1
-      otlphttp:
+      otlp_http:
         endpoint: "https://oneuptime.com/otlp"
+        headers:
+          x-oneuptime-token: "${env:ONEUPTIME_TOKEN}"
     service:
       pipelines:
         traces:
           receivers: [otlp]
           processors: [resourcedetection, batch]
-          exporters: [awsxray, otlphttp]
+          exporters: [awsxray, otlp_http]
 ```
 
 Apply the custom resource to your cluster.
 
 ```bash
 # Deploy the collector instance using the operator
+kubectl create namespace observability
+kubectl create secret generic oneuptime-otel \
+  --from-literal=token=$ONEUPTIME_TOKEN \
+  -n observability
 kubectl apply -f otel-collector-cr.yaml
 ```
 
@@ -244,7 +265,7 @@ Add the ADOT layer to your Lambda function. The layer ARN varies by region and r
 # Add the ADOT Lambda layer to your function (Node.js example for us-east-1)
 aws lambda update-function-configuration \
   --function-name my-function \
-  --layers arn:aws:lambda:us-east-1:901920570463:layer:aws-otel-nodejs-amd64-ver-1-18-1:1 \
+  --layers arn:aws:lambda:us-east-1:901920570463:layer:aws-otel-nodejs-amd64-ver-1-30-2:1 \
   --environment "Variables={AWS_LAMBDA_EXEC_WRAPPER=/opt/otel-handler,OTEL_SERVICE_NAME=my-lambda-function}"
 ```
 
@@ -286,7 +307,7 @@ These attributes make it much easier to filter and group telemetry by infrastruc
 
 If you run into problems with ADOT, here are the most common issues and fixes.
 
-**Collector not starting**: Check that your config YAML is valid. The ADOT Collector will log parsing errors at startup. Run with `--log-level debug` to get detailed output.
+**Collector not starting**: Check that your config YAML is valid. The ADOT Collector will log parsing errors at startup. To get more detailed output, configure the collector's log level under `service.telemetry.logs.level`.
 
 **No data in X-Ray**: Verify IAM permissions. The task role or IRSA role needs `xray:PutTraceSegments` and `xray:PutTelemetryRecords`. Also confirm the region in your exporter matches where you are looking in the X-Ray console.
 
