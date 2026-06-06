@@ -31,7 +31,8 @@ const versionLatency = meter.createHistogram('api.latency.by_version', {
 // or query param (?version=3)
 function extractApiVersion(req: any): string {
   // Check URL path first: /api/v1/..., /api/v2/...
-  const pathMatch = req.path.match(/\/api\/v(\d+)\//);
+  const requestUrl = req.originalUrl || req.url;
+  const pathMatch = requestUrl.match(/\/api\/v(\d+)(?:\/|$)/);
   if (pathMatch) return `v${pathMatch[1]}`;
 
   // Check custom header
@@ -164,8 +165,7 @@ With the metrics flowing, build a dashboard that answers these questions:
 # Traffic percentage by version
 
 sum(rate(api_requests_by_version_total[5m])) by (api_version)
-/ ignoring(api_version)
-sum(rate(api_requests_by_version_total[5m]))
+/ sum(rate(api_requests_by_version_total[5m]))
 
 # Unique consumers per version (from trace data)
 # Run this as a trace analytics query
@@ -176,7 +176,7 @@ sum(rate(api_requests_by_version_total{http_status_code=~"5.."}[5m])) by (api_ve
 / sum(rate(api_requests_by_version_total[5m])) by (api_version)
 
 # Latency comparison (P99) across versions
-histogram_quantile(0.99, rate(api_latency_by_version_bucket[5m])) by (api_version)
+histogram_quantile(0.99, sum(rate(api_latency_by_version_bucket[5m])) by (le, api_version))
 ```
 
 ## Tracking Consumer Migration Progress
@@ -215,12 +215,12 @@ Once you have version metrics, automate the deprecation process:
 // When a consumer suddenly increases v1 usage, they might be regressing
 
 // Alert rule (pseudo-config):
-// IF rate(api_requests_by_version{api_version="v1"}[1h]) < 10
+// IF rate(api_requests_by_version_total{api_version="v1"}[1h]) < 10
 // FOR 7d
 // THEN notify("v1 traffic is below threshold, safe to deprecate")
 
-// IF rate(api_consumer_version_usage{api_version="v1"}[1h]) > 0
-//   AND rate(api_consumer_version_usage{api_version="v1"}[1h] offset 1d) == 0
+// IF rate(api_consumer_version_usage_total{api_version="v1"}[1h]) > 0
+//   AND rate(api_consumer_version_usage_total{api_version="v1"}[1h] offset 1d) == 0
 // THEN notify("Consumer regressed to v1")
 ```
 
