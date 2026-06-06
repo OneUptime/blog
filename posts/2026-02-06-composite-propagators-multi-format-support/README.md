@@ -67,7 +67,7 @@ from opentelemetry.propagate import set_global_textmap, inject
 # Import all the propagators we need
 
 from opentelemetry.propagators.composite import CompositePropagator
-from opentelemetry.trace.propagation import TraceContextTextMapPropagator
+from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 from opentelemetry.baggage.propagation import W3CBaggagePropagator
 from opentelemetry.propagators.b3 import B3MultiFormat
 from opentelemetry.propagators.jaeger import JaegerPropagator
@@ -116,7 +116,7 @@ Each value maps to a specific propagator:
 |-------|-----------|---------|
 | `tracecontext` | W3C Trace Context | `traceparent`, `tracestate` |
 | `baggage` | W3C Baggage | `baggage` |
-| `b3multi` | B3 Multi-Header | `X-B3-TraceId`, `X-B3-SpanId`, `X-B3-Sampled`, `X-B3-ParentSpanId` |
+| `b3multi` | B3 Multi-Header | `X-B3-TraceId`, `X-B3-SpanId`, `X-B3-Sampled`, `X-B3-Flags` |
 | `b3` | B3 Single-Header | `b3` |
 | `jaeger` | Jaeger | `uber-trace-id` |
 
@@ -153,9 +153,9 @@ from opentelemetry import trace
 # but with DIFFERENT trace IDs (a misconfiguration scenario)
 incoming_headers = {
     "traceparent": "00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01",
-    "X-B3-TraceId": "cccccccccccccccccccccccccccccccc",
-    "X-B3-SpanId": "dddddddddddddddd",
-    "X-B3-Sampled": "1",
+    "x-b3-traceid": "cccccccccccccccccccccccccccccccc",
+    "x-b3-spanid": "dddddddddddddddd",
+    "x-b3-sampled": "1",
 }
 
 # With propagator order [W3C, B3], B3 is processed last
@@ -201,9 +201,9 @@ const { JaegerPropagator } = require('@opentelemetry/propagator-jaeger');
 const { propagation } = require('@opentelemetry/api');
 
 // Set up the tracer provider
-const provider = new NodeTracerProvider();
-provider.addSpanProcessor(new SimpleSpanProcessor(new ConsoleSpanExporter()));
-provider.register();
+const provider = new NodeTracerProvider({
+  spanProcessors: [new SimpleSpanProcessor(new ConsoleSpanExporter())],
+});
 
 // Build the composite propagator
 const compositePropagator = new CompositePropagator({
@@ -219,8 +219,8 @@ const compositePropagator = new CompositePropagator({
   ],
 });
 
-// Register the composite propagator globally
-propagation.setGlobalPropagator(compositePropagator);
+// Register the provider and composite propagator globally
+provider.register({ propagator: compositePropagator });
 
 // Now all HTTP instrumentation will use all formats
 const tracer = provider.getTracer('composite-demo');
@@ -298,7 +298,7 @@ from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.propagate import inject, extract, set_global_textmap
 from opentelemetry.propagators.composite import CompositePropagator
-from opentelemetry.trace.propagation import TraceContextTextMapPropagator
+from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 from opentelemetry.propagators.b3 import B3MultiFormat
 
 # Setup for all tests
@@ -325,9 +325,9 @@ def test_w3c_extraction():
 def test_b3_extraction():
     """Verify that B3 headers are correctly extracted."""
     headers = {
-        "X-B3-TraceId": "4bf92f3577b34da6a3ce929d0e0e4736",
-        "X-B3-SpanId": "00f067aa0ba902b7",
-        "X-B3-Sampled": "1",
+        "x-b3-traceid": "4bf92f3577b34da6a3ce929d0e0e4736",
+        "x-b3-spanid": "00f067aa0ba902b7",
+        "x-b3-sampled": "1",
     }
     ctx = extract(headers)
     span_ctx = trace.get_current_span(ctx).get_span_context()
@@ -344,7 +344,7 @@ def test_round_trip_preserves_trace_id():
 
         # Both formats should be present
         assert "traceparent" in headers
-        assert "X-B3-TraceId" in headers
+        assert "x-b3-traceid" in headers
 
         # Extract from headers
         ctx = extract(headers)
