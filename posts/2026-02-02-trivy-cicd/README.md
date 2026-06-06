@@ -929,13 +929,13 @@ scan:
     - test
     - __pycache__
 
+# Severity levels to report (top-level field, applies across scanners)
+severity:
+  - HIGH
+  - CRITICAL
+
 # Vulnerability scanning options
 vulnerability:
-  # Severity levels to report
-  severity:
-    - HIGH
-    - CRITICAL
-
   # Only report vulnerabilities with available fixes
   ignore-unfixed: true
 
@@ -946,12 +946,6 @@ vulnerability:
 
 # Misconfiguration scanning options
 misconfiguration:
-  # Severity levels for IaC issues
-  severity:
-    - MEDIUM
-    - HIGH
-    - CRITICAL
-
   # Include passed checks in output
   include-non-failures: false
 
@@ -1005,8 +999,10 @@ CVE-2024-11111
 
 ### Advanced Policy with YAML
 
+Trivy supports a richer YAML-based ignore policy via `.trivyignore.yaml`. Load it with `--ignorefile .trivyignore.yaml`.
+
 ```yaml
-# .trivy-policy.yaml
+# .trivyignore.yaml
 # Advanced vulnerability exception policy
 # Supports expiration dates and conditional ignores
 
@@ -1016,7 +1012,7 @@ vulnerabilities:
     statement: |
       This vulnerability only affects Windows systems.
       Our application runs exclusively on Linux containers.
-    expiry: 2026-06-01
+    expired_at: 2026-06-01
 
   # Ignore CVE in specific packages
   - id: CVE-2024-67890
@@ -1033,8 +1029,7 @@ vulnerabilities:
 
 misconfigurations:
   # Accept specific misconfigurations
-  - id: DS002
-    avd-id: AVD-DS-0002
+  - id: AVD-DS-0002
     statement: "Root user required for this specific workload"
     paths:
       - "Dockerfile.admin"
@@ -1157,8 +1152,8 @@ Large images or slow networks can cause scan timeouts.
 # Increase timeout for large images
 trivy image --timeout 30m large-image:latest
 
-# Scan only specific layers
-trivy image --ignore-policy ignore-layers.rego large-image:latest
+# Apply a Rego policy to filter vulnerabilities (e.g., ignore by package or path)
+trivy image --ignore-policy ignore-policy.rego large-image:latest
 ```
 
 ### Memory Issues
