@@ -198,11 +198,11 @@ flowchart TB
     subgraph Critical Metrics
         SEAL[vault_core_unsealed]
         LEADER[vault_core_active]
-        HA[vault_ha_active]
+        PEERS[vault_raft_peers]
     end
 
     subgraph Performance Metrics
-        LATENCY[vault_*_latency]
+        LATENCY[vault_core_handle_request]
         TOKENS[vault_token_count]
         LEASES[vault_expire_num_leases]
     end
@@ -239,9 +239,6 @@ In HA mode, exactly one node should be active while others stand by:
 # Active node indicator (1 = active, 0 = standby)
 vault_core_active
 
-# HA status - should always be 1 for healthy HA clusters
-vault_ha_active
-
 # Count active nodes - should be exactly 1
 sum(vault_core_active{job="vault"})
 ```
@@ -266,14 +263,16 @@ rate(vault_expire_num_leases[5m])
 Slow Vault responses impact all dependent applications:
 
 ```promql
-# Average latency for secret reads
-vault_secret_kv_get_latency_ms
+# Average request latency in milliseconds
+# vault_core_handle_request is a summary, so divide the sum by the count
+rate(vault_core_handle_request_sum[5m]) / rate(vault_core_handle_request_count[5m])
 
-# 99th percentile request latency
-histogram_quantile(0.99, rate(vault_core_handle_request_duration_seconds_bucket[5m]))
+# 99th percentile request latency in milliseconds
+# Summaries already expose quantiles, so use the {quantile="..."} label directly
+vault_core_handle_request{quantile="0.99"}
 
-# Request rate by mount point
-sum by (mount_point) (rate(vault_route_count[5m]))
+# Request rate (requests per second handled by Vault)
+rate(vault_core_handle_request_count[5m])
 ```
 
 ## Building Grafana Dashboards
@@ -329,12 +328,12 @@ The following Grafana dashboard JSON demonstrates a production-ready Vault monit
       }
     },
     {
-      "title": "Request Latency P99",
+      "title": "Request Latency P99 (ms)",
       "type": "timeseries",
       "targets": [
         {
-          "expr": "histogram_quantile(0.99, sum(rate(vault_core_handle_request_duration_seconds_bucket[5m])) by (le))",
-          "legendFormat": "P99 Latency"
+          "expr": "vault_core_handle_request{quantile=\"0.99\"}",
+          "legendFormat": "P99 Latency - {{ instance }}"
         }
       ]
     },
@@ -412,8 +411,10 @@ groups:
   - name: vault-warning
     rules:
       # Alert on high request latency
+      # vault_core_handle_request is a Prometheus summary reported in
+      # milliseconds, so the threshold below is 1000ms (1 second).
       - alert: VaultHighLatency
-        expr: histogram_quantile(0.99, sum(rate(vault_core_handle_request_duration_seconds_bucket[5m])) by (le)) > 1
+        expr: vault_core_handle_request{quantile="0.99"} > 1000
         for: 5m
         labels:
           severity: warning
@@ -484,9 +485,12 @@ spec:
       tlsConfig:
         insecureSkipVerify: false
         caFile: /etc/prometheus/secrets/vault-tls/ca.crt
-      bearerTokenSecret:
-        name: vault-prometheus-token
-        key: token
+      # bearerTokenSecret is deprecated - use authorization instead.
+      authorization:
+        type: Bearer
+        credentials:
+          name: vault-prometheus-token
+          key: token
       interval: 30s
       scrapeTimeout: 10s
 ```
@@ -519,8 +523,9 @@ rate(vault_audit_log_request_failure[5m]) > 0
 Backend storage performance directly impacts Vault responsiveness:
 
 ```promql
-# Raft storage latency
-histogram_quantile(0.99, rate(vault_raft_commitTime_bucket[5m]))
+# Raft commit latency P99 in milliseconds
+# vault_raft_commitTime is a Prometheus summary, so read the quantile label
+vault_raft_commitTime{quantile="0.99"}
 
 # Raft peer count - should match expected cluster size
 vault_raft_peers
