@@ -103,22 +103,14 @@ This configuration uses the default AWS credential chain, which checks:
 3. IAM role for ECS tasks
 4. IAM role for EC2 instances
 
-## Configuration with Explicit Credentials
+## Configuration with Environment Credentials
 
-For non-production environments, you can specify credentials explicitly:
+For non-production environments, provide credentials through environment variables and let the exporter use the default AWS credential chain:
 
 ```yaml
 exporters:
   awsxray:
     region: us-east-1
-
-    # AWS credentials (not recommended for production)
-    aws_auth:
-      access_key_id: ${AWS_ACCESS_KEY_ID}
-      secret_access_key: ${AWS_SECRET_ACCESS_KEY}
-
-      # Optional session token for temporary credentials
-      session_token: ${AWS_SESSION_TOKEN}
 
 receivers:
   otlp:
@@ -138,6 +130,8 @@ service:
       processors: [batch]
       exporters: [awsxray]
 ```
+
+Set `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and optionally `AWS_SESSION_TOKEN` in the collector environment.
 
 For production, use IAM roles instead of hardcoded credentials.
 
@@ -253,6 +247,8 @@ processors:
     timeout: 5s
     override: false
 
+  # For EKS, use the eks detector when the collector runs in the Kubernetes cluster.
+
   # Transform attributes for X-Ray
   attributes:
     actions:
@@ -313,7 +309,7 @@ exporters:
     # Custom endpoint for VPC endpoint
     endpoint: https://vpce-1234567-abcdefg.xray.us-east-1.vpce.amazonaws.com
 
-    # Disable endpoint resolution
+    # Keep TLS certificate verification enabled
     no_verify_ssl: false
 
 receivers:
@@ -340,9 +336,11 @@ Create the X-Ray VPC endpoint in your AWS Console:
 ```bash
 aws ec2 create-vpc-endpoint \
   --vpc-id vpc-12345678 \
+  --vpc-endpoint-type Interface \
   --service-name com.amazonaws.us-east-1.xray \
-  --route-table-ids rtb-12345678 \
-  --subnet-ids subnet-12345678 subnet-87654321
+  --subnet-ids subnet-12345678 subnet-87654321 \
+  --security-group-ids sg-12345678 \
+  --private-dns-enabled
 ```
 
 ## Multi-Region Configuration
@@ -363,19 +361,22 @@ exporters:
   awsxray/eu-west-1:
     region: eu-west-1
 
-processors:
+connectors:
   # Route based on region attribute
   routing:
-    from_attribute: cloud.region
+    default_pipelines: [traces/us-east-1]
     table:
-      - value: us-east-1
-        exporters: [awsxray/us-east-1]
-      - value: us-west-2
-        exporters: [awsxray/us-west-2]
-      - value: eu-west-1
-        exporters: [awsxray/eu-west-1]
-    default_exporters: [awsxray/us-east-1]
+      - context: resource
+        condition: attributes["cloud.region"] == "us-east-1"
+        pipelines: [traces/us-east-1]
+      - context: resource
+        condition: attributes["cloud.region"] == "us-west-2"
+        pipelines: [traces/us-west-2]
+      - context: resource
+        condition: attributes["cloud.region"] == "eu-west-1"
+        pipelines: [traces/eu-west-1]
 
+processors:
   batch:
     timeout: 10s
     send_batch_size: 50
@@ -388,10 +389,19 @@ receivers:
 
 service:
   pipelines:
-    traces:
+    traces/in:
       receivers: [otlp]
-      processors: [batch, routing]
-      exporters: [awsxray/us-east-1, awsxray/us-west-2, awsxray/eu-west-1]
+      processors: [batch]
+      exporters: [routing]
+    traces/us-east-1:
+      receivers: [routing]
+      exporters: [awsxray/us-east-1]
+    traces/us-west-2:
+      receivers: [routing]
+      exporters: [awsxray/us-west-2]
+    traces/eu-west-1:
+      receivers: [routing]
+      exporters: [awsxray/eu-west-1]
 ```
 
 ## Complete Production Configuration
@@ -429,7 +439,6 @@ processors:
       - system
       - ecs
       - ec2
-      - eks
     timeout: 5s
     override: false
 
@@ -438,9 +447,8 @@ processors:
     trace_statements:
       - context: span
         statements:
-          # Convert HTTP status codes to X-Ray conventions
-          - set(status.code, 1) where attributes["http.status_code"] >= 400 and attributes["http.status_code"] < 500
-          - set(status.code, 2) where attributes["http.status_code"] >= 500
+          # Mark HTTP error spans with OpenTelemetry error status
+          - set(status.code, STATUS_CODE_ERROR) where attributes["http.status_code"] >= 400
 
           # Set error flag
           - set(attributes["error"], true) where attributes["http.status_code"] >= 400
@@ -512,18 +520,10 @@ exporters:
       enabled: true
       include_metadata: true
 
-    # Retry configuration
-    retry_on_failure:
-      enabled: true
-      initial_interval: 5s
-      max_interval: 30s
-      max_elapsed_time: 300s
-
-    # Queue configuration
-    sending_queue:
-      enabled: true
-      num_consumers: 10
-      queue_size: 1000
+    # Upload configuration
+    num_workers: 10
+    request_timeout_seconds: 30
+    max_retries: 2
 
 service:
   extensions: [health_check, pprof]
@@ -537,7 +537,12 @@ service:
 
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 
   pipelines:
     traces:
@@ -584,7 +589,7 @@ service:
       exporters: [awsxray]
 ```
 
-Deploy the collector as a Lambda layer or sidecar container in your Lambda function.
+Deploy the collector as a Lambda layer or as a Lambda extension in a container image.
 
 ## Service Graph Configuration
 
@@ -634,7 +639,7 @@ exporters:
       - http.method
       - http.status_code
 
-  # Additional backend (e.g., Elasticsearch)
+  # Additional OTLP-compatible backend
   otlphttp:
     endpoint: https://observability.example.com:4318
     tls:
