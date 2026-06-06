@@ -20,7 +20,7 @@ Before diving into alternatives, let us understand why teams switch:
 Datadog bills by host, custom metrics, log volume, and APM spans. A mid-sized team can easily spend $50K-100K+ per year. Enterprise deployments often exceed $500K.
 
 **2. Vendor Lock-in**
-Proprietary agents and data formats make migration painful. Your data lives in Datadog's cloud, and exporting it is not straightforward.
+Vendor-specific agents, SDKs, configuration, and data formats make migration painful. Your data lives in Datadog's cloud, and exporting it is not straightforward.
 
 **3. Complexity**
 Datadog does everything, which means there is a lot to configure. Teams often use 20% of features but pay for 100%.
@@ -39,7 +39,7 @@ Some organizations need data to stay on-premises or in specific regions. Datadog
 **Pricing:** Free tier available. Paid plans start at $22/user/month. Self-hosted option is free.
 
 **Pros:**
-- Truly open source (MIT license), not open-core
+- Truly open source (Apache 2.0 license), not open-core
 - Single platform replaces 5+ tools
 - Predictable per-user pricing
 - Self-hosted option for data control
@@ -72,7 +72,7 @@ Some organizations need data to stay on-premises or in specific regions. Datadog
 **Cons:**
 - Requires assembly (multiple tools)
 - Steep learning curve
-- No built-in incident management
+- Incident management is separate from the core observability stack
 - Cloud costs can rival Datadog at scale
 
 **Why consider:** If you already use Prometheus and want best-in-class dashboards, the Grafana stack is proven at massive scale.
@@ -118,7 +118,7 @@ Some organizations need data to stay on-premises or in specific regions. Datadog
 
 **Cons:**
 - Metrics only (no logs or traces)
-- Requires separate storage solution
+- Requires separate long-term storage solution for durable retention or high availability
 - No GUI for configuration
 - Alertmanager is basic
 
@@ -132,7 +132,7 @@ Some organizations need data to stay on-premises or in specific regions. Datadog
 
 **Best for:** Teams with heavy log analysis needs.
 
-**Pricing:** Self-hosted is free. Elastic Cloud starts at $95/month.
+**Pricing:** Self-hosted is free. Elastic Cloud uses resource-based or usage-based pay-as-you-go pricing.
 
 **Pros:**
 - Powerful log search and analysis
@@ -156,7 +156,7 @@ Some organizations need data to stay on-premises or in specific regions. Datadog
 
 **Best for:** Large enterprises wanting automated root cause analysis.
 
-**Pricing:** Host-based pricing, typically $50-70/host/month.
+**Pricing:** Host-based pricing. Full-stack monitoring lists at $58/month per 8 GiB host.
 
 **Pros:**
 - Automatic discovery and instrumentation
@@ -179,7 +179,7 @@ Some organizations need data to stay on-premises or in specific regions. Datadog
 
 **Best for:** Teams needing SIEM and observability together.
 
-**Pricing:** Based on data ingestion, typically expensive.
+**Pricing:** Splunk Observability Cloud is host-based, with plans starting at $15/host/month. Splunk Platform and SIEM pricing can also be based on data ingestion or workload.
 
 **Pros:**
 - Powerful query language (SPL)
@@ -275,8 +275,8 @@ Some organizations need data to stay on-premises or in specific regions. Datadog
 | New Relic | Commercial | ✅ | ✅ | ✅ | ❌ | ❌ | Free tier |
 | Prometheus | Open Source | ❌ | ✅ | ❌ | ❌ | ❌ | Free |
 | Elastic/ELK | Open Source | ✅ | ✅ | ✅ | ❌ | ❌ | Free |
-| Dynatrace | Commercial | ✅ | ✅ | ✅ | ❌ | ❌ | ~$50/host |
-| Splunk | Commercial | ✅ | ✅ | ✅ | ❌ | ❌ | Contact sales |
+| Dynatrace | Commercial | ✅ | ✅ | ✅ | ❌ | ❌ | $58/8 GiB host |
+| Splunk | Commercial | ✅ | ✅ | ✅ | ❌ | ❌ | $15/host |
 | Honeycomb | Commercial | ✅ | ✅ | ✅ | ❌ | ❌ | Free tier |
 | Signoz | Open Source | ✅ | ✅ | ✅ | ❌ | ❌ | Free |
 | Lightstep | Commercial | ✅ | ✅ | ✅ | ❌ | ❌ | Contact sales |
