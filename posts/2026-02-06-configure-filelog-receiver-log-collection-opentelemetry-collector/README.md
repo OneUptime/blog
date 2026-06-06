@@ -59,15 +59,15 @@ processors:
     timeout: 10s
 
 exporters:
-  logging:
-    loglevel: debug
+  debug:
+    verbosity: detailed
 
 service:
   pipelines:
     logs:
       receivers: [filelog]
       processors: [batch]
-      exporters: [logging]
+      exporters: [debug]
 ```
 
 This configuration reads from `/var/log/application.log`, parses each line as JSON, extracts the timestamp from the `time` field, and forwards logs through the pipeline.
@@ -116,7 +116,7 @@ receivers:
     start_at: end
 ```
 
-In production, use `end` to avoid reprocessing old logs every time the collector restarts. The receiver maintains checkpoints so it remembers where it left off, even across restarts.
+In production, use `end` to avoid reprocessing old logs every time the collector starts for the first time. To remember file offsets across collector restarts, configure the receiver with a persistent `storage` extension; otherwise offsets are tracked in memory only.
 
 ## Parsing JSON Logs
 
@@ -181,18 +181,9 @@ receivers:
         severity:
           parse_from: attributes.status
           mapping:
-            range:
-              min: 200
-              max: 299
-              severity: info
-            range:
-              min: 400
-              max: 499
-              severity: warn
-            range:
-              min: 500
-              max: 599
-              severity: error
+            info: 2xx
+            warn: 4xx
+            error: 5xx
 ```
 
 Named capture groups in the regex become log attributes. This example parses a standard NGINX access log and extracts IP address, request method, path, status code, and user agent.
@@ -320,20 +311,12 @@ receivers:
       # Route based on severity
       - type: router
         routes:
-          # Drop debug logs in production
-          - output: drop_debug
-            expr: 'severity_number == 5'
-
           # Send errors to special pipeline
           - output: error_pipeline
             expr: 'severity_number >= 17'
 
-          # Default route for info/warn
-          - output: standard_pipeline
-
-      # Drop debug logs
-      - id: drop_debug
-        type: noop
+        # Default route for non-error logs
+        default: standard_pipeline
 
       # Process errors with additional context
       - id: error_pipeline
@@ -346,7 +329,7 @@ receivers:
         type: noop
 ```
 
-The `expr` field uses [OTTL (OpenTelemetry Transformation Language)](https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/pkg/ottl) syntax. This allows complex conditional logic based on log content.
+The `expr` field uses the Stanza operator expression syntax. This allows conditional routing logic based on log content.
 
 ## Working with CSV Logs
 
@@ -372,7 +355,7 @@ receivers:
           parse_from: attributes.level
 ```
 
-The `header` parameter defines column names. If your CSV file includes a header row, you can use `header_attribute` to read it dynamically from the first line.
+The `header` parameter defines column names. If you need dynamic column names, you can use `header_attribute` to read them from an attribute populated earlier in the pipeline.
 
 ## File Rotation Handling
 
@@ -403,12 +386,13 @@ Kubernetes writes container logs to predictable paths:
 
 ```yaml
 # Collect logs from all Kubernetes pods on the node
-# Parses container runtime format (Docker or containerd)
+# Parses CRI-style container runtime logs such as containerd or CRI-O
 receivers:
   filelog:
     include:
-      # Docker container logs
+      # Kubernetes pod log files
       - /var/log/pods/*/*/*.log
+    include_file_path: true
 
     operators:
       # Parse container runtime log format
@@ -442,7 +426,7 @@ receivers:
         to: resource["k8s.container.name"]
 ```
 
-This configuration collects logs from all containers on a Kubernetes node, parses the container runtime format, and extracts pod metadata from the file path.
+This configuration collects logs from all containers on a Kubernetes node, parses the CRI-style container runtime format, and extracts pod metadata from the file path.
 
 ## Performance Optimization
 
@@ -527,6 +511,7 @@ receivers:
   filelog:
     include:
       - /var/log/pods/*/*/*.log
+    include_file_path: true
 
     exclude:
       - /var/log/pods/kube-system_*
@@ -557,7 +542,7 @@ receivers:
       # Try parsing as JSON (may fail for non-JSON logs)
       - type: json_parser
         parse_from: body
-        if: 'body matches "^\\{"'
+        if: 'body matches "^{.*}$"'
         on_error: send
         timestamp:
           parse_from: attributes.timestamp
