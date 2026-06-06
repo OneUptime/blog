@@ -88,8 +88,9 @@ def create_instrumented_handlers(spec_path):
                             kind=trace.SpanKind.CONSUMER,
                             attributes={
                                 "messaging.system": "custom",
-                                "messaging.destination": ch_name,
-                                "messaging.operation": "receive",
+                                "messaging.destination.name": ch_name,
+                                "messaging.operation.name": "process",
+                                "messaging.operation.type": "process",
                                 "messaging.message.type": msg_name,
                                 "asyncapi.operation_id": op_id,
                                 "service.name": service_name,
@@ -117,8 +118,9 @@ def create_instrumented_handlers(spec_path):
                             kind=trace.SpanKind.PRODUCER,
                             attributes={
                                 "messaging.system": "custom",
-                                "messaging.destination": ch_name,
-                                "messaging.operation": "publish",
+                                "messaging.destination.name": ch_name,
+                                "messaging.operation.name": "send",
+                                "messaging.operation.type": "send",
                                 "messaging.message.type": msg_name,
                                 "asyncapi.operation_id": op_id,
                                 "service.name": service_name,
@@ -189,7 +191,7 @@ def create_validated_handler(spec_path, channel_name, operation_type):
             with tracer.start_as_current_span(
                 "validate_message_schema",
                 attributes={
-                    "messaging.destination": channel_name,
+                    "messaging.destination.name": channel_name,
                     "asyncapi.schema_valid": True,
                 }
             ) as span:
@@ -208,24 +210,36 @@ def create_validated_handler(spec_path, channel_name, operation_type):
 
 ## Binding-Specific Attributes
 
-AsyncAPI specs can include server bindings for Kafka, AMQP, MQTT, and more. You can extract these to set proper semantic convention attributes:
+AsyncAPI specs can include bindings for Kafka, AMQP, MQTT, and more. You can extract these to set semantic convention and AsyncAPI-specific attributes:
 
 ```python
-def get_binding_attributes(spec, channel_name):
-    """Extract messaging system attributes from AsyncAPI server bindings."""
+def get_binding_attributes(spec, channel_name, operation_type=None):
+    """Extract messaging attributes from AsyncAPI bindings."""
     channel = spec["channels"][channel_name]
-    bindings = channel.get("bindings", {})
+    channel_bindings = channel.get("bindings", {})
+    operation_bindings = {}
+    if operation_type and operation_type in channel:
+        operation_bindings = channel[operation_type].get("bindings", {})
 
     attrs = {}
-    if "kafka" in bindings:
+    if "kafka" in channel_bindings or "kafka" in operation_bindings:
         attrs["messaging.system"] = "kafka"
-        attrs["messaging.kafka.consumer_group"] = bindings["kafka"].get("groupId", "")
-    elif "amqp" in bindings:
+        kafka_operation = operation_bindings.get("kafka", {})
+        group_id = kafka_operation.get("groupId")
+        if isinstance(group_id, str):
+            attrs["messaging.consumer.group.name"] = group_id
+        elif isinstance(group_id, dict) and group_id.get("enum"):
+            attrs["messaging.consumer.group.name"] = group_id["enum"][0]
+    elif "amqp" in channel_bindings:
         attrs["messaging.system"] = "rabbitmq"
-        attrs["messaging.rabbitmq.routing_key"] = bindings["amqp"].get("routingKey", "")
-    elif "mqtt" in bindings:
+        amqp_binding = channel_bindings["amqp"]
+        if amqp_binding.get("is") == "routingKey":
+            attrs["messaging.rabbitmq.destination.routing_key"] = channel_name
+    elif "mqtt" in channel_bindings:
         attrs["messaging.system"] = "mqtt"
-        attrs["messaging.mqtt.qos"] = bindings["mqtt"].get("qos", 0)
+        mqtt_binding = channel_bindings["mqtt"]
+        if "qos" in mqtt_binding:
+            attrs["asyncapi.binding.mqtt.qos"] = mqtt_binding["qos"]
 
     return attrs
 ```
