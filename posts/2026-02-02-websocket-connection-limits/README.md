@@ -209,7 +209,7 @@ Python's asyncio requires careful handling of shared state. This implementation 
 
 import asyncio
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Optional
 from enum import Enum
 
@@ -223,8 +223,8 @@ class ConnectionMetadata:
     """Stores metadata for each active connection"""
     ip: str
     user_id: Optional[str]
-    connected_at: datetime = field(default_factory=datetime.utcnow)
-    last_activity: datetime = field(default_factory=datetime.utcnow)
+    connected_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    last_activity: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 @dataclass
 class ConnectionResult:
@@ -717,8 +717,11 @@ async def websocket_endpoint(websocket: WebSocket):
     )
 
     if not result.allowed:
-        # Reject the connection with a close code and reason
-        # Close code 1013 indicates "Try Again Later"
+        # Accept first so the close frame is sent over the WebSocket protocol;
+        # calling close() before accept() in Starlette responds with HTTP 403
+        # instead of a WebSocket close frame, so the client never sees the code.
+        # Close code 1013 indicates "Try Again Later".
+        await websocket.accept()
         await websocket.close(
             code=1013,
             reason=result.message
