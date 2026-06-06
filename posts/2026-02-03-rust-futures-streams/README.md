@@ -371,7 +371,7 @@ async fn concurrent_stream_processing() {
 Implementing a custom stream for a paginated API.
 
 ```rust
-use futures::stream::Stream;
+use futures::stream::{Stream, TryStreamExt};
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
@@ -445,7 +445,7 @@ Using the async-stream crate for simpler stream creation.
 
 ```rust
 use async_stream::stream;
-use futures::stream::Stream;
+use futures::stream::{Stream, StreamExt};
 
 // The stream! macro provides a generator-like syntax for creating streams
 // Much more ergonomic than implementing Stream manually
