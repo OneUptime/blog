@@ -27,6 +27,7 @@ package main
 
 import (
     "context"
+    "crypto/sha256"
     "encoding/hex"
     "encoding/json"
     "fmt"
@@ -43,36 +44,65 @@ import (
 // Agent represents a connected collector agent
 type Agent struct {
     ID              string
+    InstanceUID     []byte
     Connection      types.Connection
     Status          *protobufs.AgentDescription
-    Health          *protobufs.AgentHealth
+    Health          *protobufs.ComponentHealth
     EffectiveConfig string
     LastSeen        time.Time
 }
 
 // AgentStore manages the connected agent registry
 type AgentStore struct {
-    mu     sync.RWMutex
-    agents map[string]*Agent
+    mu        sync.RWMutex
+    agents    map[string]*Agent
+    connIndex map[types.Connection]string
 }
 
 func NewAgentStore() *AgentStore {
     return &AgentStore{
-        agents: make(map[string]*Agent),
+        agents:    make(map[string]*Agent),
+        connIndex: make(map[types.Connection]string),
     }
 }
 
 func (s *AgentStore) AddOrUpdate(agent *Agent) {
     s.mu.Lock()
     defer s.mu.Unlock()
+
+    if existing := s.agents[agent.ID]; existing != nil {
+        if agent.Status == nil {
+            agent.Status = existing.Status
+        }
+        if agent.Health == nil {
+            agent.Health = existing.Health
+        }
+        if agent.EffectiveConfig == "" {
+            agent.EffectiveConfig = existing.EffectiveConfig
+        }
+    }
+
     agent.LastSeen = time.Now()
     s.agents[agent.ID] = agent
+    s.connIndex[agent.Connection] = agent.ID
 }
 
 func (s *AgentStore) Remove(id string) {
     s.mu.Lock()
     defer s.mu.Unlock()
+    if agent := s.agents[id]; agent != nil {
+        delete(s.connIndex, agent.Connection)
+    }
     delete(s.agents, id)
+}
+
+func (s *AgentStore) RemoveByConnection(conn types.Connection) {
+    s.mu.Lock()
+    defer s.mu.Unlock()
+    if id, ok := s.connIndex[conn]; ok {
+        delete(s.agents, id)
+        delete(s.connIndex, conn)
+    }
 }
 
 func (s *AgentStore) GetAll() []*Agent {
@@ -113,8 +143,8 @@ func (s *OpAMPServer) Start() error {
     settings := server.StartSettings{
         ListenEndpoint: "0.0.0.0:4320",
         Settings: server.Settings{
-            Callbacks: server.CallbacksStruct{
-                OnConnectingFunc: s.onConnecting,
+            Callbacks: types.Callbacks{
+                OnConnecting: s.onConnecting,
             },
         },
     }
@@ -127,14 +157,15 @@ func (s *OpAMPServer) onConnecting(r *http.Request) types.ConnectionResponse {
 
     return types.ConnectionResponse{
         Accept: true,
-        ConnectionCallbacks: server.ConnectionCallbacksStruct{
-            OnMessageFunc:         s.onMessage,
-            OnConnectionCloseFunc: s.onDisconnect,
+        ConnectionCallbacks: types.ConnectionCallbacks{
+            OnMessage:         s.onMessage,
+            OnConnectionClose: s.onDisconnect,
         },
     }
 }
 
 func (s *OpAMPServer) onMessage(
+    _ context.Context,
     conn types.Connection,
     msg *protobufs.AgentToServer,
 ) *protobufs.ServerToAgent {
@@ -142,8 +173,9 @@ func (s *OpAMPServer) onMessage(
     agentID := hex.EncodeToString(msg.InstanceUid)
 
     agent := &Agent{
-        ID:         agentID,
-        Connection: conn,
+        ID:          agentID,
+        InstanceUID: msg.InstanceUid,
+        Connection:  conn,
     }
 
     // Process agent description (hostname, OS, version, etc.)
@@ -158,7 +190,7 @@ func (s *OpAMPServer) onMessage(
         agent.Health = msg.Health
         if !msg.Health.Healthy {
             log.Printf("WARNING: Agent %s reports unhealthy: %s",
-                agentID, msg.Health.LastError)
+                agentID, msg.Health.GetLastError())
         }
     }
 
@@ -174,11 +206,19 @@ func (s *OpAMPServer) onMessage(
 
     s.agentStore.AddOrUpdate(agent)
 
-    return &protobufs.ServerToAgent{}
+    return &protobufs.ServerToAgent{
+        InstanceUid: msg.InstanceUid,
+        Capabilities: uint64(
+            protobufs.ServerCapabilities_ServerCapabilities_AcceptsStatus |
+                protobufs.ServerCapabilities_ServerCapabilities_OffersRemoteConfig |
+                protobufs.ServerCapabilities_ServerCapabilities_AcceptsEffectiveConfig,
+        ),
+    }
 }
 
 func (s *OpAMPServer) onDisconnect(conn types.Connection) {
     log.Printf("Agent disconnected")
+    s.agentStore.RemoveByConnection(conn)
 }
 
 func extractHostname(desc *protobufs.AgentDescription) string {
@@ -250,7 +290,10 @@ func (s *OpAMPServer) setupHTTPAPI() {
             return
         }
 
+        configHash := sha256.Sum256([]byte(req.Config))
+
         msg := &protobufs.ServerToAgent{
+            InstanceUid: agent.InstanceUID,
             RemoteConfig: &protobufs.AgentRemoteConfig{
                 Config: &protobufs.AgentConfigMap{
                     ConfigMap: map[string]*protobufs.AgentConfigFile{
@@ -260,7 +303,13 @@ func (s *OpAMPServer) setupHTTPAPI() {
                         },
                     },
                 },
+                ConfigHash: configHash[:],
             },
+            Capabilities: uint64(
+                protobufs.ServerCapabilities_ServerCapabilities_AcceptsStatus |
+                    protobufs.ServerCapabilities_ServerCapabilities_OffersRemoteConfig |
+                    protobufs.ServerCapabilities_ServerCapabilities_AcceptsEffectiveConfig,
+            ),
         }
 
         if err := agent.Connection.Send(context.Background(), msg); err != nil {
