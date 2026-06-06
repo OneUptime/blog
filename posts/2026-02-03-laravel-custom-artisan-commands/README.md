@@ -630,7 +630,7 @@ class OutputDemo extends Command
         // Error - white text on red background
         $this->error('Something went wrong!');
 
-        // Warning - yellow background (Laravel 8+)
+        // Warning - yellow text
         $this->warn('This is a warning message.');
 
         // New line - add blank lines
@@ -1087,11 +1087,9 @@ class Kernel extends ConsoleKernel
             ->between('08:00', '18:00')
             ->weekdays();
 
-        // Run monthly on the first day
+        // Run monthly on the first day at 06:00
         $schedule->command('billing:generate-invoices')
-            ->monthly()
-            ->onFirstDayOfMonth()
-            ->at('06:00');
+            ->monthlyOn(1, '06:00');
 
         // Run with custom cron expression
         $schedule->command('custom:task')
