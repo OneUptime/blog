@@ -10,9 +10,9 @@ Trace sampling is the most direct lever you have for controlling observability c
 
 ## How Consistent Probability Sampling Works
 
-The core idea is simple: the sampling decision is derived from the trace ID itself. Since the trace ID is shared across all services in a request chain, every service independently arrives at the same keep/drop decision without needing to communicate.
+The core idea is simple: the sampling decision is derived from trace-level randomness, usually from the trace ID. Since the trace ID is shared across all services in a request chain, services can make compatible keep/drop decisions without needing to communicate.
 
-OpenTelemetry implements this through the W3C Trace Context `tracestate` header using a field called `p` (for probability). The `p` value encodes the sampling threshold so downstream services can respect the same decision.
+OpenTelemetry implements this through the W3C Trace Context `tracestate` header using the `ot` entry. The `th` sub-key encodes the sampling threshold, and the optional `rv` sub-key can carry an explicit randomness value, so downstream services can respect the effective sampling probability.
 
 ```mermaid
 sequenceDiagram
@@ -22,11 +22,11 @@ sequenceDiagram
     participant ServiceB
 
     Client->>Gateway: Request
-    Note over Gateway: Generate trace ID<br/>Hash trace ID<br/>p=0.1 (10% sample rate)<br/>Hash < threshold? KEEP
-    Gateway->>ServiceA: trace_id + tracestate: p=0.1
-    Note over ServiceA: Same trace_id<br/>Same hash<br/>Same decision: KEEP
-    ServiceA->>ServiceB: trace_id + tracestate: p=0.1
-    Note over ServiceB: Same trace_id<br/>Same hash<br/>Same decision: KEEP
+    Note over Gateway: Generate trace ID<br/>Read trace randomness<br/>ot=th:&lt;10% threshold&gt;<br/>randomness >= threshold? KEEP
+    Gateway->>ServiceA: trace_id + tracestate: ot=th:&lt;threshold&gt;
+    Note over ServiceA: Same trace_id<br/>Same threshold<br/>Compatible decision: KEEP
+    ServiceA->>ServiceB: trace_id + tracestate: ot=th:&lt;threshold&gt;
+    Note over ServiceB: Same trace_id<br/>Same threshold<br/>Compatible decision: KEEP
 ```
 
 ## Configuring the SDK Sampler
@@ -40,14 +40,13 @@ OpenTelemetry SDKs include a built-in `TraceIdRatioBased` sampler. For consisten
 # to maintain consistency.
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.sampling import (
-    ParentBasedTraceIdRatio,
+    ParentBased,
     TraceIdRatioBased,
 )
 
-# Sample 10% of traces. The TraceIdRatioBased sampler hashes
-# the trace ID and compares it against the threshold, ensuring
-# the same trace ID always produces the same decision.
-sampler = ParentBasedTraceIdRatio(rate=0.10)
+# Sample 10% of root traces. ParentBased then preserves the
+# upstream sampled flag for child spans.
+sampler = ParentBased(root=TraceIdRatioBased(0.10))
 
 # ParentBased wrapping means:
 # - Root spans: use TraceIdRatioBased at 10%
@@ -108,12 +107,12 @@ print(f"Monthly cost at {required_rate:.1%}: ${monthly_budget_usd}")
 
 ## Collector-Level Probability Sampling
 
-If you cannot modify all application SDKs, apply consistent sampling at the Collector using the `probabilisticsampler` processor:
+If you cannot modify all application SDKs, apply consistent sampling at the Collector using the `probabilistic_sampler` processor:
 
 ```yaml
 # Collector config using the probabilistic sampler processor.
-# This provides consistent sampling based on trace ID hash,
-# matching the same algorithm used by the SDK sampler.
+# This provides consistent sampling based on trace randomness
+# and records the OpenTelemetry sampling threshold.
 receivers:
   otlp:
     protocols:
@@ -121,14 +120,13 @@ receivers:
         endpoint: 0.0.0.0:4317
 
 processors:
-  # The probabilistic sampler uses the trace ID hash to make
-  # deterministic keep/drop decisions. A 10% rate means any
-  # trace ID that hashes below the 10th percentile is kept.
-  probabilisticsampler:
+  # The probabilistic sampler uses trace randomness to make
+  # deterministic keep/drop decisions. A 10% proportional rate
+  # keeps an expected 10% of incoming trace spans and updates
+  # the OpenTelemetry sampling threshold.
+  probabilistic_sampler:
+    mode: proportional
     sampling_percentage: 10
-    # Use the trace ID for the hash source to ensure
-    # consistency across all services and Collectors.
-    hash_seed: 22  # Fixed seed for consistent hashing
 
   batch:
     send_batch_size: 8192
@@ -142,7 +140,7 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [probabilisticsampler, batch]
+      processors: [probabilistic_sampler, batch]
       exporters: [otlphttp]
 ```
 
@@ -156,15 +154,18 @@ A flat 10% sample rate treats all traffic equally, but error traces and slow req
 processors:
   # First, sample 100% of error traces
   # The routing connector sends errors to a dedicated pipeline.
-  probabilisticsampler/errors:
+  probabilistic_sampler/errors:
+    mode: proportional
     sampling_percentage: 100
 
   # Sample 50% of slow requests (above p99 latency)
-  probabilisticsampler/slow:
+  probabilistic_sampler/slow:
+    mode: proportional
     sampling_percentage: 50
 
   # Sample 5% of normal successful requests
-  probabilisticsampler/normal:
+  probabilistic_sampler/normal:
+    mode: proportional
     sampling_percentage: 5
 
 connectors:
@@ -172,9 +173,11 @@ connectors:
     default_pipelines: [traces/normal]
     error_mode: ignore
     table:
-      - condition: status.code == STATUS_CODE_ERROR
+      - context: span
+        condition: span.status.code == STATUS_CODE_ERROR
         pipelines: [traces/errors]
-      - condition: duration > 5000000000
+      - context: span
+        condition: span.end_time_unix_nano - span.start_time_unix_nano > 5000000000
         pipelines: [traces/slow]
 
 service:
@@ -185,17 +188,17 @@ service:
 
     traces/errors:
       receivers: [routing/by_importance]
-      processors: [probabilisticsampler/errors, batch]
+      processors: [probabilistic_sampler/errors, batch]
       exporters: [otlphttp]
 
     traces/slow:
       receivers: [routing/by_importance]
-      processors: [probabilisticsampler/slow, batch]
+      processors: [probabilistic_sampler/slow, batch]
       exporters: [otlphttp]
 
     traces/normal:
       receivers: [routing/by_importance]
-      processors: [probabilisticsampler/normal, batch]
+      processors: [probabilistic_sampler/normal, batch]
       exporters: [otlphttp]
 ```
 
