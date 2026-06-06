@@ -50,7 +50,7 @@ The collector extension is distributed as a Lambda layer. You add it the same wa
 
 aws lambda update-function-configuration \
   --function-name my-function \
-  --layers arn:aws:lambda:us-east-1:184161586896:layer:opentelemetry-collector-amd64:1 \
+  --layers arn:aws:lambda:us-east-1:184161586896:layer:opentelemetry-collector-amd64-0_22_0:1 \
   --environment "Variables={
     OPENTELEMETRY_COLLECTOR_CONFIG_URI=/var/task/collector-config.yaml,
     OTEL_SERVICE_NAME=my-function
@@ -69,7 +69,7 @@ The collector configuration for Lambda is different from what you would use on a
 receivers:
   otlp:
     protocols:
-      # HTTP is preferred over gRPC in Lambda for lower overhead
+      # OTLP/HTTP receiver for telemetry sent over localhost
       http:
         endpoint: 0.0.0.0:4318
 
@@ -82,7 +82,7 @@ processors:
     send_batch_max_size: 100
 
 exporters:
-  otlphttp:
+  otlp_http:
     endpoint: https://ingest.example.com
     headers:
       # Use environment variable substitution for secrets
@@ -100,14 +100,14 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlphttp]
+      exporters: [otlp_http]
     metrics:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlphttp]
+      exporters: [otlp_http]
 ```
 
-There are several deliberate choices in this configuration. The batch timeout is set to 5 seconds rather than the typical 30 seconds used in server deployments. This is because Lambda execution environments can be frozen between invocations, and any data sitting in the batch processor's buffer will be stuck there until the next invocation thaws the environment. A shorter timeout ensures data gets exported quickly.
+There are several deliberate choices in this configuration. The batch timeout is kept short because Lambda execution environments can be frozen between invocations, and any data sitting in the batch processor's buffer will be stuck there until the next invocation thaws the environment. A short timeout ensures data gets exported quickly.
 
 The retry configuration is also conservative. In a server environment, you might retry for minutes. In Lambda, the extension has limited time to work, so capping retries at 15 seconds prevents the extension from hanging during shutdown.
 
@@ -149,20 +149,19 @@ processors:
   # Filter out noisy health check spans
   filter/traces:
     error_mode: ignore
-    traces:
-      span:
-        - 'attributes["http.route"] == "/health"'
+    trace_conditions:
+      - 'span.attributes["http.route"] == "/health"'
 
 exporters:
-  otlphttp/traces:
+  otlp_http/traces:
     endpoint: https://traces.example.com
     headers:
       api-key: "${TRACES_API_KEY}"
-  otlphttp/metrics:
+  otlp_http/metrics:
     endpoint: https://metrics.example.com
     headers:
       api-key: "${METRICS_API_KEY}"
-  otlphttp/logs:
+  otlp_http/logs:
     endpoint: https://logs.example.com
     headers:
       api-key: "${LOGS_API_KEY}"
@@ -172,15 +171,15 @@ service:
     traces:
       receivers: [otlp]
       processors: [resource, filter/traces, batch/traces]
-      exporters: [otlphttp/traces]
+      exporters: [otlp_http/traces]
     metrics:
       receivers: [otlp]
       processors: [resource, batch/metrics]
-      exporters: [otlphttp/metrics]
+      exporters: [otlp_http/metrics]
     logs:
       receivers: [otlp]
       processors: [resource, batch/logs]
-      exporters: [otlphttp/logs]
+      exporters: [otlp_http/logs]
 ```
 
 Each pipeline gets its own batch processor instance with settings tuned for that signal type. Metrics typically have higher cardinality but lower urgency, so the batch timeout can be longer. Traces and logs benefit from faster export to keep debugging workflows responsive.
@@ -215,7 +214,7 @@ processors:
     send_batch_size: 50
 
 exporters:
-  otlphttp:
+  otlp_http:
     endpoint: https://ingest.example.com
     headers:
       api-key: "${API_KEY}"
@@ -226,7 +225,7 @@ service:
       receivers: [otlp]
       # Memory limiter must come before batch processor
       processors: [memory_limiter, batch]
-      exporters: [otlphttp]
+      exporters: [otlp_http]
 ```
 
 The `memory_limiter` processor is essential in Lambda. Set `limit_mib` based on your function's total memory allocation minus what your function code needs. For a 256MB function where your code uses around 150MB, setting the collector's limit to 40MB leaves a comfortable buffer.
@@ -242,7 +241,7 @@ For teams managing many Lambda functions, maintaining a collector config file in
 aws lambda update-function-configuration \
   --function-name my-function \
   --environment "Variables={
-    OPENTELEMETRY_COLLECTOR_CONFIG_URI=s3://my-configs-bucket/collector/lambda-config.yaml
+    OPENTELEMETRY_COLLECTOR_CONFIG_URI=s3://my-configs-bucket.s3.us-east-1.amazonaws.com/collector/lambda-config.yaml
   }"
 ```
 
@@ -265,21 +264,44 @@ This approach lets you update the collector configuration for all functions by c
 
 ## Environment Variable Configuration
 
-For simpler setups, you can configure the collector entirely through environment variables without a YAML file.
+For simpler setups, keep the collector configuration small and put backend-specific values in environment variables.
 
 ```bash
-# Minimal configuration using only environment variables
+# Set backend values that the collector configuration references
 aws lambda update-function-configuration \
   --function-name my-function \
   --environment "Variables={
+    OPENTELEMETRY_COLLECTOR_CONFIG_URI=/var/task/collector-config.yaml,
     OTEL_EXPORTER_OTLP_ENDPOINT=https://ingest.example.com,
-    OTEL_EXPORTER_OTLP_HEADERS=api-key=your-key-here,
-    OTEL_EXPORTER_OTLP_COMPRESSION=gzip,
+    API_KEY=your-key-here,
     OTEL_SERVICE_NAME=my-function
   }"
 ```
 
-When no configuration file is specified, the collector extension uses sensible defaults with an OTLP receiver on port 4318 and an OTLP exporter configured through standard OpenTelemetry environment variables. This is the quickest way to get started, though you lose the ability to add processors or configure multiple pipelines.
+Your collector configuration can then reference those values:
+
+```yaml
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+
+exporters:
+  otlp_http:
+    endpoint: "${OTEL_EXPORTER_OTLP_ENDPOINT}"
+    headers:
+      api-key: "${API_KEY}"
+    compression: gzip
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [otlp_http]
+```
+
+When no custom configuration file is specified, the collector extension uses its default configuration, which includes OTLP receivers and exports to the debug exporter. This is useful for smoke testing, but you still need a collector configuration file when you want to add processors, configure multiple pipelines, or export to a production backend.
 
 ## Verifying the Extension Is Working
 
