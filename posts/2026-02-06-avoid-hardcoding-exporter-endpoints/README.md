@@ -12,7 +12,7 @@ Hardcoding the Collector endpoint in your application code is a quick way to get
 
 ```javascript
 // Bad - endpoint is baked into the code
-const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
+const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-proto');
 
 const exporter = new OTLPTraceExporter({
   url: 'http://otel-collector.monitoring.svc.cluster.local:4318/v1/traces',
@@ -32,7 +32,7 @@ const endpoint = process.env.NODE_ENV === 'production'
 
 ## The Standard Environment Variables
 
-OpenTelemetry defines standard environment variables that all compliant SDKs respect. When you do not pass explicit configuration to the SDK, it reads from these variables automatically.
+OpenTelemetry defines standard environment variables that SDKs and exporters can use for configuration. In the JavaScript and Python examples below, when you do not pass explicit exporter configuration, the exporter reads from these variables automatically.
 
 The most important ones:
 
@@ -69,7 +69,7 @@ With environment variables, your application code contains no environment-specif
 // Good - no hardcoded endpoints
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
-const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
+const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-proto');
 
 // The exporter reads OTEL_EXPORTER_OTLP_ENDPOINT automatically
 const sdk = new NodeSDK({
@@ -105,14 +105,25 @@ services:
 ```yaml
 apiVersion: apps/v1
 kind: Deployment
+metadata:
+  name: my-service
 spec:
+  selector:
+    matchLabels:
+      app: my-service
   template:
+    metadata:
+      labels:
+        app: my-service
     spec:
       containers:
         - name: my-service
+          image: my-service:latest
           env:
             - name: OTEL_SERVICE_NAME
               value: "my-service"
+            - name: APP_VERSION
+              value: "1.2.3"
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: "http://otel-collector.monitoring:4318"
             - name: OTEL_EXPORTER_OTLP_PROTOCOL
@@ -179,4 +190,4 @@ OTEL_METRICS_EXPORTER               # otlp, console, or none
 OTEL_LOGS_EXPORTER                  # otlp, console, or none
 ```
 
-Using environment variables instead of hardcoded values makes your instrumentation code portable, your deployments simpler, and your configuration auditable. It is the approach the OpenTelemetry specification recommends, and every compliant SDK supports it.
+Using environment variables instead of hardcoded values makes your instrumentation code portable, your deployments simpler, and your configuration auditable. It is the approach the OpenTelemetry specification defines, and the major SDKs support it for common OTLP exporter settings.
