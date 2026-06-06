@@ -19,7 +19,8 @@ OpenTelemetry makes this easier because both signals share the same resource att
 Make sure your profiling agent and metrics SDK use identical resource attributes:
 
 ```yaml
-# Collector config with resource detection
+# Collector config with shared resource attributes
+# Start the Collector with: --feature-gates=service.profilesSupport
 
 receivers:
   otlp:
@@ -40,21 +41,27 @@ processors:
     timeout: 10s
 
 exporters:
-  otlphttp/pyroscope:
-    endpoint: http://pyroscope:4040
-  prometheusremotewrite:
+  otlp/pyroscope:
+    endpoint: pyroscope:4040
+    tls:
+      insecure: true
+  prometheus_remote_write:
     endpoint: http://mimir:9009/api/v1/push
+    tls:
+      insecure: true
+    resource_to_telemetry_conversion:
+      enabled: true
 
 service:
   pipelines:
     metrics:
       receivers: [otlp]
       processors: [resource, batch]
-      exporters: [prometheusremotewrite]
+      exporters: [prometheus_remote_write]
     profiles:
       receivers: [otlp]
       processors: [resource, batch]
-      exporters: [otlphttp/pyroscope]
+      exporters: [otlp/pyroscope]
 ```
 
 ## Building a Correlated Dashboard in Grafana
@@ -70,7 +77,7 @@ Create a Grafana dashboard with metrics panels and a linked flame graph panel:
       "datasource": "Prometheus",
       "targets": [
         {
-          "expr": "rate(process_cpu_seconds_total{service_name=\"checkout-service\"}[5m])",
+          "expr": "process_cpu_utilization{service_name=\"checkout-service\", cpu_mode=\"user\"}",
           "legendFormat": "{{instance}}"
         }
       ],
@@ -92,7 +99,7 @@ Create a Grafana dashboard with metrics panels and a linked flame graph panel:
 }
 ```
 
-The important detail is configuring the flame graph panel to respond to time range selections from the metrics panel. In Grafana, you do this by making both panels share the same time variable. When you click and drag on a spike in the CPU chart, the flame graph panel updates to show the profile for exactly that time window.
+The important detail is configuring the flame graph panel to use the dashboard time range. In Grafana, panels use the dashboard time picker unless you add a panel-specific time override. When you click and drag on a spike in the CPU chart, the dashboard time range updates and the flame graph panel updates to show the profile for that time window.
 
 ## Querying Profiles for a Specific Time Range
 
@@ -101,32 +108,31 @@ When you spot a metric anomaly, you can query profiles programmatically:
 ```bash
 # Query Pyroscope for the CPU profile during a specific spike
 # Time range: 2:15 PM to 2:30 PM on Feb 5
-curl -G http://pyroscope:4040/api/v1/query_range \
-  --data-urlencode 'query=process_cpu:cpu:nanoseconds{service_name="checkout-service"}' \
-  --data-urlencode 'from=2026-02-05T14:15:00Z' \
-  --data-urlencode 'until=2026-02-05T14:30:00Z' \
-  --data-urlencode 'step=60s'
+curl --get http://pyroscope:4040/pyroscope/render \
+  --data-urlencode 'query=process_cpu:cpu:nanoseconds:cpu:nanoseconds{service_name="checkout-service"}' \
+  --data-urlencode 'from=1770300900' \
+  --data-urlencode 'until=1770301800'
 ```
 
 This returns the flame graph data for the exact period when the CPU spike occurred.
 
 ## Correlating Memory Metrics with Allocation Profiles
 
-The same approach works for memory. If your `process.runtime.go.mem.heap_alloc` metric shows a sudden increase, pull the allocation profile for that period:
+The same approach works for memory. If your `go.memory.allocated` metric shows a sudden increase, pull the allocation profile for that period:
 
 ```python
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 # When the memory metric spiked
-spike_start = datetime(2026, 2, 5, 14, 15)
+spike_start = datetime(2026, 2, 5, 14, 15, tzinfo=timezone.utc)
 spike_end = spike_start + timedelta(minutes=15)
 
 # Fetch the allocation profile for that window
 response = requests.get(
-    "http://pyroscope:4040/api/v1/query",
+    "http://pyroscope:4040/pyroscope/render",
     params={
-        "query": 'memory:alloc_space:bytes{service_name="checkout-service"}',
+        "query": 'memory:alloc_space:bytes:space:bytes{service_name="checkout-service"}',
         "from": int(spike_start.timestamp()),
         "until": int(spike_end.timestamp()),
     }
@@ -148,8 +154,8 @@ You can build automated correlation into your alerting pipeline. When a resource
 route:
   receiver: profile-capture
   routes:
-    - match:
-        alertname: HighCPU
+    - matchers:
+        - alertname="HighCPU"
       receiver: profile-capture
 
 receivers:
