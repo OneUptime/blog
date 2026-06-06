@@ -542,7 +542,7 @@ def main():
         help="Minimum log level to display (default: INFO)"
     )
 
-    # Choices with case-insensitive matching
+    # Choices with string values
     parser.add_argument(
         "-f", "--format",
         choices=["plain", "json", "csv"],
@@ -744,7 +744,7 @@ Files to process:
 
 Output: stdout
 
-Tags: Python, Argparse, CLI, Command Line, Tool
+Tags: ['urgent', 'review', '2024']
 
 # Using -o without a value uses the const
 $ python process.py data.txt -o
