@@ -79,6 +79,8 @@ processors:
   # Add Kubernetes metadata from the local node
   k8sattributes:
     auth_type: "serviceAccount"
+    filter:
+      node_from_env_var: KUBE_NODE_NAME
     extract:
       metadata:
         - k8s.pod.name
@@ -106,8 +108,6 @@ exporters:
     endpoint: otel-gateway.observability.svc.cluster.local:4317
     tls:
       insecure: true
-    # Use round-robin load balancing across gateway replicas
-    balancer_name: round_robin
 
 service:
   pipelines:
@@ -125,13 +125,13 @@ service:
       exporters: [otlp]
 ```
 
-Note the `memory_limiter` processor is listed first in the pipeline. This is intentional. If the agent hits its memory limit, it starts dropping data at the ingestion point rather than crashing.
+Note the `memory_limiter` processor is listed first in the pipeline. This is intentional. If the agent hits its memory limit, it refuses new data before downstream processing rather than crashing.
 
 ## Deploying the Agent as a DaemonSet
 
 The Kubernetes DaemonSet ensures one agent pod runs on every node. Keep the resource requests tight. On a 2,000-node cluster, every extra 100Mi of memory requested translates to 200Gi of cluster capacity consumed.
 
-This DaemonSet manifest deploys the agent collector on every node with constrained resource limits and appropriate Kubernetes RBAC.
+This DaemonSet manifest deploys the agent collector on every node with constrained resource limits. Create the Kubernetes RBAC required by the `k8sattributes` processor for the service account shown here.
 
 ```yaml
 # agent-daemonset.yaml
@@ -154,6 +154,11 @@ spec:
         - name: collector
           image: otel/opentelemetry-collector-contrib:0.96.0
           args: ["--config=/etc/otel/config.yaml"]
+          env:
+            - name: KUBE_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
           resources:
             requests:
               cpu: 100m
@@ -363,7 +368,7 @@ spec:
 
 ## Load Balancing Considerations
 
-Standard Kubernetes services use random or round-robin load balancing for gRPC connections. Since gRPC uses long-lived connections, a naive setup results in uneven distribution. Agent pods that connect first may all hit the same gateway replica.
+Standard Kubernetes services load balance at the connection level. Since gRPC uses long-lived connections, a naive setup can result in uneven distribution. Agent pods that connect first may all hit the same gateway replica.
 
 There are two solutions:
 
@@ -387,7 +392,7 @@ exporters:
         port: 4317
 ```
 
-**Option 2: Use a headless service** with client-side balancing. The agent's gRPC client resolves all gateway pod IPs and distributes connections across them.
+**Option 2: Use a headless service** with client-side gRPC balancing. The agent's gRPC client can resolve all gateway pod IPs and distribute connections across them when the OTLP exporter points at the headless service and uses a gRPC balancer such as `round_robin`.
 
 For tail sampling, Option 1 is mandatory. Spans from the same trace must reach the same gateway instance for the sampling decision to work correctly.
 
@@ -410,10 +415,10 @@ Both agents and gateways should expose their internal metrics. The collector has
 
 Key things to monitor:
 
-- **Agent queue depth**: If agents are backing up, the gateway is overloaded.
+- **Exporter queue depth**: If agent or gateway exporter queues are backing up, downstream collectors or backends are overloaded.
 - **Gateway memory usage**: Tail sampling holds traces in memory. Watch for OOM kills.
 - **Export latency**: High export latency on the gateway means your backend is struggling.
-- **Dropped telemetry**: The `otelcol_processor_dropped_spans` metric reveals data loss.
+- **Dropped or refused telemetry**: Watch `otelcol_receiver_refused_spans`, `otelcol_exporter_enqueue_failed_spans`, and `otelcol_exporter_send_failed_spans` along with the equivalent log and metric point counters.
 
 Enable the zpages extension on the gateway for live debugging during incidents.
 
