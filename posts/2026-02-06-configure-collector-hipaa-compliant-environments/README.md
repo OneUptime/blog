@@ -10,7 +10,7 @@ Description: A practical guide to configuring the OpenTelemetry Collector for HI
 
 If you work in healthcare technology, you already know that HIPAA adds constraints to nearly every technical decision you make. Observability is no exception. The OpenTelemetry Collector is a powerful tool for processing and routing telemetry data, but its default configuration is not designed with Protected Health Information (PHI) in mind. Traces can contain patient names in HTTP URLs. Logs can include diagnosis codes. Metrics labels can carry patient identifiers. All of this constitutes PHI under HIPAA, and mishandling it can lead to compliance violations.
 
-This guide covers the specific configuration changes you need to make to the OpenTelemetry Collector so that it meets HIPAA requirements. We will address data redaction, encryption in transit, encryption at rest, access controls, and audit logging.
+This guide covers the specific configuration changes you need to make to the OpenTelemetry Collector so that it supports HIPAA requirements. We will address data redaction, encryption in transit, access controls, and audit logging.
 
 ## Understanding the HIPAA Risk with Telemetry
 
@@ -80,8 +80,8 @@ processors:
         statements:
           # Replace numeric patient IDs in URL paths with a generic placeholder
           # This preserves the route structure while removing the identifier
-          - replace_pattern(attributes["url.path"], "/patients/[0-9]+", "/patients/{id}")
-          - replace_pattern(attributes["url.path"], "/records/[0-9]+", "/records/{id}")
+          - replace_pattern(span.attributes["url.path"], "/patients/[0-9]+", "/patients/{id}")
+          - replace_pattern(span.attributes["url.path"], "/records/[0-9]+", "/records/{id}")
 ```
 
 ## Step 2: Redact PHI from Log Bodies
@@ -98,18 +98,18 @@ processors:
       - context: log
         statements:
           # Redact Social Security Numbers (XXX-XX-XXXX pattern)
-          - replace_pattern(body, "[0-9]{3}-[0-9]{2}-[0-9]{4}", "[SSN-REDACTED]")
+          - replace_pattern(log.body, "[0-9]{3}-[0-9]{2}-[0-9]{4}", "[SSN-REDACTED]")
           # Redact Medical Record Numbers (assuming MRN-XXXXXX format)
-          - replace_pattern(body, "MRN-[A-Z0-9]{6,10}", "[MRN-REDACTED]")
+          - replace_pattern(log.body, "MRN-[A-Z0-9]{6,10}", "[MRN-REDACTED]")
           # Redact date of birth patterns (MM/DD/YYYY)
-          - replace_pattern(body, "[0-1][0-9]/[0-3][0-9]/[1-2][0-9]{3}", "[DOB-REDACTED]")
+          - replace_pattern(log.body, "[0-1][0-9]/[0-3][0-9]/[1-2][0-9]{3}", "[DOB-REDACTED]")
 ```
 
 Keep in mind that regex-based redaction is not foolproof. Patient names in free text cannot be reliably caught by pattern matching. The better approach is to prevent your application from logging PHI in the first place. Use structured logging and keep PHI out of log messages at the source.
 
 ## Step 3: Enforce TLS for All Communications
 
-HIPAA requires encryption of ePHI in transit. Every connection to and from the Collector must use TLS. This means configuring TLS on receivers (incoming data), exporters (outgoing data), and any extensions that expose HTTP endpoints.
+HIPAA's encryption implementation specifications are addressable, which means they must be implemented when reasonable and appropriate based on your risk assessment, or replaced with a documented equivalent alternative. For telemetry carrying ePHI, TLS is normally the appropriate control. Configure TLS on receivers (incoming data), exporters (outgoing data), and any extensions that expose HTTP endpoints.
 
 This configuration enforces TLS 1.2 as the minimum version on both the receiver and exporter sides.
 
@@ -124,7 +124,7 @@ receivers:
           cert_file: /etc/otel/certs/server.crt
           # Path to the server private key
           key_file: /etc/otel/certs/server.key
-          # Minimum TLS version - HIPAA requires at least TLS 1.2
+          # Minimum TLS version for this Collector endpoint
           min_version: "1.2"
       http:
         endpoint: 0.0.0.0:4318
@@ -174,20 +174,19 @@ Some telemetry data is too risky to process at all. If certain services handle r
 processors:
   # Drop all traces from high-risk services that handle raw PHI
   filter/drop-phi-services:
-    traces:
-      span:
-        - 'resource.attributes["service.name"] == "patient-records-importer"'
-        - 'resource.attributes["service.name"] == "hl7-message-processor"'
-    logs:
-      log_record:
-        - 'resource.attributes["service.name"] == "patient-records-importer"'
+    error_mode: ignore
+    trace_conditions:
+      - 'resource.attributes["service.name"] == "patient-records-importer"'
+      - 'resource.attributes["service.name"] == "hl7-message-processor"'
+    log_conditions:
+      - 'resource.attributes["service.name"] == "patient-records-importer"'
 ```
 
 This is a blunt tool. You lose observability into those services entirely. But for batch processing services that ingest raw patient data, this may be the safest option until you can implement proper PHI handling at the application level.
 
 ## Step 6: Configure Audit Logging
 
-HIPAA requires audit controls that record activity in systems containing ePHI. The Collector itself should log its operational activity so you have a record of what data it processed.
+HIPAA requires audit controls that record and examine activity in systems containing or using ePHI. The Collector itself should log its operational activity so you have a record of how it handled telemetry pipelines.
 
 ```yaml
 service:
@@ -200,14 +199,19 @@ service:
       output_paths: ["/var/log/otel/collector.log"]
     metrics:
       # Expose Collector health metrics on a separate port
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 ```
 
-These Collector logs should be shipped to a tamper-evident log storage system. Configure log rotation and ensure the logs are retained for at least six years, as HIPAA requires.
+These Collector logs should be shipped to a tamper-evident log storage system. Configure log rotation and set a retention period that matches your risk analysis, policies, and any documented evidence you need to retain for HIPAA compliance.
 
 ## Step 7: Put It All Together
 
-Here is a complete Collector configuration that combines all the HIPAA controls discussed above into a single pipeline.
+Here is a Collector configuration that combines the main trace pipeline controls discussed above into a single pipeline.
 
 ```yaml
 receivers:
@@ -224,9 +228,9 @@ receivers:
 processors:
   # First: drop entire spans from high-risk services
   filter/drop-phi-services:
-    traces:
-      span:
-        - 'resource.attributes["service.name"] == "patient-records-importer"'
+    error_mode: ignore
+    trace_conditions:
+      - 'resource.attributes["service.name"] == "patient-records-importer"'
 
   # Second: remove known PHI attribute keys
   attributes/phi-removal:
@@ -243,7 +247,7 @@ processors:
     trace_statements:
       - context: span
         statements:
-          - replace_pattern(attributes["url.path"], "/patients/[0-9]+", "/patients/{id}")
+          - replace_pattern(span.attributes["url.path"], "/patients/[0-9]+", "/patients/{id}")
 
   # Fourth: batch for efficient export
   batch:
