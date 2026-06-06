@@ -96,6 +96,8 @@ receivers:
     operators:
       # Parse JSON from the raw log body
       - type: json_parser
+        severity:
+          parse_from: attributes.level
 
 processors:
   # Transform processor uses OTTL for data manipulation
@@ -103,13 +105,13 @@ processors:
     log_statements:
       - context: log
         statements:
-          - set(attributes["processed_at"], Now())
+          - set(log.attributes["processed_at"], Now())
 
-  # Filter processor to route error logs
+  # Filter processor drops matching logs, so this keeps only errors and fatals
   filter/errors:
-    logs:
-      log_record:
-        - 'severity_text == "error" or severity_text == "fatal"'
+    error_mode: ignore
+    log_conditions:
+      - 'log.severity_text != "error" and log.severity_text != "fatal"'
 
   batch:
     timeout: 5s
@@ -121,7 +123,7 @@ exporters:
     logs_index: "app-logs"
 
   otlphttp/alerts:
-    endpoint: "https://alerts.example.com"
+    endpoint: "https://alerts.example.com/v1/logs"
 
 service:
   pipelines:
@@ -151,18 +153,18 @@ source = '''
 parsed = parse_json!(.message)
 
 # Extract and normalize fields
-.timestamp = parse_timestamp!(parsed.ts, format: "%+")
-.severity = downcase(parsed.level)
+.timestamp = parse_timestamp!(string!(parsed.ts), format: "%+")
+.severity = downcase(string!(parsed.level))
 .service = parsed.service_name
 
 # GeoIP enrichment from IP address
 .geo = get_enrichment_table_record("geoip", {"ip": parsed.client_ip}) ?? {}
 
 # Redact sensitive patterns
-.message = redact(.message, filters: ["pattern"], patterns: [r'\d{4}-\d{4}-\d{4}-\d{4}'])
+.message = redact(string!(.message), filters: [r'\d{4}-\d{4}-\d{4}-\d{4}'])
 
 # Calculate request duration in milliseconds
-.duration_ms = to_float(parsed.duration) * 1000.0
+.duration_ms = to_float!(parsed.duration) * 1000.0
 
 # Add routing metadata based on content
 if .severity == "error" {
@@ -183,21 +185,21 @@ processors:
       - context: log
         statements:
           # Set attributes from parsed fields
-          - set(attributes["service"], attributes["service_name"])
-          - set(severity_text, attributes["level"])
+          - set(log.attributes["service"], log.attributes["service_name"])
+          - set(log.severity_text, log.attributes["level"])
           # OTTL has fewer built-in functions than VRL
           # Complex transforms may need a custom processor
 ```
 
-VRL is a full programming language with conditionals, loops, error handling, and a rich standard library. OTTL is a domain-specific expression language that handles common cases well but lacks VRL's flexibility.
+VRL is an expressive domain-specific language with conditionals, compile-time error handling, and a rich standard library. OTTL is a domain-specific expression language that handles common cases well but lacks VRL's flexibility.
 
 ## Performance Benchmarks
 
 Both tools are high-performance, but they achieve it differently.
 
-Vector's Rust implementation gives it excellent throughput with predictable memory usage. There is no garbage collector, so latency is consistently low. Vector regularly publishes benchmark results showing throughput of 10+ million events per second in simple forwarding scenarios.
+Vector's Rust implementation gives it excellent throughput with predictable memory usage. There is no garbage collector, so latency is consistently low. Vector's sizing guidance uses roughly 10 MiB/s per vCPU for unstructured log processing as a starting estimate, while actual throughput depends heavily on event size, transforms, sinks, buffering, and acknowledgements.
 
-The OpenTelemetry Collector in Go also performs well but has garbage collection pauses. For most production workloads, these pauses are measured in microseconds and are not noticeable. The collector's memory limiter processor helps prevent runaway memory usage.
+The OpenTelemetry Collector in Go also performs well but can have garbage collection overhead. For most production workloads, this is not the bottleneck when the collector is sized correctly. The collector's memory limiter processor helps prevent runaway memory usage.
 
 In practical terms, both tools handle production workloads without breaking a sweat. The performance difference only becomes relevant at extreme scale or in latency-sensitive environments.
 
@@ -214,13 +216,14 @@ inputs = ["parsed_logs"]
 
 # Each route is a named condition
 [transforms.route_by_service.route.frontend]
-condition = '.service == "frontend"'
+type = "vrl"
+source = '.service == "frontend"'
 
 [transforms.route_by_service.route.backend]
-condition = '.service == "backend"'
+type = "vrl"
+source = '.service == "backend"'
 
-[transforms.route_by_service.route._unmatched]
-# Catches anything that does not match above routes
+# Unmatched events are automatically available as route_by_service._unmatched
 
 [sinks.frontend_store]
 type = "loki"
