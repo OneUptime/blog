@@ -164,7 +164,7 @@ Once the Prometheus metrics are in OTLP format inside the collector, you can app
 ```yaml
 processors:
   # Transform metric names to match OTLP conventions
-  metricstransform:
+  metrics_transform:
     transforms:
       # Rename a metric to follow OTel semantic conventions
       - include: http_request_duration_seconds
@@ -176,9 +176,9 @@ processors:
       - include: ^node_(.*)
         match_type: regexp
         action: update
-        new_name: system.$1
+        new_name: system.$${1}
 
-      # Aggregate across instances
+      # Add a static label to one metric
       - include: http_requests_total
         match_type: strict
         action: update
@@ -199,17 +199,12 @@ processors:
           - process_.*
           - promhttp_.*
 
-  # Convert resource attributes for OTLP compatibility
+  # Add resource attributes for OTLP compatibility
   resource:
     attributes:
-      # Map the Prometheus job label to service.name
-      - key: service.name
-        from_attribute: job
-        action: upsert
-
-      # Map instance to service.instance.id
-      - key: service.instance.id
-        from_attribute: instance
+      # The Prometheus receiver maps job and instance to service.name and service.instance.id
+      - key: deployment.environment.name
+        value: "production"
         action: upsert
 
   batch:
@@ -220,11 +215,11 @@ service:
   pipelines:
     metrics:
       receivers: [prometheus]
-      processors: [resource, metricstransform, filter, batch]
+      processors: [resource, metrics_transform, filter, batch]
       exporters: [otlp]
 ```
 
-The metricstransform processor is particularly useful during migration. You can rename Prometheus metrics to follow OpenTelemetry semantic conventions without changing the application code. This lets you gradually align naming while keeping backward compatibility.
+The metrics transform processor is particularly useful during migration. You can rename Prometheus metrics to follow OpenTelemetry semantic conventions without changing the application code. This lets you gradually align naming while keeping backward compatibility.
 
 ## Running Prometheus and OTLP Side by Side
 
@@ -285,6 +280,8 @@ receivers:
         - job_name: "my-app"
           scrape_interval: 30s
           scrape_timeout: 10s
+          # Report extra scrape metrics for debugging
+          extra_scrape_metrics: true
           # Honor timestamps from the application (default: true)
           honor_timestamps: true
           # Honor labels from the target, do not overwrite with job/instance
@@ -296,8 +293,6 @@ receivers:
     # Removes _total, _count, _sum, _bucket suffixes
     trim_metric_suffixes: true
 
-    # Report extra scrape metrics for debugging
-    report_extra_scrape_metrics: true
 ```
 
 The `trim_metric_suffixes` option is particularly useful when converting to OTLP. It removes the Prometheus-specific suffixes so that the OTLP metric names match what you would get from native OTel instrumentation. A counter called `http_requests_total` in Prometheus becomes `http_requests` in OTLP, which is the convention for OTel counters.
@@ -313,7 +308,6 @@ service:
       level: info
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
 
   pipelines:
     metrics:
