@@ -270,13 +270,13 @@ public class ArticleService {
     }
 
     // Always execute and update the cache with the result
-    @CachePut(value = "articles", key = "#article.id")
+    @CachePut(value = "articles", key = "#result.id")
     public Article createArticle(Article article) {
         return articleRepository.save(article);
     }
 
     // Update both the entity and the cache
-    @CachePut(value = "articles", key = "#article.id")
+    @CachePut(value = "articles", key = "#result.id")
     public Article updateArticle(Article article) {
         return articleRepository.save(article);
     }
@@ -384,16 +384,17 @@ For distributed applications, Redis allows multiple application instances to sha
 # application.yml
 
 spring:
-  redis:
-    host: localhost
-    port: 6379
-    password: ${REDIS_PASSWORD:}
-    timeout: 2000ms
-    lettuce:
-      pool:
-        max-active: 8
-        max-idle: 8
-        min-idle: 2
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      password: ${REDIS_PASSWORD:}
+      timeout: 2000ms
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 2
 ```
 
 ### Redis Cache Manager Configuration
@@ -521,7 +522,14 @@ public class CacheEvictionListener {
 
 ### Scheduled Cache Refresh
 
+Enable scheduling with `@EnableScheduling` before using `@Scheduled` methods:
+
 ```java
+@Configuration
+@EnableScheduling
+public class SchedulingConfig {
+}
+
 @Component
 public class CacheRefreshScheduler {
 
@@ -627,7 +635,7 @@ class UserServiceCacheTest {
     @Autowired
     private CacheManager cacheManager;
 
-    @MockBean
+    @MockitoBean
     private UserRepository userRepository;
 
     @BeforeEach
@@ -690,20 +698,20 @@ class UserServiceCacheTest {
 - Product data: 1-2 hours
 - Configuration/lookups: 12-24 hours
 
-### Cache Only Serializable Objects
+### Cache Values Safely for Remote Providers
 
 ```java
-// Good: Serializable entity
+// Good for Redis with JDK serialization: Serializable entity
 @Entity
 public class User implements Serializable {
     private static final long serialVersionUID = 1L;
 }
 
-// Bad: Entity with non-serializable references
+// Risky: entity with lazy references can be difficult to serialize safely
 @Entity
 public class User {
     @ManyToOne(fetch = FetchType.LAZY)
-    private Department department; // Lazy proxy is not serializable
+    private Department department; // Lazy proxies can cause serialization problems
 }
 ```
 
