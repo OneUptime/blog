@@ -91,7 +91,7 @@ helm install hasura hasura/graphql-engine \
   --namespace hasura \
   --create-namespace \
   --set postgres.enabled=true \
-  --set adminSecret=myadminsecret
+  --set secret.adminSecret=myadminsecret
 ```
 
 ## Connecting Your Database
