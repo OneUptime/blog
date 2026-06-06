@@ -130,10 +130,10 @@ export const users = pgTable('users', {
   // Timestamps
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
-}, (table) => ({
+}, (table) => [
   // Additional indexes
-  emailIdx: uniqueIndex('email_idx').on(table.email),
-}));
+  uniqueIndex('email_idx').on(table.email),
+]);
 
 // Infer types from schema - no manual definitions needed
 export type User = typeof users.$inferSelect;
@@ -183,11 +183,11 @@ export const posts = pgTable('posts', {
 
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
-}, (table) => ({
+}, (table) => [
   // Indexes for common query patterns
-  authorIdx: index('author_idx').on(table.authorId),
-  statusIdx: index('status_idx').on(table.status),
-}));
+  index('author_idx').on(table.authorId),
+  index('status_idx').on(table.status),
+]);
 
 export type Post = typeof posts.$inferSelect;
 export type NewPost = typeof posts.$inferInsert;
@@ -773,10 +773,10 @@ Add indexes for columns in WHERE, JOIN, and ORDER BY:
 ```typescript
 export const posts = pgTable('posts', {
   // columns...
-}, (table) => ({
-  authorIdx: index('author_idx').on(table.authorId),
-  statusIdx: index('status_idx').on(table.status),
-}));
+}, (table) => [
+  index('author_idx').on(table.authorId),
+  index('status_idx').on(table.status),
+]);
 ```
 
 ### 4. Handle Connection Errors
