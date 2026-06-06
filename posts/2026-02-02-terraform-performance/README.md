@@ -616,7 +616,7 @@ flowchart LR
 
 ---
 
-Resource Targeting
+## Resource Targeting
 
 When working on specific resources, targeting reduces scope and speeds up operations.
 
@@ -704,7 +704,7 @@ export TF_LOG_PATH="./terraform.log"
 terraform plan
 
 # Analyze the log for slow operations
-grep -E "^\d{4}" terraform.log | head -100
+grep -E "^[0-9]{4}" terraform.log | head -100
 
 # More targeted logging levels
 export TF_LOG=DEBUG  # Less verbose than TRACE
