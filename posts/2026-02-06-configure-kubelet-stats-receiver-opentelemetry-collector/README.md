@@ -14,7 +14,7 @@ Every Kubernetes node runs a Kubelet, which manages pods and containers on that 
 
 - Node-level resource consumption (total CPU, memory, disk usage)
 - Pod-level aggregate metrics (total resources used by all containers in a pod)
-- Container-level detailed metrics (per-container CPU, memory, restarts)
+- Container-level detailed metrics (per-container CPU, memory, and filesystem usage)
 - Volume metrics (persistent volume usage)
 
 Unlike the Kubernetes Cluster Receiver which reports desired state (how many replicas should exist), the Kubelet Stats Receiver reports actual resource consumption (how much CPU and memory pods are actually using right now).
@@ -48,12 +48,12 @@ Start with a minimal configuration:
 
 # Collects metrics from the local node's Kubelet
 receivers:
-  kubeletstats:
+  kubelet_stats:
     # Authentication method
     auth_type: serviceAccount
 
-    # Kubelet endpoint (use node IP)
-    endpoint: https://${K8S_NODE_IP}:10250
+    # Kubelet endpoint (use node name)
+    endpoint: https://${env:K8S_NODE_NAME}:10250
 
     # Skip TLS verification (not recommended for production)
     insecure_skip_verify: true
@@ -72,18 +72,18 @@ processors:
     timeout: 10s
 
 exporters:
-  logging:
-    loglevel: debug
+  debug:
+    verbosity: detailed
 
 service:
   pipelines:
     metrics:
-      receivers: [kubeletstats]
+      receivers: [kubelet_stats]
       processors: [batch]
-      exporters: [logging]
+      exporters: [debug]
 ```
 
-The `K8S_NODE_IP` environment variable is typically set by Kubernetes' downward API, allowing each DaemonSet pod to discover its node's IP address.
+The `K8S_NODE_NAME` environment variable is typically set by Kubernetes' downward API, allowing each DaemonSet pod to discover its node name.
 
 ## Authentication Methods
 
@@ -93,9 +93,9 @@ The receiver supports multiple authentication approaches:
 # Service account authentication (recommended)
 # Uses the pod's mounted service account token
 receivers:
-  kubeletstats:
+  kubelet_stats:
     auth_type: serviceAccount
-    endpoint: https://${K8S_NODE_IP}:10250
+    endpoint: https://${env:K8S_NODE_NAME}:10250
     insecure_skip_verify: true
     collection_interval: 30s
 ```
@@ -104,9 +104,9 @@ receivers:
 # TLS certificate authentication
 # Uses client certificates for Kubelet authentication
 receivers:
-  kubeletstats:
+  kubelet_stats:
     auth_type: tls
-    endpoint: https://${K8S_NODE_IP}:10250
+    endpoint: https://${env:K8S_NODE_NAME}:10250
     ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
     cert_file: /etc/otelcol/certs/tls.crt
     key_file: /etc/otelcol/certs/tls.key
@@ -116,11 +116,13 @@ receivers:
 ```yaml
 # Kubeconfig authentication (for development)
 receivers:
-  kubeletstats:
+  kubelet_stats:
     auth_type: kubeConfig
-    endpoint: https://${K8S_NODE_IP}:10250
+    endpoint: ${env:K8S_NODE_NAME}
     collection_interval: 30s
 ```
+
+With `kubeConfig` authentication, the endpoint should be the node name only because the receiver reaches the Kubelet through the Kubernetes API server proxy configured in the kubeconfig.
 
 In production, use `serviceAccount` authentication with appropriate RBAC permissions. This leverages Kubernetes' built-in security mechanisms.
 
@@ -132,9 +134,9 @@ Control which metric categories to collect:
 # Select specific metric groups to reduce cardinality
 # Each group provides different granularity
 receivers:
-  kubeletstats:
+  kubelet_stats:
     auth_type: serviceAccount
-    endpoint: https://${K8S_NODE_IP}:10250
+    endpoint: https://${env:K8S_NODE_NAME}:10250
     insecure_skip_verify: true
     collection_interval: 30s
 
@@ -167,9 +169,9 @@ Node-level metrics show overall node resource consumption:
 # Node metrics provide host-level resource usage
 # Useful for capacity planning and node health monitoring
 receivers:
-  kubeletstats:
+  kubelet_stats:
     auth_type: serviceAccount
-    endpoint: https://${K8S_NODE_IP}:10250
+    endpoint: https://${env:K8S_NODE_NAME}:10250
     insecure_skip_verify: true
     collection_interval: 30s
     metric_groups:
@@ -177,7 +179,7 @@ receivers:
 
 # Example node metrics collected:
 # - k8s.node.cpu.usage: CPU usage in cores
-# - k8s.node.cpu.utilization: CPU usage percentage
+# - k8s.node.cpu.time: Cumulative CPU time in seconds
 # - k8s.node.memory.usage: Memory usage in bytes
 # - k8s.node.memory.available: Available memory
 # - k8s.node.memory.working_set: Working set memory (used by kernel for OOM decisions)
@@ -196,17 +198,17 @@ Pod-level metrics aggregate resource usage across all containers in a pod:
 # Pod metrics aggregate container usage within each pod
 # Useful for application-level monitoring
 receivers:
-  kubeletstats:
+  kubelet_stats:
     auth_type: serviceAccount
-    endpoint: https://${K8S_NODE_IP}:10250
+    endpoint: https://${env:K8S_NODE_NAME}:10250
     insecure_skip_verify: true
     collection_interval: 30s
     metric_groups:
       - pod
 
 # Example pod metrics collected:
-# - k8s.pod.cpu.usage: Total CPU usage for all containers
-# - k8s.pod.cpu.utilization: CPU usage percentage vs limits
+# - k8s.pod.cpu.usage: Total CPU usage for all containers in cores
+# - k8s.pod.cpu.time: Cumulative CPU time in seconds
 # - k8s.pod.memory.usage: Total memory usage
 # - k8s.pod.memory.working_set: Working set memory
 # - k8s.pod.memory.rss: Resident set size
@@ -225,23 +227,22 @@ Container-level metrics provide the highest granularity:
 # Container metrics show per-container resource usage
 # Highest cardinality but most detailed visibility
 receivers:
-  kubeletstats:
+  kubelet_stats:
     auth_type: serviceAccount
-    endpoint: https://${K8S_NODE_IP}:10250
+    endpoint: https://${env:K8S_NODE_NAME}:10250
     insecure_skip_verify: true
     collection_interval: 30s
     metric_groups:
       - container
 
 # Example container metrics collected:
-# - container.cpu.usage: CPU usage per container
-# - container.cpu.utilization: CPU usage vs limits
+# - container.cpu.usage: CPU usage per container in cores
+# - container.cpu.time: Cumulative CPU time in seconds
 # - container.memory.usage: Memory usage per container
 # - container.memory.working_set: Working set memory
 # - container.memory.rss: Resident set size
 # - container.memory.page_faults: Page faults
 # - container.filesystem.usage: Container filesystem usage
-# - container.restarts: Container restart count
 ```
 
 Container metrics are essential for identifying which specific containers in a multi-container pod are consuming resources or experiencing issues.
@@ -254,9 +255,9 @@ Volume metrics track persistent volume usage:
 # Volume metrics monitor persistent volume consumption
 # Critical for preventing "disk full" issues
 receivers:
-  kubeletstats:
+  kubelet_stats:
     auth_type: serviceAccount
-    endpoint: https://${K8S_NODE_IP}:10250
+    endpoint: https://${env:K8S_NODE_NAME}:10250
     insecure_skip_verify: true
     collection_interval: 30s
     metric_groups:
@@ -278,9 +279,9 @@ Choose an appropriate collection interval:
 ```yaml
 # Balance freshness vs overhead
 receivers:
-  kubeletstats:
+  kubelet_stats:
     auth_type: serviceAccount
-    endpoint: https://${K8S_NODE_IP}:10250
+    endpoint: https://${env:K8S_NODE_NAME}:10250
     insecure_skip_verify: true
 
     # Collection interval options:
@@ -300,9 +301,9 @@ Secure communication with the Kubelet:
 # Production TLS configuration
 # Validates Kubelet certificate for security
 receivers:
-  kubeletstats:
+  kubelet_stats:
     auth_type: serviceAccount
-    endpoint: https://${K8S_NODE_IP}:10250
+    endpoint: https://${env:K8S_NODE_NAME}:10250
 
     # Validate Kubelet certificate
     insecure_skip_verify: false
@@ -319,7 +320,7 @@ receivers:
 
 In production, avoid `insecure_skip_verify: true`. Instead, configure proper certificate validation. The service account CA certificate is automatically mounted into pods.
 
-Resource Attributes
+## Resource Attributes
 
 The receiver automatically adds Kubernetes metadata:
 
@@ -331,9 +332,17 @@ The receiver automatically adds Kubernetes metadata:
 # - k8s.pod.name: Pod name (for pod/container metrics)
 # - k8s.pod.uid: Pod UID
 # - k8s.container.name: Container name (for container metrics)
-# - container.id: Container ID
-# - container.image.name: Container image
-# - container.image.tag: Image tag
+# - k8s.volume.name: Volume name (for volume metrics)
+# - k8s.persistentvolumeclaim.name: PVC name (for volume metrics)
+
+# Add container IDs by enabling extra metadata labels
+receivers:
+  kubelet_stats:
+    auth_type: serviceAccount
+    endpoint: https://${env:K8S_NODE_NAME}:10250
+    insecure_skip_verify: true
+    extra_metadata_labels:
+      - container.id
 
 # Additional enrichment with processors
 processors:
@@ -347,15 +356,19 @@ processors:
         value: production
         action: insert
 
+exporters:
+  otlp:
+    endpoint: https://backend.example.com:4317
+
 service:
   pipelines:
     metrics:
-      receivers: [kubeletstats]
+      receivers: [kubelet_stats]
       processors: [resource]
       exporters: [otlp]
 ```
 
-These attributes enable filtering and aggregation by namespace, pod, container, or image.
+These attributes enable filtering and aggregation by namespace, pod, container, volume, or PVC.
 
 ## Kubernetes Attributes Processor
 
@@ -364,9 +377,9 @@ Enhance metrics with additional Kubernetes metadata:
 ```yaml
 # Enrich with deployment, service, and label metadata
 receivers:
-  kubeletstats:
+  kubelet_stats:
     auth_type: serviceAccount
-    endpoint: https://${K8S_NODE_IP}:10250
+    endpoint: https://${env:K8S_NODE_NAME}:10250
     insecure_skip_verify: true
     collection_interval: 30s
     metric_groups:
@@ -408,7 +421,7 @@ exporters:
 service:
   pipelines:
     metrics:
-      receivers: [kubeletstats]
+      receivers: [kubelet_stats]
       processors: [k8sattributes, batch]
       exporters: [otlp]
 ```
@@ -440,17 +453,22 @@ rules:
 
   # Permission to list nodes (for k8sattributes processor)
   - apiGroups: [""]
-    resources: ["nodes", "pods"]
+    resources: ["nodes", "pods", "namespaces"]
     verbs: ["get", "list", "watch"]
+
+  # Only needed when using extra_metadata_labels or request/limit utilization metrics
+  - apiGroups: [""]
+    resources: ["nodes/pods"]
+    verbs: ["get"]
 
   # Permission for k8sattributes processor metadata
   - apiGroups: ["apps"]
     resources: ["replicasets", "deployments", "statefulsets", "daemonsets"]
-    verbs: ["get", "list"]
+    verbs: ["get", "list", "watch"]
 
   - apiGroups: ["batch"]
     resources: ["jobs", "cronjobs"]
-    verbs: ["get", "list"]
+    verbs: ["get", "list", "watch"]
 ---
 # ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
@@ -490,18 +508,13 @@ spec:
         app: otel-collector-kubeletstats
     spec:
       serviceAccountName: otel-collector-kubeletstats
-      hostNetwork: true  # Access Kubelet on node network
       containers:
       - name: otel-collector
-        image: otel/opentelemetry-collector-contrib:0.93.0
+        image: otel/opentelemetry-collector-contrib:0.153.0
         args:
           - --config=/etc/otelcol/config.yaml
         env:
-          # Downward API provides node IP
-          - name: K8S_NODE_IP
-            valueFrom:
-              fieldRef:
-                fieldPath: status.hostIP
+          # Downward API provides node name
           - name: K8S_NODE_NAME
             valueFrom:
               fieldRef:
@@ -524,7 +537,7 @@ spec:
           name: otel-collector-kubeletstats-config
 ```
 
-The `hostNetwork: true` setting allows the collector to reach the Kubelet's secure port on `localhost:10250`. The downward API injects the node's IP address as an environment variable.
+The downward API injects the node name as an environment variable so each collector pod can query the Kubelet for the node it is running on.
 
 ## Filtering Namespaces
 
@@ -533,9 +546,9 @@ Exclude system namespaces to reduce metric volume:
 ```yaml
 # Filter out system namespace metrics
 receivers:
-  kubeletstats:
+  kubelet_stats:
     auth_type: serviceAccount
-    endpoint: https://${K8S_NODE_IP}:10250
+    endpoint: https://${env:K8S_NODE_NAME}:10250
     insecure_skip_verify: true
     collection_interval: 30s
     metric_groups:
@@ -544,12 +557,10 @@ receivers:
 
 processors:
   filter:
+    error_mode: ignore
     metrics:
-      exclude:
-        match_type: regexp
-        resource_attributes:
-          - key: k8s.namespace.name
-            value: ^(kube-system|kube-public|kube-node-lease)$
+      datapoint:
+        - 'IsMatch(resource.attributes["k8s.namespace.name"], "^(kube-system|kube-public|kube-node-lease)$")'
 
   batch:
     timeout: 10s
@@ -561,7 +572,7 @@ exporters:
 service:
   pipelines:
     metrics:
-      receivers: [kubeletstats]
+      receivers: [kubelet_stats]
       processors: [filter, batch]
       exporters: [otlp]
 ```
@@ -574,20 +585,21 @@ CPU metrics need interpretation:
 
 ```yaml
 # CPU metrics explained
-# - k8s.pod.cpu.usage: Actual CPU time used (cumulative counter)
-# - k8s.pod.cpu.utilization: Usage as percentage of limits
+# - k8s.pod.cpu.usage: Current CPU usage in cores (gauge)
+# - k8s.pod.cpu.time: Actual CPU time used (cumulative counter)
+# - k8s.pod.cpu_limit_utilization: Usage as a ratio of pod CPU limits (disabled by default)
 
 # CPU utilization calculation:
-# utilization = (current_usage - previous_usage) / (time_elapsed * num_cores)
+# usage_cores = (current_cpu_time - previous_cpu_time) / time_elapsed
 
 # With limits:
-# utilization_vs_limit = (usage / limit) * 100
+# utilization_vs_limit = usage_cores / limit_cores
 
-# The receiver provides utilization metrics automatically
-# These metrics are gauge values (0-1 range, or 0-100%)
+# The receiver provides CPU usage metrics by default.
+# Request and limit utilization metrics must be enabled explicitly.
 ```
 
-CPU usage is a cumulative counter (total CPU seconds consumed). To get current CPU usage rate, you need to calculate the derivative (change over time). The receiver does this automatically for utilization metrics.
+CPU time is a cumulative counter (total CPU seconds consumed). The `k8s.pod.cpu.usage`, `k8s.node.cpu.usage`, and `container.cpu.usage` metrics are gauges that report CPU usage in cores averaged over the sample window. Request and limit utilization metrics, such as `k8s.pod.cpu_limit_utilization`, are available but disabled by default and require additional Kubelet RBAC.
 
 ## Memory Metrics Interpretation
 
@@ -627,9 +639,9 @@ Track network I/O per pod:
 ```yaml
 # Network metrics show traffic patterns
 receivers:
-  kubeletstats:
+  kubelet_stats:
     auth_type: serviceAccount
-    endpoint: https://${K8S_NODE_IP}:10250
+    endpoint: https://${env:K8S_NODE_NAME}:10250
     insecure_skip_verify: true
     collection_interval: 30s
     metric_groups:
@@ -657,9 +669,9 @@ Here's a production-ready configuration:
 # Production Kubelet Stats Receiver configuration
 # Optimized for real-world Kubernetes monitoring
 receivers:
-  kubeletstats:
+  kubelet_stats:
     auth_type: serviceAccount
-    endpoint: https://${K8S_NODE_IP}:10250
+    endpoint: https://${env:K8S_NODE_NAME}:10250
 
     # Validate certificates in production
     insecure_skip_verify: false
@@ -677,12 +689,10 @@ receivers:
 processors:
   # Filter system namespaces
   filter:
+    error_mode: ignore
     metrics:
-      exclude:
-        match_type: regexp
-        resource_attributes:
-          - key: k8s.namespace.name
-            value: ^(kube-system|kube-public|kube-node-lease)$
+      datapoint:
+        - 'IsMatch(resource.attributes["k8s.namespace.name"], "^(kube-system|kube-public|kube-node-lease)$")'
 
   # Add Kubernetes metadata
   k8sattributes:
@@ -740,8 +750,8 @@ exporters:
 service:
   pipelines:
     metrics:
-      receivers: [kubeletstats]
-      processors: [filter, k8sattributes, resource, memory_limiter, batch]
+      receivers: [kubelet_stats]
+      processors: [memory_limiter, filter, k8sattributes, resource, batch]
       exporters: [otlp]
 
   # Collector self-monitoring
@@ -750,7 +760,6 @@ service:
       level: info
     metrics:
       level: detailed
-      address: localhost:8888
 ```
 
 ## Key Metrics for Alerting
@@ -761,12 +770,12 @@ Set up alerts on these critical metrics:
 # Critical alerts based on Kubelet Stats metrics
 
 # Pod memory near limit
-# k8s.pod.memory.working_set / k8s.pod.memory.limit > 0.9
-# Alert when pod uses >90% of memory limit
+# k8s.pod.memory_limit_utilization > 0.9
+# Alert when pod uses >90% of memory limit (requires enabling this optional metric)
 
-# Container CPU throttling
-# rate(container.cpu.throttling_time[5m]) > 0
-# Alert when containers are being CPU throttled
+# High pod CPU usage
+# k8s.pod.cpu.usage > expected_baseline
+# Alert when pod CPU usage exceeds an application-specific threshold
 
 # Pod network errors
 # rate(k8s.pod.network.errors[5m]) > 10
@@ -775,10 +784,6 @@ Set up alerts on these critical metrics:
 # Volume near capacity
 # k8s.volume.available / k8s.volume.capacity < 0.1
 # Alert when volume <10% free space
-
-# High container restart rate
-# rate(container.restarts[5m]) > 0.1
-# Alert on frequent container restarts
 
 # Node filesystem pressure
 # k8s.node.filesystem.available / k8s.node.filesystem.capacity < 0.1
@@ -793,7 +798,7 @@ Check these issues:
 
 1. Verify RBAC permissions: `kubectl auth can-i get nodes/stats --as=system:serviceaccount:observability:otel-collector-kubeletstats`
 2. Check Kubelet endpoint accessibility from pod
-3. Verify `K8S_NODE_IP` environment variable is set correctly
+3. Verify `K8S_NODE_NAME` environment variable is set correctly
 4. Review collector logs for authentication errors
 5. Ensure DaemonSet is running on all nodes
 
@@ -804,12 +809,12 @@ If you see TLS certificate errors:
 ```yaml
 # Temporary fix for development
 receivers:
-  kubeletstats:
+  kubelet_stats:
     insecure_skip_verify: true
 
 # Production fix
 receivers:
-  kubeletstats:
+  kubelet_stats:
     insecure_skip_verify: false
     ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
 ```
