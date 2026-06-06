@@ -582,23 +582,29 @@ export function useNavigation() {
 
 ### Handling Navigation Results
 
-Navigation methods return a Promise that resolves when navigation completes or rejects if navigation fails.
+Navigation methods return a Promise that resolves with `undefined` on success or with a `NavigationFailure` object when navigation is prevented (for example by a guard or because the user is already on the target route). The Promise only rejects for unexpected errors thrown inside a navigation guard.
 
 ```javascript
 // Handling navigation results
+import { isNavigationFailure, NavigationFailureType } from 'vue-router'
+
 async function handleNavigation() {
   try {
     // Wait for navigation to complete
-    await router.push('/dashboard')
-    console.log('Navigation successful')
-  } catch (error) {
-    // Handle navigation failure
-    if (error.name === 'NavigationDuplicated') {
+    const failure = await router.push('/dashboard')
+
+    if (isNavigationFailure(failure, NavigationFailureType.duplicated)) {
       // Trying to navigate to the same route
       console.log('Already on this page')
+    } else if (failure) {
+      // Aborted or cancelled by a guard / newer navigation
+      console.log('Navigation prevented:', failure)
     } else {
-      console.error('Navigation failed:', error)
+      console.log('Navigation successful')
     }
+  } catch (error) {
+    // Unexpected errors thrown inside a navigation guard
+    console.error('Navigation failed:', error)
   }
 }
 ```
