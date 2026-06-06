@@ -48,7 +48,7 @@ processors:
     # How often to check the current memory usage
     check_interval: 1s
 
-    # Hard limit: start dropping data when memory reaches this level
+    # Hard limit: force garbage collection when memory reaches this level
     # Set this to about 80% of the container's memory limit
     # For a container with 2 GiB limit, set to 1600 MiB
     limit_mib: 1600
@@ -60,7 +60,7 @@ processors:
 
     # With these settings:
     # - Soft limit (backpressure starts): 1200 MiB
-    # - Hard limit (data dropped): 1600 MiB
+    # - Hard limit (force GC): 1600 MiB
     # - Container limit: 2048 MiB
     # - Headroom for Go runtime: 448 MiB
 ```
@@ -98,12 +98,12 @@ sequenceDiagram
     Gateway->>Gateway: Memory limiter activates
 
     Agent->>Gateway: Export batch
-    Gateway-->>Agent: gRPC: RESOURCE_EXHAUSTED
+    Gateway-->>Agent: gRPC: UNAVAILABLE or retryable RESOURCE_EXHAUSTED
     Note over Agent: Retry with backoff
     Note over Agent: Agent queue fills up
 
     SDK->>Agent: Export batch
-    Agent-->>SDK: gRPC: RESOURCE_EXHAUSTED
+    Agent-->>SDK: gRPC: UNAVAILABLE or retryable RESOURCE_EXHAUSTED
     Note over SDK: SDK queue fills up
     Note over SDK: New spans dropped at SDK
 
@@ -123,7 +123,7 @@ sequenceDiagram
     Note over SDK: Normal operation resumes
 ```
 
-The key insight here is that gRPC (the default OTLP transport) has built-in backpressure through status codes. When a collector refuses data, it returns `RESOURCE_EXHAUSTED`, which tells the upstream to back off and retry.
+The key insight here is that gRPC (the default OTLP transport in many SDKs) has built-in backpressure through status codes. For OTLP/gRPC, a server should signal backpressure with `UNAVAILABLE` and can include retry details; `RESOURCE_EXHAUSTED` is retryable only when the server indicates that recovery is possible. Upstream exporters can then back off and retry instead of treating the failure as permanent.
 
 ## Configuring Backpressure at the SDK Level
 
@@ -209,7 +209,7 @@ exporters:
       storage: file_storage
 
     # Retry configuration works with the sending queue
-    # Failed exports go back into the queue for retry
+    # Failed exports are retried from the queue
     retry_on_failure:
       enabled: true
       initial_interval: 5s
@@ -238,15 +238,20 @@ The tradeoff is that smaller batches mean more export RPCs, which adds overhead.
 
 ## Rate Limiting as Proactive Backpressure
 
-Instead of waiting for the pipeline to get overwhelmed, you can proactively limit the incoming data rate. This is useful when you know your backend has a hard throughput limit:
+Instead of waiting for the pipeline to get overwhelmed, you can proactively limit the trace volume forwarded downstream. This is useful when you know your backend has a hard throughput limit:
 
 ```yaml
 processors:
-  # The rate limiter processor drops data above a configured rate
+  # The tail sampling processor can rate-limit sampled trace volume
   # Use this when your backend has a known ingestion limit
-  rate_limiting:
-    # Maximum spans per second across this collector
-    spans_per_second: 50000
+  tail_sampling:
+    decision_wait: 10s
+    policies:
+      - name: span-rate-limit
+        type: rate_limiting
+        rate_limiting:
+          # Maximum spans per second sampled by this collector
+          spans_per_second: 50000
 
   # Alternatively, use probabilistic sampling to reduce volume
   # This is less precise but preserves complete traces
@@ -282,7 +287,7 @@ flowchart TD
         BE[Observability Backend]
     end
 
-    AQ -->|"Backpressure signal:\nRESOURCE_EXHAUSTED"| GR
+    AQ -->|"Backpressure signal:\nUNAVAILABLE or retryable RESOURCE_EXHAUSTED"| GR
     GQ -->|"Retry with backoff"| BE
 
     style AML fill:#ffcc00,color:#000
@@ -293,6 +298,11 @@ Agent tier configuration:
 
 ```yaml
 # agent-backpressure.yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+
 processors:
   memory_limiter:
     check_interval: 1s
@@ -334,6 +344,11 @@ Gateway tier configuration:
 
 ```yaml
 # gateway-backpressure.yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+
 processors:
   memory_limiter:
     check_interval: 1s
@@ -364,7 +379,10 @@ exporters:
 extensions:
   file_storage:
     directory: /var/lib/otel/queue
-    max_file_size_mib: 4096
+    create_directory: true
+    compaction:
+      on_start: true
+      on_rebound: true
 
 service:
   extensions: [file_storage]
@@ -392,9 +410,10 @@ otelcol_exporter_queue_size / otelcol_exporter_queue_capacity
 # Each activation means the collector was close to its memory limit
 rate(otelcol_processor_refused_spans{processor="memory_limiter"}[5m])
 
-# Export latency p99 -- rising latency is an early warning
-# of backpressure building up
-histogram_quantile(0.99, rate(otelcol_exporter_send_latency_bucket[5m]))
+# Export RPC latency p99 -- rising latency is an early warning
+# of backpressure building up. Metric names can vary depending on
+# Collector version and Prometheus exporter settings.
+histogram_quantile(0.99, rate(rpc_client_call_duration_bucket[5m]))
 ```
 
 Set up alerts for these:
