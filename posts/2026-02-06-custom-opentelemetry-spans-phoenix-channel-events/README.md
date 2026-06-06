@@ -58,6 +58,7 @@ defmodule MyAppWeb.RoomChannel do
       if authorized?(socket, room_id) do
         {:ok, socket}
       else
+        OpenTelemetry.Tracer.set_status(:error, "unauthorized")
         {:error, %{reason: "unauthorized"}}
       end
     end
@@ -65,7 +66,7 @@ defmodule MyAppWeb.RoomChannel do
 end
 ```
 
-The `with_span/2` macro creates a span, executes your code, and automatically ends the span with appropriate status (ok or error) based on the result.
+The `with_span/2` macro creates a span, executes your code, and automatically ends the span when the block completes. Set an error status explicitly when your application returns an error tuple.
 
 ## Instrumenting Channel Lifecycle Events
 
@@ -220,8 +221,12 @@ defmodule MyAppWeb.Traced.Channel do
       use Phoenix.Channel
       require OpenTelemetry.Tracer
 
-      # Override broadcast functions to add tracing
-      def traced_broadcast(topic, event, payload) do
+      # Wrap broadcast functions to add tracing
+      def traced_broadcast(socket, event, payload) do
+        traced_broadcast(socket.endpoint, socket.topic, event, payload)
+      end
+
+      def traced_broadcast(endpoint, topic, event, payload) do
         OpenTelemetry.Tracer.with_span "channel.broadcast" do
           # Add broadcast metadata to span
           OpenTelemetry.Tracer.set_attributes(%{
@@ -230,10 +235,10 @@ defmodule MyAppWeb.Traced.Channel do
             "broadcast.payload_size" => byte_size(:erlang.term_to_binary(payload))
           })
 
-          # Inject trace context into payload for cross-process propagation
+          # Include the current span context so intercepting channels can link to it
           payload_with_context = inject_trace_context(payload)
 
-          result = Phoenix.Channel.broadcast(topic, event, payload_with_context)
+          result = endpoint.broadcast(topic, event, payload_with_context)
 
           case result do
             :ok ->
@@ -248,35 +253,17 @@ defmodule MyAppWeb.Traced.Channel do
 
       # Inject current trace context into payload
       defp inject_trace_context(payload) do
-        # Get current span context
-        ctx = OpenTelemetry.Tracer.current_span_ctx()
-
-        # Serialize context for transmission
-        trace_id = :otel_span.trace_id(ctx)
-        span_id = :otel_span.span_id(ctx)
-
-        # Add to payload metadata
-        Map.merge(payload, %{
-          __trace_context__: %{
-            trace_id: trace_id,
-            span_id: span_id
-          }
-        })
+        Map.put(payload, "__trace_context__", OpenTelemetry.Tracer.current_span_ctx())
       end
 
-      # Extract and link to parent trace context from payload
+      # Extract trace context from payload before pushing to clients
       defp extract_trace_context(payload) do
-        case Map.get(payload, :__trace_context__) do
-          %{trace_id: trace_id, span_id: span_id} ->
-            # Create link to parent span
-            OpenTelemetry.Tracer.set_attribute("parent.span_id", span_id)
-            OpenTelemetry.Tracer.set_attribute("parent.trace_id", trace_id)
+        case Map.pop(payload, "__trace_context__") do
+          {nil, payload} ->
+            {payload, []}
 
-            # Remove context from payload before processing
-            Map.delete(payload, :__trace_context__)
-
-          _ ->
-            payload
+          {parent_span_ctx, payload} ->
+            {payload, [OpenTelemetry.link(parent_span_ctx)]}
         end
       end
     end
@@ -289,23 +276,33 @@ Use this module in your channels:
 ```elixir
 defmodule MyAppWeb.RoomChannel do
   use MyAppWeb.Traced.Channel
+  intercept ["message:new"]
 
   def handle_in("message:new", payload, socket) do
     OpenTelemetry.Tracer.with_span "handle_in.message:new" do
       # Process message...
 
       # Use traced broadcast instead of regular broadcast
-      traced_broadcast(socket.topic, "message:new", %{
+      traced_broadcast(socket, "message:new", %{
         body: payload["body"]
       })
 
       {:noreply, socket}
     end
   end
+
+  def handle_out("message:new", payload, socket) do
+    {payload, links} = extract_trace_context(payload)
+
+    OpenTelemetry.Tracer.with_span "handle_out.message:new", %{links: links} do
+      push(socket, "message:new", payload)
+      {:noreply, socket}
+    end
+  end
 end
 ```
 
-This ensures trace continuity across process boundaries, connecting the sender's span with receiver spans.
+This keeps the sender's span connected to intercepted receiver spans with span links while removing tracing metadata before the payload reaches clients.
 
 ## Handling Asynchronous Work
 
@@ -323,12 +320,12 @@ defmodule MyAppWeb.DocumentChannel do
       })
 
       # Capture current trace context
-      parent_ctx = OpenTelemetry.Tracer.current_span_ctx()
+      ctx = OpenTelemetry.Ctx.get_current()
 
       # Start async task with trace context
       Task.Supervisor.async_nolink(MyApp.TaskSupervisor, fn ->
         # Attach parent context to this process
-        OpenTelemetry.Ctx.attach(parent_ctx)
+        OpenTelemetry.Ctx.attach(ctx)
 
         # Create child span for background processing
         OpenTelemetry.Tracer.with_span "document.process" do
@@ -380,9 +377,9 @@ defmodule MyAppWeb.UserSocket do
   def connect(params, socket, connect_info) do
     OpenTelemetry.Tracer.with_span "socket.connect" do
       OpenTelemetry.Tracer.set_attributes(%{
-        "socket.transport" => connect_info.transport,
+        "socket.transport" => socket.transport,
         "socket.user_agent" => get_user_agent(connect_info),
-        "socket.remote_ip" => format_ip(connect_info.peer_data.address)
+        "socket.remote_ip" => format_ip(connect_info[:peer_data])
       })
 
       case authenticate(params) do
@@ -412,16 +409,10 @@ defmodule MyAppWeb.UserSocket do
   defp authenticate(_), do: :error
 
   defp get_user_agent(connect_info) do
-    case connect_info[:x_headers] do
-      headers when is_list(headers) ->
-        Enum.find_value(headers, fn
-          {"user-agent", ua} -> ua
-          _ -> nil
-        end)
-      _ -> "unknown"
-    end
+    connect_info[:user_agent] || "unknown"
   end
 
+  defp format_ip(%{address: address}), do: format_ip(address)
   defp format_ip({a, b, c, d}), do: "#{a}.#{b}.#{c}.#{d}"
   defp format_ip(_), do: "unknown"
 end
@@ -429,9 +420,9 @@ end
 
 This captures connection attempts, authentication success/failure, and client metadata.
 
-## Creating Span Links for Multi-Cast
+## Creating Child Spans for Multi-Cast
 
-When broadcasting to multiple topics, create span links to show the fan-out:
+When broadcasting to multiple topics, create child spans to show the fan-out:
 
 ```elixir
 def handle_in("announcement:create", payload, socket) do
@@ -441,7 +432,7 @@ def handle_in("announcement:create", payload, socket) do
     # Get rooms this announcement should go to
     rooms = MyApp.Announcements.target_rooms(announcement)
 
-    # Broadcast to each room with linked spans
+    # Broadcast to each room with child spans
     Enum.each(rooms, fn room_id ->
       # Create a child span for each broadcast
       OpenTelemetry.Tracer.with_span "announcement.broadcast" do
@@ -450,7 +441,7 @@ def handle_in("announcement:create", payload, socket) do
           "target.room" => room_id
         })
 
-        traced_broadcast("room:#{room_id}", "announcement:new", %{
+        traced_broadcast(socket.endpoint, "room:#{room_id}", "announcement:new", %{
           id: announcement.id,
           title: announcement.title,
           body: announcement.body
@@ -493,7 +484,7 @@ defmodule MyAppWeb.ChannelMetrics do
     OpenTelemetry.Tracer.with_span "telemetry.channel_joined" do
       OpenTelemetry.Tracer.set_attributes(%{
         "channel.topic" => metadata.socket.topic,
-        "channel.duration_us" => measurements.duration
+        "channel.duration_native" => measurements.duration
       })
     end
 
@@ -509,7 +500,7 @@ defmodule MyAppWeb.ChannelMetrics do
     OpenTelemetry.Tracer.with_span "telemetry.channel_handled_in" do
       OpenTelemetry.Tracer.set_attributes(%{
         "channel.event" => metadata.event,
-        "channel.duration_us" => measurements.duration
+        "channel.duration_native" => measurements.duration
       })
     end
 
