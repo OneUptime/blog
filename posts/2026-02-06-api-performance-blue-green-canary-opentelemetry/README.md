@@ -17,11 +17,13 @@ The foundation is adding deployment metadata to every span and metric. Set this 
 ```typescript
 // tracing-with-deployment.ts
 import { NodeSDK } from '@opentelemetry/sdk-node';
-import { Resource } from '@opentelemetry/resources';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
+import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
+import { PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
 
 const sdk = new NodeSDK({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     'service.name': 'order-api',
     'service.version': process.env.APP_VERSION || 'unknown',
     'deployment.environment': process.env.DEPLOYMENT_ENV || 'production',
@@ -31,6 +33,9 @@ const sdk = new NodeSDK({
     'deployment.canary': process.env.CANARY === 'true',
   }),
   traceExporter: new OTLPTraceExporter(),
+  metricReader: new PeriodicExportingMetricReader({
+    exporter: new OTLPMetricExporter(),
+  }),
 });
 
 sdk.start();
@@ -45,9 +50,20 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: order-api-canary
+  labels:
+    app: order-api
+    track: canary
 spec:
   replicas: 1
+  selector:
+    matchLabels:
+      app: order-api
+      track: canary
   template:
+    metadata:
+      labels:
+        app: order-api
+        track: canary
     spec:
       containers:
         - name: order-api
@@ -148,7 +164,7 @@ With version-tagged metrics, write queries that compare the two versions:
 ```promql
 # Latency comparison: P99 by version
 histogram_quantile(0.99,
-  sum(rate(api_request_duration_bucket[5m])) by (le, deployment_version)
+  sum(rate(api_request_duration_milliseconds_bucket[5m])) by (le, deployment_version)
 )
 
 # Error rate comparison
@@ -170,9 +186,15 @@ import { metrics } from '@opentelemetry/api';
 
 const meter = metrics.getMeter('canary-analysis');
 
+let latestHealthScore = 1.0;
+
 // Track comparison results as metrics
 const canaryHealthGauge = meter.createObservableGauge('canary.health_score', {
   description: 'Canary health score from 0 (bad) to 1 (good)',
+});
+
+canaryHealthGauge.addCallback((result) => {
+  result.observe(latestHealthScore);
 });
 
 interface VersionMetrics {
@@ -180,6 +202,8 @@ interface VersionMetrics {
   errorRate: number;
   requestCount: number;
 }
+
+declare function fetchVersionMetrics(version: 'stable' | 'canary'): Promise<VersionMetrics>;
 
 function compareVersions(stable: VersionMetrics, canary: VersionMetrics): number {
   let score = 1.0;
@@ -203,7 +227,7 @@ function compareVersions(stable: VersionMetrics, canary: VersionMetrics): number
 setInterval(async () => {
   const stableMetrics = await fetchVersionMetrics('stable');
   const canaryMetrics = await fetchVersionMetrics('canary');
-  const healthScore = compareVersions(stableMetrics, canaryMetrics);
+  latestHealthScore = compareVersions(stableMetrics, canaryMetrics);
 
   // The health score is exported as a metric
   // Alert when it drops below 0.7 to trigger rollback
