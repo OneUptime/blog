@@ -14,7 +14,7 @@ This is the same idea as API contract testing, applied to your observability dat
 
 ## Why Contract Testing for Spans?
 
-Consider what happens without span contracts. A developer renames a span from `db.query` to `database-query`. Another developer adds a new service but forgets to set the `service.name` resource attribute. A third developer sets `http.status_code` as a string instead of an integer. Each of these small mistakes degrades the value of your telemetry.
+Consider what happens without span contracts. A developer renames a span from `db.query` to `database-query`. Another developer adds a new service but forgets to set the `service.name` resource attribute. A third developer sets `http.response.status_code` as a string instead of an integer. Each of these small mistakes degrades the value of your telemetry.
 
 Contract testing catches these issues in CI before they reach production:
 
@@ -88,22 +88,22 @@ name: "database-span"
 description: "Contract for spans created by database instrumentation"
 
 span:
-  name_pattern: "^(SELECT|INSERT|UPDATE|DELETE|CREATE|DROP|ALTER)\\s"
+  name_pattern: "^(SELECT|INSERT|UPDATE|DELETE|CREATE|DROP|ALTER)(\\s|$)"
   kind: CLIENT
 
   required_attributes:
-    - key: db.system
+    - key: db.system.name
       type: string
       allowed_values: [postgresql, mysql, sqlite, mongodb, redis]
 
-    - key: db.name
+    - key: db.namespace
       type: string
 
-    - key: db.operation
+    - key: db.operation.name
       type: string
 
   optional_attributes:
-    - key: db.statement
+    - key: db.query.text
       type: string
       max_length: 4096
 
@@ -127,7 +127,6 @@ Now build a validator that checks spans against their contracts. Here is a Pytho
 import re
 import yaml
 from dataclasses import dataclass, field
-from typing import Optional
 
 
 @dataclass
@@ -199,39 +198,60 @@ class SpanContractValidator:
 
             value = attrs[key]
 
-            # Check type
             errors.extend(
-                self._validate_attribute_type(span.name, key, value, attr_spec)
+                self._validate_attribute(span.name, key, value, attr_spec)
             )
 
-            # Check allowed values
-            if 'allowed_values' in attr_spec:
-                if value not in attr_spec['allowed_values']:
-                    errors.append(ValidationError(
-                        span_name=span.name,
-                        rule="allowed_values",
-                        message=f"Attribute '{key}' value '{value}' "
-                                f"not in allowed values: "
-                                f"{attr_spec['allowed_values']}",
-                    ))
+        # Validate optional attributes when they are present
+        for attr_spec in self.span_spec.get('optional_attributes', []):
+            key = attr_spec['key']
+            if key in attrs:
+                errors.extend(
+                    self._validate_attribute(span.name, key, attrs[key], attr_spec)
+                )
 
-            # Check range
-            if 'range' in attr_spec:
-                range_spec = attr_spec['range']
-                if value < range_spec.get('min', float('-inf')):
-                    errors.append(ValidationError(
-                        span_name=span.name,
-                        rule="range",
-                        message=f"Attribute '{key}' value {value} "
-                                f"below minimum {range_spec['min']}",
-                    ))
-                if value > range_spec.get('max', float('inf')):
-                    errors.append(ValidationError(
-                        span_name=span.name,
-                        rule="range",
-                        message=f"Attribute '{key}' value {value} "
-                                f"above maximum {range_spec['max']}",
-                    ))
+        return errors
+
+    def _validate_attribute(self, span_name, key, value, spec):
+        """Validate an attribute's type, allowed values, range, and length."""
+        errors = self._validate_attribute_type(span_name, key, value, spec)
+        if errors:
+            return errors
+
+        if 'allowed_values' in spec:
+            if value not in spec['allowed_values']:
+                errors.append(ValidationError(
+                    span_name=span_name,
+                    rule="allowed_values",
+                    message=f"Attribute '{key}' value '{value}' "
+                            f"not in allowed values: "
+                            f"{spec['allowed_values']}",
+                ))
+
+        if 'range' in spec:
+            range_spec = spec['range']
+            if value < range_spec.get('min', float('-inf')):
+                errors.append(ValidationError(
+                    span_name=span_name,
+                    rule="range",
+                    message=f"Attribute '{key}' value {value} "
+                            f"below minimum {range_spec['min']}",
+                ))
+            if value > range_spec.get('max', float('inf')):
+                errors.append(ValidationError(
+                    span_name=span_name,
+                    rule="range",
+                    message=f"Attribute '{key}' value {value} "
+                            f"above maximum {range_spec['max']}",
+                ))
+
+        if 'max_length' in spec and len(value) > spec['max_length']:
+            errors.append(ValidationError(
+                span_name=span_name,
+                rule="max_length",
+                message=f"Attribute '{key}' length {len(value)} "
+                        f"exceeds maximum {spec['max_length']}",
+            ))
 
         return errors
 
@@ -248,7 +268,7 @@ class SpanContractValidator:
         }
 
         if expected_type in type_map:
-            if not isinstance(value, type_map[expected_type]):
+            if type(value) is not type_map[expected_type]:
                 errors.append(ValidationError(
                     span_name=span_name,
                     rule="attribute_type",
@@ -273,7 +293,7 @@ import unittest
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
-from opentelemetry.sdk.trace.export.in_memory import InMemorySpanExporter
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from span_contract_validator import SpanContractValidator
 
 # Set up tracing for tests
@@ -369,7 +389,7 @@ Here is the same concept in a JavaScript test:
 ```typescript
 // test/span-contracts.test.ts
 import { exporter, resetTracing } from './setup';
-import { SpanKind, SpanStatusCode } from '@opentelemetry/api';
+import { SpanKind } from '@opentelemetry/api';
 import { ReadableSpan } from '@opentelemetry/sdk-trace-base';
 
 // Define the contract as a TypeScript interface
