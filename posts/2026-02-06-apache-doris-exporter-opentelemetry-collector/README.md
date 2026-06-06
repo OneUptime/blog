@@ -61,58 +61,74 @@ CREATE DATABASE IF NOT EXISTS observability;
 
 -- Traces table optimized for analytical queries
 CREATE TABLE observability.otel_traces (
-    trace_id VARCHAR(32),
-    span_id VARCHAR(16),
-    parent_span_id VARCHAR(16),
-    trace_state VARCHAR(256),
-    span_name VARCHAR(256),
-    span_kind VARCHAR(32),
-    start_time_unix_nano BIGINT,
-    end_time_unix_nano BIGINT,
-    duration_ms BIGINT,
-    status_code VARCHAR(32),
-    status_message TEXT,
-    service_name VARCHAR(128),
-    service_namespace VARCHAR(128),
-    service_version VARCHAR(32),
-    resource_attributes JSON,
-    span_attributes JSON,
-    events JSON,
-    links JSON
+    service_name VARCHAR(200),
+    timestamp DATETIME(6),
+    service_instance_id VARCHAR(200),
+    trace_id VARCHAR(200),
+    span_id STRING,
+    trace_state STRING,
+    parent_span_id STRING,
+    span_name STRING,
+    span_kind STRING,
+    end_time DATETIME(6),
+    duration BIGINT,
+    span_attributes VARIANT,
+    events ARRAY<STRUCT<timestamp:DATETIME(6), name:STRING, attributes:MAP<STRING, STRING>>>,
+    links ARRAY<STRUCT<trace_id:STRING, span_id:STRING, trace_state:STRING, attributes:MAP<STRING, STRING>>>,
+    status_message STRING,
+    status_code STRING,
+    resource_attributes VARIANT,
+    scope_name STRING,
+    scope_version STRING,
+    INDEX idx_service_name(service_name) USING INVERTED,
+    INDEX idx_timestamp(timestamp) USING INVERTED,
+    INDEX idx_trace_id(trace_id) USING INVERTED,
+    INDEX idx_span_id(span_id) USING INVERTED,
+    INDEX idx_duration(duration) USING INVERTED,
+    INDEX idx_status_code(status_code) USING INVERTED
 )
-DUPLICATE KEY(trace_id, span_id)
-DISTRIBUTED BY HASH(trace_id) BUCKETS 32
+ENGINE = OLAP
+DUPLICATE KEY(service_name, timestamp)
+PARTITION BY RANGE(timestamp) ()
+DISTRIBUTED BY RANDOM BUCKETS AUTO
 PROPERTIES (
     "replication_num" = "3",
-    "storage_medium" = "SSD",
-    "compression" = "LZ4"
+    "compression" = "zstd",
+    "inverted_index_storage_format" = "V2"
 );
-
--- Create index for faster queries
-CREATE INDEX idx_service_time ON observability.otel_traces(service_name, start_time_unix_nano);
 ```
 
-Create tables for metrics:
+The Doris exporter uses the configured metrics table name as a prefix and writes each metric type to a type-specific table such as `otel_metrics_gauge`, `otel_metrics_sum`, `otel_metrics_histogram`, `otel_metrics_exponential_histogram`, and `otel_metrics_summary`. Here is a simplified gauge table schema:
 
 ```sql
--- Metrics table for time-series data
-CREATE TABLE observability.otel_metrics (
-    metric_name VARCHAR(256),
-    metric_type VARCHAR(32),
-    metric_value DOUBLE,
-    timestamp_unix_nano BIGINT,
-    service_name VARCHAR(128),
-    service_namespace VARCHAR(128),
-    resource_attributes JSON,
-    metric_attributes JSON,
-    exemplars JSON
+-- Metrics table for gauge time-series data
+CREATE TABLE observability.otel_metrics_gauge (
+    service_name VARCHAR(200),
+    timestamp DATETIME(6),
+    service_instance_id VARCHAR(200),
+    metric_name VARCHAR(200),
+    metric_description STRING,
+    metric_unit STRING,
+    attributes VARIANT,
+    start_time DATETIME(6),
+    value DOUBLE,
+    exemplars ARRAY<STRUCT<filtered_attributes:MAP<STRING,STRING>, timestamp:DATETIME(6), value:DOUBLE, span_id:STRING, trace_id:STRING>>,
+    resource_attributes VARIANT,
+    scope_name STRING,
+    scope_version STRING,
+    INDEX idx_service_name(service_name) USING INVERTED,
+    INDEX idx_timestamp(timestamp) USING INVERTED,
+    INDEX idx_metric_name(metric_name) USING INVERTED,
+    INDEX idx_attributes(attributes) USING INVERTED
 )
-DUPLICATE KEY(metric_name, timestamp_unix_nano)
-DISTRIBUTED BY HASH(metric_name) BUCKETS 32
+ENGINE = OLAP
+DUPLICATE KEY(service_name, timestamp)
+PARTITION BY RANGE(timestamp) ()
+DISTRIBUTED BY RANDOM BUCKETS AUTO
 PROPERTIES (
     "replication_num" = "3",
-    "storage_medium" = "SSD",
-    "compression" = "LZ4"
+    "compression" = "zstd",
+    "inverted_index_storage_format" = "V2"
 );
 ```
 
@@ -121,28 +137,33 @@ Create tables for logs:
 ```sql
 -- Logs table for structured log data
 CREATE TABLE observability.otel_logs (
-    timestamp_unix_nano BIGINT,
-    observed_timestamp_unix_nano BIGINT,
+    timestamp DATETIME(6),
+    service_name VARCHAR(200),
+    service_instance_id VARCHAR(200),
+    trace_id VARCHAR(200),
+    span_id STRING,
     severity_number INT,
-    severity_text VARCHAR(32),
-    body TEXT,
-    service_name VARCHAR(128),
-    service_namespace VARCHAR(128),
-    trace_id VARCHAR(32),
-    span_id VARCHAR(16),
-    resource_attributes JSON,
-    log_attributes JSON
+    severity_text STRING,
+    body STRING,
+    resource_attributes VARIANT,
+    log_attributes VARIANT,
+    scope_name STRING,
+    scope_version STRING,
+    INDEX idx_service_name(service_name) USING INVERTED,
+    INDEX idx_timestamp(timestamp) USING INVERTED,
+    INDEX idx_trace_id(trace_id) USING INVERTED,
+    INDEX idx_span_id(span_id) USING INVERTED,
+    INDEX idx_body(body) USING INVERTED PROPERTIES("parser"="unicode", "support_phrase"="true")
 )
-DUPLICATE KEY(timestamp_unix_nano)
-DISTRIBUTED BY HASH(timestamp_unix_nano) BUCKETS 32
+ENGINE = OLAP
+DUPLICATE KEY(timestamp, service_name)
+PARTITION BY RANGE(timestamp) ()
+DISTRIBUTED BY RANDOM BUCKETS AUTO
 PROPERTIES (
     "replication_num" = "3",
-    "storage_medium" = "HDD",
-    "compression" = "ZSTD"
+    "compression" = "zstd",
+    "inverted_index_storage_format" = "V2"
 );
-
--- Create index for trace correlation
-CREATE INDEX idx_trace ON observability.otel_logs(trace_id, span_id);
 ```
 
 ## Basic Configuration
@@ -160,7 +181,9 @@ exporters:
 
     # Database and table information
     database: observability
-    table: otel_traces
+    table:
+      traces: otel_traces
+    create_schema: false
 
     # Authentication credentials
     username: ${env:DORIS_USERNAME}
@@ -201,29 +224,23 @@ exporters:
 
     # Database and table configuration
     database: observability
-    table: otel_traces
+    table:
+      traces: otel_traces
+    create_schema: false
 
     # Authentication
     username: ${env:DORIS_USERNAME}
     password: ${env:DORIS_PASSWORD}
 
-    # Stream Load parameters for performance tuning
-    stream_load:
-      # Format for data (json, csv, or parquet)
-      format: json
-
-      # Maximum size per Stream Load request (in bytes)
-      # Default is 10GB, adjust based on your setup
-      max_filter_ratio: 0.1
-
-      # Timeout for each Stream Load
-      timeout: 300
+    # Stream Load headers for performance tuning
+    headers:
+      max_filter_ratio: "0.1"
 
       # Enable strict mode for data validation
-      strict_mode: false
+      strict_mode: "false"
 
-      # Number of parallel Stream Load channels
-      channels: 4
+      # Enable Doris group commit when configured on the cluster
+      group_commit: async_mode
 
     # HTTP client configuration
     timeout: 60s
@@ -240,10 +257,6 @@ exporters:
       enabled: true
       num_consumers: 10
       queue_size: 5000
-      storage_type: file_storage
-
-    # Compression for data transfer
-    compression: gzip
 
 receivers:
   otlp:
@@ -258,17 +271,6 @@ processors:
     timeout: 15s
     send_batch_size: 5000
     send_batch_max_size: 10000
-
-  # Transform spans to match Doris schema
-  transform:
-    trace_statements:
-      - context: span
-        statements:
-          # Calculate duration in milliseconds
-          - set(attributes["duration_ms"], (end_time_unix_nano() - start_time_unix_nano()) / 1000000)
-          # Extract service information
-          - set(attributes["service_name"], resource.attributes["service.name"])
-          - set(attributes["service_namespace"], resource.attributes["service.namespace"])
 
   # Add resource detection
   resourcedetection:
@@ -285,7 +287,7 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [memory_limiter, resourcedetection, transform, batch]
+      processors: [memory_limiter, resourcedetection, batch]
       exporters: [doris/traces]
 ```
 
@@ -297,17 +299,18 @@ Send metrics to Apache Doris for time-series analytics:
 exporters:
   doris/metrics:
     endpoint: http://doris-fe.example.com:8030
+    mysql_endpoint: doris-fe.example.com:9030
     database: observability
-    table: otel_metrics
+    table:
+      metrics: otel_metrics
+    create_schema: true
 
     username: ${env:DORIS_USERNAME}
     password: ${env:DORIS_PASSWORD}
 
-    stream_load:
-      format: json
-      max_filter_ratio: 0.1
-      timeout: 300
-      channels: 4
+    headers:
+      max_filter_ratio: "0.1"
+      group_commit: async_mode
 
     timeout: 60s
 
@@ -320,9 +323,6 @@ exporters:
       enabled: true
       num_consumers: 8
       queue_size: 10000
-
-    compression: gzip
-
 receivers:
   otlp:
     protocols:
@@ -392,17 +392,18 @@ Configure structured logs export to Apache Doris:
 exporters:
   doris/logs:
     endpoint: http://doris-fe.example.com:8030
+    mysql_endpoint: doris-fe.example.com:9030
     database: observability
-    table: otel_logs
+    table:
+      logs: otel_logs
+    create_schema: true
 
     username: ${env:DORIS_USERNAME}
     password: ${env:DORIS_PASSWORD}
 
-    stream_load:
-      format: json
-      max_filter_ratio: 0.05
-      timeout: 300
-      channels: 6
+    headers:
+      max_filter_ratio: "0.05"
+      group_commit: async_mode
 
     timeout: 60s
 
@@ -416,9 +417,6 @@ exporters:
       enabled: true
       num_consumers: 8
       queue_size: 20000
-
-    compression: gzip
-
 receivers:
   otlp:
     protocols:
@@ -457,12 +455,9 @@ processors:
 
   # Filter unnecessary logs
   filter:
-    logs:
-      exclude:
-        match_type: regexp
-        record_attributes:
-          - key: message
-            value: ".*healthcheck.*"
+    error_mode: ignore
+    log_conditions:
+      - IsMatch(log.body, ".*healthcheck.*")
 
   # Add resource attributes
   resource:
@@ -544,15 +539,16 @@ exporters:
   # Traces to Doris
   doris/traces:
     endpoint: http://doris-fe.example.com:8030
+    mysql_endpoint: doris-fe.example.com:9030
     database: observability
-    table: otel_traces
+    table:
+      traces: otel_traces
+    create_schema: true
     username: ${env:DORIS_USERNAME}
     password: ${env:DORIS_PASSWORD}
-    stream_load:
-      format: json
-      channels: 4
+    headers:
+      group_commit: async_mode
     timeout: 60s
-    compression: gzip
     retry_on_failure:
       enabled: true
     sending_queue:
@@ -563,15 +559,16 @@ exporters:
   # Metrics to Doris
   doris/metrics:
     endpoint: http://doris-fe.example.com:8030
+    mysql_endpoint: doris-fe.example.com:9030
     database: observability
-    table: otel_metrics
+    table:
+      metrics: otel_metrics
+    create_schema: true
     username: ${env:DORIS_USERNAME}
     password: ${env:DORIS_PASSWORD}
-    stream_load:
-      format: json
-      channels: 4
+    headers:
+      group_commit: async_mode
     timeout: 60s
-    compression: gzip
     retry_on_failure:
       enabled: true
     sending_queue:
@@ -582,15 +579,16 @@ exporters:
   # Logs to Doris
   doris/logs:
     endpoint: http://doris-fe.example.com:8030
+    mysql_endpoint: doris-fe.example.com:9030
     database: observability
-    table: otel_logs
+    table:
+      logs: otel_logs
+    create_schema: true
     username: ${env:DORIS_USERNAME}
     password: ${env:DORIS_PASSWORD}
-    stream_load:
-      format: json
-      channels: 6
+    headers:
+      group_commit: async_mode
     timeout: 60s
-    compression: gzip
     retry_on_failure:
       enabled: true
     sending_queue:
@@ -625,12 +623,12 @@ Once data is in Apache Doris, you can run powerful analytical queries. Here are 
 ```sql
 SELECT
     service_name,
-    quantile_state(0.50)(duration_ms) as p50_ms,
-    quantile_state(0.95)(duration_ms) as p95_ms,
-    quantile_state(0.99)(duration_ms) as p99_ms,
+    percentile(duration / 1000.0, 0.50) as p50_ms,
+    percentile(duration / 1000.0, 0.95) as p95_ms,
+    percentile(duration / 1000.0, 0.99) as p99_ms,
     COUNT(*) as request_count
 FROM observability.otel_traces
-WHERE start_time_unix_nano >= unix_timestamp(now() - INTERVAL 1 HOUR) * 1000000000
+WHERE timestamp >= now() - INTERVAL 1 HOUR
     AND span_kind = 'SPAN_KIND_SERVER'
 GROUP BY service_name
 ORDER BY p99_ms DESC;
@@ -643,9 +641,9 @@ SELECT
     service_name,
     COUNT(*) as total_spans,
     SUM(CASE WHEN status_code = 'STATUS_CODE_ERROR' THEN 1 ELSE 0 END) as error_count,
-    (error_count / total_spans) * 100 as error_rate_pct
+    SUM(CASE WHEN status_code = 'STATUS_CODE_ERROR' THEN 1 ELSE 0 END) / COUNT(*) * 100 as error_rate_pct
 FROM observability.otel_traces
-WHERE start_time_unix_nano >= unix_timestamp(now() - INTERVAL 1 HOUR) * 1000000000
+WHERE timestamp >= now() - INTERVAL 1 HOUR
 GROUP BY service_name
 HAVING error_count > 0
 ORDER BY error_rate_pct DESC;
@@ -658,15 +656,15 @@ SELECT
     t.trace_id,
     t.span_name,
     t.service_name,
-    t.duration_ms,
+    t.duration / 1000.0 as duration_ms,
     l.severity_text,
     l.body as log_message
 FROM observability.otel_traces t
 INNER JOIN observability.otel_logs l
     ON t.trace_id = l.trace_id
-WHERE t.start_time_unix_nano >= unix_timestamp(now() - INTERVAL 1 HOUR) * 1000000000
+WHERE t.timestamp >= now() - INTERVAL 1 HOUR
     AND t.status_code = 'STATUS_CODE_ERROR'
-ORDER BY t.start_time_unix_nano DESC
+ORDER BY t.timestamp DESC
 LIMIT 100;
 ```
 
@@ -681,8 +679,8 @@ Optimize Apache Doris for high-volume observability data:
 CREATE TABLE observability.otel_traces_partitioned (
     -- columns definition same as before
 )
-DUPLICATE KEY(trace_id, span_id)
-PARTITION BY RANGE(FROM_UNIXTIME(start_time_unix_nano / 1000000000)) (
+DUPLICATE KEY(service_name, timestamp)
+PARTITION BY RANGE(timestamp) (
     PARTITION p20260201 VALUES LESS THAN ("2026-02-02"),
     PARTITION p20260202 VALUES LESS THAN ("2026-02-03"),
     PARTITION p20260203 VALUES LESS THAN ("2026-02-04")
@@ -706,8 +704,8 @@ PROPERTIES (
 CREATE MATERIALIZED VIEW mv_service_latency AS
 SELECT
     service_name,
-    FROM_UNIXTIME(start_time_unix_nano / 1000000000, '%Y-%m-%d %H:%i:00') as time_bucket,
-    AVG(duration_ms) as avg_duration,
+    date_trunc(timestamp, 'minute') as time_bucket,
+    AVG(duration / 1000.0) as avg_duration_ms,
     COUNT(*) as request_count
 FROM observability.otel_traces
 WHERE span_kind = 'SPAN_KIND_SERVER'
@@ -723,19 +721,12 @@ exporters:
   doris:
     # Use DNS with multiple A records or load balancer
     endpoint: http://doris-fe-lb.example.com:8030
-
-    # Or specify multiple endpoints
-    endpoints:
-      - http://doris-fe-1.example.com:8030
-      - http://doris-fe-2.example.com:8030
-      - http://doris-fe-3.example.com:8030
-
-    # Load balancing strategy
-    load_balancing:
-      strategy: round_robin
+    mysql_endpoint: doris-fe-lb.example.com:9030
 
     database: observability
-    table: otel_traces
+    table:
+      traces: otel_traces
+    create_schema: true
     username: ${env:DORIS_USERNAME}
     password: ${env:DORIS_PASSWORD}
 ```
