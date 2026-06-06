@@ -31,7 +31,7 @@ The key insight is that exemplars are sampled. The SDK does not attach a trace r
 
 ## Enabling Exemplars in Python
 
-By default, exemplar collection is disabled or uses a minimal configuration. You need to explicitly enable it with the right exemplar filter:
+The OpenTelemetry specification recommends `trace_based` as the default exemplar filter, and current Python SDKs use that default. Setting it explicitly is still useful when you want predictable behavior across SDK versions and deployments:
 
 ```python
 # Enabling exemplar collection in the Python SDK
@@ -42,6 +42,7 @@ from opentelemetry.sdk.metrics.export import (
     ConsoleMetricExporter,
 )
 from opentelemetry.sdk.metrics.view import View, ExplicitBucketHistogramAggregation
+from opentelemetry import metrics
 import os
 
 # Set the exemplar filter via environment variable
@@ -70,6 +71,7 @@ provider = MeterProvider(
         ),
     ],
 )
+metrics.set_meter_provider(provider)
 ```
 
 The `trace_based` filter is the most practical choice. It only captures exemplars when there is a sampled trace in the current context. This avoids creating exemplars that reference traces your backend never received, which would lead to broken links in your dashboard.
@@ -168,13 +170,15 @@ import (
 	"context"
 	"time"
 
-	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/exemplar"
 )
 
 func setupMetrics() *sdkmetric.MeterProvider {
+	reader := sdkmetric.NewManualReader()
+
 	// Configure the exemplar filter
 	// TraceBasedFilter only records exemplars for sampled spans
 	provider := sdkmetric.NewMeterProvider(
@@ -228,9 +232,8 @@ exporters:
   # Prometheus remote write also supports exemplars
   prometheusremotewrite:
     endpoint: "http://prometheus:9090/api/v1/write"
-    # Enable exemplars in Prometheus remote write
-    resource_to_telemetry_conversion:
-      enabled: true
+    # No special Collector setting is needed for exemplars, but the
+    # remote-write receiver/backend must support and accept exemplars.
 
 processors:
   batch:
@@ -241,10 +244,10 @@ service:
     metrics:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlp/metrics]
+      exporters: [otlp/metrics, prometheusremotewrite]
 ```
 
-Not all backends support exemplars equally. Prometheus added native exemplar support in version 2.26, and Grafana can display them starting from version 7.4. If your backend does not support exemplars, they are silently dropped during export. No data is lost from the metrics themselves.
+Not all backends support exemplars equally. Prometheus exemplar storage is available in version 2.26 and later when enabled with `--enable-feature=exemplar-storage`, and Grafana can display Prometheus exemplars starting from version 7.4. If your backend does not support exemplars, they are silently dropped during export. No data is lost from the metrics themselves.
 
 ## Connecting the Dots in Practice
 
@@ -253,6 +256,7 @@ The real power of exemplars shows up in your observability workflow. Consider a 
 ```python
 # Example: instrumenting a payment service where exemplars shine
 from opentelemetry import trace, metrics
+import time
 
 tracer = trace.get_tracer("payment-service")
 meter = metrics.get_meter("payment-service")
@@ -322,10 +326,10 @@ When the `payment.processing.duration` histogram shows a spike, the exemplar on 
 
 ## Practical Considerations
 
-Exemplar overhead is minimal because of reservoir sampling. The SDK only stores a small number of exemplars per metric stream per collection interval. You will not see measurable performance impact in production.
+Exemplar overhead is usually low because of reservoir sampling. The SDK only stores a small number of exemplars per metric stream per collection interval, but you should still validate overhead in your own production workload.
 
 Make sure your trace and metric backends share a common query interface. The value of exemplars depends entirely on being able to click a trace ID in your metrics view and navigate to the trace detail view. If your metrics are in Prometheus and traces are in a separate system with no cross-linking UI, exemplars lose most of their value.
 
-Also ensure that your trace sampling rate is high enough for exemplars to be useful. If you sample only 1% of traces, most exemplar references will point to traces that were not collected. The `trace_based` exemplar filter helps here by only recording exemplars for sampled traces, but you still need enough sampled traces to get good coverage.
+Also ensure that your trace sampling rate is high enough for exemplars to be useful. If you sample only 1% of traces, most metric events will not be eligible for trace-linked exemplars. The `trace_based` exemplar filter helps by only recording exemplars for sampled traces, but you still need enough sampled traces to get good coverage.
 
 Exemplars bridge the gap between aggregated metrics and individual request traces. Configure them once, and your team gains the ability to jump from any metric anomaly directly to the exact traces that caused it. That direct link transforms how fast you can diagnose and resolve production issues.
