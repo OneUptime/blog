@@ -403,9 +403,8 @@ defmodule MyApp.Application do
         strategy: Cluster.Strategy.Kubernetes.DNS,
         config: [
           # The headless service name in Kubernetes
+          # Namespace is resolved via the pod's DNS search domain
           service: "myapp-headless",
-          # The namespace - can be hardcoded or read from env
-          namespace: System.get_env("POD_NAMESPACE", "default"),
           # Application name used for the long node name
           application_name: "myapp",
           # How often to poll for new nodes (milliseconds)
@@ -436,14 +435,14 @@ topologies = [
     strategy: Cluster.Strategy.Gossip,
     config: [
       # Multicast address for discovery
-      multicast_addr: "230.1.1.1",
+      multicast_addr: "233.252.1.32",
       # Port for gossip messages
       port: 45892,
       # Network interface to use
       if_addr: "0.0.0.0",
-      # How often to broadcast presence
-      broadcast_period: 1_000,
-      # Secret for cluster membership
+      # TTL for multicast packets (1 = local network only)
+      multicast_ttl: 1,
+      # Secret for cluster membership (enables encryption)
       secret: "my_cluster_secret"
     ]
   ]
@@ -459,11 +458,9 @@ Erlang traditionally uses EPMD (Erlang Port Mapper Daemon) for node discovery. F
 export RELEASE_DISTRIBUTION=name
 export RELEASE_NODE=myapp@${POD_IP}
 
-# Use a fixed port instead of EPMD
-export ERL_DIST_PORT=4369
-
-# Configure the VM to not start EPMD
-export ERL_FLAGS="-start_epmd false -erl_epmd_port 4369"
+# Use a fixed port instead of EPMD (OTP 23.1+)
+# When ERL_DIST_PORT is set, EPMD is neither started nor contacted
+export ERL_DIST_PORT=9100
 ```
 
 ## Building a Distributed Registry
