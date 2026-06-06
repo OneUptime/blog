@@ -45,6 +45,9 @@ Install the OpenTelemetry browser packages:
 # Install the OpenTelemetry web SDK and auto-instrumentations
 
 npm install @opentelemetry/sdk-trace-web \
+  @opentelemetry/api \
+  @opentelemetry/sdk-trace-base \
+  @opentelemetry/instrumentation \
   @opentelemetry/instrumentation-fetch \
   @opentelemetry/instrumentation-xml-http-request \
   @opentelemetry/context-zone \
@@ -66,7 +69,7 @@ import { ZoneContextManager } from '@opentelemetry/context-zone';
 import { FetchInstrumentation } from '@opentelemetry/instrumentation-fetch';
 import { XMLHttpRequestInstrumentation } from '@opentelemetry/instrumentation-xml-http-request';
 import { registerInstrumentations } from '@opentelemetry/instrumentation';
-import { Resource } from '@opentelemetry/resources';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 import { ATTR_SERVICE_NAME } from '@opentelemetry/semantic-conventions';
 
 // Create the trace exporter pointing to your collector or backend
@@ -76,17 +79,18 @@ const exporter = new OTLPTraceExporter({
 
 // Configure the tracer provider with the browser-specific context manager
 const provider = new WebTracerProvider({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     [ATTR_SERVICE_NAME]: 'frontend-web',
   }),
+  // Use batch processing to avoid sending a network request per span
+  spanProcessors: [
+    new BatchSpanProcessor(exporter, {
+      maxQueueSize: 100,
+      maxExportBatchSize: 10,
+      scheduledDelayMillis: 5000,
+    }),
+  ],
 });
-
-// Use batch processing to avoid sending a network request per span
-provider.addSpanProcessor(new BatchSpanProcessor(exporter, {
-  maxQueueSize: 100,
-  maxExportBatchSize: 10,
-  scheduledDelayMillis: 5000,
-}));
 
 // ZoneContextManager uses Zone.js to maintain context across async operations
 provider.register({
@@ -112,7 +116,7 @@ registerInstrumentations({
 });
 ```
 
-The `propagateTraceHeaderCorsUrls` configuration is critical. It controls which domains receive the `traceparent` header. You must restrict this to your own domains. Sending trace context headers to third-party APIs is both a security risk and a protocol violation.
+The `propagateTraceHeaderCorsUrls` configuration is critical. It controls which cross-origin requests receive trace context headers. You must restrict this to your own domains. Sending trace context headers to third-party APIs can leak trace metadata outside your system.
 
 ## Handling CORS for Trace Headers
 
@@ -120,7 +124,7 @@ Your backend must accept the `traceparent` and `tracestate` headers in CORS requ
 
 ```javascript
 // Express.js CORS configuration for accepting trace context headers.
-// Without this, the browser will strip the traceparent header from requests.
+// Without this, CORS preflight requests that include trace headers can fail.
 const cors = require('cors');
 
 app.use(cors({
@@ -168,7 +172,7 @@ Beyond automatic fetch/XHR instrumentation, create custom spans for user interac
 // Create custom spans for meaningful user interactions.
 // These give you visibility into what the user was doing when they
 // triggered a backend request.
-import { trace, context } from '@opentelemetry/api';
+import { trace, context, SpanStatusCode } from '@opentelemetry/api';
 
 const tracer = trace.getTracer('frontend-web', '1.0.0');
 
@@ -199,13 +203,16 @@ async function handleSubmitOrder(orderData) {
       });
 
       if (!response.ok) {
-        span.setStatus({ code: 2, message: 'Order submission failed' });
+        span.setStatus({
+          code: SpanStatusCode.ERROR,
+          message: 'Order submission failed',
+        });
       }
 
       return response.json();
     } catch (error) {
       span.recordException(error);
-      span.setStatus({ code: 2, message: error.message });
+      span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
       throw error;
     } finally {
       span.end();
@@ -254,6 +261,8 @@ In SPAs, page navigations happen client-side without full page reloads. Create s
 // Track SPA route changes as spans.
 // This gives you visibility into navigation performance.
 import { trace } from '@opentelemetry/api';
+import { useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 
 const tracer = trace.getTracer('frontend-web');
 
@@ -287,10 +296,13 @@ Frontend applications generate far more telemetry than backend services because 
 // Configure a sampler that reduces the volume of frontend traces.
 // Use parent-based sampling so that if the backend decides to sample
 // a trace, the frontend follows along.
+import { WebTracerProvider } from '@opentelemetry/sdk-trace-web';
 import { ParentBasedSampler, TraceIdRatioBasedSampler } from '@opentelemetry/sdk-trace-base';
+import { resourceFromAttributes } from '@opentelemetry/resources';
+import { ATTR_SERVICE_NAME } from '@opentelemetry/semantic-conventions';
 
 const provider = new WebTracerProvider({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     [ATTR_SERVICE_NAME]: 'frontend-web',
   }),
   sampler: new ParentBasedSampler({
