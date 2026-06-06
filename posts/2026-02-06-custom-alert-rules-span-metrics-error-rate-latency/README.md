@@ -8,16 +8,16 @@ Description: Generate Prometheus-compatible metrics from OpenTelemetry spans usi
 
 Traces are great for debugging individual requests, but they are not directly queryable for aggregate alerting. You cannot easily ask "what is the P99 latency of service X over the last 5 minutes?" from raw span data. That is where span metrics come in.
 
-The OpenTelemetry Collector's `spanmetrics` connector automatically generates RED metrics (Rate, Error, Duration) from incoming spans. These metrics can be exported to Prometheus, where you can write standard alert rules for error rate, latency percentiles, and throughput.
+The OpenTelemetry Collector's span metrics connector automatically generates RED metrics (Rate, Error, Duration) from incoming spans. These metrics can be exported to Prometheus, where you can write standard alert rules for error rate, latency percentiles, and throughput.
 
 ## How the Spanmetrics Connector Works
 
-The spanmetrics connector sits between a traces pipeline and a metrics pipeline. It reads incoming spans and produces histogram and counter metrics that summarize span behavior.
+The span metrics connector sits between a traces pipeline and a metrics pipeline. It reads incoming spans and produces histogram and counter metrics that summarize span behavior.
 
 ```mermaid
 graph LR
     A[App - Traces] --> B[OTel Collector]
-    B --> C[spanmetrics connector]
+    B --> C[span_metrics connector]
     C --> D[Prometheus Exporter]
     D --> E[Prometheus]
     E --> F[Alert Rules]
@@ -26,7 +26,7 @@ graph LR
 
 For each span, the connector generates:
 
-- `duration_milliseconds` - a histogram of span durations
+- `duration` - a histogram of span durations, exported to Prometheus as `duration_milliseconds_bucket` when the connector namespace is empty and the duration unit is milliseconds
 - `calls_total` - a counter of span calls, with a `status.code` label for error tracking
 
 These metrics are broken down by `service.name`, `span.name`, `span.kind`, and `status.code`.
@@ -38,7 +38,7 @@ Here is a Collector configuration that receives traces, generates span metrics, 
 ```yaml
 # otel-collector-config.yaml
 
-# Generate RED metrics from traces using the spanmetrics connector
+# Generate RED metrics from traces using the span metrics connector
 
 receivers:
   otlp:
@@ -47,13 +47,17 @@ receivers:
         endpoint: 0.0.0.0:4317
 
 connectors:
-  # The spanmetrics connector reads spans and produces metrics
-  spanmetrics:
-    # Include these resource attributes as metric dimensions
+  # The span_metrics connector reads spans and produces metrics
+  span_metrics:
+    # Keep Prometheus metric names short for the queries below:
+    # calls_total and duration_milliseconds_bucket.
+    namespace: ""
+
+    # Include these span or resource attributes as metric dimensions
     # so you can filter and group by service, environment, etc.
     dimensions:
-      - name: http.method
-      - name: http.status_code
+      - name: http.request.method
+      - name: http.response.status_code
       - name: http.route
       - name: rpc.method
       - name: rpc.service
@@ -61,11 +65,12 @@ connectors:
     # Configure histogram buckets for latency measurement
     # These buckets determine the granularity of percentile calculations
     histogram:
+      unit: ms
       explicit:
         buckets: [5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 2.5s, 5s, 10s]
 
-    # Use milliseconds for histogram buckets
-    dimensions_cache_size: 10000
+    # Limit the number of dimension combinations tracked by the connector
+    aggregation_cardinality_limit: 10000
 
     # Aggregate metrics over this period before emitting
     aggregation_temporality: "AGGREGATION_TEMPORALITY_CUMULATIVE"
@@ -74,6 +79,7 @@ exporters:
   # Export span metrics to Prometheus
   prometheus:
     endpoint: 0.0.0.0:8889
+    enable_open_metrics: true
     resource_to_telemetry_conversion:
       enabled: true
 
@@ -85,14 +91,14 @@ exporters:
 
 service:
   pipelines:
-    # Traces pipeline: receives spans, sends to trace backend and spanmetrics
+    # Traces pipeline: receives spans, sends to trace backend and span_metrics
     traces:
       receivers: [otlp]
-      exporters: [spanmetrics, otlp/traces]
+      exporters: [span_metrics, otlp/traces]
 
     # Metrics pipeline: receives generated span metrics, exports to Prometheus
     metrics/spanmetrics:
-      receivers: [spanmetrics]
+      receivers: [span_metrics]
       exporters: [prometheus]
 ```
 
@@ -164,12 +170,12 @@ This alert fires when the P99 latency for any service exceeds 2 seconds:
           severity: warning
         annotations:
           summary: "P99 latency above 2s on {{ $labels.service_name }}"
-          description: "P99 latency is {{ $value | humanizeDuration }} for service {{ $labels.service_name }}"
+          description: "P99 latency is {{ $value }}ms for service {{ $labels.service_name }}"
 ```
 
 ## Alert Rule: P99 Latency per Endpoint
 
-For more granular alerting, break down latency by span name (which maps to the HTTP route or RPC method):
+For more granular alerting, break down latency by span name, which usually includes the HTTP method and route for HTTP server spans:
 
 ```yaml
       # Per-endpoint P99 latency alert
@@ -214,12 +220,12 @@ Detect when a service's request rate drops significantly, which could indicate a
 Break down error alerting by HTTP status code to distinguish between client errors (4xx) and server errors (5xx):
 
 ```yaml
-      # Server error rate (5xx only) using the http.status_code dimension
+      # Server error rate (5xx only) using the http.response.status_code dimension
       - alert: ServerErrorRateHigh
         expr: |
           (
             sum by (service_name) (
-              rate(calls_total{http_status_code=~"5.."}[5m])
+              rate(calls_total{http_response_status_code=~"5.."}[5m])
             )
             /
             sum by (service_name) (
@@ -244,7 +250,7 @@ Guidelines for bucket selection:
 - **Background jobs**: `[100ms, 500ms, 1s, 5s, 10s, 30s, 60s, 120s, 300s]`
 - **Database queries**: `[1ms, 5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s]`
 
-More buckets give better accuracy but increase the number of time series stored in Prometheus. For a service with 50 unique span names and 11 buckets, you generate 550 time series per service just for the histogram. Multiply by the number of services and dimension combinations to estimate your total series count.
+More buckets give better accuracy but increase the number of time series stored in Prometheus. For a service with 50 unique span names and 11 configured bucket boundaries, a classic histogram generates 700 time series per service: 50 combinations multiplied by 12 bucket series including `+Inf`, plus `_sum` and `_count`. Multiply by the number of services and dimension combinations to estimate your total series count.
 
 ## Combining with Exemplars
 
@@ -252,17 +258,19 @@ The spanmetrics connector can also attach trace exemplars to the generated metri
 
 ```yaml
 connectors:
-  spanmetrics:
+  span_metrics:
+    namespace: ""
     # Enable exemplars so you can click through from a metric alert
     # to an actual trace in your tracing backend
     exemplars:
       enabled: true
     dimensions:
-      - name: http.method
+      - name: http.request.method
       - name: http.route
     histogram:
+      unit: ms
       explicit:
         buckets: [5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 2.5s, 5s, 10s]
 ```
 
-When viewing these metrics in Grafana, you can click on an exemplar dot to jump directly to the corresponding trace. This closes the loop between "something is wrong" (alert) and "here is exactly what happened" (trace), making the spanmetrics connector one of the most valuable components in an OpenTelemetry-based observability stack.
+When viewing these metrics in Grafana, you can click on an exemplar dot to jump directly to the corresponding trace if your Prometheus exporter is using OpenMetrics and your Prometheus and Grafana setup preserves exemplars. This closes the loop between "something is wrong" (alert) and "here is exactly what happened" (trace), making the span metrics connector one of the most valuable components in an OpenTelemetry-based observability stack.
