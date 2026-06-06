@@ -10,7 +10,7 @@ Description: A practical guide to building custom application metrics using Open
 
 Runtime metrics like CPU and memory usage only tell you part of the story. They can tell you that a server is under load, but they cannot tell you why. Custom application metrics fill this gap. They let you measure what matters to your business and your application logic, not just the infrastructure underneath.
 
-OpenTelemetry provides three core metric instruments for this: counters, gauges, and histograms. Each one is designed for a different kind of measurement. This guide explains when to use each one and walks through practical examples in Python.
+OpenTelemetry provides several metric instruments; three of the most common are counters, gauges, and histograms. Each one is designed for a different kind of measurement. This guide explains when to use each one and walks through practical examples in Python.
 
 ---
 
@@ -306,10 +306,12 @@ cart_size = meter.create_histogram(
 def create_order(cart, user):
     """Create an order and record business metrics."""
     start = time.monotonic()
+    status = "error"
     try:
         order = build_order(cart, user)
         charge_result = process_payment(order)
         save_order(order)
+        status = "success"
 
         # Record success metrics
         order_counter.add(1, {
@@ -330,7 +332,7 @@ def create_order(cart, user):
         # Always record latency, even for failures
         duration = (time.monotonic() - start) * 1000
         order_latency.record(duration, {
-            "status": "success" if "order" in dir() else "error",
+            "status": status,
         })
 ```
 

@@ -10,7 +10,7 @@ Background jobs are invisible to traditional monitoring tools because they run a
 
 ## Understanding Sidekiq Job Tracing
 
-Sidekiq processes jobs in background worker processes, separate from web request threads. OpenTelemetry creates a span for each job execution, capturing job class, arguments, queue name, and execution time:
+Sidekiq processes jobs in background worker processes, separate from web request threads. OpenTelemetry creates spans for job enqueueing and execution, capturing job class, queue name, message ID, and execution time:
 
 ```mermaid
 graph TD
@@ -27,10 +27,10 @@ graph TD
     I -.-> D
 
     J[Parent Span: HTTP Request] --> K[Child Span: Enqueue]
-    L[Root Span: Job Execution] --> M[Child Spans: Job Steps]
+    L[Linked or Child Span: Job Execution] --> M[Child Spans: Job Steps]
 ```
 
-The key challenge is connecting the job trace back to the originating HTTP request. OpenTelemetry propagates trace context through job arguments, maintaining the distributed trace across async boundaries.
+The key challenge is connecting the job trace back to the originating HTTP request. OpenTelemetry propagates trace context through the Sidekiq job payload. By default, the Sidekiq instrumentation starts the job execution as a separate trace linked to the enqueue span; configure `propagation_style: :child` when you want the execution span to be a child in the same trace.
 
 ## Installing Sidekiq Instrumentation
 
@@ -67,11 +67,13 @@ OpenTelemetry::SDK.configure do |c|
   c.service_name = 'rails-app'
 
   # Enable Sidekiq instrumentation
-  c.use 'OpenTelemetry::Instrumentation::Sidekiq'
+  c.use 'OpenTelemetry::Instrumentation::Sidekiq',
+        propagation_style: :child,
+        span_naming: :job_class
 end
 ```
 
-This configuration automatically creates spans when jobs are enqueued and when they execute, capturing queue name, job class, and timing information.
+This configuration automatically creates spans when jobs are enqueued and when they execute, capturing queue name, job class, message ID, and timing information.
 
 ## Understanding Job Span Attributes
 
@@ -83,20 +85,13 @@ Sidekiq instrumentation adds these attributes to job spans:
   'messaging.system' => 'sidekiq',
   'messaging.destination' => 'default',  # Queue name
   'messaging.destination_kind' => 'queue',
+  'messaging.operation' => 'process',
   'messaging.sidekiq.job_class' => 'UserNotificationJob',
-  'messaging.message_id' => 'abc123',
-
-  # Job execution details
-  'sidekiq.job.retry' => true,
-  'sidekiq.job.queue' => 'default',
-  'sidekiq.job.jid' => 'abc123',
-
-  # Worker information
-  'sidekiq.worker.name' => 'UserNotificationJob'
+  'messaging.message_id' => 'abc123'
 }
 ```
 
-These attributes enable filtering by queue, analyzing retry patterns, and identifying slow job classes in your observability platform.
+These attributes enable filtering by queue and identifying slow job classes in your observability platform.
 
 ## Adding Custom Spans to Background Jobs
 
@@ -196,19 +191,19 @@ class ReportGeneratorJob < ApplicationJob
       span.set_attribute('organization.name', organization.name)
 
       # Fetch data
-      data = tracer.in_span('report.fetch_data') do
-        fetch_report_data(organization, date_range)
+      transaction_ids = tracer.in_span('report.fetch_data') do
+        fetch_report_data(organization, date_range).pluck(:id)
       end
 
-      span.set_attribute('report.data_rows', data.size)
+      span.set_attribute('report.data_rows', transaction_ids.size)
 
       # Process each section in parallel jobs
       # Trace context is automatically propagated to child jobs
       sections = ['sales', 'inventory', 'customers']
 
       sections.each do |section|
-        # The parent trace context is automatically included in job args
-        ReportSectionJob.perform_async(organization_id, section, data)
+        # The parent trace context is automatically included in the Sidekiq job payload
+        ReportSectionJob.perform_later(organization_id, section, transaction_ids)
       end
 
       # Wait for all sections and combine
@@ -228,7 +223,7 @@ class ReportGeneratorJob < ApplicationJob
     # Poll Redis or database for section completion
     # This is simplified; production code needs better coordination
     sleep(5)
-    CombineReportSectionsJob.perform_async(organization_id, sections)
+    CombineReportSectionsJob.perform_later(organization_id, sections)
   end
 end
 
@@ -236,14 +231,15 @@ end
 class ReportSectionJob < ApplicationJob
   queue_as :reports
 
-  def perform(organization_id, section, data)
+  def perform(organization_id, section, transaction_ids)
     tracer = OpenTelemetry.tracer_provider.tracer('app')
 
-    # This job's span is automatically linked to the parent job's trace
+    # This job's span is automatically connected to the parent job's trace
     tracer.in_span("report.process_section.#{section}", attributes: {
       'organization.id' => organization_id,
       'report.section' => section
     }) do |span|
+      data = Transaction.where(id: transaction_ids).to_a
       result = process_section(section, data)
       span.set_attribute('section.items', result.size)
 
@@ -267,16 +263,16 @@ class ReportSectionJob < ApplicationJob
   end
 
   def store_section_result(organization_id, section, result)
-    Redis.current.setex(
+    Rails.cache.write(
       "report:#{organization_id}:#{section}",
-      3600,
-      result.to_json
+      result,
+      expires_in: 1.hour
     )
   end
 end
 ```
 
-The distributed trace connects all jobs: the parent report generation job and each section processing job appear in the same trace, showing the complete picture of report generation across multiple workers.
+With `propagation_style: :child`, the distributed trace connects all jobs: the parent report generation job and each section processing job appear in the same trace, showing the complete picture of report generation across multiple workers.
 
 ## Tracking Job Retries and Failures
 
@@ -347,7 +343,7 @@ class PaymentProcessorJob < ApplicationJob
 
         # Mark order as failed and notify customer
         order.update!(status: 'payment_failed')
-        CustomerNotificationJob.perform_async(order.id, 'payment_failed')
+        CustomerNotificationJob.perform_later(order.id, 'payment_failed')
 
         # Don't raise - we've handled it
 
@@ -366,6 +362,22 @@ class PaymentProcessorJob < ApplicationJob
 
   def sidekiq_context
     Thread.current[:sidekiq_context] || {}
+  end
+end
+
+# config/initializers/sidekiq_context.rb
+class SidekiqContextMiddleware
+  def call(_worker, job, _queue)
+    Thread.current[:sidekiq_context] = job
+    yield
+  ensure
+    Thread.current[:sidekiq_context] = nil
+  end
+end
+
+Sidekiq.configure_server do |config|
+  config.server_middleware do |chain|
+    chain.add SidekiqContextMiddleware
   end
 end
 ```
@@ -391,9 +403,8 @@ module QueueTimeTracking
     span = OpenTelemetry::Trace.current_span
     return unless span.recording?
 
-    # Sidekiq stores enqueued_at timestamp
-    if arguments.first.is_a?(Hash) && arguments.first['enqueued_at']
-      enqueued_at = Time.at(arguments.first['enqueued_at'])
+    # Active Job stores when the job was enqueued
+    if enqueued_at
       wait_time = Time.current - enqueued_at
 
       span.set_attribute('job.queue_wait_time_ms', (wait_time * 1000).to_i)
@@ -411,11 +422,6 @@ end
 # app/jobs/application_job.rb
 class ApplicationJob < ActiveJob::Base
   include QueueTimeTracking
-
-  # Store enqueue time in job arguments
-  before_enqueue do |job|
-    job.arguments.unshift({ 'enqueued_at' => Time.current.to_f })
-  end
 end
 ```
 
@@ -480,7 +486,7 @@ class ScheduledReportJob < ApplicationJob
 
   def send_report(schedule, report)
     schedule.recipients.each do |recipient|
-      ReportDeliveryJob.perform_async(recipient.id, report.id)
+      ReportDeliveryJob.perform_later(recipient.id, report.id)
     end
   end
 end
@@ -572,13 +578,9 @@ RSpec.describe UserNotificationJob, type: :job do
   it 'creates custom spans for job operations' do
     user = User.create!(name: 'Test', email: 'test@example.com')
 
-    UserNotificationJob.new.perform(user.id, 'welcome')
+    UserNotificationJob.perform_now(user.id, 'welcome')
 
     spans = exporter.finished_spans
-
-    # Verify main job span exists
-    job_span = spans.find { |s| s.name == 'UserNotificationJob' }
-    expect(job_span).not_to be_nil
 
     # Verify custom spans exist
     fetch_span = spans.find { |s| s.name == 'job.fetch_user' }
@@ -593,7 +595,7 @@ RSpec.describe UserNotificationJob, type: :job do
     allow(User).to receive(:find).and_raise(StandardError.new('User not found'))
 
     expect {
-      UserNotificationJob.new.perform(999, 'welcome')
+      UserNotificationJob.perform_now(999, 'welcome')
     }.to raise_error(StandardError)
 
     spans = exporter.finished_spans
@@ -608,4 +610,3 @@ end
 These tests confirm that custom spans are created with the expected attributes and that errors are properly captured.
 
 Custom spans in Sidekiq jobs provide detailed visibility into background job performance. With automatic instrumentation for job lifecycle events and custom spans for specific operations, you can track queue wait times, measure processing steps, monitor retry patterns, and maintain distributed traces across async boundaries. This visibility is essential for debugging production issues, optimizing job performance, and ensuring background processing meets your SLAs.
-

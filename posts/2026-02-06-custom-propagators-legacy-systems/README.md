@@ -12,13 +12,13 @@ Not every system speaks W3C Trace Context or B3. Legacy applications, homegrown 
 
 ## When You Need a Custom Propagator
 
-Before writing custom code, it is worth checking whether a community-maintained propagator already exists for your format. OpenTelemetry has official propagators for W3C Trace Context, B3 (Zipkin), Jaeger, AWS X-Ray, and OT Trace (OpenTracing). If your system uses any of these, use the existing package.
+Before writing custom code, it is worth checking whether an existing propagator already exists for your format. OpenTelemetry supports W3C Trace Context, W3C Baggage, B3 (Zipkin), Jaeger, AWS X-Ray, and OT Trace (OpenTracing) through built-in or installable propagator packages. If your system uses any of these, use the existing package.
 
 Custom propagators make sense when your system uses a format that no existing propagator handles. Common examples include:
 
 - Internal correlation ID headers like `X-Request-Id` or `X-Correlation-Id` that predate modern tracing standards
 - Vendor-specific headers from commercial API gateways or service meshes
-- Custom binary or encoded formats used by legacy middleware
+- Custom encoded formats used by legacy middleware
 - Database or message queue metadata fields that carry trace context
 
 ## The Propagator Interface
@@ -26,8 +26,8 @@ Custom propagators make sense when your system uses a format that no existing pr
 In OpenTelemetry, a propagator implements the `TextMapPropagator` interface. This interface has three methods.
 
 ```python
-from opentelemetry.context.propagation import TextMapPropagator
 from opentelemetry.propagators import textmap
+from opentelemetry.propagators.textmap import TextMapPropagator
 
 class MyPropagator(TextMapPropagator):
 
@@ -56,8 +56,8 @@ Let us build a propagator for a common legacy pattern: the `X-Request-Id` header
 ```python
 from opentelemetry import trace
 from opentelemetry.context import Context
-from opentelemetry.context.propagation import TextMapPropagator
 from opentelemetry.propagators import textmap
+from opentelemetry.propagators.textmap import TextMapPropagator
 from opentelemetry.trace import NonRecordingSpan, SpanContext, TraceFlags
 import hashlib
 
@@ -110,8 +110,9 @@ class RequestIdPropagator(TextMapPropagator):
         trace_id = self._request_id_to_trace_id(request_id)
 
         # Create a SpanContext with the derived trace ID
-        # We use a zero span ID since X-Request-Id has no span concept
-        # The SAMPLED flag is set because the legacy system sent the header
+        # Use a non-zero placeholder span ID because X-Request-Id has no span concept
+        # This example marks the context as sampled; use your own policy if the legacy
+        # system has sampling semantics
         span_context = SpanContext(
             trace_id=trace_id,
             span_id=0x1,  # Placeholder span ID
@@ -175,10 +176,11 @@ Some legacy systems use more complex header formats. Here is a propagator for a 
 ```python
 import json
 import base64
+import binascii
 from opentelemetry import trace
 from opentelemetry.context import Context
-from opentelemetry.context.propagation import TextMapPropagator
 from opentelemetry.propagators import textmap
+from opentelemetry.propagators.textmap import TextMapPropagator
 from opentelemetry.trace import NonRecordingSpan, SpanContext, TraceFlags
 
 _LEGACY_HEADER = "X-Legacy-Trace"
@@ -231,7 +233,7 @@ class LegacyEncodedPropagator(TextMapPropagator):
             span = NonRecordingSpan(span_context)
             return trace.set_span_in_context(span, context)
 
-        except (ValueError, KeyError, json.JSONDecodeError) as e:
+        except (binascii.Error, ValueError, KeyError, json.JSONDecodeError) as e:
             # If the header is malformed, return the context unchanged
             # Log the error in production
             print(f"Failed to parse legacy trace header: {e}")
@@ -270,7 +272,7 @@ Custom propagators slot into composite propagators just like built-in ones. This
 ```python
 from opentelemetry.propagate import set_global_textmap
 from opentelemetry.propagators.composite import CompositePropagator
-from opentelemetry.trace.propagation import TraceContextTextMapPropagator
+from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 from opentelemetry.baggage.propagation import W3CBaggagePropagator
 
 # Combine standard and custom propagators
@@ -284,7 +286,7 @@ propagator = CompositePropagator([
 set_global_textmap(propagator)
 ```
 
-With this setup, outgoing requests carry headers for all four formats. Incoming requests are parsed regardless of which format they use.
+With this setup, outgoing requests carry headers for all four formats. Incoming requests are parsed regardless of which format they use. If more than one trace context format is present, later propagators in the list can override context set by earlier ones.
 
 ## Registering Custom Propagators with Entry Points
 
