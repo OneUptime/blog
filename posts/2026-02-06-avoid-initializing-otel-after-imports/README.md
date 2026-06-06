@@ -34,7 +34,7 @@ app.get('/', (req, res) => res.send('Hello'));
 app.listen(3000);
 ```
 
-This application runs without errors. Express serves requests. But no HTTP spans are generated. There is no error message telling you something went wrong.
+This application runs without errors. Express serves requests. But the expected server-side HTTP and Express spans may not be generated. There is no error message telling you something went wrong.
 
 ## The Correct Pattern for Node.js
 
@@ -45,11 +45,11 @@ Create a separate tracing setup file and load it before anything else:
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
-const { Resource } = require('@opentelemetry/resources');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 const { ATTR_SERVICE_NAME } = require('@opentelemetry/semantic-conventions');
 
 const sdk = new NodeSDK({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     [ATTR_SERVICE_NAME]: 'my-web-service',
   }),
   traceExporter: new OTLPTraceExporter({
@@ -132,7 +132,7 @@ If you see "Module has already been loaded" warnings instead, your initializatio
 ## Common Traps
 
 - **Bundlers like Webpack** can hoist imports and change their order. If you use a bundler, make sure the tracing setup is in a separate entry point.
-- **TypeScript with `import` statements** hoists all imports to the top regardless of where you write them in the file. Use the `--require` flag approach instead of trying to order imports manually.
+- **TypeScript with `import` statements** hoists all imports to the top regardless of where you write them in the file. Use a preload file instead of trying to order imports manually. For CommonJS output, use the `--require` flag approach; for ESM output, use Node's `--import` flag or OpenTelemetry's ESM loader hook as appropriate.
 - **Framework bootstrap files** in NestJS, Next.js, and similar frameworks often import libraries internally before your code runs. Check your framework's documentation for the recommended OpenTelemetry integration point.
 
 Getting the initialization order right is the single most impactful thing you can do for reliable OpenTelemetry instrumentation. Once this is correct, everything else falls into place.
