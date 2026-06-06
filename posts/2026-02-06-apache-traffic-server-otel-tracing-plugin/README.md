@@ -4,9 +4,9 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Apache Traffic Server, CDN, Tracing Plugin
 
-Description: Configure the Apache Traffic Server OpenTelemetry tracing plugin to trace CDN request handling and cache operations with OTLP export.
+Description: Configure the Apache Traffic Server OpenTelemetry tracing plugin to export ATS transaction traces with OTLP HTTP.
 
-Apache Traffic Server (ATS) is a high-performance caching proxy used as a CDN edge server and forward proxy. ATS supports OpenTelemetry tracing through a plugin that instruments request handling, cache lookups, and origin fetches. This gives you observability into CDN behavior at the request level.
+Apache Traffic Server (ATS) is a high-performance caching proxy used as a CDN edge server and forward proxy. ATS supports OpenTelemetry tracing through an experimental global plugin that creates a server span for each transaction, propagates B3 trace headers upstream, and sends trace information to an OTLP HTTP endpoint. This gives you observability into CDN behavior at the request level.
 
 ## Installing the OpenTelemetry Plugin
 
@@ -16,12 +16,13 @@ The OpenTelemetry plugin for ATS is available in the ATS source tree. Build it w
 # Build ATS with the OTel plugin
 
 cd trafficserver
+autoconf -i
 ./configure --enable-experimental-plugins
 make
 sudo make install
 ```
 
-The plugin binary is installed at `/usr/local/libexec/trafficserver/otel_tracer.so`.
+The plugin binary is installed in the Traffic Server plugin directory, commonly `/usr/local/libexec/trafficserver/otel_tracer.so` when ATS is installed under `/usr/local`.
 
 ## Configuring the Plugin
 
@@ -29,48 +30,25 @@ Add the plugin to `plugin.config`:
 
 ```text
 # /etc/trafficserver/plugin.config
-otel_tracer.so --config /etc/trafficserver/otel_tracer.yaml
+otel_tracer.so -u http://otel-collector:4318/v1/traces -s ats-cdn -r 0.05
 ```
 
-Create the tracer configuration:
+The plugin is configured with command-line options in `plugin.config`:
 
-```yaml
-# /etc/trafficserver/otel_tracer.yaml
-exporter:
-  # OTLP gRPC endpoint
-  endpoint: "otel-collector:4317"
-  # Use insecure connection (set to false for TLS)
-  insecure: true
-
-service:
-  name: "ats-cdn"
-  version: "9.2"
-  attributes:
-    deployment.environment: production
-    cloud.region: us-east-1
-
-sampler:
-  # Trace 5% of requests
-  type: traceidratio
-  param: 0.05
-
-# Which phases to trace
-trace_phases:
-  - read_request
-  - cache_lookup
-  - send_request_to_origin
-  - read_response_from_origin
-  - send_response_to_client
+```text
+-u  OTLP HTTP traces endpoint, default http://localhost:4317/v1/traces
+-s  service name, default otel_tracer
+-r  sampling rate from 0.0 to 1.0, default 1.0
 ```
 
 ## Understanding ATS Trace Phases
 
-ATS processes each request through several phases. The plugin creates spans for each:
+ATS processes each request through several phases. The OpenTelemetry plugin hooks request processing and creates one server span for the transaction:
 
 ```text
 Client Request
   |
-  +-- read_request           [Parse and validate the request]
+  +-- read_request           [Create span, read request attributes, extract B3 context]
   |
   +-- cache_lookup           [Check the cache for the content]
   |     |
@@ -82,26 +60,25 @@ Client Request
   +-- read_response_from_origin [Receive origin response]
   |
   +-- send_response_to_client  [Send response to the client]
+  |
+  +-- transaction close      [Set status code, mark 5xx spans as errors, end span]
 ```
 
-A cache hit trace is shorter because it skips the origin fetch phases:
+The span duration covers the whole transaction. A cache hit is usually shorter because it skips the origin fetch phases:
 
 ```text
 Trace (cache hit): total 5ms
-  read_request:              1ms
-  cache_lookup:              2ms (result: HIT)
-  send_response_to_client:   2ms
+  span name: /images/logo.png
+  http.status_code: 200
 ```
 
-A cache miss trace includes the origin fetch:
+A cache miss usually includes the origin fetch:
 
 ```text
 Trace (cache miss): total 250ms
-  read_request:              1ms
-  cache_lookup:              2ms (result: MISS)
-  send_request_to_origin:    5ms
-  read_response_from_origin: 230ms  <-- origin is slow
-  send_response_to_client:   12ms
+  span name: /images/logo.png
+  http.status_code: 200
+  duration: 250ms
 ```
 
 ## Collector Configuration
@@ -111,8 +88,8 @@ Trace (cache miss): total 250ms
 receivers:
   otlp:
     protocols:
-      grpc:
-        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
 
 processors:
   batch:
@@ -127,12 +104,10 @@ processors:
 
   # Filter out high-volume health check spans
   filter:
-    spans:
-      exclude:
-        match_type: strict
-        attributes:
-          - key: http.url
-            value: /health
+    error_mode: ignore
+    traces:
+      span:
+        - 'attributes["http.route"] == "/health"'
 
 exporters:
   otlp:
@@ -156,35 +131,33 @@ The plugin adds these attributes to each span:
 http.method:            GET
 http.url:               /images/logo.png
 http.status_code:       200
-http.response_content_length: 45678
-cache.status:           HIT | MISS | STALE | REVALIDATED
-cache.key:              /images/logo.png
-origin.server:          origin.example.com:443
-origin.response_time:   230ms
-client.ip:              10.0.0.5
-ats.node:               edge-01.us-east-1
+http.route:             /images/logo.png
+http.host:              cdn.example.com
+http.user_agent:        curl/8.0.1
+http.scheme:            http
+net.host.port:          80
 ```
 
-The `cache.status` attribute is particularly valuable. It tells you whether the request was served from cache or required an origin fetch.
+The `http.status_code` attribute is added when the transaction closes. A 5xx response also marks the span status as an error.
 
 ## ATS remap.config with Trace Headers
 
-Configure ATS to propagate trace context to origin servers:
+Configure ATS to route requests to origin servers:
 
 ```text
 # /etc/trafficserver/remap.config
 map http://cdn.example.com/ http://origin.example.com/
 ```
 
-The OTel plugin automatically injects `traceparent` and `tracestate` headers into origin requests, maintaining the distributed trace chain.
+The OTel plugin automatically injects B3 trace headers such as `X-B3-TraceId`, `X-B3-SpanId`, and `X-B3-Sampled` into upstream requests, maintaining the distributed trace chain for systems that use B3 propagation.
 
 ## Monitoring Cache Performance
 
-Use trace data to calculate cache hit ratios:
+The stock OTel plugin does not add cache hit or miss attributes. Use ATS cache metrics or access logs to calculate cache hit ratios:
 
 ```text
 # From your observability backend
-cache_hit_ratio = count(spans where cache.status = "HIT") / count(all spans)
+cache_hit_ratio = cache_hits / total_cache_lookups
 ```
 
 Track these metrics over time to detect cache degradation. A sudden drop in hit ratio might indicate cache eviction issues or changes in content that reduce cacheability.
@@ -193,18 +166,16 @@ Track these metrics over time to detect cache degradation. A sudden drop in hit 
 
 CDN edge servers handle massive request volumes. A 5% sampling rate on a server doing 50,000 requests per second still generates 2,500 traces per second. Consider:
 
-```yaml
-sampler:
-  type: traceidratio
-  param: 0.001  # 0.1% sampling
+```text
+# /etc/trafficserver/plugin.config
+otel_tracer.so -u http://otel-collector:4318/v1/traces -s ats-cdn -r 0.001
 ```
 
-Or use parent-based sampling to trace requests that are already being traced upstream:
+The plugin initializes a parent-based TraceIdRatio sampler, so requests with an incoming sampled B3 context can remain part of the existing distributed trace:
 
-```yaml
-sampler:
-  type: parentbased_traceidratio
-  param: 0.01  # 1% for new traces, 100% for existing traces
+```text
+# 1% sampling for newly-created traces
+otel_tracer.so -u http://otel-collector:4318/v1/traces -s ats-cdn -r 0.01
 ```
 
 ## Restart and Verify
@@ -213,8 +184,8 @@ sampler:
 # Restart ATS
 sudo traffic_ctl server restart
 
-# Check that the plugin loaded
-traffic_ctl plugin msg otel_tracer status
+# Check that ATS is running
+traffic_ctl server status
 
 # Send a test request
 curl -v http://cdn.example.com/test.html
@@ -222,4 +193,4 @@ curl -v http://cdn.example.com/test.html
 
 ## Summary
 
-The Apache Traffic Server OpenTelemetry plugin traces CDN request handling phases including cache lookups, origin fetches, and client responses. The cache status attribute on each span tells you whether content was served from cache or required an origin round-trip. Use a low sampling rate for production CDN traffic, and leverage parent-based sampling to maintain trace continuity for already-traced requests. This gives you visibility into CDN performance that is hard to get from metrics alone.
+The Apache Traffic Server OpenTelemetry plugin emits transaction-level spans and propagates B3 trace context to upstream services. Use a low sampling rate for production CDN traffic, and leverage parent-based sampling to maintain trace continuity for already-traced requests. Combine traces with ATS cache metrics and logs for cache-specific visibility.
