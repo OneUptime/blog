@@ -22,10 +22,10 @@ Unlike traditional monitoring approaches that require agents installed on the ho
 
 ### Key Capabilities
 
-- **CPU metrics**: Usage, throttling, and limits
-- **Memory metrics**: Usage, cache, RSS, and limits
+- **CPU metrics**: Usage, reservation, and utilization
+- **Memory metrics**: Usage, utilization, reservation, and limits
 - **Network I/O**: Bytes sent/received, packets, errors
-- **Disk I/O**: Read/write bytes and operations
+- **Disk I/O**: Read/write bytes
 - **Zero configuration**: Automatically discovers all containers in the task
 
 ---
@@ -55,7 +55,7 @@ The OpenTelemetry Collector runs as a sidecar container in your ECS task definit
 Before configuring this receiver, ensure you have:
 
 1. **ECS Task running on EC2 or Fargate** - Both launch types are supported
-2. **Task Metadata endpoint enabled** - This is enabled by default for tasks using platform version 1.4.0 or later
+2. **Task Metadata endpoint v4 enabled** - This is enabled by default for Fargate tasks using platform version 1.4.0 or later, and available for EC2 launch type tasks with ECS agent version 1.39.0 or later
 3. **OpenTelemetry Collector** - Version 0.70.0 or later with the awsecscontainermetrics receiver component
 4. **IAM permissions** - No special IAM permissions are required since the endpoint is accessible within the task
 
@@ -121,12 +121,8 @@ processors:
         value: aws_ecs
         action: insert
       # ECS cluster name from environment variable
-      - key: ecs.cluster.name
+      - key: aws.ecs.cluster.name
         value: ${ECS_CLUSTER_NAME}
-        action: insert
-      # Task ARN is automatically available
-      - key: aws.ecs.task.arn
-        from_attribute: aws.ecs.task.arn
         action: insert
 
   # Batch metrics to reduce network overhead
@@ -144,8 +140,8 @@ processors:
         metric_names:
           - "container.network.*"
         resource_attributes:
-          - key: container.name
-            value: ".*sidecar.*"
+          - Key: container.name
+            Value: ".*sidecar.*"
 
 exporters:
   # Primary export to OneUptime
@@ -173,7 +169,13 @@ service:
     logs:
       level: info
     metrics:
-      address: :8888
+      level: normal
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: '0.0.0.0'
+                port: 8888
 
   pipelines:
     metrics:
@@ -236,16 +238,12 @@ To deploy the OpenTelemetry Collector as a sidecar in your ECS task, add it to y
     },
     {
       "name": "otel-collector",
-      "image": "otel/opentelemetry-collector-contrib:0.93.0",
+      "image": "my-otel-collector-contrib:0.153.0",
       "cpu": 256,
       "memory": 512,
       "essential": false,
       "command": ["--config=/etc/otel-config.yaml"],
       "environment": [
-        {
-          "name": "ONEUPTIME_TOKEN",
-          "value": "your-token-here"
-        },
         {
           "name": "ECS_CLUSTER_NAME",
           "value": "production-cluster"
@@ -265,21 +263,7 @@ To deploy the OpenTelemetry Collector as a sidecar in your ECS task, add it to y
           "awslogs-stream-prefix": "collector"
         }
       },
-      "mountPoints": [
-        {
-          "sourceVolume": "otel-config",
-          "containerPath": "/etc/otel-config.yaml",
-          "readOnly": true
-        }
-      ]
-    }
-  ],
-  "volumes": [
-    {
-      "name": "otel-config",
-      "configMap": {
-        "name": "otel-collector-config"
-      }
+      "mountPoints": []
     }
   ]
 }
@@ -291,6 +275,7 @@ To deploy the OpenTelemetry Collector as a sidecar in your ECS task, add it to y
 2. **Secrets management** - Store your OneUptime token in AWS Secrets Manager and reference it securely
 3. **Resource allocation** - Allocate sufficient CPU and memory for the collector based on your metrics volume
 4. **Logging** - Configure CloudWatch logs for the collector to troubleshoot issues
+5. **Collector configuration** - Bake `/etc/otel-config.yaml` into a custom collector image, or otherwise provide that file through your ECS deployment process
 
 ---
 
@@ -303,15 +288,20 @@ The AWS ECS Container Metrics Receiver collects the following metric categories:
 - `container.cpu.usage.total` - Total CPU time consumed
 - `container.cpu.usage.kernelmode` - CPU time in kernel mode
 - `container.cpu.usage.usermode` - CPU time in user mode
-- `container.cpu.throttling_data.throttled_time` - Time CPU was throttled
+- `container.cpu.usage.system` - System CPU time
+- `container.cpu.usage.vcpu` - vCPU usage
+- `container.cpu.cores` - CPU cores
+- `container.cpu.onlines` - Online CPUs
+- `container.cpu.reserved` - Reserved CPU
+- `container.cpu.utilized` - CPU utilization
 
 ### Memory Metrics
 
-- `container.memory.usage.total` - Total memory usage
+- `container.memory.usage` - Total memory usage
 - `container.memory.usage.limit` - Memory limit
 - `container.memory.usage.max` - Maximum memory used
-- `container.memory.cache` - Cache memory
-- `container.memory.rss` - Resident set size
+- `container.memory.reserved` - Reserved memory
+- `container.memory.utilized` - Utilized memory
 
 ### Network Metrics
 
@@ -321,15 +311,17 @@ The AWS ECS Container Metrics Receiver collects the following metric categories:
 - `container.network.io.usage.tx_packets` - Packets transmitted
 - `container.network.io.usage.rx_errors` - Receive errors
 - `container.network.io.usage.tx_errors` - Transmit errors
+- `container.network.io.usage.rx_dropped` - Dropped received packets
+- `container.network.io.usage.tx_dropped` - Dropped transmitted packets
+- `container.network.rate.rx` - Receive rate
+- `container.network.rate.tx` - Transmit rate
 
 ### Storage Metrics
 
 - `container.storage.read_bytes` - Bytes read from disk
 - `container.storage.write_bytes` - Bytes written to disk
-- `container.storage.read_ops` - Read operations
-- `container.storage.write_ops` - Write operations
 
-All metrics include resource attributes identifying the container name, task ARN, and container ID.
+Container-level metrics include resource attributes identifying the container name, task ARN, and container ID.
 
 ---
 
@@ -346,7 +338,7 @@ processors:
   resource:
     attributes:
       # Cluster name from environment variable
-      - key: ecs.cluster.name
+      - key: aws.ecs.cluster.name
         value: ${ECS_CLUSTER_NAME}
         action: insert
       # Service name from environment variable
@@ -386,7 +378,7 @@ Set these environment variables in your task definition for each service to enab
 
 If metrics aren't appearing, check these common issues:
 
-1. **Metadata endpoint not available**: Verify you're running on platform version 1.4.0 or later
+1. **Metadata endpoint not available**: For Fargate, verify you're running on platform version 1.4.0 or later. For EC2 launch type, verify the ECS container agent is version 1.39.0 or later
 2. **Collection interval too high**: Try reducing the collection interval
 3. **Network connectivity**: Ensure the collector can reach your export endpoint
 
@@ -449,28 +441,38 @@ processors:
           - "container.network.io.usage.*_errors"
 ```
 
-### 3. Aggregate Before Export
+### 3. Limit CloudWatch Dimensions
 
-Use the metrics transform processor to aggregate or reduce cardinality:
+If you're exporting to CloudWatch with the `awsemf` exporter, explicitly control which dimensions are emitted:
 
 ```yaml
-processors:
-  metricstransform:
-    transforms:
-      - include: container.cpu.usage.total
-        action: aggregate_labels
-        label_set: [container.name, task.arn]
+exporters:
+  awsemf:
+    namespace: ECSContainerMetrics
+    dimension_rollup_option: NoDimensionRollup
+    resource_to_telemetry_conversion:
+      enabled: true
+    metric_declarations:
+      - dimensions: [[aws.ecs.cluster.name, container.name]]
+        metric_name_selectors:
+          - "^container\\.(cpu|memory)\\..*"
 ```
 
-### 4. Use Sampling for High-Volume Environments
+### 4. Keep Only Essential Metrics for High-Volume Environments
 
-For massive ECS deployments, consider sampling:
+For massive ECS deployments, use filtering to keep only the metrics you need:
 
 ```yaml
 processors:
-  probabilistic_sampler:
-    # Keep 10% of metrics
-    sampling_percentage: 10
+  filter/essential:
+    metrics:
+      include:
+        match_type: strict
+        metric_names:
+          - container.cpu.utilized
+          - container.memory.utilized
+          - container.network.rate.rx
+          - container.network.rate.tx
 ```
 
 ---
@@ -481,8 +483,8 @@ OneUptime provides native support for OpenTelemetry metrics from ECS containers.
 
 Example alert configuration in OneUptime for high CPU usage:
 
-- **Metric**: `container.cpu.usage.total`
-- **Condition**: Value > 80% of limit
+- **Metric**: `container.cpu.utilized`
+- **Condition**: Value > 80%
 - **Duration**: For 5 minutes
 - **Action**: Send notification to on-call engineer
 
@@ -516,8 +518,13 @@ The collector itself needs monitoring. Export its internal metrics:
 service:
   telemetry:
     metrics:
-      address: :8888
       level: detailed
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: '0.0.0.0'
+                port: 8888
 ```
 
 ### 4. Configure Retries
