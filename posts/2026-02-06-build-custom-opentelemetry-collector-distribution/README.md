@@ -39,7 +39,7 @@ flowchart LR
 
 Before you start, make sure you have these installed:
 
-- Go 1.22 or later
+- Go 1.25 or later
 - The OpenTelemetry Collector Builder (ocb) tool
 - A text editor for YAML configuration
 
@@ -49,7 +49,7 @@ Install the OCB tool with the following command:
 # Install the OpenTelemetry Collector Builder tool
 
 # This is the official tool for creating custom collector distributions
-go install go.opentelemetry.io/collector/cmd/builder@latest
+go install go.opentelemetry.io/collector/cmd/builder@v0.153.0
 ```
 
 Verify the installation worked:
@@ -76,50 +76,50 @@ dist:
   # Output directory for the generated source and binary
   output_path: ./build
   # The OTel Collector version to build against
-  otelcol_version: "0.96.0"
+  otelcol_version: "0.153.0"
   # Go module path for the generated code
   module: github.com/myorg/my-custom-collector
 
 # Receivers pull data into the collector
 receivers:
   # OTLP receiver handles gRPC and HTTP traffic from instrumented apps
-  - gomod: go.opentelemetry.io/collector/receiver/otlpreceiver v0.96.0
+  - gomod: go.opentelemetry.io/collector/receiver/otlpreceiver v0.153.0
   # Prometheus receiver scrapes Prometheus endpoints
-  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver v0.96.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver v0.153.0
   # Host metrics receiver collects system-level metrics
-  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/hostmetricsreceiver v0.96.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/hostmetricsreceiver v0.153.0
 
 # Processors transform and enrich telemetry data in-flight
 processors:
   # Batch processor groups data before export to reduce network calls
-  - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.96.0
+  - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.153.0
   # Memory limiter prevents the collector from using too much RAM
-  - gomod: go.opentelemetry.io/collector/processor/memorylimiterprocessor v0.96.0
+  - gomod: go.opentelemetry.io/collector/processor/memorylimiterprocessor v0.153.0
   # Attributes processor lets you modify span/metric attributes
-  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/attributesprocessor v0.96.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/attributesprocessor v0.153.0
   # Resource processor modifies resource attributes
-  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourceprocessor v0.96.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourceprocessor v0.153.0
 
 # Exporters send telemetry to backends
 exporters:
   # OTLP exporter sends data to any OTLP-compatible backend
-  - gomod: go.opentelemetry.io/collector/exporter/otlpexporter v0.96.0
+  - gomod: go.opentelemetry.io/collector/exporter/otlpexporter v0.153.0
   # OTLP HTTP exporter for backends that prefer HTTP over gRPC
-  - gomod: go.opentelemetry.io/collector/exporter/otlphttpexporter v0.96.0
+  - gomod: go.opentelemetry.io/collector/exporter/otlphttpexporter v0.153.0
   # Debug exporter is useful during development
-  - gomod: go.opentelemetry.io/collector/exporter/debugexporter v0.96.0
+  - gomod: go.opentelemetry.io/collector/exporter/debugexporter v0.153.0
 
 # Extensions provide additional collector capabilities
 extensions:
   # Health check extension exposes a health endpoint
-  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/healthcheckextension v0.96.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/healthcheckextension v0.153.0
   # zPages extension provides in-process diagnostics
-  - gomod: go.opentelemetry.io/collector/extension/zpagesextension v0.96.0
+  - gomod: go.opentelemetry.io/collector/extension/zpagesextension v0.153.0
 
 # Connectors join two pipelines together
 connectors:
   # Forward connector passes data between pipelines without modification
-  - gomod: go.opentelemetry.io/collector/connector/forwardconnector v0.96.0
+  - gomod: go.opentelemetry.io/collector/connector/forwardconnector v0.153.0
 ```
 
 ## Step 2: Build the Distribution
@@ -185,13 +185,13 @@ processors:
   memory_limiter:
     # Start refusing data at 80% memory usage
     limit_percentage: 80
-    # Resume accepting data at 70% memory usage
-    spike_limit_percentage: 70
+    # Allow up to a 15% memory spike above the soft limit
+    spike_limit_percentage: 15
     check_interval: 1s
 
   attributes:
     actions:
-      # Add the environment tag to all telemetry
+      # Add the environment tag to trace data
       - key: environment
         value: production
         action: upsert
@@ -245,7 +245,7 @@ For production deployments, package the collector as a Docker image:
 # Multi-stage build to keep the final image small
 
 # Stage 1: Build the custom collector
-FROM golang:1.22-alpine AS builder
+FROM golang:1.25-alpine AS builder
 
 # Install build dependencies
 RUN apk add --no-cache git make
@@ -256,13 +256,13 @@ WORKDIR /build
 COPY manifest.yaml .
 
 # Install the builder tool
-RUN go install go.opentelemetry.io/collector/cmd/builder@latest
+RUN go install go.opentelemetry.io/collector/cmd/builder@v0.153.0
 
 # Build the custom collector
 RUN builder --config manifest.yaml
 
 # Stage 2: Create the minimal runtime image
-FROM alpine:3.19
+FROM alpine:3.22
 
 # Add ca-certificates for TLS connections to backends
 RUN apk add --no-cache ca-certificates
@@ -316,7 +316,6 @@ flowchart TD
 
     subgraph Exporters
         G[OTLP Backend]
-        H[Debug Output]
     end
 
     A --> D
@@ -325,7 +324,6 @@ flowchart TD
     D --> E
     E --> F
     F --> G
-    F --> H
 ```
 
 ## Comparing Binary Sizes
@@ -361,10 +359,10 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version: '1.25'
 
       - name: Install OCB
-        run: go install go.opentelemetry.io/collector/cmd/builder@latest
+        run: go install go.opentelemetry.io/collector/cmd/builder@v0.153.0
 
       - name: Build collector
         run: builder --config manifest.yaml
