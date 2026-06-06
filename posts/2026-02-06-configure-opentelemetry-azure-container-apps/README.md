@@ -20,7 +20,7 @@ This guide covers three approaches to getting OpenTelemetry data out of your Con
 flowchart TB
     subgraph "Option 1: Built-in Agent"
         A1[Container App] -->|OTLP| MA[Managed OTLP Agent]
-        MA --> B1[Azure Monitor]
+        MA --> B1[Configured Destination]
     end
 
     subgraph "Option 2: Sidecar Collector"
@@ -30,7 +30,8 @@ flowchart TB
 
     subgraph "Option 3: Dapr Integration"
         A3[Container App] -->|Dapr SDK| D[Dapr Sidecar]
-        D -->|OTLP| B3[Any Backend]
+        D -->|Traces| MA3[Managed OTLP Agent]
+        MA3 --> B3[Configured Destination]
     end
 ```
 
@@ -38,7 +39,7 @@ flowchart TB
 
 ## Prerequisites
 
-- Azure CLI (2.60+) with the `containerapp` extension
+- Azure CLI with the `containerapp` extension 2.79.0 or later
 - An Azure subscription
 - A container image for your application (we will use a sample)
 - An OpenTelemetry-compatible backend for receiving telemetry
@@ -47,16 +48,16 @@ flowchart TB
 
 ## Option 1: Using the Built-in Managed OTLP Agent
 
-Azure Container Apps has a managed OpenTelemetry agent built into the platform. You do not need to deploy any additional infrastructure. Just configure the environment to accept OTLP data and point your application to the local endpoint.
+Azure Container Apps has a managed OpenTelemetry agent built into the platform. You do not need to deploy any additional infrastructure. Just configure the environment to accept OTLP data and let your application use the injected exporter settings.
 
 ### Enable the OTLP Agent on the Environment
 
 Configure the Container Apps environment with OpenTelemetry settings. This enables the managed agent that listens for OTLP data from your containers.
 
 ```bash
-# Create a Container Apps environment with OpenTelemetry enabled
+# Create a Container Apps environment
 
-# The managed OTLP agent will be automatically provisioned
+# The managed OTLP agent is provisioned when telemetry is configured
 az containerapp env create \
   --name my-container-env \
   --resource-group my-rg \
@@ -68,14 +69,15 @@ az containerapp env telemetry otlp add \
   --name my-container-env \
   --resource-group my-rg \
   --otlp-name "my-otlp-config" \
-  --endpoint "https://your-backend.example.com/v1/traces" \
+  --endpoint "https://your-backend.example.com:4317" \
   --headers "api-key=your-api-key" \
-  --insecure false
+  --insecure false \
+  --enable-open-telemetry-traces true
 ```
 
 ### Configure Your Application
 
-When the managed agent is enabled, it exposes an OTLP endpoint inside the environment. Your application just needs to point to it.
+When the managed agent is enabled, Azure Container Apps injects the OTLP endpoint and protocol environment variables into your application. Your application just needs to use the standard OpenTelemetry exporter configuration.
 
 ```bash
 # Deploy a container app that sends telemetry to the managed agent
@@ -88,11 +90,10 @@ az containerapp create \
   --ingress external \
   --env-vars \
     OTEL_SERVICE_NAME="my-container-app" \
-    OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4318" \
-    OTEL_EXPORTER_OTLP_PROTOCOL="http/protobuf"
+    OTEL_RESOURCE_ATTRIBUTES="deployment.environment=production"
 ```
 
-The managed agent runs inside the environment and is accessible at `localhost:4318` from your container. No network configuration needed.
+The managed agent runs inside the environment and injects `OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_EXPORTER_OTLP_PROTOCOL=grpc` at runtime. No network configuration needed.
 
 ### Application Code Example (Python)
 
@@ -107,7 +108,7 @@ from fastapi import FastAPI
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import Resource
 import os
 
@@ -119,8 +120,8 @@ resource = Resource.create({
 
 provider = TracerProvider(resource=resource)
 
-# The OTLP exporter reads the endpoint from OTEL_EXPORTER_OTLP_ENDPOINT
-# which points to the managed agent at localhost:4318
+# The OTLP exporter reads the endpoint and protocol from the environment
+# variables injected by Azure Container Apps.
 exporter = OTLPSpanExporter()
 provider.add_span_processor(BatchSpanProcessor(exporter))
 trace.set_tracer_provider(provider)
@@ -220,7 +221,7 @@ service:
 
 ### Deploy with Sidecar
 
-Azure Container Apps supports multi-container pods (called "init containers" and "sidecar containers"). Deploy the Collector as a sidecar.
+Azure Container Apps supports multiple containers in a single container app, including sidecar and init containers. Deploy the Collector as a sidecar.
 
 ```bash
 # Deploy with the OTel Collector as a sidecar container
@@ -257,17 +258,17 @@ properties:
           # Point to the sidecar Collector on localhost
           - name: OTEL_EXPORTER_OTLP_ENDPOINT
             value: http://localhost:4317
+          - name: OTEL_EXPORTER_OTLP_PROTOCOL
+            value: grpc
 
       # OpenTelemetry Collector sidecar
       - name: otel-collector
-        image: otel/opentelemetry-collector-contrib:latest
+        # Build this image with otel-sidecar-config.yaml copied to
+        # /etc/otelcol-contrib/config.yaml
+        image: myregistry.azurecr.io/otel-collector-with-config:latest
         resources:
           cpu: 0.25
           memory: 512Mi
-        # Mount the config from a volume
-        volumeMounts:
-          - volumeName: otel-config
-            mountPath: /etc/otelcol-contrib
         args:
           - "--config=/etc/otelcol-contrib/config.yaml"
 
@@ -285,7 +286,7 @@ properties:
 
 ## Option 3: Dapr Integration
 
-If you are using Dapr with Azure Container Apps, OpenTelemetry tracing is built into the Dapr sidecar. You get distributed tracing across service-to-service calls without any additional instrumentation.
+If you are using Dapr with Azure Container Apps, the managed OpenTelemetry agent can export Dapr-generated traces. You get distributed tracing for Dapr service invocation and pub/sub calls without adding tracing code to those Dapr calls.
 
 ### Enable Dapr with Tracing
 
@@ -297,34 +298,49 @@ az containerapp dapr enable \
   --dapr-app-id my-app \
   --dapr-app-port 8080
 
-# Configure Dapr tracing at the environment level
-az containerapp env dapr-component set \
-  --name my-container-env \
+# Deploy your managed environment's ARM template with includeDapr: true
+# in openTelemetryConfiguration.tracesConfiguration.
+az deployment group create \
   --resource-group my-rg \
-  --dapr-component-name appinsights \
-  --yaml dapr-tracing-config.yaml
+  --template-file containerapp-env-otel.json
 ```
 
-The Dapr tracing configuration points to your OpenTelemetry backend.
+The environment OpenTelemetry configuration points Dapr traces to your configured destination. The example below shows the relevant part of the managed environment resource; merge it with the rest of your environment definition.
 
-```yaml
-# dapr-tracing-config.yaml
-# Dapr configuration for OpenTelemetry export
-
-apiVersion: dapr.io/v1alpha1
-kind: Configuration
-metadata:
-  name: tracing-config
-spec:
-  tracing:
-    samplingRate: "1"  # Sample 100% of traces (adjust for production)
-    otel:
-      endpointAddress: "http://localhost:4318/v1/traces"
-      isSecure: false
-      protocol: http
+```json
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "resources": [
+    {
+      "type": "Microsoft.App/managedEnvironments",
+      "apiVersion": "2024-08-02-preview",
+      "name": "my-container-env",
+      "location": "eastus",
+      "properties": {
+        "openTelemetryConfiguration": {
+          "destinationsConfiguration": {
+            "otlpConfigurations": [
+              {
+                "name": "my-otlp-config",
+                "endpoint": "https://your-backend.example.com:4317",
+                "headers": "api-key=your-api-key",
+                "insecure": false
+              }
+            ]
+          },
+          "tracesConfiguration": {
+            "destinations": ["my-otlp-config"],
+            "includeDapr": true
+          }
+        }
+      }
+    }
+  ]
+}
 ```
 
-Dapr automatically traces all service invocations, pub/sub messages, and state operations. You get spans for free without writing any tracing code.
+Dapr traces service invocations and pub/sub messages. You get spans for those Dapr calls without writing tracing code.
 
 ---
 
@@ -336,11 +352,11 @@ Here is a quick reference for the OpenTelemetry environment variables you will c
 # Required: identifies your service in traces
 OTEL_SERVICE_NAME="my-service"
 
-# OTLP endpoint (use localhost for managed agent or sidecar)
-OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4318"
+# OTLP endpoint (injected for the managed agent, or localhost for a sidecar)
+OTEL_EXPORTER_OTLP_ENDPOINT="http://otel.service.k8se-apps:4317"
 
-# Protocol: grpc or http/protobuf
-OTEL_EXPORTER_OTLP_PROTOCOL="http/protobuf"
+# Protocol: the managed Container Apps agent supports grpc
+OTEL_EXPORTER_OTLP_PROTOCOL="grpc"
 
 # Optional: add resource attributes
 OTEL_RESOURCE_ATTRIBUTES="deployment.environment=production,service.version=1.2.3"
@@ -358,8 +374,8 @@ OTEL_TRACES_SAMPLER_ARG="0.1"  # Sample 10% of traces
 |---------|---------------|-------------------|------|
 | Setup complexity | Low | Medium | Low (if already using Dapr) |
 | Custom processing | No | Yes | Limited |
-| Backend flexibility | Limited | Full | Full |
-| Resource overhead | Minimal | 0.25 CPU + 512MB | Dapr sidecar resources |
+| Backend flexibility | Azure Monitor, Datadog, or OTLP destinations | Full | Same as managed agent |
+| Resource overhead | No additional app resources | 0.25 CPU + 512MB | Dapr sidecar resources |
 | Tail sampling | No | Yes | No |
 | Auto-instrumentation | No | No | Yes (for Dapr calls) |
 
