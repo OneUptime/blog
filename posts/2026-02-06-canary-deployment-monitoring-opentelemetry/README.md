@@ -55,18 +55,20 @@ from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExp
 
 def init_telemetry():
     # Read version from environment variable set by your deployment system
-    # Kubernetes sets this from the container image tag or a ConfigMap
+    # Set this in your Kubernetes manifest, Helm chart, or deployment pipeline
     app_version = os.environ.get("APP_VERSION", "unknown")
     deployment_track = os.environ.get("DEPLOYMENT_TRACK", "stable")
+    pod_name = os.environ.get("POD_NAME", "unknown")
 
     # Resource attributes tag ALL telemetry from this instance
     # These are the labels you will use to compare canary vs stable
     resource = Resource.create({
         "service.name": "checkout-service",
         "service.version": app_version,
+        "service.instance.id": pod_name,
         "deployment.track": deployment_track,  # "canary" or "stable"
-        "deployment.environment": "production",
-        "k8s.pod.name": os.environ.get("POD_NAME", "unknown"),
+        "deployment.environment.name": "production",
+        "k8s.pod.name": pod_name,
     })
 
     # Set up tracing
@@ -131,6 +133,8 @@ spec:
 
 With version-tagged telemetry flowing, you can build a dashboard that compares canary and stable side by side:
 
+The PromQL examples below assume your metrics backend exposes OpenTelemetry resource attributes as labels, such as by enabling resource-to-telemetry conversion in the OpenTelemetry Collector Prometheus exporter.
+
 ```yaml
 # canary-dashboard-panels.yaml
 # Dashboard panels that compare canary vs stable versions
@@ -142,26 +146,28 @@ panels:
       # Error rate for the stable version
       - label: "Stable (v2.3.0)"
         query: |
-          sum(rate(http_server_request_errors_total{
-            service_name="checkout-service",
-            deployment_track="stable"
+          sum(rate(http_server_request_duration_seconds_count{
+            job="checkout-service",
+            deployment_track="stable",
+            http_response_status_code=~"5.."
           }[5m]))
           /
-          sum(rate(http_server_request_total{
-            service_name="checkout-service",
+          sum(rate(http_server_request_duration_seconds_count{
+            job="checkout-service",
             deployment_track="stable"
           }[5m]))
 
       # Error rate for the canary version
       - label: "Canary (v2.4.0)"
         query: |
-          sum(rate(http_server_request_errors_total{
-            service_name="checkout-service",
-            deployment_track="canary"
+          sum(rate(http_server_request_duration_seconds_count{
+            job="checkout-service",
+            deployment_track="canary",
+            http_response_status_code=~"5.."
           }[5m]))
           /
-          sum(rate(http_server_request_total{
-            service_name="checkout-service",
+          sum(rate(http_server_request_duration_seconds_count{
+            job="checkout-service",
             deployment_track="canary"
           }[5m]))
 
@@ -171,16 +177,16 @@ panels:
       - label: "Stable"
         query: |
           histogram_quantile(0.99,
-            sum(rate(http_server_request_duration_bucket{
-              service_name="checkout-service",
+            sum(rate(http_server_request_duration_seconds_bucket{
+              job="checkout-service",
               deployment_track="stable"
             }[5m])) by (le)
           )
       - label: "Canary"
         query: |
           histogram_quantile(0.99,
-            sum(rate(http_server_request_duration_bucket{
-              service_name="checkout-service",
+            sum(rate(http_server_request_duration_seconds_bucket{
+              job="checkout-service",
               deployment_track="canary"
             }[5m])) by (le)
           )
@@ -188,13 +194,13 @@ panels:
   - title: "Traffic Split"
     type: gauge
     query: |
-      sum(rate(http_server_request_total{
-        service_name="checkout-service",
+      sum(rate(http_server_request_duration_seconds_count{
+        job="checkout-service",
         deployment_track="canary"
       }[5m]))
       /
-      sum(rate(http_server_request_total{
-        service_name="checkout-service"
+      sum(rate(http_server_request_duration_seconds_count{
+        job="checkout-service"
       }[5m]))
 ```
 
@@ -267,13 +273,13 @@ class CanaryAnalyzer:
             latency_passed = latency_increase <= latency_threshold
 
             results["p99_latency"] = {
-                "canary_ms": canary_p99,
-                "stable_ms": stable_p99,
+                "canary_s": canary_p99,
+                "stable_s": stable_p99,
                 "increase_pct": latency_increase,
                 "passed": latency_passed,
             }
-            span.set_attribute("canary.p99.canary_ms", canary_p99)
-            span.set_attribute("canary.p99.stable_ms", stable_p99)
+            span.set_attribute("canary.p99.canary_s", canary_p99)
+            span.set_attribute("canary.p99.stable_s", stable_p99)
             span.set_attribute("canary.p99.passed", latency_passed)
 
             # Make the decision
@@ -300,11 +306,12 @@ class CanaryAnalyzer:
     def _query_error_rate(self, service, track, window):
         """Query error rate for a specific deployment track"""
         return self.metrics_client.query(
-            f'sum(rate(http_server_request_errors_total{{'
-            f'service_name="{service}", deployment_track="{track}"'
+            f'sum(rate(http_server_request_duration_seconds_count{{'
+            f'job="{service}", deployment_track="{track}", '
+            f'http_response_status_code=~"5.."'
             f'}}[{window}]))'
-            f' / sum(rate(http_server_request_total{{'
-            f'service_name="{service}", deployment_track="{track}"'
+            f' / sum(rate(http_server_request_duration_seconds_count{{'
+            f'job="{service}", deployment_track="{track}"'
             f'}}[{window}]))'
         )
 
@@ -312,8 +319,8 @@ class CanaryAnalyzer:
         """Query p99 latency for a specific deployment track"""
         return self.metrics_client.query(
             f'histogram_quantile(0.99, sum(rate('
-            f'http_server_request_duration_bucket{{'
-            f'service_name="{service}", deployment_track="{track}"'
+            f'http_server_request_duration_seconds_bucket{{'
+            f'job="{service}", deployment_track="{track}"'
             f'}}[{window}])) by (le))'
         )
 
