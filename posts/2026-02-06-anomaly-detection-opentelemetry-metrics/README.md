@@ -79,7 +79,7 @@ error_count = meter.create_counter(
 )
 ```
 
-These three metrics cover the most important signals for anomaly detection. Request rate captures traffic anomalies, latency captures performance degradation, and error count captures reliability issues.
+These three metrics cover the most important signals for anomaly detection. Request rate captures traffic anomalies, latency captures performance degradation, and error count captures reliability issues. For counter metrics, run anomaly detection on rates or deltas over a fixed window rather than on the raw cumulative counter value.
 
 ---
 
@@ -90,7 +90,7 @@ The simplest approach to anomaly detection uses a rolling window of historical d
 ```python
 # baseline.py
 import numpy as np
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass
 from typing import Optional
 
@@ -121,10 +121,10 @@ class BaselineCalculator:
         Calculate baselines for each hour-of-day and day-of-week combination.
         Uses the last N weeks of data to establish normal patterns.
         """
-        end_time = datetime.utcnow()
+        end_time = datetime.now(timezone.utc)
         start_time = end_time - timedelta(weeks=self.lookback_weeks)
 
-        # Query hourly aggregated data for the lookback period
+        # Query hourly aggregated rates or summary values for the lookback period
         hourly_data = self.metrics_client.query_range(
             metric=metric_name,
             labels=labels,
@@ -136,7 +136,7 @@ class BaselineCalculator:
         # Group by (day_of_week, hour_of_day)
         grouped = {}
         for timestamp, value in hourly_data:
-            dt = datetime.fromtimestamp(timestamp)
+            dt = datetime.fromtimestamp(timestamp, tz=timezone.utc)
             key = (dt.weekday(), dt.hour)
             if key not in grouped:
                 grouped[key] = []
@@ -202,7 +202,7 @@ class AnomalyDetector:
         baselines: dict,
         warning_threshold: float = 2.5,
         critical_threshold: float = 3.5,
-        min_samples: int = 10,
+        min_samples: int = 4,
     ):
         self.baselines = baselines
         self.warning_threshold = warning_threshold
@@ -226,11 +226,10 @@ class AnomalyDetector:
             return None  # Not enough data to detect anomalies
 
         # Avoid division by zero for very stable metrics
-        if baseline.std_dev < 0.001:
-            baseline.std_dev = 0.001
+        std_dev = max(baseline.std_dev, 0.001)
 
         # Calculate the z-score
-        z_score = abs(value - baseline.mean) / baseline.std_dev
+        z_score = abs(value - baseline.mean) / std_dev
 
         if z_score >= self.critical_threshold:
             severity = Severity.CRITICAL
@@ -246,18 +245,18 @@ class AnomalyDetector:
             timestamp=timestamp,
             actual_value=value,
             expected_mean=baseline.mean,
-            expected_std=baseline.std_dev,
+            expected_std=std_dev,
             z_score=round(z_score, 2),
             severity=severity,
             description=(
                 f"{metric_name} is {z_score:.1f} standard deviations {direction} normal. "
                 f"Current: {value:.2f}, Expected: {baseline.mean:.2f} "
-                f"(+/- {baseline.std_dev:.2f})"
+                f"(+/- {std_dev:.2f})"
             ),
         )
 ```
 
-The `min_samples` parameter is important. Without enough historical data points for a given time slot, the baseline is unreliable and you should not use it for alerting. Ten samples means you need at least ten weeks of data for complete coverage of all hour and day-of-week combinations.
+The `min_samples` parameter is important. Without enough historical data points for a given time slot, the baseline is unreliable and you should not use it for alerting. Four samples means you need at least four weeks of data for complete coverage of all hour and day-of-week combinations.
 
 ---
 
@@ -268,6 +267,7 @@ When you detect an anomaly, record it as an OpenTelemetry metric so it shows up 
 ```python
 # anomaly_reporter.py
 from opentelemetry import metrics
+from detector import Anomaly
 
 meter = metrics.get_meter("anomaly.reporting")
 
