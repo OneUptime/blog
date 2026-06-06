@@ -27,7 +27,7 @@ The OpenTelemetry Logs SDK bridges your existing logging library (like Python's 
 Python's `logging` module is straightforward to integrate. Install the required packages first:
 
 ```bash
-pip install opentelemetry-api opentelemetry-sdk opentelemetry-instrumentation-logging
+pip install opentelemetry-api opentelemetry-sdk opentelemetry-exporter-otlp-proto-grpc opentelemetry-instrumentation-logging
 ```
 
 Then configure your application:
@@ -36,14 +36,14 @@ Then configure your application:
 import logging
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanExporter
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.instrumentation.logging import LoggingInstrumentor
 
 # Set up the tracer provider
 
 provider = TracerProvider()
-provider.add_span_processor(BatchSpanExporter(OTLPSpanExporter()))
+provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
 trace.set_tracer_provider(provider)
 
 # This is the key line - it patches the logging module
@@ -62,9 +62,10 @@ with tracer.start_as_current_span("process-order"):
 The `LoggingInstrumentor` modifies the default log format to include `otelTraceID`, `otelSpanID`, and `otelServiceName`. If you want a custom format, you can define it yourself:
 
 ```python
-logging.basicConfig(
-    format="%(asctime)s %(levelname)s [trace_id=%(otelTraceID)s span_id=%(otelSpanID)s] %(message)s",
-    level=logging.INFO,
+LoggingInstrumentor().instrument(
+    set_logging_format=True,
+    logging_format="%(asctime)s %(levelname)s [trace_id=%(otelTraceID)s span_id=%(otelSpanID)s] %(message)s",
+    log_level=logging.INFO,
 )
 ```
 
@@ -76,6 +77,7 @@ For Java applications using Log4j2, the OpenTelemetry Java agent handles most of
 java -javaagent:opentelemetry-javaagent.jar \
      -Dotel.service.name=order-service \
      -Dotel.exporter.otlp.endpoint=http://collector:4317 \
+     -Dotel.exporter.otlp.protocol=grpc \
      -jar myapp.jar
 ```
 
