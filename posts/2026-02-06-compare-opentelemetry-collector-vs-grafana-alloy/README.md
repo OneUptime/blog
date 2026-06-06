@@ -14,7 +14,7 @@ Choosing the right telemetry pipeline agent is one of those decisions that shape
 
 The OpenTelemetry Collector is the reference implementation from the CNCF OpenTelemetry project. It was designed from the ground up to be a vendor-neutral pipeline for traces, metrics, and logs. The project has a massive contributor base and enjoys broad industry support.
 
-Grafana Alloy emerged from the Grafana Agent project, which Grafana Labs rebuilt using a programmable configuration language called River (now called Alloy configuration syntax). Alloy is deeply integrated with the Grafana ecosystem, including Loki, Mimir, Tempo, and Pyroscope.
+Grafana Alloy emerged from the Grafana Agent project and uses the declarative Alloy configuration syntax that evolved from Grafana Agent Flow's River configuration model. Alloy is deeply integrated with the Grafana ecosystem, including Loki, Mimir, Tempo, and Pyroscope.
 
 ## Architecture Comparison
 
@@ -109,7 +109,7 @@ otelcol.exporter.otlp "default" {
 }
 ```
 
-The Alloy syntax is more verbose but also more explicit about data flow. You can see exactly where each component sends its output. The language also supports variables, conditional logic, and dynamic configuration.
+The Alloy syntax is more verbose but also more explicit about data flow. You can see exactly where each component sends its output. The language also supports expressions, built-in functions, component references, and dynamic configuration.
 
 ## Signal Coverage
 
@@ -120,13 +120,13 @@ Both tools handle traces, metrics, and logs. However, they differ in how they ha
 | Traces | Full support | Full support |
 | Metrics | Full support | Full support |
 | Logs | Full support | Full support |
-| Profiles | Limited | Native (Pyroscope) |
+| Profiles | Experimental / under development | Native (Pyroscope) |
 | Prometheus scraping | Via receiver | Native component |
-| Loki log shipping | Via exporter | Native component |
+| Loki log shipping | Via OTLP exporter to Loki's OTLP endpoint | Native component |
 
 Grafana Alloy has a clear advantage if you are already using the Grafana stack. Its native support for Prometheus remote write, Loki push, and Pyroscope profiling is tightly integrated and well tested.
 
-The OpenTelemetry Collector handles these through contrib receivers and exporters, which work well but sometimes lag behind in feature parity with native tools.
+The OpenTelemetry Collector handles many of these through contrib receivers and exporters. For Loki, the current path is usually OTLP export to Loki's native OTLP endpoint rather than the older deprecated Loki exporter. These integrations work well, but they can sometimes lag behind in feature parity with native tools.
 
 ## Ecosystem and Extensibility
 
@@ -156,7 +156,7 @@ spec:
     spec:
       containers:
         - name: collector
-          image: otel/opentelemetry-collector-contrib:0.96.0
+          image: otel/opentelemetry-collector-contrib:0.153.0
           ports:
             - containerPort: 4317
             - containerPort: 4318
