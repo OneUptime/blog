@@ -49,9 +49,9 @@ receivers:
 exporters:
   coralogix:
     # Coralogix domain (region-specific)
-    # Options: coralogix.com (EU), coralogix.us (US), coralogix.in (India),
-    # coralogixsg.com (Singapore), coralogix.com (EU2)
-    domain: "coralogix.com"
+    # Options include eu1.coralogix.com (EU1), eu2.coralogix.com (EU2),
+    # us1.coralogix.com (US1), ap1.coralogix.com (India), and ap2.coralogix.com (Singapore)
+    domain: "eu1.coralogix.com"
 
     # Private key for authentication (from Coralogix UI)
     private_key: "${CORALOGIX_PRIVATE_KEY}"
@@ -197,7 +197,12 @@ service:
       encoding: json
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 
   pipelines:
     logs:
@@ -256,32 +261,44 @@ exporters:
     subsystem_name: "api"
     timeout: 30s
 
-processors:
-  # Route data based on environment attribute
+connectors:
+  # Route data based on environment resource attribute
   routing:
-    from_attribute: deployment.environment
-    default_exporters: [coralogix/production]
+    default_pipelines: [logs/production]
     table:
-      - value: production
-        exporters: [coralogix/production]
-      - value: staging
-        exporters: [coralogix/staging]
-      - value: development
-        exporters: [coralogix/development]
+      - context: resource
+        condition: attributes["deployment.environment"] == "production"
+        pipelines: [logs/production]
+      - context: resource
+        condition: attributes["deployment.environment"] == "staging"
+        pipelines: [logs/staging]
+      - context: resource
+        condition: attributes["deployment.environment"] == "development"
+        pipelines: [logs/development]
 
+processors:
   batch:
     timeout: 10s
     send_batch_size: 1024
 
 service:
   pipelines:
-    logs:
+    logs/in:
       receivers: [otlp]
-      processors: [routing, batch]
-      exporters: [coralogix/production, coralogix/staging, coralogix/development]
+      processors: [batch]
+      exporters: [routing]
+    logs/production:
+      receivers: [routing]
+      exporters: [coralogix/production]
+    logs/staging:
+      receivers: [routing]
+      exporters: [coralogix/staging]
+    logs/development:
+      receivers: [routing]
+      exporters: [coralogix/development]
 ```
 
-The routing processor dynamically selects the appropriate exporter based on the environment attribute, ensuring data is properly segregated in Coralogix.
+The routing connector dynamically selects the appropriate pipeline based on the environment attribute, ensuring data is properly segregated in Coralogix.
 
 ## Dynamic Application and Subsystem Names
 
@@ -346,22 +363,22 @@ processors:
       - context: log
         statements:
           # Map trace level
-          - set(severity_text, "Debug") where severity_number >= 1 and severity_number <= 4
+          - set(severity_text, "TRACE") where severity_number >= 1 and severity_number <= 4
 
           # Map debug level
-          - set(severity_text, "Verbose") where severity_number >= 5 and severity_number <= 8
+          - set(severity_text, "DEBUG") where severity_number >= 5 and severity_number <= 8
 
           # Map info level
-          - set(severity_text, "Info") where severity_number >= 9 and severity_number <= 12
+          - set(severity_text, "INFO") where severity_number >= 9 and severity_number <= 12
 
           # Map warn level
-          - set(severity_text, "Warning") where severity_number >= 13 and severity_number <= 16
+          - set(severity_text, "WARN") where severity_number >= 13 and severity_number <= 16
 
           # Map error level
-          - set(severity_text, "Error") where severity_number >= 17 and severity_number <= 20
+          - set(severity_text, "ERROR") where severity_number >= 17 and severity_number <= 20
 
           # Map fatal level
-          - set(severity_text, "Critical") where severity_number >= 21
+          - set(severity_text, "FATAL") where severity_number >= 21
 
   # Add log metadata
   attributes/logs:
@@ -402,12 +419,10 @@ Coralogix handles metrics with full support for labels and dimensions. Here's ho
 processors:
   # Filter out high-cardinality metrics
   filter/metrics:
-    metrics:
-      exclude:
-        match_type: regexp
-        metric_names:
-          - ".*_bucket"
-          - ".*histogram.*"
+    error_mode: ignore
+    metric_conditions:
+      - IsMatch(metric.name, ".*_bucket")
+      - IsMatch(metric.name, ".*histogram.*")
 
   # Add metric metadata
   attributes/metrics:
@@ -633,7 +648,7 @@ exporters:
       enabled: true
       num_consumers: 20
       queue_size: 10000
-      persistent_storage: file_storage
+      storage: file_storage
 
 # File storage extension for persistent queue
 extensions:
@@ -665,7 +680,7 @@ service:
       exporters: [coralogix]
 ```
 
-The persistent queue ensures no data loss during collector restarts or network interruptions. Data is written to disk and replayed after recovery.
+The persistent queue helps reduce data loss during collector restarts or network interruptions. Data in the exporter's sending queue is written to disk and replayed after recovery, subject to disk capacity and retry limits.
 
 ## Performance Optimization
 
@@ -719,7 +734,7 @@ Coralogix operates in multiple regions. Here's how to configure for each region.
 exporters:
   # Europe (EU1)
   coralogix/eu1:
-    domain: "coralogix.com"
+    domain: "eu1.coralogix.com"
     private_key: "${CORALOGIX_PRIVATE_KEY}"
 
   # Europe (EU2)
@@ -728,18 +743,33 @@ exporters:
     private_key: "${CORALOGIX_PRIVATE_KEY}"
 
   # United States
-  coralogix/us:
-    domain: "coralogix.us"
+  coralogix/us1:
+    domain: "us1.coralogix.com"
     private_key: "${CORALOGIX_PRIVATE_KEY}"
 
   # India
   coralogix/india:
-    domain: "coralogix.in"
+    domain: "ap1.coralogix.com"
     private_key: "${CORALOGIX_PRIVATE_KEY}"
 
   # Singapore
   coralogix/singapore:
-    domain: "coralogixsg.com"
+    domain: "ap2.coralogix.com"
+    private_key: "${CORALOGIX_PRIVATE_KEY}"
+
+  # United States (US2)
+  coralogix/us2:
+    domain: "us2.coralogix.com"
+    private_key: "${CORALOGIX_PRIVATE_KEY}"
+
+  # United States (US3)
+  coralogix/us3:
+    domain: "us3.coralogix.com"
+    private_key: "${CORALOGIX_PRIVATE_KEY}"
+
+  # Asia Pacific (Jakarta)
+  coralogix/ap3:
+    domain: "ap3.coralogix.com"
     private_key: "${CORALOGIX_PRIVATE_KEY}"
 ```
 
@@ -759,7 +789,12 @@ service:
 
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 ```
 
 Key metrics to monitor:
