@@ -12,7 +12,7 @@ OpenTelemetry generates trace IDs and span IDs using random number generators by
 
 ## How Default ID Generation Works
 
-Before writing a custom generator, it helps to understand what the default one does. The SDK uses a cryptographically secure random number generator to produce IDs. Each trace ID is 16 random bytes and each span ID is 8 random bytes. The specification requires that IDs must not be all zeros, as that value is reserved to indicate an invalid or missing ID.
+Before writing a custom generator, it helps to understand what the default one does. The SDK uses random or pseudo-random number generation to produce IDs. Each trace ID is 16 random bytes and each span ID is 8 random bytes. The specification requires that IDs must not be all zeros, as that value is reserved to indicate an invalid or missing ID.
 
 ```mermaid
 graph LR
@@ -28,7 +28,7 @@ The ID generator is called every time a new span is created (for span IDs) and e
 
 ## Custom ID Generator in Python
 
-The Python SDK defines an `IdGenerator` protocol with two methods: `generate_trace_id()` and `generate_span_id()`. To create a custom generator, implement a class with these methods.
+The Python SDK defines an `IdGenerator` protocol with two abstract methods: `generate_trace_id()` and `generate_span_id()`. To create a custom generator, implement a class with these methods. If the rightmost 56 bits of your trace IDs are uniformly random, also override `is_trace_id_random()` so the SDK can mark generated trace IDs as random for W3C Trace Context Level 2.
 
 Here is a generator that embeds a Unix timestamp in the first 6 bytes of the trace ID, making traces naturally sortable by creation time:
 
@@ -82,6 +82,11 @@ class TimestampIdGenerator(IdGenerator):
 
         # Ensure the ID is not zero
         return span_id if span_id != 0 else self.generate_span_id()
+
+    def is_trace_id_random(self) -> bool:
+        # The rightmost 80 bits are random, which satisfies the 56-bit
+        # randomness requirement used by W3C Trace Context Level 2.
+        return True
 ```
 
 With 80 bits of randomness in the non-timestamp portion, the probability of collision is extremely low even at high throughput. The timestamp prefix means that when you sort trace IDs lexicographically, they sort chronologically.
@@ -133,12 +138,11 @@ Here is a generator that includes a region prefix in the trace ID, useful for mu
 ```java
 import io.opentelemetry.sdk.trace.IdGenerator;
 import java.security.SecureRandom;
-import java.util.concurrent.ThreadLocalRandom;
 
 public class RegionAwareIdGenerator implements IdGenerator {
 
     // Region identifier encoded as 2 bytes
-    // This lets you identify the originating region from the trace ID
+    // Compare this prefix against your configured region-code mapping
     private final byte[] regionBytes;
     private final SecureRandom random = new SecureRandom();
 
@@ -168,7 +172,10 @@ public class RegionAwareIdGenerator implements IdGenerator {
         random.nextBytes(randomPart);
         System.arraycopy(randomPart, 0, traceIdBytes, 2, 14);
 
-        // Convert to hex string
+        // Ensure non-zero, then convert to hex string
+        if (isAllZeros(traceIdBytes)) {
+            return generateTraceId();
+        }
         return bytesToHex(traceIdBytes);
     }
 
@@ -192,6 +199,15 @@ public class RegionAwareIdGenerator implements IdGenerator {
             sb.append(String.format("%02x", b));
         }
         return sb.toString();
+    }
+
+    private static boolean isAllZeros(byte[] bytes) {
+        for (byte b : bytes) {
+            if (b != 0) {
+                return false;
+            }
+        }
+        return true;
     }
 }
 ```
@@ -229,7 +245,7 @@ public class TracingSetup {
 }
 ```
 
-With this generator, you can look at any trace ID and immediately tell which region created it. This is particularly useful when debugging cross-region request flows.
+With this generator, you can compare the prefix of a trace ID against your region-code mapping to identify which region created it. Because the example uses a 2-byte hash, keep the mapping small and watch for collisions if you have many region codes.
 
 ## Custom ID Generator in Node.js
 
@@ -257,12 +273,18 @@ class CounterIdGenerator {
     generateTraceId() {
         // Standard random trace ID generation
         const bytes = crypto.randomBytes(16);
-        return bytes.toString('hex');
+        const traceId = bytes.toString('hex');
+
+        // Ensure non-zero
+        if (traceId === '00000000000000000000000000000000') {
+            return this.generateTraceId();
+        }
+        return traceId;
     }
 
     generateSpanId() {
         // Increment counter (with wrap-around)
-        this._counter = (this._counter + 1) & 0xFFFFFFFF;
+        this._counter = (this._counter + 1) >>> 0;
 
         // Pack counter into first 4 bytes
         const counterBuf = Buffer.alloc(4);
@@ -285,9 +307,11 @@ class CounterIdGenerator {
 // Use the custom generator
 const provider = new NodeTracerProvider({
     idGenerator: new CounterIdGenerator(),
+    spanProcessors: [
+        new SimpleSpanProcessor(new ConsoleSpanExporter()),
+    ],
 });
 
-provider.addSpanProcessor(new SimpleSpanProcessor(new ConsoleSpanExporter()));
 provider.register();
 
 const tracer = provider.getTracer('my.service');
@@ -314,12 +338,12 @@ def validate_trace_id(trace_id_hex: str) -> bool:
         return False
 
     # Must be valid lowercase hex
+    if any(c not in "0123456789abcdef" for c in trace_id_hex):
+        return False
+
     try:
         int(trace_id_hex, 16)
     except ValueError:
-        return False
-
-    if trace_id_hex != trace_id_hex.lower():
         return False
 
     # Must not be all zeros
@@ -334,12 +358,12 @@ def validate_span_id(span_id_hex: str) -> bool:
     if len(span_id_hex) != 16:
         return False
 
+    if any(c not in "0123456789abcdef" for c in span_id_hex):
+        return False
+
     try:
         int(span_id_hex, 16)
     except ValueError:
-        return False
-
-    if span_id_hex != span_id_hex.lower():
         return False
 
     if span_id_hex == "0" * 16:
@@ -367,11 +391,10 @@ For most real-world applications, even 64 bits of randomness is sufficient. You 
 
 ## Integrating with Legacy Systems
 
-A common reason for custom ID generators is backward compatibility with existing tracing systems. If you are migrating from Zipkin, which uses 64-bit trace IDs, you might want to generate IDs that work with both systems during the migration:
+A common reason for custom ID generators is backward compatibility with existing tracing systems. If you are migrating from a Zipkin setup that uses 64-bit trace IDs, you might want to generate IDs that work with both systems during the migration:
 
 ```python
 import os
-import struct
 from opentelemetry.sdk.trace.id_generator import IdGenerator
 
 
@@ -397,6 +420,9 @@ class ZipkinCompatibleIdGenerator(IdGenerator):
     def generate_span_id(self) -> int:
         span_id = int.from_bytes(os.urandom(8), byteorder="big")
         return span_id if span_id != 0 else self.generate_span_id()
+
+    def is_trace_id_random(self) -> bool:
+        return True
 ```
 
 This generator produces trace IDs where the upper 64 bits are zero. Zipkin reads the lower 64 bits, while OpenTelemetry uses the full 128-bit value. Both systems can correlate the same trace.
