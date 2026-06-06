@@ -43,7 +43,6 @@ Store alert outcomes alongside the OpenTelemetry metric values at the time of fi
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-import json
 
 class AlertOutcome(Enum):
     TRUE_POSITIVE = "true_positive"
@@ -85,8 +84,9 @@ Query your OpenTelemetry metrics history to understand normal behavior patterns.
 ```python
 # baseline_calculator.py
 # Computes dynamic baselines from historical OpenTelemetry metric data
+from collections import defaultdict
 import numpy as np
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import httpx
 
 class BaselineCalculator:
@@ -101,19 +101,19 @@ class BaselineCalculator:
     ) -> dict:
         """
         Calculate baseline statistics for a metric over the lookback period.
-        Returns per-hour-of-day baselines to account for daily patterns.
+        Returns per-day-and-hour baselines to account for weekly and daily patterns.
         """
         # Query hourly averages over the lookback period
         query = f'avg_over_time(({metric_query})[1h:])'
-        end = datetime.utcnow()
+        end = datetime.now(timezone.utc)
         start = end - timedelta(days=lookback_days)
 
         resp = httpx.get(
             f"{self.prom_url}/api/v1/query_range",
             params={
                 "query": query,
-                "start": start.isoformat() + "Z",
-                "end": end.isoformat() + "Z",
+                "start": start.isoformat().replace("+00:00", "Z"),
+                "end": end.isoformat().replace("+00:00", "Z"),
                 "step": "1h"
             }
         )
@@ -122,19 +122,20 @@ class BaselineCalculator:
         if not data:
             return {"error": "no data found for query"}
 
-        # Group values by hour-of-day
-        hourly_buckets = {h: [] for h in range(24)}
+        # Group values by day-of-week and hour-of-day
+        buckets = defaultdict(list)
         for series in data:
             for timestamp, value in series["values"]:
-                hour = datetime.fromtimestamp(float(timestamp)).hour
-                hourly_buckets[hour].append(float(value))
+                sample_time = datetime.fromtimestamp(float(timestamp), timezone.utc)
+                bucket = f"{sample_time.strftime('%A').lower()}_{sample_time.hour:02d}"
+                buckets[bucket].append(float(value))
 
-        # Calculate per-hour statistics
+        # Calculate per-bucket statistics
         baselines = {}
-        for hour, values in hourly_buckets.items():
+        for bucket, values in buckets.items():
             if values:
                 arr = np.array(values)
-                baselines[hour] = {
+                baselines[bucket] = {
                     "mean": float(np.mean(arr)),
                     "median": float(np.median(arr)),
                     "p95": float(np.percentile(arr, 95)),
@@ -156,6 +157,7 @@ Combine alert outcome data with baselines to identify which thresholds need adju
 # threshold_analyzer.py
 # Analyzes alert history to recommend threshold changes
 from collections import Counter
+from alert_outcome_tracker import AlertOutcome
 
 class ThresholdAnalyzer:
     def __init__(self, alert_records: list, baselines: dict):
@@ -217,6 +219,7 @@ Rather than auto-applying changes, generate proposals that can be reviewed. Outp
 ```python
 # threshold_proposer.py
 # Generates updated alert rule files with recommended thresholds
+from datetime import datetime, timezone
 import yaml
 
 def generate_threshold_proposal(alert_name: str, analysis: dict, baselines: dict) -> str:
@@ -228,19 +231,24 @@ def generate_threshold_proposal(alert_name: str, analysis: dict, baselines: dict
 
     rule = {
         "alert": alert_name,
-        "expr": f'rate(http_server_request_duration_seconds_count{{status_code=~"5.."}}[5m]) '
-                f'/ rate(http_server_request_duration_seconds_count[5m]) > {new_threshold}',
+        "expr": f'sum(rate(http_server_request_duration_seconds_count{{http_response_status_code=~"5.."}}[5m])) '
+                f'/ sum(rate(http_server_request_duration_seconds_count[5m])) > {new_threshold}',
         "for": "5m",
         "labels": {"severity": "warning"},
         "annotations": {
             "summary": f"Error rate above {new_threshold:.2%}",
-            "threshold_updated": datetime.utcnow().isoformat(),
+            "threshold_updated": datetime.now(timezone.utc).isoformat(),
             "previous_threshold": str(analysis["current_threshold"]),
             "update_reason": analysis["reason"]
         }
     }
 
-    return yaml.dump({"rules": [rule]}, default_flow_style=False)
+    return yaml.dump({
+        "groups": [{
+            "name": "auto-tuned-thresholds",
+            "rules": [rule]
+        }]
+    }, default_flow_style=False)
 ```
 
 ## Step 5: Schedule Regular Threshold Reviews
