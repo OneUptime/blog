@@ -18,7 +18,7 @@ Auto-instrumentation uses language-specific mechanisms to intercept calls to pop
 - **Python**: Module-level patching (monkey patching) of library functions
 - **.NET**: Runtime hooks and DiagnosticSource listeners
 - **Node.js**: Module loading hooks that wrap require/import calls
-- **Go**: Currently no auto-instrumentation agent (requires manual or compile-time instrumentation)
+- **Go**: Work-in-progress zero-code instrumentation based on eBPF, plus manual and instrumentation-library options
 
 Here is what auto-instrumentation looks like in practice:
 
@@ -29,6 +29,7 @@ Here is what auto-instrumentation looks like in practice:
 java -javaagent:opentelemetry-javaagent.jar \
   -Dotel.service.name=payment-service \
   -Dotel.exporter.otlp.endpoint=http://collector:4317 \
+  -Dotel.exporter.otlp.protocol=grpc \
   -jar payment-service.jar
 ```
 
@@ -36,12 +37,12 @@ java -javaagent:opentelemetry-javaagent.jar \
 # Python auto-instrumentation setup
 # Install the auto-instrumentation packages
 # pip install opentelemetry-distro opentelemetry-exporter-otlp
+# opentelemetry-bootstrap -a install
 
 # Run with the auto-instrumentation command
 # opentelemetry-instrument python app.py
 
 # Or configure programmatically
-from opentelemetry.instrumentation.auto_instrumentation import sitecustomize
 from opentelemetry.instrumentation.flask import FlaskInstrumentor
 from opentelemetry.instrumentation.requests import RequestsInstrumentor
 from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
@@ -186,16 +187,16 @@ Auto-instrumentation adds overhead because it intercepts every call to instrumen
 # Disable specific instrumentations you do not need
 OTEL_INSTRUMENTATION_COMMON_DEFAULT_ENABLED: "true"
 OTEL_INSTRUMENTATION_JDBC_ENABLED: "true"
-OTEL_INSTRUMENTATION_HTTP_CLIENT_ENABLED: "true"
+OTEL_INSTRUMENTATION_APACHE_HTTPCLIENT_ENABLED: "true"
 # Disable instrumentations for libraries you are not using
 OTEL_INSTRUMENTATION_KAFKA_ENABLED: "false"
 OTEL_INSTRUMENTATION_GRPC_ENABLED: "false"
-OTEL_INSTRUMENTATION_REDIS_ENABLED: "false"
+OTEL_INSTRUMENTATION_LETTUCE_ENABLED: "false"
 ```
 
 Manual instrumentation gives you precise control. You only create spans where you need them, so the overhead is exactly what you choose.
 
-In practice, the performance impact of auto-instrumentation is small for most applications. The Java agent adds roughly 1-3% latency overhead and about 50-100 MB of additional memory usage. Python auto-instrumentation has similar proportional overhead.
+In practice, the performance impact of auto-instrumentation is small for most applications, but the exact overhead depends on the application, runtime, enabled instrumentations, span volume, and deployment environment. Measure it in your own workload before setting production resource limits.
 
 ## Maintenance Burden
 
@@ -229,10 +230,10 @@ The auto-instrumentation experience varies significantly by language:
 | Python | Good | Module patching | Yes (with CLI) |
 | .NET | Good | Runtime hooks | Yes (with startup hook) |
 | Node.js | Good | Require hooks | Yes (with --require) |
-| Go | Limited | None (compile-time only) | No |
+| Go | Limited | eBPF zero-code instrumentation, instrumentation libraries, manual instrumentation | Yes (work in progress) |
 | Rust | None | N/A | No |
 
-For Go and Rust, manual instrumentation is the only option. For Java, auto-instrumentation is so mature that many teams use it exclusively for infrastructure spans.
+For Rust, manual instrumentation and instrumentation libraries are the main options. For Go, zero-code instrumentation exists but is still work in progress, so many teams still rely on manual instrumentation and instrumentation libraries for predictable coverage. For Java, auto-instrumentation is so mature that many teams use it exclusively for infrastructure spans.
 
 ## Recommendation
 
