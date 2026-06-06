@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Cert-Manager, TLS, Operator, Kubernetes Webhook
 
 Description: Configure cert-manager to issue and manage TLS certificates for the OpenTelemetry Operator webhook admission controller in Kubernetes.
 
-The OpenTelemetry Operator runs a webhook admission controller that needs valid TLS certificates. By default, the Operator manages its own self-signed certificates, but in production you want cert-manager to handle certificate lifecycle. This gives you proper CA chains, automatic rotation, and certificate monitoring through your existing cert-manager infrastructure.
+The OpenTelemetry Operator runs a webhook admission controller that needs valid TLS certificates. The Helm chart can use cert-manager by default, or it can generate its own self-signed certificate when `admissionWebhooks.certManager.enabled=false` and `admissionWebhooks.autoGenerateCert.enabled=true`. In production you want cert-manager to handle certificate lifecycle. This gives you proper CA chains, automatic rotation, and certificate monitoring through your existing cert-manager infrastructure.
 
 ## Why Use cert-manager for the OTel Operator
 
@@ -25,12 +25,10 @@ Install cert-manager and the OpenTelemetry Operator. With Helm:
 
 ```bash
 # Install cert-manager
-
-helm repo add jetstack https://charts.jetstack.io
-helm install cert-manager jetstack/cert-manager \
+helm install cert-manager oci://quay.io/jetstack/charts/cert-manager \
   --namespace cert-manager \
   --create-namespace \
-  --set installCRDs=true
+  --set crds.enabled=true
 
 # Install OTel Operator with cert-manager integration
 helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts
@@ -82,6 +80,8 @@ spec:
 
 ## Creating the Webhook Certificate
 
+If you installed the Operator with the upstream manifest, create the webhook certificate explicitly:
+
 ```yaml
 # webhook-certificate.yaml
 apiVersion: cert-manager.io/v1
@@ -114,6 +114,8 @@ If installing with Helm, pass these values:
 ```yaml
 # values.yaml
 admissionWebhooks:
+  # The chart creates the Certificate and writes this Secret.
+  secretName: opentelemetry-operator-controller-manager-service-cert
   certManager:
     enabled: true
     # Use our issuer
@@ -121,9 +123,8 @@ admissionWebhooks:
       name: otel-operator-ca-issuer
       kind: Issuer
       group: cert-manager.io
-  # Disable self-signed cert generation
-  autoGenerateCert:
-    enabled: false
+    duration: 8760h
+    renewBefore: 720h
 ```
 
 ```bash
@@ -144,12 +145,26 @@ metadata:
   annotations:
     cert-manager.io/inject-ca-from: opentelemetry-operator-system/opentelemetry-operator-serving-cert
 webhooks:
-  - name: mopentelemetrycollector.kb.io
+  - admissionReviewVersions:
+      - v1
     clientConfig:
       service:
         name: opentelemetry-operator-webhook-service
         namespace: opentelemetry-operator-system
-        path: /mutate-opentelemetry-io-v1alpha1-opentelemetrycollector
+        path: /mutate-opentelemetry-io-v1beta1-opentelemetrycollector
+    failurePolicy: Fail
+    name: mopentelemetrycollectorbeta.kb.io
+    rules:
+      - apiGroups:
+          - opentelemetry.io
+        apiVersions:
+          - v1beta1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - opentelemetrycollectors
+    sideEffects: None
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration
@@ -157,6 +172,27 @@ metadata:
   name: opentelemetry-operator-validating-webhook-configuration
   annotations:
     cert-manager.io/inject-ca-from: opentelemetry-operator-system/opentelemetry-operator-serving-cert
+webhooks:
+  - admissionReviewVersions:
+      - v1
+    clientConfig:
+      service:
+        name: opentelemetry-operator-webhook-service
+        namespace: opentelemetry-operator-system
+        path: /validate-opentelemetry-io-v1beta1-opentelemetrycollector
+    failurePolicy: Fail
+    name: vopentelemetrycollectorcreateupdatebeta.kb.io
+    rules:
+      - apiGroups:
+          - opentelemetry.io
+        apiVersions:
+          - v1beta1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - opentelemetrycollectors
+    sideEffects: None
 ```
 
 The `cert-manager.io/inject-ca-from` annotation tells cert-manager to inject the CA bundle into the webhook configuration so the Kubernetes API server trusts the webhook's certificate.
