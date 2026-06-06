@@ -23,10 +23,9 @@ import (
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/attribute"
     "go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
-    "go.opentelemetry.io/otel/metric"
     sdkmetric "go.opentelemetry.io/otel/sdk/metric"
     "go.opentelemetry.io/otel/sdk/resource"
-    semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
+    semconv "go.opentelemetry.io/otel/semconv/v1.40.0"
 )
 
 func initMetrics() (*sdkmetric.MeterProvider, error) {
@@ -37,8 +36,8 @@ func initMetrics() (*sdkmetric.MeterProvider, error) {
         resource.Default(),
         resource.NewWithAttributes(
             semconv.SchemaURL,
-            semconv.ServiceName("checkout-service"),
-            semconv.ServiceVersion(os.Getenv("APP_VERSION")),
+            semconv.ServiceNameKey.String("checkout-service"),
+            semconv.ServiceVersionKey.String(os.Getenv("APP_VERSION")),
             // Custom deployment attributes for A/B comparison
             attribute.String("deployment.variant", os.Getenv("DEPLOY_VARIANT")), // "canary" or "stable"
             attribute.String("deployment.id", os.Getenv("DEPLOY_ID")),
@@ -93,10 +92,10 @@ func initInstruments() {
         metric.WithUnit("s"),
         metric.WithDescription("Request duration in seconds"),
     )
-    requestCounter, _ = meter.Int64Counter("http.requests.total",
+    requestCounter, _ = meter.Int64Counter("http.requests",
         metric.WithDescription("Total requests"),
     )
-    errorCounter, _ = meter.Int64Counter("http.errors.total",
+    errorCounter, _ = meter.Int64Counter("http.errors",
         metric.WithDescription("Total error responses"),
     )
     activeRequests, _ = meter.Int64UpDownCounter("http.active_requests",
@@ -123,20 +122,22 @@ func recordRequest(ctx context.Context, route string, statusCode int, duration t
 
 Build a Grafana dashboard with side-by-side comparison panels. Here is the JSON model for the key panels:
 
+These PromQL examples assume your Prometheus pipeline copies the `deployment.variant` resource attribute onto each metric as the Prometheus label `deployment_variant`. With an OpenTelemetry Collector Prometheus exporter, enable `resource_to_telemetry_conversion`; with Prometheus OTLP ingestion, include `deployment.variant` in `otlp.promote_resource_attributes`.
+
 ```json
 {
   "panels": [
     {
-      "title": "P95 Latency - Stable vs Canary",
+      "title": "P95 Latency - Variant A vs Variant B",
       "type": "timeseries",
       "targets": [
         {
-          "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{deployment_variant=\"stable\"}[5m])) by (le))",
-          "legendFormat": "Stable P95"
+          "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{deployment_variant=~\"$variant_a\", http_route=~\"$route\"}[$__rate_interval])) by (le))",
+          "legendFormat": "Variant A P95"
         },
         {
-          "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{deployment_variant=\"canary\"}[5m])) by (le))",
-          "legendFormat": "Canary P95"
+          "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{deployment_variant=~\"$variant_b\", http_route=~\"$route\"}[$__rate_interval])) by (le))",
+          "legendFormat": "Variant B P95"
         }
       ]
     },
@@ -145,12 +146,12 @@ Build a Grafana dashboard with side-by-side comparison panels. Here is the JSON 
       "type": "timeseries",
       "targets": [
         {
-          "expr": "sum(rate(http_errors_total{deployment_variant=\"stable\"}[5m])) / sum(rate(http_requests_total{deployment_variant=\"stable\"}[5m]))",
-          "legendFormat": "Stable Error Rate"
+          "expr": "sum(rate(http_errors_total{deployment_variant=~\"$variant_a\", http_route=~\"$route\"}[$__rate_interval])) / sum(rate(http_requests_total{deployment_variant=~\"$variant_a\", http_route=~\"$route\"}[$__rate_interval]))",
+          "legendFormat": "Variant A Error Rate"
         },
         {
-          "expr": "sum(rate(http_errors_total{deployment_variant=\"canary\"}[5m])) / sum(rate(http_requests_total{deployment_variant=\"canary\"}[5m]))",
-          "legendFormat": "Canary Error Rate"
+          "expr": "sum(rate(http_errors_total{deployment_variant=~\"$variant_b\", http_route=~\"$route\"}[$__rate_interval])) / sum(rate(http_requests_total{deployment_variant=~\"$variant_b\", http_route=~\"$route\"}[$__rate_interval]))",
+          "legendFormat": "Variant B Error Rate"
         }
       ]
     },
@@ -159,12 +160,12 @@ Build a Grafana dashboard with side-by-side comparison panels. Here is the JSON 
       "type": "timeseries",
       "targets": [
         {
-          "expr": "sum(rate(http_requests_total{deployment_variant=\"stable\"}[5m]))",
-          "legendFormat": "Stable RPS"
+          "expr": "sum(rate(http_requests_total{deployment_variant=~\"$variant_a\", http_route=~\"$route\"}[$__rate_interval]))",
+          "legendFormat": "Variant A RPS"
         },
         {
-          "expr": "sum(rate(http_requests_total{deployment_variant=\"canary\"}[5m]))",
-          "legendFormat": "Canary RPS"
+          "expr": "sum(rate(http_requests_total{deployment_variant=~\"$variant_b\", http_route=~\"$route\"}[$__rate_interval]))",
+          "legendFormat": "Variant B RPS"
         }
       ]
     }
@@ -186,6 +187,7 @@ PROMETHEUS_URL = "http://prometheus:9090"
 
 def query_prom(expr):
     resp = requests.get(f"{PROMETHEUS_URL}/api/v1/query", params={"query": expr})
+    resp.raise_for_status()
     results = resp.json().get("data", {}).get("result", [])
     if results:
         return float(results[0]["value"][1])
@@ -202,7 +204,7 @@ def analyze_canary():
         'histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{deployment_variant="canary"}[10m])) by (le))'
     )
 
-    if stable_p95 and canary_p95:
+    if stable_p95 is not None and canary_p95 is not None and stable_p95 > 0:
         latency_ratio = canary_p95 / stable_p95
         passed = latency_ratio < 1.15  # canary should not be more than 15% slower
         checks.append(("P95 Latency", passed, f"ratio={latency_ratio:.2f}"))
@@ -228,7 +230,7 @@ def analyze_canary():
         if not passed:
             all_passed = False
 
-    return all_passed
+    return bool(checks) and all_passed
 
 if __name__ == "__main__":
     if analyze_canary():
@@ -258,6 +260,8 @@ Variable: route
   Type: Query
   Query: label_values(http_request_duration_seconds_bucket, http_route)
   Multi-select: true
+  Include All option: true
+  Default: All
 ```
 
 This lets operators compare any two deployment variants and filter by specific routes without editing the dashboard.
