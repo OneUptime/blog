@@ -14,7 +14,7 @@ First, enable access logging on your ALB:
 
 ```bash
 aws elbv2 modify-load-balancer-attributes \
-  --load-balancer-arn arn:aws:elasticloadbalancing:us-east-1:123456789:loadbalancer/app/my-alb/abc123 \
+  --load-balancer-arn arn:aws:elasticloadbalancing:us-east-1:123456789012:loadbalancer/app/my-alb/abc123 \
   --attributes Key=access_logs.s3.enabled,Value=true \
                Key=access_logs.s3.bucket,Value=my-alb-logs \
                Key=access_logs.s3.prefix,Value=alb-logs
@@ -23,7 +23,7 @@ aws elbv2 modify-load-balancer-attributes \
 ALB writes logs in gzip-compressed format to a path like:
 
 ```text
-s3://my-alb-logs/alb-logs/AWSLogs/123456789/elasticloadbalancing/us-east-1/2026/02/06/
+s3://my-alb-logs/alb-logs/AWSLogs/123456789012/elasticloadbalancing/us-east-1/2026/02/06/
 ```
 
 ## ALB Log Format
@@ -31,7 +31,7 @@ s3://my-alb-logs/alb-logs/AWSLogs/123456789/elasticloadbalancing/us-east-1/2026/
 Each log line contains space-delimited fields:
 
 ```text
-http 2026-02-06T10:30:00.123456Z app/my-alb/abc123 10.0.0.5:54321 10.0.1.10:8080 0.001 0.045 0.000 200 200 234 5678 "GET https://example.com:443/api/users HTTP/1.1" "Mozilla/5.0" ECDHE-RSA-AES128-GCM-SHA256 TLSv1.2 arn:aws:elasticloadbalancing:us-east-1:123456789:targetgroup/my-tg/def456 "Root=1-abc-def" "example.com" "arn:aws:acm:..." 0 2026-02-06T10:30:00.123000Z "forward" "-" "-" "10.0.1.10:8080" "200" "-" "-"
+http 2026-02-06T10:30:00.123456Z app/my-alb/abc123 10.0.0.5:54321 10.0.1.10:8080 0.001 0.045 0.000 200 200 234 5678 "GET https://example.com:443/api/users HTTP/1.1" "Mozilla/5.0" ECDHE-RSA-AES128-GCM-SHA256 TLSv1.2 arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/my-tg/def456 "Root=1-abc-def" "example.com" "arn:aws:acm:..." 0 2026-02-06T10:30:00.123000Z "forward" "-" "-" "10.0.1.10:8080" "200" "-" "-"
 ```
 
 ## Processing Pipeline Architecture
@@ -42,7 +42,7 @@ The recommended architecture uses an S3 notification to trigger processing:
 ALB -> S3 -> SQS -> Collector (S3 receiver) -> Backend
 ```
 
-Or you can poll S3 directly from the Collector.
+Or you can fetch a time range from S3 directly with the Collector.
 
 ## Collector Configuration with S3 Receiver
 
@@ -51,28 +51,34 @@ The Collector contrib distribution includes an AWS S3 receiver:
 ```yaml
 # otel-collector-config.yaml
 
+extensions:
+  text_encoding:
+    encoding: utf8
+    unmarshaling_separator: "\r?\n"
+
 receivers:
   awss3:
     # SQS queue that receives S3 notifications
     sqs:
-      queue_url: https://sqs.us-east-1.amazonaws.com/123456789/alb-log-notifications
+      queue_url: https://sqs.us-east-1.amazonaws.com/123456789012/alb-log-notifications
       region: us-east-1
       max_number_of_messages: 10
-      visibility_timeout: 300
     # S3 configuration
-    s3:
+    s3downloader:
       region: us-east-1
-      bucket: my-alb-logs
-      prefix: alb-logs
-    # Parse ALB log format
-    encoding: text
+      s3_bucket: my-alb-logs
+      s3_prefix: alb-logs
+    # Read ALB .log.gz files as text log records
+    encodings:
+      - extension: text_encoding
+        suffix: ".log"
 
 processors:
   batch:
     timeout: 10s
     send_batch_size: 500
 
-  # Parse ALB log lines
+  # Add resource attributes to the log records
   transform:
     log_statements:
       - context: log
@@ -87,6 +93,7 @@ exporters:
       insecure: false
 
 service:
+  extensions: [text_encoding]
   pipelines:
     logs:
       receivers: [awss3]
@@ -101,34 +108,56 @@ A more common pattern uses a Lambda function to process S3 events and forward to
 ```python
 # lambda_function.py
 import boto3
+import datetime
 import gzip
 import json
+import shlex
 import urllib.request
 
 s3_client = boto3.client('s3')
 COLLECTOR_ENDPOINT = "http://collector.internal:4318/v1/logs"
 
+def parse_host_port(value):
+    if value == "-" or ":" not in value:
+        return value, ""
+    host, port = value.rsplit(":", 1)
+    return host.strip("[]"), port
+
+def parse_float(value):
+    return None if value == "-" else float(value)
+
+def parse_int(value):
+    return None if value == "-" else int(value)
+
+def timestamp_to_unix_nano(timestamp):
+    dt = datetime.datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+    return str(int(dt.timestamp() * 1_000_000_000))
+
 def parse_alb_log_line(line):
     """Parse an ALB access log line into structured fields."""
-    fields = line.split(' ')
+    fields = shlex.split(line)
     if len(fields) < 25:
         return None
+
+    client_ip, client_port = parse_host_port(fields[3])
+    target_ip, target_port = parse_host_port(fields[4])
 
     return {
         "type": fields[0],
         "timestamp": fields[1],
         "elb": fields[2],
-        "client_ip": fields[3].split(':')[0],
-        "client_port": fields[3].split(':')[1] if ':' in fields[3] else "",
-        "target_ip": fields[4].split(':')[0],
-        "request_processing_time": float(fields[5]),
-        "target_processing_time": float(fields[6]),
-        "response_processing_time": float(fields[7]),
-        "elb_status_code": int(fields[8]),
-        "target_status_code": fields[9],
-        "received_bytes": int(fields[10]),
-        "sent_bytes": int(fields[11]),
-        "request": fields[12].strip('"'),
+        "client_ip": client_ip,
+        "client_port": client_port,
+        "target_ip": target_ip,
+        "target_port": target_port,
+        "request_processing_time": parse_float(fields[5]),
+        "target_processing_time": parse_float(fields[6]),
+        "response_processing_time": parse_float(fields[7]),
+        "elb_status_code": parse_int(fields[8]),
+        "target_status_code": parse_int(fields[9]),
+        "received_bytes": parse_int(fields[10]),
+        "sent_bytes": parse_int(fields[11]),
+        "request": fields[12],
     }
 
 def handler(event, context):
@@ -159,11 +188,11 @@ def handler(event, context):
                 "scopeLogs": [{
                     "logRecords": [
                         {
-                            "timeUnixNano": str(int(1e9)),
+                            "timeUnixNano": timestamp_to_unix_nano(log["timestamp"]),
                             "body": {"stringValue": json.dumps(log)},
                             "attributes": [
-                                {"key": "http.status_code", "value": {"intValue": log["elb_status_code"]}},
-                                {"key": "http.method", "value": {"stringValue": log["request"].split()[0]}},
+                                {"key": "http.response.status_code", "value": {"intValue": log["elb_status_code"]}},
+                                {"key": "http.request.method", "value": {"stringValue": log["request"].split()[0]}},
                             ]
                         }
                         for log in logs
@@ -191,12 +220,19 @@ Configure S3 to notify SQS when new log files arrive:
 # Create SQS queue
 aws sqs create-queue --queue-name alb-log-notifications
 
+# Allow S3 to send messages to the queue
+aws sqs set-queue-attributes \
+  --queue-url https://sqs.us-east-1.amazonaws.com/123456789012/alb-log-notifications \
+  --attributes '{
+    "Policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Principal\":{\"Service\":\"s3.amazonaws.com\"},\"Action\":\"sqs:SendMessage\",\"Resource\":\"arn:aws:sqs:us-east-1:123456789012:alb-log-notifications\",\"Condition\":{\"ArnEquals\":{\"aws:SourceArn\":\"arn:aws:s3:::my-alb-logs\"}}}]}"
+  }'
+
 # Configure S3 notification
 aws s3api put-bucket-notification-configuration \
   --bucket my-alb-logs \
   --notification-configuration '{
     "QueueConfigurations": [{
-      "QueueArn": "arn:aws:sqs:us-east-1:123456789:alb-log-notifications",
+      "QueueArn": "arn:aws:sqs:us-east-1:123456789012:alb-log-notifications",
       "Events": ["s3:ObjectCreated:*"],
       "Filter": {
         "Key": {
