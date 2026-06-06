@@ -10,7 +10,7 @@ Description: Learn how to collect and parse NGINX access and error logs using th
 
 NGINX is the web server and reverse proxy behind a huge portion of the internet. Whether you use it as a static file server, a reverse proxy for your application, or an API gateway, the access and error logs it produces are essential for understanding traffic patterns, debugging issues, and detecting anomalies. Traditionally these logs get shipped with tools like Filebeat or Fluentd. But if you are already running the OpenTelemetry Collector for metrics and traces, you can handle NGINX logs in the same pipeline and avoid running yet another agent.
 
-This post covers how to configure the OpenTelemetry Collector to tail NGINX access and error logs, parse them into structured attributes, and export them to your observability backend.
+This post covers how to configure the OpenTelemetry Collector Contrib distribution to tail NGINX access and error logs, parse them into structured attributes, and export them to your observability backend.
 
 ## NGINX Log Formats
 
@@ -112,19 +112,19 @@ receivers:
           parse_from: attributes.time_local
           layout: "%d/%b/%Y:%H:%M:%S %z"
 
-      # Convert status code to integer for filtering
+      # Copy status code to a semantic attribute as an integer for filtering
       - type: add
-        field: attributes.http.status_code
-        value: EXPR(attributes.status)
+        field: attributes["http.status_code"]
+        value: EXPR(int(attributes.status))
 
       # Set severity based on status code range
       - type: severity_parser
         parse_from: attributes.status
         mapping:
-          info: "2\\d{2}"
-          info2: "3\\d{2}"
-          warn: "4\\d{2}"
-          error: "5\\d{2}"
+          info: 2xx
+          info2: 3xx
+          warn: 4xx
+          error: 5xx
 
 processors:
   # Add service context
@@ -182,6 +182,7 @@ receivers:
         mapping:
           debug: "debug"
           info: "info"
+          info2: "notice"
           warn: "warn"
           error: "error"
           error2: "crit"
@@ -251,6 +252,7 @@ receivers:
     operators:
       # Parse JSON directly instead of regex
       - type: json_parser
+        parse_ints: true
         timestamp:
           parse_from: attributes.time_local
           layout: "%d/%b/%Y:%H:%M:%S %z"
@@ -258,10 +260,10 @@ receivers:
       - type: severity_parser
         parse_from: attributes.status
         mapping:
-          info: "2\\d{2}"
-          info2: "3\\d{2}"
-          warn: "4\\d{2}"
-          error: "5\\d{2}"
+          info: 2xx
+          info2: 3xx
+          warn: 4xx
+          error: 5xx
 
 processors:
   batch:
@@ -297,14 +299,14 @@ ls -la /var/log/nginx/
 sudo usermod -aG adm otel
 ```
 
-**Regex not matching.** If your NGINX log format differs from the standard combined format, the regex will fail silently. Test your regex against an actual log line using a tool like regex101.com. Enable debug logging to see parser errors.
+**Regex not matching.** If your NGINX log format differs from the standard combined format, the parser will emit an error in the Collector logs and, with the default `on_error: send` behavior, pass the unparsed log record onward. Test your regex against an actual log line using a tool like regex101.com with the Go flavor.
 
-**Logs appearing without parsed attributes.** This means the regex matched but some groups are empty. Check for optional fields in your log format that might not always be present.
+**Logs appearing without parsed attributes.** This usually means the parser did not match the log line and the unparsed record was passed onward. If only a few attributes are empty, check for optional fields in your log format that might not always be present.
 
 **High CPU usage.** If NGINX produces very high log volume, the regex parser can consume significant CPU. Switch to the JSON log format to reduce parsing overhead, or increase the batch size to reduce export frequency.
 
 ## Summary
 
-NGINX access and error logs are a goldmine of operational data. The OpenTelemetry Collector filelog receiver lets you collect, parse, and structure these logs without running a dedicated log shipper. Use regex parsing for the default combined format, or switch to JSON logs for better performance and simpler configuration. Filter out noise, add resource attributes for context, and use the file storage extension to survive restarts gracefully.
+NGINX access and error logs are a goldmine of operational data. The OpenTelemetry Collector Contrib filelog receiver lets you collect, parse, and structure these logs without running a dedicated log shipper. Use regex parsing for the default combined format, or switch to JSON logs for better performance and simpler configuration. Filter out noise, add resource attributes for context, and use the file storage extension to survive restarts gracefully.
 
 With structured NGINX logs flowing into a backend like OneUptime, you can build dashboards showing request rates by path, error rates by status code, slow request analysis by response time, and upstream health. Combined with NGINX metrics and application traces, you get full observability across your web stack.
