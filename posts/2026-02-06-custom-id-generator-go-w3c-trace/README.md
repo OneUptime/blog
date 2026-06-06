@@ -6,18 +6,26 @@ Tags: OpenTelemetry, Go, W3C Trace Context, ID Generator
 
 Description: Build a custom OpenTelemetry ID generator in Go that satisfies the W3C Trace Context Level 2 randomness requirements for trace IDs.
 
-The W3C Trace Context Level 2 specification tightens the requirements around trace ID generation. Specifically, it requires that the rightmost 7 bytes of a trace ID contain random or pseudo-random values with sufficient entropy. This is to ensure that sampling decisions based on trace ID bits work correctly across vendors. The default Go SDK ID generator already meets these requirements, but if you need a custom generator (for embedding metadata in the ID), you need to be careful about maintaining the randomness guarantees.
+The W3C Trace Context Level 2 specification tightens the requirements around trace ID generation. Specifically, when the random trace ID flag is set, it requires that the rightmost 7 bytes of a trace ID contain random or pseudo-random values with sufficient entropy. This is to ensure that sampling decisions based on trace ID bits work correctly across vendors. The default Go SDK ID generator already generates random trace IDs, but if you need a custom generator (for embedding metadata in the ID), you need to be careful about maintaining the randomness guarantees.
 
 ## W3C Trace Context Level 2 Requirements
 
-The key requirement is in section 3.2.2 of the spec: the `trace-id` field should have a random (or pseudo-random) portion that is uniformly distributed. The rightmost 56 bits (7 bytes) must be random, because some systems use these bits for probability-based sampling decisions.
+The key requirement is in section 3.2.2 of the spec: the `trace-id` field should have a random (or pseudo-random) portion that is uniformly distributed. When the random trace ID flag is set, the rightmost 56 bits (7 bytes) must be random, because some systems use these bits for probability-based sampling decisions.
 
 If your custom generator zeroes out or uses deterministic values in those bytes, trace-based sampling may break across different vendors in the trace.
+
+OpenTelemetry Go's `IDGenerator` interface returns IDs, not trace flags. This generator keeps the trace ID value compatible with the Level 2 randomness requirement; setting or propagating the W3C random trace flag depends on the OpenTelemetry Go SDK and propagator behavior in the version you use.
 
 ## The Go IDGenerator Interface
 
 ```go
 package trace
+
+import (
+    "context"
+
+    "go.opentelemetry.io/otel/trace"
+)
 
 // IDGenerator allows custom generation of TraceID and SpanID.
 type IDGenerator interface {
@@ -37,7 +45,6 @@ import (
     "context"
     "crypto/rand"
     "encoding/binary"
-    "sync"
     "time"
 
     "go.opentelemetry.io/otel/trace"
@@ -45,20 +52,10 @@ import (
 
 // TimestampIDGenerator embeds a timestamp in trace IDs while
 // keeping the last 7 bytes random per W3C Trace Context Level 2.
-type TimestampIDGenerator struct {
-    // Pool for reusing byte slices during ID generation
-    pool sync.Pool
-}
+type TimestampIDGenerator struct{}
 
 func NewTimestampIDGenerator() *TimestampIDGenerator {
-    return &TimestampIDGenerator{
-        pool: sync.Pool{
-            New: func() interface{} {
-                b := make([]byte, 16)
-                return &b
-            },
-        },
-    }
+    return &TimestampIDGenerator{}
 }
 
 func (g *TimestampIDGenerator) NewIDs(ctx context.Context) (trace.TraceID, trace.SpanID) {
@@ -80,7 +77,7 @@ func (g *TimestampIDGenerator) generateTraceID() trace.TraceID {
     secs := now.Unix()
     nanos := now.Nanosecond()
 
-    // Pack seconds into first 5 bytes (enough until year 36812)
+    // Pack seconds into first 5 bytes (enough until well beyond year 36000)
     tid[0] = byte(secs >> 32)
     tid[1] = byte(secs >> 24)
     tid[2] = byte(secs >> 16)
@@ -91,8 +88,7 @@ func (g *TimestampIDGenerator) generateTraceID() trace.TraceID {
     binary.BigEndian.PutUint32(tid[5:9], uint32(nanos))
 
     // Bytes 9-15 (7 bytes): Cryptographically random
-    // This satisfies W3C Trace Context Level 2 requirements
-    // The rightmost 7 bytes MUST be random
+    // This keeps the trace ID compatible with W3C Trace Context Level 2 randomness
     _, err := rand.Read(tid[9:16])
     if err != nil {
         // Fallback: should never happen with crypto/rand
@@ -134,12 +130,18 @@ The W3C spec says the random portion should be "uniformly distributed." While `m
 import "crypto/rand"
 _, err := rand.Read(buf)
 
-// Using math/rand - acceptable but less secure
-// import "math/rand/v2"
-// rand.Read(buf)
+// Using math/rand/v2 - acceptable for uniform pseudo-randomness,
+// but not suitable for security-sensitive randomness
+// import (
+//     "encoding/binary"
+//     "math/rand/v2"
+// )
+// var tmp [8]byte
+// binary.BigEndian.PutUint64(tmp[:], rand.Uint64())
+// copy(buf, tmp[:])
 ```
 
-The performance difference is minimal for trace ID generation since you only generate one ID per trace.
+For most applications, the performance difference is small for trace ID generation since you only generate one trace ID per trace.
 
 ## Registering the Generator
 
@@ -194,7 +196,7 @@ func main() {
 
 ## Testing for W3C Compliance
 
-Write tests that verify the randomness and format requirements:
+Write tests that verify the format requirements and add a basic collision sanity check for the random portion:
 
 ```go
 package traceid
@@ -245,4 +247,4 @@ func TestRandomnessInLastSevenBytes(t *testing.T) {
 }
 ```
 
-Custom ID generators in Go give you flexibility to embed useful metadata in trace IDs while staying compliant with the W3C specification. The critical rule is simple: keep the rightmost 7 bytes random, and you will maintain compatibility with probability-based sampling across the distributed tracing ecosystem.
+Custom ID generators in Go give you flexibility to embed useful metadata in trace IDs while staying compliant with the W3C specification. The critical rule for the trace ID value is simple: keep the rightmost 7 bytes random, and you will maintain compatibility with probability-based sampling across the distributed tracing ecosystem.
