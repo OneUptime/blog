@@ -705,7 +705,7 @@ Fine-tune TimescaleDB for your specific workload. The following settings optimiz
 -- Performance tuning queries for TimescaleDB
 
 -- Check current chunk intervals
-SELECT hypertable_name, chunk_interval
+SELECT hypertable_name, time_interval
 FROM timescaledb_information.dimensions
 WHERE dimension_type = 'Time';
 
@@ -715,7 +715,7 @@ SELECT set_chunk_time_interval('sensor_data', INTERVAL '1 day');
 
 -- Check compression status
 SELECT
-    hypertable_name,
+    chunk_schema,
     chunk_name,
     before_compression_total_bytes,
     after_compression_total_bytes,
@@ -730,12 +730,16 @@ FROM show_chunks('sensor_data', older_than => INTERVAL '7 days') AS chunk;
 
 -- Check hypertable statistics
 SELECT
-    hypertable_name,
-    num_chunks,
-    compression_enabled,
-    total_bytes,
-    pg_size_pretty(total_bytes) AS total_size
-FROM hypertable_detailed_size('sensor_data');
+    h.hypertable_name,
+    h.num_chunks,
+    h.compression_enabled,
+    s.total_bytes,
+    pg_size_pretty(s.total_bytes) AS total_size
+FROM timescaledb_information.hypertables h
+CROSS JOIN LATERAL hypertable_detailed_size(
+    format('%I.%I', h.hypertable_schema, h.hypertable_name)::regclass
+) s
+WHERE h.hypertable_name = 'sensor_data';
 
 -- Add retention policy to automatically drop old data
 SELECT add_retention_policy('sensor_data', INTERVAL '90 days');
@@ -820,14 +824,14 @@ kubectl exec -it timescaledb-0 -n timescaledb -- patronictl list
 ### High Memory Usage
 
 ```bash
-# Check memory consumption by query
+# Inspect active queries and their start times
 kubectl exec -it timescaledb-0 -n timescaledb -- psql -U postgres -c "
 SELECT
     pid,
     usename,
     state,
-    query,
-    pg_size_pretty(pg_total_relation_size(query)) AS query_size
+    query_start,
+    query
 FROM pg_stat_activity
 WHERE state = 'active'
 ORDER BY query_start;
