@@ -907,24 +907,9 @@ enum Task {
 
 fn main() {
     let (tx, rx) = mpsc::channel();
-    let num_workers = 3;
 
-    // Spawn workers.
-    let mut handles = vec![];
-    for worker_id in 0..num_workers {
-        let rx_clone = {
-            // Each worker needs its own receiver clone.
-            // We use Arc and Mutex for shared access.
-            use std::sync::{Arc, Mutex};
-            Arc::new(Mutex::new(rx))
-        };
-
-        // For simplicity, let workers share a single receiver.
-        // In production, consider using crossbeam channels.
-        break;
-    }
-
-    // Simpler approach: single consumer with internal dispatch.
+    // Single consumer with internal dispatch.
+    // For multiple workers sharing a receiver, consider crossbeam channels.
     let worker = thread::spawn(move || {
         loop {
             match rx.recv() {
