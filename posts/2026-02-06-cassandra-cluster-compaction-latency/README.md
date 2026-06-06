@@ -15,12 +15,14 @@ Cassandra enables JMX by default on port 7199 for local connections. For remote 
 ```bash
 # In conf/cassandra-env.sh
 
-JVM_OPTS="$JVM_OPTS -Dcom.sun.management.jmxremote.port=7199"
-JVM_OPTS="$JVM_OPTS -Dcom.sun.management.jmxremote.ssl=false"
-JVM_OPTS="$JVM_OPTS -Dcom.sun.management.jmxremote.authenticate=false"
-JVM_OPTS="$JVM_OPTS -Djava.rmi.server.hostname=0.0.0.0"
-JVM_OPTS="$JVM_OPTS -Dcom.sun.management.jmxremote.rmi.port=7199"
+LOCAL_JMX=no
+JMX_PORT=7199
+
+JVM_OPTS="$JVM_OPTS -Djava.rmi.server.hostname=<cassandra-node-hostname-or-ip>"
+JVM_OPTS="$JVM_OPTS -Dcom.sun.management.jmxremote.rmi.port=$JMX_PORT"
 ```
+
+When enabling remote JMX, keep JMX authentication enabled and use SSL where possible.
 
 For Docker:
 
@@ -41,7 +43,7 @@ services:
 ```yaml
 receivers:
   jmx/cassandra:
-    jar_path: /opt/opentelemetry-jmx-metrics.jar
+    jar_path: /opt/opentelemetry-java-contrib-jmx-metrics.jar
     endpoint: cassandra-node:7199
     target_system: cassandra
     collection_interval: 15s
@@ -95,9 +97,9 @@ org.apache.cassandra.net:type=FailureDetector
   DownEndpointCount    - Number of down nodes
   UpEndpointCount      - Number of up nodes
 
-# Pending tasks (per stage)
-org.apache.cassandra.internal:type=CompactionManager
-  PendingTasks         - Compaction tasks waiting
+# Pending tasks (compaction executor thread pool)
+org.apache.cassandra.metrics:type=ThreadPools,path=internal,scope=CompactionExecutor,name=PendingTasks
+  Value                - Compaction tasks waiting
 
 # Dropped messages (critical indicator)
 org.apache.cassandra.metrics:type=DroppedMessage,scope=*,name=Dropped
@@ -135,7 +137,7 @@ org.apache.cassandra.metrics:type=Table,keyspace=*,scope=*,name=LiveSSTableCount
 ### Compaction Throughput
 
 ```text
-compaction_throughput = rate(bytes_compacted[5m])
+compaction_throughput = rate(custom.cassandra.compaction.bytes_compacted[5m])
 ```
 
 If compaction cannot keep up with writes, SSTable count grows, which degrades read performance because more files must be checked.
@@ -143,7 +145,7 @@ If compaction cannot keep up with writes, SSTable count grows, which degrades re
 ### Pending Compactions
 
 ```text
-pending_compactions = Compaction.PendingTasks
+pending_compactions = cassandra.compaction.tasks.pending
 ```
 
 A growing pending compaction count indicates compaction is falling behind. Common causes: disk I/O saturation, too many concurrent compactions, or very large SSTables.
@@ -157,13 +159,13 @@ A growing pending compaction count indicates compaction is falling behind. Commo
 org.apache.cassandra.metrics:type=Table,keyspace=*,scope=*,name=ReadLatency
   Count    - Total read operations
   Mean     - Average read latency (microseconds)
-  P99      - 99th percentile latency
+  99thPercentile - 99th percentile latency
 
 # Write latency
 org.apache.cassandra.metrics:type=Table,keyspace=*,scope=*,name=WriteLatency
   Count    - Total write operations
   Mean     - Average write latency (microseconds)
-  P99      - 99th percentile latency
+  99thPercentile - 99th percentile latency
 ```
 
 ### Coordinator Latency
@@ -181,21 +183,21 @@ Coordinator latency is higher than table-level latency because it includes the t
 ```yaml
 receivers:
   jmx/cassandra-1:
-    jar_path: /opt/opentelemetry-jmx-metrics.jar
+    jar_path: /opt/opentelemetry-java-contrib-jmx-metrics.jar
     endpoint: cassandra-1:7199
     target_system: cassandra
     resource_attributes:
       cassandra.node: "node-1"
 
   jmx/cassandra-2:
-    jar_path: /opt/opentelemetry-jmx-metrics.jar
+    jar_path: /opt/opentelemetry-java-contrib-jmx-metrics.jar
     endpoint: cassandra-2:7199
     target_system: cassandra
     resource_attributes:
       cassandra.node: "node-2"
 
   jmx/cassandra-3:
-    jar_path: /opt/opentelemetry-jmx-metrics.jar
+    jar_path: /opt/opentelemetry-java-contrib-jmx-metrics.jar
     endpoint: cassandra-3:7199
     target_system: cassandra
     resource_attributes:
@@ -214,34 +216,34 @@ service:
 ```yaml
 # Node down
 - alert: CassandraNodeDown
-  condition: cassandra.failure_detector.down_endpoint_count > 0
+  condition: custom.cassandra.failure_detector.down_endpoint_count > 0
   for: 2m
   severity: critical
   message: "{{ value }} Cassandra nodes are down"
 
 # Pending compactions growing
 - alert: CassandraPendingCompactions
-  condition: cassandra.compaction.pending_tasks > 50
+  condition: cassandra.compaction.tasks.pending > 50
   for: 15m
   severity: warning
   message: "{{ value }} pending compactions on {{ node }}. Compaction may be falling behind."
 
 # High read latency
 - alert: CassandraHighReadLatency
-  condition: cassandra.client_request.read.latency.p99 > 100000
+  condition: cassandra.client.request.read.latency.99p > 100000
   for: 10m
   severity: warning
   message: "Cassandra P99 read latency is {{ value_ms }}ms on {{ node }}"
 
 # Dropped messages
 - alert: CassandraDroppedMessages
-  condition: rate(cassandra.dropped_message.count[5m]) > 0
+  condition: rate(custom.cassandra.dropped_message.count[5m]) > 0
   severity: critical
   message: "Cassandra is dropping messages on {{ node }}. Requests are timing out."
 
 # High SSTable count per table
 - alert: CassandraHighSSTableCount
-  condition: cassandra.table.live_sstable_count > 50
+  condition: custom.cassandra.table.live_sstable_count > 50
   for: 30m
   severity: warning
   message: "Table {{ table }} has {{ value }} SSTables. Compaction may be needed."
@@ -249,4 +251,4 @@ service:
 
 ## Summary
 
-Cassandra monitoring with OpenTelemetry focuses on cluster health (node status, dropped messages), compaction performance (pending tasks, throughput, SSTable count), and read/write latency (per-table and coordinator-level). The JMX receiver collects all these metrics from Cassandra's MBeans. Alert on node failures, growing pending compactions, high latency percentiles, and dropped messages to catch cluster issues before they impact application performance. Monitor each node individually since Cassandra is a peer-to-peer system where any node can be a bottleneck.
+Cassandra monitoring with OpenTelemetry focuses on cluster health (node status, dropped messages), compaction performance (pending tasks, throughput, SSTable count), and read/write latency (per-table and coordinator-level). The JMX receiver's built-in Cassandra target collects a defined set of Cassandra MBeans, and you can add custom JMX mappings for additional MBeans such as failure detector, dropped messages, and per-table SSTable counts. Alert on node failures, growing pending compactions, high latency percentiles, and dropped messages to catch cluster issues before they impact application performance. Monitor each node individually since Cassandra is a peer-to-peer system where any node can be a bottleneck.
