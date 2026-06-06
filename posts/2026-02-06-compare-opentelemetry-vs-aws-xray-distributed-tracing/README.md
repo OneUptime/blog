@@ -14,7 +14,7 @@ If you are running workloads on AWS, you have likely encountered AWS X-Ray as th
 
 First, it is important to understand that OpenTelemetry and AWS X-Ray are not entirely competing products. OpenTelemetry is an instrumentation and data collection framework. AWS X-Ray is a tracing backend and analysis service. You can use OpenTelemetry to send traces to X-Ray. In fact, AWS actively contributes to OpenTelemetry and maintains the AWS Distro for OpenTelemetry (ADOT).
 
-That said, X-Ray also has its own SDK and daemon for instrumentation, which is the alternative approach. The real comparison is between using the X-Ray SDK versus using OpenTelemetry SDKs, and between the X-Ray backend versus other backends.
+That said, X-Ray also has its own SDK and daemon for instrumentation, which is the alternative approach. As of February 25, 2026, the X-Ray SDKs and daemon are in maintenance mode and AWS recommends migrating instrumentation to OpenTelemetry. The real comparison is between using the X-Ray SDK versus using OpenTelemetry SDKs, and between the X-Ray backend versus other backends.
 
 ## Instrumentation Comparison
 
@@ -64,7 +64,7 @@ from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-from opentelemetry.instrumentation.boto3 import Boto3Instrumentor
+from opentelemetry.instrumentation.botocore import BotocoreInstrumentor
 from opentelemetry.instrumentation.requests import RequestsInstrumentor
 
 # Set up the tracer provider with OTLP export
@@ -77,7 +77,7 @@ provider.add_span_processor(processor)
 trace.set_tracer_provider(provider)
 
 # Instrument AWS SDK and HTTP libraries
-Boto3Instrumentor().instrument()
+BotocoreInstrumentor().instrument()
 RequestsInstrumentor().instrument()
 
 # Get a tracer for manual instrumentation
@@ -104,12 +104,12 @@ X-Ray and OpenTelemetry use different terminology and slightly different data mo
 |---------|-------|---------------|
 | Top-level unit | Segment | Span (root) |
 | Child unit | Subsegment | Span (child) |
-| Metadata | Annotations + Metadata | Attributes |
-| Searchable fields | Annotations (key-value) | All attributes |
-| Context propagation | X-Ray header format | W3C TraceContext |
+| Metadata | Annotations + Metadata | Attributes + events |
+| Searchable fields | Annotations (key-value) | Backend-dependent attributes |
+| Context propagation | X-Ray header format | W3C TraceContext by default |
 | Trace ID format | 1-{timestamp}-{random} | 128-bit hex |
 
-The trace ID format difference is noteworthy. X-Ray trace IDs include a timestamp component, which X-Ray uses for data retention. When using OpenTelemetry with X-Ray as a backend, the ADOT collector or X-Ray exporter handles the ID format conversion automatically.
+The trace ID format difference is noteworthy. X-Ray trace IDs include a timestamp component, while OpenTelemetry trace IDs follow the W3C Trace Context format. When using OpenTelemetry with X-Ray as a backend, the ADOT collector or X-Ray exporter formats W3C trace IDs for X-Ray automatically.
 
 ## Context Propagation
 
@@ -136,7 +136,7 @@ If you use OpenTelemetry with X-Ray as the backend, you can configure the propag
 from opentelemetry.propagators.aws import AwsXRayPropagator
 from opentelemetry.propagate import set_global_textmap
 from opentelemetry.propagators.composite import CompositePropagator
-from opentelemetry.trace.propagation import TraceContextTextMapPropagator
+from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 
 # Support both propagation formats for mixed environments
 propagator = CompositePropagator([
@@ -150,7 +150,7 @@ This is particularly useful during migration periods when some services use the 
 
 ## AWS Service Integration
 
-X-Ray has native integration with many AWS services. Lambda, API Gateway, ECS, EKS, App Runner, and others can generate X-Ray traces without any code changes. You simply enable X-Ray tracing in the service configuration.
+X-Ray has native integration with many AWS services. Lambda and API Gateway can generate service-side X-Ray trace data when you enable tracing in the service configuration. Container services such as ECS, EKS, and App Runner still need application instrumentation with the X-Ray SDK or OpenTelemetry/ADOT to capture application spans and downstream calls.
 
 ```yaml
 # AWS SAM template enabling X-Ray tracing on Lambda
@@ -180,12 +180,10 @@ Resources:
       Runtime: python3.12
       Layers:
         # ADOT Lambda layer provides auto-instrumentation
-        - arn:aws:lambda:us-east-1:901920570463:layer:aws-otel-python-amd64-ver-1-25-0:1
+        - arn:aws:lambda:us-east-1:901920570463:layer:aws-otel-python-amd64-ver-1-32-0:2
       Environment:
         Variables:
-          # Configure the OTLP endpoint for trace export
           OTEL_SERVICE_NAME: order-service
-          OTEL_EXPORTER_OTLP_ENDPOINT: "http://localhost:4317"
           AWS_LAMBDA_EXEC_WRAPPER: /opt/otel-instrument
 ```
 
@@ -264,9 +262,9 @@ graph TD
 
 ## Cost Considerations
 
-X-Ray pricing is based on traces recorded and traces scanned. As of 2026, it costs $5.00 per million traces recorded and $0.50 per million traces scanned. There are no infrastructure costs since X-Ray is a managed service.
+X-Ray pricing is based on traces recorded and traces retrieved or scanned. As of 2026, it costs $5.00 per million traces recorded and $0.50 per million traces retrieved or scanned after the free tier. There are no X-Ray backend infrastructure costs since X-Ray is a managed service.
 
-With OpenTelemetry, you need to run and manage the collector infrastructure (or use ADOT as a managed option). However, you can send traces to any backend, including self-hosted options like Jaeger or Tempo that have no per-trace cost.
+With OpenTelemetry, you often need to run and manage collector infrastructure, although some environments provide managed integration points such as the ADOT Lambda layer. However, you can send traces to any backend, including self-hosted options like Jaeger or Tempo that do not charge a backend per-trace fee, though you still pay for infrastructure and storage.
 
 For small to medium workloads on AWS, X-Ray's managed service is often cheaper when you factor in operational overhead. For large-scale deployments, self-hosted backends with OpenTelemetry can be significantly more cost-effective.
 
