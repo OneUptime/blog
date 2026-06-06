@@ -110,12 +110,9 @@ receivers:
 processors:
   # Extract only spans that have audit attributes
   filter/audit_spans:
-    spans:
-      include:
-        match_type: regexp
-        attributes:
-          - key: audit.actor.id
-            value: ".+"
+    error_mode: ignore
+    trace_conditions:
+      - span.attributes["audit.actor.id"] == nil
 
   # Add collector-level metadata
   resource/audit:
@@ -127,11 +124,6 @@ processors:
         value: "centralized-api-audit"
         action: insert
 
-  # Group by trace to ensure complete request context
-  groupbytrace:
-    wait_duration: 10s
-    num_traces: 1000
-
   batch/audit:
     timeout: 5s
     send_batch_size: 500
@@ -141,7 +133,7 @@ processors:
 
 exporters:
   # Dedicated audit store
-  otlphttp/audit:
+  otlp_http/audit:
     endpoint: https://audit.internal:4318
     compression: gzip
     retry_on_failure:
@@ -149,7 +141,7 @@ exporters:
       max_elapsed_time: 300s
 
   # Regular observability platform
-  otlp/oneuptime:
+  otlp_grpc/oneuptime:
     endpoint: https://oneuptime.example.com:4317
 
 service:
@@ -158,13 +150,13 @@ service:
     traces/audit:
       receivers: [otlp]
       processors: [filter/audit_spans, resource/audit, batch/audit]
-      exporters: [otlphttp/audit]
+      exporters: [otlp_http/audit]
 
     # Standard observability pipeline - gets everything
     traces/observability:
       receivers: [otlp]
       processors: [batch/general]
-      exporters: [otlp/oneuptime]
+      exporters: [otlp_grpc/oneuptime]
 ```
 
 ## Building the Audit Query API
@@ -195,7 +187,7 @@ SELECT
     attributes['audit.resource_type'] AS resource,
     attributes['audit.outcome'] AS outcome
 FROM audit_spans
-WHERE attributes['audit.is_admin_action'] = 'true'
+WHERE attributes['audit.is_admin_action'] = true
     AND start_time >= NOW() - INTERVAL '7 days'
 ORDER BY start_time DESC;
 
