@@ -12,7 +12,7 @@ Azure Application Insights is Microsoft's APM solution within the Azure Monitor 
 
 ## The Convergence Story
 
-Microsoft has been one of the most active contributors to OpenTelemetry. In fact, the Application Insights SDKs for .NET, Java, Python, and JavaScript have been moving toward OpenTelemetry-based implementations since 2023. The Azure Monitor OpenTelemetry Distro is now the recommended way to instrument new applications for Application Insights.
+Microsoft has been one of the most active contributors to OpenTelemetry. In fact, Application Insights data collection for .NET, Java, Node.js, and Python server-side applications has been moving toward OpenTelemetry-based implementations. The Azure Monitor OpenTelemetry Distro is now the recommended way to instrument new applications for Application Insights in supported scenarios.
 
 This means the comparison is less about "one or the other" and more about "how much of the Azure-specific experience do you want versus a pure OpenTelemetry approach."
 
@@ -24,6 +24,7 @@ The classic Application Insights SDK:
 // Traditional Application Insights SDK for .NET
 // Tightly coupled to Azure Monitor backend
 using Microsoft.ApplicationInsights;
+using Microsoft.ApplicationInsights.DataContracts;
 using Microsoft.ApplicationInsights.Extensibility;
 
 var config = TelemetryConfiguration.CreateDefault();
@@ -55,14 +56,20 @@ The Azure Monitor OpenTelemetry Distro approach:
 
 ```csharp
 // Azure Monitor OpenTelemetry Distro for .NET
-// Uses standard OpenTelemetry APIs with Azure Monitor export
+// Uses .NET Activity APIs with Azure Monitor export
 using Azure.Monitor.OpenTelemetry.AspNetCore;
 using OpenTelemetry.Trace;
-using OpenTelemetry.Metrics;
+using System.Diagnostics;
 
 var builder = WebApplication.CreateBuilder(args);
+var activitySource = new ActivitySource("order-service");
 
 // Add Azure Monitor with OpenTelemetry under the hood
+builder.Services.ConfigureOpenTelemetryTracerProvider((sp, tracing) =>
+{
+    tracing.AddSource("order-service");
+});
+
 builder.Services.AddOpenTelemetry().UseAzureMonitor(options =>
 {
     options.ConnectionString = "InstrumentationKey=your-key;...";
@@ -70,27 +77,23 @@ builder.Services.AddOpenTelemetry().UseAzureMonitor(options =>
 
 var app = builder.Build();
 
-// Now use standard OpenTelemetry APIs for custom telemetry
-var tracer = app.Services.GetRequiredService<TracerProvider>()
-    .GetTracer("order-service");
-
 app.MapPost("/orders", async (Order order) =>
 {
-    // Standard OTel span creation
-    using var span = tracer.StartActiveSpan("process-order");
-    span.SetAttribute("order.id", order.Id);
-    span.SetAttribute("order.region", "us-east");
+    // In .NET, ActivitySource and Activity represent OTel tracer and span concepts
+    using var activity = activitySource.StartActivity("process-order");
+    activity?.SetTag("order.id", order.Id);
+    activity?.SetTag("order.region", "us-east");
 
     await ProcessOrder(order);
     return Results.Created($"/orders/{order.Id}", order);
 });
 ```
 
-The distro approach gives you standard OpenTelemetry APIs while still exporting to Application Insights. This is now Microsoft's recommended path.
+The distro approach lets you use OpenTelemetry concepts through the .NET diagnostics APIs while still exporting to Application Insights. This is now Microsoft's recommended path.
 
 ## Pure OpenTelemetry with Azure Monitor Exporter
 
-You can also use a completely standard OpenTelemetry setup with just the Azure Monitor exporter:
+You can also use a completely standard OpenTelemetry setup with the standalone Azure Monitor exporter:
 
 ```csharp
 // Pure OpenTelemetry setup with Azure Monitor exporter
@@ -143,7 +146,7 @@ This approach gives you full control and the ability to send data to multiple ba
 |---------|---------------------|----------------------|-----------|
 | Auto-instrumentation | Deep, Azure-aware | Good, standard OTel | Good, standard OTel |
 | Application Map | Full support | Full support | Not available |
-| Live Metrics Stream | Yes | Yes (via distro) | No |
+| Live Metrics Stream | Yes | Yes (via distro; not standalone .NET exporter) | No |
 | Smart Detection | Yes | Yes | No |
 | Profiler | Yes (Snapshot Debugger) | Limited | No |
 | Multi-backend export | No | Possible | Yes |
@@ -156,10 +159,7 @@ The Application Map and Smart Detection features are powered by the Application 
 
 For Java applications, Azure has a particularly smooth auto-instrumentation experience:
 
-```yaml
-# Application Insights Java agent configuration
-
-# Provides zero-code instrumentation for Java applications
+```json
 {
   "connectionString": "InstrumentationKey=your-key;...",
   "role": {
@@ -196,11 +196,11 @@ java -javaagent:opentelemetry-javaagent.jar \
 
 ## Cost and Pricing Model
 
-Application Insights charges based on data ingestion (per GB) and data retention. As of 2026, the first 5 GB per month are free, with additional data at approximately $2.30 per GB. Long-term retention beyond 90 days costs extra.
+Application Insights is billed through the Log Analytics workspace that stores its data, primarily based on data ingestion and retention. As of 2026, the default pay-as-you-go tier includes the first 5 GB per month per billing account for free, with additional data priced by region and tier. Long-term retention beyond 90 days can cost extra.
 
 With pure OpenTelemetry, you control your costs by choosing your backend. Self-hosted options like Jaeger or Grafana Tempo can dramatically reduce costs for high-volume workloads. The trade-off is that you manage the infrastructure yourself.
 
-A hybrid approach works well for many teams: send critical application traces to Application Insights for its analysis features, and send high-volume infrastructure telemetry to a self-hosted backend through the OTel Collector.
+A hybrid approach works well for many teams: send critical application traces to Application Insights for its analysis features, and send high-volume infrastructure telemetry to a self-hosted backend through the OTel Collector. The Collector's Azure Monitor exporter is a community OpenTelemetry Collector component rather than Microsoft's recommended Application Insights instrumentation path, so confirm its support status before using it for production.
 
 ```yaml
 # OTel Collector routing data to multiple backends
@@ -213,11 +213,12 @@ exporters:
     endpoint: "tempo.internal:4317"
 
 processors:
-  # Route based on attributes
-  filter/critical:
+  # Drop noncritical spans from the Azure Monitor pipeline
+  filter/drop_non_critical:
+    error_mode: ignore
     traces:
       span:
-        - 'attributes["app.tier"] == "critical"'
+        - 'attributes["app.tier"] != "critical"'
 
 service:
   pipelines:
@@ -229,7 +230,7 @@ service:
     # Critical traces also go to Application Insights
     traces/critical:
       receivers: [otlp]
-      processors: [filter/critical, batch]
+      processors: [filter/drop_non_critical, batch]
       exporters: [azuremonitor]
 ```
 
@@ -237,8 +238,8 @@ service:
 
 If you are currently using the classic Application Insights SDK and want to move toward OpenTelemetry, here is a practical migration path:
 
-1. Start with the Azure Monitor OpenTelemetry Distro. It is a drop-in replacement that still exports to Application Insights.
-2. Replace custom `TelemetryClient` calls with standard OpenTelemetry API calls (tracers, meters, loggers).
+1. Start with the Azure Monitor OpenTelemetry Distro. It gives you a similar Application Insights experience while moving instrumentation toward OpenTelemetry.
+2. Replace custom `TelemetryClient` calls with OpenTelemetry-compatible APIs for your platform, such as `ActivitySource`, `Meter`, and logging APIs in .NET.
 3. Once instrumentation is fully OpenTelemetry-based, you can add additional exporters alongside the Azure Monitor exporter.
 4. Eventually, you can remove the Azure Monitor exporter entirely if you choose a different backend.
 
