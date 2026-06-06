@@ -49,18 +49,17 @@ But relying on developer discipline is not a strategy. You need automated enforc
 
 ## Layer 1: SDK Attribute Limits
 
-OpenTelemetry SDKs support environment variables that cap the number of attributes per data point. This is the first line of defense:
+OpenTelemetry SDKs support environment variables that cap attributes for spans, logs, and other SDK data that implements attribute truncation. Metric attributes are different: the OpenTelemetry specification currently exempts metrics from the common attribute limits because dropping or truncating them changes time series identity. Use these environment variables for non-metric telemetry, and use metric Views to control metric attributes:
 
 ```bash
 # Set these environment variables in your deployment manifests
 # to enforce attribute limits across all services.
 
-# Maximum number of attributes per metric data point.
-# Excess attributes are silently dropped.
-export OTEL_METRIC_EXPORT_ATTRIBUTE_COUNT_LIMIT=10
-
 # Maximum number of attributes per span.
 export OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT=64
+
+# General maximum attribute count for SDK data types that support it.
+export OTEL_ATTRIBUTE_COUNT_LIMIT=64
 
 # Maximum attribute value length in characters.
 # Long values (like stack traces in attributes) are truncated.
@@ -80,9 +79,9 @@ views = [
     View(
         instrument_name="http.server.request.duration",
         attribute_keys={
-            "http.method",       # ~5 values
-            "http.route",        # ~100 values (use route templates)
-            "http.status_code",  # ~20 values
+            "http.request.method",        # ~10 values
+            "http.route",                 # ~100 values (use route templates)
+            "http.response.status_code",  # ~20 values
         },
         # Any other attribute (user_id, session_id, etc.)
         # is automatically excluded.
@@ -92,16 +91,12 @@ views = [
     View(
         instrument_name="db.client.operation.duration",
         attribute_keys={
-            "db.operation",  # SELECT, INSERT, UPDATE, DELETE
-            "db.name",       # database name
+            "db.operation.name",  # SELECT, INSERT, UPDATE, DELETE
+            "db.namespace",       # database name or namespace
         },
     ),
 
-    # Catch-all: limit all other metrics to 5 attributes max
-    View(
-        instrument_name="*",
-        attribute_keys=None,  # None means use the default limit
-    ),
+    # Instruments that do not match a View use the SDK's default behavior.
 ]
 
 provider = MeterProvider(views=views)
@@ -109,7 +104,7 @@ provider = MeterProvider(views=views)
 
 ## Layer 2: Collector Cardinality Enforcement
 
-The Collector provides a second layer of defense using the `transform` processor to strip high-cardinality attributes and the `filter` processor to drop data points that exceed cardinality thresholds.
+The Collector provides a second layer of defense using the `transform` processor to strip high-cardinality attributes and cap the number of attributes on each data point. Some Collector distributions also include a `cardinalityguardianprocessor` for hard cardinality caps, but it is still marked as development status, so the portable safety net is to normalize and limit attributes before export.
 
 ```yaml
 # Collector config that enforces cardinality limits by
@@ -125,6 +120,7 @@ processors:
   # Remove attributes that are known to be high-cardinality.
   # This is the blocklist approach.
   transform/strip_high_card:
+    error_mode: ignore
     metric_statements:
       - context: datapoint
         statements:
@@ -139,8 +135,13 @@ processors:
           - replace_pattern(attributes["url.path"], "/[0-9a-f-]{36}", "/{id}")
           - replace_pattern(attributes["url.path"], "/[0-9]+", "/{id}")
 
+          # Cap the number of attributes per data point while preserving
+          # the low-cardinality dimensions you need for analysis.
+          - limit(attributes, 10, ["http.request.method", "http.route", "http.response.status_code", "region"])
+
   # The cumulativetodelta processor can also help by converting
-  # cumulative metrics to delta, enabling reaggregation.
+  # cumulative metrics to delta for downstream reaggregation. It does
+  # not reduce cardinality by itself.
   cumulativetodelta:
 
   batch:
@@ -206,21 +207,21 @@ For mature organizations, maintain a central registry of approved metric attribu
 # uses attributes from this list.
 approved_attributes:
   http_metrics:
-    - name: http.method
+    - name: http.request.method
       max_cardinality: 10
     - name: http.route
       max_cardinality: 200
-    - name: http.status_code
+    - name: http.response.status_code
       max_cardinality: 30
     - name: deployment.environment
       max_cardinality: 5
 
   database_metrics:
-    - name: db.system
+    - name: db.system.name
       max_cardinality: 5
-    - name: db.operation
+    - name: db.operation.name
       max_cardinality: 10
-    - name: db.name
+    - name: db.namespace
       max_cardinality: 20
 
   # Explicitly banned attributes that must never appear on metrics
