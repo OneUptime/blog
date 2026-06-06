@@ -81,7 +81,7 @@ service:
       exporters: [otlp]
 ```
 
-This configuration tells the Collector to scrape both services every 15 seconds, batch the resulting metrics, and push them to an OTLP endpoint. The labels you add under `static_configs` become resource attributes on the OTLP metrics, which helps with filtering and grouping in your backend.
+This configuration tells the Collector to scrape both services every 15 seconds, batch the resulting metrics, and push them to an OTLP endpoint. The labels you add under `static_configs` become metric attributes on the OTLP data points, which helps with filtering and grouping in your backend.
 
 ## Using Service Discovery
 
@@ -106,11 +106,11 @@ receivers:
               regex: true
 
             # Use the port from the prometheus.io/port annotation
-            - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
+            - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
               action: replace
               target_label: __address__
-              regex: (.+)
-              replacement: "${1}"
+              regex: ([^:]+)(?::\d+)?;(\d+)
+              replacement: "$${1}:$${2}"
 
             # Use the path from the prometheus.io/path annotation
             - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
@@ -134,12 +134,12 @@ When the Prometheus receiver ingests metrics, it preserves the original Promethe
 - Histogram metrics (`_bucket`, `_sum`, `_count`) are consolidated into a single OTLP Histogram data point
 - The `up` metric and scrape metadata metrics are included by default
 
-If you want to control this behavior, you can use the resource processor or attributes processor to rename or transform metrics in the pipeline:
+If you want to control this behavior, you can use the metrics transform processor to rename metrics, or the attributes and resource processors to adjust metric and resource attributes in the pipeline:
 
 ```yaml
 processors:
   # Transform metric names to follow OpenTelemetry conventions
-  metricstransform:
+  metrics_transform:
     transforms:
       # Rename a specific metric
       - include: http_requests_total
@@ -171,7 +171,7 @@ exporters:
       insecure: false
 
   # Existing Prometheus remote write endpoint
-  prometheusremotewrite:
+  prometheus_remote_write:
     endpoint: "http://prometheus.example.com:9090/api/v1/write"
     resource_to_telemetry_conversion:
       enabled: true
@@ -182,20 +182,20 @@ service:
       receivers: [prometheus]
       processors: [batch]
       # Fan out to both backends
-      exporters: [otlp, prometheusremotewrite]
+      exporters: [otlp, prometheus_remote_write]
 ```
 
-The `resource_to_telemetry_conversion` setting converts OTLP resource attributes back into Prometheus labels, which keeps your existing dashboards and alerts working without modification.
+The `resource_to_telemetry_conversion` setting converts OTLP resource attributes back into Prometheus labels, which helps keep existing dashboards and alerts working. If you send directly to a Prometheus server, make sure its remote write receiver is enabled, or use a remote-write-compatible endpoint such as Thanos Receive, Cortex, or Mimir.
 
 ## Validating the Migration
 
 Before decommissioning your Prometheus server, validate that the Collector is scraping all expected targets and that metric values match.
 
-Add the logging exporter at debug level to verify data is flowing:
+Add the debug exporter with detailed verbosity to verify data is flowing:
 
 ```yaml
 exporters:
-  logging:
+  debug:
     # Set verbosity to detailed to see individual metric data points
     verbosity: detailed
 
@@ -204,7 +204,7 @@ service:
     metrics:
       receivers: [prometheus]
       processors: [batch]
-      exporters: [otlp, logging]
+      exporters: [otlp, debug]
 ```
 
 You can also enable the Collector's built-in health check and zPages extensions for monitoring:
@@ -228,7 +228,7 @@ service:
       exporters: [otlp]
 ```
 
-The zPages interface at `http://localhost:55679/debug/pipelinez` shows you how many data points are flowing through each pipeline stage. This is invaluable for catching configuration issues before they affect production monitoring.
+The zPages interface at `http://localhost:55679/debug/pipelinez` shows the running pipelines and the receivers, processors, and exporters attached to them. This is invaluable for catching configuration issues before they affect production monitoring.
 
 ## Scaling the Collector Scraper
 
@@ -238,11 +238,6 @@ A single Collector instance can scrape hundreds of targets, but for large deploy
 # target-allocator-config.yaml
 receivers:
   prometheus:
-    config:
-      scrape_configs:
-        - job_name: "kubernetes-pods"
-          kubernetes_sd_configs:
-            - role: pod
     # Point to the target allocator instead of doing local SD
     target_allocator:
       endpoint: "http://target-allocator:80"
