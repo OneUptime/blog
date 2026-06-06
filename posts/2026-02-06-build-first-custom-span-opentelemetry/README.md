@@ -170,7 +170,7 @@ func processOrder(ctx context.Context, orderID string, items []Item, userID stri
         return fmt.Errorf("payment failed: %w", err)
     }
 
-    inventoryResult, err := reserveInventory(ctx, items)
+    _, err = reserveInventory(ctx, items)
     if err != nil {
         span.RecordError(err)
         span.SetStatus(codes.Error, err.Error())
@@ -279,11 +279,12 @@ The good example lets you query for failed payments, filter by payment method, i
 Follow semantic conventions when they exist. OpenTelemetry defines standard attribute names for common concepts:
 
 ```go
-import "go.opentelemetry.io/otel/semconv/v1.21.0/httpconv"
+import semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
 
 span.SetAttributes(
     // Semantic conventions for HTTP
-    httpconv.ServerRequest("order-api", req)...,
+    semconv.HTTPRequestMethodPost,
+    semconv.HTTPRoute("/orders/{order_id}"),
 
     // Custom business attributes
     attribute.String("order.id", orderID),
@@ -291,7 +292,7 @@ span.SetAttributes(
 )
 ```
 
-Semantic conventions ensure consistency across services. When every service uses `http.method` instead of inventing their own names, queries work across your entire system.
+Semantic conventions ensure consistency across services. When every service uses `http.request.method` instead of inventing their own names, queries work across your entire system.
 
 ## Recording Events Within Spans
 
@@ -513,7 +514,7 @@ Instrument specific queries when auto-instrumentation doesn't provide enough det
 ```python
 def get_user_orders(user_id, status_filter=None, limit=100):
     with tracer.start_as_current_span("get_user_orders") as span:
-        span.set_attribute("db.operation", "query")
+        span.set_attribute("db.operation.name", "SELECT")
         span.set_attribute("user.id", user_id)
         span.set_attribute("query.limit", limit)
 
@@ -534,7 +535,7 @@ def get_user_orders(user_id, status_filter=None, limit=100):
         query += " ORDER BY created_at DESC LIMIT %s"
         params.append(limit)
 
-        span.set_attribute("db.statement", query)
+        span.set_attribute("db.query.text", query)
 
         results = database.execute(query, params)
 
@@ -565,8 +566,8 @@ async function fetchUserProfile(userId, apiKey) {
 
     const duration = Date.now() - startTime;
 
-    span.setAttribute('http.status_code', response.status);
-    span.setAttribute('http.duration_ms', duration);
+    span.setAttribute('http.response.status_code', response.status);
+    span.setAttribute('api.duration_ms', duration);
 
     if (!response.ok) {
       const error = new Error(`API returned status ${response.status}`);
@@ -607,8 +608,10 @@ require 'opentelemetry/api'
 class OrderReportJob
   def perform(start_date, end_date)
     tracer = OpenTelemetry.tracer_provider.tracer('background-jobs')
+    span = nil
 
-    tracer.in_span('generate_order_report') do |span|
+    tracer.in_span('generate_order_report') do |current_span|
+      span = current_span
       span.set_attribute('report.start_date', start_date.to_s)
       span.set_attribute('report.end_date', end_date.to_s)
       span.set_attribute('job.type', 'order_report')
@@ -633,7 +636,7 @@ class OrderReportJob
       upload_to_storage(pdf, "report-#{start_date}-#{end_date}.pdf")
 
       span.add_event('report_completed')
-      span.status = OpenTelemetry::Trace::Status.ok('Report generated successfully')
+      span.status = OpenTelemetry::Trace::Status.ok
     end
   rescue StandardError => e
     span&.record_exception(e)
@@ -721,6 +724,8 @@ Verify custom spans work correctly before deploying to production.
 
 ```python
 import unittest
+from opentelemetry import trace
+from opentelemetry.trace import StatusCode
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
@@ -759,7 +764,7 @@ class TestOrderProcessing(unittest.TestCase):
         self.assertEqual(attributes["order.item_count"], 1)
 
         # Verify status
-        self.assertEqual(span.status.status_code, StatusCode.OK)
+        self.assertEqual(span.status.status_code, StatusCode.UNSET)
 ```
 
 Testing spans ensures they contain expected data and helps catch instrumentation bugs before they reach production.
