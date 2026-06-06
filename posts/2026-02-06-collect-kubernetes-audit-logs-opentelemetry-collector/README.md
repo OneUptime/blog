@@ -8,7 +8,7 @@ Description: A practical guide to collecting and processing Kubernetes audit log
 
 ---
 
-Kubernetes audit logs record every request made to the API server. They tell you who did what, when they did it, and whether the request was allowed. This information is critical for security monitoring, compliance, and debugging access issues. But by default, these logs sit on the control plane nodes as files, disconnected from the rest of your observability stack.
+Kubernetes audit logs record requests made to the API server according to the audit policy you configure. They tell you who did what, when they did it, and whether the request was allowed. This information is critical for security monitoring, compliance, and debugging access issues. In self-managed clusters that use the API server log backend, these logs sit on the control plane nodes as files, disconnected from the rest of your observability stack.
 
 The OpenTelemetry Collector can ingest Kubernetes audit logs, parse them, enrich them with additional context, and export them to any backend you use for log analysis. This guide covers the full setup from configuring the Kubernetes API server audit policy to building the collector pipeline.
 
@@ -19,8 +19,8 @@ The Kubernetes API server generates audit events at various stages of request pr
 There are four audit levels:
 - **None** - Do not log the event
 - **Metadata** - Log the request metadata (user, resource, verb) but not the request or response body
-- **Request** - Log metadata plus the request body
-- **RequestResponse** - Log everything including the response body
+- **Request** - Log metadata plus the request body, when a request body applies
+- **RequestResponse** - Log metadata, the request body, and the response body, when request and response bodies apply
 
 ```mermaid
 flowchart TD
@@ -51,6 +51,8 @@ This policy captures important security events at the Metadata level while loggi
 # Rules are evaluated in order - first match wins
 apiVersion: audit.k8s.io/v1
 kind: Policy
+omitStages:
+  - RequestReceived
 rules:
   # Don't log read-only requests to health endpoints
   - level: None
@@ -165,8 +167,10 @@ receivers:
       # Parse the JSON structure of each audit log entry
       - type: json_parser
         id: audit_json
+        parse_ints: true
         timestamp:
           parse_from: attributes.stageTimestamp
+          layout_type: strptime
           layout: '%Y-%m-%dT%H:%M:%S.%fZ'
       # Extract the user who made the request
       - type: move
@@ -176,6 +180,7 @@ receivers:
       - type: move
         from: attributes.objectRef.resource
         to: attributes.k8s.audit.resource
+        if: 'attributes.objectRef.resource != nil'
       # Extract the verb (create, get, delete, etc.)
       - type: move
         from: attributes.verb
@@ -184,9 +189,11 @@ receivers:
       - type: move
         from: attributes.objectRef.namespace
         to: attributes.k8s.audit.namespace
+        if: 'attributes.objectRef.namespace != nil'
       # Set severity based on response code
       - type: severity_parser
         parse_from: attributes.responseStatus.code
+        if: 'attributes.responseStatus.code != nil'
         mapping:
           info: [200, 201, 204]
           warn: [400, 403, 404]
@@ -209,13 +216,10 @@ processors:
 
   # Filter out noisy events that aren't useful for security
   filter:
-    logs:
-      exclude:
-        match_type: regexp
-        record_attributes:
-          # Exclude watch events as they generate too much volume
-          - key: k8s.audit.verb
-            value: "watch"
+    error_mode: ignore
+    log_conditions:
+      # Exclude watch events as they generate too much volume
+      - 'log.attributes["k8s.audit.verb"] == "watch"'
 
 exporters:
   otlp:
@@ -263,7 +267,7 @@ spec:
           effect: NoSchedule
       containers:
         - name: collector
-          image: otel/opentelemetry-collector-contrib:0.96.0
+          image: otel/opentelemetry-collector-contrib:0.153.0
           args: ["--config=/etc/otel/config.yaml"]
           volumeMounts:
             - name: config
@@ -303,12 +307,12 @@ Here are some patterns you should monitor:
 
 **Watch for RBAC changes.** Modifications to ClusterRoles and ClusterRoleBindings can grant broad permissions. These changes should be reviewed.
 
-The following OpenTelemetry Collector configuration adds a routing processor that sends high-priority audit events to a separate pipeline for alerting.
+The following OpenTelemetry Collector configuration adds an attributes processor that tags high-priority audit events for alerting.
 
 ```yaml
-# Additional processor for routing critical events
+# Additional processor for tagging critical events
 processors:
-  # Route security-critical events to a separate exporter
+  # Tag security-critical events for alerting
   attributes:
     actions:
       # Tag high-severity events for alerting
@@ -317,11 +321,11 @@ processors:
         action: upsert
     include:
       match_type: regexp
-      record_attributes:
+      attributes:
         - key: k8s.audit.resource
-          value: "secrets|clusterroles|clusterrolebindings"
+          value: "^(secrets|clusterroles|clusterrolebindings)$"
         - key: k8s.audit.verb
-          value: "create|update|patch|delete"
+          value: "^(create|update|patch|delete)$"
 ```
 
 ## Handling High Volume
