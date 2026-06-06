@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Profiling, CPU, Memory
 
 Description: Monitor CPU and memory allocation hotspots in production using OpenTelemetry continuous profiling techniques.
 
-Monitoring CPU and memory usage at the process level tells you that a service is consuming too many resources. Continuous profiling tells you exactly which functions are responsible. With OpenTelemetry's profiling signal, you can capture both CPU and memory allocation profiles continuously in production and pinpoint the hotspots down to individual lines of code.
+Monitoring CPU and memory usage at the process level tells you that a service is consuming too many resources. Continuous profiling tells you exactly which functions are responsible. With OpenTelemetry's profiling signal, you can capture CPU and memory allocation profiles continuously and pinpoint the hotspots down to specific functions, and in some runtimes to individual lines of code.
 
 ## CPU Profiling vs Memory Allocation Profiling
 
@@ -20,25 +20,47 @@ You typically want both running simultaneously.
 
 ## Setting Up CPU Profiling with the eBPF Agent
 
-The OpenTelemetry eBPF profiler captures CPU profiles by default:
+The OpenTelemetry eBPF profiler runs as a specialized OpenTelemetry Collector distribution with a `profiling` receiver:
+
+```yaml
+receivers:
+  profiling:
+    samples_per_second: 97
+
+exporters:
+  otlp_grpc:
+    endpoint: pyroscope:4040
+    tls:
+      insecure: true
+
+service:
+  pipelines:
+    profiles:
+      receivers: [profiling]
+      exporters: [otlp_grpc]
+```
+
+Run the collector with host access and the profiles feature gate enabled:
 
 ```bash
 docker run --rm -d \
-  --name otel-profiler \
+  --name otel-ebpf-profiler \
   --privileged \
   --pid=host \
-  -v /sys/kernel:/sys/kernel:ro \
-  -v /lib/modules:/lib/modules:ro \
-  -e OTEL_EXPORTER_OTLP_ENDPOINT=http://collector:4317 \
-  -e OTEL_PROFILER_SAMPLING_FREQUENCY=19 \
-  ghcr.io/open-telemetry/opentelemetry-ebpf-profiler:v0.8.0
+  -v "$(pwd)/ebpf-profiler-config.yaml:/etc/ebpf-profiler-config.yaml:ro" \
+  -v /sys/kernel/debug:/sys/kernel/debug:ro \
+  -v /sys/fs/cgroup:/sys/fs/cgroup:ro \
+  -v /proc:/proc:ro \
+  otel/opentelemetry-collector-ebpf-profiler:0.147.0 \
+  --config=/etc/ebpf-profiler-config.yaml \
+  --feature-gates=service.profilesSupport
 ```
 
-This captures CPU stack samples at 19 Hz across all processes on the host.
+This captures CPU stack samples across all processes on the host.
 
 ## Setting Up Memory Allocation Profiling in Go
 
-Go has built-in memory allocation profiling support. The OpenTelemetry Go profiling integration exposes it:
+Go has built-in memory allocation profiling support. The Pyroscope Go SDK exposes it:
 
 ```go
 package main
@@ -74,19 +96,14 @@ The difference between `Alloc` and `Inuse` profiles matters. `AllocSpace` shows 
 
 ## Setting Up Memory Profiling in Java
 
-For Java, the async-profiler (which the OTel eBPF profiler uses under the hood for JVM processes) supports allocation profiling:
+The OpenTelemetry eBPF profiler collects CPU profiles. For Java allocation profiling, use a Java profiler such as the Pyroscope Java agent, which uses async-profiler:
 
-```yaml
-# profiler agent configuration
-
-profiling:
-  cpu:
-    enabled: true
-    interval: 10ms
-  alloc:
-    enabled: true
-    # Sample every 512KB of allocations
-    interval: 524288
+```bash
+PYROSCOPE_APPLICATION_NAME=order-service \
+PYROSCOPE_SERVER_ADDRESS=http://pyroscope:4040 \
+PYROSCOPE_PROFILER_ALLOC=512k \
+PYROSCOPE_PROFILING_INTERVAL=10ms \
+java -javaagent:pyroscope.jar -jar app.jar
 ```
 
 ## Identifying CPU Hotspots
@@ -138,16 +155,20 @@ processors:
     send_batch_size: 500
 
 exporters:
-  otlphttp/pyroscope:
-    endpoint: http://pyroscope:4040
+  otlp/pyroscope:
+    endpoint: pyroscope:4040
+    tls:
+      insecure: true
 
 service:
   pipelines:
     profiles:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlphttp/pyroscope]
+      exporters: [otlp/pyroscope]
 ```
+
+Start the collector with `--feature-gates=service.profilesSupport` while the profiles signal requires the feature gate.
 
 ## Setting Up Alerts on Profile Data
 
@@ -156,11 +177,11 @@ You can query Pyroscope's API to build alerts when a specific function exceeds a
 ```bash
 # Query the top functions by CPU usage over the last hour
 curl -G http://pyroscope:4040/api/v1/query \
-  --data-urlencode "query=process_cpu:cpu:nanoseconds{service_name=\"order-service\"}" \
+  --data-urlencode "query=process_cpu:cpu:nanoseconds:cpu:nanoseconds{service_name=\"order-service\"}" \
   --data-urlencode "from=now-1h" \
   --data-urlencode "until=now"
 ```
 
 Pair this with your alerting system. If a known function starts consuming more than its expected share of CPU or memory, you catch the regression before it impacts users.
 
-Continuous profiling with OpenTelemetry makes CPU and memory hotspot detection a routine part of operations rather than an emergency debugging exercise. The overhead is low enough to run in production, and the insights are specific enough to act on immediately.
+Continuous profiling with OpenTelemetry makes CPU and memory hotspot detection a routine part of operations rather than an emergency debugging exercise. With appropriate sampling and version testing, the overhead can be low enough to run continuously, and the insights are specific enough to act on immediately.
