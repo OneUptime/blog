@@ -111,8 +111,9 @@ cluster_addr = "https://vault-1.example.com:8201"
 # Enable the UI
 ui = true
 
-# Disable memory lock warning (enable in production with proper capabilities)
-disable_mlock = false
+# Disable memory locking (recommended when using integrated Raft storage,
+# as BoltDB memory-mapped files are incompatible with mlock)
+disable_mlock = true
 
 # Telemetry for monitoring
 telemetry {
@@ -882,9 +883,6 @@ Adjust Vault configuration parameters to handle increased load and reduce latenc
 ```hcl
 # Performance tuning additions to vault.hcl
 
-# Increase maximum request size for large secrets
-max_request_size = 33554432  # 32MB
-
 # Connection pool settings for storage backend
 storage "raft" {
   path    = "/opt/vault/data"
@@ -898,11 +896,6 @@ storage "raft" {
   trailing_logs      = 10000
 }
 
-# Cache settings
-cache {
-  use_auto_auth_token = true
-}
-
 # Listener performance settings
 listener "tcp" {
   address       = "0.0.0.0:8200"
@@ -911,10 +904,12 @@ listener "tcp" {
 
   # TLS performance settings
   tls_min_version = "tls12"
-  tls_prefer_server_cipher_suites = true
 
   # HTTP settings
   max_request_duration = "90s"
+
+  # Increase maximum request size for large secrets (32MB)
+  max_request_size = 33554432
 }
 
 # Telemetry for performance monitoring
