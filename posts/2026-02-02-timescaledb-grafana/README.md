@@ -355,7 +355,11 @@ SELECT
     chunk_name,
     before_compression_total_bytes,
     after_compression_total_bytes,
-    compression_ratio
+    ROUND(
+        before_compression_total_bytes::numeric
+        / NULLIF(after_compression_total_bytes, 0),
+        2
+    ) AS compression_ratio
 FROM chunk_compression_stats('metrics');
 ```
 
@@ -607,14 +611,17 @@ LIMIT 10;
 
 -- Check chunk sizes
 SELECT
-    hypertable_name,
-    chunk_name,
-    range_start,
-    range_end,
-    pg_size_pretty(total_bytes) AS size
-FROM timescaledb_information.chunks
-WHERE hypertable_name = 'metrics'
-ORDER BY range_start DESC;
+    c.hypertable_name,
+    c.chunk_name,
+    c.range_start,
+    c.range_end,
+    pg_size_pretty(cds.total_bytes) AS size
+FROM timescaledb_information.chunks c
+JOIN chunks_detailed_size('metrics') cds
+    ON cds.chunk_schema = c.chunk_schema
+   AND cds.chunk_name = c.chunk_name
+WHERE c.hypertable_name = 'metrics'
+ORDER BY c.range_start DESC;
 ```
 
 ### Memory Issues
