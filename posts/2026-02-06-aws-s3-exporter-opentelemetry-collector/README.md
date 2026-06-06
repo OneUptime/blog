@@ -12,7 +12,7 @@ The OpenTelemetry Collector provides a powerful way to collect, process, and exp
 
 The AWS S3 exporter is part of the OpenTelemetry Collector Contrib distribution. It writes telemetry data to Amazon S3 buckets in various formats, making it ideal for archival, compliance, and data lake scenarios. This exporter supports all three telemetry signals: traces, metrics, and logs.
 
-The exporter batches data and uploads it to S3 at configurable intervals, optimizing for both cost and performance. Each batch is written as a separate object in your S3 bucket, organized by timestamp and signal type.
+The exporter writes each exported batch as a separate object in your S3 bucket. The object key includes the configured prefix, a time-based partition path, the signal name, and a unique suffix.
 
 ## Architecture Overview
 
@@ -35,7 +35,7 @@ Before configuring the AWS S3 exporter, ensure you have:
 - An AWS account with appropriate permissions
 - An S3 bucket created for storing telemetry data
 - AWS credentials configured (IAM role, access keys, or instance profile)
-- OpenTelemetry Collector Contrib installed (version 0.80.0 or later)
+- OpenTelemetry Collector Contrib installed
 
 ## IAM Permissions Required
 
@@ -48,14 +48,10 @@ Your AWS credentials must have the following S3 permissions:
     {
       "Effect": "Allow",
       "Action": [
-        "s3:PutObject",
-        "s3:PutObjectAcl",
-        "s3:GetObject",
-        "s3:ListBucket"
+        "s3:PutObject"
       ],
       "Resource": [
-        "arn:aws:s3:::your-telemetry-bucket/*",
-        "arn:aws:s3:::your-telemetry-bucket"
+        "arn:aws:s3:::your-telemetry-bucket/*"
       ]
     }
   ]
@@ -85,20 +81,21 @@ processors:
 
 exporters:
   awss3:
-    # S3 bucket name for storing telemetry data
-    s3_bucket: "my-telemetry-bucket"
+    s3uploader:
+      # AWS region where the bucket is located
+      region: "us-east-1"
 
-    # AWS region where the bucket is located
-    region: "us-east-1"
+      # S3 bucket name for storing telemetry data
+      s3_bucket: "my-telemetry-bucket"
 
-    # S3 key prefix for organizing data
-    s3_prefix: "otel-data"
+      # S3 key prefix for organizing data
+      s3_prefix: "otel-data"
 
-    # Data encoding format (json, proto, or otlp_json)
-    encoding: "otlp_json"
+      # Compression algorithm (none, gzip, or zstd)
+      compression: "gzip"
 
-    # Compression algorithm (none, gzip, or zstd)
-    compression: "gzip"
+    # Data marshaling format (otlp_json or otlp_proto)
+    marshaler: "otlp_json"
 
 service:
   pipelines:
@@ -125,35 +122,30 @@ For production environments, you'll want to customize additional parameters:
 ```yaml
 exporters:
   awss3:
-    s3_bucket: "production-telemetry-bucket"
-    region: "us-west-2"
-    s3_prefix: "telemetry/year={{ .Year }}/month={{ .Month }}/day={{ .Day }}"
+    s3uploader:
+      s3_bucket: "production-telemetry-bucket"
+      region: "us-west-2"
+      s3_prefix: "telemetry"
 
-    # Partition data by time for easier querying
-    s3_partition: "minute"
+      # Partition data by time for easier querying
+      s3_partition_format: "year=%Y/month=%m/day=%d/hour=%H/minute=%M"
+      s3_partition_timezone: "UTC"
 
-    # File format for stored data
-    encoding: "otlp_json"
-    compression: "gzip"
+      # Compression for stored objects
+      compression: "gzip"
 
-    # AWS credentials configuration
-    aws_auth:
-      # Use IAM role (recommended for EC2/ECS)
+      # Use IAM role when the collector should assume a role
       role_arn: "arn:aws:iam::123456789012:role/OtelCollectorRole"
 
-      # Or use access keys (not recommended for production)
-      # access_key_id: "${AWS_ACCESS_KEY_ID}"
-      # secret_access_key: "${AWS_SECRET_ACCESS_KEY}"
+      # S3 storage class for cost optimization
+      storage_class: "STANDARD_IA"
 
-    # S3 storage class for cost optimization
-    s3_storage_class: "STANDARD_IA"
+      # S3 client retry configuration
+      retry_mode: "standard"
+      retry_max_attempts: 5
+      retry_max_backoff: 30s
 
-    # Server-side encryption
-    s3_encryption:
-      type: "aws:kms"
-      kms_key_id: "arn:aws:kms:us-west-2:123456789012:key/abcd1234"
-
-    # Batch configuration
+    # File format for stored data
     marshaler: "otlp_json"
 
     # Timeout for S3 operations
@@ -169,44 +161,42 @@ exporters:
 
 ## Data Partitioning Strategies
 
-Partitioning your data effectively is crucial for query performance and cost management. The S3 exporter supports time-based partitioning using Go template syntax:
+Partitioning your data effectively is crucial for query performance and cost management. The S3 exporter supports time-based partitioning using `strftime` formatting:
 
 ```yaml
 exporters:
   awss3:
-    s3_bucket: "telemetry-data"
-    # Partition by signal type, date, and hour
-    s3_prefix: "{{ .SignalType }}/year={{ .Year }}/month={{ printf \"%02d\" .Month }}/day={{ printf \"%02d\" .Day }}/hour={{ printf \"%02d\" .Hour }}"
-    s3_partition: "hour"
+    s3uploader:
+      s3_bucket: "telemetry-data"
+      region: "us-east-1"
+      # Partition by prefix, date, and hour
+      s3_prefix: "telemetry"
+      s3_partition_format: "year=%Y/month=%m/day=%d/hour=%H"
+      file_prefix: "collector-"
 ```
 
 This creates a structure like:
 ```text
 s3://telemetry-data/
-├── traces/
-│   └── year=2026/
-│       └── month=02/
-│           └── day=06/
-│               └── hour=14/
-│                   └── data-123456789.json.gz
-├── metrics/
-│   └── year=2026/
-│       └── month=02/
-│           └── day=06/
-└── logs/
+└── telemetry/
     └── year=2026/
         └── month=02/
             └── day=06/
+                └── hour=14/
+                    ├── collector-traces_123456789.json.gz
+                    ├── collector-metrics_123456789.json.gz
+                    └── collector-logs_123456789.json.gz
 ```
 
-## Encoding and Compression Options
+## Marshaler and Compression Options
 
-Choose the right encoding and compression for your use case:
+Choose the right marshaler and compression for your use case:
 
-**Encoding Options:**
+**Marshaler Options:**
 - `otlp_json`: OpenTelemetry Protocol in JSON format (human-readable, good for ad-hoc analysis)
 - `otlp_proto`: OpenTelemetry Protocol in Protocol Buffers format (compact, efficient)
-- `json`: Standard JSON format (widely compatible)
+- `sumo_ic`: Sumo Logic Installed Collector archive format for logs
+- `body`: Log body as a string, for logs only
 
 **Compression Options:**
 - `none`: No compression (fastest, largest files)
@@ -218,8 +208,11 @@ For most use cases, `otlp_json` with `gzip` compression provides a good balance:
 ```yaml
 exporters:
   awss3:
-    encoding: "otlp_json"
-    compression: "gzip"
+    marshaler: "otlp_json"
+    s3uploader:
+      region: "us-east-1"
+      s3_bucket: "telemetry-data"
+      compression: "gzip"
 ```
 
 ## Cost Optimization Strategies
@@ -231,7 +224,10 @@ Storing telemetry data in S3 can become expensive. Here are strategies to optimi
 ```yaml
 exporters:
   awss3:
-    s3_storage_class: "INTELLIGENT_TIERING"  # Automatically moves data between access tiers
+    s3uploader:
+      region: "us-east-1"
+      s3_bucket: "telemetry-data"
+      storage_class: "INTELLIGENT_TIERING"  # Automatically moves data between access tiers
 ```
 
 **2. Configure Lifecycle Policies:**
@@ -278,22 +274,18 @@ processors:
 
 Secure your telemetry data with these practices:
 
-**1. Enable Encryption at Rest:**
+**1. Enable Encryption at Rest on the Bucket:**
 
-```yaml
-exporters:
-  awss3:
-    s3_encryption:
-      type: "aws:kms"
-      kms_key_id: "arn:aws:kms:us-west-2:123456789012:key/your-key-id"
-```
+Configure default server-side encryption on the S3 bucket, for example SSE-S3 or SSE-KMS. The exporter does not expose a separate `s3_encryption` configuration block.
 
 **2. Use IAM Roles Instead of Access Keys:**
 
 ```yaml
 exporters:
   awss3:
-    aws_auth:
+    s3uploader:
+      region: "us-west-2"
+      s3_bucket: "telemetry-data"
       role_arn: "arn:aws:iam::123456789012:role/OtelCollectorRole"
 ```
 
@@ -328,34 +320,43 @@ Restrict access to your telemetry bucket:
 
 ## Querying S3 Data with Amazon Athena
 
-Once your data is in S3, you can query it using Amazon Athena:
+Once your data is in S3, you can query it using Amazon Athena. When you use `otlp_json`, the files contain OTLP JSON objects, so the table schema must match the nested OTLP structure or you should transform the data to a query-friendly format such as Parquet before running broad analytical queries:
 
 ```sql
--- Create an external table for trace data
-CREATE EXTERNAL TABLE traces (
-  trace_id string,
-  span_id string,
-  name string,
-  start_time bigint,
-  duration bigint,
-  attributes map<string,string>
+-- Create an external table for trace export objects in OTLP JSON form
+CREATE EXTERNAL TABLE trace_exports (
+  resourceSpans array<struct<
+    scopeSpans:array<struct<
+      spans:array<struct<
+        traceId:string,
+        spanId:string,
+        name:string,
+        startTimeUnixNano:string,
+        endTimeUnixNano:string
+      >>
+    >>
+  >>
 )
 PARTITIONED BY (
   year int,
   month int,
-  day int
+  day int,
+  hour int
 )
 ROW FORMAT SERDE 'org.openx.data.jsonserde.JsonSerDe'
-LOCATION 's3://telemetry-bucket/traces/';
+LOCATION 's3://telemetry-bucket/telemetry/';
 
 -- Add partitions
-MSCK REPAIR TABLE traces;
+MSCK REPAIR TABLE trace_exports;
 
--- Query traces
-SELECT name, count(*) as span_count
-FROM traces
-WHERE year = 2026 AND month = 2 AND day = 6
-GROUP BY name
+-- Query span names from nested OTLP JSON
+SELECT span.name, count(*) as span_count
+FROM trace_exports
+CROSS JOIN UNNEST(resourceSpans) AS t(resource_span)
+CROSS JOIN UNNEST(resource_span.scopeSpans) AS t(scope_span)
+CROSS JOIN UNNEST(scope_span.spans) AS t(span)
+WHERE year = 2026 AND month = 2 AND day = 6 AND hour = 14
+GROUP BY span.name
 ORDER BY span_count DESC
 LIMIT 10;
 ```
@@ -416,21 +417,22 @@ processors:
 
 exporters:
   awss3:
-    s3_bucket: "prod-observability-data"
-    region: "us-west-2"
-    s3_prefix: "otel/{{ .SignalType }}/env=production/year={{ .Year }}/month={{ printf \"%02d\" .Month }}/day={{ printf \"%02d\" .Day }}"
-    s3_partition: "hour"
-    encoding: "otlp_json"
-    compression: "gzip"
-    s3_storage_class: "INTELLIGENT_TIERING"
-
-    aws_auth:
+    s3uploader:
+      s3_bucket: "prod-observability-data"
+      region: "us-west-2"
+      s3_base_prefix: "otel"
+      s3_prefix: "env=production"
+      s3_partition_format: "year=%Y/month=%m/day=%d/hour=%H"
+      s3_partition_timezone: "UTC"
+      file_prefix: "collector-"
+      compression: "gzip"
+      storage_class: "INTELLIGENT_TIERING"
       role_arn: "arn:aws:iam::123456789012:role/OtelCollectorS3Role"
+      retry_mode: "standard"
+      retry_max_attempts: 5
+      retry_max_backoff: 30s
 
-    s3_encryption:
-      type: "aws:kms"
-      kms_key_id: "arn:aws:kms:us-west-2:123456789012:key/abcd1234"
-
+    marshaler: "otlp_json"
     timeout: 60s
     retry_on_failure:
       enabled: true
