@@ -6,11 +6,11 @@ Tags: OpenTelemetry, Profiling, Distributed Tracing, Root Cause Analysis
 
 Description: Correlate OpenTelemetry profiling data with distributed traces to pinpoint exact code paths causing latency in your production applications.
 
-Distributed tracing tells you which service is slow. Profiling tells you which function is slow. When you connect the two, you get the complete picture: a slow trace leads you directly to the exact line of code responsible. This is the promise of OpenTelemetry's unified profiling signal, and it works today.
+Distributed tracing tells you which service is slow. Profiling tells you which function is slow. When you connect the two, you get the complete picture: a slow trace leads you directly to the exact line of code responsible. This is the promise of OpenTelemetry's unified profiling signal. The profiles signal is still experimental, but it can be used today with compatible profilers, collectors, and backends.
 
 ## The Correlation Model
 
-OpenTelemetry connects profiles to traces through shared context. When a profiling sample is captured, the profiler checks if there is an active span on the current thread. If there is, it attaches the trace ID and span ID to the profile sample. Later, when you are investigating a slow trace, you can pull up the associated profile samples to see exactly what the code was doing during that span.
+OpenTelemetry connects profiles to traces through shared context. When a profiler or profiling integration captures request context, it can attach the trace ID and span ID to the profile sample. Later, when you are investigating a slow trace, you can pull up the associated profile samples to see what the code was doing during that span.
 
 The connection works through these shared fields:
 
@@ -20,44 +20,39 @@ The connection works through these shared fields:
 
 ## Setting Up Trace-Profile Correlation in Java
 
-For Java applications using the OpenTelemetry Java agent, enable profiling with trace correlation:
+For Java applications, use the OpenTelemetry Java agent for trace context and a compatible profiler, such as a JFR-based profiler or the OpenTelemetry eBPF profiler on Linux, to collect profiles. The Java agent itself does not expose a standard `otel.profiling.enabled` switch for collecting profiles:
 
 ```bash
-# Start your Java application with the OTel agent and profiling enabled
+# Start your Java application with the OTel agent for tracing
 
 java \
   -javaagent:/opt/opentelemetry-javaagent.jar \
   -Dotel.exporter.otlp.endpoint=http://localhost:4317 \
   -Dotel.service.name=payment-service \
-  -Dotel.instrumentation.common.experimental.controller-telemetry.enabled=true \
-  -Dotel.profiling.enabled=true \
-  -Dotel.profiling.sampling.interval=10ms \
   -jar payment-service.jar
 ```
 
-The Java agent automatically correlates profile samples with active spans. When a sample is taken during an active span, the trace context is included in the profile data.
+Run your profiler alongside this instrumentation and configure it to export OTLP profiles to a backend that supports profile-to-trace correlation. Whether trace and span IDs are attached to Java profile samples depends on the profiler and backend integration you use.
 
 ## Setting Up Trace-Profile Correlation in Go
 
-For Go applications, use the OpenTelemetry Go SDK with the profiling bridge:
+For Go applications, use the OpenTelemetry Go SDK for tracing and add the active span context to pprof labels. A profiler or backend that reads those labels can then correlate pprof data with traces:
 
 ```go
 package main
 
 import (
     "context"
-    "log"
     "net/http"
     "runtime/pprof"
-    "time"
 
     "go.opentelemetry.io/otel"
-    "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
-    "go.opentelemetry.io/otel/sdk/trace"
     "go.opentelemetry.io/otel/attribute"
+    "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+    sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
 
-func initTracer() (*trace.TracerProvider, error) {
+func initTracer() (*sdktrace.TracerProvider, error) {
     exporter, err := otlptracegrpc.New(
         context.Background(),
         otlptracegrpc.WithEndpoint("localhost:4317"),
@@ -67,9 +62,9 @@ func initTracer() (*trace.TracerProvider, error) {
         return nil, err
     }
 
-    tp := trace.NewTracerProvider(
-        trace.WithBatcher(exporter),
-        trace.WithSampler(trace.AlwaysSample()),
+    tp := sdktrace.NewTracerProvider(
+        sdktrace.WithBatcher(exporter),
+        sdktrace.WithSampler(sdktrace.AlwaysSample()),
     )
 
     otel.SetTracerProvider(tp)
@@ -142,6 +137,8 @@ for sample in profile_data["samples"]:
 
 Configure your collector to handle both traces and profiles, maintaining the correlation:
 
+Profiles support is still gated in the Collector, so start the Collector with `--feature-gates=service.profilesSupport` when using a profile pipeline.
+
 ```yaml
 # collector-config.yaml
 receivers:
@@ -164,7 +161,7 @@ exporters:
   otlp/traces:
     endpoint: tracing-backend.internal:4317
   otlphttp/profiles:
-    endpoint: https://profiling-backend.internal/v1/profiles
+    endpoint: https://profiling-backend.internal
 
 service:
   pipelines:
