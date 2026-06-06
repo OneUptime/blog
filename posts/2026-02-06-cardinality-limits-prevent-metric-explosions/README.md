@@ -50,7 +50,7 @@ meter = metrics.get_meter(__name__)
 request_counter = meter.create_counter("http.requests")
 
 # Recording with user_id creates one time series per user
-def handle_request(user_id, endpoint, method):
+def handle_request(user_id, endpoint, method, status_code):
     request_counter.add(1, {
         "user.id": user_id,        # High cardinality: millions of users
         "endpoint": endpoint,       # Medium cardinality: hundreds of endpoints
@@ -75,12 +75,14 @@ Implement cardinality protection directly in the OpenTelemetry SDK using Views.
 ```python
 # cardinality_limits.py
 from opentelemetry import metrics
-from opentelemetry.sdk.metrics import MeterProvider
-from opentelemetry.sdk.metrics.view import View
-from opentelemetry.sdk.metrics.aggregation import (
-    DefaultAggregation,
-    DropAggregation,
+from opentelemetry.sdk.metrics import Counter, MeterProvider
+from opentelemetry.sdk.metrics.export import (
+    ConsoleMetricExporter,
+    PeriodicExportingMetricReader,
 )
+from opentelemetry.sdk.metrics.view import View
+
+reader = PeriodicExportingMetricReader(ConsoleMetricExporter())
 
 # Define view with attribute limits
 request_view = View(
@@ -99,7 +101,7 @@ meter_provider = MeterProvider(
 
 metrics.set_meter_provider(meter_provider)
 
-# Now user_id is automatically dropped
+# Now user_id is dropped from the metric stream
 meter = metrics.get_meter(__name__)
 request_counter = meter.create_counter("http.requests")
 
@@ -111,6 +113,8 @@ request_counter.add(1, {
 })
 ```
 
+Note: attributes removed by a View are removed from the metric stream identity, but they may still appear on exemplars unless exemplar sampling is disabled or customized.
+
 ### Setting Cardinality Limits in Go
 
 ```go
@@ -119,11 +123,11 @@ package main
 
 import (
     "context"
+
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/attribute"
-    "go.opentelemetry.io/otel/metric"
-    "go.opentelemetry.io/otel/sdk/metric"
-    "go.opentelemetry.io/otel/sdk/metric/metricdata"
+    otelmetric "go.opentelemetry.io/otel/metric"
+    sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 )
 
 // CardinalityLimitFilter filters high-cardinality attributes
@@ -151,25 +155,30 @@ func (f *CardinalityLimitFilter) Filter(attrs []attribute.KeyValue) []attribute.
 }
 
 // View configuration with cardinality limits
-func setupMeterProvider() *metric.MeterProvider {
+func setupMeterProvider() *sdkmetric.MeterProvider {
+    reader := sdkmetric.NewManualReader()
+
     // Define allowed attributes for each metric
-    requestView := metric.NewView(
-        metric.Instrument{
+    requestView := sdkmetric.NewView(
+        sdkmetric.Instrument{
             Name: "http.requests",
+            Kind: sdkmetric.InstrumentKindCounter,
         },
-        metric.Stream{
+        sdkmetric.Stream{
             // Limit to specific attributes
-            AttributeFilter: attribute.NewSet(
-                attribute.String("method", ""),
-                attribute.String("endpoint", ""),
-                attribute.String("status_code", ""),
-            ).Filter,
+            AttributeFilter: attribute.NewAllowKeysFilter(
+                "method",
+                "endpoint",
+                "status_code",
+            ),
         },
     )
 
-    return metric.NewMeterProvider(
-        metric.WithView(requestView),
-        metric.WithReader(reader),
+    return sdkmetric.NewMeterProvider(
+        sdkmetric.WithView(requestView),
+        sdkmetric.WithReader(reader),
+        // Hard limit per instrument per collection cycle
+        sdkmetric.WithCardinalityLimit(1000),
     )
 }
 
@@ -182,7 +191,7 @@ func main() {
 
     // Record with multiple attributes
     counter.Add(context.Background(), 1,
-        metric.WithAttributes(
+        otelmetric.WithAttributes(
             attribute.String("user.id", "user-12345"),   // DROPPED
             attribute.String("endpoint", "/api/users"),   // KEPT
             attribute.String("method", "GET"),            // KEPT
@@ -191,6 +200,8 @@ func main() {
     )
 }
 ```
+
+Note: attributes removed by a View are removed from the metric stream identity, but they may still appear on exemplars unless exemplar sampling is disabled or customized.
 
 ### Setting Cardinality Limits in Java
 
@@ -205,7 +216,6 @@ import io.opentelemetry.api.metrics.LongCounter;
 import io.opentelemetry.sdk.OpenTelemetrySdk;
 import io.opentelemetry.sdk.metrics.SdkMeterProvider;
 import io.opentelemetry.sdk.metrics.View;
-import io.opentelemetry.sdk.metrics.Aggregation;
 import io.opentelemetry.sdk.metrics.InstrumentSelector;
 import io.opentelemetry.sdk.metrics.InstrumentType;
 
@@ -216,12 +226,12 @@ public class CardinalityLimits {
         View requestView = View.builder()
             .setName("http.requests")
             // Only include specific attributes
-            .setAttributeFilter(attributeKey -> {
-                String key = attributeKey.getKey();
+            .setAttributeFilter(key -> {
                 return key.equals("method") ||
                        key.equals("endpoint") ||
                        key.equals("status_code");
             })
+            .setCardinalityLimit(1000)
             .build();
 
         // Register view with meter provider
@@ -257,6 +267,8 @@ public class CardinalityLimits {
     }
 }
 ```
+
+Note: attributes removed by a View are removed from the metric stream identity, but they may still appear on exemplars unless exemplar sampling is disabled or customized.
 
 ## Collector-Level Cardinality Limits
 
@@ -306,50 +318,38 @@ service:
 
 ### Advanced Cardinality Management
 
-Use the filter processor with cardinality tracking:
+Use the cardinality guardian processor for dynamic cardinality protection, and combine it with transform rules for known route patterns:
 
 ```yaml
 processors:
-  # Filter processor with cardinality limits
-  filter:
-    metrics:
-      datapoint:
-        # Drop metrics with too many unique attribute combinations
-        - 'attributes["cardinality.estimate"] > 10000'
+  # Detect labels with abnormal cardinality growth
+  cardinality_guardian:
+    max_cardinality_delta_per_epoch: 100
+    epoch_duration_seconds: 300
+    enforcement_mode: overflow_attribute
+    never_drop_labels:
+      - service.name
+      - method
+      - status_code
+    metric_overrides:
+      http.requests: 500
+    top_offenders_count: 10
 
-  # Transform processor to estimate cardinality
+  # Transform processor to normalize known high-cardinality patterns
   transform:
+    error_mode: ignore
     metric_statements:
-      # Count unique combinations per metric
       - context: datapoint
         statements:
-          # Add cardinality estimate based on attribute count
-          - set(attributes["cardinality.estimate"],
-                Int(attributes["method.count"]) *
-                Int(attributes["endpoint.count"]) *
-                Int(attributes["status.count"]))
+          # Replace /users/123 with /users/{id}
+          - replace_pattern(attributes["endpoint"], "^/users/[0-9]+$", "/users/{id}")
+          # Replace /orders/550e8400-e29b-41d4-a716-446655440000 with /orders/{uuid}
+          - replace_pattern(attributes["endpoint"], "^/orders/[a-f0-9-]+$", "/orders/{uuid}")
 
-      # Drop metrics exceeding limits
+      # Aggregate after changing or removing attributes
       - context: metric
         statements:
-          - drop() where attributes["cardinality.estimate"] > 10000
-
-  # Aggregate high-cardinality attributes
-  metricstransform:
-    transforms:
-      # Group dynamic routes
-      - include: http.requests
-        match_type: regexp
-        action: update
-        operations:
-          - action: update_label
-            label: endpoint
-            value_actions:
-              # Replace /users/123 with /users/{id}
-              - value: /users/\d+
-                new_value: /users/{id}
-              - value: /orders/[a-f0-9-]+
-                new_value: /orders/{uuid}
+          - aggregate_on_attributes("sum", ["method", "endpoint", "status_code"]) where metric.name == "http.requests"
 ```
 
 ## Implementing Cardinality Tracking
