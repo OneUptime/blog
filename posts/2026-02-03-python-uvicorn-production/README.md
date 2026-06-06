@@ -132,20 +132,26 @@ graph LR
 
 ### Basic Gunicorn + Uvicorn Setup
 
-Install Gunicorn and run Uvicorn workers under its supervision.
+Install Gunicorn and run Uvicorn workers under its supervision. As of Uvicorn 0.30, the
+`uvicorn.workers` module is deprecated in favor of the standalone `uvicorn-worker` package,
+which provides `uvicorn_worker.UvicornWorker`. The legacy import still works (with a
+DeprecationWarning) and is shown alongside the new path below.
 
 ```bash
-# Install gunicorn
-pip install gunicorn
+# Install gunicorn and the standalone uvicorn worker
+pip install gunicorn uvicorn-worker
 
-# Run with UvicornWorker class
+# Run with the recommended UvicornWorker class
 gunicorn main:app \
     --workers 4 \
-    --worker-class uvicorn.workers.UvicornWorker \
+    --worker-class uvicorn_worker.UvicornWorker \
     --bind 0.0.0.0:8000 \
     --timeout 120 \
     --keep-alive 5 \
     --graceful-timeout 30
+
+# Legacy (deprecated): uvicorn.workers.UvicornWorker still works in current Uvicorn releases
+# gunicorn main:app --worker-class uvicorn.workers.UvicornWorker ...
 ```
 
 ### Production Gunicorn Configuration
@@ -164,7 +170,7 @@ backlog = 2048  # Maximum pending connections queue
 
 # Worker processes
 workers = int(os.getenv("WORKERS", (2 * multiprocessing.cpu_count()) + 1))
-worker_class = "uvicorn.workers.UvicornWorker"  # ASGI worker
+worker_class = "uvicorn_worker.UvicornWorker"  # ASGI worker (install: pip install uvicorn-worker)
 worker_connections = 1000  # Max simultaneous clients per worker
 max_requests = 10000  # Restart worker after this many requests
 max_requests_jitter = 1000  # Randomize max_requests to avoid thundering herd
@@ -264,35 +270,23 @@ Configure Uvicorn to handle HTTPS connections directly.
 import ssl
 import uvicorn
 
-# Create SSL context with secure settings
-ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-
-# Load certificate chain
-ssl_context.load_cert_chain(
-    certfile="/etc/ssl/certs/server.crt",  # Your certificate
-    keyfile="/etc/ssl/private/server.key",  # Your private key
-    password=None  # Key password if encrypted
-)
-
-# Security settings
-ssl_context.minimum_version = ssl.TLSVersion.TLSv1_2  # Minimum TLS 1.2
-ssl_context.set_ciphers(  # Modern cipher suite
-    "ECDHE+AESGCM:DHE+AESGCM:ECDHE+CHACHA20:DHE+CHACHA20"
-)
-
-# Optional: Require client certificates for mutual TLS
-# ssl_context.verify_mode = ssl.CERT_REQUIRED
-# ssl_context.load_verify_locations("/etc/ssl/certs/ca-bundle.crt")
-
 if __name__ == "__main__":
+    # Uvicorn builds its own SSLContext internally from the ssl_* arguments below.
+    # ssl_ciphers is forwarded to SSLContext.set_ciphers() (TLS 1.2 and below);
+    # TLS 1.3 cipher suites are negotiated automatically and cannot be configured here.
     uvicorn.run(
         "app.main:app",
         host="0.0.0.0",
         port=443,
         ssl_keyfile="/etc/ssl/private/server.key",
         ssl_certfile="/etc/ssl/certs/server.crt",
-        ssl_ca_certs="/etc/ssl/certs/ca-bundle.crt",  # For client cert verification
-        workers=4
+        ssl_keyfile_password=None,  # Set if your private key is encrypted
+        ssl_version=ssl.PROTOCOL_TLS_SERVER,
+        ssl_ciphers="ECDHE+AESGCM:DHE+AESGCM:ECDHE+CHACHA20:DHE+CHACHA20",
+        # For mutual TLS (client certificate verification), set:
+        # ssl_cert_reqs=ssl.CERT_REQUIRED,
+        # ssl_ca_certs="/etc/ssl/certs/ca-bundle.crt",
+        workers=4,
     )
 ```
 
@@ -406,7 +400,9 @@ LOGGING_CONFIG = {
             "fmt": '%(levelprefix)s %(client_addr)s - "%(request_line)s" %(status_code)s',
         },
         "json": {
-            "()": "pythonjsonlogger.jsonlogger.JsonFormatter",
+            # python-json-logger 3.x: use pythonjsonlogger.json.JsonFormatter
+            # (the legacy pythonjsonlogger.jsonlogger.JsonFormatter path is deprecated)
+            "()": "pythonjsonlogger.json.JsonFormatter",
             "fmt": "%(asctime)s %(levelname)s %(name)s %(message)s",
         },
     },
@@ -464,7 +460,7 @@ For production environments, JSON logging enables better parsing and analysis.
 import logging
 import json
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict
 
 class JSONFormatter(logging.Formatter):
@@ -477,7 +473,7 @@ class JSONFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         # Build structured log record
         log_data: Dict[str, Any] = {
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "level": record.levelname.lower(),
             "logger": record.name,
             "message": record.getMessage(),
@@ -680,10 +676,10 @@ config = uvicorn.Config(
 
     # Timeout settings
     timeout_keep_alive=5,  # Keep-alive timeout in seconds
-    timeout_notify=30,  # Graceful shutdown timeout
+    timeout_graceful_shutdown=30,  # Seconds to wait for connections to close during shutdown
 
-    # Header limits
-    h11_max_incomplete_event_size=16384,  # Max header size
+    # Header limits (only effective with the h11 HTTP implementation, not httptools)
+    h11_max_incomplete_event_size=16384,  # Max buffer for incomplete HTTP events (e.g. oversized headers)
 
     # Disable access logging for performance
     # Handle access logging in your app instead
@@ -710,7 +706,7 @@ import multiprocessing
 
 bind = "0.0.0.0:8000"
 workers = (2 * multiprocessing.cpu_count()) + 1
-worker_class = "uvicorn.workers.UvicornWorker"
+worker_class = "uvicorn_worker.UvicornWorker"  # install: pip install uvicorn-worker
 
 # Preload app for copy-on-write memory sharing
 # Workers share read-only memory pages from the master process
@@ -805,9 +801,9 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"
 
-# Run with Gunicorn + Uvicorn workers
+# Run with Gunicorn + Uvicorn workers (install uvicorn-worker via requirements.txt)
 CMD ["gunicorn", "app.main:app", \
-     "--worker-class", "uvicorn.workers.UvicornWorker", \
+     "--worker-class", "uvicorn_worker.UvicornWorker", \
      "--bind", "0.0.0.0:8000", \
      "--workers", "4", \
      "--timeout", "120", \
@@ -1021,9 +1017,9 @@ Environment="PYTHONPATH=/var/www/myapp"
 Environment="WORKERS=4"
 Environment="LOG_LEVEL=info"
 
-# Run Gunicorn with Uvicorn workers
+# Run Gunicorn with Uvicorn workers (install: pip install uvicorn-worker)
 ExecStart=/var/www/myapp/venv/bin/gunicorn app.main:app \
-    --worker-class uvicorn.workers.UvicornWorker \
+    --worker-class uvicorn_worker.UvicornWorker \
     --bind unix:/var/run/uvicorn/uvicorn.sock \
     --workers ${WORKERS} \
     --timeout 120 \
@@ -1118,33 +1114,33 @@ Implement health checks for load balancers and orchestrators.
 ```python
 # health.py
 # Health check endpoints for production monitoring
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Response, status
-from datetime import datetime
+from datetime import datetime, timezone
 import asyncio
 
-app = FastAPI()
-
 # Track application state
-startup_time = datetime.utcnow()
+startup_time = datetime.now(timezone.utc)
 ready = False
 shutting_down = False
 
-@app.on_event("startup")
-async def startup():
-    global ready
-    # Initialize connections, warm caches, etc.
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan context manager (replaces deprecated @app.on_event handlers)"""
+    global ready, shutting_down
+    # Startup: initialize connections, warm caches, etc.
     await initialize_services()
     ready = True
-
-@app.on_event("shutdown")
-async def shutdown():
-    global shutting_down, ready
+    yield
+    # Shutdown
     shutting_down = True
     ready = False
     # Wait for in-flight requests
     await asyncio.sleep(5)
     # Close connections
     await cleanup_services()
+
+app = FastAPI(lifespan=lifespan)
 
 @app.get("/health")
 async def health_check():
@@ -1154,7 +1150,7 @@ async def health_check():
     """
     return {
         "status": "healthy",
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.now(timezone.utc).isoformat()
     }
 
 @app.get("/ready")
@@ -1185,7 +1181,7 @@ async def readiness_check(response: Response):
 
     return {
         "status": "ready",
-        "uptime_seconds": (datetime.utcnow() - startup_time).total_seconds()
+        "uptime_seconds": (datetime.now(timezone.utc) - startup_time).total_seconds()
     }
 
 @app.get("/metrics")
@@ -1206,7 +1202,7 @@ async def metrics():
 
 ```bash
 # Always use Gunicorn in production for worker management
-gunicorn app:app --worker-class uvicorn.workers.UvicornWorker --workers 4
+gunicorn app:app --worker-class uvicorn_worker.UvicornWorker --workers 4
 ```
 
 ### 2. Calculate Workers Based on Workload
