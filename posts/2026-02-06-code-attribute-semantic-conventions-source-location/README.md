@@ -8,7 +8,7 @@ Description: Learn how to use OpenTelemetry code attribute semantic conventions 
 
 ---
 
-When a production alert fires at 3 AM, the first question is always "where in the code is this happening?" Trace spans and log entries tell you what happened, but without source location information you are left grep-searching through the codebase trying to find the relevant function. OpenTelemetry's code attribute semantic conventions solve this by attaching source file paths, function names, line numbers, and namespace information directly to your telemetry. This lets you jump straight from an alert or trace to the exact line of code responsible.
+When a production alert fires at 3 AM, the first question is always "where in the code is this happening?" Trace spans and log entries tell you what happened, but without source location information you are left grep-searching through the codebase trying to find the relevant function. OpenTelemetry's code attribute semantic conventions solve this by attaching source file paths, fully qualified function names, and line numbers directly to your telemetry. This lets you jump straight from an alert or trace to the exact line of code responsible.
 
 This guide covers the code attribute conventions, shows practical instrumentation patterns across languages, and discusses when and how to apply them effectively.
 
@@ -19,11 +19,10 @@ The code attributes live under the `code` namespace in the OpenTelemetry semanti
 ```text
 # Code semantic convention attributes
 
-code.function.name    - The name of the function or method
-code.namespace        - The namespace or fully qualified class name
-code.filepath         - The source file path
-code.lineno           - The line number in the source file
-code.column           - The column number in the source file
+code.function.name    - The fully qualified name of the function or method
+code.file.path        - The source file path
+code.line.number      - The line number in the source file
+code.column.number    - The column number in the source file
 code.stacktrace       - A full stacktrace as a string
 ```
 
@@ -52,23 +51,25 @@ def add_code_attributes(span: trace.Span, stack_level: int = 1):
         stack_level: How many frames to walk up (1 = caller of this function)
     """
     # Get the caller's stack frame
-    frame = inspect.stack()[stack_level]
+    frame_info = inspect.stack()[stack_level]
+    frame = frame_info.frame
 
     # Set the standard code attributes
-    span.set_attribute("code.function.name", frame.function)
-    span.set_attribute("code.filepath", frame.filename)
-    span.set_attribute("code.lineno", frame.lineno)
+    span.set_attribute("code.file.path", frame_info.filename)
+    span.set_attribute("code.line.number", frame_info.lineno)
 
-    # If inside a class, capture the namespace
-    if "self" in frame[0].f_locals:
-        cls = frame[0].f_locals["self"].__class__
-        span.set_attribute("code.namespace", f"{cls.__module__}.{cls.__name__}")
-    elif "cls" in frame[0].f_locals:
-        cls = frame[0].f_locals["cls"]
-        span.set_attribute("code.namespace", f"{cls.__module__}.{cls.__name__}")
+    # Use a fully qualified function name when available
+    if "self" in frame.f_locals:
+        cls = frame.f_locals["self"].__class__
+        function_name = f"{cls.__module__}.{cls.__name__}.{frame_info.function}"
+    elif "cls" in frame.f_locals:
+        cls = frame.f_locals["cls"]
+        function_name = f"{cls.__module__}.{cls.__name__}.{frame_info.function}"
     else:
-        # For module-level functions, use the module name
-        span.set_attribute("code.namespace", frame[0].f_globals.get("__name__", ""))
+        module_name = frame.f_globals.get("__name__", "")
+        function_name = f"{module_name}.{frame_info.function}" if module_name else frame_info.function
+
+    span.set_attribute("code.function.name", function_name)
 ```
 
 This utility function inspects the call stack to find the caller's file, function name, and line number. Let us see it in action.
@@ -86,14 +87,12 @@ class OrderService:
         """Process an order and return the result."""
         with tracer.start_as_current_span("process_order") as span:
             # Attach source location to this span
-            # stack_level=2 because we are inside a context manager
-            add_code_attributes(span, stack_level=2)
+            add_code_attributes(span)
 
             # This span will now have:
-            #   code.function.name = "process_order"
-            #   code.namespace = "order_service.OrderService"
-            #   code.filepath = "/app/order_service.py"
-            #   code.lineno = 10
+            #   code.function.name = "order_service.OrderService.process_order"
+            #   code.file.path = "/app/order_service.py"
+            #   code.line.number = 10
 
             result = self._validate_items(items)
             self._reserve_inventory(items)
@@ -102,7 +101,7 @@ class OrderService:
     def _validate_items(self, items: list) -> bool:
         """Validate that all items are available."""
         with tracer.start_as_current_span("validate_items") as span:
-            add_code_attributes(span, stack_level=2)
+            add_code_attributes(span)
             # Validation logic here
             return True
 ```
@@ -141,19 +140,12 @@ def traced(span_name: str = None):
                 source_file = inspect.getfile(func)
                 source_lines = inspect.getsourcelines(func)
 
-                span.set_attribute("code.function.name", func.__name__)
-                span.set_attribute("code.filepath", source_file)
-                span.set_attribute("code.lineno", source_lines[1])
-
-                # Determine namespace from the function's qualname
-                if "." in func.__qualname__:
-                    # Method inside a class
-                    namespace = func.__module__ + "." + func.__qualname__.rsplit(".", 1)[0]
-                else:
-                    # Module-level function
-                    namespace = func.__module__
-
-                span.set_attribute("code.namespace", namespace)
+                span.set_attribute(
+                    "code.function.name",
+                    f"{func.__module__}.{func.__qualname__}",
+                )
+                span.set_attribute("code.file.path", source_file)
+                span.set_attribute("code.line.number", source_lines[1])
 
                 return func(*args, **kwargs)
         return wrapper
@@ -166,10 +158,9 @@ class PaymentService:
     def charge_card(self, card_token: str, amount: float) -> dict:
         """Charge a credit card. Span will automatically include code attributes."""
         # The span will have:
-        #   code.function.name = "charge_card"
-        #   code.namespace = "payment_service.PaymentService"
-        #   code.filepath = "/app/payment_service.py"
-        #   code.lineno = <line number of the function definition>
+        #   code.function.name = "payment_service.PaymentService.charge_card"
+        #   code.file.path = "/app/payment_service.py"
+        #   code.line.number = <line number of the function definition>
         return process_payment(card_token, amount)
 
     @traced("payment.refund")
@@ -193,7 +184,6 @@ package tracing
 
 import (
     "runtime"
-    "strings"
 
     "go.opentelemetry.io/otel/attribute"
     "go.opentelemetry.io/otel/trace"
@@ -204,7 +194,7 @@ import (
 // (0 = this function, 1 = caller, 2 = caller's caller).
 func AddCodeAttributes(span trace.Span, skip int) {
     // runtime.Caller returns program counter, file, line, and ok
-    pc, file, line, ok := runtime.Caller(skip + 1)
+    pc, file, line, ok := runtime.Caller(skip + 2)
     if !ok {
         return
     }
@@ -217,22 +207,10 @@ func AddCodeAttributes(span trace.Span, skip int) {
 
     fullName := fn.Name()
 
-    // Split the full function name into namespace and function
-    // Example: "github.com/myorg/myapp/services.OrderService.ProcessOrder"
-    lastDot := strings.LastIndex(fullName, ".")
-    var namespace, funcName string
-    if lastDot >= 0 {
-        namespace = fullName[:lastDot]
-        funcName = fullName[lastDot+1:]
-    } else {
-        funcName = fullName
-    }
-
     span.SetAttributes(
-        attribute.String("code.function.name", funcName),
-        attribute.String("code.namespace", namespace),
-        attribute.String("code.filepath", file),
-        attribute.Int("code.lineno", line),
+        attribute.String("code.function.name", fullName),
+        attribute.String("code.file.path", file),
+        attribute.Int("code.line.number", line),
     )
 }
 ```
@@ -255,7 +233,7 @@ import (
 var orderTracer = otel.Tracer("order-service")
 
 func HandleCreateOrder(w http.ResponseWriter, r *http.Request) {
-    ctx, span := orderTracer.Start(r.Context(), "create_order")
+    _, span := orderTracer.Start(r.Context(), "create_order")
     defer span.End()
 
     // Add code attributes pointing to this function
@@ -316,18 +294,9 @@ export function addCodeAttributes(span: Span, stackLevel: number = 1): void {
   if (!location) return;
 
   span.setAttribute('code.function.name', location.functionName);
-  span.setAttribute('code.filepath', location.filePath);
-  span.setAttribute('code.lineno', location.lineNumber);
-  span.setAttribute('code.column', location.columnNumber);
-
-  // Extract namespace from function name if it contains a dot
-  const lastDot = location.functionName.lastIndexOf('.');
-  if (lastDot >= 0) {
-    span.setAttribute(
-      'code.namespace',
-      location.functionName.substring(0, lastDot)
-    );
-  }
+  span.setAttribute('code.file.path', location.filePath);
+  span.setAttribute('code.line.number', location.lineNumber);
+  span.setAttribute('code.column.number', location.columnNumber);
 }
 ```
 
@@ -340,9 +309,11 @@ Code attributes are especially valuable on exception events. When an error occur
 ```python
 # exception_attrs.py
 # Records exceptions with full code location context.
-# The stacktrace attribute provides complete call chain information.
+# The exception stacktrace attribute provides complete call chain information.
 
 import traceback
+import functools
+import inspect
 from opentelemetry import trace
 
 tracer = trace.get_tracer("my-service", "1.0.0")
@@ -359,28 +330,28 @@ def handle_with_code_context(func):
                 # Record the exception event with code attributes
                 span.set_status(trace.StatusCode.ERROR, str(e))
 
-                # The stacktrace attribute captures the full call chain
-                span.set_attribute(
-                    "code.stacktrace",
-                    traceback.format_exc()
-                )
+                function_name = f"{func.__module__}.{func.__qualname__}"
+                source_file = inspect.getfile(func)
+                line_number = inspect.getsourcelines(func)[1]
 
                 # Also set the specific location where the error was caught
-                span.set_attribute("code.function.name", func.__name__)
-                span.set_attribute("code.filepath", inspect.getfile(func))
-                span.set_attribute("code.lineno", inspect.getsourcelines(func)[1])
+                span.set_attribute("code.function.name", function_name)
+                span.set_attribute("code.file.path", source_file)
+                span.set_attribute("code.line.number", line_number)
 
                 # Record as a span event for structured exception data
                 span.record_exception(e, attributes={
-                    "code.function.name": func.__name__,
-                    "code.filepath": inspect.getfile(func),
+                    "exception.stacktrace": traceback.format_exc(),
+                    "code.function.name": function_name,
+                    "code.file.path": source_file,
+                    "code.line.number": line_number,
                 })
 
                 raise
     return wrapper
 ```
 
-When this exception shows up in your observability backend, you immediately see the full stacktrace, the function name, the file path, and the line number. No more guessing which code path led to the error.
+When this exception shows up in your observability backend, you immediately see the exception stacktrace, the function name, the file path, and the line number. No more guessing which code path led to the error.
 
 ## Integration with Source Code Linking
 
@@ -388,14 +359,14 @@ The real power of code attributes comes when your observability platform can lin
 
 ```mermaid
 graph LR
-    A[Span with code.filepath and code.lineno] --> B[Observability Backend]
+    A[Span with code.file.path and code.line.number] --> B[Observability Backend]
     B --> C[Source Link Template]
     C --> D[GitHub/GitLab Permalink]
 
     C --> |Template| E["https://github.com/org/repo/blob/{commit}/{filepath}#L{lineno}"]
 ```
 
-Configure your backend to generate links using a pattern like `https://github.com/myorg/myrepo/blob/main/{code.filepath}#L{code.lineno}`. When an engineer views a span or error, they get a clickable link that opens the exact file and line in their source repository.
+Configure your backend to generate links using a pattern like `https://github.com/myorg/myrepo/blob/main/{code.file.path}#L{code.line.number}`. When an engineer views a span or error, they get a clickable link that opens the exact file and line in their source repository.
 
 ## Performance Considerations
 
@@ -418,7 +389,7 @@ tracer = trace.get_tracer("my-service", "1.0.0")
 def process_message_batch(messages: list):
     with tracer.start_as_current_span("process_batch") as batch_span:
         # Add code attributes to the batch span (called once)
-        add_code_attributes(batch_span, stack_level=2)
+        add_code_attributes(batch_span)
 
         for msg in messages:
             with tracer.start_as_current_span("process_message") as msg_span:
