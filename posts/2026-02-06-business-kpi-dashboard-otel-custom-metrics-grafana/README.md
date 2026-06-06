@@ -12,7 +12,7 @@ OpenTelemetry is not limited to infrastructure metrics. Its Metrics API lets you
 
 ## Defining Custom Business Metrics
 
-The OpenTelemetry Metrics API provides three instrument types that map well to business KPIs:
+The OpenTelemetry Metrics API provides several instrument types. Three of them map especially well to business KPIs:
 
 - **Counter** - For things you count: orders placed, users signed up, payments processed
 - **UpDownCounter** - For values that go up and down: active sessions, items in cart
@@ -75,13 +75,19 @@ And here is the equivalent in Go:
 package checkout
 
 import (
+    "context"
+    "log"
+
+    "go.opentelemetry.io/otel"
+    "go.opentelemetry.io/otel/attribute"
     "go.opentelemetry.io/otel/metric"
 )
 
 var (
-    meter        = otel.Meter("checkout-service")
+    meter         = otel.Meter("checkout-service")
     ordersPlaced metric.Int64Counter
     orderValue   metric.Float64Histogram
+    activeCarts  metric.Int64UpDownCounter
 )
 
 func init() {
@@ -91,17 +97,55 @@ func init() {
         metric.WithDescription("Total orders placed"),
         metric.WithUnit("1"),
     )
+    if err != nil {
+        log.Fatal(err)
+    }
+
     // Histogram for order monetary values
     orderValue, err = meter.Float64Histogram("business.orders.value",
         metric.WithDescription("Order value in USD"),
         metric.WithUnit("USD"),
     )
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    // UpDownCounter for active shopping carts
+    activeCarts, err = meter.Int64UpDownCounter("business.carts.active",
+        metric.WithDescription("Number of currently active shopping carts"),
+        metric.WithUnit("1"),
+    )
+    if err != nil {
+        log.Fatal(err)
+    }
+}
+
+type Order struct {
+    PaymentMethod string
+    Category      string
+    CustomerTier  string
+    TotalAmount   float64
+}
+
+func CompleteOrder(ctx context.Context, order Order) {
+    ordersPlaced.Add(ctx, 1, metric.WithAttributes(
+        attribute.String("payment.method", order.PaymentMethod),
+        attribute.String("product.category", order.Category),
+        attribute.String("customer.tier", order.CustomerTier),
+    ))
+
+    orderValue.Record(ctx, order.TotalAmount, metric.WithAttributes(
+        attribute.String("currency", "USD"),
+        attribute.String("product.category", order.Category),
+    ))
+
+    activeCarts.Add(ctx, -1)
 }
 ```
 
 ## Collector Configuration
 
-No special collector configuration is needed - custom metrics flow through the standard metrics pipeline. Just make sure your OTLP receiver and exporter are configured.
+No special collector processing is needed - custom metrics flow through the standard metrics pipeline. Just make sure your OTLP receiver and exporter are configured. If you export to Prometheus remote write, use a Collector distribution that includes the `prometheusremotewrite` exporter and run Prometheus with its remote write receiver enabled.
 
 ```yaml
 # otel-collector-config.yaml
@@ -119,6 +163,8 @@ processors:
 exporters:
   prometheusremotewrite:
     endpoint: "http://prometheus:9090/api/v1/write"
+    tls:
+      insecure: true
 
 service:
   pipelines:
@@ -193,6 +239,6 @@ graph TD
 
 ## Naming Conventions
 
-Use a consistent prefix for business metrics to separate them from technical metrics. The `business.` prefix works well. Follow the OpenTelemetry naming conventions: use dots as separators, lowercase, and include a unit. Good names look like `business.orders.placed`, `business.revenue.total`, `business.signups.completed`.
+Use a consistent prefix for business metrics to separate them from technical metrics. The `business.` prefix works well. Follow the OpenTelemetry naming conventions: use dots as separators, lowercase, and include a unit in the instrument metadata. Good names look like `business.orders.placed`, `business.revenue.amount`, `business.signups.completed`.
 
 This approach has a significant advantage over event-based analytics platforms: your business metrics and technical metrics live in the same system. When orders per minute drops, you can correlate it with increased latency or error rates on the same dashboard, cutting the time to identify whether the cause is technical or something else entirely.
