@@ -12,11 +12,11 @@ When an error shows up in Sentry, the first question is usually "what happened b
 
 Sentry captures errors with stack traces, breadcrumbs, and context. OpenTelemetry captures the full distributed trace across services. Without correlation, you are switching between two tools and manually matching timestamps to figure out which trace belongs to which error. That is slow and error-prone.
 
-The key to correlation is the trace ID. Both Sentry and OpenTelemetry use W3C Trace Context headers, which means they share the same `trace_id` and `span_id` format. You just need to make sure both systems are reading from the same context.
+The key to correlation is the trace ID. OpenTelemetry uses W3C Trace Context by default, and Sentry events can carry the same `trace_id` and `span_id` values as event context and tags. You just need to make sure both systems are reading from the same active trace context.
 
 ## Setting Up Shared Context
 
-Start by initializing both the OpenTelemetry SDK and Sentry SDK in your application. The order matters here. Initialize OpenTelemetry first so that Sentry can pick up the active trace context.
+Start by initializing both the OpenTelemetry SDK and Sentry SDK in your application. The order matters here. Initialize OpenTelemetry first, then add a Sentry `before_send` hook that reads the active OpenTelemetry span.
 
 ```python
 # tracing_setup.py - Initialize OpenTelemetry first, then Sentry
@@ -27,7 +27,23 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 
 import sentry_sdk
-from sentry_sdk.integrations.opentelemetry import OpenTelemetryIntegration
+
+def attach_otel_context(event, hint):
+    span = trace.get_current_span()
+    ctx = span.get_span_context()
+
+    if ctx.is_valid:
+        trace_id = format(ctx.trace_id, "032x")
+        span_id = format(ctx.span_id, "016x")
+
+        event.setdefault("contexts", {})["otel_trace"] = {
+            "trace_id": trace_id,
+            "span_id": span_id,
+            "service_name": "order-service",
+        }
+        event.setdefault("tags", {})["otel.trace_id"] = trace_id
+
+    return event
 
 # Step 1: Set up OpenTelemetry tracing
 provider = TracerProvider()
@@ -39,13 +55,13 @@ trace.set_tracer_provider(provider)
 sentry_sdk.init(
     dsn="https://your-dsn@sentry.io/project-id",
     traces_sample_rate=1.0,
-    integrations=[OpenTelemetryIntegration()],
+    before_send=attach_otel_context,
 )
 ```
 
 ## Attaching Trace IDs to Sentry Events
 
-With both SDKs initialized, Sentry will automatically attach the current OpenTelemetry trace ID and span ID to every error event. But you can also do this manually if you need more control.
+With the `before_send` hook in place, Sentry will attach the current OpenTelemetry trace ID and span ID to every error event that is captured while an OpenTelemetry span is active. You can also do this manually if you need more control.
 
 ```python
 # error_handler.py - Manually attach trace context to Sentry events
@@ -116,6 +132,7 @@ Correlation works both ways. You might be looking at a trace and want to jump to
 ```python
 # bidirectional_linking.py
 from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
 import sentry_sdk
 
 def process_with_bidirectional_linking():
@@ -136,7 +153,7 @@ def process_with_bidirectional_linking():
             )
 
             span.record_exception(e)
-            span.set_status(trace.StatusCode.ERROR, str(e))
+            span.set_status(Status(StatusCode.ERROR, str(e)))
             raise
 ```
 
