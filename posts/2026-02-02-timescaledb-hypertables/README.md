@@ -467,8 +467,7 @@ SELECT
         (1 - after_compression_total_bytes::numeric / before_compression_total_bytes) * 100,
         2
     ) AS compression_ratio_pct
-FROM timescaledb_information.compressed_chunk_stats
-WHERE hypertable_name = 'sensor_data';
+FROM chunk_compression_stats('sensor_data');
 ```
 
 ---
