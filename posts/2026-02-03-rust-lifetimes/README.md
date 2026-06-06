@@ -510,12 +510,12 @@ where
 For structs with generic types that might contain references:
 
 ```rust
-// T might contain references, so we need a lifetime bound
+// Explicit bound: T must outlive 'a
 struct Wrapper<'a, T: 'a> {
     value: &'a T,
 }
 
-// Or using the simpler syntax when T itself is a reference
+// In modern Rust the bound is inferred from the field type, so this works too
 struct SimpleWrapper<'a, T> {
     value: &'a T,
 }
