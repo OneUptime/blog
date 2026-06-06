@@ -44,6 +44,7 @@ from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExp
 resource = Resource.create({
     "service.name": "api-gateway",
     "deployment.environment": "production",
+    "infrastructure.tier": "tier-1",
 })
 
 exporter = OTLPMetricExporter(endpoint="otel-collector:4317")
@@ -61,6 +62,8 @@ request_counter = meter.create_counter(
 )
 ```
 
+The PromQL examples below assume your OpenTelemetry-to-Prometheus path uses the standard Prometheus name translation, so `http.server.requests` becomes `http_server_requests_total`, and exposes resource attributes such as `service.name` and `infrastructure.tier` as Prometheus labels such as `service_name` and `infrastructure_tier`.
+
 ## Step 2: Build Baseline Recording Rules
 
 The baseline represents "normal" behavior. A practical approach is to compute the average and standard deviation over the same time window from previous weeks, accounting for daily and weekly seasonality.
@@ -76,8 +79,8 @@ groups:
       # Current request rate (5-minute smoothed)
       - record: service:request_rate:5m
         expr: |
-          sum by (service_name) (
-            rate(otel_http_server_requests_total[5m])
+          sum by (service_name, infrastructure_tier) (
+            rate(http_server_requests_total[5m])
           )
 
       # Baseline: average of the same hour over the past 7 days
@@ -95,10 +98,19 @@ groups:
           ) / 7
 
       # Standard deviation across those 7 days
-      # Approximation using the range method
       - record: service:request_rate:baseline_7d_stddev
         expr: |
-          stddev_over_time(service:request_rate:5m[7d])
+          sqrt(
+            (
+              (service:request_rate:5m offset 1d - service:request_rate:baseline_7d_avg) ^ 2 +
+              (service:request_rate:5m offset 2d - service:request_rate:baseline_7d_avg) ^ 2 +
+              (service:request_rate:5m offset 3d - service:request_rate:baseline_7d_avg) ^ 2 +
+              (service:request_rate:5m offset 4d - service:request_rate:baseline_7d_avg) ^ 2 +
+              (service:request_rate:5m offset 5d - service:request_rate:baseline_7d_avg) ^ 2 +
+              (service:request_rate:5m offset 6d - service:request_rate:baseline_7d_avg) ^ 2 +
+              (service:request_rate:5m offset 7d - service:request_rate:baseline_7d_avg) ^ 2
+            ) / 7
+          )
 ```
 
 For a more accurate weekly-seasonal baseline, use recording rules that compare against the same day of the previous weeks:
@@ -128,7 +140,7 @@ For a more accurate weekly-seasonal baseline, use recording rules that compare a
 
 ## Step 3: Create Anomaly Alert Rules
 
-An anomaly alert fires when the current value deviates from the baseline by more than a configured number of standard deviations. Two standard deviations catches roughly 95% of normal variation; three catches 99.7%.
+An anomaly alert fires when the current value deviates from the baseline by more than a configured number of standard deviations. For normally distributed data, two standard deviations catches roughly 95% of normal variation; three catches 99.7%.
 
 These alert rules detect anomalies in both directions:
 
@@ -194,7 +206,7 @@ groups:
 The number of standard deviations controls sensitivity. Start with 3 (very conservative) and decrease to 2 if you are missing real incidents.
 
 ```yaml
-# Sensitivity tuning parameters as Prometheus variables
+# Sensitivity tuning example
 # Use different thresholds per service tier
 
       # Tier-1 services: tighter sensitivity (2 stddev)
