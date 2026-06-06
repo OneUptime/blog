@@ -27,7 +27,7 @@ flowchart LR
 
 ## Step 1: Collect All Three Signals Through One Collector
 
-Your OpenTelemetry Collector needs to receive traces, metrics, and logs on the same pipeline. This configuration exports all three to backends that support cross-signal queries.
+Your OpenTelemetry Collector needs to receive traces, metrics, and logs in the same Collector deployment with consistent resource attributes. This configuration exports all three through separate signal pipelines to backends that support cross-signal queries.
 
 Here is a Collector config that routes all three signal types:
 
@@ -46,7 +46,7 @@ processors:
   batch:
     timeout: 10s
   # Add resource detection for consistent labeling across signals
-  resourcedetection:
+  resource_detection:
     detectors: [env, system]
     timeout: 5s
 
@@ -64,45 +64,43 @@ exporters:
       insecure: true
 
   # Logs to Loki for log-based conditions
-  loki:
-    endpoint: "http://loki:3100/loki/api/v1/push"
-    default_labels_enabled:
-      exporter: false
-      job: true
+  otlphttp/loki:
+    endpoint: "http://loki:3100/otlp"
 
 service:
   pipelines:
     metrics:
       receivers: [otlp]
-      processors: [resourcedetection, batch]
+      processors: [resource_detection, batch]
       exporters: [prometheus]
     traces:
       receivers: [otlp]
-      processors: [resourcedetection, batch]
+      processors: [resource_detection, batch]
       exporters: [otlp/tempo]
     logs:
       receivers: [otlp]
-      processors: [resourcedetection, batch]
-      exporters: [loki]
+      processors: [resource_detection, batch]
+      exporters: [otlphttp/loki]
 ```
 
 ## Step 2: Generate Metrics from Traces Using the Span Metrics Connector
 
 The span metrics connector in the OpenTelemetry Collector derives metrics directly from trace data. This is the key to including trace conditions in Prometheus alert rules without querying a trace backend at alert evaluation time.
 
-Add the spanmetrics connector to generate RED (Rate, Error, Duration) metrics from spans:
+Add the span_metrics connector to generate RED (Rate, Error, Duration) metrics from spans:
 
 ```yaml
 # Add to otel-collector-config.yaml
 connectors:
-  spanmetrics:
+  span_metrics:
+    namespace: traces_spanmetrics
     histogram:
+      unit: s
       explicit:
         buckets: [5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 2.5s, 5s, 10s]
     dimensions:
       - name: http.method
       - name: http.status_code
-      - name: service.name
     exemplars:
       enabled: true
 
@@ -110,14 +108,14 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [resourcedetection, batch]
-      exporters: [otlp/tempo, spanmetrics]  # feed traces into connector
+      processors: [resource_detection, batch]
+      exporters: [otlp/tempo, span_metrics]  # feed traces into connector
     metrics/spanmetrics:
-      receivers: [spanmetrics]               # connector outputs metrics
+      receivers: [span_metrics]              # connector outputs metrics
       exporters: [prometheus]
 ```
 
-This produces metrics like `traces_spanmetrics_calls_total` and `traces_spanmetrics_latency_bucket` that represent trace-derived data as Prometheus metrics.
+This produces metrics like `traces_spanmetrics_calls_total` and `traces_spanmetrics_duration_seconds_bucket` that represent trace-derived data as Prometheus metrics.
 
 ## Step 3: Generate Metrics from Logs
 
@@ -146,7 +144,7 @@ groups:
           )
 ```
 
-Push these derived metrics to Prometheus using Loki's ruler or the Collector's metrics pipeline.
+Push these derived metrics to Prometheus using Loki ruler remote write, or generate equivalent log counts in the Collector with the count connector and export them through the Collector's metrics pipeline.
 
 ## Step 4: Build the Composite Alert Rule
 
@@ -166,14 +164,14 @@ groups:
             # Condition 1: P99 latency from OTel metrics above 500ms
             histogram_quantile(0.99,
               sum by (service_name, le) (
-                rate(otel_http_server_request_duration_seconds_bucket[5m])
+                rate(http_server_request_duration_seconds_bucket[5m])
               )
             ) > 0.5
           )
           # Condition 2: Error span rate from trace-derived metrics above 5%
           and on (service_name) (
             sum by (service_name) (
-              rate(traces_spanmetrics_calls_total{status_code="STATUS_CODE_ERROR"}[5m])
+              rate(traces_spanmetrics_calls_total{status_code="Error"}[5m])
             )
             /
             sum by (service_name) (
@@ -207,19 +205,19 @@ A strict AND across all three signals might miss real incidents where one signal
             (
               histogram_quantile(0.99,
                 sum by (service_name, le) (
-                  rate(otel_http_server_request_duration_seconds_bucket[5m])
+                  rate(http_server_request_duration_seconds_bucket[5m])
                 )
-              ) > 0.5
+              ) > bool 0.5
             ) + on (service_name) (
               sum by (service_name) (
-                rate(traces_spanmetrics_calls_total{status_code="STATUS_CODE_ERROR"}[5m])
+                rate(traces_spanmetrics_calls_total{status_code="Error"}[5m])
               )
               /
               sum by (service_name) (
                 rate(traces_spanmetrics_calls_total[5m])
-              ) > 0.05
+              ) > bool 0.05
             ) + on (service_name) (
-              log:error_count:1m > 10
+              log:error_count:1m > bool 10
             )
           ) >= 2  # At least 2 out of 3 conditions true
         for: 5m
