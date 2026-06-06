@@ -37,7 +37,7 @@ Let us work through each relevant criterion with specific configurations.
 
 ## Security: Encrypt All Telemetry in Transit
 
-SOC 2 CC6.1 requires that you protect information during transmission. For OpenTelemetry, this means TLS on every connection in your pipeline: from SDKs to the Collector, between Collector tiers, and from the Collector to your backend.
+SOC 2 CC6.7 addresses restricting and protecting information during transmission, movement, and removal. For OpenTelemetry, this means TLS on every connection in your pipeline: from SDKs to the Collector, between Collector tiers, and from the Collector to your backend.
 
 This Collector configuration enforces TLS on both the receiver (incoming) and exporter (outgoing) sides.
 
@@ -83,8 +83,9 @@ This environment variable configuration ensures the SDK uses HTTPS to communicat
 # Use HTTPS endpoint for the Collector
 export OTEL_EXPORTER_OTLP_ENDPOINT="https://collector.internal:4317"
 
-# Provide client certificate for mutual TLS
-export OTEL_EXPORTER_OTLP_CERTIFICATE="/certs/app-client.crt"
+# Trust the Collector server certificate and provide a client certificate for mutual TLS
+export OTEL_EXPORTER_OTLP_CERTIFICATE="/certs/ca.crt"
+export OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE="/certs/app-client.crt"
 export OTEL_EXPORTER_OTLP_CLIENT_KEY="/certs/app-client.key"
 ```
 
@@ -121,17 +122,18 @@ service:
 
 ## Confidentiality: Redact PII from Telemetry
 
-SOC 2 CC6.5 requires protection of confidential information. Traces and logs frequently contain personally identifiable information: email addresses, user IDs, IP addresses, and sometimes even credit card numbers embedded in HTTP request attributes.
+SOC 2 confidentiality and privacy criteria require protection of confidential and personal information according to your commitments and system requirements. Traces and logs frequently contain personally identifiable information: email addresses, user IDs, IP addresses, and sometimes even credit card numbers embedded in HTTP request attributes.
 
-Use the redaction processor in the Collector to strip sensitive data patterns before they reach your backend.
+Use Collector processors to strip sensitive data patterns before they reach your backend.
 
-This configuration uses the transform processor to redact common PII patterns from span attributes.
+This configuration uses the transform processor to redact common PII patterns from span and log attributes.
 
 ```yaml
 # collector-pii-redaction.yaml
 processors:
-  # Redact sensitive patterns from all span attributes
+  # Redact sensitive patterns from span and log attributes
   transform/redact-pii:
+    error_mode: ignore
     trace_statements:
       - context: span
         statements:
@@ -140,6 +142,15 @@ processors:
           # Redact credit card numbers (basic pattern)
           - replace_all_patterns(attributes, "value", "\\b\\d{4}[- ]?\\d{4}[- ]?\\d{4}[- ]?\\d{4}\\b", "[REDACTED-CC]")
           # Redact US Social Security Numbers
+          - replace_all_patterns(attributes, "value", "\\b\\d{3}-\\d{2}-\\d{4}\\b", "[REDACTED-SSN]")
+    log_statements:
+      - context: log
+        statements:
+          # Redact email addresses in log attributes
+          - replace_all_patterns(attributes, "value", "(?i)[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}", "[REDACTED-EMAIL]")
+          # Redact credit card numbers in log attributes (basic pattern)
+          - replace_all_patterns(attributes, "value", "\\b\\d{4}[- ]?\\d{4}[- ]?\\d{4}[- ]?\\d{4}\\b", "[REDACTED-CC]")
+          # Redact US Social Security Numbers in log attributes
           - replace_all_patterns(attributes, "value", "\\b\\d{3}-\\d{2}-\\d{4}\\b", "[REDACTED-SSN]")
 
   # Remove specific attributes that commonly contain PII
@@ -171,7 +182,7 @@ service:
 
 SOC 2 A1.1 requires systems to meet availability commitments. Your telemetry pipeline should be resilient to failures. Deploy multiple Collector instances behind a load balancer, and use persistent queuing to handle backend outages.
 
-This Collector configuration enables persistent storage for the sending queue, preventing data loss during backend downtime.
+This Collector configuration enables persistent storage for the sending queue, reducing the risk of data loss during Collector restarts and backend downtime.
 
 ```yaml
 # collector-ha.yaml
@@ -188,7 +199,8 @@ exporters:
       enabled: true
       initial_interval: 5s
       max_interval: 60s
-      max_elapsed_time: 300s
+      # Keep retrying queued batches until the backend recovers
+      max_elapsed_time: 0s
 
 extensions:
   # Configure file-based persistent storage
@@ -231,7 +243,7 @@ spec:
 
 ## Privacy: Enforce Data Retention Policies
 
-SOC 2 P6.1 covers data retention and disposal. You need to define how long telemetry data is kept and ensure it is deleted when the retention period expires. This is typically enforced at the backend level, but the Collector can help by adding metadata.
+SOC 2 privacy criteria related to use, retention, and disposal require you to define how long personal information is kept and ensure it is deleted when the retention period expires. This is typically enforced at the backend level, but the Collector can help by adding metadata.
 
 This configuration adds retention metadata to all telemetry, making it easier to enforce deletion policies at the backend.
 
@@ -310,11 +322,11 @@ Here is a summary of what you need to configure for each relevant Trust Service 
 | SOC 2 Criterion | OpenTelemetry Configuration |
 |---|---|
 | CC6.1 - Logical Access | mTLS on receivers, bearer token auth, RBAC on backends |
-| CC6.1 - Encryption | TLS on all Collector connections, HTTPS SDK endpoints |
-| CC6.5 - Confidential Data | PII redaction processors, attribute filtering |
+| CC6.7 - Transmission Protection | TLS on all Collector connections, HTTPS SDK endpoints |
+| Confidentiality and Privacy - Sensitive Data | PII redaction processors, attribute filtering |
 | CC7.2 - Monitoring | Collector health metrics, pipeline alerting |
 | A1.1 - Availability | Multi-replica Collectors, persistent queuing, HPA |
-| P6.1 - Retention | Backend retention policies, automatic data expiration |
+| Privacy - Retention and Disposal | Backend retention policies, automatic data expiration |
 
 ## Documenting Your Configuration for Auditors
 
