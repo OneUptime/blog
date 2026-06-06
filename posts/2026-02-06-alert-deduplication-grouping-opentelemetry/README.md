@@ -37,7 +37,7 @@ flowchart TD
 
 Effective grouping starts at the instrumentation layer. Your OpenTelemetry SDK configuration should include resource attributes that identify the service, environment, and infrastructure tier.
 
-This SDK configuration adds resource attributes that Alertmanager can use for grouping:
+This SDK configuration adds resource attributes that your Prometheus ingestion path can expose for grouping, either as metric labels or through `target_info` depending on how you export OTLP metrics:
 
 ```python
 # Python OpenTelemetry SDK setup with resource attributes
@@ -48,7 +48,7 @@ from opentelemetry.sdk.resources import Resource
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 
-# Resource attributes that become Prometheus labels
+# Resource attributes that can become Prometheus labels or target_info labels
 resource = Resource.create({
     "service.name": "checkout-service",
     "service.namespace": "payments",      # used for group_by
@@ -63,6 +63,8 @@ provider = MeterProvider(resource=resource, metric_readers=[reader])
 metrics.set_meter_provider(provider)
 ```
 
+If you use Prometheus's OTLP receiver, promote the resource attributes you want to group on, such as `service.namespace` and `deployment.environment`, so they are available as labels like `service_namespace` and `deployment_environment`.
+
 ## Step 2: Configure Alertmanager Grouping
 
 The `group_by` parameter in Alertmanager determines which labels are used to bucket alerts together. Alerts that share the same values for all `group_by` labels get merged into a single notification.
@@ -70,7 +72,7 @@ The `group_by` parameter in Alertmanager determines which labels are used to buc
 This configuration groups alerts by alert name and service namespace, so all services in the "payments" namespace that fire the same alert type get grouped:
 
 ```yaml
-# alertmanager.yaml
+# alertmanager.yaml - route section
 route:
   receiver: default
   # Group alerts by these labels
@@ -88,8 +90,8 @@ route:
 
   routes:
     # Critical alerts get tighter grouping windows
-    - match:
-        severity: critical
+    - matchers:
+        - severity="critical"
       receiver: pagerduty
       group_by: ["alertname", "service_namespace", "deployment_environment"]
       group_wait: 15s      # shorter wait for critical alerts
@@ -97,8 +99,8 @@ route:
       repeat_interval: 1h
 
     # Warning alerts can afford wider grouping windows
-    - match:
-        severity: warning
+    - matchers:
+        - severity="warning"
       receiver: slack
       group_by: ["alertname", "service_namespace"]
       group_wait: 60s
@@ -116,31 +118,31 @@ These inhibition rules suppress lower-severity alerts when a critical alert is a
 # alertmanager.yaml - inhibition rules section
 inhibit_rules:
   # If critical fires, suppress warning for the same alert on the same service
-  - source_match:
-      severity: critical
-    target_match:
-      severity: warning
+  - source_matchers:
+      - severity="critical"
+    target_matchers:
+      - severity="warning"
     equal: ["alertname", "service_name"]
 
   # If critical fires, suppress info for the same alert on the same service
-  - source_match:
-      severity: critical
-    target_match:
-      severity: info
+  - source_matchers:
+      - severity="critical"
+    target_matchers:
+      - severity="info"
     equal: ["alertname", "service_name"]
 
   # If warning fires, suppress info
-  - source_match:
-      severity: warning
-    target_match:
-      severity: info
+  - source_matchers:
+      - severity="warning"
+    target_matchers:
+      - severity="info"
     equal: ["alertname", "service_name"]
 
   # Suppress downstream service alerts when the upstream dependency is down
-  - source_match:
-      alertname: DatabaseDown
-    target_match:
-      alertname: HighErrorRate
+  - source_matchers:
+      - alertname="DatabaseDown"
+    target_matchers:
+      - alertname="HighErrorRate"
     equal: ["deployment_environment"]
 ```
 
@@ -160,19 +162,19 @@ groups:
       - record: namespace:http_error_rate:5m
         expr: |
           sum by (service_namespace, deployment_environment) (
-            rate(otel_http_server_request_duration_seconds_count{http_status_code=~"5.."}[5m])
+            rate(http_server_request_duration_seconds_count{http_response_status_code=~"5.."}[5m])
           )
           /
           sum by (service_namespace, deployment_environment) (
-            rate(otel_http_server_request_duration_seconds_count[5m])
+            rate(http_server_request_duration_seconds_count[5m])
           )
 
       # Aggregate latency p99 across a namespace
       - record: namespace:http_latency_p99:5m
         expr: |
           histogram_quantile(0.99,
-            sum by (service_namespace, le) (
-              rate(otel_http_server_request_duration_seconds_bucket[5m])
+            sum by (service_namespace, deployment_environment, le) (
+              rate(http_server_request_duration_seconds_bucket[5m])
             )
           )
 ```
