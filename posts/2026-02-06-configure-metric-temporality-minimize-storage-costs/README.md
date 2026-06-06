@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Metric, Storage Optimization, Cost Optimization, Temporality
 
-Description: Reduce metric storage costs by up to 50% by understanding and configuring OpenTelemetry metric temporality. Learn the differences between cumulative and delta temporality and when to use each.
+Description: Reduce metric storage costs by understanding and configuring OpenTelemetry metric temporality. Learn the differences between cumulative and delta temporality and when to use each.
 
 Metrics are the most expensive component of observability from a storage perspective. Unlike traces, which are sampled and expire quickly, metrics accumulate continuously and are retained for extended periods. A single application emitting 1,000 time series with 1-minute resolution generates over 43 million data points monthly.
 
-Metric temporality is one of the most impactful, yet least understood, configuration options for reducing storage costs. By choosing the appropriate temporality for your metrics, you can reduce storage requirements by 30-50% while maintaining full analytical capabilities.
+Metric temporality is one of the most impactful, yet least understood, configuration options for controlling how metrics flow through your pipeline. By choosing the appropriate temporality for your metrics and backend, you can avoid unnecessary conversions, reduce bandwidth or storage overhead in some systems, and maintain analytical capabilities.
 
 ## Understanding Metric Temporality
 
@@ -50,9 +50,9 @@ Metric: http_requests_total
 Values: [100, 250, 420, 650, 920, 1250, ...]
 
 Storage characteristics:
-- Values grow monotonically
-- Large numbers require more bytes to store
-- Compression less effective due to increasing values
+- Values grow monotonically for monotonic sums
+- Backend must detect and handle process restarts
+- Compression behavior depends on the storage engine
 - Reset handling requires special logic
 ```
 
@@ -63,10 +63,10 @@ Metric: http_requests_total
 Values: [100, 150, 170, 230, 270, 330, ...]
 
 Storage characteristics:
-- Values remain relatively small
-- Consistent range improves compression
-- No reset handling needed
-- 30-50% storage reduction typical
+- Values represent each collection interval
+- Process restarts are easier to reason about for counters
+- Compression behavior depends on the storage engine
+- Some backends can store or transmit deltas more efficiently
 ```
 
 ## Configuring Delta Temporality in the Collector
@@ -86,13 +86,13 @@ receivers:
 
 processors:
   # Convert cumulative to delta temporality
-  # This reduces storage requirements by 30-50%
+  # This can reduce conversion and storage overhead for backends that prefer delta
   cumulativetodelta:
     # Specify which metrics to convert
     # Can use metric name patterns
     include:
       match_type: regexp
-      metric_names:
+      metrics:
         # Convert all counter metrics
         - .*_total$
         - .*_count$
@@ -103,13 +103,13 @@ processors:
     # Optionally exclude specific metrics
     exclude:
       match_type: strict
-      metric_names:
+      metrics:
         # Keep these as cumulative if needed
         - system.cpu.time
         - process.cpu.time
 
     # Maximum time to track a time series before considering it stale
-    max_stale: 5m
+    max_staleness: 5m
 
   # Alternative: convert delta to cumulative if backend requires it
   # Use this if your backend only supports cumulative
@@ -130,10 +130,10 @@ processors:
     spike_limit_mib: 256
 
 exporters:
-  # Configure exporter with delta temporality preference
+  # Export OTLP metrics to a backend that accepts delta temporality
   otlp:
     endpoint: backend:4317
-    compression: zstd
+    compression: gzip
 
   # Prometheus exporter (requires cumulative)
   prometheus:
@@ -141,10 +141,10 @@ exporters:
     # Prometheus requires cumulative temporality
     # Convert if needed
 
-  # Prometheus remote write (supports delta)
-  prometheusremotewrite:
+  # Prometheus remote write requires cumulative monotonic sums and histograms
+  prometheus_remote_write:
     endpoint: http://prometheus:9090/api/v1/write
-    # Can use delta temporality for efficiency
+    # Non-cumulative monotonic sums and histograms are dropped by this exporter
 
 service:
   pipelines:
@@ -167,7 +167,6 @@ service:
   telemetry:
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
 ```
 
 ## SDK Configuration for Delta Temporality
@@ -205,7 +204,7 @@ func initDeltaMetrics() (*metric.MeterProvider, error) {
                     metric.InstrumentKindHistogram,
                     metric.InstrumentKindObservableCounter:
                     // Use delta for counters and histograms
-                    // Reduces storage by 30-50%
+                    // Emits interval values directly when the backend prefers delta
                     return metricdata.DeltaTemporality
 
                 case metric.InstrumentKindUpDownCounter,
@@ -296,7 +295,7 @@ from opentelemetry.sdk.metrics.view import View
 def delta_temporality_selector(instrument):
     """Select temporality based on instrument kind."""
     # Use delta for counters and histograms
-    # This reduces storage costs by 30-50%
+    # This emits interval values directly when the backend prefers delta
     if instrument.name.endswith("_total") or instrument.name.endswith("_count"):
         return AggregationTemporality.DELTA
     if "duration" in instrument.name or "size" in instrument.name:
@@ -401,7 +400,7 @@ public class DeltaMetricsConfig {
                         case COUNTER:
                         case HISTOGRAM:
                             // Delta temporality for counters and histograms
-                            // Reduces storage costs by 30-50%
+                            // Emits interval values directly when the backend prefers delta
                             return AggregationTemporality.DELTA;
                         case UP_DOWN_COUNTER:
                         case OBSERVABLE_GAUGE:
@@ -483,14 +482,14 @@ exporters:
 
 ### InfluxDB
 
-**Preferred**: Delta temporality
-**Reason**: Delta aligns with InfluxDB's time-series model
-**Configuration**: Use `cumulativetodelta` processor
+**Preferred**: Depends on how you write and query the data
+**Reason**: InfluxDB can store time-series samples in either form, but rate-style queries often work naturally with deltas
+**Configuration**: Use `cumulativetodelta` processor only if your InfluxDB pipeline expects delta values
 
 ```yaml
 processors:
   cumulativetodelta:
-    max_stale: 5m
+    max_staleness: 5m
 
 exporters:
   influxdb:
@@ -499,47 +498,51 @@ exporters:
     bucket: metrics
 ```
 
-### Tempo / Jaeger (via OTLP)
+### OTLP Metric Backends
 
 **Preferred**: Either (flexible)
 **Reason**: OTLP backends typically support both
-**Configuration**: Use delta for storage efficiency
+**Configuration**: Use the temporality your backend recommends
 
 ```yaml
 exporters:
   otlp:
-    endpoint: tempo:4317
+    endpoint: backend:4317
 ```
 
 ### Cloud Vendor Backends
 
 ```yaml
-# AWS CloudWatch: Prefers delta
+# AWS CloudWatch EMF: expects delta values for EMF metrics
 exporters:
-  awscloudwatch:
+  awsemf:
     region: us-west-2
 
-# Google Cloud Monitoring: Prefers cumulative
+# Google Cloud Monitoring
 exporters:
   googlecloud:
     project: my-project
 
-# Azure Monitor: Supports both
+# Azure Monitor exporter
 exporters:
   azuremonitor:
-    instrumentation_key: "${INSTRUMENTATION_KEY}"
+    connection_string: "${APPLICATIONINSIGHTS_CONNECTION_STRING}"
 ```
 
 ## Calculating Storage Savings
 
-Calculate the storage impact of temporality choice:
+Estimate the storage impact of temporality choice for your own backend:
 
 ```python
 import math
 
 
 class TemporalityStorageCalculator:
-    """Calculate storage costs for different temporality strategies."""
+    """Estimate storage costs for different temporality strategies.
+
+    This is a simplified model. Real storage size depends on the backend's
+    encoding, compression, index format, and retention policy.
+    """
 
     def __init__(
         self,
@@ -645,15 +648,15 @@ print(f"Savings percentage: {results['savings_percentage']:.1f}%")
 print(f"Annual savings: ${results['annual_savings']:.2f}")
 
 # Output:
-# Cumulative storage: 251.66 GB
-# Cumulative monthly cost: $7.55
+# Cumulative storage: 4.59 GB
+# Cumulative monthly cost: $0.14
 #
-# Delta storage: 134.23 GB
-# Delta monthly cost: $4.03
+# Delta storage: 2.57 GB
+# Delta monthly cost: $0.08
 #
-# Monthly savings: $3.52
-# Savings percentage: 46.7%
-# Annual savings: $42.24
+# Monthly savings: $0.06
+# Savings percentage: 43.9%
+# Annual savings: $0.72
 ```
 
 ## Best Practices for Temporality Selection
@@ -671,7 +674,7 @@ processors:
   cumulativetodelta:
     include:
       match_type: regexp
-      metric_names:
+      metrics:
         - .*_total$
         - .*_count$
         - .*_duration.*
@@ -688,12 +691,7 @@ processors:
 ```yaml
 processors:
   deltatocumulative:
-    include:
-      match_type: regexp
-      metric_names:
-        - .*_current$
-        - .*_active$
-        - .*_usage$
+    max_stale: 5m
 ```
 
 ## Monitoring Temporality Configuration
@@ -705,22 +703,22 @@ service:
   telemetry:
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
 ```
 
 Monitor these internal metrics:
-- `otelcol_processor_cumulativetodelta_datapoints_converted`: Points converted to delta
-- `otelcol_processor_deltatocumulative_datapoints_converted`: Points converted to cumulative
+- `otelcol_processor_accepted_metric_points`: Metric points accepted by processors
+- `otelcol_processor_refused_metric_points`: Metric points refused by processors
+- `otelcol_deltatocumulative_datapoints`: Delta-to-cumulative datapoints processed
 - Storage size trends before and after temporality changes
 
 ## Combining with Other Optimizations
 
 Temporality optimization works well with other cost-reduction strategies:
 
-1. **Compression**: Delta values compress better than cumulative
-2. **Sampling**: Reduce metric cardinality before temporality conversion
+1. **Compression**: Delta values can compress better than cumulative in some storage engines
+2. **Filtering and aggregation**: Reduce metric cardinality before temporality conversion
 3. **Aggregation**: Combine with metric aggregation for maximum savings
-4. **Retention**: Use delta for long-term storage, cumulative for recent data
+4. **Retention**: Align temporality with the backend used for each retention tier
 
 ```yaml
 processors:
@@ -735,16 +733,16 @@ processors:
 
   # Second: Convert to delta
   cumulativetodelta:
-    max_stale: 5m
+    max_staleness: 5m
 
-  # Third: Compress
+  # Third: Batch before export
   batch:
     send_batch_size: 2048
 
 exporters:
   otlp:
     endpoint: backend:4317
-    compression: zstd
+    compression: gzip
 ```
 
 For comprehensive cost optimization, see our guide on [building cost-effective observability platforms](https://oneuptime.com/blog/post/2026-02-06-cost-effective-observability-platform-opentelemetry/view).
@@ -752,26 +750,26 @@ For comprehensive cost optimization, see our guide on [building cost-effective o
 ## Troubleshooting Temporality Issues
 
 **Problem**: Metrics reset to zero unexpectedly
-- **Solution**: Increase `max_stale` duration in processor configuration
+- **Solution**: For `cumulativetodelta`, tune `max_staleness`; for `deltatocumulative`, tune `max_stale`
 
 **Problem**: Backend doesn't support delta temporality
 - **Solution**: Use `deltatocumulative` processor to convert
 
 **Problem**: Counters showing negative values
-- **Solution**: Ensure using delta temporality for counters, not cumulative
+- **Solution**: Check for reset handling in queries and make sure cumulative-to-delta conversion is not split across multiple Collector instances
 
 **Problem**: High memory usage in temporality processor
-- **Solution**: Reduce `max_stale` or increase collector memory
+- **Solution**: Reduce `max_staleness` or `max_stale`, limit cardinality, or increase collector memory
 
 ## Real-World Impact
 
 Organizations implementing delta temporality typically see:
 
-- **30-50% reduction** in metric storage costs
-- **Better compression ratios** (10-15% additional improvement)
-- **Faster query performance** due to smaller data sets
+- **Lower storage or bandwidth usage** when the destination stores or transmits deltas more efficiently
+- **Better compression ratios** in some storage engines
+- **Faster query performance** in systems where delta storage reduces data size
 - **Reduced network bandwidth** for metric replication
 
-A company with 50,000 time series reduced monthly storage costs from $15,000 to $8,000 by switching to delta temporality, saving $84,000 annually.
+A company with 50,000 time series may be able to reduce monthly storage costs substantially by switching to delta temporality if its backend stores deltas more efficiently.
 
-Metric temporality is a powerful lever for controlling observability costs. By understanding the trade-offs and configuring appropriately for your backend and use case, you can significantly reduce storage costs while maintaining full analytical capabilities. Start with delta temporality for counters and histograms, and only use cumulative when required by your backend or analysis needs.
+Metric temporality is a powerful lever for controlling observability costs. By understanding the trade-offs and configuring appropriately for your backend and use case, you can reduce storage costs in systems that handle delta metrics more efficiently while maintaining analytical capabilities. Start with delta temporality for counters and histograms when your backend supports it, and use cumulative when required by your backend or analysis needs.
