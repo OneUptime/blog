@@ -86,20 +86,20 @@ class BaggageToSpanProcessor(SpanProcessor):
         pass
 
     def force_flush(self, timeout_millis=None):
-        pass
+        return True
 ```
 
 Register this processor when you configure your tracer:
 
 ```python
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanExporter
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
 provider = TracerProvider()
 
-# Add the baggage processor BEFORE the batch exporter
+# Add the baggage processor BEFORE the exporter-backed processor
 provider.add_span_processor(BaggageToSpanProcessor())
-provider.add_span_processor(BatchSpanExporter(your_exporter))
+provider.add_span_processor(BatchSpanProcessor(your_exporter))
 ```
 
 ## Tagging via the OpenTelemetry Collector
@@ -109,19 +109,28 @@ If you cannot modify application code, use the OpenTelemetry Collector's transfo
 ```yaml
 # collector-config.yaml
 processors:
+  k8sattributes:
+    extract:
+      annotations:
+        - tag_name: chaos.experiment.name
+          key: chaos-mesh.org/experiment
+          from: pod
+
   transform:
     trace_statements:
       - context: span
         statements:
           # Tag spans from pods that have chaos-mesh annotations
           - set(attributes["chaos.experiment.active"], "true")
-            where resource.attributes["k8s.pod.annotation.chaos-mesh.org/experiment"] != nil
+            where resource.attributes["chaos.experiment.name"] != nil
 
           # Extract the experiment name from the pod annotation
           - set(attributes["chaos.experiment.name"],
-              resource.attributes["k8s.pod.annotation.chaos-mesh.org/experiment"])
-            where resource.attributes["k8s.pod.annotation.chaos-mesh.org/experiment"] != nil
+              resource.attributes["chaos.experiment.name"])
+            where resource.attributes["chaos.experiment.name"] != nil
 ```
+
+Include both processors in your traces pipeline with `k8sattributes` before `transform`, so the annotation is available as a resource attribute before the transform statements run.
 
 ## Filtering Chaos Traffic in Queries
 
