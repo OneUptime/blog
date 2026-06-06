@@ -165,30 +165,35 @@ First, you need an MCP server that wraps kubectl:
 ```python
 # kubernetes_mcp_server.py
 # Requires implementing a full MCP server from scratch
-from mcp import Server, Tool
+from mcp.server import Server
+from mcp.types import Tool, TextContent
 
-class KubernetesMCPServer(Server):
-    def __init__(self):
-        super().__init__()
-        self.register_tool(
-            Tool(
-                name="apply_manifest",
-                description="Apply a Kubernetes manifest",
-                parameters={
-                    "type": "object",
-                    "properties": {
-                        "manifest_path": {"type": "string"},
-                        "namespace": {"type": "string"}
-                    }
-                }
-            )
+server = Server("kubernetes")
+
+@server.list_tools()
+async def list_tools() -> list[Tool]:
+    return [
+        Tool(
+            name="apply_manifest",
+            description="Apply a Kubernetes manifest",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "manifest_path": {"type": "string"},
+                    "namespace": {"type": "string"}
+                },
+                "required": ["manifest_path"]
+            }
         )
+    ]
 
-    async def apply_manifest(self, manifest_path: str, namespace: str = "default"):
+@server.call_tool()
+async def call_tool(name: str, arguments: dict) -> list[TextContent]:
+    if name == "apply_manifest":
         # Implementation here
         pass
 
-# Plus authentication handling, error mapping, etc.
+# Plus authentication handling, error mapping, transport setup, etc.
 ```
 
 **CLI Approach:**
