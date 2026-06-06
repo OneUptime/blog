@@ -28,8 +28,8 @@ graph TB
 
     subgraph "OTel Receivers"
         KCR[k8s_cluster Receiver]
-        KSR[kubeletstats Receiver]
-        KOR[k8sobjects Receiver]
+        KSR[kubelet_stats Receiver]
+        KOR[k8s_objects Receiver]
     end
 
     KA --> KCR
@@ -46,8 +46,8 @@ graph TB
 Here's what each receiver collects:
 
 - **k8s_cluster receiver**: Cluster-level and object-level metrics from the Kubernetes API. Pod phases, deployment replica counts, node conditions, resource requests and limits. Think of it as a replacement for kube-state-metrics.
-- **kubeletstats receiver**: Container, pod, and node resource usage metrics from the kubelet's summary API. CPU usage, memory usage, filesystem usage, network stats.
-- **k8sobjects receiver**: Raw Kubernetes events and objects. Useful for tracking events like pod scheduling, image pulls, and OOM kills.
+- **kubelet_stats receiver**: Container, pod, node, and volume resource usage metrics from the kubelet's summary API. CPU usage, memory usage, filesystem usage, network stats.
+- **k8s_objects receiver**: Raw Kubernetes events and objects. Useful for tracking events like pod scheduling, image pulls, and OOM kills.
 
 ## Prerequisites
 
@@ -104,14 +104,18 @@ rules:
     resources:
       - horizontalpodautoscalers
     verbs: ["get", "list", "watch"]
-  # Needed by kubeletstats receiver for node/pod/container metrics
+  # Needed by kubelet_stats receiver for node/pod/container metrics
   - apiGroups: [""]
     resources:
       - nodes/stats
-      - nodes/proxy
+      - nodes/pods
     verbs: ["get"]
-  # Needed by k8sobjects receiver for events
+  # Needed by k8s_objects receiver for events
   - apiGroups: [""]
+    resources:
+      - events
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["events.k8s.io"]
     resources:
       - events
     verbs: ["get", "list", "watch"]
@@ -138,17 +142,17 @@ kubectl create namespace observability
 kubectl apply -f rbac.yaml
 ```
 
-## Collecting Node and Container Metrics with kubeletstats
+## Collecting Node and Container Metrics with kubelet_stats
 
-The kubeletstats receiver connects to the kubelet on each node and pulls resource usage data. This is the receiver that gives you real-time CPU, memory, filesystem, and network stats for containers and pods.
+The kubelet_stats receiver connects to the kubelet on each node and pulls resource usage data. This is the receiver that gives you real-time CPU, memory, filesystem, and network stats for containers and pods.
 
 Because it queries each node's kubelet, this receiver works best in a DaemonSet so each collector instance talks to its local kubelet.
 
 ```yaml
-# kubeletstats-config.yaml
+# kubelet-stats-config.yaml
 # Collects node, pod, and container metrics from the local kubelet
 receivers:
-  kubeletstats:
+  kubelet_stats:
     # Use the ServiceAccount token to authenticate with the kubelet
     auth_type: serviceAccount
     # Connect to the kubelet on the local node
@@ -162,17 +166,22 @@ receivers:
       - node        # Node-level CPU, memory, filesystem, network
       - pod         # Pod-level aggregated metrics
       - container   # Per-container metrics
+      - volume      # Volume metrics
     # Extra metadata to add to metrics for better correlation
     extra_metadata_labels:
       - container.id
       - k8s.volume.type
-    # Optional: collect volume metrics
+    # Optional: collect volume and limit-utilization metrics
     metrics:
-      k8s.pod.filesystem.available:
+      k8s.volume.available:
         enabled: true
-      k8s.pod.filesystem.capacity:
+      k8s.volume.capacity:
         enabled: true
-      k8s.pod.filesystem.usage:
+      k8s.pod.volume.usage:
+        enabled: true
+      k8s.container.cpu_limit_utilization:
+        enabled: true
+      k8s.container.memory_limit_utilization:
         enabled: true
 
 processors:
@@ -189,32 +198,32 @@ exporters:
 service:
   pipelines:
     metrics:
-      receivers: [kubeletstats]
+      receivers: [kubelet_stats]
       processors: [batch]
       exporters: [otlp]
 ```
 
-Here are some of the key metrics you'll get from kubeletstats:
+Here are some of the key metrics you'll get from kubelet_stats:
 
 **Node metrics:**
-- `k8s.node.cpu.utilization` - CPU usage percentage
+- `k8s.node.cpu.usage` - CPU usage in cores
 - `k8s.node.memory.available` - Available memory in bytes
 - `k8s.node.memory.usage` - Memory used in bytes
 - `k8s.node.filesystem.available` - Disk space available
 - `k8s.node.network.io` - Network bytes sent/received
 
 **Pod metrics:**
-- `k8s.pod.cpu.utilization` - Pod CPU usage
+- `k8s.pod.cpu.usage` - Pod CPU usage in cores
 - `k8s.pod.memory.usage` - Pod memory usage
 - `k8s.pod.network.io` - Pod network traffic
 
 **Container metrics:**
-- `k8s.container.cpu.utilization` - Container CPU usage
-- `k8s.container.memory.usage` - Container memory usage
-- `k8s.container.cpu_limit_utilization` - CPU usage as a percentage of the limit
-- `k8s.container.memory_limit_utilization` - Memory usage as a percentage of the limit
+- `container.cpu.usage` - Container CPU usage in cores
+- `container.memory.usage` - Container memory usage
+- `k8s.container.cpu_limit_utilization` - CPU usage as a ratio of the limit
+- `k8s.container.memory_limit_utilization` - Memory usage as a ratio of the limit
 
-The limit utilization metrics are particularly valuable. They tell you how close each container is to hitting its resource limits, which helps you right-size your requests and limits.
+The limit utilization metrics are particularly valuable. They tell you how close each container is to hitting its resource limits as a ratio, which helps you right-size your requests and limits.
 
 ## Collecting Cluster State Metrics with k8s_cluster
 
@@ -240,7 +249,7 @@ receivers:
     allocatable_types_to_report:
       - cpu
       - memory
-      - storage
+      - ephemeral-storage
     # Distribution of resource metrics
     metrics:
       k8s.pod.status_reason:
@@ -280,24 +289,25 @@ Key metrics from the k8s_cluster receiver include:
 - `k8s.deployment.desired` / `k8s.deployment.available` - Replica counts
 - `k8s.pod.phase` - Pod phase (Pending, Running, Succeeded, Failed)
 - `k8s.container.restarts` - Container restart count (great for detecting crash loops)
-- `k8s.node.condition` - Node conditions (Ready, MemoryPressure, etc.)
+- `k8s.node.condition_ready` / `k8s.node.condition_memory_pressure` - Node conditions
 - `k8s.namespace.phase` - Namespace status
 - `k8s.replicaset.desired` / `k8s.replicaset.available` - ReplicaSet counts
 - `k8s.hpa.current_replicas` / `k8s.hpa.desired_replicas` - HPA state
 
 ## Capturing Kubernetes Events
 
-The k8sobjects receiver watches for Kubernetes events. These aren't traditional metrics - they're structured event data that tells you when things happen in the cluster, like pod scheduling, image pulls, liveness probe failures, and OOM kills.
+The k8s_objects receiver watches for Kubernetes events. These aren't traditional metrics - they're structured event data that tells you when things happen in the cluster, like pod scheduling, image pulls, liveness probe failures, and OOM kills.
 
 ```yaml
 # k8s-events-config.yaml
 # Captures Kubernetes events as logs for debugging and alerting
 receivers:
-  k8sobjects:
+  k8s_objects:
     auth_type: serviceAccount
     objects:
       - name: events
         mode: watch
+        group: events.k8s.io
         # Optionally filter to specific namespaces
         # namespaces: [default, production]
 
@@ -321,7 +331,7 @@ exporters:
 service:
   pipelines:
     logs:
-      receivers: [k8sobjects]
+      receivers: [k8s_objects]
       processors: [attributes, batch]
       exporters: [otlp]
 ```
@@ -330,18 +340,18 @@ Events are incredibly useful for debugging. When a deployment rolls out, you'll 
 
 ## Putting It All Together
 
-In practice, you'll want a DaemonSet for kubeletstats (since it needs to query each node's kubelet) and a Deployment for the cluster-level receivers. Here's how the full architecture looks:
+In practice, you'll want a DaemonSet for kubelet_stats (since it needs to query each node's kubelet) and a Deployment for the cluster-level receivers. Here's how the full architecture looks:
 
 ```mermaid
 graph TB
     subgraph "DaemonSet - One per Node"
-        KS1[kubeletstats] --> P1[Processors]
+        KS1[kubelet_stats] --> P1[Processors]
         P1 --> E1[OTLP Exporter]
     end
 
     subgraph "Deployment - Single Instance"
         KC[k8s_cluster receiver] --> P2[Processors]
-        KO[k8sobjects receiver] --> P2
+        KO[k8s_objects receiver] --> P2
         P2 --> E2[OTLP Exporter]
     end
 
@@ -349,7 +359,7 @@ graph TB
     E2 --> Backend
 ```
 
-You can combine the cluster receiver and events receiver into one Deployment since neither needs node-local access. The kubeletstats receiver should stay in the DaemonSet.
+You can combine the cluster receiver and events receiver into one Deployment since neither needs node-local access. The kubelet_stats receiver should stay in the DaemonSet.
 
 ## Enriching Metrics with Kubernetes Metadata
 
@@ -397,11 +407,11 @@ This processor adds attributes like `k8s.deployment.name`, `k8s.namespace.name`,
 
 With all these metrics flowing in, here are some practical things to monitor:
 
-**Node health**: Alert when `k8s.node.condition` shows `Ready=false` for more than 5 minutes. Also watch `k8s.node.memory.available` dropping below 10% of total memory.
+**Node health**: Alert when `k8s.node.condition_ready` is `0` for more than 5 minutes. Also watch `k8s.node.memory.available` dropping below 10% of total memory.
 
 **Pod stability**: Alert when `k8s.container.restarts` increases by more than 3 in a 10-minute window. This catches crash loops early.
 
-**Resource saturation**: Use `k8s.container.cpu_limit_utilization` and `k8s.container.memory_limit_utilization` to identify containers that are consistently running near their limits. These are candidates for resource limit increases.
+**Resource saturation**: Use `k8s.container.cpu_limit_utilization` and `k8s.container.memory_limit_utilization` to identify containers that are consistently running near a ratio of 1.0 against their limits. These are candidates for resource limit increases.
 
 **Deployment health**: Compare `k8s.deployment.desired` with `k8s.deployment.available`. If they don't match for more than a few minutes, something is wrong with the rollout.
 
@@ -409,6 +419,6 @@ With all these metrics flowing in, here are some practical things to monitor:
 
 ## Wrapping Up
 
-Collecting Kubernetes metrics with OpenTelemetry is a matter of combining the right receivers for the right levels of the stack. The kubeletstats receiver gives you the live resource usage data you need for capacity planning and troubleshooting. The k8s_cluster receiver gives you the state of your workloads. And the k8sobjects receiver captures the events that explain why things changed.
+Collecting Kubernetes metrics with OpenTelemetry is a matter of combining the right receivers for the right levels of the stack. The kubelet_stats receiver gives you the live resource usage data you need for capacity planning and troubleshooting. The k8s_cluster receiver gives you the state of your workloads. And the k8s_objects receiver captures the events that explain why things changed.
 
 Together, they give you the same visibility you'd get from a combination of Prometheus, kube-state-metrics, and event exporters, all through a single OpenTelemetry Collector pipeline that you can route to any backend.
