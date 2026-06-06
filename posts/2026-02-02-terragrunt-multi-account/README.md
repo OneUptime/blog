@@ -324,7 +324,7 @@ inputs = {
 }
 ```
 
-Resource-Level Configuration
+## Resource-Level Configuration
 
 Individual resource configurations include the shared module and can override specific values as needed.
 
@@ -336,7 +336,7 @@ The following example shows how a VPC resource in development inherits from the 
 
 # Include the shared VPC configuration
 include "envcommon" {
-  path   = "${dirname(find_in_parent_folders())}_envcommon/vpc.hcl"
+  path   = "${dirname(find_in_parent_folders())}/_envcommon/vpc.hcl"
   expose = true
 }
 
@@ -390,7 +390,7 @@ The EKS configuration below demonstrates how to declare dependencies and use out
 # Production EKS cluster configuration
 
 include "envcommon" {
-  path   = "${dirname(find_in_parent_folders())}_envcommon/eks.hcl"
+  path   = "${dirname(find_in_parent_folders())}/_envcommon/eks.hcl"
   expose = true
 }
 
@@ -497,7 +497,7 @@ Configure cross-account dependencies by specifying the relative path to resource
 # Production VPC with cross-account dependencies
 
 include "envcommon" {
-  path   = "${dirname(find_in_parent_folders())}_envcommon/vpc.hcl"
+  path   = "${dirname(find_in_parent_folders())}/_envcommon/vpc.hcl"
   expose = true
 }
 
