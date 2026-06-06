@@ -20,7 +20,7 @@ The version number format follows MAJOR.MINOR.PATCH:
 - MINOR: New features, backward compatible
 - PATCH: Bug fixes, backward compatible
 
-Since OpenTelemetry reached 1.0, the API has maintained backward compatibility. However, SDK implementations can introduce breaking changes in their own versioning.
+Since OpenTelemetry reached 1.0, stable API and SDK packages are expected to maintain backward compatibility within a major version. However, pre-1.0 packages, alpha packages, and experimental contrib packages can still introduce breaking changes in their own versioning.
 
 ## Evaluating Your Project Requirements
 
@@ -34,7 +34,7 @@ Dependency conflicts matter more than most developers realize. Your application 
 
 ## Checking Language-Specific Compatibility
 
-Each OpenTelemetry language implementation publishes compatibility matrices. These documents are goldmines for version selection.
+Each OpenTelemetry language implementation publishes versioning guidance, runtime support information, and package metadata. These documents are goldmines for version selection.
 
 For Java, check the supported Java versions, application servers, and frameworks. A project using Spring Boot 2.x needs a different SDK version than one on Spring Boot 3.x.
 
@@ -45,58 +45,58 @@ Node.js moves fast. An SDK version from six months ago might not support the lat
 Here's how to check compatibility for different languages:
 
 ```bash
-# For Python, check the setup.py or pyproject.toml
+# For Python, check package-level pyproject.toml files
 
 # Clone the repo and check the version you're considering
 git clone https://github.com/open-telemetry/opentelemetry-python.git
 cd opentelemetry-python
 git checkout v1.15.0
-cat setup.py | grep python_requires
+grep -n "requires-python" opentelemetry-api/pyproject.toml opentelemetry-sdk/pyproject.toml
 ```
 
 ```bash
-# For Node.js, check package.json engines field
+# For Node.js, check the relevant package.json engines field
 git clone https://github.com/open-telemetry/opentelemetry-js.git
 cd opentelemetry-js
 git checkout v1.8.0
-cat package.json | grep -A 2 engines
+grep -A 2 '"engines"' experimental/packages/opentelemetry-sdk-node/package.json
 ```
 
 ```bash
-# For Java, check the README or pom.xml
+# For Java, check the versioning docs or Gradle build conventions
 git clone https://github.com/open-telemetry/opentelemetry-java.git
 cd opentelemetry-java
 git checkout v1.24.0
-grep -r "java.version" pom.xml
+grep -n "release.set" buildSrc/src/main/kotlin/otel.java-conventions.gradle.kts
 ```
 
 ## Matching SDK Version to Specification Version
 
-The OpenTelemetry specification evolves independently from SDK implementations. Each SDK version implements specific specification versions for traces, metrics, and logs.
+The OpenTelemetry specification evolves independently from SDK implementations. Each SDK version picks up specific specification changes for traces, metrics, logs, and semantic conventions.
 
-Check the SDK release notes to see which specification versions are supported. An SDK might fully implement the trace specification v1.10 while only partially supporting the metrics specification v1.8.
+Check the SDK release notes to see which specification changes and signal stability levels are supported. An SDK might include stable tracing and metrics support while logs or particular semantic conventions remain experimental.
 
 This matters when you're using multiple SDKs in a polyglot architecture. If your Go services use an SDK supporting specification v1.12 and your Python services use one supporting v1.10, you need to ensure the data formats remain compatible through your collection pipeline.
 
-The OpenTelemetry Collector version also plays a role. Newer SDK versions might emit data formats that older Collector versions can't process correctly. Always verify that your Collector version supports the data formats from your chosen SDK versions.
+The OpenTelemetry Collector version also plays a role. OTLP is designed for interoperability, but newer SDKs can emit newer optional fields, semantic conventions, or signal types that older Collectors and backends may ignore or handle differently. Always verify that your Collector version supports the signals and exporters from your chosen SDK versions.
 
 ## Evaluating Instrumentation Library Compatibility
 
 Instrumentation libraries (for frameworks like Express, Django, or Spring) have their own version requirements. These libraries depend on specific SDK versions and won't work outside their supported range.
 
-A common mistake is updating the core SDK without checking instrumentation library compatibility. You might upgrade to SDK v1.20 only to find that your Flask instrumentation library still requires v1.15.
+A common mistake is updating the core SDK without checking instrumentation library compatibility. You might upgrade one package only to find that your Flask instrumentation library still requires matching contrib packages or a different API version range.
 
 Here's a practical approach:
 
-```python
-# Bad: Installing latest SDK and older instrumentation
-pip install opentelemetry-api==1.20.0
-pip install opentelemetry-instrumentation-flask==0.35b0
+```bash
+# Bad: Mixing contrib packages from different beta release lines
+pip install opentelemetry-instrumentation-flask==0.36b0
+pip install opentelemetry-instrumentation-wsgi==0.35b0
 
 # This might cause runtime errors or missing telemetry
 ```
 
-```python
+```bash
 # Good: Check compatibility first
 # Look at the instrumentation library's requirements
 pip show opentelemetry-instrumentation-flask | grep Requires
@@ -143,7 +143,6 @@ Set up a staging environment that mirrors production. Deploy your application wi
 
 ```yaml
 # Example Docker Compose setup for testing
-version: '3.8'
 services:
   app-sdk-v1-15:
     build:
@@ -178,7 +177,6 @@ Staying on a single version forever isn't viable. Security patches and bug fixes
 Pin exact versions in your dependency files. Never use "latest" or loose version ranges for OpenTelemetry packages. This prevents surprise updates during builds.
 
 ```json
-// package.json - Good practice
 {
   "dependencies": {
     "@opentelemetry/sdk-node": "0.45.0",
@@ -188,7 +186,6 @@ Pin exact versions in your dependency files. Never use "latest" or loose version
 ```
 
 ```json
-// package.json - Bad practice
 {
   "dependencies": {
     "@opentelemetry/sdk-node": "^0.45.0",
@@ -219,7 +216,7 @@ graph TD
     style D fill:#bfb,stroke:#333
 ```
 
-The OTLP protocol provides the common ground. As long as each SDK version supports the same OTLP version, they can coexist. However, verify this explicitly rather than assuming compatibility.
+The OTLP protocol provides the common ground. OTLP does not use explicit protocol version numbers, so verify that each SDK and Collector supports the OTLP transport, signal types, and optional capabilities you plan to use rather than assuming compatibility from package versions alone.
 
 ## Making the Final Decision
 
