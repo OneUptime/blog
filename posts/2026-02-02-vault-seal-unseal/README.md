@@ -490,17 +490,16 @@ vault status
 
 When using auto-unseal, Vault generates recovery keys instead of unseal keys. Recovery keys can be used to generate a new root token but cannot unseal Vault.
 
-Generate new recovery keys if needed for disaster recovery scenarios.
+Generate a new root token using recovery keys if needed for disaster recovery scenarios.
 
 ```bash
-# Generate new recovery keys
-# Requires existing recovery key threshold
+# Start a new root token generation
+# This outputs a nonce and a one-time password (OTP) used to decode the final token
 vault operator generate-root -init
 
-# Use recovery keys to complete root token generation
-vault operator generate-root \
-  -nonce=<nonce-from-init> \
-  -otp=<otp-from-init>
+# Submit recovery keys to progress the generation (repeat until threshold is reached)
+# You will be prompted to enter each recovery key
+vault operator generate-root -nonce=<nonce-from-init>
 ```
 
 Rekey recovery keys to change the threshold or number of shares.
