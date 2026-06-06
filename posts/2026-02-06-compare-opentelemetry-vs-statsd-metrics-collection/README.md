@@ -42,7 +42,7 @@ Here are some examples:
 # Gauge: set a value
 "queue.depth:42|g"
 
-# Histogram: record a value for distribution
+# Histogram: record a value for distribution (DogStatsD extension)
 "payment.amount:99.95|h"
 
 # Counter with sample rate (only 10% of calls actually send)
@@ -74,8 +74,9 @@ def process_order(order):
 
     if result.success:
         client.incr('orders.success')
-        # Record the order amount as a histogram
-        client.timing('order.amount', order.total_cents)
+        # Record the order amount as a timing-style distribution
+        # if your backend treats timers as distributions
+        client.timing('order.amount_cents', order.total_cents)
     else:
         client.incr('orders.failure')
 
@@ -119,7 +120,10 @@ public class OrderService {
 ```python
 # OpenTelemetry metrics for the same use case
 # More setup, but richer data model and multi-signal support
+import time
+
 from opentelemetry import metrics
+from opentelemetry.metrics import CallbackOptions, Observation
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
@@ -145,9 +149,17 @@ processing_time = meter.create_histogram(
     description="Order processing duration",
     unit="ms",
 )
-queue_depth = meter.create_up_down_counter(
+
+def queue_depth_callback(options: CallbackOptions):
+    yield Observation(
+        get_queue_depth(),
+        {"service": "order-service", "env": "prod"},
+    )
+
+queue_depth = meter.create_observable_gauge(
     "orders.queue_depth",
     description="Current order queue depth",
+    callbacks=[queue_depth_callback],
     unit="1",
 )
 
@@ -180,10 +192,11 @@ StatsD uses UDP by default. This is a fire-and-forget protocol, which means:
 - No back-pressure mechanism
 - Extremely low overhead
 
-OpenTelemetry uses TCP-based protocols (gRPC or HTTP). This means:
+OpenTelemetry commonly exports metrics with OTLP over gRPC or HTTP. This means:
 
-- Reliable delivery with retries
-- Back-pressure when the collector is overloaded
+- Transport-level reliability instead of UDP fire-and-forget
+- Optional retry and queueing behavior, depending on the SDK or Collector configuration
+- Possible back-pressure or data drops when queues fill
 - Slightly higher overhead per metric
 - Connection management needed
 
@@ -241,7 +254,7 @@ orders_counter.add(1, {
 | Counter | Yes | Yes (Counter, UpDownCounter) |
 | Gauge | Yes | Yes (via callbacks) |
 | Timer/Histogram | Yes | Yes (Histogram) |
-| Summary | No (backend-side) | Yes (in some SDKs) |
+| Summary | No (backend-side) | No direct instrument |
 | Exponential Histogram | No | Yes |
 | Sets | Yes (unique values) | No direct equivalent |
 
@@ -259,10 +272,16 @@ receivers:
     endpoint: 0.0.0.0:8125
     # Configure aggregation interval
     aggregation_interval: 60s
-    # Enable timer histogram conversion
+    # Emit the original StatsD metric type as an attribute
     enable_metric_type: true
-    # Map StatsD tags to OTel attributes
+    # Mark counter metrics as monotonic
     is_monotonic_counter: true
+    # Convert StatsD timer and histogram values to OTLP histograms
+    timer_histogram_mapping:
+      - statsd_type: "timing"
+        observer_type: "histogram"
+      - statsd_type: "histogram"
+        observer_type: "histogram"
 
 processors:
   batch:
@@ -302,7 +321,7 @@ Use StatsD when:
 Use OpenTelemetry when:
 
 - You want metrics, traces, and logs from a single SDK
-- Reliable metric delivery matters (no UDP packet loss)
+- You prefer OTLP over gRPC or HTTP and configurable retry/queueing over UDP fire-and-forget
 - You need rich attributes and semantic conventions
 - Exponential histograms would improve your latency monitoring
 - Vendor-neutral instrumentation is a priority
@@ -316,7 +335,7 @@ The cleanest migration path from StatsD to OpenTelemetry is:
 3. Gradually update existing services to replace StatsD clients with OTel SDKs
 4. Decommission the StatsD daemon when all services have migrated
 
-The OTel Collector's StatsD receiver ensures you never lose metrics during the transition.
+The OTel Collector's StatsD receiver lets you route existing StatsD metrics through the OpenTelemetry pipeline during the transition.
 
 ## Conclusion
 
