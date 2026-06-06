@@ -13,13 +13,13 @@ cert-manager automates TLS certificate management in Kubernetes. When it fails s
 cert-manager exposes Prometheus metrics on port 9402 by default. The key metrics include:
 
 ### Certificate Status
-- `certmanager_certificate_ready_status` - Whether certificates are in a ready state (1 = ready, 0 = not ready)
+- `certmanager_certificate_ready_status` - Certificate ready condition status (use `condition="True"` to check whether the certificate is ready)
 - `certmanager_certificate_expiration_timestamp_seconds` - Unix timestamp of certificate expiration
 
 ### Issuance Performance
 - `certmanager_controller_sync_call_count` - Number of sync operations by controller
 - `certmanager_http_acme_client_request_count` - ACME client request count
-- `certmanager_http_acme_client_request_duration_seconds` - ACME client request latency
+- `certmanager_http_acme_client_request_duration_seconds` - ACME client request latency summary
 
 ### Renewal
 - `certmanager_certificate_renewal_timestamp_seconds` - When the next renewal is scheduled
@@ -48,7 +48,7 @@ receivers:
             # Target the metrics port
             - source_labels: [__meta_kubernetes_pod_ip]
               target_label: __address__
-              replacement: "$1:9402"
+              replacement: "$$1:9402"
             - source_labels: [__meta_kubernetes_pod_name]
               target_label: pod
 
@@ -127,7 +127,7 @@ receivers:
         - job_name: "cert-manager"
           scrape_interval: 30s
           static_configs:
-            - targets: ["cert-manager-controller.cert-manager.svc.cluster.local:9402"]
+            - targets: ["cert-manager.cert-manager.svc.cluster.local:9402"]
 
 processors:
   resource/cert-manager:
@@ -169,10 +169,10 @@ Set up these alerts for production safety:
 # certmanager_certificate_expiration_timestamp_seconds - time() < 24 * 3600
 
 # Warning: ACME client request failures
-# rate(certmanager_http_acme_client_request_count{status_code!="200"}) > 0
+# rate(certmanager_http_acme_client_request_count{status!="200"}[5m]) > 0
 
 # Warning: High ACME request latency (issuance slow)
-# certmanager_http_acme_client_request_duration_seconds p99 > 30
+# certmanager_http_acme_client_request_duration_seconds{quantile="0.99"} > 30
 ```
 
 ## Monitoring cert-manager Webhook
@@ -193,7 +193,7 @@ scrape_configs:
         regex: "webhook"
       - source_labels: [__meta_kubernetes_pod_ip]
         target_label: __address__
-        replacement: "$1:9402"
+        replacement: "$$1:9402"
 ```
 
 ## Monitoring Multiple Issuers
