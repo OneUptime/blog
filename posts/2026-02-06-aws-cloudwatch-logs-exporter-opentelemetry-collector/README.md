@@ -60,6 +60,8 @@ Create an IAM policy with necessary CloudWatch Logs permissions:
         "logs:CreateLogGroup",
         "logs:CreateLogStream",
         "logs:PutLogEvents",
+        "logs:PutRetentionPolicy",
+        "logs:TagResource",
         "logs:DescribeLogGroups",
         "logs:DescribeLogStreams"
       ],
@@ -79,7 +81,9 @@ For production environments, scope the resource ARN to specific log groups:
       "Effect": "Allow",
       "Action": [
         "logs:CreateLogStream",
-        "logs:PutLogEvents"
+        "logs:PutLogEvents",
+        "logs:PutRetentionPolicy",
+        "logs:TagResource"
       ],
       "Resource": "arn:aws:logs:us-east-1:123456789012:log-group:/aws/otel/*:*"
     },
@@ -109,8 +113,8 @@ exporters:
     # Log group name
     log_group_name: /aws/otel/application
 
-    # Log stream name (supports templating)
-    log_stream_name: instance-{host.name}
+    # Log stream name (supports supported placeholders)
+    log_stream_name: "{ServiceName}-{InstanceId}"
 
 receivers:
   otlp:
@@ -131,11 +135,11 @@ service:
       exporters: [awscloudwatchlogs]
 ```
 
-This configuration creates a log group `/aws/otel/application` and streams logs based on the hostname.
+This configuration creates a log group `/aws/otel/application` and streams logs based on the service name and service instance ID.
 
 ## Dynamic Log Stream Names
 
-Use attribute values to create dynamic log stream names:
+Use supported resource attribute placeholders to create dynamic log stream names:
 
 ```yaml
 exporters:
@@ -143,9 +147,9 @@ exporters:
     region: us-east-1
     log_group_name: /aws/otel/application
 
-    # Template using resource attributes
+    # Template using supported resource attribute placeholders
     # Creates streams like: production-api-gateway-i-0123456789abcdef
-    log_stream_name: "{deployment.environment}-{service.name}-{host.id}"
+    log_stream_name: "production-{ServiceName}-{InstanceId}"
 
 processors:
   # Add resource attributes
@@ -157,7 +161,7 @@ processors:
       - key: service.name
         value: api-gateway
         action: insert
-      - key: host.id
+      - key: service.instance.id
         value: ${HOSTNAME}
         action: insert
 
@@ -189,36 +193,37 @@ exporters:
   awscloudwatchlogs/app:
     region: us-east-1
     log_group_name: /aws/otel/application
-    log_stream_name: "{service.name}"
+    log_stream_name: "{ServiceName}"
 
   # Error logs
   awscloudwatchlogs/errors:
     region: us-east-1
     log_group_name: /aws/otel/errors
-    log_stream_name: "{service.name}"
+    log_stream_name: "{ServiceName}"
 
   # Audit logs
   awscloudwatchlogs/audit:
     region: us-east-1
     log_group_name: /aws/otel/audit
-    log_stream_name: "{service.name}"
+    log_stream_name: "{ServiceName}"
 
-processors:
+connectors:
   # Route logs based on severity
   routing:
-    from_attribute: severity_text
+    default_pipelines: [logs/app]
     table:
-      - value: ERROR
-        exporters: [awscloudwatchlogs/errors]
-      - value: FATAL
-        exporters: [awscloudwatchlogs/errors]
-    default_exporters: [awscloudwatchlogs/app]
+      - context: log
+        condition: severity_text == "ERROR"
+        pipelines: [logs/errors]
+      - context: log
+        condition: severity_text == "FATAL"
+        pipelines: [logs/errors]
 
+processors:
   # Filter for audit logs
   filter/audit:
-    logs:
-      log_record:
-        - 'attributes["log.type"] == "audit"'
+    log_conditions:
+      - 'log.attributes["log.type"] != "audit"'
 
   batch:
     timeout: 10s
@@ -232,11 +237,21 @@ receivers:
 
 service:
   pipelines:
-    # Regular logs
-    logs:
+    # Route incoming logs
+    logs/in:
       receivers: [otlp]
-      processors: [batch, routing]
-      exporters: [awscloudwatchlogs/app, awscloudwatchlogs/errors]
+      processors: [batch]
+      exporters: [routing]
+
+    # Application logs
+    logs/app:
+      receivers: [routing]
+      exporters: [awscloudwatchlogs/app]
+
+    # Error logs
+    logs/errors:
+      receivers: [routing]
+      exporters: [awscloudwatchlogs/errors]
 
     # Audit logs
     logs/audit:
@@ -254,22 +269,11 @@ exporters:
   awscloudwatchlogs:
     region: us-east-1
     log_group_name: /aws/otel/application
-    log_stream_name: "{service.name}"
+    log_stream_name: "{ServiceName}"
 
-    # Encoding format (json or text)
-    encoding: json
-
-    # Embedded EMF (Embedded Metric Format) support
-    emf:
-      # Namespace for EMF metrics
-      namespace: OtelCollector
-
-      # Dimension keys from resource attributes
-      resource_to_telemetry_conversion:
-        enabled: true
-
-      # Parse EMF from log body
-      parse_json_encoded_attr_values: true
+    # Export only the log body instead of the CloudWatch Logs exporter JSON wrapper.
+    # Set this to true when the body already contains EMF JSON.
+    raw_log: false
 
 processors:
   # Transform logs to include structured data
@@ -278,10 +282,10 @@ processors:
       - context: log
         statements:
           # Add timestamp
-          - set(attributes["timestamp"], Time())
+          - set(attributes["timestamp"], log.time_unix_nano)
 
           # Parse JSON body if present
-          - merge_maps(attributes, ParseJSON(body), "insert") where IsMatch(body, "^\\{")
+          - merge_maps(log.attributes, ParseJSON(log.body.string), "insert") where IsMatch(log.body.string, "^\\{")
 
   batch:
     timeout: 10s
@@ -310,11 +314,11 @@ exporters:
   awscloudwatchlogs:
     region: us-east-1
     log_group_name: /aws/otel/application
-    log_stream_name: "{service.name}-{host.id}"
+    log_stream_name: "{ServiceName}-{InstanceId}"
 
     # Log retention in days (0 = never expire)
-    # Valid values: 1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1827, 3653
-    retention_in_days: 30
+    # Valid values: 1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1827, 2192, 2557, 2922, 3288, 3653
+    log_retention: 30
 
     # Tags for the log group
     tags:
@@ -322,12 +326,6 @@ exporters:
       Application: api-gateway
       ManagedBy: opentelemetry
       CostCenter: engineering
-
-    # Encoding
-    encoding: json
-
-    # Batch settings for API efficiency
-    max_events_per_batch: 10000
 
 processors:
   batch:
@@ -370,12 +368,12 @@ processors:
   attributes:
     actions:
       # Extract ECS task ID for log stream
-      - key: ecs.task.id
+      - key: aws.ecs.task.id
         from_attribute: aws.ecs.task.id
         action: upsert
 
       # Extract cluster name
-      - key: ecs.cluster
+      - key: aws.ecs.cluster.name
         from_attribute: aws.ecs.cluster.name
         action: upsert
 
@@ -388,12 +386,12 @@ exporters:
     region: us-east-1
 
     # ECS-specific log group
-    log_group_name: /aws/ecs/{ecs.cluster}
+    log_group_name: /aws/ecs/{ClusterName}
 
     # Log stream using ECS task ID
-    log_stream_name: "{service.name}/{ecs.task.id}"
+    log_stream_name: "{ServiceName}/{TaskId}"
 
-    retention_in_days: 7
+    log_retention: 7
 
     tags:
       Platform: ECS
@@ -415,57 +413,53 @@ service:
 
 ## Embedded Metric Format (EMF) Configuration
 
-Send logs with embedded CloudWatch metrics using EMF:
+Send OpenTelemetry metrics to CloudWatch Logs as embedded metric format (EMF) using the AWS EMF exporter:
 
 ```yaml
 exporters:
-  awscloudwatchlogs:
+  awsemf:
     region: us-east-1
     log_group_name: /aws/otel/metrics
-    log_stream_name: "{service.name}"
+    log_stream_name: "{ServiceName}"
 
-    # EMF configuration
-    emf:
-      # CloudWatch namespace for metrics
-      namespace: CustomApp/Metrics
+    # CloudWatch namespace for metrics
+    namespace: CustomApp/Metrics
 
-      # Dimension keys from resource attributes
-      dimension_rollup_option: NoDimensionRollup
+    # Dimension rollup option
+    dimension_rollup_option: NoDimensionRollup
 
-      # Resource attributes to convert to dimensions
-      resource_to_telemetry_conversion:
-        enabled: true
+    # Resource attributes to convert to dimensions
+    resource_to_telemetry_conversion:
+      enabled: true
 
-      # Parse JSON-encoded attribute values
-      parse_json_encoded_attr_values: true
+    # Parse JSON-encoded attribute values for selected attributes
+    parse_json_encoded_attr_values:
+      - metadata
 
-      # Metric declarations
-      metric_declarations:
-        - dimensions: [[service.name, operation]]
-          metric_name_selectors:
-            - request.duration
-            - request.count
+    # Metric declarations
+    metric_declarations:
+      - dimensions: [[service.name, operation]]
+        metric_name_selectors:
+          - request.duration
+          - request.count
 
-        - dimensions: [[service.name]]
-          metric_name_selectors:
-            - error.count
+      - dimensions: [[service.name]]
+        metric_name_selectors:
+          - error.count
 
-    encoding: json
-    retention_in_days: 7
+    log_retention: 7
 
 processors:
-  # Transform to EMF format
+  # Rename metrics before EMF export
   metricstransform:
     transforms:
       - include: request.duration
         action: update
         new_name: RequestDuration
-        aggregation_type: histogram
 
       - include: request.count
         action: update
         new_name: RequestCount
-        aggregation_type: sum
 
   batch:
     timeout: 10s
@@ -478,10 +472,10 @@ receivers:
 
 service:
   pipelines:
-    logs:
+    metrics:
       receivers: [otlp]
       processors: [metricstransform, batch]
-      exporters: [awscloudwatchlogs]
+      exporters: [awsemf]
 ```
 
 ## Complete Production Configuration
@@ -532,12 +526,11 @@ processors:
 
   # Filter out debug logs
   filter:
-    logs:
-      log_record:
-        - 'severity_number < SEVERITY_NUMBER_INFO'
+    log_conditions:
+      - 'log.severity_number < SEVERITY_NUMBER_INFO'
 
   # Deduplicate logs
-  dedup:
+  log_dedup:
     interval: 1s
 
   # Add attributes
@@ -549,6 +542,9 @@ processors:
       - key: log.source
         value: otel-collector
         action: insert
+      - key: service.instance.id
+        value: ${HOSTNAME}
+        action: insert
 
   # Transform logs
   transform:
@@ -556,12 +552,12 @@ processors:
       - context: log
         statements:
           # Extract trace context
-          - set(attributes["trace_id"], trace_id.string) where trace_id.string != nil
-          - set(attributes["span_id"], span_id.string) where span_id.string != nil
+          - set(log.attributes["trace_id"], log.trace_id.string)
+          - set(log.attributes["span_id"], log.span_id.string)
 
           # Normalize severity
-          - set(severity_text, "INFO") where severity_text == "information"
-          - set(severity_text, "ERROR") where severity_text == "error"
+          - set(log.severity_text, "INFO") where log.severity_text == "information"
+          - set(log.severity_text, "ERROR") where log.severity_text == "error"
 
   # Batch for efficiency
   batch:
@@ -573,11 +569,10 @@ exporters:
   # Application logs
   awscloudwatchlogs/app:
     region: us-east-1
-    log_group_name: /aws/otel/{service.namespace}/{service.name}
-    log_stream_name: "{host.name}"
+    log_group_name: /aws/otel/production/{ServiceName}
+    log_stream_name: "{ServiceName}-{InstanceId}"
 
-    encoding: json
-    retention_in_days: 30
+    log_retention: 30
 
     tags:
       Environment: production
@@ -595,9 +590,6 @@ exporters:
       initial_interval: 5s
       max_interval: 30s
       max_elapsed_time: 300s
-
-    # Timeout
-    timeout: 30s
 
 service:
   extensions: [health_check]
@@ -620,7 +612,7 @@ service:
         - memory_limiter
         - resourcedetection
         - filter
-        - dedup
+        - log_dedup
         - resource
         - transform
         - batch
@@ -636,12 +628,12 @@ exporters:
   awscloudwatchlogs:
     region: us-east-1
     log_group_name: /aws/otel/application
-    log_stream_name: "{service.name}"
+    log_stream_name: "{ServiceName}"
 
     # Custom endpoint for VPC endpoint
     endpoint: https://vpce-1234567-abcdefg.logs.us-east-1.vpce.amazonaws.com
 
-    # Disable endpoint resolution
+    # Disable TLS certificate verification only if required for a custom endpoint
     no_verify_ssl: false
 
 receivers:
@@ -668,9 +660,11 @@ Create the CloudWatch Logs VPC endpoint:
 ```bash
 aws ec2 create-vpc-endpoint \
   --vpc-id vpc-12345678 \
+  --vpc-endpoint-type Interface \
   --service-name com.amazonaws.us-east-1.logs \
-  --route-table-ids rtb-12345678 \
-  --subnet-ids subnet-12345678 subnet-87654321
+  --subnet-ids subnet-12345678 subnet-87654321 \
+  --security-group-ids sg-12345678 \
+  --private-dns-enabled
 ```
 
 ## CloudWatch Logs Insights Queries
@@ -679,25 +673,25 @@ Once logs are in CloudWatch, use Logs Insights for analysis:
 
 ```text
 # Find error logs
-fields @timestamp, log.body, severity_text
+fields @timestamp, body, severity_text
 | filter severity_text = "ERROR"
 | sort @timestamp desc
 | limit 20
 
 # Count logs by service
-stats count() by service.name
+stats count() by resource.`service.name`
 
 # Find logs with specific trace ID
-fields @timestamp, log.body
+fields @timestamp, body
 | filter attributes.trace_id = "abc123..."
 
 # Calculate p95 latency from logs
 fields attributes.duration
-| stats percentile(attributes.duration, 95) by service.name
+| stats percentile(attributes.duration, 95) by resource.`service.name`
 
 # Search for specific patterns
-fields @timestamp, log.body
-| filter log.body like /exception/
+fields @timestamp, body
+| filter body like /exception/
 | sort @timestamp desc
 ```
 
@@ -735,7 +729,7 @@ Common issues and solutions:
 
 **ResourceNotFoundException**: Log group doesn't exist. Enable auto-creation or create manually.
 
-**InvalidSequenceTokenException**: Multiple collectors writing to same stream. Use unique stream names per collector instance.
+**InvalidSequenceTokenException**: This should not occur with current CloudWatch Logs `PutLogEvents`, because sequence tokens are ignored. If you see it from older tooling, upgrade the client or collector.
 
 **ThrottlingException**: Too many API calls. Increase batch size and timeout to reduce call frequency.
 
