@@ -160,14 +160,14 @@ func HandleAuth(c *gin.Context) {
 }
 ```
 
-## ShouldBind vs MustBind
+## ShouldBind vs Bind
 
 Gin offers two binding styles. The difference is how they handle errors.
 
 | Method | On Error | Use Case |
 |--------|----------|----------|
 | `ShouldBind*` | Returns error, you decide response | APIs where you control error format |
-| `MustBind*` | Aborts with 400, writes error to response | Quick prototypes, simple cases |
+| `Bind*` | Aborts with 400, writes error to response | Quick prototypes, simple cases |
 
 ### ShouldBind - You Handle Errors
 
@@ -190,15 +190,15 @@ func CreateOrder(c *gin.Context) {
 }
 ```
 
-### MustBind - Automatic Error Response
+### Bind - Automatic Error Response
 
 ```go
 func CreateOrder(c *gin.Context) {
     var req OrderRequest
 
-    // MustBindJSON calls c.AbortWithError(400, err) on failure
+    // BindJSON calls c.AbortWithError(400, err) on failure
     // Response is already written - cannot customize
-    if err := c.MustBindJSON(&req); err != nil {
+    if err := c.BindJSON(&req); err != nil {
         // Request already aborted with 400
         return
     }
@@ -892,7 +892,7 @@ func toSnakeCase(s string) string {
 | Topic | Key Points |
 |-------|------------|
 | **Binding tags** | `json` for body, `form` for query/form, `uri` for path, `header` for headers |
-| **ShouldBind vs MustBind** | Use `ShouldBind*` for control over error responses |
+| **ShouldBind vs Bind** | Use `ShouldBind*` for control over error responses |
 | **Validation tags** | `required`, `min`, `max`, `email`, `oneof`, `dive` for nested |
 | **Custom validators** | Register with `binding.Validator.Engine()` |
 | **Error messages** | Parse `validator.ValidationErrors` for user-friendly output |
