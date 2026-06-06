@@ -82,10 +82,9 @@ Sometimes you need more control over the response headers - for caching, trackin
 ```python
 # custom_headers.py
 # FileResponse with additional headers for caching and metadata
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from pathlib import Path
-import os
 
 app = FastAPI()
 
@@ -373,8 +372,8 @@ The `Content-Disposition` header controls how browsers handle the response - dis
 ```python
 # content_disposition.py
 # Different Content-Disposition modes for various use cases
-from fastapi import FastAPI, Query
-from fastapi.responses import FileResponse, Response
+from fastapi import FastAPI, HTTPException, Query
+from fastapi.responses import FileResponse
 from pathlib import Path
 
 app = FastAPI()
