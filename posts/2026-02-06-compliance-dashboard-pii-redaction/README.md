@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Compliance, PII Redaction, Dashboard
 
 Description: Build a compliance dashboard that measures and tracks PII redaction effectiveness across your OpenTelemetry pipelines.
 
-You have PII redaction configured in your OpenTelemetry pipeline. Great. But how do you know it is actually working? How do you prove to auditors that your redaction rules caught 100% of the PII that flowed through? How do you detect when a new service starts emitting PII in a format your rules do not cover?
+You have PII redaction configured in your OpenTelemetry pipeline. Great. But how do you know it is actually working? How do you provide auditors with evidence that your redaction rules are catching the PII they are designed to catch? How do you detect when a new service starts emitting PII in a format your rules do not cover?
 
 This post walks through building a compliance dashboard that continuously monitors the effectiveness of your PII redaction pipeline. The dashboard tracks redaction counts, detects potential PII leaks that slipped through, and provides the metrics your compliance team needs for audit evidence.
 
@@ -25,7 +25,6 @@ Create a custom processor that wraps your redaction logic and emits metrics:
 # Redaction processor that emits compliance metrics
 
 from opentelemetry import metrics
-from opentelemetry.sdk.metrics import MeterProvider
 import re
 from dataclasses import dataclass
 
@@ -81,7 +80,7 @@ REDACTED_MARKER = "[PII-REDACTED]"
 def scan_and_redact(value, service_name):
     """Scan a string value for PII, redact it, and emit metrics."""
     if not isinstance(value, str):
-        return value
+        return value, False
 
     found_any = False
     for pattern in PII_PATTERNS:
@@ -107,11 +106,11 @@ def process_span(span):
     records_scanned.add(1, {"service.name": service})
 
     any_pii_found = False
-    for key, value in span.attributes.items():
+    for key, value in list(span.attributes.items()):
         new_value, had_pii = scan_and_redact(value, service)
         if had_pii:
             any_pii_found = True
-            span.attributes[key] = new_value
+            span.set_attribute(key, new_value)
 
     if any_pii_found:
         records_redacted.add(1, {"service.name": service})
@@ -129,7 +128,7 @@ This scanner runs against your telemetry backend and flags potential leaks:
 # Post-redaction PII leak scanner
 # Run this as a scheduled job every hour against sampled telemetry
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 leak_detected = meter.create_counter(
     "pii.redaction.leaks_detected",
@@ -158,12 +157,13 @@ def validate_exported_telemetry(backend_client, sample_size=1000):
 
     # Query a sample of recent spans from the backend
     spans = backend_client.query_spans(
-        start_time=datetime.utcnow() - timedelta(hours=1),
+        start_time=datetime.now(timezone.utc) - timedelta(hours=1),
         limit=sample_size,
     )
 
     leaks = []
     for span in spans:
+        service = span.resource.attributes.get("service.name", "unknown")
         for key, value in span.attributes.items():
             if not isinstance(value, str):
                 continue
@@ -177,11 +177,11 @@ def validate_exported_telemetry(backend_client, sample_size=1000):
                         "span_id": span.span_id,
                         "attribute": key,
                         "pattern": pattern_name,
-                        "service": span.resource["service.name"],
+                        "service": service,
                     })
                     leak_detected.add(1, {
                         "pii.pattern": pattern_name,
-                        "service.name": span.resource["service.name"],
+                        "service.name": service,
                         "attribute.key": key,
                     })
 
@@ -257,7 +257,7 @@ groups:
         for: 0m
         labels:
           severity: critical
-          compliance: true
+          compliance: "true"
         annotations:
           summary: "PII detected in post-redaction validation scan"
           description: >
