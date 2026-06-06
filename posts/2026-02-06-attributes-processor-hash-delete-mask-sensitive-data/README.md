@@ -97,7 +97,7 @@ Deletion is permanent and happens in the pipeline. Once an attribute is deleted,
 
 Sometimes you need to remove the raw value of an attribute but keep it useful for correlation. For example, you might want to see that two spans were triggered by the same user without knowing which user it was. Hashing is perfect for this.
 
-The `hash` action replaces the attribute value with its SHA-256 hash. The original value is unrecoverable from the hash, but identical inputs always produce the same hash. This means you can still group and filter spans by hashed user ID.
+The `hash` action replaces the attribute value with its SHA1 hash. The original value is not stored in the processed telemetry, but identical inputs always produce the same hash. This means you can still group and filter spans by hashed user ID.
 
 This configuration hashes user identifiers so they remain useful for correlation without exposing real values.
 
@@ -136,8 +136,8 @@ http.route: "/api/orders"
 After hashing:
 
 ```text
-user.id: "a1b2c3d4e5f6...64-char-hex-string"
-session.id: "f6e5d4c3b2a1...64-char-hex-string"
+user.id: "a1b2c3d4e5f6...40-char-hex-string"
+session.id: "f6e5d4c3b2a1...40-char-hex-string"
 http.method: "GET"
 http.route: "/api/orders"
 ```
@@ -146,18 +146,18 @@ You can still query "show me all spans from the same user" by filtering on the h
 
 ```mermaid
 flowchart LR
-    A["user.id: alice_123"] --> B[SHA-256 Hash]
+    A["user.id: alice_123"] --> B[SHA1 Hash]
     B --> C["user.id: a1b2c3..."]
-    D["user.id: alice_123"] --> E[SHA-256 Hash]
+    D["user.id: alice_123"] --> E[SHA1 Hash]
     E --> F["user.id: a1b2c3..."]
-    G["user.id: bob_456"] --> H[SHA-256 Hash]
+    G["user.id: bob_456"] --> H[SHA1 Hash]
     H --> I["user.id: x9y8z7..."]
     style C fill:#90EE90
     style F fill:#90EE90
     style I fill:#90EE90
 ```
 
-One important caveat: SHA-256 hashing of low-entropy values (like sequential user IDs such as 1, 2, 3) can be reversed with a rainbow table. If your user IDs are predictable, consider prepending a salt before hashing. The attributes processor does not support salted hashing natively, so you would need to handle this at the SDK level or use the transform processor with OTTL.
+One important caveat: SHA1 hashing of low-entropy values (like sequential user IDs such as 1, 2, 3) can be reversed with a rainbow table. If your user IDs are predictable, consider prepending a salt before hashing. The attributes processor does not support salted hashing natively, so you would need to handle this at the SDK level or use the transform processor with OTTL.
 
 ## Masking with the Extract Action
 
@@ -246,7 +246,7 @@ processors:
 After processing, a span with `user.phone: +1-555-867-5309` becomes:
 
 ```text
-user.phone: "e3b0c44298fc...hashed"
+user.phone: "c49db0137012...hashed"
 phone_country_code: "+1"
 user.has_phone: true
 data.classification: "contains_pii"
@@ -359,7 +359,7 @@ service:
       exporters: [otlp]
 ```
 
-Be careful when deleting metric labels. Unlike span attributes, metric labels define the metric's dimensional identity. Removing a label changes which time series the datapoint belongs to, and can cause unexpected aggregation behavior. Test in staging first.
+Be careful when deleting metric labels. Unlike span attributes, metric labels define the metric's dimensional identity. Removing a label changes which time series the datapoint belongs to, and the attributes processor does not re-aggregate datapoints that now have the same identity. Test in staging first.
 
 ## Complete Production Example
 
@@ -458,7 +458,7 @@ flowchart LR
 
 ## Performance Notes
 
-The attributes processor is lightweight. Delete and hash operations add microseconds per span. The extract action is slightly more expensive because it runs regex matching, but still negligible for most workloads. Even at 50,000 spans per second, the attributes processor typically adds less than 1% CPU overhead.
+The attributes processor is generally lightweight. Delete and hash operations are simple attribute operations. The extract action is slightly more expensive because it runs regex matching, so benchmark it with representative traffic if you apply many extraction rules.
 
 If you are chaining many processors (attributes, redaction, transform), profile your pipeline with the Collector's internal metrics. Look at `otelcol_processor_batch_timeout_trigger_send` and pipeline latency to spot bottlenecks.
 
