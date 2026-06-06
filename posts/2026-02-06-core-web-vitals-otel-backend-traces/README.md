@@ -2,19 +2,19 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Core Web Vitals, LCP, FID, CLS, Full-Stack Performance
+Tags: OpenTelemetry, Core Web Vitals, LCP, INP, CLS, Full-Stack Performance
 
 Description: Correlate Core Web Vitals from the browser with backend OpenTelemetry traces to pinpoint whether slow performance originates on the frontend or backend.
 
-Core Web Vitals measure what users actually experience: how fast the largest element renders (LCP), how responsive the page is to interaction (FID/INP), and how visually stable it is (CLS). But these metrics alone do not tell you why performance is poor. Is LCP slow because the server took too long to respond, or because the browser is struggling with rendering? You need to link frontend vitals with backend traces to get the full answer.
+Core Web Vitals measure what users actually experience: how fast the largest element renders (LCP), how responsive the page is to interaction (INP), and how visually stable it is (CLS). But these metrics alone do not tell you why performance is poor. Is LCP slow because the server took too long to respond, or because the browser is struggling with rendering? You need to link frontend vitals with backend traces to get the full answer.
 
 ## Capturing Core Web Vitals in the Browser
 
-Use the `web-vitals` library to collect metrics and send them to your OpenTelemetry Collector:
+Use the `web-vitals` library to collect metrics and send them to an application endpoint that records them with OpenTelemetry:
 
 ```javascript
 // web-vitals-reporter.js
-import { onLCP, onFID, onCLS, onTTFB, onINP } from 'web-vitals';
+import { onLCP, onCLS, onTTFB, onINP } from 'web-vitals';
 
 const OTEL_ENDPOINT = '/api/v1/browser-metrics';
 
@@ -35,7 +35,8 @@ function sendMetric(metric) {
 
   // Use sendBeacon for reliability during page unload
   if (navigator.sendBeacon) {
-    navigator.sendBeacon(OTEL_ENDPOINT, body);
+    const blob = new Blob([body], { type: 'application/json' });
+    navigator.sendBeacon(OTEL_ENDPOINT, blob);
   } else {
     fetch(OTEL_ENDPOINT, {
       method: 'POST',
@@ -48,7 +49,6 @@ function sendMetric(metric) {
 
 // Register all vital metric collectors
 onLCP(sendMetric);
-onFID(sendMetric);
 onCLS(sendMetric);
 onTTFB(sendMetric);
 onINP(sendMetric);
@@ -85,26 +85,24 @@ function injectTraceId(req, res, next) {
 
 ## Converting Browser Metrics to OpenTelemetry
 
-On the server side, receive the browser metrics and convert them to OpenTelemetry metrics with the trace ID as a link:
+On the server side, receive the browser metrics and convert them to OpenTelemetry metrics with the trace ID as an attribute:
 
 ```python
 # browser_metrics_endpoint.py
 
 from flask import Flask, request, jsonify
-from opentelemetry import metrics, trace
+from opentelemetry import metrics
 
 meter = metrics.get_meter("browser-vitals")
 
 # Create histograms for each vital
 lcp_histogram = meter.create_histogram("browser.lcp", unit="ms", description="Largest Contentful Paint")
-fid_histogram = meter.create_histogram("browser.fid", unit="ms", description="First Input Delay")
 cls_histogram = meter.create_histogram("browser.cls", description="Cumulative Layout Shift")
 ttfb_histogram = meter.create_histogram("browser.ttfb", unit="ms", description="Time to First Byte")
 inp_histogram = meter.create_histogram("browser.inp", unit="ms", description="Interaction to Next Paint")
 
 METRIC_MAP = {
     "LCP": lcp_histogram,
-    "FID": fid_histogram,
     "CLS": cls_histogram,
     "TTFB": ttfb_histogram,
     "INP": inp_histogram,
@@ -137,7 +135,9 @@ Now that both browser vitals and backend traces share a trace ID, you can query 
 
 ```promql
 # Average LCP grouped by page, only for "poor" rated pages
-avg(browser_lcp{vital_rating="poor"}) by (page_url)
+sum(rate(browser_lcp_milliseconds_sum{vital_rating="poor"}[15m])) by (page_url)
+/
+sum(rate(browser_lcp_milliseconds_count{vital_rating="poor"}[15m])) by (page_url)
 
 # Compare with the P95 backend response time for the same pages
 histogram_quantile(0.95,
@@ -151,7 +151,7 @@ When you plot these side by side, patterns emerge. Here is what each combination
 
 - **High LCP, high TTFB, slow backend traces**: The backend is the bottleneck. Look at the trace spans to find the slow operation.
 - **High LCP, low TTFB, fast backend traces**: The backend is fine, the problem is on the frontend. Large images, render-blocking scripts, or heavy JavaScript are likely culprits.
-- **High FID/INP, any TTFB**: Input delay is almost always a frontend issue. Heavy main-thread work during page load or interaction is usually the cause.
+- **High INP, any TTFB**: Input delay is almost always a frontend issue. Heavy main-thread work during page load or interaction is usually the cause.
 - **High CLS, any backend metric**: Layout shifts are purely a frontend rendering issue. The backend is not involved.
 
 ## Creating Alerts Based on Combined Signals
@@ -165,18 +165,32 @@ groups:
     rules:
       - alert: BackendCausedSlowLCP
         expr: |
-          avg(browser_lcp{vital_rating="poor"}) by (page_url) > 2500
-          and
-          histogram_quantile(0.95, sum(rate(http_server_duration_seconds_bucket[5m])) by (le)) > 0.8
+          (
+            sum(rate(browser_lcp_milliseconds_sum{vital_rating="poor"}[5m])) by (page_url)
+            /
+            sum(rate(browser_lcp_milliseconds_count{vital_rating="poor"}[5m])) by (page_url)
+          ) > 2500
+          and on (page_url)
+          label_replace(
+            histogram_quantile(0.95, sum(rate(http_server_duration_seconds_bucket[5m])) by (le, http_route)),
+            "page_url", "$1", "http_route", "(.*)"
+          ) > 0.8
         for: 10m
         annotations:
           summary: "LCP is poor and backend response time is high"
 
       - alert: FrontendCausedSlowLCP
         expr: |
-          avg(browser_lcp{vital_rating="poor"}) by (page_url) > 2500
-          and
-          histogram_quantile(0.95, sum(rate(http_server_duration_seconds_bucket[5m])) by (le)) < 0.3
+          (
+            sum(rate(browser_lcp_milliseconds_sum{vital_rating="poor"}[5m])) by (page_url)
+            /
+            sum(rate(browser_lcp_milliseconds_count{vital_rating="poor"}[5m])) by (page_url)
+          ) > 2500
+          and on (page_url)
+          label_replace(
+            histogram_quantile(0.95, sum(rate(http_server_duration_seconds_bucket[5m])) by (le, http_route)),
+            "page_url", "$1", "http_route", "(.*)"
+          ) < 0.3
         for: 10m
         annotations:
           summary: "LCP is poor but backend is fast - frontend optimization needed"
