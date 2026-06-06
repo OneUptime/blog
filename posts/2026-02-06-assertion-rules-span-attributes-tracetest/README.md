@@ -58,7 +58,7 @@ spec:
     - selector: span[tracetest.span.type="http" name="GET /api/v1/users/:id"]
       name: "HTTP response is 200"
       assertions:
-        - attr:http.status_code = 200
+        - attr:http.response.status_code = 200
 
     # String contains
     - selector: span[tracetest.span.type="http" name="GET /api/v1/users/:id"]
@@ -76,13 +76,13 @@ spec:
     - selector: span[tracetest.span.type="database"]
       name: "Database spans have operation attribute"
       assertions:
-        - attr:db.operation != ""
+        - attr:db.operation.name != ""
 
     # Attribute matches a specific value from a set
     - selector: span[tracetest.span.type="database"]
       name: "Only SELECT queries for GET requests"
       assertions:
-        - attr:db.operation = "SELECT"
+        - attr:db.operation.name = "SELECT"
 ```
 
 ## Asserting on Timing
@@ -135,7 +135,7 @@ specs:
       - attr:tracetest.selected_spans.count = 0
 
   # Verify at least one cache hit
-  - selector: span[name="cache.get" attr:cache.hit="true"]
+  - selector: span[name="cache.get" cache.hit="true"]
     name: "At least one cache hit"
     assertions:
       - attr:tracetest.selected_spans.count >= 1
@@ -167,20 +167,19 @@ spec:
       assertions:
         - attr:tracetest.selected_spans.count = 1
 
-    # The database INSERT should be a child of the API handler
-    - selector: span[tracetest.span.type="database" name="INSERT orders"]
+    # The database INSERT should be a descendant of the API handler
+    - selector: span[name="POST /api/v1/orders"] span[tracetest.span.type="database" name="INSERT orders"]
       name: "Database insert happens"
       assertions:
         - attr:tracetest.selected_spans.count = 1
-        - attr:db.system = "postgresql"
+        - attr:db.system.name = "postgresql"
 
-    # The payment call should happen after the database insert
-    # (based on timing, since Tracetest orders spans chronologically)
-    - selector: span[tracetest.span.type="http" name="POST /payments/charge"]
-      name: "Payment service is called after persisting order"
+    # The payment call should happen during order creation
+    - selector: span[name="POST /api/v1/orders"] span[tracetest.span.type="http" name="POST /payments/charge"]
+      name: "Payment service is called during order creation"
       assertions:
         - attr:tracetest.selected_spans.count = 1
-        - attr:http.status_code = 200
+        - attr:http.response.status_code = 200
 ```
 
 ## Testing Error Scenarios
@@ -211,15 +210,15 @@ spec:
     - selector: span[tracetest.span.type="http" name="POST /api/v1/orders"]
       name: "API returns 503 when payment fails"
       assertions:
-        - attr:http.status_code = 503
+        - attr:http.response.status_code = 503
 
-    # The error should be recorded on the span
+    # The downstream status code should be recorded on the span
     - selector: span[tracetest.span.type="http" name="POST /payments/charge"]
       name: "Payment failure is recorded"
       assertions:
-        - attr:http.status_code = 500
+        - attr:http.response.status_code = 500
 
-    # The order should be rolled back - no INSERT should persist
+    # The transaction should be rolled back
     - selector: span[tracetest.span.type="database" name="ROLLBACK"]
       name: "Transaction is rolled back"
       assertions:
@@ -235,7 +234,7 @@ spec:
 
 ## Using Variables and Outputs
 
-Tracetest supports extracting values from one test step and using them in another:
+Tracetest supports extracting values from one test and using them in later tests in a test suite:
 
 ```yaml
 # tests/test-create-and-get-order.yaml
@@ -256,7 +255,7 @@ spec:
     - selector: span[tracetest.span.type="http" name="POST /api/v1/orders"]
       name: "Order created successfully"
       assertions:
-        - attr:http.status_code = 201
+        - attr:http.response.status_code = 201
 
   outputs:
     - name: ORDER_ID
@@ -274,7 +273,7 @@ type: TestSuite
 spec:
   name: "Order API Test Suite"
   description: "Complete trace-based test suite for the order API"
-  tests:
+  steps:
     - ./test-create-order.yaml
     - ./test-order-validation-error.yaml
     - ./test-downstream-failure.yaml
@@ -284,7 +283,7 @@ spec:
 Run the suite:
 
 ```bash
-tracetest run testsuite --file tests/suite-order-api.yaml --wait-for-result
+tracetest run testsuite --file tests/suite-order-api.yaml
 ```
 
 ## Summary
