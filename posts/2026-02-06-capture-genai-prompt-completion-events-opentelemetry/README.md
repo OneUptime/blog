@@ -31,14 +31,15 @@ Here are the key attributes you'll work with:
 
 | Attribute | Description |
 |-----------|-------------|
-| `gen_ai.system` | The AI provider (e.g., `openai`, `anthropic`) |
+| `gen_ai.provider.name` | The AI provider (e.g., `openai`, `anthropic`) |
+| `gen_ai.operation.name` | The operation being performed (e.g., `chat`) |
 | `gen_ai.request.model` | The model name (e.g., `gpt-4`, `claude-3-opus`) |
 | `gen_ai.request.max_tokens` | Max tokens requested |
 | `gen_ai.request.temperature` | Sampling temperature |
 | `gen_ai.usage.input_tokens` | Tokens consumed by the prompt |
 | `gen_ai.usage.output_tokens` | Tokens in the completion |
-| `gen_ai.prompt` | The prompt event content |
-| `gen_ai.completion` | The completion event content |
+| `gen_ai.input.messages` | The input messages captured on the GenAI details event |
+| `gen_ai.output.messages` | The output messages captured on the GenAI details event |
 
 These follow the OpenTelemetry specification for GenAI spans, and using them means any OTLP-compatible backend can parse your traces correctly.
 
@@ -89,58 +90,68 @@ def setup_tracing(service_name: str) -> trace.Tracer:
 
 ## Capturing Prompt and Completion Events
 
-Now here's the core piece. We'll create a wrapper function that calls OpenAI and records the prompt and completion as span events following the GenAI semantic conventions.
+Now here's the core piece. We'll create a wrapper function that calls OpenAI and records the prompt and completion on a GenAI details event following the GenAI semantic conventions.
 
 ```python
 # genai_tracing.py - Wraps OpenAI calls with full prompt/completion tracing
-import openai
-from opentelemetry import trace
+import json
 
+from openai import OpenAI
+from opentelemetry import trace
+from opentelemetry.trace import SpanKind
+
+client = OpenAI()
 tracer = trace.get_tracer("genai-service")
 
-def traced_chat_completion(messages: list, model: str = "gpt-4", temperature: float = 0.7, max_tokens: int = 1024):
+def to_genai_message(message: dict) -> dict:
+    return {
+        "role": message["role"],
+        "parts": [{"type": "text", "content": message["content"]}],
+    }
+
+def traced_chat_completion(messages: list, model: str = "gpt-4o-mini", temperature: float = 0.7, max_completion_tokens: int = 1024):
     """Call OpenAI chat completion and record prompt/completion as span events."""
 
     # Start a new span for this LLM call
-    with tracer.start_as_current_span("gen_ai.chat.completion") as span:
+    with tracer.start_as_current_span(f"chat {model}", kind=SpanKind.CLIENT) as span:
         # Set standard GenAI attributes on the span
-        span.set_attribute("gen_ai.system", "openai")
+        span.set_attribute("gen_ai.provider.name", "openai")
+        span.set_attribute("gen_ai.operation.name", "chat")
         span.set_attribute("gen_ai.request.model", model)
         span.set_attribute("gen_ai.request.temperature", temperature)
-        span.set_attribute("gen_ai.request.max_tokens", max_tokens)
-
-        # Record the prompt as a span event
-        # Each message in the conversation gets its own event
-        for i, message in enumerate(messages):
-            span.add_event(
-                "gen_ai.prompt",
-                attributes={
-                    "gen_ai.prompt.role": message["role"],
-                    "gen_ai.prompt.content": message["content"],
-                    "gen_ai.prompt.index": i,
-                },
-            )
+        span.set_attribute("gen_ai.request.max_tokens", max_completion_tokens)
 
         # Make the actual API call
-        response = openai.chat.completions.create(
+        response = client.chat.completions.create(
             model=model,
             messages=messages,
             temperature=temperature,
-            max_tokens=max_tokens,
+            max_completion_tokens=max_completion_tokens,
         )
 
         # Extract the completion
-        completion = response.choices[0].message.content
+        completion = response.choices[0].message.content or ""
 
-        # Record the completion as a span event
+        # Record the prompt and completion as a GenAI details event.
+        # The OpenTelemetry Python trace API accepts primitive attribute values,
+        # so this example stores the message arrays as JSON strings.
         span.add_event(
-            "gen_ai.completion",
+            "gen_ai.client.inference.operation.details",
             attributes={
-                "gen_ai.completion.role": "assistant",
-                "gen_ai.completion.content": completion,
-                "gen_ai.completion.finish_reason": response.choices[0].finish_reason,
+                "gen_ai.operation.name": "chat",
+                "gen_ai.request.model": model,
+                "gen_ai.input.messages": json.dumps([to_genai_message(message) for message in messages]),
+                "gen_ai.output.messages": json.dumps([{
+                    "role": "assistant",
+                    "parts": [{"type": "text", "content": completion}],
+                    "finish_reason": response.choices[0].finish_reason,
+                }]),
             },
         )
+
+        span.set_attribute("gen_ai.response.finish_reasons", [response.choices[0].finish_reason])
+        span.set_attribute("gen_ai.response.id", response.id)
+        span.set_attribute("gen_ai.response.model", response.model)
 
         # Record token usage for cost tracking
         span.set_attribute("gen_ai.usage.input_tokens", response.usage.prompt_tokens)
@@ -159,8 +170,8 @@ flowchart LR
     B --> C[OpenAI API]
     C --> B
     B --> D[Span with Events]
-    D --> E[Prompt Event]
-    D --> F[Completion Event]
+    D --> E[GenAI Details Event]
+    E --> F[Input and Output Messages]
     D --> G[Token Usage Attributes]
     E --> H[OTLP Exporter]
     F --> H
@@ -174,7 +185,15 @@ In production, you probably don't want raw user prompts sitting in your trace st
 
 ```python
 # sanitize.py - Strips or masks sensitive content before recording it in traces
+import json
 import re
+
+from openai import OpenAI
+from opentelemetry import trace
+from opentelemetry.trace import SpanKind
+
+client = OpenAI()
+tracer = trace.get_tracer("genai-service")
 
 # Patterns to redact from prompts and completions
 PII_PATTERNS = [
@@ -190,34 +209,38 @@ def sanitize_content(text: str) -> str:
         sanitized = re.sub(pattern, replacement, sanitized)
     return sanitized
 
-def traced_chat_completion_safe(messages: list, model: str = "gpt-4", **kwargs):
+def to_sanitized_genai_message(message: dict) -> dict:
+    return {
+        "role": message["role"],
+        "parts": [{"type": "text", "content": sanitize_content(message["content"])}],
+    }
+
+def traced_chat_completion_safe(messages: list, model: str = "gpt-4o-mini", **kwargs):
     """Same as traced_chat_completion but sanitizes prompt/completion content."""
-    with tracer.start_as_current_span("gen_ai.chat.completion") as span:
-        span.set_attribute("gen_ai.system", "openai")
+    with tracer.start_as_current_span(f"chat {model}", kind=SpanKind.CLIENT) as span:
+        span.set_attribute("gen_ai.provider.name", "openai")
+        span.set_attribute("gen_ai.operation.name", "chat")
         span.set_attribute("gen_ai.request.model", model)
 
-        # Record sanitized prompts only
-        for i, message in enumerate(messages):
-            span.add_event(
-                "gen_ai.prompt",
-                attributes={
-                    "gen_ai.prompt.role": message["role"],
-                    "gen_ai.prompt.content": sanitize_content(message["content"]),
-                    "gen_ai.prompt.index": i,
-                },
-            )
+        response = client.chat.completions.create(model=model, messages=messages, **kwargs)
+        completion = response.choices[0].message.content or ""
 
-        response = openai.chat.completions.create(model=model, messages=messages, **kwargs)
-        completion = response.choices[0].message.content
-
-        # Sanitize the completion too
+        # Record sanitized prompts and completion only
         span.add_event(
-            "gen_ai.completion",
+            "gen_ai.client.inference.operation.details",
             attributes={
-                "gen_ai.completion.content": sanitize_content(completion),
+                "gen_ai.operation.name": "chat",
+                "gen_ai.request.model": model,
+                "gen_ai.input.messages": json.dumps([to_sanitized_genai_message(message) for message in messages]),
+                "gen_ai.output.messages": json.dumps([{
+                    "role": "assistant",
+                    "parts": [{"type": "text", "content": sanitize_content(completion)}],
+                    "finish_reason": response.choices[0].finish_reason,
+                }]),
             },
         )
 
+        span.set_attribute("gen_ai.response.finish_reasons", [response.choices[0].finish_reason])
         span.set_attribute("gen_ai.usage.input_tokens", response.usage.prompt_tokens)
         span.set_attribute("gen_ai.usage.output_tokens", response.usage.completion_tokens)
 
@@ -249,7 +272,7 @@ def main():
     ]
 
     # Make the traced LLM call
-    result = traced_chat_completion(messages, model="gpt-4", temperature=0.3)
+    result = traced_chat_completion(messages, model="gpt-4o-mini", temperature=0.3)
     print(result)
 
     # Flush remaining spans before exit
@@ -264,7 +287,7 @@ if __name__ == "__main__":
 
 Once your traces are flowing into your backend, you can search for specific patterns. For example, in OneUptime's trace explorer, you can filter by:
 
-- `gen_ai.request.model = "gpt-4"` to see all GPT-4 calls
+- `gen_ai.request.model = "gpt-4o-mini"` to see all GPT-4o mini calls
 - `gen_ai.usage.output_tokens > 500` to find expensive completions
 - Event content containing specific keywords to track prompt patterns
 
@@ -274,13 +297,13 @@ This makes it straightforward to debug issues like "why did the chatbot give a w
 
 1. **Always record token counts.** Even if you skip recording prompt content, token usage is essential for cost tracking and anomaly detection.
 
-2. **Use span events, not span attributes, for prompt content.** Events are timestamped and ordered, which matters when you have multi-turn conversations.
+2. **Use the GenAI details event, not ad hoc span attributes, for prompt content.** Events are timestamped, and the current GenAI conventions define `gen_ai.input.messages` and `gen_ai.output.messages` for this content.
 
 3. **Sanitize before recording.** Build the sanitization into your tracing wrapper so developers can't accidentally skip it.
 
 4. **Set sampling rates for high-volume services.** You might not need every single prompt/completion pair. A 10% sample rate can still give you great debugging coverage while cutting storage costs.
 
-5. **Include the finish reason.** Knowing whether a completion ended because of `stop`, `length`, or `content_filter` is critical for debugging truncated or blocked responses.
+5. **Include the finish reason.** Knowing whether a completion ended because of `stop`, `length`, `content_filter`, or a tool call is critical for debugging truncated, blocked, or tool-driven responses.
 
 ## Conclusion
 
