@@ -10,7 +10,7 @@ CRI-O is the container runtime built specifically for Kubernetes. It writes cont
 
 ## Understanding the CRI Log Format
 
-CRI-O writes logs at `/var/log/containers/` with the following format:
+CRI-O writes logs in Kubernetes pod log files, commonly exposed under `/var/log/pods/` and symlinked from `/var/log/containers/`, with the following format:
 
 ```text
 2026-02-06T10:00:00.000000000Z stdout F This is a complete log line
@@ -34,18 +34,19 @@ The filelog receiver includes a `container` operator type that handles CRI log f
 ```yaml
 receivers:
   filelog:
+    include_file_path: true
     include:
-      - /var/log/containers/*.log
+      - /var/log/pods/*/*/*.log
     # Exclude collector logs to prevent feedback loops
     exclude:
-      - /var/log/containers/otel-collector*.log
+      - /var/log/pods/*/otel-collector/*.log
     start_at: end
     operators:
       # The container parser handles CRI format and recombines partial logs
       - type: container
-        # Add the container ID from the file path
+        # Add Kubernetes metadata from the file path
         add_metadata_from_filepath: true
-        # Maximum time to wait for partial log completion
+        # Maximum recombined log size
         max_log_size: 1048576
 
 processors:
@@ -80,8 +81,9 @@ If you need more control over the recombination process, you can use the individ
 ```yaml
 receivers:
   filelog:
+    include_file_path: true
     include:
-      - /var/log/containers/*.log
+      - /var/log/pods/*/*/*.log
     start_at: end
     operators:
       # Step 1: Parse the CRI log format
@@ -89,20 +91,20 @@ receivers:
         regex: '^(?P<timestamp>\S+)\s+(?P<stream>stdout|stderr)\s+(?P<logtag>[FP])\s+(?P<message>.*)'
         timestamp:
           parse_from: attributes.timestamp
-          layout: '%Y-%m-%dT%H:%M:%S.%LZ'
+          layout_type: gotime
+          layout: '2006-01-02T15:04:05.999999999Z07:00'
 
       # Step 2: Recombine partial log lines
       - type: recombine
-        # Continue combining when the tag is P (partial)
-        is_first_entry: attributes.logtag == "F" or attributes.logtag == "P"
         combine_field: attributes.message
         # Use the logtag to determine if this is a partial entry
         is_last_entry: attributes.logtag == "F"
         # Maximum time to wait for the final entry
-        force_flush_timeout: 5s
+        force_flush_period: 5s
         # Maximum combined message size (1MB)
-        max_batch_size: 1048576
+        max_log_size: 1048576
         combine_with: ""
+        overwrite_with: newest
 
       # Step 3: Move the combined message to the log body
       - type: move
@@ -117,6 +119,8 @@ receivers:
       # Step 5: Clean up the temporary logtag attribute
       - type: remove
         field: attributes.logtag
+      - type: remove
+        field: attributes.timestamp
 ```
 
 This approach gives you full control over timeout values, maximum batch sizes, and how partial lines are concatenated.
@@ -143,31 +147,58 @@ operators:
     routes:
       # JSON format starts with {
       - output: json_parser
-        expr: 'body startsWith "{"'
+        expr: 'body matches "^\\{"'
       # CRI format starts with a timestamp
       - output: cri_parser
         expr: 'body matches "^\\d{4}-"'
 
   - id: json_parser
     type: json_parser
-    output: move_body
+    timestamp:
+      parse_from: attributes.time
+      layout_type: gotime
+      layout: '2006-01-02T15:04:05.999999999Z07:00'
+    output: move_docker_body
 
   - id: cri_parser
     type: regex_parser
     regex: '^(?P<timestamp>\S+)\s+(?P<stream>stdout|stderr)\s+(?P<logtag>[FP])\s+(?P<message>.*)'
+    timestamp:
+      parse_from: attributes.timestamp
+      layout_type: gotime
+      layout: '2006-01-02T15:04:05.999999999Z07:00'
     output: recombine_partial
 
   - id: recombine_partial
     type: recombine
     is_last_entry: attributes.logtag == "F"
     combine_field: attributes.message
-    force_flush_timeout: 5s
-    output: move_body
+    combine_with: ""
+    force_flush_period: 5s
+    overwrite_with: newest
+    output: move_cri_body
 
-  - id: move_body
+  - id: move_docker_body
+    type: move
+    from: attributes.log
+    to: body
+    output: move_docker_stream
+
+  - id: move_docker_stream
+    type: move
+    from: attributes.stream
+    to: attributes["log.iostream"]
+
+  - id: move_cri_body
     type: move
     from: attributes.message
     to: body
+    output: move_cri_stream
+
+  - id: move_cri_stream
+    type: move
+    from: attributes.stream
+    to: attributes["log.iostream"]
 ```
 
 ## Performance Considerations
@@ -177,14 +208,14 @@ The recombine operator buffers partial lines in memory. On nodes with many conta
 ```yaml
 - type: recombine
   # Flush after 5 seconds even if no F tag arrives
-  force_flush_timeout: 5s
+  force_flush_period: 5s
   # Limit combined message to 256KB
-  max_batch_size: 262144
+  max_log_size: 262144
   # Maximum number of entries to buffer
   max_sources: 1000
 ```
 
-If a partial log sequence never receives its final `F` entry (for example, if the container crashes mid-line), the `force_flush_timeout` ensures the buffered data is eventually emitted.
+If a partial log sequence never receives its final `F` entry (for example, if the container crashes mid-line), the `force_flush_period` ensures the buffered data is eventually emitted.
 
 ## Testing the Configuration
 
@@ -192,12 +223,12 @@ Generate a long log line from a test container:
 
 ```bash
 # This produces a line longer than the CRI-O buffer size
-kubectl run log-test --image=alpine --restart=Never -- \
-  sh -c 'python3 -c "print(\"x\" * 20000)"'
+kubectl run log-test --image=python:3.12-alpine --restart=Never -- \
+  python -c 'print("x" * 20000)'
 ```
 
 Check that the Collector produces a single log record with the full 20,000 character message instead of multiple partial entries.
 
 ## Summary
 
-CRI-O splits long log lines into partial entries tagged with `P` and `F`. The OpenTelemetry Collector's container parser or recombine operator reassembles these fragments into complete log records. Use the container operator for simplicity or the recombine operator when you need fine-grained control over buffering and timeouts. Always set a force flush timeout to handle edge cases where partial sequences are never completed.
+CRI-O splits long log lines into partial entries tagged with `P` and `F`. The OpenTelemetry Collector's container parser or recombine operator reassembles these fragments into complete log records. Use the container operator for simplicity or the recombine operator when you need fine-grained control over buffering and timeouts. Always set a force flush period to handle edge cases where partial sequences are never completed.
