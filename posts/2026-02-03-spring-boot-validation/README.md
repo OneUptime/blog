@@ -155,12 +155,17 @@ import com.example.dto.UserCreateRequest;
 import com.example.dto.UserResponse;
 import com.example.service.UserService;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.*;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/users")
+@Validated // Enables method parameter validation for path variables and query parameters
 public class UserController {
 
     private final UserService userService;
@@ -179,7 +184,7 @@ public class UserController {
         return ResponseEntity.status(HttpStatus.CREATED).body(user);
     }
 
-    // @Valid also works with @RequestParam and path variables
+    // Constraint annotations work with @RequestParam and path variables via method validation
     @GetMapping("/{id}")
     public ResponseEntity<UserResponse> getUser(
             @PathVariable @Min(1) Long id) {
@@ -286,6 +291,8 @@ import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.method.ParameterValidationResult;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -351,12 +358,45 @@ public class GlobalExceptionHandler {
         return ResponseEntity.badRequest().body(response);
     }
 
+    // Handle Spring MVC method validation failures on controller parameters
+    @ExceptionHandler(HandlerMethodValidationException.class)
+    public ResponseEntity<ValidationErrorResponse> handleHandlerMethodValidation(
+            HandlerMethodValidationException ex,
+            HttpServletRequest request) {
+
+        List<FieldError> fieldErrors = ex.getAllValidationResults()
+                .stream()
+                .flatMap(result -> result.getResolvableErrors()
+                        .stream()
+                        .map(error -> new FieldError(
+                                getParameterName(result),
+                                error.getDefaultMessage(),
+                                result.getArgument()
+                        )))
+                .collect(Collectors.toList());
+
+        ValidationErrorResponse response = new ValidationErrorResponse(
+                HttpStatus.BAD_REQUEST.value(),
+                "Constraint Violation",
+                "One or more parameters have validation errors",
+                request.getRequestURI(),
+                fieldErrors
+        );
+
+        return ResponseEntity.badRequest().body(response);
+    }
+
     // Extract field name from property path
     private String getFieldName(ConstraintViolation<?> violation) {
         String propertyPath = violation.getPropertyPath().toString();
         // Extract just the field name from paths like "methodName.paramName"
         int lastDot = propertyPath.lastIndexOf('.');
         return lastDot >= 0 ? propertyPath.substring(lastDot + 1) : propertyPath;
+    }
+
+    private String getParameterName(ParameterValidationResult result) {
+        String parameterName = result.getMethodParameter().getParameterName();
+        return parameterName != null ? parameterName : "parameter";
     }
 }
 ```
@@ -660,6 +700,8 @@ import com.example.validation.ValidationGroups.Update;
 import com.example.validation.ValidationGroups.Patch;
 import jakarta.validation.constraints.*;
 
+import java.math.BigDecimal;
+
 public class ProductRequest {
 
     // ID is required only for updates, not for creation
@@ -794,6 +836,7 @@ package com.example.dto;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
+import java.math.BigDecimal;
 import java.util.List;
 
 public class OrderRequest {
@@ -891,11 +934,16 @@ package com.example.service;
 import com.example.dto.UserCreateRequest;
 import com.example.dto.UserResponse;
 import com.example.entity.User;
+import com.example.exception.UserNotFoundException;
 import com.example.repository.UserRepository;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.validation.annotation.Validated;
+
+import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 @Validated // Enable method parameter validation
@@ -985,9 +1033,11 @@ Sometimes you need to validate objects outside the Spring MVC flow:
 package com.example.service;
 
 import jakarta.validation.ConstraintViolation;
+import jakarta.validation.ValidationException;
 import jakarta.validation.Validator;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -1056,12 +1106,19 @@ public class ValidationService {
 package com.example.messaging;
 
 import com.example.dto.OrderMessage;
+import com.example.service.OrderService;
 import com.example.service.ValidationService;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.List;
 
 @Component
 public class MessageProcessor {
+
+    private static final Logger log = LoggerFactory.getLogger(MessageProcessor.class);
 
     private final ValidationService validationService;
     private final OrderService orderService;
@@ -1089,6 +1146,10 @@ public class MessageProcessor {
         // Process valid message
         orderService.processOrder(message);
     }
+
+    private void sendToDeadLetter(OrderMessage message, List<String> errors) {
+        // Send to your application's dead letter queue
+    }
 }
 ```
 
@@ -1104,13 +1165,9 @@ Configure validation settings in your application properties:
 # application.yml
 
 spring:
-  mvc:
-    # Throw exception when path variable validation fails
-    throw-exception-if-no-handler-found: true
-
-  # Hibernate Validator settings
-  validation:
-    enabled: true
+  messages:
+    # Use src/main/resources/ValidationMessages.properties for validation messages
+    basename: ValidationMessages
 ```
 
 ### Custom Validator Configuration
@@ -1122,14 +1179,13 @@ Create a configuration class for advanced customization:
 // Custom validation configuration
 package com.example.config;
 
-import jakarta.validation.Validation;
-import jakarta.validation.Validator;
-import jakarta.validation.ValidatorFactory;
 import org.hibernate.validator.HibernateValidator;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.validation.beanvalidation.LocalValidatorFactoryBean;
 import org.springframework.validation.beanvalidation.MethodValidationPostProcessor;
+
+import java.util.Map;
 
 @Configuration
 public class ValidationConfig {
@@ -1151,7 +1207,7 @@ public class ValidationConfig {
     @Bean
     public MethodValidationPostProcessor methodValidationPostProcessor() {
         MethodValidationPostProcessor processor = new MethodValidationPostProcessor();
-        processor.setValidator(validator().getValidator());
+        processor.setValidator(validator());
         return processor;
     }
 }
@@ -1312,6 +1368,16 @@ public class BookRequest {
 
     public Integer getPageCount() { return pageCount; }
     public void setPageCount(Integer pageCount) { this.pageCount = pageCount; }
+}
+
+class AuthorRequest {
+
+    @NotBlank(message = "Author name is required")
+    @Size(max = 200, message = "Author name must not exceed 200 characters")
+    private String name;
+
+    public String getName() { return name; }
+    public void setName(String name) { this.name = name; }
 }
 ```
 
