@@ -119,6 +119,8 @@ def find_failure_origin(dependency_graph, error_timelines):
 Once you know the origin, calculate the blast radius to see all affected services:
 
 ```python
+from collections import defaultdict
+
 def calculate_blast_radius(dependency_graph, failing_service):
     """
     Find all services that are directly or transitively
