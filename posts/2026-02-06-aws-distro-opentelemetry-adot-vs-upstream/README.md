@@ -31,7 +31,7 @@ flowchart LR
     B --> C[AWS X-Ray]
     B --> D[CloudWatch]
     B --> E[Amazon Managed Prometheus]
-    B --> F[Amazon OpenSearch]
+    B --> F[OTLP-compatible backends]
     B --> G[Third-party backends]
 ```
 
@@ -110,18 +110,17 @@ Here is a task definition snippet that adds ADOT as a sidecar container alongsid
 
 ### Running ADOT on Amazon EKS
 
-For Kubernetes on AWS, you can install ADOT using the EKS add-on. This is the simplest path.
+For Kubernetes on AWS, you can install the ADOT Operator using the EKS add-on. This is the simplest path for managing ADOT on EKS; you can then deploy collectors through the operator or through the add-on's advanced configuration.
 
 Enable the ADOT add-on through the AWS CLI:
 
 ```bash
 # Install the ADOT add-on for your EKS cluster
 
-# This deploys the collector as a managed component
+# This installs the ADOT Operator as an EKS add-on
 aws eks create-addon \
   --cluster-name my-cluster \
-  --addon-name adot \
-  --addon-version v0.92.1-eksbuild.1
+  --addon-name adot
 ```
 
 Or deploy it via a Kubernetes DaemonSet with a custom config. First, create the configuration as a ConfigMap:
@@ -284,7 +283,7 @@ The DaemonSet changes only in the image reference:
 # Use the upstream contrib image instead of ADOT
 containers:
   - name: collector
-    image: otel/opentelemetry-collector-contrib:0.96.0
+    image: otel/opentelemetry-collector-contrib:0.153.0
     args:
       - "--config=/conf/config.yaml"
 ```
@@ -364,8 +363,10 @@ exporters:
 
   # Also send to OneUptime or any OTLP backend
   otlphttp:
-    endpoint: https://otlp.oneuptime.com
+    endpoint: https://oneuptime.com/otlp
+    encoding: json
     headers:
+      Content-Type: application/json
       x-oneuptime-token: "your-token-here"
 
 service:
@@ -381,7 +382,7 @@ service:
 
 ADOT uses the standard AWS credential chain. On ECS and EKS, it picks up the task role or service account role automatically.
 
-Here is a minimal IAM policy for X-Ray and CloudWatch:
+Here is a common IAM policy for X-Ray and CloudWatch:
 
 ```json
 {
@@ -393,7 +394,8 @@ Here is a minimal IAM policy for X-Ray and CloudWatch:
         "xray:PutTraceSegments",
         "xray:PutTelemetryRecords",
         "xray:GetSamplingRules",
-        "xray:GetSamplingTargets"
+        "xray:GetSamplingTargets",
+        "xray:GetSamplingStatisticSummaries"
       ],
       "Resource": "*"
     },
@@ -403,7 +405,9 @@ Here is a minimal IAM policy for X-Ray and CloudWatch:
         "logs:PutLogEvents",
         "logs:CreateLogGroup",
         "logs:CreateLogStream",
-        "logs:DescribeLogStreams"
+        "logs:DescribeLogStreams",
+        "logs:DescribeLogGroups",
+        "logs:PutRetentionPolicy"
       ],
       "Resource": "*"
     }
