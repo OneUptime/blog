@@ -4,9 +4,9 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Collector, Processor, Attributes Processor, Data Enrichment, Telemetry Transformation
 
-Description: Master the attributes processor in OpenTelemetry Collector to enrich, modify, and sanitize span and metric attributes for better observability and data quality.
+Description: Master the attributes processor in OpenTelemetry Collector to enrich, modify, and sanitize span, log, and metric attributes for better observability and data quality.
 
-The attributes processor is your Swiss Army knife for modifying telemetry attributes in the OpenTelemetry Collector pipeline. It enables you to enrich spans with additional context, mask sensitive data, normalize inconsistent attribute names, and reduce cardinality by removing or hashing high-cardinality attributes.
+The attributes processor is your Swiss Army knife for modifying telemetry attributes in the OpenTelemetry Collector pipeline. It enables you to enrich spans with additional context, mask sensitive data, normalize inconsistent attribute names, and reduce cardinality by removing high-cardinality attributes.
 
 Proper attribute management is critical for observability. Well-structured attributes enable precise queries, accurate aggregations, and meaningful insights. The attributes processor gives you centralized control over attribute transformations without requiring application code changes.
 
@@ -19,7 +19,7 @@ However, attributes often need transformation:
 - **Security**: Remove or hash PII like email addresses and user IDs
 - **Consistency**: Normalize varying attribute names across services (e.g., `user_id`, `userId`, `user-id` to `user.id`)
 - **Enrichment**: Add deployment metadata (version, environment, region)
-- **Cardinality control**: Hash or remove unbounded attributes that explode metric dimensions
+- **Cardinality control**: Remove unbounded attributes that explode metric dimensions
 - **Compliance**: Mask or redact regulated data before export
 - **Cost optimization**: Drop unnecessary attributes to reduce storage and network costs
 
@@ -44,7 +44,7 @@ processors:
         action: insert
 
       - key: deployment.version
-        value: ${DEPLOYMENT_VERSION}
+        value: ${env:DEPLOYMENT_VERSION}
         action: upsert
 
   batch:
@@ -52,7 +52,7 @@ processors:
     send_batch_size: 1024
 
 exporters:
-  otlphttp:
+  otlp_http:
     endpoint: https://oneuptime.com/otlp
     encoding: json
     headers:
@@ -63,7 +63,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [attributes, batch]
-      exporters: [otlphttp]
+      exporters: [otlp_http]
 ```
 
 This configuration adds an `environment` attribute to all spans and upserts the deployment version from an environment variable.
@@ -117,7 +117,7 @@ processors:
   attributes:
     actions:
       - key: deployment.version
-        value: ${DEPLOY_VERSION}
+        value: ${env:DEPLOY_VERSION}
         action: upsert
 ```
 
@@ -145,7 +145,7 @@ processors:
 
 ### hash
 
-Replaces the attribute value with its SHA-256 hash.
+Replaces the attribute value with its SHA1 hash.
 
 ```yaml
 processors:
@@ -157,19 +157,19 @@ processors:
 
 **Use cases**:
 - Preserving uniqueness while hiding actual values
-- Maintaining cardinality for aggregations without exposing PII
+- Preserving cardinality for aggregations without exposing PII
 - Compliance with data privacy regulations
 
 ### extract
 
-Extracts a value from an attribute using a regex pattern and creates a new attribute.
+Extracts values from an attribute using a regex pattern with named capture groups and creates attributes from those capture group names.
 
 ```yaml
 processors:
   attributes:
     actions:
       - key: http.url
-        pattern: ^https?://([^/]+)/.*
+        pattern: ^https?://(?P<http_host>[^/]+)/.*
         action: extract
 ```
 
@@ -215,7 +215,7 @@ processors:
 
       # Add dynamic version from environment variable
       - key: deployment.version
-        value: ${GIT_COMMIT_SHA}
+        value: ${env:GIT_COMMIT_SHA}
         action: upsert
 
       # Add region information
@@ -225,7 +225,7 @@ processors:
 
       # Add availability zone
       - key: cloud.availability_zone
-        value: ${AWS_AZ}
+        value: ${env:AWS_AZ}
         action: upsert
 
       # Add cluster identifier
@@ -322,27 +322,23 @@ processors:
   attributes:
     actions:
       # Extract HTTP method from combined attribute
-      - key: http.method
-        from_attribute: http.request
-        pattern: ^([A-Z]+)\s
+      - key: http.request
+        pattern: ^(?P<http_method>[A-Z]+)\s
         action: extract
 
       # Extract hostname from URL
-      - key: http.host
-        from_attribute: http.url
-        pattern: ^https?://([^/:]+)
+      - key: http.url
+        pattern: ^https?://(?P<http_host>[^/:]+)
         action: extract
 
       # Extract path from URL
-      - key: http.path
-        from_attribute: http.url
-        pattern: ^https?://[^/]+(/.*)$
+      - key: http.url
+        pattern: ^https?://[^/]+(?P<http_path>/[^?]*)
         action: extract
 
       # Extract status code from response
-      - key: http.status_code
-        from_attribute: http.response
-        pattern: HTTP/\d\.\d\s(\d{3})
+      - key: http.response
+        pattern: HTTP/\d\.\d\s(?P<http_status_code>\d{3})
         action: extract
 ```
 
@@ -358,17 +354,19 @@ processors:
       - key: user.id
         action: delete
 
-      # Hash session IDs to preserve uniqueness but bound cardinality
+      # Hash session IDs to preserve uniqueness while hiding raw values
       - key: session.id
         action: hash
 
-      # Remove query parameters that vary per request
+      # Extract the URL path without query parameters
       - key: http.url
-        from_attribute: http.url
-        pattern: ^([^?]+)
+        pattern: ^https?://[^/]+(?P<http_path>[^?]+)
         action: extract
 
-      # Delete trace and span IDs (not needed in metrics)
+      - key: http.url
+        action: delete
+
+      # Delete trace and span ID attributes if your pipeline added them
       - key: trace_id
         action: delete
 
@@ -404,7 +402,7 @@ processors:
 
     actions:
       - key: deployment.version
-        value: ${VERSION}
+        value: ${env:VERSION}
         action: upsert
 ```
 
@@ -435,7 +433,7 @@ processors:
   attributes/enrich:
     actions:
       - key: deployment.version
-        value: ${GIT_SHA}
+        value: ${env:GIT_SHA}
         action: upsert
       - key: deployment.environment
         value: production
@@ -449,14 +447,14 @@ service:
     traces:
       receivers: [otlp]
       processors: [attributes/sanitize, attributes/normalize, attributes/enrich, batch]
-      exporters: [otlphttp]
+      exporters: [otlp_http]
 ```
 
 This multi-stage approach separates concerns and makes the pipeline easier to understand and maintain.
 
 ## Working with Resource Attributes
 
-The attributes processor modifies span and metric attributes, not resource attributes. For resource-level transformations, use the resource processor:
+The attributes processor modifies span, log, and metric attributes, not resource attributes. For resource-level transformations, use the resource processor:
 
 ```yaml
 processors:
@@ -474,13 +472,13 @@ processors:
         value: production
         action: insert
       - key: service.version
-        value: ${VERSION}
+        value: ${env:VERSION}
         action: upsert
 ```
 
 **Key distinction**:
 
-- **attributes processor**: Per-span/metric attributes (e.g., `http.status_code`, `user.id`)
+- **attributes processor**: Per-span, log, or metric attributes (e.g., `http.status_code`, `user.id`)
 - **resource processor**: Service-level attributes (e.g., `service.name`, `service.namespace`, `deployment.environment`)
 
 ## Attribute Processing for Different Signal Types
@@ -498,8 +496,11 @@ processors:
 
       # Sanitize URLs in trace spans
       - key: http.url
-        pattern: ^([^?]+)
+        pattern: ^https?://[^/]+(?P<http_path>[^?]+)
         action: extract
+
+      - key: http.url
+        action: delete
 
 service:
   pipelines:
@@ -576,9 +577,8 @@ processors:
   attributes:
     actions:
       # Complex regex on every span is expensive
-      - key: parsed.value
-        from_attribute: complex.string
-        pattern: ^very(complex|regex|pattern|with|many|alternatives)$
+      - key: complex.string
+        pattern: ^very(?P<parsed_value>complex|regex|pattern|with|many|alternatives)$
         action: extract
 ```
 
@@ -596,22 +596,21 @@ Monitor the impact of attribute transformations:
 ```bash
 # Query collector metrics
 
-curl http://localhost:8888/metrics | grep processor_attributes
+curl http://localhost:8888/metrics | grep otelcol_processor_
 
 # Key metrics:
-# - otelcol_processor_accepted_spans: Spans processed
-# - otelcol_processor_refused_spans: Spans rejected
-# - otelcol_processor_dropped_spans: Spans dropped
+# - otelcol_processor_incoming_items: Items passed to processors
+# - otelcol_processor_outgoing_items: Items emitted by processors
 ```
 
 Set up alerts for unexpected behavior:
 
 ```yaml
-# Alert if attribute processor starts dropping spans
-- alert: AttributeProcessorDroppingSpans
-  expr: rate(otelcol_processor_dropped_spans{processor="attributes"}[5m]) > 0
+# Alert if processors emit fewer items than they receive
+- alert: ProcessorItemMismatch
+  expr: sum(rate(otelcol_processor_incoming_items[5m])) - sum(rate(otelcol_processor_outgoing_items[5m])) > 0
   annotations:
-    summary: Attribute processor dropping spans
+    summary: Processors emitting fewer items than they receive
 ```
 
 ## Common Patterns and Use Cases
@@ -663,12 +662,12 @@ processors:
     actions:
       # Add deployment timestamp
       - key: deployment.timestamp
-        value: ${DEPLOY_TIMESTAMP}
+        value: ${env:DEPLOY_TIMESTAMP}
         action: upsert
 
       # Add deployment ID
       - key: deployment.id
-        value: ${DEPLOY_ID}
+        value: ${env:DEPLOY_ID}
         action: upsert
 
       # Add canary indicator
@@ -722,10 +721,10 @@ processors:
         action: delete
 
 exporters:
-  logging:
+  debug:
     verbosity: detailed  # Shows all attributes
 
-  otlphttp:
+  otlp_http:
     endpoint: https://oneuptime.com/otlp
 
 service:
@@ -733,10 +732,10 @@ service:
     traces:
       receivers: [otlp]
       processors: [attributes]
-      exporters: [logging, otlphttp]
+      exporters: [debug, otlp_http]
 ```
 
-Send test spans and inspect the logging exporter output to verify transformations:
+Send test spans and inspect the debug exporter output to verify transformations:
 
 ```bash
 # Start collector
@@ -752,7 +751,7 @@ Before deploying attribute processor to production:
 
 - [ ] All sensitive attributes identified and masked/deleted
 - [ ] Attribute naming conventions standardized across services
-- [ ] High-cardinality attributes controlled (deleted or hashed)
+- [ ] High-cardinality attributes controlled (deleted or transformed into bounded values)
 - [ ] Deployment metadata enrichment configured
 - [ ] Include/exclude filters optimize processing
 - [ ] Multi-stage processors ordered correctly (sanitize → normalize → enrich)
