@@ -57,10 +57,11 @@ import (
     "testing"
 
     "go.opentelemetry.io/otel"
-    "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
-    "go.opentelemetry.io/otel/sdk/trace"
     sdktrace "go.opentelemetry.io/otel/sdk/trace"
+    "go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
+
+var result int
 
 // Benchmark without OpenTelemetry instrumentation
 func BenchmarkWithoutOTel(b *testing.B) {
@@ -69,7 +70,7 @@ func BenchmarkWithoutOTel(b *testing.B) {
     b.ResetTimer()
     for i := 0; i < b.N; i++ {
         // Simulate business logic
-        processRequest(ctx)
+        result = processRequest(ctx)
     }
 }
 
@@ -79,19 +80,23 @@ func BenchmarkWithOTel(b *testing.B) {
     ctx := context.Background()
 
     // Configure tracer provider with batch processor
-    exporter, _ := otlptracegrpc.New(ctx)
+    exporter := tracetest.NewNoopExporter()
     tp := sdktrace.NewTracerProvider(
         sdktrace.WithBatcher(exporter),
         sdktrace.WithSampler(sdktrace.AlwaysSample()),
     )
+    b.Cleanup(func() {
+        _ = tp.Shutdown(ctx)
+    })
     otel.SetTracerProvider(tp)
 
     tracer := otel.Tracer("benchmark")
+    baseCtx := context.Background()
 
     b.ResetTimer()
     for i := 0; i < b.N; i++ {
-        ctx, span := tracer.Start(ctx, "operation")
-        processRequest(ctx)
+        spanCtx, span := tracer.Start(baseCtx, "operation")
+        result = processRequest(spanCtx)
         span.End()
     }
 }
@@ -100,30 +105,35 @@ func BenchmarkWithOTel(b *testing.B) {
 func BenchmarkWithSampling(b *testing.B) {
     ctx := context.Background()
 
-    exporter, _ := otlptracegrpc.New(ctx)
+    exporter := tracetest.NewNoopExporter()
     tp := sdktrace.NewTracerProvider(
         sdktrace.WithBatcher(exporter),
         // Sample 10% of traces
         sdktrace.WithSampler(sdktrace.TraceIDRatioBased(0.1)),
     )
+    b.Cleanup(func() {
+        _ = tp.Shutdown(ctx)
+    })
     otel.SetTracerProvider(tp)
 
     tracer := otel.Tracer("benchmark")
+    baseCtx := context.Background()
 
     b.ResetTimer()
     for i := 0; i < b.N; i++ {
-        ctx, span := tracer.Start(ctx, "operation")
-        processRequest(ctx)
+        spanCtx, span := tracer.Start(baseCtx, "operation")
+        result = processRequest(spanCtx)
         span.End()
     }
 }
 
-func processRequest(ctx context.Context) {
+func processRequest(ctx context.Context) int {
     // Simulate work
     sum := 0
     for i := 0; i < 1000; i++ {
         sum += i
     }
+    return sum
 }
 ```
 
@@ -140,13 +150,13 @@ go test -bench=. -benchmem -benchtime=10s
 # BenchmarkWithSampling-8    45000000    280 ns/op   48 B/op    1 allocs/op
 ```
 
-The output shows operations per second, nanoseconds per operation, bytes allocated, and number of allocations. This reveals the concrete overhead of OpenTelemetry instrumentation.
+The output shows the number of benchmark iterations, nanoseconds per operation, bytes allocated, and number of allocations. This reveals the concrete overhead of OpenTelemetry instrumentation.
 
 ## Benchmarking Java Applications
 
 Java applications can use JMH (Java Microbenchmark Harness) for accurate performance measurements.
 
-Add JMH dependencies to your `pom.xml`:
+Add JMH dependencies to your `pom.xml` in a JMH benchmark project or a build configured to package `target/benchmarks.jar`:
 
 ```xml
 <dependencies>
@@ -163,12 +173,17 @@ Add JMH dependencies to your `pom.xml`:
     <dependency>
         <groupId>io.opentelemetry</groupId>
         <artifactId>opentelemetry-api</artifactId>
-        <version>1.32.0</version>
+        <version>1.62.0</version>
     </dependency>
     <dependency>
         <groupId>io.opentelemetry</groupId>
         <artifactId>opentelemetry-sdk</artifactId>
-        <version>1.32.0</version>
+        <version>1.62.0</version>
+    </dependency>
+    <dependency>
+        <groupId>io.opentelemetry</groupId>
+        <artifactId>opentelemetry-exporter-otlp</artifactId>
+        <version>1.62.0</version>
     </dependency>
 </dependencies>
 ```
@@ -184,8 +199,8 @@ import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.sdk.OpenTelemetrySdk;
 import io.opentelemetry.sdk.trace.SdkTracerProvider;
 import io.opentelemetry.sdk.trace.export.BatchSpanProcessor;
-import io.opentelemetry.sdk.trace.export.SimpleSpanProcessor;
 import io.opentelemetry.exporter.otlp.trace.OtlpGrpcSpanExporter;
+import org.openjdk.jmh.infra.Blackhole;
 import org.openjdk.jmh.annotations.*;
 
 import java.util.concurrent.TimeUnit;
@@ -223,16 +238,16 @@ public class OpenTelemetryBenchmark {
 
     // Baseline benchmark without instrumentation
     @Benchmark
-    public void baselineOperation() {
-        processRequest();
+    public void baselineOperation(Blackhole blackhole) {
+        blackhole.consume(processRequest());
     }
 
     // Benchmark with span creation
     @Benchmark
-    public void operationWithSpan() {
+    public void operationWithSpan(Blackhole blackhole) {
         Span span = tracer.spanBuilder("operation").startSpan();
         try {
-            processRequest();
+            blackhole.consume(processRequest());
         } finally {
             span.end();
         }
@@ -240,12 +255,12 @@ public class OpenTelemetryBenchmark {
 
     // Benchmark with nested spans
     @Benchmark
-    public void operationWithNestedSpans() {
+    public void operationWithNestedSpans(Blackhole blackhole) {
         Span parentSpan = tracer.spanBuilder("parent").startSpan();
-        try {
+        try (io.opentelemetry.context.Scope parentScope = parentSpan.makeCurrent()) {
             Span childSpan = tracer.spanBuilder("child").startSpan();
             try {
-                processRequest();
+                blackhole.consume(processRequest());
             } finally {
                 childSpan.end();
             }
@@ -256,25 +271,26 @@ public class OpenTelemetryBenchmark {
 
     // Benchmark with attributes
     @Benchmark
-    public void operationWithAttributes() {
+    public void operationWithAttributes(Blackhole blackhole) {
         Span span = tracer.spanBuilder("operation")
             .setAttribute("user.id", "12345")
             .setAttribute("http.method", "GET")
             .setAttribute("http.status_code", 200)
             .startSpan();
         try {
-            processRequest();
+            blackhole.consume(processRequest());
         } finally {
             span.end();
         }
     }
 
-    private void processRequest() {
+    private int processRequest() {
         // Simulate business logic
         int sum = 0;
         for (int i = 0; i < 1000; i++) {
             sum += i;
         }
+        return sum;
     }
 }
 ```
@@ -301,7 +317,7 @@ Python applications can use the `timeit` module or `pytest-benchmark` for perfor
 Install required packages:
 
 ```bash
-pip install opentelemetry-api opentelemetry-sdk pytest-benchmark
+pip install opentelemetry-api opentelemetry-sdk opentelemetry-exporter-otlp-proto-grpc pytest-benchmark
 ```
 
 Create a benchmark file using pytest-benchmark:
@@ -313,9 +329,14 @@ from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import (
     BatchSpanProcessor,
-    ConsoleSpanExporter,
 )
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+
+provider = TracerProvider()
+exporter = OTLPSpanExporter(endpoint="http://localhost:4317")
+processor = BatchSpanProcessor(exporter)
+provider.add_span_processor(processor)
+trace.set_tracer_provider(provider)
 
 def process_request():
     """Simulate business logic"""
@@ -330,13 +351,6 @@ def test_baseline(benchmark):
 # Setup OpenTelemetry for instrumented benchmarks
 @pytest.fixture
 def tracer():
-    # Configure tracer provider with batch processor
-    provider = TracerProvider()
-    exporter = OTLPSpanExporter(endpoint="http://localhost:4317")
-    processor = BatchSpanProcessor(exporter)
-    provider.add_span_processor(processor)
-    trace.set_tracer_provider(provider)
-
     return trace.get_tracer(__name__)
 
 # Benchmark with span creation
@@ -400,7 +414,7 @@ print(f"OpenTelemetry overhead: {overhead_percent:.1f}%")
 # Output: OpenTelemetry overhead: 265.9%
 ```
 
-This percentage represents the relative slowdown. For this example, operations take 2.65x longer with instrumentation.
+This percentage represents the relative slowdown. For this example, operations take about 3.66x as long with instrumentation, or 2.66x more time than the baseline.
 
 ## Production Monitoring Strategy
 
@@ -452,12 +466,12 @@ service:
 
 ## Key Takeaways
 
-Benchmarking revealed several patterns:
-- Span creation overhead ranges from 200-600ns in Go, 600-900ns in Java, and 30-45μs in Python
-- Nested spans multiply overhead linearly
-- Attributes add 10-20% additional overhead per span
+Benchmarking can reveal several patterns:
+- In the example results above, span creation adds hundreds of nanoseconds in Go and Java, and tens of microseconds in Python
+- Nested spans usually add overhead for each additional span
+- Attributes add additional overhead per span
 - Batch processing significantly reduces per-operation cost
-- Sampling can reduce overhead by 60-90% depending on the sampling rate
+- Sampling can reduce recorded and exported span overhead depending on the sampling rate
 
 Use these benchmarks to make data-driven decisions about instrumentation strategy, sampling configuration, and resource allocation for your OpenTelemetry deployment.
 
