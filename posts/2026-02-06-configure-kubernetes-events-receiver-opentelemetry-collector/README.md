@@ -69,15 +69,15 @@ processors:
     timeout: 10s
 
 exporters:
-  logging:
-    loglevel: debug
+  debug:
+    verbosity: detailed
 
 service:
   pipelines:
     logs:
       receivers: [k8s_events]
       processors: [batch]
-      exporters: [logging]
+      exporters: [debug]
 ```
 
 This configuration watches events across all namespaces using the pod's service account for authentication.
@@ -135,12 +135,9 @@ receivers:
 processors:
   # Filter out events from system namespaces
   filter:
-    logs:
-      exclude:
-        match_type: regexp
-        resource_attributes:
-          - key: k8s.namespace.name
-            value: ^(kube-system|kube-public|kube-node-lease)$
+    error_mode: ignore
+    log_conditions:
+      - IsMatch(log.attributes["k8s.namespace.name"], "^(kube-system|kube-public|kube-node-lease)$")
 ```
 
 Filtering namespaces reduces event volume. Most clusters generate many events from kube-system that are only relevant for deep cluster debugging.
@@ -167,11 +164,6 @@ rules:
   - apiGroups: [""]
     resources: ["events"]
     verbs: ["get", "list", "watch"]
-
-  # Permission to watch events in events.k8s.io API group (K8s 1.19+)
-  - apiGroups: ["events.k8s.io"]
-    resources: ["events"]
-    verbs: ["get", "list", "watch"]
 ---
 # ClusterRoleBinding to grant permissions
 apiVersion: rbac.authorization.k8s.io/v1
@@ -188,7 +180,7 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
 ```
 
-Kubernetes 1.19+ introduced a new events API group (`events.k8s.io`). The receiver needs permissions for both the legacy (`""`) and new API groups to capture all events.
+The receiver watches core Kubernetes Event resources, so the RBAC rule grants access to the core API group (`""`).
 
 For namespace-scoped watching, use a Role and RoleBinding instead:
 
@@ -200,7 +192,7 @@ metadata:
   name: otel-collector-events
   namespace: production
 rules:
-  - apiGroups: ["", "events.k8s.io"]
+  - apiGroups: [""]
     resources: ["events"]
     verbs: ["get", "list", "watch"]
 ---
@@ -237,11 +229,12 @@ receivers:
 # - k8s.event.name: Event name
 # - k8s.event.uid: Unique event identifier
 # - k8s.event.reason: Event reason (e.g., FailedScheduling)
-# - k8s.event.type: Normal or Warning
+# - severity_text: Normal or Warning
 # - k8s.event.action: Action taken
 # - k8s.event.reporting_controller: Controller that reported the event
 # - k8s.event.reporting_instance: Instance of the controller
 # - k8s.namespace.name: Namespace where event occurred
+# Resource attributes:
 # - k8s.object.kind: Kind of object (Pod, Node, Deployment, etc.)
 # - k8s.object.name: Name of the object
 # - k8s.object.uid: UID of the object
@@ -266,12 +259,9 @@ receivers:
 processors:
   # Filter to only include warnings
   filter:
-    logs:
-      include:
-        match_type: strict
-        attributes:
-          - key: k8s.event.type
-            value: Warning
+    error_mode: ignore
+    log_conditions:
+      - log.severity_text != "Warning"
 ```
 
 ```yaml
@@ -284,12 +274,9 @@ receivers:
 
 processors:
   filter:
-    logs:
-      include:
-        match_type: regexp
-        attributes:
-          - key: k8s.event.reason
-            value: ^(FailedScheduling|ImagePullBackOff|CrashLoopBackOff|OOMKilled|FailedMount)$
+    error_mode: ignore
+    log_conditions:
+      - IsMatch(log.attributes["k8s.event.reason"], "^(FailedScheduling|ImagePullBackOff|CrashLoopBackOff|OOMKilled|FailedMount)$") == false
 ```
 
 This approach dramatically reduces event volume while maintaining visibility into problems that need attention.
@@ -310,7 +297,7 @@ processors:
   resource:
     attributes:
       - key: k8s.cluster.name
-        value: ${CLUSTER_NAME}
+        value: ${env:CLUSTER_NAME}
         action: insert
 
       - key: deployment.environment
@@ -371,7 +358,7 @@ processors:
   resource:
     attributes:
       - key: k8s.cluster.name
-        value: ${CLUSTER_NAME}
+        value: ${env:CLUSTER_NAME}
         action: insert
 
   batch:
@@ -412,24 +399,11 @@ receivers:
 
 processors:
   # Add severity to events based on reason
-  attributes:
-    actions:
-      - key: alert.severity
-        value: critical
-        action: insert
-        # Only add to specific event reasons
-        filters:
-          - key: k8s.event.reason
-            value: OOMKilled
-            match_type: strict
-
-      - key: alert.severity
-        value: critical
-        action: insert
-        filters:
-          - key: k8s.event.reason
-            value: FailedScheduling
-            match_type: strict
+  transform:
+    error_mode: ignore
+    log_statements:
+      - set(log.attributes["alert.severity"], "critical") where log.attributes["k8s.event.reason"] == "OOMKilled"
+      - set(log.attributes["alert.severity"], "critical") where log.attributes["k8s.event.reason"] == "FailedScheduling"
 
   batch:
     timeout: 10s
@@ -447,30 +421,24 @@ service:
   pipelines:
     logs:
       receivers: [k8s_events]
-      processors: [attributes, batch]
+      processors: [transform, batch]
       exporters: [otlp, otlp/alerts]
 ```
 
 ## Event Deduplication
 
-Kubernetes can generate duplicate events. Handle them with attribute manipulation:
+Kubernetes can generate repeated event updates. Handle them with the receiver's `dedup_interval` setting:
 
 ```yaml
-# Deduplicate events based on content
-# Reduces noise from repeated events
+# Throttle repeated MODIFIED updates for the same Event UID
+# Reduces noise from recurring events
 receivers:
   k8s_events:
     auth_type: serviceAccount
     namespaces: [all]
+    dedup_interval: 5m
 
 processors:
-  # Group events for deduplication downstream
-  groupbyattrs:
-    keys:
-      - k8s.event.reason
-      - k8s.object.name
-      - k8s.namespace.name
-
   batch:
     timeout: 10s
 
@@ -482,11 +450,11 @@ service:
   pipelines:
     logs:
       receivers: [k8s_events]
-      processors: [groupbyattrs, batch]
+      processors: [batch]
       exporters: [otlp]
 ```
 
-Your backend system can then deduplicate based on these grouped attributes, showing a single event with a count rather than hundreds of identical entries.
+The receiver always emits newly added events, but repeated updates for the same Event UID are throttled to at most once per `dedup_interval`.
 
 ## Deployment Patterns
 
@@ -604,23 +572,20 @@ receivers:
 processors:
   # Filter out noisy normal events
   filter:
-    logs:
-      exclude:
-        match_type: regexp
-        attributes:
-          # Exclude common normal events
-          - key: k8s.event.reason
-            value: ^(Started|Created|Scheduled|Pulled|SuccessfulCreate)$
+    error_mode: ignore
+    log_conditions:
+      # Exclude common normal events
+      - IsMatch(log.attributes["k8s.event.reason"], "^(Started|Created|Scheduled|Pulled|SuccessfulCreate)$")
 
   # Add cluster context
   resource:
     attributes:
       - key: k8s.cluster.name
-        value: ${CLUSTER_NAME}
+        value: ${env:CLUSTER_NAME}
         action: insert
 
       - key: deployment.environment
-        value: ${ENVIRONMENT}
+        value: ${env:ENVIRONMENT}
         action: insert
 
       - key: cloud.provider
@@ -628,38 +593,21 @@ processors:
         action: insert
 
       - key: cloud.region
-        value: ${AWS_REGION}
+        value: ${env:AWS_REGION}
         action: insert
 
   # Add severity tags for alerting
-  attributes:
-    actions:
+  transform:
+    error_mode: ignore
+    log_statements:
       # Critical events
-      - key: event.severity
-        value: critical
-        action: insert
-        filters:
-          - key: k8s.event.reason
-            value: ^(OOMKilled|FailedScheduling|FailedMount)$
-            match_type: regexp
+      - set(log.attributes["event.severity"], "critical") where IsMatch(log.attributes["k8s.event.reason"], "^(OOMKilled|FailedScheduling|FailedMount)$")
 
       # Warning events
-      - key: event.severity
-        value: warning
-        action: insert
-        filters:
-          - key: k8s.event.reason
-            value: ^(ImagePullBackOff|CrashLoopBackOff|Unhealthy)$
-            match_type: regexp
+      - set(log.attributes["event.severity"], "warning") where IsMatch(log.attributes["k8s.event.reason"], "^(ImagePullBackOff|CrashLoopBackOff|Unhealthy)$")
 
       # Informational events
-      - key: event.severity
-        value: info
-        action: insert
-        filters:
-          - key: k8s.event.type
-            value: Normal
-            match_type: strict
+      - set(log.attributes["event.severity"], "info") where log.severity_text == "Normal"
 
   # Batch for efficiency
   batch:
@@ -673,7 +621,7 @@ processors:
 
 exporters:
   otlp:
-    endpoint: ${OTLP_ENDPOINT}
+    endpoint: ${env:OTLP_ENDPOINT}
     compression: gzip
     retry_on_failure:
       enabled: true
@@ -684,7 +632,7 @@ service:
   pipelines:
     logs:
       receivers: [k8s_events]
-      processors: [filter, resource, attributes, memory_limiter, batch]
+      processors: [memory_limiter, filter, resource, transform, batch]
       exporters: [otlp]
 
   # Monitor collector health
@@ -693,7 +641,6 @@ service:
       level: info
     metrics:
       level: detailed
-      address: localhost:8888
 ```
 
 ## Complete Kubernetes Deployment
@@ -720,7 +667,7 @@ kind: ClusterRole
 metadata:
   name: otel-collector-events
 rules:
-  - apiGroups: ["", "events.k8s.io"]
+  - apiGroups: [""]
     resources: ["events"]
     verbs: ["get", "list", "watch"]
 ---
@@ -790,7 +737,7 @@ spec:
       serviceAccountName: otel-collector-events
       containers:
       - name: otel-collector
-        image: otel/opentelemetry-collector-contrib:0.93.0
+        image: otel/opentelemetry-collector-contrib:0.153.0
         args:
           - --config=/etc/otelcol/config.yaml
         resources:
