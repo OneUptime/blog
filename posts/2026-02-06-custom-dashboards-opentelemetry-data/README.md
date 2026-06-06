@@ -42,6 +42,7 @@ The metrics you emit from your application determine what you can display on das
 # Emit OpenTelemetry metrics optimized for dashboard consumption
 
 from opentelemetry import metrics
+from opentelemetry.metrics import Observation
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
@@ -66,7 +67,7 @@ meter = metrics.get_meter("checkout-service")
 request_duration = meter.create_histogram(
     name="http.server.request.duration",
     description="Time to process each HTTP request",
-    unit="ms",
+    unit="s",
 )
 
 # Active requests gauge - shows current concurrency
@@ -96,14 +97,14 @@ order_value = meter.create_histogram(
 queue_depth = meter.create_observable_gauge(
     name="queue.depth",
     description="Number of items waiting in the processing queue",
-    callbacks=[lambda options: get_queue_depth()],
+    callbacks=[lambda options: [Observation(get_queue_depth())]],
     unit="1",
 )
 
 cache_hit_ratio = meter.create_observable_gauge(
     name="cache.hit_ratio",
     description="Ratio of cache hits to total lookups",
-    callbacks=[lambda options: compute_cache_ratio()],
+    callbacks=[lambda options: [Observation(compute_cache_ratio())]],
     unit="1",
 )
 ```
@@ -114,7 +115,7 @@ The key principle is to emit metrics at multiple levels of abstraction. Technica
 
 ## Processing Metrics in the Collector for Dashboards
 
-The OpenTelemetry Collector can transform and enrich metrics before they reach your dashboard backend. This is useful for pre-computing derived metrics that would be expensive to calculate at query time.
+The OpenTelemetry Collector can transform and enrich metrics before they reach your dashboard backend. This is useful for standardizing metric names and reducing unnecessary labels before query time.
 
 ```yaml
 # otel-collector-config.yaml
@@ -135,41 +136,42 @@ processors:
         value: "critical"
         action: upsert
 
-  # Transform metrics to create dashboard-friendly aggregations
-  # This processor computes per-minute rates from counters
+  # Transform metrics to create dashboard-friendly names and aggregations
   metricstransform:
     transforms:
       # Rename metrics to match your dashboard naming convention
       - include: http.server.request.duration
         action: update
-        new_name: request_duration_ms
+        new_name: request.duration
 
-      # Create a new metric that computes error percentage
-      # This saves dashboard query complexity
+      # Aggregate noisy error labels while keeping the route and method
       - include: http.server.request.errors
         action: insert
-        new_name: error_rate_percent
+        new_name: request.errors
         operations:
           - action: aggregate_labels
             label_set: [http.method, http.route]
+            aggregation_type: sum
 
-  # Batch metrics to reduce cardinality pressure on your backend
+  # Batch metrics to reduce the number of outgoing requests to your backend
   batch:
     timeout: 15s
     send_batch_size: 1000
 
 exporters:
-  otlp:
-    endpoint: https://oneuptime.com/otlp
+  otlphttp:
+    endpoint: "https://oneuptime.com/otlp"
+    encoding: json
     headers:
-      Authorization: "Bearer your-api-key"
+      Content-Type: "application/json"
+      x-oneuptime-token: "your-oneuptime-token"
 
 service:
   pipelines:
     metrics:
       receivers: [otlp]
       processors: [resource, metricstransform, batch]
-      exporters: [otlp]
+      exporters: [otlphttp]
 ```
 
 ---
@@ -206,20 +208,20 @@ panels:
     type: timeseries
     # Rate of requests per second, broken down by status code
     query: |
-      sum(rate(request_duration_ms_count{
+      sum(rate(request_duration_seconds_count{
         service_name="checkout-service"
-      }[5m])) by (http_status_code)
+      }[5m])) by (http_response_status_code)
 
   - title: "Error Rate (%)"
     type: timeseries
     # Percentage of 5xx responses over total responses
     query: |
-      100 * sum(rate(request_duration_ms_count{
+      100 * sum(rate(request_duration_seconds_count{
         service_name="checkout-service",
-        http_status_code=~"5.."
+        http_response_status_code=~"5.."
       }[5m]))
       /
-      sum(rate(request_duration_ms_count{
+      sum(rate(request_duration_seconds_count{
         service_name="checkout-service"
       }[5m]))
 
@@ -227,8 +229,8 @@ panels:
     type: timeseries
     # 99th percentile request duration
     query: |
-      histogram_quantile(0.99,
-        sum(rate(request_duration_ms_bucket{
+      1000 * histogram_quantile(0.99,
+        sum(rate(request_duration_seconds_bucket{
           service_name="checkout-service"
         }[5m])) by (le)
       )
@@ -262,7 +264,7 @@ def create_service_dashboard(service_name, endpoints):
     panels.append({
         "title": f"{service_name} - Request Volume",
         "type": "timeseries",
-        "query": f'sum(rate(request_duration_ms_count{{service_name="{service_name}"}}[5m]))',
+        "query": f'sum(rate(request_duration_seconds_count{{service_name="{service_name}"}}[5m]))',
         "row": 0,
     })
 
@@ -270,11 +272,11 @@ def create_service_dashboard(service_name, endpoints):
     # This helps identify which endpoints are degrading
     for endpoint in endpoints:
         panels.append({
-            "title": f"Latency: {endpoint}",
+            "title": f"Latency: {endpoint} (ms)",
             "type": "timeseries",
             "query": (
-                f'histogram_quantile(0.95, '
-                f'sum(rate(request_duration_ms_bucket{{'
+                f'1000 * histogram_quantile(0.95, '
+                f'sum(rate(request_duration_seconds_bucket{{'
                 f'service_name="{service_name}", '
                 f'http_route="{endpoint}"'
                 f'}}[5m])) by (le))'
@@ -284,7 +286,7 @@ def create_service_dashboard(service_name, endpoints):
 
     # Dependency health: latency to each downstream service
     panels.append({
-        "title": "Database Query Duration (p95)",
+        "title": "Database Query Duration (p95, s)",
         "type": "timeseries",
         "query": (
             f'histogram_quantile(0.95, '
