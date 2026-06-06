@@ -18,7 +18,7 @@ This guide covers how to set up consistent sampling across a polyglot microservi
 
 ## The Inconsistency Problem
 
-Consider three services: an API gateway, an order service, and a payment service. Each uses `TraceIdRatioBasedSampler(0.1)` independently.
+Consider three services: an API gateway, an order service, and a payment service. Each makes an independent head-sampling decision instead of respecting the parent decision.
 
 ```mermaid
 sequenceDiagram
@@ -27,44 +27,43 @@ sequenceDiagram
     participant PaymentSvc
 
     Note over Gateway: TraceId: abc123
-    Note over Gateway: Sample? YES (ratio hit)
+    Note over Gateway: Sample? YES
     Gateway->>OrderSvc: Request + Trace Context
     Note over OrderSvc: TraceId: abc123
-    Note over OrderSvc: Sample? NO (different random decision)
+    Note over OrderSvc: Sample? NO (ignores parent decision)
     OrderSvc->>PaymentSvc: Request + Trace Context
     Note over PaymentSvc: TraceId: abc123
-    Note over PaymentSvc: Sample? YES (another random decision)
+    Note over PaymentSvc: Sample? YES (ignores parent decision)
 
     Note over Gateway,PaymentSvc: Result: Gateway span + Payment span, but no Order span
 ```
 
-The trace is broken. You see the start and the end, but the middle is missing. This happens because each service is rolling its own dice.
+The trace is broken. You see the start and the end, but the middle is missing. This happens because each service is making a sampling decision without following the upstream decision.
 
 ---
 
 ## How TraceIdRatioBasedSampler Achieves Consistency
 
-The OpenTelemetry `TraceIdRatioBasedSampler` is already designed to be consistent. It does not use random numbers. Instead, it hashes the trace ID and compares the result against a threshold derived from the sampling ratio.
+The OpenTelemetry `TraceIdRatioBasedSampler` is designed to be deterministic for a given trace ID. It does not make a fresh random decision for each span. Instead, it computes a deterministic value from the trace ID and compares that value against a threshold derived from the sampling ratio.
 
 ```typescript
 // Simplified view of how TraceIdRatioBasedSampler works internally
 function shouldSample(traceId: string, ratio: number): boolean {
-  // Extract the last 8 bytes of the trace ID
-  const traceIdBytes = hexToBytes(traceId);
-  const lowerLong = bytesToLong(traceIdBytes.slice(8, 16));
+  // Compute a deterministic value from the trace ID
+  const value = deterministicHash(traceId);
 
   // Compare against threshold
-  // For ratio 0.1, threshold is roughly 0.1 * MAX_LONG
-  const threshold = Math.floor(ratio * Number.MAX_SAFE_INTEGER);
+  // For ratio 0.1, the threshold represents roughly 10% of the hash space
+  const threshold = ratioToThreshold(ratio);
 
   // Same traceId always produces the same result
-  return lowerLong < threshold;
+  return value < threshold;
 }
 ```
 
-Because the decision is based entirely on the trace ID, and every service in the trace shares the same trace ID, they all arrive at the same answer. No randomness involved.
+Because the decision is based entirely on the trace ID, and every service in the trace shares the same trace ID, compatible samplers with the same ratio arrive at the same answer. No fresh per-span randomness involved.
 
-The catch: this only works if every service uses the same ratio. If the gateway uses 0.1 and the order service uses 0.5, they will disagree on some traces.
+The catch: this only works reliably when every service uses the same ratio and compatible sampler behavior. The OpenTelemetry specification warns that the exact `TraceIdRatioBased` algorithm was historically not fully specified across SDKs, so for polyglot systems it is best used only for root spans, wrapped by `ParentBasedSampler`. If the gateway uses 0.1 and the order service uses 0.5, they will also disagree on some traces when they make their own root decisions.
 
 ---
 
@@ -81,7 +80,7 @@ OTEL_TRACES_SAMPLER=parentbased_traceidratio
 OTEL_TRACES_SAMPLER_ARG=0.1
 ```
 
-These are standard OpenTelemetry environment variables. Every OpenTelemetry SDK recognizes them.
+These are standard OpenTelemetry environment variables. SDKs that support environment-based configuration use these names and values.
 
 For Kubernetes, define them in a ConfigMap shared across all deployments:
 
@@ -121,7 +120,7 @@ Every service reads the same ConfigMap, so they all use the same ratio. To chang
 The `ParentBasedSampler` adds an important layer: it respects the sampling decision made by the parent span. This means only the root service needs to make the ratio decision. Every downstream service simply follows along.
 
 ```typescript
-// This configuration works in any language SDK
+// This pattern is available across language SDKs
 // Node.js / TypeScript example
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import {
@@ -277,7 +276,7 @@ Second, check the sampled flag in your trace context propagation. Add logging at
 
 ```typescript
 // Middleware to log sampling decisions at service boundaries
-import { trace, context } from '@opentelemetry/api';
+import { trace } from '@opentelemetry/api';
 
 function samplingDebugMiddleware(req: any, res: any, next: any) {
   const span = trace.getActiveSpan();
@@ -302,7 +301,7 @@ Third, compare trace counts across services. If the gateway exports 1000 traces 
 
 **Using `AlwaysOnSampler` without `ParentBased` wrapping.** This samples everything regardless of parent decisions, causing inconsistency when combined with services that do sample.
 
-**Different SDK versions with different hashing algorithms.** Older SDK versions might hash the trace ID differently. Keep SDKs at compatible versions across services.
+**Different SDKs or SDK versions with different sampling algorithms.** The exact `TraceIdRatioBased` algorithm was historically not fully specified across SDKs. Keep SDKs at compatible versions across services, and use `ParentBased` so non-root spans follow the propagated decision.
 
 **Forgetting to propagate context.** If a service does not extract and inject the `traceparent` header, downstream services treat requests as new root spans. Make sure your HTTP clients and servers are instrumented for context propagation.
 
@@ -312,7 +311,7 @@ Third, compare trace counts across services. If the gateway exports 1000 traces 
 
 ## Key Takeaways
 
-1. Use `TraceIdRatioBasedSampler` with the same ratio across all services for deterministic, consistent decisions
+1. Use `TraceIdRatioBasedSampler` as the root sampler with a deliberate ratio for deterministic root decisions
 2. Wrap it in `ParentBasedSampler` so only root spans make the ratio decision and all child spans follow
 3. Set sampling configuration through shared ConfigMaps or environment variables
 4. The W3C `traceparent` header carries the sampling decision between services automatically
