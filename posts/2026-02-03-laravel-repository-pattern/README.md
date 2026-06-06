@@ -291,7 +291,6 @@ Now your UserRepository becomes much simpler:
 namespace App\Repositories\Eloquent;
 
 use App\Models\User;
-use App\Models\User;
 use App\Repositories\Contracts\UserRepositoryInterface;
 use Illuminate\Database\Eloquent\Collection;
 
@@ -371,14 +370,18 @@ class RepositoryServiceProvider extends ServiceProvider
 }
 ```
 
-Register the provider in `config/app.php`:
+Register the provider in `bootstrap/providers.php` (Laravel 11+):
 
 ```php
-'providers' => [
-    // Other providers...
+<?php
+
+return [
+    App\Providers\AppServiceProvider::class,
     App\Providers\RepositoryServiceProvider::class,
-],
+];
 ```
+
+If you're on Laravel 10 or earlier, register it in the `providers` array of `config/app.php` instead.
 
 ## Using Repositories in Controllers
 
