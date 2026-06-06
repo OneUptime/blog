@@ -100,7 +100,7 @@ printer_utilization = meter.create_gauge(
 ```python
 import time
 import datetime
-from opentelemetry.trace.propagation import TraceContextTextMapPropagator
+from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 
 propagator = TraceContextTextMapPropagator()
 
@@ -129,7 +129,7 @@ def submit_print_job(job_id, model_file, material, layer_height, infill, priorit
         job = {
             "job_id": job_id,
             "status": "queued",
-            "submitted_at": datetime.datetime.utcnow().isoformat(),
+            "submitted_at": datetime.datetime.now(datetime.UTC).isoformat(),
             "trace_context": carrier,
             "slice_result": slice_result,
             "material": material,
