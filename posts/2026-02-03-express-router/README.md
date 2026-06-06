@@ -479,7 +479,7 @@ router.put('/:id', (req, res) => {
 });
 
 router.delete('/:id', (req, res) => {
-  req.user.remove();
+  req.user.deleteOne();
   res.status(204).send();
 });
 
