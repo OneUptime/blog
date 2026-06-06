@@ -40,7 +40,7 @@ def detect_clock_skew(trace_data):
         child_service = span.get("resource", {}).get("service.name", "unknown")
         parent_service = parent.get("resource", {}).get("service.name", "unknown")
 
-        # Only check cross-service spans (same service = same clock)
+        # Focus on cross-service spans for service-pair skew analysis
         if child_service == parent_service:
             continue
 
@@ -155,10 +155,26 @@ def get_ntp_offset():
         )
         for line in result.stdout.splitlines():
             if "System time" in line:
-                # Parse the offset value
+                # Example: "System time     : 0.000006523 seconds slow of NTP time"
                 parts = line.split()
                 offset_sec = float(parts[3])
+                if "slow" in parts:
+                    offset_sec = -offset_sec
                 return offset_sec * 1000
+    except Exception:
+        return None
+    return None
+
+def get_last_ntp_sync_time():
+    """Get the last NTP reference time from chrony, if available."""
+    try:
+        result = subprocess.run(
+            ["chronyc", "tracking"],
+            capture_output=True, text=True, timeout=5,
+        )
+        for line in result.stdout.splitlines():
+            if line.startswith("Ref time"):
+                return line.split(":", 1)[1].strip()
     except Exception:
         return None
     return None
@@ -172,11 +188,12 @@ Some trace backends support server-side clock skew correction. If yours does not
 processors:
   # Custom processor to adjust for known clock skew
   transform:
+    error_mode: ignore
     trace_statements:
       - context: span
         statements:
           # Log the original timestamps for debugging
-          - set(attributes["original.start_time"], start_time)
+          - set(span.attributes["original.start_time_unix_nano"], span.start_time_unix_nano)
 ```
 
 ## Preventing Clock Skew
