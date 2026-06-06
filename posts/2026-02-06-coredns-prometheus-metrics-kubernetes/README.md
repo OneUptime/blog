@@ -47,7 +47,7 @@ spec:
       serviceAccountName: otel-collector
       containers:
         - name: collector
-          image: otel/opentelemetry-collector-contrib:0.96.0
+          image: otel/opentelemetry-collector-contrib:0.153.0
           args: ["--config=/etc/otel/config.yaml"]
           ports:
             - containerPort: 4317
@@ -88,6 +88,9 @@ metadata:
 rules:
   - apiGroups: [""]
     resources: ["pods", "nodes", "endpoints", "services"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["discovery.k8s.io"]
+    resources: ["endpointslices"]
     verbs: ["get", "list", "watch"]
   - apiGroups: ["apps"]
     resources: ["replicasets"]
@@ -135,6 +138,10 @@ data:
                 - source_labels: [__meta_kubernetes_pod_label_k8s_app]
                   action: keep
                   regex: "kube-dns"
+                # Keep only the metrics container port to avoid duplicate targets
+                - source_labels: [__meta_kubernetes_pod_container_port_number]
+                  action: keep
+                  regex: "9153"
                 # Set the scrape target to the pod IP on the metrics port
                 - source_labels: [__meta_kubernetes_pod_ip]
                   target_label: __address__
@@ -157,7 +164,7 @@ data:
             value: "production"
             action: upsert
 
-      # Rename Prometheus metric labels to OTel semantic conventions
+      # Rename selected Prometheus metric labels for clearer backend queries
       metricstransform:
         transforms:
           - include: coredns_dns_requests_total
@@ -166,13 +173,13 @@ data:
             operations:
               - action: update_label
                 label: server
-                new_label: dns.server
+                new_label: coredns.server
               - action: update_label
                 label: type
-                new_label: dns.query.type
+                new_label: coredns.query_type
               - action: update_label
                 label: proto
-                new_label: network.protocol
+                new_label: network.transport
 
       batch:
         timeout: 10s
@@ -197,28 +204,28 @@ An alternative to pod-level discovery is to scrape through the CoreDNS Service. 
 # Check if the kube-dns Service exposes the metrics port
 # kubectl get svc kube-dns -n kube-system -o yaml
 
-# If it does, you can use endpoint discovery:
+# If it does, you can use EndpointSlice discovery:
 scrape_configs:
   - job_name: "coredns-endpoints"
     scrape_interval: 15s
     kubernetes_sd_configs:
-      - role: endpoints
+      - role: endpointslice
         namespaces:
           names: ["kube-system"]
     relabel_configs:
       - source_labels: [__meta_kubernetes_service_name]
         action: keep
         regex: "kube-dns"
-      - source_labels: [__meta_kubernetes_endpoint_port_name]
+      - source_labels: [__meta_kubernetes_endpointslice_port_name]
         action: keep
         regex: "metrics"
 ```
 
 ## Handling CoreDNS Scaling
 
-If CoreDNS is scaled using the dns-autoscaler, pods come and go. Kubernetes service discovery handles this automatically. New pods are discovered and scraped within one scrape interval.
+If CoreDNS is scaled using the dns-autoscaler, pods come and go. Kubernetes service discovery handles this automatically. New pods are discovered and then scraped on the next scrape cycle.
 
-Monitor the number of CoreDNS pods alongside the per-pod metrics to understand scaling behavior:
+Preserve the CoreDNS pod name alongside the per-pod metrics to understand scaling behavior:
 
 ```yaml
 processors:
