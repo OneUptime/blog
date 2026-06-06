@@ -10,9 +10,9 @@ Description: Understand the differences between the OpenTelemetry Collector Core
 
 When you first set up the OpenTelemetry Collector, you will face a choice: use the Core distribution, the Contrib distribution, or build your own. Each option has trade-offs around component availability, binary size, stability guarantees, and maintenance burden. This post breaks down the differences and helps you make the right call.
 
-## The Two Official Distributions
+## The Main Collector Distributions
 
-The OpenTelemetry project maintains two official distributions of the collector:
+The OpenTelemetry project maintains several pre-built Collector distributions, including Core, Contrib, Kubernetes, OTLP, and eBPF profiling builds. For most general-purpose deployments, the main choice is between the Core and Contrib distributions:
 
 ```mermaid
 flowchart TD
@@ -21,8 +21,8 @@ flowchart TD
     A --> D[Custom Distribution<br/>Built with OCB]
 
     B --> B1[Essential components only]
-    B --> B2[Maintained by core team]
-    B --> B3[Strict stability guarantees]
+    B --> B2[Smaller default set]
+    B --> B3[Mixed component stability]
 
     C --> C1[100+ community components]
     C --> C2[Maintained by contributors]
@@ -35,7 +35,7 @@ flowchart TD
 
 ## Core Distribution
 
-The Core distribution includes only the fundamental components that the OpenTelemetry team directly maintains. It is intentionally minimal.
+The Core distribution includes a smaller default component set than Contrib. It is intentionally more limited, but it is not OTLP-only and it includes some components from the contrib repository.
 
 ### What is Included in Core
 
@@ -44,19 +44,35 @@ The Core distribution includes only the fundamental components that the OpenTele
 
 receivers:
   - otlp          # The standard OpenTelemetry protocol receiver
+  - hostmetrics   # Host CPU, memory, disk, and filesystem metrics
+  - prometheus    # Scrape Prometheus endpoints
+  - kafka         # Consume telemetry from Kafka
+  - jaeger        # Receive Jaeger traces
+  - zipkin        # Receive Zipkin traces
 
 processors:
   - batch          # Groups telemetry before export
   - memory_limiter # Prevents out-of-memory crashes
+  - attributes     # Modify attributes
+  - resource       # Modify resource attributes
+  - filter         # Drop unwanted telemetry
+  - probabilistic_sampler # Sample traces probabilistically
+  - span           # Modify spans
 
 exporters:
   - otlp           # Sends data over gRPC
   - otlphttp       # Sends data over HTTP
   - debug          # Prints telemetry to stdout
+  - file           # Writes telemetry to files
+  - kafka          # Sends telemetry to Kafka
+  - prometheus     # Exposes a Prometheus scrape endpoint
+  - prometheusremotewrite # Sends metrics with Prometheus remote write
+  - zipkin         # Sends traces to Zipkin
 
 extensions:
   - zpages         # In-process debugging pages
-  - ballast        # Memory ballast for GC tuning
+  - health_check   # Collector health check endpoint
+  - pprof          # Go pprof debugging endpoint
 
 connectors:
   - forward        # Passes data between pipelines
@@ -67,8 +83,8 @@ connectors:
 Core works best when:
 
 - Your applications already emit OTLP data and your backend accepts OTLP
-- You want the smallest possible binary and memory footprint
-- You need strong stability guarantees with well-tested releases
+- You want a smaller pre-built binary and memory footprint than Contrib
+- You want fewer bundled components and a smaller upgrade surface
 - You are running in a constrained environment like edge devices or IoT gateways
 
 Here is a typical Core configuration:
@@ -124,7 +140,7 @@ The Contrib distribution is the kitchen-sink option. It bundles everything from 
 
 ### Popular Contrib Components
 
-Here is a sampling of what Contrib adds:
+Here is a sampling of components available in Contrib. Some of these are also included in Core, but Contrib adds many more receivers, processors, exporters, extensions, and connectors:
 
 ```yaml
 # A small selection of the 100+ components in Contrib
@@ -156,7 +172,7 @@ exporters:
   - kafka            # Send to Kafka topics
   - prometheus       # Expose a Prometheus scrape endpoint
   - elasticsearch    # Send to Elasticsearch
-  - loki             # Send logs to Grafana Loki
+  - splunk_hec       # Send logs to Splunk HEC
   - file             # Write telemetry to files
   - awsxray          # AWS X-Ray format
   - datadog          # Datadog backend
@@ -166,8 +182,8 @@ exporters:
 
 Contrib is the right choice when:
 
-- You need to ingest data from non-OTLP sources like Prometheus, Kafka, or log files
-- You want vendor-specific exporters for services like Datadog, AWS X-Ray, or Elasticsearch
+- You need components that are not in Core, such as filelog, database receivers, or cloud-specific receivers
+- You want vendor-specific exporters for services like Datadog, AWS X-Ray, Elasticsearch, or Splunk
 - You need advanced processing like tail sampling or OTTL transforms
 - You are prototyping and want quick access to many components without building a custom distribution
 
@@ -232,10 +248,10 @@ processors:
 
   # Drop health check spans to reduce noise
   filter:
-    traces:
-      span:
-        - 'attributes["http.route"] == "/healthz"'
-        - 'attributes["http.route"] == "/readyz"'
+    error_mode: ignore
+    trace_conditions:
+      - 'span.attributes["http.route"] == "/healthz"'
+      - 'span.attributes["http.route"] == "/readyz"'
 
 exporters:
   otlp:
@@ -261,11 +277,11 @@ service:
 
 | Aspect | Core | Contrib | Custom |
 |---|---|---|---|
-| Components | ~10 | 100+ | You choose |
-| Binary size | ~80 MB | ~250 MB | Varies |
-| Memory at idle | ~40 MB | ~120 MB | Varies |
-| Startup time | Fast | Slower | Fastest possible |
-| Stability | High | Varies by component | Up to you |
+| Components | Smaller curated set | 100+ | You choose |
+| Binary size | Smaller | Larger | Varies |
+| Memory at idle | Usually lower | Usually higher | Varies |
+| Startup time | Fast | Slower | Depends on included components |
+| Stability | Varies by component | Varies by component | Up to you |
 | Maintenance | OTel team | Community | Your team |
 | Update frequency | Each release | Each release | When you decide |
 
@@ -275,11 +291,11 @@ Use this to figure out which distribution fits your situation:
 
 ```mermaid
 flowchart TD
-    A[Start] --> B{Do you need non-OTLP<br/>receivers or vendor exporters?}
+    A[Start] --> B{Do you need components<br/>not included in Core?}
     B -->|No| C{Is binary size<br/>a concern?}
     B -->|Yes| D{Are you comfortable<br/>building from source?}
 
-    C -->|Yes| E[Use Core]
+    C -->|Yes| E[Use Core or a Custom Distribution]
     C -->|No| F[Core or Contrib<br/>both work]
 
     D -->|Yes| G{Do you need only<br/>a few extra components?}
@@ -291,12 +307,12 @@ flowchart TD
 
 ## Component Stability Levels
 
-Not all Contrib components have the same maturity. The OpenTelemetry project uses stability levels:
+Not all Collector components have the same maturity. The OpenTelemetry project uses stability levels:
 
 - **Stable**: Safe for production. Breaking changes follow a deprecation cycle.
 - **Beta**: Mostly stable, but the configuration format or behavior might change between versions.
 - **Alpha**: Experimental. Expect breaking changes and potential bugs.
-- **Development**: Not ready for any real use. Purely for testing.
+- **Development**: Still under active development and not recommended for production.
 
 Check the stability level before depending on a component:
 
@@ -312,10 +328,10 @@ curl -s https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector
 Most teams follow a natural progression:
 
 1. **Start with Core** while your applications emit OTLP natively.
-2. **Move to Contrib** when you need Prometheus scraping, Kubernetes enrichment, or vendor exporters.
+2. **Move to Contrib** when you need file log collection, Kubernetes enrichment, database receivers, or vendor exporters.
 3. **Build a Custom Distribution** when Contrib becomes too large or you need components from outside the official repos.
 
-The configuration files stay the same when switching distributions. You only need to swap out the binary:
+When switching from Core to Contrib, configuration files that only use components available in both distributions can stay the same. If you move from Contrib to Core, or from either one to a custom distribution, the binary must include every component referenced by the configuration:
 
 ```bash
 # Switching from Core to Contrib is just a binary swap
