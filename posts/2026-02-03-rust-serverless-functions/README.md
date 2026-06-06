@@ -41,7 +41,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 cargo install cargo-lambda
 ```
 
-cargo-lambda handles cross-compilation to Amazon Linux 2, local testing with a Lambda-compatible runtime, and deployment to AWS.
+cargo-lambda handles cross-compilation for Lambda's Amazon Linux runtimes (al2 and al2023), local testing with a Lambda-compatible runtime, and deployment to AWS.
 
 ## Creating Your First Lambda Function
 
@@ -378,10 +378,15 @@ mod tests {
 Build the release binary targeting the Lambda runtime:
 
 ```bash
-# Build for Lambda (cross-compiles to Amazon Linux 2)
+# Build for Lambda (cross-compiles a Linux binary for the Lambda runtime)
 cargo lambda build --release
 
 # This creates a bootstrap binary in target/lambda/my-rust-function/
+
+# To produce a zip artifact for Terraform or other IaC tools, add --output-format zip
+cargo lambda build --release --output-format zip
+
+# This creates target/lambda/my-rust-function/bootstrap.zip
 ```
 
 The flow from local development to production deployment looks like this:
@@ -569,8 +574,7 @@ async fn handler(event: Request) -> Result<Response<Body>, Error> {
     // Stage variables for environment-specific configuration
     let stage_vars = event.stage_variables();
     let api_version = stage_vars
-        .get("api_version")
-        .map(|s| s.as_str())
+        .first("api_version")
         .unwrap_or("v1");
 
     // Use extracted values in your handler logic
