@@ -94,7 +94,7 @@ With this configuration, the Collector scrapes `my-service:9090/metrics`, parses
 
 ## How Counter Conversion Works
 
-Prometheus counters are monotonically increasing values. When the Collector converts them, it preserves the cumulative temporality and tracks resets.
+Prometheus counters are monotonically increasing values. When the Collector converts them, it preserves cumulative temporality so the OTLP Sum keeps the same counter semantics.
 
 Given this Prometheus output:
 
@@ -168,25 +168,22 @@ This becomes an OTLP Gauge metric with a single data point containing the value 
 
 ## Handling Resource Attributes
 
-In Prometheus, all metadata is carried as labels on individual time series. In OTLP, there is a distinction between resource attributes (which describe the source entity) and metric attributes (which describe specific dimensions of the measurement).
+In Prometheus, most identifying metadata is carried as labels on individual time series. In OTLP, there is a distinction between resource attributes (which describe the source entity) and metric attributes (which describe specific dimensions of the measurement).
 
-The Collector's Prometheus receiver automatically creates resource attributes from certain labels:
+The Collector's Prometheus receiver maps scrape target metadata such as `job` and `instance` to resource attributes like `service.name` and `service.instance.id`. You can use the resource processor to add or upsert additional resource attributes:
 
 ```yaml
 processors:
-  # Move specific labels to resource attributes
+  # Add resource attributes that apply to all metrics in the pipeline
   # This improves data organization in OTLP backends
   resource:
     attributes:
-      - key: service.name
-        from_attribute: job
-        action: upsert
-      - key: service.instance.id
-        from_attribute: instance
+      - key: deployment.environment
+        value: production
         action: upsert
 ```
 
-This processor takes the Prometheus `job` and `instance` labels and elevates them to resource-level attributes, which is where OTLP expects service identity information to live.
+This keeps source identity at the resource level, which is where OTLP expects service and deployment information to live.
 
 ## Converting Prometheus Remote Write to OTLP
 
@@ -195,7 +192,7 @@ If your applications or Prometheus servers already use remote write, you can acc
 ```yaml
 receivers:
   # Accept Prometheus remote write protocol
-  prometheusremotewrite:
+  prometheus_remote_write:
     endpoint: 0.0.0.0:9090
 
 processors:
@@ -209,22 +206,23 @@ exporters:
 service:
   pipelines:
     metrics:
-      receivers: [prometheusremotewrite]
+      receivers: [prometheus_remote_write]
       processors: [batch]
       exporters: [otlp]
 ```
 
-This is useful when you want to keep your existing Prometheus server as the scraper but route its data to an OTLP backend. Configure your Prometheus server to remote write to the Collector:
+This is useful when you want to keep your existing Prometheus server as the scraper but route its data to an OTLP backend. The Collector's Prometheus Remote Write receiver implements the Prometheus Remote Write 2.0 protocol, so use a compatible Prometheus version, configure Prometheus to send the v2 protobuf message, and start Prometheus with `--enable-feature=metadata-wal-records` so metric type, unit, and help metadata are available for translation:
 
 ```yaml
 # prometheus.yml: add remote write to the Collector
 remote_write:
   - url: "http://otel-collector:9090/api/v1/write"
+    protobuf_message: io.prometheus.write.v2.Request
 ```
 
 ## Handling Native Histograms
 
-Prometheus 2.40+ introduced native histograms (also called sparse histograms), which use exponential bucket boundaries similar to OTLP's exponential histograms. If your Prometheus setup uses native histograms, the conversion to OTLP ExponentialHistogram is more natural:
+Prometheus 2.40 introduced native histograms (also called sparse histograms) as an experimental feature, and Prometheus 3.8 made them stable. They use exponential bucket boundaries similar to OTLP's exponential histograms. If your Prometheus setup uses native histograms, enable native histogram scraping so the conversion to OTLP ExponentialHistogram is more natural:
 
 ```yaml
 receivers:
@@ -234,16 +232,17 @@ receivers:
         - job_name: "native-histogram-service"
           scrape_interval: 15s
           # Enable native histogram scraping
-          scrape_protocols: ["PrometheusProto"]
+          scrape_native_histograms: true
+          scrape_protocols: ["PrometheusProto", "OpenMetricsText1.0.0", "OpenMetricsText0.0.1", "PrometheusText1.0.0", "PrometheusText0.0.4"]
           static_configs:
             - targets: ["my-service:9090"]
 ```
 
-Native histograms map cleanly to OTLP's ExponentialHistogram type, preserving higher resolution without the fixed-bucket overhead.
+Supported counter native histograms map cleanly to OTLP's ExponentialHistogram type, preserving higher resolution without the fixed-bucket overhead.
 
 ## Handling Summary Metrics
 
-Prometheus summaries calculate quantiles on the client side. OTLP does not have a direct summary type. The Collector converts Prometheus summaries into OTLP Summary data points, which are supported but considered a legacy type.
+Prometheus summaries calculate quantiles on the client side. OTLP has a Summary data type, but it is a legacy metric type rather than the preferred path for new instrumentation. The Collector converts Prometheus summaries into OTLP Summary data points.
 
 ```text
 # HELP rpc_duration_seconds RPC duration
@@ -284,7 +283,7 @@ A few issues come up regularly during Prometheus-to-OTLP conversion:
 - **Stale markers**: When a target disappears, Prometheus uses special stale marker values. The Collector translates these into the absence of data points. Make sure your backend handles gaps correctly.
 - **Label cardinality**: Prometheus labels become OTLP attributes. High-cardinality labels in Prometheus will produce high-cardinality attributes in OTLP, which can be expensive in some backends.
 - **Timestamp precision**: Prometheus uses millisecond timestamps, while OTLP uses nanosecond precision. The conversion pads with zeros, which is correct but may look different in queries.
-- **Unit metadata**: Prometheus metric names often encode units (like `_seconds` or `_bytes`). The Collector can extract these into the OTLP unit field, but this is not enabled by default.
+- **Unit suffixes**: Prometheus metric names often encode units (like `_seconds` or `_bytes`). The Prometheus receiver's experimental `trim_metric_suffixes` option can remove unit and counter suffixes from metric names, but it is not enabled by default.
 
 ## Conclusion
 
