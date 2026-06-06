@@ -103,7 +103,7 @@ class AdaptiveSampler(Sampler):
 
     def should_sample(self, parent_context, trace_id,
                       name, kind=None, attributes=None,
-                      links=None):
+                      links=None, trace_state=None):
         import random
 
         with self.lock:
@@ -114,8 +114,12 @@ class AdaptiveSampler(Sampler):
             return SamplingResult(
                 Decision.RECORD_AND_SAMPLE,
                 attributes=attributes,
+                trace_state=trace_state,
             )
-        return SamplingResult(Decision.DROP)
+        return SamplingResult(
+            Decision.DROP,
+            trace_state=trace_state,
+        )
 
     def get_description(self):
         return (
@@ -215,7 +219,7 @@ class SmoothAdaptiveSampler(Sampler):
 
     def should_sample(self, parent_context, trace_id,
                       name, kind=None, attributes=None,
-                      links=None):
+                      links=None, trace_state=None):
         with self.lock:
             self.request_count += 1
             rate = self.current_rate
@@ -224,8 +228,12 @@ class SmoothAdaptiveSampler(Sampler):
             return SamplingResult(
                 Decision.RECORD_AND_SAMPLE,
                 attributes=attributes,
+                trace_state=trace_state,
             )
-        return SamplingResult(Decision.DROP)
+        return SamplingResult(
+            Decision.DROP,
+            trace_state=trace_state,
+        )
 
     def get_description(self):
         return (
@@ -252,10 +260,10 @@ receivers:
         endpoint: 0.0.0.0:4317
 
 processors:
-  # The sampling rate is read from an environment variable
-  # which can be updated by an external controller
+  # The sampling rate can be set from an environment variable
+  # or rewritten in this config by an external controller
   probabilistic_sampler:
-    sampling_percentage: ${SAMPLING_RATE}
+    sampling_percentage: ${env:SAMPLING_RATE:-10}
 
   batch:
     timeout: 5s
@@ -284,8 +292,8 @@ and adjusts the sampling rate by reloading config.
 
 import requests
 import time
-import subprocess
-import json
+import os
+import signal
 
 TARGET_TRACES_PER_SECOND = 100
 COLLECTOR_METRICS_URL = "http://localhost:8888/metrics"
@@ -299,7 +307,16 @@ def get_current_throughput():
     resp = requests.get(COLLECTOR_METRICS_URL)
     # Parse the otelcol_receiver_accepted_spans metric
     for line in resp.text.split("\n"):
-        if "otelcol_receiver_accepted_spans" in line:
+        if (
+            "otelcol_receiver_accepted_spans" in line
+            and not line.startswith("#")
+        ):
+            metric_name = line.split("{", 1)[0].split()[0]
+            if metric_name not in (
+                "otelcol_receiver_accepted_spans",
+                "otelcol_receiver_accepted_spans_total",
+            ):
+                continue
             if not line.startswith("#"):
                 # Extract the counter value
                 parts = line.split()
@@ -316,16 +333,23 @@ def calculate_sampling_rate(current_tps):
     return max(MIN_RATE, min(MAX_RATE, desired))
 
 def update_collector_config(new_rate):
-    """Update the environment variable and signal
+    """Update the configured percentage and signal
     the collector to reload its configuration."""
-    # Write the new rate to an env file
-    with open("/etc/otel/sampling.env", "w") as f:
-        f.write(f"SAMPLING_RATE={new_rate:.2f}\n")
+    # Rewrite the sampling percentage in the collector config.
+    # In production, use a structured YAML update instead.
+    with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+        lines = f.readlines()
+    with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+        for line in lines:
+            if line.strip().startswith("sampling_percentage:"):
+                indent = line[: len(line) - len(line.lstrip())]
+                f.write(f"{indent}sampling_percentage: {new_rate:.2f}\n")
+            else:
+                f.write(line)
     # Signal the collector to reload config
-    subprocess.run(
-        ["kill", "-SIGHUP", "$(pidof otelcol)"],
-        shell=True,
-    )
+    with os.popen("pidof otelcol") as pids:
+        for pid in pids.read().split():
+            os.kill(int(pid), signal.SIGHUP)
 
 prev_total = 0
 while True:
@@ -343,21 +367,42 @@ while True:
     )
 ```
 
-This controller queries the collector's metrics every 30 seconds, calculates what sampling percentage would hit the target, and updates the configuration. The collector picks up the new rate on config reload.
+This controller queries the collector's metrics every 30 seconds, calculates what sampling percentage would hit the target, and updates the configuration. The collector picks up the new rate after it reloads the updated config file.
 
 ## Kubernetes-Native Adaptive Sampling
 
 In Kubernetes environments, you can use a more elegant approach with a ConfigMap and a sidecar that adjusts the sampling configuration dynamically.
 
 ```yaml
-# configmap.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: otel-sampling-config
   namespace: monitoring
 data:
-  sampling-rate: "10"
+  config.yaml: |
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+
+    processors:
+      probabilistic_sampler:
+        sampling_percentage: 10
+      batch:
+        timeout: 5s
+
+    exporters:
+      otlp:
+        endpoint: https://otel.oneuptime.com:4317
+
+    service:
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [probabilistic_sampler, batch]
+          exporters: [otlp]
 ---
 # deployment.yaml with adaptive controller sidecar
 apiVersion: apps/v1
@@ -367,8 +412,15 @@ metadata:
   namespace: monitoring
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app: otel-collector
   template:
+    metadata:
+      labels:
+        app: otel-collector
     spec:
+      shareProcessNamespace: true
       containers:
         # Main collector container
         - name: collector
@@ -378,11 +430,8 @@ spec:
             - name: config
               mountPath: /etc/otel
           env:
-            - name: SAMPLING_RATE
-              valueFrom:
-                configMapKeyRef:
-                  name: otel-sampling-config
-                  key: sampling-rate
+            - name: CONFIG_PATH
+              value: "/etc/otel/config.yaml"
           ports:
             - containerPort: 4317
             - containerPort: 8888
@@ -399,16 +448,18 @@ spec:
               value: "100"
             - name: METRICS_URL
               value: "http://localhost:8888/metrics"
+            - name: CONFIGMAP_NAME
+              value: "otel-sampling-config"
       volumes:
         - name: config
           configMap:
-            name: otel-collector-config
+            name: otel-sampling-config
         - name: scripts
           configMap:
             name: sampling-controller-scripts
 ```
 
-The sidecar container runs alongside the collector, monitoring its metrics endpoint and patching the ConfigMap when rates need adjustment. This keeps the adaptive logic decoupled from both the application and the collector.
+The sidecar container runs alongside the collector, monitoring its metrics endpoint and patching the ConfigMap when rates need adjustment. After the projected ConfigMap file changes, the sidecar should signal the collector to reload the updated file. This keeps the adaptive logic decoupled from both the application and the collector.
 
 ## Parent-Based Adaptive Sampling
 
@@ -440,17 +491,6 @@ from opentelemetry import metrics
 meter = metrics.get_meter("adaptive-sampling-monitor")
 
 # Gauge for the current sampling rate
-sampling_rate_gauge = meter.create_observable_gauge(
-    "sampling.adaptive.current_rate",
-    description="Current adaptive sampling rate",
-)
-
-# Counter for total sampling decisions
-sampling_decisions = meter.create_counter(
-    "sampling.adaptive.decisions",
-    description="Sampling decisions by outcome",
-)
-
 def observe_rate(options):
     # Report the current rate so you can graph it
     yield metrics.Observation(
