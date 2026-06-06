@@ -4,97 +4,54 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Deno, Custom Metric, Trace, JavaScript, TypeScript
 
-Description: Learn how to implement custom metrics and traces in Deno applications using the OpenTelemetry SDK for deeper observability insights.
+Description: Learn how to implement custom metrics and traces in Deno applications using the OpenTelemetry API for deeper observability insights.
 
 While Deno's automatic tracing handles HTTP requests and fetch calls, production applications need custom instrumentation to track business-specific operations. This includes monitoring database queries, cache hits, background job processing, and domain-specific metrics that automatic tracing cannot capture.
 
-The OpenTelemetry SDK for JavaScript works with Deno, though there are some runtime-specific considerations. This guide covers how to create custom spans, record metrics, and properly manage context propagation in Deno applications.
+Deno's built-in OpenTelemetry integration works with the OpenTelemetry JavaScript API, though there are some runtime-specific considerations. This guide covers how to create custom spans, record metrics, and properly manage context propagation in Deno applications.
 
 ## Installing OpenTelemetry Dependencies
 
-Deno uses URL imports instead of npm packages, but you can import npm modules using the `npm:` specifier. Here's how to set up the required dependencies:
+Deno uses URL imports instead of npm packages, but you can import npm modules using the `npm:` specifier. Deno configures OpenTelemetry providers automatically when you run with `OTEL_DENO=true`, so custom instrumentation only needs the OpenTelemetry API package:
 
 ```typescript
 // deps.ts
 // Centralized dependency management for OpenTelemetry modules
 
-export { trace, context, SpanStatusCode, type Span } from "npm:@opentelemetry/api@1.8.0";
-export { Resource } from "npm:@opentelemetry/resources@1.22.0";
-export { SEMRESATTRS_SERVICE_NAME, SEMRESATTRS_SERVICE_VERSION } from "npm:@opentelemetry/semantic-conventions@1.22.0";
-export { NodeTracerProvider } from "npm:@opentelemetry/sdk-trace-node@1.22.0";
-export { BatchSpanProcessor } from "npm:@opentelemetry/sdk-trace-base@1.22.0";
-export { OTLPTraceExporter } from "npm:@opentelemetry/exporter-trace-otlp-http@0.49.1";
-export { MeterProvider, PeriodicExportingMetricReader } from "npm:@opentelemetry/sdk-metrics@1.22.0";
-export { OTLPMetricExporter } from "npm:@opentelemetry/exporter-metrics-otlp-http@0.49.1";
+export {
+  context,
+  metrics,
+  SpanStatusCode,
+  trace,
+  type MeterProvider,
+  type Span,
+} from "npm:@opentelemetry/api@1";
 ```
 
-Create a configuration module to initialize the OpenTelemetry SDK:
+Create a configuration module to access Deno's OpenTelemetry providers:
 
 ```typescript
 // telemetry.ts
-// Initializes OpenTelemetry SDK with custom configuration for Deno
-
-import {
-  trace,
-  Resource,
-  SEMRESATTRS_SERVICE_NAME,
-  SEMRESATTRS_SERVICE_VERSION,
-  NodeTracerProvider,
-  BatchSpanProcessor,
-  OTLPTraceExporter,
-  MeterProvider,
-  PeriodicExportingMetricReader,
-  OTLPMetricExporter,
-} from "./deps.ts";
+// Accesses Deno's OpenTelemetry providers
 
 let initialized = false;
 
 export function initTelemetry(serviceName: string, serviceVersion: string) {
   if (initialized) {
     console.warn("Telemetry already initialized");
-    return;
+    return {
+      tracerProvider: Deno.telemetry.tracerProvider,
+      meterProvider: Deno.telemetry.meterProvider,
+    };
   }
 
-  // Define service resource attributes
-  const resource = new Resource({
-    [SEMRESATTRS_SERVICE_NAME]: serviceName,
-    [SEMRESATTRS_SERVICE_VERSION]: serviceVersion,
-    "deployment.environment": Deno.env.get("ENVIRONMENT") || "development",
-  });
-
-  // Configure trace exporter
-  const traceExporter = new OTLPTraceExporter({
-    url: Deno.env.get("OTEL_EXPORTER_OTLP_ENDPOINT") || "http://localhost:4318/v1/traces",
-  });
-
-  // Set up tracer provider
-  const tracerProvider = new NodeTracerProvider({
-    resource: resource,
-  });
-
-  tracerProvider.addSpanProcessor(new BatchSpanProcessor(traceExporter));
-  tracerProvider.register();
-
-  // Configure metrics exporter
-  const metricExporter = new OTLPMetricExporter({
-    url: Deno.env.get("OTEL_EXPORTER_OTLP_ENDPOINT")?.replace("/v1/traces", "/v1/metrics") || "http://localhost:4318/v1/metrics",
-  });
-
-  // Set up meter provider
-  const meterProvider = new MeterProvider({
-    resource: resource,
-    readers: [
-      new PeriodicExportingMetricReader({
-        exporter: metricExporter,
-        exportIntervalMillis: 60000, // Export every 60 seconds
-      }),
-    ],
-  });
-
   initialized = true;
-  console.log(`Telemetry initialized for ${serviceName}`);
+  console.log(`Telemetry ready for ${serviceName}@${serviceVersion}`);
 
-  return { tracerProvider, meterProvider };
+  return {
+    tracerProvider: Deno.telemetry.tracerProvider,
+    meterProvider: Deno.telemetry.meterProvider,
+  };
 }
 ```
 
@@ -106,7 +63,7 @@ Custom spans track specific operations in your application. Here's how to create
 // database.ts
 // Database abstraction with OpenTelemetry instrumentation
 
-import { trace, context, SpanStatusCode, type Span } from "./deps.ts";
+import { trace, SpanStatusCode, type Span } from "./deps.ts";
 
 const tracer = trace.getTracer("database-client", "1.0.0");
 
@@ -130,9 +87,9 @@ export class Database {
       "db.query",
       {
         attributes: {
-          "db.system": "postgresql",
-          "db.statement": sql,
-          "db.operation": this.extractOperation(sql),
+          "db.system.name": "postgresql",
+          "db.query.text": sql,
+          "db.operation.name": this.extractOperation(sql),
         },
       },
       async (span: Span) => {
@@ -148,7 +105,7 @@ export class Database {
 
           // Add result metadata to span
           span.setAttributes({
-            "db.row_count": rows.length,
+            "db.response.returned_rows": rows.length,
             "db.duration_ms": duration,
           });
 
@@ -182,8 +139,8 @@ export class Database {
       "db.transaction",
       {
         attributes: {
-          "db.system": "postgresql",
-          "db.operation": "transaction",
+          "db.system.name": "postgresql",
+          "db.operation.name": "transaction",
         },
       },
       async (span: Span) => {
@@ -239,7 +196,7 @@ Use the instrumented database client in your application:
 import { initTelemetry } from "./telemetry.ts";
 import { Database } from "./database.ts";
 
-// Initialize telemetry before creating any spans
+// Run with OTEL_DENO=true so Deno exports telemetry before creating any spans
 initTelemetry("deno-api-service", "1.0.0");
 
 const db = new Database("postgresql://localhost:5432/mydb");
@@ -276,7 +233,7 @@ Metrics provide aggregate statistics over time. Here's how to implement counters
 // metrics.ts
 // Custom metrics for application monitoring
 
-import { MeterProvider } from "./deps.ts";
+import { type MeterProvider } from "./deps.ts";
 
 export class ApplicationMetrics {
   private meter;
@@ -322,9 +279,9 @@ export class ApplicationMetrics {
   // Record an HTTP request with metadata
   recordRequest(method: string, path: string, status: number, duration: number) {
     const attributes = {
-      "http.method": method,
+      "http.request.method": method,
       "http.route": path,
-      "http.status_code": status,
+      "http.response.status_code": status,
     };
 
     this.requestCounter.add(1, attributes);
@@ -611,9 +568,9 @@ Deno.serve({
       "http.request",
       {
         attributes: {
-          "http.method": req.method,
-          "http.url": url.pathname,
-          "http.user_agent": req.headers.get("user-agent") || "unknown",
+          "http.request.method": req.method,
+          "url.path": url.pathname,
+          "user_agent.original": req.headers.get("user-agent") || "unknown",
         },
       },
       async (span) => {
@@ -635,7 +592,7 @@ Deno.serve({
             response = new Response("Not Found", { status: 404 });
           }
 
-          span.setAttribute("http.status_code", response.status);
+          span.setAttribute("http.response.status_code", response.status);
           span.setStatus({ code: SpanStatusCode.OK });
 
           const duration = Date.now() - startTime;
