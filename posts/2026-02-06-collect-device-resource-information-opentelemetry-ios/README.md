@@ -25,9 +25,9 @@ import ResourceExtension
 
 // Resources are immutable collections of attributes
 let resource = Resource(attributes: [
-    ResourceAttributes.serviceName.rawValue: AttributeValue.string("my-ios-app"),
-    ResourceAttributes.serviceVersion.rawValue: AttributeValue.string("1.2.3"),
-    "deployment.environment": AttributeValue.string("production")
+    SemanticConventions.Service.name.rawValue: AttributeValue.string("my-ios-app"),
+    SemanticConventions.Service.version.rawValue: AttributeValue.string("1.2.3"),
+    SemanticConventions.Deployment.environmentName.rawValue: AttributeValue.string("production")
 ])
 ```
 
@@ -40,6 +40,7 @@ Start by collecting fundamental device information that identifies the hardware 
 ```swift
 import UIKit
 import OpenTelemetryApi
+import OpenTelemetrySdk
 import ResourceExtension
 
 class DeviceResourceProvider {
@@ -50,11 +51,11 @@ class DeviceResourceProvider {
         var attributes: [String: AttributeValue] = [:]
 
         // Service identification
-        attributes[ResourceAttributes.serviceName.rawValue] = AttributeValue.string(
+        attributes[SemanticConventions.Service.name.rawValue] = AttributeValue.string(
             Bundle.main.bundleIdentifier ?? "unknown"
         )
 
-        attributes[ResourceAttributes.serviceVersion.rawValue] = AttributeValue.string(
+        attributes[SemanticConventions.Service.version.rawValue] = AttributeValue.string(
             Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
         )
 
@@ -64,29 +65,31 @@ class DeviceResourceProvider {
         }
 
         // Device information
-        attributes[ResourceAttributes.deviceModelIdentifier.rawValue] = AttributeValue.string(
+        attributes[SemanticConventions.Device.modelIdentifier.rawValue] = AttributeValue.string(
             deviceModelIdentifier()
         )
 
         attributes["device.type"] = AttributeValue.string(device.userInterfaceIdiom.description)
 
         // Operating system
-        attributes[ResourceAttributes.osName.rawValue] = AttributeValue.string(
+        attributes[SemanticConventions.Os.name.rawValue] = AttributeValue.string(
             device.systemName
         )
 
-        attributes[ResourceAttributes.osVersion.rawValue] = AttributeValue.string(
+        attributes[SemanticConventions.Os.version.rawValue] = AttributeValue.string(
             device.systemVersion
         )
 
         // Process information
-        attributes[ResourceAttributes.processExecutableName.rawValue] = AttributeValue.string(
+        attributes[SemanticConventions.Process.executableName.rawValue] = AttributeValue.string(
             processInfo.processName
         )
 
-        attributes[ResourceAttributes.processExecutablePath.rawValue] = AttributeValue.string(
-            processInfo.arguments[0]
-        )
+        if let executablePath = processInfo.arguments.first {
+            attributes[SemanticConventions.Process.executablePath.rawValue] = AttributeValue.string(
+                executablePath
+            )
+        }
 
         return Resource(attributes: attributes)
     }
@@ -130,7 +133,9 @@ Beyond device hardware, your app's configuration affects behavior and performanc
 
 ```swift
 import Foundation
+import UIKit
 import OpenTelemetryApi
+import OpenTelemetrySdk
 
 class AppConfigurationResourceProvider {
     static func addConfigurationAttributes(to resource: Resource) -> Resource {
@@ -138,7 +143,7 @@ class AppConfigurationResourceProvider {
 
         // Deployment environment
         let environment = getEnvironment()
-        attributes["deployment.environment"] = AttributeValue.string(environment)
+        attributes[SemanticConventions.Deployment.environmentName.rawValue] = AttributeValue.string(environment)
 
         // App configuration
         attributes["app.debug_enabled"] = AttributeValue.bool(isDebugBuild())
@@ -200,6 +205,7 @@ Memory pressure and available storage affect app performance significantly. Incl
 ```swift
 import Foundation
 import OpenTelemetryApi
+import OpenTelemetrySdk
 
 class DeviceCapacityResourceProvider {
     static func addCapacityAttributes(to resource: Resource) -> Resource {
@@ -265,8 +271,10 @@ class DeviceCapacityResourceProvider {
 Mobile apps deal with varying network conditions. Including network type and reachability status in resource attributes helps you analyze how connectivity affects your app.
 
 ```swift
+import Foundation
 import Network
 import OpenTelemetryApi
+import OpenTelemetrySdk
 
 class NetworkResourceProvider {
     private let monitor = NWPathMonitor()
@@ -331,6 +339,7 @@ import UIKit
 import OpenTelemetryApi
 import OpenTelemetrySdk
 import ResourceExtension
+import StdoutExporter
 
 class TelemetryInitializer {
     static func initializeOpenTelemetry() -> TracerProviderSdk {
@@ -372,8 +381,8 @@ class TelemetryInitializer {
 
     private static func createExporter() -> SpanExporter {
         // Return your configured exporter
-        // For example: OtlpHttpTraceExporter or StdoutExporter
-        return StdoutExporter()
+        // For example: OtlpHttpTraceExporter or StdoutSpanExporter
+        return StdoutSpanExporter()
     }
 }
 ```
@@ -384,11 +393,21 @@ Sometimes you need to read resource attributes during app execution, perhaps to 
 
 ```swift
 import OpenTelemetryApi
+import OpenTelemetrySdk
 
 class ResourceInspector {
-    static func logResourceAttributes() {
-        let resource = OpenTelemetry.instance.tracerProvider.resource
+    private static func currentResource() -> Resource? {
+        guard let tracerProvider = OpenTelemetry.instance.tracerProvider as? TracerProviderSdk else {
+            return nil
+        }
+        return tracerProvider.getActiveResource()
+    }
 
+    static func logResourceAttributes() {
+        guard let resource = currentResource() else {
+            print("OpenTelemetry tracer provider is not a TracerProviderSdk")
+            return
+        }
         print("=== OpenTelemetry Resource Attributes ===")
         for (key, value) in resource.attributes.sorted(by: { $0.key < $1.key }) {
             print("\(key): \(value)")
@@ -397,9 +416,11 @@ class ResourceInspector {
     }
 
     static func getServiceVersion() -> String? {
-        let resource = OpenTelemetry.instance.tracerProvider.resource
+        guard let resource = currentResource() else {
+            return nil
+        }
         if case .string(let version) = resource.attributes[
-            ResourceAttributes.serviceVersion.rawValue
+            SemanticConventions.Service.version.rawValue
         ] {
             return version
         }
@@ -407,9 +428,11 @@ class ResourceInspector {
     }
 
     static func getDeviceModel() -> String? {
-        let resource = OpenTelemetry.instance.tracerProvider.resource
+        guard let resource = currentResource() else {
+            return nil
+        }
         if case .string(let model) = resource.attributes[
-            ResourceAttributes.deviceModelIdentifier.rawValue
+            SemanticConventions.Device.modelIdentifier.rawValue
         ] {
             return model
         }
@@ -456,6 +479,10 @@ These insights help you make informed decisions about which devices to prioritiz
 Resources are typically immutable after SDK initialization, but you can create a new resource if your app's context changes significantly. This is uncommon but useful for apps that can switch between different operating modes.
 
 ```swift
+import OpenTelemetryApi
+import OpenTelemetrySdk
+import StdoutExporter
+
 class DynamicResourceManager {
     private var tracerProvider: TracerProviderSdk?
 
@@ -489,7 +516,7 @@ class DynamicResourceManager {
     }
 
     private func createExporter() -> SpanExporter {
-        return StdoutExporter()
+        return StdoutSpanExporter()
     }
 }
 ```
