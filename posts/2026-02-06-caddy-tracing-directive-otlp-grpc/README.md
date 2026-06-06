@@ -4,9 +4,9 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: OpenTelemetry, Caddy, Tracing, OTLP gRPC
 
-Description: Enable OpenTelemetry distributed tracing in Caddy Server using the built-in tracing directive to export spans via OTLP gRPC to your Collector.
+Description: Enable OpenTelemetry distributed tracing in Caddy Server using the built-in tracing directive and configure OTLP gRPC export to your Collector.
 
-Caddy Server has built-in OpenTelemetry tracing support through its `tracing` directive. When enabled, Caddy generates a span for every HTTP request it handles, including request details, response status, and timing information. The spans are exported via OTLP gRPC to your OpenTelemetry Collector.
+Caddy Server has built-in OpenTelemetry tracing support through its `tracing` directive. When enabled, Caddy propagates an existing trace context or initializes a new one, and records HTTP span data for requests handled by that route or site. The examples below configure Caddy to export spans via OTLP gRPC to your OpenTelemetry Collector.
 
 ## Enabling the Tracing Directive
 
@@ -26,10 +26,11 @@ Add the `tracing` directive to your Caddyfile:
 }
 ```
 
-By default, Caddy sends traces to `localhost:4317` via OTLP gRPC. To customize the endpoint, set environment variables:
+Configure the OTLP gRPC endpoint with OpenTelemetry environment variables:
 
 ```bash
 export OTEL_EXPORTER_OTLP_ENDPOINT=http://collector:4317
+export OTEL_EXPORTER_OTLP_PROTOCOL=grpc
 export OTEL_SERVICE_NAME=caddy-server
 caddy run --config Caddyfile
 ```
@@ -62,30 +63,31 @@ exporters:
     endpoint: "your-backend:4317"
     tls:
       insecure: false
+  debug:
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
       processors: [resource, batch]
-      exporters: [otlp]
+      exporters: [otlp, debug]
 ```
 
 ## Understanding Caddy Trace Spans
 
-Each HTTP request through Caddy produces a span with these attributes:
+Each traced HTTP request through Caddy produces a span with HTTP semantic convention attributes. With the `span "caddy-server"` example above, a request might look like this:
 
 ```text
-Span Name: HTTP GET /api/users
+Span Name: caddy-server
 Attributes:
-  http.method:       GET
-  http.url:          /api/users
-  http.status_code:  200
-  http.scheme:       https
-  net.host.name:     example.com
-  net.host.port:     443
-  net.peer.ip:       10.0.0.5
-  http.user_agent:   curl/8.1
+  http.request.method:       GET
+  url.path:                  /api/users
+  http.response.status_code:  200
+  url.scheme:                https
+  server.address:            example.com
+  server.port:               443
+  client.address:            10.0.0.5
+  user_agent.original:       curl/8.1
 ```
 
 The span duration reflects the total time Caddy spent handling the request, including upstream response time when reverse proxying.
@@ -95,14 +97,13 @@ The span duration reflects the total time Caddy spent handling the request, incl
 Run Caddy with tracing in Docker Compose alongside the Collector:
 
 ```yaml
-version: "3.8"
-
 services:
   caddy:
     image: caddy:latest
     container_name: caddy
     environment:
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+      - OTEL_EXPORTER_OTLP_PROTOCOL=grpc
       - OTEL_SERVICE_NAME=caddy-proxy
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile
@@ -128,6 +129,7 @@ services:
     container_name: api
     environment:
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+      - OTEL_EXPORTER_OTLP_PROTOCOL=grpc
       - OTEL_SERVICE_NAME=api-backend
     networks:
       - app-network
@@ -172,14 +174,16 @@ You can enable tracing on specific route matchers instead of globally:
 
 ## Setting Custom Span Attributes
 
-Use the `header_up` directive in combination with tracing to add custom headers that become span attributes:
+Use the `span_attributes` block in the `tracing` directive to add custom attributes to Caddy spans:
 
 ```text
 :80 {
-    tracing
-
-    # Add a custom header that gets included in traces
-    header X-Request-ID {http.request.uuid}
+    tracing {
+        span_attributes {
+            service.type reverse-proxy
+            request_path {http.request.uri.path}
+        }
+    }
 
     reverse_proxy api:8080
 }
@@ -209,7 +213,7 @@ curl -v http://localhost:80/api/users
 docker logs otel-collector 2>&1 | tail -20
 ```
 
-You should see the Collector report receiving spans from Caddy.
+With the `debug` exporter enabled in the Collector configuration above, you should see the Collector log the spans received from Caddy.
 
 ## Summary
 
