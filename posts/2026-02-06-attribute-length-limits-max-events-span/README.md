@@ -70,10 +70,10 @@ with tracer.start_as_current_span("test-span") as span:
     long_query = "SELECT " + ", ".join([f"col_{i}" for i in range(500)])
     span.set_attribute("db.statement", long_query)
 
-    # If you add more than 64 attributes, extras are dropped
+    # If you add more than 64 attributes, the SDK keeps at most 64
     for i in range(100):
         span.set_attribute(f"key_{i}", f"value_{i}")
-    # Only the first 64 attributes are kept
+    # Some SDKs evict older attributes when the limit is reached
 ```
 
 ## Java: SpanLimits Configuration
@@ -124,7 +124,7 @@ func main() {
 
     tp := sdktrace.NewTracerProvider(
         sdktrace.WithBatcher(exporter),
-        sdktrace.WithSpanLimits(sdktrace.SpanLimits{
+        sdktrace.WithRawSpanLimits(sdktrace.SpanLimits{
             // Limit attribute count per span
             AttributeCountLimit:          64,
             // Limit event count per span
@@ -150,13 +150,12 @@ You can set limits via environment variables without changing code:
 ```bash
 # Span attribute limits
 export OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT=64
+export OTEL_SPAN_ATTRIBUTE_VALUE_LENGTH_LIMIT=1024
 export OTEL_SPAN_EVENT_COUNT_LIMIT=32
 export OTEL_SPAN_LINK_COUNT_LIMIT=32
 
-# Attribute value length limit (applied globally)
+# Global attribute limits used as fallbacks by signals that support them
 export OTEL_ATTRIBUTE_VALUE_LENGTH_LIMIT=1024
-
-# Attribute count limit (applied globally)
 export OTEL_ATTRIBUTE_COUNT_LIMIT=64
 
 # Event attribute count limit
@@ -197,20 +196,17 @@ limits = SpanLimits(
 
 ## What Happens When Limits Are Hit
 
-When limits are reached, the SDK does not crash or throw errors. It silently drops or truncates:
+When limits are reached, the SDK does not crash or throw errors. It drops, evicts, or truncates data depending on the limit and SDK implementation:
 
-- **Attribute count exceeded**: New attributes are silently dropped. The span keeps the first N attributes.
-- **Value length exceeded**: The string is truncated to the limit. No error is raised.
-- **Event count exceeded**: New events are silently dropped.
+- **Attribute count exceeded**: Attributes beyond the configured limit are not recorded. Some SDKs evict older attributes when the limit is reached.
+- **Value length exceeded**: String attribute values are truncated to the limit. No error is raised.
+- **Event count exceeded**: Events beyond the configured limit are not all retained. Some SDKs evict older events when the limit is reached.
 
 This silent behavior means you need monitoring to detect when limits are being hit:
 
 ```python
-# Log a warning when attributes are being truncated
-import logging
-logger = logging.getLogger("opentelemetry.sdk.trace")
-logger.setLevel(logging.DEBUG)
-# The SDK logs debug messages when limits are applied
+# Exporters receive dropped attribute/event/link counts on spans.
+# Inspect those counts in your backend or exporter output to detect limit pressure.
 ```
 
 ## Calculating Memory Impact
