@@ -48,9 +48,9 @@ processors:
   # Filter out traces older than expected
   # (useful if services send delayed/replayed data)
   filter/stale_traces:
-    traces:
-      span:
-        - 'end_time_unix_nano < 1000000000 * (UnixNano() - 86400000000000 * 3)'
+    error_mode: ignore
+    trace_conditions:
+      - 'span.end_time_unix_nano < UnixNano(Now()) - 86400000000000 * 3'
 
 exporters:
   # Primary backend with short retention
@@ -95,8 +95,7 @@ This SQL sets up different retention periods for each signal type:
 ALTER TABLE otel_traces
     MODIFY TTL Timestamp + INTERVAL 14 DAY DELETE;
 
--- Metrics table: 90-day retention with downsampling at 30 days
--- Keep raw metrics for 30 days
+-- Metrics table: 90-day retention on primary
 ALTER TABLE otel_metrics
     MODIFY TTL Timestamp + INTERVAL 90 DAY DELETE;
 
@@ -118,7 +117,7 @@ TTL Timestamp + INTERVAL 365 DAY DELETE;
 CREATE MATERIALIZED VIEW otel_metrics_downsampled_mv
 TO otel_metrics_downsampled
 AS SELECT
-    toStartOfFiveMinutes(Timestamp) AS Timestamp,
+    toStartOfInterval(Timestamp, INTERVAL 5 MINUTE) AS Timestamp,
     MetricName,
     ServiceName,
     avg(Value) AS Value,
@@ -180,24 +179,41 @@ Implement overrides by routing data through different pipelines based on service
 
 ```yaml
 # service-specific-retention.yaml
-processors:
+receivers:
+  otlp:
+
+connectors:
   # Route compliance-sensitive services to longer-retention backend
   routing:
-    from_attribute: service.name
+    default_pipelines: [traces/standard]
     table:
-      - value: payment-service
-        exporters: [otlphttp/compliance]
-      - value: billing-service
-        exporters: [otlphttp/compliance]
-      - value: auth-service
-        exporters: [otlphttp/compliance]
-    default_exporters: [otlphttp/standard]
+      - context: resource
+        condition: attributes["service.name"] == "payment-service"
+        pipelines: [traces/compliance]
+      - context: resource
+        condition: attributes["service.name"] == "billing-service"
+        pipelines: [traces/compliance]
+      - context: resource
+        condition: attributes["service.name"] == "auth-service"
+        pipelines: [traces/compliance]
 
 exporters:
   otlphttp/standard:
     endpoint: https://standard-backend:4318  # 14-day retention
   otlphttp/compliance:
     endpoint: https://compliance-backend:4318  # 90-day retention
+
+service:
+  pipelines:
+    traces/in:
+      receivers: [otlp]
+      exporters: [routing]
+    traces/standard:
+      receivers: [routing]
+      exporters: [otlphttp/standard]
+    traces/compliance:
+      receivers: [routing]
+      exporters: [otlphttp/compliance]
 ```
 
 ## Automating Retention Enforcement
@@ -209,7 +225,7 @@ This script checks that retention policies are being enforced correctly:
 ```python
 # retention_checker.py - Run daily to verify retention compliance
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 BACKENDS = {
     "traces": {"url": "https://primary-backend:8123", "max_age_days": 14},
@@ -219,18 +235,20 @@ BACKENDS = {
 
 def check_retention(signal: str, config: dict):
     """Verify that data older than the retention period has been deleted."""
-    cutoff = datetime.utcnow() - timedelta(days=config["max_age_days"] + 1)
+    cutoff = datetime.now(timezone.utc) - timedelta(days=config["max_age_days"] + 1)
+    cutoff_sql = cutoff.strftime("%Y-%m-%d %H:%M:%S")
 
     query = f"""
         SELECT count() as stale_rows
         FROM otel_{signal}
-        WHERE Timestamp < '{cutoff.isoformat()}'
+        WHERE Timestamp < '{cutoff_sql}'
     """
 
     response = requests.post(
         config["url"],
         params={"query": query},
     )
+    response.raise_for_status()
     stale_count = int(response.text.strip())
 
     if stale_count > 0:
