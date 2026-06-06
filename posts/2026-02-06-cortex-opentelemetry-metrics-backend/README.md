@@ -64,21 +64,19 @@ distributor:
   ring:
     kvstore:
       store: memberlist
-  # Accept samples up to 5 minutes in the past
-  # OTel collectors may batch and delay slightly
+  # Leave HA replica tracking disabled unless you send Prometheus HA labels
   ha_tracker:
     enable_ha_tracker: false
+  # Required for global active-series limits such as max_global_series_per_user
+  shard_by_all_labels: true
 
-# Ingester holds recent samples in memory before flushing to storage
+# Ingester writes recent samples into local TSDB blocks before shipping them to storage
 ingester:
-  ring:
-    kvstore:
-      store: memberlist
-    replication_factor: 3
-  # Flush chunks to storage every 15 minutes
-  flush_period: 15m
-  # Keep chunks in memory for at least 12 hours for fast recent queries
-  retain_period: 12h
+  lifecycler:
+    ring:
+      kvstore:
+        store: memberlist
+      replication_factor: 3
 
 # Block storage configuration using S3
 blocks_storage:
@@ -92,19 +90,14 @@ blocks_storage:
     dir: /var/cortex/tsdb
     # Block ranges determine compaction behavior
     block_ranges_period: [2h]
-    retention_period: 24h
+    # Keep shipped blocks locally long enough for queriers and store-gateways to discover them
+    retention_period: 13h
 
 # Store gateway reads historical blocks from object storage
 store_gateway:
   sharding_ring:
     kvstore:
       store: memberlist
-
-# Querier configuration for reading data
-querier:
-  # Query both ingesters and store gateway
-  query_store_after: 12h
-  query_ingesters_within: 13h
 
 # Compactor merges blocks and handles retention in object storage
 compactor:
@@ -120,6 +113,9 @@ limits:
   # Maximum samples per second per tenant
   ingestion_rate: 100000
   ingestion_burst_size: 200000
+  # Query recent data from ingesters and older data from the store gateway
+  query_store_after: 12h
+  query_ingesters_within: 13h
   # Retention period for stored data
   compactor_blocks_retention_period: 90d
 
@@ -168,7 +164,7 @@ processors:
 
 exporters:
   # Prometheus remote write to Cortex distributor
-  prometheusremotewrite:
+  prometheus_remote_write:
     endpoint: "http://cortex-distributor:9009/api/v1/push"
     # Tenant identification header required by Cortex
     headers:
@@ -190,7 +186,7 @@ service:
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [prometheusremotewrite]
+      exporters: [prometheus_remote_write]
 ```
 
 If you have multiple teams, you can run separate collector pipelines with different `X-Scope-OrgID` values, or use the routing connector to split metrics by team based on resource attributes.
