@@ -61,16 +61,15 @@ Before installation, ensure your system meets these requirements:
 The following commands add the official TimescaleDB APT repository to your system.
 
 ```bash
-# Add the TimescaleDB repository GPG key
-
+# Install required tooling
 sudo apt-get update
 sudo apt-get install -y gnupg postgresql-common apt-transport-https lsb-release wget
 
 # Add the repository
 echo "deb https://packagecloud.io/timescale/timescaledb/ubuntu/ $(lsb_release -c -s) main" | sudo tee /etc/apt/sources.list.d/timescaledb.list
 
-# Import the repository signing key
-wget --quiet -O - https://packagecloud.io/timescale/timescaledb/gpgkey | sudo apt-key add -
+# Import the repository signing key into a keyring file
+wget --quiet -O - https://packagecloud.io/timescale/timescaledb/gpgkey | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/timescaledb.gpg
 
 # Update package lists
 sudo apt-get update
@@ -297,8 +296,8 @@ CREATE EXTENSION IF NOT EXISTS timescaledb;
 -- Check TimescaleDB version
 SELECT extversion FROM pg_extension WHERE extname = 'timescaledb';
 
--- View detailed version information
-SELECT * FROM timescaledb_information.version();
+-- View extension details
+SELECT * FROM pg_extension WHERE extname = 'timescaledb';
 
 -- List all TimescaleDB functions
 \df *timescale*
@@ -410,8 +409,11 @@ ORDER BY range_start;
 Optimize PostgreSQL settings for time-series workloads.
 
 ```sql
--- View recommended settings based on your system
-SELECT * FROM timescaledb_information.version();
+-- View extension details (installed and default versions)
+SELECT extname, extversion FROM pg_extension WHERE extname = 'timescaledb';
+SELECT name, default_version, installed_version
+FROM pg_available_extensions
+WHERE name = 'timescaledb';
 ```
 
 Edit your `postgresql.conf` file with these recommended settings for a server with 16GB RAM.
@@ -489,12 +491,16 @@ ALTER TABLE sensor_data SET (
 -- Add a compression policy to compress chunks older than 7 days
 SELECT add_compression_policy('sensor_data', INTERVAL '7 days');
 
--- View compression status
+-- View compression status (compression_ratio is computed from before/after bytes)
 SELECT
     chunk_name,
     before_compression_total_bytes,
     after_compression_total_bytes,
-    compression_ratio
+    CASE
+        WHEN after_compression_total_bytes > 0
+        THEN round(before_compression_total_bytes::numeric / after_compression_total_bytes, 2)
+        ELSE NULL
+    END AS compression_ratio
 FROM chunk_compression_stats('sensor_data');
 
 -- Manually compress all eligible chunks
@@ -572,13 +578,19 @@ ORDER BY bucket DESC;
 Monitor your hypertables to ensure optimal performance.
 
 ```sql
--- View hypertable size and statistics
+-- View hypertable size breakdown
 SELECT
-    hypertable_name,
+    table_bytes,
+    index_bytes,
+    toast_bytes,
     total_bytes,
-    pg_size_pretty(total_bytes) AS total_size,
-    num_chunks
+    pg_size_pretty(total_bytes) AS total_size
 FROM hypertable_detailed_size('sensor_data');
+
+-- View chunk count for the hypertable
+SELECT COUNT(*) AS num_chunks
+FROM timescaledb_information.chunks
+WHERE hypertable_name = 'sensor_data';
 
 -- View chunk details
 SELECT
@@ -592,16 +604,17 @@ WHERE hypertable_name = 'sensor_data'
 ORDER BY range_start DESC
 LIMIT 10;
 
--- View background job status
+-- View background job status (job_stats has run/status columns, jobs has config)
 SELECT
-    job_id,
-    application_name,
-    schedule_interval,
-    last_run_status,
-    last_run_started_at,
-    next_start
-FROM timescaledb_information.jobs
-WHERE application_name LIKE '%sensor_data%';
+    j.job_id,
+    j.application_name,
+    j.schedule_interval,
+    s.last_run_status,
+    s.last_run_started_at,
+    s.next_start
+FROM timescaledb_information.jobs j
+JOIN timescaledb_information.job_stats s USING (job_id)
+WHERE j.application_name LIKE '%sensor_data%';
 ```
 
 ### Performance Monitoring Queries
