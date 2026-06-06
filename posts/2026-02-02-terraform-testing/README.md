@@ -281,7 +281,6 @@ package test
 
 import (
     "testing"
-    "time"
 
     "github.com/gruntwork-io/terratest/modules/aws"
     "github.com/gruntwork-io/terratest/modules/terraform"
@@ -326,9 +325,10 @@ func TestEC2Instance(t *testing.T) {
     // Verify public IP was assigned
     assert.NotEmpty(t, publicIP, "Public IP should be assigned")
 
-    // Verify the instance is actually running in AWS
-    instanceState := aws.GetInstanceState(t, "us-east-1", instanceID)
-    assert.Equal(t, "running", instanceState, "Instance should be in running state")
+    // Verify the instance is actually reachable in AWS by querying its public IP.
+    // This call fails the test if the instance does not exist or is not queryable.
+    actualPublicIP := aws.GetPublicIpOfEc2Instance(t, instanceID, "us-east-1")
+    assert.Equal(t, publicIP, actualPublicIP, "Terraform output should match the instance's actual public IP")
 }
 ```
 
@@ -343,11 +343,10 @@ package test
 import (
     "crypto/tls"
     "fmt"
-    "net/http"
     "testing"
     "time"
 
-    "github.com/gruntwork-io/terratest/modules/http-helper"
+    http_helper "github.com/gruntwork-io/terratest/modules/http-helper"
     "github.com/gruntwork-io/terratest/modules/terraform"
 )
 
@@ -674,7 +673,7 @@ on:
     branches: [main]
 
 env:
-  TF_VERSION: "1.6.0"
+  TF_VERSION: "1.7.0"
   GO_VERSION: "1.21"
 
 jobs:
@@ -717,7 +716,7 @@ jobs:
           output_file_path: checkov-results.sarif
 
       - name: Upload Checkov Results
-        uses: github/codeql-action/upload-sarif@v2
+        uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: checkov-results.sarif
 
@@ -750,11 +749,15 @@ jobs:
           terraform plan -out=tfplan.binary
           terraform show -json tfplan.binary > tfplan.json
 
+      # Install conftest binary and run it against the plan JSON
+      - name: Install Conftest
+        run: |
+          CONFTEST_VERSION="0.49.1"
+          curl -sSL "https://github.com/open-policy-agent/conftest/releases/download/v${CONFTEST_VERSION}/conftest_${CONFTEST_VERSION}_Linux_x86_64.tar.gz" \
+            | sudo tar -xz -C /usr/local/bin conftest
+
       - name: Run Conftest
-        uses: open-policy-agent/conftest-action@v2
-        with:
-          files: tfplan.json
-          policy: policy/
+        run: conftest test tfplan.json --policy policy/
 
   integration-tests:
     name: Integration Tests
@@ -880,7 +883,6 @@ package test
 import (
     "fmt"
     "testing"
-    "time"
 
     "github.com/gruntwork-io/terratest/modules/random"
     "github.com/gruntwork-io/terratest/modules/terraform"
