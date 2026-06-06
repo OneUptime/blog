@@ -91,12 +91,13 @@ flowchart TB
 The following commands download and install Vault on a Linux system using the official HashiCorp package:
 
 ```bash
-# Add HashiCorp GPG key
+# Add HashiCorp GPG key to a keyring file
+wget -O- https://apt.releases.hashicorp.com/gpg | \
+    sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
 
-curl -fsSL https://apt.releases.hashicorp.com/gpg | sudo apt-key add -
-
-# Add HashiCorp repository
-sudo apt-add-repository "deb [arch=amd64] https://apt.releases.hashicorp.com $(lsb_release -cs) main"
+# Add HashiCorp repository using signed-by
+echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" | \
+    sudo tee /etc/apt/sources.list.d/hashicorp.list
 
 # Install Vault
 sudo apt-get update && sudo apt-get install vault
@@ -938,15 +939,15 @@ Set up alerts for these important metrics related to database credentials:
 groups:
   - name: vault-database
     rules:
-      # Alert when credential generation is failing
-      - alert: VaultDatabaseCredentialFailures
-        expr: increase(vault_secret_lease_creation_error_count{mount_point="database/"}[5m]) > 0
+      # Alert when lease expiration is failing
+      - alert: VaultLeaseExpirationFailures
+        expr: increase(vault_expire_lease_expiration_error[5m]) > 0
         for: 5m
         labels:
           severity: critical
         annotations:
-          summary: "Vault database credential generation failing"
-          description: "Database credential requests are failing"
+          summary: "Vault lease expiration failing"
+          description: "Lease expiration errors detected"
 
       # Alert on high lease count indicating potential leak
       - alert: VaultHighLeaseCount
@@ -958,14 +959,14 @@ groups:
           summary: "High number of active Vault leases"
           description: "Active lease count is {{ $value }}, possible credential leak"
 
-      # Alert when database connection is unhealthy
-      - alert: VaultDatabaseConnectionUnhealthy
-        expr: vault_database_connection_available == 0
+      # Alert when database plugin initialization errors are observed
+      - alert: VaultDatabaseInitializeErrors
+        expr: increase(vault_database_Initialize_error[5m]) > 0
         for: 2m
         labels:
           severity: critical
         annotations:
-          summary: "Vault database connection is down"
+          summary: "Vault database plugin initialization errors"
 ```
 
 ## Security Best Practices
