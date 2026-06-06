@@ -38,7 +38,7 @@ graph LR
     D -->|Send Telemetry| E[OneUptime/Backend]
 ```
 
-The receiver handles AWS authentication, pagination, API rate limiting, and metric namespace discovery automatically. You configure which namespaces and dimensions to collect.
+The receiver handles AWS authentication, pagination, and CloudWatch metric retrieval. You can either configure explicit metric queries or enable CloudWatch metric discovery with filters.
 
 ## Prerequisites
 
@@ -56,19 +56,7 @@ Create an IAM policy with minimal CloudWatch read permissions:
       "Effect": "Allow",
       "Action": [
         "cloudwatch:GetMetricData",
-        "cloudwatch:ListMetrics",
-        "cloudwatch:GetMetricStatistics"
-      ],
-      "Resource": "*"
-    },
-    {
-      "Effect": "Allow",
-      "Action": [
-        "ec2:DescribeInstances",
-        "ec2:DescribeTags",
-        "rds:DescribeDBInstances",
-        "elasticloadbalancing:DescribeLoadBalancers",
-        "lambda:ListFunctions"
+        "cloudwatch:ListMetrics"
       ],
       "Resource": "*"
     }
@@ -112,21 +100,31 @@ receivers:
     # AWS region to collect metrics from
     region: "us-east-1"
 
-    # Collection interval - how often to poll CloudWatch
-    collection_interval: 60s
+    metrics:
+      # Collection interval - how often to poll CloudWatch
+      collection_interval: 1m
+      # CloudWatch aggregation period for the returned data points
+      period: 60s
+      # Query a completed CloudWatch window to avoid missing late data
+      delay: 10m
 
-    # Metric namespaces to collect from
-    # Use AWS namespaces like AWS/EC2, AWS/RDS, AWS/Lambda
-    namespaces:
-      - name: "AWS/EC2"
-        # Metrics to collect from this namespace
-        metrics:
-          - name: "CPUUtilization"
-            statistic: "Average"
-          - name: "NetworkIn"
-            statistic: "Sum"
-          - name: "NetworkOut"
-            statistic: "Sum"
+      # Metric queries to collect
+      queries:
+        - namespace: "AWS/EC2"
+          metric_name: "CPUUtilization"
+          dimensions:
+            InstanceId: "i-1234567890abcdef0"
+          stats: ["Average"]
+        - namespace: "AWS/EC2"
+          metric_name: "NetworkIn"
+          dimensions:
+            InstanceId: "i-1234567890abcdef0"
+          stats: ["Sum"]
+        - namespace: "AWS/EC2"
+          metric_name: "NetworkOut"
+          dimensions:
+            InstanceId: "i-1234567890abcdef0"
+          stats: ["Sum"]
 
 # Processors - transform collected metrics
 processors:
@@ -165,158 +163,208 @@ receivers:
     # AWS region to collect from
     region: "us-east-1"
 
-    # Collection interval - CloudWatch updates most metrics every 60s
-    collection_interval: 60s
+    metrics:
+      # Collection interval - CloudWatch updates most metrics every 60s
+      collection_interval: 1m
+      period: 60s
+      delay: 10m
 
-    # Optional: Explicitly set AWS credentials (if not using default)
-    # access_key_id: ${AWS_ACCESS_KEY_ID}
-    # secret_access_key: ${AWS_SECRET_ACCESS_KEY}
+      # Metric queries to collect
+      queries:
+        # EC2 instance metrics
+        - namespace: "AWS/EC2"
+          metric_name: "CPUUtilization"
+          dimensions:
+            InstanceId: "i-1234567890abcdef0"
+          stats: ["Average", "Maximum"]
+        - namespace: "AWS/EC2"
+          metric_name: "NetworkIn"
+          dimensions:
+            InstanceId: "i-1234567890abcdef0"
+          stats: ["Sum"]
+        - namespace: "AWS/EC2"
+          metric_name: "NetworkOut"
+          dimensions:
+            InstanceId: "i-1234567890abcdef0"
+          stats: ["Sum"]
+        - namespace: "AWS/EC2"
+          metric_name: "DiskReadBytes"
+          dimensions:
+            InstanceId: "i-1234567890abcdef0"
+          stats: ["Sum"]
+        - namespace: "AWS/EC2"
+          metric_name: "DiskWriteBytes"
+          dimensions:
+            InstanceId: "i-1234567890abcdef0"
+          stats: ["Sum"]
+        - namespace: "AWS/EC2"
+          metric_name: "StatusCheckFailed"
+          dimensions:
+            InstanceId: "i-1234567890abcdef0"
+          stats: ["Maximum"]
 
-    # Metric namespaces and metrics to collect
-    namespaces:
-      # EC2 instance metrics
-      - name: "AWS/EC2"
-        metrics:
-          - name: "CPUUtilization"
-            statistic: "Average"
-            unit: "Percent"
-          - name: "CPUUtilization"
-            statistic: "Maximum"
-            unit: "Percent"
-          - name: "NetworkIn"
-            statistic: "Sum"
-            unit: "Bytes"
-          - name: "NetworkOut"
-            statistic: "Sum"
-            unit: "Bytes"
-          - name: "DiskReadBytes"
-            statistic: "Sum"
-            unit: "Bytes"
-          - name: "DiskWriteBytes"
-            statistic: "Sum"
-            unit: "Bytes"
-          - name: "StatusCheckFailed"
-            statistic: "Maximum"
-            unit: "Count"
+        # RDS database metrics
+        - namespace: "AWS/RDS"
+          metric_name: "CPUUtilization"
+          dimensions:
+            DBInstanceIdentifier: "production-db-1"
+          stats: ["Average"]
+        - namespace: "AWS/RDS"
+          metric_name: "DatabaseConnections"
+          dimensions:
+            DBInstanceIdentifier: "production-db-1"
+          stats: ["Average"]
+        - namespace: "AWS/RDS"
+          metric_name: "FreeableMemory"
+          dimensions:
+            DBInstanceIdentifier: "production-db-1"
+          stats: ["Average"]
+        - namespace: "AWS/RDS"
+          metric_name: "FreeStorageSpace"
+          dimensions:
+            DBInstanceIdentifier: "production-db-1"
+          stats: ["Average"]
+        - namespace: "AWS/RDS"
+          metric_name: "ReadLatency"
+          dimensions:
+            DBInstanceIdentifier: "production-db-1"
+          stats: ["Average"]
+        - namespace: "AWS/RDS"
+          metric_name: "WriteLatency"
+          dimensions:
+            DBInstanceIdentifier: "production-db-1"
+          stats: ["Average"]
+        - namespace: "AWS/RDS"
+          metric_name: "ReadThroughput"
+          dimensions:
+            DBInstanceIdentifier: "production-db-1"
+          stats: ["Average"]
+        - namespace: "AWS/RDS"
+          metric_name: "WriteThroughput"
+          dimensions:
+            DBInstanceIdentifier: "production-db-1"
+          stats: ["Average"]
 
-        # Dimensions to filter by (optional)
-        dimensions:
-          - name: "InstanceId"
-            # Collect for specific instances
-            values: ["i-1234567890abcdef0", "i-0987654321fedcba0"]
+        # Application Load Balancer metrics
+        - namespace: "AWS/ApplicationELB"
+          metric_name: "RequestCount"
+          dimensions:
+            LoadBalancer: "app/production-alb/1234567890abcdef"
+          stats: ["Sum"]
+        - namespace: "AWS/ApplicationELB"
+          metric_name: "TargetResponseTime"
+          dimensions:
+            LoadBalancer: "app/production-alb/1234567890abcdef"
+          stats: ["Average"]
+        - namespace: "AWS/ApplicationELB"
+          metric_name: "HTTPCode_Target_2XX_Count"
+          dimensions:
+            LoadBalancer: "app/production-alb/1234567890abcdef"
+          stats: ["Sum"]
+        - namespace: "AWS/ApplicationELB"
+          metric_name: "HTTPCode_Target_4XX_Count"
+          dimensions:
+            LoadBalancer: "app/production-alb/1234567890abcdef"
+          stats: ["Sum"]
+        - namespace: "AWS/ApplicationELB"
+          metric_name: "HTTPCode_Target_5XX_Count"
+          dimensions:
+            LoadBalancer: "app/production-alb/1234567890abcdef"
+          stats: ["Sum"]
+        - namespace: "AWS/ApplicationELB"
+          metric_name: "ActiveConnectionCount"
+          dimensions:
+            LoadBalancer: "app/production-alb/1234567890abcdef"
+          stats: ["Average"]
+        - namespace: "AWS/ApplicationELB"
+          metric_name: "HealthyHostCount"
+          dimensions:
+            TargetGroup: "targetgroup/production-tg/1234567890abcdef"
+            LoadBalancer: "app/production-alb/1234567890abcdef"
+          stats: ["Average"]
+        - namespace: "AWS/ApplicationELB"
+          metric_name: "UnHealthyHostCount"
+          dimensions:
+            TargetGroup: "targetgroup/production-tg/1234567890abcdef"
+            LoadBalancer: "app/production-alb/1234567890abcdef"
+          stats: ["Average"]
 
-      # RDS database metrics
-      - name: "AWS/RDS"
-        metrics:
-          - name: "CPUUtilization"
-            statistic: "Average"
-            unit: "Percent"
-          - name: "DatabaseConnections"
-            statistic: "Average"
-            unit: "Count"
-          - name: "FreeableMemory"
-            statistic: "Average"
-            unit: "Bytes"
-          - name: "FreeStorageSpace"
-            statistic: "Average"
-            unit: "Bytes"
-          - name: "ReadLatency"
-            statistic: "Average"
-            unit: "Seconds"
-          - name: "WriteLatency"
-            statistic: "Average"
-            unit: "Seconds"
-          - name: "ReadThroughput"
-            statistic: "Average"
-            unit: "Bytes/Second"
-          - name: "WriteThroughput"
-            statistic: "Average"
-            unit: "Bytes/Second"
+        # Lambda function metrics
+        - namespace: "AWS/Lambda"
+          metric_name: "Invocations"
+          dimensions:
+            FunctionName: "order-processor"
+          stats: ["Sum"]
+        - namespace: "AWS/Lambda"
+          metric_name: "Errors"
+          dimensions:
+            FunctionName: "order-processor"
+          stats: ["Sum"]
+        - namespace: "AWS/Lambda"
+          metric_name: "Duration"
+          dimensions:
+            FunctionName: "order-processor"
+          stats: ["Average"]
+        - namespace: "AWS/Lambda"
+          metric_name: "Throttles"
+          dimensions:
+            FunctionName: "order-processor"
+          stats: ["Sum"]
+        - namespace: "AWS/Lambda"
+          metric_name: "ConcurrentExecutions"
+          dimensions:
+            FunctionName: "order-processor"
+          stats: ["Maximum"]
 
-      # Application Load Balancer metrics
-      - name: "AWS/ApplicationELB"
-        metrics:
-          - name: "RequestCount"
-            statistic: "Sum"
-            unit: "Count"
-          - name: "TargetResponseTime"
-            statistic: "Average"
-            unit: "Seconds"
-          - name: "HTTPCode_Target_2XX_Count"
-            statistic: "Sum"
-            unit: "Count"
-          - name: "HTTPCode_Target_4XX_Count"
-            statistic: "Sum"
-            unit: "Count"
-          - name: "HTTPCode_Target_5XX_Count"
-            statistic: "Sum"
-            unit: "Count"
-          - name: "ActiveConnectionCount"
-            statistic: "Average"
-            unit: "Count"
-          - name: "HealthyHostCount"
-            statistic: "Average"
-            unit: "Count"
-          - name: "UnHealthyHostCount"
-            statistic: "Average"
-            unit: "Count"
+        # DynamoDB table metrics
+        - namespace: "AWS/DynamoDB"
+          metric_name: "ConsumedReadCapacityUnits"
+          dimensions:
+            TableName: "orders"
+          stats: ["Sum"]
+        - namespace: "AWS/DynamoDB"
+          metric_name: "ConsumedWriteCapacityUnits"
+          dimensions:
+            TableName: "orders"
+          stats: ["Sum"]
+        - namespace: "AWS/DynamoDB"
+          metric_name: "UserErrors"
+          stats: ["Sum"]
+        - namespace: "AWS/DynamoDB"
+          metric_name: "SystemErrors"
+          stats: ["Sum"]
+        - namespace: "AWS/DynamoDB"
+          metric_name: "ThrottledRequests"
+          dimensions:
+            TableName: "orders"
+          stats: ["Sum"]
 
-      # Lambda function metrics
-      - name: "AWS/Lambda"
-        metrics:
-          - name: "Invocations"
-            statistic: "Sum"
-            unit: "Count"
-          - name: "Errors"
-            statistic: "Sum"
-            unit: "Count"
-          - name: "Duration"
-            statistic: "Average"
-            unit: "Milliseconds"
-          - name: "Throttles"
-            statistic: "Sum"
-            unit: "Count"
-          - name: "ConcurrentExecutions"
-            statistic: "Maximum"
-            unit: "Count"
-
-      # DynamoDB table metrics
-      - name: "AWS/DynamoDB"
-        metrics:
-          - name: "ConsumedReadCapacityUnits"
-            statistic: "Sum"
-            unit: "Count"
-          - name: "ConsumedWriteCapacityUnits"
-            statistic: "Sum"
-            unit: "Count"
-          - name: "UserErrors"
-            statistic: "Sum"
-            unit: "Count"
-          - name: "SystemErrors"
-            statistic: "Sum"
-            unit: "Count"
-          - name: "ThrottledRequests"
-            statistic: "Sum"
-            unit: "Count"
-
-      # SQS queue metrics
-      - name: "AWS/SQS"
-        metrics:
-          - name: "ApproximateNumberOfMessagesVisible"
-            statistic: "Average"
-            unit: "Count"
-          - name: "ApproximateAgeOfOldestMessage"
-            statistic: "Maximum"
-            unit: "Seconds"
-          - name: "NumberOfMessagesSent"
-            statistic: "Sum"
-            unit: "Count"
-          - name: "NumberOfMessagesReceived"
-            statistic: "Sum"
-            unit: "Count"
-          - name: "NumberOfMessagesDeleted"
-            statistic: "Sum"
-            unit: "Count"
+        # SQS queue metrics
+        - namespace: "AWS/SQS"
+          metric_name: "ApproximateNumberOfMessagesVisible"
+          dimensions:
+            QueueName: "orders"
+          stats: ["Average"]
+        - namespace: "AWS/SQS"
+          metric_name: "ApproximateAgeOfOldestMessage"
+          dimensions:
+            QueueName: "orders"
+          stats: ["Maximum"]
+        - namespace: "AWS/SQS"
+          metric_name: "NumberOfMessagesSent"
+          dimensions:
+            QueueName: "orders"
+          stats: ["Sum"]
+        - namespace: "AWS/SQS"
+          metric_name: "NumberOfMessagesReceived"
+          dimensions:
+            QueueName: "orders"
+          stats: ["Sum"]
+        - namespace: "AWS/SQS"
+          metric_name: "NumberOfMessagesDeleted"
+          dimensions:
+            QueueName: "orders"
+          stats: ["Sum"]
 
 processors:
   # Add AWS resource attributes
@@ -359,50 +407,74 @@ receivers:
   # US East 1 region
   awscloudwatch/us_east_1:
     region: "us-east-1"
-    collection_interval: 60s
-    namespaces:
-      - name: "AWS/EC2"
-        metrics:
-          - name: "CPUUtilization"
-            statistic: "Average"
-      - name: "AWS/RDS"
-        metrics:
-          - name: "CPUUtilization"
-            statistic: "Average"
-          - name: "DatabaseConnections"
-            statistic: "Average"
+    metrics:
+      collection_interval: 1m
+      period: 60s
+      delay: 10m
+      queries:
+        - namespace: "AWS/EC2"
+          metric_name: "CPUUtilization"
+          dimensions:
+            InstanceId: "i-1234567890abcdef0"
+          stats: ["Average"]
+        - namespace: "AWS/RDS"
+          metric_name: "CPUUtilization"
+          dimensions:
+            DBInstanceIdentifier: "production-db-1"
+          stats: ["Average"]
+        - namespace: "AWS/RDS"
+          metric_name: "DatabaseConnections"
+          dimensions:
+            DBInstanceIdentifier: "production-db-1"
+          stats: ["Average"]
 
   # EU West 1 region
   awscloudwatch/eu_west_1:
     region: "eu-west-1"
-    collection_interval: 60s
-    namespaces:
-      - name: "AWS/EC2"
-        metrics:
-          - name: "CPUUtilization"
-            statistic: "Average"
-      - name: "AWS/RDS"
-        metrics:
-          - name: "CPUUtilization"
-            statistic: "Average"
-          - name: "DatabaseConnections"
-            statistic: "Average"
+    metrics:
+      collection_interval: 1m
+      period: 60s
+      delay: 10m
+      queries:
+        - namespace: "AWS/EC2"
+          metric_name: "CPUUtilization"
+          dimensions:
+            InstanceId: "i-2234567890abcdef0"
+          stats: ["Average"]
+        - namespace: "AWS/RDS"
+          metric_name: "CPUUtilization"
+          dimensions:
+            DBInstanceIdentifier: "production-db-2"
+          stats: ["Average"]
+        - namespace: "AWS/RDS"
+          metric_name: "DatabaseConnections"
+          dimensions:
+            DBInstanceIdentifier: "production-db-2"
+          stats: ["Average"]
 
   # AP Southeast 1 region
   awscloudwatch/ap_southeast_1:
     region: "ap-southeast-1"
-    collection_interval: 60s
-    namespaces:
-      - name: "AWS/EC2"
-        metrics:
-          - name: "CPUUtilization"
-            statistic: "Average"
-      - name: "AWS/RDS"
-        metrics:
-          - name: "CPUUtilization"
-            statistic: "Average"
-          - name: "DatabaseConnections"
-            statistic: "Average"
+    metrics:
+      collection_interval: 1m
+      period: 60s
+      delay: 10m
+      queries:
+        - namespace: "AWS/EC2"
+          metric_name: "CPUUtilization"
+          dimensions:
+            InstanceId: "i-3234567890abcdef0"
+          stats: ["Average"]
+        - namespace: "AWS/RDS"
+          metric_name: "CPUUtilization"
+          dimensions:
+            DBInstanceIdentifier: "production-db-3"
+          stats: ["Average"]
+        - namespace: "AWS/RDS"
+          metric_name: "DatabaseConnections"
+          dimensions:
+            DBInstanceIdentifier: "production-db-3"
+          stats: ["Average"]
 
 processors:
   # Add region-specific attributes
@@ -453,61 +525,56 @@ service:
 
 This configuration monitors resources across three AWS regions and tags metrics appropriately for regional filtering and analysis.
 
-## Filtering by Tags and Dimensions
+## Filtering by Dimensions
 
-CloudWatch metrics have dimensions (like InstanceId, DBInstanceIdentifier) that identify specific resources. Filter metrics by dimensions to reduce cardinality:
+CloudWatch metrics have dimensions (like InstanceId, DBInstanceIdentifier) that identify specific resources. Specify dimensions in explicit metric queries to reduce cardinality:
 
 ```yaml
 receivers:
   awscloudwatch:
     region: "us-east-1"
-    collection_interval: 60s
+    metrics:
+      collection_interval: 1m
+      period: 60s
+      delay: 10m
 
-    namespaces:
-      - name: "AWS/EC2"
-        metrics:
-          - name: "CPUUtilization"
-            statistic: "Average"
-
-        # Filter by dimensions - collect metrics only for specific resources
-        dimensions:
-          # Dimension name (e.g., InstanceId, AutoScalingGroupName)
-          - name: "InstanceId"
-            # Specific instance IDs to monitor
-            values:
-              - "i-1234567890abcdef0"
-              - "i-0987654321fedcba0"
-
-      - name: "AWS/RDS"
-        metrics:
-          - name: "CPUUtilization"
-            statistic: "Average"
-          - name: "DatabaseConnections"
-            statistic: "Average"
-
-        dimensions:
-          # Monitor specific RDS instances
-          - name: "DBInstanceIdentifier"
-            values:
-              - "production-db-1"
-              - "production-db-2"
-
-      - name: "AWS/Lambda"
-        metrics:
-          - name: "Invocations"
-            statistic: "Sum"
-          - name: "Errors"
-            statistic: "Sum"
-          - name: "Duration"
-            statistic: "Average"
-
-        dimensions:
-          # Monitor specific Lambda functions
-          - name: "FunctionName"
-            values:
-              - "order-processor"
-              - "payment-handler"
-              - "notification-sender"
+      queries:
+        - namespace: "AWS/EC2"
+          metric_name: "CPUUtilization"
+          # Filter by dimensions - collect metrics only for a specific resource
+          dimensions:
+            InstanceId: "i-1234567890abcdef0"
+          stats: ["Average"]
+        - namespace: "AWS/EC2"
+          metric_name: "CPUUtilization"
+          dimensions:
+            InstanceId: "i-0987654321fedcba0"
+          stats: ["Average"]
+        - namespace: "AWS/RDS"
+          metric_name: "CPUUtilization"
+          dimensions:
+            DBInstanceIdentifier: "production-db-1"
+          stats: ["Average"]
+        - namespace: "AWS/RDS"
+          metric_name: "DatabaseConnections"
+          dimensions:
+            DBInstanceIdentifier: "production-db-1"
+          stats: ["Average"]
+        - namespace: "AWS/Lambda"
+          metric_name: "Invocations"
+          dimensions:
+            FunctionName: "order-processor"
+          stats: ["Sum"]
+        - namespace: "AWS/Lambda"
+          metric_name: "Errors"
+          dimensions:
+            FunctionName: "order-processor"
+          stats: ["Sum"]
+        - namespace: "AWS/Lambda"
+          metric_name: "Duration"
+          dimensions:
+            FunctionName: "order-processor"
+          stats: ["Average"]
 ```
 
 Dimension filtering is essential for large AWS deployments to avoid collecting metrics for every single resource, which can be expensive and generate high cardinality.
@@ -523,42 +590,47 @@ receivers:
 
     # Increase collection interval to reduce API calls
     # CloudWatch standard resolution is 60s anyway
-    collection_interval: 300s  # 5 minutes
+    metrics:
+      collection_interval: 5m
+      period: 300s
+      delay: 10m
 
-    namespaces:
-      - name: "AWS/EC2"
-        metrics:
-          # Collect only essential metrics
-          - name: "CPUUtilization"
-            statistic: "Average"
-          - name: "StatusCheckFailed"
-            statistic: "Maximum"
+      queries:
+        # Collect only essential metrics
+        - namespace: "AWS/EC2"
+          metric_name: "CPUUtilization"
+          dimensions:
+            InstanceId: "i-1234567890abcdef0"
+          stats: ["Average"]
+        - namespace: "AWS/EC2"
+          metric_name: "StatusCheckFailed"
+          dimensions:
+            InstanceId: "i-1234567890abcdef0"
+          stats: ["Maximum"]
 
-        # Use dimensions to limit scope
-        dimensions:
-          - name: "InstanceId"
-            values: ["i-1234567890abcdef0"]
-
-      - name: "AWS/RDS"
-        metrics:
-          # Focus on critical database metrics
-          - name: "CPUUtilization"
-            statistic: "Average"
-          - name: "DatabaseConnections"
-            statistic: "Average"
-          - name: "FreeStorageSpace"
-            statistic: "Average"
-
-        dimensions:
-          - name: "DBInstanceIdentifier"
-            values: ["production-db-1"]
+        # Focus on critical database metrics
+        - namespace: "AWS/RDS"
+          metric_name: "CPUUtilization"
+          dimensions:
+            DBInstanceIdentifier: "production-db-1"
+          stats: ["Average"]
+        - namespace: "AWS/RDS"
+          metric_name: "DatabaseConnections"
+          dimensions:
+            DBInstanceIdentifier: "production-db-1"
+          stats: ["Average"]
+        - namespace: "AWS/RDS"
+          metric_name: "FreeStorageSpace"
+          dimensions:
+            DBInstanceIdentifier: "production-db-1"
+          stats: ["Average"]
 
 processors:
   # Filter out zero-value metrics to reduce export volume
   filter/drop_zeros:
-    metrics:
-      datapoint:
-        - 'metric.name == "StatusCheckFailed" and value_int == 0'
+    error_mode: ignore
+    metric_conditions:
+      - 'metric.name == "amazonaws.com/AWS/EC2/StatusCheckFailed" and datapoint.value_double == 0.0'
 
   batch:
     timeout: 60s
@@ -583,7 +655,7 @@ Cost optimization strategies:
 
 1. **Increase collection intervals**: CloudWatch updates most metrics every 60s, so polling more frequently provides little value
 2. **Limit metric scope**: Only collect metrics you'll actually use for dashboards or alerts
-3. **Use dimension filters**: Don't collect metrics for every resource, filter by tags or IDs
+3. **Use dimension filters**: Don't collect metrics for every resource, filter by dimensions like instance IDs or queue names
 4. **Batch aggressively**: Larger batches reduce network overhead and export costs
 5. **Filter zero values**: Drop metrics that are always zero (like error counts when there are no errors)
 
@@ -595,48 +667,43 @@ Here's a complete production configuration with error handling and optimization:
 receivers:
   awscloudwatch:
     region: "us-east-1"
-    collection_interval: 300s
+    metrics:
+      collection_interval: 5m
+      period: 300s
+      delay: 10m
 
-    # AWS credentials (optional, defaults to SDK credential chain)
-    # access_key_id: ${AWS_ACCESS_KEY_ID}
-    # secret_access_key: ${AWS_SECRET_ACCESS_KEY}
+      queries:
+        - namespace: "AWS/EC2"
+          metric_name: "CPUUtilization"
+          dimensions:
+            InstanceId: "i-1234567890abcdef0"
+          stats: ["Average"]
+        - namespace: "AWS/EC2"
+          metric_name: "NetworkIn"
+          dimensions:
+            InstanceId: "i-1234567890abcdef0"
+          stats: ["Sum"]
+        - namespace: "AWS/EC2"
+          metric_name: "NetworkOut"
+          dimensions:
+            InstanceId: "i-1234567890abcdef0"
+          stats: ["Sum"]
 
-    # Request timeout - prevent hanging on slow AWS API responses
-    timeout: 30s
-
-    # Retry configuration for AWS API failures
-    retry_on_failure:
-      enabled: true
-      initial_interval: 5s
-      max_interval: 30s
-      max_elapsed_time: 300s
-
-    namespaces:
-      - name: "AWS/EC2"
-        metrics:
-          - name: "CPUUtilization"
-            statistic: "Average"
-          - name: "NetworkIn"
-            statistic: "Sum"
-          - name: "NetworkOut"
-            statistic: "Sum"
-
-        dimensions:
-          - name: "InstanceId"
-            values: ["i-1234567890abcdef0", "i-0987654321fedcba0"]
-
-      - name: "AWS/RDS"
-        metrics:
-          - name: "CPUUtilization"
-            statistic: "Average"
-          - name: "DatabaseConnections"
-            statistic: "Average"
-          - name: "FreeStorageSpace"
-            statistic: "Average"
-
-        dimensions:
-          - name: "DBInstanceIdentifier"
-            values: ["production-db"]
+        - namespace: "AWS/RDS"
+          metric_name: "CPUUtilization"
+          dimensions:
+            DBInstanceIdentifier: "production-db"
+          stats: ["Average"]
+        - namespace: "AWS/RDS"
+          metric_name: "DatabaseConnections"
+          dimensions:
+            DBInstanceIdentifier: "production-db"
+          stats: ["Average"]
+        - namespace: "AWS/RDS"
+          metric_name: "FreeStorageSpace"
+          dimensions:
+            DBInstanceIdentifier: "production-db"
+          stats: ["Average"]
 
 processors:
   # Add cloud resource attributes
@@ -657,9 +724,9 @@ processors:
 
   # Filter out low-value metrics
   filter/drop_noise:
-    metrics:
-      datapoint:
-        - 'metric.name == "StatusCheckFailed" and value_int == 0'
+    error_mode: ignore
+    metric_conditions:
+      - 'metric.name == "amazonaws.com/AWS/EC2/StatusCheckFailed" and datapoint.value_double == 0.0'
 
   # Batch for efficiency
   batch:
@@ -695,7 +762,7 @@ service:
       exporters: [otlphttp]
 ```
 
-This configuration includes timeouts, retries, buffering, and filtering to ensure reliable metric collection.
+This configuration includes resource detection, export retries, buffering, and filtering to ensure reliable metric collection.
 
 ## Security Best Practices
 
@@ -710,7 +777,15 @@ receivers:
   awscloudwatch:
     region: "us-east-1"
     # No credentials needed - automatically uses EC2 instance IAM role
-    collection_interval: 60s
+    metrics:
+      collection_interval: 1m
+      period: 60s
+      queries:
+        - namespace: "AWS/EC2"
+          metric_name: "CPUUtilization"
+          dimensions:
+            InstanceId: "i-1234567890abcdef0"
+          stats: ["Average"]
 ```
 
 ### Least Privilege Permissions
@@ -735,14 +810,11 @@ Grant only necessary CloudWatch permissions:
 
 ### Use Environment Variables for Keys
 
-If using access keys, never hardcode them:
+If using access keys, never hardcode them in the Collector configuration. Set them through the AWS SDK environment variables instead:
 
-```yaml
-receivers:
-  awscloudwatch:
-    region: "us-east-1"
-    access_key_id: ${AWS_ACCESS_KEY_ID}
-    secret_access_key: ${AWS_SECRET_ACCESS_KEY}
+```bash
+export AWS_ACCESS_KEY_ID="your-access-key"
+export AWS_SECRET_ACCESS_KEY="your-secret-key"
 ```
 
 ### Rotate Access Keys Regularly
@@ -796,13 +868,13 @@ If expected metrics don't appear:
 2. Check namespace spelling matches AWS exactly (case-sensitive)
 3. Verify dimension values are correct
 4. Confirm metrics exist in CloudWatch console for the time range
-5. Check collection_interval isn't too short for CloudWatch data availability
+5. Check `metrics.delay` is long enough for CloudWatch data availability
 
 ### High Costs
 
 If CloudWatch API costs are high:
 
-1. Increase collection_interval to 300s or higher
+1. Increase `metrics.collection_interval` to 5m or higher
 2. Reduce number of metrics collected
 3. Use dimension filters to limit scope
 4. Monitor AWS CloudWatch API usage in AWS Cost Explorer
@@ -811,7 +883,7 @@ If CloudWatch API costs are high:
 
 If AWS throttles API requests:
 
-1. Increase collection_interval
+1. Increase `metrics.collection_interval`
 2. Reduce number of metrics per request
 3. Spread collection across multiple Collector instances
 4. Contact AWS support to increase API rate limits
@@ -829,7 +901,7 @@ For comprehensive cloud monitoring with OpenTelemetry:
 
 The AWS CloudWatch receiver enables you to pull metrics from AWS CloudWatch and forward them to any OpenTelemetry-compatible observability platform. This allows you to consolidate AWS monitoring with telemetry from other cloud providers and on-premises infrastructure, standardizing on OpenTelemetry across your entire stack.
 
-Configure the receiver with appropriate AWS credentials, select the namespaces and metrics relevant to your environment, and use dimension filtering to manage cardinality and costs. Follow security best practices by using IAM roles when possible and granting least-privilege permissions.
+Configure the receiver with appropriate AWS credentials, select the metric queries relevant to your environment, and use dimension filtering to manage cardinality and costs. Follow security best practices by using IAM roles when possible and granting least-privilege permissions.
 
 Monitor EC2, RDS, Lambda, ALB, DynamoDB, SQS, and any other AWS service that publishes to CloudWatch. Collect metrics across multiple regions to gain global visibility into your AWS infrastructure. Optimize collection intervals and metric scope to manage CloudWatch API costs while maintaining comprehensive observability.
 
