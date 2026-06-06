@@ -38,28 +38,31 @@ graph LR
 
 ## Active DNS Monitoring with the HTTP Check Receiver
 
-The simplest way to monitor DNS resolution is to use the collector's `httpcheck` receiver, which performs HTTP checks that inherently include DNS resolution time. However, for pure DNS monitoring, we can use a combination of the `dns` check in the `network` receiver approach.
+The simplest way to monitor DNS resolution is to use the collector's `http_check` receiver, which performs HTTP checks that can emit DNS lookup timing metrics.
 
-A more direct method uses a custom script with the `script` processor or the `receiver_creator` pattern. But the most practical approach for most teams is using the `health_check` extension combined with a simple DNS probe script that feeds metrics back into the collector.
+For pure DNS monitoring, a practical approach is to scrape DNS server metrics or a lightweight DNS probe exporter with the `prometheus` receiver.
 
-Let me show you the most effective approach using the `prometheus` receiver to scrape a lightweight DNS probe exporter, along with the collector's own DNS-aware health checking.
+Let me show you the most effective approach using the `http_check` receiver for synthetic endpoint checks and the `prometheus` receiver for DNS server metrics.
 
-First, set up a DNS probe that the collector can scrape:
+First, set up the collector to run HTTP checks and scrape DNS server metrics:
 
 ```yaml
 # config.yaml - DNS monitoring with active probes
 
 receivers:
-  # Use the httpcheck receiver to monitor endpoints
-  # DNS resolution time is included in the connection metrics
-  httpcheck:
+  # Use the http_check receiver to monitor endpoints
+  # Enable DNS timing metrics for each HTTP check
+  http_check:
+    metrics:
+      httpcheck.dns.lookup.duration:
+        enabled: true
     targets:
       # Monitor critical internal services via their DNS names
       - endpoint: "http://api.internal.company.com/health"
         method: GET
       - endpoint: "http://database.internal.company.com:8080/health"
         method: GET
-      - endpoint: "http://cache.internal.company.com:6379"
+      - endpoint: "http://cache.internal.company.com/health"
         method: GET
     collection_interval: 30s
 
@@ -100,12 +103,12 @@ exporters:
 service:
   pipelines:
     metrics:
-      receivers: [httpcheck, prometheus/dns]
+      receivers: [http_check, prometheus/dns]
       processors: [resource, batch]
       exporters: [otlp]
 ```
 
-The `httpcheck` receiver measures the full HTTP connection lifecycle, which includes DNS resolution as the first step. While it does not separate DNS time from TCP connection time, a spike in connection time that correlates across multiple endpoints strongly suggests a DNS issue.
+The `http_check` receiver measures the full HTTP check duration and can emit optional timing metrics such as `httpcheck.dns.lookup.duration`, `httpcheck.client.connection.duration`, and `httpcheck.response.duration`. A spike in DNS lookup duration across multiple endpoints strongly suggests a DNS issue.
 
 ## Monitoring CoreDNS
 
@@ -143,17 +146,14 @@ The key CoreDNS metrics to monitor:
 # coredns_cache_hits_total
 #   Cache hit count by cache type (success, denial)
 #
-# coredns_cache_misses_total
-#   Cache miss count - indicates lookups requiring upstream resolution
+# coredns_cache_requests_total
+#   Cache request count - derive misses as requests minus hits
 #
-# coredns_forward_requests_total
-#   Requests forwarded to upstream resolvers
-#
-# coredns_forward_responses_total
-#   Responses received from upstream, by response code
+# coredns_proxy_request_duration_seconds{proxy_name="forward", to, rcode}
+#   Histogram of forwarded requests to upstream resolvers
 ```
 
-The cache hit ratio is particularly valuable. Calculate it as `cache_hits / (cache_hits + cache_misses)`. A high cache hit ratio (above 80%) means most DNS lookups are answered locally without going upstream. A suddenly dropping cache hit ratio could mean TTLs were lowered, new services are being deployed rapidly, or the cache was flushed.
+The cache hit ratio is particularly valuable. Calculate it as `cache_hits / cache_requests`. A high cache hit ratio (above 80%) means most DNS lookups are answered locally without going upstream. A suddenly dropping cache hit ratio could mean TTLs were lowered, new services are being deployed rapidly, or the cache was flushed.
 
 ## Monitoring BIND DNS Servers
 
@@ -210,21 +210,21 @@ DNS alerts need to be fast because DNS failures cascade quickly:
 # DNS alerting rules
 - alert: DNSHighLatency
   # Average query processing time exceeds 100ms
-  condition: coredns_dns_request_duration_seconds_avg > 0.1
+  condition: sum(rate(coredns_dns_request_duration_seconds_sum[5m])) / sum(rate(coredns_dns_request_duration_seconds_count[5m])) > 0.1
   for: 2m
   severity: warning
   description: "DNS query latency is elevated"
 
 - alert: DNSHighSERVFAIL
   # More than 1% of responses are SERVFAIL
-  condition: rate(coredns_dns_responses_total{rcode="SERVFAIL"}[5m]) / rate(coredns_dns_responses_total[5m]) > 0.01
+  condition: sum(rate(coredns_dns_responses_total{rcode="SERVFAIL"}[5m])) / sum(rate(coredns_dns_responses_total[5m])) > 0.01
   for: 1m
   severity: critical
   description: "DNS SERVFAIL rate exceeds 1%"
 
 - alert: DNSCacheMissSpike
   # Cache miss rate doubled compared to baseline
-  condition: rate(coredns_cache_misses_total[5m]) > 2 * avg_over_time(rate(coredns_cache_misses_total[5m])[1h:])
+  condition: (sum(rate(coredns_cache_requests_total[5m])) - sum(rate(coredns_cache_hits_total[5m]))) > 2 * avg_over_time((sum(rate(coredns_cache_requests_total[5m])) - sum(rate(coredns_cache_hits_total[5m])))[1h:])
   for: 5m
   severity: warning
   description: "DNS cache miss rate has spiked"
@@ -262,14 +262,14 @@ receivers:
               action: keep
               regex: kube-dns
             # Use the prometheus port
-            - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
+            - source_labels: [__address__]
               action: replace
               target_label: __address__
-              regex: (.+)
-              replacement: "${1}:9153"
+              regex: ([^:]+)(?::\d+)?
+              replacement: "$${1}:9153"
 ```
 
-Pay special attention to the `coredns_forward_responses_total` metric with SERVFAIL responses. In Kubernetes, this usually means the upstream DNS (your corporate resolver or cloud provider DNS) is having problems, which affects all pods trying to resolve external names.
+Pay special attention to `coredns_proxy_request_duration_seconds_count{proxy_name="forward", rcode="SERVFAIL"}`. In Kubernetes, this usually means the upstream DNS (your corporate resolver or cloud provider DNS) is having problems, which affects all pods trying to resolve external names.
 
 ## Troubleshooting DNS Collection
 
@@ -277,8 +277,8 @@ If the collector is not receiving DNS metrics, start with the basics. Can the co
 
 For CoreDNS, verify that the `prometheus` plugin is loaded and the metrics port is accessible. The plugin must appear in the Corefile for each server block where you want metrics.
 
-For the `httpcheck` receiver, make sure the target endpoints are resolvable from the collector's network. If the collector itself cannot resolve DNS names, it cannot monitor them. Consider using IP addresses for the collector's own OTLP exporter endpoint to avoid a circular dependency.
+For the `http_check` receiver, make sure the target endpoints are resolvable from the collector's network. If the collector itself cannot resolve DNS names, it cannot monitor them. Consider using IP addresses for the collector's own OTLP exporter endpoint to avoid a circular dependency.
 
 ## Conclusion
 
-DNS monitoring belongs in every observability stack, and the OpenTelemetry Collector makes it practical to implement. Use the `httpcheck` receiver for synthetic DNS probing and the Prometheus receiver for scraping metrics from CoreDNS, BIND, or other DNS server software. Focus your alerting on SERVFAIL rates, query latency, and cache health. These metrics will tell you about DNS problems before your users start complaining about slow or broken applications.
+DNS monitoring belongs in every observability stack, and the OpenTelemetry Collector makes it practical to implement. Use the `http_check` receiver for synthetic endpoint checks with DNS lookup timing and the Prometheus receiver for scraping metrics from CoreDNS, BIND, or other DNS server software. Focus your alerting on SERVFAIL rates, query latency, and cache health. These metrics will tell you about DNS problems before your users start complaining about slow or broken applications.
