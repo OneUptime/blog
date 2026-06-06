@@ -417,7 +417,7 @@ async function getAggregatedReadings(options) {
 
   const result = await query(
     `SELECT
-       time_bucket($${paramIndex}, time) AS bucket,
+       time_bucket($${paramIndex}::interval, time) AS bucket,
        sensor_id,
        location,
        AVG(temperature) AS avg_temperature,
@@ -474,6 +474,8 @@ async function getRecentReadings(sensorId, minutes = 60) {
 }
 
 // Time-weighted average for irregular data
+// Requires the timescaledb_toolkit extension: CREATE EXTENSION timescaledb_toolkit;
+// (pre-installed on Tiger Cloud and the timescale/timescaledb-ha Docker image)
 async function getTimeWeightedAverage(sensorId, startTime, endTime) {
   const result = await query(
     `SELECT
@@ -1005,6 +1007,9 @@ async function getReadingsKnex(sensorId, startTime, endTime) {
 }
 
 // Raw query for time_bucket (TimescaleDB-specific)
+// Note: Knex's `?` placeholder is also expanded inside SQL string literals, so
+// embedding `?` in `INTERVAL '? days'` produces broken SQL. Bind the value
+// outside the literal instead.
 async function getHourlyAveragesKnex(sensorId, days) {
   return db.raw(`
     SELECT
@@ -1014,7 +1019,7 @@ async function getHourlyAveragesKnex(sensorId, days) {
       COUNT(*) AS count
     FROM sensor_readings
     WHERE sensor_id = ?
-      AND time > NOW() - INTERVAL '? days'
+      AND time > NOW() - (? * INTERVAL '1 day')
     GROUP BY bucket
     ORDER BY bucket DESC
   `, [sensorId, days]);
