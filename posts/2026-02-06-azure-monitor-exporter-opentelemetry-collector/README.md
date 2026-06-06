@@ -35,8 +35,8 @@ Before configuring the Azure Monitor exporter, you need:
 
 - An Azure subscription
 - An Application Insights resource created in Azure
-- The connection string or instrumentation key from Application Insights
-- OpenTelemetry Collector Contrib installed (version 0.80.0 or later)
+- The connection string from Application Insights
+- A recent OpenTelemetry Collector Contrib build that includes the `azuremonitor` exporter
 
 ## Creating an Application Insights Resource
 
@@ -90,7 +90,7 @@ exporters:
     connection_string: "InstrumentationKey=12345678-abcd-1234-abcd-123456789abc;IngestionEndpoint=https://eastus-1.in.applicationinsights.azure.com/"
 
     # Maximum number of items to submit in each request
-    max_batch_size: 1024
+    maxbatchsize: 1024
 
     # Timeout for sending data
     timeout: 10s
@@ -121,8 +121,8 @@ For security best practices, store the connection string in environment variable
 exporters:
   azuremonitor:
     # Reference environment variable for connection string
-    connection_string: "${APPLICATIONINSIGHTS_CONNECTION_STRING}"
-    max_batch_size: 1024
+    connection_string: "${env:APPLICATIONINSIGHTS_CONNECTION_STRING}"
+    maxbatchsize: 1024
     timeout: 10s
 ```
 
@@ -139,12 +139,15 @@ For production deployments, customize additional parameters:
 ```yaml
 exporters:
   azuremonitor:
-    connection_string: "${APPLICATIONINSIGHTS_CONNECTION_STRING}"
+    connection_string: "${env:APPLICATIONINSIGHTS_CONNECTION_STRING}"
 
     # Maximum batch size for export
-    max_batch_size: 2048
+    maxbatchsize: 2048
 
-    # Timeout for export operations
+    # Maximum time to wait before sending a batch
+    maxbatchinterval: 10s
+
+    # Timeout for HTTP export operations
     timeout: 30s
 
     # Queue configuration for handling bursts
@@ -153,21 +156,15 @@ exporters:
       num_consumers: 10
       queue_size: 5000
 
-    # Retry configuration
-    retry_on_failure:
-      enabled: true
-      initial_interval: 5s
-      max_interval: 30s
-      max_elapsed_time: 300s
-
     # Instrumentation key (alternative to connection string)
     # instrumentation_key: "12345678-abcd-1234-abcd-123456789abc"
 
     # Override endpoint (for sovereign clouds)
     # endpoint: "https://dc.services.visualstudio.com/v2/track"
 
-    # Disable telemetry for specific signal types
-    # disable_offline_storage: false
+    # Enable span events and exception log records
+    # spaneventsenabled: true
+    # exception_events_enabled: true
 ```
 
 ## Configuring Resource Attributes
@@ -185,7 +182,7 @@ processors:
 
       # Service instance appears as Cloud Role Instance
       - key: service.instance.id
-        value: "${HOSTNAME}"
+        value: "${env:HOSTNAME}"
         action: upsert
 
       # Service version for release tracking
@@ -204,7 +201,7 @@ processors:
 
 exporters:
   azuremonitor:
-    connection_string: "${APPLICATIONINSIGHTS_CONNECTION_STRING}"
+    connection_string: "${env:APPLICATIONINSIGHTS_CONNECTION_STRING}"
 
 service:
   pipelines:
@@ -221,8 +218,8 @@ Understanding how OpenTelemetry concepts map to Azure Monitor helps you query an
 | OpenTelemetry | Azure Monitor | Description |
 |--------------|---------------|-------------|
 | Trace | Request/Dependency | Distributed trace |
-| Span (root) | Request | Entry point operation |
-| Span (child) | Dependency | Outbound calls |
+| SERVER or CONSUMER span | Request | Inbound or consumed operation |
+| CLIENT, PRODUCER, or INTERNAL span | Dependency | Outbound or internal operation |
 | Metric | CustomMetrics | Measurement data |
 | Log | Trace | Log messages |
 | service.name | cloud_RoleName | Service identifier |
@@ -236,10 +233,10 @@ Reduce data volume and costs with filtering and sampling:
 processors:
   # Filter out health check endpoints
   filter/healthcheck:
-    traces:
-      span:
-        - 'attributes["http.target"] == "/health"'
-        - 'attributes["http.target"] == "/ready"'
+    error_mode: ignore
+    trace_conditions:
+      - 'span.attributes["http.target"] == "/health"'
+      - 'span.attributes["http.target"] == "/ready"'
 
   # Probabilistic sampling for high-volume services
   probabilistic_sampler:
@@ -272,7 +269,7 @@ processors:
 
 exporters:
   azuremonitor:
-    connection_string: "${APPLICATIONINSIGHTS_CONNECTION_STRING}"
+    connection_string: "${env:APPLICATIONINSIGHTS_CONNECTION_STRING}"
 
 service:
   pipelines:
@@ -284,23 +281,21 @@ service:
 
 ## Multi-Region and Sovereign Cloud Support
 
-For global deployments or sovereign clouds, configure region-specific endpoints:
+For global deployments or sovereign clouds, configure region-specific connection strings:
 
 ```yaml
 exporters:
   # Azure Commercial (default)
   azuremonitor/commercial:
-    connection_string: "${AZURE_COMMERCIAL_CONNECTION_STRING}"
+    connection_string: "${env:AZURE_COMMERCIAL_CONNECTION_STRING}"
 
   # Azure Government
   azuremonitor/government:
-    connection_string: "${AZURE_GOV_CONNECTION_STRING}"
-    endpoint: "https://dc.applicationinsights.us/v2/track"
+    connection_string: "${env:AZURE_GOV_CONNECTION_STRING}"
 
   # Azure China
   azuremonitor/china:
-    connection_string: "${AZURE_CHINA_CONNECTION_STRING}"
-    endpoint: "https://dc.applicationinsights.azure.cn/v2/track"
+    connection_string: "${env:AZURE_CHINA_CONNECTION_STRING}"
 
 service:
   pipelines:
@@ -365,7 +360,7 @@ az monitor metrics alert create \
   --condition "avg requests/failed > 10" \
   --window-size 5m \
   --evaluation-frequency 1m \
-  --action-group my-action-group
+  --action /subscriptions/{subscription-id}/resourceGroups/my-resource-group/providers/Microsoft.Insights/actionGroups/my-action-group
 
 # Create an alert for slow response times
 az monitor metrics alert create \
@@ -375,7 +370,7 @@ az monitor metrics alert create \
   --condition "avg requests/duration > 1000" \
   --window-size 5m \
   --evaluation-frequency 1m \
-  --action-group my-action-group
+  --action /subscriptions/{subscription-id}/resourceGroups/my-resource-group/providers/Microsoft.Insights/actionGroups/my-action-group
 ```
 
 ## Cost Management Strategies
@@ -400,10 +395,10 @@ Set a daily ingestion cap in the Azure portal to prevent unexpected costs.
 ```yaml
 processors:
   filter/noisy:
-    traces:
-      span:
-        - 'attributes["http.target"] == "/metrics"'
-        - 'attributes["http.target"] == "/health"'
+    error_mode: ignore
+    trace_conditions:
+      - 'span.attributes["http.target"] == "/metrics"'
+      - 'span.attributes["http.target"] == "/health"'
 ```
 
 **4. Use Commitment Tiers:**
@@ -432,7 +427,7 @@ az keyvault set-policy \
 
 **2. Use Managed Identities:**
 
-For collectors running in Azure, use managed identities instead of connection strings when possible.
+For collectors running in Azure, use Microsoft Entra authentication through a supported authenticator extension or the Azure Monitor AAD Authentication Proxy when local Application Insights authentication is disabled.
 
 **3. Enable Data Encryption:**
 
@@ -443,13 +438,25 @@ Application Insights encrypts data at rest by default. For additional security, 
 Use Private Link to send telemetry over a private network:
 
 ```bash
-# Create a private endpoint for Application Insights
+# Create an Azure Monitor Private Link Scope
+az monitor private-link-scope create \
+  --name my-ampls \
+  --resource-group my-resource-group
+
+# Add the Application Insights resource to the scope
+az monitor private-link-scope scoped-resource create \
+  --resource-group my-resource-group \
+  --scope-name my-ampls \
+  --name my-application-insights \
+  --linked-resource /subscriptions/{subscription-id}/resourceGroups/my-resource-group/providers/microsoft.insights/components/my-application-insights
+
+# Create a private endpoint for the Azure Monitor Private Link Scope
 az network private-endpoint create \
   --name appinsights-private-endpoint \
   --resource-group my-resource-group \
   --vnet-name my-vnet \
   --subnet my-subnet \
-  --private-connection-resource-id /subscriptions/{subscription-id}/resourceGroups/my-resource-group/providers/microsoft.insights/components/my-application-insights \
+  --private-connection-resource-id /subscriptions/{subscription-id}/resourceGroups/my-resource-group/providers/microsoft.insights/privateLinkScopes/my-ampls \
   --connection-name appinsights-connection \
   --group-id azuremonitor
 ```
@@ -472,25 +479,25 @@ processors:
   resource:
     attributes:
       - key: service.name
-        value: "${SERVICE_NAME}"
+        value: "${env:SERVICE_NAME}"
         action: upsert
       - key: service.instance.id
-        value: "${HOSTNAME}"
+        value: "${env:HOSTNAME}"
         action: upsert
       - key: service.version
-        value: "${SERVICE_VERSION}"
+        value: "${env:SERVICE_VERSION}"
         action: upsert
       - key: deployment.environment
-        value: "${ENVIRONMENT}"
+        value: "${env:ENVIRONMENT}"
         action: upsert
 
   # Filter health checks
   filter/healthcheck:
-    traces:
-      span:
-        - 'attributes["http.target"] == "/health"'
-        - 'attributes["http.target"] == "/ready"'
-        - 'attributes["http.target"] == "/metrics"'
+    error_mode: ignore
+    trace_conditions:
+      - 'span.attributes["http.target"] == "/health"'
+      - 'span.attributes["http.target"] == "/ready"'
+      - 'span.attributes["http.target"] == "/metrics"'
 
   # Tail sampling for intelligent trace retention
   tail_sampling:
@@ -516,17 +523,18 @@ processors:
     timeout: 10s
     send_batch_size: 2048
 
+connectors:
   # Add span metrics
-  spanmetrics:
-    metrics_exporter: azuremonitor
+  span_metrics:
     dimensions:
       - name: http.method
       - name: http.status_code
 
 exporters:
   azuremonitor:
-    connection_string: "${APPLICATIONINSIGHTS_CONNECTION_STRING}"
-    max_batch_size: 2048
+    connection_string: "${env:APPLICATIONINSIGHTS_CONNECTION_STRING}"
+    maxbatchsize: 2048
+    maxbatchinterval: 10s
     timeout: 30s
 
     sending_queue:
@@ -534,22 +542,21 @@ exporters:
       num_consumers: 10
       queue_size: 10000
 
-    retry_on_failure:
-      enabled: true
-      initial_interval: 5s
-      max_interval: 30s
-      max_elapsed_time: 300s
-
 service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [resource, filter/healthcheck, tail_sampling, spanmetrics, batch]
-      exporters: [azuremonitor]
+      processors: [resource, filter/healthcheck, tail_sampling, batch]
+      exporters: [azuremonitor, span_metrics]
 
     metrics:
       receivers: [otlp]
       processors: [resource, batch]
+      exporters: [azuremonitor]
+
+    metrics/spanmetrics:
+      receivers: [span_metrics]
+      processors: [batch]
       exporters: [azuremonitor]
 
     logs:
@@ -561,7 +568,12 @@ service:
     logs:
       level: info
     metrics:
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 ```
 
 ## Troubleshooting Common Issues
@@ -569,7 +581,7 @@ service:
 **Issue: Data not appearing in Application Insights**
 
 Check:
-- Connection string is correct and not expired
+- Connection string is correct and points to the expected Application Insights resource
 - Network connectivity to Azure endpoints
 - Collector logs for authentication errors
 - Application Insights resource is not disabled
