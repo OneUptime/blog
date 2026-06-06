@@ -59,34 +59,42 @@ metrics.set_meter_provider(provider)
 
 meter = metrics.get_meter("capacity.planning")
 
+def disk_observations():
+    observations = []
+    for mount in ["/", "/data", "/logs"]:
+        try:
+            usage = psutil.disk_usage(mount)
+        except FileNotFoundError:
+            continue
+        observations.append(
+            metrics.Observation(usage.percent / 100, {"mountpoint": mount})
+        )
+    return observations
+
 # Create gauges for system resource utilization
 cpu_gauge = meter.create_observable_gauge(
     name="system.cpu.utilization",
-    description="Current CPU utilization percentage",
-    unit="percent",
+    description="Current CPU utilization as a fraction",
+    unit="1",
     callbacks=[lambda options: [
-        metrics.Observation(psutil.cpu_percent(interval=1))
+        metrics.Observation(psutil.cpu_percent(interval=1) / 100)
     ]],
 )
 
 memory_gauge = meter.create_observable_gauge(
     name="system.memory.utilization",
-    description="Current memory utilization percentage",
-    unit="percent",
+    description="Current memory utilization as a fraction",
+    unit="1",
     callbacks=[lambda options: [
-        metrics.Observation(psutil.virtual_memory().percent)
+        metrics.Observation(psutil.virtual_memory().percent / 100)
     ]],
 )
 
 disk_gauge = meter.create_observable_gauge(
-    name="system.disk.utilization",
-    description="Current disk utilization percentage",
-    unit="percent",
-    callbacks=[lambda options: [
-        metrics.Observation(usage.percent, {"mount": mount})
-        for mount in ["/", "/data", "/logs"]
-        if (usage := psutil.disk_usage(mount))
-    ]],
+    name="system.filesystem.utilization",
+    description="Current filesystem utilization as a fraction",
+    unit="1",
+    callbacks=[lambda options: disk_observations()],
 )
 ```
 
@@ -108,21 +116,21 @@ meter = metrics.get_meter("capacity.planning")
 request_counter = meter.create_counter(
     name="app.requests.total",
     description="Total number of requests processed",
-    unit="requests",
+    unit="{request}",
 )
 
 # Track active connections as a gauge
 active_connections = meter.create_up_down_counter(
     name="app.connections.active",
     description="Number of currently active connections",
-    unit="connections",
+    unit="{connection}",
 )
 
 # Track queue depth for async workloads
 queue_depth = meter.create_observable_gauge(
     name="app.queue.depth",
     description="Number of items waiting in the processing queue",
-    unit="items",
+    unit="{item}",
     callbacks=[lambda options: [
         metrics.Observation(get_queue_length(), {"queue": "default"})
     ]],
@@ -164,6 +172,7 @@ receivers:
       cpu:
       memory:
       disk:
+      filesystem:
       network:
       load:
 
@@ -176,22 +185,22 @@ processors:
   # Add environment metadata for capacity segmentation
   resource:
     attributes:
-      - key: deployment.environment
+      - key: deployment.environment.name
         value: production
         action: upsert
       - key: cloud.region
         value: us-east-1
         action: upsert
 
-  # Aggregate metrics to reduce cardinality while preserving peaks
+  # Aggregate per-core CPU metrics while preserving peak utilization
   metricstransform:
     transforms:
       - include: system.cpu.utilization
         action: update
         operations:
           - action: aggregate_labels
-            label_set: ["host.name", "deployment.environment"]
-            aggregation_type: mean
+            label_set: ["cpu.mode"]
+            aggregation_type: max
 
 exporters:
   otlphttp:
@@ -205,7 +214,7 @@ service:
       exporters: [otlphttp]
 ```
 
-The `hostmetrics` receiver collects infrastructure metrics directly without needing a separate agent. The `metricstransform` processor aggregates labels to keep cardinality manageable over long retention periods while preserving the dimensions you need for capacity analysis.
+The `hostmetrics` receiver collects infrastructure metrics directly when the Collector is deployed as an agent on the host. The `filesystem` scraper provides filesystem utilization metrics, while the `disk` scraper provides disk I/O metrics. The `metricstransform` processor aggregates datapoint labels to keep cardinality manageable over long retention periods while preserving the dimensions you need for capacity analysis.
 
 ---
 
@@ -218,13 +227,13 @@ Once you have several weeks of metrics data, you can start building forecasts. A
 import numpy as np
 from datetime import datetime, timedelta
 
-def linear_forecast(timestamps, values, target_utilization=80.0):
+def linear_forecast(timestamps, values, target_utilization=0.8):
     """
     Forecast when resource utilization will hit the target threshold.
 
     Args:
         timestamps: List of Unix timestamps for data points
-        values: List of utilization percentages
+        values: List of utilization fractions
         target_utilization: The threshold to forecast against (default 80%)
 
     Returns:
@@ -251,9 +260,9 @@ def linear_forecast(timestamps, values, target_utilization=80.0):
 
 # Example usage with metric data pulled from your backend
 timestamps = [1706745600, 1706832000, 1706918400, 1707004800]  # Daily samples
-cpu_values = [45.2, 47.8, 49.1, 51.3]
+cpu_values = [0.452, 0.478, 0.491, 0.513]
 
-forecast_date = linear_forecast(timestamps, cpu_values, target_utilization=80.0)
+forecast_date = linear_forecast(timestamps, cpu_values, target_utilization=0.8)
 if forecast_date:
     print(f"CPU will reach 80% utilization by: {forecast_date.strftime('%Y-%m-%d')}")
 ```
@@ -276,7 +285,7 @@ meter = metrics.get_meter("capacity.alerts")
 days_until_capacity = meter.create_observable_gauge(
     name="capacity.days_remaining",
     description="Forecasted days until resource capacity is exhausted",
-    unit="days",
+    unit="d",
     callbacks=[lambda options: [
         metrics.Observation(
             calculate_days_remaining("cpu"),
@@ -293,14 +302,14 @@ days_until_capacity = meter.create_observable_gauge(
     ]],
 )
 
-# Track current headroom as a percentage
+# Track current headroom as a fraction
 headroom_gauge = meter.create_observable_gauge(
     name="capacity.headroom",
     description="Current available headroom before hitting capacity limit",
-    unit="percent",
+    unit="1",
     callbacks=[lambda options: [
         metrics.Observation(
-            80.0 - get_current_utilization("cpu"),
+            0.8 - get_current_utilization("cpu"),
             {"resource": "cpu"}
         ),
     ]],
