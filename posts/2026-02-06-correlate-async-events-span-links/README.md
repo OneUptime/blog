@@ -159,7 +159,7 @@ def on_order_created_analytics(event, producer_span_context):
 In practice, the producer stores its span context in the event itself. Here is how to extract it on the consumer side:
 
 ```python
-from opentelemetry.trace.propagation import TraceContextTextMapPropagator
+from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 
 propagator = TraceContextTextMapPropagator()
 
