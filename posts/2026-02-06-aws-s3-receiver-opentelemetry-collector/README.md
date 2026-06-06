@@ -16,7 +16,7 @@ The AWS S3 Receiver is a specialized OpenTelemetry Collector component that read
 
 ## What is the AWS S3 Receiver?
 
-The AWS S3 Receiver connects to Amazon S3 to read telemetry data files (logs, traces, metrics) and feed them into the OpenTelemetry Collector pipeline. Unlike real-time receivers that accept streaming data, the S3 receiver operates on stored files, making it ideal for:
+The AWS S3 Receiver connects to Amazon S3 to read telemetry data files (logs, traces, metrics) and feed them into the OpenTelemetry Collector pipeline. It is commonly used with data previously written by the OpenTelemetry AWS S3 Exporter, but it can process any S3 objects that contain supported telemetry encodings. Unlike receivers that accept streaming data over the network, the S3 receiver operates on stored files, making it ideal for:
 
 - **Historical data analysis**: Import past logs and metrics for trend analysis
 - **Batch processing**: Process large volumes of telemetry data efficiently
@@ -26,12 +26,12 @@ The AWS S3 Receiver connects to Amazon S3 to read telemetry data files (logs, tr
 
 ### How It Works
 
-The receiver monitors an S3 bucket for new files or processes existing files based on a prefix pattern. It downloads files, parses the content according to the configured format (JSON, CSV, text logs), and converts them into OpenTelemetry signals that flow through your collector pipeline.
+The receiver has two supported retrieval modes. In time range mode, it lists and downloads objects whose keys match a configured S3 prefix and partition format between `starttime` and `endtime`. In SQS mode, it reads S3 object-created notifications from an SQS queue and downloads the referenced objects. It then unmarshals the object content as OTLP JSON, OTLP Protocol Buffers, or a configured encoding extension, and sends the resulting OpenTelemetry signals through your collector pipeline.
 
 ```mermaid
 graph LR
-    A[S3 Bucket] -->|Poll for new files| B[S3 Receiver]
-    B -->|Parse & Transform| C[OTel Collector Pipeline]
+    A[S3 Bucket] -->|List time partitions or read SQS notifications| B[S3 Receiver]
+    B -->|Unmarshal OTLP or configured encoding| C[OTel Collector Pipeline]
     C -->|Logs/Metrics/Traces| D[OneUptime]
     C -->|Processed Data| E[Other Backends]
 ```
@@ -42,11 +42,11 @@ graph LR
 
 Before configuring the S3 receiver, ensure you have:
 
-1. **AWS Account** with S3 bucket containing telemetry data
-2. **IAM Permissions** to read from the S3 bucket
-3. **OpenTelemetry Collector** version 0.80.0 or later with the awss3receiver component
-4. **AWS Credentials** configured (via environment variables, IAM role, or credentials file)
-5. **Data format knowledge** - Understanding of how your telemetry data is structured in S3
+1. **AWS Account** with an S3 bucket containing telemetry data
+2. **IAM Permissions** to list and read from the S3 bucket
+3. **OpenTelemetry Collector Contrib** distribution or a custom Collector build that includes the `awss3receiver` component
+4. **AWS Credentials** configured through the AWS SDK default credential chain, such as environment variables, IAM role, or credentials file
+5. **Data format knowledge** - The receiver supports OTLP JSON (`.json`) and OTLP Protocol Buffers (`.binpb`) by default, with optional custom decoding through Collector encoding extensions
 
 ---
 
@@ -80,48 +80,67 @@ The OpenTelemetry Collector needs specific IAM permissions to read from S3. Crea
 }
 ```
 
-Attach this policy to the IAM role used by your collector. If running on EC2 or ECS, use instance profiles. For external deployments, create an IAM user with access keys.
+If you enable object tagging with `tag_object_after_ingestion` or `skip_ingesting_tagged_objects`, add these permissions:
+
+```json
+{
+  "Effect": "Allow",
+  "Action": [
+    "s3:GetObjectTagging",
+    "s3:PutObjectTagging"
+  ],
+  "Resource": "arn:aws:s3:::your-telemetry-bucket/*"
+}
+```
+
+For SQS notification mode, the Collector also needs permission to receive and delete messages from the queue:
+
+```json
+{
+  "Effect": "Allow",
+  "Action": [
+    "sqs:ReceiveMessage",
+    "sqs:DeleteMessage"
+  ],
+  "Resource": "arn:aws:sqs:us-east-1:123456789012:telemetry-events"
+}
+```
+
+Attach these policies to the IAM role used by your collector. If running on EC2 or ECS, use instance profiles or task roles. For external deployments, create an IAM user with access keys.
 
 ---
 
 ## Basic Configuration
 
-Here's a minimal configuration to start reading logs from an S3 bucket. This example processes JSON-formatted logs stored in S3:
+Here's a minimal configuration to read OTLP JSON logs from an S3 bucket for a fixed time range:
 
 ```yaml
 # Configure the S3 receiver to read log files
 
 receivers:
-  # The awss3 receiver pulls data from S3 buckets
+  # The awss3 receiver pulls telemetry data from S3 buckets
   awss3:
-    # S3 bucket containing your telemetry data
-    s3_bucket: my-telemetry-logs
+    # Read objects from this time range
+    starttime: "2026-02-05 00:00"
+    endtime: "2026-02-06 00:00"
 
-    # AWS region where the bucket is located
-    region: us-east-1
+    s3downloader:
+      # AWS region where the bucket is located
+      region: us-east-1
 
-    # S3 key prefix to filter files (optional)
-    # Only process files under this prefix
-    s3_prefix: logs/application/
+      # S3 bucket containing your telemetry data
+      s3_bucket: my-telemetry-logs
 
-    # File matching pattern (glob syntax)
-    # Process only JSON files
-    s3_pattern: "*.json"
+      # S3 key prefix to filter files
+      s3_prefix: logs/application
 
-    # How often to check for new files
-    poll_interval: 1m
+      # Partition format used in the object keys
+      s3_partition_format: "year=%Y/month=%m/day=%d/hour=%H"
+      s3_partition_timezone: "UTC"
 
-    # Data format and parsing configuration
-    # Specify how to parse the log files
-    logs:
-      # Parser type: json, regex, or raw
-      parser: json
-
-      # Time field for log timestamps
-      timestamp_field: timestamp
-
-      # Timestamp format (Go time layout)
-      timestamp_format: "2006-01-02T15:04:05.000Z"
+      # File prefix used by the writer, such as the awss3 exporter
+      file_prefix: otel
+      file_prefix_include_telemetry_type: true
 
 # Configure where to send the processed logs
 exporters:
@@ -139,62 +158,35 @@ service:
       exporters: [otlphttp]
 ```
 
-This basic configuration polls the S3 bucket every minute, downloads JSON log files from the specified prefix, parses them, and sends the logs to OneUptime.
+This basic configuration reads matching S3 objects between the configured start and end times, unmarshals `.json` objects as OTLP JSON logs, and sends the logs to OneUptime.
 
 ---
 
 ## Production Configuration with Processing
 
-For production environments, add error handling, batching, and data transformation. This configuration demonstrates production best practices:
+For production environments, add batching, enrichment, filtering, and object-ingestion checkpointing. This configuration demonstrates production best practices:
 
 ```yaml
 receivers:
   awss3:
+    starttime: "2026-02-05T00:00:00Z"
+    endtime: "2026-02-06T00:00:00Z"
+
     # S3 bucket configuration
-    s3_bucket: production-telemetry-logs
-    region: us-west-2
-    s3_prefix: logs/prod/
-    s3_pattern: "*.json.gz"  # Support compressed files
+    s3downloader:
+      region: us-west-2
+      s3_bucket: production-telemetry-logs
+      s3_prefix: logs/prod
+      s3_partition_format: "year=%Y/month=%m/day=%d/hour=%H/minute=%M"
+      s3_partition_timezone: "UTC"
+      file_prefix: otel
+      file_prefix_include_telemetry_type: true
 
-    # Polling configuration
-    poll_interval: 5m  # Check every 5 minutes
+      # Mark successfully ingested objects with otel-collector:status=ingested
+      tag_object_after_ingestion: true
 
-    # AWS credentials (optional - uses default credential chain if not specified)
-    # Uncomment if using explicit credentials
-    # aws_access_key_id: ${AWS_ACCESS_KEY_ID}
-    # aws_secret_access_key: ${AWS_SECRET_ACCESS_KEY}
-
-    # Maximum number of files to process per poll
-    max_files_per_poll: 100
-
-    # Delete files after successful processing
-    # WARNING: Use with caution in production
-    delete_on_read: false
-
-    # Mark processed files by adding a tag instead of deleting
-    mark_processed: true
-    processed_tag: "otel-processed"
-
-    # Log parsing configuration
-    logs:
-      parser: json
-      timestamp_field: "@timestamp"
-      timestamp_format: "2006-01-02T15:04:05.000Z07:00"
-
-      # Map JSON fields to OpenTelemetry attributes
-      attributes:
-        # Application identifier
-        - source_field: app_name
-          target_attribute: service.name
-        # Environment (prod, staging, dev)
-        - source_field: environment
-          target_attribute: deployment.environment
-        # Log level
-        - source_field: level
-          target_attribute: log.level
-        # Message body
-        - source_field: message
-          target_attribute: log.message
+      # Skip objects that already have the ingested tag
+      skip_ingesting_tagged_objects: true
 
 processors:
   # Protect collector from memory issues
@@ -218,18 +210,10 @@ processors:
 
   # Filter out unnecessary logs to reduce costs
   filter/noise:
-    logs:
-      exclude:
-        match_type: regexp
-        # Exclude debug logs in production
-        resource_attributes:
-          - key: log.level
-            value: "DEBUG"
-        # Exclude health check logs
-        body:
-          - "/health"
-          - "/healthz"
-          - "/ping"
+    error_mode: ignore
+    log_conditions:
+      - 'log.attributes["log.level"] == "DEBUG"'
+      - 'IsMatch(log.body, ".*/health.*|.*/healthz.*|.*/ping.*")'
 
   # Batch logs before exporting
   batch:
@@ -237,16 +221,12 @@ processors:
     send_batch_size: 1000
     send_batch_max_size: 2000
 
-  # Transform log attributes if needed
+  # Add metadata if needed
   attributes/enrich:
     actions:
-      # Add processing timestamp
-      - key: processed_at
-        value: ${TIMESTAMP}
-        action: insert
       # Add collector version
       - key: otel.collector.version
-        value: "0.93.0"
+        value: "0.153.0"
         action: insert
 
 exporters:
@@ -276,7 +256,12 @@ service:
     logs:
       level: info
     metrics:
-      address: :8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 
   pipelines:
     logs:
@@ -294,10 +279,9 @@ service:
 
 This production configuration includes:
 
-- **Compressed file support**: Processes gzipped JSON files
-- **Rate limiting**: Limits files processed per poll to prevent overload
-- **Tagging processed files**: Marks files as processed without deletion
-- **Attribute mapping**: Maps JSON fields to OpenTelemetry semantic conventions
+- **Compressed file support**: Processes `.json.gz` and `.binpb.gz` objects, and also supports `.zst` compression
+- **Time-based reads**: Processes telemetry for an explicit time range
+- **Tagging processed files**: Marks files as ingested without deletion
 - **Filtering**: Removes debug logs and health checks
 - **Enrichment**: Adds metadata about processing
 - **Error handling**: Retries and fallback to file export
@@ -306,106 +290,111 @@ This production configuration includes:
 
 ## Parsing Different Log Formats
 
-The S3 receiver supports multiple log formats. Here are common configurations:
+The S3 receiver supports OTLP JSON and OTLP Protocol Buffers by default. For other formats, use an encoding extension that can unmarshal the content into OpenTelemetry data.
 
-### JSON Logs
+### OTLP JSON Logs
 
-Most modern applications export JSON logs. Configuration for structured JSON:
+Most OpenTelemetry-native pipelines that write to S3 use OTLP JSON. Configuration for OTLP JSON:
 
 ```yaml
 receivers:
   awss3:
-    s3_bucket: json-logs-bucket
-    region: us-east-1
+    starttime: "2026-02-05"
+    endtime: "2026-02-06"
+    s3downloader:
+      region: us-east-1
+      s3_bucket: json-logs-bucket
+      s3_prefix: logs
+      s3_partition_format: "year=%Y/month=%m/day=%d/hour=%H"
+      file_prefix: otel
+      file_prefix_include_telemetry_type: true
+```
+
+Objects ending in `.json` are unmarshaled as OTLP JSON for the signal type of the pipeline that uses the receiver.
+
+### OTLP Protocol Buffers
+
+For more compact telemetry files, store OTLP Protocol Buffer payloads:
+
+```yaml
+receivers:
+  awss3:
+    starttime: "2026-02-05T00:00:00Z"
+    endtime: "2026-02-06T00:00:00Z"
+    s3downloader:
+      region: us-east-1
+      s3_bucket: proto-telemetry-bucket
+      s3_prefix: telemetry
+      s3_partition_format: "year=%Y/month=%m/day=%d/hour=%H/minute=%M"
+      file_prefix: otel
+      file_prefix_include_telemetry_type: true
+```
+
+Objects ending in `.binpb` are unmarshaled as OTLP Protocol Buffers. Files compressed as `.binpb.gz` or `.binpb.zst` are decompressed before unmarshaling.
+
+### Custom Encodings
+
+For custom formats, configure an encoding extension and map it to a suffix:
+
+```yaml
+extensions:
+  text_encoding:
+    encoding: utf8
+    unmarshaling_separator: "\n"
+
+receivers:
+  awss3:
+    starttime: "2026-02-05"
+    endtime: "2026-02-06"
+    s3downloader:
+      region: us-east-1
+      s3_bucket: text-logs-bucket
+      s3_prefix: logs
+      s3_partition_format: "year=%Y/month=%m/day=%d/hour=%H"
+    encodings:
+      - extension: text_encoding
+        suffix: ".log.gz"
+
+exporters:
+  otlphttp:
+    endpoint: https://oneuptime.com/otlp
+    headers:
+      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+
+service:
+  extensions: [text_encoding]
+  pipelines:
     logs:
-      parser: json
-      timestamp_field: timestamp
-      timestamp_format: "2006-01-02T15:04:05Z"
-      attributes:
-        - source_field: service
-          target_attribute: service.name
-        - source_field: level
-          target_attribute: severity_text
-        - source_field: msg
-          target_attribute: body
+      receivers: [awss3]
+      exporters: [otlphttp]
 ```
 
-### Plain Text Logs
-
-For unstructured text logs like Apache or Nginx access logs:
-
-```yaml
-receivers:
-  awss3:
-    s3_bucket: text-logs-bucket
-    region: us-east-1
-    logs:
-      parser: regex
-      # Regex pattern to extract fields
-      regex_pattern: '^(?P<timestamp>[\d\-:T\.]+)\s+(?P<level>\w+)\s+(?P<message>.*)$'
-      timestamp_field: timestamp
-      timestamp_format: "2006-01-02T15:04:05.000"
-      attributes:
-        - source_field: level
-          target_attribute: severity_text
-        - source_field: message
-          target_attribute: body
-```
-
-### CSV Files
-
-For CSV-formatted telemetry data:
-
-```yaml
-receivers:
-  awss3:
-    s3_bucket: csv-metrics-bucket
-    region: us-east-1
-    metrics:
-      parser: csv
-      delimiter: ","
-      header_row: true
-      timestamp_column: 0
-      timestamp_format: "2006-01-02 15:04:05"
-      columns:
-        - name: timestamp
-          type: timestamp
-        - name: metric_name
-          type: string
-        - name: metric_value
-          type: float64
-        - name: host
-          type: string
-```
+The extension must be included in the Collector build and enabled under `service.extensions`.
 
 ---
 
 ## Processing S3 Event Notifications
 
-For real-time processing, configure S3 to send event notifications when new files are uploaded. Instead of polling, the collector receives immediate notifications:
+For near-real-time processing, configure S3 to send event notifications when new files are uploaded. The collector reads the notifications from SQS and downloads the referenced S3 objects:
 
 ```yaml
 receivers:
   awss3:
-    s3_bucket: realtime-logs-bucket
-    region: us-east-1
+    s3downloader:
+      s3_bucket: realtime-logs-bucket
+      region: us-east-1
+      s3_prefix: logs/
 
     # Enable S3 event notifications via SQS
-    sqs_queue_url: https://sqs.us-east-1.amazonaws.com/123456789/telemetry-events
+    sqs:
+      queue_url: https://sqs.us-east-1.amazonaws.com/123456789012/telemetry-events
+      region: us-east-1
 
-    # Maximum messages to receive per SQS poll
-    max_messages: 10
+      # Maximum messages to receive per SQS request
+      max_number_of_messages: 10
 
-    # Visibility timeout for SQS messages
-    visibility_timeout: 300
-
-    # Wait time for SQS long polling
-    wait_time_seconds: 20
-
-    logs:
-      parser: json
-      timestamp_field: timestamp
-      timestamp_format: "2006-01-02T15:04:05Z"
+      # Wait time for SQS long polling
+      wait_time_seconds: 20
 
 exporters:
   otlphttp:
@@ -429,7 +418,7 @@ service:
 {
   "QueueConfigurations": [
     {
-      "QueueArn": "arn:aws:sqs:us-east-1:123456789:telemetry-events",
+      "QueueArn": "arn:aws:sqs:us-east-1:123456789012:telemetry-events",
       "Events": ["s3:ObjectCreated:*"],
       "Filter": {
         "Key": {
@@ -462,7 +451,7 @@ service:
         "Service": "s3.amazonaws.com"
       },
       "Action": "sqs:SendMessage",
-      "Resource": "arn:aws:sqs:us-east-1:123456789:telemetry-events",
+      "Resource": "arn:aws:sqs:us-east-1:123456789012:telemetry-events",
       "Condition": {
         "ArnLike": {
           "aws:SourceArn": "arn:aws:s3:::realtime-logs-bucket"
@@ -483,29 +472,39 @@ Process telemetry from multiple S3 buckets by defining multiple receivers:
 receivers:
   # Application logs from production
   awss3/prod_logs:
-    s3_bucket: prod-app-logs
-    region: us-east-1
-    s3_prefix: logs/
-    logs:
-      parser: json
-      timestamp_field: timestamp
+    starttime: "2026-02-05"
+    endtime: "2026-02-06"
+    s3downloader:
+      region: us-east-1
+      s3_bucket: prod-app-logs
+      s3_prefix: logs
+      s3_partition_format: "year=%Y/month=%m/day=%d/hour=%H"
+      file_prefix: otel
+      file_prefix_include_telemetry_type: true
 
   # Application logs from staging
   awss3/staging_logs:
-    s3_bucket: staging-app-logs
-    region: us-east-1
-    s3_prefix: logs/
-    logs:
-      parser: json
-      timestamp_field: timestamp
+    starttime: "2026-02-05"
+    endtime: "2026-02-06"
+    s3downloader:
+      region: us-east-1
+      s3_bucket: staging-app-logs
+      s3_prefix: logs
+      s3_partition_format: "year=%Y/month=%m/day=%d/hour=%H"
+      file_prefix: otel
+      file_prefix_include_telemetry_type: true
 
   # Archived metrics from data warehouse
   awss3/metrics_archive:
-    s3_bucket: metrics-archive
-    region: us-west-2
-    s3_prefix: metrics/
-    metrics:
-      parser: csv
+    starttime: "2026-02-05"
+    endtime: "2026-02-06"
+    s3downloader:
+      region: us-west-2
+      s3_bucket: metrics-archive
+      s3_prefix: metrics
+      s3_partition_format: "year=%Y/month=%m/day=%d/hour=%H"
+      file_prefix: otel
+      file_prefix_include_telemetry_type: true
 
 processors:
   # Tag production logs
@@ -554,20 +553,22 @@ service:
 
 ### Pattern 1: Scheduled Batch Processing
 
-Run the collector on a schedule (cron job, AWS Lambda, ECS scheduled task) to process logs periodically:
+Run the collector on a schedule (cron job, ECS scheduled task, or Kubernetes CronJob) to process logs periodically:
 
 ```yaml
 receivers:
   awss3:
-    s3_bucket: batch-logs
-    region: us-east-1
-    # Process last 24 hours of logs
-    s3_prefix: logs/${YEAR}/${MONTH}/${DAY}/
-    max_files_per_poll: 1000
-    # Delete after processing since this is batch mode
-    delete_on_read: true
-    logs:
-      parser: json
+    # Process a fixed batch window
+    starttime: "2026-02-05 00:00"
+    endtime: "2026-02-06 00:00"
+    s3downloader:
+      region: us-east-1
+      s3_bucket: batch-logs
+      s3_prefix: logs
+      s3_partition_format: "year=%Y/month=%m/day=%d/hour=%H"
+      file_prefix: otel
+      file_prefix_include_telemetry_type: true
+      tag_object_after_ingestion: true
 
 exporters:
   otlphttp:
@@ -582,31 +583,7 @@ service:
       exporters: [otlphttp]
 ```
 
-Deploy as a Lambda function triggered daily:
-
-```python
-import subprocess
-import os
-from datetime import datetime
-
-def lambda_handler(event, context):
-    # Set date variables for S3 prefix
-    today = datetime.now()
-    os.environ['YEAR'] = today.strftime('%Y')
-    os.environ['MONTH'] = today.strftime('%m')
-    os.environ['DAY'] = today.strftime('%d')
-
-    # Run the collector
-    result = subprocess.run([
-        '/opt/otelcol',
-        '--config', '/opt/config.yaml'
-    ], capture_output=True, text=True)
-
-    return {
-        'statusCode': 200,
-        'body': f'Processed logs: {result.stdout}'
-    }
-```
+Deploy as a containerized scheduled task and pass the time window in the generated Collector configuration before startup.
 
 ### Pattern 2: Continuous Processing
 
@@ -615,13 +592,17 @@ Run the collector as a long-running service (ECS, Kubernetes, EC2) with SQS even
 ```yaml
 receivers:
   awss3:
-    s3_bucket: continuous-logs
-    region: us-east-1
-    sqs_queue_url: https://sqs.us-east-1.amazonaws.com/123456789/log-events
-    max_messages: 10
-    wait_time_seconds: 20
-    logs:
-      parser: json
+    s3downloader:
+      region: us-east-1
+      s3_bucket: continuous-logs
+      s3_prefix: logs/
+      skip_ingesting_tagged_objects: true
+      tag_object_after_ingestion: true
+    sqs:
+      queue_url: https://sqs.us-east-1.amazonaws.com/123456789012/log-events
+      region: us-east-1
+      max_number_of_messages: 10
+      wait_time_seconds: 20
 
 exporters:
   otlphttp:
@@ -643,25 +624,23 @@ One-time migration of historical data from S3 to a new observability platform:
 ```yaml
 receivers:
   awss3:
-    s3_bucket: historical-telemetry
-    region: us-east-1
-    # Process all historical data
-    s3_prefix: archive/
-    s3_pattern: "**/*.json"
-    # Aggressive processing
-    max_files_per_poll: 500
-    poll_interval: 30s
-    # Clean up after migration
-    delete_on_read: true
-    logs:
-      parser: json
+    # Process historical data for a specific range
+    starttime: "2026-01-01"
+    endtime: "2026-02-01"
+    s3downloader:
+      region: us-east-1
+      s3_bucket: historical-telemetry
+      s3_prefix: archive
+      s3_partition_format: "year=%Y/month=%m/day=%d/hour=%H"
+      s3_partition_timezone: "UTC"
+      file_prefix: otel
+      file_prefix_include_telemetry_type: true
 
 exporters:
   otlphttp/oneuptime:
     endpoint: https://oneuptime.com/otlp
     headers:
       x-oneuptime-token: ${ONEUPTIME_TOKEN}
-    # Increase batch size for faster migration
     timeout: 60s
 
 processors:
@@ -692,8 +671,14 @@ service:
     logs:
       level: info
     metrics:
-      address: :8888
-      level: detailed
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+                without_type_suffix: true
+                without_units: true
 ```
 
 Key metrics to monitor:
@@ -707,14 +692,15 @@ Key metrics to monitor:
 
 #### Issue: High Memory Usage
 
-**Cause**: Processing large files or too many files at once
+**Cause**: Processing large files or a large historical time range
 
-**Solution**: Reduce max_files_per_poll and add memory limiter:
+**Solution**: Process a smaller time range and add memory limiter:
 
 ```yaml
 receivers:
   awss3:
-    max_files_per_poll: 50  # Reduce from default
+    starttime: "2026-02-05 00:00"
+    endtime: "2026-02-05 06:00"
 
 processors:
   memory_limiter:
@@ -724,7 +710,7 @@ processors:
 
 #### Issue: Files Not Being Processed
 
-**Cause**: IAM permissions, incorrect prefix, or pattern mismatch
+**Cause**: IAM permissions, incorrect prefix, unsupported file suffix, or mismatched partition format
 
 **Solution**: Enable debug logging and verify permissions:
 
@@ -738,19 +724,21 @@ service:
 Check logs for errors like:
 - `AccessDenied` - IAM permissions issue
 - `NoSuchBucket` - Bucket name incorrect
-- `NoSuchKey` - Prefix or pattern not matching files
+- `Unsupported file format` - Object suffix is not `.json`, `.binpb`, or a configured encoding suffix
+- Empty reads for a partition prefix - Prefix, `s3_partition_format`, or time range does not match the object keys
 
 #### Issue: Duplicate Data
 
 **Cause**: Collector reprocessing same files
 
-**Solution**: Enable processed file marking:
+**Solution**: Enable processed file tagging:
 
 ```yaml
 receivers:
   awss3:
-    mark_processed: true
-    processed_tag: "processed-timestamp"
+    s3downloader:
+      tag_object_after_ingestion: true
+      skip_ingesting_tagged_objects: true
 ```
 
 ---
@@ -784,32 +772,33 @@ Automatically transition old logs to cheaper storage classes:
 }
 ```
 
-### 2. Reduce Polling Frequency
+### 2. Process Smaller Time Ranges
 
-For non-urgent data, poll less frequently:
+For non-urgent data, process bounded time windows:
 
 ```yaml
 receivers:
   awss3:
-    poll_interval: 1h  # Poll once per hour instead of every minute
+    starttime: "2026-02-05 00:00"
+    endtime: "2026-02-05 01:00"
 ```
 
 ### 3. Filter Before Processing
 
-Only download and process files you need:
+Only download and process files under the prefixes you need:
 
 ```yaml
 receivers:
   awss3:
-    # Use specific prefix to limit files
-    s3_prefix: logs/errors/
-    # Only process error logs
-    s3_pattern: "*error*.json"
+    s3downloader:
+      # Use specific prefix to limit files
+      s3_prefix: logs/errors
+      s3_partition_format: "year=%Y/month=%m/day=%d/hour=%H"
 ```
 
 ### 4. Use S3 Select (Future Enhancement)
 
-S3 Select allows filtering data before download, reducing transfer costs. While not yet supported in the receiver, watch for this feature in future releases.
+S3 Select allows filtering data before download, reducing transfer costs. While not supported in the receiver, watch for this feature in future releases.
 
 ---
 
@@ -842,7 +831,7 @@ source.type = "s3" AND log.level = "ERROR" AND s3.bucket = "production-logs"
 
 The AWS S3 Receiver unlocks the value of telemetry data stored in S3 buckets. Whether you're performing historical analysis, migrating between observability platforms, or building batch processing pipelines, this receiver provides the flexibility to work with S3-based telemetry data.
 
-Start with basic polling configuration for simple use cases, then add event-driven processing, multi-bucket support, and cost optimization as your needs grow. With proper IAM permissions, parsing configuration, and monitoring, you'll have a production-ready S3 ingestion pipeline that scales with your data volume.
+Start with basic time range configuration for simple use cases, then add event-driven processing, multi-bucket support, and cost optimization as your needs grow. With proper IAM permissions, encoding configuration, and monitoring, you'll have a production-ready S3 ingestion pipeline that scales with your data volume.
 
 The combination of cheap S3 storage with on-demand processing through OpenTelemetry provides a cost-effective approach to long-term telemetry retention and analysis.
 
