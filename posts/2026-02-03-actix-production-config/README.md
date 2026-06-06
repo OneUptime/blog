@@ -21,12 +21,11 @@ version = "1.0.0"
 edition = "2021"
 
 [dependencies]
-actix-web = "4"
+actix-web = { version = "4", features = ["rustls-0_23"] }
 actix-rt = "2"
-actix-tls = { version = "3", features = ["rustls-0_23"] }
 rustls = "0.23"
 rustls-pemfile = "2"
-tokio = { version = "1", features = ["full", "signal"] }
+tokio = { version = "1", features = ["full"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
 tracing-actix-web = "0.7"
@@ -35,6 +34,7 @@ serde_json = "1"
 config = "0.14"
 thiserror = "1"
 anyhow = "1"
+num_cpus = "1"
 
 [profile.release]
 opt-level = 3
@@ -97,7 +97,7 @@ The key settings to tune are:
 | backlog | 2048 | Increase for high connection bursts |
 | max_connections | 25000 | Limit based on available memory |
 | keep_alive | 5s | 60-75s for HTTP/1.1, match your LB |
-| client_request_timeout | 60s | Depends on your slowest endpoint |
+| client_request_timeout | 5s | Depends on your slowest endpoint |
 
 ## TLS Setup with Rustls
 
@@ -577,6 +577,7 @@ FROM debian:bookworm-slim
 
 RUN apt-get update && apt-get install -y \
     ca-certificates \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user
