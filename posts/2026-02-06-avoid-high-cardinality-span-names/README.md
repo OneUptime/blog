@@ -19,6 +19,8 @@ Span names should behave like `http.method`, not like `user.id`.
 ```python
 # Bad - every user gets a unique span name
 
+from opentelemetry import trace
+
 tracer = trace.get_tracer("user-service")
 
 def get_user(user_id):
@@ -26,7 +28,7 @@ def get_user(user_id):
         return db.query(f"SELECT * FROM users WHERE id = {user_id}")
 ```
 
-If you have 100,000 users, this creates 100,000 unique span names. Your tracing backend stores each unique span name in its index. Queries like "show me the average latency for user lookups" become impossible because each lookup has a different name.
+If you have 100,000 users, this creates 100,000 unique span names. Many tracing backends index or group by span name, so this can create a large number of distinct indexed values. Queries like "show me the average latency for user lookups" become impractical because each lookup has a different name.
 
 ## More Examples of High-Cardinality Span Names
 
@@ -62,17 +64,17 @@ def get_user(user_id):
 
 ```javascript
 // Good - parameterized route as span name, specifics in attributes
-const span = tracer.startSpan('GET /api/users/:userId/orders/:orderId');
-span.setAttribute('user.id', userId);
-span.setAttribute('order.id', orderId);
+const routeSpan = tracer.startSpan('GET /api/users/:userId/orders/:orderId');
+routeSpan.setAttribute('user.id', userId);
+routeSpan.setAttribute('order.id', orderId);
 
 // Good - fixed job name with run metadata in attributes
-const span = tracer.startSpan('scheduled_job');
-span.setAttribute('job.run_timestamp', Date.now());
+const jobSpan = tracer.startSpan('scheduled_job');
+jobSpan.setAttribute('job.run_timestamp', Date.now());
 
 // Good - fixed operation name with search term as attribute
-const span = tracer.startSpan('search');
-span.setAttribute('search.query', req.query.q);
+const searchSpan = tracer.startSpan('search');
+searchSpan.setAttribute('search.query', req.query.q);
 ```
 
 ## How HTTP Instrumentations Handle This
@@ -87,9 +89,19 @@ GET /api/users/12345  (bad - specific ID in name)
 If you see specific IDs in your HTTP span names, check that your router instrumentation is correctly extracting the route template. For Express:
 
 ```javascript
+const { registerInstrumentations } = require('@opentelemetry/instrumentation');
+const { HttpInstrumentation } = require('@opentelemetry/instrumentation-http');
 const { ExpressInstrumentation } = require('@opentelemetry/instrumentation-express');
 
-// Express instrumentation automatically uses route templates
+registerInstrumentations({
+    instrumentations: [
+        // Express instrumentation expects the HTTP layer to be instrumented
+        new HttpInstrumentation(),
+        new ExpressInstrumentation(),
+    ],
+});
+
+// Express instrumentation sets http.route from the matched route template
 // GET /api/users/:id instead of GET /api/users/12345
 ```
 
@@ -97,13 +109,13 @@ const { ExpressInstrumentation } = require('@opentelemetry/instrumentation-expre
 
 Here is what high-cardinality span names do to popular tracing backends:
 
-**Index bloat**: Each unique span name creates an entry in the name index. With millions of unique names, the index grows into gigabytes, slowing down all queries.
+**Index bloat**: In backends that index span names, each unique span name can create an entry in the name index. With millions of unique names, the index can grow significantly, slowing down queries.
 
-**Aggregation failures**: You cannot compute "p99 latency for user lookups" when every lookup has a different name. You would need to search across millions of span names.
+**Aggregation failures**: It becomes impractical to compute "p99 latency for user lookups" by span name when every lookup has a different name. You would need to search across many span names or rely on a separate normalized field.
 
 **UI performance**: Dropdown menus and autocomplete for span names become unusable when there are millions of options.
 
-**Storage costs**: Many backends charge based on the number of unique time series or span names. High cardinality directly increases your bill.
+**Storage costs**: Backends that index span names or derive metrics from spans may store more metadata or create more series when span names have high cardinality. This can increase cost, depending on the backend's billing and storage model.
 
 ## A Naming Convention
 
@@ -125,7 +137,7 @@ You can detect high-cardinality span names by querying your tracing backend:
 -- Check for span names that appear only once (likely high-cardinality)
 SELECT span_name, COUNT(*) as count
 FROM spans
-WHERE timestamp > NOW() - INTERVAL 1 HOUR
+WHERE timestamp > NOW() - INTERVAL '1 hour'
 GROUP BY span_name
 HAVING count = 1
 ORDER BY span_name
