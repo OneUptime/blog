@@ -37,12 +37,12 @@ dist:
   output_path: ./dist
 
 processors:
-  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/redactionprocessor v0.96.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/redactionprocessor v0.153.0
 ```
 
 ## Basic Configuration
 
-The redaction processor has three main configuration options: `allowed_keys`, `blocked_values`, and `summary`. Let's start with a minimal configuration.
+The redaction processor has several configuration options. The most common are `allowed_keys`, `blocked_values`, and `summary`. Let's start with a minimal configuration.
 
 This configuration allows only a small set of standard attributes through and blocks everything else.
 
@@ -83,19 +83,21 @@ http.status_code: 200
 http.route: /api/users
 redaction.redacted.count: 3
 redaction.redacted.keys: user.email, user.id, custom.payment_token
+redaction.allowed.count: 3
+redaction.allowed.keys: http.method, http.route, http.status_code
 ```
 
-The `summary: debug` setting adds those `redaction.redacted.*` attributes so you can see what was removed. In production, set `summary: info` or `summary: silent` to avoid leaking the blocked attribute keys themselves.
+The `summary: debug` setting adds diagnostic attributes so you can see what was removed and what was allowed. In production, set `summary: info` or `summary: silent` to avoid leaking the blocked attribute keys themselves.
 
 ## Understanding Allowed Keys
 
-The `allowed_keys` list supports exact matches and regex patterns. This gives you flexibility to allow groups of related attributes without listing each one.
+The `allowed_keys` list supports exact key matches. Regex matching is available through other settings such as `ignored_key_patterns` and `blocked_key_patterns`, but ignored keys bypass value redaction, so use ignored patterns only for attributes you know are safe.
 
-This configuration uses regex patterns to allow all standard HTTP and RPC semantic convention attributes.
+This configuration allows a representative set of standard HTTP and RPC semantic convention attributes.
 
 ```yaml
-# allowed-keys-regex.yaml
-# Use regex patterns to allow families of attributes
+# allowed-keys.yaml
+# Allow selected semantic convention attributes
 processors:
   redaction:
     allowed_keys:
@@ -105,28 +107,41 @@ processors:
       - service.namespace
       - deployment.environment
 
-      # Regex: allow all http.* attributes from semantic conventions
-      - "http\\..*"
+      # HTTP attributes from semantic conventions
+      - http.method
+      - http.status_code
+      - http.route
+      - http.scheme
+      - http.request.method
+      - http.response.status_code
 
-      # Regex: allow all rpc.* attributes
-      - "rpc\\..*"
+      # RPC attributes
+      - rpc.system
+      - rpc.service
+      - rpc.method
 
-      # Regex: allow all db.* attributes (careful - db.statement may contain PII)
-      - "db\\.system"
-      - "db\\.operation"
-      - "db\\.name"
+      # Database attributes (careful - db.statement may contain PII)
+      - db.system
+      - db.operation
+      - db.name
       # Deliberately NOT allowing db.statement
 
-      # Regex: allow all network.* attributes
-      - "net\\..*"
-      - "network\\..*"
+      # Network attributes
+      - net.peer.name
+      - net.peer.port
+      - network.protocol.name
+      - network.protocol.version
 
       # Allow OpenTelemetry resource attributes
-      - "telemetry\\..*"
-      - "os\\..*"
-      - "process\\..*"
-      - "host\\.name"
-      - "k8s\\..*"
+      - telemetry.sdk.name
+      - telemetry.sdk.language
+      - telemetry.sdk.version
+      - os.type
+      - process.pid
+      - host.name
+      - k8s.namespace.name
+      - k8s.pod.name
+      - k8s.container.name
 
     summary: info
 ```
@@ -135,7 +150,7 @@ Notice that we deliberately exclude `db.statement` from the allowed list. Databa
 
 ## Configuring Blocked Values
 
-Even allowed attributes can contain sensitive data in their values. The `blocked_values` option lets you define regex patterns that should be redacted from the values of allowed attributes.
+Even allowed attributes can contain sensitive data in their values. The `blocked_values` option lets you define regex patterns that should be redacted from the string values of allowed attributes. By default, only string values are checked; set `redact_all_types: true` if you need non-string values to be checked using their string representation.
 
 This configuration redacts common PII patterns (credit cards, SSNs, emails) from the values of any allowed attribute.
 
@@ -202,7 +217,7 @@ Key things to note:
 1. The `allowed_keys` check happens first. If an attribute key is not allowed, it is removed entirely regardless of its value.
 2. The `blocked_values` patterns are only applied to attributes that pass the `allowed_keys` check.
 3. The `blocked_values` replacement is partial. Only the matched portion of the value is replaced, not the entire value.
-4. Resource attributes are NOT processed by the redaction processor. It only operates on span attributes, span event attributes, and log record attributes.
+4. The redaction processor also processes resource and scope attributes, span attributes, span event attributes, log record attributes, log body maps, and metric datapoint attributes.
 
 ## Production Configuration Example
 
@@ -224,25 +239,33 @@ processors:
   redaction:
     allowed_keys:
       # OpenTelemetry semantic conventions - HTTP
-      - "http\\.method"
-      - "http\\.status_code"
-      - "http\\.route"
-      - "http\\.scheme"
-      - "http\\.response_content_length"
-      - "http\\.request_content_length"
+      - http.method
+      - http.status_code
+      - http.route
+      - http.scheme
+      - http.request.method
+      - http.response.status_code
+      - http.response_content_length
+      - http.request_content_length
 
       # URL attributes (path is safe, query and full may contain PII)
       - url.path
       - url.scheme
 
       # Network attributes
-      - "net\\..*"
-      - "network\\..*"
+      - net.peer.name
+      - net.peer.port
+      - network.peer.address
+      - network.peer.port
+      - network.protocol.name
+      - network.protocol.version
       - server.address
       - server.port
 
       # RPC attributes
-      - "rpc\\..*"
+      - rpc.system
+      - rpc.service
+      - rpc.method
 
       # Database attributes (excluding db.statement for safety)
       - db.system
@@ -250,7 +273,9 @@ processors:
       - db.operation
 
       # Messaging attributes
-      - "messaging\\..*"
+      - messaging.system
+      - messaging.operation
+      - messaging.destination.name
 
       # Service identity
       - service.name
@@ -259,13 +284,14 @@ processors:
       - deployment.environment
 
       # Kubernetes attributes
-      - "k8s\\..*"
+      - k8s.namespace.name
+      - k8s.pod.name
+      - k8s.container.name
+      - k8s.deployment.name
 
       # OpenTelemetry internals
-      - "otel\\..*"
-      - span.kind
-      - status.code
-      - status.message
+      - otel.scope.name
+      - otel.scope.version
 
     blocked_values:
       # Credit card numbers
@@ -308,14 +334,19 @@ service:
 
   telemetry:
     metrics:
-      address: ":8888"
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: "0.0.0.0"
+                port: 8888
 ```
 
 ## Handling Edge Cases
 
 There are a few gotchas to be aware of when deploying the redaction processor.
 
-### Span Events and Links
+### Span Events
 
 The redaction processor processes attributes on span events (like exception events) in addition to the span's own attributes. This is important because exception stack traces often contain PII. However, the exception message itself is stored in the `exception.message` attribute, so make sure you either allow it with blocked value patterns or exclude it from your allowlist.
 
@@ -335,7 +366,7 @@ processors:
 
 The redaction processor adds latency proportional to the number of attributes per span and the number of `blocked_values` regex patterns. For most deployments, this is negligible. But if you have spans with 100+ attributes and 20+ blocked value patterns, you might see measurable overhead.
 
-Benchmark with your actual data. You can measure the processor's impact by checking the `otelcol_processor_latency` metric (if available) or by comparing end-to-end pipeline latency with and without the processor.
+Benchmark with your actual data. You can compare `otelcol_processor_incoming_items` and `otelcol_processor_outgoing_items` for the redaction processor and measure end-to-end pipeline latency with and without the processor.
 
 ### Multiple Redaction Processor Instances
 
@@ -353,9 +384,14 @@ processors:
 
   redaction/relaxed:
     allowed_keys:
-      - "http\\..*"
-      - "db\\..*"
-      - "service\\..*"
+      - http.method
+      - http.status_code
+      - http.route
+      - db.system
+      - db.operation
+      - db.name
+      - service.name
+      - service.version
     blocked_values:
       - "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}"
     summary: info
