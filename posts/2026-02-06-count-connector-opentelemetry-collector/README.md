@@ -50,7 +50,7 @@ connectors:
         # Attributes to use as metric dimensions
         attributes:
           - key: service.name
-          - key: http.status_code
+          - key: http.response.status_code
 
 receivers:
   otlp:
@@ -83,7 +83,7 @@ service:
       exporters: [otlp/metrics]
 ```
 
-This configuration counts all incoming spans and creates metrics labeled by service name and HTTP status code.
+This configuration counts all incoming spans and creates metrics labeled by service name and HTTP response status code.
 
 ## Advanced Filtering with Conditions
 
@@ -96,13 +96,12 @@ connectors:
       # Count only HTTP server spans
       http.server.span.count:
         description: "Count of HTTP server spans"
-        # Only count spans that match these conditions
+        # Only count spans that match this condition
         conditions:
-          - 'attributes["span.kind"] == "server"'
-          - 'attributes["http.method"] != nil'
+          - 'kind == SPAN_KIND_SERVER and attributes["http.request.method"] != nil'
         attributes:
-          - key: http.method
-          - key: http.status_code
+          - key: http.request.method
+          - key: http.response.status_code
           - key: service.name
 
       # Count only error spans
@@ -113,16 +112,15 @@ connectors:
         attributes:
           - key: service.name
           - key: error.type
-          - key: span.kind
 
       # Count database operations
       db.operation.count:
         description: "Count of database operations"
         conditions:
-          - 'attributes["db.system"] != nil'
+          - 'attributes["db.system.name"] != nil'
         attributes:
-          - key: db.system
-          - key: db.operation
+          - key: db.system.name
+          - key: db.operation.name
           - key: service.name
 ```
 
@@ -140,7 +138,7 @@ connectors:
       log.severity.count:
         description: "Count of log records by severity"
         attributes:
-          - key: severity_text
+          - key: log.severity_text
           - key: service.name
           - key: deployment.environment
 
@@ -170,6 +168,12 @@ receivers:
         endpoint: 0.0.0.0:4317
 
 processors:
+  transform/log_severity:
+    log_statements:
+      - context: log
+        statements:
+          - set(attributes["log.severity_text"], severity_text)
+
   batch:
     timeout: 10s
 
@@ -183,7 +187,7 @@ service:
   pipelines:
     logs:
       receivers: [otlp]
-      processors: [batch]
+      processors: [transform/log_severity, batch]
       exporters: [count, otlp/logs]
 
     metrics:
@@ -205,10 +209,10 @@ connectors:
         attributes:
           - key: service.name
           # Create a new attribute that groups status codes
-          - key: http.status_class
+          - key: http.response.status_class
             default_value: "unknown"
         conditions:
-          - 'attributes["http.status_code"] != nil'
+          - 'attributes["http.response.status_code"] != nil'
 
 processors:
   # Transform attributes before counting
@@ -217,7 +221,7 @@ processors:
       - context: span
         statements:
           # Create status class attribute (2xx, 3xx, 4xx, 5xx)
-          - set(attributes["http.status_class"], Concat([Substring(attributes["http.status_code"], 0, 1), "xx"]))
+          - set(attributes["http.response.status_class"], Concat([Substring(String(span.attributes["http.response.status_code"]), 0, 1), "xx"], ""))
 
 service:
   pipelines:
@@ -256,7 +260,7 @@ connectors:
       infra.request.count:
         description: "Infrastructure request count"
         conditions:
-          - 'attributes["span.kind"] == "server"'
+          - 'kind == SPAN_KIND_SERVER'
         attributes:
           - key: host.name
           - key: container.id
@@ -329,7 +333,12 @@ service:
   telemetry:
     metrics:
       level: detailed
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 
   pipelines:
     traces:
@@ -344,9 +353,9 @@ service:
 ```
 
 Monitor these metrics:
-- `otelcol_connector_accepted_spans`: Spans accepted by the connector
-- `otelcol_connector_refused_spans`: Spans refused due to errors
-- `otelcol_connector_sent_metric_points`: Metric points generated
+- `otelcol_receiver_accepted_spans`: Spans accepted by the trace receiver
+- `otelcol_exporter_sent_metric_points`: Metric points sent by the metrics exporter
+- `otelcol_exporter_send_failed_metric_points`: Metric points the metrics exporter failed to send
 
 ## Real-World Use Case
 
@@ -362,9 +371,9 @@ connectors:
         conditions:
           - 'attributes["http.route"] != nil'
         attributes:
-          - key: http.method
+          - key: http.request.method
           - key: http.route
-          - key: http.status_code
+          - key: http.response.status_code
           - key: service.name
 
       # Monitor error rates
@@ -383,7 +392,7 @@ connectors:
         description: "Application log volume"
         attributes:
           - key: service.name
-          - key: severity_text
+          - key: log.severity_text
           - key: deployment.environment
 
 receivers:
@@ -404,6 +413,12 @@ processors:
         value: production
         action: upsert
 
+  transform/log_severity:
+    log_statements:
+      - context: log
+        statements:
+          - set(attributes["log.severity_text"], severity_text)
+
 exporters:
   otlp/traces:
     endpoint: ${TRACES_BACKEND}
@@ -421,7 +436,7 @@ service:
 
     logs:
       receivers: [otlp]
-      processors: [resource, batch]
+      processors: [resource, transform/log_severity, batch]
       exporters: [count, otlp/logs]
 
     metrics:
