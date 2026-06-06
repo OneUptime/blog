@@ -10,9 +10,9 @@ While OpenTelemetry provides standard exporters for popular backends like Jaeger
 
 ## Understanding the Exporter Interface
 
-An OpenTelemetry span exporter implements the `SpanExporter` trait, which defines two key methods: `export` for sending batches of spans, and `shutdown` for cleanup. The SDK calls `export` periodically with batches of completed spans.
+An OpenTelemetry span exporter implements the `SpanExporter` trait, whose primary methods are `export` for sending batches of spans, `shutdown` for cleanup, and `force_flush` for flushing already received spans. The SDK calls `export` periodically with batches of completed spans.
 
-The trait is async-aware, returning futures that complete when export finishes. This design lets you write non-blocking exporters that work well with Tokio or other async runtimes.
+In OpenTelemetry Rust SDK 0.22, the trait is async-aware by returning a boxed future from `export`. This design lets you write non-blocking exporters that work well with Tokio or other async runtimes.
 
 ## Core Dependencies
 
@@ -22,27 +22,30 @@ Your `Cargo.toml` needs these dependencies:
 [dependencies]
 opentelemetry = { version = "0.22", features = ["trace"] }
 opentelemetry_sdk = { version = "0.22", features = ["rt-tokio", "trace"] }
-async-trait = "0.1"
 tokio = { version = "1.35", features = ["full"] }
+futures-util = "0.3"
+futures-executor = "0.3"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+reqwest = { version = "0.11", features = ["json"] }
+colored = "2"
 ```
 
-The `async-trait` macro simplifies implementing async trait methods.
+The `reqwest` and `colored` crates are used by the HTTP and console examples later in the post.
 
 ## Building a Simple File Exporter
 
 Start with a basic exporter that writes spans to a JSON file:
 
 ```rust
-use async_trait::async_trait;
-use opentelemetry::trace::SpanContext;
+use futures_util::future::BoxFuture;
 use opentelemetry_sdk::export::trace::{ExportResult, SpanData, SpanExporter};
 use serde::Serialize;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::sync::Mutex;
 
+#[derive(Debug)]
 pub struct FileExporter {
     file: Mutex<std::fs::File>,
 }
@@ -81,35 +84,38 @@ struct ExportedEvent {
     attributes: Vec<(String, String)>,
 }
 
-#[async_trait]
 impl SpanExporter for FileExporter {
-    async fn export(&mut self, batch: Vec<SpanData>) -> ExportResult {
-        let mut file = self.file.lock().unwrap();
+    fn export(&mut self, batch: Vec<SpanData>) -> BoxFuture<'static, ExportResult> {
+        let result = (|| {
+            let mut file = self.file.lock().unwrap();
 
-        for span in batch {
-            let exported = convert_span_to_export_format(&span);
+            for span in batch {
+                let exported = convert_span_to_export_format(&span);
 
-            match serde_json::to_string(&exported) {
-                Ok(json) => {
-                    if let Err(e) = writeln!(file, "{}", json) {
-                        eprintln!("Failed to write span: {}", e);
+                match serde_json::to_string(&exported) {
+                    Ok(json) => {
+                        if let Err(e) = writeln!(file, "{}", json) {
+                            eprintln!("Failed to write span: {}", e);
+                            return Err(opentelemetry::trace::TraceError::Other(Box::new(e)));
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to serialize span: {}", e);
                         return Err(opentelemetry::trace::TraceError::Other(Box::new(e)));
                     }
                 }
-                Err(e) => {
-                    eprintln!("Failed to serialize span: {}", e);
-                    return Err(opentelemetry::trace::TraceError::Other(Box::new(e)));
-                }
             }
-        }
 
-        // Flush to ensure data is written
-        if let Err(e) = file.flush() {
-            eprintln!("Failed to flush file: {}", e);
-            return Err(opentelemetry::trace::TraceError::Other(Box::new(e)));
-        }
+            // Flush to ensure data is written
+            if let Err(e) = file.flush() {
+                eprintln!("Failed to flush file: {}", e);
+                return Err(opentelemetry::trace::TraceError::Other(Box::new(e)));
+            }
 
-        Ok(())
+            Ok(())
+        })();
+
+        Box::pin(std::future::ready(result))
     }
 
     fn shutdown(&mut self) {
@@ -166,6 +172,7 @@ Wire up the custom exporter with the OpenTelemetry SDK:
 
 ```rust
 use opentelemetry::global;
+use opentelemetry::trace::{TraceContextExt, Tracer};
 use opentelemetry_sdk::trace::{self, RandomIdGenerator, Sampler, TracerProvider};
 use opentelemetry_sdk::{runtime, Resource};
 use opentelemetry::KeyValue;
@@ -180,9 +187,10 @@ fn init_with_custom_exporter() -> Result<(), Box<dyn std::error::Error>> {
         runtime::Tokio
     )
     .with_batch_config(
-        opentelemetry_sdk::trace::BatchConfig::default()
+        opentelemetry_sdk::trace::BatchConfigBuilder::default()
             .with_max_queue_size(2048)
             .with_scheduled_delay(std::time::Duration::from_secs(5))
+            .build()
     )
     .build();
 
@@ -240,6 +248,7 @@ Create an exporter that sends spans to a custom HTTP endpoint:
 use reqwest::Client;
 use serde::Serialize;
 
+#[derive(Debug)]
 pub struct HttpExporter {
     client: Client,
     endpoint: String,
@@ -266,12 +275,13 @@ struct ResourceInfo {
     attributes: std::collections::HashMap<String, String>,
 }
 
-#[async_trait]
 impl SpanExporter for HttpExporter {
-    async fn export(&mut self, batch: Vec<SpanData>) -> ExportResult {
+    fn export(&mut self, batch: Vec<SpanData>) -> BoxFuture<'static, ExportResult> {
         let spans: Vec<ExportedSpan> = batch.iter()
             .map(convert_span_to_export_format)
             .collect();
+        let client = self.client.clone();
+        let endpoint = self.endpoint.clone();
 
         let payload = SpanBatch {
             spans,
@@ -281,28 +291,30 @@ impl SpanExporter for HttpExporter {
             },
         };
 
-        match self.client
-            .post(&self.endpoint)
-            .json(&payload)
-            .timeout(std::time::Duration::from_secs(10))
-            .send()
-            .await
-        {
-            Ok(response) => {
-                if response.status().is_success() {
-                    Ok(())
-                } else {
-                    eprintln!("Export failed with status: {}", response.status());
-                    Err(opentelemetry::trace::TraceError::Other(
-                        format!("HTTP {}", response.status()).into()
-                    ))
+        Box::pin(async move {
+            match client
+                .post(&endpoint)
+                .json(&payload)
+                .timeout(std::time::Duration::from_secs(10))
+                .send()
+                .await
+            {
+                Ok(response) => {
+                    if response.status().is_success() {
+                        Ok(())
+                    } else {
+                        eprintln!("Export failed with status: {}", response.status());
+                        Err(opentelemetry::trace::TraceError::from(
+                            format!("HTTP {}", response.status())
+                        ))
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Export request failed: {}", e);
+                    Err(opentelemetry::trace::TraceError::Other(Box::new(e)))
                 }
             }
-            Err(e) => {
-                eprintln!("Export request failed: {}", e);
-                Err(opentelemetry::trace::TraceError::Other(Box::new(e)))
-            }
-        }
+        })
     }
 
     fn shutdown(&mut self) {
@@ -319,8 +331,8 @@ Make your exporter resilient to transient failures:
 
 ```rust
 use std::time::Duration;
-use tokio::time::sleep;
 
+#[derive(Debug)]
 pub struct RetryingExporter<E> {
     inner: E,
     max_retries: usize,
@@ -337,28 +349,29 @@ impl<E> RetryingExporter<E> {
     }
 }
 
-#[async_trait]
-impl<E: SpanExporter + Send> SpanExporter for RetryingExporter<E> {
-    async fn export(&mut self, batch: Vec<SpanData>) -> ExportResult {
+impl<E: SpanExporter> SpanExporter for RetryingExporter<E> {
+    fn export(&mut self, batch: Vec<SpanData>) -> BoxFuture<'static, ExportResult> {
         let mut attempt = 0;
 
-        loop {
-            match self.inner.export(batch.clone()).await {
-                Ok(()) => return Ok(()),
+        let result = loop {
+            match futures_executor::block_on(self.inner.export(batch.clone())) {
+                Ok(()) => break Ok(()),
                 Err(e) if attempt < self.max_retries => {
                     attempt += 1;
                     eprintln!(
                         "Export failed (attempt {}/{}): {:?}",
                         attempt, self.max_retries, e
                     );
-                    sleep(self.retry_delay * attempt as u32).await;
+                    std::thread::sleep(self.retry_delay * attempt as u32);
                 }
                 Err(e) => {
                     eprintln!("Export failed after {} retries", self.max_retries);
-                    return Err(e);
+                    break Err(e);
                 }
             }
-        }
+        };
+
+        Box::pin(std::future::ready(result))
     }
 
     fn shutdown(&mut self) {
@@ -397,6 +410,7 @@ Retry logic ensures temporary network issues don't result in lost spans.
 Send spans to multiple backends simultaneously:
 
 ```rust
+#[derive(Debug)]
 pub struct MultiExporter {
     exporters: Vec<Box<dyn SpanExporter + Send>>,
 }
@@ -414,26 +428,25 @@ impl MultiExporter {
     }
 }
 
-#[async_trait]
 impl SpanExporter for MultiExporter {
-    async fn export(&mut self, batch: Vec<SpanData>) -> ExportResult {
+    fn export(&mut self, batch: Vec<SpanData>) -> BoxFuture<'static, ExportResult> {
         let mut errors = Vec::new();
 
         for (idx, exporter) in self.exporters.iter_mut().enumerate() {
-            if let Err(e) = exporter.export(batch.clone()).await {
+            if let Err(e) = futures_executor::block_on(exporter.export(batch.clone())) {
                 eprintln!("Exporter {} failed: {:?}", idx, e);
                 errors.push(e);
             }
         }
 
         // Succeed if at least one exporter succeeded
-        if errors.len() == self.exporters.len() {
-            Err(opentelemetry::trace::TraceError::Other(
-                "All exporters failed".into()
-            ))
+        let result = if errors.len() == self.exporters.len() {
+            Err(opentelemetry::trace::TraceError::from("All exporters failed"))
         } else {
             Ok(())
-        }
+        };
+
+        Box::pin(std::future::ready(result))
     }
 
     fn shutdown(&mut self) {
@@ -488,23 +501,33 @@ where
     }
 }
 
-#[async_trait]
+impl<E, F> std::fmt::Debug for FilteringExporter<E, F>
+where
+    E: std::fmt::Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FilteringExporter")
+            .field("inner", &self.inner)
+            .finish_non_exhaustive()
+    }
+}
+
 impl<E, F> SpanExporter for FilteringExporter<E, F>
 where
-    E: SpanExporter + Send,
+    E: SpanExporter,
     F: Fn(&SpanData) -> bool + Send + Sync,
 {
-    async fn export(&mut self, batch: Vec<SpanData>) -> ExportResult {
+    fn export(&mut self, batch: Vec<SpanData>) -> BoxFuture<'static, ExportResult> {
         let filtered: Vec<SpanData> = batch
             .into_iter()
             .filter(|span| (self.filter)(span))
             .collect();
 
         if filtered.is_empty() {
-            return Ok(());
+            return Box::pin(std::future::ready(Ok(())));
         }
 
-        self.inner.export(filtered).await
+        self.inner.export(filtered)
     }
 
     fn shutdown(&mut self) {
@@ -553,6 +576,7 @@ Create a pretty-printing exporter for local development:
 ```rust
 use colored::*;
 
+#[derive(Debug)]
 pub struct ConsoleExporter {
     verbose: bool,
 }
@@ -617,13 +641,12 @@ impl ConsoleExporter {
     }
 }
 
-#[async_trait]
 impl SpanExporter for ConsoleExporter {
-    async fn export(&mut self, batch: Vec<SpanData>) -> ExportResult {
+    fn export(&mut self, batch: Vec<SpanData>) -> BoxFuture<'static, ExportResult> {
         for span in batch {
             self.print_span(&span);
         }
-        Ok(())
+        Box::pin(std::future::ready(Ok(())))
     }
 
     fn shutdown(&mut self) {
@@ -642,6 +665,7 @@ Track exporter performance with internal metrics:
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
+#[derive(Debug)]
 pub struct MeteredExporter<E> {
     inner: E,
     export_count: Arc<AtomicU64>,
@@ -674,19 +698,22 @@ pub struct ExporterStats {
     pub span_count: u64,
 }
 
-#[async_trait]
-impl<E: SpanExporter + Send> SpanExporter for MeteredExporter<E> {
-    async fn export(&mut self, batch: Vec<SpanData>) -> ExportResult {
+impl<E: SpanExporter> SpanExporter for MeteredExporter<E> {
+    fn export(&mut self, batch: Vec<SpanData>) -> BoxFuture<'static, ExportResult> {
         self.export_count.fetch_add(1, Ordering::Relaxed);
         self.span_count.fetch_add(batch.len() as u64, Ordering::Relaxed);
+        let failure_count = Arc::clone(&self.failure_count);
+        let export = self.inner.export(batch);
 
-        match self.inner.export(batch).await {
-            Ok(()) => Ok(()),
-            Err(e) => {
-                self.failure_count.fetch_add(1, Ordering::Relaxed);
-                Err(e)
+        Box::pin(async move {
+            match export.await {
+                Ok(()) => Ok(()),
+                Err(e) => {
+                    failure_count.fetch_add(1, Ordering::Relaxed);
+                    Err(e)
+                }
             }
-        }
+        })
     }
 
     fn shutdown(&mut self) {
@@ -711,6 +738,7 @@ Write tests to verify your exporter's behavior:
 mod tests {
     use super::*;
     use opentelemetry::trace::{TraceId, SpanId, SpanContext, TraceFlags};
+    use opentelemetry_sdk::trace::{SpanEvents, SpanLinks};
     use opentelemetry_sdk::export::trace::SpanData;
 
     fn create_test_span(name: &str) -> SpanData {
@@ -728,9 +756,11 @@ mod tests {
             start_time: std::time::SystemTime::now(),
             end_time: std::time::SystemTime::now(),
             attributes: vec![],
-            events: vec![],
-            links: vec![],
+            dropped_attributes_count: 0,
+            events: SpanEvents::default(),
+            links: SpanLinks::default(),
             status: opentelemetry::trace::Status::Unset,
+            resource: Default::default(),
             instrumentation_lib: Default::default(),
         }
     }
