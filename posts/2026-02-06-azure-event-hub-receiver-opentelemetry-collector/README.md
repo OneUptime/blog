@@ -27,10 +27,10 @@ The Azure Event Hub Receiver is an OpenTelemetry Collector component that consum
 ### Key Features
 
 - **Consumer group support**: Multiple collectors can consume the same event stream
-- **Checkpoint management**: Automatically tracks processing progress
-- **Partitioning**: Scales horizontally across Event Hub partitions
-- **Multiple authentication methods**: Connection strings, managed identities, service principals
-- **Format flexibility**: Supports JSON, raw text, and custom parsing
+- **Checkpoint management**: Tracks processing progress with a storage extension or Azure Blob checkpoint store
+- **Partitioning**: Scales horizontally across Event Hub partitions when using the Azure Blob checkpoint store
+- **Multiple authentication methods**: Connection strings or Azure identity through the Azure Auth extension
+- **Format flexibility**: Supports Azure Monitor payloads and raw log payloads
 
 ---
 
@@ -53,7 +53,7 @@ graph TB
     F -->|OTLP| G
 ```
 
-The receiver leverages Event Hub's partitioning model to enable horizontal scaling. Multiple collector instances can consume from different partitions in parallel, providing high throughput and fault tolerance.
+The receiver can leverage Event Hub's partitioning model to enable horizontal scaling. Multiple collector instances can consume from different partitions in parallel when configured with a shared Azure Blob checkpoint store, providing high throughput and fault tolerance.
 
 ---
 
@@ -63,15 +63,15 @@ Before configuring the receiver, ensure you have:
 
 1. **Azure Event Hub Namespace** with at least one Event Hub
 2. **Consumer group** created for the OpenTelemetry Collector (don't use $Default in production)
-3. **Azure Storage Account** for checkpoint storage (required for offset management)
-4. **Authentication credentials** - Connection string, managed identity, or service principal
-5. **OpenTelemetry Collector** version 0.75.0 or later with azureeventhub receiver component
+3. **Checkpoint storage** - either a Collector storage extension for restart persistence or an Azure Storage container for distributed partition ownership
+4. **Authentication credentials** - Connection string or Azure identity through the Azure Auth extension
+5. **OpenTelemetry Collector Contrib** version 0.149.0 or later with the `azure_event_hub` receiver component for the Azure Blob checkpoint store examples shown here
 
 ---
 
 ## Authentication Setup
 
-The receiver supports three authentication methods:
+The receiver supports two authentication patterns:
 
 ### Method 1: Connection String (Simplest)
 
@@ -80,19 +80,19 @@ Get the connection string from Azure Portal:
 1. Navigate to Event Hubs Namespace
 2. Go to Shared access policies
 3. Select RootManageSharedAccessKey (or create a custom policy with Listen permission)
-4. Copy the connection string
+4. Copy the connection string, including the `EntityPath` for the Event Hub
 
-### Method 2: Managed Identity (Recommended for Azure VMs)
+### Method 2: Azure Auth Extension (Recommended for Azure Infrastructure)
 
-Assign the managed identity these roles:
+Configure the `azure_auth` extension with managed identity, workload identity, service principal credentials, or default credentials. Assign the identity these roles:
 - `Azure Event Hubs Data Receiver` on the Event Hub
-- `Storage Blob Data Contributor` on the checkpoint storage account
+- `Storage Blob Data Contributor` on the checkpoint storage account if you use `blob_checkpoint_store`
 
 ### Method 3: Service Principal
 
 Create a service principal and assign:
 - `Azure Event Hubs Data Receiver` role on Event Hub
-- `Storage Blob Data Contributor` role on storage account
+- `Storage Blob Data Contributor` role on storage account if you use `blob_checkpoint_store`
 
 Store credentials as environment variables:
 ```bash
@@ -105,117 +105,87 @@ export AZURE_CLIENT_SECRET="your-client-secret"
 
 ## Basic Configuration
 
-Here's a minimal configuration to start consuming logs from Azure Event Hubs. This example uses connection string authentication:
+Here's a minimal configuration to start consuming Azure Monitor logs from Azure Event Hubs. This example uses connection string authentication and the `file_storage` extension for restart persistence:
 
 ```yaml
 # Configure the Azure Event Hub receiver
 
 receivers:
-  # The azureeventhub receiver consumes from Event Hubs
-  azureeventhub:
-    # Event Hub connection string (use environment variable for security)
-    connection: ${EVENTHUB_CONNECTION_STRING}
-
-    # Name of the Event Hub to consume from
-    eventhub: telemetry-logs
+  # The azure_event_hub receiver consumes from Event Hubs
+  azure_event_hub:
+    # Event Hub connection string with EntityPath (use environment variable for security)
+    connection: ${env:EVENTHUB_CONNECTION_STRING}
 
     # Consumer group (create dedicated group for OTel, don't use $Default)
-    consumer_group: otel-collector
+    group: otel-collector
 
-    # Storage account for checkpoints (tracks processing progress)
-    storage:
-      # Connection string for Azure Storage account
-      connection: ${STORAGE_CONNECTION_STRING}
-      # Container name for storing checkpoints
-      container: otel-checkpoints
+    # Persist offsets across collector restarts
+    storage: file_storage
 
-    # How to parse incoming messages
-    format: json
+    # Parse Azure Monitor Event Hub payloads
+    format: azure
 
-    # Field mapping for log messages
-    logs:
-      # JSON field containing the log message
-      body_field: message
-      # JSON field containing timestamp
-      timestamp_field: timestamp
-      # Timestamp format
-      timestamp_format: "2006-01-02T15:04:05.000Z"
+extensions:
+  file_storage:
+    directory: /var/lib/otelcol/eventhub
+    create_directory: true
 
 # Configure where to send processed logs
 exporters:
   otlphttp:
     endpoint: https://oneuptime.com/otlp
     headers:
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+      x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
 
 # Define the pipeline
 service:
+  extensions: [file_storage]
   pipelines:
     logs:
-      receivers: [azureeventhub]
+      receivers: [azure_event_hub]
       exporters: [otlphttp]
 ```
 
-This basic configuration connects to an Event Hub, consumes messages, parses them as JSON logs, and exports to OneUptime. The checkpoint storage ensures that if the collector restarts, it resumes from where it left off rather than reprocessing old messages.
+This basic configuration connects to an Event Hub, consumes messages, parses Azure Monitor records, and exports to OneUptime. The storage extension helps the receiver resume from stored offsets after a collector restart.
 
 ---
 
 ## Production Configuration with Managed Identity
 
-For production deployments on Azure infrastructure, use managed identity instead of connection strings. This configuration demonstrates best practices:
+For production deployments on Azure infrastructure, use the Azure Auth extension instead of connection strings. This configuration demonstrates best practices:
 
 ```yaml
+extensions:
+  azure_auth:
+    # System-assigned managed identity. For user-assigned managed identity,
+    # set managed_identity.client_id to the user-assigned identity client ID.
+    managed_identity: {}
+
 receivers:
-  azureeventhub:
-    # Use managed identity authentication (no connection string needed)
-    # Collector must run on Azure VM, AKS, or App Service with managed identity enabled
-    auth:
-      type: managed_identity
+  azure_event_hub:
+    # Use Azure Auth extension authentication (no Event Hub connection string needed)
+    # Collector must run on Azure infrastructure with managed identity enabled
+    auth: azure_auth
 
     # Event Hub details
-    namespace: telemetry-namespace.servicebus.windows.net
-    eventhub: production-logs
-    consumer_group: otel-prod-collector
+    event_hub:
+      namespace: telemetry-namespace.servicebus.windows.net
+      name: production-logs
+    group: otel-prod-collector
 
-    # Checkpoint storage with managed identity
-    storage:
-      auth:
-        type: managed_identity
-      account_name: checkpointstorage
-      container: prod-checkpoints
+    # Azure Blob checkpoint store for distributed partition ownership
+    blob_checkpoint_store:
+      storage_account_url: https://checkpointstorage.blob.core.windows.net
+      container_name: prod-checkpoints
 
     # Message parsing configuration
-    format: json
+    format: azure
+    apply_semantic_conventions: true
 
-    # Advanced consumer settings
-    consumer:
-      # Maximum number of messages to receive per batch
-      prefetch_count: 300
-      # How long to wait for messages before checking for new ones
-      receive_timeout: 60s
-      # Maximum time to keep a partition lease before renewal
-      partition_manager:
-        lease_duration: 60s
-        renewal_interval: 10s
-
-    # Attribute mapping for better observability
-    logs:
-      body_field: message
-      timestamp_field: time
-      timestamp_format: "2006-01-02T15:04:05Z07:00"
-
-      # Map JSON fields to OpenTelemetry attributes
-      attributes:
-        - source_key: resourceId
-          target_key: azure.resource.id
-        - source_key: category
-          target_key: azure.log.category
-        - source_key: operationName
-          target_key: azure.operation.name
-        - source_key: level
-          target_key: severity_text
-        - source_key: properties.serviceRequestId
-          target_key: service.request.id
+    # Advanced polling settings
+    max_poll_events: 300
+    poll_rate: 5
+    prefetch_count: 300
 
 processors:
   # Protect collector memory
@@ -228,7 +198,7 @@ processors:
   resource:
     attributes:
       - key: source.type
-        value: azure_eventhub
+        value: azure_event_hub
         action: insert
       - key: cloud.provider
         value: azure
@@ -240,31 +210,23 @@ processors:
         value: production-logs
         action: insert
 
-  # Parse Azure resource logs format
-  attributes/azure:
-    actions:
-      # Extract resource type from Azure resource ID
-      - key: azure.resource.type
-        from_attribute: azure.resource.id
-        action: extract
-        pattern: "^/subscriptions/[^/]+/resourceGroups/[^/]+/providers/([^/]+)"
-
-      # Normalize severity levels
-      - key: severity_text
-        from_attribute: severity_text
-        action: upsert
+  # Normalize severity levels for Azure resource logs
+  transform/severity:
+    log_statements:
+      - context: log
+        statements:
+          - set(severity_number, SEVERITY_NUMBER_DEBUG) where severity_text == "Verbose"
+          - set(severity_number, SEVERITY_NUMBER_INFO) where severity_text == "Informational"
+          - set(severity_number, SEVERITY_NUMBER_WARN) where severity_text == "Warning"
+          - set(severity_number, SEVERITY_NUMBER_ERROR) where severity_text == "Error"
+          - set(severity_number, SEVERITY_NUMBER_FATAL) where severity_text == "Critical"
 
   # Filter out noisy logs
   filter/noise:
-    logs:
-      exclude:
-        match_type: regexp
-        resource_attributes:
-          - key: azure.log.category
-            value: "AuditEvent"  # Example: exclude audit events
-        body:
-          - "healthcheck"
-          - "keepalive"
+    error_mode: ignore
+    log_conditions:
+      - log.attributes["azure.category"] == "AuditEvent"
+      - IsString(log.body) and IsMatch(log.body, "healthcheck|keepalive")
 
   # Batch for efficiency
   batch:
@@ -277,7 +239,7 @@ exporters:
   otlphttp/oneuptime:
     endpoint: https://oneuptime.com/otlp
     headers:
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+      x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
     compression: gzip
     timeout: 30s
     retry_on_failure:
@@ -286,27 +248,33 @@ exporters:
       max_interval: 30s
       max_elapsed_time: 300s
 
-  # Backup export to Azure Log Analytics
+  # Backup export to Azure Monitor
   azuremonitor:
-    workspace_id: ${LOG_ANALYTICS_WORKSPACE_ID}
-    instrumentation_key: ${APPLICATION_INSIGHTS_KEY}
+    connection_string: ${env:APPLICATIONINSIGHTS_CONNECTION_STRING}
 
 service:
+  extensions: [azure_auth]
+
   # Enable collector self-monitoring
   telemetry:
     logs:
       level: info
     metrics:
-      address: :8888
       level: detailed
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 
   pipelines:
     logs:
-      receivers: [azureeventhub]
+      receivers: [azure_event_hub]
       processors:
         - memory_limiter
         - resource
-        - attributes/azure
+        - transform/severity
         - filter/noise
         - batch
       exporters:
@@ -331,47 +299,24 @@ This production configuration includes:
 Azure services export diagnostic logs to Event Hubs in a specific format. Here's a configuration optimized for Azure diagnostic logs:
 
 ```yaml
+extensions:
+  azure_auth:
+    managed_identity: {}
+
 receivers:
-  azureeventhub:
-    auth:
-      type: managed_identity
-    namespace: diagnostics-hub.servicebus.windows.net
-    eventhub: insights-logs-diagnostics
-    consumer_group: otel-diagnostics
+  azure_event_hub:
+    auth: azure_auth
+    event_hub:
+      namespace: diagnostics-hub.servicebus.windows.net
+      name: insights-logs-diagnostics
+    group: otel-diagnostics
 
-    storage:
-      auth:
-        type: managed_identity
-      account_name: diagcheckpoints
-      container: checkpoints
+    blob_checkpoint_store:
+      storage_account_url: https://diagcheckpoints.blob.core.windows.net
+      container_name: checkpoints
 
-    format: json
-
-    # Azure diagnostic logs have nested structure
-    logs:
-      # Records array contains the actual log entries
-      body_field: records[*]
-      timestamp_field: time
-      timestamp_format: "2006-01-02T15:04:05.0000000Z"
-
-      attributes:
-        # Standard Azure diagnostic log fields
-        - source_key: resourceId
-          target_key: azure.resource.id
-        - source_key: category
-          target_key: azure.category
-        - source_key: operationName
-          target_key: azure.operation
-        - source_key: resultType
-          target_key: azure.result.type
-        - source_key: level
-          target_key: severity_text
-        - source_key: location
-          target_key: cloud.region
-        # Properties object contains service-specific fields
-        - source_key: properties
-          target_key: azure.properties
-          flatten: true
+    format: azure
+    apply_semantic_conventions: true
 
 processors:
   # Transform Azure severity levels to OpenTelemetry conventions
@@ -380,23 +325,11 @@ processors:
       - context: log
         statements:
           # Map Azure levels to OTel severity numbers
-          - set(severity_number, 1) where severity_text == "Verbose"
-          - set(severity_number, 5) where severity_text == "Informational"
-          - set(severity_number, 9) where severity_text == "Warning"
-          - set(severity_number, 13) where severity_text == "Error"
-          - set(severity_number, 17) where severity_text == "Critical"
-
-  # Extract subscription and resource group from resource ID
-  attributes/resource:
-    actions:
-      - key: azure.subscription.id
-        from_attribute: azure.resource.id
-        action: extract
-        pattern: "^/subscriptions/([^/]+)"
-      - key: azure.resource.group
-        from_attribute: azure.resource.id
-        action: extract
-        pattern: "^/subscriptions/[^/]+/resourceGroups/([^/]+)"
+          - set(severity_number, SEVERITY_NUMBER_DEBUG) where severity_text == "Verbose"
+          - set(severity_number, SEVERITY_NUMBER_INFO) where severity_text == "Informational"
+          - set(severity_number, SEVERITY_NUMBER_WARN) where severity_text == "Warning"
+          - set(severity_number, SEVERITY_NUMBER_ERROR) where severity_text == "Error"
+          - set(severity_number, SEVERITY_NUMBER_FATAL) where severity_text == "Critical"
 
   batch:
     timeout: 10s
@@ -406,20 +339,20 @@ exporters:
   otlphttp:
     endpoint: https://oneuptime.com/otlp
     headers:
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+      x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
 
 service:
+  extensions: [azure_auth]
   pipelines:
     logs:
-      receivers: [azureeventhub]
+      receivers: [azure_event_hub]
       processors:
         - transform/severity
-        - attributes/resource
         - batch
       exporters: [otlphttp]
 ```
 
-This configuration properly handles the nested structure of Azure diagnostic logs and maps Azure-specific fields to OpenTelemetry semantic conventions.
+This configuration handles Azure diagnostic log records and maps Azure-specific fields to OpenTelemetry attributes. With `apply_semantic_conventions: true`, the receiver uses OpenTelemetry semantic convention attribute names where the receiver supports them.
 
 ---
 
@@ -428,48 +361,46 @@ This configuration properly handles the nested structure of Azure diagnostic log
 Process telemetry from multiple Event Hubs by defining multiple receivers:
 
 ```yaml
+extensions:
+  azure_auth:
+    managed_identity: {}
+
 receivers:
   # Application logs
-  azureeventhub/app_logs:
-    auth:
-      type: managed_identity
-    namespace: app-telemetry.servicebus.windows.net
-    eventhub: application-logs
-    consumer_group: otel-app
-    storage:
-      auth:
-        type: managed_identity
-      account_name: appcheckpoints
-      container: logs
-    format: json
+  azure_event_hub/app_logs:
+    auth: azure_auth
+    event_hub:
+      namespace: app-telemetry.servicebus.windows.net
+      name: application-logs
+    group: otel-app
+    blob_checkpoint_store:
+      storage_account_url: https://appcheckpoints.blob.core.windows.net
+      container_name: logs
+    format: azure
 
   # Infrastructure metrics
-  azureeventhub/infra_metrics:
-    auth:
-      type: managed_identity
-    namespace: app-telemetry.servicebus.windows.net
-    eventhub: infrastructure-metrics
-    consumer_group: otel-metrics
-    storage:
-      auth:
-        type: managed_identity
-      account_name: appcheckpoints
-      container: metrics
-    format: json
+  azure_event_hub/infra_metrics:
+    auth: azure_auth
+    event_hub:
+      namespace: app-telemetry.servicebus.windows.net
+      name: infrastructure-metrics
+    group: otel-metrics
+    blob_checkpoint_store:
+      storage_account_url: https://appcheckpoints.blob.core.windows.net
+      container_name: metrics
+    format: azure
 
   # Security events
-  azureeventhub/security:
-    auth:
-      type: managed_identity
-    namespace: security-hub.servicebus.windows.net
-    eventhub: security-events
-    consumer_group: otel-security
-    storage:
-      auth:
-        type: managed_identity
-      account_name: seccheckpoints
-      container: events
-    format: json
+  azure_event_hub/security:
+    auth: azure_auth
+    event_hub:
+      namespace: security-hub.servicebus.windows.net
+      name: security-events
+    group: otel-security
+    blob_checkpoint_store:
+      storage_account_url: https://seccheckpoints.blob.core.windows.net
+      container_name: events
+    format: azure
 
 processors:
   # Tag application logs
@@ -504,31 +435,32 @@ exporters:
   otlphttp/oneuptime:
     endpoint: https://oneuptime.com/otlp
     headers:
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+      x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
 
   # Security events to SIEM
   otlphttp/siem:
     endpoint: https://siem.company.com/otlp
     headers:
-      authorization: Bearer ${SIEM_TOKEN}
+      authorization: Bearer ${env:SIEM_TOKEN}
 
 service:
+  extensions: [azure_auth]
   pipelines:
     # Application logs pipeline
     logs/app:
-      receivers: [azureeventhub/app_logs]
+      receivers: [azure_event_hub/app_logs]
       processors: [resource/app, batch]
       exporters: [otlphttp/oneuptime]
 
     # Infrastructure metrics pipeline
     metrics:
-      receivers: [azureeventhub/infra_metrics]
+      receivers: [azure_event_hub/infra_metrics]
       processors: [resource/infra, batch]
       exporters: [otlphttp/oneuptime]
 
     # Security events pipeline
     logs/security:
-      receivers: [azureeventhub/security]
+      receivers: [azure_event_hub/security]
       processors: [resource/security, batch]
       exporters:
         - otlphttp/oneuptime
@@ -549,31 +481,27 @@ Event Hubs partitioning enables horizontal scaling. Deploy multiple collector in
 
 ```yaml
 # Deploy this configuration on multiple collector instances
+extensions:
+  azure_auth:
+    managed_identity: {}
+
 receivers:
-  azureeventhub:
-    auth:
-      type: managed_identity
-    namespace: high-volume-hub.servicebus.windows.net
-    eventhub: massive-logs  # Has 32 partitions
-    consumer_group: otel-ha-cluster
+  azure_event_hub:
+    auth: azure_auth
+    event_hub:
+      namespace: high-volume-hub.servicebus.windows.net
+      name: massive-logs  # Has 32 partitions
+    group: otel-ha-cluster
 
-    storage:
-      auth:
-        type: managed_identity
-      account_name: hacheckpoints
-      container: cluster
+    # The blob checkpoint store coordinates partition ownership across instances
+    blob_checkpoint_store:
+      storage_account_url: https://hacheckpoints.blob.core.windows.net
+      container_name: cluster
 
-    # The partition manager automatically distributes partitions across instances
-    consumer:
-      # Each instance will claim available partitions
-      # Event Hubs SDK handles load balancing automatically
-      prefetch_count: 500
-      receive_timeout: 30s
-      partition_manager:
-        lease_duration: 60s
-        renewal_interval: 10s
-        # Load balancing strategy
-        load_balancing_strategy: balanced
+    # Event Hubs SDK polling settings
+    max_poll_events: 500
+    poll_rate: 5
+    prefetch_count: 500
 
 processors:
   batch:
@@ -585,12 +513,13 @@ exporters:
   otlphttp:
     endpoint: https://oneuptime.com/otlp
     headers:
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+      x-oneuptime-token: ${env:ONEUPTIME_TOKEN}
 
 service:
+  extensions: [azure_auth]
   pipelines:
     logs:
-      receivers: [azureeventhub]
+      receivers: [azure_event_hub]
       processors: [batch]
       exporters: [otlphttp]
 ```
@@ -617,7 +546,7 @@ spec:
       serviceAccountName: otel-collector
       containers:
       - name: otel-collector
-        image: otel/opentelemetry-collector-contrib:0.93.0
+        image: otel/opentelemetry-collector-contrib:0.153.0
         args: ["--config=/conf/otel-config.yaml"]
         resources:
           requests:
@@ -672,7 +601,7 @@ spec:
         averageUtilization: 80
 ```
 
-The Event Hub SDK automatically distributes partitions across all collector instances in the same consumer group, providing both scalability and fault tolerance.
+The Event Hub SDK automatically distributes partitions across all collector instances in the same consumer group when they share the same blob checkpoint store, providing both scalability and fault tolerance.
 
 ---
 
@@ -686,8 +615,13 @@ service:
     logs:
       level: info
     metrics:
-      address: :8888
       level: detailed
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 
   # Enable pprof for performance debugging
   extensions: [pprof, health_check]
@@ -704,17 +638,19 @@ extensions:
 
 Export collector metrics to OneUptime for monitoring:
 
-- `otelcol_receiver_accepted_log_records_total` - Logs received from Event Hub
-- `otelcol_receiver_refused_log_records_total` - Logs rejected due to errors
-- `otelcol_exporter_sent_log_records_total` - Logs successfully exported
-- `eventhub_receiver_partition_lag` - Message lag per partition
-- `eventhub_receiver_checkpoint_age_seconds` - How old checkpoints are
+- `otelcol_receiver_accepted_log_records` - Logs received from Event Hub
+- `otelcol_receiver_refused_log_records` - Logs rejected due to errors
+- `otelcol_exporter_sent_log_records` - Logs successfully exported
+- `otelcol_receiver_accepted_metric_points` - Metric points received from Event Hub
+- `otelcol_receiver_accepted_spans` - Spans received from Event Hub
+
+When these metrics are exposed through a Prometheus reader, your backend may show counter names with a `_total` suffix.
 
 Create alerts in OneUptime:
 
-- **High partition lag**: Alert when lag exceeds threshold (indicates processing slowdown)
 - **No messages received**: Alert when no messages received for 5+ minutes (potential connectivity issue)
 - **High refusal rate**: Alert when refusal rate > 5% (parsing or validation errors)
+- **Exporter backlog**: Alert when exporter queue metrics indicate sustained retry or queue growth
 
 ---
 
@@ -728,28 +664,33 @@ Create alerts in OneUptime:
 
 ```yaml
 receivers:
-  azureeventhub:
-    storage:
-      auth:
-        type: managed_identity
-      account_name: checkpoints
-      container: otel
-      # Checkpoint more frequently
-      checkpoint_interval: 30s
+  azure_event_hub:
+    connection: ${env:EVENTHUB_CONNECTION_STRING}
+    group: otel
+    storage: file_storage
+
+extensions:
+  file_storage:
+    directory: /var/lib/otelcol/eventhub
+    create_directory: true
+
+service:
+  extensions: [file_storage]
 ```
 
 ### Issue: High Memory Usage
 
 **Cause**: Large batch sizes or high prefetch count
 
-**Solution**: Tune consumer settings and add memory limiter:
+**Solution**: Tune polling settings and add memory limiter:
 
 ```yaml
 receivers:
-  azureeventhub:
-    consumer:
-      prefetch_count: 100  # Reduce from default 300
-      receive_timeout: 60s
+  azure_event_hub:
+    connection: ${env:EVENTHUB_CONNECTION_STRING}
+    group: otel
+    max_poll_events: 100
+    prefetch_count: 100  # The SDK default is 300 when this is set to 0
 
 processors:
   memory_limiter:
@@ -772,7 +713,7 @@ az role assignment list \
 
 Required roles:
 - `Azure Event Hubs Data Receiver` on Event Hub
-- `Storage Blob Data Contributor` on Storage Account
+- `Storage Blob Data Contributor` on Storage Account if you use `blob_checkpoint_store`
 
 ### Issue: No Messages Received
 
@@ -805,10 +746,11 @@ Standard tier is cheaper for low volumes:
 ```yaml
 # Development configuration
 receivers:
-  azureeventhub:
-    namespace: dev-hub.servicebus.windows.net  # Standard tier
-    consumer:
-      prefetch_count: 50  # Lower for dev
+  azure_event_hub:
+    connection: ${env:EVENTHUB_CONNECTION_STRING}
+    group: otel-dev
+    max_poll_events: 50
+    prefetch_count: 50  # Lower for dev
 ```
 
 ### 2. Optimize Batch Sizes
@@ -830,15 +772,10 @@ Remove unnecessary data early in the pipeline:
 ```yaml
 processors:
   filter/cost:
-    logs:
-      exclude:
-        match_type: regexp
-        body:
-          - "debug"
-          - "trace"
-        resource_attributes:
-          - key: azure.log.category
-            value: "Audit"  # If not needed
+    error_mode: ignore
+    log_conditions:
+      - IsString(log.body) and IsMatch(log.body, "(?i)debug|trace")
+      - log.attributes["azure.category"] == "Audit"  # If not needed
 ```
 
 ### 4. Adjust Retention Period
@@ -862,8 +799,8 @@ OneUptime natively supports OpenTelemetry logs from Azure Event Hubs. After conf
 Example OneUptime query:
 
 ```text
-source.type = "azure_eventhub" AND
-azure.resource.type = "Microsoft.Web/sites" AND
+source.type = "azure_event_hub" AND
+azure.resource.id contains "/providers/Microsoft.Web/sites/" AND
 severity_text = "Error"
 ```
 
@@ -879,9 +816,9 @@ severity_text = "Error"
 
 ## Conclusion
 
-The Azure Event Hub Receiver provides a scalable, reliable way to ingest streaming telemetry from Azure services into OpenTelemetry. By leveraging Event Hubs' partitioning and checkpoint management, you can build production-grade pipelines that handle millions of events per second while maintaining exactly-once processing semantics.
+The Azure Event Hub Receiver provides a scalable, reliable way to ingest streaming telemetry from Azure services into OpenTelemetry. By leveraging Event Hubs' partitioning and checkpoint management, you can build production-grade pipelines that handle millions of events per second while maintaining at-least-once processing behavior.
 
-Start with managed identity authentication and basic parsing, then add processors for filtering, transformation, and enrichment as your needs grow. With proper monitoring and tuning, you'll have a robust Azure telemetry ingestion pipeline that scales with your infrastructure.
+Start with managed identity authentication and Azure payload parsing, then add processors for filtering, transformation, and enrichment as your needs grow. With proper monitoring and tuning, you'll have a robust Azure telemetry ingestion pipeline that scales with your infrastructure.
 
 The combination of Azure Event Hubs for durable streaming and OpenTelemetry for vendor-neutral processing gives you the flexibility to analyze Azure telemetry in any backend without lock-in.
 
