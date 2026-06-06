@@ -28,7 +28,7 @@ This guide covers the best open source monitoring tools in 2026, organized by ca
 
 **Why it stands out:** Instead of stitching together 5+ tools, OneUptime provides everything in one platform. It's OpenTelemetry-native and can be self-hosted or used as SaaS.
 
-**License:** MIT
+**License:** Apache 2.0
 
 ### Prometheus + Grafana Stack
 
@@ -44,7 +44,7 @@ The [Prometheus](https://prometheus.io/) + [Grafana](https://grafana.com/oss/gra
 
 **Limitations:** Metrics only - you'll need additional tools for logs, traces, and incidents.
 
-**License:** Apache 2.0
+**License:** Apache 2.0 (Prometheus and Alertmanager) / AGPL v3 (Grafana)
 
 ## Infrastructure Monitoring
 
@@ -61,7 +61,7 @@ The [Prometheus](https://prometheus.io/) + [Grafana](https://grafana.com/oss/gra
 
 **Why it stands out:** Mature, feature-rich, handles massive scale (100,000+ devices).
 
-**License:** GPL v2
+**License:** AGPL v3 (Zabbix 7.0+)
 
 ### Netdata
 
@@ -161,14 +161,14 @@ The [Prometheus](https://prometheus.io/) + [Grafana](https://grafana.com/oss/gra
 
 **Best for:** Full-text log search
 
-[OpenSearch](https://opensearch.org/) (AWS fork of Elasticsearch) provides powerful log analytics:
+[OpenSearch](https://opensearch.org/) (an Elasticsearch fork now under the OpenSearch Software Foundation) provides powerful log analytics:
 
 - Full-text search
 - Real-time analytics
 - Dashboards (OpenSearch Dashboards)
 - Alerting and anomaly detection
 
-**Why it stands out:** Full Elasticsearch feature set, truly open source.
+**Why it stands out:** Elasticsearch-style search and analytics under a permissive open source license.
 
 **License:** Apache 2.0
 
@@ -185,7 +185,7 @@ The [Prometheus](https://prometheus.io/) + [Grafana](https://grafana.com/oss/gra
 
 **Why it stands out:** Designed specifically for logs, not adapted from search.
 
-**License:** SSPL (Open Edition) / Enterprise License
+**License:** SSPL (Open Edition, source-available but not OSI-approved open source) / Enterprise License
 
 ## Uptime Monitoring
 
@@ -234,6 +234,8 @@ The [Prometheus](https://prometheus.io/) + [Grafana](https://grafana.com/oss/gra
 
 **Why it stands out:** Battle-tested at Netflix scale.
 
+**Note:** Netflix has archived the Dispatch repository, so treat it as a reference implementation or fork target rather than an actively maintained project.
+
 **License:** Apache 2.0
 
 ### Keep
@@ -243,13 +245,13 @@ The [Prometheus](https://prometheus.io/) + [Grafana](https://grafana.com/oss/gra
 [Keep](https://github.com/keephq/keep) is an open source AIOps platform:
 
 - Alert aggregation from any source
-- AI-powered correlation
+- Alert deduplication and correlation
 - Workflow automation
 - Incident management
 
 **Why it stands out:** Modern approach to alert fatigue.
 
-**License:** MIT
+**License:** MIT (core; enterprise features separately licensed)
 
 ## Synthetic Monitoring
 
@@ -257,7 +259,7 @@ The [Prometheus](https://prometheus.io/) + [Grafana](https://grafana.com/oss/gra
 
 **Best for:** API and browser testing
 
-[Checkly](https://www.checklyhq.com/) (open source CLI and runtime) handles synthetic monitoring:
+[Checkly](https://www.checklyhq.com/) (open source CLI) handles synthetic monitoring:
 
 - API checks with assertions
 - Browser checks (Playwright)
@@ -266,7 +268,7 @@ The [Prometheus](https://prometheus.io/) + [Grafana](https://grafana.com/oss/gra
 
 **Why it stands out:** Developer-friendly, code-first approach.
 
-**License:** MIT (CLI/Runtime)
+**License:** Apache 2.0 (CLI)
 
 ## How to Choose
 
