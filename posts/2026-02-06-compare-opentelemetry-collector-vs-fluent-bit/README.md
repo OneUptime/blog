@@ -12,7 +12,7 @@ When you need a lightweight telemetry agent that runs on every node in your clus
 
 ## What Makes Fluent Bit Different from Fluentd
 
-Before diving in, it helps to clarify that Fluent Bit is not just a smaller version of Fluentd. Fluent Bit is written entirely in C, designed for embedded and containerized environments, and focuses on being extremely lightweight. It was built from scratch with performance as the primary goal. While it shares the Fluent ecosystem branding, its internals are completely different from Fluentd's Ruby-based architecture.
+Before diving in, it helps to clarify that Fluent Bit is not just a smaller version of Fluentd. Fluent Bit is written entirely in C, designed for embedded and containerized environments, and focuses on being extremely lightweight. It was built from scratch with performance as the primary goal. While it shares the Fluent ecosystem branding, its internals are completely different from Fluentd's Ruby-oriented plugin architecture.
 
 Resource Footprint
 
@@ -32,7 +32,7 @@ If your primary concern is running a lightweight agent on resource-constrained n
 
 ## Configuration Approaches
 
-Fluent Bit uses an INI-style configuration format (though YAML support was added in version 2.0):
+Fluent Bit traditionally uses an INI-style configuration format (YAML became production-ready in version 2.0 and is the standard format as of version 3.2):
 
 ```ini
 # Fluent Bit configuration for collecting container logs
@@ -42,7 +42,7 @@ Fluent Bit uses an INI-style configuration format (though YAML support was added
     # Tail plugin reads from log files
     Name              tail
     Path              /var/log/containers/*.log
-    Parser            docker
+    multiline.parser  docker, cri
     Tag               kube.*
     Refresh_Interval  5
     Mem_Buf_Limit     10MB
@@ -75,11 +75,11 @@ The equivalent OpenTelemetry Collector configuration:
 receivers:
   filelog:
     include:
-      - /var/log/containers/*.log
+      - /var/log/pods/*/*/*.log
+    include_file_path: true
     operators:
-      # Parse the Docker JSON log format
-      - type: json_parser
-        id: docker_parser
+      # Parse Docker, CRI-O, and containerd log formats
+      - type: container
 
 processors:
   # Enrich logs with Kubernetes metadata
@@ -161,7 +161,7 @@ receivers:
         timestamp:
           parse_from: attributes.time
           layout: '%d/%b/%Y:%H:%M:%S %z'
-      # Then, convert status code to integer for filtering
+      # Then, map status code ranges to log severity
       - type: severity_parser
         parse_from: attributes.code
         mapping:
@@ -189,6 +189,9 @@ spec:
     matchLabels:
       app: fluent-bit
   template:
+    metadata:
+      labels:
+        app: fluent-bit
     spec:
       containers:
         - name: fluent-bit
@@ -203,7 +206,7 @@ spec:
               cpu: "200m"
 ```
 
-The OpenTelemetry Collector has its own operator for Kubernetes that provides auto-discovery and automatic configuration, which is more sophisticated but also more complex to set up.
+The OpenTelemetry Collector has its own operator for Kubernetes that manages Collector custom resources and can inject auto-instrumentation into workloads, which is more sophisticated but also more complex to set up.
 
 ## Output and Export Options
 
