@@ -19,7 +19,7 @@ from opentelemetry.sdk.resources import ResourceDetector, Resource
 class CustomDetector(ResourceDetector):
     def detect(self) -> Resource:
         # Return a Resource with discovered attributes
-        return Resource.create({"key": "value"})
+        return Resource({"key": "value"})
 ```
 
 In Go, it implements the `Detect` method:
@@ -37,7 +37,6 @@ Here is a detector that fetches AWS EC2 metadata and merges it with application 
 ```python
 # custom_detector.py
 
-import json
 import os
 import urllib.request
 import yaml
@@ -48,6 +47,7 @@ class CloudAppResourceDetector(ResourceDetector):
     """Detects cloud provider metadata and merges with app config."""
 
     def __init__(self, config_path=None):
+        super().__init__()
         self._config_path = config_path or os.getenv(
             "APP_CONFIG_PATH", "/etc/myapp/config.yaml"
         )
@@ -63,7 +63,7 @@ class CloudAppResourceDetector(ResourceDetector):
         app_attrs = self._load_app_config()
         attributes.update(app_attrs)
 
-        return Resource.create(attributes)
+        return Resource(attributes)
 
     def _detect_cloud_metadata(self):
         """Fetch metadata from the cloud provider's metadata service."""
@@ -128,7 +128,7 @@ class CloudAppResourceDetector(ResourceDetector):
                     if tag_key == "Name":
                         attrs["host.name"] = tag_value
                     elif tag_key == "Environment":
-                        attrs["deployment.environment"] = tag_value
+                        attrs["deployment.environment.name"] = tag_value
                     elif tag_key == "Team":
                         attrs["team.name"] = tag_value
             except Exception:
@@ -149,7 +149,7 @@ class CloudAppResourceDetector(ResourceDetector):
 
         try:
             with open(self._config_path, "r") as f:
-                config = yaml.safe_load(f)
+                config = yaml.safe_load(f) or {}
 
             resource_config = config.get("opentelemetry", {}).get("resource", {})
 
@@ -198,7 +198,7 @@ from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-from opentelemetry.sdk.resources import Resource, get_aggregated_resources, OTELResourceDetector
+from opentelemetry.sdk.resources import get_aggregated_resources, OTELResourceDetector
 from custom_detector import CloudAppResourceDetector
 
 # Run detectors in priority order (last wins for conflicts)
@@ -222,15 +222,16 @@ package detector
 
 import (
     "context"
-    "encoding/json"
+    "fmt"
     "io"
     "net/http"
     "os"
+    "strings"
     "time"
 
     "go.opentelemetry.io/otel/attribute"
     "go.opentelemetry.io/otel/sdk/resource"
-    semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
+    semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
     "gopkg.in/yaml.v3"
 )
 
@@ -266,7 +267,13 @@ func (d *CloudAppDetector) detectCloudMetadata(ctx context.Context) []attribute.
         return attrs
     }
     defer tokenResp.Body.Close()
-    tokenBytes, _ := io.ReadAll(tokenResp.Body)
+    if tokenResp.StatusCode != http.StatusOK {
+        return attrs
+    }
+    tokenBytes, err := io.ReadAll(tokenResp.Body)
+    if err != nil {
+        return attrs
+    }
     token := string(tokenBytes)
 
     attrs = append(attrs,
@@ -274,12 +281,108 @@ func (d *CloudAppDetector) detectCloudMetadata(ctx context.Context) []attribute.
         attribute.String("cloud.platform", "aws_ec2"),
     )
 
-    // Fetch region
-    if val := fetchMetadata(client, token, "/latest/meta-data/placement/region"); val != "" {
-        attrs = append(attrs, attribute.String("cloud.region", val))
+    metadataPaths := map[string]string{
+        "cloud.region":            "/latest/meta-data/placement/region",
+        "cloud.availability_zone": "/latest/meta-data/placement/availability-zone",
+        "host.id":                 "/latest/meta-data/instance-id",
+        "host.type":               "/latest/meta-data/instance-type",
+        "host.name":               "/latest/meta-data/hostname",
+    }
+
+    for key, path := range metadataPaths {
+        if val := fetchMetadata(ctx, client, token, path); val != "" {
+            attrs = append(attrs, attribute.String(key, val))
+        }
+    }
+
+    tagKeys := fetchMetadata(ctx, client, token, "/latest/meta-data/tags/instance")
+    for _, tagKey := range strings.Split(tagKeys, "\n") {
+        tagKey = strings.TrimSpace(tagKey)
+        if tagKey == "" {
+            continue
+        }
+
+        tagValue := fetchMetadata(ctx, client, token, "/latest/meta-data/tags/instance/"+tagKey)
+        switch tagKey {
+        case "Name":
+            attrs = append(attrs, attribute.String("host.name", tagValue))
+        case "Environment":
+            attrs = append(attrs, attribute.String("deployment.environment.name", tagValue))
+        case "Team":
+            attrs = append(attrs, attribute.String("team.name", tagValue))
+        }
     }
 
     return attrs
+}
+
+func (d *CloudAppDetector) loadAppConfig() []attribute.KeyValue {
+    configPath := d.ConfigPath
+    if configPath == "" {
+        configPath = os.Getenv("APP_CONFIG_PATH")
+        if configPath == "" {
+            configPath = "/etc/myapp/config.yaml"
+        }
+    }
+
+    data, err := os.ReadFile(configPath)
+    if err != nil {
+        return nil
+    }
+
+    var config struct {
+        OpenTelemetry struct {
+            Resource map[string]string `yaml:"resource"`
+        } `yaml:"opentelemetry"`
+        Features map[string]interface{} `yaml:"features"`
+    }
+    if err := yaml.Unmarshal(data, &config); err != nil {
+        return nil
+    }
+
+    var attrs []attribute.KeyValue
+    resourceConfig := config.OpenTelemetry.Resource
+    if resourceConfig["service_name"] != "" {
+        attrs = append(attrs, attribute.String("service.name", resourceConfig["service_name"]))
+    }
+    if resourceConfig["service_version"] != "" {
+        attrs = append(attrs, attribute.String("service.version", resourceConfig["service_version"]))
+    }
+    if resourceConfig["team"] != "" {
+        attrs = append(attrs, attribute.String("team.name", resourceConfig["team"]))
+    }
+    if resourceConfig["tenant_id"] != "" {
+        attrs = append(attrs, attribute.String("tenant.id", resourceConfig["tenant_id"]))
+    }
+
+    for flagName, flagValue := range config.Features {
+        attrs = append(attrs, attribute.String("feature."+flagName, fmt.Sprint(flagValue)))
+    }
+
+    return attrs
+}
+
+func fetchMetadata(ctx context.Context, client *http.Client, token, path string) string {
+    req, err := http.NewRequestWithContext(ctx, "GET", "http://169.254.169.254"+path, nil)
+    if err != nil {
+        return ""
+    }
+    req.Header.Set("X-aws-ec2-metadata-token", token)
+
+    resp, err := client.Do(req)
+    if err != nil {
+        return ""
+    }
+    defer resp.Body.Close()
+    if resp.StatusCode != http.StatusOK {
+        return ""
+    }
+
+    value, err := io.ReadAll(resp.Body)
+    if err != nil {
+        return ""
+    }
+    return string(value)
 }
 ```
 
@@ -290,7 +393,6 @@ func (d *CloudAppDetector) detectCloudMetadata(ctx context.Context) []attribute.
 import tempfile
 import os
 import yaml
-import pytest
 from custom_detector import CloudAppResourceDetector
 
 
