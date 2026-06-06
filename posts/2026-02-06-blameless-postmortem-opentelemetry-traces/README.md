@@ -26,6 +26,12 @@ The first step is ensuring you have trace data from the incident window. If you 
 ```yaml
 # otel-collector-config.yaml
 
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+
 processors:
   # Tail-based sampling retains interesting traces
   tail_sampling:
@@ -64,12 +70,11 @@ service:
 
 ## Extracting Timeline Data from Traces
 
-During a postmortem, the first thing you need is a timeline. OpenTelemetry traces contain all the data needed to construct one. Here is a Python script that queries your trace backend and builds an incident timeline.
+During a postmortem, the first thing you need is a timeline. OpenTelemetry traces contain all the data needed to construct one. Here is a Python script that queries a Jaeger-compatible trace backend and builds an incident timeline.
 
 ```python
 import requests
-from datetime import datetime, timedelta
-from collections import defaultdict
+from datetime import datetime, timezone
 
 def build_incident_timeline(
     trace_api_url: str,
@@ -91,17 +96,23 @@ def build_incident_timeline(
     }
 
     response = requests.get(f"{trace_api_url}/api/traces", params=params)
+    response.raise_for_status()
     traces = response.json()["data"]
 
     timeline = []
     for trace in traces:
+        processes = trace.get("processes", {})
         for span in trace["spans"]:
-            if span.get("tags", {}).get("error") == "true":
+            if get_tag(span, "error") == "true":
+                process = processes.get(span.get("processID"), {})
                 timeline.append({
-                    "timestamp": datetime.fromtimestamp(span["startTime"] / 1_000_000),
-                    "service": span["process"]["serviceName"],
+                    "timestamp": datetime.fromtimestamp(
+                        span["startTime"] / 1_000_000,
+                        tz=timezone.utc,
+                    ),
+                    "service": process.get("serviceName", "unknown"),
                     "operation": span["operationName"],
-                    "error_type": span.get("tags", {}).get("error.type", "unknown"),
+                    "error_type": get_tag(span, "error.type", "unknown"),
                     "error_message": get_error_message(span),
                     "trace_id": trace["traceID"],
                     "duration_ms": span["duration"] / 1000,
@@ -110,6 +121,14 @@ def build_incident_timeline(
     # Sort by timestamp to create a chronological timeline
     timeline.sort(key=lambda x: x["timestamp"])
     return timeline
+
+
+def get_tag(span: dict, key: str, default: str | None = None) -> str | None:
+    """Extract a tag value from a Jaeger span."""
+    for tag in span.get("tags", []):
+        if tag["key"] == key:
+            return str(tag["value"])
+    return default
 
 
 def get_error_message(span: dict) -> str:
@@ -185,11 +204,16 @@ The value of traces in postmortems depends on the attributes attached to spans. 
 
 ```python
 from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
 
 tracer = trace.get_tracer("payment-service")
 
 def process_payment(order_id: str, amount: float):
-    with tracer.start_as_current_span("process-payment") as span:
+    with tracer.start_as_current_span(
+        "process-payment",
+        record_exception=False,
+        set_status_on_exception=False,
+    ) as span:
         # Add attributes valuable during incident analysis
         span.set_attribute("order.id", order_id)
         span.set_attribute("payment.amount", amount)
@@ -199,7 +223,7 @@ def process_payment(order_id: str, amount: float):
             result = call_payment_gateway(amount)
             return result
         except TimeoutError as e:
-            span.set_status(trace.StatusCode.ERROR, str(e))
+            span.set_status(Status(StatusCode.ERROR, str(e)))
             span.record_exception(e)
             span.set_attribute("payment.gateway.pool.active", get_pool_active_count())
             raise
