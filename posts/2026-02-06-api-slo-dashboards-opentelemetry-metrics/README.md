@@ -18,7 +18,7 @@ Start with concrete definitions. Here are three common API SLOs:
 
 ## Setting Up the OpenTelemetry Metrics
 
-You need two core instruments: a histogram for latency and a counter for request outcomes:
+You need a histogram for latency and counters for request outcomes:
 
 ```typescript
 // slo-metrics.ts
@@ -27,46 +27,51 @@ import { metrics } from '@opentelemetry/api';
 const meter = metrics.getMeter('api-slo');
 
 // Histogram with custom bucket boundaries aligned to SLO targets
-// If your latency SLO is 500ms, you need buckets around that value
+// OpenTelemetry's HTTP semantic convention records request duration in seconds.
+// If your latency SLO is 500ms, you need buckets around 0.5 seconds.
 const requestDuration = meter.createHistogram('http.server.request.duration', {
-  description: 'HTTP request duration in milliseconds',
-  unit: 'ms',
+  description: 'Duration of HTTP server requests',
+  unit: 's',
   advice: {
     explicitBucketBoundaries: [
-      5, 10, 25, 50, 100, 200, 300, 400, 500, 750, 1000, 2000, 5000,
+      0.005, 0.01, 0.025, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.75, 1, 2, 5,
     ],
   },
 });
 
 // Counter for total requests, broken down by status category
-const requestTotal = meter.createCounter('http.server.request.total', {
+const requestTotal = meter.createCounter('http.server.requests', {
   description: 'Total HTTP requests',
+  unit: '{request}',
 });
 
 // Counter specifically for errors
 const requestErrors = meter.createCounter('http.server.request.errors', {
   description: 'HTTP requests resulting in server errors',
+  unit: '{error}',
 });
 
 export function sloMiddleware(req: any, res: any, next: any) {
   const startTime = Date.now();
 
   res.on('finish', () => {
-    const duration = Date.now() - startTime;
+    const duration = (Date.now() - startTime) / 1000;
     const route = req.route?.path || 'unknown';
     const method = req.method;
     const statusCode = res.statusCode;
 
-    const attrs = {
-      'http.method': method,
+    const attrs: Record<string, string | number> = {
+      'http.request.method': method,
       'http.route': route,
+      'http.response.status_code': statusCode,
+      'url.scheme': req.protocol || 'http',
     };
 
     requestDuration.record(duration, attrs);
-    requestTotal.add(1, { ...attrs, 'http.status_code': statusCode });
+    requestTotal.add(1, attrs);
 
     if (statusCode >= 500) {
-      requestErrors.add(1, attrs);
+      requestErrors.add(1, { ...attrs, 'error.type': String(statusCode) });
     }
   });
 
@@ -86,7 +91,7 @@ Once your metrics land in a Prometheus-compatible backend, calculate SLO complia
 1 - (
   sum(increase(http_server_request_errors_total[30d]))
   /
-  sum(increase(http_server_request_total_total[30d]))
+  sum(increase(http_server_requests_total[30d]))
 )
 
 # Result: 0.9997 means 99.97% availability - within SLO
@@ -95,10 +100,11 @@ Once your metrics land in a Prometheus-compatible backend, calculate SLO complia
 ### Latency SLO (99% within 500ms)
 
 ```promql
-# Percentage of requests completing within 500ms over the last 7 days
-sum(increase(http_server_request_duration_bucket{le="500"}[7d]))
+# Percentage of requests completing within 500ms over the last 7 days.
+# With the default OpenTelemetry-to-Prometheus name translation, the unit suffix is added.
+sum(increase(http_server_request_duration_seconds_bucket{le="0.5"}[7d]))
 /
-sum(increase(http_server_request_duration_count[7d]))
+sum(increase(http_server_request_duration_seconds_count[7d]))
 
 # Result: 0.993 means 99.3% of requests are within 500ms - within SLO
 ```
@@ -116,7 +122,7 @@ The error budget is how much unreliability you can tolerate before violating you
 1 - (
   sum(increase(http_server_request_errors_total[30d]))
   /
-  (sum(increase(http_server_request_total_total[30d])) * (1 - 0.9995))
+  (sum(increase(http_server_requests_total[30d])) * (1 - 0.9995))
 )
 
 # Result: 0.6 means 60% of error budget remains
@@ -181,7 +187,7 @@ errorBudgetRemaining.addCallback((result) => {
 
 ## Alert Thresholds for Error Budget
 
-Set up multi-level alerts based on error budget burn rate:
+Set up multi-level alerts based on remaining error budget:
 
 ```typescript
 // Alert configurations for error budget consumption
@@ -216,14 +222,14 @@ Rather than waiting until the budget is consumed, alert on the rate of consumpti
 # This catches severe incidents quickly (alerts in ~1 hour)
 sum(rate(http_server_request_errors_total[1h]))
 /
-sum(rate(http_server_request_total_total[1h]))
+sum(rate(http_server_requests_total[1h]))
 > (1 - 0.9995) * 14
 
 # Slow burn: consuming error budget 3x faster than sustainable
 # This catches gradual degradation (alerts in ~6 hours)
 sum(rate(http_server_request_errors_total[6h]))
 /
-sum(rate(http_server_request_total_total[6h]))
+sum(rate(http_server_requests_total[6h]))
 > (1 - 0.9995) * 3
 ```
 
