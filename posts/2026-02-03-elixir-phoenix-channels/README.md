@@ -774,21 +774,42 @@ sequenceDiagram
 Phoenix Channels scale horizontally out of the box. The PubSub system uses distributed Erlang to sync messages across nodes. For larger deployments, you can plug in Redis.
 
 ```elixir
-# config/prod.exs
+# lib/realtime_chat/application.ex
 
-# Default distributed Erlang PubSub (works great up to ~20 nodes)
+def start(_type, _args) do
+  children = [
+    # Default distributed Erlang PubSub (uses :pg, works great for most clusters)
+    {Phoenix.PubSub, name: RealtimeChat.PubSub},
+    # ... other children
+    RealtimeChatWeb.Endpoint
+  ]
 
-config :realtime_chat, RealtimeChat.PubSub,
-  name: RealtimeChat.PubSub,
-  adapter: Phoenix.PubSub.PG2
+  opts = [strategy: :one_for_one, name: RealtimeChat.Supervisor]
+  Supervisor.start_link(children, opts)
+end
+```
 
-# For larger clusters, use Redis adapter
-config :realtime_chat, RealtimeChat.PubSub,
-  name: RealtimeChat.PubSub,
-  adapter: Phoenix.PubSub.Redis,
-  host: System.get_env("REDIS_HOST"),
-  port: 6379,
-  node_name: System.get_env("NODE_NAME")
+For larger clusters, swap in the Redis adapter (requires adding `{:phoenix_pubsub_redis, "~> 3.0"}` to your deps).
+
+```elixir
+# lib/realtime_chat/application.ex
+
+def start(_type, _args) do
+  children = [
+    {Phoenix.PubSub,
+      name: RealtimeChat.PubSub,
+      adapter: Phoenix.PubSub.Redis,
+      host: System.get_env("REDIS_HOST"),
+      port: 6379,
+      node_name: System.get_env("NODE_NAME")
+    },
+    # ... other children
+    RealtimeChatWeb.Endpoint
+  ]
+
+  opts = [strategy: :one_for_one, name: RealtimeChat.Supervisor]
+  Supervisor.start_link(children, opts)
+end
 ```
 
 The beauty of Elixir is that a single node can handle hundreds of thousands of connections. Most teams never need to worry about horizontal scaling for Channels - a single well-provisioned server handles far more than a typical application needs.
