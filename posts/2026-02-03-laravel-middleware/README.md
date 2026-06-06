@@ -666,7 +666,7 @@ Route::post('/api/send-verification', [AuthController::class, 'sendVerification'
 
 ## Terminable Middleware
 
-Terminable middleware runs after the response has been sent to the browser:
+Terminable middleware runs after the response has been sent to the browser. You don't need to implement any interface — just define a `terminate` method on your middleware:
 
 ```php
 <?php
@@ -678,9 +678,8 @@ use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpFoundation\Response;
-use Illuminate\Contracts\Foundation\TerminableMiddleware;
 
-class LogRequestResponse implements TerminableMiddleware
+class LogRequestResponse
 {
     /**
      * Request start time
