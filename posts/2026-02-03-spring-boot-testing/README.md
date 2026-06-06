@@ -24,7 +24,7 @@ graph TD
 
     B --> K["All Beans Loaded"]
     D --> L["Controllers + MVC Infrastructure"]
-    F --> M["Repositories + Embedded DB"]
+    F --> M["Repositories + JPA Test DB"]
 ```
 
 Each annotation loads a different slice of the application context. Pick the smallest slice that covers what you need to test.
@@ -190,8 +190,8 @@ package com.example;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import java.math.BigDecimal;
 import java.util.Optional;
@@ -209,7 +209,7 @@ class ProductControllerSliceTest {
     private MockMvc mockMvc;
 
     // Mock the service dependency - it is not loaded by @WebMvcTest
-    @MockBean
+    @MockitoBean
     private ProductService productService;
 
     @Test
@@ -238,7 +238,7 @@ class ProductControllerSliceTest {
 
 ### @DataJpaTest - Repository Layer Only
 
-Use `@DataJpaTest` to test JPA repositories. It configures an embedded database, scans for `@Entity` classes, and enables transaction rollback after each test.
+Use `@DataJpaTest` to test JPA repositories. It configures JPA infrastructure, scans for `@Entity` classes, configures an embedded database when one is available on the classpath, and enables transaction rollback after each test.
 
 ```java
 // src/test/java/com/example/CustomerRepositoryTest.java
@@ -253,7 +253,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-// Configures an in-memory database and JPA infrastructure
+// Configures JPA infrastructure and an embedded database when available
 // Each test runs in a transaction that rolls back automatically
 @DataJpaTest
 class CustomerRepositoryTest {
@@ -315,17 +315,19 @@ Add the Testcontainers dependency to your project:
 <!-- pom.xml -->
 <dependency>
     <groupId>org.testcontainers</groupId>
-    <artifactId>postgresql</artifactId>
-    <version>1.19.0</version>
+    <artifactId>testcontainers-postgresql</artifactId>
+    <version>2.0.5</version>
     <scope>test</scope>
 </dependency>
 <dependency>
     <groupId>org.testcontainers</groupId>
-    <artifactId>junit-jupiter</artifactId>
-    <version>1.19.0</version>
+    <artifactId>testcontainers-junit-jupiter</artifactId>
+    <version>2.0.5</version>
     <scope>test</scope>
 </dependency>
 ```
+
+Make sure the PostgreSQL JDBC driver is also available on the test runtime classpath.
 
 This test uses a real PostgreSQL instance running in Docker:
 
@@ -338,9 +340,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -395,7 +397,7 @@ Starting a new container for each test class is slow. Use a singleton pattern to
 // src/test/java/com/example/TestContainerConfig.java
 package com.example;
 
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 // Singleton container shared across all test classes
 public class TestContainerConfig {
@@ -408,12 +410,15 @@ public class TestContainerConfig {
             .withDatabaseName("testdb")
             .withUsername("test")
             .withPassword("test")
-            // Reuse container across test runs (requires ~/.testcontainers.properties)
+            // Experimental: reuse across local test runs
+            // Requires TESTCONTAINERS_REUSE_ENABLE=true or ~/.testcontainers.properties
             .withReuse(true);
         POSTGRES.start();
     }
 }
 ```
+
+For CI, omit `withReuse(true)` so Testcontainers can clean up containers after the test run.
 
 Then reference it in your tests:
 
