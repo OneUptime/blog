@@ -231,9 +231,6 @@ auto_auth {
 
       # AWS region
       region = "us-east-1"
-
-      # Optional: specify IAM role ARN for cross-account
-      # role_arn = "arn:aws:iam::123456789012:role/VaultAuth"
     }
   }
 
@@ -991,8 +988,11 @@ Common issues and their solutions when working with Vault Agent Auto-Auth.
 Check authentication method configuration and credentials:
 
 ```bash
-# Test authentication manually
-vault login -method=kubernetes role=myapp
+# Test authentication manually (Kubernetes auth has no CLI handler,
+# so use the API endpoint directly via vault write)
+vault write auth/kubernetes/login \
+  role=myapp \
+  jwt=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
 
 # Check Kubernetes service account
 kubectl get serviceaccount myapp-sa -o yaml
