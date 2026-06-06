@@ -164,14 +164,15 @@ result = send_email('user@example.com', 'Welcome!', 'Thanks for signing up.')
 print(result.id)  # Unique task ID like 'a1b2c3d4'
 
 # Check if the task has finished (non-blocking)
-if result.is_complete():
+if result.is_ready():
     print("Task finished!")
 
 # Block until task completes and get result (with timeout)
+from huey.exceptions import ResultTimeout
 try:
     actual_result = result.get(blocking=True, timeout=30)
     print(actual_result)  # {'status': 'sent', 'recipient': 'user@example.com'}
-except TimeoutError:
+except ResultTimeout:
     print("Task did not complete in time")
 ```
 
@@ -264,8 +265,8 @@ pipeline = (
     .then(cleanup_file)  # Receives result from process_file
 )
 
-# Execute the pipeline
-result = pipeline()
+# Execute the pipeline by enqueueing it
+result = huey.enqueue(pipeline)
 ```
 
 ---
@@ -557,17 +558,18 @@ def critical_task(data):
         raise
 
 # Hook into task failure events
-@huey.signal()
+from huey.signals import SIGNAL_ERROR
+
+@huey.signal(SIGNAL_ERROR)
 def task_failed_handler(signal, task, exc=None):
-    """Called when a task fails after all retries"""
-    if signal == 'task-failed':
-        move_to_dead_letter(
-            task_id=task.id,
-            task_name=task.name,
-            args=task.args,
-            kwargs=task.kwargs,
-            error=exc
-        )
+    """Called when a task raises an unhandled exception"""
+    move_to_dead_letter(
+        task_id=task.id,
+        task_name=task.name,
+        args=task.args,
+        kwargs=task.kwargs,
+        error=exc
+    )
 ```
 
 ---
@@ -593,7 +595,7 @@ def get_queue_stats():
     pending = storage.queue_size()
 
     # Count scheduled tasks (tasks waiting for their ETA)
-    scheduled = storage.scheduled_count()
+    scheduled = storage.schedule_size()
 
     return {
         'pending': pending,
@@ -605,8 +607,8 @@ def check_task_status(task_result):
     """Check the status of a specific task"""
     return {
         'task_id': task_result.id,
-        'is_complete': task_result.is_complete(),
-        'result': task_result.get(blocking=False) if task_result.is_complete() else None
+        'is_ready': task_result.is_ready(),
+        'result': task_result.get(blocking=False) if task_result.is_ready() else None
     }
 ```
 
@@ -646,7 +648,7 @@ async def task_health(response: Response):
         return {
             "status": "healthy",
             "pending_tasks": pending,
-            "scheduled_tasks": storage.scheduled_count()
+            "scheduled_tasks": storage.schedule_size()
         }
 
     except Exception as e:
@@ -737,7 +739,7 @@ def logged_task(data):
 Start the consumer to process tasks. The consumer is a separate process that pulls tasks from Redis and executes them.
 
 ```bash
-# Start a single worker
+# Start a single worker (periodic tasks are scheduled by default)
 huey_consumer.py tasks.huey
 
 # Start with verbose logging
@@ -746,8 +748,8 @@ huey_consumer.py tasks.huey --verbose
 # Start with multiple worker threads
 huey_consumer.py tasks.huey --workers 4
 
-# Start with periodic task scheduler
-huey_consumer.py tasks.huey --periodic
+# Disable the periodic task scheduler
+huey_consumer.py tasks.huey --no-periodic
 ```
 
 ### Production Configuration
@@ -756,10 +758,10 @@ For production, configure the consumer with appropriate settings.
 
 ```bash
 # Production consumer with all options
+# (periodic tasks are scheduled by default — pass --no-periodic to opt out)
 huey_consumer.py tasks.huey \
     --workers 4 \
     --worker-type thread \
-    --periodic \
     --logfile /var/log/huey/consumer.log \
     --verbose
 ```
@@ -781,7 +783,7 @@ Group=app
 WorkingDirectory=/opt/myapp
 Environment=ENVIRONMENT=production
 Environment=REDIS_HOST=localhost
-ExecStart=/opt/myapp/venv/bin/huey_consumer.py tasks.huey --workers 4 --periodic
+ExecStart=/opt/myapp/venv/bin/huey_consumer.py tasks.huey --workers 4
 Restart=always
 RestartSec=5
 
@@ -805,7 +807,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Run the Huey consumer
-CMD ["huey_consumer.py", "tasks.huey", "--workers", "4", "--periodic"]
+CMD ["huey_consumer.py", "tasks.huey", "--workers", "4"]
 ```
 
 ```yaml
@@ -918,13 +920,14 @@ async def create_payment(amount: float):
 @app.get("/tasks/{task_id}")
 async def get_task_status(task_id: str):
     """Check status of a background task"""
-    from huey.api import Result
-    result = Result(huey, task_id)
+    # huey.result() looks up a result by task ID. Pass preserve=True so
+    # subsequent polls can still read it (the default is a destructive read).
+    value = huey.result(task_id, preserve=True)
 
     return {
         "task_id": task_id,
-        "complete": result.is_complete(),
-        "result": result.get(blocking=False) if result.is_complete() else None
+        "complete": value is not None,
+        "result": value
     }
 
 @app.get("/health/queue")
@@ -932,7 +935,7 @@ async def queue_health():
     """Health check for task queue"""
     return {
         "pending": huey.storage.queue_size(),
-        "scheduled": huey.storage.scheduled_count()
+        "scheduled": huey.storage.schedule_size()
     }
 ```
 
