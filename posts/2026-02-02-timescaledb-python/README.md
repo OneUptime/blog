@@ -967,8 +967,9 @@ def compress_chunks_manually(older_than: str = '7 days'):
     with get_connection() as conn:
         with conn.cursor() as cur:
             # Find and compress eligible chunks
+            # compress_chunk expects a REGCLASS, so schema-qualify the chunk name
             cur.execute("""
-                SELECT compress_chunk(chunk_name)
+                SELECT compress_chunk(format('%I.%I', chunk_schema, chunk_name)::regclass)
                 FROM timescaledb_information.chunks
                 WHERE hypertable_name = 'sensor_data'
                   AND NOT is_compressed
@@ -1057,13 +1058,17 @@ def get_chunk_info(table_name: str):
     """
     with get_connection() as conn:
         with conn.cursor() as cur:
+            # timescaledb_information.chunks does not expose total_bytes; use
+            # pg_total_relation_size on the schema-qualified chunk for per-chunk size.
             cur.execute("""
                 SELECT
                     chunk_name,
                     range_start,
                     range_end,
                     is_compressed,
-                    pg_size_pretty(total_bytes) AS chunk_size
+                    pg_size_pretty(
+                        pg_total_relation_size(format('%I.%I', chunk_schema, chunk_name)::regclass)
+                    ) AS chunk_size
                 FROM timescaledb_information.chunks
                 WHERE hypertable_name = %s
                 ORDER BY range_start DESC;
@@ -1120,8 +1125,7 @@ SQLAlchemy provides an ORM interface for working with TimescaleDB. While raw SQL
 # sqlalchemy_integration.py
 # Using SQLAlchemy with TimescaleDB
 from sqlalchemy import create_engine, Column, Integer, Float, String, DateTime, text
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import declarative_base, sessionmaker
 from datetime import datetime, timedelta
 
 # Create SQLAlchemy engine with connection pool settings
@@ -1132,7 +1136,7 @@ engine = create_engine(
     pool_pre_ping=True      # Verify connections before use
 )
 
-Base = declarative_base()
+Base = declarative_base()  # In SQLAlchemy 2.0+, prefer DeclarativeBase subclass
 Session = sessionmaker(bind=engine)
 
 class SensorReading(Base):
@@ -1322,7 +1326,7 @@ def analyze_sensor_data(df: pd.DataFrame) -> dict:
 
     return analysis
 
-def resample_and_analyze(df: pd.DataFrame, freq: str = '1H') -> pd.DataFrame:
+def resample_and_analyze(df: pd.DataFrame, freq: str = '1h') -> pd.DataFrame:
     """
     Resample time-series data to different frequency.
     Useful for filling gaps or changing resolution.
@@ -1373,7 +1377,7 @@ def run_analysis_workflow():
     print(analysis["summary"])
 
     # Resample to hourly
-    hourly = resample_and_analyze(df, freq='1H')
+    hourly = resample_and_analyze(df, freq='1h')
     print(f"\nHourly data: {len(hourly)} rows")
 
     # Find anomalies
@@ -1802,15 +1806,22 @@ def analyze_query_performance():
     """Analyze and optimize query performance"""
     with get_connection() as conn:
         with conn.cursor() as cur:
-            # Get hypertable statistics
+            # Get hypertable statistics by joining the hypertables view with
+            # hypertable_detailed_size() and hypertable_compression_stats().
             cur.execute("""
                 SELECT
-                    hypertable_name,
-                    total_chunks,
-                    compressed_chunks,
-                    pg_size_pretty(total_bytes) AS total_size,
-                    pg_size_pretty(compressed_bytes) AS compressed_size
-                FROM timescaledb_information.hypertable_stats;
+                    h.hypertable_name,
+                    h.num_chunks AS total_chunks,
+                    cs.number_compressed_chunks AS compressed_chunks,
+                    pg_size_pretty(ds.total_bytes) AS total_size,
+                    pg_size_pretty(cs.after_compression_total_bytes) AS compressed_size
+                FROM timescaledb_information.hypertables h
+                LEFT JOIN LATERAL hypertable_detailed_size(
+                    format('%I.%I', h.hypertable_schema, h.hypertable_name)::regclass
+                ) ds ON TRUE
+                LEFT JOIN LATERAL hypertable_compression_stats(
+                    format('%I.%I', h.hypertable_schema, h.hypertable_name)::regclass
+                ) cs ON TRUE;
             """)
 
             stats = cur.fetchall()
