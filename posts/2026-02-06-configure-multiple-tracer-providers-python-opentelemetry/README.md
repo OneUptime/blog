@@ -91,6 +91,8 @@ low_priority_tracer = low_priority_provider.get_tracer("payment.debug")
 One powerful use case for multiple providers is applying different sampling rates to different types of operations. Critical paths might need 100% sampling, while less important operations can be sampled at lower rates to reduce costs.
 
 ```python
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.sampling import (
     TraceIdRatioBased,
     ParentBased,
@@ -112,15 +114,15 @@ routine_provider = TracerProvider(
     )
 )
 
-# Provider with no sampling for local debugging
-debug_provider = TracerProvider(
+# Provider with no sampling for noisy operations you want to suppress
+suppressed_provider = TracerProvider(
     resource=Resource.create({"service.name": "api-gateway"}),
     sampler=ALWAYS_OFF  # Don't sample anything
 )
 
 critical_tracer = critical_provider.get_tracer("critical-path")
 routine_tracer = routine_provider.get_tracer("routine-path")
-debug_tracer = debug_provider.get_tracer("debug")
+suppressed_tracer = suppressed_provider.get_tracer("suppressed")
 ```
 
 ## Multi-Tenant Tracing Architecture
@@ -130,6 +132,12 @@ For multi-tenant applications, you often need to route each tenant's traces to s
 ```python
 from typing import Dict
 from threading import Lock
+
+from opentelemetry import trace
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
 class TenantTracerManager:
     """
@@ -214,7 +222,12 @@ def handle_request(tenant_id: str, request_data: dict):
 Sometimes you want to use the global provider for standard auto-instrumentation while adding custom providers for specific components. Here's how to mix both approaches.
 
 ```python
+from opentelemetry import trace
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.instrumentation.flask import FlaskInstrumentor
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from flask import Flask
 
 # Set up the global provider for auto-instrumentation
@@ -271,6 +284,13 @@ When using multiple providers, proper lifecycle management becomes critical. You
 ```python
 import atexit
 from contextlib import contextmanager
+from typing import Dict
+
+from opentelemetry import trace
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
 class ProviderRegistry:
     """
@@ -345,13 +365,19 @@ with registry.temporary_provider("test", TracerProvider()) as test_provider:
 Running multiple tracer providers adds overhead. Each provider maintains its own span processors, exporters, and buffering. Here are strategies to minimize the performance impact.
 
 ```python
-from opentelemetry.sdk.trace.export import SimpleSpanProcessor, ConsoleSpanExporter
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import (
+    BatchSpanProcessor,
+    SimpleSpanProcessor,
+    ConsoleSpanExporter
+)
 
 # Use SimpleSpanProcessor for low-volume, high-priority traces
 # This exports spans immediately without batching
 critical_provider = TracerProvider()
 critical_provider.add_span_processor(
-    SimpleSpanProcessor(OTLPSpanExporter(endpoint="critical-endpoint"))
+    SimpleSpanProcessor(OTLPSpanExporter(endpoint="https://critical-endpoint.example.com:4317"))
 )
 
 # Use BatchSpanProcessor for high-volume traces
@@ -359,14 +385,14 @@ critical_provider.add_span_processor(
 bulk_provider = TracerProvider()
 bulk_provider.add_span_processor(
     BatchSpanProcessor(
-        OTLPSpanExporter(endpoint="bulk-endpoint"),
+        OTLPSpanExporter(endpoint="https://bulk-endpoint.example.com:4317"),
         max_queue_size=4096,  # Larger buffer for high volume
         max_export_batch_size=512,  # Export in larger batches
         schedule_delay_millis=5000  # Wait up to 5 seconds before exporting
     )
 )
 
-# For debugging, use ConsoleSpanProcessor to avoid network overhead
+# For debugging, use ConsoleSpanExporter to avoid network overhead
 debug_provider = TracerProvider()
 debug_provider.add_span_processor(
     SimpleSpanProcessor(ConsoleSpanExporter())
@@ -385,6 +411,6 @@ Multiple tracer providers shine in these real-world scenarios:
 
 **4. A/B testing instrumentation:** Control group uses standard tracing, experimental group uses enhanced tracing with additional metrics to measure the impact of new features.
 
-**5. Vendor migration:** Run two providers simultaneously during a migration from one observability platform to another, ensuring no data loss during the transition.
+**5. Vendor migration:** Run separate providers for separately instrumented paths during a migration from one observability platform to another, or attach multiple span processors/exporters to one provider when you need to duplicate the same spans.
 
 Multiple tracer providers give you the flexibility to adapt your observability strategy to your application's specific needs. While the added complexity requires careful management, the benefits in terms of cost control, compliance, and operational flexibility make it worthwhile for sophisticated production systems.
