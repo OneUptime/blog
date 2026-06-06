@@ -222,6 +222,8 @@ The defineProps macro accepts a TypeScript interface, making prop definitions cl
 ```vue
 <!-- src/components/UserProfile.vue -->
 <script setup lang="ts">
+import { computed } from 'vue'
+
 // Define the shape of user data
 interface UserData {
   id: number
@@ -311,8 +313,7 @@ interface Props {
   task: Task
 }
 
-// Define events with their payload types
-// The tuple syntax (Vue 3.3+) provides named parameters
+// Define events with their payload types using call signatures
 interface Emits {
   (e: 'update', task: Task): void
   (e: 'delete', taskId: string): void
