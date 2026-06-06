@@ -18,37 +18,47 @@ Capacity planning requires resource utilization metrics at the service level, no
 # capacity_metrics.py - Key metrics for capacity planning
 
 from opentelemetry import metrics
+from opentelemetry.metrics import CallbackOptions, Observation
 import psutil
+import socket
 
 meter = metrics.get_meter("capacity.planning")
+hostname = socket.gethostname()
+service_name = "order-service"
 
-# CPU utilization as a gauge - sampled periodically
-def get_cpu_observations(options):
-    cpu_percent = psutil.cpu_percent(interval=1)
-    yield metrics.Observation(
-        value=cpu_percent,
+# CPU utilization as a gauge - sampled periodically.
+# OpenTelemetry utilization metrics use unit "1", so record 0.0-1.0.
+def get_cpu_observations(options: CallbackOptions):
+    timeout_seconds = min(options.timeout_millis / 1000, 1.0)
+    cpu_utilization = psutil.cpu_percent(interval=timeout_seconds) / 100.0
+    yield Observation(
+        value=cpu_utilization,
         attributes={"host.name": hostname, "service.name": service_name},
     )
 
 cpu_gauge = meter.create_observable_gauge(
     name="system.cpu.utilization",
-    description="CPU utilization percentage",
-    unit="%",
+    description="CPU utilization as a fraction",
+    unit="1",
     callbacks=[get_cpu_observations],
 )
 
 # Memory utilization
-def get_memory_observations(options):
+def get_memory_observations(options: CallbackOptions):
     mem = psutil.virtual_memory()
-    yield metrics.Observation(
-        value=mem.percent,
-        attributes={"host.name": hostname, "service.name": service_name},
+    yield Observation(
+        value=mem.percent / 100.0,
+        attributes={
+            "host.name": hostname,
+            "service.name": service_name,
+            "system.memory.state": "used",
+        },
     )
 
 memory_gauge = meter.create_observable_gauge(
     name="system.memory.utilization",
-    description="Memory utilization percentage",
-    unit="%",
+    description="Memory utilization as a fraction",
+    unit="1",
     callbacks=[get_memory_observations],
 )
 
@@ -104,11 +114,12 @@ exporters:
   # Short-term storage - full resolution, 15 day retention
   prometheusremotewrite/shortterm:
     endpoint: http://prometheus-shortterm:9090/api/v1/write
+    # Prometheus must be started with --web.enable-remote-write-receiver
 
   # Long-term storage - for capacity planning queries
   prometheusremotewrite/longterm:
     endpoint: http://thanos-receive:19291/api/v1/receive
-    # Thanos handles downsampling and long retention automatically
+    # Thanos Receive ingests remote write; Thanos Compactor handles downsampling and retention
 
 service:
   pipelines:
@@ -144,7 +155,8 @@ def query_prometheus_range(query, start, end, step="1h"):
         "start": start.isoformat(),
         "end": end.isoformat(),
         "step": step,
-    })
+    }, timeout=30)
+    response.raise_for_status()
     return response.json()["data"]["result"]
 
 def forecast_capacity(service_name, resource_metric, days_history=90):
@@ -172,7 +184,14 @@ def forecast_capacity(service_name, resource_metric, days_history=90):
 
     # Predict when utilization will hit the threshold
     if slope <= 0:
-        return {"status": "stable", "message": "Utilization is flat or decreasing"}
+        return {
+            "service": service_name,
+            "status": "stable",
+            "current_utilization": float(utilizations[-1]),
+            "daily_growth_rate": float(slope),
+            "projected_threshold_date": None,
+            "days_remaining": None,
+        }
 
     days_to_threshold = (CAPACITY_THRESHOLD - intercept) / slope
     threshold_date = datetime.fromtimestamp(timestamps[0]) + timedelta(days=days_to_threshold)
@@ -190,8 +209,9 @@ services = ["api-gateway", "order-service", "payment-service"]
 for svc in services:
     cpu_forecast = forecast_capacity(svc, "system_cpu_utilization")
     mem_forecast = forecast_capacity(svc, "system_memory_utilization")
-    print(f"{svc}: CPU exhaustion in {cpu_forecast['days_remaining']} days, "
-          f"Memory exhaustion in {mem_forecast['days_remaining']} days")
+    if cpu_forecast and mem_forecast:
+        print(f"{svc}: CPU threshold in {cpu_forecast['days_remaining']} days, "
+              f"Memory threshold in {mem_forecast['days_remaining']} days")
 ```
 
 ## Accounting for Seasonality
@@ -200,6 +220,8 @@ Linear regression works when growth is steady, but most services have weekly and
 
 ```python
 from statsmodels.tsa.seasonal import seasonal_decompose
+from datetime import datetime, timedelta
+import numpy as np
 import pandas as pd
 
 def forecast_with_seasonality(service_name, resource_metric, days_history=180):
@@ -209,6 +231,9 @@ def forecast_with_seasonality(service_name, resource_metric, days_history=180):
 
     query = f'avg_over_time({resource_metric}{{service_name="{service_name}"}}[1h])'
     results = query_prometheus_range(query, start, end, step="1h")
+
+    if not results:
+        return None
 
     values = results[0]["values"]
     # Build a pandas Series with hourly frequency
@@ -228,6 +253,14 @@ def forecast_with_seasonality(service_name, resource_metric, days_history=180):
 
     # Project trend forward
     current_trend = intercept + slope * days[-1]
+    if slope <= 0:
+        return {
+            "status": "stable",
+            "days_remaining": None,
+            "weekly_peak_utilization": float(series.resample('W').max().iloc[-1]),
+            "growth_rate_per_day": float(slope),
+        }
+
     days_to_threshold = (CAPACITY_THRESHOLD - current_trend) / slope
 
     return {
