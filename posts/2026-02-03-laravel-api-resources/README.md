@@ -113,7 +113,7 @@ The JSON response:
 
 ---
 
-Resource Collections
+## Resource Collections
 
 When returning multiple resources, use the `collection` method:
 
@@ -786,7 +786,7 @@ class PostResource extends JsonResource
 
 ---
 
-Resource Parameters and Context
+## Resource Parameters and Context
 
 Pass additional parameters to resources for context-aware transformations:
 
@@ -856,7 +856,7 @@ public function show(Product $product): ProductResource
 
 ---
 
-Resource Collections with Custom Logic
+## Resource Collections with Custom Logic
 
 Create collections that perform aggregations:
 
@@ -1169,7 +1169,7 @@ class Product extends Model
 }
 ```
 
-Resources
+### Resources
 
 ```php
 <?php
