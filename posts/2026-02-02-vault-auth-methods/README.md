@@ -807,9 +807,12 @@ vault auth list -detailed
 Rotate AppRole credentials periodically:
 
 ```bash
-# Rotate Secret ID for AppRole
+# Rotate Secret ID for AppRole (generates a new Secret ID inheriting the role's
+# secret_id_ttl and secret_id_num_uses settings)
 vault write -f auth/approle/role/my-app/secret-id
-vault write auth/approle/role/my-app/secret-id-num-uses num_uses=1
+
+# Adjust the role's default Secret ID usage limit if needed
+vault write auth/approle/role/my-app secret_id_num_uses=1
 ```
 
 ## Troubleshooting
