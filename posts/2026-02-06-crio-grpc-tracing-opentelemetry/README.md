@@ -22,8 +22,8 @@ enable_tracing = true
 # OTLP gRPC endpoint for the Collector
 tracing_endpoint = "localhost:4317"
 
-# Sampling rate (0.0 to 1.0)
-# 1.0 traces everything, 0.1 traces 10% of operations
+# Samples to collect per million spans
+# 1000000 traces everything, 100000 traces 10% of operations
 tracing_sampling_rate_per_million = 1000000
 ```
 
@@ -52,12 +52,10 @@ processors:
 
   # Filter out noisy low-value spans
   filter:
-    spans:
-      exclude:
-        match_type: regexp
-        span_names:
-          # Exclude health check spans
-          - ".*HealthCheck.*"
+    error_mode: ignore
+    trace_conditions:
+      # Exclude health check spans
+      - 'IsMatch(span.name, ".*HealthCheck.*")'
 
   resource:
     attributes:
@@ -128,7 +126,7 @@ If network setup consistently takes 200ms, that points to a CNI plugin performan
 
 ## Correlating with Kubernetes Traces
 
-Kubernetes 1.27+ supports tracing at the API server and kubelet levels. When all layers are instrumented, you get an end-to-end trace:
+Kubernetes 1.27+ supports system component tracing in beta, and kubelet tracing is stable in Kubernetes 1.34+. When all layers are instrumented, you get an end-to-end trace:
 
 ```text
 kubectl apply -> API Server -> Scheduler -> Kubelet -> CRI-O
@@ -149,7 +147,15 @@ The trace context propagates through the gRPC metadata, creating connected spans
 
 ## Monitoring CRI-O Metrics Alongside Traces
 
-CRI-O also exposes Prometheus metrics. Collect both traces and metrics for full visibility:
+CRI-O also exposes Prometheus metrics when metrics are enabled:
+
+```toml
+# /etc/crio/crio.conf.d/20-metrics.conf
+[crio.metrics]
+enable_metrics = true
+```
+
+Collect both traces and metrics for full visibility:
 
 ```yaml
 receivers:
@@ -192,16 +198,17 @@ service:
 Key CRI-O metrics to watch:
 
 ```text
-# Operation latency histograms
-crio_operations_latency_microseconds_bucket{operation="ContainerCreate"}
-crio_operations_latency_microseconds_bucket{operation="ContainerStart"}
+# Operation latency
+crio_operations_latency_seconds{operation="CreateContainer"}
+crio_operations_latency_seconds{operation="StartContainer"}
 
 # Operation error counts
-crio_operations_errors_total{operation="ContainerCreate"}
+crio_operations_errors_total{operation="CreateContainer"}
 
-# Image pull times
-crio_image_pulls_layer_size_bytes
-crio_image_pulls_duration_seconds
+# Image pull data
+crio_image_pulls_layer_size_bucket
+crio_image_pulls_success_total
+crio_image_pulls_failure_total
 ```
 
 ## Production Sampling Strategy
@@ -213,8 +220,8 @@ Tracing every CRI-O operation in production generates significant data. Use a se
 [crio.tracing]
 enable_tracing = true
 tracing_endpoint = "localhost:4317"
-# Trace 1% of operations at the source
-tracing_sampling_rate_per_million = 10000
+# Export all spans so the Collector can keep slow and error traces
+tracing_sampling_rate_per_million = 1000000
 ```
 
 Then use tail sampling in the Collector to keep interesting traces:
@@ -231,9 +238,13 @@ processors:
       - name: errors
         type: status_code
         status_codes: [ERROR]
+      - name: routine-sample
+        type: probabilistic
+        probabilistic:
+          sampling_percentage: 1
 ```
 
-This captures all slow operations (over 5 seconds) and all errors, while sampling routine operations at 1%.
+This captures all slow operations (over 5 seconds) and all errors, while sampling routine operations at 1%. If you lower `tracing_sampling_rate_per_million` at the CRI-O source instead, the Collector can only make tail-sampling decisions for traces CRI-O already exported.
 
 ## Summary
 
