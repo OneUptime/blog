@@ -13,7 +13,7 @@ Not all errors are equal. A `NullPointerException` deep in a logging module is v
 OpenTelemetry provides three mechanisms for recording errors on spans:
 
 1. **Span Status**: `UNSET`, `OK`, or `ERROR`. This is the high-level indicator.
-2. **Exception Events**: Created via `span.recordException()`, containing `exception.type`, `exception.message`, and `exception.stacktrace`.
+2. **Exception Events**: Created in Python via `span.record_exception()`, containing `exception.type`, `exception.message`, and `exception.stacktrace`.
 3. **Custom Attributes**: Any key-value pairs you attach to spans, like `error.category` or `error.severity`.
 
 We will use all three to build a classifier.
@@ -69,18 +69,20 @@ class ErrorClassifier:
         for event in span_data.get("events", []):
             if event.get("name") == "exception":
                 exc_type = event.get("attributes", {}).get("exception.type", "")
-                if exc_type in self.type_rules:
-                    return self.type_rules[exc_type]
+                exc_name = exc_type.rsplit(".", 1)[-1]
+                if exc_name in self.type_rules:
+                    return self.type_rules[exc_name]
 
         # Rule 2: Check HTTP status code
-        http_status = span_data.get("attributes", {}).get("http.status_code")
+        attributes = span_data.get("attributes", {})
+        http_status = attributes.get("http.response.status_code")
         if http_status:
             for status_range, category in self.http_status_rules.items():
                 if http_status in status_range:
                     return category
 
         # Rule 3: Check span attributes for custom classification
-        custom_severity = span_data.get("attributes", {}).get("error.severity")
+        custom_severity = attributes.get("error.severity")
         if custom_severity:
             try:
                 return ErrorCategory(custom_severity)
@@ -112,7 +114,7 @@ from error_categories import ErrorClassifier
 class ClassifyingSpanProcessor(SpanProcessor):
     """
     Processes completed spans, classifies any errors,
-    and enriches spans with classification attributes.
+    and records the classification for metrics or logs.
     """
 
     def __init__(self, downstream_processor):
@@ -162,7 +164,7 @@ class ClassifyingSpanProcessor(SpanProcessor):
         self.downstream.shutdown()
 
     def force_flush(self, timeout_millis=None):
-        self.downstream.force_flush(timeout_millis)
+        return self.downstream.force_flush(timeout_millis)
 ```
 
 ## Instrumenting Your Code with Classification Hints
