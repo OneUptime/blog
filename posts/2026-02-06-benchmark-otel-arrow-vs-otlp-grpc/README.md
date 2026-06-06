@@ -27,12 +27,16 @@ processors:
     send_batch_size: 1000
 
 exporters:
-  # Standard OTLP exporter (baseline)
-  otlp/standard:
+  # Standard OTLP/gRPC baseline. The otelarrow exporter can be run with
+  # Arrow disabled so it uses standard OTLP while still exposing comparable
+  # wire-byte metrics.
+  otelarrow/standard:
     endpoint: receiver-standard:4317
     tls:
       insecure: true
     compression: gzip
+    arrow:
+      disabled: true
 
   # OTel Arrow exporter (comparison)
   otelarrow/arrow:
@@ -45,11 +49,14 @@ exporters:
       max_stream_lifetime: 10m
 
 service:
+  telemetry:
+    metrics:
+      level: normal
   pipelines:
     traces/standard:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlp/standard]
+      exporters: [otelarrow/standard]
     traces/arrow:
       receivers: [otlp]
       processors: [batch]
@@ -70,7 +77,6 @@ go install github.com/open-telemetry/opentelemetry-collector-contrib/cmd/telemet
 telemetrygen traces \
   --otlp-endpoint localhost:4317 \
   --otlp-insecure \
-  --traces 10000 \
   --child-spans 5 \
   --rate 500 \
   --duration 60s \
@@ -91,7 +97,11 @@ exporters:
     path: /tmp/captured-traces.json
 
 # Replay the captured data for benchmarking
-# (Use a custom replayer or the file receiver)
+# (Use a custom replayer or the otlpjsonfile receiver)
+receivers:
+  otlpjsonfile:
+    include:
+      - /tmp/captured-traces.json
 ```
 
 ## Measuring Network Bytes
@@ -100,27 +110,33 @@ The most direct measurement is network bytes transferred. Use iptables counters 
 
 ```bash
 # Method 1: iptables byte counters
+# Resolve receiver names once so the numeric iptables output is easy to match
+STANDARD_IP=$(getent hosts receiver-standard | awk '{print $1; exit}')
+ARROW_IP=$(getent hosts receiver-arrow | awk '{print $1; exit}')
+
 # Reset counters
 iptables -Z OUTPUT
 
 # Add rules to track bytes to each receiver
-iptables -A OUTPUT -p tcp --dport 4317 -d receiver-standard -j ACCEPT
-iptables -A OUTPUT -p tcp --dport 4317 -d receiver-arrow -j ACCEPT
+iptables -A OUTPUT -p tcp --dport 4317 -d "$STANDARD_IP" -j ACCEPT
+iptables -A OUTPUT -p tcp --dport 4317 -d "$ARROW_IP" -j ACCEPT
 
 # Run the benchmark for a fixed duration
 sleep 300
 
 # Read the counters
-iptables -L OUTPUT -v -n | grep "receiver-standard"
-iptables -L OUTPUT -v -n | grep "receiver-arrow"
+iptables -L OUTPUT -v -n | grep "$STANDARD_IP"
+iptables -L OUTPUT -v -n | grep "$ARROW_IP"
 ```
 
 ```bash
-# Method 2: Collector internal metrics
-# Query the Collector's Prometheus metrics endpoint
+# Method 2: OTel Arrow exporter metrics
+# Query the Collector's Prometheus metrics endpoint. The otelarrow exporter
+# emits compressed on-the-wire byte counters for both the Arrow and
+# Arrow-disabled standard OTLP paths.
 
-# Bytes sent via standard OTLP
-curl -s http://collector:8888/metrics | grep 'otelcol_exporter_sent_bytes'
+# Compressed bytes sent on the wire
+curl -s http://collector:8888/metrics | grep 'otelcol_exporter_sent_wire_total'
 ```
 
 ## Automated Benchmark Script
@@ -133,9 +149,8 @@ Here is a script that runs the complete benchmark:
 
 DURATION=300  # 5 minutes
 RATE=500      # spans per second
-TOTAL_SPANS=$((RATE * DURATION))
 
-echo "Starting benchmark: ${TOTAL_SPANS} spans over ${DURATION}s"
+echo "Starting benchmark: target ${RATE} spans/s over ${DURATION}s"
 
 # Start the collector with both pipelines
 docker compose up -d collector receiver-standard receiver-arrow
@@ -145,17 +160,14 @@ sleep 10
 
 # Record initial byte counts from collector metrics
 INITIAL_STANDARD=$(curl -s http://localhost:8888/metrics | \
-  grep 'otelcol_exporter_sent_bytes_total{exporter="otlp/standard"}' | \
-  awk '{print $2}')
+  awk '/^otelcol_exporter_sent_wire_total\{/ && /exporter="otelarrow\/standard"/ {sum += $2} END {print sum + 0}')
 INITIAL_ARROW=$(curl -s http://localhost:8888/metrics | \
-  grep 'otelcol_exporter_sent_bytes_total{exporter="otelarrow/arrow"}' | \
-  awk '{print $2}')
+  awk '/^otelcol_exporter_sent_wire_total\{/ && /exporter="otelarrow\/arrow"/ {sum += $2} END {print sum + 0}')
 
 # Generate test data
 telemetrygen traces \
   --otlp-endpoint localhost:4317 \
   --otlp-insecure \
-  --traces $((TOTAL_SPANS / 5)) \
   --child-spans 5 \
   --rate ${RATE} \
   --duration ${DURATION}s
@@ -165,16 +177,14 @@ sleep 30
 
 # Record final byte counts
 FINAL_STANDARD=$(curl -s http://localhost:8888/metrics | \
-  grep 'otelcol_exporter_sent_bytes_total{exporter="otlp/standard"}' | \
-  awk '{print $2}')
+  awk '/^otelcol_exporter_sent_wire_total\{/ && /exporter="otelarrow\/standard"/ {sum += $2} END {print sum + 0}')
 FINAL_ARROW=$(curl -s http://localhost:8888/metrics | \
-  grep 'otelcol_exporter_sent_bytes_total{exporter="otelarrow/arrow"}' | \
-  awk '{print $2}')
+  awk '/^otelcol_exporter_sent_wire_total\{/ && /exporter="otelarrow\/arrow"/ {sum += $2} END {print sum + 0}')
 
 # Calculate results
-BYTES_STANDARD=$((FINAL_STANDARD - INITIAL_STANDARD))
-BYTES_ARROW=$((FINAL_ARROW - INITIAL_ARROW))
-SAVINGS=$(echo "scale=1; (1 - $BYTES_ARROW / $BYTES_STANDARD) * 100" | bc)
+BYTES_STANDARD=$(awk "BEGIN {print $FINAL_STANDARD - $INITIAL_STANDARD}")
+BYTES_ARROW=$(awk "BEGIN {print $FINAL_ARROW - $INITIAL_ARROW}")
+SAVINGS=$(awk "BEGIN {if ($BYTES_STANDARD > 0) printf \"%.1f\", (1 - $BYTES_ARROW / $BYTES_STANDARD) * 100; else print \"0.0\"}")
 
 echo "Results:"
 echo "  Standard OTLP/gRPC + gzip: ${BYTES_STANDARD} bytes"
