@@ -12,7 +12,7 @@ OpenTelemetry defines OTLP (OpenTelemetry Protocol) as the standard wire protoco
 
 ## Protocol Fundamentals
 
-OTLP/gRPC uses HTTP/2 with protocol buffers serialization over a persistent bidirectional connection. The default port is 4317.
+OTLP/gRPC uses HTTP/2 with protocol buffers serialization over a persistent connection. The default port is 4317.
 
 OTLP/HTTP uses HTTP/1.1 or HTTP/2 with either protobuf or JSON serialization. The default port is 4318. Requests go to specific paths: `/v1/traces`, `/v1/metrics`, and `/v1/logs`.
 
@@ -56,6 +56,14 @@ receivers:
             - "https://app.example.com"
           allowed_headers:
             - "Content-Type"
+            - "Authorization"
+
+processors:
+  batch:
+
+exporters:
+  otlp:
+    endpoint: backend.example.com:4317
 
 service:
   pipelines:
@@ -69,11 +77,12 @@ Configuring an SDK exporter for each protocol:
 
 ```python
 # Python SDK configuration for OTLP/gRPC export
+from grpc import Compression
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 
 # gRPC exporter with compression enabled
 grpc_exporter = OTLPSpanExporter(
-    endpoint="collector.example.com:4317",
+    endpoint="https://collector.example.com:4317",
     # gRPC supports native compression
     compression=Compression.Gzip,
     # Headers for authentication
@@ -85,11 +94,12 @@ grpc_exporter = OTLPSpanExporter(
 
 ```python
 # Python SDK configuration for OTLP/HTTP export
+from opentelemetry.exporter.otlp.proto.http import Compression
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 
 # HTTP exporter with protobuf encoding (default)
 http_exporter = OTLPSpanExporter(
-    endpoint="https://collector.example.com:4318",
+    endpoint="https://collector.example.com:4318/v1/traces",
     # HTTP also supports gzip compression
     compression=Compression.Gzip,
     headers={"Authorization": "Bearer token123"},
@@ -127,18 +137,18 @@ OTLP/HTTP supports two serialization formats:
 ```python
 # OTLP/HTTP with protobuf serialization (recommended)
 # Set via Content-Type: application/x-protobuf
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+
 http_exporter_proto = OTLPSpanExporter(
-    endpoint="https://collector:4318",
+    endpoint="https://collector:4318/v1/traces",
     # Protobuf is the default and recommended format
 )
 
 # OTLP/HTTP with JSON serialization
 # Set via Content-Type: application/json
 # Useful for debugging but significantly less efficient
-http_exporter_json = OTLPSpanExporter(
-    endpoint="https://collector:4318",
-    # Some SDKs support JSON via configuration
-)
+# Use an SDK/exporter that explicitly supports OTLP/HTTP JSON.
+# The Python OTLP/HTTP exporter above sends binary protobuf.
 ```
 
 Protobuf serialization is always preferred for production. JSON is useful for debugging because you can read the payload, but it uses 2-3x more bandwidth and CPU.
@@ -157,7 +167,8 @@ upstream otel_grpc {
 }
 
 server {
-    listen 4317 http2;
+    listen 4317;
+    http2 on;
 
     location / {
         # gRPC requires specific proxy settings
