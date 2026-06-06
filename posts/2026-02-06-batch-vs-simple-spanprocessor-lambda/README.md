@@ -93,7 +93,7 @@ trace.set_tracer_provider(provider)
 
 ## The ForceFlush Alternative for Lambda
 
-If you really want batch processing in Lambda (for performance reasons when your function handles many requests in a single invocation), you can call `force_flush` before the handler returns:
+If you really want batch processing in Lambda (for performance reasons when your function handles many records in a single invocation), you can call `force_flush` before the handler returns:
 
 ```python
 # Lambda with BatchSpanProcessor and explicit flush
@@ -123,7 +123,9 @@ def handler(event, context):
     # Force flush all buffered spans before Lambda freezes
     # Timeout in milliseconds - must complete before Lambda timeout
     remaining_ms = context.get_remaining_time_in_millis()
-    provider.force_flush(timeout_millis=min(remaining_ms - 500, 5000))
+    flush_timeout_ms = min(remaining_ms - 500, 5000)
+    if flush_timeout_ms > 0:
+        provider.force_flush(timeout_millis=flush_timeout_ms)
 
     return {"statusCode": 200}
 ```
