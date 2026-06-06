@@ -49,7 +49,7 @@ go mod init github.com/yourorg/customexporter
 
 # Install required dependencies
 go get go.opentelemetry.io/collector/component
-go get go.opentelemetry.io/collector/consumer
+go get go.opentelemetry.io/collector/config/configoptional
 go get go.opentelemetry.io/collector/exporter
 go get go.opentelemetry.io/collector/exporter/exporterhelper
 go get go.opentelemetry.io/collector/pdata
@@ -69,6 +69,7 @@ import (
 	"time"
 
 	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/config/configoptional"
 	"go.opentelemetry.io/collector/config/confighttp"
 	"go.opentelemetry.io/collector/config/configretry"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
@@ -76,20 +77,17 @@ import (
 
 // Config defines the configuration for the custom exporter
 type Config struct {
-	// HTTPClientSettings embeds common HTTP client configuration
-	confighttp.HTTPClientSettings `mapstructure:",squash"`
+	// ClientConfig embeds common HTTP client configuration
+	confighttp.ClientConfig `mapstructure:",squash"`
 
 	// BackoffConfig defines retry backoff configuration
 	configretry.BackOffConfig `mapstructure:"retry_on_failure"`
 
 	// QueueSettings configures the exporter queue
-	exporterhelper.QueueSettings `mapstructure:"sending_queue"`
+	QueueSettings configoptional.Optional[exporterhelper.QueueBatchConfig] `mapstructure:"sending_queue"`
 
-	// TimeoutSettings configures timeout behavior
-	exporterhelper.TimeoutSettings `mapstructure:",squash"`
-
-	// Endpoint specifies the backend API endpoint
-	Endpoint string `mapstructure:"endpoint"`
+	// TimeoutConfig configures timeout behavior
+	TimeoutConfig exporterhelper.TimeoutConfig `mapstructure:",squash"`
 
 	// APIKey for authentication with the backend
 	APIKey string `mapstructure:"api_key"`
@@ -97,35 +95,29 @@ type Config struct {
 	// Format specifies the output format (json, protobuf, etc.)
 	Format string `mapstructure:"format"`
 
-	// CompressionType defines the compression algorithm
-	CompressionType string `mapstructure:"compression"`
-
-	// MaxBatchSize limits the number of items per batch
-	MaxBatchSize int `mapstructure:"max_batch_size"`
-
-	// FlushInterval defines how often to flush batches
-	FlushInterval time.Duration `mapstructure:"flush_interval"`
+	// PayloadCompression defines the compression algorithm for this exporter payload
+	PayloadCompression string `mapstructure:"payload_compression"`
 
 	// CustomHeaders are additional HTTP headers to send
-	CustomHeaders map[string]string `mapstructure:"headers"`
+	CustomHeaders map[string]string `mapstructure:"custom_headers"`
 }
 
 // Validate checks if the configuration is valid
 func (cfg *Config) Validate() error {
-	if cfg.Endpoint == "" {
+	if cfg.ClientConfig.Endpoint == "" {
 		return errors.New("endpoint must be specified")
+	}
+
+	if err := cfg.ClientConfig.Validate(); err != nil {
+		return err
 	}
 
 	if cfg.Format != "json" && cfg.Format != "protobuf" {
 		return errors.New("format must be 'json' or 'protobuf'")
 	}
 
-	if cfg.MaxBatchSize <= 0 {
-		return errors.New("max_batch_size must be positive")
-	}
-
-	if cfg.FlushInterval <= 0 {
-		return errors.New("flush_interval must be positive")
+	if cfg.PayloadCompression != "" && cfg.PayloadCompression != "gzip" {
+		return errors.New("payload_compression must be empty or 'gzip'")
 	}
 
 	return nil
@@ -134,20 +126,20 @@ func (cfg *Config) Validate() error {
 // defaultConfig returns default configuration values
 func defaultConfig() component.Config {
 	return &Config{
-		HTTPClientSettings: confighttp.HTTPClientSettings{
-			Endpoint: "http://localhost:8080",
-			Timeout:  30 * time.Second,
-		},
+		ClientConfig: func() confighttp.ClientConfig {
+			cfg := confighttp.NewDefaultClientConfig()
+			cfg.Endpoint = "http://localhost:8080"
+			cfg.Timeout = 30 * time.Second
+			return cfg
+		}(),
 		BackOffConfig: configretry.NewDefaultBackOffConfig(),
-		QueueSettings: exporterhelper.NewDefaultQueueSettings(),
-		TimeoutSettings: exporterhelper.TimeoutSettings{
+		QueueSettings: configoptional.Some(exporterhelper.NewDefaultQueueConfig()),
+		TimeoutConfig: exporterhelper.TimeoutConfig{
 			Timeout: 30 * time.Second,
 		},
-		Format:          "json",
-		CompressionType: "gzip",
-		MaxBatchSize:    100,
-		FlushInterval:   10 * time.Second,
-		CustomHeaders:   map[string]string{},
+		Format:             "json",
+		PayloadCompression: "gzip",
+		CustomHeaders:      map[string]string{},
 	}
 }
 ```
@@ -165,14 +157,13 @@ import (
 	"fmt"
 
 	"go.opentelemetry.io/collector/component"
-	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
 )
 
-const (
+var (
 	// typeStr is the name used in the Collector configuration
-	typeStr = "custom"
+	typeStr = component.MustNewType("custom")
 
 	// stability level of the exporter
 	stability = component.StabilityLevelAlpha
@@ -192,7 +183,7 @@ func NewFactory() exporter.Factory {
 // createTracesExporter creates a traces exporter based on the configuration
 func createTracesExporter(
 	ctx context.Context,
-	params exporter.CreateSettings,
+	params exporter.Settings,
 	cfg component.Config,
 ) (exporter.Traces, error) {
 	exporterCfg, ok := cfg.(*Config)
@@ -207,14 +198,14 @@ func createTracesExporter(
 	}
 
 	// Wrap with exporterhelper for queue, retry, and timeout support
-	return exporterhelper.NewTracesExporter(
+	return exporterhelper.NewTraces(
 		ctx,
 		params,
 		cfg,
 		baseExporter.pushTraces,
 		exporterhelper.WithStart(baseExporter.start),
 		exporterhelper.WithShutdown(baseExporter.shutdown),
-		exporterhelper.WithTimeout(exporterCfg.TimeoutSettings),
+		exporterhelper.WithTimeout(exporterCfg.TimeoutConfig),
 		exporterhelper.WithRetry(exporterCfg.BackOffConfig),
 		exporterhelper.WithQueue(exporterCfg.QueueSettings),
 	)
@@ -223,7 +214,7 @@ func createTracesExporter(
 // createMetricsExporter creates a metrics exporter based on the configuration
 func createMetricsExporter(
 	ctx context.Context,
-	params exporter.CreateSettings,
+	params exporter.Settings,
 	cfg component.Config,
 ) (exporter.Metrics, error) {
 	exporterCfg, ok := cfg.(*Config)
@@ -236,14 +227,14 @@ func createMetricsExporter(
 		return nil, err
 	}
 
-	return exporterhelper.NewMetricsExporter(
+	return exporterhelper.NewMetrics(
 		ctx,
 		params,
 		cfg,
 		baseExporter.pushMetrics,
 		exporterhelper.WithStart(baseExporter.start),
 		exporterhelper.WithShutdown(baseExporter.shutdown),
-		exporterhelper.WithTimeout(exporterCfg.TimeoutSettings),
+		exporterhelper.WithTimeout(exporterCfg.TimeoutConfig),
 		exporterhelper.WithRetry(exporterCfg.BackOffConfig),
 		exporterhelper.WithQueue(exporterCfg.QueueSettings),
 	)
@@ -252,7 +243,7 @@ func createMetricsExporter(
 // createLogsExporter creates a logs exporter based on the configuration
 func createLogsExporter(
 	ctx context.Context,
-	params exporter.CreateSettings,
+	params exporter.Settings,
 	cfg component.Config,
 ) (exporter.Logs, error) {
 	exporterCfg, ok := cfg.(*Config)
@@ -265,14 +256,14 @@ func createLogsExporter(
 		return nil, err
 	}
 
-	return exporterhelper.NewLogsExporter(
+	return exporterhelper.NewLogs(
 		ctx,
 		params,
 		cfg,
 		baseExporter.pushLogs,
 		exporterhelper.WithStart(baseExporter.start),
 		exporterhelper.WithShutdown(baseExporter.shutdown),
-		exporterhelper.WithTimeout(exporterCfg.TimeoutSettings),
+		exporterhelper.WithTimeout(exporterCfg.TimeoutConfig),
 		exporterhelper.WithRetry(exporterCfg.BackOffConfig),
 		exporterhelper.WithQueue(exporterCfg.QueueSettings),
 	)
@@ -296,8 +287,10 @@ import (
 	"io"
 	"net/http"
 
+	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/pdata/plog"
+	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 	"go.uber.org/zap"
@@ -306,29 +299,28 @@ import (
 // customExporter implements the core exporter functionality
 type customExporter struct {
 	config   *Config
-	settings exporter.CreateSettings
+	settings exporter.Settings
 	client   *http.Client
 }
 
 // newExporter creates a new exporter instance
-func newExporter(config *Config, settings exporter.CreateSettings) (*customExporter, error) {
-	// Create HTTP client with configured settings
-	client, err := config.HTTPClientSettings.ToClient(nil, settings.TelemetrySettings)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create HTTP client: %w", err)
-	}
-
+func newExporter(config *Config, settings exporter.Settings) (*customExporter, error) {
 	return &customExporter{
 		config:   config,
 		settings: settings,
-		client:   client,
 	}, nil
 }
 
 // start initializes the exporter
 func (e *customExporter) start(ctx context.Context, host component.Host) error {
+	client, err := e.config.ClientConfig.ToClient(ctx, host.GetExtensions(), e.settings.TelemetrySettings)
+	if err != nil {
+		return fmt.Errorf("failed to create HTTP client: %w", err)
+	}
+	e.client = client
+
 	e.settings.Logger.Info("Custom exporter started",
-		zap.String("endpoint", e.config.Endpoint),
+		zap.String("endpoint", e.config.ClientConfig.Endpoint),
 		zap.String("format", e.config.Format),
 	)
 	return nil
@@ -689,7 +681,7 @@ func (e *customExporter) valueToInterface(v pcommon.Value) interface{} {
 // sendData sends payload to the backend via HTTP
 func (e *customExporter) sendData(ctx context.Context, payload []byte, dataType string) error {
 	// Compress if configured
-	if e.config.CompressionType == "gzip" {
+	if e.config.PayloadCompression == "gzip" {
 		compressed, err := e.compress(payload)
 		if err != nil {
 			return fmt.Errorf("failed to compress data: %w", err)
@@ -698,7 +690,7 @@ func (e *customExporter) sendData(ctx context.Context, payload []byte, dataType 
 	}
 
 	// Build request URL
-	url := fmt.Sprintf("%s/%s", e.config.Endpoint, dataType)
+	url := fmt.Sprintf("%s/%s", e.config.ClientConfig.Endpoint, dataType)
 
 	// Create HTTP request
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(payload))
@@ -707,8 +699,12 @@ func (e *customExporter) sendData(ctx context.Context, payload []byte, dataType 
 	}
 
 	// Set headers
-	req.Header.Set("Content-Type", "application/json")
-	if e.config.CompressionType == "gzip" {
+	if e.config.Format == "protobuf" {
+		req.Header.Set("Content-Type", "application/x-protobuf")
+	} else {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	if e.config.PayloadCompression == "gzip" {
 		req.Header.Set("Content-Encoding", "gzip")
 	}
 	if e.config.APIKey != "" {
@@ -777,6 +773,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/component/componenttest"
 	"go.opentelemetry.io/collector/config/confighttp"
 	"go.opentelemetry.io/collector/exporter/exportertest"
@@ -797,20 +794,18 @@ func TestTracesExporter(t *testing.T) {
 
 	// Create exporter configuration
 	cfg := &Config{
-		HTTPClientSettings: confighttp.HTTPClientSettings{
+		ClientConfig: confighttp.ClientConfig{
 			Endpoint: server.URL,
 			Timeout:  5 * time.Second,
 		},
-		Format:        "json",
-		MaxBatchSize:  100,
-		FlushInterval: 1 * time.Second,
+		Format: "json",
 	}
 
 	// Create the exporter
 	factory := NewFactory()
-	exporter, err := factory.CreateTracesExporter(
+	exporter, err := factory.CreateTraces(
 		context.Background(),
-		exportertest.NewNopCreateSettings(),
+		exportertest.NewNopSettings(component.MustNewType("custom")),
 		cfg,
 	)
 	require.NoError(t, err)
@@ -849,29 +844,27 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "valid config",
 			config: Config{
-				Endpoint:      "http://localhost:8080",
-				Format:        "json",
-				MaxBatchSize:  100,
-				FlushInterval: 10 * time.Second,
+				ClientConfig: confighttp.ClientConfig{
+					Endpoint: "http://localhost:8080",
+				},
+				Format: "json",
 			},
 			wantErr: false,
 		},
 		{
 			name: "missing endpoint",
 			config: Config{
-				Format:        "json",
-				MaxBatchSize:  100,
-				FlushInterval: 10 * time.Second,
+				Format: "json",
 			},
 			wantErr: true,
 		},
 		{
 			name: "invalid format",
 			config: Config{
-				Endpoint:      "http://localhost:8080",
-				Format:        "xml",
-				MaxBatchSize:  100,
-				FlushInterval: 10 * time.Second,
+				ClientConfig: confighttp.ClientConfig{
+					Endpoint: "http://localhost:8080",
+				},
+				Format: "xml",
 			},
 			wantErr: true,
 		},
@@ -920,13 +913,13 @@ dist:
   name: otelcol-custom
   description: Collector with custom exporter
   output_path: ./dist
-  otelcol_version: 0.95.0
+  otelcol_version: 0.153.0
 
 receivers:
-  - gomod: go.opentelemetry.io/collector/receiver/otlpreceiver v0.95.0
+  - gomod: go.opentelemetry.io/collector/receiver/otlpreceiver v0.153.0
 
 processors:
-  - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.95.0
+  - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.153.0
 
 exporters:
   # Include your custom exporter
@@ -934,7 +927,14 @@ exporters:
     path: ../customexporter
 
   # Include standard exporters
-  - gomod: go.opentelemetry.io/collector/exporter/loggingexporter v0.95.0
+  - gomod: go.opentelemetry.io/collector/exporter/debugexporter v0.153.0
+
+providers:
+  - gomod: go.opentelemetry.io/collector/confmap/provider/envprovider v1.48.0
+  - gomod: go.opentelemetry.io/collector/confmap/provider/fileprovider v1.48.0
+  - gomod: go.opentelemetry.io/collector/confmap/provider/httpprovider v1.48.0
+  - gomod: go.opentelemetry.io/collector/confmap/provider/httpsprovider v1.48.0
+  - gomod: go.opentelemetry.io/collector/confmap/provider/yamlprovider v1.48.0
 ```
 
 For details on building custom distributions, see https://oneuptime.com/blog/post/2026-02-06-build-custom-opentelemetry-collector-distribution-ocb/view.
@@ -963,10 +963,8 @@ exporters:
     endpoint: https://api.backend.com/v1
     api_key: your-api-key-here
     format: json
-    compression: gzip
-    max_batch_size: 100
-    flush_interval: 10s
-    headers:
+    payload_compression: gzip
+    custom_headers:
       X-Custom-Header: value
     timeout: 30s
     retry_on_failure:
@@ -978,6 +976,9 @@ exporters:
       enabled: true
       num_consumers: 10
       queue_size: 5000
+      batch:
+        flush_timeout: 10s
+        min_size: 100
 
 service:
   pipelines:
@@ -1003,35 +1004,66 @@ service:
 
 Add disk-based queueing for reliability.
 
+Include a storage extension such as `filestorageextension` in your OCB manifest:
+
+```yaml
+extensions:
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/storage/filestorageextension v0.153.0
+```
+
 ```go
 import (
+	"context"
+
+	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/config/configoptional"
+	"go.opentelemetry.io/collector/exporter"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
 )
 
 func createTracesExporter(
 	ctx context.Context,
-	params exporter.CreateSettings,
+	params exporter.Settings,
 	cfg component.Config,
 ) (exporter.Traces, error) {
 	exporterCfg := cfg.(*Config)
 	baseExporter, _ := newExporter(exporterCfg, params)
 
 	// Configure persistent queue
-	queueSettings := exporterhelper.QueueSettings{
-		Enabled:      true,
-		NumConsumers: 10,
-		QueueSize:    5000,
-		StorageID:    component.NewID("file_storage"),
-	}
+	storageID := component.MustNewID("file_storage")
+	queueSettings := exporterhelper.NewDefaultQueueConfig()
+	queueSettings.StorageID = &storageID
+	queueSettings.QueueSize = 5000
+	queueSettings.NumConsumers = 10
+	exporterCfg.QueueSettings = configoptional.Some(queueSettings)
 
-	return exporterhelper.NewTracesExporter(
+	return exporterhelper.NewTraces(
 		ctx,
 		params,
 		cfg,
 		baseExporter.pushTraces,
-		exporterhelper.WithQueue(queueSettings),
+		exporterhelper.WithQueue(exporterCfg.QueueSettings),
 	)
 }
+```
+
+Then enable the matching storage extension in the Collector configuration:
+
+```yaml
+extensions:
+  file_storage:
+    directory: /var/lib/otelcol/queue
+
+exporters:
+  custom:
+    endpoint: https://api.backend.com/v1
+    sending_queue:
+      storage: file_storage
+      queue_size: 5000
+      num_consumers: 10
+
+service:
+  extensions: [file_storage]
 ```
 
 ### Add Metrics Tracking
@@ -1040,6 +1072,10 @@ Export performance metrics for the exporter.
 
 ```go
 import (
+	"context"
+	"time"
+
+	"go.opentelemetry.io/collector/pdata/ptrace"
 	"go.opentelemetry.io/otel/metric"
 )
 
