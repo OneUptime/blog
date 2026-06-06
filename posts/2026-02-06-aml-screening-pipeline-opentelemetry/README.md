@@ -27,7 +27,20 @@ A typical AML screening pipeline has these stages:
 
 from opentelemetry import trace, metrics
 from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
 from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import (
+    ConsoleMetricExporter,
+    PeriodicExportingMetricReader,
+)
+
+trace_provider = TracerProvider()
+trace_provider.add_span_processor(BatchSpanProcessor(ConsoleSpanExporter()))
+trace.set_tracer_provider(trace_provider)
+
+metric_reader = PeriodicExportingMetricReader(ConsoleMetricExporter())
+metric_provider = MeterProvider(metric_readers=[metric_reader])
+metrics.set_meter_provider(metric_provider)
 
 tracer = trace.get_tracer("aml.screening.pipeline")
 meter = metrics.get_meter("aml.screening.pipeline")
@@ -67,6 +80,10 @@ The ingestion stage normalizes incoming transactions from various source systems
 
 ```python
 # aml_ingestion.py
+import time
+
+from aml_observability import stage_duration, tracer
+
 def ingest_transaction(raw_transaction, source_system: str):
     with tracer.start_as_current_span("aml.ingest") as span:
         span.set_attribute("aml.source_system", source_system)
@@ -94,6 +111,10 @@ The rule engine evaluates transactions against hundreds of detection rules. Perf
 
 ```python
 # aml_rule_engine.py
+import time
+
+from aml_observability import stage_duration, tracer
+
 def evaluate_rules(transaction, customer_profile):
     with tracer.start_as_current_span("aml.rule_engine.evaluate") as span:
         span.set_attribute("aml.customer_risk_rating", customer_profile.risk_rating)
@@ -140,11 +161,16 @@ Watchlist screening checks transaction parties against OFAC, EU sanctions, PEP l
 
 ```python
 # aml_watchlist.py
+import time
+
+from aml_observability import stage_duration, tracer
+
 def screen_against_watchlists(transaction, parties):
     with tracer.start_as_current_span("aml.watchlist.screen") as span:
         span.set_attribute("aml.watchlist.party_count", len(parties))
 
         all_hits = []
+        t0 = time.monotonic()
 
         for party in parties:
             with tracer.start_as_current_span("aml.watchlist.screen_party") as party_span:
@@ -176,7 +202,7 @@ def screen_against_watchlists(transaction, parties):
                 party_span.set_attribute("aml.watchlist.duration_ms", duration)
                 all_hits.extend(hits)
 
-        total_duration = sum_stage_durations()
+        total_duration = (time.monotonic() - t0) * 1000
         stage_duration.record(total_duration, {"stage": "watchlist_screening"})
 
         span.set_attribute("aml.watchlist.total_hits", len(all_hits))
@@ -189,6 +215,8 @@ The ML-based anomaly detection stage compares transaction patterns against histo
 
 ```python
 # aml_behavioral.py
+from aml_observability import tracer
+
 def run_behavioral_analytics(transaction, customer_profile):
     with tracer.start_as_current_span("aml.behavioral.analyze") as span:
         span.set_attribute("aml.behavioral.model_version", behavioral_model.version)
@@ -221,6 +249,8 @@ When screening produces hits, we generate alerts and route them to investigators
 
 ```python
 # aml_alerting.py
+from aml_observability import alerts_generated, transactions_screened, tracer
+
 def generate_and_route_alert(transaction, rule_hits, watchlist_hits, anomaly_result):
     with tracer.start_as_current_span("aml.alert.generate") as span:
         # Determine if an alert should be generated
