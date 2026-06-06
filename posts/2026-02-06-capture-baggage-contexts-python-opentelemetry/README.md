@@ -10,7 +10,7 @@ Baggage in OpenTelemetry provides a powerful mechanism for propagating key-value
 
 ## The Power of Context Propagation
 
-When building distributed systems, you often need to pass metadata that isn't directly related to tracing but is crucial for business logic or operational decisions. User IDs, tenant identifiers, feature flags, or experiment variants are perfect candidates for baggage. The challenge lies in capturing and accessing this baggage correctly across different execution contexts like async operations, thread pools, or inter-service calls.
+When building distributed systems, you often need to pass metadata that isn't directly related to tracing but is crucial for business logic or operational decisions. User IDs, tenant identifiers, feature flags, or experiment variants are perfect candidates for baggage. The challenge lies in capturing and accessing this baggage correctly across different execution contexts like async operations, thread pools that need explicit context propagation, or inter-service calls.
 
 The context system in OpenTelemetry Python is based on context variables, which are similar to thread-local storage but work across async boundaries. Understanding how contexts nest, fork, and propagate is fundamental to using baggage effectively.
 
@@ -25,7 +25,7 @@ graph TD
     B --> D[Span Context 2]
     C --> E[Nested Span Context]
     E --> F[Async Task Context]
-    D --> G[Thread Pool Context]
+    D --> G[Thread Pool Context Explicitly Propagated]
 ```
 
 ## Basic Baggage Operations
@@ -65,9 +65,9 @@ def basic_baggage_example():
 
         print(f"User: {user_id}, Tenant: {tenant_id}")
 
-        # Baggage is automatically included in spans created in this context
+        # Baggage is available to code running in this context
         with tracer.start_as_current_span("operation") as span:
-            # The span context includes baggage
+            # Add baggage values to span attributes explicitly when needed
             span.set_attribute("operation.type", "data_processing")
 
             # Remove specific baggage item
@@ -96,7 +96,6 @@ Web applications commonly need to propagate baggage across HTTP service calls. O
 from opentelemetry.propagate import inject, extract
 from opentelemetry import baggage, context
 from opentelemetry.propagators.composite import CompositePropagator
-from opentelemetry.propagators.b3 import B3MultiFormat
 from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 from opentelemetry.baggage.propagation import W3CBaggagePropagator
 import requests
@@ -107,8 +106,7 @@ from opentelemetry import propagate as global_propagate
 global_propagate.set_global_textmap(
     CompositePropagator([
         TraceContextTextMapPropagator(),
-        W3CBaggagePropagator(),
-        B3MultiFormat()
+        W3CBaggagePropagator()
     ])
 )
 
@@ -359,10 +357,9 @@ def process_standard_request(data: dict):
 
 ## Baggage in Message Queue Consumers
 
-Message queues break the automatic context propagation that works for synchronous HTTP calls. You need to explicitly serialize and deserialize baggage with messages.
+Without instrumentation, message queues break the automatic context propagation that works for synchronous HTTP calls. You need to explicitly serialize and deserialize baggage with messages.
 
 ```python
-from typing import Dict
 import json
 
 def publish_message_with_baggage(queue_name: str, message_data: dict):
@@ -373,8 +370,7 @@ def publish_message_with_baggage(queue_name: str, message_data: dict):
     with tracer.start_as_current_span("publish_message") as span:
         span.set_attribute("queue.name", queue_name)
 
-        # Serialize current baggage into message headers
-        baggage_data = {}
+        # Serialize current trace context and baggage into message headers
         carrier = {}
         inject(carrier)  # This injects both trace context and baggage
 
@@ -501,7 +497,7 @@ def process_regular_user(user_id: str):
 
 ## Baggage Size and Performance Considerations
 
-Baggage travels with every span and crosses service boundaries, so size matters. Each baggage entry adds to HTTP headers and increases serialization overhead.
+Baggage travels alongside the active context and can cross service boundaries, so size matters. Each baggage entry adds to propagated headers and increases serialization overhead.
 
 ```python
 from opentelemetry import baggage
@@ -512,9 +508,9 @@ def efficient_baggage_usage():
     Keep baggage small and only include what's truly needed across services.
     """
     # GOOD: Small, essential values
-    ctx = baggage.set_baggage("user_id", "usr_12345")  # 14 bytes
-    ctx = baggage.set_baggage("tenant", "acme_corp", context=ctx)  # 14 bytes
-    ctx = baggage.set_baggage("region", "us-west", context=ctx)  # 12 bytes
+    ctx = baggage.set_baggage("user_id", "usr_12345")  # Small identifier
+    ctx = baggage.set_baggage("tenant", "acme_corp", context=ctx)  # Small tenant key
+    ctx = baggage.set_baggage("region", "us-west", context=ctx)  # Short routing hint
 
     # AVOID: Large values that bloat headers
     # Don't put entire objects or large strings in baggage
