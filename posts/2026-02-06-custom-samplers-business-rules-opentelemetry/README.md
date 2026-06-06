@@ -135,6 +135,7 @@ class BusinessRuleSampler(Sampler):
         kind: SpanKind = None,
         attributes=None,
         links=None,
+        trace_state=None,
     ) -> SamplingResult:
         attrs = attributes or {}
 
@@ -192,7 +193,7 @@ class BusinessRuleSampler(Sampler):
         if rate <= 0.0:
             return False
 
-        bound = int(rate * (2**64 - 1))
+        bound = round(rate * (2**64))
         trace_id_lower = trace_id & 0xFFFFFFFFFFFFFFFF
         return trace_id_lower < bound
 
@@ -251,8 +252,7 @@ with tracer.start_as_current_span(
 
 ```javascript
 // feature-flag-sampler.js
-const { SamplingDecision } = require('@opentelemetry/api');
-const { SpanKind } = require('@opentelemetry/api');
+const { SamplingDecision } = require('@opentelemetry/sdk-trace-base');
 
 class FeatureFlagSampler {
   /**
@@ -326,7 +326,9 @@ class FeatureFlagSampler {
     // Trace IDs are hex strings in JavaScript.
     const lowerHex = traceId.slice(-16);
     const lower = BigInt('0x' + lowerHex);
-    const bound = BigInt(Math.floor(rate * Number(BigInt(2) ** BigInt(64))));
+    const scale = 1000000n;
+    const scaledRate = BigInt(Math.round(rate * Number(scale)));
+    const bound = (scaledRate * (1n << 64n)) / scale;
     return lower < bound;
   }
 
@@ -344,7 +346,7 @@ Using it with a feature flag service:
 // tracing.js
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
-const { Resource } = require('@opentelemetry/resources');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 const { FeatureFlagSampler } = require('./feature-flag-sampler');
 
 // This could be LaunchDarkly, Unleash, ConfigCat, or even
@@ -361,7 +363,7 @@ function getFlags() {
 }
 
 const sdk = new NodeSDK({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     'service.name': 'web-api',
   }),
   traceExporter: new OTLPTraceExporter({
@@ -395,6 +397,8 @@ import io.opentelemetry.sdk.trace.samplers.SamplingResult;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.math.BigDecimal;
+import java.math.BigInteger;
 
 public class BusinessRuleSampler implements Sampler {
 
@@ -420,6 +424,7 @@ public class BusinessRuleSampler implements Sampler {
 
     private static final double DEFAULT_RATE = 0.05;
     private static final double MUTATION_RATE_MULTIPLIER = 3.0;
+    private static final BigInteger TWO_TO_64 = BigInteger.ONE.shiftLeft(64);
 
     @Override
     public SamplingResult shouldSample(
@@ -470,9 +475,11 @@ public class BusinessRuleSampler implements Sampler {
 
         // Parse the lower 16 hex characters of the trace ID
         String lowerHex = traceId.substring(traceId.length() - 16);
-        long lower = Long.parseUnsignedLong(lowerHex, 16);
-        long bound = (long) (rate * Long.MAX_VALUE);
-        return Long.compareUnsigned(lower, bound) < 0;
+        BigInteger lower = new BigInteger(lowerHex, 16);
+        BigInteger bound = BigDecimal.valueOf(rate)
+            .multiply(new BigDecimal(TWO_TO_64))
+            .toBigInteger();
+        return lower.compareTo(bound) < 0;
     }
 
     @Override
@@ -493,6 +500,7 @@ Custom samplers should be unit tested like any other code. Here is a Python test
 ```python
 # test_business_sampler.py
 import pytest
+import random
 from business_sampler import BusinessRuleSampler
 from opentelemetry.sdk.trace.sampling import Decision
 
@@ -535,11 +543,12 @@ def test_respects_free_tier_rate():
     sampler = BusinessRuleSampler()
     sampled = 0
     total = 10000
+    rng = random.Random(42)
 
     for i in range(total):
         result = sampler.should_sample(
             parent_context=None,
-            trace_id=i,
+            trace_id=rng.getrandbits(128),
             name="GET /api/data",
             attributes={"user.tier": "free"},
         )
