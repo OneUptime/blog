@@ -6,7 +6,7 @@ Tags: OpenTelemetry, Metric, Aggregation, Performance, Data Volume, Optimization
 
 Description: Reduce metric data volume and costs by implementing source-level aggregation strategies in OpenTelemetry SDKs and collectors with practical configuration examples.
 
-Metrics are the lifeblood of observability, but raw metric data can quickly overwhelm systems. A single Kubernetes cluster with 100 pods, each emitting 50 metrics every 10 seconds, generates 30,000 data points per minute or 43 million per month.
+Metrics are the lifeblood of observability, but raw metric data can quickly overwhelm systems. A single Kubernetes cluster with 100 pods, each emitting 50 metrics every 10 seconds, generates 30,000 data points per minute, 43 million per day, or about 1.3 billion per 30-day month.
 
 Source-level aggregation reduces this volume by processing metrics before they leave the application or collector, lowering network bandwidth, storage costs, and query latency.
 
@@ -37,7 +37,7 @@ Source-level aggregation (SDK and Collector) provides the greatest cost reductio
 
 ## Metric Types and Default Aggregation
 
-OpenTelemetry defines three core metric instruments, each with default aggregation behavior:
+OpenTelemetry defines several metric instruments, including counters, gauges, up down counters, asynchronous instruments, and histograms. Three common synchronous instruments have these default aggregation behaviors:
 
 **Counter**: Monotonically increasing values (requests, bytes sent)
 - Default aggregation: Sum
@@ -96,20 +96,20 @@ Views allow you to customize metric aggregation before export, reducing cardinal
 
 ### Reducing Histogram Buckets
 
-Histograms generate one data point per bucket. Reducing bucket count dramatically lowers volume.
+Histograms contain one count per bucket, and Prometheus-style backends often store each bucket as a separate time series. Reducing bucket count can dramatically lower exported series and storage volume.
 
 ```python
 # views_config.py
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.view import View
-from opentelemetry.sdk.metrics.aggregation import (
+from opentelemetry.sdk.metrics import Histogram
+from opentelemetry.sdk.metrics.view import (
     ExplicitBucketHistogramAggregation,
-    DropAggregation,
 )
 
 # Define custom histogram buckets
 # Default: [0, 5, 10, 25, 50, 75, 100, 250, 500, 750, 1000, 2500, 5000, 7500, 10000]
-# Custom: [0, 10, 50, 100, 500, 1000, 5000] (15 buckets -> 7 buckets)
+# Custom: [0, 10, 50, 100, 500, 1000, 5000] (15 boundaries -> 7 boundaries)
 custom_buckets = [0, 10, 50, 100, 500, 1000, 5000]
 
 # Create view with custom aggregation
@@ -127,9 +127,9 @@ meter_provider = MeterProvider(
     views=[duration_view]
 )
 
-# This reduces histogram data points by ~53%
-# Before: 15 buckets + count + sum = 17 data points
-# After: 7 buckets + count + sum = 9 data points
+# This reduces histogram bucket series by about 50%
+# Before: 15 boundaries create 16 buckets, plus count and sum
+# After: 7 boundaries create 8 buckets, plus count and sum
 ```
 
 ### Filtering High-Cardinality Attributes
@@ -139,6 +139,7 @@ Attributes multiply metric cardinality. Remove or aggregate high-cardinality att
 ```python
 # Filter out user_id (high cardinality) but keep endpoint (low cardinality)
 from opentelemetry.sdk.metrics.view import View
+from opentelemetry.sdk.metrics import Counter
 
 filtered_view = View(
     instrument_type=Counter,
@@ -159,24 +160,15 @@ meter_provider = MeterProvider(
 # Reduction: 99.9%
 ```
 
-### Converting Histograms to Summaries
+### Using Exponential Histograms
 
-For some use cases, summaries (percentiles) provide better compression than histograms.
+For some use cases, exponential histograms provide better compression than explicit bucket histograms.
 
 ```python
-# Convert histogram to summary with specific percentiles
-from opentelemetry.sdk.metrics.aggregation import (
-    LastValueAggregation,
-    SumAggregation,
-)
-
-# Custom aggregation for specific percentiles
-# Note: OpenTelemetry doesn't have built-in summary aggregation
-# Use histogram with post-processing or exponential histogram
-
-# Use exponential histogram for better compression
-from opentelemetry.sdk.metrics.aggregation import (
+from opentelemetry.sdk.metrics import Histogram
+from opentelemetry.sdk.metrics.view import (
     ExponentialBucketHistogramAggregation,
+    View,
 )
 
 exponential_view = View(
@@ -194,7 +186,7 @@ exponential_view = View(
 
 ## Aggregating Metrics in the Collector
 
-The OpenTelemetry Collector's metrics transform processor provides powerful aggregation capabilities.
+The OpenTelemetry Collector's transform and metrics transform processors provide powerful normalization and aggregation capabilities.
 
 ### Basic Metric Aggregation
 
@@ -207,8 +199,9 @@ receivers:
         endpoint: 0.0.0.0:4317
 
 processors:
-  # Transform processor for metric aggregation
+  # Transform processor for metric attribute normalization
   transform:
+    error_mode: ignore
     metric_statements:
       # Remove high-cardinality labels
       - context: datapoint
@@ -237,6 +230,22 @@ processors:
           - replace_pattern(attributes["http.route"], "/orders/[a-f0-9-]+", "/orders/{uuid}")
           - replace_pattern(attributes["http.route"], "/api/v\\d+/", "/api/{version}/")
 
+  # Aggregate points that now share the same label set
+  metricstransform:
+    transforms:
+      - include: http.server.request.count
+        action: update
+        operations:
+          - action: aggregate_labels
+            label_set: [http.method, http.route, http.status_class]
+            aggregation_type: sum
+      - include: http.server.request.duration
+        action: update
+        operations:
+          - action: aggregate_labels
+            label_set: [http.method, http.route, http.status_class]
+            aggregation_type: sum
+
   # Batch processor for efficiency
   batch:
     timeout: 10s
@@ -250,11 +259,11 @@ service:
   pipelines:
     metrics:
       receivers: [otlp]
-      processors: [transform, batch]
+      processors: [transform, metricstransform, batch]
       exporters: [otlp]
 ```
 
-This configuration reduces cardinality from potentially thousands of unique combinations to dozens.
+This configuration reduces cardinality from potentially thousands of unique combinations to dozens. The `transform` processor normalizes attributes, and the `metricstransform` processor aggregates points with the same remaining label set within a batch.
 
 ### Delta to Cumulative Aggregation
 
@@ -262,17 +271,16 @@ Some backends prefer cumulative metrics while SDKs emit delta metrics. Convert a
 
 ```yaml
 processors:
-  # Cumulative sum processor
-  cumulativetosum:
-    # Convert cumulative metrics to delta
+  # Convert delta temporality metrics to cumulative temporality
+  deltatocumulative:
     max_stale: 5m
+    max_streams: 100000
 
-  # Sum connector to aggregate
-  metricstransform:
-    transforms:
-      - include: http.server.request.count
-        action: update
-        aggregation_type: cumulative
+  # If you need the opposite direction, use cumulativetodelta
+  cumulativetodelta:
+    include:
+      metric_types:
+        - sum
 ```
 
 ### Time-Based Aggregation Windows
@@ -281,30 +289,21 @@ Aggregate metrics into larger time windows to reduce data points.
 
 ```yaml
 processors:
-  # Group metrics into 5-minute windows
-  groupbyattrs:
-    keys:
-      - http.method
-      - http.route
-      - service.name
+  # Aggregate supported cumulative metrics and gauges, then forward every 5 minutes
+  interval:
+    interval: 5m
+    pass_through:
+      gauge: false
+      summary: false
 
-  transform:
-    metric_statements:
-      # Only export metrics at 5-minute intervals
-      - context: metric
-        statements:
-          # Add time bucket attribute
-          - set(attributes["time.bucket"], Int(time_unix_nano() / 300000000000) * 300000000000)
-
-  # Batch by time window
   batch:
-    timeout: 5m
+    timeout: 10s
     send_batch_size: 10000
 ```
 
 ## Implementing Application-Level Aggregation
 
-For maximum efficiency, aggregate metrics in the application before SDK export.
+OpenTelemetry SDKs already aggregate measurements before export. Application-level pre-aggregation is useful when you need to reduce measurement call overhead, normalize attributes before recording, or combine very noisy events before they reach the SDK.
 
 ### Pre-Aggregation in Go
 
@@ -314,11 +313,21 @@ package main
 
 import (
     "context"
+    "sort"
+    "strings"
     "sync"
     "time"
 
+    "go.opentelemetry.io/otel"
+    "go.opentelemetry.io/otel/attribute"
     "go.opentelemetry.io/otel/metric"
 )
+
+type counterEntry struct {
+    name       string
+    attributes []attribute.KeyValue
+    value      int64
+}
 
 // MetricAggregator aggregates metrics in memory before export
 type MetricAggregator struct {
@@ -326,7 +335,8 @@ type MetricAggregator struct {
     mu     sync.RWMutex
 
     // Aggregated counters
-    counters map[string]int64
+    counters map[string]counterEntry
+    instruments map[string]metric.Int64Counter
 
     // Flush interval
     flushInterval time.Duration
@@ -335,7 +345,8 @@ type MetricAggregator struct {
 func NewMetricAggregator(meter metric.Meter, flushInterval time.Duration) *MetricAggregator {
     agg := &MetricAggregator{
         meter:         meter,
-        counters:      make(map[string]int64),
+        counters:      make(map[string]counterEntry),
+        instruments:   make(map[string]metric.Int64Counter),
         flushInterval: flushInterval,
     }
 
@@ -347,14 +358,14 @@ func NewMetricAggregator(meter metric.Meter, flushInterval time.Duration) *Metri
 
 // Increment counter in memory
 func (a *MetricAggregator) IncrementCounter(name string, value int64, attributes map[string]string) {
-    // Create key from name and attributes
-    key := name
-    for k, v := range attributes {
-        key += ":" + k + "=" + v
-    }
+    key, attrs := counterKey(name, attributes)
 
     a.mu.Lock()
-    a.counters[key] += value
+    entry := a.counters[key]
+    entry.name = name
+    entry.attributes = attrs
+    entry.value += value
+    a.counters[key] = entry
     a.mu.Unlock()
 }
 
@@ -362,16 +373,39 @@ func (a *MetricAggregator) IncrementCounter(name string, value int64, attributes
 func (a *MetricAggregator) flush() {
     a.mu.Lock()
     counters := a.counters
-    a.counters = make(map[string]int64)
+    a.counters = make(map[string]counterEntry)
     a.mu.Unlock()
 
     // Export aggregated values
-    for key, value := range counters {
-        // Parse key back to name and attributes
-        // Simplified: in production, use proper serialization
-        counter, _ := a.meter.Int64Counter(key)
-        counter.Add(context.Background(), value)
+    for _, entry := range counters {
+        counter, ok := a.instruments[entry.name]
+        if !ok {
+            counter, _ = a.meter.Int64Counter(entry.name)
+            a.instruments[entry.name] = counter
+        }
+        counter.Add(
+            context.Background(),
+            entry.value,
+            metric.WithAttributes(entry.attributes...),
+        )
     }
+}
+
+func counterKey(name string, attributes map[string]string) (string, []attribute.KeyValue) {
+    keys := make([]string, 0, len(attributes))
+    for k := range attributes {
+        keys = append(keys, k)
+    }
+    sort.Strings(keys)
+
+    parts := []string{name}
+    attrs := make([]attribute.KeyValue, 0, len(keys))
+    for _, k := range keys {
+        parts = append(parts, k+"="+attributes[k])
+        attrs = append(attrs, attribute.String(k, attributes[k]))
+    }
+
+    return strings.Join(parts, "\x00"), attrs
 }
 
 // Background flusher
@@ -397,8 +431,8 @@ func main() {
         })
     }
 
-    // Only one metric data point is exported after flush
-    // Instead of 10,000 individual increments
+    // The SDK sees one Add call after flush for this attribute set,
+    // instead of 10,000 Add calls.
 }
 ```
 
@@ -424,6 +458,9 @@ class MetricAggregator:
         self.counters: Dict[Tuple[str, frozenset], int] = defaultdict(int)
         self.gauges: Dict[Tuple[str, frozenset], float] = {}
         self.histograms: Dict[Tuple[str, frozenset], list] = defaultdict(list)
+        self.counter_instruments = {}
+        self.gauge_instruments = {}
+        self.histogram_instruments = {}
 
         # Start background flusher
         self.running = True
@@ -471,28 +508,32 @@ class MetricAggregator:
 
         # Export counters
         for (name, attrs), value in counters.items():
-            counter = self.meter.create_counter(name)
+            if name not in self.counter_instruments:
+                self.counter_instruments[name] = self.meter.create_counter(name)
+            counter = self.counter_instruments[name]
             counter.add(value, dict(attrs))
 
         # Export gauges
         for (name, attrs), value in gauges.items():
-            gauge = self.meter.create_gauge(name)
+            if name not in self.gauge_instruments:
+                self.gauge_instruments[name] = self.meter.create_gauge(name)
+            gauge = self.gauge_instruments[name]
             gauge.set(value, dict(attrs))
 
         # Export histogram aggregates
         for (name, attrs), values in histograms.items():
-            histogram = self.meter.create_histogram(name)
-            # Record aggregated statistics instead of all values
+            if name not in self.histogram_instruments:
+                self.histogram_instruments[name] = self.meter.create_histogram(name)
+            histogram = self.histogram_instruments[name]
+            # Recording an average is lossy and does not preserve percentiles.
+            # Use SDK Views or exponential histograms when distribution accuracy matters.
             if values:
                 count = len(values)
                 total = sum(values)
                 avg = total / count
 
-                # Record summary statistics
+                # Record a representative aggregate value
                 histogram.record(avg, dict(attrs))
-
-                # Optionally record min/max/p50/p95/p99
-                # This reduces 1000s of data points to 5-7 data points
 
     def _flusher(self):
         """Background thread that flushes metrics periodically"""
@@ -512,8 +553,8 @@ for i in range(10000):
         attributes={"method": "GET", "route": "/api/users"}
     )
 
-# Only aggregated value exported after 60 seconds
-# Volume reduced from 10,000 data points to 1 data point
+# The SDK sees one counter add after 60 seconds for this attribute set,
+# instead of 10,000 add calls.
 ```
 
 ### Pre-Aggregation in Java
@@ -522,8 +563,11 @@ for i in range(10000):
 // MetricAggregator.java
 package com.example.metrics;
 
+import io.opentelemetry.api.common.Attributes;
+import io.opentelemetry.api.common.AttributesBuilder;
 import io.opentelemetry.api.metrics.Meter;
 import io.opentelemetry.api.metrics.LongCounter;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.LongAdder;
@@ -534,12 +578,37 @@ public class MetricAggregator {
     private final ScheduledExecutorService scheduler;
 
     // In-memory aggregation storage
-    private final ConcurrentMap<String, LongAdder> counters;
+    private final ConcurrentMap<String, CounterEntry> counters;
+    private final ConcurrentMap<String, LongCounter> instruments;
+
+    private static class CounterEntry {
+        final String name;
+        final Attributes attributes;
+        final LongAdder value = new LongAdder();
+
+        CounterEntry(String name, Attributes attributes) {
+            this.name = name;
+            this.attributes = attributes;
+        }
+    }
+
+    private static class CounterSnapshot {
+        final String name;
+        final Attributes attributes;
+        final long value;
+
+        CounterSnapshot(String name, Attributes attributes, long value) {
+            this.name = name;
+            this.attributes = attributes;
+            this.value = value;
+        }
+    }
 
     public MetricAggregator(Meter meter, int flushIntervalSeconds) {
         this.meter = meter;
         this.flushIntervalSeconds = flushIntervalSeconds;
         this.counters = new ConcurrentHashMap<>();
+        this.instruments = new ConcurrentHashMap<>();
         this.scheduler = Executors.newSingleThreadScheduledExecutor();
 
         // Start periodic flush
@@ -557,9 +626,13 @@ public class MetricAggregator {
     public void incrementCounter(String name, long value, Map<String, String> attributes) {
         // Create key from name and attributes
         String key = buildKey(name, attributes);
+        Attributes otelAttributes = buildAttributes(attributes);
 
         // Increment in memory using LongAdder for thread safety
-        counters.computeIfAbsent(key, k -> new LongAdder()).add(value);
+        counters
+            .computeIfAbsent(key, k -> new CounterEntry(name, otelAttributes))
+            .value
+            .add(value);
     }
 
     /**
@@ -567,31 +640,43 @@ public class MetricAggregator {
      */
     private void flush() {
         // Snapshot and clear counters atomically
-        Map<String, Long> snapshot = new HashMap<>();
-        counters.forEach((key, adder) -> {
-            long value = adder.sumThenReset();
+        Map<String, CounterSnapshot> snapshot = new HashMap<>();
+        counters.forEach((key, entry) -> {
+            long value = entry.value.sumThenReset();
             if (value > 0) {
-                snapshot.put(key, value);
+                snapshot.put(
+                    key,
+                    new CounterSnapshot(entry.name, entry.attributes, value)
+                );
             }
         });
 
         // Export aggregated values
-        snapshot.forEach((key, value) -> {
-            // Parse key back to name and attributes
-            // Simplified: use proper serialization in production
-            LongCounter counter = meter.counterBuilder(key).build();
-            counter.add(value);
+        snapshot.forEach((key, entry) -> {
+            LongCounter counter = instruments.computeIfAbsent(
+                entry.name,
+                metricName -> meter.counterBuilder(metricName).build()
+            );
+            counter.add(entry.value, entry.attributes);
         });
     }
 
     private String buildKey(String name, Map<String, String> attributes) {
         StringBuilder key = new StringBuilder(name);
         if (attributes != null) {
-            attributes.forEach((k, v) ->
-                key.append(":").append(k).append("=").append(v)
+            attributes.keySet().stream().sorted().forEach(k ->
+                key.append('\0').append(k).append("=").append(attributes.get(k))
             );
         }
         return key.toString();
+    }
+
+    private Attributes buildAttributes(Map<String, String> attributes) {
+        AttributesBuilder builder = Attributes.builder();
+        if (attributes != null) {
+            attributes.forEach(builder::put);
+        }
+        return builder.build();
     }
 
     public void shutdown() {
@@ -613,7 +698,7 @@ for (int i = 0; i < 10000; i++) {
     );
 }
 
-// Only one aggregated value exported after 60 seconds
+// The SDK sees one counter add after 60 seconds for this attribute set
 ```
 
 ## Cardinality Management Strategies
@@ -647,11 +732,11 @@ processors:
           # Keep only top endpoints, group rest as "other"
           - set(attributes["http.route"], "other") where attributes["http.route"] != "/api/users" and attributes["http.route"] != "/api/orders" and attributes["http.route"] != "/api/products"
 
-      # Strategy 4: Sample high-cardinality metrics
-      - context: metric
-        statements:
-          # Drop 90% of detailed metrics
-          - drop() where metric.name == "http.server.request.duration.detailed" and Int(time_unix_nano()) % 10 != 0
+  # Strategy 4: Drop detailed high-cardinality metrics entirely
+  filter/drop_detailed:
+    error_mode: ignore
+    metric_conditions:
+      - metric.name == "http.server.request.duration.detailed"
 ```
 
 ## Monitoring Aggregation Impact
