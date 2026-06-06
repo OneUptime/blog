@@ -359,9 +359,9 @@ public class SecondaryDataSourceConfig {
     private Map<String, Object> jpaProperties() {
         Map<String, Object> props = new HashMap<>();
 
-        // MySQL dialect
+        // MySQL dialect (Hibernate 6 auto-detects the version)
         props.put("hibernate.dialect",
-            "org.hibernate.dialect.MySQL8Dialect");
+            "org.hibernate.dialect.MySQLDialect");
 
         // Validate schema on startup
         props.put("hibernate.hbm2ddl.auto", "validate");
