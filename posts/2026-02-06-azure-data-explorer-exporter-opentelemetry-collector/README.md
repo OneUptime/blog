@@ -12,7 +12,7 @@ Azure Data Explorer (ADX), also known as Kusto, is a fast and highly scalable da
 
 Azure Data Explorer excels at handling massive volumes of telemetry data with sub-second query response times. The ADX exporter ingests OpenTelemetry data into ADX tables, where you can perform sophisticated analytics using Kusto Query Language (KQL). This makes it ideal for scenarios requiring complex queries, long-term data retention, or integration with machine learning pipelines.
 
-The exporter supports batching, compression, and automatic schema management, making it suitable for high-throughput production environments.
+The exporter supports OpenTelemetry exporter helper settings such as batching through the batch processor, retries, queues, and timeouts, making it suitable for high-throughput production environments.
 
 ## Architecture Overview
 
@@ -50,7 +50,8 @@ az kusto cluster create \
   --name myadxcluster \
   --resource-group my-resource-group \
   --location eastus \
-  --sku name="Standard_D11_v2" tier="Standard"
+  --enable-streaming-ingest true \
+  --sku name="Standard_L8s" capacity=2 tier="Standard"
 
 # Create a database
 az kusto database create \
@@ -88,53 +89,21 @@ Create tables in ADX for storing traces, metrics, and logs:
 
 ```kql
 // Create traces table
-.create table Traces (
-    TraceId: string,
-    SpanId: string,
-    ParentSpanId: string,
-    Name: string,
-    Kind: string,
-    StartTime: datetime,
-    EndTime: datetime,
-    Duration: long,
-    StatusCode: string,
-    StatusMessage: string,
-    ServiceName: string,
-    ServiceNamespace: string,
-    Attributes: dynamic,
-    Resource: dynamic,
-    Events: dynamic,
-    Links: dynamic
-)
+.create-merge table OTELTraces (TraceID:string, SpanID:string, ParentID:string, SpanName:string, SpanStatus:string, SpanKind:string, StartTime:datetime, EndTime:datetime, ResourceAttributes:dynamic, TraceAttributes:dynamic, Events:dynamic, Links:dynamic)
+
+// Add optional span status message column
+.alter-merge table OTELTraces (SpanStatusMessage:string)
 
 // Create metrics table
-.create table Metrics (
-    Timestamp: datetime,
-    MetricName: string,
-    MetricType: string,
-    Value: real,
-    ServiceName: string,
-    Attributes: dynamic,
-    Resource: dynamic
-)
+.create-merge table OTELMetrics (Timestamp:datetime, MetricName:string, MetricType:string, MetricUnit:string, MetricDescription:string, MetricValue:real, Host:string, ResourceAttributes:dynamic, MetricAttributes:dynamic)
 
 // Create logs table
-.create table Logs (
-    Timestamp: datetime,
-    SeverityText: string,
-    SeverityNumber: int,
-    Body: string,
-    ServiceName: string,
-    TraceId: string,
-    SpanId: string,
-    Attributes: dynamic,
-    Resource: dynamic
-)
+.create-merge table OTELLogs (Timestamp:datetime, ObservedTimestamp:datetime, TraceID:string, SpanID:string, SeverityText:string, SeverityNumber:int, Body:string, ResourceAttributes:dynamic, LogsAttributes:dynamic)
 
 // Enable streaming ingestion for low latency
-.alter table Traces policy streamingingestion enable
-.alter table Metrics policy streamingingestion enable
-.alter table Logs policy streamingingestion enable
+.alter table OTELTraces policy streamingingestion enable
+.alter table OTELMetrics policy streamingingestion enable
+.alter table OTELLogs policy streamingingestion enable
 ```
 
 ## Basic Configuration
@@ -159,24 +128,24 @@ processors:
 
 exporters:
   azuredataexplorer:
-    # ADX cluster ingestion endpoint
-    cluster_uri: "https://ingest-myadxcluster.eastus.kusto.windows.net"
+    # ADX cluster URI
+    cluster_uri: "https://myadxcluster.eastus.kusto.windows.net"
 
     # Database name
-    database: "telemetry"
+    db_name: "telemetry"
 
     # Authentication using service principal
     tenant_id: "${AZURE_TENANT_ID}"
-    client_id: "${AZURE_CLIENT_ID}"
-    client_secret: "${AZURE_CLIENT_SECRET}"
+    application_id: "${AZURE_CLIENT_ID}"
+    application_key: "${AZURE_CLIENT_SECRET}"
 
     # Table mappings for each signal type
-    traces_table: "Traces"
-    metrics_table: "Metrics"
-    logs_table: "Logs"
+    traces_table_name: "OTELTraces"
+    metrics_table_name: "OTELMetrics"
+    logs_table_name: "OTELLogs"
 
-    # Ingestion type (streaming or queued)
-    ingestion_type: "streaming"
+    # Ingestion type (managed streaming or queued)
+    ingestion_type: "managed"
 
 service:
   pipelines:
@@ -203,30 +172,24 @@ For production deployments, customize additional parameters:
 ```yaml
 exporters:
   azuredataexplorer:
-    cluster_uri: "https://ingest-myadxcluster.eastus.kusto.windows.net"
-    database: "telemetry"
+    cluster_uri: "https://myadxcluster.eastus.kusto.windows.net"
+    db_name: "telemetry"
 
     # Authentication
     tenant_id: "${AZURE_TENANT_ID}"
-    client_id: "${AZURE_CLIENT_ID}"
-    client_secret: "${AZURE_CLIENT_SECRET}"
+    application_id: "${AZURE_CLIENT_ID}"
+    application_key: "${AZURE_CLIENT_SECRET}"
 
     # Alternative: Use managed identity
-    # use_managed_identity: true
+    # managed_identity_id: "system"
 
     # Table names
-    traces_table: "Traces"
-    metrics_table: "Metrics"
-    logs_table: "Logs"
+    traces_table_name: "OTELTraces"
+    metrics_table_name: "OTELMetrics"
+    logs_table_name: "OTELLogs"
 
     # Ingestion configuration
-    ingestion_type: "streaming"  # Options: streaming, queued
-
-    # Batch size for ingestion (in MB)
-    max_batch_size_mb: 10
-
-    # Maximum time to wait before flushing
-    flush_interval: 30s
+    ingestion_type: "managed"  # Options: managed, queued
 
     # Queue settings for handling bursts
     sending_queue:
@@ -244,13 +207,10 @@ exporters:
     # Timeout for ingestion operations
     timeout: 60s
 
-    # Compression (gzip, none)
-    compression: "gzip"
-
     # Custom mapping names (optional)
-    traces_mapping: "OtelTracesMapping"
-    metrics_mapping: "OtelMetricsMapping"
-    logs_mapping: "OtelLogsMapping"
+    traces_table_json_mapping: "OtelTracesMapping"
+    metrics_table_json_mapping: "OtelMetricsMapping"
+    logs_table_json_mapping: "OtelLogsMapping"
 ```
 
 ## Ingestion Mappings
@@ -259,57 +219,56 @@ Create ingestion mappings to transform OpenTelemetry data into your table schema
 
 ```kql
 // Create mapping for traces
-.create table Traces ingestion json mapping 'OtelTracesMapping'
-```
+.create table OTELTraces ingestion json mapping 'OtelTracesMapping'
+@'
 [
-    {"column": "TraceId", "path": "$.traceId", "datatype": "string"},
-    {"column": "SpanId", "path": "$.spanId", "datatype": "string"},
-    {"column": "ParentSpanId", "path": "$.parentSpanId", "datatype": "string"},
-    {"column": "Name", "path": "$.name", "datatype": "string"},
-    {"column": "Kind", "path": "$.kind", "datatype": "string"},
-    {"column": "StartTime", "path": "$.startTime", "datatype": "datetime"},
-    {"column": "EndTime", "path": "$.endTime", "datatype": "datetime"},
-    {"column": "Duration", "path": "$.duration", "datatype": "long"},
-    {"column": "StatusCode", "path": "$.status.code", "datatype": "string"},
-    {"column": "StatusMessage", "path": "$.status.message", "datatype": "string"},
-    {"column": "ServiceName", "path": "$.resource['service.name']", "datatype": "string"},
-    {"column": "ServiceNamespace", "path": "$.resource['service.namespace']", "datatype": "string"},
-    {"column": "Attributes", "path": "$.attributes", "datatype": "dynamic"},
-    {"column": "Resource", "path": "$.resource", "datatype": "dynamic"},
-    {"column": "Events", "path": "$.events", "datatype": "dynamic"},
-    {"column": "Links", "path": "$.links", "datatype": "dynamic"}
+    {"column": "TraceID", "path": "$.TraceID", "datatype": "string"},
+    {"column": "SpanID", "path": "$.SpanID", "datatype": "string"},
+    {"column": "ParentID", "path": "$.ParentID", "datatype": "string"},
+    {"column": "SpanName", "path": "$.SpanName", "datatype": "string"},
+    {"column": "SpanStatus", "path": "$.SpanStatus", "datatype": "string"},
+    {"column": "SpanStatusMessage", "path": "$.SpanStatusMessage", "datatype": "string"},
+    {"column": "SpanKind", "path": "$.SpanKind", "datatype": "string"},
+    {"column": "StartTime", "path": "$.StartTime", "datatype": "datetime"},
+    {"column": "EndTime", "path": "$.EndTime", "datatype": "datetime"},
+    {"column": "ResourceAttributes", "path": "$.ResourceAttributes", "datatype": "dynamic"},
+    {"column": "TraceAttributes", "path": "$.TraceAttributes", "datatype": "dynamic"},
+    {"column": "Events", "path": "$.Events", "datatype": "dynamic"},
+    {"column": "Links", "path": "$.Links", "datatype": "dynamic"}
 ]
-```text
+'
 
 // Create mapping for metrics
-.create table Metrics ingestion json mapping 'OtelMetricsMapping'
-```
+.create table OTELMetrics ingestion json mapping 'OtelMetricsMapping'
+@'
 [
-    {"column": "Timestamp", "path": "$.timestamp", "datatype": "datetime"},
-    {"column": "MetricName", "path": "$.name", "datatype": "string"},
-    {"column": "MetricType", "path": "$.type", "datatype": "string"},
-    {"column": "Value", "path": "$.value", "datatype": "real"},
-    {"column": "ServiceName", "path": "$.resource['service.name']", "datatype": "string"},
-    {"column": "Attributes", "path": "$.attributes", "datatype": "dynamic"},
-    {"column": "Resource", "path": "$.resource", "datatype": "dynamic"}
+    {"column": "Timestamp", "path": "$.Timestamp", "datatype": "datetime"},
+    {"column": "MetricName", "path": "$.MetricName", "datatype": "string"},
+    {"column": "MetricType", "path": "$.MetricType", "datatype": "string"},
+    {"column": "MetricUnit", "path": "$.MetricUnit", "datatype": "string"},
+    {"column": "MetricDescription", "path": "$.MetricDescription", "datatype": "string"},
+    {"column": "MetricValue", "path": "$.MetricValue", "datatype": "real"},
+    {"column": "Host", "path": "$.Host", "datatype": "string"},
+    {"column": "ResourceAttributes", "path": "$.ResourceAttributes", "datatype": "dynamic"},
+    {"column": "MetricAttributes", "path": "$.MetricAttributes", "datatype": "dynamic"}
 ]
-```text
+'
 
 // Create mapping for logs
-.create table Logs ingestion json mapping 'OtelLogsMapping'
-```
+.create table OTELLogs ingestion json mapping 'OtelLogsMapping'
+@'
 [
-    {"column": "Timestamp", "path": "$.timestamp", "datatype": "datetime"},
-    {"column": "SeverityText", "path": "$.severityText", "datatype": "string"},
-    {"column": "SeverityNumber", "path": "$.severityNumber", "datatype": "int"},
-    {"column": "Body", "path": "$.body", "datatype": "string"},
-    {"column": "ServiceName", "path": "$.resource['service.name']", "datatype": "string"},
-    {"column": "TraceId", "path": "$.traceId", "datatype": "string"},
-    {"column": "SpanId", "path": "$.spanId", "datatype": "string"},
-    {"column": "Attributes", "path": "$.attributes", "datatype": "dynamic"},
-    {"column": "Resource", "path": "$.resource", "datatype": "dynamic"}
+    {"column": "Timestamp", "path": "$.Timestamp", "datatype": "datetime"},
+    {"column": "ObservedTimestamp", "path": "$.ObservedTimestamp", "datatype": "datetime"},
+    {"column": "TraceID", "path": "$.TraceID", "datatype": "string"},
+    {"column": "SpanID", "path": "$.SpanID", "datatype": "string"},
+    {"column": "SeverityText", "path": "$.SeverityText", "datatype": "string"},
+    {"column": "SeverityNumber", "path": "$.SeverityNumber", "datatype": "int"},
+    {"column": "Body", "path": "$.Body", "datatype": "string"},
+    {"column": "ResourceAttributes", "path": "$.ResourceAttributes", "datatype": "dynamic"},
+    {"column": "LogsAttributes", "path": "$.LogsAttributes", "datatype": "dynamic"}
 ]
-```text
+'
 ```
 
 Update your collector configuration to use these mappings:
@@ -317,20 +276,20 @@ Update your collector configuration to use these mappings:
 ```yaml
 exporters:
   azuredataexplorer:
-    cluster_uri: "https://ingest-myadxcluster.eastus.kusto.windows.net"
-    database: "telemetry"
+    cluster_uri: "https://myadxcluster.eastus.kusto.windows.net"
+    db_name: "telemetry"
     tenant_id: "${AZURE_TENANT_ID}"
-    client_id: "${AZURE_CLIENT_ID}"
-    client_secret: "${AZURE_CLIENT_SECRET}"
+    application_id: "${AZURE_CLIENT_ID}"
+    application_key: "${AZURE_CLIENT_SECRET}"
 
-    traces_table: "Traces"
-    traces_mapping: "OtelTracesMapping"
+    traces_table_name: "OTELTraces"
+    traces_table_json_mapping: "OtelTracesMapping"
 
-    metrics_table: "Metrics"
-    metrics_mapping: "OtelMetricsMapping"
+    metrics_table_name: "OTELMetrics"
+    metrics_table_json_mapping: "OtelMetricsMapping"
 
-    logs_table: "Logs"
-    logs_mapping: "OtelLogsMapping"
+    logs_table_name: "OTELLogs"
+    logs_table_json_mapping: "OtelLogsMapping"
 ```
 
 ## Streaming vs. Queued Ingestion
@@ -346,7 +305,7 @@ Choose the right ingestion type for your use case:
 ```yaml
 exporters:
   azuredataexplorer:
-    ingestion_type: "streaming"
+    ingestion_type: "managed"
 ```
 
 **Queued Ingestion:**
@@ -369,14 +328,14 @@ Configure partitioning and retention policies to optimize query performance and 
 
 ```kql
 // Set data retention policy (365 days)
-.alter-merge table Traces policy retention softdelete = 365d
+.alter-merge table OTELTraces policy retention softdelete = 365d
 
 // Set caching policy (hot data for 31 days)
-.alter table Traces policy caching hot = 31d
+.alter table OTELTraces policy caching hot = 31d
 
 // Create partitioning policy by date
-.alter table Traces policy partitioning
-```
+.alter-merge table OTELTraces policy partitioning
+@'
 {
   "PartitionKeys": [
     {
@@ -390,11 +349,13 @@ Configure partitioning and retention policies to optimize query performance and 
     }
   ]
 }
-```text
+'
 
 // Set update policy to automatically aggregate data
+.create-merge table TraceSummary (StartTime:datetime, ServiceName:string, Count:long, AvgDurationMs:real)
+
 .alter table TraceSummary policy update
-@'[{"IsEnabled": true, "Source": "Traces", "Query": "Traces | summarize Count=count(), AvgDuration=avg(Duration) by bin(StartTime, 5m), ServiceName", "IsTransactional": false, "PropagateIngestionProperties": false}]'
+@'[{"IsEnabled": true, "Source": "OTELTraces", "Query": "OTELTraces | extend ServiceName=tostring(ResourceAttributes[\"service.name\"]), DurationMs= datetime_diff(''microsecond'', EndTime, StartTime) / 1000.0 | summarize Count=count(), AvgDurationMs=avg(DurationMs) by bin(StartTime, 5m), ServiceName", "IsTransactional": false, "PropagateIngestionProperties": false}]'
 ```
 
 ## Querying Telemetry Data in ADX
@@ -403,48 +364,55 @@ Use Kusto Query Language to analyze your telemetry:
 
 ```kql
 // Query traces by service and operation
-Traces
+OTELTraces
 | where StartTime > ago(1h)
+| extend ServiceName = tostring(ResourceAttributes["service.name"])
+| extend DurationMs = datetime_diff('microsecond', EndTime, StartTime) / 1000.0
 | where ServiceName == "payment-service"
 | summarize
     RequestCount = count(),
-    AvgDuration = avg(Duration) / 1000000,  // Convert to milliseconds
-    P95Duration = percentile(Duration, 95) / 1000000,
-    ErrorCount = countif(StatusCode == "ERROR")
-  by Name
+    AvgDurationMs = avg(DurationMs),
+    P95DurationMs = percentile(DurationMs, 95),
+    ErrorCount = countif(SpanStatus == "STATUS_CODE_ERROR")
+  by SpanName
 | order by RequestCount desc
 
 // Analyze distributed traces
-Traces
-| where TraceId == "abc123..."
+OTELTraces
+| where TraceID == "abc123..."
 | order by StartTime asc
-| project StartTime, Name, Duration, ServiceName, Attributes
+| extend ServiceName = tostring(ResourceAttributes["service.name"])
+| extend DurationMs = datetime_diff('microsecond', EndTime, StartTime) / 1000.0
+| project StartTime, SpanName, DurationMs, ServiceName, TraceAttributes
 
 // Query metrics with aggregation
-Metrics
+OTELMetrics
 | where Timestamp > ago(1h)
 | where MetricName == "http.server.duration"
-| summarize avg(Value), percentile(Value, 50), percentile(Value, 95), percentile(Value, 99)
+| extend ServiceName = tostring(ResourceAttributes["service.name"])
+| summarize avg(MetricValue), percentile(MetricValue, 50), percentile(MetricValue, 95), percentile(MetricValue, 99)
   by bin(Timestamp, 5m), ServiceName
 | render timechart
 
 // Query logs with severity filtering
-Logs
+OTELLogs
 | where Timestamp > ago(1h)
 | where SeverityNumber >= 17  // Error and above
+| extend ServiceName = tostring(ResourceAttributes["service.name"])
 | where ServiceName == "payment-service"
 | order by Timestamp desc
 | take 100
 
 // Join traces and logs for correlation
-Traces
+OTELTraces
 | where StartTime > ago(1h)
-| where StatusCode == "ERROR"
+| where SpanStatus == "STATUS_CODE_ERROR"
 | join kind=inner (
-    Logs
+    OTELLogs
     | where Timestamp > ago(1h)
-  ) on TraceId, SpanId
-| project StartTime, Name, ServiceName, Body, Attributes
+  ) on TraceID, SpanID
+| extend ServiceName = tostring(ResourceAttributes["service.name"])
+| project StartTime, SpanName, ServiceName, Body, TraceAttributes
 ```
 
 ## Performance Optimization
@@ -454,34 +422,38 @@ Optimize ADX performance with these strategies:
 **1. Use Materialized Views for Common Queries:**
 
 ```kql
-.create materialized-view with (backfill=true) ServiceMetrics on table Traces
+.create materialized-view with (backfill=true) ServiceMetrics on table OTELTraces
 {
-    Traces
+    OTELTraces
+    | extend ServiceName = tostring(ResourceAttributes["service.name"])
+    | extend DurationMs = datetime_diff('microsecond', EndTime, StartTime) / 1000.0
     | summarize
         RequestCount = count(),
-        AvgDuration = avg(Duration),
-        ErrorCount = countif(StatusCode == "ERROR")
+        AvgDurationMs = avg(DurationMs),
+        ErrorCount = countif(SpanStatus == "STATUS_CODE_ERROR")
       by bin(StartTime, 5m), ServiceName
 }
 ```
 
-**2. Create Indexes on Frequently Queried Columns:**
+**2. Project Frequently Queried Dynamic Fields:**
 
 ```kql
-// Create string index for faster text searches
-.create table Traces column-index ServiceNameIndex on (ServiceName)
+// Store common dynamic attributes in materialized views or update-policy tables
+OTELTraces
+| extend ServiceName = tostring(ResourceAttributes["service.name"])
+| summarize RequestCount = count() by bin(StartTime, 5m), ServiceName
 ```
 
 **3. Use Extent Tags for Efficient Data Filtering:**
 
 ```kql
-.alter-merge table Traces policy extent_tags_retention
-```
+.alter-merge table OTELTraces policy extent_tags_retention
+@'
 {
   "TagPrefix": "drop-by:",
   "RetentionPeriod": "00:00:00"
 }
-```text
+'
 ```
 
 **4. Optimize Batch Sizes:**
@@ -502,25 +474,25 @@ For large deployments, separate data by environment or tenant:
 exporters:
   # Production environment
   azuredataexplorer/prod:
-    cluster_uri: "https://ingest-prod.eastus.kusto.windows.net"
-    database: "telemetry_prod"
+    cluster_uri: "https://prod.eastus.kusto.windows.net"
+    db_name: "telemetry_prod"
     tenant_id: "${AZURE_TENANT_ID}"
-    client_id: "${AZURE_CLIENT_ID}"
-    client_secret: "${AZURE_CLIENT_SECRET}"
-    traces_table: "Traces"
-    metrics_table: "Metrics"
-    logs_table: "Logs"
+    application_id: "${AZURE_CLIENT_ID}"
+    application_key: "${AZURE_CLIENT_SECRET}"
+    traces_table_name: "OTELTraces"
+    metrics_table_name: "OTELMetrics"
+    logs_table_name: "OTELLogs"
 
   # Staging environment
   azuredataexplorer/staging:
-    cluster_uri: "https://ingest-staging.eastus.kusto.windows.net"
-    database: "telemetry_staging"
+    cluster_uri: "https://staging.eastus.kusto.windows.net"
+    db_name: "telemetry_staging"
     tenant_id: "${AZURE_TENANT_ID}"
-    client_id: "${AZURE_CLIENT_ID}"
-    client_secret: "${AZURE_CLIENT_SECRET}"
-    traces_table: "Traces"
-    metrics_table: "Metrics"
-    logs_table: "Logs"
+    application_id: "${AZURE_CLIENT_ID}"
+    application_key: "${AZURE_CLIENT_SECRET}"
+    traces_table_name: "OTELTraces"
+    metrics_table_name: "OTELMetrics"
+    logs_table_name: "OTELLogs"
 
 processors:
   # Route by environment attribute
@@ -565,9 +537,9 @@ az keyvault set-policy \
 ```yaml
 exporters:
   azuredataexplorer:
-    cluster_uri: "https://ingest-myadxcluster.eastus.kusto.windows.net"
-    database: "telemetry"
-    use_managed_identity: true  # No need for client secrets
+    cluster_uri: "https://myadxcluster.eastus.kusto.windows.net"
+    db_name: "telemetry"
+    managed_identity_id: "system"  # No need for client secrets
 ```
 
 **3. Enable Private Endpoints:**
@@ -577,27 +549,27 @@ Configure private endpoints to keep traffic within your virtual network.
 **4. Implement Row Level Security:**
 
 ```kql
-.create function with (folder="Security") FilterByService(userId:string)
+.create-or-alter function with (folder="Security") FilterPaymentService()
 {
-    Traces
-    | where ServiceName in (GetAllowedServices(userId))
+    OTELTraces
+    | where current_principal_is_member_of('aadgroup=payment-observers@example.com')
+    | where tostring(ResourceAttributes["service.name"]) == "payment-service"
 }
 
-.alter table Traces policy restricted_view_access true
+.alter table OTELTraces policy row_level_security enable "FilterPaymentService"
 ```
 
 ## Cost Management
 
 ADX pricing is based on compute and storage. Optimize costs:
 
-**1. Use Auto-Scale:**
+**1. Use Auto-Stop:**
 
 ```bash
 az kusto cluster update \
   --name myadxcluster \
   --resource-group my-resource-group \
-  --enable-auto-stop true \
-  --auto-stop-idle-minutes 30
+  --enable-auto-stop true
 ```
 
 **2. Implement Data Sampling:**
@@ -612,8 +584,8 @@ processors:
 
 ```kql
 // Keep hot data for 7 days, total retention 90 days
-.alter-merge table Traces policy retention softdelete = 90d
-.alter table Traces policy caching hot = 7d
+.alter-merge table OTELTraces policy retention softdelete = 90d
+.alter table OTELTraces policy caching hot = 7d
 ```
 
 **4. Use Queued Ingestion for Non-Critical Data:**
@@ -621,7 +593,7 @@ processors:
 ```yaml
 exporters:
   azuredataexplorer:
-    ingestion_type: "queued"  # Lower cost than streaming
+    ingestion_type: "queued"  # Lower cost than managed streaming
 ```
 
 ## Complete Production Example
@@ -681,22 +653,19 @@ processors:
 exporters:
   azuredataexplorer:
     cluster_uri: "${ADX_CLUSTER_URI}"
-    database: "${ADX_DATABASE}"
+    db_name: "${ADX_DATABASE}"
     tenant_id: "${AZURE_TENANT_ID}"
-    client_id: "${AZURE_CLIENT_ID}"
-    client_secret: "${AZURE_CLIENT_SECRET}"
+    application_id: "${AZURE_CLIENT_ID}"
+    application_key: "${AZURE_CLIENT_SECRET}"
 
-    traces_table: "Traces"
-    traces_mapping: "OtelTracesMapping"
-    metrics_table: "Metrics"
-    metrics_mapping: "OtelMetricsMapping"
-    logs_table: "Logs"
-    logs_mapping: "OtelLogsMapping"
+    traces_table_name: "OTELTraces"
+    traces_table_json_mapping: "OtelTracesMapping"
+    metrics_table_name: "OTELMetrics"
+    metrics_table_json_mapping: "OtelMetricsMapping"
+    logs_table_name: "OTELLogs"
+    logs_table_json_mapping: "OtelLogsMapping"
 
-    ingestion_type: "streaming"
-    max_batch_size_mb: 10
-    flush_interval: 30s
-    compression: "gzip"
+    ingestion_type: "managed"
 
     sending_queue:
       enabled: true
@@ -747,7 +716,7 @@ Solutions:
 **Issue: Slow query performance**
 
 Optimize by:
-- Creating appropriate indexes on frequently queried columns
+- Projecting frequently queried dynamic attributes into materialized views or update-policy tables
 - Using materialized views for common aggregations
 - Implementing partitioning policies
 - Adjusting cache policy for hot data
