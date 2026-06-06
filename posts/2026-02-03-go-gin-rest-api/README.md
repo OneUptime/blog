@@ -619,6 +619,10 @@ func BearerAuth(validateToken func(string) bool) gin.HandlerFunc {
 package middleware
 
 import (
+    "net/http"
+    "strconv"
+    "strings"
+
     "github.com/gin-gonic/gin"
 )
 
@@ -757,6 +761,9 @@ Organize your routes in a dedicated file:
 package routes
 
 import (
+    "net/http"
+    "time"
+
     "github.com/gin-gonic/gin"
     "github.com/yourusername/go-gin-api/handlers"
     "github.com/yourusername/go-gin-api/middleware"
