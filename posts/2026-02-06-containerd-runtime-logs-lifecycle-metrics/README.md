@@ -44,7 +44,7 @@ receivers:
         regex: 'time="(?P<timestamp>[^"]+)"\s+level=(?P<level>\w+)\s+msg="(?P<message>[^"]*)"'
         timestamp:
           parse_from: attributes.timestamp
-          layout: '%Y-%m-%dT%H:%M:%S.%LZ'
+          layout: '%Y-%m-%dT%H:%M:%S.%sZ'
         severity:
           parse_from: attributes.level
           mapping:
@@ -161,21 +161,28 @@ service:
 The metrics endpoint exposes several useful metrics:
 
 ```text
-# Container operations duration
-containerd_container_operations_duration_seconds_bucket
-containerd_container_operations_duration_seconds_sum
-containerd_container_operations_duration_seconds_count
+# CRI container lifecycle operation duration
+containerd_cri_container_create_seconds_bucket
+containerd_cri_container_create_seconds_sum
+containerd_cri_container_create_seconds_count
+containerd_cri_container_start_seconds_bucket
+containerd_cri_container_stop_seconds_bucket
+containerd_cri_container_remove_seconds_bucket
 
-# Active containers and images
-containerd_containers_total
-containerd_images_total
+# CRI image pull activity
+containerd_cri_sandboxed_image_pulls_total
+containerd_cri_sandboxed_in_progress_image_pulls
+containerd_cri_sandboxed_image_pulling_throughput_bucket
 
 # gRPC request metrics
-containerd_grpc_server_handled_total
-containerd_grpc_server_handling_seconds_bucket
+grpc_server_started_total
+grpc_server_handled_total
+grpc_server_handling_seconds_bucket
 
-# Snapshot usage
-containerd_snapshot_ops_duration_seconds_bucket
+# Network plugin operation metrics
+containerd_cri_network_plugin_operations_total
+containerd_cri_network_plugin_operations_errors_total
+containerd_cri_network_plugin_operations_duration_seconds_bucket
 
 # Process metrics for containerd itself
 process_cpu_seconds_total
@@ -185,7 +192,7 @@ process_open_fds
 
 ## Tracking Container Lifecycle Events
 
-containerd logs container lifecycle events. You can parse these to track how long operations take:
+containerd logs container lifecycle events. You can parse these to track when operations occur:
 
 ```yaml
 receivers:
@@ -198,10 +205,10 @@ receivers:
         regex: 'time="(?P<timestamp>[^"]+)"\s+level=(?P<level>\w+)\s+msg="(?P<message>[^"]*)"(\s+(?P<extra>.*))?'
         timestamp:
           parse_from: attributes.timestamp
-          layout: '%Y-%m-%dT%H:%M:%S.%LZ'
+          layout: '%Y-%m-%dT%H:%M:%S.%sZ'
       # Filter for lifecycle events
       - type: filter
-        expr: 'attributes.message matches "(starting|killing|deleting|creating) container"'
+        expr: '!(attributes.message matches "(starting|killing|deleting|creating) container")'
       - type: move
         from: attributes.message
         to: body
@@ -224,7 +231,7 @@ receivers:
         regex: 'time="(?P<timestamp>[^"]+)"\s+level=(?P<level>\w+)\s+msg="(?P<message>[^"]*)"'
         timestamp:
           parse_from: attributes.timestamp
-          layout: '%Y-%m-%dT%H:%M:%S.%LZ'
+          layout: '%Y-%m-%dT%H:%M:%S.%sZ'
         severity:
           parse_from: attributes.level
       - type: move
@@ -269,4 +276,4 @@ service:
 
 ## Summary
 
-containerd exposes both logs and Prometheus metrics that the OpenTelemetry Collector can collect. Logs give you visibility into container lifecycle events and runtime errors, while metrics provide quantitative data about operation durations, container counts, and gRPC performance. Together, they give you a complete picture of your container runtime health.
+containerd exposes both logs and Prometheus metrics that the OpenTelemetry Collector can collect. Logs give you visibility into container lifecycle events and runtime errors, while metrics provide quantitative data about operation durations, image pulls, network plugin operations, and gRPC performance. Together, they give you a complete picture of your container runtime health.
