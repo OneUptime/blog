@@ -29,18 +29,17 @@ Before writing any code, you need a clear schema. Start by identifying the domai
 # Namespace: ecommerce
 
 groups:
-  - id: ecommerce.order
-    prefix: ecommerce.order
+  - id: registry.ecommerce.order
     type: attribute_group
     brief: "Attributes describing an e-commerce order"
     attributes:
-      - id: id
+      - id: ecommerce.order.id
         type: string
+        stability: development
         brief: "Unique identifier for the order"
-        requirement_level: required
         examples: ["ORD-2026-0001", "ORD-2026-0002"]
 
-      - id: status
+      - id: ecommerce.order.status
         type:
           allow_custom_values: false
           members:
@@ -54,17 +53,32 @@ groups:
               value: "delivered"
             - id: cancelled
               value: "cancelled"
+        stability: development
         brief: "Current status of the order"
-        requirement_level: required
 
-      - id: total_amount
+      - id: ecommerce.order.total_amount
         type: double
+        stability: development
         brief: "Total order amount in the base currency"
-        requirement_level: recommended
 
-      - id: item_count
+      - id: ecommerce.order.item_count
         type: int
+        stability: development
         brief: "Number of distinct items in the order"
+
+  - id: ecommerce.order.process
+    type: span
+    stability: development
+    brief: "Processing an e-commerce order"
+    span_kind: internal
+    attributes:
+      - ref: ecommerce.order.id
+        requirement_level: required
+      - ref: ecommerce.order.status
+        requirement_level: required
+      - ref: ecommerce.order.total_amount
+        requirement_level: recommended
+      - ref: ecommerce.order.item_count
         requirement_level: recommended
 ```
 
@@ -198,7 +212,7 @@ Semantic conventions are not just for traces. Apply the same attributes to metri
 # Using custom conventions with OpenTelemetry metrics.
 
 from opentelemetry import metrics
-from semconv.ecommerce import EcommerceOrderAttributes, OrderStatus
+from semconv.ecommerce import EcommerceOrderAttributes
 
 meter = metrics.get_meter("order-service", "1.0.0")
 
@@ -213,23 +227,22 @@ order_counter = meter.create_counter(
 order_value_histogram = meter.create_histogram(
     name="ecommerce.orders.value",
     description="Distribution of order values",
-    unit="USD"
+    unit="{USD}"
 )
 
-def record_order_metrics(order_id: str, status: str, total: float):
+def record_order_metrics(status: str, total: float):
     """Record metrics using consistent domain attributes."""
 
     # Use the same attribute constants across traces and metrics
     attributes = {
-        EcommerceOrderAttributes.ORDER_ID: order_id,
         EcommerceOrderAttributes.ORDER_STATUS: status,
     }
 
-    order_counter.add(1, attributes)
-    order_value_histogram.record(total, attributes)
+    order_counter.add(1, attributes=attributes)
+    order_value_histogram.record(total, attributes=attributes)
 ```
 
-When traces, metrics, and logs all use `ecommerce.order.id` as the attribute name, correlating signals becomes straightforward. You can jump from a spike in the `ecommerce.orders.value` histogram to the specific traces that caused it, all because the attribute names match.
+When traces, metrics, and logs all use the same domain vocabulary, correlating signals becomes more straightforward. Keep high-cardinality identifiers such as `ecommerce.order.id` on traces and logs, and use lower-cardinality attributes such as `ecommerce.order.status` on aggregate metrics. To jump from a metric spike to a specific trace, rely on backend correlation features such as exemplars rather than adding per-order IDs as metric attributes.
 
 ## Versioning and Evolution
 
@@ -238,21 +251,29 @@ Conventions will change over time. New attributes get added, old ones get deprec
 ```yaml
 # Version history tracked in the schema file
 groups:
-  - id: ecommerce.order
-    prefix: ecommerce.order
+  - id: registry.ecommerce.order
     type: attribute_group
-    brief: "Attributes describing an e-commerce order"
-    # stability: experimental | stable
+    brief: "Attributes describing e-commerce orders"
+    # stability: development | alpha | beta | release_candidate | stable
     stability: stable
     # deprecated: Use ecommerce.order.v2 instead (if applicable)
     attributes:
-      - id: currency
+      - id: ecommerce.order.currency
         type: string
+        stability: development
         brief: "ISO 4217 currency code for the order"
-        requirement_level: recommended
         # Added in v1.2.0 of our conventions
         note: "Added to support multi-currency orders"
         examples: ["USD", "EUR", "GBP"]
+
+  - id: ecommerce.order.process
+    type: span
+    stability: stable
+    brief: "Processing an e-commerce order"
+    span_kind: internal
+    attributes:
+      - ref: ecommerce.order.currency
+        requirement_level: recommended
 ```
 
 Follow a few rules for safe evolution. Never remove a stable attribute without a deprecation period. Add new attributes as `recommended` first, then promote to `required` once adoption is widespread. Use the `deprecated` field to guide migration when breaking changes are necessary. Treat your convention schema with the same rigor you would treat a public API contract.
@@ -267,19 +288,20 @@ You can enforce convention compliance in the OpenTelemetry Collector using the t
 
 processors:
   transform:
+    error_mode: ignore
     trace_statements:
       - context: span
         statements:
           # Normalize legacy attribute names to current conventions
-          - set(attributes["ecommerce.order.id"], attributes["order_id"])
-            where attributes["order_id"] != nil
-          - delete_key(attributes, "order_id")
-            where attributes["order_id"] != nil
+          - set(span.attributes["ecommerce.order.id"], span.attributes["order_id"])
+            where span.attributes["order_id"] != nil
+          - delete_key(span.attributes, "order_id")
+            where span.attributes["order_id"] != nil
 
           # Ensure status values are lowercase
-          - set(attributes["ecommerce.order.status"],
-              Concat([""], [attributes["ecommerce.order.status"]], ""))
-            where attributes["ecommerce.order.status"] != nil
+          - set(span.attributes["ecommerce.order.status"],
+              ToLowerCase(span.attributes["ecommerce.order.status"]))
+            where span.attributes["ecommerce.order.status"] != nil
 ```
 
 This gives you a safety net at the infrastructure level. Even if a service ships with outdated attribute names, the collector can normalize the data before it reaches your observability backend.
@@ -288,4 +310,4 @@ This gives you a safety net at the infrastructure level. Even if a service ships
 
 A few lessons from organizations that have successfully rolled out custom conventions. Start small with one or two critical domains rather than trying to model everything at once. Get buy-in from the teams who will use the conventions before finalizing the schema. Publish generated documentation from the YAML schemas so developers have a single reference point. Review new convention proposals through pull requests so the whole team can weigh in. Track adoption metrics to identify services that are not yet using the conventions.
 
-Custom semantic conventions are one of the most impactful investments you can make in your observability practice. They turn unstructured, inconsistent telemetry into a well-organized data model that scales across teams and services. The upfront effort pays dividends every time someone builds a dashboard, writes an alert rule, or debugates a production incident.
+Custom semantic conventions are one of the most impactful investments you can make in your observability practice. They turn unstructured, inconsistent telemetry into a well-organized data model that scales across teams and services. The upfront effort pays dividends every time someone builds a dashboard, writes an alert rule, or debugs a production incident.
