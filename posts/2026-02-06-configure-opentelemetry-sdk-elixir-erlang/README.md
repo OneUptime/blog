@@ -15,9 +15,9 @@ The OpenTelemetry SDK consists of several components that work together:
 ```mermaid
 graph TD
     A[Application Code] --> B[Tracer API]
-    B --> C[Span Processor]
-    C --> D[Sampler]
-    D --> E[Exporter]
+    B --> D[Sampler]
+    D --> C[Span Processor]
+    C --> E[Exporter]
     E --> F[Collector/Backend]
     G[Resource Detector] --> C
     H[Context Propagator] --> B
@@ -42,24 +42,37 @@ Start with the minimal configuration in your `config/runtime.exs`:
 ```elixir
 import Config
 
+parse_headers = fn
+  nil ->
+    []
+
+  headers ->
+    headers
+    |> String.split(",")
+    |> Enum.map(fn header ->
+      [key, value] = String.split(header, "=", parts: 2)
+      {String.trim(key), String.trim(value)}
+    end)
+end
+
 # Core OpenTelemetry configuration
 
 config :opentelemetry,
   # Define your service identity
-  resource: [
-    service: [
+  resource: %{
+    service: %{
       name: System.get_env("OTEL_SERVICE_NAME") || "my-elixir-app",
       namespace: System.get_env("OTEL_SERVICE_NAMESPACE") || "production",
       version: System.get_env("APP_VERSION") || "1.0.0",
-      instance: [
-        id: System.get_env("HOSTNAME") || Node.self() |> to_string()
-      ]
-    ]
-  ],
+      instance: %{
+        id: System.get_env("HOSTNAME") || to_string(Node.self())
+      }
+    }
+  },
   # Configure span processors
   processors: [
     otel_batch_processor: %{
-      exporter: {:otel_exporter_otlp, %{}}
+      exporter: {:opentelemetry_exporter, %{}}
     }
   ]
 
@@ -67,18 +80,8 @@ config :opentelemetry,
 config :opentelemetry_exporter,
   otlp_protocol: :http_protobuf,
   otlp_endpoint: System.get_env("OTEL_EXPORTER_OTLP_ENDPOINT") || "http://localhost:4318",
-  otlp_headers: parse_headers(System.get_env("OTEL_EXPORTER_OTLP_HEADERS")),
+  otlp_headers: parse_headers.(System.get_env("OTEL_EXPORTER_OTLP_HEADERS")),
   otlp_compression: :gzip
-
-defp parse_headers(nil), do: []
-defp parse_headers(headers) do
-  headers
-  |> String.split(",")
-  |> Enum.map(fn header ->
-    [key, value] = String.split(header, "=", parts: 2)
-    {String.trim(key), String.trim(value)}
-  end)
-end
 ```
 
 This configuration uses environment variables following OpenTelemetry conventions, making it easy to configure different environments.
@@ -105,17 +108,7 @@ config :opentelemetry_exporter,
   ],
 
   # Compression: gzip, none
-  otlp_compression: :gzip,
-
-  # Timeout for export requests (milliseconds)
-  otlp_timeout: 10_000,
-
-  # SSL/TLS configuration
-  otlp_ssl_options: [
-    verify: :verify_peer,
-    cacertfile: System.get_env("SSL_CERT_FILE"),
-    depth: 3
-  ]
+  otlp_compression: :gzip
 ```
 
 For gRPC protocol (more efficient for high throughput):
@@ -123,15 +116,9 @@ For gRPC protocol (more efficient for high throughput):
 ```elixir
 config :opentelemetry_exporter,
   otlp_protocol: :grpc,
-  otlp_endpoint: "https://collector.example.com:4317",
+  otlp_endpoint: "http://collector.example.com:4317",
   # gRPC uses different port (4317 vs 4318 for HTTP)
-  otlp_compression: :gzip,
-  # gRPC-specific options
-  grpc_options: [
-    pool_size: 10,
-    # Keep connection alive
-    keepalive: 60_000
-  ]
+  otlp_compression: :gzip
 ```
 
 ## Span Processor Configuration
@@ -143,9 +130,9 @@ config :opentelemetry,
   processors: [
     otel_batch_processor: %{
       # The exporter to use
-      exporter: {:otel_exporter_otlp, %{
+      exporter: {:opentelemetry_exporter, %{
         protocol: :http_protobuf,
-        endpoint: System.get_env("OTEL_EXPORTER_OTLP_ENDPOINT")
+        endpoints: [System.get_env("OTEL_EXPORTER_OTLP_ENDPOINT") || "http://localhost:4318"]
       }},
 
       # Maximum batch size before forcing export
@@ -153,9 +140,6 @@ config :opentelemetry,
 
       # Time to wait before exporting (milliseconds)
       scheduled_delay_ms: 5000,
-
-      # Maximum batch export size
-      max_export_batch_size: 512,
 
       # Export timeout (milliseconds)
       exporting_timeout_ms: 30_000
@@ -165,7 +149,7 @@ config :opentelemetry,
 
 Tune these settings based on your traffic patterns:
 
-**High Throughput Applications**: Increase `max_queue_size` and `max_export_batch_size` to handle burst traffic without dropping spans.
+**High Throughput Applications**: Increase `max_queue_size` to handle burst traffic without dropping spans.
 
 **Low Latency Requirements**: Decrease `scheduled_delay_ms` to export spans more frequently, reducing the time before traces appear in your backend.
 
@@ -217,6 +201,8 @@ Implement custom sampling for more control:
 
 ```elixir
 defmodule MyApp.CustomSampler do
+  require OpenTelemetry.Tracer, as: Tracer
+
   @behaviour :otel_sampler
 
   def setup(_opts) do
@@ -227,23 +213,25 @@ defmodule MyApp.CustomSampler do
     }
   end
 
-  def should_sample(ctx, trace_id, _links, span_name, _span_kind, attributes, config) do
+  def should_sample(ctx, trace_id, _links, _span_name, _span_kind, attributes, config) do
+    tracestate = Tracer.current_span_ctx(ctx) |> OpenTelemetry.Span.tracestate()
+
     # Always sample high-priority endpoints
     if high_priority?(attributes, config.high_priority_paths) do
-      {:record_and_sample, [], trace_id}
+      {:record_and_sample, [], tracestate}
     else
       # Apply ratio sampling to other requests
       if sample_by_trace_id?(trace_id, config.default_ratio) do
-        {:record_and_sample, [], trace_id}
+        {:record_and_sample, [], tracestate}
       else
-        {:drop, [], trace_id}
+        {:drop, [], tracestate}
       end
     end
   end
 
   defp high_priority?(attributes, priority_paths) do
-    case List.keyfind(attributes, "http.target", 0) do
-      {"http.target", path} ->
+    case Map.get(attributes, "http.target") || Map.get(attributes, :"http.target") do
+      path when is_binary(path) ->
         Enum.any?(priority_paths, &String.starts_with?(path, &1))
       _ ->
         false
@@ -252,7 +240,7 @@ defmodule MyApp.CustomSampler do
 
   defp sample_by_trace_id?(trace_id, ratio) do
     # Use trace_id for consistent sampling decisions
-    :erlang.phash2(trace_id) / :math.pow(2, 32) < ratio
+    :erlang.phash2(trace_id, 1_000_000) / 1_000_000 < ratio
   end
 
   def description(_config) do
@@ -264,92 +252,22 @@ end
 config :opentelemetry, sampler: {MyApp.CustomSampler, %{}}
 ```
 
-This sampler always records critical endpoints while sampling others at a lower rate.
+This sampler always records critical endpoints when the route is present in the span's initial attributes, while sampling others at a lower rate.
 
-Resource Configuration
+## Resource Configuration
 
 Resources describe your service and environment. Configure rich resource attributes:
 
 ```elixir
-config :opentelemetry,
-  resource: [
-    # Service identification
-    service: [
-      name: System.get_env("OTEL_SERVICE_NAME") || "my-app",
-      namespace: System.get_env("OTEL_SERVICE_NAMESPACE") || "production",
-      version: System.get_env("APP_VERSION") || get_app_version(),
-      instance: [
-        id: System.get_env("INSTANCE_ID") || generate_instance_id()
-      ]
-    ],
-
-    # Deployment environment
-    deployment: [
-      environment: System.get_env("MIX_ENV") || "production"
-    ],
-
-    # Container/orchestration info
-    container: [
-      id: System.get_env("CONTAINER_ID"),
-      name: System.get_env("CONTAINER_NAME"),
-      image: [
-        name: System.get_env("IMAGE_NAME"),
-        tag: System.get_env("IMAGE_TAG")
-      ]
-    ],
-
-    # Kubernetes info
-    k8s: [
-      cluster: [
-        name: System.get_env("K8S_CLUSTER_NAME")
-      ],
-      namespace: [
-        name: System.get_env("K8S_NAMESPACE")
-      ],
-      pod: [
-        name: System.get_env("K8S_POD_NAME"),
-        uid: System.get_env("K8S_POD_UID")
-      ],
-      node: [
-        name: System.get_env("K8S_NODE_NAME")
-      ]
-    ],
-
-    # Cloud provider info
-    cloud: [
-      provider: detect_cloud_provider(),
-      platform: System.get_env("CLOUD_PLATFORM"),
-      region: System.get_env("CLOUD_REGION"),
-      availability_zone: System.get_env("CLOUD_AZ")
-    ],
-
-    # Host information
-    host: [
-      name: System.get_env("HOSTNAME"),
-      type: detect_host_type(),
-      arch: to_string(:erlang.system_info(:system_architecture))
-    ],
-
-    # Process information
-    process: [
-      pid: System.get_env("PROCESS_PID") || to_string(System.pid()),
-      runtime: [
-        name: "BEAM",
-        version: System.version(),
-        description: "Erlang/OTP #{System.otp_release()}"
-      ]
-    ]
-  ]
-
-defp get_app_version do
+get_app_version = fn ->
   Application.spec(:my_app, :vsn) |> to_string()
 end
 
-defp generate_instance_id do
+generate_instance_id = fn ->
   :crypto.strong_rand_bytes(16) |> Base.encode16(case: :lower)
 end
 
-defp detect_cloud_provider do
+detect_cloud_provider = fn ->
   cond do
     System.get_env("AWS_REGION") -> "aws"
     System.get_env("GOOGLE_CLOUD_PROJECT") -> "gcp"
@@ -358,9 +276,79 @@ defp detect_cloud_provider do
   end
 end
 
-defp detect_host_type do
+detect_host_type = fn ->
   if System.get_env("CONTAINER_ID"), do: "container", else: "physical"
 end
+
+config :opentelemetry,
+  resource: %{
+    # Service identification
+    service: %{
+      name: System.get_env("OTEL_SERVICE_NAME") || "my-app",
+      namespace: System.get_env("OTEL_SERVICE_NAMESPACE") || "production",
+      version: System.get_env("APP_VERSION") || get_app_version.(),
+      instance: %{
+        id: System.get_env("INSTANCE_ID") || generate_instance_id.()
+      }
+    },
+
+    # Deployment environment
+    deployment: %{
+      environment: System.get_env("MIX_ENV") || "production"
+    },
+
+    # Container/orchestration info
+    container: %{
+      id: System.get_env("CONTAINER_ID"),
+      name: System.get_env("CONTAINER_NAME"),
+      image: %{
+        name: System.get_env("IMAGE_NAME"),
+        tag: System.get_env("IMAGE_TAG")
+      }
+    },
+
+    # Kubernetes info
+    k8s: %{
+      cluster: %{
+        name: System.get_env("K8S_CLUSTER_NAME")
+      },
+      namespace: %{
+        name: System.get_env("K8S_NAMESPACE")
+      },
+      pod: %{
+        name: System.get_env("K8S_POD_NAME"),
+        uid: System.get_env("K8S_POD_UID")
+      },
+      node: %{
+        name: System.get_env("K8S_NODE_NAME")
+      }
+    },
+
+    # Cloud provider info
+    cloud: %{
+      provider: detect_cloud_provider.(),
+      platform: System.get_env("CLOUD_PLATFORM"),
+      region: System.get_env("CLOUD_REGION"),
+      availability_zone: System.get_env("CLOUD_AZ")
+    },
+
+    # Host information
+    host: %{
+      name: System.get_env("HOSTNAME"),
+      type: detect_host_type.(),
+      arch: to_string(:erlang.system_info(:system_architecture))
+    },
+
+    # Process information
+    process: %{
+      pid: System.get_env("PROCESS_PID") || to_string(System.pid()),
+      runtime: %{
+        name: "BEAM",
+        version: System.version(),
+        description: "Erlang/OTP #{System.otp_release()}"
+      }
+    }
+  }
 ```
 
 These attributes enable filtering and grouping traces by service, environment, region, and more in your observability platform.
@@ -390,9 +378,9 @@ Available propagators:
 
 **:b3multi** - B3 multi-header format (Zipkin)
 
-**:b3single** - B3 single-header format
+**:b3** - B3 single-header format
 
-**:jaeger** - Jaeger propagation format
+The Erlang/Elixir SDK does not currently support the Jaeger propagation format through `OTEL_PROPAGATORS`.
 
 For multi-cloud or polyglot environments, enable multiple propagators:
 
@@ -408,61 +396,41 @@ Optimize OpenTelemetry for your workload:
 ```elixir
 config :opentelemetry,
   # Limit maximum span attributes
-  span_attribute_count_limit: 128,
-  span_attribute_value_length_limit: 1024,
+  attribute_count_limit: 128,
+  attribute_value_length_limit: 1024,
 
   # Limit span events
-  span_event_count_limit: 128,
-  event_attribute_count_limit: 32,
+  event_count_limit: 128,
+  attribute_per_event_limit: 32,
 
   # Limit span links
-  span_link_count_limit: 32,
-  link_attribute_count_limit: 32
+  link_count_limit: 32,
+  attribute_per_link_limit: 32
 
 # Processor performance tuning
 config :opentelemetry,
   processors: [
     otel_batch_processor: %{
-      exporter: {:otel_exporter_otlp, %{}},
+      exporter: {:opentelemetry_exporter, %{}},
       # Tune for high throughput
       max_queue_size: 4096,
-      max_export_batch_size: 1024,
       scheduled_delay_ms: 5000,
-      # Handle export failures
-      max_retry_count: 3,
-      retry_timeout_ms: 1000
+      exporting_timeout_ms: 30_000
     }
   ]
 ```
 
-Monitor the impact using Erlang observer or Telemetry metrics:
+Monitor the impact using Erlang observer and the SDK's force-flush result:
 
 ```elixir
 defmodule MyApp.OtelMetrics do
-  def setup do
-    :telemetry.attach_many(
-      "otel-metrics",
-      [
-        [:otel, :batch_processor, :export, :start],
-        [:otel, :batch_processor, :export, :stop],
-        [:otel, :batch_processor, :export, :exception]
-      ],
-      &handle_event/4,
-      nil
-    )
+  def force_flush do
+    case :otel_tracer_provider.force_flush() do
+      :ok -> :ok
+      {:error, reason} -> {:error, reason}
+      :timeout -> {:error, :timeout}
+    end
   end
-
-  def handle_event([:otel, :batch_processor, :export, :stop], measurements, _meta, _config) do
-    # Log export performance
-    IO.puts("Exported batch: #{measurements.count} spans in #{measurements.duration}ms")
-  end
-
-  def handle_event([:otel, :batch_processor, :export, :exception], _measurements, meta, _) do
-    # Alert on export failures
-    IO.warn("Export failed: #{inspect(meta.reason)}")
-  end
-
-  def handle_event(_, _, _, _), do: :ok
 end
 ```
 
@@ -500,9 +468,9 @@ config :opentelemetry,
   }},
   processors: [
     otel_batch_processor: %{
-      exporter: {:otel_exporter_otlp, %{
+      exporter: {:opentelemetry_exporter, %{
         protocol: :grpc,
-        endpoint: {:system, "OTEL_EXPORTER_OTLP_ENDPOINT"}
+        endpoints: [System.fetch_env!("OTEL_EXPORTER_OTLP_ENDPOINT")]
       }},
       max_queue_size: 4096
     }
@@ -541,21 +509,16 @@ defmodule MyAppWeb.HealthController do
   end
 
   defp check_processors do
-    # Verify batch processor is running
-    case Process.whereis(:otel_batch_processor) do
+    # Verify the global tracer provider is running
+    case Process.whereis(:otel_tracer_provider_global) do
       pid when is_pid(pid) -> Process.alive?(pid)
       _ -> false
     end
   end
 
   defp check_exporter do
-    # Attempt test export
-    try do
-      :otel_exporter_otlp.export([], 1000)
-      true
-    rescue
-      _ -> false
-    end
+    # Flush queued spans without creating synthetic telemetry
+    :otel_tracer_provider.force_flush() == :ok
   end
 
   defp get_sdk_version do
@@ -573,8 +536,8 @@ defmodule MyApp.Application do
   use Application
 
   def start(_type, _args) do
-    # Setup OpenTelemetry before starting application
-    setup_opentelemetry()
+    # Setup instrumentation before starting application children
+    setup_instrumentation()
 
     children = [
       MyApp.Repo,
@@ -587,19 +550,7 @@ defmodule MyApp.Application do
     Supervisor.start_link(children, opts)
   end
 
-  defp setup_opentelemetry do
-    # Ensure unique instance ID per node
-    node_id = Node.self() |> to_string()
-
-    :opentelemetry.set_default_resource([
-      service: [
-        instance: [
-          id: node_id
-        ]
-      ]
-    ])
-
-    # Setup instrumentations
+  defp setup_instrumentation do
     OpentelemetryPhoenix.setup(adapter: :cowboy2)
     OpentelemetryEcto.setup([:my_app, :repo])
   end
@@ -615,7 +566,7 @@ defmodule MyApp.Application do
 end
 ```
 
-Trace context automatically propagates across nodes when using standard BEAM messaging.
+Set a unique `service.instance.id` in `config/runtime.exs` before the OpenTelemetry application starts, using `Node.self()` or another node identifier. Trace context is not automatically propagated through arbitrary BEAM messages; include it explicitly in messages or rely on instrumented libraries that inject and extract context.
 
 ## Troubleshooting
 
@@ -623,7 +574,7 @@ Common issues and solutions:
 
 **Spans not exported**: Check exporter endpoint connectivity, verify authentication headers, and review processor logs.
 
-**High memory usage**: Reduce `max_queue_size`, increase export frequency by lowering `scheduled_delay_ms`, or increase sampling rate.
+**High memory usage**: Reduce `max_queue_size`, increase export frequency by lowering `scheduled_delay_ms`, or lower the sampling ratio.
 
 **Missing traces**: Verify sampling configuration, check that instrumentation is attached before application starts, and confirm trace context propagation.
 
@@ -635,14 +586,7 @@ Enable debug logging:
 config :logger, level: :debug
 
 config :opentelemetry,
-  processors: [
-    otel_batch_processor: %{
-      exporter: {:otel_exporter_otlp, %{
-        # Enable debug output
-        debug: true
-      }}
-    }
-  ]
+  log_level: :debug
 ```
 
 ## Conclusion
