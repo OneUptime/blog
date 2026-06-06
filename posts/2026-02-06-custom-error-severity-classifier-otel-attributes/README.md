@@ -183,6 +183,7 @@ class ErrorSeverityClassifier:
 ```python
 # instrumented_service.py
 from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
 from severity_classifier import ErrorSeverityClassifier
 
 tracer = trace.get_tracer("payment-service")
@@ -191,25 +192,30 @@ classifier = ErrorSeverityClassifier()
 def process_payment(payment_id, amount):
     with tracer.start_as_current_span("process-payment") as span:
         # Set business context attributes upfront
-        span.set_attribute("error.affects_revenue", True)
-        span.set_attribute("error.affected_operation", "payment_processing")
+        error_context = {
+            "error.affects_revenue": True,
+            "error.affected_operation": "payment_processing",
+        }
+        span.set_attributes(error_context)
         span.set_attribute("payment.amount", amount)
 
         try:
             result = gateway.charge(payment_id, amount)
-            span.set_status(trace.StatusCode.OK)
             return result
 
         except GatewayTimeoutError as e:
-            span.set_attribute("error.retryable", True)
-            span.set_attribute("error.transient", True)
-            span.set_attribute("error.scope", "request")
+            error_context.update({
+                "error.retryable": True,
+                "error.transient": True,
+                "error.scope": "request",
+            })
+            span.set_attributes(error_context)
 
             span.record_exception(e)
 
             # Classify the severity
             severity = classifier.classify(
-                span_attrs=dict(span.attributes),
+                span_attrs=error_context,
                 exception_attrs={
                     "exception.type": type(e).__name__,
                     "exception.message": str(e),
@@ -218,18 +224,21 @@ def process_payment(payment_id, amount):
 
             span.set_attribute("error.severity", severity.level.name)
             span.set_attribute("error.should_page", severity.should_page)
-            span.set_status(trace.StatusCode.ERROR, str(e))
+            span.set_status(Status(StatusCode.ERROR, str(e)))
             raise
 
         except GatewayPermanentError as e:
-            span.set_attribute("error.retryable", False)
-            span.set_attribute("error.transient", False)
-            span.set_attribute("error.scope", "service")
+            error_context.update({
+                "error.retryable": False,
+                "error.transient": False,
+                "error.scope": "service",
+            })
+            span.set_attributes(error_context)
 
             span.record_exception(e)
 
             severity = classifier.classify(
-                span_attrs=dict(span.attributes),
+                span_attrs=error_context,
                 exception_attrs={
                     "exception.type": type(e).__name__,
                     "exception.message": str(e),
@@ -238,23 +247,32 @@ def process_payment(payment_id, amount):
 
             span.set_attribute("error.severity", severity.level.name)
             span.set_attribute("error.should_page", severity.should_page)
-            span.set_status(trace.StatusCode.ERROR, str(e))
+            span.set_status(Status(StatusCode.ERROR, str(e)))
             raise
 ```
 
 ## Correlating with Log Severity
 
-OpenTelemetry logs can be correlated with spans via trace ID. Pull in the log severity as an additional signal:
+OpenTelemetry log records can carry TraceId and SpanId, so backends can correlate them with spans. Pull in the log severity as an additional signal:
 
 ```python
 # log_correlation.py
 import logging
 from opentelemetry import trace
+from severity_classifier import ErrorSeverityClassifier
 
 logger = logging.getLogger("payment-service")
+tracer = trace.get_tracer("payment-service")
+classifier = ErrorSeverityClassifier()
 
 def process_with_log_correlation(payment_id):
     with tracer.start_as_current_span("process-payment") as span:
+        error_context = {
+            "error.affects_revenue": True,
+            "error.affected_operation": "payment_processing",
+        }
+        span.set_attributes(error_context)
+
         try:
             result = do_work(payment_id)
             return result
@@ -268,7 +286,7 @@ def process_with_log_correlation(payment_id):
             )
 
             severity = classifier.classify(
-                span_attrs=dict(span.attributes),
+                span_attrs=error_context,
                 exception_attrs={"exception.type": type(e).__name__},
                 log_severity="CRITICAL",
             )
@@ -282,20 +300,20 @@ def process_with_log_correlation(payment_id):
 With severity classified, route alerts accordingly:
 
 ```yaml
-# alertmanager routing based on severity attribute
+# Alertmanager routing based on an alert label mapped from the error.severity span attribute
 route:
   routes:
-    - match:
-        error_severity: "FATAL"
+    - matchers:
+        - error_severity="FATAL"
       receiver: "pagerduty-critical"
-    - match:
-        error_severity: "CRITICAL"
+    - matchers:
+        - error_severity="CRITICAL"
       receiver: "pagerduty-high"
-    - match:
-        error_severity: "ERROR"
+    - matchers:
+        - error_severity="ERROR"
       receiver: "slack-errors"
-    - match:
-        error_severity: "WARNING"
+    - matchers:
+        - error_severity="WARNING"
       receiver: "slack-warnings"
 ```
 
