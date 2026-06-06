@@ -65,6 +65,9 @@ metadata:
   namespace: observability
 spec:
   mode: daemonset
+  image: otel/opentelemetry-collector-k8s:0.153.0
+  hostNetwork: true
+  dnsPolicy: ClusterFirstWithHostNet
   # Tolerate all taints so the collector runs on every node including masters
   tolerations:
     - operator: Exists
@@ -78,6 +81,9 @@ spec:
       memory: 512Mi
   # Mount host filesystem paths for log collection and node metrics
   volumes:
+    - name: hostfs
+      hostPath:
+        path: /
     - name: varlog
       hostPath:
         path: /var/log
@@ -85,6 +91,10 @@ spec:
       hostPath:
         path: /var/lib/docker/containers
   volumeMounts:
+    - name: hostfs
+      mountPath: /hostfs
+      readOnly: true
+      mountPropagation: HostToContainer
     - name: varlog
       mountPath: /var/log
       readOnly: true
@@ -108,6 +118,7 @@ spec:
             endpoint: 0.0.0.0:4318
       # Collect host metrics from the node
       hostmetrics:
+        root_path: /hostfs
         collection_interval: 30s
         scrapers:
           cpu:
@@ -182,7 +193,7 @@ spec:
           exporters: [otlp]
 ```
 
-A few things to notice here. The DaemonSet tolerates all taints so it runs on every node, including control plane nodes. It mounts host paths for log collection. And it uses `K8S_NODE_NAME` to identify which node each agent runs on.
+A few things to notice here. The DaemonSet tolerates all taints so it runs on every node, including control plane nodes. It uses `hostNetwork` so applications can reach the agent through the node IP, and it mounts host paths for log collection and host metrics. The `K8S_NODE_NAME` environment variable is also available if you need node-aware collector configuration.
 
 The `hostmetrics` receiver scrapes system-level metrics directly from the node. The `filelog` receiver reads container log files from the node's filesystem. And the `otlp` receiver accepts data from application pods.
 
@@ -197,19 +208,25 @@ kind: Deployment
 metadata:
   name: my-app
 spec:
+  selector:
+    matchLabels:
+      app: my-app
   template:
+    metadata:
+      labels:
+        app: my-app
     spec:
       containers:
         - name: my-app
           image: myregistry/my-app:latest
           env:
-            # Use the node's internal IP to reach the DaemonSet collector
-            - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: "http://$(NODE_IP):4317"
             - name: NODE_IP
               valueFrom:
                 fieldRef:
                   fieldPath: status.hostIP
+            # Use the node's internal IP to reach the DaemonSet collector
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://$(NODE_IP):4317"
 ```
 
 This keeps traffic local to the node, avoiding unnecessary cross-node hops.
@@ -228,13 +245,9 @@ metadata:
   namespace: observability
 spec:
   mode: deployment
-  replicas: 3
-  # Enable autoscaling for the gateway
-  autoscaler:
-    minReplicas: 2
-    maxReplicas: 10
-    targetCPUUtilization: 70
-    targetMemoryUtilization: 80
+  image: otel/opentelemetry-collector-k8s:0.153.0
+  # Keep tail sampling on one replica unless agents use trace-ID-aware load balancing
+  replicas: 1
   resources:
     requests:
       cpu: 500m
@@ -313,9 +326,9 @@ spec:
           exporters: [otlp/logs]
 ```
 
-The gateway deployment uses a Horizontal Pod Autoscaler to scale based on CPU and memory utilization. It also has more generous resource limits because it's doing heavier processing.
+The gateway deployment has more generous resource limits because it's doing heavier processing.
 
-Notice the tail sampling processor. This is one of the main reasons to use a Deployment: tail sampling needs to see all spans of a trace before making a keep/drop decision. That's only possible in a centralized gateway.
+Notice the tail sampling processor. This is one of the main reasons to use a Deployment: tail sampling needs to see all spans of a trace before making a keep/drop decision. If you run multiple gateway replicas, the agents need trace-ID-aware load balancing so all spans for the same trace reach the same gateway instance.
 
 ## The Two-Tier Architecture
 
@@ -354,7 +367,7 @@ The DaemonSet agents handle local collection, enrichment with Kubernetes metadat
 
 This separation gives you several benefits:
 
-1. **Resilience**: If the gateway is temporarily down, agents can buffer data locally
+1. **Resilience**: If the gateway is temporarily down, agents can buffer data locally when exporter queues and retries are configured
 2. **Efficiency**: Local agents reduce cross-node network traffic
 3. **Flexibility**: You can scale the gateway independently of your cluster size
 4. **Processing**: Complex operations like tail sampling work correctly at the gateway level
