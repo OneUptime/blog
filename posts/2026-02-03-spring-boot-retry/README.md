@@ -107,7 +107,7 @@ public class ExternalApiService {
 }
 ```
 
-This method retries up to 3 times when a `RestClientException` occurs. By default, there is no delay between retries.
+This method attempts the call up to 3 times when a `RestClientException` occurs. By default, Spring Retry uses a fixed 1-second delay between attempts.
 
 ---
 
@@ -161,7 +161,7 @@ The `retryFor` parameter specifies which exceptions trigger retries. The `noRetr
 
 ## Backoff Strategies with @Backoff
 
-Without backoff, retries happen immediately. This can overwhelm a struggling service. Backoff adds delays between retries, giving the failing service time to recover.
+Retries with no delay, or too little delay, can overwhelm a struggling service. Backoff controls the delays between retries, giving the failing service time to recover.
 
 ### Fixed Delay Backoff
 
@@ -248,8 +248,7 @@ public class InventoryService {
         maxAttempts = 4,
         backoff = @Backoff(
             delay = 1000,        // Minimum delay
-            maxDelay = 3000,     // Maximum delay
-            random = true        // Randomize between delay and maxDelay
+            maxDelay = 3000      // Maximum delay; delay is uniformly distributed
         )
     )
     public int checkStock(String productId) {
@@ -263,7 +262,7 @@ public class InventoryService {
 
 ## Recovery Methods with @Recover
 
-When all retries are exhausted, the `@Recover` annotation defines fallback behavior. This prevents exceptions from propagating to the caller.
+When all retries are exhausted, the `@Recover` annotation can define fallback behavior. A matching recovery method can prevent the final exception from propagating to the caller.
 
 ```java
 // EmailService.java
@@ -301,7 +300,7 @@ public class EmailService {
 
     // Recovery method called after all retries fail
     // Must match return type of the retryable method
-    // Exception parameter must be first, followed by same method parameters
+    // Exception parameter is usually first, followed by same method parameters
     @Recover
     public EmailResult recoverSendEmail(
             EmailDeliveryException ex,
@@ -327,7 +326,7 @@ public class EmailService {
 The recovery method must follow these rules:
 
 1. Same return type as the retryable method
-2. First parameter is the exception type (or a parent class)
+2. First parameter is usually the exception type (or a parent class); it can be omitted when no other recovery method needs to be disambiguated
 3. Remaining parameters match the retryable method parameters
 4. Method must be in the same class as the retryable method
 
@@ -470,15 +469,14 @@ package com.example.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.retry.backoff.ExponentialBackOffPolicy;
-import org.springframework.retry.policy.ExceptionClassifierRetryPolicy;
-import org.springframework.retry.policy.NeverRetryPolicy;
+import org.springframework.retry.backoff.ExponentialRandomBackOffPolicy;
 import org.springframework.retry.policy.SimpleRetryPolicy;
 import org.springframework.retry.support.RetryTemplate;
 
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.TimeoutException;
 
 @Configuration
 public class AdvancedRetryConfig {
@@ -487,7 +485,7 @@ public class AdvancedRetryConfig {
     public RetryTemplate advancedRetryTemplate() {
         RetryTemplate template = new RetryTemplate();
 
-        // Different retry counts for different exceptions
+        // Retry only selected exception types
         Map<Class<? extends Throwable>, Boolean> retryableExceptions = new HashMap<>();
         retryableExceptions.put(IOException.class, true);           // Retry IO errors
         retryableExceptions.put(TimeoutException.class, true);      // Retry timeouts
@@ -634,11 +632,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.retry.RetryCallback;
 import org.springframework.retry.RetryContext;
-import org.springframework.retry.listener.RetryListenerSupport;
+import org.springframework.retry.RetryListener;
 import org.springframework.stereotype.Component;
 
 @Component
-public class LoggingRetryListener extends RetryListenerSupport {
+public class LoggingRetryListener implements RetryListener {
 
     private static final Logger log = LoggerFactory.getLogger(LoggingRetryListener.class);
 
@@ -689,14 +687,14 @@ import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import org.springframework.retry.RetryCallback;
 import org.springframework.retry.RetryContext;
-import org.springframework.retry.listener.RetryListenerSupport;
+import org.springframework.retry.RetryListener;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
 import java.time.Instant;
 
 @Component
-public class MetricsRetryListener extends RetryListenerSupport {
+public class MetricsRetryListener implements RetryListener {
 
     private final MeterRegistry meterRegistry;
     private static final String TIMER_NAME = "retry.operation.duration";
@@ -833,9 +831,9 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class MessageProcessorService {
 
-    // Stateful retry uses the message ID to track retry state
+    // Stateful retry uses the method arguments to track retry state
     // If the same message fails multiple times across different invocations,
-    // Spring Retry can track the retry count
+    // Spring Retry can track the retry count when the argument equality identifies it
     @Retryable(
         retryFor = ProcessingException.class,
         maxAttempts = 3,
@@ -856,7 +854,7 @@ public class MessageProcessorService {
 }
 ```
 
-### Stateful RetryTemplate
+### Exception-Classified RetryTemplate
 
 ```java
 // StatefulRetryConfig.java
@@ -868,6 +866,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.retry.RetryPolicy;
 import org.springframework.retry.backoff.ExponentialBackOffPolicy;
 import org.springframework.retry.policy.ExceptionClassifierRetryPolicy;
+import org.springframework.retry.policy.NeverRetryPolicy;
 import org.springframework.retry.policy.SimpleRetryPolicy;
 import org.springframework.retry.support.RetryTemplate;
 
@@ -875,7 +874,7 @@ import org.springframework.retry.support.RetryTemplate;
 public class StatefulRetryConfig {
 
     @Bean
-    public RetryTemplate statefulRetryTemplate() {
+    public RetryTemplate classifiedRetryTemplate() {
         RetryTemplate template = new RetryTemplate();
 
         // Policy that classifies exceptions
@@ -976,12 +975,12 @@ import org.springframework.stereotype.Service;
 public class CircuitBreakerRetryService {
 
     // Circuit breaker with retry
-    // Opens after 3 failures, stays open for 10 seconds
+    // Opens after 3 failures within 10 seconds
     // When open, calls fail immediately without retry
     @CircuitBreaker(
         maxAttempts = 3,
-        openTimeout = 10000,    // Circuit stays open for 10 seconds
-        resetTimeout = 30000    // Reset failure count after 30 seconds of success
+        openTimeout = 10000,    // Failure window before the circuit opens
+        resetTimeout = 30000    // Try the downstream service again after 30 seconds open
     )
     public ExternalData callExternalService(String requestId) {
         log.info("Calling external service for request: {}", requestId);
@@ -1368,8 +1367,8 @@ public class DynamicRetryTemplateConfig {
 | Simple retry | @Retryable | execute() |
 | Exponential backoff | @Backoff(multiplier) | ExponentialBackOffPolicy |
 | Recovery | @Recover | RecoveryCallback |
-| Listeners | Via configuration | registerListener() |
-| Stateful | stateful = true | StatefulRetryOperationsInterceptor |
+| Listeners | Listener beans or listeners attribute | registerListener() |
+| Stateful | stateful = true | execute(..., RetryState) |
 
 Spring Retry provides powerful, declarative retry capabilities for Spring Boot applications. Start with `@Retryable` for simple cases and graduate to `RetryTemplate` when you need more control. Always use exponential backoff with jitter in production, and implement proper recovery methods for graceful degradation.
 
