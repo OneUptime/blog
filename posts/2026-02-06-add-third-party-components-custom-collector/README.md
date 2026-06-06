@@ -212,8 +212,8 @@ import (
 	"context"
 	"time"
 
+	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer"
-	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 	"go.opentelemetry.io/collector/pdata/ptrace"
@@ -500,9 +500,10 @@ Before adding any third-party component, verify it is compatible:
 
 COMPONENT_MODULE="${1:?Usage: $0 <module-path> <version>}"
 COMPONENT_VERSION="${2:?Usage: $0 <module-path> <version>}"
+COMPONENT_VERSION="${COMPONENT_VERSION#v}"
 OTEL_VERSION="0.96.0"
 
-echo "Checking ${COMPONENT_MODULE}@${COMPONENT_VERSION}..."
+echo "Checking ${COMPONENT_MODULE}@v${COMPONENT_VERSION}..."
 
 # Create a temporary Go module to test dependency resolution
 TMPDIR=$(mktemp -d)
@@ -538,8 +539,8 @@ cd custom-processor
 go mod tidy
 
 # Tag the release
-git tag custom-processor/v1.0.0
-git push origin custom-processor/v1.0.0
+git tag v1.0.0
+git push origin v1.0.0
 
 # Verify it is accessible
 go list -m github.com/myorg/custom-processor@v1.0.0
