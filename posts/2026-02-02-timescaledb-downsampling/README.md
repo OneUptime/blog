@@ -463,7 +463,7 @@ SELECT add_compression_policy('sensor_metrics_minute', INTERVAL '7 days');
 
 -- Check compression statistics
 SELECT
-    hypertable_name,
+    chunk_schema,
     chunk_name,
     before_compression_total_bytes,
     after_compression_total_bytes,
@@ -471,7 +471,7 @@ SELECT
         (1 - after_compression_total_bytes::NUMERIC /
          before_compression_total_bytes::NUMERIC) * 100, 2
     ) AS compression_ratio_percent
-FROM timescaledb_information.compressed_chunk_stats
+FROM chunk_compression_stats('sensor_metrics')
 WHERE compression_status = 'Compressed';
 ```
 
@@ -500,21 +500,26 @@ WHERE j.proc_name = 'policy_refresh_continuous_aggregate';
 SELECT
     job_id,
     pid,
-    started_at,
-    finished_at,
+    start_time,
+    finish_time,
     succeeded,
-    data
+    config
 FROM timescaledb_information.job_history
-WHERE started_at > NOW() - INTERVAL '24 hours'
+WHERE start_time > NOW() - INTERVAL '24 hours'
   AND succeeded = false;
 
 -- Monitor continuous aggregate freshness
--- Shows how far behind each aggregate is from real-time
+-- Shows when each refresh job last completed successfully
 SELECT
-    view_name,
-    completed_threshold AS materialized_up_to,
-    NOW() - completed_threshold AS lag
-FROM timescaledb_information.continuous_aggregate_stats;
+    ca.view_name,
+    js.last_successful_finish AS last_refreshed_at,
+    NOW() - js.last_successful_finish AS lag
+FROM timescaledb_information.continuous_aggregates ca
+JOIN timescaledb_information.jobs j
+  ON j.hypertable_schema = ca.materialization_hypertable_schema
+ AND j.hypertable_name = ca.materialization_hypertable_name
+JOIN timescaledb_information.job_stats js ON j.job_id = js.job_id
+WHERE j.proc_name = 'policy_refresh_continuous_aggregate';
 
 -- Check aggregate storage sizes
 SELECT
