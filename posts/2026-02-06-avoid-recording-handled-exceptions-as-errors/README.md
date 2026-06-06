@@ -104,6 +104,10 @@ async function getUser(userId) {
         user = await cache.get(`user:${userId}`);
         span.setAttribute('cache.hit', true);
       } catch (cacheError) {
+        if (!(cacheError instanceof CacheMissError)) {
+          throw cacheError;
+        }
+
         // Expected - not an error
         span.setAttribute('cache.hit', false);
         span.addEvent('cache_miss', { 'cache.key': `user:${userId}` });
