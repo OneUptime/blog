@@ -8,7 +8,7 @@ Description: A practical guide to mastering Rust macros - from declarative macro
 
 ---
 
-Macros in Rust let you write code that writes code. They're not the same as functions - macros operate at compile time on the abstract syntax tree (AST), expanding into valid Rust code before the compiler type-checks anything. This gives you power that functions simply cannot provide: generating repetitive code, building domain-specific syntax, and enforcing patterns at compile time.
+Macros in Rust let you write code that writes code. They're not the same as functions - macros operate at compile time on token trees, expanding into valid Rust code before the compiler type-checks anything. This gives you power that functions simply cannot provide: generating repetitive code, building domain-specific syntax, and enforcing patterns at compile time.
 
 This guide covers the practical side of Rust macros: when to use them, how to write them well, and how to debug them when things go wrong.
 
@@ -483,14 +483,13 @@ impl Transport {
 // Generates multiple test functions from a table of inputs and expected outputs.
 // Keeps tests readable while avoiding copy-paste.
 macro_rules! test_cases {
-    ($name:ident, $func:expr, [$(($input:expr, $expected:expr)),* $(,)?]) => {
-        mod $name {
+    ($mod_name:ident, $func:expr, [$(($test_name:ident, $input:expr, $expected:expr)),* $(,)?]) => {
+        mod $mod_name {
             use super::*;
 
             $(
                 #[test]
-                fn $input() {
-                    let input = stringify!($input);
+                fn $test_name() {
                     assert_eq!($func($input), $expected);
                 }
             )*
@@ -503,10 +502,10 @@ fn parse_bool(s: &str) -> bool {
 }
 
 test_cases!(parse_bool_tests, parse_bool, [
-    (true, true),
-    (yes, true),
-    (false, false),
-    (no, false),
+    (parses_true, "true", true),
+    (parses_yes, "yes", true),
+    (parses_false, "false", false),
+    (parses_no, "no", false),
 ]);
 ```
 
