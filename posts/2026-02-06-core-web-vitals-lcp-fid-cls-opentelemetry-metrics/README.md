@@ -1,14 +1,14 @@
-# How to Capture Core Web Vitals (LCP, FID, CLS) as OpenTelemetry Metrics
+# How to Capture Core Web Vitals (LCP, INP, CLS) as OpenTelemetry Metrics
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: OpenTelemetry, Core Web Vitals, LCP, FID, CLS, Web Performance, Metric
+Tags: OpenTelemetry, Core Web Vitals, LCP, INP, CLS, Web Performance, Metric
 
-Description: Learn how to capture Core Web Vitals like LCP, FID, and CLS as OpenTelemetry metrics for real user performance monitoring and alerting.
+Description: Learn how to capture Core Web Vitals like LCP, INP, and CLS as OpenTelemetry metrics for real user performance monitoring and alerting.
 
 ---
 
-Core Web Vitals are Google's way of quantifying user experience on the web. Largest Contentful Paint (LCP) measures loading performance, First Input Delay (FID) measures interactivity, and Cumulative Layout Shift (CLS) measures visual stability. These three numbers tell you whether your site feels fast, responsive, and predictable to your users. By capturing them as OpenTelemetry metrics, you can correlate web performance with backend health, set up alerts on degradation, and track improvements over time using the same observability platform you already use for everything else.
+Core Web Vitals are Google's way of quantifying user experience on the web. Largest Contentful Paint (LCP) measures loading performance, Interaction to Next Paint (INP) measures responsiveness, and Cumulative Layout Shift (CLS) measures visual stability. These three numbers tell you whether your site feels fast, responsive, and predictable to your users. By capturing them as OpenTelemetry metrics, you can correlate web performance with backend health, set up alerts on degradation, and track improvements over time using the same observability platform you already use for everything else.
 
 ## Understanding Core Web Vitals
 
@@ -16,7 +16,7 @@ Before writing any code, it helps to understand what each metric actually measur
 
 **Largest Contentful Paint (LCP)** tracks the time from when the page starts loading to when the largest image or text block is rendered in the viewport. Google considers an LCP of 2.5 seconds or less to be good, while anything above 4 seconds is poor.
 
-**First Input Delay (FID)** measures the time between when a user first interacts with the page (clicking a button, tapping a link) and when the browser can actually begin processing that event. A good FID is 100 milliseconds or less. Note that FID is being replaced by Interaction to Next Paint (INP) in newer assessments, but FID is still widely tracked.
+**Interaction to Next Paint (INP)** measures the latency of user interactions, including the input delay, event processing time, and presentation delay until the next paint. A good INP is 200 milliseconds or less. INP replaced First Input Delay (FID) as a Core Web Vital in 2024, and the current `web-vitals` package no longer exposes the legacy `onFID` API.
 
 **Cumulative Layout Shift (CLS)** quantifies how much the page layout shifts unexpectedly during its lifecycle. Every time a visible element moves without user interaction, it contributes to the CLS score. A good CLS is 0.1 or less.
 
@@ -25,8 +25,8 @@ graph TD
     A[Page Load Starts] --> B[FCP - First Contentful Paint]
     B --> C[LCP - Largest Contentful Paint]
     A --> D[User Clicks Button]
-    D --> E[FID - Delay Before Processing]
-    E --> F[Event Handler Runs]
+    D --> E[INP - Interaction Latency]
+    E --> F[Next Paint]
     A --> G[Layout Shift 1]
     G --> H[Layout Shift 2]
     H --> I[CLS = Sum of All Shifts]
@@ -57,14 +57,14 @@ Set up the OpenTelemetry meter provider to collect and export metrics from the b
 // src/metrics.js
 import { MeterProvider, PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
 import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
-import { Resource } from '@opentelemetry/resources';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 import {
   ATTR_SERVICE_NAME,
   ATTR_SERVICE_VERSION,
 } from '@opentelemetry/semantic-conventions';
 
 // Define the resource for this browser application
-const resource = new Resource({
+const resource = resourceFromAttributes({
   [ATTR_SERVICE_NAME]: 'my-web-app',
   [ATTR_SERVICE_VERSION]: '1.0.0',
   'deployment.environment': 'production',
@@ -96,7 +96,7 @@ export const meter = meterProvider.getMeter('web-vitals', '1.0.0');
 export default meterProvider;
 ```
 
-The `PeriodicExportingMetricReader` flushes accumulated metrics every 30 seconds. For Core Web Vitals, this interval is fine because the values are reported once per page load (or once per interaction for FID) and do not change rapidly.
+The `PeriodicExportingMetricReader` flushes accumulated metrics every 30 seconds. For Core Web Vitals, this interval is fine because the values are reported at key points in the page lifecycle and do not change rapidly.
 
 ## Creating Metric Instruments
 
@@ -113,13 +113,6 @@ export const lcpHistogram = meter.createHistogram('web_vitals.lcp', {
   unit: 'ms',
 });
 
-// FID histogram with bucket boundaries for interactivity
-// Good: <= 100ms, Needs Improvement: <= 300ms, Poor: > 300ms
-export const fidHistogram = meter.createHistogram('web_vitals.fid', {
-  description: 'First Input Delay in milliseconds',
-  unit: 'ms',
-});
-
 // CLS histogram - note this is a unitless score, not milliseconds
 // Good: <= 0.1, Needs Improvement: <= 0.25, Poor: > 0.25
 export const clsHistogram = meter.createHistogram('web_vitals.cls', {
@@ -127,7 +120,7 @@ export const clsHistogram = meter.createHistogram('web_vitals.cls', {
   unit: '1',
 });
 
-// Also track INP as FID's successor
+// Track INP for responsiveness
 // Good: <= 200ms, Needs Improvement: <= 500ms, Poor: > 500ms
 export const inpHistogram = meter.createHistogram('web_vitals.inp', {
   description: 'Interaction to Next Paint in milliseconds',
@@ -151,14 +144,13 @@ Each histogram records individual observations with attributes. The OpenTelemetr
 
 ## Wiring Up the web-vitals Library
 
-Now connect Google's `web-vitals` library to the OpenTelemetry metric instruments. Each vital is reported through a callback function that fires once when the metric is available.
+Now connect Google's `web-vitals` library to the OpenTelemetry metric instruments. Each vital is reported through a callback function when the metric is available and ready to report.
 
 ```javascript
 // src/report-web-vitals.js
-import { onLCP, onFID, onCLS, onINP, onTTFB, onFCP } from 'web-vitals';
+import { onLCP, onCLS, onINP, onTTFB, onFCP } from 'web-vitals';
 import {
   lcpHistogram,
-  fidHistogram,
   clsHistogram,
   inpHistogram,
   ttfbHistogram,
@@ -205,18 +197,6 @@ onLCP((metric) => {
 
   // Record the LCP value in milliseconds
   lcpHistogram.record(metric.value, attributes);
-});
-
-// Report FID to OpenTelemetry
-onFID((metric) => {
-  const attributes = {
-    ...getCommonAttributes(),
-    // What type of event caused the first input
-    'fid.event_type': metric.entries[0]?.name || 'unknown',
-    'fid.rating': metric.rating,
-  };
-
-  fidHistogram.record(metric.value, attributes);
 });
 
 // Report CLS to OpenTelemetry
@@ -283,6 +263,8 @@ Import the reporting module early in your application lifecycle so the `web-vita
 // src/index.js
 // Initialize metrics collection first
 import './metrics';
+// Register lifecycle flush handlers
+import './metrics-lifecycle';
 // Register web vitals reporting
 import './report-web-vitals';
 
@@ -322,7 +304,6 @@ Once the data flows into your observability backend, create alerts that trigger 
 | Metric | Good Threshold | Warning Threshold | Critical Threshold |
 |--------|---------------|-------------------|-------------------|
 | LCP p75 | <= 2500ms | <= 4000ms | > 4000ms |
-| FID p75 | <= 100ms | <= 300ms | > 300ms |
 | CLS p75 | <= 0.1 | <= 0.25 | > 0.25 |
 | INP p75 | <= 200ms | <= 500ms | > 500ms |
 
