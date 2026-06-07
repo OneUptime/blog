@@ -241,7 +241,7 @@ State can drift when changes happen outside of Pulumi. Refresh synchronizes stat
 
 ```bash
 # Preview what refresh will detect
-pulumi refresh --preview
+pulumi refresh --preview-only
 
 # Refresh state to match actual cloud resources
 pulumi refresh
@@ -267,10 +267,10 @@ pulumi stack --show-urns
 Renaming resources requires careful state manipulation to avoid recreation:
 
 ```bash
-# Rename a resource in state
+# Rename a resource in state (second argument is the new resource name)
 pulumi state rename \
     'urn:pulumi:prod::my-project::aws:s3/bucket:Bucket::old-name' \
-    'urn:pulumi:prod::my-project::aws:s3/bucket:Bucket::new-name'
+    new-name
 ```
 
 ## State Locking
@@ -298,20 +298,14 @@ sequenceDiagram
 
 Pulumi Cloud handles locking automatically. No configuration needed.
 
-### S3 Backend with DynamoDB Locking
+### Self-Managed (DIY) Backend Locking
 
-For S3 backends, use DynamoDB for state locking:
+Unlike Terraform, Pulumi DIY backends do not require a separate locking service such as DynamoDB. A file-based locking system is enabled by default for all DIY backends (S3, Azure Blob, GCS, and local filesystem). When you run an operation, Pulumi writes a lock object alongside the state at `.pulumi/locks/<stack>/$lock.json` in the same bucket; concurrent operations see the lock file and refuse to proceed.
 
 ```bash
-# Create DynamoDB table for locking
-aws dynamodb create-table \
-    --table-name pulumi-state-lock \
-    --attribute-definitions AttributeName=LockID,AttributeType=S \
-    --key-schema AttributeName=LockID,KeyType=HASH \
-    --billing-mode PAY_PER_REQUEST
-
-# Set environment variable to enable locking
-export PULUMI_SELF_MANAGED_STATE_LOCKING=1
+# No extra setup is required — locking is on by default for DIY backends.
+# To inspect locks, list the locks prefix in your state bucket:
+aws s3 ls s3://my-pulumi-state/.pulumi/locks/ --recursive
 ```
 
 ### Handling Lock Conflicts
@@ -327,7 +321,7 @@ ps aux | grep pulumi
 
 # Force unlock (use with caution)
 # For Pulumi Cloud, contact support
-# For S3+DynamoDB, delete the lock item from DynamoDB
+# For DIY backends, delete the lock file under .pulumi/locks/<stack>/ in the state bucket
 ```
 
 ## Stack Management
@@ -487,18 +481,21 @@ flowchart TD
 
 ### Access Control with Pulumi Cloud
 
-Pulumi Cloud provides role-based access control for teams:
+Pulumi Cloud provides role-based access control for teams. Organization members are invited via the Pulumi Cloud web UI or the REST API; the CLI can edit existing members and assign teams when initializing a stack:
 
 ```bash
-# Invite team member to organization
-pulumi org member add user@example.com --role admin
+# Change an existing member's role (the CLI does not have an "add" subcommand;
+# new members must be invited through the Pulumi Cloud UI or REST API).
+pulumi org member edit user@example.com --role admin
 
-# Create a team
-pulumi team create infrastructure-team
+# List members of the current organization
+pulumi org member ls
 
-# Add stack permissions for a team
-pulumi stack set-team infrastructure-team --permission write
+# Create a stack and assign it to one or more teams at init time
+pulumi stack init prod --teams infrastructure-team
 ```
+
+For finer-grained team-to-stack permissions, manage them through the Pulumi Cloud UI or declaratively with the `pulumiservice.TeamStackPermission` resource from the `@pulumi/pulumiservice` provider.
 
 ### Audit Logging
 
@@ -538,7 +535,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: pulumi/actions@v5
+      - uses: pulumi/actions@v7
         with:
           command: preview
           stack-name: myorg/myproject/staging
@@ -552,7 +549,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: pulumi/actions@v5
+      - uses: pulumi/actions@v7
         with:
           command: up
           stack-name: myorg/myproject/prod
