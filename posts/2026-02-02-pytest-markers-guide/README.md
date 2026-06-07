@@ -160,13 +160,6 @@ def test_pattern_matching():
     assert result == "Starting server"
 
 
-# You can also store conditions in variables for reuse
-requires_gpu = pytest.mark.skipif(
-    not _gpu_available(),
-    reason="GPU not available"
-)
-
-
 def _gpu_available():
     """Check if CUDA GPU is available."""
     try:
@@ -174,6 +167,13 @@ def _gpu_available():
         return torch.cuda.is_available()
     except ImportError:
         return False
+
+
+# You can also store conditions in variables for reuse
+requires_gpu = pytest.mark.skipif(
+    not _gpu_available(),
+    reason="GPU not available"
+)
 
 
 @requires_gpu
@@ -225,7 +225,7 @@ def test_divide_by_zero():
 
 
 @pytest.mark.xfail(
-    sys.platform == "windows",
+    sys.platform == "win32",
     reason="Windows path handling differs"
 )
 def test_unix_paths():
@@ -802,7 +802,7 @@ def pytest_collection_modifyitems(config, items):
     items[:] = smoke_tests + regular_tests + slow_tests
 
 
-# You can also use pytest-ordering plugin for more control
+# You can also use the pytest-order plugin for more control
 @pytest.mark.order(1)
 def test_database_connection():
     """Runs first - validates infrastructure."""
