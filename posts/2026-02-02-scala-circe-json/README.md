@@ -70,7 +70,8 @@ libraryDependencies ++= Seq(
   "io.circe" %% "circe-parser" % circeVersion,
 
   // Generic extras for more advanced derivation options
-  "io.circe" %% "circe-generic-extras" % circeVersion,
+  // Note: circe-generic-extras follows its own version line (latest 0.14.4)
+  "io.circe" %% "circe-generic-extras" % "0.14.4",
 
   // Optional: Optics for JSON traversal and modification
   "io.circe" %% "circe-optics" % circeVersion
@@ -883,18 +884,23 @@ object ErrorHandling {
   val fastFailResult: Either[Error, Person] = decode[Person](jsonWithMultipleErrors)
 
   // For accumulating errors, use decodeAccumulating
-  val accumulatingResult = parser.decodeAccumulating[Person](jsonWithMultipleErrors)
+  // Returns ValidatedNel[Error, Person]
+  val accumulatingResult = decodeAccumulating[Person](jsonWithMultipleErrors)
 
   accumulatingResult match {
     case cats.data.Validated.Valid(person) =>
       println(s"Valid: $person")
 
     case cats.data.Validated.Invalid(errors) =>
-      // errors is a NonEmptyList of DecodingFailure
+      // errors is a NonEmptyList[Error] (either ParsingFailure or DecodingFailure)
       println(s"Found ${errors.size} errors:")
-      errors.toList.foreach { error =>
-        val path = CursorOp.opsToPath(error.history)
-        println(s"  - ${error.message} at $path")
+      errors.toList.foreach {
+        case df: DecodingFailure =>
+          val path = CursorOp.opsToPath(df.history)
+          println(s"  - ${df.message} at $path")
+
+        case pf: ParsingFailure =>
+          println(s"  - Parsing error: ${pf.message}")
       }
   }
 
@@ -1239,19 +1245,6 @@ object Http4sIntegration {
     // DELETE endpoint returning no content
     case DELETE -> Root / "users" / LongVar(id) =>
       NoContent()
-  }
-
-  // Error handling middleware
-  def handleErrors(routes: HttpRoutes[IO]): HttpRoutes[IO] = {
-    HttpRoutes { req =>
-      routes(req).map {
-        case Some(response) => Some(response)
-        case None => Some(Response[IO](Status.NotFound))
-      }.handleErrorWith { error =>
-        val errorResponse = ErrorResponse(error.getMessage, "INTERNAL_ERROR")
-        OptionT.liftF(InternalServerError(errorResponse))
-      }
-    }
   }
 }
 ```
