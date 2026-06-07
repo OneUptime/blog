@@ -679,13 +679,13 @@ flowchart TB
 
 ### CloudWatch Alarm for KMS Key Usage
 
-Create an alarm to detect unusual KMS API call patterns that might indicate compromise.
+Create an alarm to detect unusual KMS API call patterns that might indicate compromise. AWS KMS does not publish per-key call counts directly; use the AWS/Usage namespace to alarm on account-level API call rates, or create CloudWatch metric filters from CloudTrail logs for per-key tracking.
 
 ```json
 {
     "AlarmName": "SQS-KMS-UnusualActivity",
     "MetricName": "CallCount",
-    "Namespace": "AWS/KMS",
+    "Namespace": "AWS/Usage",
     "Statistic": "Sum",
     "Period": 300,
     "EvaluationPeriods": 3,
@@ -693,8 +693,20 @@ Create an alarm to detect unusual KMS API call patterns that might indicate comp
     "ComparisonOperator": "GreaterThanThreshold",
     "Dimensions": [
         {
-            "Name": "KeyId",
-            "Value": "your-key-id"
+            "Name": "Service",
+            "Value": "KMS"
+        },
+        {
+            "Name": "Type",
+            "Value": "API"
+        },
+        {
+            "Name": "Resource",
+            "Value": "Decrypt"
+        },
+        {
+            "Name": "Class",
+            "Value": "None"
         }
     ],
     "AlarmActions": [
