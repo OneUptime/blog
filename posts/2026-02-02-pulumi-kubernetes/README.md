@@ -44,7 +44,7 @@ The following commands install the Pulumi CLI on different operating systems.
 ```bash
 # macOS
 
-brew install pulumi
+brew install pulumi/tap/pulumi
 
 # Linux
 curl -fsSL https://get.pulumi.com | sh
