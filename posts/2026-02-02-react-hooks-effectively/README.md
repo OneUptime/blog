@@ -446,7 +446,7 @@ function VideoPlayer({ src }) {
 
 useRef is perfect for tracking previous state values since updating a ref does not cause a re-render.
 
-This pattern stores the previous props or state value. The ref updates during render, but since refs do not cause re-renders, we can safely mutate it.
+This pattern stores the previous props or state value. The ref updates after render inside the effect, and since refs do not cause re-renders, we can safely mutate it there.
 
 ```javascript
 import { useRef, useEffect, useState } from 'react';
