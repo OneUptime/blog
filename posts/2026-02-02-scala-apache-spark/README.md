@@ -193,7 +193,7 @@ Storage levels control where and how data is cached:
 ```scala
 import org.apache.spark.storage.StorageLevel
 
-// Memory only - fastest but may spill
+// Memory only - fastest, but partitions that don't fit are recomputed (not spilled to disk)
 df.persist(StorageLevel.MEMORY_ONLY)
 
 // Memory and disk - spills to disk if needed
@@ -223,7 +223,7 @@ val compacted = largeDataset.coalesce(100)
 import org.apache.spark.sql.functions.broadcast
 
 // Small lookup table - broadcast it to all nodes
-val countries = spark.read.csv("countries.csv")
+val countries = spark.read.option("header", "true").csv("countries.csv")
 
 // Broadcast join avoids shuffling the large table
 val enriched = largeEvents.join(
