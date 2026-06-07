@@ -1272,7 +1272,7 @@ def secure_database_setup(db_path: str) -> None:
     # Verify permissions
     file_stat = os.stat(db_path)
     if file_stat.st_mode & 0o077:  # Check if group/other has any access
-        raise SecurityError("Database file has insecure permissions")
+        raise PermissionError("Database file has insecure permissions")
 
 
 # For encrypted databases, use SQLCipher
