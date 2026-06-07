@@ -176,7 +176,7 @@ export interface VpcArgs {
     cidrBlock: pulumi.Input<string>;
 
     // Number of availability zones to use for high availability
-    availabilityZoneCount: pulumi.Input<number>;
+    availabilityZoneCount: number;
 
     // Whether to create NAT gateways for private subnet internet access
     enableNatGateway: pulumi.Input<boolean>;
@@ -238,37 +238,35 @@ export class Vpc extends pulumi.ComponentResource {
         const publicSubnets: aws.ec2.Subnet[] = [];
         const privateSubnets: aws.ec2.Subnet[] = [];
 
-        // Use pulumi.output to handle the async AZ data
-        pulumi.output(args.availabilityZoneCount).apply(azCount => {
-            for (let i = 0; i < azCount; i++) {
-                // Public subnet - resources here get public IPs
-                const publicSubnet = new aws.ec2.Subnet(`${name}-public-${i}`, {
-                    vpcId: vpc.id,
-                    cidrBlock: `10.0.${i}.0/24`,
-                    availabilityZone: azs.then(az => az.names[i]),
-                    mapPublicIpOnLaunch: true,
-                    tags: {
-                        Name: `${name}-public-${i}`,
-                        Type: "public",
-                        ...args.tags,
-                    },
-                }, { parent: this });
-                publicSubnets.push(publicSubnet);
+        // Create resources synchronously so dependency tracking and previews work correctly
+        for (let i = 0; i < args.availabilityZoneCount; i++) {
+            // Public subnet - resources here get public IPs
+            const publicSubnet = new aws.ec2.Subnet(`${name}-public-${i}`, {
+                vpcId: vpc.id,
+                cidrBlock: `10.0.${i}.0/24`,
+                availabilityZone: azs.then(az => az.names[i]),
+                mapPublicIpOnLaunch: true,
+                tags: {
+                    Name: `${name}-public-${i}`,
+                    Type: "public",
+                    ...args.tags,
+                },
+            }, { parent: this });
+            publicSubnets.push(publicSubnet);
 
-                // Private subnet - no direct internet access
-                const privateSubnet = new aws.ec2.Subnet(`${name}-private-${i}`, {
-                    vpcId: vpc.id,
-                    cidrBlock: `10.0.${i + 100}.0/24`,
-                    availabilityZone: azs.then(az => az.names[i]),
-                    tags: {
-                        Name: `${name}-private-${i}`,
-                        Type: "private",
-                        ...args.tags,
-                    },
-                }, { parent: this });
-                privateSubnets.push(privateSubnet);
-            }
-        });
+            // Private subnet - no direct internet access
+            const privateSubnet = new aws.ec2.Subnet(`${name}-private-${i}`, {
+                vpcId: vpc.id,
+                cidrBlock: `10.0.${i + 100}.0/24`,
+                availabilityZone: azs.then(az => az.names[i]),
+                tags: {
+                    Name: `${name}-private-${i}`,
+                    Type: "private",
+                    ...args.tags,
+                },
+            }, { parent: this });
+            privateSubnets.push(privateSubnet);
+        }
 
         // Export outputs for use by other components
         this.vpcId = vpc.id;
@@ -312,11 +310,11 @@ export interface AppConfig {
 export const appConfig: AppConfig = {
     environment: config.require("environment"),
     region: awsConfig.require("region"),
-    instanceSize: config.get("instanceSize") || "t3.medium",
-    minInstances: config.getNumber("minInstances") || 2,
-    maxInstances: config.getNumber("maxInstances") || 10,
+    instanceSize: config.get("instanceSize") ?? "t3.medium",
+    minInstances: config.getNumber("minInstances") ?? 2,
+    maxInstances: config.getNumber("maxInstances") ?? 10,
     domainName: config.require("domainName"),
-    enableMonitoring: config.getBoolean("enableMonitoring") || true,
+    enableMonitoring: config.getBoolean("enableMonitoring") ?? true,
 };
 
 // Environment-specific defaults
@@ -493,7 +491,7 @@ Reference shared components from individual projects:
   "name": "@infra/networking",
   "dependencies": {
     "@pulumi/pulumi": "^3.0.0",
-    "@pulumi/aws": "^6.0.0",
+    "@pulumi/aws": "^7.0.0",
     "@infra/shared-components": "workspace:*"
   }
 }
@@ -859,7 +857,7 @@ jobs:
         run: npm ci
 
       - name: Run Pulumi Preview
-        uses: pulumi/actions@v5
+        uses: pulumi/actions@v7
         with:
           command: preview
           stack-name: myorg/dev
@@ -882,7 +880,7 @@ jobs:
         run: npm ci
 
       - name: Deploy to Dev
-        uses: pulumi/actions@v5
+        uses: pulumi/actions@v7
         with:
           command: up
           stack-name: myorg/dev
@@ -906,7 +904,7 @@ jobs:
         run: npm ci
 
       - name: Deploy to Production
-        uses: pulumi/actions@v5
+        uses: pulumi/actions@v7
         with:
           command: up
           stack-name: myorg/production
