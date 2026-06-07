@@ -47,8 +47,8 @@ The following command creates a subscription with a retry policy. Minimum backof
 ```bash
 # Create a subscription with exponential backoff retry policy
 
-# minimum-backoff: Initial delay before first retry (10s-600s)
-# maximum-backoff: Maximum delay between retries (10s-600s)
+# min-retry-delay: Initial delay before first retry (0s-600s, default 10s)
+# max-retry-delay: Maximum delay between retries (0s-600s, default 600s)
 gcloud pubsub subscriptions create my-subscription \
     --topic=my-topic \
     --ack-deadline=60 \
@@ -161,8 +161,8 @@ def create_subscription_with_retry(
     dead_letter_topic_path = subscriber.topic_path(project_id, dead_letter_topic_id)
 
     # Configure retry policy with exponential backoff
-    # minimum_backoff: Initial delay (must be between 10s and 600s)
-    # maximum_backoff: Maximum delay cap (must be between 10s and 600s)
+    # minimum_backoff: Initial delay (must be between 0s and 600s, default 10s)
+    # maximum_backoff: Maximum delay cap (must be between 0s and 600s, default 600s)
     retry_policy = pubsub_v1.types.RetryPolicy(
         minimum_backoff=duration_pb2.Duration(seconds=10),
         maximum_backoff=duration_pb2.Duration(seconds=600),
@@ -326,8 +326,8 @@ func CreateSubscriptionWithRetry(
         AckDeadline: 60 * time.Second,
 
         // Retry policy with exponential backoff
-        // MinimumBackoff: Starting delay (10s minimum)
-        // MaximumBackoff: Maximum delay cap (600s maximum)
+        // MinimumBackoff: Starting delay (0s-600s, default 10s)
+        // MaximumBackoff: Maximum delay cap (0s-600s, default 600s)
         RetryPolicy: &pubsub.RetryPolicy{
             MinimumBackoff: 10 * time.Second,
             MaximumBackoff: 600 * time.Second,
