@@ -86,26 +86,24 @@ flowchart TB
     Alert --> |"> 15 min"| Critical[Critical]
 ```
 
-The following command retrieves this metric using gcloud. The filter parameter specifies the metric type and subscription name.
+The following command queries this metric using the Cloud Monitoring API. Replace PROJECT_ID with your project identifier.
 
 ```bash
-# Query oldest unacked message age for a subscription
-
-gcloud monitoring metrics list \
-  --filter="metric.type=pubsub.googleapis.com/subscription/oldest_unacked_message_age"
+# Query oldest unacked message age for a subscription using the Monitoring API
+curl -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  "https://monitoring.googleapis.com/v3/projects/PROJECT_ID/timeSeries?filter=metric.type%3D%22pubsub.googleapis.com%2Fsubscription%2Foldest_unacked_message_age%22&interval.endTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)&interval.startTime=$(date -u -d '5 minutes ago' +%Y-%m-%dT%H:%M:%SZ)"
 ```
 
 #### Backlog Size
 
-The number of undelivered messages shows the total work remaining for consumers.
+The number of undelivered messages shows the total work remaining for consumers. Because this is a runtime metric (not part of the subscription's configuration), it must be retrieved through Cloud Monitoring rather than `gcloud pubsub subscriptions describe`.
 
-Run this command to check the current backlog for a specific subscription. Replace SUBSCRIPTION_NAME and PROJECT_ID with your values.
+Query the current backlog using the Cloud Monitoring API. Replace SUBSCRIPTION_NAME and PROJECT_ID with your values.
 
 ```bash
-# Get current backlog count
-gcloud pubsub subscriptions describe SUBSCRIPTION_NAME \
-  --project=PROJECT_ID \
-  --format="value(numUndeliveredMessages)"
+# Get current backlog count via the Cloud Monitoring API
+curl -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  "https://monitoring.googleapis.com/v3/projects/PROJECT_ID/timeSeries?filter=metric.type%3D%22pubsub.googleapis.com%2Fsubscription%2Fnum_undelivered_messages%22%20AND%20resource.label.subscription_id%3D%22SUBSCRIPTION_NAME%22&interval.endTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)&interval.startTime=$(date -u -d '5 minutes ago' +%Y-%m-%dT%H:%M:%SZ)"
 ```
 
 ### Topic Metrics
@@ -254,7 +252,7 @@ Apply the alert policy using gcloud. Replace PROJECT_ID with your project identi
 
 ```bash
 # Create the alerting policy
-gcloud alpha monitoring policies create \
+gcloud monitoring policies create \
   --policy-from-file=alert-policy-backlog.yaml \
   --project=PROJECT_ID
 ```
@@ -593,10 +591,10 @@ The following code snippet monitors publisher metrics in a Node.js application u
 // Monitor Pub/Sub publisher health metrics
 
 const { PubSub } = require("@google-cloud/pubsub");
-const { Monitoring } = require("@google-cloud/monitoring");
+const { MetricServiceClient } = require("@google-cloud/monitoring");
 
 const pubsub = new PubSub();
-const monitoring = new Monitoring.MetricServiceClient();
+const monitoring = new MetricServiceClient();
 
 // Track publish metrics
 let publishSuccess = 0;
