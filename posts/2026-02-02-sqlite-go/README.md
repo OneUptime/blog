@@ -66,7 +66,7 @@ go get github.com/mattn/go-sqlite3
 **Disadvantages:**
 - Requires CGO (C compiler needed)
 - Cross-compilation is more complex
-- Larger binary sizes
+- Build complexity (toolchain dependencies)
 
 ### Pure Go Driver (modernc.org/sqlite)
 
@@ -87,7 +87,7 @@ go get modernc.org/sqlite
 - Larger binary size
 - May lag behind SQLite updates
 
-For this guide, we will use the CGO driver for its broader adoption, but the code works with either driver by changing only the import path.
+For this guide, we will use the CGO driver for its broader adoption. The code works with either driver by changing the import path and the driver name passed to `sql.Open` (mattn registers as `"sqlite3"`, while modernc registers as `"sqlite"`).
 
 ---
 
@@ -777,6 +777,7 @@ package repository
 import (
     "context"
     "database/sql"
+    "errors"
     "fmt"
     "strings"
     "time"
@@ -1029,6 +1030,7 @@ package database
 import (
     "context"
     "database/sql"
+    "errors"
     "sync"
 )
 
@@ -1602,8 +1604,9 @@ func BatchInsertUsers(ctx context.Context, db *sql.DB, users []*User) error {
         return nil
     }
 
-    // SQLite has a limit on the number of variables (SQLITE_MAX_VARIABLE_NUMBER)
-    // Default is 999, so we batch accordingly
+    // SQLite has a limit on the number of host parameters (SQLITE_MAX_VARIABLE_NUMBER)
+    // The default is 32766 since SQLite 3.32.0 (was 999 in older versions),
+    // so batching keeps us safely within either limit
     const batchSize = 100
     const columnsPerRow = 4 // email, name, password_hash, created_at
 
@@ -1856,10 +1859,10 @@ import (
 )
 
 // Backup creates a consistent backup of the database
-// SQLite's backup API ensures the backup is transaction-consistent
+// VACUUM INTO produces a transaction-consistent snapshot of the database
 func Backup(ctx context.Context, db *sql.DB, backupPath string) error {
-    // Use SQLite's backup command through the driver
-    // This creates an atomic snapshot of the database
+    // VACUUM INTO (available since SQLite 3.27.0) writes a fresh copy
+    // of the database to the target path as an atomic snapshot
     _, err := db.ExecContext(ctx, "VACUUM INTO ?", backupPath)
     if err != nil {
         return fmt.Errorf("backup failed: %w", err)
