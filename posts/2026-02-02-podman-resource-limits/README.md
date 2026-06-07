@@ -436,25 +436,24 @@ EOF
 sudo systemctl daemon-reload
 ```
 
-### Rootless Memory Limits
+### Rootless Default Limits
 
-Configure memory limits in rootless mode using the containers.conf file:
+Configure default container limits in rootless mode using the containers.conf file. Note that containers.conf does not have keys for default memory or CPU limits — those must be set per container via CLI flags. The fields that do apply globally are process limits and ulimits:
 
 ```bash
 # Create user-specific containers configuration
 mkdir -p ~/.config/containers/
 
-# Set default memory limits for rootless containers
+# Set default container limits for rootless containers
 cat > ~/.config/containers/containers.conf << 'EOF'
 [containers]
-# Default memory limit for all containers
-default_memory = "1g"
-
-# Default CPU limit
-default_cpus = 1.0
-
-# Default process limit
+# Default process limit for all containers
 pids_limit = 100
+
+# Default ulimits applied to every container
+default_ulimits = [
+  "nofile=65536:65536",
+]
 EOF
 ```
 
@@ -478,10 +477,8 @@ ContainerName=webapp
 
 # Memory limits
 Memory=2g
-MemoryReservation=1g
-
-# CPU limits
-CPUQuota=150%
+# MemoryReservation has no dedicated Quadlet key — pass via PodmanArgs
+PodmanArgs=--memory-reservation=1g
 
 # Process limits
 PidsLimit=200
@@ -490,6 +487,8 @@ PidsLimit=200
 Ulimit=nofile=65536:65536
 
 [Service]
+# CPU limits use the standard systemd cgroup directive
+CPUQuota=150%
 Restart=always
 TimeoutStartSec=120
 
