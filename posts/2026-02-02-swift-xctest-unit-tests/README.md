@@ -122,7 +122,7 @@ final class BasicAssertionsTests: XCTestCase {
         XCTAssertFalse(isEmpty, "Collection should not be empty")
     }
 
-    func test_nilAssertions() {
+    func test_nilAssertions() throws {
         let optionalValue: String? = "Hello"
         let nilValue: String? = nil
 
@@ -225,13 +225,13 @@ Understanding the lifecycle of test execution helps you write reliable tests.
 
 ```mermaid
 flowchart TD
-    A[Test Suite Starts] --> B[setUpWithError - Class Level]
+    A[Test Suite Starts] --> B[class func setUp - Class Level]
     B --> C[setUp - Before Each Test]
     C --> D[Run Test Method]
     D --> E[tearDown - After Each Test]
     E --> F{More Tests?}
     F -->|Yes| C
-    F -->|No| G[tearDownWithError - Class Level]
+    F -->|No| G[class func tearDown - Class Level]
     G --> H[Test Suite Ends]
 
     D --> I{Test Passes?}
