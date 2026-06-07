@@ -1222,7 +1222,7 @@ pulumi cancel
 pulumi stack export | pulumi stack import
 ```
 
-Resource Drift
+### Resource Drift
 
 Detect and fix configuration drift:
 
