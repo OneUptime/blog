@@ -56,7 +56,7 @@ curl -1sLf "https://keys.openpgp.org/vks/v1/by-fingerprint/0A9AF2115F4687BD29803
 curl -1sLf "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0xf77f1eda57ebb1cc" | sudo gpg --dearmor | sudo tee /usr/share/keyrings/net.launchpad.ppa.rabbitmq.erlang.gpg > /dev/null
 
 # Add RabbitMQ repository
-echo "deb [signed-by=/usr/share/keyrings/com.rabbitmq.team.gpg] https://ppa1.novemberain.com/rabbitmq/rabbitmq-server/deb/ubuntu jammy main" | sudo tee /etc/apt/sources.list.d/rabbitmq.list
+echo "deb [signed-by=/usr/share/keyrings/com.rabbitmq.team.gpg] https://deb1.rabbitmq.com/rabbitmq-server/deb/ubuntu jammy main" | sudo tee /etc/apt/sources.list.d/rabbitmq.list
 
 # Update and install
 sudo apt-get update
@@ -264,12 +264,12 @@ disk_free_limit.relative = 1.0
 
 # Connection settings
 heartbeat = 60
-connection_max = 1000
 
-# Channel settings
+# Channel settings (max channels per connection)
 channel_max = 128
 
-# Consumer prefetch (how many unacked messages a consumer can have)
+# Consumer acknowledgement timeout (channel is closed if a consumer does not
+# ack a delivered message within this many milliseconds; default 30 minutes)
 consumer_timeout = 1800000
 
 # Logging
@@ -484,11 +484,14 @@ sudo rabbitmqctl list_connections user peer_host state
 The management API provides health check endpoints:
 
 ```bash
-# Basic health check
+# Check for resource alarms (memory/disk)
 curl -u admin:password http://localhost:15672/api/health/checks/alarms
 
-# Check if node is running
+# Check if stopping this node would leave any classic mirrored queues without a synced mirror
 curl -u admin:password http://localhost:15672/api/health/checks/node-is-mirror-sync-critical
+
+# Same check for quorum queues (recommended for modern deployments)
+curl -u admin:password http://localhost:15672/api/health/checks/node-is-quorum-critical
 ```
 
 ### Prometheus Metrics
