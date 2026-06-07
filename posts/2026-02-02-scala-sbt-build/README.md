@@ -340,7 +340,11 @@ Understanding your dependency tree helps identify conflicts and unnecessary depe
 ```bash
 # Show the dependency tree for compile configuration
 # This displays all direct and transitive dependencies
+# dependencyTree is built-in via MiniDependencyTreePlugin (sbt 1.4+)
 sbt "dependencyTree"
+
+# dependencyList and whatDependsOn require the full DependencyTreePlugin
+# Add this to project/plugins.sbt to enable them: addDependencyTreePlugin
 
 # Show dependencies in a flat list format
 sbt "dependencyList"
@@ -845,6 +849,8 @@ lazy val app = (project in file("app"))
 
 Configure a separate integration test configuration.
 
+Note: The `IntegrationTest` configuration and `Defaults.itSettings` were deprecated in sbt 1.9.0 in favor of creating a dedicated subproject (e.g. `lazy val integration = (project in file("integration")).dependsOn(core)`). They still work throughout sbt 1.x, but new builds should prefer the subproject approach.
+
 ```scala
 // Add integration test configuration
 lazy val app = (project in file("app"))
@@ -987,7 +993,9 @@ Ensure builds are reproducible across environments.
 
 ```scala
 // Lock dependency versions for reproducibility
-ThisBuild / dependencyLockFile := Some(baseDirectory.value / "project" / "dependencies.lock")
+// Requires the sbt-dependency-lock plugin in project/plugins.sbt:
+// addSbtPlugin("software.purpledragon" % "sbt-dependency-lock" % "1.5.0")
+// The plugin generates a build.sbt.lock file via the dependencyLockWrite task
 
 // Disable snapshot dependencies in release builds
 ThisBuild / updateOptions := updateOptions.value.withLatestSnapshots(false)
@@ -1057,8 +1065,8 @@ Compile / incOptions := (Compile / incOptions).value.withRecompileOnMacroDef(fal
 // Use zinc compiler server
 ThisBuild / usePipelining := true
 
-// Profile compilation time
-addCompilerPlugin("ch.epfl.scala" %% "scalac-profiling" % "1.0.0")
+// Profile compilation time (Scala 2 only)
+addCompilerPlugin("ch.epfl.scala" %% "scalac-profiling" % "1.2.2" cross CrossVersion.full)
 ```
 
 ### OutOfMemory Errors
