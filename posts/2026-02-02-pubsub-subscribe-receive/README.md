@@ -305,12 +305,10 @@ async function subscribeWithFlowControl() {
             // Maximum total size of messages in bytes
             maxBytes: 100 * 1024 * 1024, // 100 MB
 
-            // Allow messages to be processed after subscription is closed
+            // When false, excess messages received beyond maxMessages are
+            // not passed to the handler and remain available for redelivery
             allowExcessMessages: false
         },
-
-        // Extend ack deadline for long-running processing
-        ackDeadline: 60, // seconds
 
         // Number of connections to Pub/Sub (increase for high throughput)
         streamingOptions: {
