@@ -745,18 +745,17 @@ When testing async code, use `pytest-asyncio` for async fixtures.
 
 ```python
 # tests/conftest.py
-import pytest
-import asyncio
+import pytest_asyncio
 import aiohttp
 
-# Mark fixture as async
-@pytest.fixture
+# Use @pytest_asyncio.fixture for async fixtures in pytest-asyncio 0.21+
+@pytest_asyncio.fixture
 async def async_http_client():
     """Provides an async HTTP client session."""
     async with aiohttp.ClientSession() as session:
         yield session
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def async_database():
     """Provides an async database connection."""
     from asyncpg import create_pool
@@ -1042,8 +1041,8 @@ def make_item():
         return Item(name, price)
     return _make_item
 
-# Async fixture
-@pytest.fixture
+# Async fixture (requires pytest-asyncio)
+@pytest_asyncio.fixture
 async def async_client():
     async with AsyncClient() as client:
         yield client
