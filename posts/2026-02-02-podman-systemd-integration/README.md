@@ -465,6 +465,10 @@ Configure systemd to monitor container health and take action on failures.
 Description=Monitored Application Container
 After=network-online.target
 
+# Limit restart attempts to prevent infinite loops
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
 [Service]
 Type=notify
 NotifyAccess=all
@@ -472,13 +476,6 @@ NotifyAccess=all
 # Aggressive restart on failure
 Restart=always
 RestartSec=5
-
-# Limit restart attempts to prevent infinite loops
-StartLimitIntervalSec=300
-StartLimitBurst=5
-
-# Watchdog configuration - container must send health signals
-WatchdogSec=60
 
 ExecStart=/usr/bin/podman run \
     --name monitored-app \
@@ -609,7 +606,9 @@ After=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/podman pull $(podman inspect --format='{{.ImageName}}' %i)
+# systemd does not run ExecStart through a shell, so command substitution
+# must be wrapped explicitly in /bin/bash -c '...'
+ExecStart=/bin/bash -c '/usr/bin/podman pull "$(/usr/bin/podman inspect --format={{.ImageName}} %i)"'
 ExecStartPost=/usr/bin/systemctl restart %i.service
 ```
 
