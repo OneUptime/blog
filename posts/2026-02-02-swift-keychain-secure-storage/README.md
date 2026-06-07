@@ -381,7 +381,6 @@ extension KeychainManager {
     ) throws -> Data? {
         // Create LAContext for the biometric prompt
         let context = LAContext()
-        context.localizedReason = reason
 
         // Build the query
         let query: [String: Any] = [
@@ -391,7 +390,9 @@ extension KeychainManager {
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne,
             // Pass the LAContext to handle biometric authentication
-            kSecUseAuthenticationContext as String: context
+            kSecUseAuthenticationContext as String: context,
+            // The message shown in the biometric/passcode prompt
+            kSecUseOperationPrompt as String: reason
         ]
 
         var result: AnyObject?
@@ -843,8 +844,8 @@ final class SecureStorage {
         // Add authentication context if needed
         if configuration.requiresBiometric {
             let context = LAContext()
-            context.localizedReason = "Access secure storage"
             query[kSecUseAuthenticationContext as String] = context
+            query[kSecUseOperationPrompt as String] = "Access secure storage"
         }
 
         var result: AnyObject?
