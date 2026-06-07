@@ -484,8 +484,8 @@ class DependencyContainer {
     // Storage for factory closures
     private var factories: [String: () -> Any] = [:]
 
-    // Thread safety lock
-    private let lock = NSLock()
+    // Thread safety lock (recursive so factories can resolve other dependencies)
+    private let lock = NSRecursiveLock()
 
     private init() {
         registerDefaults()
