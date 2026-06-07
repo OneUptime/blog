@@ -713,7 +713,7 @@ SQLite uses dynamic typing, but declaring types helps document intent:
 
 ```sql
 -- SQLite type affinity (what it actually stores)
--- INTEGER: Whole numbers (1, 2, 8 bytes depending on value)
+-- INTEGER: Whole numbers (1, 2, 3, 4, 6, or 8 bytes depending on value)
 -- REAL: 8-byte floating point
 -- TEXT: UTF-8 string
 -- BLOB: Binary data
