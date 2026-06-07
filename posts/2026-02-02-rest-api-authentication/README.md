@@ -225,7 +225,7 @@ The classic approach. Server creates a session after login and stores it (in mem
 // Install: npm install express-session connect-redis redis
 
 const session = require('express-session');
-const RedisStore = require('connect-redis').default;
+const { RedisStore } = require('connect-redis');
 const { createClient } = require('redis');
 
 // Create Redis client for session storage
