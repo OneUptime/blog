@@ -373,17 +373,22 @@ var cancellables = Set<AnyCancellable>()
 var attemptCount = 0
 
 func flakyRequest() -> AnyPublisher<String, Error> {
-    attemptCount += 1
-    print("Attempt \(attemptCount)")
+    // Deferred re-runs the closure on each subscription
+    // so retry actually re-triggers the side effects below
+    Deferred { () -> AnyPublisher<String, Error> in
+        attemptCount += 1
+        print("Attempt \(attemptCount)")
 
-    // Succeed on third attempt
-    if attemptCount < 3 {
-        return Fail(error: NSError(domain: "test", code: 1))
+        // Succeed on third attempt
+        if attemptCount < 3 {
+            return Fail(error: NSError(domain: "test", code: 1))
+                .eraseToAnyPublisher()
+        }
+        return Just("Success!")
+            .setFailureType(to: Error.self)
             .eraseToAnyPublisher()
     }
-    return Just("Success!")
-        .setFailureType(to: Error.self)
-        .eraseToAnyPublisher()
+    .eraseToAnyPublisher()
 }
 
 flakyRequest()
