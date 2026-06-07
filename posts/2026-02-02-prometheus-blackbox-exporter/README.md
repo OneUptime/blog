@@ -205,10 +205,11 @@ modules:
       method: GET
       # List of status codes considered successful
       valid_status_codes: [200, 201, 202, 204]
-      # Follow redirects up to this many times
+      # Whether to follow HTTP redirects
       follow_redirects: true
-      # Fail if SSL certificate is invalid
+      # Fail if the probe connection used SSL/TLS
       fail_if_ssl: false
+      # Fail if the probe connection did not use SSL/TLS
       fail_if_not_ssl: false
 ```
 
@@ -684,7 +685,7 @@ HTTP probes expose additional timing and status information:
 | `probe_http_content_length` | Gauge | Response body length in bytes |
 | `probe_http_redirects` | Gauge | Number of redirects followed |
 | `probe_http_ssl` | Gauge | 1 if connection used SSL |
-| `probe_http_version` | Gauge | HTTP version (1 for HTTP/1.1, 2 for HTTP/2) |
+| `probe_http_version` | Gauge | HTTP version (e.g., 1.1 for HTTP/1.1, 2.0 for HTTP/2) |
 | `probe_http_duration_seconds` | Gauge | Duration by phase (resolve, connect, tls, transfer) |
 
 ### SSL Certificate Metrics
