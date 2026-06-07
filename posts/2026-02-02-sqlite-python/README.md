@@ -1100,17 +1100,26 @@ def optimize_database():
 
     Should be run periodically during low-traffic periods.
     """
-    with db.transaction() as conn:
-        # Analyze all tables to update query planner statistics
-        conn.execute("ANALYZE")
+    conn = db._get_connection()
 
+    # Analyze all tables to update query planner statistics
+    conn.execute("ANALYZE")
+    conn.commit()
+
+    # VACUUM cannot run inside a transaction, so switch the connection
+    # to autocommit mode for this operation
+    previous_isolation = conn.isolation_level
+    conn.isolation_level = None
+    try:
         # Rebuild the database file to reclaim space and defragment
         conn.execute("VACUUM")
+    finally:
+        conn.isolation_level = previous_isolation
 
-        # Check database integrity
-        result = conn.execute("PRAGMA integrity_check").fetchone()
-        if result[0] != "ok":
-            raise RuntimeError(f"Database integrity check failed: {result[0]}")
+    # Check database integrity
+    result = conn.execute("PRAGMA integrity_check").fetchone()
+    if result[0] != "ok":
+        raise RuntimeError(f"Database integrity check failed: {result[0]}")
 
     print("Database optimization completed successfully")
 ```
@@ -1193,7 +1202,14 @@ def upsert_products(products: List[dict]) -> tuple:
 
     with db.transaction() as conn:
         for product in products:
-            cursor = conn.execute(
+            # Check existence first since cursor.lastrowid is not reliably
+            # updated when ON CONFLICT triggers the UPDATE branch
+            existing = conn.execute(
+                "SELECT 1 FROM products WHERE sku = ?",
+                (product["sku"],)
+            ).fetchone()
+
+            conn.execute(
                 """
                 INSERT INTO products (sku, name, description, price, stock_quantity)
                 VALUES (:sku, :name, :description, :price, :stock_quantity)
@@ -1206,11 +1222,11 @@ def upsert_products(products: List[dict]) -> tuple:
                 """,
                 product
             )
-            # Check if it was an insert or update
-            if cursor.lastrowid:
-                inserted += 1
-            else:
+
+            if existing:
                 updated += 1
+            else:
+                inserted += 1
 
     return inserted, updated
 ```
@@ -1638,11 +1654,16 @@ class DatabaseHealthCheck:
         page_count = conn.execute("PRAGMA page_count").fetchone()[0]
         page_size = conn.execute("PRAGMA page_size").fetchone()[0]
         metrics["sqlite_db_size_bytes"] = page_count * page_size
+        metrics["sqlite_page_count"] = page_count
+        metrics["sqlite_page_size_bytes"] = page_size
 
-        # Cache statistics
-        cache_stats = conn.execute("PRAGMA cache_stats").fetchall()
-        for stat in cache_stats:
-            metrics[f"sqlite_cache_{stat[0]}"] = stat[1]
+        # Free pages indicate fragmentation; a high count suggests VACUUM is needed
+        freelist_count = conn.execute("PRAGMA freelist_count").fetchone()[0]
+        metrics["sqlite_freelist_pages"] = freelist_count
+
+        # Configured page cache size (negative means KiB, positive means pages)
+        cache_size = conn.execute("PRAGMA cache_size").fetchone()[0]
+        metrics["sqlite_cache_size"] = cache_size
 
         # Table row counts (for key tables)
         for table in ["users", "products", "orders"]:
@@ -1668,41 +1689,46 @@ SQLite locks the entire database for writes. This code demonstrates proper handl
 # Handling concurrent access patterns
 import time
 import random
-from contextlib import contextmanager
+import functools
 from sqlite3 import OperationalError
 
-@contextmanager
 def retry_on_lock(max_retries: int = 5, base_delay: float = 0.1):
     """
-    Context manager that retries operations on database lock.
+    Decorator that retries operations on database lock.
 
     Uses exponential backoff with jitter to reduce contention.
+    A decorator (not a context manager) is required here because a single
+    ``with`` block body cannot be re-executed after it raises.
     """
-    retries = 0
-    while True:
-        try:
-            yield
-            break
-        except OperationalError as e:
-            if "locked" in str(e) and retries < max_retries:
-                retries += 1
-                # Exponential backoff with jitter
-                delay = base_delay * (2 ** retries) + random.uniform(0, 0.1)
-                print(f"Database locked, retry {retries}/{max_retries} after {delay:.2f}s")
-                time.sleep(delay)
-            else:
-                raise
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            retries = 0
+            while True:
+                try:
+                    return func(*args, **kwargs)
+                except OperationalError as e:
+                    if "locked" in str(e) and retries < max_retries:
+                        retries += 1
+                        # Exponential backoff with jitter
+                        delay = base_delay * (2 ** retries) + random.uniform(0, 0.1)
+                        print(f"Database locked, retry {retries}/{max_retries} after {delay:.2f}s")
+                        time.sleep(delay)
+                    else:
+                        raise
+        return wrapper
+    return decorator
 
 
 # Usage example
+@retry_on_lock()
 def safe_update_order_status(order_id: int, new_status: str):
     """Update order status with lock retry handling."""
-    with retry_on_lock():
-        with db.transaction() as conn:
-            conn.execute(
-                "UPDATE orders SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-                (new_status, order_id)
-            )
+    with db.transaction() as conn:
+        conn.execute(
+            "UPDATE orders SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (new_status, order_id)
+        )
 ```
 
 ### Preventing SQL Injection
