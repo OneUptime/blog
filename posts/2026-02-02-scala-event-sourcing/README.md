@@ -731,7 +731,7 @@ package com.example.projections
 
 import akka.actor.typed.ActorSystem
 import akka.persistence.jdbc.query.scaladsl.JdbcReadJournal
-import akka.persistence.query.{Offset, PersistenceQuery}
+import akka.persistence.query.{Offset, PersistenceQuery, Sequence}
 import akka.stream.scaladsl.{RestartSource, Sink}
 import akka.stream.{Materializer, RestartSettings}
 import slick.jdbc.PostgresProfile.api._
@@ -818,7 +818,7 @@ class BankAccountProjection(
   // Process a single event and update read models
   private def processEvent(event: BankAccountEvent, offset: Offset): Future[Unit] = {
     val sequenceOffset = offset match {
-      case Offset.Sequence(value) => value
+      case Sequence(value) => value
       case _ => 0L
     }
 
@@ -828,24 +828,6 @@ class BankAccountProjection(
         db.run(insertAction).map(_ => ())
 
       case MoneyDeposited(accountId, amount, transactionId, timestamp) =>
-        val actions = DBIO.seq(
-          // Update balance
-          accountBalances
-            .filter(_.accountId === accountId)
-            .map(a => (a.balance, a.lastEventOffset))
-            .update((
-              accountBalances.filter(_.accountId === accountId).map(_.balance).result.head + amount,
-              sequenceOffset
-            )),
-          // Insert transaction record
-          transactions += (
-            transactionId,
-            accountId,
-            "DEPOSIT",
-            amount,
-            java.sql.Timestamp.from(timestamp)
-          )
-        )
         db.run(updateBalanceAndAddTransaction(accountId, amount, "DEPOSIT", transactionId, timestamp, sequenceOffset))
 
       case MoneyWithdrawn(accountId, amount, transactionId, timestamp) =>
