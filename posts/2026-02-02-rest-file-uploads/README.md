@@ -971,12 +971,13 @@ const uploadLimiter = rateLimit({
   legacyHeaders: false
 });
 
-// Limit total upload size per IP per day
-// Prevents storage abuse
+// Limit total number of uploads per IP per day
+// Note: express-rate-limit caps request count, not byte volume.
+// To cap total bytes uploaded, you need custom middleware that
+// tracks sizes (e.g. via Content-Length) against a per-IP counter.
 const dailyUploadLimiter = rateLimit({
   windowMs: 24 * 60 * 60 * 1000, // 24 hours
-  max: 500 * 1024 * 1024, // 500MB per day
-  keyGenerator: (req) => req.ip,
+  max: 500, // 500 upload requests per day
   handler: (req, res) => {
     res.status(429).json({
       error: 'Daily upload limit exceeded'
