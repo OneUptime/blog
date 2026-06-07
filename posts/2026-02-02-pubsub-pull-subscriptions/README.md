@@ -400,7 +400,7 @@ if __name__ == '__main__':
 Node.js provides excellent async support for Pub/Sub consumers, making it well-suited for high-throughput message processing.
 
 ```javascript
-const { PubSub } = require('@google-cloud/pubsub');
+const { PubSub, v1 } = require('@google-cloud/pubsub');
 
 /**
  * PullSubscriptionConsumer provides both synchronous and streaming
@@ -408,6 +408,10 @@ const { PubSub } = require('@google-cloud/pubsub');
  */
 class PullSubscriptionConsumer {
   constructor(projectId, subscriptionId, options = {}) {
+    this.projectId = projectId;
+    this.subscriptionId = subscriptionId;
+
+    // High-level client is used for streaming pull (event-based delivery)
     this.pubsub = new PubSub({ projectId });
     this.subscription = this.pubsub.subscription(subscriptionId, {
       // Flow control settings
@@ -420,6 +424,15 @@ class PullSubscriptionConsumer {
       ackDeadline: options.ackDeadline || 60,
     });
 
+    // Low-level client is required for synchronous batch pull, ack,
+    // and modifyAckDeadline — the high-level Subscription class does
+    // not expose these RPCs directly.
+    this.subClient = new v1.SubscriberClient();
+    this.subscriptionPath = this.subClient.subscriptionPath(
+      projectId,
+      subscriptionId
+    );
+
     this.isRunning = false;
     this.messageHandler = null;
   }
@@ -429,10 +442,13 @@ class PullSubscriptionConsumer {
    * Useful for cron jobs and batch processing.
    */
   async pullBatch(maxMessages = 100) {
-    const [messages] = await this.subscription.pull({
+    const request = {
+      subscription: this.subscriptionPath,
       maxMessages,
-      returnImmediately: false,
-    });
+    };
+
+    const [response] = await this.subClient.pull(request);
+    const messages = response.receivedMessages;
 
     console.log(`Pulled ${messages.length} messages`);
     return messages;
@@ -454,35 +470,45 @@ class PullSubscriptionConsumer {
     const ackIds = [];
     const nackIds = [];
 
-    // Process each message
-    for (const message of messages) {
-      try {
-        const data = JSON.parse(message.data.toString());
-        const attributes = message.attributes;
+    // Process each received message (ReceivedMessage wraps a PubsubMessage)
+    for (const received of messages) {
+      const pubsubMessage = received.message;
+      const messageId = pubsubMessage.messageId;
 
-        console.log(`Processing message ${message.id}`);
+      try {
+        const data = JSON.parse(pubsubMessage.data.toString());
+        const attributes = pubsubMessage.attributes;
+
+        console.log(`Processing message ${messageId}`);
 
         // Call the handler function
         await handler(data, attributes);
 
-        ackIds.push(message.ackId);
+        ackIds.push(received.ackId);
         results.processed++;
       } catch (error) {
-        console.error(`Error processing message ${message.id}:`, error.message);
-        nackIds.push(message.ackId);
+        console.error(`Error processing message ${messageId}:`, error.message);
+        nackIds.push(received.ackId);
         results.failed++;
       }
     }
 
     // Acknowledge successful messages
     if (ackIds.length > 0) {
-      await this.subscription.ack(ackIds);
+      await this.subClient.acknowledge({
+        subscription: this.subscriptionPath,
+        ackIds,
+      });
       console.log(`Acknowledged ${ackIds.length} messages`);
     }
 
-    // Negative acknowledge failed messages
+    // Negative acknowledge failed messages (immediate redelivery)
     if (nackIds.length > 0) {
-      await this.subscription.modifyAckDeadline(nackIds, 0);
+      await this.subClient.modifyAckDeadline({
+        subscription: this.subscriptionPath,
+        ackIds: nackIds,
+        ackDeadlineSeconds: 0,
+      });
       console.log(`Nacked ${nackIds.length} messages`);
     }
 
@@ -630,6 +656,7 @@ import com.google.cloud.pubsub.v1.stub.SubscriberStubSettings;
 import com.google.pubsub.v1.*;
 import com.google.api.gax.core.ExecutorProvider;
 import com.google.api.gax.core.InstantiatingExecutorProvider;
+import com.google.common.util.concurrent.MoreExecutors;
 import org.threeten.bp.Duration;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -1059,10 +1086,9 @@ class RobustPullConsumer:
         self.deadline_manager.start_tracking(ack_id)
 
         try:
-            # Track delivery attempts
-            delivery_attempt = int(
-                message.message.attributes.get('delivery_attempt', '1')
-            )
+            # Track delivery attempts (populated by Pub/Sub when a
+            # dead-letter policy is configured on the subscription)
+            delivery_attempt = message.delivery_attempt or 1
             self.delivery_counts[message_id] = delivery_attempt
 
             logger.info(
