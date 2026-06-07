@@ -578,7 +578,8 @@ if __name__ == '__main__':
         'error': 'Card declined'
     })
 
-    # Event matches: order_events, error_events, critical_alerts, all_events
+    # Event matches: order_events, critical_alerts, all_events
+    # (*.error binding does not match: it requires exactly two words)
     publish_event(ch, 'order.error.critical', {
         'error': 'Inventory sync failed'
     })
@@ -877,13 +878,15 @@ async function setupHeadersExchange() {
     });
 
     // Queue for image files
+    // Headers bindings can't OR multiple values for the same key,
+    // so create one binding per format and let any of them deliver.
     await channel.assertQueue('image_processor', { durable: true });
-    await channel.bindQueue('image_processor', exchangeName, '', {
-        'x-match': 'any',
-        'format': 'png',
-        'format': 'jpg',
-        'format': 'gif'
-    });
+    for (const format of ['png', 'jpg', 'gif']) {
+        await channel.bindQueue('image_processor', exchangeName, '', {
+            'x-match': 'all',
+            'format': format
+        });
+    }
 
     // Queue requiring specific combination of headers
     await channel.assertQueue('secure_docs', { durable: true });
