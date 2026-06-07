@@ -288,6 +288,7 @@ const themes = {
     primary: '#007AFF',
     secondary: '#5856D6',
     border: '#E5E5EA',
+    notification: '#FF3B30',
   },
   dark: {
     name: 'dark',
@@ -296,6 +297,7 @@ const themes = {
     primary: '#0A84FF',
     secondary: '#5E5CE6',
     border: '#38383A',
+    notification: '#FF453A',
   },
 };
 
@@ -521,6 +523,7 @@ const ThemedApp = () => {
           card: theme.background,
           text: theme.text,
           border: theme.border,
+          notification: theme.notification,
         },
       }}
     >
@@ -893,8 +896,9 @@ export const {
   clearCart,
 } = cartSlice.actions;
 
-// Selectors - memoized with reselect internally
-// Use these in components for derived data
+// Selectors for accessing state
+// For derived data that involves heavy computation, wrap with
+// createSelector from reselect to memoize results
 export const selectCartItems = (state) => state.cart.items;
 
 export const selectCartTotal = (state) => {
