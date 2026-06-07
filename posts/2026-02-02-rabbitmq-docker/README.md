@@ -180,14 +180,15 @@ disk_free_limit.absolute = 1GB
 log.console = true
 log.console.level = info
 
-# Connection limits
-# Maximum concurrent connections (adjust based on workload)
+# Channel limits
+# Maximum channels per connection (highest permissible value is 2047)
 channel_max = 2047
 
 # Heartbeat timeout (seconds) - detect dead connections
 heartbeat = 60
 
-# Message TTL default (optional, in milliseconds)
+# Consumer acknowledgement timeout (optional, in milliseconds)
+# Disconnects a consumer that fails to ack within this window
 # consumer_timeout = 1800000
 ```
 
@@ -367,7 +368,7 @@ services:
       RABBITMQ_DEFAULT_PASS: secretpassword123
       # Erlang cookie MUST be identical across all nodes
       RABBITMQ_ERLANG_COOKIE: "cluster-secret-cookie-xyz"
-      # Enable clustering plugin
+      # Erlang node name (required for clustering)
       RABBITMQ_NODENAME: rabbit@rabbitmq-1
     ports:
       - "5672:5672"
@@ -550,12 +551,12 @@ Key metrics to monitor include:
 
 | Metric | Description | Alert Threshold |
 |--------|-------------|-----------------|
-| `rabbitmq_queue_messages` | Messages ready for delivery | > 10000 |
+| `rabbitmq_queue_messages_ready` | Messages ready for delivery | > 10000 |
 | `rabbitmq_queue_messages_unacked` | Unacknowledged messages | > 1000 |
 | `rabbitmq_connections` | Active connections | > 90% of limit |
 | `rabbitmq_channels` | Open channels | > 80% of limit |
-| `rabbitmq_node_mem_used` | Memory usage | > 70% watermark |
-| `rabbitmq_node_disk_free` | Free disk space | < 2GB |
+| `rabbitmq_process_resident_memory_bytes` | Memory usage | > 70% watermark |
+| `rabbitmq_node_disk_free_bytes` | Free disk space | < 2GB |
 
 ## 9. Security Best Practices
 
