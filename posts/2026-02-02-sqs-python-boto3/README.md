@@ -90,7 +90,7 @@ from botocore.config import Config
 config = Config(
     retries={
         'max_attempts': 3,          # Retry up to 3 times
-        'mode': 'exponential'       # Use exponential backoff
+        'mode': 'standard'          # Standard mode with exponential backoff and jitter
     },
     connect_timeout=5,              # Connection timeout in seconds
     read_timeout=10                 # Read timeout in seconds
