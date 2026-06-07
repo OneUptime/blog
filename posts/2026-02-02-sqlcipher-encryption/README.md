@@ -55,9 +55,9 @@ brew install sqlcipher
 pip install sqlcipher3
 ```
 
-### Node.js with better-sqlite3-sqlcipher
+### Node.js with @journeyapps/sqlcipher
 
-For Node.js applications, use the better-sqlite3 fork with SQLCipher support.
+For Node.js applications, use the node-sqlite3 fork with SQLCipher support.
 
 ```bash
 # Install the SQLCipher-enabled version
@@ -143,10 +143,10 @@ conn.close()
 Using SQLCipher with Node.js for server-side applications or Electron apps.
 
 ```javascript
-const Database = require('@journeyapps/sqlcipher').verbose();
+const sqlite3 = require('@journeyapps/sqlcipher').verbose();
 
 // Open an encrypted database connection
-const db = new Database('secure_app.db');
+const db = new sqlite3.Database('secure_app.db');
 
 // Set the encryption key before any operations
 db.run("PRAGMA key = 'your-secure-encryption-key-here'");
@@ -198,8 +198,8 @@ db.close((err) => {
 Implementing SQLCipher in an Android application with Room.
 
 ```kotlin
-import net.sqlcipher.database.SQLiteDatabase
-import net.sqlcipher.database.SupportFactory
+import net.zetetic.database.sqlcipher.SQLiteDatabase
+import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
 import androidx.room.Room
 
 class SecureDatabase {
@@ -209,10 +209,10 @@ class SecureDatabase {
         fun getInstance(context: Context, passphrase: ByteArray): AppDatabase {
             return instance ?: synchronized(this) {
                 // Initialize SQLCipher libraries
-                SQLiteDatabase.loadLibs(context)
+                System.loadLibrary("sqlcipher")
 
-                // Create the SupportFactory with the encryption key
-                val factory = SupportFactory(passphrase)
+                // Create the SupportOpenHelperFactory with the encryption key
+                val factory = SupportOpenHelperFactory(passphrase)
 
                 // Build the Room database with SQLCipher
                 val db = Room.databaseBuilder(
@@ -510,7 +510,7 @@ def verify_encrypted_database(db_path: str, key: str):
 
 ## Changing the Encryption Key
 
-Periodically rotating encryption keys is a security best practice. SQLCipher supports key rotation without re-encrypting the entire database.
+Periodically rotating encryption keys is a security best practice. SQLCipher supports key rotation via the `PRAGMA rekey` statement, which re-encrypts every page of the database with the new key.
 
 ```python
 import sqlcipher3
