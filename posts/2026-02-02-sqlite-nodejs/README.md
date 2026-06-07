@@ -968,9 +968,10 @@ class TestDatabase {
 
     // Clone the current state for parallel test isolation
     clone() {
-        const newDb = new Database(':memory:');
-        this.db.backup(newDb);
-        return newDb;
+        // Serialize the in-memory database to a Buffer, then load it
+        // into a new in-memory database instance
+        const buffer = this.db.serialize();
+        return new Database(buffer);
     }
 
     close() {
