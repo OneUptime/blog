@@ -841,7 +841,7 @@ resource "aws_lambda_function" "order_processor" {
   function_name    = "order-processor-${var.environment}"
   role             = aws_iam_role.lambda_sqs_role.arn
   handler          = "index.handler"
-  runtime          = "nodejs18.x"
+  runtime          = "nodejs20.x"
   timeout          = 30
   memory_size      = 256
 
