@@ -797,13 +797,29 @@ gcloud pubsub topics get-iam-policy orders-topic
 
 ### Testing Permissions
 
-Use the `testIamPermissions` method to verify what actions a service account can perform.
+Use the `testIamPermissions` REST API method to verify what actions the caller can perform on a topic. `gcloud` does not expose this as a subcommand on `gcloud pubsub topics`, so call the API directly.
 
 ```bash
-# Test if service account can publish
-gcloud pubsub topics test-iam-permissions orders-topic \
-    --permissions="pubsub.topics.publish" \
-    --impersonate-service-account=order-service@my-project.iam.gserviceaccount.com
+# Test if the caller can publish to the topic
+curl -X POST \
+    -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+    -H "Content-Type: application/json" \
+    -d '{"permissions": ["pubsub.topics.publish"]}' \
+    "https://pubsub.googleapis.com/v1/projects/my-project-id/topics/orders-topic:testIamPermissions"
+```
+
+To test as a specific service account, combine `--impersonate-service-account` with `gcloud auth print-access-token`:
+
+```bash
+# Print an access token as the impersonated service account, then test
+TOKEN=$(gcloud auth print-access-token \
+    --impersonate-service-account=order-service@my-project-id.iam.gserviceaccount.com)
+
+curl -X POST \
+    -H "Authorization: Bearer ${TOKEN}" \
+    -H "Content-Type: application/json" \
+    -d '{"permissions": ["pubsub.topics.publish"]}' \
+    "https://pubsub.googleapis.com/v1/projects/my-project-id/topics/orders-topic:testIamPermissions"
 ```
 
 ---
