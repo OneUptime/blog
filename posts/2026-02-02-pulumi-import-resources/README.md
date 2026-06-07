@@ -494,22 +494,18 @@ pulumi import --from terraform /path/to/terraform.tfstate
 
 ### Handle State Import Conflicts
 
-When importing, you may encounter naming conflicts. Resolve them with explicit mappings.
+When importing from Terraform state, Pulumi names imported resources after their Terraform addresses (for example, `aws_s3_bucket.data` becomes a resource named `data`). If you want different logical names, rename them in the generated code and use `pulumi state rename` to keep state aligned.
 
 ```bash
-# Create a mapping file for complex migrations
-cat > terraform-mapping.json << 'EOF'
-{
-    "aws_s3_bucket.data": "dataBucket",
-    "aws_s3_bucket.logs": "logsBucket",
-    "aws_instance.web[0]": "webServer1",
-    "aws_instance.web[1]": "webServer2"
-}
-EOF
+# Import from Terraform state first
+pulumi import --from terraform ./terraform.tfstate
 
-# Import with mapping
-pulumi import --from terraform terraform.tfstate --mapping terraform-mapping.json
+# After import, rename resources in state to match your preferred naming
+pulumi state rename 'urn:pulumi:production::my-infra::aws:s3/bucket:Bucket::data' dataBucket
+pulumi state rename 'urn:pulumi:production::my-infra::aws:s3/bucket:Bucket::logs' logsBucket
 ```
+
+If you also need to convert Terraform HCL code with custom provider mappings, use the `--mappings` flag on `pulumi convert` (the mapping concept applies to converters, not the import command itself).
 
 ---
 
