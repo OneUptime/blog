@@ -84,9 +84,12 @@ This function processes records in configurable batches, committing after each b
 
 ```sql
 -- Instead of one massive UPDATE, batch it
-CREATE OR REPLACE FUNCTION batch_update_status(
+-- Use a PROCEDURE (not a FUNCTION) so we can COMMIT between batches.
+-- COMMIT is not allowed inside PL/pgSQL functions; only inside procedures
+-- invoked with CALL.
+CREATE OR REPLACE PROCEDURE batch_update_status(
     p_batch_size INT DEFAULT 1000
-) RETURNS INT AS $$
+) LANGUAGE plpgsql AS $$
 DECLARE
     v_updated INT := 0;
     v_batch INT;
@@ -111,14 +114,16 @@ BEGIN
         -- Exit when no more rows
         EXIT WHEN v_batch = 0;
 
-        -- Commit between batches (in application code)
-        -- This releases locks and allows other transactions
+        -- Commit between batches to release locks
+        -- and allow other transactions to proceed
         COMMIT;
     END LOOP;
 
-    RETURN v_updated;
+    RAISE NOTICE 'Updated % rows', v_updated;
 END;
-$$ LANGUAGE plpgsql;
+$$;
+
+-- Invoke with: CALL batch_update_status(1000);
 ```
 
 ### Access Tables in Consistent Order
