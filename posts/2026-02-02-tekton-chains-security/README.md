@@ -171,16 +171,19 @@ The following configuration connects Chains to a Vault transit secrets engine.
 
 ```yaml
 # vault-signing-config.yaml
-# ConfigMap to configure Vault as the signing backend
+# ConfigMap to configure Vault as the KMS signing backend
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: chains-config
   namespace: tekton-chains
 data:
-  signers.x509.vault.addr: "https://vault.example.com:8200"
-  signers.x509.vault.path: "transit"
-  signers.x509.vault.key: "tekton-signing-key"
+  # Use the KMS signer with Vault's transit secrets engine
+  artifacts.taskrun.signer: kms
+  artifacts.oci.signer: kms
+  signers.kms.kmsref: "hashivault://tekton-signing-key"
+  signers.kms.auth.address: "https://vault.example.com:8200"
+  signers.kms.auth.token: "vault-token-here"
 ```
 
 ## Configuring Chains Behavior
@@ -199,20 +202,16 @@ metadata:
   namespace: tekton-chains
 data:
   # Artifact signing configuration
-  # Supported formats: x509, cosign
+  # Supported signers: x509 (uses cosign-compatible keys), kms
   artifacts.taskrun.format: slsa/v1
   artifacts.taskrun.storage: oci
-  artifacts.taskrun.signer: cosign
+  artifacts.taskrun.signer: x509
 
   # OCI artifact settings
   # Sign container images pushed during builds
   artifacts.oci.format: simplesigning
   artifacts.oci.storage: oci
-  artifacts.oci.signer: cosign
-
-  # Enable artifact signing
-  artifacts.taskrun.enabled: "true"
-  artifacts.pipelinerun.enabled: "true"
+  artifacts.oci.signer: x509
 
   # Transparency log configuration
   # Set to true to upload signatures to Rekor public transparency log
@@ -579,17 +578,13 @@ spec:
         - --context=.
         - --destination=$(params.IMAGE)
         - --digest-file=$(results.IMAGE_DIGEST.path)
+    - name: write-url
+      image: alpine:3.20
       script: |
         #!/bin/sh
         set -e
-        /kaniko/executor \
-          --dockerfile=Dockerfile \
-          --context=. \
-          --destination=$(params.IMAGE) \
-          --digest-file=/tekton/results/IMAGE_DIGEST
-
         # Write the full image URL with digest
-        echo "$(params.IMAGE)@$(cat /tekton/results/IMAGE_DIGEST)" > $(results.IMAGE_URL.path)
+        echo "$(params.IMAGE)@$(cat $(results.IMAGE_DIGEST.path))" > $(results.IMAGE_URL.path)
 ```
 
 ## Troubleshooting Chains
