@@ -267,10 +267,10 @@ const newPassword = new random.RandomPassword("db-password", {
     length: 32,
     special: true,
     overrideSpecial: "!#$%&*()-_=+[]{}:?",
-}, {
-    // Only regenerate when rotation is explicitly triggered
-    additionalSecretOutputs: ["result"],
-    replaceOnChanges: [rotationTrigger],
+    // keepers triggers regeneration whenever any value in the map changes
+    keepers: {
+        rotation: rotationTrigger,
+    },
 });
 
 // Store both current and previous credentials during rotation
@@ -518,13 +518,11 @@ const auditTrail = new aws.cloudtrail.Trail("secrets-audit", {
     isMultiRegionTrail: true,
     enableLogFileValidation: true,
 
+    // Secrets Manager API calls (including GetSecretValue) are logged
+    // as management events, so includeManagementEvents is sufficient.
     eventSelectors: [{
         readWriteType: "All",
         includeManagementEvents: true,
-        dataResources: [{
-            type: "AWS::SecretsManager::Secret",
-            values: ["arn:aws:secretsmanager:*:*:secret:*"],
-        }],
     }],
 });
 
