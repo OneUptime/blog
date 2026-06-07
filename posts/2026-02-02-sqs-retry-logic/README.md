@@ -285,7 +285,8 @@ async function startConsumer() {
           MaxNumberOfMessages: CONFIG.maxNumberOfMessages,
           WaitTimeSeconds: CONFIG.waitTimeSeconds,
           // Request receive count for retry tracking
-          AttributeNames: ['ApproximateReceiveCount'],
+          // MessageSystemAttributeNames replaces the deprecated AttributeNames in AWS SDK v3
+          MessageSystemAttributeNames: ['ApproximateReceiveCount'],
           // Request all message attributes
           MessageAttributeNames: ['All'],
         })
@@ -732,7 +733,7 @@ Resources:
     Type: AWS::Lambda::Function
     Properties:
       FunctionName: order-processor
-      Runtime: nodejs18.x
+      Runtime: nodejs20.x
       Handler: index.handler
       Role: !GetAtt OrderProcessorRole.Arn
       # Timeout should be less than queue visibility timeout
@@ -784,7 +785,7 @@ The following implementation consumes messages from the DLQ, analyzes failures, 
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 import boto3
@@ -898,11 +899,11 @@ def archive_message(message: dict, archive_bucket: str, reason: str) -> bool:
             'body': message.get('Body'),
             'attributes': message.get('Attributes', {}),
             'archive_reason': reason,
-            'archived_at': datetime.utcnow().isoformat(),
+            'archived_at': datetime.now(timezone.utc).isoformat(),
         }
 
         # Generate archive key with timestamp
-        key = f"dlq-archives/{datetime.utcnow().strftime('%Y/%m/%d')}/{message.get('MessageId')}.json"
+        key = f"dlq-archives/{datetime.now(timezone.utc).strftime('%Y/%m/%d')}/{message.get('MessageId')}.json"
 
         s3.put_object(
             Bucket=archive_bucket,
