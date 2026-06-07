@@ -666,8 +666,8 @@ pulumi destroy --preview-only
 # Destroy with automatic confirmation
 pulumi destroy --yes --stack dev
 
-# Force destroy even if some resources fail
-pulumi destroy --yes --skip-preview
+# Continue destroying even if some resources fail
+pulumi destroy --yes --continue-on-error
 ```
 
 ### Removing the Stack
@@ -681,8 +681,8 @@ pulumi stack rm dev
 # Force remove a stack with remaining resources (dangerous)
 pulumi stack rm dev --force
 
-# Remove a stack and preserve the history
-pulumi stack rm dev --preserve-history
+# Remove a stack but preserve its configuration file
+pulumi stack rm dev --preserve-config
 ```
 
 ## Best Practices for Using Stacks
@@ -807,7 +807,7 @@ Here are solutions to common problems you might encounter with Pulumi stacks.
 When a stack is locked by another operation:
 
 ```bash
-# View current stack lock status
+# Show current stack details and resource IDs
 pulumi stack --show-ids
 
 # Cancel a stuck update (use with caution)
