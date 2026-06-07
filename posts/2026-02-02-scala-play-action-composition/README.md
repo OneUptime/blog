@@ -150,13 +150,10 @@ class AuthenticatedRequest[A](
 // AuthenticatedAction validates the session and extracts user information
 // It rejects requests without valid authentication
 class AuthenticatedAction @Inject()(
-  parser: BodyParsers.Default,
+  val parser: BodyParsers.Default,
   userService: UserService
-)(implicit ec: ExecutionContext) extends ActionBuilder[AuthenticatedRequest, AnyContent]
+)(implicit val executionContext: ExecutionContext) extends ActionBuilder[AuthenticatedRequest, AnyContent]
   with ActionRefiner[Request, AuthenticatedRequest] {
-
-  override def parser: BodyParser[AnyContent] = parser
-  override protected def executionContext: ExecutionContext = ec
 
   // refine transforms a Request into an AuthenticatedRequest
   // It returns Left(Result) to reject the request or Right(AuthenticatedRequest) to continue
@@ -487,6 +484,7 @@ package controllers
 import javax.inject.Inject
 import play.api.mvc._
 import play.api.libs.json._
+import play.api.libs.functional.syntax._
 import actions.{ActionComposer, ValidationActionFactory, ValidatedRequest}
 
 // Define the expected request format
