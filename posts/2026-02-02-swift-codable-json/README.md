@@ -875,22 +875,30 @@ Provide default values for missing or invalid JSON fields using property wrapper
 
 ```swift
 // DefaultValues.swift
-// Use a property wrapper to provide default values for missing JSON keys.
+// Use a property wrapper backed by a source type to provide default values for missing JSON keys.
 // This avoids making every field optional while still handling incomplete data.
 import Foundation
 
-// Property wrapper that provides a default value when decoding fails.
-@propertyWrapper
-struct Default<T: Codable>: Codable {
-    var wrappedValue: T
+// A source type supplies the default value used when the JSON key is missing
+// or the stored value cannot be decoded into the expected type.
+protocol DefaultValue {
+    associatedtype Value: Codable
+    static var defaultValue: Value { get }
+}
 
-    init(wrappedValue: T) {
+// Property wrapper that decodes a value or falls back to the source's default.
+@propertyWrapper
+struct Default<Source: DefaultValue>: Codable {
+    typealias Value = Source.Value
+    var wrappedValue: Value
+
+    init(wrappedValue: Value = Source.defaultValue) {
         self.wrappedValue = wrappedValue
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
-        self.wrappedValue = (try? container.decode(T.self)) ?? wrappedValue
+        self.wrappedValue = (try? container.decode(Value.self)) ?? Source.defaultValue
     }
 
     func encode(to encoder: Encoder) throws {
@@ -899,18 +907,32 @@ struct Default<T: Codable>: Codable {
     }
 }
 
-// Extension to handle missing keys during decoding.
+// Returning the source's default when the key is absent requires overriding
+// `decode(_:forKey:)` so the synthesized decoder does not throw on a missing key.
 extension KeyedDecodingContainer {
-    func decode<T: Codable>(_ type: Default<T>.Type, forKey key: Key) throws -> Default<T> {
-        try decodeIfPresent(type, forKey: key) ?? Default(wrappedValue: T.self as! T)
+    func decode<S: DefaultValue>(_ type: Default<S>.Type, forKey key: Key) throws -> Default<S> {
+        try decodeIfPresent(type, forKey: key) ?? Default()
     }
+}
+
+// Describe a default value for each property by declaring a source type.
+enum NotificationsEnabledDefault: DefaultValue {
+    static let defaultValue = true
+}
+
+enum ThemeDefault: DefaultValue {
+    static let defaultValue = "light"
+}
+
+enum FontSizeDefault: DefaultValue {
+    static let defaultValue = 14
 }
 
 struct Settings: Codable {
     let userId: Int
-    @Default var notificationsEnabled: Bool = true
-    @Default var theme: String = "light"
-    @Default var fontSize: Int = 14
+    @Default<NotificationsEnabledDefault> var notificationsEnabled: Bool
+    @Default<ThemeDefault> var theme: String
+    @Default<FontSizeDefault> var fontSize: Int
 }
 
 // JSON with missing optional fields.
