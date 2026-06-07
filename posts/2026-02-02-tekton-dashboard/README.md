@@ -196,7 +196,7 @@ kubectl get ingress tekton-dashboard -n tekton-pipelines
 
 ### Read-Only Mode
 
-In production environments, you might want to prevent accidental modifications through the dashboard. Enable read-only mode by modifying the deployment.
+In production environments, you might want to prevent accidental modifications through the dashboard. The default `release.yaml` manifest already deploys the dashboard in read-only mode. If you installed with `release-full.yaml` (read/write mode), you can switch to read-only by patching the deployment.
 
 ```bash
 # Patch the deployment to enable read-only mode
@@ -397,51 +397,6 @@ kubectl create secret generic oauth2-proxy-secret \
   --from-literal=client-id=YOUR_CLIENT_ID \
   --from-literal=client-secret=YOUR_CLIENT_SECRET \
   --from-literal=cookie-secret=$(openssl rand -base64 32)
-```
-
-## Dashboard Customization
-
-### Custom Logo and Branding
-
-Customize the dashboard appearance by mounting a custom logo. Create a ConfigMap containing your logo and mount it in the deployment.
-
-```yaml
-# tekton-dashboard-branding.yaml
-# ConfigMap for custom branding assets
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: tekton-dashboard-branding
-  namespace: tekton-pipelines
-data:
-  # Base64-encoded logo or reference to an image URL
-  logo-url: "https://your-company.com/logo.png"
----
-# Patch to mount custom branding
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: tekton-dashboard
-  namespace: tekton-pipelines
-spec:
-  template:
-    spec:
-      containers:
-        - name: tekton-dashboard
-          args:
-            - --logo-url=https://your-company.com/logo.png
-```
-
-### Extension Installation
-
-Tekton Dashboard supports extensions for additional functionality. Install the Webhooks extension to manage webhook configurations through the UI.
-
-```bash
-# Install the Tekton Dashboard Webhooks Extension
-kubectl apply --filename https://storage.googleapis.com/tekton-releases/dashboard/latest/webhooks-extension-release.yaml
-
-# Verify the extension is installed
-kubectl get pods -n tekton-pipelines -l app=webhooks-extension
 ```
 
 ## Monitoring Pipeline Runs
@@ -703,7 +658,7 @@ Configure Tekton to send notifications to Slack when pipelines complete. Create 
 ```yaml
 # slack-notification-task.yaml
 # Task for sending Slack notifications about pipeline status
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: Task
 metadata:
   name: send-slack-notification
