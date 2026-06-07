@@ -650,7 +650,7 @@ class SQSQueueManager:
                 'queue_name': queue_name
             }
         except ClientError as e:
-            if e.response['Error']['Code'] == 'QueueAlreadyExists':
+            if e.response['Error']['Code'] == 'QueueNameExists':
                 print(f"Queue {queue_name} already exists")
                 return self.get_queue_url(queue_name)
             raise
