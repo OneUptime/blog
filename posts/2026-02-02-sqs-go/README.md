@@ -826,17 +826,18 @@ func NewVisibilityExtender(client *sqs.Client, queueURL string) *VisibilityExten
     }
 }
 
-// ExtendVisibility increases the visibility timeout for a message
-// Call this periodically during long-running processing
+// ExtendVisibility sets a new visibility timeout for a message
+// The value is the new timeout in seconds measured from the time of the call,
+// not an amount added to the current timeout. Call periodically during long-running processing.
 func (e *VisibilityExtender) ExtendVisibility(
     ctx context.Context,
     receiptHandle string,
-    additionalSeconds int32,
+    visibilityTimeout int32,
 ) error {
     input := &sqs.ChangeMessageVisibilityInput{
         QueueUrl:          aws.String(e.queueURL),
         ReceiptHandle:     aws.String(receiptHandle),
-        VisibilityTimeout: additionalSeconds,
+        VisibilityTimeout: visibilityTimeout,
     }
 
     _, err := e.client.ChangeMessageVisibility(ctx, input)
@@ -847,13 +848,14 @@ func (e *VisibilityExtender) ExtendVisibility(
     return nil
 }
 
-// StartVisibilityHeartbeat continuously extends visibility for long tasks
-// Stops when the context is cancelled or done channel is closed
+// StartVisibilityHeartbeat continuously refreshes visibility for long tasks
+// On each tick it sets the message's visibility timeout to visibilityTimeout
+// seconds from that moment. Stops when the context is cancelled.
 func (e *VisibilityExtender) StartVisibilityHeartbeat(
     ctx context.Context,
     receiptHandle string,
     interval time.Duration,
-    extension int32,
+    visibilityTimeout int32,
 ) {
     ticker := time.NewTicker(interval)
     defer ticker.Stop()
@@ -863,7 +865,7 @@ func (e *VisibilityExtender) StartVisibilityHeartbeat(
         case <-ctx.Done():
             return
         case <-ticker.C:
-            if err := e.ExtendVisibility(ctx, receiptHandle, extension); err != nil {
+            if err := e.ExtendVisibility(ctx, receiptHandle, visibilityTimeout); err != nil {
                 log.Printf("Failed to extend visibility: %v", err)
                 return
             }
