@@ -475,11 +475,11 @@ Understanding the actor lifecycle helps you manage resources properly and implem
 ```mermaid
 stateDiagram-v2
     [*] --> Created: spawn()
-    Created --> Running: PreStart
+    Created --> Running: Setup
     Running --> Running: ProcessMessage
     Running --> Stopping: stop()
     Running --> Restarting: Exception + Restart
-    Restarting --> Running: PostRestart
+    Restarting --> Running: Setup
     Stopping --> [*]: PostStop
 ```
 
@@ -679,12 +679,15 @@ object TaskRouter {
     .withRoundRobinRouting()
   }
 
-  def broadcastRouter(workers: Vector[ActorRef[TaskCommand]]): Behavior[TaskCommand] = {
-    // Create a group router from existing actor references
-    // Group routers route to pre-existing actors
-    Routers.group(workers.head, workers.tail: _*)
-      // Broadcast sends to ALL routees, not just one
-      .withBroadcastPredicate(_ => true)
+  def broadcastRouter(poolSize: Int): Behavior[TaskCommand] = {
+    // Create a pool router that broadcasts each message to ALL routees
+    // Note: withBroadcastPredicate is only available on PoolRouter, not GroupRouter
+    Routers.pool(poolSize) {
+      Behaviors.supervise(TaskWorker())
+        .onFailure[Exception](SupervisorStrategy.restart)
+    }
+    // Broadcast sends each message to ALL routees, not just one
+    .withBroadcastPredicate(_ => true)
   }
 }
 
