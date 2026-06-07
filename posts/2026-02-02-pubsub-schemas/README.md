@@ -70,7 +70,7 @@ Before working with Pub/Sub schemas, you need the Google Cloud SDK installed and
 ```bash
 # Install Google Cloud SDK on macOS using Homebrew
 
-brew install google-cloud-sdk
+brew install --cask google-cloud-sdk
 
 # Authenticate with your Google Cloud account
 gcloud auth login
@@ -91,7 +91,7 @@ Install the Python client library to interact with Pub/Sub programmatically.
 pip install google-cloud-pubsub
 
 # Install Avro library for schema handling
-pip install avro-python3
+pip install avro
 
 # Install Protocol Buffers compiler and library
 pip install protobuf grpcio-tools
@@ -177,7 +177,7 @@ The Python client library allows you to create and manage schemas programmatical
 # schema_manager.py
 # Programmatic schema creation and management for Pub/Sub
 from google.cloud import pubsub_v1
-from google.pubsub_v1.types import Schema
+from google.pubsub_v1.types import Schema, Encoding
 from google.api_core.exceptions import AlreadyExists, NotFound
 import json
 
@@ -252,7 +252,7 @@ class PubSubSchemaManager:
             parent=self.project_path,
             name=schema_path,
             message=message_data,
-            encoding="JSON"
+            encoding=Encoding.JSON
         )
 
         print(f"Message validation successful for schema {schema_id}")
@@ -455,7 +455,7 @@ Create schema-bound topics using the Python client for integration in your deplo
 # topic_manager.py
 # Create and manage Pub/Sub topics with schema bindings
 from google.cloud import pubsub_v1
-from google.pubsub_v1.types import Topic, SchemaSettings
+from google.pubsub_v1.types import Topic, SchemaSettings, Encoding
 from google.api_core.exceptions import AlreadyExists, NotFound
 from typing import Optional
 
@@ -495,7 +495,7 @@ class PubSubTopicManager:
         # Encoding determines how messages are serialized
         schema_settings = SchemaSettings(
             schema=schema_path,
-            encoding=SchemaSettings.Encoding[encoding]
+            encoding=Encoding[encoding]
         )
 
         # Build the topic configuration
@@ -541,7 +541,7 @@ class PubSubTopicManager:
 
         schema_settings = SchemaSettings(
             schema=schema_path,
-            encoding=SchemaSettings.Encoding[current_encoding]
+            encoding=Encoding[current_encoding]
         )
 
         # Build update request
