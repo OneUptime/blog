@@ -294,7 +294,7 @@ def schedule_with_retry_backoff(
     """
     Send a message with exponential backoff delay based on retry count.
 
-    Delay pattern: 0s, 30s, 120s, 300s, 600s, 900s (capped at 15 min)
+    Delay pattern: 0s, 30s, 60s, 120s, 240s, 480s, 900s (capped at 15 min)
 
     Args:
         queue_url: URL of the target queue
@@ -605,25 +605,25 @@ async function processWithDynamicTimeout(queueUrl, processingFunction) {
 
 ## FIFO Queue Delays
 
-FIFO queues support delays but with important caveats. Message group ordering is maintained, and delays affect the entire group.
+FIFO queues support delays but with important caveats. FIFO queues do not support per-message timers — `DelaySeconds` can only be configured at the queue level via the `DelaySeconds` attribute, and the delay applies to every message added to the queue. Message group ordering is preserved within each group.
 
 ```mermaid
 flowchart LR
     subgraph "Message Group A"
-        A1[Msg 1<br/>0s delay] --> A2[Msg 2<br/>60s delay] --> A3[Msg 3<br/>0s delay]
+        A1[Msg 1] --> A2[Msg 2] --> A3[Msg 3]
     end
 
     subgraph "Message Group B"
-        B1[Msg 1<br/>30s delay] --> B2[Msg 2<br/>0s delay]
+        B1[Msg 1] --> B2[Msg 2]
     end
 
-    A1 --> Q[FIFO Queue]
+    A1 --> Q[FIFO Queue<br/>Queue-level DelaySeconds]
     B1 --> Q
 
     Q --> C[Consumer]
 
-    Note1[Group A: Msg 1 at 0s<br/>Msg 2 at 60s<br/>Msg 3 after Msg 2]
-    Note2[Group B: Msg 1 at 30s<br/>Msg 2 after Msg 1]
+    Note1[Group A: Msg 1, 2, 3 delivered in order<br/>after queue-level delay]
+    Note2[Group B: Msg 1, 2 delivered in order<br/>after queue-level delay]
 ```
 
 The following code demonstrates sending delayed messages to a FIFO queue with proper message grouping.
@@ -658,21 +658,21 @@ def create_fifo_delay_queue(queue_name: str, delay_seconds: int = 0) -> str:
     return response['QueueUrl']
 
 
-def send_fifo_delayed_message(
+def send_fifo_message(
     queue_url: str,
     message_body: dict,
     message_group_id: str,
-    delay_seconds: int = 0,
     deduplication_id: str = None
 ) -> dict:
     """
-    Send a delayed message to a FIFO queue.
+    Send a message to a FIFO queue. Any delay must be configured at the queue
+    level via the DelaySeconds attribute — FIFO queues do not support per-message
+    timers, so SendMessage cannot specify DelaySeconds.
 
     Args:
         queue_url: FIFO queue URL
         message_body: Message content
         message_group_id: Group ID for ordering (messages in same group are ordered)
-        delay_seconds: Delay before visibility (0-900)
         deduplication_id: Optional dedup ID (auto-generated if content-based dedup enabled)
 
     Returns:
@@ -682,7 +682,6 @@ def send_fifo_delayed_message(
         'QueueUrl': queue_url,
         'MessageBody': json.dumps(message_body),
         'MessageGroupId': message_group_id,
-        'DelaySeconds': delay_seconds,
     }
 
     # Add deduplication ID if not using content-based deduplication
@@ -691,18 +690,20 @@ def send_fifo_delayed_message(
 
     response = sqs.send_message(**params)
 
-    print(f"FIFO message sent to group '{message_group_id}' with {delay_seconds}s delay")
+    print(f"FIFO message sent to group '{message_group_id}'")
     return response
 
 
 def send_ordered_workflow_steps(queue_url: str, workflow_id: str, steps: list) -> list:
     """
-    Send workflow steps that execute in order with specified delays between them.
+    Send workflow steps that execute in strict order under the same message group.
+    All steps inherit the queue-level DelaySeconds; FIFO queues cannot apply
+    different delays to individual messages.
 
     Args:
         queue_url: FIFO queue URL
         workflow_id: Unique workflow identifier (used as message group)
-        steps: List of dicts with 'action', 'data', and 'delay_seconds'
+        steps: List of dicts with 'action' and 'data'
 
     Returns:
         List of message responses
@@ -719,11 +720,10 @@ def send_ordered_workflow_steps(queue_url: str, workflow_id: str, steps: list) -
             'timestamp': datetime.utcnow().isoformat(),
         }
 
-        response = send_fifo_delayed_message(
+        response = send_fifo_message(
             queue_url=queue_url,
             message_body=message,
             message_group_id=workflow_id,  # Same group ensures ordering
-            delay_seconds=step.get('delay_seconds', 0),
             deduplication_id=f"{workflow_id}-step-{i + 1}-{uuid.uuid4().hex[:8]}",
         )
 
@@ -732,16 +732,16 @@ def send_ordered_workflow_steps(queue_url: str, workflow_id: str, steps: list) -
     return responses
 
 
-# Example: Order fulfillment workflow with timed steps
+# Example: Ordered order fulfillment workflow
 def schedule_order_workflow(queue_url: str, order_id: str):
     """
-    Schedule an order fulfillment workflow with delays between steps.
+    Send an order fulfillment workflow as an ordered sequence of FIFO messages.
     """
     steps = [
-        {'action': 'validate_payment', 'data': {'order_id': order_id}, 'delay_seconds': 0},
-        {'action': 'reserve_inventory', 'data': {'order_id': order_id}, 'delay_seconds': 30},
-        {'action': 'notify_warehouse', 'data': {'order_id': order_id}, 'delay_seconds': 60},
-        {'action': 'send_confirmation', 'data': {'order_id': order_id}, 'delay_seconds': 120},
+        {'action': 'validate_payment', 'data': {'order_id': order_id}},
+        {'action': 'reserve_inventory', 'data': {'order_id': order_id}},
+        {'action': 'notify_warehouse', 'data': {'order_id': order_id}},
+        {'action': 'send_confirmation', 'data': {'order_id': order_id}},
     ]
 
     return send_ordered_workflow_steps(
