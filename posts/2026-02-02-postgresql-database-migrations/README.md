@@ -123,8 +123,8 @@ BEGIN
     -- Execute the migration SQL
     EXECUTE p_sql;
 
-    -- Calculate execution time
-    v_execution_ms := EXTRACT(MILLISECONDS FROM clock_timestamp() - v_start_time);
+    -- Calculate execution time (EPOCH returns total seconds in the interval)
+    v_execution_ms := (EXTRACT(EPOCH FROM clock_timestamp() - v_start_time) * 1000)::INTEGER;
 
     -- Record the migration
     INSERT INTO migrations.schema_migrations (version, name, checksum, execution_time_ms)
@@ -223,24 +223,21 @@ COMMIT;
 
 Adding columns can lock tables in older PostgreSQL versions. Modern PostgreSQL (11+) handles most cases efficiently, but you should still follow safe patterns.
 
-This migration adds a new column with a default value, which is safe in PostgreSQL 11 and later.
+This migration adds a new nullable column, which is fast in any modern PostgreSQL version. Adding a column with a non-volatile DEFAULT is also fast in PostgreSQL 11 and later because the default is stored in the catalog rather than written to every row.
 
 ```sql
 -- Migration: 20260202120100_add_last_login_column.sql
 -- Adds last_login tracking to users table
 
-BEGIN;
-
--- PostgreSQL 11+ handles this without rewriting the table
--- The DEFAULT is stored in the catalog, not written to every row
+-- Adding a nullable column is fast and does not rewrite the table
 ALTER TABLE users
     ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMP WITH TIME ZONE;
 
--- Add an index for queries filtering by recent logins
+-- Add an index for queries filtering by recent logins.
+-- CREATE INDEX CONCURRENTLY cannot run inside a transaction block,
+-- so it must be issued as its own top-level statement.
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_users_last_login
     ON users(last_login_at DESC NULLS LAST);
-
-COMMIT;
 ```
 
 For older PostgreSQL versions or when you need more control, use a multi-step approach.
