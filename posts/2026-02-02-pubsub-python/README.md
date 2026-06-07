@@ -99,7 +99,7 @@ Create the necessary Pub/Sub resources for your application.
 # Create a topic for order events
 gcloud pubsub topics create orders
 
-# Create a push subscription that delivers messages to an endpoint
+# Create a pull subscription for order processing
 gcloud pubsub subscriptions create order-processor \
     --topic=orders \
     --ack-deadline=60 \
@@ -1082,12 +1082,12 @@ class DeadLetterProcessor:
         """
         # Extract delivery attempt count from attributes
         delivery_attempt = int(
-            message.attributes.get("googclient_deliveryattempt", 0)
+            message.attributes.get("CloudPubSubDeadLetterSourceDeliveryCount", 0)
         )
 
         # Get the original subscription from attributes
         original_subscription = message.attributes.get(
-            "googclient_subscription", "unknown"
+            "CloudPubSubDeadLetterSourceSubscription", "unknown"
         )
 
         try:
