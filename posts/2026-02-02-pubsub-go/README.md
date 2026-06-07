@@ -260,7 +260,7 @@ func (s *Subscriber) EnsureSubscription(ctx context.Context, topicID, subscripti
             AckDeadline: 30 * time.Second,
             // Keep unacked messages for 7 days
             RetentionDuration: 7 * 24 * time.Hour,
-            // Enable exactly-once delivery (requires ordering)
+            // Enable exactly-once delivery (independent from message ordering)
             EnableExactlyOnceDelivery: false,
         }
 
