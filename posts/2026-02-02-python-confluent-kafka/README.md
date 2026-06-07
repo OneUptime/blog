@@ -146,12 +146,12 @@ For production workloads, you'll want to tune these settings:
 
 | Configuration | Default | Recommended | Purpose |
 |--------------|---------|-------------|---------|
-| `acks` | 1 | all | Durability guarantee |
+| `acks` | all | all | Durability guarantee |
 | `retries` | 2147483647 | 3-5 | Automatic retry on failure |
 | `linger.ms` | 5 | 10-100 | Batch messages for efficiency |
-| `batch.size` | 16384 | 32768-65536 | Max batch size in bytes |
+| `batch.size` | 1000000 | 65536-1000000 | Max batch size in bytes |
 | `compression.type` | none | lz4 or snappy | Reduce network/storage |
-| `enable.idempotence` | false | true | Exactly-once semantics |
+| `enable.idempotence` | false | true | Idempotent delivery (no duplicates on retry) |
 
 Here's a production-ready configuration:
 
@@ -392,7 +392,7 @@ user_event_schema = """
     "fields": [
         {"name": "user_id", "type": "int"},
         {"name": "action", "type": "string"},
-        {"name": "timestamp", "type": "long", "logicalType": "timestamp-millis"}
+        {"name": "timestamp", "type": {"type": "long", "logicalType": "timestamp-millis"}}
     ]
 }
 """
