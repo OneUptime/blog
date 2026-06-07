@@ -222,7 +222,7 @@ sendBatchMessages(orders);
 
 ### Basic Message Sending
 
-Boto3 is the official AWS SDK for Python. The SQS resource provides a high-level, object-oriented interface for queue operations:
+Boto3 is the official AWS SDK for Python. The SQS client provides a direct, low-level interface to the SQS API and is the recommended way to send messages:
 
 ```python
 import boto3
