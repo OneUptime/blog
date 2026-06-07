@@ -832,6 +832,7 @@ For complex queries or performance optimization, Slick supports raw SQL with typ
 import slick.jdbc.PostgresProfile.api._
 import slick.jdbc.GetResult
 import scala.concurrent.{ExecutionContext, Future}
+import java.time.LocalDateTime
 
 // Custom result type for reports
 case class UserStats(
@@ -1154,13 +1155,18 @@ def safeCreate(user: User): Future[Either[String, Long]] = {
 
 ```scala
 // Monitor connection pool health
+import slick.jdbc.hikaricp.HikariCPJdbcDataSource
+
 def getPoolStats(): Map[String, Any] = {
-  val hikariPool = db.source.asInstanceOf[HikariDataSource]
+  // db.source returns a JdbcDataSource - cast to the HikariCP-specific
+  // implementation, then access the underlying HikariDataSource via .ds
+  val hikariSource = db.source.asInstanceOf[HikariCPJdbcDataSource]
+  val poolMXBean = hikariSource.ds.getHikariPoolMXBean
   Map(
-    "activeConnections" -> hikariPool.getHikariPoolMXBean.getActiveConnections,
-    "idleConnections" -> hikariPool.getHikariPoolMXBean.getIdleConnections,
-    "totalConnections" -> hikariPool.getHikariPoolMXBean.getTotalConnections,
-    "threadsAwaitingConnection" -> hikariPool.getHikariPoolMXBean.getThreadsAwaitingConnection
+    "activeConnections" -> poolMXBean.getActiveConnections,
+    "idleConnections" -> poolMXBean.getIdleConnections,
+    "totalConnections" -> poolMXBean.getTotalConnections,
+    "threadsAwaitingConnection" -> poolMXBean.getThreadsAwaitingConnection
   )
 }
 ```
