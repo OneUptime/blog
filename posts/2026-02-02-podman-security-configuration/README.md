@@ -151,16 +151,11 @@ Configure the default user namespace mode in containers.conf:
 # ~/.config/containers/containers.conf
 
 [containers]
-# Use host user namespace for specific containers
-userns = "auto"
-
-# Set the default UID/GID size for auto mode
-userns_size = 65536
-
-# Specify the range of UIDs to use
-# This should match your /etc/subuid entry
-uidmap = "0:100000:65536"
-gidmap = "0:100000:65536"
+# Use the auto user namespace mode and set the default
+# UID/GID range size with the size= option. Additional
+# uidmapping/gidmapping options can be appended to pin
+# the mapping to a specific subuid/subgid range.
+userns = "auto:size=65536,uidmapping=0:100000:65536,gidmapping=0:100000:65536"
 ```
 
 Verify your namespace configuration is working as expected:
@@ -261,8 +256,11 @@ Seccomp filters restrict which system calls containers can execute. Blocking dan
 The default Podman seccomp profile blocks approximately 50 system calls. View the default profile and understand what it restricts:
 
 ```bash
-# Generate the default seccomp profile
-podman info --format '{{json .Host.Security.DefaultSeccompProfile}}' | jq .
+# Show the path to the default seccomp profile
+podman info --format '{{.Host.Security.SeccompProfilePath}}'
+
+# View the default seccomp profile contents
+cat "$(podman info --format '{{.Host.Security.SeccompProfilePath}}')" | jq .
 
 # Check seccomp status for a running container
 podman run -d --name test-seccomp alpine sleep 3600
@@ -663,7 +661,7 @@ podman exec secure-nginx touch /etc/test || echo "Root filesystem is read-only"
 podman rm -f secure-nginx
 ```
 
-Resource Limits and Cgroups
+## Resource Limits and Cgroups
 
 Resource limits prevent containers from exhausting host resources, whether through bugs or malicious activity.
 
@@ -799,8 +797,9 @@ sudo cp policy.json /etc/containers/policy.json
 # Verify an image signature manually
 skopeo inspect --raw docker://docker.io/library/alpine:latest | jq .
 
-# Pull and verify a signed image
-podman pull --signature-verify=true docker.io/library/alpine:latest
+# Pull an image (signature verification is enforced by policy.json)
+# Optionally point at a custom policy file with --signature-policy
+podman pull --signature-policy=/etc/containers/policy.json docker.io/library/alpine:latest
 
 # Generate image signatures using GPG
 gpg --generate-key
@@ -818,48 +817,33 @@ Combine all security mechanisms for maximum protection:
 CONTAINER_NAME="secure-app"
 IMAGE="myregistry.io/myapp:v1.2.3"
 
+# Rootless user namespace, dropped capabilities, seccomp,
+# SELinux labels, read-only root, resource limits, isolated
+# network, no-new-privileges, and a health check are all
+# applied together below.
 podman run -d \
     --name "$CONTAINER_NAME" \
-    \
-    # Rootless user namespace configuration
     --userns=auto \
     --uidmap=0:100000:65536 \
     --gidmap=0:100000:65536 \
-    \
-    # Drop all capabilities, add only required ones
     --cap-drop=all \
     --cap-add=NET_BIND_SERVICE \
-    \
-    # Apply seccomp profile
     --security-opt seccomp=/etc/containers/seccomp/restricted.json \
-    \
-    # SELinux configuration
     --security-opt label=type:container_runtime_t \
     --security-opt label=level:s0:c100,c200 \
-    \
-    # Read-only root filesystem
     --read-only \
     --tmpfs /tmp:rw,noexec,nosuid,size=64m \
     --tmpfs /var/run:rw,noexec,nosuid,size=64m \
-    \
-    # Resource limits
     --memory=512m \
     --memory-swap=512m \
     --cpus=1.0 \
     --pids-limit=256 \
-    \
-    # Network isolation
     --network=secure-network \
     --publish 127.0.0.1:8080:8080 \
-    \
-    # No new privileges
     --security-opt no-new-privileges:true \
-    \
-    # Health check
     --health-cmd="curl -f http://localhost:8080/health || exit 1" \
     --health-interval=30s \
     --health-retries=3 \
-    \
     "$IMAGE"
 
 # Verify security configuration
