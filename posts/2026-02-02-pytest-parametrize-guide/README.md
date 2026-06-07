@@ -648,7 +648,7 @@ import pytest
 @pytest.mark.parametrize("dividend, divisor, expected", [
     pytest.param(10, 2, 5, id="simple"),
     pytest.param(9, 3, 3, id="exact"),
-    pytest.param(7, 2, 3, id="intentional_failure"),  # Wrong expected value
+    pytest.param(7, 2, 4, id="intentional_failure"),  # Wrong expected value
 ])
 def test_integer_division(dividend, divisor, expected):
     assert dividend // divisor == expected
@@ -661,8 +661,8 @@ tests/test_debug.py::test_integer_division[exact] PASSED
 tests/test_debug.py::test_integer_division[intentional_failure] FAILED
 
 FAILED tests/test_debug.py::test_integer_division[intentional_failure]
-    assert 3 == 3
-    E       assert 3 == 3
+    assert dividend // divisor == expected
+    E       assert 3 == 4
     E        +  where 3 = 7 // 2
 ```
 
@@ -714,7 +714,7 @@ def test_with_xfail(x):
 @pytest.mark.parametrize("a", [1, 2])
 @pytest.mark.parametrize("b", [10, 20])
 def test_stacked(a, b):
-    # Runs 4 times: (1,10), (1,20), (2,10), (2,20)
+    # Runs 4 times: (1,10), (2,10), (1,20), (2,20)
     pass
 
 # Indirect parametrization
