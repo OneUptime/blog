@@ -16,7 +16,7 @@ Google Cloud Pub/Sub BigQuery subscriptions provide a native integration that au
 
 ## Architecture Overview
 
-BigQuery subscriptions create a direct pipeline from Pub/Sub topics to BigQuery tables. Messages flow through automatically, with built-in support for schema mapping, dead-letter handling, and exactly-once delivery semantics.
+BigQuery subscriptions create a direct pipeline from Pub/Sub topics to BigQuery tables. Messages flow through automatically, with built-in support for schema mapping, dead-letter handling, and at-least-once delivery semantics.
 
 ```mermaid
 graph LR
@@ -728,6 +728,7 @@ Create a Cloud Function to process dead letter messages:
 import base64
 import json
 import logging
+from datetime import datetime, timezone
 from google.cloud import bigquery
 from google.cloud import pubsub_v1
 
