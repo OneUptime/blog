@@ -40,12 +40,11 @@ flowchart LR
 
 ### Creating a New Project with TypeScript
 
-The React Native CLI includes built-in TypeScript support. Running the following command creates a new project with TypeScript pre-configured, including tsconfig.json and type definitions for React Native.
+Since React Native 0.71, TypeScript is the default for new projects. The Community CLI scaffolds a project with `tsconfig.json` and the React Native types already in place.
 
 ```bash
-# Create a new React Native project with TypeScript template
-
-npx react-native init MyApp --template react-native-template-typescript
+# Create a new React Native project (TypeScript is the default)
+npx @react-native-community/cli@latest init MyApp
 
 # Navigate into the project directory
 cd MyApp
@@ -59,8 +58,9 @@ npx tsc --noEmit
 For existing JavaScript projects, you can incrementally adopt TypeScript. Install the necessary dependencies and create a configuration file, then rename files from .js to .tsx one at a time.
 
 ```bash
-# Install TypeScript and type definitions
-npm install --save-dev typescript @types/react @types/react-native
+# Install TypeScript and React type definitions
+# (React Native ships its own types since 0.71 — no @types/react-native needed)
+npm install --save-dev typescript @types/react
 
 # Create TypeScript configuration file
 npx tsc --init
@@ -110,7 +110,7 @@ Configure tsconfig.json with settings optimized for React Native development. Th
 
 ### Functional Components with Props
 
-Define explicit interfaces for component props. The FC (FunctionComponent) type is optional but provides implicit children typing and displayName support.
+Define explicit interfaces for component props. The FC (FunctionComponent) type is optional and adds typed `displayName` and `defaultProps` support. Note: implicit `children` typing was removed from `React.FC` in `@types/react` 18 — use `PropsWithChildren` when your component accepts children.
 
 ```typescript
 // components/UserCard.tsx
@@ -1285,6 +1285,7 @@ Access native modules with full type safety after declaring their interfaces.
 // services/biometric.ts
 // Type-safe biometric authentication service
 import { NativeModules, NativeEventEmitter, Platform } from 'react-native';
+import { BiometricEventPayload } from '../types/native-modules';
 
 const { BiometricModule } = NativeModules;
 const biometricEmitter = new NativeEventEmitter(BiometricModule);
