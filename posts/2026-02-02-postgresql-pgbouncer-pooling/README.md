@@ -715,18 +715,16 @@ The following metrics are critical for PgBouncer health:
 ```sql
 -- Client waiting indicates pool exhaustion
 -- Alert if cl_waiting > 0 for extended periods
-SELECT database, user, cl_active, cl_waiting, sv_active, sv_idle
-FROM (SELECT * FROM SHOW POOLS);
+-- Watch the database, user, cl_active, cl_waiting, sv_active, sv_idle columns
+SHOW POOLS;
 
 -- Query statistics for performance analysis
-SELECT database,
-       total_xact_count,
-       total_query_count,
-       total_wait_time,
-       avg_query_count,
-       avg_wait_time
-FROM (SELECT * FROM SHOW STATS);
+-- Watch total_xact_count, total_query_count, total_wait_time,
+-- avg_query_count, and avg_wait_time
+SHOW STATS;
 ```
+
+Note that PgBouncer's admin console accepts `SHOW` as a standalone command — it is not a regular SQL view, so you cannot wrap it in a `SELECT` subquery. To filter or aggregate the output, capture the rows from `SHOW POOLS` or `SHOW STATS` in your monitoring tool (for example, the Prometheus exporter shown below) and apply filtering there.
 
 ### Prometheus Exporter Setup
 
