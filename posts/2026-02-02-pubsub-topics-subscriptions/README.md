@@ -102,7 +102,8 @@ gcloud pubsub topics list
 # Describe a specific topic to view its configuration
 gcloud pubsub topics describe orders
 
-# Delete a topic (also removes all subscriptions)
+# Delete a topic (subscriptions are not deleted - they become orphaned
+# with topic field set to '_deleted-topic_' and must be deleted separately)
 gcloud pubsub topics delete orders
 ```
 
@@ -361,11 +362,15 @@ The following code demonstrates pull-based message consumption with acknowledgme
 ```javascript
 // subscriber.js
 // Pub/Sub subscriber with graceful shutdown and error handling
-const { PubSub } = require('@google-cloud/pubsub');
+const { PubSub, v1 } = require('@google-cloud/pubsub');
 
 const pubsub = new PubSub({
   projectId: 'my-project-id',
 });
+
+// The lower-level SubscriberClient is required for synchronous pull
+const subscriberClient = new v1.SubscriberClient();
+const PROJECT_ID = 'my-project-id';
 
 /**
  * Create a streaming pull subscriber.
@@ -415,30 +420,35 @@ function subscribeWithStreamingPull(subscriptionName) {
 /**
  * Pull messages synchronously with a specific limit.
  * Useful for batch processing or serverless functions.
+ * Synchronous pull requires the lower-level v1.SubscriberClient.
  */
 async function pullMessages(subscriptionName, maxMessages = 10) {
-  const subscription = pubsub.subscription(subscriptionName);
+  const formattedSubscription = subscriberClient.subscriptionPath(
+    PROJECT_ID,
+    subscriptionName,
+  );
 
   // Pull messages with a specified limit
-  const [messages] = await subscription.pull({
+  const [response] = await subscriberClient.pull({
+    subscription: formattedSubscription,
     maxMessages: maxMessages,
   });
 
-  if (messages.length === 0) {
+  if (response.receivedMessages.length === 0) {
     console.log('No messages to process');
     return [];
   }
 
-  console.log(`Pulled ${messages.length} messages`);
+  console.log(`Pulled ${response.receivedMessages.length} messages`);
 
   const processedMessages = [];
   const ackIds = [];
 
-  for (const message of messages) {
+  for (const received of response.receivedMessages) {
     try {
-      const data = JSON.parse(message.message.data.toString());
+      const data = JSON.parse(received.message.data.toString());
       await processMessage(data);
-      ackIds.push(message.ackId);
+      ackIds.push(received.ackId);
       processedMessages.push(data);
     } catch (error) {
       console.error(`Failed to process message: ${error.message}`);
@@ -448,7 +458,10 @@ async function pullMessages(subscriptionName, maxMessages = 10) {
 
   // Acknowledge all successfully processed messages
   if (ackIds.length > 0) {
-    await subscription.acknowledge(ackIds);
+    await subscriberClient.acknowledge({
+      subscription: formattedSubscription,
+      ackIds: ackIds,
+    });
     console.log(`Acknowledged ${ackIds.length} messages`);
   }
 
@@ -576,19 +589,19 @@ def publish_message(project_id: str, topic_id: str, data: dict,
     # Encode data as JSON bytes
     data_bytes = json.dumps(data).encode('utf-8')
 
-    # Build publish arguments
+    # Build publish arguments. The publish() method accepts attributes as
+    # **kwargs (one keyword per attribute), so the attributes dict is unpacked.
     publish_kwargs = {
         'data': data_bytes,
     }
 
-    if attributes:
-        publish_kwargs['attributes'] = attributes
-
     if ordering_key:
         publish_kwargs['ordering_key'] = ordering_key
 
+    attrs = attributes or {}
+
     # Publish the message
-    future = publisher.publish(topic_path, **publish_kwargs)
+    future = publisher.publish(topic_path, **publish_kwargs, **attrs)
 
     # Wait for the publish to complete
     message_id = future.result()
@@ -1001,9 +1014,12 @@ resource "google_pubsub_subscription" "order_webhook" {
       audience              = "https://api.example.com"
     }
 
-    # Custom attributes to include in HTTP request
+    # Endpoint configuration attributes. The only currently supported
+    # attribute is x-goog-version, which selects the push payload format
+    # (valid values: v1beta1, v1, v1beta2). This is not for arbitrary
+    # HTTP headers.
     attributes = {
-      x-custom-header = "pubsub-push"
+      "x-goog-version" = "v1"
     }
   }
 
