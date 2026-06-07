@@ -45,11 +45,11 @@ Before diving into implementation, understanding these concepts will help you us
 
 **Acknowledgment State**: Pub/Sub tracks which messages have been acknowledged by subscribers. A snapshot preserves this state at a point in time.
 
-**Message Retention**: Topics retain messages for a configurable period (default 7 days, max 31 days). Snapshots can only replay messages within this retention window.
+**Message Retention**: Subscriptions retain unacknowledged messages for up to 7 days (the default and the maximum for subscription message retention). Topic message retention can be configured up to 31 days to extend the seek/replay window beyond what the subscription alone retains. Snapshots can only replay messages within this retention window.
 
-**Seek Operations**: Seeking resets the acknowledgment state, causing previously acknowledged messages to be redelivered. All pending messages are also dropped.
+**Seek Operations**: Seeking changes the acknowledgment state of messages based on publish time: messages published before the target are marked acknowledged and messages published after the target are marked unacknowledged. Seeking backward causes previously acknowledged messages to be redelivered; seeking forward effectively skips messages.
 
-**Snapshot Expiration**: Snapshots expire after 7 days by default but can retain messages for up to 7 days beyond the oldest unacknowledged message.
+**Snapshot Expiration**: Snapshots have a maximum lifetime of 7 days. The exact expiration time is determined at creation and is reduced by the age of the oldest unacknowledged message in the source subscription, following the formula `lifetime = 7 days - (age of oldest unacked message)`.
 
 ## Creating Snapshots with Python
 
