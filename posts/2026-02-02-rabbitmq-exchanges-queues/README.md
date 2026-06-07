@@ -429,10 +429,17 @@ async function createHeadersExchange() {
     });
 
     // x-match: 'any' means ANY of the specified headers must match
-    // This queue receives any image format
+    // Note: JavaScript objects cannot have duplicate keys, so to match
+    // multiple values for the same header (e.g. format=jpeg OR format=png),
+    // create a separate binding for each value.
     await channel.bindQueue(imageProcessingQueue.queue, exchangeName, '', {
         'x-match': 'any',
         'format': 'jpeg',
+        'category': 'image'
+    });
+
+    await channel.bindQueue(imageProcessingQueue.queue, exchangeName, '', {
+        'x-match': 'any',
         'format': 'png',
         'category': 'image'
     });
