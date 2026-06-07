@@ -297,19 +297,22 @@ The endpoint processes items concurrently using asyncio:
 import asyncio
 from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import JSONResponse
-from typing import List
+from typing import List, Dict, Any
 
 from .models import UserInput, BulkResponse, BulkSummary
 from .models import SuccessResult, ErrorResult, ErrorDetail
-from .services import create_user, DuplicateEmailError
+from .services import process_single_item, create_user, DuplicateEmailError
 
 router = APIRouter()
 
 # Maximum items allowed in a single bulk request
 MAX_BATCH_SIZE = 100
 
+# Items are accepted as raw dicts so a single invalid entry does not cause
+# FastAPI to reject the whole batch. Each item is validated individually
+# inside process_single_item, which enables the partial success behavior.
 @router.post("/users/bulk", response_model=BulkResponse)
-async def bulk_create_users(items: List[UserInput]):
+async def bulk_create_users(items: List[Dict[str, Any]]):
     """
     Create multiple users in a single request.
     Returns 207 Multi-Status for partial success.
@@ -364,20 +367,43 @@ Handle individual item processing with proper error catching:
 # services.py
 # Business logic for processing individual items
 
+import logging
+from pydantic import ValidationError
+
 from .models import SuccessResult, ErrorResult, ErrorDetail, UserInput
+
+logger = logging.getLogger(__name__)
+
 
 class DuplicateEmailError(Exception):
     """Raised when email already exists in database"""
     pass
 
-async def process_single_item(item: UserInput, index: int):
+async def process_single_item(item: dict, index: int):
     """
     Process a single user creation.
     Returns SuccessResult or ErrorResult based on outcome.
     """
+    # Validate the input against the UserInput model. Doing this per-item
+    # (rather than at the route layer) allows the rest of the batch to be
+    # processed even when one item is invalid.
+    try:
+        user_input = UserInput(**item)
+    except ValidationError as e:
+        first_error = e.errors()[0]
+        return ErrorResult(
+            index=index,
+            code=400,
+            error=ErrorDetail(
+                type="validation_error",
+                message=first_error["msg"],
+                field=str(first_error["loc"][0]) if first_error["loc"] else None
+            )
+        )
+
     try:
         # Attempt to create the user in the database
-        created_user = await create_user(item)
+        created_user = await create_user(user_input)
 
         return SuccessResult(
             index=index,
@@ -400,7 +426,7 @@ async def process_single_item(item: UserInput, index: int):
             )
         )
 
-    except Exception as e:
+    except Exception:
         # Log unexpected errors for debugging
         logger.exception(f"Bulk create error at index {index}")
 
