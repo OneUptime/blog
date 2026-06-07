@@ -281,7 +281,7 @@ const pubsub = new PubSub();
 async function publishOrderedMessages(topicName, messages) {
     // Enable message ordering on the topic
     const topic = pubsub.topic(topicName, {
-        enableMessageOrdering: true,
+        messageOrdering: true,
     });
 
     const results = [];
@@ -579,8 +579,6 @@ import (
     "encoding/json"
     "fmt"
     "log"
-    "sync"
-    "sync/atomic"
     "time"
 
     "cloud.google.com/go/pubsub"
@@ -1035,7 +1033,6 @@ Implementing custom metrics for publisher monitoring:
 
 ```javascript
 const { PubSub } = require('@google-cloud/pubsub');
-const { Monitoring } = require('@google-cloud/monitoring');
 
 class MonitoredPublisher {
     constructor(projectId, topicName) {
@@ -1157,7 +1154,7 @@ const productionConfig = {
     },
 
     // Message ordering (if needed)
-    enableMessageOrdering: true,
+    messageOrdering: true,
 
     // Flow control - prevent memory exhaustion
     flowControlOptions: {
