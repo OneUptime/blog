@@ -236,6 +236,7 @@ import (
     "k8s.io/apimachinery/pkg/api/errors"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/apimachinery/pkg/runtime"
+    "knative.dev/pkg/apis"
     ctrl "sigs.k8s.io/controller-runtime"
     "sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -1331,7 +1332,7 @@ var (
         prometheus.HistogramOpts{
             Name:    "approval_duration_seconds",
             Help:    "Duration of approval requests in seconds",
-            Buckets: prometheus.ExponentialBuckets(60, 2, 10), // 1min to ~17hrs
+            Buckets: prometheus.ExponentialBuckets(60, 2, 10), // 1min to ~8.5hrs
         },
         []string{"namespace"},
     )
