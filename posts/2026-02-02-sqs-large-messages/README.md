@@ -188,14 +188,14 @@ public class ExtendedClientConfig {
         // Configure extended client options
         ExtendedClientConfiguration extendedClientConfig =
                 new ExtendedClientConfiguration()
-                        // Enable large payload support with S3
-                        .withPayloadSupportEnabled(s3Client, S3_BUCKET_NAME)
-                        // Set the size threshold for S3 storage
-                        .withPayloadSizeThreshold(PAYLOAD_SIZE_THRESHOLD)
+                        // Enable large payload support with S3.
+                        // Third argument enables cleanup of S3 objects when
+                        // messages are deleted from the queue.
+                        .withPayloadSupportEnabled(s3Client, S3_BUCKET_NAME, true)
                         // Always store in S3 regardless of size (optional)
                         // .withAlwaysThroughS3(true)
-                        // Clean up S3 objects when messages are deleted
-                        .withCleanupS3Payload(true);
+                        // Set the size threshold for S3 storage
+                        .withPayloadSizeThreshold(PAYLOAD_SIZE_THRESHOLD);
 
         // Wrap the standard client with extended functionality
         return new AmazonSQSExtendedClient(sqsClient, extendedClientConfig);
@@ -400,8 +400,9 @@ class SQSExtendedClient:
     by automatically storing payloads in S3.
     """
 
-    # S3 pointer marker used to identify extended messages
-    S3_POINTER_CLASS = "com.amazon.sqs.javamessaging.MessageS3Pointer"
+    # S3 pointer marker used to identify extended messages.
+    # Matches the v2.x Java Extended Client format.
+    S3_POINTER_CLASS = "software.amazon.payloadoffloading.PayloadS3Pointer"
 
     def __init__(
         self,
@@ -684,8 +685,8 @@ const { v4: uuidv4 } = require("uuid");
  * Handles messages larger than 256KB by storing payloads in S3
  */
 class SQSExtendedClient {
-    // Marker class for S3 pointer messages (Java client compatible)
-    static S3_POINTER_CLASS = "com.amazon.sqs.javamessaging.MessageS3Pointer";
+    // Marker class for S3 pointer messages (matches v2.x Java client format)
+    static S3_POINTER_CLASS = "software.amazon.payloadoffloading.PayloadS3Pointer";
 
     /**
      * Create an Extended Client instance
@@ -1145,7 +1146,7 @@ public class ResilientMessageProcessor {
                 .maxNumberOfMessages(10)
                 .waitTimeSeconds(20)
                 // Include approximate receive count for monitoring
-                .attributeNames(QueueAttributeName.APPROXIMATE_RECEIVE_COUNT)
+                .messageSystemAttributeNames(MessageSystemAttributeName.APPROXIMATE_RECEIVE_COUNT)
                 .build();
 
         ReceiveMessageResponse response = extendedClient.receiveMessage(request);
