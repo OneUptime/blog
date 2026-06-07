@@ -292,15 +292,16 @@ Equality matchers compare values for equality. ScalaTest provides multiple ways 
 ```scala
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
+import org.scalatest.OptionValues
 
-class EqualityMatchersSpec extends AnyFlatSpec with Matchers {
+class EqualityMatchersSpec extends AnyFlatSpec with Matchers with OptionValues {
 
   "Equality matchers" should "compare values correctly" in {
     val result = 42
 
     // These are all equivalent for simple equality
-    result should be(42)        // Identity comparison
-    result should equal(42)     // Equality comparison using ==
+    result should be(42)        // Value equality using ==
+    result should equal(42)     // Equality comparison via the Equality typeclass (defaults to ==)
     result shouldEqual 42       // Shorthand syntax
     result shouldBe 42          // Another shorthand
 
@@ -452,17 +453,19 @@ class CollectionMatchersSpec extends AnyFlatSpec with Matchers {
   it should "work with custom matchers for elements" in {
     val words = List("hello", "world", "scala")
 
-    // All elements match condition
-    all(words) should have length greaterThan(3)
-    all(words) should be(Symbol("toLowerCase"))
+    // All elements match condition (have length matches an exact value)
+    all(words) should have length 5
+
+    // For comparison-based checks on a property, map and assert per-element
+    all(words.map(_.length)) should be > 3
 
     // At least one matches
     atLeast(1, words) should startWith("s")
 
-    // Exactly N match
-    exactly(2, words) should have length 5
+    // Exactly N match a predicate
+    exactly(1, words) should startWith("h")
 
-    // Every element check
+    // Every element check (alias for all)
     every(words) should not be empty
   }
 }
