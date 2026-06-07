@@ -911,7 +911,7 @@ class PostgreSQLAdapter(DatabaseAdapter):
         return "NOW()"
 
     def json_extract(self, column, path):
-        return f"{column}->'{path}'"
+        return f"{column}->>'{path}'"
 
     def boolean_value(self, value):
         return value  # PostgreSQL supports native boolean
@@ -1045,7 +1045,7 @@ describe('Optimized Test Suite', () => {
 
 ### Parallel Test Execution with Database Cloning
 
-For parallel test execution, clone the database using SQLite's backup API:
+For parallel test execution, clone the database using better-sqlite3's serialize API:
 
 ```javascript
 const Database = require('better-sqlite3');
@@ -1054,6 +1054,8 @@ class DatabasePool {
     constructor(schemaSetup) {
         this.schemaSetup = schemaSetup;
         this.template = this.createTemplate();
+        // Serialize the template once; clones are created from this buffer
+        this.templateBuffer = this.template.serialize();
     }
 
     createTemplate() {
@@ -1064,9 +1066,8 @@ class DatabasePool {
 
     // Create a clone of the template database for parallel tests
     getClone() {
-        const clone = new Database(':memory:');
-        this.template.backup(clone);
-        return clone;
+        // new Database(buffer) deserializes the snapshot into a fresh in-memory DB
+        return new Database(this.templateBuffer);
     }
 }
 
