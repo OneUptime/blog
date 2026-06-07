@@ -79,13 +79,14 @@ The following script adds the official PostgreSQL repository and installs Postgr
 sudo apt update
 
 # Install required dependencies
-sudo apt install -y wget gnupg2 lsb-release
+sudo apt install -y curl ca-certificates gnupg lsb-release
 
-# Add the PostgreSQL signing key
-sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+# Create the keyrings directory and import the repository key
+sudo install -d /etc/apt/keyrings
+curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo tee /etc/apt/keyrings/postgresql.asc > /dev/null
 
-# Import the repository key
-wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+# Add the PostgreSQL APT repository (signed-by replaces the deprecated apt-key)
+sudo sh -c 'echo "deb [signed-by=/etc/apt/keyrings/postgresql.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
 
 # Update package lists again to include PostgreSQL packages
 sudo apt update
@@ -203,11 +204,8 @@ Run these SQL commands to create the replication user and slots:
 -- Use a strong password in production
 CREATE USER replicator WITH REPLICATION ENCRYPTED PASSWORD 'your_secure_password_here';
 
--- Create replication slots for each standby
--- Slots prevent WAL removal until standbys have received the data
-CREATE PUBLICATION my_publication FOR ALL TABLES;
-
 -- Create physical replication slots (one per standby)
+-- Slots prevent WAL removal until standbys have received the data
 SELECT pg_create_physical_replication_slot('standby1_slot');
 SELECT pg_create_physical_replication_slot('standby2_slot');
 
