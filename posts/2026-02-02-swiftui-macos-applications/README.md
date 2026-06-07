@@ -473,20 +473,20 @@ struct TableExample: View {
     var body: some View {
         Table(files, selection: $selection, sortOrder: $sortOrder) {
             // Name column with icon
-            TableColumn("Name", sortUsing: KeyPathComparator(\FileItem.name)) { file in
+            TableColumn("Name", value: \.name) { file in
                 Label(file.name, systemImage: file.icon)
             }
             .width(min: 150, ideal: 200)
 
             // Size column
-            TableColumn("Size", sortUsing: KeyPathComparator(\FileItem.size)) { file in
+            TableColumn("Size", value: \.size) { file in
                 Text(file.formattedSize)
                     .monospacedDigit()
             }
             .width(80)
 
             // Date column
-            TableColumn("Date Modified", sortUsing: KeyPathComparator(\FileItem.dateModified)) { file in
+            TableColumn("Date Modified", value: \.dateModified) { file in
                 Text(file.dateModified, style: .date)
             }
             .width(min: 100, ideal: 120)
