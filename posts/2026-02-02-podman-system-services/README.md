@@ -403,12 +403,14 @@ After=network-online.target
 [Service]
 Type=notify
 NotifyAccess=all
-# Watchdog checks service health every 60 seconds
+# Watchdog expects WATCHDOG=1 pings from the container every 60 seconds
 WatchdogSec=60
+# Use --sdnotify=container so NOTIFY_SOCKET is proxied into the container
+# (the container's main process must call sd_notify to send WATCHDOG=1)
 ExecStart=/usr/bin/podman run \
     --name api \
     --rm \
-    --sdnotify=conmon \
+    --sdnotify=container \
     --health-cmd="curl -sf http://localhost:8080/health || exit 1" \
     --health-interval=15s \
     -p 8080:8080 \
@@ -568,7 +570,7 @@ WantedBy=timers.target
 
 ---
 
-Resource Management
+## Resource Management
 
 ### CPU and Memory Limits
 
@@ -606,7 +608,7 @@ Restart=always
 WantedBy=multi-user.target
 ```
 
-Resource Monitoring
+### Resource Monitoring
 
 View resource usage for running services:
 
@@ -739,7 +741,7 @@ podman auto-update
 Store sensitive data securely with Podman secrets:
 
 ```bash
-# Create a secret from a file
+# Create a secret from stdin
 echo "supersecretpassword" | podman secret create db_password -
 
 # Create a secret from a file
