@@ -37,8 +37,8 @@ boto3 looks for credentials in several places (in this order):
 |--------|----------|----------|
 | Environment variables | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | CI/CD pipelines |
 | Shared credentials file | `~/.aws/credentials` | Local development |
-| IAM role | EC2 instance metadata | Production workloads |
 | Config file | `~/.aws/config` | Multiple profiles |
+| IAM role | EC2 instance metadata | Production workloads |
 
 For local development, the easiest approach is using the AWS CLI:
 
@@ -83,7 +83,7 @@ s3.upload_file('local_file.txt', bucket_name, 'uploads/remote_file.txt')
 # Download a file
 s3.download_file(bucket_name, 'uploads/remote_file.txt', 'downloaded_file.txt')
 
-# Upload with extra arguments (like making it public)
+# Upload with extra arguments (like setting the content type)
 s3.upload_file(
     'report.pdf',
     bucket_name,
