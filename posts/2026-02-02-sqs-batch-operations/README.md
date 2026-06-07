@@ -1140,7 +1140,7 @@ main().catch(console.error);
 | **Delete after processing** | Only delete messages that were successfully processed |
 | **Extend visibility proactively** | For long-running tasks, extend visibility before timeout |
 | **Monitor batch metrics** | Track success rates, latencies, and throughput |
-| **Use FIFO queues carefully** | Group IDs limit throughput to 300 messages per second per group |
+| **Use FIFO queues carefully** | Standard FIFO queues are limited to 300 TPS per queue (3,000 messages/sec with batching); enable high throughput mode for higher limits |
 
 ## Summary
 
