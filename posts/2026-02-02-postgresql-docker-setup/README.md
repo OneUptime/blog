@@ -171,7 +171,7 @@ Mount it in your compose file or pass it via command:
 docker run --name my-postgres \
   -e POSTGRES_PASSWORD=mypassword \
   -v pgdata:/var/lib/postgresql/data \
-  -v ./postgresql.conf:/etc/postgresql/postgresql.conf \
+  -v "$(pwd)/postgresql.conf:/etc/postgresql/postgresql.conf" \
   -p 5432:5432 \
   -d postgres:16 \
   -c 'config_file=/etc/postgresql/postgresql.conf'
