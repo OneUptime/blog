@@ -112,7 +112,7 @@ struct TaskListView: View {
     @StateObject private var viewModel = TaskListViewModel()
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             VStack {
                 // Input section
                 HStack {
