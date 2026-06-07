@@ -47,34 +47,31 @@ Messages sharing the same ordering key are delivered in the exact order they wer
 
 ## Prerequisites and Setup
 
-Before implementing ordering keys, ensure your environment is properly configured. Ordering requires specific settings on both the topic and subscription.
+Before implementing ordering keys, ensure your environment is properly configured. Message ordering is a subscription-level setting in Pub/Sub, so it must be enabled when you create the subscription.
 
-### Creating a Topic with Message Ordering Support
+### Creating a Topic
 
-Topics must have message ordering enabled at creation time. You cannot enable ordering on existing topics, so plan accordingly.
+Topics in Pub/Sub do not require any special flag to support ordering keys. Ordering is enabled on the subscription, and the publisher client opts in to honor ordering keys.
 
-The following command creates a topic with ordering enabled using the gcloud CLI.
+The following command creates a standard topic using the gcloud CLI.
 
 ```bash
-# Create a topic with message ordering enabled
-
-# The --message-ordering-enabled flag is required for ordering key support
+# Create a topic. No ordering-specific flag is needed on the topic itself.
 gcloud pubsub topics create orders-topic \
-    --message-ordering-enabled \
     --project=your-project-id
 
-# Verify the topic was created with ordering enabled
+# Verify the topic was created
 gcloud pubsub topics describe orders-topic \
     --project=your-project-id
 ```
 
 ### Creating an Ordered Subscription
 
-Subscriptions must also explicitly enable message ordering to receive messages in sequence.
+Subscriptions must explicitly enable message ordering to receive messages in sequence. You cannot change the message ordering property after the subscription is created, so plan accordingly.
 
 ```bash
 # Create a subscription with message ordering enabled
-# Both topic and subscription must have ordering enabled
+# Ordering is a subscription-level setting
 gcloud pubsub subscriptions create orders-subscription \
     --topic=orders-topic \
     --enable-message-ordering \
@@ -583,8 +580,8 @@ class OrderedPublisher {
     // Initialize the Pub/Sub client
     this.pubsub = new PubSub({ projectId });
 
-    // Get a reference to the topic with ordering enabled
-    // The topic must have been created with ordering support
+    // Get a reference to the topic with ordering enabled on the client
+    // enableMessageOrdering is a client-side opt-in to honor ordering keys
     this.topic = this.pubsub.topic(topicId, {
       // Enable message ordering for this topic reference
       enableMessageOrdering: true,
@@ -1321,7 +1318,7 @@ Apply these recommendations for optimal performance with ordering keys.
 
 Pub/Sub ordering keys provide a powerful mechanism for maintaining message sequence in distributed systems. Key takeaways include:
 
-- Topics and subscriptions must both enable message ordering
+- Subscriptions must enable message ordering, and publisher clients must opt in to honor ordering keys
 - Messages with the same ordering key are delivered in publish order
 - Publish failures block subsequent messages until the publisher resumes
 - Subscriber acknowledgment order matters for maintaining ordering
