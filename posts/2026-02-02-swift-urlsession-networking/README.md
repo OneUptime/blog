@@ -848,6 +848,7 @@ This URLSessionDelegate implementation pins the server certificate to prevent ma
 ```swift
 import Foundation
 import Security
+import CommonCrypto
 
 final class PinnedURLSessionDelegate: NSObject, URLSessionDelegate {
     // Store the expected certificate's public key hash
