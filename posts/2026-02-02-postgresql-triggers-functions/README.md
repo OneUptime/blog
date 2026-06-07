@@ -773,14 +773,13 @@ CREATE TRIGGER email_change_notification
     WHEN (OLD.email IS DISTINCT FROM NEW.email)
     EXECUTE FUNCTION notify_email_change();
 
--- Trigger with complex condition
+-- Trigger with a numeric threshold condition
+-- Note: WHEN expressions cannot contain subqueries, so checks that require
+-- a table lookup (like verifying VIP status) must be done inside the function
 CREATE TRIGGER vip_order_alert
     AFTER INSERT ON orders
     FOR EACH ROW
-    WHEN (
-        NEW.total_amount > 1000
-        AND EXISTS (SELECT 1 FROM customers WHERE id = NEW.customer_id AND tier = 'vip')
-    )
+    WHEN (NEW.total_amount > 1000)
     EXECUTE FUNCTION alert_vip_order();
 ```
 
