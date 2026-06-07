@@ -428,9 +428,9 @@ async function searchWithCursorPagination(params) {
     if (decodedCursor) {
         query = query.where(builder => {
             builder
-                // Primary sort: items with greater sort value
+                // Primary sort: next items come after cursor in desc order
                 .where('created_at', '<', decodedCursor.created_at)
-                // Tiebreaker: same sort value but different ID
+                // Tiebreaker: same sort value but smaller ID
                 .orWhere(function() {
                     this.where('created_at', '=', decodedCursor.created_at)
                         .andWhere('id', '<', decodedCursor.id);
