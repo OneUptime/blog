@@ -115,7 +115,8 @@ def read_with_optimized_dtypes(file_path):
         parse_dates=date_columns,
         # Only load columns you actually need
         usecols=['user_id', 'product_id', 'quantity', 'price',
-                 'category', 'region', 'is_returned', 'order_date']
+                 'category', 'region', 'is_returned',
+                 'order_date', 'ship_date']
     )
 
     return df
