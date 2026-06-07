@@ -137,7 +137,7 @@ avg_over_time(
     sum(rate(http_requests_total{status=~"5.."}[5m]))
     /
     sum(rate(http_requests_total[5m]))
-    > 0.05
+    > bool 0.05
   )[1h:1m]
 ) > 0.8
 ```
@@ -265,16 +265,15 @@ topk(5,
 The quantile operator calculates percentiles, critical for understanding latency distributions.
 
 ```promql
-# Calculate the 95th percentile of request latency
-# 95% of requests complete faster than this value
-# Better than average for understanding user experience
+# Calculate the 95th percentile of per-instance request rates
+# Shows the rate value below which 95% of instances fall
+# The quantile aggregator works across series, unlike histogram_quantile
+# which computes a percentile from a single histogram distribution
 
 quantile(0.95,
-  histogram_quantile(0.95,
-    sum by (le) (
-      rate(http_request_duration_seconds_bucket[5m])
-    )
-  )
+  rate(http_request_duration_seconds_sum[5m])
+  /
+  rate(http_request_duration_seconds_count[5m])
 )
 ```
 
@@ -327,7 +326,7 @@ Detecting whether metrics are trending up or down uses the deriv function with s
 # Calculate the rate of change in memory usage
 # Positive values indicate memory growing over time
 # Negative values show memory being freed
-# The subquery provides hourly samples for the derivative calculation
+# The subquery provides 1-minute samples over the past 6 hours for the derivative calculation
 
 deriv(
   avg by (instance) (
@@ -561,7 +560,7 @@ groups:
                 sum by (service, le) (
                   rate(http_request_duration_seconds_bucket[5m])
                 )
-              ) < 0.5
+              ) < bool 0.5
             )[1h:1m]
           )
 
