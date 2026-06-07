@@ -467,9 +467,7 @@ def create_pubsub_fanout(project_id):
                     "message_retention_duration": {
                         "seconds": 604800  # 7 days retention
                     },
-                    "expiration_policy": {
-                        "ttl": {"seconds": 0}  # Never expire
-                    }
+                    "expiration_policy": {}  # Empty policy (ttl unset) means never expire
                 }
             )
             print(f"Created subscription: {subscription.name}")
@@ -832,7 +830,7 @@ The following code shows how to implement dead letter queue handling for failed 
 # dead_letter_handler.py
 import boto3
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 class DeadLetterHandler:
     """
@@ -891,7 +889,7 @@ class DeadLetterHandler:
         dlq_message = {
             'original_message': json.loads(message['Body']),
             'failure_reason': error_reason,
-            'failed_at': datetime.utcnow().isoformat(),
+            'failed_at': datetime.now(timezone.utc).isoformat(),
             'original_message_id': message.get('MessageId'),
             'receive_count': message.get('Attributes', {}).get('ApproximateReceiveCount')
         }
