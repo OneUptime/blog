@@ -71,7 +71,7 @@ Deploy Tekton Results using the official release manifests. The installation cre
 
 ```bash
 # Apply the latest Tekton Results release
-# Includes Results API, Watcher, and PostgreSQL database
+# Deploys the Results API and Watcher (PostgreSQL must be installed separately)
 kubectl apply -f https://storage.googleapis.com/tekton-releases/results/latest/release.yaml
 
 # Verify all Results components are running
@@ -217,9 +217,6 @@ data:
   # gRPC server configuration
   SERVER_PORT: "8080"
   PROMETHEUS_PORT: "9090"
-
-  # Enable gRPC reflection for debugging
-  GRPC_REFLECTION: "true"
 ```
 
 Apply the configuration and restart the API server:
@@ -286,10 +283,11 @@ metadata:
   namespace: tekton-pipelines
 data:
   LOGS_TYPE: s3
-  S3_BUCKET: tekton-pipeline-logs
+  S3_BUCKET_NAME: tekton-pipeline-logs
   S3_REGION: us-west-2
   S3_ENDPOINT: ""  # Leave empty for AWS, set for MinIO
-  S3_FORCE_PATH_STYLE: "false"
+  # Set to "true" to force path-style addressing (e.g. for MinIO)
+  S3_HOSTNAME_IMMUTABLE: "false"
 ---
 apiVersion: v1
 kind: Secret
@@ -316,7 +314,7 @@ metadata:
   namespace: tekton-pipelines
 data:
   LOGS_TYPE: gcs
-  GCS_BUCKET: tekton-pipeline-logs
+  GCS_BUCKET_NAME: tekton-pipeline-logs
 ---
 apiVersion: v1
 kind: Secret
