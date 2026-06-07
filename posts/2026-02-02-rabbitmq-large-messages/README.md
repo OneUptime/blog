@@ -84,10 +84,9 @@ class MessageChunker {
 
   async connect(url) {
     this.connection = await amqp.connect(url);
-    this.channel = await this.connection.createChannel();
 
-    // Enable publisher confirms for reliable delivery
-    await this.channel.confirmChannel();
+    // Use a confirm channel for reliable delivery with publisher confirms
+    this.channel = await this.connection.createConfirmChannel();
   }
 
   // Generate unique message ID for chunk correlation
@@ -795,9 +794,14 @@ The following configuration demonstrates RabbitMQ stream setup with appropriate 
 # Enable stream plugin
 # rabbitmq-plugins enable rabbitmq_stream
 
-# Stream-specific settings
-stream.initial_segment_size = 500MB
-stream.max_segment_size_bytes = 500MB
+# Stream-specific broker settings
+# Maximum frame size for the stream protocol (default 1 MiB)
+stream.frame_max = 1048576
+# Initial flow-control credits granted to stream consumers
+stream.initial_credits = 50000
+# Note: per-stream segment size is configured at stream declaration time
+# via the x-stream-max-segment-size-bytes argument or a policy
+# (stream-max-segment-size-bytes), not at the broker level.
 
 # Memory threshold before flowing to disk
 vm_memory_high_watermark.relative = 0.6
@@ -1080,8 +1084,8 @@ queue_master_locator = min-masters
 
 # Message store settings
 # Larger credit flow for sustained throughput
-credit_flow_default_credit.head = 400
-credit_flow_default_credit.tail = 200
+credit_flow_default_credit.initial_credit = 400
+credit_flow_default_credit.more_credit_after = 200
 ```
 
 Apply queue policies for large message queues to use lazy mode, which keeps messages on disk rather than in memory.
