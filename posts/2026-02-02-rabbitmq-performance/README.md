@@ -376,11 +376,17 @@ class BatchPublisher:
         """Background thread that flushes partial batches periodically."""
         while True:
             time.sleep(self.flush_interval)
-            with self.buffer_lock:
-                # Flush all routing keys with pending messages
-                for routing_key in list(self.message_buffer.keys()):
-                    if self.message_buffer[routing_key]:
-                        self._flush_routing_key(routing_key)
+            # pika.BlockingConnection is NOT thread-safe. Schedule the
+            # flush on the connection's I/O thread instead of publishing
+            # directly from this background thread.
+            self.connection.add_callback_threadsafe(self._flush_pending)
+
+    def _flush_pending(self):
+        """Flush all pending messages - runs on the connection I/O thread."""
+        with self.buffer_lock:
+            for routing_key in list(self.message_buffer.keys()):
+                if self.message_buffer[routing_key]:
+                    self._flush_routing_key(routing_key)
 
     def flush_all(self):
         """Force flush all pending messages immediately."""
@@ -450,9 +456,9 @@ def declare_high_throughput_classic_queue(channel, queue_name):
     Best for non-critical, high-volume workloads.
     """
     arguments = {
-        # Lazy mode keeps messages on disk, reducing memory pressure
-        # Use for queues that may accumulate large backlogs
-        'x-queue-mode': 'lazy',
+        # Note: x-queue-mode=lazy is obsolete in RabbitMQ 3.12+.
+        # Classic queue v2 (CQv2) is now the default storage and behaves
+        # similarly to the old lazy mode for memory pressure reduction.
 
         # Maximum queue length - prevents unbounded growth
         # Overflow behavior: reject-publish, drop-head, or reject-publish-dlx
@@ -649,22 +655,32 @@ class OptimizedConsumer:
             try:
                 success = self.process_message(body)
 
+                # pika.BlockingConnection is NOT thread-safe. Acks/nacks
+                # must be scheduled back on the connection's I/O thread
+                # via add_callback_threadsafe.
+                delivery_tag = method.delivery_tag
                 if success:
                     # Acknowledge successful processing
-                    channel.basic_ack(delivery_tag=method.delivery_tag)
+                    self.connection.add_callback_threadsafe(
+                        lambda: channel.basic_ack(delivery_tag=delivery_tag)
+                    )
                 else:
                     # Negative acknowledge - requeue for retry
-                    # Set requeue=False to send to dead letter exchange
-                    channel.basic_nack(
-                        delivery_tag=method.delivery_tag,
-                        requeue=True
+                    self.connection.add_callback_threadsafe(
+                        lambda: channel.basic_nack(
+                            delivery_tag=delivery_tag,
+                            requeue=True
+                        )
                     )
             except Exception as e:
                 print(f"Processing error: {e}")
                 # Reject and don't requeue - send to dead letter
-                channel.basic_nack(
-                    delivery_tag=method.delivery_tag,
-                    requeue=False
+                delivery_tag = method.delivery_tag
+                self.connection.add_callback_threadsafe(
+                    lambda: channel.basic_nack(
+                        delivery_tag=delivery_tag,
+                        requeue=False
+                    )
                 )
             finally:
                 with self.in_flight_lock:
@@ -1087,26 +1103,16 @@ groups:
           summary: "High unacked messages in {{ $labels.queue }}"
           description: "{{ $value }} unacknowledged messages in queue {{ $labels.queue }}"
 
-      # Alert when connection count is approaching limit
+      # Alert when connection count is approaching a configured threshold
+      # Tune the threshold to match the connection_max value in your config
       - alert: RabbitMQConnectionsHigh
-        expr: rabbitmq_connections / rabbitmq_connections_limit > 0.8
+        expr: rabbitmq_connections > 8000
         for: 5m
         labels:
           severity: warning
         annotations:
           summary: "RabbitMQ connections approaching limit"
-          description: "Connection usage on {{ $labels.instance }} is {{ $value | humanizePercentage }}"
-
-      # Alert on cluster partition
-      # Partitions can cause data inconsistency
-      - alert: RabbitMQClusterPartition
-        expr: rabbitmq_partitions > 0
-        for: 1m
-        labels:
-          severity: critical
-        annotations:
-          summary: "RabbitMQ cluster partition detected"
-          description: "Cluster partition detected on {{ $labels.instance }}"
+          description: "Connection count on {{ $labels.instance }} is {{ $value }}"
 
       # Alert when publish rate drops significantly
       # May indicate publisher issues or network problems
@@ -1199,7 +1205,7 @@ java -jar perf-test.jar \
     --producers 5 \
     --consumers 5 \
     --queue "perf-test-persistent" \
-    --flag persistent \
+    -f persistent \
     --auto-delete \
     --time 60 \
     --size 1024 \
@@ -1222,6 +1228,7 @@ java -jar perf-test.jar \
 
 # Test 6: Latency focused test
 # Measures end-to-end latency distribution
+# PerfTest prints latency percentiles (min/median/75th/95th/99th) by default
 echo "=== Test 6: Latency Measurement ==="
 java -jar perf-test.jar \
     --uri "amqp://${RABBITMQ_USER}:${RABBITMQ_PASS}@${RABBITMQ_HOST}:${RABBITMQ_PORT}" \
@@ -1231,8 +1238,7 @@ java -jar perf-test.jar \
     --auto-delete \
     --time 60 \
     --size 512 \
-    --rate 1000 \
-    --latency-percentiles 50,75,90,95,99
+    --rate 1000
 
 echo "Performance tests complete!"
 ```
