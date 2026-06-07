@@ -68,8 +68,8 @@ curl -u guest:guest http://localhost:15672/api/nodes/rabbit@hostname | jq '.mem_
 Large queues often cause memory pressure. The following script identifies queues sorted by their message count:
 
 ```bash
-# List all queues sorted by message count to find memory-hungry queues
-rabbitmqctl list_queues name messages memory --sort-by=memory | head -20
+# List all queues sorted by memory to find memory-hungry queues
+rabbitmqctl list_queues name messages memory --no-table-headers | sort -k3 -n -r | head -20
 ```
 
 ## Flow Control and Memory Alarms
@@ -531,7 +531,7 @@ Purging removes all messages from a queue, immediately freeing memory:
 
 ```bash
 # List queues with high message counts
-rabbitmqctl list_queues name messages --sort-by=messages
+rabbitmqctl list_queues name messages --no-table-headers | sort -k2 -n -r
 
 # Purge a specific queue (CAUTION: destroys all messages)
 rabbitmqctl purge_queue queue_name
