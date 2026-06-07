@@ -552,7 +552,7 @@ class HealthController < ApplicationController
   end
 
   def redis_connected?
-    Redis.current.ping == 'PONG'
+    Redis.new.ping == 'PONG'
   rescue StandardError
     false
   end
