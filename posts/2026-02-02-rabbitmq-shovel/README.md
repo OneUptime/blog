@@ -179,7 +179,7 @@ Use the RabbitMQ HTTP API to create a dynamic shovel for order replication:
 # The shovel will replicate messages from local 'orders' queue to remote datacenter
 
 curl -u admin:admin_password -X PUT \
-  http://localhost:15672/api/parameters/shovel/%2Forders_vhost/dc1_to_dc2_orders \
+  http://localhost:15672/api/parameters/shovel/orders_vhost/dc1_to_dc2_orders \
   -H "Content-Type: application/json" \
   -d '{
     "value": {
@@ -266,12 +266,12 @@ ssl_options.fail_if_no_peer_cert = true
 # Minimum TLS version for security
 ssl_options.versions.1 = tlsv1.3
 ssl_options.versions.2 = tlsv1.2
+```
 
-# Shovel TLS client settings
-shovel.ssl_options.cacertfile = /etc/rabbitmq/ssl/ca/ca_cert.pem
-shovel.ssl_options.certfile = /etc/rabbitmq/ssl/client/shovel_cert.pem
-shovel.ssl_options.keyfile = /etc/rabbitmq/ssl/client/shovel_key.pem
-shovel.ssl_options.verify = verify_peer
+Shovel client TLS settings are not configured globally in `rabbitmq.conf`. They are specified per shovel — either via TLS query parameters on the `amqps://` URI, or via `ssl_options` inside the shovel definition in `advanced.config`. For example, append client certificate paths to the destination URI:
+
+```text
+amqps://shovel_user:secure_password@dc2-rabbit-1.example.com:5671/orders_vhost?cacertfile=/etc/rabbitmq/ssl/ca/ca_cert.pem&certfile=/etc/rabbitmq/ssl/client/shovel_cert.pem&keyfile=/etc/rabbitmq/ssl/client/shovel_key.pem&verify=verify_peer&server_name_indication=dc2-rabbit-1.example.com
 ```
 
 ## Handling Network Partitions and Failover
