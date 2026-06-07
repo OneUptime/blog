@@ -118,7 +118,7 @@ The following configuration enables content-based deduplication on a FIFO queue 
 ```javascript
 // AWS CDK example: Create FIFO queue with content-based deduplication
 // When enabled, SQS hashes the message body to generate deduplication ID
-const { Stack } = require('aws-cdk-lib');
+const { Stack, Duration } = require('aws-cdk-lib');
 const { Queue } = require('aws-cdk-lib/aws-sqs');
 
 class OrderQueueStack extends Stack {
@@ -378,7 +378,9 @@ class DeduplicationTableStack extends Stack {
       // TTL automatically deletes expired items
       timeToLiveAttribute: 'ttl',
       // Point-in-time recovery for compliance
-      pointInTimeRecovery: true,
+      pointInTimeRecoverySpecification: {
+        pointInTimeRecoveryEnabled: true,
+      },
     });
   }
 }
@@ -575,7 +577,10 @@ class IdempotentOrderProcessor {
     });
 
     // Update order status atomically
-    await this.db.orders.update({
+    // Use updateMany so we can filter by both orderId and status -
+    // Prisma's update() requires a unique where clause and won't accept
+    // a non-unique compound filter like { orderId, status }
+    await this.db.orders.updateMany({
       where: {
         orderId: order.orderId,
         // Only update if still pending - prevents double processing
