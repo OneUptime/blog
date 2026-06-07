@@ -220,7 +220,9 @@ class RedisEventBus:
 
     async def connect(self):
         """Initialize Redis connection"""
-        self._redis = await redis.from_url(self.redis_url)
+        # from_url returns the client synchronously; the connection is
+        # established lazily on the first command.
+        self._redis = redis.from_url(self.redis_url)
         self._pubsub = self._redis.pubsub()
         print("Connected to Redis")
 
@@ -421,7 +423,9 @@ class DomainEvent:
     """Base class for domain events"""
     event_id: str
     aggregate_id: str
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    # kw_only keeps this default-valued field from clashing with required
+    # fields added by subclasses (Python 3.10+).
+    timestamp: datetime = field(default_factory=datetime.utcnow, kw_only=True)
 
 @dataclass
 class OrderCreated(DomainEvent):
