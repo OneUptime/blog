@@ -402,11 +402,14 @@ scrape_configs:
         action: keep
         regex: true
 
-      # Use the service port specified in annotation
-      - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_port]
+      # Use the service port specified in annotation by rewriting __address__
+      - source_labels:
+          - __address__
+          - __meta_kubernetes_service_annotation_prometheus_io_port
         action: replace
-        target_label: __port__
-        regex: (.+)
+        regex: ([^:]+)(?::\d+)?;(\d+)
+        replacement: $1:$2
+        target_label: __address__
 
       # Add service name as label
       - source_labels: [__meta_kubernetes_service_name]
@@ -678,7 +681,7 @@ scrape_configs:
         tags:
           - 'prometheus'
           - 'production'
-        # Only discover healthy services
+        # Allow stale results from non-leader Consul nodes (reduces load; default: true)
         allow_stale: false
         # Refresh service list interval
         refresh_interval: 30s
