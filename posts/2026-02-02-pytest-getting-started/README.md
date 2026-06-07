@@ -472,6 +472,7 @@ Markers let you categorize tests and run subsets of your test suite.
 
 ```python
 # tests/test_features.py
+import sys
 import pytest
 
 # Skip a test unconditionally
