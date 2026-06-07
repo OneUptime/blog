@@ -234,11 +234,11 @@ scrape_configs:
         action: keep
         regex: true
       # Use custom port if specified
-      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
+      - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
         action: replace
         target_label: __address__
-        regex: (.+)
-        replacement: ${1}
+        regex: ([^:]+)(?::\d+)?;(\d+)
+        replacement: $1:$2
       # Add pod labels as metric labels
       - source_labels: [__meta_kubernetes_pod_label_app]
         action: replace
@@ -582,15 +582,17 @@ mTLS configuration ensures only authorized Prometheus instances can federate:
 
 ```yaml
 # On edge/regional Prometheus - enable TLS server
-# prometheus.yml web configuration
-web:
-  tls_config:
-    cert_file: /etc/prometheus/certs/server.crt
-    key_file: /etc/prometheus/certs/server.key
-    client_ca_file: /etc/prometheus/certs/ca.crt
-    client_auth_type: RequireAndVerifyClientCert
+# This is a separate web config file, referenced via --web.config.file=/etc/prometheus/web-config.yml
+# web-config.yml
+tls_server_config:
+  cert_file: /etc/prometheus/certs/server.crt
+  key_file: /etc/prometheus/certs/server.key
+  client_ca_file: /etc/prometheus/certs/ca.crt
+  client_auth_type: RequireAndVerifyClientCert
+```
 
-# On regional/global Prometheus - configure TLS client
+```yaml
+# On regional/global Prometheus - configure TLS client in prometheus.yml
 scrape_configs:
   - job_name: 'federate-secure'
     scheme: https
@@ -686,11 +688,11 @@ sum(up{job=~"federate-.*"}) / count(up{job=~"federate-.*"})
 # Total samples being federated
 sum(scrape_samples_scraped{job=~"federate-.*"})
 
-# Federation latency by source
-histogram_quantile(0.95, sum by (job, le) (scrape_duration_seconds_bucket{job=~"federate-.*"}))
+# Federation latency by source (scrape_duration_seconds is a gauge, so use quantile/max directly)
+quantile(0.95, scrape_duration_seconds{job=~"federate-.*"})
 
 # Data lag (time since last successful scrape)
-time() - max by (job) (prometheus_target_metadata_cache_bytes{job=~"federate-.*"})
+time() - max by (job) (timestamp(up{job=~"federate-.*"}))
 ```
 
 ## Performance Optimization
