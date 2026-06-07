@@ -1440,6 +1440,7 @@ The following test file demonstrates how to test a Button component with differe
 // Comprehensive tests for Button component
 
 import React from 'react';
+import { View } from 'react-native';
 import { render, fireEvent, screen } from '@testing-library/react-native';
 import { Button } from '../components/Button';
 
