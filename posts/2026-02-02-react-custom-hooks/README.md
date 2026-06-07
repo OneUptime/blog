@@ -690,9 +690,9 @@ function SearchComponent() {
 
 ## Building a Window Size Hook
 
-Responsive components sometimes need to know the window dimensions. This hook tracks window size changes efficiently using a resize observer.
+Responsive components sometimes need to know the window dimensions. This hook tracks window size changes by listening to the window's resize event.
 
-This hook returns the current window dimensions and updates when the window is resized. It includes debouncing to prevent excessive re-renders during resize.
+This hook returns the current window dimensions and updates when the window is resized. For very resize-heavy UIs you can compose it with the debounce hook above to throttle updates.
 
 ```javascript
 import { useState, useEffect } from 'react';
@@ -774,7 +774,7 @@ Managing async operations with loading, success, and error states is repetitive.
 This hook wraps any async function and provides consistent state management for loading, error, and data. It prevents race conditions and handles cleanup properly.
 
 ```javascript
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 
 // Hook for managing async operations
 function useAsync() {
@@ -789,6 +789,14 @@ function useAsync() {
 
   // Track latest request to handle race conditions
   const requestIdRef = useRef(0);
+
+  // Set mountedRef to false on unmount so async callbacks bail out
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   // Execute async function with state management
   const execute = useCallback(async (asyncFunction) => {
@@ -1026,12 +1034,12 @@ function UserProfile({ userId }) {
 
 ## Testing Custom Hooks
 
-Testing custom hooks requires a special approach since they cannot be called outside of a React component. The @testing-library/react-hooks package provides utilities for this.
+Testing custom hooks requires a special approach since they cannot be called outside of a React component. React Testing Library provides a `renderHook` utility for this (in React 18 and newer it is exported directly from `@testing-library/react`; for older React 17 projects the equivalent lives in the separate `@testing-library/react-hooks` package).
 
 This example shows how to test a custom hook in isolation:
 
 ```javascript
-import { renderHook, act } from '@testing-library/react';
+import { renderHook, act, waitFor } from '@testing-library/react';
 
 // Testing useCounter hook
 describe('useCounter', () => {
