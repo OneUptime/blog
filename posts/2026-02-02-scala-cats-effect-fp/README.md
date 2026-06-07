@@ -554,11 +554,14 @@ val raceResult: IO[Either[String, String]] = IO.race(fast, slow)
 // Result: Left("Fast wins!")
 
 // racePair gives access to both fibers
+// The winning side returns an Outcome, the losing side returns a Fiber
 val racePairResult: IO[String] = IO.racePair(fast, slow).flatMap {
-  case Left((result, loserFiber)) =>
-    loserFiber.cancel.as(result)  // Cancel the loser
-  case Right((winnerFiber, result)) =>
-    winnerFiber.cancel.as(result)
+  case Left((outcome, loserFiber)) =>
+    // Left wins: cancel the loser, then convert the Outcome to its value
+    loserFiber.cancel *> outcome.embedNever
+  case Right((winnerFiber, outcome)) =>
+    // Right wins: cancel the loser, then convert the Outcome to its value
+    winnerFiber.cancel *> outcome.embedNever
 }
 
 // Add timeout to an operation
@@ -683,7 +686,7 @@ Deferred is a synchronization primitive that represents a value that may not yet
 
 ```scala
 // deferred_example.scala
-import cats.effect.{IO, Deferred}
+import cats.effect.{Deferred, IO, Ref}
 import cats.syntax.parallel._
 import scala.concurrent.duration._
 
@@ -753,6 +756,7 @@ Queue provides a thread-safe bounded or unbounded queue for message passing betw
 // queue_example.scala
 import cats.effect.std.Queue
 import cats.effect.IO
+import cats.syntax.foldable._
 import cats.syntax.parallel._
 import scala.concurrent.duration._
 
@@ -809,8 +813,9 @@ Let us build a practical example that combines all these concepts: a concurrent 
 
 ```scala
 // web_scraper.scala
-import cats.effect.{IO, IOApp, Resource}
+import cats.effect.{IO, IOApp, Ref, Resource}
 import cats.effect.std.Queue
+import cats.syntax.foldable._
 import cats.syntax.parallel._
 import scala.concurrent.duration._
 
@@ -1009,6 +1014,7 @@ Cats Effect provides excellent testing support with deterministic time control.
 // testing_example.scala
 import cats.effect.IO
 import cats.effect.testkit.TestControl
+import cats.syntax.parallel._
 import scala.concurrent.duration._
 
 // Use TestControl for deterministic testing of time-based code
