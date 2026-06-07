@@ -618,7 +618,7 @@ spec:
                   expression: "'team-a'"
       bindings:
         - ref: github-push-binding
-        - name: namespace-binding
+        - name: target-namespace
           value: team-a
       template:
         ref: namespaced-build-template
@@ -640,7 +640,7 @@ spec:
               value: "body.repository.full_name.startsWith('myorg/team-b-')"
       bindings:
         - ref: github-push-binding
-        - name: namespace-binding
+        - name: target-namespace
           value: team-b
       template:
         ref: namespaced-build-template
@@ -850,7 +850,7 @@ Track Event Listener health and webhook processing metrics.
 
 ### Prometheus Metrics
 
-Event Listeners expose metrics on the `/metrics` endpoint:
+Event Listeners expose metrics on a dedicated metrics port (9000) at the `/metrics` endpoint:
 
 ```yaml
 # servicemonitor.yaml
@@ -876,14 +876,17 @@ Important metrics exposed by Event Listeners:
 ```yaml
 # Useful PromQL queries for Tekton Event Listeners
 
-# Webhook requests per minute by listener
-rate(http_requests_total{job="tekton-triggers"}[5m])
+# Webhook events received per second by listener (status label distinguishes success/failure)
+rate(eventlistener_event_received_count[5m])
 
-# Failed webhook validations
-rate(interceptor_validation_failures_total[5m])
+# Failed webhook events (status label values are "success" or "error")
+rate(eventlistener_event_received_count{status="error"}[5m])
 
-# PipelineRun creation latency
-histogram_quantile(0.95, rate(trigger_resource_creation_duration_seconds_bucket[5m]))
+# HTTP request latency p95 for the EventListener sink
+histogram_quantile(0.95, rate(eventlistener_http_duration_seconds_bucket[5m]))
+
+# PipelineRuns and other resources triggered (kind label distinguishes resource type)
+rate(eventlistener_triggered_resources[5m])
 
 # Active Event Listener pods
 count(up{job="tekton-triggers"})
@@ -915,8 +918,8 @@ spec:
 
         - alert: HighWebhookFailureRate
           expr: >
-            rate(interceptor_validation_failures_total[5m]) /
-            rate(http_requests_total{job="tekton-triggers"}[5m]) > 0.1
+            sum(rate(eventlistener_event_received_count{status="error"}[5m])) /
+            sum(rate(eventlistener_event_received_count[5m])) > 0.1
           for: 10m
           labels:
             severity: warning
@@ -1145,7 +1148,7 @@ spec:
 
                 readinessProbe:
                   httpGet:
-                    path: /ready
+                    path: /live
                     port: 8080
                   initialDelaySeconds: 5
                   periodSeconds: 5
