@@ -232,7 +232,7 @@ Here is how Scala types map to GraphQL types in Sangria:
 |------------|--------------|--------------|
 | `String` | `StringType` | `String` |
 | `Int` | `IntType` | `Int` |
-| `Long` | `LongType` | `Int` (GraphQL has no Long) |
+| `Long` | `LongType` | `Long` (Sangria custom scalar) |
 | `Double` | `FloatType` | `Float` |
 | `Boolean` | `BooleanType` | `Boolean` |
 | `Option[T]` | `OptionType(T)` | `T` (nullable) |
@@ -282,7 +282,7 @@ object GraphQLServer extends App with DefaultJsonProtocol {
         val context = AppContext(userRepo, postRepo, currentUserId = Some("user-1"))
 
         Executor.execute(
-          schema = Schema.schema,
+          schema = schema,
           queryAst = queryAst,
           userContext = context,
           operationName = operationName,
