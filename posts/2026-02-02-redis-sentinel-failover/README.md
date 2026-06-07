@@ -795,18 +795,10 @@ function createSentinelClient(options = {}) {
     console.log(`Reconnecting to Redis in ${delay}ms...`);
   });
 
-  // Sentinel-specific events
-  redis.on('+switch-master', (newMaster) => {
-    console.log('Master switched to:', newMaster);
-  });
-
-  redis.on('+sentinel', (sentinel) => {
-    console.log('New Sentinel discovered:', sentinel);
-  });
-
-  redis.on('-sentinel', (sentinel) => {
-    console.log('Sentinel removed:', sentinel);
-  });
+  // Note: ioredis handles Sentinel failover internally via SentinelConnector
+  // and only re-emits the standard lifecycle events above. To observe raw
+  // Sentinel pub/sub messages like +switch-master, +sentinel, -sentinel,
+  // create a dedicated connection to a Sentinel and PSUBSCRIBE to '*'.
 
   return redis;
 }
@@ -1397,13 +1389,11 @@ This script sends notifications via webhook and logs all Sentinel events:
 # /opt/redis/scripts/sentinel-notify.sh
 # Sentinel notification script for alerting
 
-# Event parameters passed by Sentinel
+# Sentinel passes exactly two arguments to notification-script:
+#   $1 = event type (e.g., +odown, +sdown, +switch-master)
+#   $2 = event description (instance details vary by event type)
 EVENT_TYPE=$1
 EVENT_DESCRIPTION=$2
-MASTER_NAME=$3
-ROLE=$4
-IP=$5
-PORT=$6
 
 # Configuration
 LOG_FILE="/var/log/redis/sentinel-events.log"
@@ -1412,7 +1402,7 @@ SLACK_WEBHOOK="https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
 
 # Log function
 log_event() {
-    echo "$(date '+%Y-%m-%d %H:%M:%S') [$EVENT_TYPE] $MASTER_NAME $ROLE $IP:$PORT - $EVENT_DESCRIPTION" >> $LOG_FILE
+    echo "$(date '+%Y-%m-%d %H:%M:%S') [$EVENT_TYPE] $EVENT_DESCRIPTION" >> $LOG_FILE
 }
 
 # Send webhook notification
@@ -1425,9 +1415,7 @@ send_webhook() {
         -d "{
             \"event\": \"$EVENT_TYPE\",
             \"severity\": \"$severity\",
-            \"master\": \"$MASTER_NAME\",
-            \"ip\": \"$IP\",
-            \"port\": \"$PORT\",
+            \"description\": \"$EVENT_DESCRIPTION\",
             \"message\": \"$message\",
             \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"
         }"
@@ -1446,8 +1434,7 @@ send_slack() {
                 \"title\": \"Redis Sentinel Alert\",
                 \"fields\": [
                     {\"title\": \"Event\", \"value\": \"$EVENT_TYPE\", \"short\": true},
-                    {\"title\": \"Master\", \"value\": \"$MASTER_NAME\", \"short\": true},
-                    {\"title\": \"Instance\", \"value\": \"$IP:$PORT\", \"short\": true},
+                    {\"title\": \"Description\", \"value\": \"$EVENT_DESCRIPTION\", \"short\": false},
                     {\"title\": \"Details\", \"value\": \"$message\", \"short\": false}
                 ],
                 \"footer\": \"Sentinel Notification\",
@@ -1463,31 +1450,32 @@ log_event
 case $EVENT_TYPE in
     "+odown")
         # Master is objectively down - critical
-        send_webhook "critical" "Master $MASTER_NAME is DOWN - failover will begin"
+        send_webhook "critical" "Master is DOWN - failover will begin"
         send_slack "danger" "Master is objectively down. Automatic failover initiating."
         ;;
 
     "-odown")
         # Master is no longer objectively down
-        send_webhook "info" "Master $MASTER_NAME is back UP"
+        send_webhook "info" "Master is back UP"
         send_slack "good" "Master is no longer considered down."
         ;;
 
     "+sdown")
         # Instance is subjectively down - warning
-        send_webhook "warning" "Instance at $IP:$PORT is subjectively down"
+        send_webhook "warning" "Instance is subjectively down"
         send_slack "warning" "This Sentinel cannot reach the instance."
         ;;
 
     "-sdown")
         # Instance is no longer subjectively down
-        send_webhook "info" "Instance at $IP:$PORT is back up"
+        send_webhook "info" "Instance is back up"
         ;;
 
     "+switch-master")
         # Failover completed - important
-        send_webhook "info" "Failover completed: new master is $IP:$PORT"
-        send_slack "#36a64f" "Failover complete. New master: $IP:$PORT"
+        # Description format: <master-name> <old-ip> <old-port> <new-ip> <new-port>
+        send_webhook "info" "Failover completed: new master elected"
+        send_slack "#36a64f" "Failover complete."
         ;;
 
     "+failover-detected")
@@ -1498,12 +1486,12 @@ case $EVENT_TYPE in
 
     "+slave")
         # New replica detected
-        send_webhook "info" "New replica added: $IP:$PORT"
+        send_webhook "info" "New replica added"
         ;;
 
     "-slave")
         # Replica removed
-        send_webhook "warning" "Replica removed: $IP:$PORT"
+        send_webhook "warning" "Replica removed"
         ;;
 
     "+sentinel")
