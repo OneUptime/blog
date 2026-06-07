@@ -65,8 +65,8 @@ kubectl wait --for=condition=Ready pods --all -n tekton-pipelines --timeout=300s
 brew install tektoncd-cli
 
 # Linux
-curl -LO https://github.com/tektoncd/cli/releases/download/v0.35.0/tkn_0.35.0_Linux_x86_64.tar.gz
-tar xvzf tkn_0.35.0_Linux_x86_64.tar.gz
+curl -LO https://github.com/tektoncd/cli/releases/download/v0.45.0/tkn_0.45.0_Linux_x86_64.tar.gz
+tar xvzf tkn_0.45.0_Linux_x86_64.tar.gz
 sudo mv tkn /usr/local/bin/
 ```
 
@@ -348,29 +348,31 @@ spec:
       value: "https://github.com/myorg/large-monorepo.git"
 ```
 
-### Task-Level Timeout Override
+### Task-Level Resource Override
 
-Individual tasks can have their own timeout settings when certain steps need more time.
+Individual tasks can have their own compute resource overrides when certain steps need more CPU or memory than the cluster defaults.
 
 ```yaml
 apiVersion: tekton.dev/v1
 kind: PipelineRun
 metadata:
-  generateName: mixed-timeouts-
+  generateName: mixed-resources-
 spec:
   pipelineRef:
     name: integration-tests
   timeouts:
     pipeline: "3h"
-  # Override timeout for specific tasks
+  # Override compute resources for specific tasks
   taskRunSpecs:
     - pipelineTaskName: run-e2e-tests
-      # Extended timeout for E2E tests
+      # Larger CPU/memory for E2E tests
       computeResources:
         requests:
           cpu: "2"
           memory: "4Gi"
 ```
+
+Per-task timeouts themselves are set on the Pipeline definition via `PipelineTask.timeout`, not on the PipelineRun.
 
 ## Retry Policies
 
@@ -827,10 +829,13 @@ metadata:
   name: feature-flags
   namespace: tekton-pipelines
 data:
-  # Keep last 5 successful and 3 failed runs
+  # When "false", pods from cancelled TaskRuns are deleted immediately;
+  # set to "true" to preserve them for debugging
   keep-pod-on-cancel: "false"
 ---
-# Or use labels for cleanup scripts
+# Retention of completed PipelineRuns is handled by the Tekton Pruner
+# (a separate component) or by external cleanup jobs.
+# Labels make it easy for those jobs to filter what to delete.
 apiVersion: tekton.dev/v1
 kind: PipelineRun
 metadata:
