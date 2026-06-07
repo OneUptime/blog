@@ -225,7 +225,7 @@ podman exec reader cat /input/log.txt
 
 ### Volumes with Podman Pods
 
-Pods group containers that share network and storage namespaces.
+Pods group containers that share network, IPC, and UTS namespaces by default. Each container still has its own mount namespace, so storage is shared by mounting the same named volume into multiple containers.
 
 ```bash
 # Create a pod with a shared volume
