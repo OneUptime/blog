@@ -643,7 +643,7 @@ spec:
             periodSeconds: 10
           readinessProbe:
             httpGet:
-              path: /health?bundle=true
+              path: /health?bundles=true
               port: 8181
             initialDelaySeconds: 5
             periodSeconds: 5
@@ -730,6 +730,8 @@ spec:
       labels:
         app: backend-service
     spec:
+      # Share PID namespace so consul-template can signal the main app
+      shareProcessNamespace: true
       # Consul Template runs as native sidecar
       initContainers:
         - name: consul-template
@@ -811,8 +813,9 @@ data:
     # Vault connection for secrets
     vault {
       address = "http://vault.vault.svc:8200"
-      token   = "/vault/token"
-      renew_token = true
+      # Read token from file mounted by Vault Agent (or projected secret).
+      # Incompatible with the `token` field and `renew_token = true`.
+      vault_agent_token_file = "/vault/token"
     }
 
     # Template for application configuration
