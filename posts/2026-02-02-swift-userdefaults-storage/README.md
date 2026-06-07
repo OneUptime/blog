@@ -597,7 +597,7 @@ import Combine
 extension UserDefaults {
 
     // Create a publisher for a specific key
-    func publisher<T>(for key: String) -> AnyPublisher<T?, Never> {
+    func publisher<T: Equatable>(for key: String) -> AnyPublisher<T?, Never> {
         NotificationCenter.default
             .publisher(for: UserDefaults.didChangeNotification, object: self)
             .map { _ in self.object(forKey: key) as? T }
@@ -712,6 +712,7 @@ First, enable App Groups in your Xcode project capabilities. Then use the shared
 ```swift
 // SharedDefaults.swift
 import Foundation
+import WidgetKit
 
 // Shared UserDefaults manager for App Group access
 final class SharedDefaults {
@@ -774,7 +775,6 @@ func updateWidgetData() {
     settings.lastRefreshDate = Date()
 
     // Trigger widget refresh
-    import WidgetKit
     WidgetCenter.shared.reloadAllTimelines()
 }
 
