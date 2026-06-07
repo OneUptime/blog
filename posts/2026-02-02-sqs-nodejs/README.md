@@ -167,7 +167,8 @@ async function createFifoQueue(queueName, options = {}) {
       // Enable content-based deduplication using message body hash
       // Alternative: provide MessageDeduplicationId with each message
       ContentBasedDeduplication: String(options.contentBasedDeduplication || true),
-      // High throughput mode for FIFO (up to 3000 messages/second)
+      // High throughput mode raises the per-API-action limits well above the
+      // default FIFO ceiling (which tops out around 3,000 msg/s with batching)
       DeduplicationScope: options.highThroughput ? 'messageGroup' : 'queue',
       FifoThroughputLimit: options.highThroughput ? 'perMessageGroupId' : 'perQueue',
       VisibilityTimeout: String(options.visibilityTimeout || 30),
