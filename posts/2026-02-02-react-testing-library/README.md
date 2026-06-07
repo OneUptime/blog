@@ -990,42 +990,37 @@ Mock Service Worker (MSW) is the recommended way to mock API calls in React Test
 ```jsx
 // src/mocks/handlers.js
 
-import { rest } from 'msw';
+import { http, HttpResponse } from 'msw';
 
 export const handlers = [
   // Mock GET request for users
-  rest.get('/api/users', (req, res, ctx) => {
-    return res(
-      ctx.status(200),
-      ctx.json([
-        { id: 1, name: 'Alice', email: 'alice@example.com' },
-        { id: 2, name: 'Bob', email: 'bob@example.com' },
-      ])
-    );
+  http.get('/api/users', () => {
+    return HttpResponse.json([
+      { id: 1, name: 'Alice', email: 'alice@example.com' },
+      { id: 2, name: 'Bob', email: 'bob@example.com' },
+    ]);
   }),
 
   // Mock GET request for single user
-  rest.get('/api/users/:userId', (req, res, ctx) => {
-    const { userId } = req.params;
+  http.get('/api/users/:userId', ({ params }) => {
+    const { userId } = params;
 
     if (userId === '999') {
-      return res(ctx.status(404), ctx.json({ error: 'User not found' }));
+      return HttpResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
-    return res(
-      ctx.status(200),
-      ctx.json({ id: userId, name: 'Test User', email: 'test@example.com' })
-    );
+    return HttpResponse.json({
+      id: userId,
+      name: 'Test User',
+      email: 'test@example.com',
+    });
   }),
 
   // Mock POST request for creating user
-  rest.post('/api/users', async (req, res, ctx) => {
-    const body = await req.json();
+  http.post('/api/users', async ({ request }) => {
+    const body = await request.json();
 
-    return res(
-      ctx.status(201),
-      ctx.json({ id: Date.now(), ...body })
-    );
+    return HttpResponse.json({ id: Date.now(), ...body }, { status: 201 });
   }),
 ];
 ```
@@ -1062,7 +1057,7 @@ You can override handlers in specific tests for edge cases.
 // src/components/UserList.test.jsx
 
 import { render, screen, waitFor } from '@testing-library/react';
-import { rest } from 'msw';
+import { http, HttpResponse } from 'msw';
 import { server } from '../mocks/server';
 import UserList from './UserList';
 
@@ -1080,8 +1075,8 @@ describe('UserList Component', () => {
   it('displays empty state when no users', async () => {
     // Override handler for this specific test
     server.use(
-      rest.get('/api/users', (req, res, ctx) => {
-        return res(ctx.status(200), ctx.json([]));
+      http.get('/api/users', () => {
+        return HttpResponse.json([]);
       })
     );
 
@@ -1095,8 +1090,11 @@ describe('UserList Component', () => {
   it('displays error message on API failure', async () => {
     // Override handler to return error
     server.use(
-      rest.get('/api/users', (req, res, ctx) => {
-        return res(ctx.status(500), ctx.json({ error: 'Internal Server Error' }));
+      http.get('/api/users', () => {
+        return HttpResponse.json(
+          { error: 'Internal Server Error' },
+          { status: 500 }
+        );
       })
     );
 
