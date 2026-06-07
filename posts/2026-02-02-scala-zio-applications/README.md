@@ -12,7 +12,7 @@ ZIO is a library for asynchronous and concurrent programming in Scala. It provid
 
 ## What is ZIO?
 
-ZIO (Zero-cost IO) is an effect system that represents computations as values. Instead of immediately executing side effects, you describe what should happen, and ZIO handles the execution. This makes your code easier to reason about, test, and compose.
+ZIO is an effect system that represents computations as values. Instead of immediately executing side effects, you describe what should happen, and ZIO handles the execution. This makes your code easier to reason about, test, and compose.
 
 The core type is `ZIO[R, E, A]` where:
 - `R` is the environment (dependencies) required
@@ -430,7 +430,7 @@ object FiberExample extends ZIOAppDefault {
 }
 ```
 
-Resource Management
+## Resource Management
 
 ZIO provides safe resource management with automatic cleanup, even when errors occur or fibers are interrupted.
 
@@ -538,7 +538,10 @@ object HttpServer extends ZIOAppDefault {
   }
 
   // In-memory storage for demonstration
-  val users = Ref.unsafe.make(Map.empty[String, User])
+  // Ref.unsafe.make requires an Unsafe capability in scope
+  val users: Ref[Map[String, User]] = Unsafe.unsafe { implicit u =>
+    Ref.unsafe.make(Map.empty[String, User])
+  }
 
   // Define routes using pattern matching on method and path
   val routes: Routes[Any, Response] = Routes(
@@ -807,16 +810,16 @@ case class EmailConfig(
 )
 
 object AppConfig {
-  // Automatic derivation of config descriptor
-  val descriptor: ConfigDescriptor[AppConfig] =
+  // Automatic derivation produces a Config[AppConfig] (from zio core)
+  val config: Config[AppConfig] =
     deriveConfig[AppConfig]
 
-  // Layer that loads config from application.conf
-  val live: ZLayer[Any, ReadError[String], AppConfig] =
-    ZLayer {
-      read(
-        descriptor from ConfigSource.fromResourcePath
-      )
+  // Layer that loads config via a HOCON ConfigProvider on application.conf
+  val live: ZLayer[Any, Config.Error, AppConfig] =
+    ZLayer.fromZIO {
+      TypesafeConfigProvider
+        .fromResourcePath()
+        .load(config)
     }
 }
 ```
