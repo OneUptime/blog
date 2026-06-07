@@ -506,9 +506,9 @@ func (m *PubSubManager) GetTopicRetention(ctx context.Context, topicID string) (
 func (m *PubSubManager) RemoveTopicRetention(ctx context.Context, topicID string) error {
 	topic := m.client.Topic(topicID)
 
-	// Setting to zero removes retention
+	// Setting to a negative value removes retention
 	config := pubsub.TopicConfigToUpdate{
-		RetentionDuration: 0,
+		RetentionDuration: time.Duration(-1),
 	}
 
 	_, err := topic.Update(ctx, config)
