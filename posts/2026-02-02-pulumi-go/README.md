@@ -367,7 +367,7 @@ echo "Hello from Pulumi!" > /usr/share/nginx/html/index.html
 
         // Create an EC2 instance running Amazon Linux 2
         instance, err := ec2.NewInstance(ctx, "web-server", &ec2.InstanceArgs{
-            Ami:                 pulumi.String("ami-0c55b159cbfafe1f0"), // Amazon Linux 2
+            Ami:                 pulumi.String("ami-0c55b159cbfafe1f0"), // Replace with the latest Amazon Linux 2 AMI for your region
             InstanceType:        pulumi.String("t3.micro"),
             VpcSecurityGroupIds: pulumi.StringArray{sg.ID()},
             UserData:            pulumi.String(userData),
@@ -495,6 +495,8 @@ Managed Kubernetes on AWS requires several interconnected resources.
 package main
 
 import (
+    "fmt"
+
     "github.com/pulumi/pulumi-aws/sdk/v6/go/aws/eks"
     "github.com/pulumi/pulumi-aws/sdk/v6/go/aws/iam"
     "github.com/pulumi/pulumi/sdk/v3/go/pulumi"
@@ -713,6 +715,8 @@ Use structured configuration for complex settings.
 package main
 
 import (
+    "fmt"
+
     "github.com/pulumi/pulumi/sdk/v3/go/pulumi"
     "github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 )
