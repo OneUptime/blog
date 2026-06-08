@@ -422,16 +422,19 @@ export function middleware(request: NextRequest) {
   // Create new headers based on the incoming request
   const requestHeaders = new Headers(request.headers);
 
-  // Add the visitor's country (available on Vercel Edge)
-  const country = request.geo?.country || 'Unknown';
+  // Add the visitor's country (provided by Vercel Edge via request headers)
+  const country = request.headers.get('x-vercel-ip-country') || 'Unknown';
   requestHeaders.set('x-visitor-country', country);
 
   // Add the visitor's city
-  const city = request.geo?.city || 'Unknown';
+  const city = request.headers.get('x-vercel-ip-city') || 'Unknown';
   requestHeaders.set('x-visitor-city', city);
 
-  // Add the client's IP address
-  const ip = request.ip || request.headers.get('x-forwarded-for') || 'Unknown';
+  // Add the client's IP address (first entry in x-forwarded-for is the original client)
+  const ip =
+    request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
+    request.headers.get('x-real-ip') ||
+    'Unknown';
   requestHeaders.set('x-client-ip', ip);
 
   // Add a timestamp for request tracking
@@ -695,7 +698,7 @@ function getClientIdentifier(request: NextRequest): string {
   // Try to get the real IP address
   const forwardedFor = request.headers.get('x-forwarded-for');
   const realIp = request.headers.get('x-real-ip');
-  const ip = forwardedFor?.split(',')[0] || realIp || request.ip || 'unknown';
+  const ip = forwardedFor?.split(',')[0]?.trim() || realIp || 'unknown';
 
   // Optionally include the API key if present
   const apiKey = request.headers.get('x-api-key');
@@ -928,8 +931,10 @@ export function middleware(request: NextRequest) {
     path: request.nextUrl.pathname,
     userAgent: request.headers.get('user-agent'),
     referer: request.headers.get('referer'),
-    country: request.geo?.country || 'Unknown',
-    ip: request.ip || 'Unknown',
+    country: request.headers.get('x-vercel-ip-country') || 'Unknown',
+    ip:
+      request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
+      'Unknown',
   };
 
   // Log the request (send to your logging service)
@@ -1085,7 +1090,7 @@ const loggingMiddleware: MiddlewareFunction = (request, response) => {
     timestamp: new Date().toISOString(),
     method: request.method,
     path: request.nextUrl.pathname,
-    country: request.geo?.country || 'Unknown',
+    country: request.headers.get('x-vercel-ip-country') || 'Unknown',
   };
   console.log(JSON.stringify(log));
   return null;
