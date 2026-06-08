@@ -1306,7 +1306,9 @@ echo "Recovery completed to $TARGET_TIME"
 This error occurs when a migration cannot acquire a lock on a table.
 
 ```sql
--- Check for blocking queries
+-- Check for blocking queries (MySQL 8.0+)
+-- INFORMATION_SCHEMA.INNODB_LOCK_WAITS was removed in MySQL 8.0
+-- Use performance_schema.data_lock_waits instead
 SELECT
     r.trx_id AS waiting_trx_id,
     r.trx_mysql_thread_id AS waiting_thread,
@@ -1314,9 +1316,9 @@ SELECT
     b.trx_id AS blocking_trx_id,
     b.trx_mysql_thread_id AS blocking_thread,
     b.trx_query AS blocking_query
-FROM information_schema.innodb_lock_waits w
-JOIN information_schema.innodb_trx b ON b.trx_id = w.blocking_trx_id
-JOIN information_schema.innodb_trx r ON r.trx_id = w.requesting_trx_id;
+FROM performance_schema.data_lock_waits w
+JOIN information_schema.innodb_trx b ON b.trx_id = w.blocking_engine_transaction_id
+JOIN information_schema.innodb_trx r ON r.trx_id = w.requesting_engine_transaction_id;
 
 -- Increase lock wait timeout for long migrations
 SET SESSION innodb_lock_wait_timeout = 300;
