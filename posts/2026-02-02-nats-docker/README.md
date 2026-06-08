@@ -134,7 +134,9 @@ version: '3.8'
 
 services:
   nats:
-    image: nats:latest
+    # Use the alpine variant so the in-container wget healthcheck works.
+    # The default scratch-based image has no shell or wget.
+    image: nats:alpine
     container_name: nats
     ports:
       - "4222:4222"   # Client connections
@@ -231,7 +233,8 @@ version: '3.8'
 
 services:
   nats-1:
-    image: nats:latest
+    # Alpine variant required for the in-container wget healthcheck below.
+    image: nats:alpine
     container_name: nats-1
     ports:
       - "4222:4222"
@@ -249,7 +252,7 @@ services:
       retries: 3
 
   nats-2:
-    image: nats:latest
+    image: nats:alpine
     container_name: nats-2
     ports:
       - "4223:4222"
@@ -260,12 +263,17 @@ services:
     command: ["-c", "/etc/nats/nats.conf"]
     networks:
       - nats-cluster
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8222/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
     depends_on:
       nats-1:
         condition: service_healthy
 
   nats-3:
-    image: nats:latest
+    image: nats:alpine
     container_name: nats-3
     ports:
       - "4224:4222"
@@ -276,6 +284,11 @@ services:
     command: ["-c", "/etc/nats/nats.conf"]
     networks:
       - nats-cluster
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8222/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
     depends_on:
       nats-2:
         condition: service_healthy
@@ -568,7 +581,8 @@ version: '3.8'
 
 services:
   nats:
-    image: nats:latest
+    # Alpine variant required for the in-container wget healthcheck below.
+    image: nats:alpine
     ports:
       - "4222:4222"
       - "8222:8222"
