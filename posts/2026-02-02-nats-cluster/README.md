@@ -325,10 +325,10 @@ helm repo update
 
 # Install NATS with clustering enabled
 helm install nats nats/nats \
-    --set cluster.enabled=true \
-    --set cluster.replicas=3 \
-    --set nats.jetstream.enabled=true \
-    --set nats.jetstream.fileStore.pvc.size=10Gi
+    --set config.cluster.enabled=true \
+    --set config.cluster.replicas=3 \
+    --set config.jetstream.enabled=true \
+    --set config.jetstream.fileStore.pvc.size=10Gi
 ```
 
 ### Custom Kubernetes Manifests
@@ -775,17 +775,16 @@ if __name__ == "__main__":
 
 ### Prometheus Metrics
 
-Configure NATS to expose Prometheus metrics.
+NATS exposes its HTTP monitoring endpoints (`/varz`, `/connz`, `/routez`, `/subsz`, `/jsz`, `/healthz`) as JSON on the monitoring port. To scrape these into Prometheus, run the `prometheus-nats-exporter` alongside each NATS server — it converts the JSON endpoints into Prometheus-format metrics on port 7777.
 
 ```hcl
 # /etc/nats/nats-monitoring.conf
 server_name: nats-1
 
 port: 4222
-http_port: 8222
 
-# Enable Prometheus metrics endpoint
-http: 0.0.0.0:8222
+# HTTP monitoring endpoint (returns JSON)
+http_port: 8222
 
 cluster {
     name: my-nats-cluster
@@ -797,25 +796,29 @@ cluster {
 }
 ```
 
-Create a Prometheus scrape configuration for NATS.
+Run the exporter against each NATS server, selecting which monitoring endpoints to scrape.
+
+```bash
+# Start prometheus-nats-exporter scraping the local NATS server
+prometheus-nats-exporter \
+    -varz -connz -routez -subz -jsz=all \
+    -port 7777 \
+    http://localhost:8222
+```
+
+Create a Prometheus scrape configuration that targets the exporter (port 7777), not the NATS monitoring port.
 
 ```yaml
 # prometheus.yaml
-# Prometheus configuration for scraping NATS metrics
+# Prometheus configuration for scraping NATS metrics via prometheus-nats-exporter
 scrape_configs:
   - job_name: 'nats'
     static_configs:
       - targets:
-          - 'nats-1.example.com:8222'
-          - 'nats-2.example.com:8222'
-          - 'nats-3.example.com:8222'
-    metrics_path: /varz
-    params:
-      srvz: ['true']
-      connz: ['true']
-      routez: ['true']
-      subsz: ['true']
-      jsz: ['true']
+          - 'nats-1.example.com:7777'
+          - 'nats-2.example.com:7777'
+          - 'nats-3.example.com:7777'
+    metrics_path: /metrics
 ```
 
 ### Grafana Dashboard
@@ -849,8 +852,8 @@ spec:
           args:
             - -s
             - nats://nats.nats.svc.cluster.local:4222
-            - -observe
-            - my-nats-cluster
+            - -c
+            - "3"
           ports:
             - containerPort: 7777
               name: metrics
