@@ -557,11 +557,12 @@ import { test, expect } from '@playwright/test';
 test('interact with shadow DOM elements', async ({ page }) => {
   await page.goto('/web-components');
 
-  // Playwright pierces shadow DOM by default
+  // Playwright pierces open shadow roots by default
   // This works even if the button is inside a shadow root
   await page.getByRole('button', { name: 'Shadow Button' }).click();
 
-  // For CSS selectors, use >> for shadow DOM piercing
+  // CSS selectors pierce open shadow roots automatically.
+  // The >> operator chains selector engines (here: CSS then CSS).
   const shadowInput = page.locator('my-component >> input.inner-input');
   await shadowInput.fill('test value');
 
