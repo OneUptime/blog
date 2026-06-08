@@ -604,7 +604,7 @@ class OllamaModelManager:
         """
         response = self.session.post(
             f"{self.base_url}/api/show",
-            json={"name": name}
+            json={"model": name}
         )
         response.raise_for_status()
         return response.json()
@@ -626,7 +626,7 @@ class OllamaModelManager:
         """
         response = self.session.post(
             f"{self.base_url}/api/pull",
-            json={"name": name, "stream": True},
+            json={"model": name, "stream": True},
             stream=True
         )
         response.raise_for_status()
@@ -657,7 +657,7 @@ class OllamaModelManager:
         """
         response = self.session.delete(
             f"{self.base_url}/api/delete",
-            json={"name": name}
+            json={"model": name}
         )
         response.raise_for_status()
         return True
@@ -699,7 +699,7 @@ class OllamaModelManager:
         """
         response = self.session.post(
             f"{self.base_url}/api/create",
-            json={"name": name, "modelfile": modelfile},
+            json={"model": name, "modelfile": modelfile},
             stream=True
         )
         response.raise_for_status()
@@ -1079,8 +1079,10 @@ ollama run llama3.2:1b
 # Check GPU availability
 nvidia-smi  # NVIDIA GPUs
 
-# Force CPU-only mode
-OLLAMA_NO_GPU=1 ollama run llama3.2
+# Force CPU-only mode by hiding the GPU
+# For NVIDIA: CUDA_VISIBLE_DEVICES="-1"
+# For AMD:    ROCR_VISIBLE_DEVICES="-1"
+CUDA_VISIBLE_DEVICES="-1" ollama run llama3.2
 ```
 
 ### Corrupted Model Recovery
