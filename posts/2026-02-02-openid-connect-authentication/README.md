@@ -526,11 +526,17 @@ async function enrichUserProfile(session, authService) {
     discovery.userinfo_endpoint
   );
 
+  // Per OIDC Core 1.0 §5.3.2, the UserInfo sub claim MUST exactly match the
+  // sub from the ID Token; otherwise the UserInfo response must not be used.
+  if (userInfo.sub !== session.user.id) {
+    throw new Error('UserInfo sub does not match ID token sub');
+  }
+
   // Merge ID token claims with UserInfo response
   return {
     ...session.user,
     ...userInfo,
-    // Ensure sub claim matches
+    // Preserve the verified sub
     id: userInfo.sub,
   };
 }
