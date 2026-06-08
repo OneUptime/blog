@@ -958,17 +958,17 @@ interface UseFetchResult<T> extends FetchState<T> {
 }
 
 // Options for customizing fetch behavior
-interface UseFetchOptions {
+interface UseFetchOptions<T> {
   enabled?: boolean;
   refetchInterval?: number;
-  onSuccess?: <T>(data: T) => void;
+  onSuccess?: (data: T) => void;
   onError?: (error: Error) => void;
 }
 
 // Generic hook that works with any data type
 export function useFetch<T>(
   url: string,
-  options: UseFetchOptions = {}
+  options: UseFetchOptions<T> = {}
 ): UseFetchResult<T> {
   const { enabled = true, refetchInterval, onSuccess, onError } = options;
 
