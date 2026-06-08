@@ -16,7 +16,7 @@ Podman provides flexible networking options that work in both rootful and rootle
 
 ## Podman Networking Architecture
 
-Podman uses Container Network Interface (CNI) plugins for networking, similar to Kubernetes. The key difference from Docker is that Podman can run without a daemon, which affects how networks are created and managed.
+Podman uses **Netavark** as its default network backend (since Podman 4.0; CNI support was removed in Podman 5.0). Netavark handles container networking, while a companion service called **aardvark-dns** provides DNS resolution on user-defined networks. The key difference from Docker is that Podman can run without a daemon, which affects how networks are created and managed.
 
 ```mermaid
 graph TB
@@ -29,7 +29,7 @@ graph TB
 
         subgraph Networks["Network Backends"]
             Bridge["Bridge Network<br/>podman0"]
-            Host["Host Network"]
+            HostNet["Host Network"]
             Macvlan["Macvlan"]
             Slirp["slirp4netns<br/>(Rootless)"]
         end
@@ -39,9 +39,9 @@ graph TB
 
     C1 --> Bridge
     C2 --> Bridge
-    C3 --> Host
+    C3 --> HostNet
     Bridge --> NIC
-    Host --> NIC
+    HostNet --> NIC
     Macvlan --> NIC
     Slirp --> NIC
 ```
@@ -166,7 +166,7 @@ podman port web
 The default slirp4netns can be slower than bridge networking. Use pasta (Podman's newer networking option) for better performance in rootless mode.
 
 ```bash
-# Use pasta for better rootless performance (Podman 4.0+)
+# Use pasta for better rootless performance (Podman 4.4+)
 # pasta provides kernel-level networking in rootless mode
 podman run -d \
   --name fast-container \
@@ -586,7 +586,7 @@ volumes:
 # Run with podman-compose
 podman-compose up -d
 
-# Or use podman's built-in compose support (Podman 3.0+)
+# Or use podman's built-in compose support (Podman 4.7+)
 podman compose up -d
 
 # Verify network creation
