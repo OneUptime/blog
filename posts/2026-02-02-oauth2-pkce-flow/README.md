@@ -1860,10 +1860,12 @@ const providerConfigs = {
     }),
 
     // AWS Cognito configuration
-    cognito: (region, userPoolId, clientId) => ({
+    // Note: userPoolDomain is the domain prefix configured in the Cognito console
+    // (e.g., "myapp"), not the user pool ID (e.g., "us-east-1_abc123").
+    cognito: (region, userPoolDomain, clientId) => ({
         clientId: clientId,
-        authorizationEndpoint: `https://${userPoolId}.auth.${region}.amazoncognito.com/oauth2/authorize`,
-        tokenEndpoint: `https://${userPoolId}.auth.${region}.amazoncognito.com/oauth2/token`,
+        authorizationEndpoint: `https://${userPoolDomain}.auth.${region}.amazoncognito.com/oauth2/authorize`,
+        tokenEndpoint: `https://${userPoolDomain}.auth.${region}.amazoncognito.com/oauth2/token`,
         scopes: ['openid', 'profile', 'email'],
         pkceRequired: true,
     }),
