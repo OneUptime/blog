@@ -49,8 +49,8 @@ Verify your cluster access and version.
 ```bash
 # Check your Kubernetes version
 
-# This command shows the server version which must be 1.16 or higher
-kubectl version --short
+# This command shows client and server versions; server must be 1.16 or higher
+kubectl version
 
 # Verify you have cluster-admin privileges
 # This command should return "yes" if you have admin access
@@ -133,12 +133,11 @@ For production environments, customize the installation with additional options.
 
 ```bash
 # Install with production-ready configuration
-# This command sets multiple replicas, resource limits, and enables auditing
+# This command sets multiple replicas, audit interval, and webhook timeout
 helm install gatekeeper gatekeeper/gatekeeper \
   --namespace gatekeeper-system \
   --create-namespace \
   --set replicas=3 \
-  --set audit.replicas=1 \
   --set auditInterval=60 \
   --set constraintViolationsLimit=100 \
   --set auditFromCache=true \
@@ -162,11 +161,19 @@ replicas: 3
 
 # Audit controller configuration
 audit:
-  replicas: 1
-  # How often to run audit scans (in seconds)
-  interval: 60
+  # Resource limits for audit pods
+  resources:
+    limits:
+      cpu: 500m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
 
-# Resource limits for controller-manager pods
+# How often to run audit scans (in seconds)
+auditInterval: 60
+
+# Resource limits and exempt namespaces for controller-manager pods
 controllerManager:
   resources:
     limits:
@@ -175,35 +182,26 @@ controllerManager:
     requests:
       cpu: 100m
       memory: 256Mi
-
-# Resource limits for audit pods
-auditResources:
-  limits:
-    cpu: 500m
-    memory: 256Mi
-  requests:
-    cpu: 100m
-    memory: 128Mi
+  # Exempt namespaces from Gatekeeper policies
+  exemptNamespaces:
+    - kube-system
+    - gatekeeper-system
 
 # Webhook configuration
 validatingWebhookTimeoutSeconds: 5
 validatingWebhookFailurePolicy: Ignore
 
-# Enable mutation support (beta feature)
-mutatingWebhookEnabled: true
-
-# Exempt namespaces from Gatekeeper policies
-exemptNamespaces:
-  - kube-system
-  - gatekeeper-system
+# Mutation is enabled by default. Set to true to disable the mutating webhook.
+disableMutation: false
 
 # Log level: DEBUG, INFO, WARNING, ERROR
 logLevel: INFO
 
-# Pod disruption budget for high availability
-podDisruptionBudget:
-  enabled: true
-  minAvailable: 1
+# Pod disruption budget for the controller manager.
+# Setting pdb.controllerManager.minAvailable renders the PDB.
+pdb:
+  controllerManager:
+    minAvailable: 1
 
 # Node affinity and tolerations for scheduling
 affinity:
@@ -326,15 +324,18 @@ kubectl get crd | grep gatekeeper
 
 # Expected output:
 # assign.mutations.gatekeeper.sh
+# assignimage.mutations.gatekeeper.sh
 # assignmetadata.mutations.gatekeeper.sh
 # configs.config.gatekeeper.sh
 # constraintpodstatuses.status.gatekeeper.sh
 # constrainttemplatepodstatuses.status.gatekeeper.sh
 # constrainttemplates.templates.gatekeeper.sh
 # expansiontemplate.expansion.gatekeeper.sh
+# expansiontemplatepodstatuses.status.gatekeeper.sh
 # modifyset.mutations.gatekeeper.sh
 # mutatorpodstatuses.status.gatekeeper.sh
 # providers.externaldata.gatekeeper.sh
+# syncsets.syncset.gatekeeper.sh
 ```
 
 ### Test Webhook Functionality
@@ -708,12 +709,10 @@ helm upgrade gatekeeper gatekeeper/gatekeeper \
 # High availability configuration for production clusters
 replicas: 3
 
-audit:
-  replicas: 1
-
-podDisruptionBudget:
-  enabled: true
-  minAvailable: 2
+# Pod disruption budget for the controller manager
+pdb:
+  controllerManager:
+    minAvailable: 2
 
 affinity:
   podAntiAffinity:
@@ -728,13 +727,14 @@ affinity:
                   - controller-manager
           topologyKey: kubernetes.io/hostname
 
-resources:
-  limits:
-    cpu: 1000m
-    memory: 512Mi
-  requests:
-    cpu: 100m
-    memory: 256Mi
+controllerManager:
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 256Mi
 ```
 
 ### Webhook Failure Policy
@@ -766,7 +766,7 @@ kubectl port-forward -n gatekeeper-system service/gatekeeper-webhook-service 888
 # - gatekeeper_violations: Number of policy violations
 # - gatekeeper_constraint_templates: Number of active templates
 # - gatekeeper_constraints: Number of active constraints
-# - controller_runtime_reconcile_errors_total: Reconciliation errors
+# - gatekeeper_audit_duration_seconds: Latency of audit runs
 ```
 
 ### GitOps Integration
