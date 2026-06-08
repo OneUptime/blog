@@ -46,7 +46,7 @@ flowchart LR
 
 ## Getting Started with podman play kube
 
-The `podman play kube` command reads Kubernetes YAML files and creates equivalent Podman containers and pods. Podman supports Pod, Deployment, DaemonSet, and ConfigMap resource types.
+The `podman play kube` command reads Kubernetes YAML files and creates equivalent Podman containers and pods. Podman supports Pod, Deployment, DaemonSet, Job, PersistentVolumeClaim, ConfigMap, and Secret resource types.
 
 ### Running Your First Kubernetes Pod
 
@@ -518,7 +518,8 @@ spec:
         - containerPort: 5000
           hostPort: 5000
       env:
-        # Use host.containers.internal to reach other pods
+        # host.containers.internal resolves to the Podman host;
+        # reach the database via its hostPort published on the host
         - name: DATABASE_URL
           value: "mysql://appuser:apppass@host.containers.internal:3306/appdb"
       command:
