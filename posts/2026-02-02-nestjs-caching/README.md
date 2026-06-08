@@ -91,8 +91,7 @@ Inject the cache manager into your services to store and retrieve data. The cach
 ```typescript
 // users/users.service.ts
 import { Injectable, Inject } from '@nestjs/common';
-import { CACHE_MANAGER } from '@nestjs/cache-manager';
-import { Cache } from 'cache-manager';
+import { CACHE_MANAGER, Cache } from '@nestjs/cache-manager';
 
 @Injectable()
 export class UsersService {
@@ -184,10 +183,10 @@ export class ProductsController {
 
 In-memory caching works for development and single-server deployments. For production environments with multiple server instances, you need a distributed cache like Redis. Redis ensures all your application instances share the same cache.
 
-Install the Redis adapter for cache-manager.
+Install the Keyv Redis adapter. Current versions of cache-manager use Keyv stores under the hood, so `@keyv/redis` is the recommended Redis adapter.
 
 ```bash
-npm install cache-manager-redis-yet redis
+npm install @keyv/redis redis
 ```
 
 Configure the cache module to use Redis. This setup supports both local development and production environments.
@@ -197,7 +196,7 @@ Configure the cache module to use Redis. This setup supports both local developm
 import { Module } from '@nestjs/common';
 import { CacheModule } from '@nestjs/cache-manager';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { redisStore } from 'cache-manager-redis-yet';
+import { createKeyv } from '@keyv/redis';
 
 @Module({
   imports: [
@@ -215,25 +214,22 @@ import { redisStore } from 'cache-manager-redis-yet';
 
         if (redisHost) {
           // Production configuration with Redis
-          const store = await redisStore({
-            socket: {
-              host: redisHost,
-              port: configService.get<number>('REDIS_PORT', 6379),
-            },
-            password: configService.get<string>('REDIS_PASSWORD'),
-            ttl: 60000, // Default TTL in milliseconds
-          });
+          const port = configService.get<number>('REDIS_PORT', 6379);
+          const password = configService.get<string>('REDIS_PASSWORD');
+          const url = password
+            ? `redis://:${password}@${redisHost}:${port}`
+            : `redis://${redisHost}:${port}`;
 
           return {
-            store,
-            ttl: 60000,
+            // stores is an array so you can layer additional cache stores later
+            stores: [createKeyv(url)],
+            ttl: 60000, // Default TTL in milliseconds
           };
         }
 
         // Development fallback to in-memory cache
         return {
           ttl: 60000,
-          max: 100,
         };
       },
     }),
@@ -291,8 +287,7 @@ Delete cache entries when the underlying data changes. This ensures users always
 ```typescript
 // orders/orders.service.ts
 import { Injectable, Inject } from '@nestjs/common';
-import { CACHE_MANAGER } from '@nestjs/cache-manager';
-import { Cache } from 'cache-manager';
+import { CACHE_MANAGER, Cache } from '@nestjs/cache-manager';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 
 @Injectable()
@@ -331,11 +326,9 @@ export class OrdersService {
 }
 
 // orders/orders.listener.ts
-import { Injectable } from '@nestjs/common';
+import { Injectable, Inject } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
-import { Inject } from '@nestjs/common';
-import { CACHE_MANAGER } from '@nestjs/cache-manager';
-import { Cache } from 'cache-manager';
+import { CACHE_MANAGER, Cache } from '@nestjs/cache-manager';
 
 @Injectable()
 export class OrdersCacheListener {
@@ -440,8 +433,7 @@ For complex caching requirements, create a dedicated cache service that encapsul
 ```typescript
 // cache/cache.service.ts
 import { Injectable, Inject, Logger } from '@nestjs/common';
-import { CACHE_MANAGER } from '@nestjs/cache-manager';
-import { Cache } from 'cache-manager';
+import { CACHE_MANAGER, Cache } from '@nestjs/cache-manager';
 
 // Generic interface for cache operations
 interface CacheOptions {
@@ -549,7 +541,7 @@ export class CacheService {
 
   // Clear all caches and reset tag registry
   async reset(): Promise<void> {
-    await this.cacheManager.reset();
+    await this.cacheManager.clear();
     this.tagRegistry.clear();
     this.logger.warn('Cache reset - all entries cleared');
   }
@@ -637,8 +629,7 @@ flowchart LR
 ```typescript
 // cache/multi-layer-cache.service.ts
 import { Injectable, Inject, Logger } from '@nestjs/common';
-import { CACHE_MANAGER } from '@nestjs/cache-manager';
-import { Cache } from 'cache-manager';
+import { CACHE_MANAGER, Cache } from '@nestjs/cache-manager';
 
 interface CacheLayer {
   name: string;
@@ -989,8 +980,7 @@ Cache stampede occurs when many requests simultaneously try to regenerate an exp
 ```typescript
 // cache/cache-lock.service.ts
 import { Injectable, Inject } from '@nestjs/common';
-import { CACHE_MANAGER } from '@nestjs/cache-manager';
-import { Cache } from 'cache-manager';
+import { CACHE_MANAGER, Cache } from '@nestjs/cache-manager';
 
 @Injectable()
 export class CacheLockService {
@@ -1076,9 +1066,8 @@ Write tests that verify your caching logic works correctly, including cache hits
 ```typescript
 // products/products.service.spec.ts
 import { Test, TestingModule } from '@nestjs/testing';
-import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import { CACHE_MANAGER, Cache } from '@nestjs/cache-manager';
 import { ProductsService } from './products.service';
-import { Cache } from 'cache-manager';
 
 describe('ProductsService', () => {
   let service: ProductsService;
