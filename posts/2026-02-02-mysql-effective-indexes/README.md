@@ -117,7 +117,7 @@ After creating the index, run EXPLAIN again:
 EXPLAIN SELECT * FROM orders WHERE customer_id = 12345;
 ```
 
-Now you should see `type: ref` (or `eq_ref` for unique indexes) and a much smaller number in the `rows` column. The `key` column should show `idx_customer_id`, confirming the index is being used.
+Now you should see `type: ref` (or `const` when looking up a single row through a unique index) and a much smaller number in the `rows` column. The `key` column should show `idx_customer_id`, confirming the index is being used.
 
 ## Composite Indexes: Indexing Multiple Columns
 
@@ -436,8 +436,6 @@ Start by listing your most frequent and most important queries. Design indexes t
 
 -- Design indexes for each pattern
 CREATE INDEX idx_customer ON orders(customer_id);
-CREATE INDEX idx_pending_date ON orders(status, created_at)
-    WHERE status = 'pending';  -- Partial index in some databases
 CREATE INDEX idx_status_date ON orders(status, created_at);
 ```
 
