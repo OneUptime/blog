@@ -51,11 +51,7 @@ Start by installing the required packages. NestJS provides official Mongoose int
 npm install @nestjs/mongoose mongoose
 ```
 
-For TypeScript support with better type definitions, also install the types:
-
-```bash
-npm install -D @types/mongoose
-```
+Mongoose ships its own TypeScript types since v5.11.0, so no separate `@types/mongoose` package is required.
 
 ### Basic Configuration
 
