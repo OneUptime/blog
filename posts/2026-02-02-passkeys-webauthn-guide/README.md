@@ -97,7 +97,6 @@ const fido2 = new Fido2Lib({
     challengeSize: 32,
     attestation: "none",
     cryptoParams: [-7, -257],  // ES256 and RS256 algorithms
-    authenticatorRequirement: "preferred",
     authenticatorUserVerification: "preferred"
 });
 
