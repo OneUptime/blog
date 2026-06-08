@@ -158,6 +158,7 @@ Configuring connection options correctly impacts both throughput and resilience.
 package main
 
 import (
+    "net"
     "time"
 
     "github.com/nats-io/nats.go"
@@ -167,10 +168,6 @@ import (
 func CreateOptimizedConnection(servers string) (*nats.Conn, error) {
     return nats.Connect(
         servers,
-        // Increase pending message limits for high throughput
-        // Default is 65536 messages and 64MB
-        nats.PendingLimits(1000000, 256*1024*1024),
-
         // Larger reconnect buffer prevents message loss during reconnects
         nats.ReconnectBufSize(128 * 1024 * 1024), // 128MB
 
@@ -191,12 +188,14 @@ func CreateOptimizedConnection(servers string) (*nats.Conn, error) {
         nats.DontRandomize(), // Connect to servers in order
 
         // Custom dialer for TCP optimizations
-        nats.SetCustomDialer(&nats.DefaultNetDialer{
-            DialTimeout: 5 * time.Second,
+        nats.Dialer(&net.Dialer{
+            Timeout: 5 * time.Second,
         }),
     )
 }
 ```
+
+Per-subscription pending limits (default 65,536 messages and 64MB) can be raised on each subscription via `sub.SetPendingLimits(msgLimit, bytesLimit)` once the subscription is created — see the subscriber examples below.
 
 ## Message Publishing Optimization
 
