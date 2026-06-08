@@ -248,9 +248,9 @@ Replace the contents with this configuration. Adjust the bindIp to match each se
 # Storage configuration - where MongoDB stores data files
 storage:
   dbPath: /var/lib/mongodb
-  journal:
-    enabled: true
   # Use WiredTiger storage engine for better performance
+  # Note: journaling is always enabled with WiredTiger in MongoDB 6.1+
+  # and cannot be disabled
   engine: wiredTiger
   wiredTiger:
     engineConfig:
@@ -902,10 +902,15 @@ setParameter:
 
 ### Security Hardening
 
-```javascript
-// Disable JavaScript execution if not needed
-db.adminCommand({ setParameter: 1, javascriptEnabled: false })
+To disable server-side JavaScript execution, add the following to `/etc/mongod.conf` and restart mongod (it cannot be toggled at runtime):
 
+```yaml
+# Disable server-side JavaScript execution if not needed
+security:
+  javascriptEnabled: false
+```
+
+```javascript
 // Set authentication restrictions
 db.createUser({
   user: "appuser",
