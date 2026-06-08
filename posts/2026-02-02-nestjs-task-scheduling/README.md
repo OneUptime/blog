@@ -8,7 +8,7 @@ Description: Learn how to implement task scheduling in NestJS applications using
 
 ---
 
-Task scheduling is essential for running background operations like sending emails, cleaning up data, generating reports, or synchronizing with external services. NestJS provides a powerful scheduling module built on top of the popular `node-cron` library that integrates seamlessly with the NestJS ecosystem.
+Task scheduling is essential for running background operations like sending emails, cleaning up data, generating reports, or synchronizing with external services. NestJS provides a powerful scheduling module built on top of the popular `cron` library that integrates seamlessly with the NestJS ecosystem.
 
 ## Architecture Overview
 
@@ -54,7 +54,6 @@ Install the required packages for task scheduling in NestJS.
 
 ```bash
 npm install @nestjs/schedule
-npm install --save-dev @types/cron
 ```
 
 ## Basic Setup
