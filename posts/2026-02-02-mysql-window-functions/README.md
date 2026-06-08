@@ -859,8 +859,8 @@ WITH all_ranked AS (
 )
 SELECT * FROM all_ranked WHERE rn = 1;
 
--- Better: use lateral join for large datasets
--- (This approach varies by MySQL version and data characteristics)
+-- Alternative: use FIRST_VALUE with DISTINCT to collapse partitions
+-- (Effectiveness varies by MySQL version and data characteristics)
 SELECT DISTINCT game_id,
     FIRST_VALUE(player_name) OVER (
         PARTITION BY game_id
