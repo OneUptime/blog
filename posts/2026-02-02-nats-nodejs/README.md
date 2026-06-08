@@ -679,11 +679,13 @@ async function consumeFromJetStream() {
 
   // Create or bind to a durable consumer
   // Durable consumers remember their position across restarts
-  const consumer = await js.consumers.get('ORDERS', 'order-processor');
-
-  // If consumer does not exist, create it
-  // In production, create consumers during deployment/setup
-  if (!consumer) {
+  // js.consumers.get() throws if the consumer does not exist,
+  // so wrap it in try/catch and create the consumer on miss.
+  // In production, create consumers during deployment/setup.
+  let consumer;
+  try {
+    consumer = await js.consumers.get('ORDERS', 'order-processor');
+  } catch (err) {
     const jsm = await nc.jetstreamManager();
     await jsm.consumers.add('ORDERS', {
       durable_name: 'order-processor',
@@ -706,6 +708,8 @@ async function consumeFromJetStream() {
       // Filter to specific subjects
       filter_subject: 'orders.created',
     });
+
+    consumer = await js.consumers.get('ORDERS', 'order-processor');
   }
 
   console.log('Starting to consume messages...');
@@ -1042,10 +1046,6 @@ nats_client_in_bytes ${stats.inBytes}
 # HELP nats_client_out_bytes Total outbound bytes
 # TYPE nats_client_out_bytes counter
 nats_client_out_bytes ${stats.outBytes}
-
-# HELP nats_client_reconnects Total reconnection attempts
-# TYPE nats_client_reconnects counter
-nats_client_reconnects ${stats.reconnects}
 `.trim();
 
   res.set('Content-Type', 'text/plain');
