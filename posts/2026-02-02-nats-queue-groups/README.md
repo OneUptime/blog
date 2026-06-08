@@ -709,10 +709,23 @@ async function publishTasks() {
 
 // Consumer with JetStream queue group
 async function consumeTasks(consumerId) {
-  const { nc, js, sc } = await setupJetStream();
+  const { nc, js, jsm, sc } = await setupJetStream();
 
-  // Create a durable pull consumer
-  // Multiple consumers with the same durable name form a queue group
+  // Create a durable pull consumer if it does not exist
+  // Multiple consumers fetching from the same durable consumer share work
+  try {
+    await jsm.consumers.add('TASKS', {
+      durable_name: 'task-processors',
+      ack_policy: 'explicit',
+    });
+    console.log('Consumer task-processors created');
+  } catch (error) {
+    if (!error.message.includes('already exists')) {
+      throw error;
+    }
+  }
+
+  // Retrieve the consumer to start fetching messages
   const consumer = await js.consumers.get('TASKS', 'task-processors');
 
   console.log(`Consumer ${consumerId} ready`);
@@ -796,7 +809,6 @@ async function monitorQueueGroups() {
 
     console.log('=== NATS Subscription Stats ===');
     console.log(`Total subscriptions: ${stats.num_subscriptions}`);
-    console.log(`Total queue groups: ${stats.num_cache}`);
 
     // Parse subscriptions to find queue groups
     const queueGroups = {};
@@ -853,13 +865,13 @@ flowchart TB
         N1 <--> N3
     end
 
-    subgraph Queue Group: order-processors
+    subgraph "Queue Group: order-processors"
         W1[Worker 1]
         W2[Worker 2]
         W3[Worker 3]
     end
 
-    subgraph Queue Group: notification-senders
+    subgraph "Queue Group: notification-senders"
         NS1[Notifier 1]
         NS2[Notifier 2]
     end
@@ -944,12 +956,14 @@ const nc = await connect({
   pingInterval: 30000,        // Ping every 30 seconds
 });
 
-// Monitor for slow consumer warnings
-nc.on('status', (status) => {
-  if (status.type === 'slowConsumer') {
-    console.warn('Slow consumer detected, consider scaling workers');
+// Monitor for slow consumer warnings via the status async iterator
+(async () => {
+  for await (const status of nc.status()) {
+    if (status.type === 'slowConsumer') {
+      console.warn('Slow consumer detected, consider scaling workers');
+    }
   }
-});
+})();
 ```
 
 **4. Use Wildcard Subjects for Flexibility**
