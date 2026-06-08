@@ -138,15 +138,21 @@ app.get('/callback', async (req, res) => {
 
   try {
     // Exchange authorization code for tokens
-    const tokenResponse = await axios.post(config.tokenUrl, {
-      grant_type: 'authorization_code',
-      code,
-      redirect_uri: config.redirectUri,
-      client_id: config.clientId,
-      client_secret: config.clientSecret,
-    }, {
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    });
+    // The token endpoint requires application/x-www-form-urlencoded, so we
+    // build URLSearchParams rather than passing a plain object to axios.
+    const tokenResponse = await axios.post(
+      config.tokenUrl,
+      new URLSearchParams({
+        grant_type: 'authorization_code',
+        code,
+        redirect_uri: config.redirectUri,
+        client_id: config.clientId,
+        client_secret: config.clientSecret,
+      }),
+      {
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      },
+    );
 
     const { access_token, refresh_token, expires_in, token_type } = tokenResponse.data;
 
@@ -663,9 +669,17 @@ Access tokens come in two formats. Opaque tokens are random strings that require
 function decodeJwt(token) {
   const [header, payload, signature] = token.split('.');
 
+  // JWT segments are base64url-encoded (RFC 7515): '-' and '_' instead of
+  // '+' and '/', and padding is stripped. Convert back before calling atob.
+  function base64UrlDecode(str) {
+    const padded = str.replace(/-/g, '+').replace(/_/g, '/')
+      + '==='.slice((str.length + 3) % 4);
+    return atob(padded);
+  }
+
   return {
-    header: JSON.parse(atob(header)),
-    payload: JSON.parse(atob(payload)),
+    header: JSON.parse(base64UrlDecode(header)),
+    payload: JSON.parse(base64UrlDecode(payload)),
     signature: signature,
   };
 }
