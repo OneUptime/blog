@@ -208,7 +208,8 @@ func deleteOperations(kv jetstream.KeyValue) {
         log.Fatal(err)
     }
 
-    // Purge entire bucket - removes all keys and history
+    // PurgeDeletes - removes the tombstone markers left behind by
+    // previous Delete/Purge calls, freeing storage for those entries
     err = kv.PurgeDeletes(ctx)
     if err != nil {
         log.Fatal(err)
@@ -218,14 +219,16 @@ func deleteOperations(kv jetstream.KeyValue) {
 
 ## Key-Value Operations in Node.js
 
-Node.js applications can use the nats.js library for KV operations. The async/await API makes operations clean and readable.
+Node.js applications can use the modular `@nats-io/*` packages (nats.js v3) for KV operations. The async/await API makes operations clean and readable.
 
 ### Setting Up the Client
 
-The connection factory pattern ensures proper cleanup and reconnection handling.
+Install the required packages: `@nats-io/transport-node`, `@nats-io/kv`, and `@nats-io/jetstream`. The connection factory pattern ensures proper cleanup and reconnection handling.
 
 ```javascript
-const { connect, StringCodec } = require('nats');
+import { connect } from '@nats-io/transport-node';
+import { Kvm } from '@nats-io/kv';
+import { StorageType } from '@nats-io/jetstream';
 
 async function createKVStore() {
     // Connect to NATS with reconnection settings
@@ -236,16 +239,15 @@ async function createKVStore() {
         reconnectTimeWait: 1000,
     });
 
-    // Access JetStream manager
-    const js = nc.jetstream();
-    const jsm = await nc.jetstreamManager();
+    // The Kvm manager creates and opens KV buckets
+    const kvm = new Kvm(nc);
 
     // Create KV bucket with persistence and replication
-    const kv = await js.views.kv('sessions', {
+    const kv = await kvm.create('sessions', {
         history: 1,           // Keep only latest value
         ttl: 30 * 60 * 1000,  // 30 minute TTL for sessions
         replicas: 3,
-        storage: 'file',
+        storage: StorageType.File,
     });
 
     return { nc, kv };
@@ -254,12 +256,9 @@ async function createKVStore() {
 
 ### CRUD Operations
 
-The string codec converts between bytes and strings automatically, simplifying value handling.
+In nats.js v3 the `put` method accepts strings or `Uint8Array` directly, and `KvEntry` exposes `.string()` and `.json()` helpers for decoding.
 
 ```javascript
-const { StringCodec } = require('nats');
-const sc = StringCodec();
-
 async function sessionOperations(kv) {
     // Store a session with JSON payload
     const sessionData = {
@@ -269,18 +268,18 @@ async function sessionOperations(kv) {
         createdAt: new Date().toISOString(),
     };
 
-    // Put encodes and stores the value
-    await kv.put('session:abc123', sc.encode(JSON.stringify(sessionData)));
+    // Put accepts a string directly - no codec needed
+    await kv.put('session:abc123', JSON.stringify(sessionData));
 
     // Retrieve and decode the session
     const entry = await kv.get('session:abc123');
     if (entry) {
-        const session = JSON.parse(sc.decode(entry.value));
+        const session = entry.json();
         console.log('Session:', session);
         console.log('Revision:', entry.revision);
     }
 
-    // Check if key exists without retrieving value
+    // Get returns null when the key does not exist
     const exists = await kv.get('session:nonexistent');
     if (!exists) {
         console.log('Session not found');
@@ -622,8 +621,9 @@ func listAllKeys(kv jetstream.KeyValue) {
 func listKeysByPattern(kv jetstream.KeyValue, pattern string) {
     ctx := context.Background()
 
-    // Use watch with include history to get all matching keys
-    watcher, err := kv.Watch(ctx, pattern, jetstream.IncludeHistory())
+    // A plain Watch emits the latest value for every matching key,
+    // followed by a nil marker once the initial snapshot is delivered.
+    watcher, err := kv.Watch(ctx, pattern)
     if err != nil {
         log.Fatal(err)
     }
@@ -690,21 +690,22 @@ flowchart TB
 Use the official NATS Helm chart for Kubernetes deployments with JetStream enabled.
 
 ```yaml
-# values.yaml for NATS Helm chart
-nats:
+# values.yaml for the official nats-io/nats Helm chart (v1.x+)
+config:
   jetstream:
     enabled: true
-    memStorage:
+    memoryStore:
       enabled: true
-      size: 2Gi
-    fileStorage:
+      maxSize: 2Gi
+    fileStore:
       enabled: true
-      size: 10Gi
-      storageClassName: fast-ssd
-
-cluster:
-  enabled: true
-  replicas: 3
+      pvc:
+        enabled: true
+        size: 10Gi
+        storageClassName: fast-ssd
+  cluster:
+    enabled: true
+    replicas: 3
 
 natsBox:
   enabled: true  # Useful for debugging
@@ -871,7 +872,7 @@ func discoverServices(kv jetstream.KeyValue, serviceName string) ([]string, erro
     ctx := context.Background()
 
     pattern := fmt.Sprintf("services.%s.*", serviceName)
-    watcher, err := kv.Watch(ctx, pattern, jetstream.IncludeHistory())
+    watcher, err := kv.Watch(ctx, pattern)
     if err != nil {
         return nil, err
     }
