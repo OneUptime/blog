@@ -801,7 +801,7 @@ export class TasksController {
 | PUT | /resources/:id | Update entire resource | `@Put(':id')` |
 | PATCH | /resources/:id | Partial update | `@Patch(':id')` |
 | DELETE | /resources/:id | Remove resource | `@Delete(':id')` |
-| ALL | /proxy/* | Match all methods/paths | `@All('*')` |
+| ALL | /proxy/* | Match all methods/paths | `@All('*path')` |
 
 ## Best Practices
 
