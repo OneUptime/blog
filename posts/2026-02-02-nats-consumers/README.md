@@ -530,7 +530,7 @@ async function main() {
                     // Get message metadata for delivery count
                     const info = msg.info;
 
-                    if (info.redeliveryCount >= 3) {
+                    if (info.deliveryCount >= 3) {
                         // Too many retries, terminate
                         msg.term();
                         console.log('Message terminated after max retries');
@@ -793,7 +793,7 @@ type ConsumerHealth struct {
     NumPending        uint64 `json:"num_pending"`
     NumWaiting        int    `json:"num_waiting"`
     NumAckPending     int    `json:"num_ack_pending"`
-    NumRedelivered    uint64 `json:"num_redelivered"`
+    NumRedelivered    int    `json:"num_redelivered"`
     Healthy           bool   `json:"healthy"`
     HealthMessage     string `json:"health_message,omitempty"`
 }
