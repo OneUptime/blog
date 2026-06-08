@@ -312,9 +312,9 @@ async function termConsumer() {
     for await (const msg of messages) {
       const order = JSON.parse(msg.string());
 
-      // Check redelivery count from message metadata
-      const redeliveries = msg.info.redeliveryCount;
-      console.log(`Processing order ${order.id}, delivery attempt ${redeliveries + 1}`);
+      // Check delivery count from message metadata (1-indexed: 1 on first delivery)
+      const deliveryCount = msg.info.deliveryCount;
+      console.log(`Processing order ${order.id}, delivery attempt ${deliveryCount}`);
 
       try {
         await processOrder(order);
@@ -322,8 +322,8 @@ async function termConsumer() {
 
       } catch (error) {
         // If max retries reached or permanent error, terminate
-        if (redeliveries >= 4 || isPermanentError(error)) {
-          console.log(`Terminating order ${order.id} after ${redeliveries + 1} attempts`);
+        if (deliveryCount >= 5 || isPermanentError(error)) {
+          console.log(`Terminating order ${order.id} after ${deliveryCount} attempts`);
 
           // Send to dead letter queue before terminating
           await publishToDeadLetter(js, order, error, msg.info);
@@ -333,7 +333,7 @@ async function termConsumer() {
 
         } else {
           // Temporary failure, request redelivery with backoff
-          const delay = Math.min(1000 * Math.pow(2, redeliveries), 30000);
+          const delay = Math.min(1000 * Math.pow(2, deliveryCount - 1), 30000);
           console.log(`Nak order ${order.id}, retry in ${delay}ms`);
           msg.nak(delay);
         }
@@ -361,7 +361,7 @@ async function publishToDeadLetter(js, order, error, messageInfo) {
     metadata: {
       stream: messageInfo.stream,
       consumer: messageInfo.consumer,
-      deliveryCount: messageInfo.redeliveryCount + 1,
+      deliveryCount: messageInfo.deliveryCount,
       timestamp: new Date().toISOString(),
     },
   };
@@ -509,7 +509,8 @@ class OrderConsumer {
   }
 
   async handleError(msg, order, error) {
-    const redeliveries = msg.info.redeliveryCount;
+    // deliveryCount is 1-indexed (1 on first delivery)
+    const deliveryCount = msg.info.deliveryCount;
     const orderId = order?.id || 'unknown';
 
     // Permanent errors - terminate immediately
@@ -527,19 +528,19 @@ class OrderConsumer {
     }
 
     // Temporary errors - retry with backoff until max retries
-    if (redeliveries >= this.maxRetries - 1) {
+    if (deliveryCount >= this.maxRetries) {
       await this.handlePermanentError(msg, order, error);
       return;
     }
 
     // Calculate exponential backoff delay
     const delay = Math.min(
-      this.baseDelay * Math.pow(2, redeliveries),
+      this.baseDelay * Math.pow(2, deliveryCount - 1),
       this.maxDelay
     );
 
     msg.nak(delay);
-    this.logAck(orderId, 'nak', `Attempt ${redeliveries + 1} failed, retry in ${delay}ms`);
+    this.logAck(orderId, 'nak', `Attempt ${deliveryCount} failed, retry in ${delay}ms`);
   }
 
   async handlePermanentError(msg, order, error) {
@@ -564,7 +565,7 @@ class OrderConsumer {
       },
       metadata: {
         stream: msgInfo.stream,
-        deliveryCount: msgInfo.redeliveryCount + 1,
+        deliveryCount: msgInfo.deliveryCount,
         failedAt: new Date().toISOString(),
       },
     };
@@ -635,7 +636,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log"
 	"time"
 
@@ -954,7 +954,7 @@ class InstrumentedConsumer {
     const startTime = Date.now();
     const metadata = msg.info;
 
-    this.recordRedelivery(metadata.redeliveryCount + 1);
+    this.recordRedelivery(metadata.deliveryCount);
 
     try {
       await handler(msg);
