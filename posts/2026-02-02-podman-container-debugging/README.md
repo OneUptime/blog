@@ -369,7 +369,7 @@ podman inspect <container-name-or-id> --format '{{.ProcessLabel}}'
 podman run --security-opt label=disable myimage
 ```
 
-Resource Constraint Debugging
+## Resource Constraint Debugging
 
 Resource limits cause containers to be killed or perform poorly. Monitoring usage helps identify when limits are too restrictive.
 
