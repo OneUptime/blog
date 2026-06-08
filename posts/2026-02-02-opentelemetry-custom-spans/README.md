@@ -271,18 +271,24 @@ function getAmountBucket(cents: number): string {
 OpenTelemetry defines semantic conventions for common attribute names. Using them ensures consistency with auto-instrumentation and across teams.
 
 ```typescript
-import { SemanticAttributes } from '@opentelemetry/semantic-conventions';
+import { SpanKind } from '@opentelemetry/api';
+import {
+  ATTR_HTTP_REQUEST_METHOD,
+  ATTR_URL_FULL,
+  ATTR_URL_PATH,
+  ATTR_HTTP_RESPONSE_STATUS_CODE,
+} from '@opentelemetry/semantic-conventions';
 
 async function callExternalApi(endpoint: string): Promise<ApiResponse> {
   return withSpan('external.api.call', async (span) => {
     // Use semantic conventions where applicable
-    span.setAttribute(SemanticAttributes.HTTP_METHOD, 'POST');
-    span.setAttribute(SemanticAttributes.HTTP_URL, endpoint);
-    span.setAttribute(SemanticAttributes.HTTP_TARGET, new URL(endpoint).pathname);
+    span.setAttribute(ATTR_HTTP_REQUEST_METHOD, 'POST');
+    span.setAttribute(ATTR_URL_FULL, endpoint);
+    span.setAttribute(ATTR_URL_PATH, new URL(endpoint).pathname);
 
     const response = await fetch(endpoint, { method: 'POST' });
 
-    span.setAttribute(SemanticAttributes.HTTP_STATUS_CODE, response.status);
+    span.setAttribute(ATTR_HTTP_RESPONSE_STATUS_CODE, response.status);
 
     return response.json();
   }, { kind: SpanKind.CLIENT });
@@ -1239,8 +1245,9 @@ describe('Custom Span Instrumentation', () => {
   beforeEach(() => {
     // Set up in-memory exporter for testing
     exporter = new InMemorySpanExporter();
-    provider = new NodeTracerProvider();
-    provider.addSpanProcessor(new SimpleSpanProcessor(exporter));
+    provider = new NodeTracerProvider({
+      spanProcessors: [new SimpleSpanProcessor(exporter)]
+    });
     provider.register();
   });
 
