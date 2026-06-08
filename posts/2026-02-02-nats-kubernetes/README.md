@@ -126,29 +126,32 @@ The following configuration enables a 3-node NATS cluster with JetStream for mes
 
 ```yaml
 # NATS cluster configuration for production deployment
-cluster:
-  enabled: true        # Enable clustering for high availability
-  replicas: 3          # Run 3 NATS servers for fault tolerance
+config:
+  cluster:
+    enabled: true        # Enable clustering for high availability
+    replicas: 3          # Run 3 NATS servers for fault tolerance
 
-# JetStream provides persistent messaging and streaming capabilities
-jetstream:
-  enabled: true        # Enable JetStream for persistence
-  memStorage:
-    enabled: true
-    size: 2Gi          # In-memory storage for fast access
-  fileStorage:
-    enabled: true
-    size: 10Gi         # Persistent disk storage
-    storageClassName: standard  # Adjust based on your cluster
+  # JetStream provides persistent messaging and streaming capabilities
+  jetstream:
+    enabled: true        # Enable JetStream for persistence
+    memoryStore:
+      enabled: true
+      maxSize: 2Gi       # In-memory storage for fast access
+    fileStore:
+      enabled: true
+      pvc:
+        size: 10Gi       # Persistent disk storage
+        storageClassName: standard  # Adjust based on your cluster
 
-# Resource limits prevent resource exhaustion
-resources:
-  requests:
-    cpu: 100m          # Minimum CPU guaranteed
-    memory: 256Mi      # Minimum memory guaranteed
-  limits:
-    cpu: 500m          # Maximum CPU allowed
-    memory: 1Gi        # Maximum memory allowed
+# Container resource limits prevent resource exhaustion
+container:
+  resources:
+    requests:
+      cpu: 100m          # Minimum CPU guaranteed
+      memory: 256Mi      # Minimum memory guaranteed
+    limits:
+      cpu: 500m          # Maximum CPU allowed
+      memory: 1Gi        # Maximum memory allowed
 
 # Pod anti-affinity spreads replicas across nodes
 podTemplate:
