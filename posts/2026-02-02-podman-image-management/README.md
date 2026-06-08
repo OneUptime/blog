@@ -271,8 +271,8 @@ ENTRYPOINT ["/server"]
 Build the multi-stage image with detailed output.
 
 ```bash
-# Build with progress output
-podman build --progress=plain -t myapp:v1 .
+# Always pull the latest base image during build
+podman build --pull=always -t myapp:v1 .
 
 # Build with squash to reduce layers
 podman build --squash -t myapp:v1 .
@@ -400,8 +400,10 @@ podman push myuser/myapp:v1 docker.io/myuser/myapp:v1
 # Push to Quay.io
 podman push myapp:latest quay.io/myuser/myapp:latest
 
-# Push all tags for an image
-podman push --all-tags myuser/myapp docker.io/myuser/myapp
+# Push all tags for an image (loop over local tags; podman push has no --all-tags flag)
+for tag in $(podman images --format "{{.Tag}}" myuser/myapp); do
+  podman push "myuser/myapp:${tag}" "docker.io/myuser/myapp:${tag}"
+done
 
 # Push with compression (default is gzip)
 podman push --compression-format zstd myapp:v1 registry.local/myapp:v1
@@ -441,8 +443,8 @@ podman logout docker.io
 # Logout from all registries
 podman logout --all
 
-# Authentication file location
-ls ~/.local/share/containers/auth.json
+# Authentication file location (rootless default)
+ls "${XDG_RUNTIME_DIR}/containers/auth.json"
 ```
 
 ## Image Cleanup and Storage Management
