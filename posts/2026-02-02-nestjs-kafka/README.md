@@ -10,7 +10,7 @@ Description: Integrate Apache Kafka with NestJS applications for reliable, high-
 
 Apache Kafka is a distributed event streaming platform capable of handling trillions of events daily. Integrating Kafka with NestJS enables building scalable microservices architectures with reliable message delivery, event sourcing, and real-time data pipelines. NestJS provides first-class Kafka support through its microservices package.
 
-Setting up Kafka in NestJS involves configuring the KafkaClient in your microservices module. You specify broker addresses, client and group IDs, and optional configuration for SSL, SASL authentication, and retry policies. The client can act as both a producer and consumer, enabling bidirectional communication.
+Setting up Kafka in NestJS involves configuring the Kafka transport (`Transport.KAFKA`) in your microservices module, with the `ClientKafka` class used on the producer side. You specify broker addresses, client and consumer group IDs, and optional configuration for SSL, SASL authentication, and retry policies. The client can act as both a producer and consumer, enabling bidirectional communication.
 
 Consuming messages uses the `@MessagePattern()` or `@EventPattern()` decorators on controller methods. MessagePattern expects a response (request-reply), while EventPattern handles fire-and-forget events. The handler receives the message payload and can optionally access Kafka-specific context like partition, offset, and headers.
 
