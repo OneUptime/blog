@@ -49,17 +49,12 @@ On Linux, Ollama provides a single-line installation script that works across mo
 curl -fsSL https://ollama.com/install.sh | sh
 ```
 
-For manual installation or if you prefer not to pipe to shell, you can download the binary directly:
+For manual installation or if you prefer not to pipe to shell, you can download the official tarball and extract it:
 
 ```bash
-# Download the Linux binary
-curl -L https://ollama.com/download/ollama-linux-amd64 -o ollama
-
-# Make it executable
-chmod +x ollama
-
-# Move to a directory in your PATH
-sudo mv ollama /usr/local/bin/
+# Download and extract the official Ollama package
+curl -fsSL https://ollama.com/download/ollama-linux-amd64.tgz -o ollama-linux-amd64.tgz
+sudo tar -C /usr -xzf ollama-linux-amd64.tgz
 ```
 
 ### Windows
@@ -396,8 +391,8 @@ PARAMETER num_ctx 8192
 PARAMETER stop "```"
 PARAMETER stop "</code>"
 
-# Number of tokens to keep from initial prompt
-PARAMETER num_keep 24
+# Maximum number of tokens to generate in a response
+PARAMETER num_predict 512
 ```
 
 ---
@@ -433,11 +428,11 @@ Ollama automatically detects and uses available GPUs. For specific configuration
 # Use specific NVIDIA GPU(s) by index
 export CUDA_VISIBLE_DEVICES=0,1
 
-# Limit GPU memory usage (in MB)
-export OLLAMA_GPU_MEMORY=8192
+# Reserve VRAM per GPU (in bytes) to leave room for other workloads
+export OLLAMA_GPU_OVERHEAD=1073741824
 
-# Force CPU-only mode
-export OLLAMA_NO_GPU=1
+# Force CPU-only mode by hiding all NVIDIA GPUs
+export CUDA_VISIBLE_DEVICES=""
 ```
 
 ### Memory Management
@@ -646,8 +641,8 @@ Check network connectivity and disk space:
 # Check available disk space
 df -h
 
-# Retry with verbose output
-ollama pull llama3.2 --verbose
+# Retry the pull (it reports progress by default)
+ollama pull llama3.2
 ```
 
 ---
