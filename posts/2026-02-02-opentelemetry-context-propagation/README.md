@@ -202,7 +202,7 @@ When your service makes HTTP calls to downstream services, inject the current tr
 
 ```javascript
 // http-client.js
-const { trace, context, propagation } = require('@opentelemetry/api');
+const { trace, context, propagation, SpanStatusCode } = require('@opentelemetry/api');
 const axios = require('axios');
 
 const tracer = trace.getTracer('http-client');
@@ -232,7 +232,7 @@ async function fetchUserProfile(userId) {
 
     } catch (error) {
       span.recordException(error);
-      span.setStatus({ code: trace.SpanStatusCode.ERROR, message: error.message });
+      span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
       throw error;
 
     } finally {
@@ -249,7 +249,7 @@ On the server side, extract context from incoming request headers before creatin
 ```javascript
 // http-server.js
 const express = require('express');
-const { trace, context, propagation } = require('@opentelemetry/api');
+const { trace, context, propagation, SpanKind, SpanStatusCode } = require('@opentelemetry/api');
 
 const app = express();
 const tracer = trace.getTracer('user-service');
@@ -266,7 +266,7 @@ function tracingMiddleware(req, res, next) {
   const span = tracer.startSpan(
     `${req.method} ${req.path}`,
     {
-      kind: trace.SpanKind.SERVER,
+      kind: SpanKind.SERVER,
       attributes: {
         'http.method': req.method,
         'http.url': req.url,
@@ -282,7 +282,7 @@ function tracingMiddleware(req, res, next) {
     res.on('finish', () => {
       span.setAttribute('http.status_code', res.statusCode);
       if (res.statusCode >= 400) {
-        span.setStatus({ code: trace.SpanStatusCode.ERROR });
+        span.setStatus({ code: SpanStatusCode.ERROR });
       }
       span.end();
     });
@@ -521,7 +521,7 @@ When publishing messages to Kafka, inject the trace context into message headers
 ```javascript
 // kafka-producer.js
 const { Kafka } = require('kafkajs');
-const { trace, context, propagation } = require('@opentelemetry/api');
+const { trace, context, propagation, SpanKind, SpanStatusCode } = require('@opentelemetry/api');
 
 const kafka = new Kafka({ brokers: ['kafka:9092'] });
 const producer = kafka.producer();
@@ -533,7 +533,7 @@ const tracer = trace.getTracer('order-service');
  */
 async function publishOrderCreated(order) {
   return tracer.startActiveSpan('kafka-publish order-created', {
-    kind: trace.SpanKind.PRODUCER,
+    kind: SpanKind.PRODUCER,
     attributes: {
       'messaging.system': 'kafka',
       'messaging.destination': 'orders',
@@ -565,7 +565,7 @@ async function publishOrderCreated(order) {
 
     } catch (error) {
       span.recordException(error);
-      span.setStatus({ code: trace.SpanStatusCode.ERROR });
+      span.setStatus({ code: SpanStatusCode.ERROR });
       throw error;
 
     } finally {
@@ -582,7 +582,7 @@ The consumer extracts trace context from message headers before processing. Even
 ```javascript
 // kafka-consumer.js
 const { Kafka } = require('kafkajs');
-const { trace, context, propagation } = require('@opentelemetry/api');
+const { trace, context, propagation, SpanKind, SpanStatusCode } = require('@opentelemetry/api');
 
 const kafka = new Kafka({ brokers: ['kafka:9092'] });
 const consumer = kafka.consumer({ groupId: 'fulfillment-service' });
@@ -609,7 +609,7 @@ async function startConsumer() {
 
       // Create consumer span within the extracted context.
       tracer.startActiveSpan('kafka-consume order-created', {
-        kind: trace.SpanKind.CONSUMER,
+        kind: SpanKind.CONSUMER,
         attributes: {
           'messaging.system': 'kafka',
           'messaging.destination': topic,
@@ -625,7 +625,7 @@ async function startConsumer() {
 
         } catch (error) {
           span.recordException(error);
-          span.setStatus({ code: trace.SpanStatusCode.ERROR });
+          span.setStatus({ code: SpanStatusCode.ERROR });
           throw error;
 
         } finally {
@@ -721,12 +721,13 @@ def traced_task(func):
     """
     Decorator that extracts trace context from Celery task headers.
     Wrap Celery tasks with this to maintain trace continuity.
+    Requires the outer @app.task to be declared with bind=True so the task
+    instance is passed as the first positional argument.
     """
     @wraps(func)
-    def wrapper(*args, **kwargs):
-        # Get task headers from the current task request.
-        task = wrapper.request
-        headers = task.headers or {}
+    def wrapper(self, *args, **kwargs):
+        # Get task headers from the bound task instance's request.
+        headers = self.request.headers or {}
 
         # Deserialize trace context if present.
         trace_context_str = headers.get('trace_context')
@@ -742,10 +743,10 @@ def traced_task(func):
             kind=SpanKind.CONSUMER
         ) as span:
             span.set_attribute("celery.task_name", func.__name__)
-            span.set_attribute("celery.task_id", task.id)
+            span.set_attribute("celery.task_id", self.request.id)
 
             try:
-                result = func(*args, **kwargs)
+                result = func(self, *args, **kwargs)
                 span.set_attribute("celery.status", "SUCCESS")
                 return result
 
@@ -755,8 +756,6 @@ def traced_task(func):
                 span.set_attribute("celery.status", "FAILURE")
                 raise
 
-    # Preserve bind attribute for Celery task registration.
-    wrapper.__wrapped__ = func
     return wrapper
 
 
@@ -810,7 +809,7 @@ BullMQ jobs can carry trace context in job data or options. The following exampl
 ```javascript
 // bullmq-producer.js
 const { Queue } = require('bullmq');
-const { trace, context, propagation } = require('@opentelemetry/api');
+const { trace, context, propagation, SpanKind } = require('@opentelemetry/api');
 
 const emailQueue = new Queue('emails', { connection: { host: 'localhost' } });
 const tracer = trace.getTracer('notification-service');
@@ -821,7 +820,7 @@ const tracer = trace.getTracer('notification-service');
  */
 async function queueEmailNotification(userId, templateId, data) {
   return tracer.startActiveSpan('queue-email', {
-    kind: trace.SpanKind.PRODUCER,
+    kind: SpanKind.PRODUCER,
     attributes: {
       'messaging.system': 'bullmq',
       'messaging.destination': 'emails',
@@ -850,7 +849,7 @@ async function queueEmailNotification(userId, templateId, data) {
 ```javascript
 // bullmq-worker.js
 const { Worker } = require('bullmq');
-const { trace, context, propagation } = require('@opentelemetry/api');
+const { trace, context, propagation, SpanKind, SpanStatusCode } = require('@opentelemetry/api');
 
 const tracer = trace.getTracer('email-worker');
 
@@ -866,7 +865,7 @@ const emailWorker = new Worker('emails', async (job) => {
     : context.active();
 
   return tracer.startActiveSpan('process-email', {
-    kind: trace.SpanKind.CONSUMER,
+    kind: SpanKind.CONSUMER,
     attributes: {
       'messaging.system': 'bullmq',
       'job.id': job.id,
@@ -883,7 +882,7 @@ const emailWorker = new Worker('emails', async (job) => {
 
     } catch (error) {
       span.recordException(error);
-      span.setStatus({ code: trace.SpanStatusCode.ERROR });
+      span.setStatus({ code: SpanStatusCode.ERROR });
       span.end();
       throw error;
     }
