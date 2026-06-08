@@ -82,13 +82,13 @@ helm repo update
 
 # Install NATS with JetStream enabled
 helm install nats nats/nats \
-  --set jetstream.enabled=true \
-  --set jetstream.memStorage.enabled=true \
-  --set jetstream.memStorage.size=1Gi \
-  --set jetstream.fileStorage.enabled=true \
-  --set jetstream.fileStorage.size=10Gi \
-  --set cluster.enabled=true \
-  --set cluster.replicas=3
+  --set config.jetstream.enabled=true \
+  --set config.jetstream.memoryStore.enabled=true \
+  --set config.jetstream.memoryStore.maxSize=1Gi \
+  --set config.jetstream.fileStore.enabled=true \
+  --set config.jetstream.fileStore.pvc.size=10Gi \
+  --set config.cluster.enabled=true \
+  --set config.cluster.replicas=3
 ```
 
 ## Core Messaging Patterns
@@ -1001,8 +1001,8 @@ class InstrumentedNATS {
         connectionStatus.set(1);
     }
 
-    async publish(subject, data) {
-        await this.nc.publish(subject, this.jc.encode(data));
+    publish(subject, data) {
+        this.nc.publish(subject, this.jc.encode(data));
         messagesPublished.inc({ subject });
     }
 
