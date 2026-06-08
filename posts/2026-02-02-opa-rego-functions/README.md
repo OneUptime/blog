@@ -280,11 +280,12 @@ role_hierarchy := {
 # Get all roles that a given role inherits from
 # Uses graph.reachable to traverse the hierarchy
 inherited_roles(role) = roles {
-    # Build a graph where each role points to its parents
-    graph := {r: role_hierarchy[r] | role_hierarchy[r]}
+    # Build a graph where each role points to its parents.
+    # Use a local name that does not shadow the `graph` built-in namespace.
+    g := {r: role_hierarchy[r] | role_hierarchy[r]}
 
     # Find all nodes reachable from the starting role
-    roles := graph.reachable(graph, {role})
+    roles := graph.reachable(g, {role})
 }
 
 # Check if a role has a specific permission
@@ -354,22 +355,18 @@ has_authority_over(manager, employee) {
     subs[employee]
 }
 
-# Get approval chain for an employee (path to CEO)
-approval_chain(employee) = chain {
-    chain := [p |
-        # Walk up the tree collecting parents
-        some i
-        p := walk_up(employee, i)
-        p != null
-    ]
+# Build a reverse graph (each node points to its parent) so we can
+# compute the approval chain from an employee up to the root.
+# Rego does not allow recursive rules or functions, so we model
+# "walk up the tree" as reachability in the reverse graph.
+reverse_org := {child: parents |
+    org_structure[parent][_] == child
+    parents := {parent}
 }
 
-# Helper to walk up N levels in the hierarchy
-walk_up(employee, 0) = employee
-walk_up(employee, n) = result {
-    n > 0
-    parent := parent_of(employee)
-    result := walk_up(parent, n - 1)
+# All ancestors of an employee (path to the CEO, excluding the employee).
+ancestors(employee) = ancs {
+    ancs := graph.reachable(reverse_org, {employee}) - {employee}
 }
 ```
 
@@ -379,7 +376,7 @@ walk_up(employee, n) = result {
 
 Complex policies often need to aggregate data: counting resources, summing quotas, or calculating averages. Rego provides aggregation functions that work with comprehensions.
 
-Resource Quota Enforcement
+### Resource Quota Enforcement
 
 Enforce limits on resource creation by aggregating current usage and comparing against quotas.
 
@@ -454,14 +451,17 @@ min_value(values) = min(values)
 max_value(values) = max(values)
 
 # Check if a value is within N standard deviations of mean
-# Useful for anomaly detection in access patterns
+# Useful for anomaly detection in access patterns.
+#
+# Rego does not provide a built-in square root and disallows recursion,
+# so we work in squared-distance space instead:
+#   |value - avg| <= n * std_dev   <=>   (value - avg)^2 <= n^2 * variance
 within_normal_range(value, values, num_std_devs) {
     avg := average(values)
     variance := sum([(v - avg) * (v - avg) | v := values[_]]) / count(values)
-    std_dev := sqrt(variance)
 
-    value >= avg - (num_std_devs * std_dev)
-    value <= avg + (num_std_devs * std_dev)
+    distance := value - avg
+    distance * distance <= num_std_devs * num_std_devs * variance
 }
 
 # Example: Flag unusual access patterns
@@ -481,19 +481,6 @@ deny[msg] {
     not within_normal_range(current_hour, typical_hours, 2)
 
     msg := "Access attempt at unusual time - additional verification required"
-}
-
-# Helper: square root approximation using Newton's method
-sqrt(x) = result {
-    x >= 0
-    result := sqrt_iter(x, x / 2, 10)
-}
-
-sqrt_iter(x, guess, 0) = guess
-sqrt_iter(x, guess, iterations) = result {
-    iterations > 0
-    new_guess := (guess + x / guess) / 2
-    result := sqrt_iter(x, new_guess, iterations - 1)
 }
 ```
 
