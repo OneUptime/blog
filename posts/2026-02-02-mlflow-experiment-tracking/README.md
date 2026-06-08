@@ -38,14 +38,13 @@ For specific integrations, install additional packages:
 
 ```bash
 # For scikit-learn integration
-
-pip install mlflow[sklearn]
+pip install mlflow scikit-learn
 
 # For PyTorch integration
-pip install mlflow[pytorch]
+pip install mlflow torch
 
 # For TensorFlow integration
-pip install mlflow[tensorflow]
+pip install mlflow tensorflow
 ```
 
 ---
@@ -314,7 +313,7 @@ The following table shows which ML frameworks support autologging:
 | PyTorch Lightning | Yes | Yes | Yes | Yes |
 | XGBoost | Yes | Yes | Yes | Yes |
 | LightGBM | Yes | Yes | Yes | Yes |
-| Spark MLlib | Yes | Yes | Yes | Yes |
+| PySpark ML | Yes | Yes | Yes | Yes |
 | Statsmodels | Yes | Yes | Yes | No |
 
 This example shows how to enable autologging with scikit-learn. With one line of code, MLflow captures everything automatically.
