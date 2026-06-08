@@ -210,12 +210,12 @@ Fixtures let you set up common dependencies and share them across tests. Here's 
 
 ```typescript
 // fixtures/auth.fixture.ts
-import { test as base, expect } from '@playwright/test';
+import { test as base, expect, type Page } from '@playwright/test';
 import { LoginPage } from '../pages/LoginPage';
 
 // Define the shape of our custom fixtures
 type AuthFixtures = {
-  authenticatedPage: ReturnType<typeof base['page']>;
+  authenticatedPage: Page;
 };
 
 // Extend the base test with our custom fixtures
