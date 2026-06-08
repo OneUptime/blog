@@ -210,7 +210,7 @@ export class RoomGateway {
 
 ## Authentication with Guards
 
-NestJS guards work with WebSocket gateways just like they do with HTTP controllers. You can verify JWT tokens before allowing connections.
+NestJS guards work with WebSocket gateways just like they do with HTTP controllers. They run before message handlers, so you can verify JWT tokens before any subscribed event is processed.
 
 ```typescript
 // ws-auth.guard.ts
