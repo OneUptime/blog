@@ -619,8 +619,8 @@ Optimize machine performance:
 podman machine rm
 podman machine init --cpus 4 --memory 8192
 
-# Use virtio-fs for better file mount performance (macOS)
-podman machine init --volume-driver virtio-fs
+# Use virtiofs for better file mount performance (macOS)
+podman machine init --volume-driver virtiofs
 ```
 
 ### Network Connectivity Issues
@@ -775,7 +775,7 @@ Apple's virtualization framework provides the best performance on modern Macs:
 
 ```bash
 # Check which virtualization provider is being used
-podman machine info --format '{{.Host.MachineState}}'
+podman machine info --format '{{.Host.VMType}}'
 
 # Apple Silicon (M1/M2/M3) uses Apple Virtualization Framework
 # Intel Macs may use QEMU
