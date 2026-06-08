@@ -244,9 +244,8 @@ ENV MIX_ENV=prod
 
 # Copy dependency files first for better caching
 COPY mix.exs mix.lock ./
-COPY config config
 
-# Install and compile dependencies
+# Install dependencies
 RUN mix deps.get --only $MIX_ENV
 RUN mkdir config
 
@@ -892,7 +891,7 @@ defmodule MyApp.Application do
   def start(_type, _args) do
     children = [
       MyApp.Repo,
-      MyAppWeb.Telemetry,
+      MyApp.Telemetry,
       MyAppWeb.Endpoint,
       # Add Prometheus exporter
       {TelemetryMetricsPrometheus, metrics: MyApp.Telemetry.metrics()}
