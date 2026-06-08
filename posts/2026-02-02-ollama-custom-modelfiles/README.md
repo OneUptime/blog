@@ -78,7 +78,7 @@ Save the following content to a file named `Modelfile` in your working directory
 
 ```dockerfile
 # Modelfile for Code Review Assistant
-# Based on the capable llama3.2 model with 8B parameters
+# Based on the capable llama3.2 model (3B parameters by default)
 
 FROM llama3.2
 
@@ -398,12 +398,12 @@ flowchart TD
     A[Template Variables] --> B[.System]
     A --> C[.Prompt]
     A --> D[.Response]
-    A --> E[.First]
+    A --> E[.Suffix]
 
     B --> F[System prompt text]
     C --> G[User message]
     D --> H[Model response]
-    E --> I[Boolean: first message?]
+    E --> I[Fill-in-middle suffix text]
 
     F & G & H & I --> J[Formatted Output]
 ```
@@ -587,7 +587,7 @@ If you have trained a LoRA adapter (using tools like PEFT or LLaMA-Factory), you
 FROM llama3.2
 
 # Path to your trained LoRA adapter weights
-# Adapters are typically in safetensors or GGML format
+# Adapters are typically in safetensors or GGUF format
 ADAPTER ./my-custom-adapter
 
 # System prompt complementing the fine-tuned behavior
@@ -907,7 +907,7 @@ PARAMETER num_ctx 2048
 PARAMETER num_gpu -1
 
 # 3. Use a smaller base model for simple tasks
-FROM llama3.2:3b  # Instead of 8B or larger
+FROM llama3.2:1b  # Instead of 3B or larger
 ```
 
 ---
