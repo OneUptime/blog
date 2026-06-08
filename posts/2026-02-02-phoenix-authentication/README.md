@@ -147,7 +147,7 @@ defmodule MyApp.Accounts.User do
     field :email, :string
     field :password, :string, virtual: true, redact: true
     field :hashed_password, :string, redact: true
-    field :confirmed_at, :naive_datetime
+    field :confirmed_at, :utc_datetime
 
     timestamps(type: :utc_datetime)
   end
@@ -1050,6 +1050,7 @@ defmodule MyAppWeb.Plugs.SessionSecurity do
   """
 
   import Plug.Conn
+  require Logger
 
   def init(opts), do: opts
 
@@ -1196,7 +1197,7 @@ defmodule MyAppWeb.UserSessionControllerTest do
       conn = get(conn, ~p"/users/settings")
 
       assert redirected_to(conn) == ~p"/users/log_in"
-      assert get_flash(conn, :error) =~ "must log in"
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "must log in"
     end
 
     test "allow access when authenticated", %{conn: conn, user: user} do
