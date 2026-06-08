@@ -113,7 +113,7 @@ func createNatsConnection() (*nats.Conn, error) {
         // Client name for server-side identification
         nats.Name("my-service"),
 
-        // Don't close the connection on first error
+        // Disable randomization of the server list (servers tried in order)
         nats.DontRandomize(),
     }
 
@@ -246,6 +246,7 @@ package main
 import (
     "log"
     "sync/atomic"
+    "time"
 
     "github.com/nats-io/nats.go"
 )
@@ -587,6 +588,7 @@ Go clients support custom reconnection delay functions for implementing exponent
 package main
 
 import (
+    "log"
     "math"
     "math/rand"
     "time"
