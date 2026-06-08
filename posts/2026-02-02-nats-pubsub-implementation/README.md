@@ -332,7 +332,7 @@ func main() {
 
     // QueueSubscribe joins a queue group named "order-processors"
     // Only one subscriber in the group receives each message
-    // NATS distributes messages round-robin across the group
+    // NATS load balances messages randomly across the group
     nc.QueueSubscribe("orders.process", "order-processors", func(msg *nats.Msg) {
         log.Printf("[%s] Processing: %s", workerID, string(msg.Data))
 
