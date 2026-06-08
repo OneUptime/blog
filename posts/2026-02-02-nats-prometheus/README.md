@@ -26,6 +26,10 @@ flowchart LR
         N3[NATS Server 3]
     end
 
+    subgraph Exporter
+        E[prometheus-nats-exporter]
+    end
+
     subgraph Monitoring Stack
         P[Prometheus]
         G[Grafana]
@@ -38,27 +42,29 @@ flowchart LR
         A3[Request/Reply App]
     end
 
-    N1 -->|:8222/metrics| P
-    N2 -->|:8222/metrics| P
-    N3 -->|:8222/metrics| P
+    N1 -->|:8222 JSON| E
+    N2 -->|:8222 JSON| E
+    N3 -->|:8222 JSON| E
 
-    A1 -->|Push metrics| P
-    A2 -->|Push metrics| P
-    A3 -->|Push metrics| P
+    E -->|:7777/metrics| P
+
+    A1 -->|Scrape /metrics| P
+    A2 -->|Scrape /metrics| P
+    A3 -->|Scrape /metrics| P
 
     P --> G
     P --> AM
 ```
 
-NATS servers expose metrics on a dedicated HTTP monitoring port. Prometheus scrapes these endpoints at regular intervals, storing time-series data that you can query and visualize in Grafana.
+NATS servers expose JSON monitoring data on a dedicated HTTP port. The `prometheus-nats-exporter` sidecar scrapes those JSON endpoints and re-exposes them in Prometheus text format, which Prometheus then scrapes at regular intervals for storage, querying, and visualization in Grafana.
 
 ---
 
-## Enabling NATS Metrics
+## Enabling NATS Monitoring
 
-NATS servers include a built-in HTTP monitoring endpoint that exposes metrics in Prometheus format. Enable monitoring in your NATS server configuration.
+NATS servers include a built-in HTTP monitoring endpoint that exposes server state as JSON via endpoints like `/varz`, `/connz`, `/routez`, and `/jsz`. Prometheus-format metrics are produced by a separate sidecar, [`prometheus-nats-exporter`](https://github.com/nats-io/prometheus-nats-exporter), which scrapes those JSON endpoints and re-exposes them on its own `/metrics` endpoint.
 
-The following configuration enables the HTTP monitoring port on 8222, which serves both the general monitoring API and Prometheus metrics endpoint.
+The following configuration enables the HTTP monitoring port on 8222, which the exporter will scrape.
 
 ```hcl
 # nats-server.conf
@@ -67,11 +73,11 @@ The following configuration enables the HTTP monitoring port on 8222, which serv
 server_name: nats-1
 
 # Enable HTTP monitoring on port 8222
-# The /metrics endpoint provides Prometheus-formatted metrics
+# Serves JSON endpoints (/varz, /connz, /routez, /jsz, /healthz)
 http_port: 8222
 
 # Enable JetStream for persistent messaging
-# JetStream metrics are automatically included when enabled
+# JetStream state is exposed via /jsz when enabled
 jetstream {
     store_dir: /data/jetstream
     max_memory_store: 1G
@@ -95,12 +101,35 @@ trace: false
 logtime: true
 ```
 
-After starting NATS with monitoring enabled, verify the metrics endpoint is accessible.
+After starting NATS with monitoring enabled, verify the JSON monitoring endpoint is accessible.
 
 ```bash
-# Test the Prometheus metrics endpoint
-# You should see metrics in Prometheus text format
-curl http://localhost:8222/metrics
+# Test the NATS JSON monitoring endpoint
+# Returns server statistics in JSON form
+curl http://localhost:8222/varz
+
+# Sample fields in the response include
+# connections, in_msgs, out_msgs, slow_consumers, cpu, mem
+```
+
+---
+
+## Running the Prometheus Exporter
+
+Run `prometheus-nats-exporter` next to your NATS servers and point it at each server's monitoring URL. The exporter exposes Prometheus-format metrics on port 7777 by default.
+
+```bash
+# Run the exporter against a single NATS server, enabling all collectors
+prometheus-nats-exporter \
+  -varz \
+  -connz \
+  -routez \
+  -subz \
+  -jsz=all \
+  http://nats-1:8222
+
+# Verify metrics are exposed in Prometheus text format
+curl http://localhost:7777/metrics
 
 # Sample output shows NATS-specific metrics
 # HELP gnatsd_varz_connections Current number of connections
@@ -112,9 +141,9 @@ curl http://localhost:8222/metrics
 
 ## Configuring Prometheus
 
-Add NATS servers as scrape targets in your Prometheus configuration. The following setup handles a three-node NATS cluster with appropriate labels.
+Add the NATS exporters as scrape targets in your Prometheus configuration. The following setup handles a three-node NATS cluster, where each node has a co-located exporter listening on port 7777.
 
-The scrape configuration uses service discovery or static targets to find NATS servers. Adding meaningful labels helps you filter and aggregate metrics across your cluster.
+The scrape configuration uses service discovery or static targets to find the exporters. Adding meaningful labels helps you filter and aggregate metrics across your cluster.
 
 ```yaml
 # prometheus.yml
@@ -124,21 +153,21 @@ global:
 
 # Scrape configuration for NATS servers
 scrape_configs:
-  # NATS server metrics from the built-in monitoring endpoint
+  # NATS metrics from prometheus-nats-exporter sidecars
   - job_name: 'nats'
     # Scrape every 10 seconds for near real-time visibility
     scrape_interval: 10s
     # Increase timeout for high-load servers
     scrape_timeout: 5s
-    # The metrics path for Prometheus format
+    # The metrics path exposed by the exporter
     metrics_path: /metrics
 
-    # Static configuration for known NATS servers
+    # Static configuration for known exporter endpoints
     static_configs:
       - targets:
-          - 'nats-1:8222'
-          - 'nats-2:8222'
-          - 'nats-3:8222'
+          - 'nats-1:7777'
+          - 'nats-2:7777'
+          - 'nats-3:7777'
         labels:
           cluster: 'production'
           environment: 'prod'
@@ -160,7 +189,7 @@ scrape_configs:
           service_type: 'messaging'
 ```
 
-For Kubernetes deployments, use service discovery to automatically find NATS pods.
+For Kubernetes deployments, use service discovery to automatically find pods running the exporter.
 
 ```yaml
 # prometheus.yml - Kubernetes service discovery
@@ -171,17 +200,17 @@ scrape_configs:
 
     # Only scrape pods with specific annotations
     relabel_configs:
-      # Keep only NATS pods based on label
+      # Keep only pods exporting NATS metrics based on label
       - source_labels: [__meta_kubernetes_pod_label_app]
         regex: nats
         action: keep
 
-      # Use the monitoring port annotation
+      # Direct the scrape at the exporter port on the pod
       - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
         action: replace
         target_label: __address__
         regex: (.+)
-        replacement: ${1}:8222
+        replacement: ${1}:7777
 
       # Add namespace label
       - source_labels: [__meta_kubernetes_namespace]
@@ -303,36 +332,36 @@ flowchart LR
 JetStream exposes detailed metrics for streams and consumers.
 
 ```promql
-# Total messages stored in streams
+# Total messages stored in streams on this server
 # Monitor growth to prevent storage exhaustion
-gnatsd_jetstream_total_messages
+jetstream_server_total_messages
 
-# Total bytes stored
-gnatsd_jetstream_total_bytes
+# Total stored message bytes on this server
+jetstream_server_total_message_bytes
 
 # Number of streams
-gnatsd_jetstream_streams
+jetstream_server_total_streams
 
 # Number of consumers
-gnatsd_jetstream_consumers
+jetstream_server_total_consumers
 
-# Memory usage for JetStream
-gnatsd_jetstream_memory_used
+# Memory usage for JetStream (per account)
+jetstream_account_memory_used
 
-# File storage usage
-gnatsd_jetstream_storage_used
+# File storage usage (per account)
+jetstream_account_storage_used
 
 # Consumer pending messages (lag)
 # High values indicate consumers falling behind
-gnatsd_jetstream_consumer_num_pending
+jetstream_consumer_num_pending
 
 # Consumer acknowledgment pending
 # Messages delivered but not yet acknowledged
-gnatsd_jetstream_consumer_num_ack_pending
+jetstream_consumer_num_ack_pending
 
 # Redelivery count
 # High redeliveries may indicate processing failures
-gnatsd_jetstream_consumer_num_redelivered
+jetstream_consumer_num_redelivered
 ```
 
 ---
@@ -795,7 +824,7 @@ groups:
       # Fires when less than 20% storage remains
       - alert: JetStreamStorageLow
         expr: |
-          (gnatsd_jetstream_storage_used / gnatsd_jetstream_max_storage) > 0.8
+          (jetstream_account_storage_used / jetstream_account_max_storage) > 0.8
         for: 10m
         labels:
           severity: warning
@@ -806,7 +835,7 @@ groups:
       # Alert when JetStream memory is running low
       - alert: JetStreamMemoryLow
         expr: |
-          (gnatsd_jetstream_memory_used / gnatsd_jetstream_max_memory) > 0.8
+          (jetstream_account_memory_used / jetstream_account_max_memory) > 0.8
         for: 10m
         labels:
           severity: warning
@@ -817,7 +846,7 @@ groups:
       # Alert on consumer lag
       # High pending count means consumers are falling behind
       - alert: JetStreamConsumerLag
-        expr: gnatsd_jetstream_consumer_num_pending > 10000
+        expr: jetstream_consumer_num_pending > 10000
         for: 5m
         labels:
           severity: warning
@@ -829,7 +858,7 @@ groups:
       # Frequent redeliveries indicate processing failures
       - alert: JetStreamHighRedeliveries
         expr: |
-          rate(gnatsd_jetstream_consumer_num_redelivered[5m]) > 10
+          rate(jetstream_consumer_num_redelivered[5m]) > 10
         for: 5m
         labels:
           severity: warning
@@ -922,10 +951,10 @@ rate(gnatsd_varz_in_bytes{cluster="production"}[1m])
 rate(gnatsd_varz_out_bytes{cluster="production"}[1m])
 
 # Panel: JetStream Storage Usage (Gauge)
-(gnatsd_jetstream_storage_used / gnatsd_jetstream_max_storage) * 100
+(jetstream_account_storage_used / jetstream_account_max_storage) * 100
 
 # Panel: Consumer Pending Messages (Time Series)
-gnatsd_jetstream_consumer_num_pending
+jetstream_consumer_num_pending
 
 # Panel: Server CPU Usage (Time Series)
 gnatsd_varz_cpu{cluster="production"}
@@ -956,7 +985,7 @@ services:
     image: nats:latest
     ports:
       - "4222:4222"   # Client connections
-      - "8222:8222"   # HTTP monitoring
+      - "8222:8222"   # HTTP monitoring (JSON)
       - "6222:6222"   # Cluster routing
     volumes:
       - ./nats-server.conf:/nats-server.conf
@@ -967,6 +996,22 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
+
+  # Prometheus exporter that scrapes NATS JSON endpoints
+  # and re-exposes them in Prometheus text format on :7777
+  nats-exporter:
+    image: natsio/prometheus-nats-exporter:latest
+    ports:
+      - "7777:7777"
+    command:
+      - "-varz"
+      - "-connz"
+      - "-routez"
+      - "-subz"
+      - "-jsz=all"
+      - "http://nats:8222"
+    depends_on:
+      - nats
 
   # Prometheus for metrics collection
   prometheus:
@@ -983,7 +1028,7 @@ services:
       - '--web.enable-lifecycle'
       - '--storage.tsdb.retention.time=15d'
     depends_on:
-      - nats
+      - nats-exporter
 
   # Grafana for visualization
   grafana:
@@ -1031,19 +1076,19 @@ High cardinality metrics can overwhelm Prometheus. Filter unnecessary labels and
 scrape_configs:
   - job_name: 'nats'
     static_configs:
-      - targets: ['nats:8222']
+      - targets: ['nats-exporter:7777']
 
     # Drop high-cardinality internal metrics
     metric_relabel_configs:
       # Keep only metrics you need
       - source_labels: [__name__]
-        regex: 'gnatsd_(varz_connections|varz_in_msgs|varz_out_msgs|varz_slow_consumers|jetstream_.*)'
+        regex: '(gnatsd_varz_(connections|in_msgs|out_msgs|slow_consumers)|jetstream_.*)'
         action: keep
 ```
 
 ### Adjust Scrape Intervals
 
-Balance between granularity and resource usage.
+Balance between granularity and resource usage. Run two scrape jobs against the same exporter target at different cadences — use `metric_relabel_configs` to keep only the metrics relevant to each job.
 
 ```yaml
 # prometheus.yml
@@ -1052,16 +1097,17 @@ scrape_configs:
   - job_name: 'nats-critical'
     scrape_interval: 5s
     static_configs:
-      - targets: ['nats:8222']
-    params:
-      # Request only specific metrics if supported
-      filter: ['connections', 'slow_consumers']
+      - targets: ['nats-exporter:7777']
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: 'gnatsd_varz_(connections|slow_consumers)'
+        action: keep
 
   # Less frequent scraping for capacity planning metrics
   - job_name: 'nats-capacity'
     scrape_interval: 60s
     static_configs:
-      - targets: ['nats:8222']
+      - targets: ['nats-exporter:7777']
 ```
 
 ### Recording Rules for Expensive Queries
@@ -1084,7 +1130,7 @@ groups:
       # Pre-compute JetStream storage percentage
       - record: nats:jetstream_storage_percent
         expr: |
-          (gnatsd_jetstream_storage_used / gnatsd_jetstream_max_storage) * 100
+          (jetstream_account_storage_used / jetstream_account_max_storage) * 100
 ```
 
 ---
@@ -1093,17 +1139,20 @@ groups:
 
 ### Metrics Not Appearing
 
-When Prometheus shows no NATS metrics, verify the monitoring endpoint.
+When Prometheus shows no NATS metrics, verify both the NATS monitoring port and the exporter.
 
 ```bash
-# Check if NATS monitoring port is accessible
-curl -v http://nats:8222/metrics
+# Check that the NATS JSON monitoring port is reachable
+curl -v http://nats:8222/varz
+
+# Check that the exporter is producing Prometheus metrics
+curl -v http://nats-exporter:7777/metrics
 
 # Verify Prometheus can reach the target
 # Check Prometheus targets page: http://prometheus:9090/targets
 
-# Test from Prometheus container
-docker exec prometheus wget -qO- http://nats:8222/metrics
+# Test from the Prometheus container
+docker exec prometheus wget -qO- http://nats-exporter:7777/metrics
 ```
 
 ### High Memory Usage in Prometheus
@@ -1147,7 +1196,7 @@ nats stream add TEST --subjects "test.*" --storage memory --replicas 1
 
 Monitoring NATS with Prometheus provides deep visibility into your messaging infrastructure. By combining server-side metrics with client instrumentation, you gain a complete picture of message flow, connection health, and system performance.
 
-Key takeaways for effective NATS monitoring include configuring the HTTP monitoring port on all NATS servers, setting up Prometheus scraping with appropriate intervals, instrumenting client applications for end-to-end visibility, creating alerting rules for connection issues, slow consumers, and JetStream lag, and building dashboards that surface both real-time and historical trends.
+Key takeaways for effective NATS monitoring include configuring the HTTP monitoring port on all NATS servers, running `prometheus-nats-exporter` alongside each server to expose Prometheus-format metrics, setting up Prometheus scraping with appropriate intervals, instrumenting client applications for end-to-end visibility, creating alerting rules for connection issues, slow consumers, and JetStream lag, and building dashboards that surface both real-time and historical trends.
 
 With proper monitoring in place, you can confidently operate NATS at scale, catching issues before they impact your applications.
 
