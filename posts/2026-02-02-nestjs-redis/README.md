@@ -15,7 +15,7 @@ Redis is the go-to choice for caching in Node.js applications, and NestJS makes 
 NestJS provides `@nestjs/cache-manager` which abstracts caching operations. By default it uses an in-memory store, but switching to Redis takes just a few lines.
 
 ```bash
-npm install @nestjs/cache-manager cache-manager cache-manager-redis-yet redis
+npm install @nestjs/cache-manager cache-manager @keyv/redis keyv redis
 ```
 
 Configure Redis as your cache store in the app module:
@@ -24,21 +24,23 @@ Configure Redis as your cache store in the app module:
 // app.module.ts
 import { Module } from '@nestjs/common';
 import { CacheModule } from '@nestjs/cache-manager';
-import { redisStore } from 'cache-manager-redis-yet';
+import KeyvRedis from '@keyv/redis';
+import { Keyv } from 'keyv';
 
 @Module({
   imports: [
     CacheModule.registerAsync({
       isGlobal: true, // Makes cache available throughout the app
-      useFactory: async () => ({
-        store: await redisStore({
-          socket: {
-            host: process.env.REDIS_HOST || 'localhost',
-            port: parseInt(process.env.REDIS_PORT) || 6379,
-          },
-          password: process.env.REDIS_PASSWORD,
-          ttl: 60000, // Default TTL in milliseconds
-        }),
+      useFactory: () => ({
+        stores: [
+          new Keyv({
+            store: new KeyvRedis({
+              url: `redis://${process.env.REDIS_HOST || 'localhost'}:${process.env.REDIS_PORT || 6379}`,
+              password: process.env.REDIS_PASSWORD,
+            }),
+          }),
+        ],
+        ttl: 60000, // Default TTL in milliseconds
       }),
     }),
   ],
@@ -50,12 +52,12 @@ export class AppModule {}
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `socket.host` | Redis server hostname | localhost |
-| `socket.port` | Redis server port | 6379 |
+| `url` | Redis connection URL (overrides host/port) | undefined |
 | `password` | Redis authentication password | undefined |
-| `ttl` | Default time-to-live in milliseconds | 0 (no expiry) |
-| `max` | Maximum number of items in cache | unlimited |
-| `database` | Redis database index (0-15) | 0 |
+| `username` | Redis ACL username | undefined |
+| `database` | Redis database index | 0 |
+| `ttl` | Default time-to-live in milliseconds (CacheModule level) | 0 (no expiry) |
+| `namespace` | Key prefix for all cached values | `keyv` |
 
 ## Using the Cache Interceptor
 
@@ -137,8 +139,8 @@ export class UsersService {
   }
 
   async clearAllUserCache(): Promise<void> {
-    // Reset the entire cache store
-    await this.cache.reset();
+    // Clear the entire cache store
+    await this.cache.clear();
   }
 }
 ```
