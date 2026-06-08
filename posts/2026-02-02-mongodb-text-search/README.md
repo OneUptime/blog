@@ -802,8 +802,13 @@ async function analyzeIndexPerformance() {
   const db = await connectToDatabase();
   const collection = db.collection('articles');
 
-  // Get collection statistics including index sizes
-  const stats = await collection.stats();
+  // Get collection statistics including index sizes using the $collStats
+  // aggregation stage (the Collection.stats() helper was removed in
+  // Node.js driver v6.0 and the collStats command is deprecated server-side)
+  const [statsDoc] = await collection.aggregate([
+    { $collStats: { storageStats: {} } }
+  ]).toArray();
+  const stats = statsDoc.storageStats;
 
   console.log('Collection Statistics:');
   console.log(`  Total documents: ${stats.count}`);
