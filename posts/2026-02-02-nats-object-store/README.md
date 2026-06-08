@@ -136,7 +136,7 @@ func main() {
 Connect to NATS and create an Object Store bucket using the JavaScript client. The async/await pattern makes working with JetStream straightforward.
 
 ```javascript
-const { connect, StorageType } = require('nats');
+const { connect, StorageType, nanos } = require('nats');
 
 async function createObjectStore() {
     // Connect to NATS server
@@ -151,24 +151,20 @@ async function createObjectStore() {
 
     console.log('Connected to NATS');
 
-    // Get JetStream manager for creating buckets
-    const jsm = await nc.jetstreamManager();
+    // Get the JetStream client
+    const js = nc.jetstream();
 
-    // Create Object Store bucket
-    // Configuration determines storage limits and replication
-    const objStore = await jsm.objects.create('my-files', {
+    // Create (or open) the Object Store bucket
+    // views.os() creates the backing stream if it does not exist
+    const os = await js.views.os('my-files', {
         description: 'Application file storage',
-        ttl: 24 * 60 * 60 * 1000, // 24 hours in milliseconds
+        ttl: nanos(24 * 60 * 60 * 1000), // 24 hours, expressed in nanoseconds
         max_bytes: 1024 * 1024 * 1024, // 1GB
         storage: StorageType.File,
         num_replicas: 3,
     });
 
     console.log(`Created bucket: my-files`);
-
-    // Get the object store handle for operations
-    const js = nc.jetstream();
-    const os = await js.views.os('my-files');
 
     return { nc, os };
 }
@@ -258,26 +254,30 @@ func storeFile(objStore jetstream.ObjectStore, filePath string) error {
 Store objects using the JavaScript client. The put operation accepts buffers, strings, or readable streams.
 
 ```javascript
+const { headers } = require('nats');
+
 async function storeObjects(os) {
     // Store a simple string as bytes
+    // putBlob accepts a Uint8Array/Buffer; use put() for ReadableStream sources
     const textData = Buffer.from('Hello, NATS Object Store!');
-    const textInfo = await os.put(
+    const textInfo = await os.putBlob(
         { name: 'greeting.txt' },
         textData
     );
     console.log(`Stored: ${textInfo.name}, Size: ${textInfo.size}`);
 
     // Store with custom headers and metadata
-    // Headers provide additional context for the object
+    // Headers must be built with the headers() factory
+    const h = headers();
+    h.set('Content-Type', 'application/json');
+    h.set('Version', '1.0.0');
+
     const jsonData = JSON.stringify({ key: 'value', timestamp: Date.now() });
-    const jsonInfo = await os.put(
+    const jsonInfo = await os.putBlob(
         {
             name: 'config.json',
             description: 'Application configuration',
-            headers: {
-                'Content-Type': 'application/json',
-                'Version': '1.0.0',
-            },
+            headers: h,
         },
         Buffer.from(jsonData)
     );
@@ -397,9 +397,13 @@ async function retrieveObjects(os) {
     console.log(`Modified: ${new Date(info.mtime)}`);
 
     // Retrieve entire object as buffer
-    // Suitable for smaller objects
+    // result.data is a ReadableStream<Uint8Array>; read it fully for small objects
     const result = await os.get('greeting.txt');
-    const data = await result.data;
+    const chunks = [];
+    for await (const chunk of result.data) {
+        chunks.push(chunk);
+    }
+    const data = Buffer.concat(chunks);
     console.log(`Content: ${data.toString()}`);
 
     // Stream large objects to avoid memory issues
@@ -463,15 +467,15 @@ func workWithVersions(objStore jetstream.ObjectStore, objectName string) error {
         info.Name, info.Size, info.ModTime)
 
     // List all objects in the bucket
-    // Each entry shows the latest version of each object
-    lister, err := objStore.List(ctx)
+    // List returns a slice with the latest version of each object
+    objects, err := objStore.List(ctx)
     if err != nil {
         return fmt.Errorf("failed to list objects: %w", err)
     }
 
-    for info := range lister {
+    for _, obj := range objects {
         fmt.Printf("Object: %s, Size: %d, Digest: %s\n",
-            info.Name, info.Size, info.Digest)
+            obj.Name, obj.Size, obj.Digest)
     }
 
     return nil
@@ -530,7 +534,7 @@ func deleteObject(objStore jetstream.ObjectStore, objectName string) error {
     ctx := context.Background()
 
     // Delete removes the object from the bucket
-    // The operation is idempotent - deleting non-existent objects does not error
+    // Returns jetstream.ErrObjectNotFound if the object never existed
     err := objStore.Delete(ctx, objectName)
     if err != nil {
         return fmt.Errorf("failed to delete object: %w", err)
@@ -675,6 +679,7 @@ import (
     "crypto/sha256"
     "encoding/hex"
     "fmt"
+    "hash"
     "io"
     "log"
     "mime"
@@ -781,14 +786,9 @@ func (s *FileUploadService) Download(ctx context.Context, objectName string) (io
 
 // List returns all files in the bucket
 func (s *FileUploadService) List(ctx context.Context) ([]*jetstream.ObjectInfo, error) {
-    lister, err := s.objStore.List(ctx)
+    files, err := s.objStore.List(ctx)
     if err != nil {
         return nil, fmt.Errorf("failed to list: %w", err)
-    }
-
-    var files []*jetstream.ObjectInfo
-    for info := range lister {
-        files = append(files, info)
     }
 
     return files, nil
@@ -802,14 +802,14 @@ func (s *FileUploadService) Delete(ctx context.Context, objectName string) error
 // hashingReader wraps a reader and computes SHA256 hash
 type hashingReader struct {
     reader io.Reader
-    hasher *sha256.Hash
+    hasher hash.Hash
 }
 
 func newHashingReader(r io.Reader) *hashingReader {
     h := sha256.New()
     return &hashingReader{
         reader: io.TeeReader(r, h),
-        hasher: &h,
+        hasher: h,
     }
 }
 
@@ -818,7 +818,7 @@ func (h *hashingReader) Read(p []byte) (int, error) {
 }
 
 func (h *hashingReader) Sum() string {
-    return hex.EncodeToString((*h.hasher).Sum(nil))
+    return hex.EncodeToString(h.hasher.Sum(nil))
 }
 
 func main() {
@@ -898,17 +898,12 @@ func monitorObjectStore(js jetstream.JetStream, bucketName string) error {
     fmt.Printf("Bucket: %s\n", status.Bucket())
     fmt.Printf("Description: %s\n", status.Description())
     fmt.Printf("TTL: %v\n", status.TTL())
-    fmt.Printf("Storage Type: %s\n", status.BackingStore())
+    fmt.Printf("Backing Store: %s\n", status.BackingStore())
+    fmt.Printf("Storage: %s\n", status.Storage())
     fmt.Printf("Replicas: %d\n", status.Replicas())
-
-    // Get underlying stream info for detailed metrics
-    streamInfo := status.StreamInfo()
-    if streamInfo != nil {
-        fmt.Printf("Messages: %d\n", streamInfo.State.Msgs)
-        fmt.Printf("Bytes: %d\n", streamInfo.State.Bytes)
-        fmt.Printf("First Seq: %d\n", streamInfo.State.FirstSeq)
-        fmt.Printf("Last Seq: %d\n", streamInfo.State.LastSeq)
-    }
+    fmt.Printf("Total Size: %d bytes\n", status.Size())
+    fmt.Printf("Sealed: %t\n", status.Sealed())
+    fmt.Printf("Compressed: %t\n", status.IsCompressed())
 
     return nil
 }
