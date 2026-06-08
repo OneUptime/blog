@@ -985,19 +985,17 @@ async def main():
     # Retrieve the object
     result = await obj.get("documents/report.txt")
 
-    # Read all data
-    data = await result.read()
+    # Access the object bytes from the result
+    data = result.data
     print(f"Retrieved {len(data)} bytes")
 
     # Verify integrity
     digest = hashlib.sha256(data).hexdigest()
     print(f"Verified: SHA256={digest[:16]}...")
 
-    # Stream large files to disk
-    result = await obj.get("documents/report.txt")
+    # Stream large files directly to disk using writeinto
     with open("/tmp/downloaded_report.txt", "wb") as f:
-        async for chunk in result:
-            f.write(chunk)
+        await obj.get("documents/report.txt", writeinto=f)
     print("File downloaded to /tmp/downloaded_report.txt")
 
     # List all objects
