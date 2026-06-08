@@ -124,7 +124,7 @@ flowchart LR
     subgraph Network["Network Layer"]
         direction TB
         D["SSH (port 22)"]
-        E["TCP/TLS (port 8080)"]
+        E["TCP/TLS (port 8443)"]
     end
 
     subgraph Server["Server Machine"]
@@ -166,8 +166,8 @@ Expected output includes system information:
     "hostname": "podman-host"
   },
   "version": {
-    "APIVersion": "4.0.0",
-    "Version": "4.9.0"
+    "APIVersion": "5.0.0",
+    "Version": "5.7.0"
   }
 }
 ```
@@ -211,7 +211,7 @@ List and verify configured connections:
 
 ```bash
 # Display all configured remote connections
-# The asterisk (*) indicates the default connection
+# The Default column shows "true" for the active default connection
 podman system connection list
 ```
 
@@ -328,8 +328,8 @@ openssl x509 -req -days 365 \
 
 # Clean up CSR files and set proper permissions
 rm -f *.csr *.cnf
+chmod 644 ca.pem *-cert.pem
 chmod 600 *-key.pem
-chmod 644 *.pem ca.pem *-cert.pem
 
 echo "Certificates generated in ${CERT_DIR}"
 ```
@@ -350,9 +350,13 @@ Wants=network.target
 [Service]
 Type=simple
 # Replace with actual certificate paths on your server
+# --tls-cert / --tls-key / --tls-client-ca enable mTLS on the TCP socket
 ExecStart=/usr/bin/podman system service \
   --time=0 \
-  tcp://0.0.0.0:8443?tlsverify=true&tlscacert=/etc/podman/certs/ca.pem&tlscert=/etc/podman/certs/server-cert.pem&tlskey=/etc/podman/certs/server-key.pem
+  --tls-cert=/etc/podman/certs/server-cert.pem \
+  --tls-key=/etc/podman/certs/server-key.pem \
+  --tls-client-ca=/etc/podman/certs/ca.pem \
+  tcp://0.0.0.0:8443
 Restart=always
 RestartSec=5
 
@@ -600,7 +604,7 @@ def run_container(
         client: PodmanClient instance
         image: Container image name
         name: Container name
-        ports: Port mappings (e.g., {"8080/tcp": 80})
+        ports: Port mappings in form {"container_port/protocol": host_port} (e.g., {"80/tcp": 8080})
         environment: Environment variables
         detach: Run in background if True
 
@@ -661,7 +665,7 @@ if __name__ == "__main__":
         client=client,
         image="docker.io/library/nginx:alpine",
         name="web-api",
-        ports={"8080/tcp": 80},
+        ports={"80/tcp": 8080},
         environment={"NGINX_HOST": "api.example.com"}
     )
 
@@ -698,11 +702,12 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 
-	"github.com/containers/podman/v4/pkg/bindings"
-	"github.com/containers/podman/v4/pkg/bindings/containers"
-	"github.com/containers/podman/v4/pkg/bindings/images"
-	"github.com/containers/podman/v4/pkg/specgen"
+	"github.com/containers/podman/v5/pkg/bindings"
+	"github.com/containers/podman/v5/pkg/bindings/containers"
+	"github.com/containers/podman/v5/pkg/bindings/images"
+	"github.com/containers/podman/v5/pkg/specgen"
 )
 
 // createConnection establishes a connection to the Podman API
@@ -831,9 +836,9 @@ Initialize and build the Go application:
 go mod init podman-client
 
 # Download dependencies
-go get github.com/containers/podman/v4/pkg/bindings
-go get github.com/containers/podman/v4/pkg/bindings/containers
-go get github.com/containers/podman/v4/pkg/bindings/images
+go get github.com/containers/podman/v5/pkg/bindings
+go get github.com/containers/podman/v5/pkg/bindings/containers
+go get github.com/containers/podman/v5/pkg/bindings/images
 
 # Build the application
 go build -o podman-client main.go
