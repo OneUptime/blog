@@ -354,6 +354,9 @@ http_port: 8222
 server_name: edge-location-1
 
 leafnodes {
+    # Interval in seconds between reconnect attempts to remote hubs
+    reconnect: 5
+
     remotes: [
         {
             urls: [
@@ -361,9 +364,6 @@ leafnodes {
                 "nats-leaf://hub-2.central.example.com:7422"
             ]
             credentials: "/etc/nats/creds/edge-1.creds"
-
-            # Reconnect settings for unreliable connections
-            reconnect_interval: "5s"
         }
     ]
 }
@@ -592,11 +592,28 @@ Remap subjects at the leaf node level for namespace isolation.
 
 ```hcl
 # leaf-with-remapping.conf
-# Leaf node with subject remapping
+# Leaf node with subject remapping via account mappings
 
 port: 4222
 http_port: 8222
 server_name: leaf-site-a
+
+# Define a local account with subject mappings.
+# Mappings are applied as messages enter the account scope,
+# so local publishers see the prefix added before the message
+# flows out over the leaf connection to the hub.
+accounts {
+    LOCAL: {
+        users: [{ user: app, password: app_secret }]
+
+        # Remap local subjects to include site prefix
+        # Local "events.>" becomes "site-a.events.>" on hub
+        mappings: {
+            "events.>": "site-a.events.>"
+            "metrics.>": "site-a.metrics.>"
+        }
+    }
+}
 
 leafnodes {
     remotes: [
@@ -604,16 +621,8 @@ leafnodes {
             urls: ["nats-leaf://hub:7422"]
             credentials: "/etc/nats/creds/site-a.creds"
 
-            # Remap local subjects to include site prefix
-            # Local "events.>" becomes "site-a.events.>" on hub
-            account_mappings: {
-                events: {
-                    to: "site-a.events"
-                }
-                metrics: {
-                    to: "site-a.metrics"
-                }
-            }
+            # Bind this remote to the LOCAL account so its mappings apply
+            account: LOCAL
         }
     ]
 }
@@ -798,18 +807,18 @@ scrape_configs:
 Key metrics to monitor for leaf nodes are shown below.
 
 ```promql
-# Number of connected leaf nodes
-nats_leafnodes_connections
+# Number of connected leaf nodes (from the leafz endpoint)
+nats_leafz_conn_nodes_total
 
-# Messages routed through leaf connections
-rate(nats_leafnodes_sent_msgs[5m])
-rate(nats_leafnodes_recv_msgs[5m])
+# Messages routed through leaf connections (per-connection counters)
+rate(nats_leafz_conn_out_msgs[5m])
+rate(nats_leafz_conn_in_msgs[5m])
 
-# Leaf node connection latency (RTT)
-nats_leafnodes_rtt_seconds
+# Leaf node connection round-trip time
+nats_leafz_conn_rtt
 
-# Leaf node reconnection events
-increase(nats_leafnodes_reconnects[1h])
+# Overall leaf connection count from the varz endpoint
+nats_varz_leafnodes
 ```
 
 ### Common Issues and Solutions
@@ -880,6 +889,9 @@ port: 4222
 server_name: resilient-leaf
 
 leafnodes {
+    # Interval in seconds between reconnect attempts to remote hubs
+    reconnect: 10
+
     remotes: [
         {
             # Multiple hub URLs for failover
@@ -891,16 +903,10 @@ leafnodes {
 
             credentials: "/etc/nats/creds/leaf.creds"
 
-            # Reconnection settings
-            reconnect: true
-
-            # Connection timeout
-            connect_timeout: "10s"
+            # Timeout waiting for the hub's initial INFO protocol message
+            first_info_timeout: "10s"
         }
     ]
-
-    # Reconnect buffer for offline message queueing
-    reconnect_buffer_size: 64MB
 }
 
 # Enable JetStream for message persistence during disconnection
