@@ -649,7 +649,7 @@ Export existing pods to YAML for version control or migration.
 # Generate YAML from a running pod
 podman generate kube webapp > webapp-export.yaml
 
-# Generate with persistent volume claims included
+# Generate with a Kubernetes Service object alongside the Pod
 podman generate kube webapp --service > webapp-with-service.yaml
 ```
 
