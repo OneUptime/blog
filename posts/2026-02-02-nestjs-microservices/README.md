@@ -207,7 +207,7 @@ export class UsersService {
   }
 
   private generateId(): string {
-    return `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return `user_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
   }
 }
 ```
@@ -597,6 +597,7 @@ export class OrdersService {
       return null;
     }
 
+    const previousStatus = order.status;
     order.status = status;
 
     // Emit status change event
@@ -604,14 +605,14 @@ export class OrdersService {
       orderId: order.id,
       userId: order.userId,
       newStatus: status,
-      previousStatus: order.status,
+      previousStatus,
     });
 
     return order;
   }
 
   private generateId(): string {
-    return `order_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return `order_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
   }
 }
 ```
@@ -799,7 +800,7 @@ export class CreateOrderSaga {
   }
 
   private generateOrderId(): string {
-    return `order_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return `order_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
   }
 }
 ```
@@ -977,8 +978,8 @@ Implement retry logic with exponential backoff and circuit breaker patterns.
 
 ```typescript
 // shared/utils/resilience.ts
-import { Observable, throwError, timer } from 'rxjs';
-import { retryWhen, mergeMap, finalize } from 'rxjs/operators';
+import { Observable, timer } from 'rxjs';
+import { retry } from 'rxjs/operators';
 
 interface RetryConfig {
   maxRetries: number;
@@ -989,36 +990,24 @@ interface RetryConfig {
 
 // Retry with exponential backoff
 export function retryWithBackoff<T>(config: RetryConfig) {
-  let retryCount = 0;
-
   return (source: Observable<T>): Observable<T> => {
     return source.pipe(
-      retryWhen((errors) =>
-        errors.pipe(
-          mergeMap((error) => {
-            retryCount++;
+      retry({
+        count: config.maxRetries,
+        delay: (_error, retryCount) => {
+          // Calculate delay with exponential backoff
+          const delay = Math.min(
+            config.initialDelay *
+              Math.pow(config.backoffMultiplier, retryCount - 1),
+            config.maxDelay,
+          );
 
-            if (retryCount > config.maxRetries) {
-              return throwError(() => error);
-            }
+          console.log(
+            `Retry attempt ${retryCount} after ${delay}ms`,
+          );
 
-            // Calculate delay with exponential backoff
-            const delay = Math.min(
-              config.initialDelay *
-                Math.pow(config.backoffMultiplier, retryCount - 1),
-              config.maxDelay,
-            );
-
-            console.log(
-              `Retry attempt ${retryCount} after ${delay}ms`,
-            );
-
-            return timer(delay);
-          }),
-        ),
-      ),
-      finalize(() => {
-        retryCount = 0;
+          return timer(delay);
+        },
       }),
     );
   };
@@ -1285,14 +1274,14 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install production dependencies only
-RUN npm ci --only=production && npm cache clean --force
+RUN npm ci --omit=dev && npm cache clean --force
 
 # Copy built application from builder stage
 COPY --from=builder /app/dist ./dist
 
 # Create non-root user for security
 RUN addgroup -g 1001 -S nodejs && \
-    adduser -S nestjs -u 1001
+    adduser -S nestjs -u 1001 -G nodejs
 
 USER nestjs
 
