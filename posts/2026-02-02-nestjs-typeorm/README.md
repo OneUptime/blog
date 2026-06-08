@@ -427,17 +427,18 @@ Generate a migration after changing entities:
 
 ```bash
 # Generate migration from entity changes
+# Use typeorm-ts-node-commonjs to load a TypeScript data source
 
-npx typeorm migration:generate -d src/data-source.ts src/migrations/AddUserMetadata
+npx typeorm-ts-node-commonjs migration:generate -d src/data-source.ts src/migrations/AddUserMetadata
 
-# Create an empty migration for custom SQL
+# Create an empty migration for custom SQL (no data source needed)
 npx typeorm migration:create src/migrations/SeedInitialData
 
 # Run pending migrations
-npx typeorm migration:run -d src/data-source.ts
+npx typeorm-ts-node-commonjs migration:run -d src/data-source.ts
 
 # Revert the last migration
-npx typeorm migration:revert -d src/data-source.ts
+npx typeorm-ts-node-commonjs migration:revert -d src/data-source.ts
 ```
 
 Create a data source file for the CLI:
