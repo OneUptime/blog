@@ -101,7 +101,7 @@ result = calculate_minimum_team_size(
     include_backup=True
 )
 print(f"Recommended team size: {result['recommended_engineers']} engineers")
-# Output: Recommended team size: 20 engineers
+# Output: Recommended team size: 38 engineers
 ```
 
 For most teams, aim for at least 6-8 engineers in a rotation to maintain sustainability. Smaller teams should consider limiting coverage to business hours or partnering with other teams.
