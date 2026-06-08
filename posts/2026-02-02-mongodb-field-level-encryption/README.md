@@ -539,12 +539,13 @@ async function createProductionClient() {
       keyAltNames: ['productionKey']
     });
     console.log('Created new data encryption key:', dataKeyId.toString('hex'));
+    keyDoc = await keyVault.findOne({ _id: dataKeyId });
   }
 
   await setupClient.close();
 
   // Now create the application client with auto-encryption
-  const schemaMap = getProductionSchema();
+  const schemaMap = getProductionSchema(keyDoc._id);
 
   const autoEncryptionOptions = {
     keyVaultNamespace: 'encryption.__keyVault',
@@ -563,28 +564,27 @@ async function createProductionClient() {
   return client;
 }
 
-function getProductionSchema() {
-  // In production, load key ID from secure configuration
-  // or query the key vault by keyAltNames
+function getProductionSchema(productionKeyId) {
+  // In production, load the data encryption key ID by querying the key vault
+  // for the document with the matching keyAltNames, then pass its _id here.
+  // productionKeyId must be a Binary BSON UUID (subtype 4).
   return {
     'production.customers': {
       bsonType: 'object',
       encryptMetadata: {
-        keyId: '/keyAltName'  // Reference key by alternate name
+        keyId: [productionKeyId]  // Default key for the collection
       },
       properties: {
         taxId: {
           encrypt: {
             bsonType: 'string',
-            algorithm: 'AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic',
-            keyAltName: 'productionKey'
+            algorithm: 'AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic'
           }
         },
         financialData: {
           encrypt: {
             bsonType: 'object',
-            algorithm: 'AEAD_AES_256_CBC_HMAC_SHA_512-Random',
-            keyAltName: 'productionKey'
+            algorithm: 'AEAD_AES_256_CBC_HMAC_SHA_512-Random'
           }
         }
       }
@@ -690,10 +690,10 @@ rotateDataEncryptionKey('productionKey', 'productionKey-v2').catch(console.error
 
 ## Queryable Encryption (MongoDB 7.0+)
 
-MongoDB 7.0 introduced Queryable Encryption, an evolution of CSFLE that supports encrypted range queries, not just equality.
+MongoDB 7.0 introduced Queryable Encryption as a generally available feature, an evolution of CSFLE that initially supported equality queries on encrypted fields. MongoDB 8.0 made range queries on encrypted fields generally available, so the range query example below requires MongoDB 8.0 or later.
 
 ```javascript
-// config/queryable-encryption.js - MongoDB 7.0+ Queryable Encryption
+// config/queryable-encryption.js - Requires MongoDB 8.0+ for range queries
 const { MongoClient } = require('mongodb');
 
 async function setupQueryableEncryption() {
