@@ -153,7 +153,7 @@ Each message appears in only one worker's output, demonstrating the load distrib
 
 ## JetStream Consumer Groups
 
-JetStream extends consumer groups with persistence, acknowledgments, and exactly-once delivery. For production workloads, JetStream consumer groups provide the reliability guarantees you need.
+JetStream extends consumer groups with persistence, acknowledgments, and at-least-once delivery guarantees (with optional exactly-once semantics via publisher message-ID deduplication and consumer double-acks). For production workloads, JetStream consumer groups provide the reliability guarantees you need.
 
 ```mermaid
 sequenceDiagram
@@ -225,14 +225,16 @@ func setupJetStream(nc *nats.Conn) (nats.JetStreamContext, error) {
 func createConsumerGroup(js nats.JetStreamContext) error {
     // Consumer configuration defines how messages are delivered
     // Durable consumers survive restarts and track their position
+    // A push consumer with a queue group requires BOTH DeliverSubject and DeliverGroup
     consumerConfig := &nats.ConsumerConfig{
-        Durable:       "order-processors",        // Durable name for persistence
-        DeliverGroup:  "order-processors",        // Queue group for load balancing
-        AckPolicy:     nats.AckExplicitPolicy,    // Require explicit acknowledgment
-        AckWait:       30 * time.Second,          // Time before redelivery
-        MaxDeliver:    5,                         // Maximum delivery attempts
-        FilterSubject: "orders.>",                // Subject filter
-        DeliverPolicy: nats.DeliverAllPolicy,     // Start from first message
+        Durable:        "order-processors",        // Durable name for persistence
+        DeliverSubject: "deliver.order-processors",// Required for push consumers
+        DeliverGroup:   "order-processors",        // Queue group for load balancing
+        AckPolicy:      nats.AckExplicitPolicy,    // Require explicit acknowledgment
+        AckWait:        30 * time.Second,          // Time before redelivery
+        MaxDeliver:     5,                         // Maximum delivery attempts
+        FilterSubject:  "orders.>",                // Subject filter
+        DeliverPolicy:  nats.DeliverAllPolicy,     // Start from first message
     }
 
     _, err := js.AddConsumer("ORDERS", consumerConfig)
@@ -410,6 +412,7 @@ package main
 import (
     "context"
     "encoding/json"
+    "fmt"
     "log"
     "os"
     "os/signal"
@@ -421,11 +424,11 @@ import (
 )
 
 func createPullConsumer(js nats.JetStreamContext) error {
-    // Pull consumers require explicit fetch calls from workers
-    // DeliverGroup enables multiple workers to share the consumer
+    // Pull consumers do NOT use DeliverGroup (that field is push-only).
+    // Queue-like load balancing is achieved by having multiple workers
+    // call PullSubscribe against the same durable consumer.
     consumerConfig := &nats.ConsumerConfig{
         Durable:       "order-batch-processor",
-        DeliverGroup:  "order-batch-processor",
         AckPolicy:     nats.AckExplicitPolicy,
         AckWait:       60 * time.Second,
         MaxDeliver:    3,
@@ -449,10 +452,12 @@ func createPullConsumer(js nats.JetStreamContext) error {
 func runPullWorker(ctx context.Context, js nats.JetStreamContext, workerID string, wg *sync.WaitGroup) {
     defer wg.Done()
 
-    // Create pull subscription bound to the consumer
+    // Create pull subscription bound to the existing durable consumer.
+    // When using nats.Bind, leave the durable argument empty — they are
+    // alternative attachment modes and combining them is invalid.
     sub, err := js.PullSubscribe(
         "orders.>",
-        "order-batch-processor",
+        "",
         nats.Bind("ORDERS", "order-batch-processor"),
     )
     if err != nil {
@@ -824,6 +829,7 @@ package main
 import (
     "encoding/json"
     "errors"
+    "fmt"
     "log"
     "time"
 
@@ -839,13 +845,15 @@ var ErrPermanent = errors.New("permanent error")
 func createConsumerWithBackoff(js nats.JetStreamContext) error {
     // Configure backoff strategy for redeliveries
     // Each delivery attempt waits progressively longer
+    // Push consumer with queue group requires both DeliverSubject and DeliverGroup
     consumerConfig := &nats.ConsumerConfig{
-        Durable:       "order-processor-resilient",
-        DeliverGroup:  "order-processor-resilient",
-        AckPolicy:     nats.AckExplicitPolicy,
-        AckWait:       30 * time.Second,
-        MaxDeliver:    5,
-        FilterSubject: "orders.>",
+        Durable:        "order-processor-resilient",
+        DeliverSubject: "deliver.order-processor-resilient",
+        DeliverGroup:   "order-processor-resilient",
+        AckPolicy:      nats.AckExplicitPolicy,
+        AckWait:        30 * time.Second,
+        MaxDeliver:     5,
+        FilterSubject:  "orders.>",
 
         // Exponential backoff between redeliveries
         BackOff: []time.Duration{
