@@ -119,8 +119,6 @@ operationProfiling:
 # Storage settings that affect profiler behavior
 storage:
     dbPath: /var/lib/mongodb
-    journal:
-        enabled: true
 ```
 
 After modifying the configuration file, restart MongoDB for changes to take effect.
@@ -483,12 +481,12 @@ In replica set deployments, configure profiling on each member individually.
 ```javascript
 // Connect to each replica set member and configure profiling
 // Primary node
-// mongo --host primary.example.com:27017
+// mongosh "mongodb://primary.example.com:27017/?directConnection=true"
 
 db.setProfilingLevel(1, { slowms: 100, sampleRate: 0.5 })
 
-// Secondary nodes (connect with directConnection)
-// mongo --host secondary1.example.com:27017 --directConnection
+// Secondary nodes (use directConnection in the connection string)
+// mongosh "mongodb://secondary1.example.com:27017/?directConnection=true"
 
 db.setProfilingLevel(1, { slowms: 100, sampleRate: 0.5 })
 
