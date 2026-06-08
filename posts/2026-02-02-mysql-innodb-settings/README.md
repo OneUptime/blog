@@ -156,9 +156,9 @@ These settings configure the redo log capacity and flushing behavior for durabil
 innodb_redo_log_capacity = 2G
 
 # Flush behavior - controls durability vs performance trade-off
-# 1 = Full ACID compliance (safest, recommended for production)
-# 2 = Flush per second (good performance, slight risk)
-# 0 = Flush per second without sync (fastest, risk of data loss)
+# 1 = Write and flush at each commit (full ACID, recommended for production)
+# 2 = Write at each commit, flush once per second (survives mysqld crash, not OS crash)
+# 0 = Write and flush once per second (fastest, risk of data loss on any crash)
 innodb_flush_log_at_trx_commit = 1
 
 # Group commit settings for better throughput
@@ -570,8 +570,8 @@ SHOW STATUS LIKE 'Innodb_buffer_pool_resize_status';
 SET GLOBAL innodb_io_capacity = 3000;
 SET GLOBAL innodb_io_capacity_max = 6000;
 
--- Note: Most settings require restart - check documentation
-SHOW VARIABLES LIKE 'innodb%' WHERE Variable_name LIKE '%dynamic%';
+-- Note: Most settings require restart - check the MySQL documentation
+-- to determine whether a specific variable is dynamic before using SET GLOBAL
 ```
 
 ## 10. Monitoring InnoDB Performance
