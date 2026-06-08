@@ -84,7 +84,7 @@ A helpful guideline for ordering fields in compound indexes is the ESR rule:
 
 1. **Equality** fields first (exact matches like `status: "active"`)
 2. **Sort** fields second
-3. **Range** fields last (operators like `$gt`, `$lt`, `$in`)
+3. **Range** fields last (operators like `$gt`, `$lt`, `$ne`)
 
 Here's why this order matters:
 
@@ -126,15 +126,15 @@ Partial indexes only include documents that match a filter expression. This save
 Use partial indexes when your queries consistently filter for a subset of documents:
 
 ```javascript
-// Only index orders that are not yet fulfilled
+// Only index orders that are still in active workflow states
 // This is useful when you rarely query for completed orders
 db.orders.createIndex(
   { customerId: 1, createdAt: -1 },
-  { partialFilterExpression: { status: { $ne: "fulfilled" } } }
+  { partialFilterExpression: { status: { $in: ["pending", "processing", "shipped"] } } }
 )
 ```
 
-The index above will only contain documents where `status` is not "fulfilled". Queries that include this same filter condition can use the index efficiently.
+The index above will only contain documents where `status` is one of the active workflow values. Queries that include this same filter condition can use the index efficiently. Note that `partialFilterExpression` only accepts a limited set of operators (equality, `$eq`, `$gt`, `$gte`, `$lt`, `$lte`, `$in`, `$exists`, `$type`, `$and`, `$or`) — operators like `$ne` and `$nin` are not allowed.
 
 Important: Your query filter must match or be more restrictive than the partial filter for MongoDB to use the index:
 
