@@ -273,7 +273,9 @@ const module: TestingModule = await Test.createTestingModule({
     },
   ],
 }).compile();
+```
 
+```typescript
 // Overriding providers after module creation
 const module: TestingModule = await Test.createTestingModule({
   imports: [UsersModule],
