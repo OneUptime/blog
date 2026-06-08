@@ -71,14 +71,17 @@ Create a separate instrumentation file that must be loaded before any other modu
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const {
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+} = require('@opentelemetry/semantic-conventions');
 
 // Define your service identity - appears in all traces
-const resource = new Resource({
-  [SemanticResourceAttributes.SERVICE_NAME]: process.env.OTEL_SERVICE_NAME || 'my-node-service',
-  [SemanticResourceAttributes.SERVICE_VERSION]: '1.0.0',
-  [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: process.env.NODE_ENV || 'development',
+const resource = resourceFromAttributes({
+  [ATTR_SERVICE_NAME]: process.env.OTEL_SERVICE_NAME || 'my-node-service',
+  [ATTR_SERVICE_VERSION]: '1.0.0',
+  'deployment.environment.name': process.env.NODE_ENV || 'development',
 });
 
 // Configure the OTLP exporter to send traces to your backend
@@ -375,15 +378,13 @@ spec:
           value: "my-node-app"
         - name: OTEL_EXPORTER_OTLP_ENDPOINT
           value: "http://otel-collector.monitoring:4318"
-        - name: OTEL_RESOURCE_ATTRIBUTES
-          value: "service.version=1.0.0,deployment.environment=production"
         - name: OTEL_TRACES_SAMPLER
           value: "parentbased_traceidratio"
         - name: OTEL_TRACES_SAMPLER_ARG
           value: "0.1"
-        # Add pod and node information to traces
+        # Combine service metadata with pod/namespace information
         - name: OTEL_RESOURCE_ATTRIBUTES
-          value: "k8s.pod.name=$(POD_NAME),k8s.namespace.name=$(NAMESPACE)"
+          value: "service.version=1.0.0,deployment.environment=production,k8s.pod.name=$(POD_NAME),k8s.namespace.name=$(NAMESPACE)"
         - name: POD_NAME
           valueFrom:
             fieldRef:
@@ -615,7 +616,7 @@ trace.set_tracer_provider(provider)
 Auto-instrumentation captures infrastructure-level telemetry. Manual instrumentation adds business context. Use both together for complete observability.
 
 ```javascript
-const { trace } = require('@opentelemetry/api');
+const { trace, SpanStatusCode } = require('@opentelemetry/api');
 
 // Auto-instrumentation handles Express routes and HTTP calls
 // Manual instrumentation adds business logic spans
@@ -653,7 +654,7 @@ app.post('/orders', async (req, res) => {
       res.status(201).json(order);
     } catch (error) {
       span.recordException(error);
-      span.setStatus({ code: trace.SpanStatusCode.ERROR });
+      span.setStatus({ code: SpanStatusCode.ERROR });
       res.status(500).json({ error: 'Order processing failed' });
     } finally {
       span.end();
