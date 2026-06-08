@@ -191,7 +191,7 @@ defmodule MyAppWeb.RoomChannel do
       :ok ->
         # Send initial room state after joining
         send(self(), :after_join)
-        {:ok, assign(socket, :room_id, room_id), socket}
+        {:ok, assign(socket, :room_id, room_id)}
 
       {:error, reason} ->
         {:error, %{reason: reason}}
