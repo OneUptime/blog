@@ -197,11 +197,13 @@ Use square brackets to create dynamic route segments. The parameter is passed to
 // Dynamic route - matches /blog/any-slug
 // The slug parameter comes from the URL
 
-export default function BlogPost({ params }) {
-  // params.slug contains the URL segment
+export default async function BlogPost({ params }) {
+  // In Next.js 15+, params is a Promise and must be awaited
+  const { slug } = await params;
+
   return (
     <article>
-      <h1>Blog Post: {params.slug}</h1>
+      <h1>Blog Post: {slug}</h1>
     </article>
   );
 }
@@ -214,9 +216,11 @@ For catch-all routes that match multiple segments, use `[...slug]`:
 // Catch-all route - matches /docs/a, /docs/a/b, /docs/a/b/c, etc.
 // params.slug is an array of segments
 
-export default function DocsPage({ params }) {
-  // /docs/api/auth/tokens -> params.slug = ['api', 'auth', 'tokens']
-  const path = params.slug.join('/');
+export default async function DocsPage({ params }) {
+  // In Next.js 15+, params is a Promise and must be awaited
+  // /docs/api/auth/tokens -> slug = ['api', 'auth', 'tokens']
+  const { slug } = await params;
+  const path = slug.join('/');
 
   return (
     <div>
@@ -331,7 +335,7 @@ Fetch data in page components:
 
 async function getProducts() {
   const res = await fetch('https://api.example.com/products', {
-    cache: 'force-cache' // Default - cache indefinitely
+    cache: 'force-cache' // Opt in to caching (Next.js 15+ does not cache by default)
   });
 
   if (!res.ok) {
@@ -366,7 +370,8 @@ Different caching strategies give you control over freshness:
 // app/lib/data.js
 // Different caching strategies for different data types
 
-// Static data - cached forever (good for rarely changing content)
+// Static data - opt in to caching forever (good for rarely changing content)
+// Note: In Next.js 15+, fetch is no longer cached by default; you must opt in.
 export async function getCategories() {
   const res = await fetch('https://api.example.com/categories', {
     cache: 'force-cache'
@@ -473,7 +478,9 @@ async function getPost(slug) {
 }
 
 export default async function BlogPost({ params }) {
-  const post = await getPost(params.slug);
+  // In Next.js 15+, params is a Promise and must be awaited
+  const { slug } = await params;
+  const post = await getPost(slug);
 
   // This triggers the not-found.js UI
   if (!post) {
@@ -552,8 +559,10 @@ For dynamic API routes with parameters:
 import { NextResponse } from 'next/server';
 
 // GET /api/users/:id - get a single user
+// In Next.js 15+, params is a Promise and must be awaited
 export async function GET(request, { params }) {
-  const id = parseInt(params.id);
+  const { id: idParam } = await params;
+  const id = parseInt(idParam);
 
   // Fetch from database
   const user = await getUserById(id);
@@ -570,7 +579,8 @@ export async function GET(request, { params }) {
 
 // PUT /api/users/:id - update a user
 export async function PUT(request, { params }) {
-  const id = parseInt(params.id);
+  const { id: idParam } = await params;
+  const id = parseInt(idParam);
   const body = await request.json();
 
   const updated = await updateUser(id, body);
@@ -587,7 +597,8 @@ export async function PUT(request, { params }) {
 
 // DELETE /api/users/:id - delete a user
 export async function DELETE(request, { params }) {
-  const id = parseInt(params.id);
+  const { id: idParam } = await params;
+  const id = parseInt(idParam);
 
   const deleted = await deleteUser(id);
 
@@ -641,7 +652,9 @@ Dynamic metadata for pages with data:
 // Dynamic metadata - generated based on the page content
 
 export async function generateMetadata({ params }) {
-  const post = await getPost(params.slug);
+  // In Next.js 15+, params is a Promise and must be awaited
+  const { slug } = await params;
+  const post = await getPost(slug);
 
   if (!post) {
     return {
@@ -670,7 +683,8 @@ export async function generateMetadata({ params }) {
 }
 
 export default async function BlogPost({ params }) {
-  const post = await getPost(params.slug);
+  const { slug } = await params;
+  const post = await getPost(slug);
   // ... render post
 }
 ```
@@ -744,7 +758,8 @@ For more complex forms with loading states:
 // Client Component with Server Action
 'use client';
 
-import { useFormStatus, useFormState } from 'react-dom';
+import { useActionState } from 'react';
+import { useFormStatus } from 'react-dom';
 import { submitContact } from '../actions';
 
 function SubmitButton() {
@@ -758,7 +773,8 @@ function SubmitButton() {
 }
 
 export default function ContactForm() {
-  const [state, formAction] = useFormState(submitContact, null);
+  // useActionState (React 19) replaces useFormState from react-dom
+  const [state, formAction] = useActionState(submitContact, null);
 
   return (
     <form action={formAction}>
@@ -871,11 +887,14 @@ Intercepting routes show content in a different context (like a modal) while pre
 // Intercepts /photo/[id] and shows it in a modal
 // (.) means intercept from the same level
 
-export default function PhotoModal({ params }) {
+export default async function PhotoModal({ params }) {
+  // In Next.js 15+, params is a Promise and must be awaited
+  const { id } = await params;
+
   return (
     <div className="modal-overlay">
       <div className="modal">
-        <img src={`/photos/${params.id}.jpg`} alt="" />
+        <img src={`/photos/${id}.jpg`} alt="" />
         <a href="/">Close</a>
       </div>
     </div>
