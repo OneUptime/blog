@@ -142,15 +142,15 @@ The following example shows how to load and process PDF files with page-level me
 # PDFReader provides granular control over PDF parsing
 # Each page becomes a separate Document by default
 from llama_index.readers.file import PDFReader
+from pathlib import Path
 
 # Initialize the reader
-pdf_reader = PDFReader()
+# return_full_document=False (the default) creates one Document per page
+pdf_reader = PDFReader(return_full_document=False)
 
 # Load a single PDF file
-# return_full_document=False creates one Document per page
 documents = pdf_reader.load_data(
-    file="./documents/technical-manual.pdf",
-    return_full_document=False
+    file=Path("./documents/technical-manual.pdf")
 )
 
 # Access page-specific metadata
@@ -164,9 +164,10 @@ For more advanced PDF processing with OCR and table extraction, use the LlamaPar
 ```python
 # LlamaParse handles complex PDFs with tables, images, and multi-column layouts
 # Requires an API key from cloud.llamaindex.ai
-from llama_index.readers.file import LlamaParse
+# Install with: pip install llama-parse
+from llama_parse import LlamaParse
 
-# Initialize with your API key
+# Initialize with your API key (or set LLAMA_CLOUD_API_KEY in your env)
 parser = LlamaParse(
     api_key="your-api-key",
     result_type="markdown",  # Output format: markdown or text
@@ -189,7 +190,7 @@ The following code demonstrates loading content from web pages:
 
 ```python
 # SimpleWebPageReader fetches and parses HTML content
-# BeautifulSoup handles the HTML parsing automatically
+# Uses the html2text library to convert HTML to plain text when html_to_text=True
 from llama_index.readers.web import SimpleWebPageReader
 
 # Initialize with a list of URLs
@@ -362,8 +363,8 @@ page_ids = [
 documents = reader.load_data(page_ids=page_ids)
 
 # Load an entire database
-database_id = "your-database-id"
-documents = reader.load_data(database_id=database_id)
+database_ids = ["your-database-id"]
+documents = reader.load_data(database_ids=database_ids)
 
 # Notion metadata includes page titles and properties
 for doc in documents:
@@ -379,11 +380,15 @@ The following code shows how to load messages from Slack channels:
 ```python
 # SlackReader loads messages from Slack channels
 # Requires a Slack Bot token with appropriate scopes
+from datetime import datetime
 from llama_index.readers.slack import SlackReader
 
-# Initialize with your bot token
+# Initialize with your bot token and optional date filters
+# earliest_date and latest_date are datetime objects passed to the constructor
 reader = SlackReader(
-    slack_token="xoxb-your-bot-token"
+    slack_token="xoxb-your-bot-token",
+    earliest_date=datetime(2024, 1, 1),
+    latest_date=datetime(2024, 12, 31)
 )
 
 # Load messages from specific channels
@@ -393,11 +398,7 @@ channel_ids = [
     "C89012345"   # engineering
 ]
 
-documents = reader.load_data(
-    channel_ids=channel_ids,
-    earliest_date="2024-01-01",  # Optional: filter by date
-    latest_date="2024-12-31"
-)
+documents = reader.load_data(channel_ids=channel_ids)
 
 # Each message becomes a Document with conversation context
 for doc in documents:
@@ -414,15 +415,25 @@ The following example demonstrates loading repository files:
 ```python
 # GithubRepositoryReader loads files from GitHub repositories
 # Supports filtering by file type and directory
-from llama_index.readers.github import GithubRepositoryReader
+from llama_index.readers.github import GithubRepositoryReader, GithubClient
 
-# Initialize with authentication
+# Create a GithubClient with your token, then pass it to the reader
+github_client = GithubClient(github_token="your-github-token", verbose=False)
+
+# filter_file_extensions and filter_directories take a tuple of
+# (list_of_values, FilterType.INCLUDE | FilterType.EXCLUDE)
 reader = GithubRepositoryReader(
-    github_token="your-github-token",
+    github_client=github_client,
     owner="organization",
     repo="repository-name",
-    filter_file_extensions=[".md", ".py", ".txt"],  # File types to include
-    filter_directories=["docs", "src"]  # Directories to include
+    filter_file_extensions=(
+        [".md", ".py", ".txt"],
+        GithubRepositoryReader.FilterType.INCLUDE,
+    ),
+    filter_directories=(
+        ["docs", "src"],
+        GithubRepositoryReader.FilterType.INCLUDE,
+    ),
 )
 
 # Load repository contents
@@ -437,16 +448,21 @@ Loading GitHub issues provides context about project discussions:
 
 ```python
 # GithubIssuesReader loads issues and pull requests
-from llama_index.readers.github import GithubIssuesReader
+from llama_index.readers.github import GitHubIssuesClient, GitHubRepositoryIssuesReader
 
-reader = GithubIssuesReader(
-    github_token="your-github-token",
+# Create the GitHubIssuesClient with your token first
+issues_client = GitHubIssuesClient(github_token="your-github-token", verbose=False)
+
+reader = GitHubRepositoryIssuesReader(
+    github_client=issues_client,
     owner="organization",
-    repo="repository-name"
+    repo="repository-name",
 )
 
-# Load open issues
-documents = reader.load_data(state="open")
+# Load open issues (state is an IssueState enum, not a string)
+documents = reader.load_data(
+    state=GitHubRepositoryIssuesReader.IssueState.OPEN
+)
 
 # Issue metadata includes labels, assignees, and timestamps
 for doc in documents:
@@ -776,9 +792,13 @@ def load_from_multiple_sources() -> list:
 documents = load_from_multiple_sources()
 index = VectorStoreIndex.from_documents(documents)
 
-# Query with source filtering
+# Query with source filtering using MetadataFilters
+from llama_index.core.vector_stores import MetadataFilter, MetadataFilters
+
 query_engine = index.as_query_engine(
-    filters={"source_type": "web"}  # Only search web sources
+    filters=MetadataFilters(
+        filters=[MetadataFilter(key="source_type", value="web")]
+    )  # Only search web sources
 )
 ```
 
