@@ -12,7 +12,7 @@ Sending emails is something almost every web application needs to do - password 
 
 ## Understanding Laravel's Mail System
 
-Laravel's mail system is built on top of SwiftMailer and provides a clean, expressive API for sending emails. The framework supports multiple drivers out of the box, so you can switch between SMTP, Mailgun, Postmark, Amazon SES, and others without changing your application code.
+Laravel's mail system is built on top of Symfony Mailer and provides a clean, expressive API for sending emails. The framework supports multiple drivers out of the box, so you can switch between SMTP, Mailgun, Postmark, Amazon SES, and others without changing your application code.
 
 Here's a quick comparison of the available mail drivers:
 
@@ -33,7 +33,7 @@ First, let's set up the mail configuration. Open your `.env` file and configure 
 # Using SMTP (common for development with Mailtrap)
 
 MAIL_MAILER=smtp
-MAIL_HOST=smtp.mailtrap.io
+MAIL_HOST=sandbox.smtp.mailtrap.io
 MAIL_PORT=2525
 MAIL_USERNAME=your_username_here
 MAIL_PASSWORD=your_password_here
@@ -244,7 +244,7 @@ Mailtrap is perfect for development - it catches all outgoing emails without act
 
 ```env
 MAIL_MAILER=smtp
-MAIL_HOST=smtp.mailtrap.io
+MAIL_HOST=sandbox.smtp.mailtrap.io
 MAIL_PORT=2525
 MAIL_USERNAME=your_mailtrap_username
 MAIL_PASSWORD=your_mailtrap_password
