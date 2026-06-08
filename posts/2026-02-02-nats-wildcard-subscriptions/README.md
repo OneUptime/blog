@@ -749,21 +749,23 @@ async function setupJetStreamWithWildcards() {
     }
   }
 
-  // Create a durable consumer with wildcard filter
-  const consumer = await js.consumers.get('ORDERS', 'order-processor');
-
-  // If consumer does not exist, create it
-  if (!consumer) {
+  // Create a durable consumer with wildcard filter (if it does not exist)
+  let consumer;
+  try {
+    consumer = await js.consumers.get('ORDERS', 'order-processor');
+  } catch (error) {
+    // Consumer does not exist, create it then look it up
     await jsm.consumers.add('ORDERS', {
       durable_name: 'order-processor',
       ack_policy: AckPolicy.Explicit,
       deliver_policy: DeliverPolicy.All,
       filter_subject: 'orders.created.>',  // Only process created events
     });
+    consumer = await js.consumers.get('ORDERS', 'order-processor');
   }
 
   // Consume messages with explicit acknowledgment
-  const messages = await js.consume('ORDERS', 'order-processor');
+  const messages = await consumer.consume();
 
   console.log('Consuming from JetStream with wildcard filter');
 
