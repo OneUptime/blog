@@ -79,11 +79,11 @@ config :my_app, Oban,
     events: 50,
     reports: 5
   ],
-  # Rescue stuck jobs after 60 seconds (in case of node crashes)
+  # Stage scheduled jobs every second
+  stage_interval: 1000,
   plugins: [
-    {Oban.Plugins.Pruner, max_age: 60 * 60 * 24 * 7},  # Keep completed jobs for 7 days
-    {Oban.Plugins.Stager, interval: 1000},              # Stage scheduled jobs every second
-    {Oban.Plugins.Lifeline, rescue_after: :timer.minutes(60)}  # Rescue abandoned jobs
+    {Oban.Plugins.Pruner, max_age: 60 * 60 * 24 * 7},          # Keep completed jobs for 7 days
+    {Oban.Plugins.Lifeline, rescue_after: :timer.minutes(60)}  # Rescue jobs executing for > 60 minutes
   ]
 ```
 
