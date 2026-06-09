@@ -298,17 +298,17 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         response = await call_next(request)
 
-        # Prevent XSS attacks
+        # Prevent MIME type sniffing
         response.headers["X-Content-Type-Options"] = "nosniff"
 
         # Prevent clickjacking
         response.headers["X-Frame-Options"] = "DENY"
 
-        # Enable browser XSS filter
-        response.headers["X-XSS-Protection"] = "1; mode=block"
-
         # Control referrer information
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+
+        # Restrict resource loading - tune the policy to match your app
+        response.headers["Content-Security-Policy"] = "default-src 'self'"
 
         return response
 
@@ -332,7 +332,7 @@ from app.main import app
 from app.dependencies import get_db
 from app.models.database import Base
 
-# Use in-memory SQLite for tests
+# Use a file-based SQLite database for tests
 SQLALCHEMY_DATABASE_URL = "sqlite:///./test.db"
 engine = create_engine(SQLALCHEMY_DATABASE_URL)
 TestingSessionLocal = sessionmaker(bind=engine)
