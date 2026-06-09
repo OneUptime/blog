@@ -550,7 +550,6 @@ namespace App\Multitenancy;
 
 use App\Models\Tenant;
 use Illuminate\Http\Request;
-use Spatie\Multitenancy\Models\Concerns\UsesTenantModel;
 use Spatie\Multitenancy\TenantFinder\TenantFinder as BaseTenantFinder;
 
 /**
@@ -561,8 +560,6 @@ use Spatie\Multitenancy\TenantFinder\TenantFinder as BaseTenantFinder;
  */
 class TenantFinder extends BaseTenantFinder
 {
-    use UsesTenantModel;
-
     /**
      * Find the tenant for the given request.
      * Tries multiple identification strategies in order of priority.
@@ -717,7 +714,7 @@ Switch tasks execute when transitioning between tenants. They configure the envi
 
 namespace App\Multitenancy\Tasks;
 
-use App\Models\Tenant;
+use Spatie\Multitenancy\Contracts\IsTenant;
 use Spatie\Multitenancy\Tasks\SwitchTenantTask;
 use Illuminate\Support\Facades\Cache;
 
@@ -740,9 +737,9 @@ class SwitchTenantCacheTask implements SwitchTenantTask
      * Execute when making a tenant current.
      * Sets a tenant-specific cache prefix.
      *
-     * @param Tenant $tenant The tenant being made current
+     * @param IsTenant $tenant The tenant being made current
      */
-    public function makeCurrent(Tenant $tenant): void
+    public function makeCurrent(IsTenant $tenant): void
     {
         // Store original prefix for restoration
         $this->originalPrefix = config('cache.prefix');
@@ -778,7 +775,7 @@ Configure filesystem isolation for tenant-specific file storage.
 
 namespace App\Multitenancy\Tasks;
 
-use App\Models\Tenant;
+use Spatie\Multitenancy\Contracts\IsTenant;
 use Spatie\Multitenancy\Tasks\SwitchTenantTask;
 use Illuminate\Support\Facades\Storage;
 
@@ -801,9 +798,9 @@ class SwitchTenantFilesystemTask implements SwitchTenantTask
      * Execute when making a tenant current.
      * Configures tenant-specific storage paths.
      *
-     * @param Tenant $tenant
+     * @param IsTenant $tenant
      */
-    public function makeCurrent(Tenant $tenant): void
+    public function makeCurrent(IsTenant $tenant): void
     {
         // Store original configuration
         $this->originalConfig = [
@@ -840,9 +837,9 @@ class SwitchTenantFilesystemTask implements SwitchTenantTask
     /**
      * Ensure tenant storage directories exist.
      *
-     * @param Tenant $tenant
+     * @param IsTenant $tenant
      */
-    protected function ensureDirectoriesExist(Tenant $tenant): void
+    protected function ensureDirectoriesExist(IsTenant $tenant): void
     {
         $paths = [
             storage_path('app/tenants/' . $tenant->slug),
