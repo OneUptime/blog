@@ -624,7 +624,7 @@ kubectl delete pod debug
 
 ---
 
-Resource Management for Development
+## Resource Management for Development
 
 ### Limiting K3s Resource Usage
 
