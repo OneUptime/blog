@@ -102,7 +102,7 @@ public class KafkaDLQConfig {
     }
 
     // Configure the DLQ recoverer that publishes failed messages to a DLQ topic
-    // The default naming convention appends ".DLQ" to the original topic name
+    // The default naming convention appends "-dlt" to the original topic name
     @Bean
     public DeadLetterPublishingRecoverer deadLetterPublishingRecoverer(
             KafkaTemplate<String, String> kafkaTemplate) {
@@ -219,8 +219,10 @@ For more control over DLQ routing, you can implement a custom resolver that dete
 
 ```java
 import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.common.header.Headers;
 import org.apache.kafka.common.header.internals.RecordHeader;
+import org.apache.kafka.common.header.internals.RecordHeaders;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.listener.DeadLetterPublishingRecoverer;
 import org.springframework.stereotype.Component;
@@ -234,10 +236,11 @@ public class CustomDLQRecoverer extends DeadLetterPublishingRecoverer {
 
     public CustomDLQRecoverer(KafkaTemplate<Object, Object> template) {
         super(template, destinationResolver());
+        // Register a headers function to attach diagnostic headers to DLQ messages
+        setHeadersFunction(CustomDLQRecoverer::buildDiagnosticHeaders);
     }
 
     // Custom resolver determines the DLQ topic based on the original topic
-    // and adds useful diagnostic headers to the message
     private static BiFunction<ConsumerRecord<?, ?>, Exception, TopicPartition>
             destinationResolver() {
         return (record, exception) -> {
@@ -247,48 +250,45 @@ public class CustomDLQRecoverer extends DeadLetterPublishingRecoverer {
         };
     }
 
-    @Override
-    protected ProducerRecord<Object, Object> createProducerRecord(
-            ConsumerRecord<?, ?> record,
-            TopicPartition topicPartition,
-            Exception exception) {
+    // Build diagnostic headers to help with debugging and reprocessing.
+    // The recoverer merges these with the standard Spring Kafka error headers.
+    private static Headers buildDiagnosticHeaders(
+            ConsumerRecord<?, ?> record, Exception exception) {
 
-        ProducerRecord<Object, Object> producerRecord =
-            super.createProducerRecord(record, topicPartition, exception);
+        Headers headers = new RecordHeaders();
 
-        // Add diagnostic headers to help with debugging and reprocessing
-        producerRecord.headers().add(new RecordHeader(
+        headers.add(new RecordHeader(
             "dlq.original.topic",
             record.topic().getBytes(StandardCharsets.UTF_8)
         ));
 
-        producerRecord.headers().add(new RecordHeader(
+        headers.add(new RecordHeader(
             "dlq.original.partition",
             String.valueOf(record.partition()).getBytes(StandardCharsets.UTF_8)
         ));
 
-        producerRecord.headers().add(new RecordHeader(
+        headers.add(new RecordHeader(
             "dlq.original.offset",
             String.valueOf(record.offset()).getBytes(StandardCharsets.UTF_8)
         ));
 
-        producerRecord.headers().add(new RecordHeader(
+        headers.add(new RecordHeader(
             "dlq.timestamp",
             Instant.now().toString().getBytes(StandardCharsets.UTF_8)
         ));
 
-        producerRecord.headers().add(new RecordHeader(
+        headers.add(new RecordHeader(
             "dlq.exception.class",
             exception.getClass().getName().getBytes(StandardCharsets.UTF_8)
         ));
 
-        producerRecord.headers().add(new RecordHeader(
+        headers.add(new RecordHeader(
             "dlq.exception.message",
             (exception.getMessage() != null ? exception.getMessage() : "null")
                 .getBytes(StandardCharsets.UTF_8)
         ));
 
-        return producerRecord;
+        return headers;
     }
 }
 ```
@@ -838,7 +838,7 @@ groups:
           severity: warning
         annotations:
           summary: "High DLQ message rate detected"
-          description: "More than 10 messages per minute are being sent to DLQ"
+          description: "More than 10 messages per second are being sent to DLQ"
 
       # Alert when DLQ depth is growing
       - alert: DLQBacklogGrowing
