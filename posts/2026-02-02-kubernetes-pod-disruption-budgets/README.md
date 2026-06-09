@@ -230,7 +230,7 @@ flowchart TD
 
     G --> L[kubectl scale deployment +1]
     H --> M[Monitor PDB until allowed > 0]
-    I --> N[kubectl drain --force]
+    I --> N[kubectl drain --disable-eviction]
 ```
 
 **Strategy 1: Scale Up Before Draining**
@@ -279,11 +279,13 @@ kubectl top pods -n <namespace>
 Only use force when you understand the impact and have no other option.
 
 ```bash
-# Force drain bypasses PDB protection
+# --disable-eviction makes drain use delete instead of evict, bypassing PDB checks
+# --force allows draining of pods not managed by a controller (orphan pods)
 # WARNING: May cause service disruption
 kubectl drain node-worker-1 \
   --ignore-daemonsets \
   --delete-emptydir-data \
+  --disable-eviction \
   --force \
   --grace-period=30
 
@@ -619,8 +621,9 @@ for pod in $(kubectl get pods -o name --field-selector spec.nodeName=node-worker
   '
 done
 
-# Scale up the deployment to allow disruption
-kubectl scale deployment affected-app --replicas=+1 -n production
+# Scale up the deployment to allow disruption (kubectl scale needs an absolute value)
+current=$(kubectl get deployment affected-app -n production -o jsonpath='{.spec.replicas}')
+kubectl scale deployment affected-app --replicas=$((current+1)) -n production
 ```
 
 ### Issue 3: PDB Blocks Cluster Autoscaler Scale-Down
