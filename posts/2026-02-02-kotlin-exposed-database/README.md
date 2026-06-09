@@ -245,8 +245,9 @@ object Users : Table("users") {
     val isActive = bool("is_active").default(true)
 
     // Timestamp columns using java.time
-    val createdAt = datetime("created_at").default(LocalDateTime.now())
-    val updatedAt = datetime("updated_at").default(LocalDateTime.now())
+    // clientDefault is evaluated on every insert; .default() would capture the value once at table-init time
+    val createdAt = datetime("created_at").clientDefault { LocalDateTime.now() }
+    val updatedAt = datetime("updated_at").clientDefault { LocalDateTime.now() }
 
     // Define the primary key
     override val primaryKey = PrimaryKey(id)
@@ -281,7 +282,7 @@ object Posts : Table("posts") {
     val status = varchar("status", 20).default("draft")
 
     val publishedAt = datetime("published_at").nullable()
-    val createdAt = datetime("created_at").default(LocalDateTime.now())
+    val createdAt = datetime("created_at").clientDefault { LocalDateTime.now() }
 
     override val primaryKey = PrimaryKey(id)
 }
@@ -563,8 +564,8 @@ object UsersTable : IntIdTable("users") {
     val passwordHash = varchar("password_hash", 255)
     val bio = text("bio").nullable()
     val isActive = bool("is_active").default(true)
-    val createdAt = datetime("created_at").default(LocalDateTime.now())
-    val updatedAt = datetime("updated_at").default(LocalDateTime.now())
+    val createdAt = datetime("created_at").clientDefault { LocalDateTime.now() }
+    val updatedAt = datetime("updated_at").clientDefault { LocalDateTime.now() }
 }
 
 // Entity class representing a User record
@@ -607,7 +608,7 @@ object PostsTable : IntIdTable("posts") {
     val slug = varchar("slug", 255).uniqueIndex()
     val status = varchar("status", 20).default("draft")
     val publishedAt = datetime("published_at").nullable()
-    val createdAt = datetime("created_at").default(LocalDateTime.now())
+    val createdAt = datetime("created_at").clientDefault { LocalDateTime.now() }
 }
 
 object TagsTable : IntIdTable("tags") {
@@ -937,27 +938,23 @@ import org.jetbrains.exposed.sql.transactions.transaction
 data class AuthorStats(
     val authorId: Int,
     val username: String,
-    val postCount: Long,
-    val publishedCount: Long
+    val postCount: Long
 )
 
 // Count posts per author
 fun getPostCountByAuthor(): List<AuthorStats> {
     return transaction {
+        // Store the aggregate expression so the same instance is used in select() and row access
+        val postCount = Posts.id.count()
+
         (Users leftJoin Posts)
-            .select(
-                Users.id,
-                Users.username,
-                Posts.id.count(),
-                Posts.id.countIf { Posts.status eq "published" }
-            )
+            .select(Users.id, Users.username, postCount)
             .groupBy(Users.id, Users.username)
             .map { row ->
                 AuthorStats(
                     authorId = row[Users.id],
                     username = row[Users.username],
-                    postCount = row[Posts.id.count()],
-                    publishedCount = row[Posts.id.countIf { Posts.status eq "published" }]
+                    postCount = row[postCount]
                 )
             }
     }
@@ -1161,9 +1158,10 @@ Always paginate large result sets.
 ```kotlin
 fun getUsers(page: Int, pageSize: Int = 20): List<User> {
     return transaction {
+        // In Exposed 0.47.0, limit() takes the offset as its second argument
+        // (separate .limit()/.offset() methods were introduced later)
         User.all()
-            .limit(pageSize)
-            .offset((page - 1).toLong() * pageSize)
+            .limit(pageSize, offset = (page - 1).toLong() * pageSize)
             .toList()
     }
 }
