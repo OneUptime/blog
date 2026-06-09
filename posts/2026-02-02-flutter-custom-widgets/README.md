@@ -91,7 +91,7 @@ class GradientButton extends StatelessWidget {
           // Add a subtle shadow for depth
           boxShadow: [
             BoxShadow(
-              color: startColor.withOpacity(0.3),
+              color: startColor.withValues(alpha: 0.3),
               blurRadius: 8,
               offset: const Offset(0, 4),
             ),
@@ -590,7 +590,7 @@ class _CircularProgressPainter extends CustomPainter {
 
     // Paint configuration for the background track
     final backgroundPaint = Paint()
-      ..color = backgroundColor.withOpacity(0.2)
+      ..color = backgroundColor.withValues(alpha: 0.2)
       ..strokeWidth = strokeWidth
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round;
@@ -751,7 +751,7 @@ class _ExpandableCardState extends State<ExpandableCard>
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: Colors.blue.withOpacity(0.1),
+                      color: Colors.blue.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Icon(
@@ -1206,7 +1206,7 @@ class ThemedCard extends StatelessWidget {
           BoxShadow(
             color: theme.isDarkMode
                 ? Colors.black26
-                : Colors.grey.withOpacity(0.2),
+                : Colors.grey.withValues(alpha: 0.2),
             blurRadius: 8,
             offset: const Offset(0, 4),
           ),
