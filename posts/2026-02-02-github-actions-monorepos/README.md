@@ -512,7 +512,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          # Automatically caches node_modules based on lock file
+          # Caches the npm global cache (~/.npm) keyed by package-lock.json hash
           cache: 'npm'
 
       - name: Install dependencies
