@@ -640,10 +640,8 @@ metadata:
   labels:
     {{- include "myapp.labels" . | nindent 4 }}
   annotations:
-    # Run before upgrade begins
-    "helm.sh/hook": pre-upgrade
-    # Run before initial install
-    "helm.sh/hook": pre-install
+    # Run before initial install and before upgrade (comma-separated list)
+    "helm.sh/hook": pre-install,pre-upgrade
     # Set hook weight for ordering (lower runs first)
     "helm.sh/hook-weight": "-5"
     # Delete job after successful completion
