@@ -502,7 +502,7 @@ deploy_app:
   stage: deploy
   needs:
     - job: build
-    - job: terraform_apply
+    - job: deploy
       artifacts: true
   image: amazon/aws-cli:2.15
   script:
