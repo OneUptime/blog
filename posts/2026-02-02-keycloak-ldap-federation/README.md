@@ -48,9 +48,8 @@ Navigate to User Federation in the Keycloak admin console and select LDAP as the
 ```mermaid
 flowchart TB
     subgraph Keycloak Admin Console
-        A[Realm Settings] --> B[User Federation]
-        B --> C[Add Provider]
-        C --> D[LDAP]
+        A[User Federation] --> B[Add Provider]
+        B --> C[LDAP]
     end
 ```
 
@@ -244,9 +243,11 @@ Group Object Classes: group
 Membership LDAP Attribute: member
 Membership Attribute Type: DN
 Mode: READ_ONLY
+User Groups Retrieve Strategy: LOAD_GROUPS_BY_MEMBER_ATTRIBUTE
 
-# Enable nested group resolution for AD
-Membership User LDAP Attribute: sAMAccountName
+# To traverse nested AD group memberships, use the AD-specific
+# LDAP_MATCHING_RULE_IN_CHAIN OID in a custom filter:
+# (member:1.2.840.113556.1.4.1941:=<userDN>)
 ```
 
 ## Role Mapping from Groups
@@ -279,7 +280,7 @@ Assign specific roles to all users from a particular LDAP provider.
 ```properties
 # Assign base role to all LDAP users
 Name: ldap-default-role
-Mapper Type: hardcoded-role-mapper
+Mapper Type: hardcoded-ldap-role-mapper
 Role: corporate-employee
 ```
 
@@ -327,10 +328,9 @@ Trigger a manual sync to verify user import works correctly.
     --user admin \
     --password admin
 
-# Trigger full sync for LDAP provider
-/opt/keycloak/bin/kcadm.sh create user-storage/<provider-id>/sync \
-    -r myrealm \
-    -s action=triggerFullSync
+# Trigger full sync for LDAP provider (action is a query parameter)
+/opt/keycloak/bin/kcadm.sh create "user-storage/<provider-id>/sync?action=triggerFullSync" \
+    -r myrealm
 ```
 
 ### Verify User Login
