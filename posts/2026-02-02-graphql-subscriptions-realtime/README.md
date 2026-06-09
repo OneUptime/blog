@@ -446,7 +446,7 @@ export const subscriptionResolvers = {
     messageReceived: {
       subscribe: withFilter(
         // First argument: the async iterator that yields all message events
-        () => pubsub.asyncIterator([EVENTS.MESSAGE_RECEIVED]),
+        () => pubsub.asyncIterableIterator(EVENTS.MESSAGE_RECEIVED),
 
         // Second argument: filter function that determines if this event
         // should be sent to this particular subscriber
@@ -470,7 +470,7 @@ export const subscriptionResolvers = {
     // Subscribe to message edits in a specific room
     messageEdited: {
       subscribe: withFilter(
-        () => pubsub.asyncIterator([EVENTS.MESSAGE_EDITED]),
+        () => pubsub.asyncIterableIterator(EVENTS.MESSAGE_EDITED),
         (payload, variables) => {
           return payload.messageEdited.roomId === variables.roomId;
         }
@@ -481,7 +481,7 @@ export const subscriptionResolvers = {
     // Only sends the deleted message ID, not the full message
     messageDeleted: {
       subscribe: withFilter(
-        () => pubsub.asyncIterator([EVENTS.MESSAGE_DELETED]),
+        () => pubsub.asyncIterableIterator(EVENTS.MESSAGE_DELETED),
         (payload, variables) => {
           return payload.messageDeleted.roomId === variables.roomId;
         }
@@ -496,7 +496,7 @@ export const subscriptionResolvers = {
     // High frequency events that benefit from throttling on the client
     typingIndicator: {
       subscribe: withFilter(
-        () => pubsub.asyncIterator([EVENTS.TYPING_INDICATOR]),
+        () => pubsub.asyncIterableIterator(EVENTS.TYPING_INDICATOR),
         (payload, variables, context: SubscriptionContext) => {
           // Filter by room
           const roomMatches = payload.typingIndicator.roomId === variables.roomId;
@@ -513,14 +513,14 @@ export const subscriptionResolvers = {
     // Subscribe to user status changes (online, away, offline)
     // No filtering needed since all users see all status changes
     userStatusChanged: {
-      subscribe: () => pubsub.asyncIterator([EVENTS.USER_STATUS_CHANGED]),
+      subscribe: () => pubsub.asyncIterableIterator(EVENTS.USER_STATUS_CHANGED),
     },
 
     // Subscribe to notifications for the authenticated user only
     // Critical security: each user only receives their own notifications
     notificationReceived: {
       subscribe: withFilter(
-        () => pubsub.asyncIterator([EVENTS.NOTIFICATION_RECEIVED]),
+        () => pubsub.asyncIterableIterator(EVENTS.NOTIFICATION_RECEIVED),
         (payload, _variables, context: SubscriptionContext) => {
           // Ensure user is authenticated
           if (!context.user) {
@@ -538,7 +538,7 @@ export const subscriptionResolvers = {
     // Subscribe to room membership changes
     roomMembershipChanged: {
       subscribe: withFilter(
-        () => pubsub.asyncIterator([EVENTS.ROOM_MEMBERSHIP_CHANGED]),
+        () => pubsub.asyncIterableIterator(EVENTS.ROOM_MEMBERSHIP_CHANGED),
         (payload, variables) => {
           return payload.roomMembershipChanged.roomId === variables.roomId;
         }
@@ -898,7 +898,7 @@ import { createServer } from 'http';
 import express from 'express';
 import { makeExecutableSchema } from '@graphql-tools/schema';
 import { WebSocketServer } from 'ws';
-import { useServer } from 'graphql-ws/lib/use/ws';
+import { useServer } from 'graphql-ws/use/ws';
 import cors from 'cors';
 import { typeDefs } from './schema';
 import { subscriptionResolvers } from './resolvers/subscriptions';
