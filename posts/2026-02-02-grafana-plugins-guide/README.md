@@ -169,7 +169,7 @@ volumes:
 
 ### Installing Specific Plugin Versions
 
-When you need precise version control, specify versions in the environment variable:
+When you need precise version control with `GF_INSTALL_PLUGINS`, point at the versioned download URL for each plugin. The semicolon separates the plugin URL from the install folder name (the plugin ID):
 
 ```yaml
 # docker-compose.yml
@@ -181,15 +181,17 @@ services:
   grafana:
     image: grafana/grafana:10.3.1
     environment:
-      # Specify versions using plugin-id;version format
-      # Mix versioned and latest plugins in the same list
-      - GF_INSTALL_PLUGINS=grafana-clock-panel;2.1.3,grafana-piechart-panel;1.6.4,grafana-polystat-panel
+      # URL;plugin-id format pins to a specific version
+      # Plain plugin IDs (without semicolon) install the latest version
+      - GF_INSTALL_PLUGINS=https://grafana.com/api/plugins/grafana-clock-panel/versions/2.1.3/download;grafana-clock-panel,https://grafana.com/api/plugins/grafana-piechart-panel/versions/1.6.4/download;grafana-piechart-panel,grafana-polystat-panel
     volumes:
       - grafana-data:/var/lib/grafana
 
 volumes:
   grafana-data:
 ```
+
+For more readable version pinning, build a custom image (shown in the next section) and use `grafana-cli plugins install <plugin-id> <version>` in the Dockerfile.
 
 ### Building a Custom Docker Image
 
@@ -396,11 +398,11 @@ datasources:
     jsonData:
       # Query parameters added to every request
       queryParams: "format=json"
-    secureJsonData:
       # API key passed in headers
-      httpHeaderValue1: $API_KEY
-    jsonData:
       httpHeaderName1: "Authorization"
+    secureJsonData:
+      # Value paired with httpHeaderName1, stored securely
+      httpHeaderValue1: $API_KEY
 ```
 
 ## Using Panel Plugins
