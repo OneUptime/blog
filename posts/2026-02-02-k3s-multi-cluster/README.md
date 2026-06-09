@@ -290,8 +290,9 @@ Link clusters together by creating service mirrors.
 
 ```bash
 # From cluster-west, link to cluster-east
-# The link command creates the necessary secrets and gateway configuration
-linkerd multicluster link --cluster-name cluster-east \
+# link-gen creates the necessary secrets and gateway configuration
+# link-gen replaces the deprecated link command for GitOps-friendly output
+linkerd multicluster link-gen --cluster-name cluster-east \
     --kubeconfig /path/to/cluster-east-kubeconfig \
     | kubectl apply -f -
 ```
@@ -642,7 +643,7 @@ Avoid storing secrets in Git repositories. Use external secret management with o
 # external-secret.yaml
 # External Secrets Operator syncs secrets from Vault, AWS Secrets Manager, etc.
 # Secrets stay out of Git while remaining available to workloads
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: database-credentials
