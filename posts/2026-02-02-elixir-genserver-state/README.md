@@ -240,7 +240,7 @@ defmodule MyApp.Application do
 end
 ```
 
-For the child spec to work, add this to your GenServer module:
+`use GenServer` already generates a default `child_spec/1`, so the supervisor examples above work without any extra code. If you need to customize it (for example, to change the restart strategy or shutdown timeout), you can override it:
 
 ```elixir
 defmodule Counter do
