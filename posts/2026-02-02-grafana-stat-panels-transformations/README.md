@@ -467,7 +467,7 @@ transformations:
   # Step 2: Calculate error rate
   - id: calculateField
     options:
-      mode: binaryOperation
+      mode: binary
       binary:
         left: errors
         operator: "/"
@@ -477,7 +477,7 @@ transformations:
   # Step 3: Convert to percentage
   - id: calculateField
     options:
-      mode: binaryOperation
+      mode: binary
       binary:
         left: error_rate
         operator: "*"
