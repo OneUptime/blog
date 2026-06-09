@@ -44,11 +44,11 @@ Understanding execution order is critical when working with multiple middleware.
 
 | Addition Order | Request Processing | Response Processing |
 |----------------|-------------------|---------------------|
-| Added First    | Executed Last     | Executed Last       |
+| Added First    | Executed Last     | Executed First      |
 | Added Second   | Executed Second   | Executed Second     |
-| Added Last     | Executed First    | Executed First      |
+| Added Last     | Executed First    | Executed Last       |
 
-This behavior follows the "onion model" where outer layers wrap inner layers.
+This behavior follows the "onion model" where outer layers wrap inner layers. The middleware added last becomes the outermost layer — the request enters it first and the response leaves through it last.
 
 ---
 
@@ -387,7 +387,6 @@ from starlette.responses import Response
 import logging
 import time
 import json
-from typing import Callable
 
 # Configure structured logging
 logging.basicConfig(
@@ -847,37 +846,38 @@ from fastapi.middleware.gzip import GZipMiddleware
 app = FastAPI()
 
 # Middleware is executed in reverse order of addition
-# Last added = first executed for requests
+# Last added = first executed for requests = outermost layer
+# So add the innermost layer first and the outermost layer last
 
-# 1. CORS - outermost layer, handles preflight requests
+# Innermost layer - request validation runs right before the route handler
 app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["https://example.com"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    RequestValidationMiddleware,
+    max_body_size=1024 * 1024
 )
 
-# 2. GZip compression
-app.add_middleware(GZipMiddleware, minimum_size=500)
-
-# 3. Error handling - catch errors from inner middleware
-app.add_middleware(ErrorHandlingMiddleware, debug=False)
-
-# 4. Request logging
-app.add_middleware(RequestLoggingMiddleware)
-
-# 5. Authentication - validate tokens before business logic
+# Authentication - validate tokens before business logic
 app.add_middleware(
     AuthenticationMiddleware,
     secret_key="your-secret-key",
     public_paths=["/", "/health", "/login"]
 )
 
-# 6. Request validation - innermost layer
+# Request logging
+app.add_middleware(RequestLoggingMiddleware)
+
+# Error handling - catch errors from inner middleware
+app.add_middleware(ErrorHandlingMiddleware, debug=False)
+
+# GZip compression
+app.add_middleware(GZipMiddleware, minimum_size=500)
+
+# Outermost layer - CORS handles preflight requests before anything else
 app.add_middleware(
-    RequestValidationMiddleware,
-    max_body_size=1024 * 1024
+    CORSMiddleware,
+    allow_origins=["https://example.com"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 ```
 
@@ -966,6 +966,7 @@ When you need to share data across middleware and route handlers, use context va
 
 ```python
 # context_variables.py
+import uuid
 from contextvars import ContextVar
 from fastapi import FastAPI, Request
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -1049,22 +1050,22 @@ class AsyncMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next):
         # Good: Non-blocking async operation
-        async with aiohttp.ClientSession() as session:
-            # Fire and forget - don't wait for response
-            asyncio.create_task(
-                self._log_to_external_service(request, session)
-            )
+        # Fire and forget - the task manages its own session lifetime
+        asyncio.create_task(
+            self._log_to_external_service(request.url.path)
+        )
 
         return await call_next(request)
 
-    async def _log_to_external_service(self, request, session):
+    async def _log_to_external_service(self, path: str):
         """Send request info to external logging service."""
         try:
-            await session.post(
-                "https://logging-service.example.com/logs",
-                json={"path": request.url.path},
-                timeout=5
-            )
+            async with aiohttp.ClientSession() as session:
+                await session.post(
+                    "https://logging-service.example.com/logs",
+                    json={"path": path},
+                    timeout=aiohttp.ClientTimeout(total=5)
+                )
         except Exception:
             pass  # Don't let logging failures affect requests
 ```
