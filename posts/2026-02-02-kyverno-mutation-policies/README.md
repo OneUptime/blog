@@ -56,8 +56,9 @@ helm repo update
 helm install kyverno kyverno/kyverno \
   --namespace kyverno \
   --create-namespace \
-  --set replicaCount=3 \
-  --set admissionController.replicas=3
+  --set admissionController.replicas=3 \
+  --set backgroundController.replicas=2 \
+  --set reportsController.replicas=2
 ```
 
 Verify the installation by checking pod status.
@@ -739,30 +740,49 @@ spec:
 
 ### Phase 3: Background Scanning
 
-Enable background scanning to mutate existing resources.
+Enable background scanning so existing resources are evaluated against the policy.
 
 ```yaml
 spec:
   validationFailureAction: Enforce
+  # background: true causes Kyverno to scan existing resources
+  # and generate Policy Reports for matches
   background: true
-  # Scan existing resources
-  schemaValidation: false
 ```
 
 ### Rollback Strategy
 
-Always maintain the ability to quickly disable problematic policies.
+Always maintain the ability to quickly disable problematic policies. Kyverno does not have a built-in "disable" annotation, so use one of these approaches.
 
 ```bash
-# Disable a policy without deleting
-kubectl annotate clusterpolicy add-cost-labels \
-  policies.kyverno.io/disable=true
+# Preferred: create a PolicyException to exempt specific resources
+# without modifying or removing the policy itself
+kubectl apply -f - <<EOF
+apiVersion: kyverno.io/v2
+kind: PolicyException
+metadata:
+  name: add-cost-labels-exception
+  namespace: kyverno
+spec:
+  exceptions:
+    - policyName: add-cost-labels
+      ruleNames:
+        - add-cost-tracking-labels
+  match:
+    any:
+      - resources:
+          kinds:
+            - Pod
+          namespaces:
+            - my-exempt-namespace
+EOF
 
-# Re-enable
-kubectl annotate clusterpolicy add-cost-labels \
-  policies.kyverno.io/disable-
+# Alternative: patch the policy to stop processing new admissions
+# and skip background scans
+kubectl patch clusterpolicy add-cost-labels --type=merge \
+  -p '{"spec":{"admission":false,"background":false}}'
 
-# Emergency: delete the policy
+# Emergency: delete the policy entirely
 kubectl delete clusterpolicy add-cost-labels
 ```
 
