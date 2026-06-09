@@ -434,10 +434,18 @@ pipeline {
                         eval $(ssh-agent -s)
 
                         # Add key with passphrase if set
+                        # SSH_ASKPASS must point to an executable, so write a
+                        # temporary script that echoes the passphrase.
                         if [ -n "${SSH_PASSPHRASE}" ]; then
-                            SSH_ASKPASS_REQUIRE=force \
-                            SSH_ASKPASS="echo ${SSH_PASSPHRASE}" \
-                            ssh-add ${SSH_KEY_FILE}
+                            ASKPASS_SCRIPT=$(mktemp)
+                            cat > "${ASKPASS_SCRIPT}" <<EOF
+#!/bin/sh
+echo "${SSH_PASSPHRASE}"
+EOF
+                            chmod 700 "${ASKPASS_SCRIPT}"
+                            DISPLAY=:0 SSH_ASKPASS="${ASKPASS_SCRIPT}" \
+                                setsid ssh-add ${SSH_KEY_FILE} < /dev/null
+                            rm -f "${ASKPASS_SCRIPT}"
                         else
                             ssh-add ${SSH_KEY_FILE}
                         fi
