@@ -110,7 +110,7 @@ contactPoints:
         settings:
           # Semicolon-separated list of recipient addresses
           addresses: "ops@yourcompany.com;oncall@yourcompany.com"
-          # Use HTML formatting for better readability
+          # When false, send individual emails per recipient; when true, send one email to all recipients
           singleEmail: false
         disableResolveMessage: false
 ```
@@ -170,7 +170,7 @@ contactPoints:
           token: "xoxb-your-slack-bot-token"
           # Channel can be ID or name (ID is more reliable)
           recipient: "C01234567890"
-          # Thread replies for follow-up notifications
+          # Mention @here or @channel in the message; valid values: "here", "channel"
           mentionChannel: "here"
           # Rich formatting options
           title: |
@@ -232,7 +232,7 @@ contactPoints:
           # Authentication header
           authorization_scheme: "Bearer"
           authorization_credentials: "your-api-token"
-          # Custom headers for your API
+          # Maximum number of alerts to include in a single webhook payload (0 = no limit)
           maxAlerts: 10
 ```
 
@@ -295,7 +295,7 @@ contactPoints:
           # Message formatting
           title: |
             {{ .Status | toUpper }}: {{ .GroupLabels.alertname }}
-          sectionTitle: "Alert Details"
+          sectiontitle: "Alert Details"
           message: |
             {{ range .Alerts }}
             **{{ .Labels.alertname }}**
@@ -359,7 +359,7 @@ contactPoints:
             {{ end }}
           # Avatar URL for the bot
           avatar_url: "https://grafana.com/static/img/grafana_icon.svg"
-          # Whether to use Discord embeds
+          # Use the username configured on the Discord webhook instead of Grafana's default
           use_discord_username: true
 ```
 
