@@ -1156,7 +1156,65 @@ Monitor your registry to catch issues before they affect deployments.
 
 ### Registry Metrics
 
-The Docker registry exposes Prometheus metrics. Scrape them for monitoring.
+The Docker registry can expose Prometheus metrics, but only when the debug listener is enabled in the registry configuration. Metrics are not served on the main registry port — they require a separate listener configured via `http.debug.prometheus.enabled`.
+
+First, provide the registry with a config that enables the debug listener and Prometheus endpoint.
+
+```yaml
+# registry-metrics-config.yaml
+# Registry config that exposes Prometheus metrics on a separate port
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: registry-config
+  namespace: registry
+data:
+  config.yml: |
+    version: 0.1
+    log:
+      level: info
+    storage:
+      filesystem:
+        rootdirectory: /var/lib/registry
+      delete:
+        enabled: true
+    http:
+      addr: :5000
+      headers:
+        X-Content-Type-Options: [nosniff]
+      # Debug listener exposes Prometheus metrics on a separate port
+      debug:
+        addr: :5001
+        prometheus:
+          enabled: true
+          path: /metrics
+```
+
+Mount the config into the registry deployment and expose the debug port on the container and Service so it can be scraped.
+
+```yaml
+# Excerpt: container and service ports for the metrics listener
+# In the Deployment container spec, add:
+ports:
+- containerPort: 5000
+  name: registry
+- containerPort: 5001
+  name: metrics
+volumeMounts:
+- name: config
+  mountPath: /etc/docker/registry
+# In the Deployment volumes:
+volumes:
+- name: config
+  configMap:
+    name: registry-config
+# In the Service spec, add:
+- port: 5001
+  targetPort: 5001
+  name: metrics
+```
+
+With the metrics port exposed, configure a ServiceMonitor that scrapes the dedicated metrics port.
 
 ```yaml
 # registry-servicemonitor.yaml
@@ -1171,7 +1229,8 @@ spec:
     matchLabels:
       app: registry
   endpoints:
-  - port: registry
+  # Scrape the debug listener that exposes Prometheus metrics
+  - port: metrics
     path: /metrics
     interval: 30s
 ```
