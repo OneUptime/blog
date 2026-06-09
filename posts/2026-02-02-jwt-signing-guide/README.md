@@ -272,7 +272,6 @@ import uuid
 import os
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
-from cryptography.hazmat.backends import default_backend
 
 # Load secret from environment - never hardcode in production
 SECRET_KEY = os.environ.get('JWT_SECRET', 'your-secure-secret-key-at-least-32-characters')
@@ -291,7 +290,7 @@ def create_access_token(user_id: str, email: str, roles: list) -> str:
         Signed JWT string
     """
     # Calculate expiration time - 15 minutes from now
-    now = datetime.datetime.utcnow()
+    now = datetime.datetime.now(datetime.timezone.utc)
     expiration = now + datetime.timedelta(minutes=15)
 
     # Build the payload with registered and custom claims
@@ -330,8 +329,7 @@ def create_token_with_rsa():
     # In production, load these from secure storage or a key management service
     private_key = rsa.generate_private_key(
         public_exponent=65537,
-        key_size=2048,
-        backend=default_backend()
+        key_size=2048
     )
     public_key = private_key.public_key()
 
@@ -352,8 +350,8 @@ def create_token_with_rsa():
         'sub': 'service-account-1',
         'iss': 'auth.mycompany.com',
         'aud': ['api.mycompany.com', 'admin.mycompany.com'],
-        'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=1),
-        'iat': datetime.datetime.utcnow(),
+        'exp': datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=1),
+        'iat': datetime.datetime.now(datetime.timezone.utc),
         'scope': 'read:users write:users'
     }
 
