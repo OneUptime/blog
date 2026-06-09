@@ -1404,7 +1404,7 @@ flowchart TD
     "use.refresh.tokens": "true",
     "client_credentials.use_refresh_token": "false",
 
-    "tls-client-certificate-bound-access-tokens": "false"
+    "tls.client.certificate.bound.access.tokens": "false"
   }
 }
 ```
