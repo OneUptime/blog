@@ -84,7 +84,8 @@ helm repo add gatekeeper https://open-policy-agent.github.io/gatekeeper/charts
 # Update local chart cache
 helm repo update
 
-# Install Gatekeeper with audit and mutation features enabled
+# Install Gatekeeper with audit features enabled
+# Mutation is enabled by default; set disableMutation=true to turn it off
 # The replicas ensure high availability for the admission webhook
 helm install gatekeeper gatekeeper/gatekeeper \
     --namespace gatekeeper-system \
@@ -93,7 +94,7 @@ helm install gatekeeper gatekeeper/gatekeeper \
     --set auditInterval=60 \
     --set constraintViolationsLimit=100 \
     --set auditFromCache=true \
-    --set mutatingWebhookEnabled=true
+    --set disableMutation=false
 ```
 
 Verify the installation by checking the running pods:
@@ -495,7 +496,7 @@ spec:
 
 ---
 
-Resource Limits Template
+## Resource Limits Template
 
 Preventing resource exhaustion requires enforcing CPU and memory limits on all containers:
 
@@ -1121,7 +1122,7 @@ Key metrics to monitor:
 |--------|-------------|-----------------|
 | `gatekeeper_violations` | Current constraint violations | Trend increase |
 | `gatekeeper_constraint_template_ingestion_duration_seconds` | Template processing time | > 10s |
-| `gatekeeper_request_duration_seconds` | Webhook response time | > 1s p99 |
+| `gatekeeper_validation_request_duration_seconds` | Webhook response time | > 1s p99 |
 | `gatekeeper_constraint_templates` | Total templates loaded | Unexpected changes |
 
 ---
