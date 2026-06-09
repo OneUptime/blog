@@ -248,7 +248,7 @@ val creditsByUser = transactions
     .toList()
     .sortedByDescending { it.second }
     .toMap()
-// Result: {"U1": 300.0, "U3": 75.0, "U2": 0.0}
+// Result: {"U1": 300.0, "U3": 75.0}
 ```
 
 Here's a visual representation of how chaining works:
