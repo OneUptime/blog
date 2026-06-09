@@ -217,8 +217,8 @@ Services route traffic to pods through endpoints. Verify both are configured cor
 # Check service details
 kubectl describe service <service-name> -n <namespace>
 
-# Verify endpoints exist and point to pods
-kubectl get endpoints <service-name> -n <namespace>
+# Verify endpoints exist and point to pods (EndpointSlices replaces the deprecated Endpoints API)
+kubectl get endpointslices -n <namespace> -l kubernetes.io/service-name=<service-name>
 
 # Compare selector with pod labels
 kubectl get pods -n <namespace> --show-labels | grep <app-label>
@@ -318,8 +318,8 @@ kubectl debug -it <pod-name> --image=busybox --target=<container-name>
 # Network debugging with netshoot
 kubectl debug -it <pod-name> --image=nicolaka/netshoot --target=<container-name>
 
-# Share process namespace to see other container processes
-kubectl debug -it <pod-name> --image=busybox --target=<container-name> --share-processes
+# Create a pod copy with a shared process namespace to see other container processes
+kubectl debug <pod-name> -it --image=busybox --share-processes --copy-to=debug-copy
 
 # Inside debug container, investigate
 ps aux
