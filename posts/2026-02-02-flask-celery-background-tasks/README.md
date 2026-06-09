@@ -691,7 +691,7 @@ def call_external_api(self, endpoint, payload):
     Call an external API with automatic retry on failure.
 
     The task will automatically retry on RequestException with
-    exponential backoff (2, 4, 8, 16... seconds) up to 5 times.
+    exponential backoff (1, 2, 4, 8, 16... seconds) up to 5 times.
 
     Args:
         endpoint: API endpoint URL
