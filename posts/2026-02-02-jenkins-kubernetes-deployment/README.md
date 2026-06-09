@@ -399,11 +399,7 @@ stage('Deploy with Helm') {
         withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
             script {
                 sh """
-                    # Add Helm repository if needed
-                    helm repo add stable https://charts.helm.sh/stable
-                    helm repo update
-
-                    # Deploy using Helm
+                    # Deploy using Helm with a local chart
                     helm upgrade --install myapp ./helm/myapp \
                         --namespace ${K8S_NAMESPACE} \
                         --create-namespace \
@@ -949,9 +945,9 @@ flowchart TD
 
 Configure the Kubernetes cloud in Jenkins.
 
-```groovy
-// Jenkins configuration as code for Kubernetes cloud
-// Defines pod templates for different build types
+```yaml
+# Jenkins configuration as code for Kubernetes cloud
+# Defines pod templates for different build types
 jenkins:
   clouds:
     - kubernetes:
