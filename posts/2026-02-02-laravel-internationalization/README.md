@@ -90,14 +90,14 @@ sequenceDiagram
 
     V->>T: __('messages.welcome')
     T->>L: load('es', 'messages')
-    L->>F: resources/lang/es/messages.php
+    L->>F: lang/es/messages.php
     alt Translation Found
         F-->>L: ['welcome' => 'Bienvenido']
         L-->>T: Array with translations
         T-->>V: "Bienvenido"
     else Not Found
         F-->>L: Key not found
-        L->>F: resources/lang/en/messages.php
+        L->>F: lang/en/messages.php
         F-->>L: ['welcome' => 'Welcome']
         T-->>V: "Welcome"
     end
@@ -147,28 +147,29 @@ return [
 Laravel supports two translation file formats. Organize your files based on your project needs.
 
 ```text
-resources/
-  lang/
-    en/
-      messages.php       # General messages
-      validation.php     # Validation error messages
-      auth.php          # Authentication messages
-      pagination.php    # Pagination text
-      passwords.php     # Password reset messages
-    es/
-      messages.php
-      validation.php
-      auth.php
-      pagination.php
-      passwords.php
-    fr/
-      messages.php
-      validation.php
-      auth.php
-    en.json              # JSON format for simple key-value pairs
-    es.json
-    fr.json
+lang/
+  en/
+    messages.php       # General messages
+    validation.php     # Validation error messages
+    auth.php          # Authentication messages
+    pagination.php    # Pagination text
+    passwords.php     # Password reset messages
+  es/
+    messages.php
+    validation.php
+    auth.php
+    pagination.php
+    passwords.php
+  fr/
+    messages.php
+    validation.php
+    auth.php
+  en.json              # JSON format for simple key-value pairs
+  es.json
+  fr.json
 ```
+
+> Note: In Laravel 9 and later, the language files live in the `lang/` directory at the project root. In Laravel 8 and earlier they were located under `resources/lang/`. If you do not see a `lang/` directory in a fresh Laravel 9+ install, you can publish it with `php artisan lang:publish`.
 
 ### PHP Array Translation Files
 
@@ -176,7 +177,7 @@ The traditional approach uses PHP arrays for nested, structured translations.
 
 ```php
 <?php
-// resources/lang/en/messages.php
+// lang/en/messages.php
 
 return [
     // Application name and common strings
@@ -228,7 +229,7 @@ return [
 
 ```php
 <?php
-// resources/lang/es/messages.php
+// lang/es/messages.php
 
 return [
     // Nombre de la aplicacion y cadenas comunes
@@ -283,7 +284,7 @@ return [
 JSON files are ideal for applications with many simple translations or when using translation strings as keys.
 
 ```json
-// resources/lang/en.json
+// lang/en.json
 {
     "Welcome to our application": "Welcome to our application",
     "Please sign in to continue": "Please sign in to continue",
@@ -299,7 +300,7 @@ JSON files are ideal for applications with many simple translations or when usin
 ```
 
 ```json
-// resources/lang/es.json
+// lang/es.json
 {
     "Welcome to our application": "Bienvenido a nuestra aplicacion",
     "Please sign in to continue": "Por favor inicie sesion para continuar",
@@ -480,7 +481,7 @@ Pass dynamic values into your translations using placeholders.
 
 ```php
 <?php
-// resources/lang/en/messages.php
+// lang/en/messages.php
 
 return [
     // Simple interpolation with named placeholders
@@ -571,7 +572,7 @@ flowchart TB
 
 ```php
 <?php
-// resources/lang/en/messages.php
+// lang/en/messages.php
 
 return [
     // Simple pluralization using pipe syntax
@@ -598,7 +599,7 @@ return [
 
 ```php
 <?php
-// resources/lang/es/messages.php
+// lang/es/messages.php
 
 return [
     // Spanish pluralization
@@ -1246,7 +1247,7 @@ Laravel's validation system integrates seamlessly with localization.
 
 ```php
 <?php
-// resources/lang/en/validation.php
+// lang/en/validation.php
 
 return [
     // Standard validation messages
@@ -1305,7 +1306,7 @@ return [
 
 ```php
 <?php
-// resources/lang/es/validation.php
+// lang/es/validation.php
 
 return [
     'accepted' => 'El campo :attribute debe ser aceptado.',
@@ -1977,7 +1978,7 @@ class TranslationCompletenessTest extends TestCase
     protected function getTranslationKeys(string $locale): array
     {
         $keys = [];
-        $path = resource_path("lang/{$locale}");
+        $path = lang_path($locale);
 
         if (!File::isDirectory($path)) {
             return $keys;
