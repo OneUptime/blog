@@ -404,13 +404,14 @@ class PoolConfigBuilder {
     var connectionTimeout: Long = 30_000  // 30 seconds
 
     // Operator overloading for range-based connection limits
-    // Allows syntax: connections = 5..50
+    // Allows syntax: +(5..50) to set min and max from a range
     operator fun IntRange.unaryPlus() {
         minConnections = this.first
         maxConnections = this.last
     }
 
-    // Use rangeTo for connection configuration
+    // Infix function for readable connection configuration
+    // Allows syntax: 5 connections 50
     infix fun Int.connections(max: Int) {
         minConnections = this
         maxConnections = max
@@ -485,9 +486,9 @@ fun example() {
 }
 ```
 
-### Conditional Configuration with Context Receivers
+### Conditional Configuration with an Environment Context
 
-Create configuration that adapts based on environment or runtime conditions:
+Create configuration that adapts based on environment or runtime conditions by passing a context object into the builder:
 
 ```kotlin
 // EnvironmentAwareConfig.kt
