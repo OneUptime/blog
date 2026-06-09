@@ -105,8 +105,6 @@ metadata:
   annotations:
     # Force HTTPS redirect for all HTTP requests
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
-    # Use strong TLS protocols only
-    nginx.ingress.kubernetes.io/ssl-protocols: "TLSv1.2 TLSv1.3"
 spec:
   ingressClassName: nginx
   # TLS configuration - map hostnames to certificate secrets
@@ -188,8 +186,7 @@ helm repo update
 helm install cert-manager jetstack/cert-manager \
   --namespace cert-manager \
   --create-namespace \
-  --set installCRDs=true \
-  --set global.leaderElection.namespace=cert-manager
+  --set crds.enabled=true
 
 # Verify cert-manager pods are running
 kubectl get pods -n cert-manager
@@ -220,7 +217,7 @@ spec:
       # HTTP-01 challenge - cert-manager creates temporary Ingress rules
       - http01:
           ingress:
-            class: nginx
+            ingressClassName: nginx
 ```
 
 For testing, use the staging endpoint to avoid rate limits:
@@ -243,7 +240,7 @@ spec:
     solvers:
       - http01:
           ingress:
-            class: nginx
+            ingressClassName: nginx
 ```
 
 Apply both issuers:
@@ -503,7 +500,6 @@ metadata:
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
     # TLS hardening annotations
-    nginx.ingress.kubernetes.io/ssl-protocols: "TLSv1.2 TLSv1.3"
     nginx.ingress.kubernetes.io/ssl-ciphers: "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256"
     # HSTS header
     nginx.ingress.kubernetes.io/configuration-snippet: |
@@ -604,7 +600,7 @@ spec:
     matchLabels:
       app.kubernetes.io/name: cert-manager
   endpoints:
-    - port: tcp-prometheus-servicemonitor
+    - port: http-metrics
       interval: 60s
 ```
 
