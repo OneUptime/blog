@@ -45,7 +45,7 @@ graph TB
 
 The simplest way to run Kafka in Docker uses the Bitnami image, which handles configuration automatically.
 
-The following command starts a single Kafka instance with embedded Zookeeper functionality using KRaft mode.
+The following command starts a single Kafka instance using KRaft mode, which embeds controller functionality and removes the need for Zookeeper.
 
 ```bash
 # Pull and run Kafka in standalone mode using KRaft (no Zookeeper required)
@@ -377,7 +377,7 @@ volumes:
 Managing topics is essential for Kafka operations. The commands below demonstrate common administrative tasks.
 
 ```bash
-# Create a topic with 3 partitions and replication factor of 2
+# Create a topic with 3 partitions and replication factor of 1
 # Partitions enable parallel processing, replication ensures durability
 docker exec kafka kafka-topics --create \
   --bootstrap-server localhost:9092 \
