@@ -363,15 +363,16 @@ sudo kubectl get nodes
 After all server nodes are running, verify the etcd cluster is healthy and all members are participating.
 
 ```bash
-# Check etcd member list
-# This command shows all etcd nodes and their status
-sudo k3s etcd-snapshot info
+# List etcd snapshots to confirm the embedded etcd is operational
+sudo k3s etcd-snapshot ls
 
-# Alternative method using etcdctl
-# K3s includes etcdctl in the k3s binary
-sudo k3s kubectl exec -n kube-system \
-    $(sudo k3s kubectl get pods -n kube-system -l component=etcd -o name | head -1) \
-    -- etcdctl member list \
+# List etcd members using etcdctl
+# Note: etcdctl is NOT bundled with K3s; install it separately from
+# https://github.com/etcd-io/etcd/releases before running this.
+# K3s embeds etcd in the k3s server process (not as a Kubernetes pod),
+# so etcdctl must be run on a server node against 127.0.0.1:2379.
+sudo ETCDCTL_API=3 etcdctl member list \
+    --endpoints=https://127.0.0.1:2379 \
     --cacert=/var/lib/rancher/k3s/server/tls/etcd/server-ca.crt \
     --cert=/var/lib/rancher/k3s/server/tls/etcd/client.crt \
     --key=/var/lib/rancher/k3s/server/tls/etcd/client.key
@@ -379,9 +380,9 @@ sudo k3s kubectl exec -n kube-system \
 # Check cluster endpoint health
 sudo k3s kubectl get endpoints -n default kubernetes
 
-# Verify all server nodes show control-plane role
+# Verify all server nodes show control-plane and etcd roles
 sudo kubectl get nodes -o wide
-# Expected output shows all three nodes with control-plane,etcd,master roles
+# Expected output shows all three nodes with control-plane,etcd roles
 ```
 
 ## Configuring External Database HA
@@ -854,11 +855,10 @@ echo ""
 
 # Check 2: etcd cluster health (for embedded etcd)
 echo "Checking etcd health..."
-if sudo k3s etcd-snapshot info > /dev/null 2>&1; then
-    ETCD_MEMBERS=$(sudo k3s etcd-snapshot info 2>/dev/null | grep -c "member" || echo "0")
-    echo "OK: etcd cluster has $ETCD_MEMBERS members"
+if sudo k3s etcd-snapshot ls > /dev/null 2>&1; then
+    echo "OK: Embedded etcd is operational (snapshots accessible)"
 else
-    echo "INFO: Using external database (etcd check skipped)"
+    echo "INFO: Embedded etcd not in use or unreachable (external database may be configured)"
 fi
 echo ""
 
