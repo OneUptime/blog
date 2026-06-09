@@ -228,7 +228,7 @@ app.use(cookieParser(COOKIE_SECRET));
 // Route to set a signed cookie
 // Signed cookies include a cryptographic signature
 app.get('/set-signed-cookie', (req, res) => {
-    // The third argument (true) indicates this is a signed cookie
+    // The signed: true option in the options object marks this cookie as signed
     // Express will append a signature based on the secret
     res.cookie('user_id', '12345', {
         signed: true, // Enable signing
