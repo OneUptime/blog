@@ -56,7 +56,7 @@ Before creating custom responses, understand what FastAPI provides out of the bo
 | **RedirectResponse** | HTTP redirects | N/A |
 | **StreamingResponse** | Large files, real-time data | Varies |
 | **FileResponse** | Static files | Auto-detected |
-| **Response** | Base class for custom | application/octet-stream |
+| **Response** | Base class for custom | None (set explicitly) |
 
 ---
 
@@ -232,7 +232,7 @@ class GzipJSONResponse(JSONResponse):
         compression_level: int = 6
     ):
         self.compression_level = compression_level
-        headers = headers or {}
+        headers = dict(headers) if headers else {}
 
         # Serialize content to JSON bytes
         json_content = json.dumps(
@@ -246,7 +246,7 @@ class GzipJSONResponse(JSONResponse):
         # Only compress if content exceeds threshold
         if len(json_content) > self.COMPRESSION_THRESHOLD:
             # Compress the JSON content
-            compressed = gzip.compress(
+            body = gzip.compress(
                 json_content,
                 compresslevel=self.compression_level
             )
@@ -254,25 +254,17 @@ class GzipJSONResponse(JSONResponse):
             # Add compression headers
             headers["Content-Encoding"] = "gzip"
             headers["Vary"] = "Accept-Encoding"
-
-            # Use base Response class for pre-encoded content
-            Response.__init__(
-                self,
-                content=compressed,
-                status_code=status_code,
-                headers=headers,
-                media_type="application/json",
-                background=background
-            )
         else:
-            # Use standard JSONResponse for small content
-            super().__init__(
-                content=content,
-                status_code=status_code,
-                headers=headers,
-                media_type=media_type,
-                background=background
-            )
+            body = json_content
+
+        # Set attributes directly to avoid re-running JSONResponse.render
+        # on already-serialized (and possibly compressed) bytes
+        self.status_code = status_code
+        if media_type is not None:
+            self.media_type = media_type
+        self.background = background
+        self.body = body
+        self.init_headers(headers)
 
 
 app = FastAPI()
