@@ -572,6 +572,8 @@ on:
     types: [opened]
 
 permissions:
+  # issues: read is required to list issues/PRs by creator
+  issues: read
   pull-requests: write
 
 jobs:
@@ -586,14 +588,17 @@ jobs:
         with:
           script: |
             const creator = context.payload.pull_request.user.login;
-            const { data: pullRequests } = await github.rest.pulls.list({
+            // pulls.list has no `creator` filter, so use issues.listForRepo
+            // (PRs are issues in the REST API) and filter for pull_request items
+            const { data: issues } = await github.rest.issues.listForRepo({
               owner: context.repo.owner,
               repo: context.repo.repo,
               state: 'all',
               creator: creator
             });
+            const userPRs = issues.filter(issue => issue.pull_request);
             // First PR if only one exists (the current one)
-            return pullRequests.length === 1;
+            return userPRs.length === 1;
 
       - name: Post welcome message
         if: steps.check.outputs.result == 'true'
