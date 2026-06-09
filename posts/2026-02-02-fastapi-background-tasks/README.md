@@ -311,6 +311,7 @@ Background tasks fail silently by default. You need explicit error handling:
 ```python
 # error_handling.py
 from fastapi import FastAPI, BackgroundTasks
+import asyncio
 import logging
 import traceback
 
