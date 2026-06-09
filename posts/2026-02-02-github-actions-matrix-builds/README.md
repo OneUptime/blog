@@ -264,15 +264,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Install pnpm BEFORE setup-node so it can locate the pnpm store for caching
+      - if: matrix.package-manager == 'pnpm'
+        uses: pnpm/action-setup@v3
+        with:
+          version: 8
+
       # Set up Node with caching for the selected package manager
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
           cache: ${{ matrix.package-manager }}
-
-      # Install pnpm if that's the selected package manager
-      - if: matrix.package-manager == 'pnpm'
-        run: npm install -g pnpm
 
       # Install dependencies using the selected package manager
       - name: Install dependencies
