@@ -147,9 +147,6 @@ const limiter = rateLimit({
     // Optionally keep legacy headers for older clients
     legacyHeaders: true,
 
-    // Custom header behavior
-    headers: true,
-
     // Custom function to generate Retry-After value
     // Returns seconds until the client can retry
     handler: (req, res, next, options) => {
@@ -574,7 +571,7 @@ This example configures rate limiting with Redis for distributed deployments:
 // Distributed rate limiting with Redis
 const express = require('express');
 const rateLimit = require('express-rate-limit');
-const RedisStore = require('rate-limit-redis');
+const { RedisStore } = require('rate-limit-redis');
 const Redis = require('ioredis');
 
 // Create Express application
@@ -759,7 +756,7 @@ This example shows how to implement rate limiting based on user identity:
 // User-based rate limiting with fallback to IP
 const express = require('express');
 const rateLimit = require('express-rate-limit');
-const RedisStore = require('rate-limit-redis');
+const { RedisStore } = require('rate-limit-redis');
 const Redis = require('ioredis');
 
 const app = express();
@@ -1253,21 +1250,18 @@ const monitoredLimiter = rateLimit({
     windowMs: 60 * 1000,
     max: 100,
 
-    // Called when a client first hits the rate limit
-    onLimitReached: (req, res, options) => {
+    // Custom handler to log and track blocked requests
+    handler: (req, res, next, options) => {
+        metrics.record(false);
+
         console.warn({
-            event: 'rate_limit_reached',
+            event: 'rate_limit_exceeded',
             ip: req.ip,
             path: req.path,
             limit: options.max,
             window: options.windowMs,
             timestamp: new Date().toISOString()
         });
-    },
-
-    // Custom handler to track blocked requests
-    handler: (req, res, next, options) => {
-        metrics.record(false);
 
         res.status(429).json({
             error: 'Rate limit exceeded',
