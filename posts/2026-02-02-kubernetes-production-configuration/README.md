@@ -251,9 +251,8 @@ kind: ServiceAccount
 metadata:
   name: app-service-account
   namespace: production
-  annotations:
-    # Disable automatic token mounting for security
-    # Only mount tokens when explicitly needed
+# Disable automatic token mounting for security
+# Only mount tokens when explicitly needed
 automountServiceAccountToken: false
 ---
 # Role for the application service account
@@ -635,7 +634,7 @@ spec:
 
 ---
 
-Resource Management and Autoscaling
+## Resource Management and Autoscaling
 
 Proper resource management ensures applications get what they need without starving other workloads. Autoscaling adjusts capacity based on actual demand.
 
@@ -806,7 +805,7 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: fast-ssd
-provisioner: kubernetes.io/aws-ebs  # Adjust for your cloud provider
+provisioner: ebs.csi.aws.com  # Adjust for your cloud provider
 parameters:
   type: gp3
   iops: "10000"
@@ -825,7 +824,7 @@ metadata:
   name: standard
   annotations:
     storageclass.kubernetes.io/is-default-class: "true"
-provisioner: kubernetes.io/aws-ebs
+provisioner: ebs.csi.aws.com
 parameters:
   type: gp3
   encrypted: "true"
@@ -903,9 +902,6 @@ metadata:
   name: production-ingress
   namespace: production
   annotations:
-    # Ingress class for NGINX ingress controller
-    kubernetes.io/ingress.class: nginx
-
     # TLS configuration
     cert-manager.io/cluster-issuer: letsencrypt-prod
 
@@ -932,6 +928,9 @@ metadata:
     nginx.ingress.kubernetes.io/enable-cors: "true"
     nginx.ingress.kubernetes.io/cors-allow-origin: "https://myapp.com"
 spec:
+  # Ingress class for NGINX ingress controller
+  ingressClassName: nginx
+
   # TLS configuration
   tls:
     - hosts:
@@ -964,15 +963,14 @@ spec:
                   number: 80
 ---
 # Service for backend API
+# ClusterIP is correct here: the Ingress controller routes to this service
+# internally. Cloud load balancer annotations only apply to type: LoadBalancer
+# services and are ignored on ClusterIP.
 apiVersion: v1
 kind: Service
 metadata:
   name: backend-api
   namespace: production
-  annotations:
-    # Health check configuration for cloud load balancers
-    service.beta.kubernetes.io/aws-load-balancer-healthcheck-path: /health
-    service.beta.kubernetes.io/aws-load-balancer-healthcheck-interval: "10"
 spec:
   selector:
     app: backend
@@ -1175,7 +1173,7 @@ External Secrets Operator syncs secrets from external secret managers (AWS Secre
 # External Secrets configuration for AWS Secrets Manager
 
 # Secret store connection to AWS Secrets Manager
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: aws-secrets-manager
@@ -1192,7 +1190,7 @@ spec:
             namespace: external-secrets
 ---
 # External secret that syncs from AWS Secrets Manager
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: app-secrets
