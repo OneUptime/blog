@@ -87,7 +87,7 @@ Create a configuration module that loads settings from environment variables:
 
 ```python
 # app/config.py
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from functools import lru_cache
 
 class Settings(BaseSettings):
@@ -104,9 +104,10 @@ class Settings(BaseSettings):
     # Application settings
     debug: bool = False
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
 
 @lru_cache()
 def get_settings() -> Settings:
@@ -232,25 +233,21 @@ Create a base model that handles MongoDB's ObjectId conversion:
 
 ```python
 # app/models/base.py
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, BeforeValidator
 from bson import ObjectId
-from typing import Optional, Any
+from typing import Optional, Any, Annotated
 from datetime import datetime
 
-class PyObjectId(str):
-    """Custom type for handling MongoDB ObjectId"""
+def validate_object_id(v: Any) -> str:
+    """Validator that accepts an ObjectId or a valid ObjectId string."""
+    if isinstance(v, ObjectId):
+        return str(v)
+    if isinstance(v, str) and ObjectId.is_valid(v):
+        return v
+    raise ValueError("Invalid ObjectId")
 
-    @classmethod
-    def __get_validators__(cls):
-        yield cls.validate
-
-    @classmethod
-    def validate(cls, v, handler):
-        if isinstance(v, ObjectId):
-            return str(v)
-        if isinstance(v, str) and ObjectId.is_valid(v):
-            return v
-        raise ValueError("Invalid ObjectId")
+# Pydantic v2 custom type for MongoDB ObjectId fields
+PyObjectId = Annotated[str, BeforeValidator(validate_object_id)]
 
 class MongoBaseModel(BaseModel):
     """Base model for MongoDB documents with common fields"""
@@ -287,7 +284,7 @@ Define a complete user model with validation:
 
 ```python
 # app/models/user.py
-from pydantic import BaseModel, Field, EmailStr
+from pydantic import BaseModel, Field, EmailStr, ConfigDict
 from typing import Optional, List
 from datetime import datetime
 from app.models.base import MongoBaseModel, PyObjectId
@@ -335,20 +332,18 @@ class User(MongoBaseModel, UserBase):
     """Complete user model stored in MongoDB"""
     hashed_password: str
 
-    class Config:
-        # Define collection name
-        collection = "users"
+# Collection name is referenced from the service layer, not the model.
 
 class UserResponse(BaseModel):
     """User response schema (excludes sensitive fields)"""
-    id: str = Field(..., alias="_id")
+    id: PyObjectId = Field(..., alias="_id")
     email: EmailStr
     username: str
-    full_name: Optional[str]
+    full_name: Optional[str] = None
     role: UserRole
     is_active: bool
     tags: List[str]
-    address: Optional[Address]
+    address: Optional[Address] = None
     created_at: datetime
     updated_at: datetime
 
@@ -1049,8 +1044,8 @@ async def create_optimized_client() -> AsyncIOMotorClient:
         # Read preference for scaling reads
         readPreference="secondaryPreferred",  # Prefer replicas for reads
 
-        # Compression for network efficiency
-        compressors=["zstd", "snappy", "zlib"],
+        # Compression for network efficiency (comma-separated, no spaces)
+        compressors="zstd,snappy,zlib",
 
         # Retry settings
         retryWrites=True,          # Auto-retry failed writes
@@ -1254,7 +1249,7 @@ Create a test configuration that uses a separate test database:
 import pytest
 import asyncio
 from motor.motor_asyncio import AsyncIOMotorClient
-from httpx import AsyncClient
+from httpx import AsyncClient, ASGITransport
 from app.main import app
 from app.database import db, get_database
 
@@ -1302,7 +1297,8 @@ async def test_database(test_client):
 @pytest.fixture
 async def async_client(test_database):
     """Create async HTTP client for testing endpoints"""
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
         yield client
 ```
 
