@@ -1007,15 +1007,8 @@ class MigrationTest {
             close()
         }
 
-        // Run migration and validate
-        helper.runMigrationsAndValidate(
-            testDatabaseName,
-            2,
-            true,
-            MIGRATION_1_2
-        )
-
-        // Verify data is preserved and new column exists
+        // Re-open the database with version 2 and provide MIGRATION_1_2
+        // MigrationTestHelper validates schema changes automatically
         val database = helper.runMigrationsAndValidate(
             testDatabaseName,
             2,
@@ -1023,6 +1016,7 @@ class MigrationTest {
             MIGRATION_1_2
         )
 
+        // Verify data is preserved and new column exists
         val cursor = database.query("SELECT * FROM users WHERE user_name = 'Test User'")
         assertTrue(cursor.moveToFirst())
 
