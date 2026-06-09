@@ -75,8 +75,8 @@ The quickest way to get Keycloak running locally is using Docker.
 docker run -d \
   --name keycloak \
   -p 8080:8080 \
-  -e KEYCLOAK_ADMIN=admin \
-  -e KEYCLOAK_ADMIN_PASSWORD=admin \
+  -e KC_BOOTSTRAP_ADMIN_USERNAME=admin \
+  -e KC_BOOTSTRAP_ADMIN_PASSWORD=admin \
   quay.io/keycloak/keycloak:latest \
   start-dev
 ```
@@ -1193,8 +1193,10 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
+
+import java.util.List;
+import java.util.Map;
 
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -1405,8 +1407,8 @@ Cache the JWK Set to reduce calls to Keycloak.
 public JwtDecoder jwtDecoder() {
     NimbusJwtDecoder jwtDecoder = NimbusJwtDecoder
         .withJwkSetUri(jwkSetUri)
-        // Cache JWK Set for 5 minutes
-        .cache(Duration.ofMinutes(5))
+        // Cache JWK Set in a Spring Cache to reduce calls to Keycloak
+        .cache(new ConcurrentMapCache("jwk-set"))
         .build();
 
     return jwtDecoder;
@@ -1443,7 +1445,9 @@ public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Excepti
                 csp.policyDirectives("default-src 'self'")
             )
             .frameOptions(frame -> frame.deny())
-            .xssProtection(xss -> xss.enable())
+            .xssProtection(xss -> xss
+                .headerValue(XXssProtectionHeaderWriter.HeaderValue.ENABLED_MODE_BLOCK)
+            )
         );
 
     return http.build();
