@@ -380,8 +380,8 @@ After changing your models, generate a migration script.
 # Generate a migration with auto-detected changes
 flask db migrate -m "Add user and post tables"
 
-# Generate migration with verbose output
-flask db migrate -m "Add comments table" --verbose
+# Pass extra arguments to env.py with -x
+flask db migrate -m "Add comments table" -x data=value
 ```
 
 The `-m` flag provides a message that becomes part of the migration filename, making it easier to identify migrations later.
@@ -433,7 +433,7 @@ flask db history
 # Show migration history with verbose details
 flask db history --verbose
 
-# Show pending migrations
+# Show the current head revision(s) of the migration tree
 flask db heads
 ```
 
@@ -444,7 +444,7 @@ flask db heads
 flask db branches
 
 # Merge multiple heads into one
-flask db merge -m "Merge heads"
+flask db merge heads -m "Merge heads"
 
 # Mark the database as current without running migrations
 flask db stamp head
