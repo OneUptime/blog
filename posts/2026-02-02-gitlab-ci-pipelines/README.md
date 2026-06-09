@@ -812,17 +812,17 @@ debug-job:
     - npm run build
 ```
 
-You can also SSH into failed jobs using GitLab's debug mode.
+You can also use `after_script` to gather diagnostics regardless of job outcome.
 
 ```yaml
-# Enable debug mode for interactive troubleshooting
+# Collect diagnostics after the job, even on failure
 failing-job:
   stage: test
   script:
     - npm test
   after_script:
-    # This runs even if the job fails
-    - echo "Job finished with exit code $CI_JOB_STATUS"
+    # after_script runs whether the job succeeded, failed, or was canceled
+    - echo "Job finished with status $CI_JOB_STATUS"
 ```
 
 ### Common Issues and Fixes
