@@ -57,9 +57,9 @@ The key insight: ServiceLB uses host networking to bind directly to node ports, 
 ServiceLB comes enabled by default in K3s. Check that the controller is running before creating LoadBalancer services.
 
 ```bash
-# Check if ServiceLB controller pods exist
-
-# You should see svclb-* pods for each LoadBalancer service
+# The ServiceLB controller runs inside the k3s server process itself,
+# but it deploys svclb-* DaemonSet pods per LoadBalancer service.
+# You should see svclb-* pods for each LoadBalancer service that exists.
 kubectl get pods -n kube-system | grep svclb
 
 # Check if any LoadBalancer services already exist
@@ -123,6 +123,7 @@ Apply and verify the service gets an external IP address. On K3s, the external I
 ```bash
 # Apply the manifests
 kubectl apply -f deployment.yaml
+kubectl apply -f service.yaml
 
 # Watch the service until EXTERNAL-IP is assigned
 # The IP will be one of your node IPs
@@ -144,8 +145,8 @@ kind: Service
 metadata:
   name: web-app
   namespace: default
-  annotations:
-    # Only run ServiceLB on nodes with this label
+  labels:
+    # Only run ServiceLB on nodes with this matching label
     svccontroller.k3s.cattle.io/lbpool: "frontend"
 spec:
   type: LoadBalancer
@@ -156,7 +157,7 @@ spec:
       targetPort: 80
 ```
 
-Label your frontend nodes to match the annotation.
+Label your frontend nodes with the same key/value to match the Service.
 
 ```bash
 # Label specific nodes for load balancing duties
