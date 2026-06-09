@@ -102,15 +102,14 @@ kotlin {
             }
         }
 
-        val iosMain by creating {
-            dependsOn(commonMain)
+        // iosMain is created automatically by the default hierarchy template
+        // (Kotlin 1.9.20+), and iosArm64Main/iosSimulatorArm64Main already
+        // depend on it. Just attach iOS-only dependencies here.
+        val iosMain by getting {
             dependencies {
                 implementation("io.ktor:ktor-client-darwin:2.3.7")
             }
         }
-
-        val iosArm64Main by getting { dependsOn(iosMain) }
-        val iosSimulatorArm64Main by getting { dependsOn(iosMain) }
 
         val desktopMain by getting {
             dependencies {
@@ -414,6 +413,9 @@ class AuthUseCase(
         return userRepository.getProfile(token).isSuccess
     }
 
+    // Expose stored token for downstream callers
+    suspend fun getToken(): String? = tokenStorage.getToken()
+
     // Logout and clear stored token
     suspend fun logout() {
         tokenStorage.clearToken()
@@ -504,7 +506,12 @@ actual class TokenStorage {
     }
 }
 
-// Helper class for iOS Keychain operations
+// Helper class for iOS Keychain operations.
+// Note: the conversion helpers used below (`toCFDictionary`, `toNSData`,
+// `NSData.fromCFData`, `toByteArray`) are not part of Kotlin/Native's stdlib —
+// they need custom implementations using `kotlinx.cinterop` (CFBridgingRetain
+// / CFBridgingRelease, NSData.create(bytes, length), etc.), or you can use a
+// library like Multiplatform Settings to avoid the boilerplate.
 class KeychainHelper {
     fun save(key: String, value: String) {
         val query = mapOf(
@@ -680,7 +687,9 @@ class LoginViewModel: ObservableObject {
     }
 
     private func observeState() {
-        // Observe Kotlin StateFlow from Swift
+        // Observe Kotlin StateFlow from Swift. Vanilla Kotlin/Native does not
+        // expose StateFlow as AsyncSequence — this requires a wrapper such as
+        // SKIE or KMP-NativeCoroutines, which generate the `for await` bridge.
         stateObserver = Task {
             for await state in viewModel.uiState {
                 handleState(state)
@@ -943,12 +952,18 @@ class UserRepositoryTest {
 
 ### Fake Implementations for Testing
 
-Create fake implementations of platform-specific classes for testing.
+Because `TokenStorage` is an `expect` class, you can't directly subclass it in `commonTest`. The usual workaround is to introduce a `TokenStorage` interface in `commonMain` and have each platform's `actual` class implement it. The fake below matches that interface so it can be substituted into use cases under test.
 
 ```kotlin
-// commonTest/kotlin/com/example/shared/FakeTokenStorage.kt
+// commonMain/kotlin/com/example/shared/data/storage/TokenStorage.kt
+interface TokenStorage {
+    suspend fun saveToken(token: String)
+    suspend fun getToken(): String?
+    suspend fun clearToken()
+}
 
-class FakeTokenStorage : TokenStorageInterface {
+// commonTest/kotlin/com/example/shared/FakeTokenStorage.kt
+class FakeTokenStorage : TokenStorage {
     private var storedToken: String? = null
 
     override suspend fun saveToken(token: String) {
@@ -998,6 +1013,12 @@ Configure CocoaPods to distribute the iOS framework.
 
 ```kotlin
 // build.gradle.kts
+plugins {
+    kotlin("multiplatform") version "1.9.22"
+    // CocoaPods DSL lives in a separate plugin
+    kotlin("native.cocoapods") version "1.9.22"
+}
+
 kotlin {
     cocoapods {
         summary = "Shared KMP module"
