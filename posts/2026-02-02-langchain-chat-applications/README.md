@@ -1330,8 +1330,12 @@ class ChatClient {
 
 // Example usage
 async function initChat() {
-    const sessionId = 'user_' + Math.random().toString(36).substr(2, 9);
+    const sessionId = 'user_' + Math.random().toString(36).substring(2, 11);
     const client = new ChatClient(sessionId);
+
+    // Buffer the streaming response and render it in the page
+    let currentResponse = '';
+    const responseEl = document.getElementById('assistant-response');
 
     // Set up handlers
     client.onHistory = (messages) => {
@@ -1339,11 +1343,15 @@ async function initChat() {
     };
 
     client.onStreamToken = (token) => {
-        process.stdout.write(token);
+        currentResponse += token;
+        if (responseEl) {
+            responseEl.textContent = currentResponse;
+        }
     };
 
     client.onStreamEnd = (fullResponse) => {
-        console.log('\nAssistant finished:', fullResponse);
+        console.log('Assistant finished:', fullResponse);
+        currentResponse = '';
     };
 
     // Connect and send message
@@ -1395,8 +1403,7 @@ from typing import List, Optional
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.schema import HumanMessage, AIMessage, SystemMessage, Document
-from langchain.prompts import ChatPromptTemplate
+from langchain.schema import HumanMessage, AIMessage, SystemMessage
 
 class RAGChatService:
     """
