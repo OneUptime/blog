@@ -102,7 +102,7 @@ Release descriptions support multiple input methods. You can hardcode text, read
 
 For simple projects where release notes follow a template pattern.
 
-```yaml
+````yaml
 # Static description with markdown formatting
 create-release:
   stage: release
@@ -118,14 +118,14 @@ create-release:
 
       ```bash
       npm install @myorg/package@${CI_COMMIT_TAG}
-      ```bash
+      ```
 
       ## Documentation
 
       See [docs](https://docs.example.com) for usage instructions.
   rules:
     - if: $CI_COMMIT_TAG
-```text
+````
 
 ### File-Based Description
 
@@ -372,28 +372,28 @@ release-prerelease:
     - if: $CI_COMMIT_TAG =~ /^v[0-9]+\.[0-9]+\.[0-9]+-(alpha|beta|rc)\.[0-9]+$/
 ```
 
-### Branch-Based Releases
+### Tag-Pattern Differentiated Releases
 
-Create releases from specific branches with appropriate conditions.
+Since `CI_COMMIT_BRANCH` is not set in tag pipelines, use tag naming conventions to differentiate release types.
 
 ```yaml
-# Release from main branch only
+# Standard release - matches plain semantic version tags
 release-main:
   stage: release
   image: registry.gitlab.com/gitlab-org/release-cli:latest
   script:
-    - echo "Releasing from main branch"
+    - echo "Creating standard release"
   release:
     tag_name: ${CI_COMMIT_TAG}
     name: "Release ${CI_COMMIT_TAG}"
-    description: "Official release from main branch"
+    description: "Official release"
     # Explicitly reference the commit
     ref: ${CI_COMMIT_SHA}
   rules:
-    # Tag must be pushed and commit must be on main
-    - if: $CI_COMMIT_TAG && $CI_COMMIT_BRANCH == "main"
+    # Standard semantic version tags: v1.0.0, v2.1.3
+    - if: $CI_COMMIT_TAG =~ /^v[0-9]+\.[0-9]+\.[0-9]+$/
 
-# Hotfix releases from release branches
+# Hotfix releases identified by tag suffix
 release-hotfix:
   stage: release
   image: registry.gitlab.com/gitlab-org/release-cli:latest
@@ -403,12 +403,12 @@ release-hotfix:
     tag_name: ${CI_COMMIT_TAG}
     name: "Hotfix ${CI_COMMIT_TAG}"
     description: |
-      Hotfix release from ${CI_COMMIT_BRANCH}
+      Hotfix release ${CI_COMMIT_TAG}
 
       Contains critical bug fixes only.
   rules:
-    # Match release branches: release/1.x, release/2.x
-    - if: $CI_COMMIT_TAG && $CI_COMMIT_BRANCH =~ /^release\//
+    # Hotfix tag pattern: v1.0.1-hotfix, v2.3.4-hotfix.1
+    - if: $CI_COMMIT_TAG =~ /^v[0-9]+\.[0-9]+\.[0-9]+-hotfix/
 ```
 
 ---
