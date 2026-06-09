@@ -405,10 +405,11 @@ class DualWriteProducer:
         data = json.dumps(message).encode('utf-8')
 
         # Headers become Pub/Sub attributes
-        # Add ordering key as attribute for traceability
+        # Preserve the Kafka key as a separate attribute for traceability
+        # (do not use the name "ordering_key" since publish() takes it as a parameter)
         attributes = headers.copy() if headers else {}
         if key:
-            attributes['ordering_key'] = key
+            attributes['kafka_key'] = key
 
         # Publish with ordering key for ordered subscriptions
         future = self.pubsub_publisher.publish(
@@ -1095,20 +1096,22 @@ def run_migration_pipeline(argv=None):
         'enable.auto.commit': 'false',
     }
 
-    # Add timestamp filter if specified
+    # Build ReadFromKafka kwargs. start_read_time is the Beam-level
+    # parameter for filtering by Kafka record timestamp (ms since epoch).
+    read_kafka_kwargs = {
+        'consumer_config': kafka_config,
+        'topics': [options.kafka_topic],
+        # Preserve Kafka timestamps
+        'timestamp_policy': 'CreateTime',
+    }
     if options.start_timestamp:
-        kafka_config['start_timestamp'] = options.start_timestamp
+        read_kafka_kwargs['start_read_time'] = options.start_timestamp
 
     with beam.Pipeline(options=options) as pipeline:
         # Read from Kafka
         kafka_messages = (
             pipeline
-            | 'ReadFromKafka' >> ReadFromKafka(
-                consumer_config=kafka_config,
-                topics=[options.kafka_topic],
-                # Preserve Kafka timestamps
-                timestamp_policy='CreateTime'
-            )
+            | 'ReadFromKafka' >> ReadFromKafka(**read_kafka_kwargs)
         )
 
         # Transform messages
@@ -1183,7 +1186,7 @@ The following module provides comprehensive monitoring for the migration, tracki
 from google.cloud import monitoring_v3
 from google.cloud import pubsub_v1
 from kafka.admin import KafkaAdminClient
-from kafka import KafkaConsumer
+from kafka import KafkaConsumer, TopicPartition
 from dataclasses import dataclass
 from typing import Dict, Optional
 import time
@@ -1253,7 +1256,7 @@ class MigrationMonitor:
 
             for partition in partitions:
                 # Get end offset (latest message)
-                tp = (topic, partition)
+                tp = TopicPartition(topic, partition)
                 end_offset = consumer.end_offsets([tp])[tp]
 
                 # Get committed offset
@@ -1387,11 +1390,11 @@ class MigrationMonitor:
 
         total_messages = 0
         for partition in partitions:
-            tp = (topic, partition)
+            tp = TopicPartition(topic, partition)
             # Get current end offset
             end_offset = consumer.end_offsets([tp])[tp]
-            # Get offset from time_window_seconds ago
-            timestamp_ms = (time.time() - time_window_seconds) * 1000
+            # Get offset from time_window_seconds ago (milliseconds, int)
+            timestamp_ms = int((time.time() - time_window_seconds) * 1000)
             offset_for_time = consumer.offsets_for_times({tp: timestamp_ms})
             start_offset = offset_for_time.get(tp)
 
