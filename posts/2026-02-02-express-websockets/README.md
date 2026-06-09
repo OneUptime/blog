@@ -118,7 +118,7 @@ app.get('/health', (req, res) => {
 const server = createServer(app);
 
 // Create WebSocket server attached to HTTP server
-// The 'noServer' option lets us handle upgrades manually for more control
+// Passing { server } lets ws handle upgrade requests automatically
 const wss = new WebSocketServer({ server });
 
 // Store connected clients with metadata
