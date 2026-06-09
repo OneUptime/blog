@@ -205,7 +205,6 @@ kubelet-arg:
 kube-controller-manager-arg:
   - "node-monitor-period=10s"
   - "node-monitor-grace-period=5m"
-  - "pod-eviction-timeout=5m"
 ```
 
 ## Setting Up a K3s Cluster for IoT
@@ -550,7 +549,7 @@ spec:
     spec:
       nodeSelector:
         # Run on gateway node with more resources
-        node-role.kubernetes.io/master: "true"
+        node-role.kubernetes.io/control-plane: "true"
       containers:
         - name: prometheus
           image: prom/prometheus:v2.45.0
@@ -646,7 +645,7 @@ spec:
   version: v1.28.5+k3s1
   nodeSelector:
     matchExpressions:
-      - key: node-role.kubernetes.io/master
+      - key: node-role.kubernetes.io/control-plane
         operator: Exists
   serviceAccountName: system-upgrade
   cordon: true
@@ -663,7 +662,7 @@ spec:
   version: v1.28.5+k3s1
   nodeSelector:
     matchExpressions:
-      - key: node-role.kubernetes.io/master
+      - key: node-role.kubernetes.io/control-plane
         operator: DoesNotExist
   serviceAccountName: system-upgrade
   prepare:
