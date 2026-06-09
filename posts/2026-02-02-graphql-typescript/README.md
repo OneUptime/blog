@@ -276,8 +276,11 @@ const config: CodegenConfig = {
       plugins: ['typescript']
     },
     './src/generated/operations.ts': {
-      preset: 'client',
-      plugins: []
+      preset: 'import-types',
+      presetConfig: {
+        typesPath: './types'
+      },
+      plugins: ['typescript-operations', 'typed-document-node']
     }
   }
 };
