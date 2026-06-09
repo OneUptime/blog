@@ -91,8 +91,9 @@ Navigate to Manage Jenkins > Configure Global Security to access the main securi
   </authorizationStrategy>
 
   <!-- CSRF Protection - never disable in production -->
+  <!-- excludeClientIPFromCrumb=true is recommended when Jenkins is behind a reverse proxy -->
   <crumbIssuer class="hudson.security.csrf.DefaultCrumbIssuer">
-    <excludeClientIPFromCrumb>false</excludeClientIPFromCrumb>
+    <excludeClientIPFromCrumb>true</excludeClientIPFromCrumb>
   </crumbIssuer>
 </hudson>
 ```
@@ -129,8 +130,9 @@ instance.getDescriptor("jenkins.CLI").get().setEnabled(false)
 def crumbIssuer = new DefaultCrumbIssuer(true)
 instance.setCrumbIssuer(crumbIssuer)
 
-// Disable remember me for stricter session management
-instance.setDisableRememberMe(false) // Set to true for high-security environments
+// Configure the "Remember me" checkbox on the login form
+// Default is false (Remember me enabled); set to true to disable it for stricter session management
+instance.setDisableRememberMe(false)
 
 // Set markup formatter to plain text to prevent XSS
 instance.setMarkupFormatter(new hudson.markup.EscapedMarkupFormatter())
@@ -186,13 +188,19 @@ ldapConfig.setUserSearch(userSearchFilter)
 ldapConfig.setGroupSearchBase(groupSearchBase)
 ldapConfig.setGroupSearchFilter(groupSearchFilter)
 
+// Resolve group membership by searching for groups whose member attribute references the user
+ldapConfig.setGroupMembershipStrategy(new FromGroupSearchLDAPGroupMembershipStrategy(''))
+
 // Create security realm with LDAP configuration
+// The group membership strategy is set on the LDAPConfiguration above; pass null
+// for the cache and user/group id strategies to fall back to plugin defaults.
 def configurations = [ldapConfig]
 def ldapRealm = new LDAPSecurityRealm(
     configurations,
-    false,                // Disable LDAP user caching for real-time updates
-    new FromGroupSearchLDAPGroupMembershipStrategy(''),
-    new AllowBlankIdResolver()  // Handle users without email
+    false,                // disableMailAddressResolver - keep email resolution enabled
+    null,                 // CacheConfiguration - null disables LDAP user caching
+    null,                 // userIdStrategy - null uses plugin default
+    null                  // groupIdStrategy - null uses plugin default
 )
 
 // Apply the security realm
@@ -259,8 +267,8 @@ import hudson.security.*
 def instance = Jenkins.getInstance()
 
 // Create Hudson private security realm (internal database)
-// Second parameter controls whether users can sign up themselves
-def realm = new HudsonPrivateSecurityRealm(false)  // false = disable self-signup
+// Args: allowSignup, enableCaptcha, captchaSupport
+def realm = new HudsonPrivateSecurityRealm(false, false, null)  // disable self-signup, no captcha
 
 // Create admin user programmatically
 // Password should come from environment variable, not hardcoded
@@ -343,7 +351,6 @@ enum RoleType {
 def adminPermissions = [
     "hudson.model.Hudson.Administer",
     "hudson.model.Hudson.Read",
-    "hudson.model.Hudson.RunScripts",
     "hudson.model.Item.Build",
     "hudson.model.Item.Cancel",
     "hudson.model.Item.Configure",
