@@ -420,13 +420,13 @@ Groups can have custom attributes that propagate to all members. Use group attri
   -s 'attributes.supportTier=["premium"]'
 ```
 
-### Include Group Attributes in Tokens
+### Include Group Membership in Tokens
 
-Create a protocol mapper to include group attributes in JWT tokens.
+Create a protocol mapper to include the user's group membership in JWT tokens. Keycloak does not ship with a built-in mapper for custom group attributes — those require a script mapper or a custom protocol mapper SPI.
 
 ```json
 {
-  "name": "group-attributes-mapper",
+  "name": "group-membership-mapper",
   "protocol": "openid-connect",
   "protocolMapper": "oidc-group-membership-mapper",
   "config": {
@@ -529,10 +529,19 @@ Required actions force users to complete specific steps on first login.
 # Get list of required actions
 ./kcadm.sh get authentication/required-actions -r mycompany
 
-# Set default required actions for new users
+# Set default client scopes at the realm level
 ./kcadm.sh update realms/mycompany \
-  -s 'defaultDefaultClientScopes=["profile", "email"]' \
-  -s 'requiredActions=["VERIFY_EMAIL", "UPDATE_PASSWORD"]'
+  -s 'defaultDefaultClientScopes=["profile", "email"]'
+
+# Mark required actions as defaults for new users
+# Each provider's defaultAction flag must be updated individually
+./kcadm.sh update authentication/required-actions/VERIFY_EMAIL -r mycompany \
+  -s defaultAction=true \
+  -s enabled=true
+
+./kcadm.sh update authentication/required-actions/UPDATE_PASSWORD -r mycompany \
+  -s defaultAction=true \
+  -s enabled=true
 ```
 
 ### Auto-Assign Groups on Registration
@@ -832,8 +841,12 @@ USER_ID=$(./kcadm.sh get users -r mycompany \
   -s adminEventsDetailsEnabled=true
 
 # Query user events
+# The 'user' query parameter expects a user ID (UUID), not a username
+USER_ID=$(./kcadm.sh get users -r mycompany \
+  -q username=alice --fields id | jq -r '.[0].id')
+
 curl -s \
-  "http://localhost:8080/admin/realms/mycompany/events?user=alice&type=LOGIN" \
+  "http://localhost:8080/admin/realms/mycompany/events?user=$USER_ID&type=LOGIN" \
   -H "Authorization: Bearer $TOKEN" | jq
 ```
 
