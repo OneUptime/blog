@@ -41,11 +41,8 @@ dependencies {
     // Core Koin dependency
     implementation("io.insert-koin:koin-core:3.5.0")
 
-    // Android-specific features
+    // Android-specific features (ViewModel support is bundled in koin-android since 3.2)
     implementation("io.insert-koin:koin-android:3.5.0")
-
-    // ViewModel support
-    implementation("io.insert-koin:koin-androidx-viewmodel:3.5.0")
 
     // Testing utilities
     testImplementation("io.insert-koin:koin-test:3.5.0")
@@ -330,7 +327,7 @@ For pure Kotlin/JVM projects:
 ```kotlin
 fun main() {
     startKoin {
-        // Use SLF4J logger
+        // PrintLogger writes Koin logs to stdout via println
         printLogger(Level.DEBUG)
 
         modules(
