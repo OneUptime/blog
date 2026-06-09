@@ -69,9 +69,9 @@ This set of macros defines common conditions you will use repeatedly. Separating
 
 ```yaml
 # Macro for detecting process spawn events
-# This checks for execve syscall completion
+# This checks for execve/execveat syscall completion
 - macro: spawned_process
-  condition: evt.type = execve and evt.dir = <
+  condition: evt.type in (execve, execveat) and evt.dir = <
 
 # Macro for identifying container context
 # container.id equals "host" when running on the host
@@ -311,7 +311,7 @@ Priority levels help you triage alerts and configure different responses based o
 
 ### Available Priority Levels
 
-Falco supports seven priority levels, from DEBUG to EMERGENCY.
+Falco supports eight priority levels, from DEBUG to EMERGENCY.
 
 | Priority | Use Case |
 |----------|----------|
@@ -436,14 +436,15 @@ Some default rules may generate too much noise for your environment. Disable the
 
 Extend existing rules with additional conditions.
 
-The append directive lets you add conditions to existing rules. Use this to exclude known-good processes or add extra context.
+The `override` directive lets you add conditions to existing rules. Use this to exclude known-good processes or add extra context. The legacy `append: true` form still works but is deprecated since Falco 0.36 and will be removed in 1.0.0.
 
 ```yaml
 # Append exception for known CI/CD processes
 # This adds to the existing rule condition
 - rule: Terminal Shell in Container
   condition: and not proc.pname in (jenkins, gitlab-runner)
-  append: true
+  override:
+    condition: append
 
 # Append to a list
 # Adds items to the existing list
@@ -451,7 +452,8 @@ The append directive lets you add conditions to existing rules. Use this to excl
   items:
     - /opt/myapp/scripts/healthcheck.sh
     - /usr/local/bin/backup.sh
-  append: true
+  override:
+    items: append
 ```
 
 ### Overriding Rules
@@ -507,24 +509,27 @@ Exceptions keep your rules clean while allowing granular allow-listing. Define t
     - name: trusted_updaters
       # Match on image and process name
       fields: [container.image.repository, proc.name]
+      comps: [=, =]
     - name: known_files
       # Match on specific file paths
       fields: [fd.name]
+      comps: [=]
 
-# Exception entries
-- exception: Write Below Binary Directory
-  name: trusted_updaters
-  values:
-    # Allow package managers in official images
-    - [docker.io/library/debian, dpkg]
-    - [docker.io/library/ubuntu, apt]
-    - [docker.io/library/alpine, apk]
-
-- exception: Write Below Binary Directory
-  name: known_files
-  values:
-    # Allow specific files
-    - [/usr/local/bin/myapp]
+# Append exception values to the existing rule
+- rule: Write Below Binary Directory
+  exceptions:
+    - name: trusted_updaters
+      # Allow package managers in official images
+      values:
+        - [docker.io/library/debian, dpkg]
+        - [docker.io/library/ubuntu, apt]
+        - [docker.io/library/alpine, apk]
+    - name: known_files
+      # Allow specific files
+      values:
+        - [/usr/local/bin/myapp]
+  override:
+    exceptions: append
 ```
 
 ## Best Practices for Rule Configuration
@@ -609,29 +614,30 @@ Check rules for syntax errors without running Falco.
 # This checks for YAML errors and invalid field references
 falco --validate /etc/falco/rules.d/my-rules.yaml
 
-# Validate all rules
+# Validate multiple rule files (pass each file explicitly)
 falco --validate /etc/falco/falco_rules.yaml \
-      --validate /etc/falco/rules.d/
+      --validate /etc/falco/falco_rules.local.yaml \
+      --validate /etc/falco/rules.d/my-rules.yaml
 ```
 
 ### Dry Run Testing
 
 Test rules against captured system call traces.
 
-Capture traffic from a test environment, then replay it against your rules to verify detection without affecting production.
+Capture traffic from a test environment, then replay it against your rules to verify detection without affecting production. Use sysdig (or scap-capture) to record events, then point Falco at the capture file via its replay engine configuration.
 
 ```bash
-# Capture syscalls for testing (run for 60 seconds)
-sudo falco -c /etc/falco/falco.yaml \
-  --write /tmp/capture.scap \
-  -M 60
+# Capture syscalls for testing using sysdig (run for 60 seconds)
+sudo sysdig -w /tmp/capture.scap & SYSDIG_PID=$!
+sleep 60
+sudo kill $SYSDIG_PID
 
-# Test rules against captured data
+# Test rules against captured data using the replay engine
 falco -c /etc/falco/falco.yaml \
   -r /etc/falco/falco_rules.yaml \
   -r /etc/falco/rules.d/ \
-  --read /tmp/capture.scap \
-  --stats-interval 10
+  -o engine.kind=replay \
+  -o engine.replay.capture_file=/tmp/capture.scap
 ```
 
 ### Rule Statistics
