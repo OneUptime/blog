@@ -136,10 +136,9 @@ module.exports = {
   testMatch: ['**/?(*.)+(spec|test).ts'],
 
   // Point ts-jest to your test TypeScript config
-  globals: {
-    'ts-jest': {
-      tsconfig: 'tsconfig.test.json',
-    },
+  // (the `globals: { 'ts-jest': {...} }` form is deprecated in ts-jest v29+)
+  transform: {
+    '^.+\\.ts$': ['ts-jest', { tsconfig: 'tsconfig.test.json' }],
   },
 };
 ```
@@ -292,7 +291,21 @@ module.exports = {
 
 ## Performance Optimization
 
-TypeScript compilation can slow down your test suite. Here are settings to speed things up:
+TypeScript compilation can slow down your test suite. The biggest win comes from enabling `isolatedModules` so each file is transpiled independently without full type checking. As of ts-jest v29, this option lives in your `tsconfig.json` rather than ts-jest's own options:
+
+```json
+// tsconfig.test.json
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "isolatedModules": true,
+    "noEmit": true,
+    "types": ["jest", "node"]
+  }
+}
+```
+
+Then layer in caching and parallelism in your Jest config:
 
 ```javascript
 // jest.config.js
@@ -300,12 +313,9 @@ module.exports = {
   preset: 'ts-jest',
   testEnvironment: 'node',
 
-  // Use isolated modules for faster compilation
-  // Skips type checking during tests (run tsc separately)
-  globals: {
-    'ts-jest': {
-      isolatedModules: true,  // Much faster - skips type checking
-    },
+  // Use the test-specific tsconfig (which sets isolatedModules: true)
+  transform: {
+    '^.+\\.ts$': ['ts-jest', { tsconfig: 'tsconfig.test.json' }],
   },
 
   // Cache transformed files between runs
@@ -357,12 +367,10 @@ module.exports = {
   roots: ['<rootDir>/src', '<rootDir>/tests'],
   testMatch: ['**/?(*.)+(spec|test).ts'],
 
-  // TypeScript configuration
-  globals: {
-    'ts-jest': {
-      tsconfig: 'tsconfig.test.json',
-      isolatedModules: true,  // Faster compilation
-    },
+  // TypeScript configuration via the ts-jest transformer
+  // (set "isolatedModules": true in tsconfig.test.json for faster compilation)
+  transform: {
+    '^.+\\.ts$': ['ts-jest', { tsconfig: 'tsconfig.test.json' }],
   },
 
   // Path alias resolution (must match tsconfig paths)
