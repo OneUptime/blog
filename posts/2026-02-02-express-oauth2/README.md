@@ -91,7 +91,7 @@ Each OAuth provider requires its own Passport strategy. Here is a comparison of 
 | Google | passport-google-oauth20 | profile, email, openid | General apps, workspace integration |
 | GitHub | passport-github2 | user, user:email, repo | Developer tools, code-related apps |
 | Facebook | passport-facebook | email, public_profile | Consumer apps, social features |
-| Twitter | passport-twitter | users.read, tweet.read | Social apps, marketing tools |
+| Twitter/X | @superfaceai/passport-twitter-oauth2 | users.read, tweet.read, offline.access | Social apps, marketing tools |
 
 ### Google OAuth Strategy
 
@@ -357,7 +357,7 @@ app.listen(PORT, () => {
 
 Before testing, you need to register your app with each provider:
 
-**Google**: Go to the Google Cloud Console, create a project, enable the Google+ API, and create OAuth credentials. Add `http://localhost:3000/auth/google/callback` as an authorized redirect URI.
+**Google**: Go to the Google Cloud Console, create a project, configure the OAuth consent screen, and create OAuth 2.0 client credentials. Add `http://localhost:3000/auth/google/callback` as an authorized redirect URI.
 
 **GitHub**: Go to GitHub Settings > Developer Settings > OAuth Apps. Create a new app with `http://localhost:3000/auth/github/callback` as the callback URL.
 
