@@ -57,6 +57,9 @@ The schema is the heart of any GraphQL API. In Absinthe, you define it using Eli
 defmodule MyAppWeb.Schema do
   use Absinthe.Schema
 
+  # Import custom scalars like :datetime, :date, :decimal
+  import_types Absinthe.Type.Custom
+
   # Import your type definitions
   import_types MyAppWeb.Schema.UserTypes
   import_types MyAppWeb.Schema.PostTypes
@@ -134,16 +137,16 @@ defmodule MyAppWeb.Schema.UserTypes do
 end
 ```
 
-Here's a quick reference for Absinthe's built-in scalar types:
+Here's a quick reference for Absinthe's scalar types:
 
 | Absinthe Type | Elixir Type | Description |
 |---------------|-------------|-------------|
-| `:id` | String | Unique identifier |
-| `:string` | String | UTF-8 text |
-| `:integer` | Integer | Whole numbers |
-| `:float` | Float | Decimal numbers |
-| `:boolean` | Boolean | true/false |
-| `:datetime` | DateTime | ISO 8601 datetime |
+| `:id` | String | Unique identifier (built-in) |
+| `:string` | String | UTF-8 text (built-in) |
+| `:integer` | Integer | Whole numbers (built-in) |
+| `:float` | Float | Decimal numbers (built-in) |
+| `:boolean` | Boolean | true/false (built-in) |
+| `:datetime` | DateTime | ISO 8601 datetime (requires `import_types Absinthe.Type.Custom`) |
 
 ---
 
@@ -300,6 +303,7 @@ Add authentication by creating custom middleware or using the context.
 # lib/my_app_web/plugs/graphql_context.ex
 defmodule MyAppWeb.Plugs.GraphQLContext do
   @behaviour Plug
+  import Plug.Conn
 
   def init(opts), do: opts
 
