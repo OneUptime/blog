@@ -346,12 +346,14 @@ def create_token(user_id: str, role: str) -> str:
     """Create a JWT for the given user."""
 
     # Calculate expiration time (1 hour from now)
-    expiration = datetime.datetime.utcnow() + datetime.timedelta(hours=1)
+    # Note: utcnow() is deprecated in Python 3.12+, use now(timezone.utc) instead
+    now = datetime.datetime.now(datetime.timezone.utc)
+    expiration = now + datetime.timedelta(hours=1)
 
     payload = {
         'sub': user_id,
         'role': role,
-        'iat': datetime.datetime.utcnow(),
+        'iat': now,
         'exp': expiration,
         'iss': 'myapp.com',
         'aud': 'myapp-api'
