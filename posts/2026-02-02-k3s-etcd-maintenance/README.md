@@ -50,12 +50,11 @@ K3s bundles etcdctl within its binary. You can access it using the k3s etcd-snap
 The following command checks if all etcd members are healthy and reachable:
 
 ```bash
-# Check etcd member health using K3s built-in command
-
-sudo k3s etcd-snapshot info
-
-# For more detailed health information, use kubectl
+# Check etcd cluster health via the Kubernetes API
 kubectl get --raw=/healthz/etcd
+
+# Verify the K3s etcd subsystem is responsive by listing snapshots
+sudo k3s etcd-snapshot ls
 ```
 
 For direct etcdctl access, K3s stores certificates in a specific location:
