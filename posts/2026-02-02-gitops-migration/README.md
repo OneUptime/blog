@@ -203,7 +203,7 @@ echo "apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:" > kustomization.yaml
 
-for f in *.yaml *.yml 2>/dev/null; do
+for f in *.yaml *.yml; do
   if [ -f "$f" ] && [ "$f" != "kustomization.yaml" ]; then
     echo "  - $f" >> kustomization.yaml
   fi
@@ -530,7 +530,7 @@ Create a ClusterSecretStore for your provider.
 ```yaml
 # secret-stores/aws-secretsmanager.yaml
 # ClusterSecretStore for AWS Secrets Manager
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: aws-secrets-manager
@@ -552,7 +552,7 @@ Convert your secrets to ExternalSecret resources.
 ```yaml
 # apps/myapp/base/external-secret.yaml
 # ExternalSecret pulls database credentials from AWS Secrets Manager
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: myapp-db-credentials
