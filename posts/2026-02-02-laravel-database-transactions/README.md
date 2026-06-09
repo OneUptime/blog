@@ -121,9 +121,9 @@ try {
 
 ## Handling Deadlocks with Retry Logic
 
-In high-concurrency environments, deadlocks can occur when multiple transactions compete for the same resources. Laravel's transaction method accepts a second parameter specifying how many times to retry.
+In high-concurrency environments, deadlocks can occur when multiple transactions compete for the same resources. Laravel's transaction method accepts a second parameter specifying the total number of attempts.
 
-When a deadlock occurs, Laravel will automatically retry the transaction up to the specified number of times before giving up.
+When a deadlock occurs, Laravel will automatically reattempt the transaction up to the specified number of total attempts before giving up.
 
 ```php
 <?php
@@ -131,7 +131,7 @@ When a deadlock occurs, Laravel will automatically retry the transaction up to t
 use Illuminate\Support\Facades\DB;
 use App\Models\Product;
 
-// Retry up to 5 times if a deadlock occurs
+// Attempt up to 5 times if a deadlock occurs (1 initial + 4 retries)
 DB::transaction(function () {
     $product = Product::where('id', 1)->lockForUpdate()->first();
 
@@ -140,7 +140,7 @@ DB::transaction(function () {
     $product->times_purchased += 1;
     $product->save();
 
-}, 5); // Retry 5 times on deadlock
+}, 5); // Up to 5 total attempts on deadlock
 ```
 
 ## Transaction Isolation Levels
@@ -479,7 +479,7 @@ DB::transaction(function () use ($order, $paymentResult) {
 ```php
 <?php
 
-// Pessimistic locking - prevents other reads until transaction completes
+// Pessimistic locking - prevents other transactions from modifying or locking these rows
 $product = Product::where('id', $id)->lockForUpdate()->first();
 
 // Shared lock - allows other reads but prevents updates
