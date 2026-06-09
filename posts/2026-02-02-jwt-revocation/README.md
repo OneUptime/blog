@@ -464,10 +464,7 @@ CREATE TABLE refresh_tokens (
     ip_address INET,
     expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL,
-    revoked_at TIMESTAMP WITH TIME ZONE,
-
-    -- Index for fast token lookups
-    CONSTRAINT idx_token_id UNIQUE (token_id)
+    revoked_at TIMESTAMP WITH TIME ZONE
 );
 
 -- Index for finding all tokens for a user
@@ -784,9 +781,9 @@ class DistributedBlacklist extends EventEmitter {
     }
   }
 
-  // Add to local cache with LRU eviction
+  // Add to local cache with FIFO eviction (oldest insertion is evicted first)
   addToLocalCache(tokenId, expiresAt) {
-    // Evict oldest entries if cache is full
+    // Evict the oldest entry if cache is full
     if (this.localCache.size >= this.localCacheMaxSize) {
       const firstKey = this.localCache.keys().next().value;
       this.localCache.delete(firstKey);
