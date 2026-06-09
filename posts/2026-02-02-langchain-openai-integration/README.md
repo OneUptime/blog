@@ -811,7 +811,7 @@ OpenAI API usage incurs costs based on token consumption. Here are strategies to
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
-from langchain.callbacks import get_openai_callback
+from langchain_community.callbacks.manager import get_openai_callback
 
 # Strategy 1: Use appropriate model for the task
 # GPT-4o for complex reasoning, GPT-3.5-turbo for simple tasks
