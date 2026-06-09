@@ -293,8 +293,9 @@ Here's a simplified Redis-backed manager:
 
 ```python
 # redis_manager.py
-import aioredis
+import asyncio
 import json
+import redis.asyncio as redis
 from fastapi import WebSocket
 
 class RedisConnectionManager:
@@ -305,7 +306,7 @@ class RedisConnectionManager:
 
     async def initialize(self):
         """Call this on application startup."""
-        self.redis = await aioredis.from_url(self.redis_url)
+        self.redis = redis.from_url(self.redis_url)
         # Start listening for messages from other servers
         asyncio.create_task(self._listen_for_broadcasts())
 
