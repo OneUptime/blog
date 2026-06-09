@@ -53,7 +53,7 @@ For using other LLM providers, install the relevant package:
 pip install langchain-anthropic
 
 # For local models with Ollama
-pip install langchain-community
+pip install langchain-ollama
 
 # For Google models
 pip install langchain-google-genai
@@ -202,17 +202,17 @@ This example shows how to use different model providers with the same chain stru
 ```python
 from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
-from langchain_community.llms import Ollama
+from langchain_ollama import ChatOllama
 from langchain_core.prompts import ChatPromptTemplate
 
 # OpenAI GPT-4
 openai_llm = ChatOpenAI(model="gpt-4")
 
 # Anthropic Claude
-anthropic_llm = ChatAnthropic(model="claude-3-sonnet-20240229")
+anthropic_llm = ChatAnthropic(model="claude-sonnet-4-5")
 
 # Local Ollama model - great for development and privacy
-ollama_llm = Ollama(model="llama2")
+ollama_llm = ChatOllama(model="llama3")
 
 # Same prompt works with any model
 prompt = ChatPromptTemplate.from_template(
@@ -297,7 +297,7 @@ This example shows how to parse LLM output into a Python dictionary with specifi
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
-from langchain_core.pydantic_v1 import BaseModel, Field
+from pydantic import BaseModel, Field
 
 # Define the expected output structure using Pydantic
 class MovieReview(BaseModel):
@@ -440,7 +440,7 @@ primary_llm = ChatOpenAI(
 
 # Fallback model in case primary fails completely
 fallback_llm = ChatAnthropic(
-    model="claude-3-haiku-20240307",
+    model="claude-haiku-4-5",
     max_retries=2
 )
 
@@ -520,9 +520,9 @@ response = chain.invoke({"topic": "programming"})
 For production monitoring with LangSmith:
 
 ```bash
-export LANGCHAIN_TRACING_V2=true
-export LANGCHAIN_API_KEY="your-langsmith-api-key"
-export LANGCHAIN_PROJECT="my-project"
+export LANGSMITH_TRACING=true
+export LANGSMITH_API_KEY="your-langsmith-api-key"
+export LANGSMITH_PROJECT="my-project"
 ```
 
 ## Common Patterns Summary
