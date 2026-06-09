@@ -20,10 +20,10 @@ Google offers two generations of Cloud Functions:
 
 | Feature | 1st Gen | 2nd Gen |
 |---------|---------|---------|
-| **Max timeout** | 9 minutes | 60 minutes |
-| **Max instances** | 3000 | 1000 (configurable) |
+| **Max timeout** | 9 minutes | 60 minutes (HTTP), 9 minutes (event-driven) |
+| **Max instances** | 3000 | 100 default, configurable up to 1000 |
 | **Concurrency** | 1 request per instance | Up to 1000 per instance |
-| **Min instances** | Not supported | Supported |
+| **Min instances** | Supported | Supported |
 | **VPC connector** | Supported | Supported |
 | **Built on** | Proprietary | Cloud Run |
 
@@ -432,6 +432,8 @@ def secure_function(request):
 def get_secret(secret_id: str, version: str = "latest") -> str:
     """
     Retrieve a secret from Google Cloud Secret Manager.
+    Note: In 2nd gen Cloud Functions, GCP_PROJECT is not auto-set,
+    so it must be provided via --set-env-vars during deployment.
     """
     project_id = os.environ.get("GCP_PROJECT")
 
@@ -458,11 +460,13 @@ echo -n "your-api-key" | gcloud secrets create api-key --data-file=-
 echo -n "your-db-password" | gcloud secrets create db-password --data-file=-
 
 # Grant the function access to secrets
+# 2nd gen functions use the Compute Engine default service account by default
 gcloud secrets add-iam-policy-binding api-key \
-    --member="serviceAccount:YOUR_PROJECT@appspot.gserviceaccount.com" \
+    --member="serviceAccount:PROJECT_NUMBER-compute@developer.gserviceaccount.com" \
     --role="roles/secretmanager.secretAccessor"
 
 # Deploy with environment variables
+# GCP_PROJECT must be set explicitly in 2nd gen (it is not auto-injected)
 gcloud functions deploy secure-function \
     --gen2 \
     --runtime python312 \
@@ -470,7 +474,7 @@ gcloud functions deploy secure-function \
     --source . \
     --entry-point secure_function \
     --trigger-http \
-    --set-env-vars ENVIRONMENT=production,API_ENDPOINT=https://api.prod.example.com \
+    --set-env-vars ENVIRONMENT=production,API_ENDPOINT=https://api.prod.example.com,GCP_PROJECT=YOUR_PROJECT_ID \
     --allow-unauthenticated
 ```
 
@@ -669,7 +673,7 @@ pg8000==1.*
 cloud-sql-python-connector==1.*
 ```
 
-Deploy with Cloud SQL connection:
+Deploy with Cloud SQL connection. The `--add-cloudsql-instances` flag is required to mount the Unix socket at `/cloudsql/INSTANCE_CONNECTION_NAME`:
 
 ```bash
 gcloud functions deploy database-function \
@@ -679,6 +683,7 @@ gcloud functions deploy database-function \
     --source . \
     --entry-point database_function \
     --trigger-http \
+    --add-cloudsql-instances project:region:instance \
     --set-env-vars DB_USER=myuser,DB_NAME=mydb,INSTANCE_CONNECTION_NAME=project:region:instance \
     --set-secrets DB_PASS=db-password:latest \
     --allow-unauthenticated
