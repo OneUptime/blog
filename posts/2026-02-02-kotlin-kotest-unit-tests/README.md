@@ -55,6 +55,9 @@ dependencies {
     // Kotest assertions library
     testImplementation("io.kotest:kotest-assertions-core:5.8.0")
 
+    // Data-driven testing (required for withData)
+    testImplementation("io.kotest:kotest-framework-datatest:5.8.0")
+
     // Property-based testing (optional)
     testImplementation("io.kotest:kotest-property:5.8.0")
 
@@ -123,6 +126,7 @@ BehaviorSpec follows the Given-When-Then pattern, making tests read like specifi
 import io.kotest.core.spec.style.BehaviorSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.collections.shouldHaveSize
+import io.kotest.assertions.throwables.shouldThrow
 
 class OrderServiceBehaviorSpecTest : BehaviorSpec({
 
@@ -206,6 +210,7 @@ DescribeSpec uses the describe/it pattern popular in JavaScript testing framewor
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
+import io.kotest.assertions.throwables.shouldThrow
 
 class AuthServiceDescribeSpecTest : DescribeSpec({
 
@@ -263,6 +268,9 @@ import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.types.shouldBeInstanceOf
 import io.kotest.matchers.string.*
 import io.kotest.matchers.comparables.*
+import io.kotest.matchers.ints.shouldBeBetween
+import io.kotest.matchers.nulls.shouldBeNull
+import io.kotest.matchers.nulls.shouldNotBeNull
 
 class MatchersExampleTest : FunSpec({
 
@@ -376,6 +384,7 @@ import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.assertions.throwables.shouldThrowAny
 import io.kotest.assertions.throwables.shouldNotThrow
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.maps.shouldContainKey
 
 class ExceptionTest : FunSpec({
 
@@ -479,6 +488,7 @@ For more complex test data, use data classes with `withData`.
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.datatest.withData
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.doubles.plusOrMinus
 
 // Data class representing a test case
 data class PriceCalculationTestCase(
@@ -570,6 +580,7 @@ MockK integrates naturally with Kotest for mocking dependencies. Here is how to 
 // src/test/kotlin/MockingTest.kt
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.assertions.throwables.shouldThrow
 import io.mockk.*
 
 class MockingTest : FunSpec({
