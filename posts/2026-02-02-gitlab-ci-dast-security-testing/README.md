@@ -12,7 +12,7 @@ Dynamic Application Security Testing (DAST) finds vulnerabilities in running app
 
 ## What is DAST?
 
-DAST scanners crawl your application, identify entry points, and probe for common vulnerabilities like SQL injection, cross-site scripting (XSS), and authentication bypasses. GitLab includes a built-in DAST analyzer powered by OWASP ZAP that integrates directly into your CI/CD pipeline.
+DAST scanners crawl your application, identify entry points, and probe for common vulnerabilities like SQL injection, cross-site scripting (XSS), and authentication bypasses. GitLab includes a built-in DAST browser-based analyzer (proprietary, replacing the legacy proxy-based ZAP analyzer that was removed in GitLab 17.3) that integrates directly into your CI/CD pipeline.
 
 ```mermaid
 flowchart LR
@@ -62,14 +62,12 @@ The following configuration includes the GitLab DAST template and defines the ta
 # Include the official GitLab DAST template
 
 include:
-  - template: DAST.gitlab-ci.yml
+  - template: Security/DAST.gitlab-ci.yml
 
 # Define variables for DAST configuration
 variables:
   # URL of the application to scan
-  DAST_WEBSITE: "https://staging.example.com"
-  # Browser-based scanning for modern JavaScript apps
-  DAST_BROWSER_SCAN: "true"
+  DAST_TARGET_URL: "https://staging.example.com"
 
 # Ensure DAST runs only after deployment
 stages:
@@ -89,16 +87,16 @@ A full scan provides comprehensive coverage but takes longer to complete. Use fo
 
 ```yaml
 include:
-  - template: DAST.gitlab-ci.yml
+  - template: Security/DAST.gitlab-ci.yml
 
 variables:
-  DAST_WEBSITE: "https://staging.example.com"
-  # Full scan crawls deeply and tests all parameters
-  DAST_FULL_SCAN_ENABLED: "true"
-  # Increase spider duration for large applications
-  DAST_SPIDER_MINS: "30"
-  # Maximum number of URLs to scan
-  DAST_MAX_URLS_PER_VULNERABILITY: "50"
+  DAST_TARGET_URL: "https://staging.example.com"
+  # Full scan runs both passive and active checks
+  DAST_FULL_SCAN: "true"
+  # Increase crawl duration for large applications
+  DAST_CRAWL_TIMEOUT: "30m"
+  # Limit the number of crawl actions for large applications
+  DAST_CRAWL_MAX_ACTIONS: "10000"
 
 # Override the DAST job to run on schedule
 dast:
@@ -115,21 +113,21 @@ Passive scanning observes responses without sending attack payloads. Faster and 
 
 ```yaml
 include:
-  - template: DAST.gitlab-ci.yml
+  - template: Security/DAST.gitlab-ci.yml
 
 variables:
-  DAST_WEBSITE: "https://production.example.com"
-  # Passive mode only observes, never attacks
-  DAST_FULL_SCAN_ENABLED: "false"
-  # Limit crawl depth for quick scans
-  DAST_SPIDER_MINS: "5"
+  DAST_TARGET_URL: "https://production.example.com"
+  # Passive mode only observes, never attacks (default when DAST_FULL_SCAN is false)
+  DAST_FULL_SCAN: "false"
+  # Limit crawl duration for quick scans
+  DAST_CRAWL_TIMEOUT: "5m"
 
 dast:
   rules:
     # Only run passive scans on production
     - if: $CI_COMMIT_BRANCH == "main"
       variables:
-        DAST_WEBSITE: "https://production.example.com"
+        DAST_TARGET_URL: "https://production.example.com"
 ```
 
 ## DAST Scan Architecture
@@ -166,27 +164,26 @@ Configure DAST to fill out and submit a login form. The scanner then uses the au
 
 ```yaml
 include:
-  - template: DAST.gitlab-ci.yml
+  - template: Security/DAST.gitlab-ci.yml
 
 variables:
-  DAST_WEBSITE: "https://staging.example.com"
-  DAST_BROWSER_SCAN: "true"
+  DAST_TARGET_URL: "https://staging.example.com"
   # Enable authentication
   DAST_AUTH_URL: "https://staging.example.com/login"
   # CSS selector for username field
-  DAST_USERNAME_FIELD: "input[name='email']"
+  DAST_AUTH_USERNAME_FIELD: "input[name='email']"
   # CSS selector for password field
-  DAST_PASSWORD_FIELD: "input[name='password']"
+  DAST_AUTH_PASSWORD_FIELD: "input[name='password']"
   # CSS selector for submit button
-  DAST_SUBMIT_FIELD: "button[type='submit']"
-  # Element that indicates successful login
-  DAST_AUTH_VERIFICATION_URL: "https://staging.example.com/dashboard"
+  DAST_AUTH_SUBMIT_FIELD: "button[type='submit']"
+  # URL that indicates a successful login (supports wildcards)
+  DAST_AUTH_SUCCESS_IF_URL: "https://staging.example.com/dashboard"
 
 # Store credentials securely in CI/CD variables
 # Never hardcode credentials in gitlab-ci.yml
-# Set these in Settings > CI/CD > Variables:
-# - DAST_USERNAME
-# - DAST_PASSWORD
+# Set these as masked CI/CD variables in Settings > CI/CD > Variables:
+# - DAST_AUTH_USERNAME
+# - DAST_AUTH_PASSWORD
 ```
 
 ### HTTP Basic Authentication
@@ -195,17 +192,16 @@ For applications using HTTP Basic Auth, configure the scanner with credentials d
 
 ```yaml
 include:
-  - template: DAST.gitlab-ci.yml
+  - template: Security/DAST.gitlab-ci.yml
 
 variables:
-  DAST_WEBSITE: "https://staging.example.com"
-  # Enable Basic Auth
-  DAST_AUTH_TYPE: "basic"
-  # Username and password from CI/CD variables
-  DAST_AUTH_URL: "https://staging.example.com"
+  DAST_TARGET_URL: "https://staging.example.com"
+  # Enable Basic/Digest HTTP authentication
+  DAST_AUTH_TYPE: "basic-digest"
 
-# The scanner will use DAST_USERNAME and DAST_PASSWORD
-# variables automatically when DAST_AUTH_TYPE is set
+# The scanner will use DAST_AUTH_USERNAME and DAST_AUTH_PASSWORD
+# automatically when DAST_AUTH_TYPE is set. Define them as masked
+# CI/CD variables, not in the YAML file.
 ```
 
 ### Token-Based Authentication
@@ -214,12 +210,10 @@ Modern APIs often use bearer tokens. Configure DAST to include authentication he
 
 ```yaml
 include:
-  - template: DAST.gitlab-ci.yml
+  - template: Security/DAST.gitlab-ci.yml
 
 variables:
-  DAST_WEBSITE: "https://api.staging.example.com"
-  # API scanning mode
-  DAST_API_OPENAPI: "https://api.staging.example.com/openapi.json"
+  DAST_TARGET_URL: "https://api.staging.example.com"
 
 # Custom script to obtain and use auth token
 dast:
@@ -230,7 +224,7 @@ dast:
         -d "client_id=${API_CLIENT_ID}" \
         -d "client_secret=${API_CLIENT_SECRET}" \
         -d "grant_type=client_credentials" | jq -r '.access_token')
-    # Export for DAST to use
+    # Export for DAST to use as a request header
     - export DAST_REQUEST_HEADERS="Authorization: Bearer ${TOKEN}"
 ```
 
@@ -244,20 +238,20 @@ Point DAST at your OpenAPI spec to scan all documented endpoints systematically.
 
 ```yaml
 include:
-  - template: DAST-API.gitlab-ci.yml
+  - template: Security/API-Security.gitlab-ci.yml
 
 variables:
   # Path to OpenAPI specification
-  DAST_API_OPENAPI: "https://staging.example.com/api/v1/openapi.json"
+  APISEC_OPENAPI: "https://staging.example.com/api/v1/openapi.json"
   # Or use a local file in the repository
-  # DAST_API_OPENAPI: "./docs/openapi.yaml"
+  # APISEC_OPENAPI: "./docs/openapi.yaml"
 
   # Target URL if different from spec server
-  DAST_API_TARGET_URL: "https://staging.example.com"
+  APISEC_TARGET_URL: "https://staging.example.com"
 
-  # Authentication header for API calls
-  DAST_API_HTTP_USERNAME: "${API_USER}"
-  DAST_API_HTTP_PASSWORD: "${API_PASS}"
+  # Authentication for API calls
+  APISEC_HTTP_USERNAME: "${API_USER}"
+  APISEC_HTTP_PASSWORD: "${API_PASS}"
 ```
 
 ### GraphQL API Scanning
@@ -266,18 +260,18 @@ GraphQL APIs require introspection queries to discover the schema. Enable GraphQ
 
 ```yaml
 include:
-  - template: DAST-API.gitlab-ci.yml
+  - template: Security/API-Security.gitlab-ci.yml
 
 variables:
   # GraphQL endpoint URL
-  DAST_API_GRAPHQL: "https://staging.example.com/graphql"
+  APISEC_GRAPHQL: "https://staging.example.com/graphql"
   # Schema file if introspection is disabled
-  DAST_API_GRAPHQL_SCHEMA: "./schema.graphql"
+  APISEC_GRAPHQL_SCHEMA: "./schema.graphql"
 
-dast_api:
+apisec:
   variables:
     # Include authentication token
-    DAST_API_HTTP_HEADERS: "Authorization: Bearer ${GRAPHQL_TOKEN}"
+    APISEC_REQUEST_HEADERS: "Authorization: Bearer ${GRAPHQL_TOKEN}"
 ```
 
 ## Handling Scan Results
@@ -290,12 +284,12 @@ Control which vulnerabilities block the pipeline and which generate warnings onl
 
 ```yaml
 include:
-  - template: DAST.gitlab-ci.yml
+  - template: Security/DAST.gitlab-ci.yml
 
 variables:
-  DAST_WEBSITE: "https://staging.example.com"
+  DAST_TARGET_URL: "https://staging.example.com"
   # Only fail pipeline on critical vulnerabilities
-  DAST_FULL_SCAN_ENABLED: "true"
+  DAST_FULL_SCAN: "true"
 
 # Configure vulnerability thresholds
 dast:
@@ -318,10 +312,10 @@ Use a post-scan job to implement custom logic for handling results.
 
 ```yaml
 include:
-  - template: DAST.gitlab-ci.yml
+  - template: Security/DAST.gitlab-ci.yml
 
 variables:
-  DAST_WEBSITE: "https://staging.example.com"
+  DAST_TARGET_URL: "https://staging.example.com"
 
 # Custom job to evaluate DAST results
 evaluate_dast:
@@ -384,10 +378,10 @@ Review and dismiss false positives directly in the GitLab UI, or use the API for
 
 ```yaml
 include:
-  - template: DAST.gitlab-ci.yml
+  - template: Security/DAST.gitlab-ci.yml
 
 variables:
-  DAST_WEBSITE: "https://staging.example.com"
+  DAST_TARGET_URL: "https://staging.example.com"
 
 # Job to auto-dismiss known false positives
 dismiss_false_positives:
@@ -417,14 +411,14 @@ Some URLs should never be scanned, such as logout endpoints or external links.
 
 ```yaml
 include:
-  - template: DAST.gitlab-ci.yml
+  - template: Security/DAST.gitlab-ci.yml
 
 variables:
-  DAST_WEBSITE: "https://staging.example.com"
-  # Exclude specific paths from scanning
-  DAST_EXCLUDE_URLS: "https://staging.example.com/logout,https://staging.example.com/external/*"
-  # Exclude URLs matching regex patterns
-  DAST_EXCLUDE_RULES: "10020,10021"  # Information disclosure rules
+  DAST_TARGET_URL: "https://staging.example.com"
+  # Exclude specific URL regex patterns from scanning
+  DAST_SCOPE_EXCLUDE_URLS: "https://staging.example.com/logout,https://staging.example.com/external/.*"
+  # Disable specific vulnerability checks by ID
+  DAST_CHECKS_TO_EXCLUDE: "16.1,16.2"
 ```
 
 ## Complete Pipeline Example
@@ -446,7 +440,7 @@ include:
   - template: Security/SAST.gitlab-ci.yml
   - template: Security/Dependency-Scanning.gitlab-ci.yml
   - template: Security/Secret-Detection.gitlab-ci.yml
-  - template: DAST.gitlab-ci.yml
+  - template: Security/DAST.gitlab-ci.yml
 
 variables:
   # Application configuration
@@ -455,14 +449,13 @@ variables:
   PRODUCTION_URL: "https://myapp.com"
 
   # DAST configuration
-  DAST_WEBSITE: "${STAGING_URL}"
-  DAST_BROWSER_SCAN: "true"
-  DAST_FULL_SCAN_ENABLED: "true"
+  DAST_TARGET_URL: "${STAGING_URL}"
+  DAST_FULL_SCAN: "true"
   DAST_AUTH_URL: "${STAGING_URL}/login"
-  DAST_USERNAME_FIELD: "#email"
-  DAST_PASSWORD_FIELD: "#password"
-  DAST_SUBMIT_FIELD: "button[type='submit']"
-  DAST_AUTH_VERIFICATION_URL: "${STAGING_URL}/dashboard"
+  DAST_AUTH_USERNAME_FIELD: "#email"
+  DAST_AUTH_PASSWORD_FIELD: "#password"
+  DAST_AUTH_SUBMIT_FIELD: "button[type='submit']"
+  DAST_AUTH_SUCCESS_IF_URL: "${STAGING_URL}/dashboard"
 
 # Build the application
 build:
@@ -509,7 +502,7 @@ dast:
   needs:
     - deploy_staging
   variables:
-    DAST_SPIDER_MINS: "15"
+    DAST_CRAWL_TIMEOUT: "15m"
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
   artifacts:
@@ -541,23 +534,22 @@ deploy_production:
     - dast
 ```
 
-## Browser-Based Scanning
+## Browser-Based Scanning Tuning
 
-Modern web applications with heavy JavaScript require browser-based scanning. DAST can use a real browser to execute JavaScript and interact with dynamic content.
+The GitLab DAST analyzer is browser-based by default, executing JavaScript and interacting with dynamic content. You can tune crawl and page-load behavior with the following variables.
 
 ```yaml
 include:
-  - template: DAST.gitlab-ci.yml
+  - template: Security/DAST.gitlab-ci.yml
 
 variables:
-  DAST_WEBSITE: "https://staging.example.com"
-  # Enable browser-based crawler
-  DAST_BROWSER_SCAN: "true"
-  # Browser scan specific options
-  DAST_BROWSER_ACTION_TIMEOUT: "10"
-  DAST_BROWSER_PAGE_TIMEOUT: "60"
-  # Wait for JavaScript to load
-  DAST_BROWSER_STABILITY_TIMEOUT: "5"
+  DAST_TARGET_URL: "https://staging.example.com"
+  # How long to wait for the DOM to be ready (default 6s)
+  DAST_PAGE_DOM_READY_TIMEOUT: "10s"
+  # How long to wait after a navigation before considering the page ready (default 15s)
+  DAST_PAGE_READY_AFTER_NAVIGATION_TIMEOUT: "30s"
+  # Concurrent browser instances used by the crawler
+  DAST_CRAWL_WORKER_COUNT: "4"
 
 dast:
   # Increase resources for browser scanning
@@ -573,26 +565,26 @@ Run comprehensive DAST scans on a schedule rather than on every commit.
 
 ```yaml
 include:
-  - template: DAST.gitlab-ci.yml
+  - template: Security/DAST.gitlab-ci.yml
 
 variables:
-  DAST_WEBSITE: "https://staging.example.com"
+  DAST_TARGET_URL: "https://staging.example.com"
 
 # Full scan for scheduled pipelines
 dast:
   variables:
-    DAST_FULL_SCAN_ENABLED: "true"
-    DAST_SPIDER_MINS: "60"
+    DAST_FULL_SCAN: "true"
+    DAST_CRAWL_TIMEOUT: "60m"
   rules:
     # Nightly full scan
     - if: $CI_PIPELINE_SOURCE == "schedule"
       variables:
-        DAST_FULL_SCAN_ENABLED: "true"
+        DAST_FULL_SCAN: "true"
     # Quick scan on merge requests
     - if: $CI_MERGE_REQUEST_IID
       variables:
-        DAST_FULL_SCAN_ENABLED: "false"
-        DAST_SPIDER_MINS: "5"
+        DAST_FULL_SCAN: "false"
+        DAST_CRAWL_TIMEOUT: "5m"
 ```
 
 Create a scheduled pipeline in GitLab:
@@ -611,25 +603,19 @@ Split the application into sections and scan them in parallel jobs.
 
 ```yaml
 include:
-  - template: DAST.gitlab-ci.yml
+  - template: Security/DAST.gitlab-ci.yml
 
 # Scan different application sections in parallel
 dast_frontend:
   extends: dast
   variables:
-    DAST_WEBSITE: "https://staging.example.com/app"
-    DAST_EXCLUDE_URLS: "https://staging.example.com/api/*"
-
-dast_api:
-  extends: dast
-  variables:
-    DAST_WEBSITE: "https://staging.example.com/api"
-    DAST_API_OPENAPI: "./openapi.json"
+    DAST_TARGET_URL: "https://staging.example.com/app"
+    DAST_SCOPE_EXCLUDE_URLS: "https://staging.example.com/api/.*"
 
 dast_admin:
   extends: dast
   variables:
-    DAST_WEBSITE: "https://staging.example.com/admin"
+    DAST_TARGET_URL: "https://staging.example.com/admin"
     DAST_AUTH_URL: "https://staging.example.com/admin/login"
 ```
 
@@ -639,20 +625,20 @@ Only scan pages that changed since the last scan using URL filtering.
 
 ```yaml
 include:
-  - template: DAST.gitlab-ci.yml
+  - template: Security/DAST.gitlab-ci.yml
 
 variables:
-  DAST_WEBSITE: "https://staging.example.com"
+  DAST_TARGET_URL: "https://staging.example.com"
 
 dast:
   before_script:
-    # Generate list of changed URLs from git diff
+    # Generate list of changed URL paths from git diff
     - |
       git diff --name-only HEAD~1 HEAD | \
         grep -E '\.(html|js|php|py)$' | \
-        sed 's|src/|https://staging.example.com/|g' > changed_urls.txt
-    # Export as include list
-    - export DAST_PATHS_FILE="changed_urls.txt"
+        sed 's|^src/|/|g' > changed_paths.txt
+    # Use the file as the explicit list of paths to scan
+    - export DAST_TARGET_PATHS_FILE="changed_paths.txt"
 ```
 
 ## Troubleshooting DAST Issues
@@ -670,7 +656,7 @@ check_connectivity:
   image: curlimages/curl:latest
   script:
     # Verify target is reachable
-    - curl -s -o /dev/null -w "%{http_code}" ${DAST_WEBSITE}
+    - curl -s -o /dev/null -w "%{http_code}" ${DAST_TARGET_URL}
     # Check specific endpoints
     - curl -s -o /dev/null -w "%{http_code}" ${DAST_AUTH_URL}
   rules:
@@ -687,14 +673,12 @@ Debug authentication issues by checking the login flow.
 
 ```yaml
 include:
-  - template: DAST.gitlab-ci.yml
+  - template: Security/DAST.gitlab-ci.yml
 
 variables:
-  DAST_WEBSITE: "https://staging.example.com"
-  # Enable debug logging
-  DAST_DEBUG: "true"
-  # Increase authentication timeout
-  DAST_AUTH_TIMEOUT: "60"
+  DAST_TARGET_URL: "https://staging.example.com"
+  # Generate an authentication debugging report artifact
+  DAST_AUTH_REPORT: "true"
 
 # Check authentication separately
 test_auth:
@@ -704,12 +688,12 @@ test_auth:
     # Test login endpoint
     - |
       RESPONSE=$(curl -s -X POST ${DAST_AUTH_URL} \
-        -d "email=${DAST_USERNAME}" \
-        -d "password=${DAST_PASSWORD}" \
+        -d "email=${DAST_AUTH_USERNAME}" \
+        -d "password=${DAST_AUTH_PASSWORD}" \
         -c cookies.txt)
       echo "Login response: ${RESPONSE}"
     # Verify session works
-    - curl -s -b cookies.txt ${DAST_AUTH_VERIFICATION_URL}
+    - curl -s -b cookies.txt ${DAST_AUTH_SUCCESS_IF_URL}
 ```
 
 ### Scan Timeout Issues
@@ -718,22 +702,22 @@ Large applications may exceed default timeouts. Adjust limits based on applicati
 
 ```yaml
 include:
-  - template: DAST.gitlab-ci.yml
+  - template: Security/DAST.gitlab-ci.yml
 
 variables:
-  DAST_WEBSITE: "https://staging.example.com"
-  # Increase spider duration
-  DAST_SPIDER_MINS: "60"
-  # Increase overall job timeout
-  DAST_TARGET_AVAILABILITY_TIMEOUT: "300"
+  DAST_TARGET_URL: "https://staging.example.com"
+  # Increase crawl duration
+  DAST_CRAWL_TIMEOUT: "60m"
+  # Increase active scan duration
+  DAST_ACTIVE_SCAN_TIMEOUT: "3h"
 
 dast:
   # Increase CI job timeout
   timeout: 3 hours
   variables:
     # Limit scan scope if needed
-    DAST_MAX_DEPTH: "10"
-    DAST_MAX_URLS_PER_VULNERABILITY: "20"
+    DAST_CRAWL_MAX_DEPTH: "10"
+    DAST_CRAWL_MAX_ACTIONS: "5000"
 ```
 
 ## Security Report Integration
@@ -765,10 +749,10 @@ Configure GitLab to create issues automatically for new vulnerabilities.
 
 ```yaml
 include:
-  - template: DAST.gitlab-ci.yml
+  - template: Security/DAST.gitlab-ci.yml
 
 variables:
-  DAST_WEBSITE: "https://staging.example.com"
+  DAST_TARGET_URL: "https://staging.example.com"
 
 # Create issues for critical findings
 create_security_issues:
@@ -808,8 +792,8 @@ Create service accounts specifically for DAST scanning with appropriate permissi
 ```yaml
 # Store in CI/CD variables, not in code
 # Settings > CI/CD > Variables
-# - DAST_USERNAME: dast-scanner@example.com
-# - DAST_PASSWORD: (masked variable)
+# - DAST_AUTH_USERNAME: dast-scanner@example.com
+# - DAST_AUTH_PASSWORD: (masked variable)
 # - Scope: staging environment only
 ```
 
@@ -820,7 +804,7 @@ Always scan staging environments to avoid impacting real users or data.
 ```yaml
 variables:
   # Never hardcode production URLs
-  DAST_WEBSITE: "${CI_ENVIRONMENT_URL}"
+  DAST_TARGET_URL: "${CI_ENVIRONMENT_URL}"
 
 dast:
   environment:
@@ -846,7 +830,7 @@ include:
   - template: Security/Dependency-Scanning.gitlab-ci.yml
   - template: Security/Secret-Detection.gitlab-ci.yml
   - template: Security/Container-Scanning.gitlab-ci.yml
-  - template: DAST.gitlab-ci.yml
+  - template: Security/DAST.gitlab-ci.yml
 ```
 
 ### 5. Keep Scanner Updated
@@ -856,12 +840,12 @@ GitLab regularly updates the DAST analyzer with new vulnerability checks. Use th
 ```yaml
 include:
   # Use specific version for reproducibility
-  - template: DAST.gitlab-ci.yml
+  - template: Security/DAST.gitlab-ci.yml
 
-# Or pin to specific analyzer version
+# Or pin to a specific analyzer major version
 dast:
   image:
-    name: registry.gitlab.com/security-products/dast:4
+    name: registry.gitlab.com/security-products/dast:5
 ```
 
 ---
