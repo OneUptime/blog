@@ -806,7 +806,7 @@ def fetch_user_data(user_id: str) -> str:
     except Exception as e:
         return f"Error: Unexpected error occurred: {str(e)}"
 
-@tool(handle_tool_error=True)
+@tool
 def risky_operation(data: str) -> str:
     """
     Perform an operation that might fail.
@@ -819,6 +819,10 @@ def risky_operation(data: str) -> str:
         raise ToolException("Data too large. Maximum 1000 characters allowed.")
 
     return f"Operation completed successfully on {len(data)} characters"
+
+# Enable handle_tool_error on the BaseTool instance so ToolException
+# messages are surfaced to the agent instead of raised
+risky_operation.handle_tool_error = True
 
 tools = [fetch_user_data, risky_operation]
 
