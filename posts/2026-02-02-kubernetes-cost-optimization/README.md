@@ -46,7 +46,7 @@ flowchart LR
     D --> E
 ```
 
-Resource Right-Sizing
+## Resource Right-Sizing
 
 Right-sizing means matching resource requests and limits to actual workload needs. Many teams set high requests "just in case" and never revisit them.
 
