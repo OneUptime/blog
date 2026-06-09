@@ -193,7 +193,7 @@ from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 import logging
 import traceback
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict
 
 from exceptions import (
@@ -226,7 +226,7 @@ def create_error_response(
         "error": {
             "code": error_code,
             "message": message,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
     }
 
@@ -455,7 +455,7 @@ async def create_item(item: ItemCreate):
 
     # Create item
     item_id = len(items_db) + 1
-    items_db[item_id] = item.dict()
+    items_db[item_id] = item.model_dump()
 
     return {"item_id": item_id, "item": items_db[item_id]}
 
@@ -702,8 +702,8 @@ class ValidationErrorResponse(BaseModel):
                         "errors": [
                             {
                                 "field": "body.price",
-                                "message": "value is not a valid float",
-                                "type": "type_error.float"
+                                "message": "Input should be a valid number, unable to parse string as a number",
+                                "type": "float_parsing"
                             }
                         ]
                     }
