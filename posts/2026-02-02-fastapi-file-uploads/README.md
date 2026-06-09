@@ -180,7 +180,7 @@ Content-Type headers can be spoofed. For extra security, check the file's magic 
 
 ```python
 # magic_validation.py
-import magic  # pip install python-magic
+from fastapi import UploadFile
 
 # Magic number signatures for common file types
 MAGIC_NUMBERS = {
