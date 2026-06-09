@@ -45,8 +45,8 @@ helm repo update
 
 # Install Kyverno in high availability mode for production
 helm install kyverno kyverno/kyverno -n kyverno --create-namespace \
-  --set replicaCount=3 \
-  --set admissionController.replicas=3
+  --set admissionController.replicas=3 \
+  --set backgroundController.replicas=2
 ```
 
 Verify the installation.
@@ -594,11 +594,11 @@ spec:
           conditions:
             any:
               - key: "{{request.object.metadata.annotations.owner || ''}}"
-                operator: NotEquals
+                operator: Equals
                 value: ""
-              - key: "{{request.object.metadata.annotations.owner}}"
-                operator: NotMatch
-                value: "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
+              - key: "{{ regex_match('^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$', request.object.metadata.annotations.owner || '') }}"
+                operator: Equals
+                value: false
 ```
 
 ### Conditional Logic with Preconditions
