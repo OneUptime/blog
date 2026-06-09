@@ -604,9 +604,9 @@ sum(rate({job="application"} |= "error" [5m]))
   /
 sum(rate({job="application"}[5m])) * 100
 
-# Sum of extracted numeric values
-# bytes_over_time sums a numeric field across the time range
-sum(bytes_over_time({job="nginx"} | json | __error__="" [1h]))
+# Total bytes of log entries over time
+# bytes_over_time measures the byte size of log entries in the range, not extracted fields
+sum(bytes_over_time({job="nginx"}[1h]))
 
 # Calculate request duration percentiles
 # quantile_over_time computes percentiles from extracted values
@@ -719,14 +719,13 @@ sum(rate({job="application"} | json [5m])) * 100
 Show request duration distribution:
 
 ```logql
-# Response time histogram buckets
-sum by (le) (
-  rate({job="application"}
+# 95th percentile response time over time, grouped by endpoint
+# Use quantile_over_time on unwrapped numeric values for latency analysis
+quantile_over_time(0.95,
+  {job="application"}
     | json
-    | unwrap duration
-    | histogram_over_time(duration [5m])
-  )
-)
+    | unwrap duration [5m]
+) by (path)
 ```
 
 ### Top Errors Table
@@ -912,8 +911,7 @@ groups:
       # Alert on missing logs (application might be down)
       - alert: NoLogsReceived
         expr: |
-          absent(rate({job="application"}[5m])) or
-          rate({job="application"}[5m]) == 0
+          absent_over_time({job="application"}[5m])
         for: 5m
         labels:
           severity: warning
@@ -1072,10 +1070,8 @@ If you prefer Fluent Bit over Promtail, here is a configuration:
     Label_keys  $level,$service
     # Remove these fields from the log line (already in labels)
     Remove_keys level,service
-    # Batch settings
+    # Output log line format: json or key_value
     Line_Format json
-    Batch_Size  10485760
-    Timeout     10
 ```
 
 ## Conclusion
