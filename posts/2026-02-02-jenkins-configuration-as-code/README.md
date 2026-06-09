@@ -53,7 +53,7 @@ Before configuring Jenkins as code, you need the Configuration as Code plugin in
 
 ### Via Jenkins UI
 
-Navigate to **Manage Jenkins > Manage Plugins > Available** and search for "Configuration as Code". Install the plugin and restart Jenkins.
+Navigate to **Manage Jenkins > Plugins > Available plugins** and search for "Configuration as Code". Install the plugin and restart Jenkins.
 
 ### Via Docker
 
@@ -1159,31 +1159,22 @@ jenkins:
   # Disable builds on controller for security
   numExecutors: 0
 
-  # Disable CLI over remoting
-  remotingSecurity:
-    enabled: true
+  # Only enable modern agent protocol (JNLP1/2/3 were removed in Jenkins 2.219)
+  agentProtocols:
+    - "JNLP4-connect"
+    - "Ping"
 
   # CSRF protection
   crumbIssuer:
     standard:
       excludeClientIPFromCrumb: false
 
-  # Disable agent-to-controller security bypass
+  # Disable signup so only configured users can authenticate
   securityRealm:
     local:
       allowsSignup: false
 
 security:
-  # Disable deprecated agent protocols
-  agentProtocolControl:
-    entries:
-      - name: "JNLP-connect"
-        enabled: false
-      - name: "JNLP2-connect"
-        enabled: false
-      - name: "JNLP4-connect"
-        enabled: true
-
   # Script security
   scriptApproval:
     approvedSignatures: []
