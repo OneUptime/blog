@@ -933,7 +933,10 @@ def page(slug):
 @app.route('/dashboard')
 def dashboard():
     # Select template based on user device
-    if request.user_agent.platform in ['iphone', 'android']:
+    # Werkzeug removed its built-in user-agent parser in 2.1, so inspect the
+    # raw string directly (or plug in a third-party parser via user_agent_class)
+    ua = request.user_agent.string.lower()
+    if 'iphone' in ua or 'android' in ua:
         return render_template('dashboard_mobile.html', data=data)
     return render_template('dashboard.html', data=data)
 ```
