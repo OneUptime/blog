@@ -123,7 +123,9 @@ node-label:
 node-taint:
   - "workload=database:NoSchedule"
 
-# Container runtime socket path (default is containerd)
+# Container runtime socket path
+# K3s embeds its own containerd at /run/k3s/containerd/containerd.sock by default
+# Set this only when using an external container runtime (e.g., system containerd or Docker)
 container-runtime-endpoint: "unix:///run/containerd/containerd.sock"
 
 # Kubelet arguments for fine-tuning node behavior
@@ -149,7 +151,7 @@ K3S_TOKEN=your-node-token
 # Optional: Node name (defaults to hostname)
 K3S_NODE_NAME=custom-agent-name
 
-# Optional: Disable servicelb and traefik on agent
+# Optional: Comma-separated node labels applied at registration
 K3S_NODE_LABEL="tier=backend,zone=us-east-1a"
 ```
 
