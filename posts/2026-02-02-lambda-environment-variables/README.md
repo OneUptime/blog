@@ -64,12 +64,14 @@ The following command updates environment variables for a Lambda function, repla
 
 aws lambda update-function-configuration \
     --function-name my-function \
-    --environment "Variables={
-        DATABASE_HOST=mydb.cluster-xyz.us-east-1.rds.amazonaws.com,
-        DATABASE_NAME=production,
-        LOG_LEVEL=INFO,
-        CACHE_TTL=300
-    }"
+    --environment '{
+        "Variables": {
+            "DATABASE_HOST": "mydb.cluster-xyz.us-east-1.rds.amazonaws.com",
+            "DATABASE_NAME": "production",
+            "LOG_LEVEL": "INFO",
+            "CACHE_TTL": "300"
+        }
+    }'
 ```
 
 ### Accessing Variables in Code
