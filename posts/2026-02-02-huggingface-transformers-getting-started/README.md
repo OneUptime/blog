@@ -87,7 +87,7 @@ generator = pipeline("text-generation", model="gpt2")
 # Generate text with various parameters
 output = generator(
     "The future of artificial intelligence is",
-    max_length=50,           # Maximum tokens to generate
+    max_new_tokens=50,       # Maximum new tokens to generate
     num_return_sequences=2,  # Generate multiple completions
     temperature=0.7,         # Lower = more focused, higher = more creative
     do_sample=True           # Enable sampling for varied outputs
@@ -359,7 +359,7 @@ Summarize long documents into concise versions:
 ```python
 from transformers import pipeline
 
-# Create summarization pipeline with a T5 model
+# Create summarization pipeline with a BART model
 summarizer = pipeline(
     "summarization",
     model="facebook/bart-large-cnn"
