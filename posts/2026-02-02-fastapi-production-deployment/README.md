@@ -221,7 +221,7 @@ server {
     # Security headers
     add_header X-Frame-Options "SAMEORIGIN" always;
     add_header X-Content-Type-Options "nosniff" always;
-    add_header X-XSS-Protection "1; mode=block" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
 
     # Request size limits
     client_max_body_size 10M;
@@ -297,12 +297,15 @@ Never hardcode secrets. Use environment variables and a configuration module to 
 # config.py
 # Application configuration from environment variables
 
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from functools import lru_cache
 from typing import Optional
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables"""
+
+    # Load from .env file if present
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
     # Application
     app_name: str = "FastAPI App"
@@ -329,11 +332,6 @@ class Settings(BaseSettings):
 
     # Observability
     log_level: str = "INFO"
-
-    class Config:
-        # Load from .env file if present
-        env_file = ".env"
-        env_file_encoding = "utf-8"
 
 @lru_cache()
 def get_settings() -> Settings:
@@ -374,8 +372,7 @@ Production deployments need health checks for load balancers and container orche
 # Health check endpoints for production monitoring
 
 from fastapi import APIRouter, Response, status
-from datetime import datetime
-import asyncpg
+from datetime import datetime, timezone
 
 router = APIRouter(tags=["Health"])
 
@@ -387,7 +384,7 @@ async def set_ready():
     """Call this after startup completes"""
     global app_ready, startup_time
     app_ready = True
-    startup_time = datetime.utcnow()
+    startup_time = datetime.now(timezone.utc)
 
 @router.get("/health")
 async def health_check():
@@ -395,7 +392,7 @@ async def health_check():
     Liveness probe - is the process running?
     Keep this simple and fast.
     """
-    return {"status": "healthy", "timestamp": datetime.utcnow().isoformat()}
+    return {"status": "healthy", "timestamp": datetime.now(timezone.utc).isoformat()}
 
 @router.get("/ready")
 async def readiness_check(response: Response):
@@ -413,7 +410,7 @@ async def readiness_check(response: Response):
     #     response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
     #     return {"status": "not_ready", "reason": "Database unavailable"}
 
-    uptime = (datetime.utcnow() - startup_time).total_seconds()
+    uptime = (datetime.now(timezone.utc) - startup_time).total_seconds()
     return {"status": "ready", "uptime_seconds": uptime}
 
 @router.get("/health/detailed")
@@ -423,10 +420,10 @@ async def detailed_health():
     """
     return {
         "status": "healthy",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "checks": {
             "app_ready": app_ready,
-            "uptime_seconds": (datetime.utcnow() - startup_time).total_seconds() if startup_time else 0
+            "uptime_seconds": (datetime.now(timezone.utc) - startup_time).total_seconds() if startup_time else 0
         }
     }
 ```
