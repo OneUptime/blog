@@ -452,14 +452,12 @@ name: API Tests
 on:
   push:
     # Only trigger when API code or tests change
+    # Note: do not combine paths and paths-ignore for the same event;
+    # use one or the other.
     paths:
       - 'api/**'
       - 'tests/api/**'
       - '.github/workflows/api-tests.yml'
-    # Ignore documentation changes
-    paths-ignore:
-      - '**.md'
-      - 'docs/**'
 ```
 
 ### Skip CI for Documentation
