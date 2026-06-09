@@ -751,7 +751,7 @@ kubectl get configmap coredns -n kube-system -o yaml
 
 Add custom DNS entries or configure upstream servers.
 
-The following ConfigMap adds custom DNS zones and forwards specific domains to internal DNS servers.
+The following ConfigMap adds custom DNS zones and forwards specific domains to internal DNS servers. K3s automatically merges keys ending in `*.server` (additional server blocks) and `*.override` (additions to the main server block) into the CoreDNS Corefile.
 
 ```yaml
 # coredns-custom.yaml
@@ -761,16 +761,17 @@ metadata:
   name: coredns-custom
   namespace: kube-system
 data:
-  # Add custom DNS entries
-  custom.server: |
+  # Additional server block for an internal zone with static hosts and upstream forwarders
+  internal.server: |
     internal.company.com:53 {
+      hosts {
+        192.168.1.100 legacy-server.internal.company.com
+        192.168.1.101 database.internal.company.com
+        fallthrough
+      }
       forward . 10.0.0.53 10.0.0.54
       cache 30
     }
-  # Add static host entries
-  custom.hosts: |
-    192.168.1.100 legacy-server.internal.company.com
-    192.168.1.101 database.internal.company.com
 ```
 
 Restart CoreDNS to apply changes.
