@@ -358,10 +358,10 @@ sequenceDiagram
             DynamoDB-->>Client: Success response
         else Condition failed
             DynamoDB->>Storage: Release all locks
-            DynamoDB-->>Client: TransactionCanceledException
+            DynamoDB-->>Client: TransactionCanceledException (ConditionalCheckFailed)
         end
     else Lock conflict
-        DynamoDB-->>Client: TransactionConflictException
+        DynamoDB-->>Client: TransactionCanceledException (TransactionConflict)
     end
 ```
 
