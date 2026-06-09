@@ -128,14 +128,14 @@ from werkzeug.security import generate_password_hash, check_password_hash
 # When a user registers
 password = "mysecretpassword"
 hashed = generate_password_hash(password)
-# Result looks like: "pbkdf2:sha256:260000$..."
+# Result looks like: "scrypt:32768:8:1$..."
 
 # When a user logs in
 check_password_hash(hashed, "mysecretpassword")  # Returns True
 check_password_hash(hashed, "wrongpassword")     # Returns False
 ```
 
-The default method is PBKDF2 with SHA-256 and 260,000 iterations. Each hash includes a random salt, so identical passwords produce different hashes.
+Since Werkzeug 2.3, the default method is scrypt with parameters `32768:8:1` (N, r, p). If you pass `method="pbkdf2"` you'll get PBKDF2 with SHA-256 instead, with the iteration count set by `DEFAULT_PBKDF2_ITERATIONS` (1,000,000 in Werkzeug 3.x). Each hash includes a random salt, so identical passwords produce different hashes.
 
 ## Building the Login and Logout Views
 
