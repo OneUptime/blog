@@ -115,11 +115,14 @@ Extract your authorization logic into helper functions to keep resolvers clean.
 
 ```javascript
 // auth-helpers.js
+const { GraphQLError } = require('graphql');
 
 // Throws if user is not authenticated
 function requireAuth(context) {
   if (!context.user) {
-    throw new AuthenticationError('You must be logged in');
+    throw new GraphQLError('You must be logged in', {
+      extensions: { code: 'UNAUTHENTICATED', http: { status: 401 } }
+    });
   }
   return context.user;
 }
@@ -129,7 +132,9 @@ function requireRole(context, role) {
   const user = requireAuth(context);
 
   if (!user.roles.includes(role)) {
-    throw new ForbiddenError(`Role '${role}' required`);
+    throw new GraphQLError(`Role '${role}' required`, {
+      extensions: { code: 'FORBIDDEN', http: { status: 403 } }
+    });
   }
 
   return user;
@@ -140,7 +145,9 @@ function requireOwnership(context, resourceOwnerId) {
   const user = requireAuth(context);
 
   if (user.id !== resourceOwnerId && !user.roles.includes('admin')) {
-    throw new ForbiddenError('You can only access your own resources');
+    throw new GraphQLError('You can only access your own resources', {
+      extensions: { code: 'FORBIDDEN', http: { status: 403 } }
+    });
   }
 
   return user;
