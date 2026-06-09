@@ -49,7 +49,7 @@ graph TB
 - Large community and extensive documentation
 
 **Apollo Server Benefits:**
-- Built-in GraphQL Playground for development
+- Built-in Apollo Sandbox for development
 - Automatic schema validation and introspection
 - Plugin system for monitoring and caching
 - Excellent TypeScript support
@@ -1918,19 +1918,14 @@ function getValidationRules() {
       objectCost: 2,
       listFactor: 10, // Multiply cost by this for list fields
 
-      // Define custom costs for expensive fields
-      fieldCostFn: (fieldInfo) => {
-        // Posts list is expensive
-        if (fieldInfo.fieldName === 'posts') {
-          return 5;
-        }
-        // Search is very expensive
-        if (fieldInfo.fieldName === 'searchPosts') {
-          return 20;
-        }
-        return 1;
-      },
+      // Format error message returned to clients
+      formatErrorMessage: (cost) =>
+        `Query exceeded maximum complexity of 1000 (actual cost: ${cost})`,
     }),
+    // Per-field costs are configured via field extensions on the schema, e.g.:
+    //   fieldConfig.extensions = { getCost: () => 5 };
+    // or for list fields:
+    //   fieldConfig.extensions = { getCostFactor: () => 10 };
   ];
 }
 
@@ -2056,7 +2051,7 @@ async function startProductionServer() {
 
   // Security headers
   app.use(helmet({
-    contentSecurityPolicy: false, // Disable for GraphQL Playground
+    contentSecurityPolicy: false, // Disable for Apollo Sandbox
   }));
 
   // Compression for responses
