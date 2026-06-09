@@ -543,21 +543,26 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.name
+          # Tell postgres to load tuning settings from the mounted ConfigMap
+          args:
+            - postgres
+            - -c
+            - config_file=/etc/postgresql/postgresql.conf
           volumeMounts:
             - name: data
               mountPath: /var/lib/postgresql/data
             - name: config
               mountPath: /etc/postgresql/postgresql.conf
               subPath: postgresql.conf
-          # Liveness probe restarts unhealthy pods
+          # Liveness probe restarts unhealthy pods.
+          # Wrap pg_isready in a shell because Kubernetes does not perform
+          # $(VAR) substitution inside probe exec commands.
           livenessProbe:
             exec:
               command:
-                - pg_isready
-                - -U
-                - $(POSTGRES_USER)
-                - -d
-                - $(POSTGRES_DB)
+                - sh
+                - -c
+                - pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"
             initialDelaySeconds: 30
             periodSeconds: 10
             timeoutSeconds: 5
@@ -566,11 +571,9 @@ spec:
           readinessProbe:
             exec:
               command:
-                - pg_isready
-                - -U
-                - $(POSTGRES_USER)
-                - -d
-                - $(POSTGRES_DB)
+                - sh
+                - -c
+                - pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"
             initialDelaySeconds: 10
             periodSeconds: 5
             timeoutSeconds: 3
