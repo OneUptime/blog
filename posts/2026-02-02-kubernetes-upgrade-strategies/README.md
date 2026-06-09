@@ -382,7 +382,7 @@ kubectl patch service $SERVICE -n $NAMESPACE \
 echo "Verifying traffic routing..."
 sleep 5
 ENDPOINT_COUNT=$(kubectl get endpoints $SERVICE -n $NAMESPACE \
-  -o jsonpath='{.subsets[0].addresses}' | jq length)
+  -o json | jq '(.subsets[0].addresses // []) | length')
 
 if [ "$ENDPOINT_COUNT" -gt 0 ]; then
   echo "SUCCESS: Service switched to $NEW_VERSION with $ENDPOINT_COUNT endpoints"
@@ -649,7 +649,7 @@ Istio provides fine-grained traffic control for canary deployments without relyi
 ```yaml
 # istio-virtual-service.yaml
 # Precise traffic splitting with Istio
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: web-app
@@ -672,7 +672,7 @@ spec:
 ---
 # istio-destination-rule.yaml
 # Define subsets for routing
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: web-app
