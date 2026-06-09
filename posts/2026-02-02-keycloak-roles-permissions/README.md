@@ -809,7 +809,9 @@ class AuthorizationManager:
         month: str = None,
         year: str = None,
         hour: str = None,
-        minute: str = None
+        hour_end: str = None,
+        minute: str = None,
+        minute_end: str = None
     ) -> Dict:
         """Create a time-based policy for temporal access control
 
@@ -824,15 +826,20 @@ class AuthorizationManager:
             'logic': 'POSITIVE'
         }
 
-        # Add time constraints if specified
+        # Add time constraints if specified. Keycloak uses separate
+        # start/end fields (hour/hourEnd) to express ranges.
         if not_before:
             policy_config['notBefore'] = not_before
         if not_after:
             policy_config['notAfter'] = not_after
         if hour:
             policy_config['hour'] = hour
+        if hour_end:
+            policy_config['hourEnd'] = hour_end
         if minute:
             policy_config['minute'] = minute
+        if minute_end:
+            policy_config['minuteEnd'] = minute_end
 
         response = requests.post(
             policies_url,
@@ -972,7 +979,8 @@ def setup_document_authorization(admin: KeycloakAdmin, realm: str):
     auth.create_time_policy(
         name='business-hours-policy',
         description='Access allowed during business hours only',
-        hour='9-18'
+        hour='9',
+        hour_end='18'
     )
 
     # Step 4: Create permissions combining resources, scopes, and policies
@@ -1585,7 +1593,8 @@ Your application needs to extract and validate roles from tokens.
 # Application-side role validation for FastAPI
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-from jose import jwt, JWTError
+from jose import jwt, jwk
+from jose.exceptions import JWTError
 from typing import List, Optional
 import requests
 from functools import wraps
@@ -1620,12 +1629,13 @@ def decode_token(token: str) -> dict:
         unverified_header = jwt.get_unverified_header(token)
         kid = unverified_header.get('kid')
 
-        # Find matching public key
+        # Find matching public key. python-jose accepts the JWK dict
+        # directly, but constructing a key object is also supported.
         keys = get_keycloak_public_keys()
         public_key = None
         for key in keys['keys']:
             if key['kid'] == kid:
-                public_key = jwt.algorithms.RSAAlgorithm.from_jwk(key)
+                public_key = jwk.construct(key)
                 break
 
         if not public_key:
