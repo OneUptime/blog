@@ -564,6 +564,11 @@ For tables with millions of rows, batch your updates to avoid long-running trans
 defmodule MyApp.Repo.Migrations.BackfillUserSlugs do
   use Ecto.Migration
 
+  # COMMIT inside a DO block only works when the block is not running
+  # inside an outer transaction, so we have to disable Ecto's wrapping.
+  @disable_ddl_transaction true
+  @disable_migration_lock true
+
   def up do
     # Process in batches of 10,000 rows
     execute """
