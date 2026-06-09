@@ -840,7 +840,7 @@ This implementation uses an in-memory event system for simplicity. In production
 # app/schema/subscriptions.py
 # GraphQL subscription resolvers for real-time updates
 import strawberry
-from typing import AsyncGenerator, Optional
+from typing import AsyncGenerator, Optional, Any
 import asyncio
 from datetime import datetime
 from enum import Enum
@@ -897,7 +897,7 @@ class EventBroker:
         if channel in self._subscribers:
             self._subscribers[channel].remove(queue)
 
-    async def publish(self, channel: str, event: any):
+    async def publish(self, channel: str, event: Any):
         """Publish an event to all subscribers on a channel"""
         if channel not in self._subscribers:
             return
@@ -1447,7 +1447,7 @@ schema = strawberry.Schema(
 graphql_app = GraphQLRouter(
     schema,
     context_getter=get_context,
-    graphiql=True  # Enable GraphiQL interface at /graphql
+    graphql_ide="graphiql"  # Enable GraphiQL interface at /graphql
 )
 
 # Create FastAPI application
@@ -1513,9 +1513,8 @@ This error handling strategy provides helpful error messages in development whil
 # Custom error handling for GraphQL
 import strawberry
 from strawberry.extensions import SchemaExtension
-from typing import List, Any, Optional
+from graphql import GraphQLError as CoreGraphQLError
 import logging
-import traceback
 import os
 
 logger = logging.getLogger(__name__)
@@ -1523,13 +1522,18 @@ logger = logging.getLogger(__name__)
 IS_DEVELOPMENT = os.environ.get("ENVIRONMENT", "development") == "development"
 
 
-class GraphQLError(Exception):
-    """Base class for GraphQL errors"""
+class GraphQLError(CoreGraphQLError):
+    """
+    Base class for GraphQL errors.
+
+    Inherits from graphql-core's GraphQLError so that the ``extensions``
+    dict is included in the JSON response automatically.
+    """
 
     def __init__(self, message: str, code: str = "INTERNAL_ERROR", extensions: dict = None):
-        super().__init__(message)
+        merged_extensions = {"code": code, **(extensions or {})}
+        super().__init__(message, extensions=merged_extensions)
         self.code = code
-        self.extensions = extensions or {}
 
 
 class NotFoundError(GraphQLError):
@@ -1570,65 +1574,32 @@ class AuthorizationError(GraphQLError):
 
 class ErrorLoggingExtension(SchemaExtension):
     """
-    Schema extension that logs errors and formats responses.
-    Hides stack traces in production for security.
+    Schema extension that logs errors after each operation.
+    Inspect the execution result via the ``on_operation`` hook.
     """
 
     def on_operation(self):
-        """Called at the start of each operation"""
+        """Called at the start of each operation; runs cleanup after yield."""
         yield
         # After operation completes, check for errors
         result = self.execution_context.result
 
         if result and result.errors:
             for error in result.errors:
-                # Log the full error with stack trace
-                logger.error(
-                    f"GraphQL Error: {error.message}",
-                    exc_info=error.original_error
-                )
-
-    def process_errors(self, errors: List[Any]) -> List[Any]:
-        """Process and format errors before sending to client"""
-        processed = []
-
-        for error in errors:
-            if isinstance(error.original_error, GraphQLError):
-                # Custom error with code and extensions
-                custom_error = error.original_error
-                processed.append({
-                    "message": custom_error.message,
-                    "extensions": {
-                        "code": custom_error.code,
-                        **custom_error.extensions
-                    }
-                })
-            else:
-                # Generic error handling
+                # Log the full error with stack trace in development.
+                # In production, log just the message to avoid leaking details.
                 if IS_DEVELOPMENT:
-                    # Include stack trace in development
-                    processed.append({
-                        "message": str(error.message),
-                        "extensions": {
-                            "code": "INTERNAL_ERROR",
-                            "stacktrace": traceback.format_exception(
-                                type(error.original_error),
-                                error.original_error,
-                                error.original_error.__traceback__
-                            ) if error.original_error else None
-                        }
-                    })
+                    logger.error(
+                        f"GraphQL Error: {error.message}",
+                        exc_info=error.original_error
+                    )
                 else:
-                    # Hide details in production
-                    processed.append({
-                        "message": "An internal error occurred",
-                        "extensions": {"code": "INTERNAL_ERROR"}
-                    })
-
-        return processed
+                    logger.error(f"GraphQL Error: {error.message}")
 
 
-# Add extension to schema
+# Add extension to schema. Because our custom errors derive from
+# graphql.GraphQLError, their ``extensions`` (including the error code)
+# are serialized into the response automatically.
 schema = strawberry.Schema(
     query=Query,
     mutation=Mutation,
@@ -1647,17 +1618,13 @@ These tests cover queries, mutations, and authentication scenarios. Use a test d
 
 ```python
 # tests/test_queries.py
-# Tests for GraphQL queries
+# Tests for GraphQL queries.
+# Strawberry doesn't ship a sync TestClient; the documented pattern is to
+# call ``schema.execute()`` (async) directly. Tests are marked with
+# pytest-asyncio so async resolvers can be awaited.
 import pytest
-from strawberry.test import TestClient
 from app.main import schema
-from unittest.mock import AsyncMock, patch
-
-
-@pytest.fixture
-def client():
-    """Create a test client for the GraphQL schema"""
-    return TestClient(schema)
+from unittest.mock import AsyncMock
 
 
 @pytest.fixture
@@ -1679,7 +1646,8 @@ def mock_context():
 class TestUserQueries:
     """Tests for user-related queries"""
 
-    def test_get_user_by_id(self, client, mock_context):
+    @pytest.mark.asyncio
+    async def test_get_user_by_id(self, mock_context):
         """Test fetching a single user by ID"""
         # Setup mock
         mock_user = {
@@ -1702,9 +1670,9 @@ class TestUserQueries:
             }
         """
 
-        result = client.execute(
+        result = await schema.execute(
             query,
-            variables={"id": "1"},
+            variable_values={"id": "1"},
             context_value=mock_context
         )
 
@@ -1713,7 +1681,8 @@ class TestUserQueries:
         assert result.data["user"]["id"] == "1"
         assert result.data["user"]["username"] == "testuser"
 
-    def test_get_user_not_found(self, client, mock_context):
+    @pytest.mark.asyncio
+    async def test_get_user_not_found(self, mock_context):
         """Test querying non-existent user returns None"""
         mock_context["user_service"].get_by_id.return_value = None
 
@@ -1726,9 +1695,9 @@ class TestUserQueries:
             }
         """
 
-        result = client.execute(
+        result = await schema.execute(
             query,
-            variables={"id": "999"},
+            variable_values={"id": "999"},
             context_value=mock_context
         )
 
@@ -1739,7 +1708,8 @@ class TestUserQueries:
 class TestPostQueries:
     """Tests for post-related queries"""
 
-    def test_get_posts_with_pagination(self, client, mock_context):
+    @pytest.mark.asyncio
+    async def test_get_posts_with_pagination(self, mock_context):
         """Test fetching posts with cursor pagination"""
         mock_posts = [
             {"id": "1", "title": "First Post", "status": "PUBLISHED"},
@@ -1767,9 +1737,9 @@ class TestPostQueries:
             }
         """
 
-        result = client.execute(
+        result = await schema.execute(
             query,
-            variables={"first": 2},
+            variable_values={"first": 2},
             context_value=mock_context
         )
 
@@ -1781,7 +1751,8 @@ class TestPostQueries:
 class TestMutations:
     """Tests for mutations"""
 
-    def test_register_user_success(self, client, mock_context):
+    @pytest.mark.asyncio
+    async def test_register_user_success(self, mock_context):
         """Test successful user registration"""
         mock_context["user_service"].get_by_username.return_value = None
         mock_context["user_service"].get_by_email.return_value = None
@@ -1807,9 +1778,9 @@ class TestMutations:
             }
         """
 
-        result = client.execute(
+        result = await schema.execute(
             mutation,
-            variables={
+            variable_values={
                 "input": {
                     "username": "newuser",
                     "email": "new@example.com",
@@ -1823,7 +1794,8 @@ class TestMutations:
         assert result.data["register"]["success"] is True
         assert result.data["register"]["user"]["username"] == "newuser"
 
-    def test_register_duplicate_username(self, client, mock_context):
+    @pytest.mark.asyncio
+    async def test_register_duplicate_username(self, mock_context):
         """Test registration with existing username fails"""
         mock_context["user_service"].get_by_username.return_value = {"id": "1"}
 
@@ -1839,9 +1811,9 @@ class TestMutations:
             }
         """
 
-        result = client.execute(
+        result = await schema.execute(
             mutation,
-            variables={
+            variable_values={
                 "input": {
                     "username": "existinguser",
                     "email": "new@example.com",
@@ -1858,7 +1830,8 @@ class TestMutations:
 class TestAuthentication:
     """Tests for authenticated endpoints"""
 
-    def test_me_query_authenticated(self, client, mock_context):
+    @pytest.mark.asyncio
+    async def test_me_query_authenticated(self, mock_context):
         """Test me query returns current user when authenticated"""
         mock_context["current_user"] = {
             "id": "1",
@@ -1875,12 +1848,13 @@ class TestAuthentication:
             }
         """
 
-        result = client.execute(query, context_value=mock_context)
+        result = await schema.execute(query, context_value=mock_context)
 
         assert result.errors is None
         assert result.data["me"]["username"] == "authuser"
 
-    def test_me_query_unauthenticated(self, client, mock_context):
+    @pytest.mark.asyncio
+    async def test_me_query_unauthenticated(self, mock_context):
         """Test me query returns None when not authenticated"""
         mock_context["current_user"] = None
 
@@ -1893,7 +1867,7 @@ class TestAuthentication:
             }
         """
 
-        result = client.execute(query, context_value=mock_context)
+        result = await schema.execute(query, context_value=mock_context)
 
         assert result.data["me"] is None
 ```
