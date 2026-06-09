@@ -619,9 +619,10 @@ class DashboardController extends Controller
             'user' => auth()->user(),
             'stats' => $this->getQuickStats(),
 
-            // Lazy: Only computed when accessed via partial reload
-            // Use Inertia::lazy() for expensive operations
-            'detailedAnalytics' => Inertia::lazy(fn () =>
+            // Optional: Only computed when accessed via partial reload
+            // Use Inertia::optional() for expensive operations
+            // (replaces the deprecated Inertia::lazy() in Inertia v2)
+            'detailedAnalytics' => Inertia::optional(fn () =>
                 $this->computeDetailedAnalytics()
             ),
 
@@ -705,8 +706,8 @@ Inertia supports server-side rendering for better SEO and initial load performan
 Install the SSR dependencies and create the server entry point.
 
 ```bash
-# Install the SSR server
-npm install @inertiajs/vue3
+# Install the Vue server renderer required for SSR
+npm install @vue/server-renderer
 ```
 
 Create the SSR entry point that renders components on the server.
