@@ -169,7 +169,7 @@ KafkaServer {
 
 // For ZooKeeper authentication (if ZooKeeper requires auth)
 Client {
-    org.apache.kafka.common.security.plain.PlainLoginModule required
+    org.apache.zookeeper.server.auth.DigestLoginModule required
     username="kafka"
     password="kafka-zk-password";
 };
