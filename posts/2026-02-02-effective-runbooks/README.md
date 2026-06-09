@@ -193,12 +193,12 @@ psql -h db-primary-01.prod.internal -U admin -d postgres -c \
 
 Stop writes to the primary to allow replicas to catch up.
 
-Run this command to prevent new connections to the primary:
+Run this command to put the primary into read-only mode for new transactions:
 
 ```bash
-## Block new connections to primary
+## Block new writes to primary
 psql -h db-primary-01.prod.internal -U admin -d postgres -c \
-  "ALTER SYSTEM SET max_connections = 0;"
+  "ALTER SYSTEM SET default_transaction_read_only = 'on';"
 
 ## Reload configuration
 psql -h db-primary-01.prod.internal -U admin -d postgres -c \
@@ -337,11 +337,11 @@ ssh admin@db-primary-02.prod.internal
 sudo systemctl stop postgresql
 ```bash
 
-2. Restore connectivity to original primary:
+2. Restore writes on original primary:
 
 ```bash
 ssh admin@db-primary-01.prod.internal
-psql -U admin -d postgres -c "ALTER SYSTEM RESET max_connections;"
+psql -U admin -d postgres -c "ALTER SYSTEM RESET default_transaction_read_only;"
 psql -U admin -d postgres -c "SELECT pg_reload_conf();"
 ```bash
 
@@ -591,8 +591,7 @@ Apply the new deployment configuration:
 
 ```bash
 kubectl set image deployment/api-server \
-  api-server=registry.example.com/api-server:${NEW_VERSION} \
-  --record
+  api-server=registry.example.com/api-server:${NEW_VERSION}
 ```bash
 
 ### Step 4: Monitor Rollout
