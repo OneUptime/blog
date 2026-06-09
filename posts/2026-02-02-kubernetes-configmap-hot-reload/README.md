@@ -25,7 +25,7 @@ flowchart LR
     end
 ```
 
-When you mount a ConfigMap as a volume in Kubernetes, the kubelet periodically syncs the ConfigMap data to the mounted volume. The default sync period is around 60 seconds, but your application still needs to actively watch for and respond to these file changes.
+When you mount a ConfigMap as a volume in Kubernetes, the kubelet periodically syncs the ConfigMap data to the mounted volume. The total propagation delay is the sum of the kubelet sync period (controlled by `--sync-frequency`, default 1 minute) and the ConfigMap cache propagation delay, so changes can take up to a couple of minutes to appear in the mounted files. Your application still needs to actively watch for and respond to these file changes.
 
 Key challenges include:
 
@@ -275,7 +275,6 @@ package config
 
 import (
     "encoding/json"
-    "io/ioutil"
     "log"
     "os"
     "path/filepath"
@@ -311,7 +310,7 @@ func (c *Config) Load() error {
 
     newValues := make(map[string]interface{})
 
-    files, err := ioutil.ReadDir(c.path)
+    files, err := os.ReadDir(c.path)
     if err != nil {
         return err
     }
@@ -327,7 +326,7 @@ func (c *Config) Load() error {
         }
 
         filePath := filepath.Join(c.path, file.Name())
-        content, err := ioutil.ReadFile(filePath)
+        content, err := os.ReadFile(filePath)
         if err != nil {
             log.Printf("Failed to read %s: %v", filePath, err)
             continue
@@ -897,7 +896,7 @@ spec:
 
         # Config reloader sidecar
         - name: config-reloader
-          image: jimmidyson/configmap-reload:v0.9.0
+          image: jimmidyson/configmap-reload:v0.15.0
           args:
             # Directory to watch for changes
             - --volume-dir=/etc/config
