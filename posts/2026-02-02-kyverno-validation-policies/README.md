@@ -44,11 +44,11 @@ helm repo add kyverno https://kyverno.github.io/kyverno/
 helm repo update
 
 # Install Kyverno in its own namespace with high availability configuration
-# The replicaCount=3 ensures availability during node failures
+# admissionController.replicas=3 ensures availability during node failures
 helm install kyverno kyverno/kyverno \
   --namespace kyverno \
   --create-namespace \
-  --set replicaCount=3
+  --set admissionController.replicas=3
 ```
 
 ### Using kubectl
@@ -326,7 +326,7 @@ spec:
 
 ---
 
-Resource Validation Policies
+## Resource Validation Policies
 
 ### Require Resource Limits
 
@@ -462,6 +462,12 @@ spec:
           - resources:
               kinds:
                 - Deployment
+      # Fetch all NetworkPolicies in the Deployment's namespace via the Kubernetes API
+      context:
+        - name: networkpolicies
+          apiCall:
+            urlPath: "/apis/networking.k8s.io/v1/namespaces/{{ request.object.metadata.namespace }}/networkpolicies"
+            jmesPath: "items[*]"
       validate:
         message: >-
           A NetworkPolicy must exist in the namespace before creating Deployments.
@@ -469,11 +475,10 @@ spec:
         deny:
           conditions:
             all:
-              # Check if NetworkPolicy exists in the same namespace
-              - key: "{{ request.object.metadata.namespace }}"
-                operator: AnyNotIn
-                # Lookup all namespaces that have NetworkPolicies
-                value: "{{ request.namespaceNetworkPolicies }}"
+              # Deny when there are zero NetworkPolicies in the namespace
+              - key: "{{ networkpolicies | length(@) }}"
+                operator: Equals
+                value: 0
 ```
 
 ---
@@ -895,8 +900,8 @@ kyverno apply policies/ --resource resources/
 # Generate policy report in JSON format for CI integration
 kyverno apply policy.yaml --resource pod.yaml -o json
 
-# Validate policy syntax before applying
-kyverno validate policy.yaml
+# Run policy tests defined in a kyverno-test.yaml file
+kyverno test .
 ```
 
 ### Example Test Resources
