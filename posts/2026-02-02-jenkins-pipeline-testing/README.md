@@ -790,7 +790,8 @@ stage('Performance Tests') {
             // Parse and check thresholds
             script {
                 def summary = readJSON file: 'summary.json'
-                def p95 = summary.metrics.http_req_duration.p95
+                // k6 summary export uses 'p(95)' as the key (with parentheses)
+                def p95 = summary.metrics.http_req_duration['p(95)']
 
                 if (p95 > 500) {
                     unstable("P95 response time ${p95}ms exceeds 500ms threshold")
