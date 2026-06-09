@@ -488,7 +488,7 @@ echo "Current deployment status:"
 kubectl get deployment "$SERVICE" -n "$NAMESPACE" -o wide
 
 # Get current and previous revision numbers
-CURRENT_REV=$(kubectl rollout history deployment/"$SERVICE" -n "$NAMESPACE" | tail -2 | head -1 | awk '{print $1}')
+CURRENT_REV=$(kubectl rollout history deployment/"$SERVICE" -n "$NAMESPACE" | tail -1 | awk '{print $1}')
 PREVIOUS_REV=$((CURRENT_REV - 1))
 
 echo ""
