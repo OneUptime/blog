@@ -71,7 +71,7 @@ echo "=== Kubernetes Service Mesh Readiness Check ==="
 
 # Check Kubernetes version (minimum 1.25 recommended)
 
-KUBE_VERSION=$(kubectl version --short 2>/dev/null | grep Server | awk '{print $3}')
+KUBE_VERSION=$(kubectl version -o json 2>/dev/null | jq -r '.serverVersion.gitVersion')
 echo "Kubernetes version: $KUBE_VERSION"
 
 # Verify RBAC is enabled
@@ -303,6 +303,9 @@ step certificate create identity.linkerd.cluster.local issuer.crt issuer.key \
   --profile intermediate-ca --not-after 8760h --no-password --insecure \
   --ca ca.crt --ca-key ca.key
 
+# Install CRDs first (required for Linkerd 2.12+)
+linkerd install --crds | kubectl apply -f -
+
 # Install control plane with certificates
 linkerd install \
   --identity-trust-anchors-file ca.crt \
@@ -386,8 +389,8 @@ Apply the mTLS configuration.
 ```bash
 kubectl apply -f mtls-strict.yaml
 
-# Verify mTLS status
-istioctl x authz check deployment/my-app -n default
+# Verify mTLS status for a pod
+istioctl x describe pod <pod-name> -n default
 ```
 
 ### Linkerd mTLS Verification
