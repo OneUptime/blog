@@ -275,7 +275,7 @@ Create a kubeadm configuration file that matches your network requirements.
 ```yaml
 # kubeadm-config.yaml
 # Configuration for initializing the Kubernetes control plane
-apiVersion: kubeadm.k8s.io/v1beta3
+apiVersion: kubeadm.k8s.io/v1beta4
 kind: ClusterConfiguration
 kubernetesVersion: "1.31.0"
 controlPlaneEndpoint: "loadbalancer.example.com:6443"
@@ -287,7 +287,7 @@ apiServer:
     - "loadbalancer.example.com"
     - "192.168.1.100"             # Add all IPs that may access the API
 ---
-apiVersion: kubeadm.k8s.io/v1beta3
+apiVersion: kubeadm.k8s.io/v1beta4
 kind: InitConfiguration
 localAPIEndpoint:
   advertiseAddress: "192.168.1.101"
@@ -465,12 +465,10 @@ def transform_traefik_to_ingress(traefik_route):
         'kind': 'Ingress',
         'metadata': {
             'name': traefik_route['metadata']['name'],
-            'namespace': traefik_route['metadata']['namespace'],
-            'annotations': {
-                'kubernetes.io/ingress.class': 'nginx'
-            }
+            'namespace': traefik_route['metadata']['namespace']
         },
         'spec': {
+            'ingressClassName': 'nginx',
             'rules': []
         }
     }
@@ -793,11 +791,13 @@ else
 fi
 
 # Check persistent volume claims are bound
+# PVCs don't support status.phase as a field selector, so filter with jsonpath
 echo -n "Checking PVC status... "
-UNBOUND_PVC=$(kubectl get pvc -A --field-selector=status.phase!=Bound --no-headers 2>/dev/null | wc -l)
-if [ "$UNBOUND_PVC" -gt 0 ]; then
-    echo "FAILED - $UNBOUND_PVC PVCs not bound"
-    kubectl get pvc -A --field-selector=status.phase!=Bound
+UNBOUND_PVC=$(kubectl get pvc -A -o jsonpath='{range .items[?(@.status.phase!="Bound")]}{.metadata.namespace}/{.metadata.name} {.status.phase}{"\n"}{end}' 2>/dev/null)
+if [ -n "$UNBOUND_PVC" ]; then
+    UNBOUND_COUNT=$(echo "$UNBOUND_PVC" | wc -l)
+    echo "FAILED - $UNBOUND_COUNT PVCs not bound"
+    echo "$UNBOUND_PVC"
     ((ERRORS++))
 else
     echo "OK"
