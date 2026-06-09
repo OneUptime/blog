@@ -472,15 +472,24 @@ Create a complete installation package for sites without internet access.
 # Builds an air-gapped installation package for K3s
 
 K3S_VERSION="v1.28.4+k3s1"
-ARCH="amd64"  # Change to arm64 for ARM devices
+ARCH="amd64"  # Change to arm64 or arm for other architectures
 OUTPUT_DIR="k3s-airgap"
+
+# K3s release binaries are named "k3s" for amd64, "k3s-arm64" for arm64, and
+# "k3s-armhf" for armv7. The airgap image tarballs use "amd64", "arm64", "arm".
+case "$ARCH" in
+  amd64) BINARY_NAME="k3s" ;;
+  arm64) BINARY_NAME="k3s-arm64" ;;
+  arm)   BINARY_NAME="k3s-armhf" ;;
+  *) echo "Unsupported architecture: $ARCH"; exit 1 ;;
+esac
 
 mkdir -p "$OUTPUT_DIR"/{bin,images}
 
 # Download K3s binary
 echo "Downloading K3s binary..."
 curl -Lo "$OUTPUT_DIR/bin/k3s" \
-  "https://github.com/k3s-io/k3s/releases/download/${K3S_VERSION}/k3s"
+  "https://github.com/k3s-io/k3s/releases/download/${K3S_VERSION}/${BINARY_NAME}"
 chmod +x "$OUTPUT_DIR/bin/k3s"
 
 # Download the install script
@@ -697,7 +706,9 @@ data:
         sending_queue:
           enabled: true
           queue_size: 500
-          persistent_storage_enabled: true
+          # Reference the file_storage extension below to persist the queue to
+          # disk so buffered telemetry survives collector restarts.
+          storage: file_storage
 
     extensions:
       # File-based queue for offline buffering
@@ -778,13 +789,22 @@ For individual edge sites or small deployments:
 NEW_VERSION="v1.29.0+k3s1"
 ARCH="amd64"
 
+# K3s release binaries are named "k3s" for amd64, "k3s-arm64" for arm64,
+# and "k3s-armhf" for armv7 - the amd64 binary has no architecture suffix.
+case "$ARCH" in
+  amd64) BINARY_NAME="k3s" ;;
+  arm64) BINARY_NAME="k3s-arm64" ;;
+  arm)   BINARY_NAME="k3s-armhf" ;;
+  *) echo "Unsupported architecture: $ARCH"; exit 1 ;;
+esac
+
 echo "Current K3s version:"
 k3s --version
 
 # Download new binary
 echo "Downloading K3s $NEW_VERSION..."
 curl -Lo /tmp/k3s \
-  "https://github.com/k3s-io/k3s/releases/download/${NEW_VERSION}/k3s-${ARCH}"
+  "https://github.com/k3s-io/k3s/releases/download/${NEW_VERSION}/${BINARY_NAME}"
 
 # Drain workloads from node (for multi-node clusters)
 # sudo kubectl drain $(hostname) --ignore-daemonsets --delete-emptydir-data
