@@ -198,8 +198,8 @@ allow_sign_up = true
 allowed_organizations = your-org another-org
 
 # Restrict to specific teams within organizations
-# Format: organization/team-slug
-team_ids = your-org/devops-team your-org/platform-team
+# Comma-separated list of numeric team IDs (find these via the GitHub API)
+team_ids = 150,300
 
 # Role mapping based on team membership
 # Members of devops-team get Admin role
@@ -834,14 +834,14 @@ content_security_policy = true
 # Session cookie name
 login_cookie_name = grafana_session
 
-[session]
-# Session lifetime in seconds (24 hours)
-session_life_time = 86400
-
-# Cookie lifetime for "remember me" in days
+# Session lifetime options live under the [auth] section
+# (the legacy [session] section was removed in Grafana 6.2 when
+# sessions moved to the database)
+[auth]
+# How long a user can be inactive before the session expires
 login_maximum_inactive_lifetime_duration = 7d
 
-# Cookie lifetime for all sessions in days
+# Absolute maximum session lifetime regardless of activity
 login_maximum_lifetime_duration = 30d
 ```
 
@@ -893,11 +893,10 @@ auto_assign_org_id = 1
 # Allow users to create their own organizations
 allow_org_create = false
 
-# Viewer role permissions
-[viewers]
+# Allow Viewer role users to edit (but not save) dashboards
 viewers_can_edit = false
 
-[editors]
+# Allow Editor role users to administer dashboards, folders, and teams
 editors_can_admin = false
 ```
 
@@ -923,15 +922,18 @@ filters = ldap:debug
 
 ### Test LDAP Configuration
 
-Use the Grafana CLI to test LDAP settings without logging in:
+Use the Grafana Admin HTTP API to test LDAP settings without logging in. These endpoints require Grafana server admin credentials (basic auth):
 
 ```bash
-# Test LDAP connection and user lookup
+# Check LDAP server status
+curl -u admin:password https://grafana.yourdomain.com/api/admin/ldap/status
+
+# Test LDAP connection and look up a specific user
 # Replace 'testuser' with an actual LDAP username
-grafana-cli admin ldap test testuser
+curl -u admin:password https://grafana.yourdomain.com/api/admin/ldap/testuser
 
 # Reload LDAP configuration without restart
-grafana-cli admin ldap reload
+curl -u admin:password -X POST https://grafana.yourdomain.com/api/admin/ldap/reload
 ```
 
 ### Common OAuth Issues
@@ -963,27 +965,35 @@ Track authentication events and failures with Grafana metrics:
 ```yaml
 # prometheus-rules.yaml
 # Alerting rules for Grafana authentication issues
+# Note: Grafana does not expose a dedicated "failed login" counter -
+# detailed failure tracking requires log-based alerting (e.g. Loki
+# against logger=auth / logger=login). The rules below use the
+# counters that Grafana does expose.
 
 groups:
   - name: grafana-auth
     rules:
-      - alert: GrafanaAuthFailures
-        expr: increase(grafana_api_login_failures_total[5m]) > 10
+      # Spike in login attempts may indicate a credential stuffing attack
+      # grafana_api_login_post_total counts username/password login attempts
+      - alert: GrafanaLoginAttemptSpike
+        expr: increase(grafana_api_login_post_total[5m]) > 100
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: High number of Grafana login failures
-          description: "More than 10 login failures in the last 5 minutes"
+          summary: Unusual spike in Grafana login attempts
+          description: "More than 100 login attempts in the last 5 minutes"
 
-      - alert: GrafanaLDAPDown
-        expr: grafana_ldap_request_duration_seconds_count == 0
+      # LDAP user sync job is failing or taking too long
+      # grafana_ldap_users_sync_execution_time is a summary tracking sync duration
+      - alert: GrafanaLDAPSyncSlow
+        expr: grafana_ldap_users_sync_execution_time > 60
         for: 10m
         labels:
           severity: critical
         annotations:
-          summary: Grafana LDAP connectivity lost
-          description: "No LDAP requests in the last 10 minutes"
+          summary: Grafana LDAP user sync is slow or failing
+          description: "LDAP user sync taking longer than 60 seconds"
 ```
 
 Integrate authentication monitoring with [OneUptime](https://oneuptime.com) to get alerts when authentication services fail or experience unusual activity.
