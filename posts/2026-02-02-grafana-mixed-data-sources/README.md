@@ -70,7 +70,7 @@ Let's walk through creating a panel that combines Prometheus application metrics
 
 Start by creating a new panel in your dashboard.
 
-1. Click the "Add panel" button or use the keyboard shortcut `e`
+1. Click the "Add panel" button in your dashboard
 2. Select "Add a new panel"
 3. In the data source dropdown, select "-- Mixed --"
 
