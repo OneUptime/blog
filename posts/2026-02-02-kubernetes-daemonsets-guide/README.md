@@ -628,11 +628,8 @@ kubectl rollout undo daemonset/node-monitor -n monitoring
 # Rollback to specific revision
 kubectl rollout undo daemonset/node-monitor -n monitoring --to-revision=2
 
-# Pause a rollout (useful for canary-style updates)
-kubectl rollout pause daemonset/node-monitor -n monitoring
-
-# Resume a paused rollout
-kubectl rollout resume daemonset/node-monitor -n monitoring
+# Restart all pods in a DaemonSet (triggers a rolling restart)
+kubectl rollout restart daemonset/node-monitor -n monitoring
 
 # Delete a DaemonSet (pods are deleted automatically)
 kubectl delete daemonset node-monitor -n monitoring
