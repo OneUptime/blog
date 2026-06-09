@@ -274,9 +274,9 @@ defmodule UserProcessor do
   end
 
   defp parse_json(input), do: Jason.decode!(input)
-  defp validate_fields(data), do: # validation logic
+  defp validate_fields(data), do: data  # validation logic goes here
   defp normalize_email(data), do: %{data | email: String.downcase(data.email)}
-  defp save_to_database(data), do: # save logic
+  defp save_to_database(data), do: data  # save logic goes here
 end
 ```
 
