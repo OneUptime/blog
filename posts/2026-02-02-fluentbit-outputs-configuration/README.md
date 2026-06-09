@@ -296,8 +296,7 @@ Production setups need proper labeling, tenant configuration, and batching:
     # Drop these keys from log lines (they become labels)
     Remove_Keys kubernetes,stream
 
-    # Batch configuration for efficiency
-    # Wait up to 1 second to batch logs
+    # Format log lines as JSON to preserve structured fields
     Line_Format json
 
     # Retry settings
@@ -368,7 +367,8 @@ Production Kafka deployments need security, partitioning, and reliability settin
     Topics        logs-production
 
     # Message key for partitioning (ensures logs from same source go to same partition)
-    Message_Key   ${kubernetes['pod_name']}
+    # Message_Key_Field reads the key value from the named top-level record field at flush time
+    Message_Key_Field   pod_name
 
     # Timestamp field name in the message
     Timestamp_Key @timestamp
@@ -475,8 +475,8 @@ Production setups need proper partitioning, compression, and error handling:
     role_arn                     arn:aws:iam::123456789012:role/FluentBitS3Writer
 
     # S3 key format with time-based partitioning
-    # Creates paths like: logs/app/2026/02/02/14/app-logs-1234567890.gz
-    s3_key_format                /logs/$TAG/%Y/%m/%d/%H/$TAG-logs-%{[1]}-%{[2]}.gz
+    # $TAG[n] references the n-th part of the tag after splitting by the delimiters below
+    s3_key_format                /logs/$TAG/%Y/%m/%d/%H/$TAG-logs-$TAG[0]-$TAG[1].gz
     s3_key_format_tag_delimiters .-
 
     # Use static file naming for easier debugging
@@ -493,16 +493,17 @@ Production setups need proper partitioning, compression, and error handling:
     # Local buffer directory (survives restarts)
     store_dir                    /var/log/fluent-bit/s3-buffer
 
-    # Number of upload workers
-    upload_workers               4
+    # Number of concurrent flush workers
+    workers                      4
 
     # Retry configuration
     retry_limit                  5
 
-    # Preserve failed uploads for manual recovery
+    # Preserve event ordering across flushes (forces single worker)
     preserve_data_ordering       On
 
-    # Server-side encryption
+    # Force PutObject API (instead of multipart upload) and add Content-MD5 header
+    # send_content_md5 is required when the destination bucket has S3 Object Lock enabled
     use_put_object               On
     send_content_md5             On
 ```
