@@ -445,7 +445,7 @@ spec:
     matchNames:
       - kube-system
   endpoints:
-    - port: traefik
+    - port: metrics
       path: /metrics
       interval: 30s
 ```
