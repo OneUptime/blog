@@ -53,8 +53,11 @@ npm install express sequelize
 # Install PostgreSQL driver (or mysql2 for MySQL, sqlite3 for SQLite)
 npm install pg pg-hstore
 
-# Install development dependencies for migrations and environment management
-npm install --save-dev sequelize-cli dotenv nodemon
+# Install dotenv as a runtime dependency (loaded at app startup)
+npm install dotenv
+
+# Install development dependencies for migrations and dev tooling
+npm install --save-dev sequelize-cli nodemon
 ```
 
 ### Directory Structure
@@ -543,12 +546,10 @@ module.exports = {
       firstName: {
         type: Sequelize.STRING,
         allowNull: false,
-        field: 'first_name',
       },
       lastName: {
         type: Sequelize.STRING,
         allowNull: false,
-        field: 'last_name',
       },
       role: {
         type: Sequelize.ENUM('user', 'admin', 'moderator'),
@@ -557,27 +558,22 @@ module.exports = {
       isActive: {
         type: Sequelize.BOOLEAN,
         defaultValue: true,
-        field: 'is_active',
       },
       lastLoginAt: {
         type: Sequelize.DATE,
         allowNull: true,
-        field: 'last_login_at',
       },
       createdAt: {
         type: Sequelize.DATE,
         allowNull: false,
-        field: 'created_at',
       },
       updatedAt: {
         type: Sequelize.DATE,
         allowNull: false,
-        field: 'updated_at',
       },
       deletedAt: {
         type: Sequelize.DATE,
         allowNull: true,
-        field: 'deleted_at',
       },
     });
 
@@ -629,17 +625,14 @@ module.exports = {
       publishedAt: {
         type: Sequelize.DATE,
         allowNull: true,
-        field: 'published_at',
       },
       viewCount: {
         type: Sequelize.INTEGER,
         defaultValue: 0,
-        field: 'view_count',
       },
       authorId: {
         type: Sequelize.UUID,
         allowNull: false,
-        field: 'author_id',
         references: {
           model: 'users',
           key: 'id',
@@ -654,25 +647,21 @@ module.exports = {
       createdAt: {
         type: Sequelize.DATE,
         allowNull: false,
-        field: 'created_at',
       },
       updatedAt: {
         type: Sequelize.DATE,
         allowNull: false,
-        field: 'updated_at',
       },
       deletedAt: {
         type: Sequelize.DATE,
         allowNull: true,
-        field: 'deleted_at',
       },
     });
 
     // Add indexes for common query patterns
     await queryInterface.addIndex('posts', ['status']);
-    await queryInterface.addIndex('posts', ['author_id']);
-    await queryInterface.addIndex('posts', ['status', 'published_at']);
-    await queryInterface.addIndex('posts', ['slug']);
+    await queryInterface.addIndex('posts', ['authorId']);
+    await queryInterface.addIndex('posts', ['status', 'publishedAt']);
   },
 
   async down(queryInterface, Sequelize) {
