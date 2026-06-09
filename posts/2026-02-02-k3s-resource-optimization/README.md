@@ -195,7 +195,7 @@ Containerd runs within the K3s process and can be tuned for memory efficiency.
 Create a containerd configuration that limits memory usage for garbage collection and image management:
 
 ```toml
-# /etc/rancher/k3s/containerd/config.toml.tmpl
+# /var/lib/rancher/k3s/agent/etc/containerd/config.toml.tmpl
 # Containerd configuration template for K3s
 
 # Base configuration version
@@ -203,8 +203,6 @@ version = 2
 
 # Plugin configuration for containerd
 [plugins."io.containerd.grpc.v1.cri"]
-  # Disable the sandbox image pull on startup to save memory
-  sandbox_image = "rancher/mirrored-pause:3.6"
 
   [plugins."io.containerd.grpc.v1.cri".containerd]
     # Default runtime configuration
@@ -236,10 +234,10 @@ Configure API server throttling through K3s startup arguments:
 
 ```bash
 # K3s server with API throttling configuration
-# These settings limit concurrent requests to prevent CPU exhaustion
+# Upstream defaults are 400 and 200 — lower values throttle harder for constrained nodes
 k3s server \
-    --kube-apiserver-arg=max-requests-inflight=400 \
-    --kube-apiserver-arg=max-mutating-requests-inflight=200 \
+    --kube-apiserver-arg=max-requests-inflight=200 \
+    --kube-apiserver-arg=max-mutating-requests-inflight=100 \
     --kube-apiserver-arg=min-request-timeout=300
 ```
 
@@ -287,7 +285,7 @@ k3s server --kube-scheduler-arg="config=/etc/rancher/k3s/scheduler-config.yaml"
 
 ### Efficient etcd Configuration
 
-K3s uses SQLite by default for single-node deployments and embedded etcd for multi-node clusters. Both can be tuned for better performance.
+K3s uses SQLite (via kine) as its default datastore. Embedded etcd is not enabled by default — it must be opted into with `--cluster-init` on the first server node (and is required for HA multi-server clusters). Both backends can be tuned for better performance.
 
 For embedded etcd, configure compaction and snapshot settings:
 
@@ -361,7 +359,7 @@ Apply the LimitRange to enforce default resource constraints:
 kubectl apply -f limit-range.yaml
 ```
 
-ResourceQuota for Namespace Budgets
+### ResourceQuota for Namespace Budgets
 
 ResourceQuotas prevent any single namespace from consuming excessive cluster resources.
 
@@ -425,8 +423,8 @@ spec:
         - name: metrics-server
           image: rancher/mirrored-metrics-server:v0.6.3
           args:
-            # Reduce memory usage with shorter metric resolution
-            - --metric-resolution=30s
+            # Longer interval between scrapes reduces kubelet load and memory pressure
+            - --metric-resolution=60s
             # Skip TLS verification for kubelet (common in K3s)
             - --kubelet-insecure-tls
             # Prefer internal IP for node communication
@@ -446,7 +444,7 @@ spec:
       priorityClassName: system-cluster-critical
 ```
 
-Resource Monitoring Script
+### Resource Monitoring Script
 
 Create a script that monitors cluster resource usage and alerts on inefficiencies.
 
