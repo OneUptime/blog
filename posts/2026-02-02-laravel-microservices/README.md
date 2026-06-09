@@ -89,7 +89,11 @@ microservices/
 
 ### Creating a Lumen Microservice
 
-Lumen is Laravel's micro-framework, perfect for building fast microservices. The following command installs Lumen via Composer and creates a new user-service project.
+Lumen is Laravel's micro-framework, historically used for building fast microservices.
+
+> **Note:** The `laravel/lumen` application skeleton was archived by the Laravel team in April 2024. New projects are recommended to use the full Laravel framework, which now offers comparable performance (especially with [Laravel Octane](https://laravel.com/docs/octane)). The `laravel/lumen-framework` core package still receives occasional bug fixes, so existing Lumen services remain functional, but consider Laravel itself for any new microservice. The patterns shown in this guide apply equally to Laravel and Lumen.
+
+The following command installs Lumen via Composer and creates a new user-service project.
 
 ```bash
 # Install Lumen via Composer
@@ -466,6 +470,32 @@ class HttpClient
     }
 
     /**
+     * Make a PUT request to another service.
+     */
+    public function put(string $url, array $data = [], array $options = []): ?array
+    {
+        $options['json'] = $data;
+        return $this->request('PUT', $url, $options);
+    }
+
+    /**
+     * Make a PATCH request to another service.
+     */
+    public function patch(string $url, array $data = [], array $options = []): ?array
+    {
+        $options['json'] = $data;
+        return $this->request('PATCH', $url, $options);
+    }
+
+    /**
+     * Make a DELETE request to another service.
+     */
+    public function delete(string $url, array $options = []): ?array
+    {
+        return $this->request('DELETE', $url, $options);
+    }
+
+    /**
      * Execute HTTP request with retry logic.
      * Retries on connection failures and 5xx errors.
      */
@@ -631,7 +661,7 @@ sequenceDiagram
 
 ### Publishing Events
 
-This event class represents an order being created. It implements ShouldBroadcast to publish to the message queue, allowing other services to react asynchronously.
+This domain event represents an order being created. It carries the order data and metadata (event ID, timestamp) used for tracing and idempotency. A listener (not shown) catches this event and dispatches the `PublishEvent` job below to deliver the payload to RabbitMQ for consumption by other services.
 
 ```php
 // app/Events/OrderCreated.php
@@ -641,12 +671,10 @@ namespace App\Events;
 
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Foundation\Events\Dispatchable;
-use Illuminate\Broadcasting\InteractsWithSockets;
-use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 
-class OrderCreated implements ShouldBroadcast
+class OrderCreated
 {
-    use Dispatchable, InteractsWithSockets, SerializesModels;
+    use Dispatchable, SerializesModels;
 
     public array $order;
     public string $eventId;
@@ -664,28 +692,10 @@ class OrderCreated implements ShouldBroadcast
     }
 
     /**
-     * Get the channels the event should broadcast on.
-     * Events are published to specific channels for routing.
+     * Build the payload that will be published to the message broker.
+     * Only the data consumers need is included, to keep messages small.
      */
-    public function broadcastOn(): array
-    {
-        return ['orders'];
-    }
-
-    /**
-     * The event's broadcast name.
-     * Used for event type identification by consumers.
-     */
-    public function broadcastAs(): string
-    {
-        return 'order.created';
-    }
-
-    /**
-     * Get the data to broadcast.
-     * Only necessary data is included to reduce payload size.
-     */
-    public function broadcastWith(): array
+    public function toPayload(): array
     {
         return [
             'event_id' => $this->eventId,
@@ -701,6 +711,8 @@ class OrderCreated implements ShouldBroadcast
     }
 }
 ```
+
+> **Note:** Laravel's `ShouldBroadcast` interface is designed for real-time browser-facing broadcasting via Reverb, Pusher, or Ably — not for inter-service messaging over RabbitMQ. For service-to-service event delivery, dispatch a queued job (shown next) that publishes directly to the broker.
 
 ### Queue Job for Event Publishing
 
@@ -1047,8 +1059,9 @@ class GatewayController extends Controller
         return match ($method) {
             'GET' => $this->httpClient->get($url, $options),
             'POST' => $this->httpClient->post($url, $request->all(), $options),
-            'PUT', 'PATCH' => $this->httpClient->post($url, $request->all(), $options),
-            'DELETE' => $this->httpClient->get($url, $options),
+            'PUT' => $this->httpClient->put($url, $request->all(), $options),
+            'PATCH' => $this->httpClient->patch($url, $request->all(), $options),
+            'DELETE' => $this->httpClient->delete($url, $options),
             default => null,
         };
     }
@@ -1781,7 +1794,7 @@ Route::get('/health', function () {
 
 Building microservices with Laravel provides a solid foundation for scalable applications. Key takeaways:
 
-- **Use Lumen** for lightweight, high-performance microservices
+- **Use Laravel** (or Lumen for existing services) as a foundation for lightweight microservices
 - **Implement circuit breakers** to prevent cascading failures
 - **Prefer asynchronous communication** for loose coupling
 - **Design for failure** with retries and timeouts
