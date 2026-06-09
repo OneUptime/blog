@@ -627,7 +627,7 @@ Fluent Bit can collect system metrics in addition to logs. CPU and memory inputs
     # Collection interval in seconds
     Interval_Sec      10
 
-    # Include per-core CPU statistics
+    # Additional nanosecond precision for the polling interval
     Interval_NSec     0
 
 [INPUT]
@@ -723,11 +723,9 @@ Java stack traces and similar multi-line entries span multiple lines. The multil
     Path              /var/log/java-app/*.log
     DB                /var/lib/fluent-bit/java.db
 
-    # Enable multiline mode
-    Multiline         On
-
-    # Parser that identifies the first line of each entry
-    Parser_Firstline  java_multiline
+    # Reference a [MULTILINE_PARSER] definition by name
+    # Use multiline.parser (not the legacy Multiline/Parser_Firstline pair)
+    multiline.parser  java_multiline
 
     # Buffer settings for large stack traces
     Buffer_Max_Size   256k
