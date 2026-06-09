@@ -352,7 +352,7 @@ flowchart TB
 In watch mode, press:
 - `u` to update all failing snapshots
 - `i` to update snapshots interactively one by one
-- `s` to skip the current test
+- Once in interactive mode, press `u` to update the current snapshot, `s` to skip it, `q` to quit, or `r` to restart from the first
 
 ---
 
