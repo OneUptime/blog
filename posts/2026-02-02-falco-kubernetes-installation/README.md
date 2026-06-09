@@ -243,7 +243,7 @@ spec:
           effect: NoSchedule
       containers:
         - name: falco
-          image: falcosecurity/falco-no-driver:latest
+          image: falcosecurity/falco:latest
           securityContext:
             privileged: true
           env:
