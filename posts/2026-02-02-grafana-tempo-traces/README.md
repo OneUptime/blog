@@ -1711,7 +1711,7 @@ Analyze trace data to find slow operations.
 
 ```text
 # Find the slowest operations across all services
-{ duration > 500ms } | avg(duration) by (resource.service.name, name) | sort(desc)
+{ duration > 500ms } | avg(duration) by (resource.service.name, name)
 
 # Find operations that consistently timeout
 { span.error.type = "TimeoutError" } | count() by (resource.service.name, name)
@@ -1719,8 +1719,8 @@ Analyze trace data to find slow operations.
 # Identify database queries taking too long
 { span.db.system != nil && duration > 100ms } | avg(duration) by (span.db.statement)
 
-# Find HTTP endpoints with high latency variance
-{ span.http.route != nil } | stddev(duration) by (resource.service.name, span.http.route)
+# Find HTTP endpoints with max latency by route
+{ span.http.route != nil } | max(duration) by (resource.service.name, span.http.route)
 ```
 
 ### Comparing Traces Across Deployments
