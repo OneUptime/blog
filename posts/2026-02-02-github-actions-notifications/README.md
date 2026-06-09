@@ -68,7 +68,7 @@ For personal notification preferences, update your GitHub notification settings 
 
 Slack remains the most popular notification channel for development teams. The official GitHub action provides rich message formatting and threading support.
 
-First, create a Slack app and obtain a webhook URL from your Slack workspace settings. Store the URL as a repository secret named `SLACK_WEBHOOK_URL`.
+First, create a Slack app and install it to your workspace to obtain a Bot User OAuth Token (with `chat:write` scope). Store the token as a repository secret named `SLACK_BOT_TOKEN`. The example below uses the Slack API method (bot token + channel ID); if you prefer the Incoming Webhook approach instead, set `SLACK_WEBHOOK_URL` and use the `payload` input rather than `channel-id`.
 
 The following workflow sends a notification to Slack whenever the main branch build completes:
 
@@ -191,7 +191,9 @@ jobs:
 
 For organizations using Microsoft Teams, the workflow-webhook approach works well with Teams incoming webhooks.
 
-Create an incoming webhook in your Teams channel and store the URL as a secret:
+Note: Microsoft retired Office 365 Connectors (the classic "Incoming Webhook" connector) for Teams on December 31, 2025. For new setups, create a workflow with the Microsoft Teams "Workflows" app (Power Automate) using the "Post to a channel when a webhook request is received" template — this gives you a workflow URL that accepts an Adaptive Card payload. The `MessageCard` example below still works against legacy connector URLs that were registered before retirement, but for the long term you should migrate to Adaptive Cards.
+
+Create the incoming webhook (or workflow) for your Teams channel and store the URL as a secret:
 
 ```yaml
 jobs:
