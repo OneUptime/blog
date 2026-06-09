@@ -818,7 +818,7 @@ spec:
     name: api-server
   # Traefik IngressRoute for traffic splitting
   ingressRef:
-    apiVersion: traefik.containo.us/v1alpha1
+    apiVersion: traefik.io/v1alpha1
     kind: IngressRoute
     name: api-server
   progressDeadlineSeconds: 60
@@ -1070,7 +1070,7 @@ etcd-snapshot-dir: /var/lib/rancher/k3s/server/db/snapshots
 3. **Audit trail** - Enable Git signing and protected branches
 4. **Network policies** - Restrict GitOps controller network access
 
-Resource Management for K3s
+### Resource Management for K3s
 
 1. **Set resource limits** - K3s environments often have constrained resources
 2. **Optimize images** - Use alpine or distroless base images
