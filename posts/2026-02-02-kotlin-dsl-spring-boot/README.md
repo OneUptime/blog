@@ -293,8 +293,8 @@ Create complex bean graphs with factory methods and lazy initialization:
 package com.example.config
 
 import org.springframework.context.support.beans
+import org.springframework.http.client.SimpleClientHttpRequestFactory
 import org.springframework.web.client.RestTemplate
-import java.time.Duration
 
 val advancedBeans = beans {
 
@@ -302,10 +302,10 @@ val advancedBeans = beans {
     // Using Kotlin's apply scope function for configuration
     bean {
         RestTemplate().apply {
-            // Configure timeouts
+            // Configure timeouts (values in milliseconds)
             requestFactory = SimpleClientHttpRequestFactory().apply {
-                setConnectTimeout(Duration.ofSeconds(5))
-                setReadTimeout(Duration.ofSeconds(10))
+                setConnectTimeout(5000)
+                setReadTimeout(10000)
             }
         }
     }
