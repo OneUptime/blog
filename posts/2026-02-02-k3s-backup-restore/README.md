@@ -69,7 +69,7 @@ graph TB
 
 ### What Backups Cover
 
-K3s snapshots capture the cluster state stored in etcd or SQLite. However, they do not include:
+K3s etcd snapshots capture the cluster state stored in the embedded etcd datastore. However, they do not include:
 
 - Data stored in Persistent Volumes (PVs)
 - Container images cached on nodes
@@ -129,7 +129,7 @@ graph LR
 
 ## Built-in etcd Snapshot Commands
 
-K3s includes commands for creating and managing etcd snapshots directly. These commands work with both embedded etcd and SQLite datastores.
+K3s includes commands for creating and managing etcd snapshots directly. These commands only work with the embedded etcd datastore. For clusters using SQLite, back up the datastore by copying `/var/lib/rancher/k3s/server/db/` while K3s is stopped. For external datastores (PostgreSQL, MySQL), use the database vendor's native backup tools.
 
 ### Creating On-Demand Snapshots
 
@@ -382,7 +382,7 @@ cat > "${BACKUP_DIR}/manifest.json" <<EOF
     "backup_name": "${BACKUP_NAME}",
     "backup_date": "$(date -Iseconds)",
     "k3s_version": "$(k3s --version | head -1)",
-    "kubernetes_version": "$(kubectl version --short 2>/dev/null | grep Server || echo 'unknown')",
+    "kubernetes_version": "$(kubectl version 2>/dev/null | grep 'Server Version' || echo 'unknown')",
     "node_count": $(kubectl get nodes --no-headers | wc -l),
     "namespace_count": $(kubectl get namespaces --no-headers | wc -l),
     "pod_count": $(kubectl get pods -A --no-headers | wc -l),
@@ -757,13 +757,20 @@ fi
 
 echo "Restoring K3s to new cluster..."
 
-# Step 1: Install K3s with cluster-init and restore
+# Step 1: Install K3s and restore from snapshot
+# --cluster-reset alone is sufficient to bootstrap a fresh etcd cluster
+# from the snapshot; --cluster-init must not be combined with it.
+# If restoring to a different host than the original, also pass --token
+# with the backed-up server token value.
 curl -sfL https://get.k3s.io | sh -s - server \
-    --cluster-init \
     --cluster-reset \
     --cluster-reset-restore-path="${SNAPSHOT_PATH}" \
     --node-ip="${NEW_NODE_IP}" \
     --tls-san="${NEW_NODE_IP}"
+
+# After the reset completes successfully, K3s will exit with a message
+# indicating the cluster membership has been reset. Start K3s normally:
+sudo systemctl enable --now k3s
 
 # Step 2: Wait for K3s to start
 echo "Waiting for K3s to initialize..."
@@ -935,11 +942,16 @@ if [ -d "${BACKUP_DIR}/manifests" ]; then
 fi
 
 # Install K3s and restore from snapshot
+# Use --cluster-reset (without --cluster-init) to bootstrap a new etcd
+# cluster from the snapshot. After the reset completes K3s exits, and
+# the service must be started normally to begin serving the cluster.
 echo "Installing K3s and restoring from snapshot..."
 curl -sfL https://get.k3s.io | sh -s - server \
-    --cluster-init \
     --cluster-reset \
     --cluster-reset-restore-path="${SNAPSHOT_FILE}"
+
+# Start K3s normally after the reset completes
+sudo systemctl enable --now k3s
 
 # Wait for cluster to stabilize
 echo "Waiting for cluster to stabilize..."
@@ -1146,10 +1158,14 @@ BACKUP_DIR=$(find "${RESTORE_DIR}" -maxdepth 1 -type d -name "k3s-backup-*" | he
 SNAPSHOT=$(find "${BACKUP_DIR}/etcd" -type f | head -1)
 
 # Install and restore
+# --cluster-reset bootstraps a new etcd cluster from the snapshot;
+# --cluster-init should not be combined with it.
 curl -sfL https://get.k3s.io | sh -s - server \
-    --cluster-init \
     --cluster-reset \
     --cluster-reset-restore-path="${SNAPSHOT}"
+
+# Start K3s normally after the reset finishes
+sudo systemctl enable --now k3s
 
 # Wait for cluster
 sleep 60
