@@ -857,7 +857,7 @@ kafka-configs.sh --bootstrap-server localhost:9092 \
 
 # Get topic partition offsets (earliest and latest)
 kafka-run-class.sh kafka.tools.GetOffsetShell \
-    --broker-list localhost:9092 \
+    --bootstrap-server localhost:9092 \
     --topic orders.purchase.created.v1 \
     --time -1
 ```
