@@ -213,7 +213,7 @@ public class PriorityPartitioner implements Partitioner {
 
         // Distribute other messages across remaining partitions
         if (keyBytes == null) {
-            // No key - round robin among non-premium partitions
+            // No key - random selection among non-premium partitions
             return 1 + (int)(Math.random() * (numPartitions - 1));
         }
 
