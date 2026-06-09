@@ -187,10 +187,10 @@ metadata:
     storageclass.kubernetes.io/is-default-class: "true"
 
 # CSI driver name for AWS EBS
-# Other common provisioners:
-# - kubernetes.io/gce-pd (GCP)
-# - kubernetes.io/azure-disk (Azure)
-# - csi.longhorn.io (Longhorn)
+# Other common CSI provisioners:
+# - pd.csi.storage.gke.io (GCP Persistent Disk)
+# - disk.csi.azure.com (Azure Disk)
+# - driver.longhorn.io (Longhorn)
 provisioner: ebs.csi.aws.com
 
 # Provisioner-specific parameters
@@ -591,10 +591,11 @@ spec:
 Storage I/O can impact Pod scheduling. Set appropriate requests to ensure Pods land on nodes with sufficient storage bandwidth.
 
 ```yaml
-# Include storage-related annotations for scheduling hints
+# Include storage-related annotations for tracking and provisioner selection
 metadata:
   annotations:
-    # Some schedulers use these hints for placement
+    # Set automatically by the PVC controller to identify the provisioner;
+    # included here for reference when inspecting bound PVCs
     volume.kubernetes.io/storage-provisioner: ebs.csi.aws.com
 ```
 
