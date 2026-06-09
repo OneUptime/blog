@@ -236,7 +236,7 @@ If you prefer a lighter setup, python-json-logger works with Python's built-in l
 ```python
 # json_logging_simple.py
 import logging
-from pythonjsonlogger import jsonlogger
+from pythonjsonlogger.json import JsonFormatter
 
 def setup_json_logging():
     """Simple JSON logging setup using python-json-logger."""
@@ -245,7 +245,7 @@ def setup_json_logging():
     handler = logging.StreamHandler()
 
     # Configure JSON format with custom fields
-    formatter = jsonlogger.JsonFormatter(
+    formatter = JsonFormatter(
         "%(asctime)s %(levelname)s %(name)s %(message)s",
         rename_fields={"asctime": "timestamp", "levelname": "level"},
         datefmt="%Y-%m-%dT%H:%M:%SZ"
