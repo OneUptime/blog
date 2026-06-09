@@ -764,9 +764,10 @@ Messages that fail delivery 5 times will automatically move to the dead letter t
 Use these gcloud commands to monitor your Pub/Sub setup:
 
 ```bash
-# Check backlog - how many undelivered messages are waiting
-gcloud pubsub subscriptions describe orders-subscription \
-    --format="value(numUndeliveredMessages)"
+# View subscription configuration (ack deadline, retention, push config, etc.)
+# Note: Backlog size is a runtime metric and not exposed by describe -
+# query Cloud Monitoring for num_undelivered_messages (see below).
+gcloud pubsub subscriptions describe orders-subscription
 
 # Pull and display a few messages without acknowledging (for debugging)
 gcloud pubsub subscriptions pull orders-subscription \
@@ -777,7 +778,7 @@ gcloud pubsub subscriptions pull orders-subscription \
 gcloud pubsub subscriptions seek orders-subscription \
     --time="2024-01-15T12:00:00Z"
 
-# View topic metrics
+# View topic configuration
 gcloud pubsub topics describe orders
 ```
 
