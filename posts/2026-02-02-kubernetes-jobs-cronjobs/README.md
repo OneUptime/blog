@@ -249,6 +249,7 @@ spec:
       - action: Ignore
         onPodConditions:
           - type: DisruptionTarget
+            status: "True"
 
   template:
     spec:
@@ -985,8 +986,8 @@ kubectl get pods -l job-name=my-job
 # Check CronJob schedule and last run
 kubectl get cronjob my-cronjob -o wide
 
-# View recent Jobs created by a CronJob
-kubectl get jobs -l cronjob-name=my-cronjob
+# View Jobs spawned by a CronJob (CronJob-created Jobs are named <cronjob>-<timestamp>)
+kubectl get jobs | grep ^my-cronjob-
 
 # Debug a stuck Job
 kubectl describe pod $(kubectl get pods -l job-name=my-job -o jsonpath='{.items[0].metadata.name}')
