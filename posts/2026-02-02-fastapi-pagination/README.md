@@ -62,9 +62,8 @@ First, let's set up a FastAPI project with SQLAlchemy. This creates the foundati
 # models.py
 
 from sqlalchemy import Column, Integer, String, DateTime, create_engine
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
-from datetime import datetime
+from sqlalchemy.orm import declarative_base, sessionmaker
+from datetime import datetime, timezone
 
 Base = declarative_base()
 
@@ -76,7 +75,7 @@ class Article(Base):
     title = Column(String(255), nullable=False)
     content = Column(String, nullable=False)
     author = Column(String(100), nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
     views = Column(Integer, default=0)
 
 # Database setup
@@ -465,17 +464,15 @@ For high-performance APIs, use async database operations. This prevents blocking
 ```python
 # async_pagination.py
 from fastapi import FastAPI, Query, Depends
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy import select, func
 from typing import List
 
 # Async engine setup
 ASYNC_DATABASE_URL = "postgresql+asyncpg://user:password@localhost/mydb"
 async_engine = create_async_engine(ASYNC_DATABASE_URL)
-AsyncSessionLocal = sessionmaker(
+AsyncSessionLocal = async_sessionmaker(
     async_engine,
-    class_=AsyncSession,
     expire_on_commit=False
 )
 
@@ -644,6 +641,7 @@ For very large tables, approximate counts or caching can help.
 ```python
 # count_optimization.py
 from functools import lru_cache
+from sqlalchemy import text
 import time
 
 # Cache count for 60 seconds
@@ -661,7 +659,7 @@ def get_approximate_count(db: Session) -> int:
     """Get approximate count - much faster for large tables"""
     # For PostgreSQL
     result = db.execute(
-        "SELECT reltuples::bigint FROM pg_class WHERE relname = 'articles'"
+        text("SELECT reltuples::bigint FROM pg_class WHERE relname = 'articles'")
     )
     return result.scalar() or 0
 
