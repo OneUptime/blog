@@ -598,11 +598,12 @@ Proper error handling on the client side is essential for good user experience. 
 This example shows comprehensive error handling with different responses for different error types:
 
 ```javascript
+import { useMemo } from 'react';
 import { useQuery, useMutation } from '@apollo/client';
 
 // Custom hook that wraps useQuery with error handling
 function useUserQuery(userId) {
-  const { data, loading, error } = useQuery(GET_USER, {
+  const { data, loading, error, refetch } = useQuery(GET_USER, {
     variables: { id: userId },
     // Configure error policy to get partial data with errors
     errorPolicy: 'all'
@@ -663,13 +664,14 @@ function useUserQuery(userId) {
   return {
     user: data?.user,
     loading,
-    error: processedError
+    error: processedError,
+    refetch
   };
 }
 
 // Component using the custom hook
 function UserProfile({ userId }) {
-  const { user, loading, error } = useUserQuery(userId);
+  const { user, loading, error, refetch } = useUserQuery(userId);
 
   if (loading) {
     return <LoadingSpinner />;
