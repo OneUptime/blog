@@ -54,8 +54,9 @@ pip install langchain langchain-community langchain-openai
 
 # Vector store backends (install what you need)
 pip install faiss-cpu          # Local development (CPU)
-pip install chromadb           # Embedded vector store
-pip install pinecone-client    # Cloud vector store
+pip install langchain-chroma   # Embedded vector store
+pip install langchain-pinecone pinecone  # Cloud vector store
+pip install langchain-huggingface        # Local open-source embeddings
 
 # Additional utilities
 pip install tiktoken           # Token counting for OpenAI
@@ -74,7 +75,7 @@ Embeddings convert text into vectors. LangChain supports multiple embedding prov
 import os
 from dotenv import load_dotenv
 from langchain_openai import OpenAIEmbeddings
-from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 
 # Load API keys from .env file
 load_dotenv()
@@ -227,10 +228,9 @@ Chroma can run as an embedded database or as a client-server architecture. The e
 ```python
 # chroma_setup.py
 # Chroma vector store with metadata filtering and persistence
-from langchain_community.vectorstores import Chroma
+from langchain_chroma import Chroma
 from langchain_openai import OpenAIEmbeddings
 from langchain.schema import Document
-import chromadb
 
 # Initialize embeddings
 embeddings = OpenAIEmbeddings()
