@@ -615,7 +615,7 @@ post_preview_url:
     - if: $CI_MERGE_REQUEST_IID
 ```
 
-Resource Limits and Cleanup
+## Resource Limits and Cleanup
 
 Prevent resource exhaustion by limiting preview environments and automating cleanup.
 
@@ -703,7 +703,7 @@ metadata:
     prometheus.io/path: "/metrics"
 ```
 
-Resource Usage Dashboard
+### Resource Usage Dashboard
 
 Track resource consumption across preview environments.
 
