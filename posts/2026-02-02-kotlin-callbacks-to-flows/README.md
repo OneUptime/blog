@@ -66,7 +66,7 @@ fun fetchUserData(userId: String): Flow<UserData> = flow {
     val user = userService.getUser(userId)
     val orders = orderService.getOrders(user.id)
 
-    // Process orders concurrently and emit results
+    // Process orders sequentially and emit results
     orders.forEach { order ->
         val details = detailService.getDetails(order.id)
         emit(UserData(user, order, details))
@@ -767,18 +767,24 @@ class CallbackFlowTest {
 // Mock service for testing
 class MockCallbackService {
     private var callback: DataCallback<String>? = null
+    private var completeTrigger: (() -> Unit)? = null
 
     fun dataAsFlow(): Flow<String> = callbackFlow {
         callback = object : DataCallback<String> {
-            override fun onSuccess(data: String) = trySend(data).let {}
-            override fun onError(error: Throwable) = close(error).let {}
+            override fun onSuccess(data: String) { trySend(data) }
+            override fun onError(error: Throwable) { close(error) }
         }
-        awaitClose { callback = null }
+        // Capture a close handle so tests can simulate stream completion
+        completeTrigger = { close() }
+        awaitClose {
+            callback = null
+            completeTrigger = null
+        }
     }
 
-    fun simulateCallback(data: String) = callback?.onSuccess(data)
-    fun simulateError(error: Throwable) = callback?.onError(error)
-    fun simulateComplete() { /* trigger close */ }
+    fun simulateCallback(data: String) { callback?.onSuccess(data) }
+    fun simulateError(error: Throwable) { callback?.onError(error) }
+    fun simulateComplete() { completeTrigger?.invoke() }
 }
 ```
 
