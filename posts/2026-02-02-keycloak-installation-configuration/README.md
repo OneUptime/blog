@@ -45,8 +45,8 @@ The fastest way to get Keycloak running is with Docker.
 docker run -d \
   --name keycloak \
   -p 8080:8080 \
-  -e KEYCLOAK_ADMIN=admin \
-  -e KEYCLOAK_ADMIN_PASSWORD=admin \
+  -e KC_BOOTSTRAP_ADMIN_USERNAME=admin \
+  -e KC_BOOTSTRAP_ADMIN_PASSWORD=admin \
   quay.io/keycloak/keycloak:latest \
   start-dev
 ```
@@ -81,9 +81,9 @@ services:
     image: quay.io/keycloak/keycloak:latest
     container_name: keycloak
     environment:
-      # Admin credentials
-      KEYCLOAK_ADMIN: admin
-      KEYCLOAK_ADMIN_PASSWORD: change_me_in_production
+      # Admin credentials (bootstrap admin used on first startup only)
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: change_me_in_production
       # Database connection
       KC_DB: postgres
       KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
@@ -138,12 +138,13 @@ services:
       KC_DB_USERNAME: keycloak
       KC_DB_PASSWORD: ${DB_PASSWORD}
       # Production settings
-      KC_HOSTNAME: auth.yourdomain.com
+      KC_HOSTNAME: https://auth.yourdomain.com
       KC_HOSTNAME_STRICT: true
-      KC_PROXY: edge
-      # Admin credentials from secrets
-      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN}
-      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+      KC_PROXY_HEADERS: xforwarded
+      KC_HTTP_ENABLED: true
+      # Bootstrap admin from secrets (used on first startup only)
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
     ports:
       - "8080:8080"
     depends_on:
@@ -806,9 +807,11 @@ environment:
   KC_HEALTH_ENABLED: true
 ```
 
-Access metrics at:
-- Health: http://localhost:8080/health
-- Metrics: http://localhost:8080/metrics
+Access metrics on the management port (9000 by default):
+- Health: http://localhost:9000/health
+- Metrics: http://localhost:9000/metrics
+
+Make sure to expose port 9000 from the container (e.g., add `- "9000:9000"` to your ports list). Keep this port internal — do not expose it through your public reverse proxy.
 
 ### Configure Email
 
