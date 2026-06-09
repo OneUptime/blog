@@ -1240,7 +1240,7 @@ void main() {
   test('CartProvider adds items correctly', () {
     final cart = CartProvider();
 
-    cart.addItem(Product(id: '1', name: 'Test', price: 10));
+    cart.addItem(const Product(id: '1', name: 'Test', price: 10, imageUrl: ''));
 
     expect(cart.itemCount, 1);
     expect(cart.totalAmount, 10);
@@ -1248,7 +1248,7 @@ void main() {
 
   test('CartProvider increments quantity for duplicate items', () {
     final cart = CartProvider();
-    final product = Product(id: '1', name: 'Test', price: 10);
+    const product = Product(id: '1', name: 'Test', price: 10, imageUrl: '');
 
     cart.addItem(product);
     cart.addItem(product);
