@@ -157,9 +157,9 @@ data:
         Parser            cri
         # Tag logs with the filename for later routing
         Tag               kube.*
-        # Remember position between restarts
-        DB                /var/log/flb_kube.db
-        # Start reading from the end of files on first run
+        # Remember position between restarts (must be on a writable path)
+        DB                /var/fluent-bit/state/flb_kube.db
+        # Skip lines longer than the buffer size instead of failing
         Skip_Long_Lines   On
         # Refresh file list every 10 seconds for new pods
         Refresh_Interval  10
@@ -177,7 +177,7 @@ data:
         Kube_CA_File        /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
         # Merge the log field into the root of the record
         Merge_Log           On
-        # Keep the original log field after merging
+        # Remove the original log field after a successful merge
         Keep_Log            Off
         # Include Kubernetes labels in the record
         K8S-Logging.Parser  On
@@ -271,7 +271,7 @@ spec:
           effect: NoSchedule
       containers:
         - name: fluent-bit
-          image: fluent/fluent-bit:2.2
+          image: fluent/fluent-bit:3.2
           # Environment variables for configuration
           env:
             # Token for authenticating with your observability backend
@@ -310,7 +310,7 @@ spec:
           volumeMounts:
             - name: config
               mountPath: /fluent-bit/etc/
-            # Container logs directory
+            # Container logs directory (read-only is fine; we only tail)
             - name: varlog
               mountPath: /var/log
               readOnly: true
@@ -318,6 +318,9 @@ spec:
             - name: varlibdockercontainers
               mountPath: /var/lib/docker/containers
               readOnly: true
+            # Writable location for the tail position DB
+            - name: flb-state
+              mountPath: /var/fluent-bit/state
       volumes:
         - name: config
           configMap:
@@ -328,6 +331,10 @@ spec:
         - name: varlibdockercontainers
           hostPath:
             path: /var/lib/docker/containers
+        - name: flb-state
+          hostPath:
+            path: /var/lib/fluent-bit
+            type: DirectoryOrCreate
 ```
 
 Before deploying, create the secret for your API token:
