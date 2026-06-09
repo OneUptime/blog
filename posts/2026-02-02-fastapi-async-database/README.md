@@ -1278,6 +1278,7 @@ Configure connection management in your FastAPI application.
 # app/main.py
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
+from sqlalchemy import text
 from app.database import engine, Base
 from app.routers import users
 
@@ -1301,7 +1302,7 @@ async def lifespan(app: FastAPI):
 
     # Verify database connectivity
     async with engine.connect() as conn:
-        await conn.execute("SELECT 1")
+        await conn.execute(text("SELECT 1"))
         print("Database connection verified")
 
     yield
@@ -1333,7 +1334,7 @@ async def health_check():
     """
     try:
         async with engine.connect() as conn:
-            await conn.execute("SELECT 1")
+            await conn.execute(text("SELECT 1"))
         return {"status": "healthy", "database": "connected"}
     except Exception as e:
         return {"status": "unhealthy", "database": str(e)}
