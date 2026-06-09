@@ -484,8 +484,8 @@ resources:
   - resources:
       - secrets
     providers:
-      # AES-CBC encryption with a 32-byte key
-      - aescbc:
+      # AES-GCM encryption with a 32-byte key (authenticated encryption)
+      - aesgcm:
           keys:
             - name: key1
               # Generate with: head -c 32 /dev/urandom | base64
@@ -615,7 +615,7 @@ The External Secrets Operator syncs secrets from external providers into Kuberne
 ```yaml
 # external-secrets/secretstore.yaml
 # SecretStore defines connection to external secret provider
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
   name: vault-backend
@@ -639,7 +639,7 @@ Define an ExternalSecret to sync specific secrets:
 ```yaml
 # external-secrets/db-credentials.yaml
 # ExternalSecret fetches data from external provider and creates a K8s Secret
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: db-credentials
@@ -672,7 +672,7 @@ Install the Sealed Secrets controller and CLI:
 
 ```bash
 # Install controller in cluster
-kubectl apply -f https://github.com/bitnami-labs/sealed-secrets/releases/download/v0.24.0/controller.yaml
+kubectl apply -f https://github.com/bitnami-labs/sealed-secrets/releases/download/v0.27.0/controller.yaml
 
 # Install kubeseal CLI (macOS)
 brew install kubeseal
