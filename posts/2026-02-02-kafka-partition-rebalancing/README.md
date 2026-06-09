@@ -760,8 +760,10 @@ class RebalanceHandler:
                 partition.offset = stored_offset
                 logger.info(f"Seeking {key} to offset {stored_offset}")
 
-        # Apply any offset changes
-        consumer.assign(partitions)
+        # Apply any offset changes. With cooperative-sticky we must use
+        # incremental_assign() instead of assign(); calling assign() with a
+        # cooperative protocol raises a _STATE error.
+        consumer.incremental_assign(partitions)
 
     def on_revoke(self, consumer: Consumer, partitions: List) -> None:
         """Called when partitions are being revoked before rebalance."""
