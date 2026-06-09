@@ -321,9 +321,9 @@ datasources:
 
 ## Template Best Practices
 
-### Using __data Input
+### Filtering Data with Transformations
 
-The `__data` input lets panels reference other panels' data. Use it for linked visualizations:
+Transformations let panels reshape query results before display. The `filterByValue` transformation filters series by field values, for example showing only 5xx responses:
 
 ```json
 {
@@ -347,7 +347,9 @@ The `__data` input lets panels reference other panels' data. Use it for linked v
               }
             }
           }
-        ]
+        ],
+        "type": "include",
+        "match": "any"
       }
     }
   ]
@@ -738,7 +740,7 @@ Template for comparing metrics across services:
 | Variables not populating | Data source not configured | Check DS_PROMETHEUS variable |
 | Panels show "No Data" | Query uses wrong labels | Verify label names match your metrics |
 | Import fails | Invalid JSON | Run through jq validation |
-| Variables not cascading | Wrong variable reference | Use $variable not ${variable} in queries |
+| Variables not cascading | Wrong variable reference | Ensure child queries reference the parent variable (e.g., `$namespace`) and that refresh is set to "On Time Range Change" |
 
 ### Debug Queries
 
