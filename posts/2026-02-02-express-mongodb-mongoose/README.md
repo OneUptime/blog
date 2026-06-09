@@ -405,7 +405,7 @@ router.post('/articles/:id/comments', async (req, res) => {
 // Remove a comment
 router.delete('/articles/:articleId/comments/:commentId', async (req, res) => {
   const article = await Article.findById(req.params.articleId);
-  article.comments.id(req.params.commentId).remove();
+  article.comments.pull(req.params.commentId);
   await article.save();
   res.json(article);
 });
@@ -428,7 +428,7 @@ userSchema.pre('save', async function(next) {
 });
 
 // Remove user's posts when user is deleted
-userSchema.pre('remove', async function(next) {
+userSchema.pre('deleteOne', { document: true, query: false }, async function(next) {
   await Post.deleteMany({ author: this._id });
   next();
 });
