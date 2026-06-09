@@ -233,7 +233,7 @@ When you need to invalidate groups of related cache entries, tags make it easy:
 
 ```python
 # cache_tags.py
-from typing import Set, List
+from typing import List, Any, Optional
 import json
 
 class TaggedCache:
@@ -333,8 +333,8 @@ For complex data relationships, track dependencies and cascade invalidations:
 
 ```python
 # dependency_cache.py
-from typing import Dict, Set
-from collections import defaultdict
+from typing import List, Any
+import json
 
 class DependencyCache:
     """Cache with automatic dependency tracking and cascade invalidation"""
@@ -430,9 +430,9 @@ Pre-populate caches in the background to avoid cache stampedes:
 
 ```python
 # cache_warming.py
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, BackgroundTasks
 from typing import List, Callable
-import asyncio
 import logging
 
 logger = logging.getLogger(__name__)
@@ -500,12 +500,13 @@ async def warm_popular_products():
 
     logger.info(f"Warmed cache for {len(popular_ids)} popular products")
 
-app = FastAPI()
-
-@app.on_event("startup")
-async def startup_cache_warming():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     """Warm caches on application startup"""
     await warmer.warm_cache()
+    yield
+
+app = FastAPI(lifespan=lifespan)
 
 @app.post("/admin/warm-cache")
 async def trigger_cache_warming(background_tasks: BackgroundTasks):
@@ -522,15 +523,12 @@ Putting it all together with a production-ready cache-aside implementation:
 
 ```python
 # cache_aside.py
-from fastapi import FastAPI, HTTPException, BackgroundTasks
-from typing import Optional, TypeVar, Generic
-from pydantic import BaseModel
+from fastapi import FastAPI, HTTPException
+from typing import Optional, Callable
 import json
 import logging
 
 logger = logging.getLogger(__name__)
-
-T = TypeVar('T')
 
 class CacheAside:
     """
