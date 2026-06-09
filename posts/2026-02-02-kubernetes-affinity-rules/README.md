@@ -600,30 +600,34 @@ preferredDuringSchedulingIgnoredDuringExecution:
 Weight values (1-100) should reflect actual priority. Larger differences between weights make preferences clearer.
 
 ```yaml
-preferredDuringSchedulingIgnoredDuringExecution:
-  # High priority - same zone as database
-  - weight: 100
-    podAffinityTerm:
-      labelSelector:
-        matchLabels:
-          tier: database
-      topologyKey: topology.kubernetes.io/zone
-  # Medium priority - compute nodes
-  - weight: 50
-    preference:
-      matchExpressions:
-        - key: node-type
-          operator: In
-          values:
-            - compute
-  # Low priority - specific instance type
-  - weight: 10
-    preference:
-      matchExpressions:
-        - key: instance-type
-          operator: In
-          values:
-            - m5.xlarge
+affinity:
+  podAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      # High priority - same zone as database
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchLabels:
+              tier: database
+          topologyKey: topology.kubernetes.io/zone
+  nodeAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      # Medium priority - compute nodes
+      - weight: 50
+        preference:
+          matchExpressions:
+            - key: node-type
+              operator: In
+              values:
+                - compute
+      # Low priority - specific instance type
+      - weight: 10
+        preference:
+          matchExpressions:
+            - key: instance-type
+              operator: In
+              values:
+                - m5.xlarge
 ```
 
 ### 3. Document Your Affinity Decisions
