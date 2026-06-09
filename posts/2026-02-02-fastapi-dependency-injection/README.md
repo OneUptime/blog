@@ -150,7 +150,6 @@ When you need cleanup logic (closing connections, releasing locks), use `yield` 
 
 ```python
 from fastapi import FastAPI, Depends
-from contextlib import contextmanager
 
 app = FastAPI()
 
