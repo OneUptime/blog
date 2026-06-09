@@ -99,21 +99,21 @@ class Article extends Model
      * for both filtering (WHERE) and ordering (ORDER BY).
      *
      * IN NATURAL LANGUAGE MODE is the default and works well for
-     * most use cases. It ignores stop words and uses word stemming.
+     * most use cases. It ignores stop words and respects the
+     * configured minimum word length (ft_min_word_len for MyISAM,
+     * innodb_ft_min_token_size for InnoDB).
      */
     public function scopeSearch(Builder $query, string $term): Builder
     {
-        // Escape the search term to prevent SQL injection
-        $searchTerm = addslashes($term);
-
+        // Parameter binding handles SQL escaping safely
         return $query
             ->whereRaw(
                 "MATCH(title, body) AGAINST(? IN NATURAL LANGUAGE MODE)",
-                [$searchTerm]
+                [$term]
             )
             ->orderByRaw(
                 "MATCH(title, body) AGAINST(? IN NATURAL LANGUAGE MODE) DESC",
-                [$searchTerm]
+                [$term]
             );
     }
 
@@ -128,16 +128,14 @@ class Article extends Model
      */
     public function scopeSearchBoolean(Builder $query, string $term): Builder
     {
-        $searchTerm = addslashes($term);
-
         return $query
             ->whereRaw(
                 "MATCH(title, body) AGAINST(? IN BOOLEAN MODE)",
-                [$searchTerm]
+                [$term]
             )
             ->orderByRaw(
                 "MATCH(title, body) AGAINST(? IN BOOLEAN MODE) DESC",
-                [$searchTerm]
+                [$term]
             );
     }
 }
@@ -457,25 +455,20 @@ First, install the Elasticsearch Scout driver.
 composer require matchish/laravel-scout-elasticsearch
 ```
 
-Configure the connection in `config/scout.php`.
+Set the Scout driver to `elasticsearch` in `config/scout.php` (or via `SCOUT_DRIVER` in `.env`), then publish and edit the package's own `config/elasticsearch.php`.
 
 ```php
 <?php
 
-return [
-    'driver' => env('SCOUT_DRIVER', 'elasticsearch'),
+// config/elasticsearch.php
 
-    'elasticsearch' => [
-        'hosts' => [
-            [
-                'host' => env('ELASTICSEARCH_HOST', 'localhost'),
-                'port' => env('ELASTICSEARCH_PORT', 9200),
-                'scheme' => env('ELASTICSEARCH_SCHEME', 'http'),
-                'user' => env('ELASTICSEARCH_USER', ''),
-                'pass' => env('ELASTICSEARCH_PASSWORD', ''),
-            ],
-        ],
-    ],
+return [
+    'host' => env('ELASTICSEARCH_HOST', 'http://localhost:9200'),
+    'user' => env('ELASTICSEARCH_USER'),
+    'password' => env('ELASTICSEARCH_PASSWORD'),
+    'cloud_id' => env('ELASTICSEARCH_CLOUD_ID'),
+    'api_key' => env('ELASTICSEARCH_API_KEY'),
+    'ssl_verification' => env('ELASTICSEARCH_SSL_VERIFICATION', true),
 ];
 ```
 
@@ -483,8 +476,7 @@ Update your `.env` file.
 
 ```env
 SCOUT_DRIVER=elasticsearch
-ELASTICSEARCH_HOST=localhost
-ELASTICSEARCH_PORT=9200
+ELASTICSEARCH_HOST=http://localhost:9200
 ```
 
 ### Configuring the Index Mapping
