@@ -281,7 +281,7 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
 ```
 
-Resource Quotas
+## Resource Quotas
 
 Resource quotas prevent any single tenant from consuming all cluster resources. Without quotas, one misbehaving workload can starve others.
 
@@ -871,9 +871,10 @@ rules:
       - group: ""
         resources: ["secrets"]
 
-  # Log all changes in tenant namespaces
+  # Log all changes in tenant namespaces (the audit policy namespaces field
+  # does not support wildcards, so list each tenant namespace explicitly)
   - level: RequestResponse
-    namespaces: ["tenant-*"]
+    namespaces: ["tenant-acme", "tenant-newcorp"]
     verbs: ["create", "update", "patch", "delete"]
     resources:
       - group: ""
