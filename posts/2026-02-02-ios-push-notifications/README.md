@@ -288,6 +288,7 @@ The permission request is critical because users must explicitly grant permissio
 // A dedicated manager class for handling all notification-related functionality
 
 import Foundation
+import UIKit
 import UserNotifications
 
 // Enum to represent the different notification permission states
@@ -492,6 +493,7 @@ stateDiagram-v2
 // Handles device token storage and synchronization with the server
 
 import Foundation
+import UIKit
 
 class TokenManager {
 
@@ -1566,12 +1568,12 @@ flowchart TD
 
 ### 2. Personalize Notifications
 
-```swift
+```javascript
 // Send relevant, personalized notifications
-let payload = apns.buildPayload({
-    title: "Hi \(userName)!",
-    body: "Your order #\(orderNumber) has shipped",
-    threadId: "orders_\(userId)",
+const payload = apns.buildPayload({
+    title: `Hi ${userName}!`,
+    body: `Your order #${orderNumber} has shipped`,
+    threadId: `orders_${userId}`,
     customData: {
         type: "order_shipped",
         order_id: orderId
