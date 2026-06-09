@@ -264,6 +264,7 @@ class OrderProcessingTopologyTest {
         // Build the topology
         StreamsBuilder builder = new StreamsBuilder();
         OrderProcessingTopology topology = new OrderProcessingTopology(new ObjectMapper());
+        topology.buildPipeline(builder);
 
         // Configure the test driver
         Properties props = new Properties();
