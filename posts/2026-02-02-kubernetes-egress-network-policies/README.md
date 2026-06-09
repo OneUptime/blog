@@ -746,7 +746,7 @@ spec:
         - alert: HighNetworkPolicyDenials
           expr: |
             sum(rate(cilium_policy_verdict_total{
-              verdict="denied"
+              action="denied"
             }[5m])) by (namespace) > 10
           for: 2m
           labels:
@@ -759,12 +759,12 @@ spec:
         - alert: EgressCompletelyBlocked
           expr: |
             sum(rate(cilium_forward_count_total{
-              direction="EGRESS"
+              direction="Egress"
             }[5m])) by (namespace) == 0
             and
             sum(rate(cilium_policy_verdict_total{
-              verdict="denied",
-              direction="egress"
+              action="denied",
+              direction="Egress"
             }[5m])) by (namespace) > 0
           for: 5m
           labels:
