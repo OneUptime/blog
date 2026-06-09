@@ -730,7 +730,7 @@ repositories {
 
 dependencies {
     // Jenkins Pipeline Unit testing framework
-    testImplementation 'com.lesfurets:jenkins-pipeline-unit:1.9'
+    testImplementation 'com.lesfurets:jenkins-pipeline-unit:1.29'
     testImplementation 'junit:junit:4.13.2'
 }
 
