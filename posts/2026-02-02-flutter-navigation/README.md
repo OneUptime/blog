@@ -367,7 +367,7 @@ Add go_router to your pubspec.yaml:
 dependencies:
   flutter:
     sdk: flutter
-  go_router: ^13.0.0
+  go_router: ^14.0.0
 ```
 
 ### Basic Setup
