@@ -118,7 +118,7 @@ jobs:
             # Keystore is base64 encoded in CircleCI environment variables
             echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > android/app/release.keystore
             # Create keystore properties file for Gradle
-            cat > android/keystore.properties \<<EOF
+            cat > android/keystore.properties <<EOF
             storeFile=release.keystore
             storePassword=$ANDROID_KEYSTORE_PASSWORD
             keyAlias=$ANDROID_KEY_ALIAS
@@ -542,7 +542,7 @@ jobs:
           name: Configure Gradle Remote Cache
           command: |
             mkdir -p ~/.gradle
-            cat > ~/.gradle/gradle.properties \<<EOF
+            cat > ~/.gradle/gradle.properties <<EOF
             org.gradle.caching=true
             org.gradle.parallel=true
             android.enableBuildCache=true
