@@ -122,8 +122,8 @@ class WeightedRoundRobin {
   }
 }
 
-// Example: weights 5:3:2 will produce pattern like:
-// A, A, B, A, C, A, B, A, C, B (repeating)
+// Example: weights 5:3:2 will produce the repeating pattern:
+// A, B, C, A, A, B, A, C, B, A
 const wrr = new WeightedRoundRobin([
   { name: 'A', weight: 5 },
   { name: 'B', weight: 3 },
