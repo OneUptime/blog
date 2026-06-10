@@ -121,9 +121,6 @@ configs:
   params:
     # Disable TLS for internal communication (use ingress for external TLS)
     server.insecure: true
-  cm:
-    # Enable Helm support explicitly
-    helm.enabled: "true"
 ```
 
 Install using the values file:
@@ -591,14 +588,16 @@ flowchart TD
         H[Sync]
         I[PostSync]
         J[SyncFail]
+        K[PreDelete]
+        L[PostDelete]
     end
 
     A --> G
     B --> I
     C --> G
     D --> I
-    E --> G
-    F --> I
+    E --> K
+    F --> L
 ```
 
 ### Configuring Hook Behavior
@@ -685,7 +684,9 @@ spec:
 
 ### Helm Parameters from Secrets
 
-For sensitive values like passwords, reference Kubernetes secrets:
+ArgoCD does not natively resolve `valueFrom` references inside Helm values. For sensitive values like passwords, the recommended patterns are to reference an existing Kubernetes Secret from inside the chart's templates (so the chart consumes the Secret at runtime), or to inject secret material at sync time using a tool like the External Secrets Operator, the argocd-vault-plugin, or Sealed Secrets.
+
+A common pattern is to pass the name of an existing Secret as a Helm value and let the chart wire it into the workload:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -698,14 +699,12 @@ spec:
     # ... chart config ...
 
     helm:
-      # Values can reference ConfigMaps or Secrets in the argocd namespace
+      # Pass the name of a pre-existing Secret; the chart is responsible
+      # for mounting it or referencing it via envFrom/secretKeyRef in its templates.
       valuesObject:
         database:
-          password:
-            valueFrom:
-              secretKeyRef:
-                name: db-credentials
-                key: password
+          existingSecret: db-credentials
+          existingSecretPasswordKey: password
 ```
 
 ### Helm Value Precedence
@@ -813,7 +812,7 @@ spec:
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
-      # Respect sync wave annotations
+      # Only sync resources that are out of sync (sync waves are respected by default)
       - ApplyOutOfSyncOnly=true
 ```
 
