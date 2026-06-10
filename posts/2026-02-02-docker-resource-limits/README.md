@@ -448,7 +448,10 @@ docker inspect --format='{{.State.ExitCode}}' container_name
 Containers hitting CPU limits show high throttle counts. Monitor throttling and adjust if performance suffers.
 
 ```bash
-# Check CPU throttling statistics
+# cgroups v2 (default on modern Linux distros: Ubuntu 22.04+, Fedora 31+, Debian 11+)
+cat /sys/fs/cgroup/system.slice/docker-<container_id>.scope/cpu.stat
+
+# cgroups v1 (older systems)
 cat /sys/fs/cgroup/cpu/docker/<container_id>/cpu.stat
 ```
 
