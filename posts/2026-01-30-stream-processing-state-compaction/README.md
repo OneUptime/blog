@@ -155,8 +155,8 @@ public class RocksDBStateBackendConfig {
             // Set background flush threads for MemTable to SST conversion
             currentOptions.setMaxBackgroundFlushes(2);
 
-            // Enable parallel compaction across column families
-            // Useful when state has multiple namespaces
+            // Split a single compaction job into parallel subcompactions
+            // Speeds up large compactions by running pieces concurrently
             currentOptions.setMaxSubcompactions(4);
 
             return currentOptions;
@@ -451,11 +451,12 @@ Implement custom logic to filter out obsolete state entries during compaction:
 
 import org.rocksdb.AbstractCompactionFilter;
 import org.rocksdb.AbstractCompactionFilterFactory;
+import org.rocksdb.Slice;
 
 import java.nio.ByteBuffer;
 import java.time.Instant;
 
-public class StateCompactionFilter extends AbstractCompactionFilter<Void> {
+public class StateCompactionFilter extends AbstractCompactionFilter<Slice> {
 
     // Current watermark for determining expired windows
     private final long currentWatermark;
@@ -1056,7 +1057,7 @@ public class WorkloadTuning {
         options.setMaxBytesForLevelMultiplier(10);
 
         // Good compression ratio with acceptable speed
-        options.setCompressionType(CompressionType.ZSTD);
+        options.setCompressionType(CompressionType.ZSTD_COMPRESSION);
 
         // Moderate bloom filter and cache
         BlockBasedTableConfig tableConfig = new BlockBasedTableConfig();
@@ -1084,7 +1085,7 @@ public class WorkloadTuning {
         options.setLevel0FileNumCompactionTrigger(2);
 
         // Enable compression to reduce cache pressure
-        options.setCompressionType(CompressionType.ZSTD);
+        options.setCompressionType(CompressionType.ZSTD_COMPRESSION);
 
         // Small block cache
         BlockBasedTableConfig tableConfig = new BlockBasedTableConfig();
