@@ -60,9 +60,8 @@ Let's say you're building a user service. Create a directory structure like this
 ```text
 myservice/
 ├── proto/
-│   └── user.proto
-├── pb/
-│   └── (generated files go here)
+│   ├── user.proto
+│   └── (generated .pb.go files go here)
 ├── main.go
 └── go.mod
 ```
@@ -80,9 +79,13 @@ syntax = "proto3";
 package user;
 
 // go_package specifies where the generated Go code should live.
-// The path is relative to your module, and the name after the semicolon
-// is the Go package name.
-option go_package = "myservice/pb;pb";
+// The path is the Go import path of the generated package, and the name
+// after the semicolon is the Go package name.
+option go_package = "myservice/proto;pb";
+
+// Import the well-known types we need.
+// Imports must appear before any message definitions that reference them.
+import "google/protobuf/timestamp.proto";
 
 // User represents a user in our system.
 // Each field has a unique number that identifies it in the binary encoding.
@@ -106,12 +109,8 @@ message User {
   Status status = 4;
   
   // Timestamps use the well-known Timestamp type from Google.
-  // You'll need to import it.
   google.protobuf.Timestamp created_at = 5;
 }
-
-// Import the well-known types we need.
-import "google/protobuf/timestamp.proto";
 
 // A request message for getting a user by ID.
 message GetUserRequest {
