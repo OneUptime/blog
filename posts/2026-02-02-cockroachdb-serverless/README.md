@@ -585,13 +585,14 @@ LIMIT 10;
 -- Monitor transaction contention
 -- High contention indicates need for schema or query optimization
 SELECT
-    key,
-    txn_id,
-    ts,
-    duration
+    contending_key,
+    blocking_txn_id,
+    waiting_txn_id,
+    collection_ts,
+    contention_duration
 FROM crdb_internal.transaction_contention_events
-WHERE duration > interval '100ms'
-ORDER BY duration DESC
+WHERE contention_duration > interval '100ms'
+ORDER BY contention_duration DESC
 LIMIT 20;
 ```
 
@@ -815,8 +816,8 @@ CREATE TABLE tags (
     names STRING[]
 );
 
--- Full-text search syntax differs slightly
--- CockroachDB uses full_text_search instead of to_tsvector
+-- Full-text search is supported with PostgreSQL-compatible syntax
+-- to_tsvector, tsvector, tsquery, and the @@ match operator all work
 CREATE INDEX idx_posts_search ON posts
     USING GIN (to_tsvector('english', title || ' ' || body));
 
