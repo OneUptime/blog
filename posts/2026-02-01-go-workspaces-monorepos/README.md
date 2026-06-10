@@ -174,7 +174,7 @@ go work init
 
 ### go work use
 
-Adds or removes modules from an existing workspace:
+Adds modules to an existing workspace:
 
 ```bash
 # Add a new module to the workspace
@@ -183,9 +183,11 @@ go work use ./newservice
 # Add multiple modules at once
 go work use ./service1 ./service2
 
-# Remove a module (use the -r flag in the directory)
-cd oldservice && go work use -r .
+# Recursively search a directory tree and add every module found
+go work use -r ./services
 ```
+
+To remove a module from the workspace, use `go work edit -dropuse` (see below).
 
 ### go work sync
 
