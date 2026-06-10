@@ -455,7 +455,7 @@ class UserServiceIntegrationTest {
     @Autowired
     private UserService userService;
 
-    @MockBean
+    @MockitoBean
     private EmailService emailService;
 
     @Test
