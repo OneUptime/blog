@@ -140,8 +140,11 @@ Test your function by invoking it with a sample event:
 
 ```bash
 # Invoke the function with a test payload
+# Note: --cli-binary-format raw-in-base64-out is required in AWS CLI v2
+# to pass the payload as raw JSON instead of base64-encoded data
 aws lambda invoke \
     --function-name my-first-lambda \
+    --cli-binary-format raw-in-base64-out \
     --payload '{"name": "Lambda"}' \
     response.json
 
@@ -435,8 +438,9 @@ def get_secret(secret_name):
     """
     Fetch a secret from AWS Secrets Manager.
 
-    Uses lru_cache to avoid repeated API calls during the same
-    Lambda execution. Cache is cleared between invocations.
+    Uses lru_cache to avoid repeated API calls. The cache persists
+    for the lifetime of the execution environment (across warm
+    invocations) and is only cleared on cold starts.
     """
     response = secrets_client.get_secret_value(SecretId=secret_name)
     return json.loads(response['SecretString'])
