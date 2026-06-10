@@ -155,7 +155,7 @@ Here's a recommended tsconfig.json configuration for Bun projects:
     "skipLibCheck": true,
     
     // Bun-specific types
-    "types": ["bun-types"]
+    "types": ["bun"]
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]
@@ -165,7 +165,7 @@ Here's a recommended tsconfig.json configuration for Bun projects:
 Install Bun's type definitions to get proper autocomplete and type checking for Bun-specific APIs:
 
 ```bash
-bun add -d bun-types
+bun add -d @types/bun
 ```
 
 ## Strict Mode Configuration
@@ -582,7 +582,7 @@ export function UserCard({ name, email, avatarUrl, onDelete }: UserCardProps) {
 
 ## Using Bun APIs with TypeScript
 
-Bun provides many built-in APIs that are fully typed when you install `bun-types`. Here are examples of common Bun-specific features.
+Bun provides many built-in APIs that are fully typed when you install `@types/bun`. Here are examples of common Bun-specific features.
 
 Working with Bun's file system API:
 
@@ -767,7 +767,7 @@ console.log(`Server running at http://localhost:${server.port}`);
 
 Here are the key best practices for using TypeScript with Bun:
 
-1. **Always Install bun-types**: Add `bun-types` as a dev dependency to get proper IntelliSense and type checking for Bun-specific APIs.
+1. **Always Install @types/bun**: Add `@types/bun` as a dev dependency to get proper IntelliSense and type checking for Bun-specific APIs.
 
 2. **Use Strict Mode**: Enable all strict options in tsconfig.json to catch errors early and write safer code.
 
