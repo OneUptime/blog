@@ -25,7 +25,7 @@ Key features of Fresh include:
 
 ## Setting Up Your First Fresh Project
 
-Getting started with Fresh is straightforward. You need Deno installed on your system (version 1.25 or later is recommended).
+Getting started with Fresh is straightforward. You need Deno installed on your system (version 1.31 or later is recommended; the latest stable Deno release is preferred).
 
 Create a new Fresh project using the official initialization command:
 
@@ -107,7 +107,7 @@ export default function UserPage(props: PageProps) {
 
 ### Catch-All Routes
 
-For routes that need to match multiple path segments, use the spread syntax with double brackets:
+For routes that need to match multiple path segments, use the spread syntax inside square brackets:
 
 ```typescript
 // routes/docs/[...slug].tsx
