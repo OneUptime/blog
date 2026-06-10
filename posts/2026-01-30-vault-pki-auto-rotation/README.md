@@ -289,8 +289,12 @@ template_config {
   static_secret_render_interval = "5m"
   exit_on_retry_failure         = true
 
-  # Renew certificates when 70% of TTL has elapsed
-  # For a 24h cert, this means renewal at ~17 hours
+  # Renew certificates when 70% of the cert's NotBefore/NotAfter span has elapsed.
+  # For a 24h cert, this means renewal at ~17 hours.
+  # Default is 0.9 (90%); lowering it gives more headroom for retries.
+  lease_renewal_threshold       = 0.7
+
+  # HTTP connection pool size to Vault (default 10).
   max_connections_per_host      = 10
 }
 
@@ -666,7 +670,7 @@ rm -f /tmp/intermediate.csr /tmp/intermediate.cert
 
 ### Prometheus Metrics
 
-Vault exposes PKI metrics that you should monitor.
+Vault exposes PKI tidy metrics under `vault_secrets_pki_tidy_*` (see [Vault telemetry docs](https://developer.hashicorp.com/vault/docs/internals/telemetry/metrics/all)). For per-certificate expiry tracking, deploy a third-party exporter such as [vault-pki-exporter](https://github.com/aarnaud/vault-pki-exporter), which exposes `x509_cert_not_after` and similar metrics.
 
 ```yaml
 # prometheus-rules.yaml
@@ -675,8 +679,10 @@ groups:
   - name: vault-pki
     rules:
       # Alert when certificates are expiring soon
+      # Requires vault-pki-exporter (or similar) - Vault itself does not
+      # emit per-certificate expiry metrics.
       - alert: VaultCertificateExpiringSoon
-        expr: vault_pki_certificate_expiry_seconds < 86400 * 7
+        expr: (x509_cert_not_after - time()) < 86400 * 7
         for: 1h
         labels:
           severity: warning
@@ -686,23 +692,23 @@ groups:
 
       # Alert when auto-tidy fails
       - alert: VaultAutoTidyFailed
-        expr: vault_pki_tidy_failure_count > 0
+        expr: increase(vault_secrets_pki_tidy_failure[10m]) > 0
         for: 5m
         labels:
           severity: critical
         annotations:
           summary: "Vault PKI auto-tidy failed"
-          description: "Auto-tidy has failed {{ $value }} times"
+          description: "Auto-tidy reported {{ $value }} failures in the last 10 minutes"
 
-      # Alert when CRL is stale
-      - alert: VaultCRLStale
-        expr: time() - vault_pki_crl_last_update_timestamp > 86400
+      # Alert when auto-tidy has not completed recently
+      - alert: VaultAutoTidyStale
+        expr: time() - vault_secrets_pki_tidy_start_time_epoch > 86400
         for: 1h
         labels:
           severity: warning
         annotations:
-          summary: "Vault CRL is stale"
-          description: "CRL has not been updated in over 24 hours"
+          summary: "Vault PKI auto-tidy has not run recently"
+          description: "Auto-tidy has not started in over 24 hours"
 ```
 
 ### Health Check Script
