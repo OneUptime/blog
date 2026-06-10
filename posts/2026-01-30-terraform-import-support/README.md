@@ -381,10 +381,10 @@ Resource Import Function
 ```go
 func resourceMyResource() *schema.Resource {
     return &schema.Resource{
-        Create: resourceMyResourceCreate,
-        Read:   resourceMyResourceRead,
-        Update: resourceMyResourceUpdate,
-        Delete: resourceMyResourceDelete,
+        CreateContext: resourceMyResourceCreate,
+        ReadContext:   resourceMyResourceRead,
+        UpdateContext: resourceMyResourceUpdate,
+        DeleteContext: resourceMyResourceDelete,
 
         Importer: &schema.ResourceImporter{
             StateContext: resourceMyResourceImport,
