@@ -234,7 +234,7 @@ Review and refactor the generated configuration before committing it to version 
 
 ## Using For Each with Imports
 
-Import blocks work well with `for_each` resources. You need to specify the full resource address including the key.
+Import blocks work well with `for_each` resources (requires Terraform 1.7 or later). You need to specify the full resource address including the key.
 
 ```hcl
 locals {
