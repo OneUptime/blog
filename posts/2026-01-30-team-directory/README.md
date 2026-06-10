@@ -186,37 +186,54 @@ class OktaSync:
     async def sync_users(self) -> list[dict]:
         """Fetch all active users from Okta."""
         users = []
-        async for user in self.client.list_users(query_params={'filter': 'status eq "ACTIVE"'}):
-            profile = user.profile
-            users.append({
-                'id': user.id,
-                'email': profile.email,
-                'name': f"{profile.first_name} {profile.last_name}",
-                'title': profile.title or 'Unknown',
-                'department': profile.department or 'Unknown',
-                'manager_email': profile.manager_id,  # Resolve to ID later
-                'start_date': user.created,
-                'location': profile.city or 'Remote',
-            })
+        okta_users, resp, err = await self.client.list_users(
+            query_params={'filter': 'status eq "ACTIVE"'}
+        )
+        while True:
+            for user in okta_users:
+                profile = user.profile
+                users.append({
+                    'id': user.id,
+                    'email': profile.email,
+                    'name': f"{profile.first_name} {profile.last_name}",
+                    'title': profile.title or 'Unknown',
+                    'department': profile.department or 'Unknown',
+                    'manager_email': profile.manager_id,  # Resolve to ID later
+                    'start_date': user.created,
+                    'location': profile.city or 'Remote',
+                })
+            if not resp.has_next():
+                break
+            okta_users, err = await resp.next()
         return users
 
     async def sync_groups_as_teams(self) -> list[dict]:
         """Map Okta groups to teams."""
         teams = []
-        async for group in self.client.list_groups():
-            if not group.profile.name.startswith('team-'):
-                continue
+        groups, resp, err = await self.client.list_groups()
+        while True:
+            for group in groups:
+                if not group.profile.name.startswith('team-'):
+                    continue
 
-            members = []
-            async for user in self.client.list_group_users(group.id):
-                members.append(user.id)
+                members = []
+                group_users, group_resp, group_err = await self.client.list_group_users(group.id)
+                while True:
+                    for user in group_users:
+                        members.append(user.id)
+                    if not group_resp.has_next():
+                        break
+                    group_users, group_err = await group_resp.next()
 
-            teams.append({
-                'id': group.id,
-                'name': group.profile.name.replace('team-', ''),
-                'description': group.profile.description or '',
-                'member_ids': members,
-            })
+                teams.append({
+                    'id': group.id,
+                    'name': group.profile.name.replace('team-', ''),
+                    'description': group.profile.description or '',
+                    'member_ids': members,
+                })
+            if not resp.has_next():
+                break
+            groups, err = await resp.next()
         return teams
 ```
 
@@ -888,7 +905,7 @@ Display team hierarchy for navigation and understanding reporting structures.
 ```typescript
 // React component for org chart visualization
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Tree, TreeNode } from 'react-organizational-chart';
 
 interface OrgNode {
