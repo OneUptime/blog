@@ -50,13 +50,9 @@ sequenceDiagram
 
 ## Enable the OIDC provider
 
-Vault's identity secrets engine must be enabled and the OIDC provider feature turned on. Run these commands against a Vault server with admin privileges.
+The identity secrets engine is mounted at `identity/` by default and cannot be disabled, so the OIDC provider is available out of the box. Run the commands below against a Vault server with admin privileges to create the signing key that will issue ID tokens.
 
 ```bash
-# Enable the identity secrets engine (usually enabled by default)
-
-vault secrets enable identity
-
 # Create a named key that will sign ID tokens
 vault write identity/oidc/key/app-key \
     rotation_period="24h" \
