@@ -324,8 +324,8 @@ moved {
 
 # Move database resources
 moved {
-  from = aws_rds_instance.main
-  to   = module.database.aws_rds_instance.this
+  from = aws_db_instance.main
+  to   = module.database.aws_db_instance.this
 }
 ```
 
@@ -452,8 +452,8 @@ Add comments explaining why resources were moved.
 # Moved to new module structure for better organization
 # See ADR-0042 for details
 moved {
-  from = aws_rds_instance.main
-  to   = module.database.aws_rds_instance.primary
+  from = aws_db_instance.main
+  to   = module.database.aws_db_instance.primary
 }
 ```
 
