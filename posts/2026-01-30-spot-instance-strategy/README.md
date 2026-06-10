@@ -24,7 +24,7 @@ Major cloud providers offer spare capacity at steep discounts:
 | Provider | Spot Product | Typical Discount | Interruption Notice |
 | --- | --- | --- | --- |
 | AWS | EC2 Spot Instances | 60-90% | 2 minutes |
-| GCP | Preemptible / Spot VMs | 60-91% | 30 seconds |
+| GCP | Preemptible / Spot VMs | Up to 91% | 30 seconds |
 | Azure | Spot VMs | 60-90% | 30 seconds |
 
 The economics are compelling, but only if your architecture can handle sudden terminations gracefully.
@@ -138,12 +138,16 @@ This script polls the EC2 instance metadata endpoint for termination notices. Wh
 # Polls EC2 metadata for spot termination notices
 
 METADATA_URL="http://169.254.169.254/latest/meta-data/spot/termination-time"
+TOKEN_URL="http://169.254.169.254/latest/api/token"
 CHECK_INTERVAL=5
 
 while true; do
+    # Fetch an IMDSv2 session token (required when httpTokens=required)
+    TOKEN=$(curl -s -X PUT "$TOKEN_URL" -H "X-aws-ec2-metadata-token-ttl-seconds: 60")
+
     # Query the termination-time endpoint
     # Returns 404 if no termination scheduled, or ISO timestamp if terminating
-    HTTP_CODE=$(curl -s -o /tmp/termination-time -w "%{http_code}" $METADATA_URL)
+    HTTP_CODE=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" -o /tmp/termination-time -w "%{http_code}" $METADATA_URL)
 
     if [ "$HTTP_CODE" -eq 200 ]; then
         TERMINATION_TIME=$(cat /tmp/termination-time)
@@ -462,7 +466,7 @@ spec:
     # Consolidate underutilized nodes
     consolidationPolicy: WhenEmptyOrUnderutilized
     consolidateAfter: 1m
-    # Replace nodes after 24 hours to pick up new AMIs
+    # Cap the number of nodes that can be disrupted concurrently
     budgets:
       - nodes: "10%"
 ```
