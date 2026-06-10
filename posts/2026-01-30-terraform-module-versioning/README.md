@@ -590,41 +590,22 @@ module "vpc" {
 
 ### Centralized Version Management
 
-Create a central versions file for consistent pinning across your organization:
+Terraform requires the `source` and `version` arguments on a `module` block to be static literal values, so you cannot reference them from a variable or a local in another module. Centralize pinning by maintaining a documented reference and updating each environment together (manually or with dependency tooling such as Renovate or Dependabot):
 
-```hcl
-# modules/versions.tf - Central version definitions
-locals {
-  module_versions = {
-    vpc = {
-      source  = "terraform-aws-modules/vpc/aws"
-      version = "5.1.2"
-    }
-    eks = {
-      source  = "terraform-aws-modules/eks/aws"
-      version = "19.15.3"
-    }
-    rds = {
-      source  = "terraform-aws-modules/rds/aws"
-      version = "6.1.1"
-    }
-    s3 = {
-      source  = "terraform-aws-modules/s3-bucket/aws"
-      version = "3.14.1"
-    }
-  }
-}
+```text
+# MODULE_VERSIONS.md - Approved module versions for all environments
+
+vpc: terraform-aws-modules/vpc/aws       @ 5.1.2
+eks: terraform-aws-modules/eks/aws       @ 19.15.3
+rds: terraform-aws-modules/rds/aws       @ 6.1.1
+s3:  terraform-aws-modules/s3-bucket/aws @ 3.14.1
 ```
 
 ```hcl
-# production/main.tf - Use centralized versions
-module "versions" {
-  source = "../modules/versions.tf"
-}
-
+# production/main.tf - Use the documented module versions
 module "vpc" {
-  source  = local.module_versions.vpc.source
-  version = local.module_versions.vpc.version
+  source  = "terraform-aws-modules/vpc/aws"
+  version = "5.1.2"  # Aligned with MODULE_VERSIONS.md
 
   name = "production-vpc"
   cidr = "10.0.0.0/16"
@@ -791,8 +772,8 @@ git commit -m "Update provider lock file"
 # Update providers while respecting constraints
 terraform init -upgrade
 
-# Update a specific provider
-terraform init -upgrade=hashicorp/aws
+# Refresh lock entries for a specific provider only
+terraform providers lock hashicorp/aws
 
 # Generate checksums for multiple platforms
 terraform providers lock \
