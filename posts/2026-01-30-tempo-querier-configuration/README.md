@@ -101,14 +101,6 @@ Here is a foundational querier configuration with inline explanations:
 # tempo.yaml - Querier configuration section
 
 querier:
-  # Maximum duration a query can run before timeout
-  # Increase for complex TraceQL queries over large datasets
-  query_timeout: 30s
-
-  # How long to search ingesters for recent traces
-  # Should match or exceed ingester.max_block_duration
-  search_query_timeout: 30s
-
   # Number of best-effort concurrent queries
   # Higher values increase throughput but consume more memory
   max_concurrent_queries: 20
@@ -123,6 +115,12 @@ querier:
     # Each worker can process one query at a time
     parallelism: 10
 
+  # Search configuration
+  search:
+    # Maximum duration a search query can run before timeout
+    # Increase for complex TraceQL queries over large datasets
+    query_timeout: 30s
+
   # Trace by ID lookup settings
   trace_by_id:
     # Timeout for individual trace ID lookups
@@ -131,7 +129,7 @@ querier:
 
 **Key parameters explained:**
 
-- `query_timeout`: The maximum wall-clock time for any single query. Set this based on your largest expected queries.
+- `search.query_timeout`: The maximum wall-clock time for any single search query. Set this based on your largest expected queries.
 - `max_concurrent_queries`: Controls resource usage. More concurrency means faster aggregate throughput but higher memory pressure.
 - `frontend_worker.parallelism`: Each querier runs this many workers pulling from the frontend queue.
 
@@ -163,13 +161,15 @@ storage:
       access_key: ${S3_ACCESS_KEY}
       secret_key: ${S3_SECRET_KEY}
 
-      # Enable server-side encryption
+      # Set to true only for plain HTTP endpoints (e.g., local MinIO).
+      # Leave false for TLS-protected S3 / S3-compatible stores.
       insecure: false
 
     # Block storage configuration
     block:
-      # Block format version (vParquet3 recommended for new deployments)
-      version: vParquet3
+      # Block format version. vParquet4 is the current default in recent
+      # Tempo releases; vParquet5 is also available.
+      version: vParquet4
 
     # Write-Ahead Log configuration (for ingesters, affects querier reads)
     wal:
@@ -249,8 +249,7 @@ query_frontend:
 
   # Search configuration
   search:
-    # Number of shards for parallel search execution
-    # Higher values improve parallelism but increase overhead
+    # Default number of results returned when the client does not specify a limit
     default_result_limit: 20
 
     # Maximum duration for search queries
@@ -351,11 +350,8 @@ querier:
 
   # Search optimizations
   search:
-    # Prefer recently compacted blocks (better organized data)
-    prefer_self: true
-
-    # External endpoints for distributed search
-    external_endpoints: []
+    # Maximum duration of a search query
+    query_timeout: 30s
 
 # Compactor settings (affects query performance indirectly)
 compactor:
@@ -415,11 +411,15 @@ flowchart LR
 
 **Query frontend configuration:**
 
+The query frontend listens on the ports configured in the top-level `server`
+block (`grpc_listen_port` for queriers, `http_listen_port` for HTTP clients).
+Queriers connect to it via `querier.frontend_worker.frontend_address`.
+
 ```yaml
 query_frontend:
-  # Address for queriers to connect
-  # Queriers pull work from this address
-  address: 0.0.0.0:9095
+  # Maximum number of outstanding requests per tenant before returning
+  # a 429 Too Many Requests response
+  max_outstanding_per_tenant: 2000
 
   # Search query configuration
   search:
@@ -576,12 +576,6 @@ ingester:
 
 # Querier configuration
 querier:
-  # Query timeout - increase for complex TraceQL
-  query_timeout: 60s
-
-  # Search timeout
-  search_query_timeout: 60s
-
   # Concurrent query limit per querier
   # Tune based on available memory (roughly 100MB per concurrent query)
   max_concurrent_queries: 20
@@ -595,6 +589,10 @@ querier:
     grpc_client_config:
       max_recv_msg_size: 104857600
       max_send_msg_size: 104857600
+
+  # Search settings - increase for complex TraceQL queries
+  search:
+    query_timeout: 60s
 
   # Trace by ID settings
   trace_by_id:
@@ -638,7 +636,7 @@ storage:
 
     # Block format
     block:
-      version: vParquet3
+      version: vParquet4
 
     # WAL path
     wal:
