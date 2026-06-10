@@ -443,12 +443,15 @@ Proxies commonly add or modify headers for tracing, authentication, and routing:
 
 ```go
 Director: func(req *http.Request) {
+    // Capture the original Host before rewriting it for the backend
+    originalHost := req.Host
+
     req.URL.Scheme = target.Scheme
     req.URL.Host = target.Host
     req.Host = target.Host
     
-    // Standard proxy headers
-    req.Header.Set("X-Forwarded-Host", req.Host)
+    // Standard proxy headers - X-Forwarded-Host preserves the original client-requested host
+    req.Header.Set("X-Forwarded-Host", originalHost)
     req.Header.Set("X-Forwarded-Proto", "https")
     
     // Preserve or set X-Forwarded-For chain
@@ -571,13 +574,16 @@ func main() {
             if backend == nil {
                 return
             }
-            
+
+            // Capture the original Host before rewriting it for the backend
+            originalHost := req.Host
+
             req.URL.Scheme = backend.URL.Scheme
             req.URL.Host = backend.URL.Host
             req.Host = backend.URL.Host
             
             req.Header.Set("X-Forwarded-For", req.RemoteAddr)
-            req.Header.Set("X-Forwarded-Host", req.Host)
+            req.Header.Set("X-Forwarded-Host", originalHost)
         },
         Transport: transport,
         ModifyResponse: func(resp *http.Response) error {
