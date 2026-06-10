@@ -214,11 +214,10 @@ const kafka = new Kafka({
 
 const producer = kafka.producer({
   // Enable idempotent producer for exactly-once semantics
+  // (kafkajs automatically enforces acks=-1 when idempotent is true)
   idempotent: true,
-  // Maximum time to wait for acknowledgments
-  maxInFlightRequests: 5,
-  // Require all replicas to acknowledge
-  acks: -1
+  // Maximum number of concurrent in-flight requests per broker
+  maxInFlightRequests: 5
 });
 
 // Connect once at startup, not per message
@@ -249,6 +248,8 @@ async function sendEvent(topic, event) {
   try {
     const result = await producer.send({
       topic,
+      // Require all in-sync replicas to acknowledge
+      acks: -1,
       // Use compression for better throughput
       compression: CompressionTypes.LZ4,
       messages: [message]
@@ -274,6 +275,7 @@ async function sendEventBatch(topic, events) {
 
   return producer.send({
     topic,
+    acks: -1,
     compression: CompressionTypes.LZ4,
     messages
   });
@@ -305,7 +307,7 @@ const kafka = new Kafka({
 // All consumers in the same group share the workload
 const consumer = kafka.consumer({
   groupId: 'event-processor-group',
-  // Start from the earliest message if no offset is stored
+  // How long the broker waits for a heartbeat before considering the consumer dead
   sessionTimeout: 30000,
   // Heartbeat interval should be 1/3 of session timeout
   heartbeatInterval: 10000,
@@ -318,17 +320,13 @@ async function startConsumer(topic, processEvent) {
 
   // Subscribe to the topic
   await consumer.subscribe({
-    topic,
+    topics: [topic],
     // Start from the beginning if this is a new consumer group
     fromBeginning: false
   });
 
-  // Process messages
+  // Process messages one at a time. Use eachBatch for higher throughput.
   await consumer.run({
-    // Process messages one at a time for simplicity
-    // Set to higher number for batching
-    eachBatchAutoResolve: true,
-
     eachMessage: async ({ topic, partition, message }) => {
       const event = {
         key: message.key?.toString(),
