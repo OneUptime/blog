@@ -178,11 +178,11 @@ FROM denoland/deno:1.40.0 as cache
 
 WORKDIR /app
 
-# Copy dependency files first for better caching
-COPY deno.json deno.lock ./
+# Copy dependency manifest, lockfile, and entry point for caching
+COPY deno.json deno.lock main.ts ./
 
-# Cache dependencies
-RUN deno cache --lock=deno.lock deno.json
+# Cache dependencies (deno cache requires a script file as input)
+RUN deno cache --lock=deno.lock main.ts
 
 # Stage 2: Build (if using compile)
 FROM denoland/deno:1.40.0 as builder
@@ -226,7 +226,7 @@ EXPOSE 8000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD ["deno", "run", "--allow-net", "-", "fetch('http://localhost:8000/health/live').then(r => r.ok ? Deno.exit(0) : Deno.exit(1))"]
+    CMD ["deno", "eval", "--allow-net", "const r = await fetch('http://localhost:8000/health/live'); Deno.exit(r.ok ? 0 : 1);"]
 
 # Run with minimal permissions
 CMD ["deno", "run", "--allow-net", "--allow-env", "--allow-read", "main.ts"]
