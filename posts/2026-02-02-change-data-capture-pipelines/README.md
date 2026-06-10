@@ -556,7 +556,6 @@ curl -X POST http://localhost:8083/connectors \
         "database.user": "debezium",
         "database.password": "secure_password_here",
         "database.dbname": "inventory",
-        "database.server.name": "inventory",
         "table.include.list": "public.orders,public.customers,public.products",
         "plugin.name": "pgoutput",
         "publication.name": "debezium_publication",
