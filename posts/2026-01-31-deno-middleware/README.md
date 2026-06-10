@@ -536,7 +536,7 @@ flowchart TB
     F --> G[Include Retry-After Header]
 ```
 
-Sliding window rate limiter implementation for accurate request counting:
+Fixed window rate limiter implementation for request counting:
 
 ```typescript
 // middleware/rate-limit.ts
@@ -882,7 +882,8 @@ Complete application setup with organized middleware:
 
 ```typescript
 // main.ts
-import { Application, Router } from "./deps.ts";
+import { Application, Router, Context } from "./deps.ts";
+import type { Next } from "./deps.ts";
 
 // Import middleware
 import { errorHandlerMiddleware } from "./middleware/error-handler.ts";
@@ -892,7 +893,7 @@ import { createRateLimitMiddleware } from "./middleware/rate-limit.ts";
 import { authMiddleware } from "./middleware/auth.ts";
 import { authorize } from "./middleware/authorize.ts";
 import { notFoundMiddleware } from "./middleware/not-found.ts";
-import { compose, unless } from "./middleware/compose.ts";
+import { unless } from "./middleware/compose.ts";
 
 const app = new Application();
 
