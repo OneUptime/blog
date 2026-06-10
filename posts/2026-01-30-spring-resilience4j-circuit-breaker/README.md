@@ -17,7 +17,7 @@ Netflix Hystrix was the go-to library for circuit breakers, but it entered maint
 | Feature | Hystrix | Resilience4j |
 |---------|---------|--------------|
 | **Status** | Maintenance mode | Active development |
-| **Dependencies** | Heavy (Archaius, RxJava) | Lightweight (Vavr only) |
+| **Dependencies** | Heavy (Archaius, RxJava) | Lightweight (no external dependencies in 2.x) |
 | **Configuration** | Archaius properties | Spring Boot native |
 | **Functional style** | Limited | Full support |
 | **Metrics** | Proprietary | Micrometer native |
@@ -169,9 +169,7 @@ For more control, use the CircuitBreakerRegistry to create and manage circuit br
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
-import io.vavr.control.Try;
 
-import java.time.Duration;
 import java.util.function.Supplier;
 
 @Service
@@ -206,13 +204,13 @@ public class InventoryService {
                     InventoryResponse.class
                 ));
 
-        // Execute with fallback using Vavr Try
-        return Try.ofSupplier(decoratedSupplier)
-            .recover(throwable -> {
-                log.warn("Inventory check failed: {}", throwable.getMessage());
-                return InventoryResponse.unknown(productId);
-            })
-            .get();
+        // Execute with fallback on any failure (including CallNotPermittedException)
+        try {
+            return decoratedSupplier.get();
+        } catch (Throwable throwable) {
+            log.warn("Inventory check failed: {}", throwable.getMessage());
+            return InventoryResponse.unknown(productId);
+        }
     }
 
     // Check current circuit breaker state
@@ -288,7 +286,7 @@ public class Resilience4jConfig {
 
 ## Combining Circuit Breaker with Retry
 
-Retry handles transient failures while circuit breaker handles prolonged outages. The order matters: retry should be inside the circuit breaker so that all retry attempts count as a single call for the circuit breaker.
+Retry handles transient failures while circuit breaker handles prolonged outages. The order matters: with the default Spring Boot aspect order, retry wraps the circuit breaker, so each retry attempt counts as a separate call observed by the circuit breaker. That means a burst of retries against an unhealthy dependency can trip the breaker faster, which is usually what you want.
 
 ```yaml
 # application.yml
@@ -336,8 +334,8 @@ public class OrderService {
         this.restTemplate = restTemplate;
     }
 
-    // Retry is applied first (innermost), then circuit breaker wraps retry
-    // So: CircuitBreaker -> Retry -> actual call
+    // Default aspect order: Retry wraps CircuitBreaker
+    // So: Retry -> CircuitBreaker -> actual call (each retry is a separate CB call)
     @CircuitBreaker(name = "orderService", fallbackMethod = "createOrderFallback")
     @Retry(name = "orderService")
     public OrderResponse createOrder(OrderRequest request) {
