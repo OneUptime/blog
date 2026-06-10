@@ -925,8 +925,9 @@ argocd cluster list
 # Get detailed cluster info
 argocd cluster get prod-us-west
 
-# Test cluster connectivity manually
-argocd admin cluster kubeconfig prod-us-west | kubectl --kubeconfig=/dev/stdin get nodes
+# Test cluster connectivity manually (writes kubeconfig to OUTPUT_PATH)
+argocd admin cluster kubeconfig https://prod-us-west.example.com:6443 /tmp/prod-us-west-kubeconfig
+kubectl --kubeconfig=/tmp/prod-us-west-kubeconfig get nodes
 
 # Check ArgoCD controller logs for connection errors
 kubectl logs -n argocd -l app.kubernetes.io/name=argocd-application-controller \
