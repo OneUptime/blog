@@ -254,11 +254,11 @@ await esbuild.build({
   minify: true,
 
   // Source map options
-  sourcemap: true,           // External .map file
-  // sourcemap: 'inline',    // Embedded in JS file
-  // sourcemap: 'external',  // Same as true
-  // sourcemap: 'linked',    // External with sourceMappingURL
-  // sourcemap: 'both',      // Both inline and external
+  sourcemap: true,           // Same as 'linked' - external .map + sourceMappingURL comment
+  // sourcemap: 'inline',    // Embedded as data URL in JS file
+  // sourcemap: 'linked',    // External .map file with sourceMappingURL comment
+  // sourcemap: 'external',  // External .map file WITHOUT sourceMappingURL comment
+  // sourcemap: 'both',      // Both inline data URL and external file
 
   // Include original source content
   sourcesContent: true,
