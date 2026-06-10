@@ -336,9 +336,16 @@ Create a table setup script that defines your schema and indexes in a reusable f
 
 ```javascript
 // scripts/create-tables.js - Create DynamoDB tables for development
-const { DynamoDBClient, CreateTableCommand, DescribeTableCommand } = require('@aws-sdk/client-dynamodb');
+const {
+  DynamoDBClient,
+  CreateTableCommand,
+  DescribeTableCommand,
+  UpdateTimeToLiveCommand,
+} = require('@aws-sdk/client-dynamodb');
 
 // Table definitions - modify these to match your application schema
+// Note: TTL is enabled separately via UpdateTimeToLive after table creation,
+// since TimeToLiveSpecification is not a valid CreateTable parameter.
 const tableDefinitions = [
   {
     TableName: 'Users',
@@ -348,7 +355,6 @@ const tableDefinitions = [
     AttributeDefinitions: [
       { AttributeName: 'userId', AttributeType: 'S' },
       { AttributeName: 'email', AttributeType: 'S' },
-      { AttributeName: 'createdAt', AttributeType: 'S' },
     ],
     // Global Secondary Index for querying by email
     GlobalSecondaryIndexes: [
@@ -397,13 +403,13 @@ const tableDefinitions = [
     AttributeDefinitions: [
       { AttributeName: 'sessionId', AttributeType: 'S' },
     ],
-    // Enable TTL for automatic session expiration
-    TimeToLiveSpecification: {
-      Enabled: true,
-      AttributeName: 'expiresAt',
-    },
     ProvisionedThroughput: { ReadCapacityUnits: 5, WriteCapacityUnits: 5 },
   },
+];
+
+// Tables that need TTL enabled after creation
+const ttlConfigurations = [
+  { TableName: 'Sessions', AttributeName: 'expiresAt' },
 ];
 
 async function createTables() {
@@ -430,6 +436,25 @@ async function createTables() {
         await client.send(new CreateTableCommand(tableDefinition));
         console.log(`Table ${tableName} created successfully`);
       } else {
+        throw error;
+      }
+    }
+  }
+
+  // Enable TTL on tables that need it (separate API call from CreateTable)
+  for (const ttl of ttlConfigurations) {
+    try {
+      await client.send(new UpdateTimeToLiveCommand({
+        TableName: ttl.TableName,
+        TimeToLiveSpecification: {
+          Enabled: true,
+          AttributeName: ttl.AttributeName,
+        },
+      }));
+      console.log(`TTL enabled on ${ttl.TableName} (attribute: ${ttl.AttributeName})`);
+    } catch (error) {
+      // TTL may already be enabled; ignore that case
+      if (error.name !== 'ValidationException') {
         throw error;
       }
     }
@@ -586,7 +611,7 @@ Build a complete data access layer that works seamlessly with both DynamoDB Loca
 
 ```javascript
 // services/user-service.js - User data access layer
-const { DynamoDBDocumentClient, GetCommand, PutCommand, UpdateCommand, DeleteCommand, QueryCommand } = require('@aws-sdk/lib-dynamodb');
+const { DynamoDBDocumentClient, GetCommand, PutCommand, UpdateCommand, DeleteCommand, QueryCommand, ScanCommand } = require('@aws-sdk/lib-dynamodb');
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
 const { v4: uuidv4 } = require('uuid');
 
