@@ -332,7 +332,8 @@ const kafka = new Kafka({ brokers: ['localhost:9092'] });
 
 // Primary consumer group
 const primaryConsumer = kafka.consumer({ groupId: 'order-processor' });
-await primaryConsumer.subscribe({ topic: 'orders', fromBeginning: false });
+await primaryConsumer.connect();
+await primaryConsumer.subscribe({ topics: ['orders'], fromBeginning: false });
 await primaryConsumer.run({
   eachMessage: async ({ message }) => {
     // Process order
@@ -342,7 +343,8 @@ await primaryConsumer.run({
 
 // Audit tap consumer group (separate group = separate copy of all messages)
 const auditConsumer = kafka.consumer({ groupId: 'order-audit-tap' });
-await auditConsumer.subscribe({ topic: 'orders', fromBeginning: false });
+await auditConsumer.connect();
+await auditConsumer.subscribe({ topics: ['orders'], fromBeginning: false });
 await auditConsumer.run({
   eachMessage: async ({ message }) => {
     // Audit logging
@@ -352,7 +354,8 @@ await auditConsumer.run({
 
 // Analytics tap consumer group
 const analyticsConsumer = kafka.consumer({ groupId: 'order-analytics-tap' });
-await analyticsConsumer.subscribe({ topic: 'orders', fromBeginning: false });
+await analyticsConsumer.connect();
+await analyticsConsumer.subscribe({ topics: ['orders'], fromBeginning: false });
 await analyticsConsumer.run({
   eachMessage: async ({ message }) => {
     // Feed analytics
@@ -537,7 +540,7 @@ debugTap.enable({
 Connect your debug tap to a WebSocket for live inspection:
 
 ```typescript
-import { WebSocketServer } from 'ws';
+import { WebSocketServer, WebSocket } from 'ws';
 
 class LiveDebugTap {
   private wss: WebSocketServer;
@@ -771,7 +774,7 @@ async function main() {
 
   // Primary order processing
   await primaryConsumer.connect();
-  await primaryConsumer.subscribe({ topic: 'orders' });
+  await primaryConsumer.subscribe({ topics: ['orders'] });
   await primaryConsumer.run({
     eachMessage: async ({ message }) => {
       const order = JSON.parse(message.value?.toString() ?? '{}');
@@ -781,7 +784,7 @@ async function main() {
 
   // Audit wire tap
   await auditConsumer.connect();
-  await auditConsumer.subscribe({ topic: 'orders' });
+  await auditConsumer.subscribe({ topics: ['orders'] });
   await auditConsumer.run({
     eachMessage: async ({ message }) => {
       const order = JSON.parse(message.value?.toString() ?? '{}');
@@ -795,7 +798,7 @@ async function main() {
 
   // Analytics wire tap
   await analyticsConsumer.connect();
-  await analyticsConsumer.subscribe({ topic: 'orders' });
+  await analyticsConsumer.subscribe({ topics: ['orders'] });
   await analyticsConsumer.run({
     eachMessage: async ({ message }) => {
       const order = JSON.parse(message.value?.toString() ?? '{}');
