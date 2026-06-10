@@ -20,7 +20,7 @@ Before getting started, ensure you have the following installed:
 
 ## Setting Up the MongoDB Driver
 
-Deno uses URL-based imports, and the official MongoDB driver for Deno is available through deno.land. The driver provides full TypeScript support out of the box.
+Deno uses URL-based imports, and the community-maintained `deno_mongo` driver (from denodrivers) is available through deno.land. The driver provides TypeScript support out of the box. Note that it does not implement every MongoDB feature — for instance, sessions and transactions are not supported, so if you need those you should use the official `npm:mongodb` driver via Deno's npm specifier.
 
 Create a new file to set up your database connection:
 
@@ -619,37 +619,43 @@ async function createIndexes() {
   const products = getProductsCollection();
   
   // Single field index for frequent lookups
-  await users.createIndex(
-    { email: 1 },
-    { unique: true, name: "idx_users_email" }
-  );
+  await users.createIndexes({
+    indexes: [
+      { key: { email: 1 }, name: "idx_users_email", unique: true },
+    ],
+  });
   
   // Compound index for queries that filter on multiple fields
-  await users.createIndex(
-    { age: 1, createdAt: -1 },
-    { name: "idx_users_age_created" }
-  );
+  await users.createIndexes({
+    indexes: [
+      { key: { age: 1, createdAt: -1 }, name: "idx_users_age_created" },
+    ],
+  });
   
   // Text index for full-text search
-  await products.createIndex(
-    { name: "text", tags: "text" },
-    { name: "idx_products_text_search" }
-  );
+  await products.createIndexes({
+    indexes: [
+      { key: { name: "text", tags: "text" }, name: "idx_products_text_search" },
+    ],
+  });
   
   // Partial index for optimizing queries on subset of documents
-  await users.createIndex(
-    { email: 1 },
-    {
-      name: "idx_active_users_email",
-      partialFilterExpression: { deleted: { $ne: true } }
-    }
-  );
+  await users.createIndexes({
+    indexes: [
+      {
+        key: { email: 1 },
+        name: "idx_active_users_email",
+        partialFilterExpression: { deleted: { $ne: true } },
+      },
+    ],
+  });
   
   // TTL index for automatic document expiration
-  await users.createIndex(
-    { sessionExpiry: 1 },
-    { expireAfterSeconds: 0, name: "idx_session_ttl" }
-  );
+  await users.createIndexes({
+    indexes: [
+      { key: { sessionExpiry: 1 }, name: "idx_session_ttl", expireAfterSeconds: 0 },
+    ],
+  });
   
   console.log("All indexes created successfully");
 }
@@ -667,7 +673,7 @@ async function listIndexes() {
 async function dropIndex(indexName: string) {
   const users = getUsersCollection();
   
-  await users.dropIndex(indexName);
+  await users.dropIndexes({ index: indexName });
   console.log(`Index ${indexName} dropped`);
 }
 ```
@@ -937,16 +943,17 @@ async function withRetry<T>(
 
 ## Transactions
 
-MongoDB transactions ensure atomicity across multiple operations:
+MongoDB transactions ensure atomicity across multiple operations. The `deno_mongo` driver does not implement sessions or transactions, so for this functionality you should import the official Node.js MongoDB driver via Deno's `npm:` specifier (Deno 1.28+). The session API mirrors the standard Node.js driver:
 
 ```typescript
-// transactions.ts - Transaction support
-import { MongoClient, Database } from "https://deno.land/x/mongo@v0.32.0/mod.ts";
+// transactions.ts - Transaction support via npm:mongodb
+import { MongoClient, Db, ClientSession } from "npm:mongodb@6";
+import { ObjectId } from "npm:mongodb@6";
 
 // Transfer funds between accounts using a transaction
 async function transferFunds(
   client: MongoClient,
-  db: Database,
+  db: Db,
   fromAccountId: string,
   toAccountId: string,
   amount: number
@@ -962,7 +969,7 @@ async function transferFunds(
     // Debit from source account
     const debitResult = await accounts.updateOne(
       {
-        _id: { $oid: fromAccountId },
+        _id: new ObjectId(fromAccountId),
         balance: { $gte: amount }  // Ensure sufficient funds
       },
       {
@@ -985,7 +992,7 @@ async function transferFunds(
     
     // Credit to destination account
     const creditResult = await accounts.updateOne(
-      { _id: { $oid: toAccountId } },
+      { _id: new ObjectId(toAccountId) },
       {
         $inc: { balance: amount },
         $push: {
@@ -1017,14 +1024,14 @@ async function transferFunds(
     
   } finally {
     // End the session
-    session.endSession();
+    await session.endSession();
   }
 }
 
 // Generic transaction wrapper for multiple operations
 async function runInTransaction<T>(
   client: MongoClient,
-  operations: (session: any) => Promise<T>
+  operations: (session: ClientSession) => Promise<T>
 ): Promise<T> {
   const session = client.startSession();
   
@@ -1044,10 +1051,12 @@ async function runInTransaction<T>(
     throw error;
     
   } finally {
-    session.endSession();
+    await session.endSession();
   }
 }
 ```
+
+Transactions require MongoDB to be running as a replica set or sharded cluster — they are not available on standalone deployments.
 
 ## Best Practices Summary
 
