@@ -270,12 +270,13 @@ np.random.seed(42)
 vectors = np.random.random((NUM_VECTORS, DIMENSION)).astype('float32')
 
 # Normalize vectors for cosine similarity
-# FAISS HNSW uses inner product, so normalize for cosine
+# IndexHNSWFlat defaults to L2 distance; for L2-normalized vectors,
+# the L2 ranking is equivalent to cosine similarity ranking
 faiss.normalize_L2(vectors)
 
 # Create HNSW index
-# HNSW uses inner product by default
-# For normalized vectors, inner product = cosine similarity
+# IndexHNSWFlat uses L2 distance by default (METRIC_L2)
+# For L2-normalized vectors, top-k by L2 distance matches top-k by cosine similarity
 index = faiss.IndexHNSWFlat(DIMENSION, M)
 
 # Set construction-time parameter
@@ -961,16 +962,16 @@ results = index.search(query, k=100)
 import numpy as np
 import faiss
 
-# BAD: Raw vectors with inner product
+# BAD: Raw (un-normalized) vectors
 vectors = get_embeddings()  # Not normalized
 index = faiss.IndexHNSWFlat(dim, M)
-index.add(vectors)  # Will not give cosine similarity results
+index.add(vectors)  # L2 ranking on raw vectors != cosine similarity ranking
 
 # GOOD: Normalize vectors first
 vectors = get_embeddings()
 faiss.normalize_L2(vectors)  # Normalize in-place
 index = faiss.IndexHNSWFlat(dim, M)
-index.add(vectors)  # Now inner product = cosine similarity
+index.add(vectors)  # L2 ranking on normalized vectors = cosine similarity ranking
 ```
 
 ### Pitfall 3: Setting ef_construction After Adding Vectors
