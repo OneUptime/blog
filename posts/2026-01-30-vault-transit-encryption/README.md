@@ -454,6 +454,7 @@ const decrypted = await decrypt(encrypted);
 ### Code Example: Python
 
 ```python
+import os
 import hvac
 import base64
 
