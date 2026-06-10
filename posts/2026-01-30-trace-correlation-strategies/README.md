@@ -470,7 +470,7 @@ import {
     MeterProvider,
     PeriodicExportingMetricReader
 } from '@opentelemetry/sdk-metrics';
-import { OTLPMetricExporter } from '@opentelemetry/exporter-otlp-http';
+import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
 import { context, trace } from '@opentelemetry/api';
 
 // Configure meter provider with exemplar support
@@ -1119,7 +1119,7 @@ flowchart TB
 
 ```typescript
 // gateway/correlation-middleware.ts
-import { context, trace, propagation, ROOT_CONTEXT } from '@opentelemetry/api';
+import { context, trace, propagation, ROOT_CONTEXT, SpanKind } from '@opentelemetry/api';
 import { v4 as uuidv4 } from 'uuid';
 
 const tracer = trace.getTracer('api-gateway');
@@ -1147,7 +1147,7 @@ export function correlationGatewayMiddleware(req: any, res: any, next: any) {
 
     // If no trace context, create new trace with correlation
     const span = tracer.startSpan('gateway.request', {
-        kind: trace.SpanKind.SERVER,
+        kind: SpanKind.SERVER,
         attributes: {
             'correlation.id': correlationId,
             'correlation.source': source,
@@ -1501,7 +1501,7 @@ export async function handleCheckout(req: any, res: any) {
                     }
                 );
 
-                rootSpan.setStatus({ code: 0 });
+                rootSpan.setStatus({ code: 1 });
                 res.json(result);
             } catch (error: any) {
                 rootSpan.recordException(error);
