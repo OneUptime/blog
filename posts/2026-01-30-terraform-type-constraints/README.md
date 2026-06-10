@@ -428,8 +428,8 @@ variable "bucket_name" {
   }
 
   validation {
-    condition     = !can(regex("\\.\\.|-\\.", var.bucket_name))
-    error_message = "Bucket name cannot contain consecutive periods or period-hyphen."
+    condition     = !can(regex("\\.\\.|-\\.|\\.-", var.bucket_name))
+    error_message = "Bucket name cannot contain consecutive periods, hyphen-period, or period-hyphen."
   }
 }
 ```
@@ -629,7 +629,7 @@ Error: Invalid value for variable
 The given value is not valid for variable "count": a number is required.
 ```
 
-Fix: Check that you are passing the correct type. Strings like "3" will not work where a number is expected.
+Fix: Check that you are passing the correct type. Terraform automatically converts numeric strings (like "3") to numbers, but non-numeric strings (like "three") will fail.
 
 **Extra attributes in object**
 ```text
