@@ -129,7 +129,7 @@ class SPAPacket:
             destination_service: The service identifier the client wants to access
 
         Returns:
-            Encrypted and signed SPA packet bytes
+            HMAC-signed SPA packet bytes
         """
         # Build packet payload with timestamp to prevent replay attacks
         payload = {
@@ -1020,7 +1020,7 @@ from cryptography import x509
 from cryptography.x509.oid import NameOID
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import uuid
 
 class CertificateManager:
@@ -1067,8 +1067,8 @@ class CertificateManager:
             .issuer_name(self.ca_cert.subject)
             .public_key(client_key.public_key())
             .serial_number(x509.random_serial_number())
-            .not_valid_before(datetime.utcnow())
-            .not_valid_after(datetime.utcnow() + timedelta(hours=validity_hours))
+            .not_valid_before(datetime.now(timezone.utc))
+            .not_valid_after(datetime.now(timezone.utc) + timedelta(hours=validity_hours))
             .add_extension(
                 x509.KeyUsage(
                     digital_signature=True,
@@ -1112,7 +1112,7 @@ Every access attempt should be logged for security analysis and compliance.
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from dataclasses import dataclass, asdict
 
@@ -1150,7 +1150,7 @@ class AuditLogger:
     ):
         """Log authentication attempt."""
         event = AuditEvent(
-            timestamp=datetime.utcnow().isoformat(),
+            timestamp=datetime.now(timezone.utc).isoformat(),
             event_type="authentication",
             client_id=client_id,
             source_ip=source_ip,
@@ -1171,7 +1171,7 @@ class AuditLogger:
     ):
         """Log resource access decision."""
         event = AuditEvent(
-            timestamp=datetime.utcnow().isoformat(),
+            timestamp=datetime.now(timezone.utc).isoformat(),
             event_type="access_decision",
             client_id=client_id,
             source_ip=source_ip,
@@ -1191,7 +1191,7 @@ class AuditLogger:
     ):
         """Log SPA packet validation."""
         event = AuditEvent(
-            timestamp=datetime.utcnow().isoformat(),
+            timestamp=datetime.now(timezone.utc).isoformat(),
             event_type="spa_validation",
             client_id=client_id or "unknown",
             source_ip=source_ip,
