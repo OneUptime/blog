@@ -172,7 +172,7 @@ class WindowsButton implements Button {
         background: linear-gradient(#f0f0f0, #e0e0e0);
         border: 1px solid #707070;
         padding: 5px 15px;
-        font-family: Segoe UI;
+        font-family: 'Segoe UI';
       ">${this.label}</button>
     `;
   }
@@ -198,7 +198,7 @@ class WindowsCheckbox implements Checkbox {
   render(): string {
     const checkmark = this.checked ? "&#10003;" : "";
     return `
-      <div class="windows-checkbox" style="font-family: Segoe UI;">
+      <div class="windows-checkbox" style="font-family: 'Segoe UI';">
         <span style="
           display: inline-block;
           width: 13px;
@@ -241,7 +241,7 @@ class WindowsTextInput implements TextInput {
         style="
           border: 1px solid #707070;
           padding: 3px 5px;
-          font-family: Segoe UI;
+          font-family: 'Segoe UI';
           background: white;
         "
       />
@@ -275,7 +275,7 @@ class WindowsDropdown implements Dropdown {
       <select class="windows-dropdown" style="
         border: 1px solid #707070;
         padding: 3px;
-        font-family: Segoe UI;
+        font-family: 'Segoe UI';
         background: white;
       ">${optionsHtml}</select>
     `;
