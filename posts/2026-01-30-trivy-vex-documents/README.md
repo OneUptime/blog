@@ -84,7 +84,7 @@ OpenVEX is a lightweight, purpose-built format specifically designed for VEX use
   "statements": [
     {
       "vulnerability": {
-        "@id": "CVE-2024-12345"
+        "name": "CVE-2024-12345"
       },
       "products": [
         {
@@ -111,7 +111,7 @@ OpenVEX is a lightweight, purpose-built format specifically designed for VEX use
   "statements": [
     {
       "vulnerability": {
-        "@id": "CVE-2024-12345"
+        "name": "CVE-2024-12345"
       },
       "products": [
         {
@@ -124,7 +124,7 @@ OpenVEX is a lightweight, purpose-built format specifically designed for VEX use
     },
     {
       "vulnerability": {
-        "@id": "CVE-2024-67890"
+        "name": "CVE-2024-67890"
       },
       "products": [
         {
@@ -137,7 +137,7 @@ OpenVEX is a lightweight, purpose-built format specifically designed for VEX use
     },
     {
       "vulnerability": {
-        "@id": "CVE-2024-11111"
+        "name": "CVE-2024-11111"
       },
       "products": [
         {
@@ -247,16 +247,13 @@ trivy image --vex openvex.json \
   myregistry/myapp:1.0.0
 ```
 
-### Generating VEX Documents from Trivy
+### Inspecting Trivy Scan Results
 
-Trivy can generate VEX documents from scan results:
+Trivy does not natively output OpenVEX or CSAF documents. To build a VEX document from scan results, export the scan as JSON and post-process it with a tool such as `vexctl`:
 
 ```bash
-# Generate an OpenVEX document from scan results
-trivy image --format openvex -o baseline-vex.json myregistry/myapp:1.0.0
-
-# Generate a CSAF document
-trivy image --format csaf -o baseline-csaf.json myregistry/myapp:1.0.0
+# Export scan results as JSON for further processing
+trivy image --format json -o scan-results.json myregistry/myapp:1.0.0
 ```
 
 ## Automating VEX Document Creation
@@ -284,8 +281,8 @@ vexctl add vex.json \
   --status="not_affected" \
   --justification="vulnerable_code_not_in_execute_path"
 
-# Merge multiple VEX documents
-vexctl merge vex1.json vex2.json -o merged-vex.json
+# Merge multiple VEX documents (output goes to stdout)
+vexctl merge vex1.json vex2.json > merged-vex.json
 ```
 
 ### Shell Script for Batch Processing
@@ -327,7 +324,7 @@ for cve in "${!CVE_JUSTIFICATIONS[@]}"; do
      --arg product "$PRODUCT" \
      --arg justification "$justification" \
      '.statements += [{
-       "vulnerability": {"@id": $cve},
+       "vulnerability": {"name": $cve},
        "products": [{"@id": $product}],
        "status": "not_affected",
        "justification": $justification
@@ -398,7 +395,7 @@ def create_statement(
     """Create a single VEX statement."""
     # Build the statement with required fields
     statement = {
-        "vulnerability": {"@id": cve_id},
+        "vulnerability": {"name": cve_id},
         "products": [{"@id": product_id}],
         "status": status
     }
@@ -532,14 +529,18 @@ jobs:
           # Fetch VEX documents from your security repository
           curl -o baseline-vex.json https://security.example.com/vex/myapp.json
 
+      - name: Install Trivy
+        run: |
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+
       - name: Run Trivy scan with VEX
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: myapp:${{ github.sha }}
-          format: table
-          exit-code: 1
-          severity: CRITICAL,HIGH
-          vex: baseline-vex.json
+        run: |
+          trivy image \
+            --vex baseline-vex.json \
+            --format table \
+            --exit-code 1 \
+            --severity CRITICAL,HIGH \
+            myapp:${{ github.sha }}
 
       - name: Upload scan results
         uses: actions/upload-artifact@v4
@@ -605,7 +606,7 @@ Always include detailed impact statements explaining your analysis:
 
 ```json
 {
-  "vulnerability": {"@id": "CVE-2024-12345"},
+  "vulnerability": {"name": "CVE-2024-12345"},
   "products": [{"@id": "pkg:docker/myapp@1.0.0"}],
   "status": "not_affected",
   "justification": "vulnerable_code_not_in_execute_path",
