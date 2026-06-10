@@ -363,18 +363,20 @@ avg_over_time(
     node_cpu_seconds_total{mode="idle"}[1h]
 )
 
-# Compare current value to moving average
+# Compare current memory usage to moving average
 # Values > 1 indicate above-average usage
-node_memory_MemUsed_bytes
+# Memory used is derived from MemTotal - MemAvailable since
+# node_exporter does not expose a direct "MemUsed" metric
+(node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes)
 /
-avg_over_time(node_memory_MemUsed_bytes[24h])
+(node_memory_MemTotal_bytes - avg_over_time(node_memory_MemAvailable_bytes[24h]))
 
-# Alert when memory exceeds 1.5x the daily average
+# Alert when memory usage exceeds 1.5x the daily average
 # This catches unusual spikes that may indicate problems
 (
-    node_memory_MemUsed_bytes
+    (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes)
     /
-    avg_over_time(node_memory_MemUsed_bytes[24h])
+    (node_memory_MemTotal_bytes - avg_over_time(node_memory_MemAvailable_bytes[24h]))
 ) > 1.5
 ```
 
@@ -1058,13 +1060,19 @@ groups:
             {{ $value | humanize1024 }}B
 
       # Alert: Memory growth anomaly
+      # deriv() works on gauges (rate() is only for counters).
+      # MemAvailable decreases when memory is consumed, so deriv() returns
+      # a negative value. A ratio > 2 indicates current consumption rate
+      # is more than 2x yesterday's rate at the same time.
       - alert: MemoryGrowthAnomaly
         expr: |
           (
-            rate(node_memory_MemUsed_bytes[1h])
+            deriv(node_memory_MemAvailable_bytes[1h])
             /
-            rate(node_memory_MemUsed_bytes[1h] offset 1d)
+            deriv(node_memory_MemAvailable_bytes[1h] offset 1d)
           ) > 2
+          and
+          deriv(node_memory_MemAvailable_bytes[1h]) < 0
         for: 30m
         labels:
           severity: warning
