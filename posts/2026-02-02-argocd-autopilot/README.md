@@ -68,8 +68,8 @@ Download the binary directly from GitHub releases and move it to your PATH.
 # Download the latest release for Linux
 
 VERSION=$(curl --silent "https://api.github.com/repos/argoproj-labs/argocd-autopilot/releases/latest" | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')
-curl -L --output - https://github.com/argoproj-labs/argocd-autopilot/releases/download/$VERSION/argocd-autopilot-linux-amd64.tar.gz | tar zx
-sudo mv argocd-autopilot /usr/local/bin/
+curl -L --output - https://github.com/argoproj-labs/argocd-autopilot/releases/download/"$VERSION"/argocd-autopilot-linux-amd64.tar.gz | tar zx
+sudo mv ./argocd-autopilot-* /usr/local/bin/argocd-autopilot
 
 # Verify installation
 argocd-autopilot version
@@ -77,15 +77,14 @@ argocd-autopilot version
 
 ### Windows Installation
 
-Use the following PowerShell commands to download and install on Windows.
+On Windows, install with Scoop or Chocolatey. Alternatively, use WSL (Windows Subsystem for Linux) and follow the Linux instructions above.
 
 ```powershell
-# Download the Windows binary
-$VERSION = (Invoke-RestMethod "https://api.github.com/repos/argoproj-labs/argocd-autopilot/releases/latest").tag_name
-Invoke-WebRequest -Uri "https://github.com/argoproj-labs/argocd-autopilot/releases/download/$VERSION/argocd-autopilot-windows-amd64.exe" -OutFile "argocd-autopilot.exe"
+# Install with Scoop
+scoop install argocd-autopilot
 
-# Move to a directory in your PATH
-Move-Item argocd-autopilot.exe C:\Windows\System32\
+# Or install with Chocolatey
+choco install argocd-autopilot
 ```
 
 ## Setting Up Prerequisites
@@ -243,10 +242,9 @@ argocd-autopilot project create production
 # Create a project for development workloads
 argocd-autopilot project create development
 
-# Create a project with specific settings
+# Create a project targeting a specific destination cluster context
 argocd-autopilot project create staging \
-  --dest-kube-context staging-cluster \
-  --dest-namespace "staging-*"
+  --dest-kube-context staging-cluster
 ```
 
 ### Project Configuration File
@@ -378,16 +376,30 @@ argocd-autopilot app create my-frontend \
 
 ### Creating an Application from Helm
 
-Deploy Helm charts with Autopilot by specifying the chart location and values.
+Autopilot's `--type` flag only supports `kustomize` and `dir`. To deploy a Helm chart, point `--app` at a Git directory containing a Kustomization that inflates the chart via Kustomize's `helmCharts` field.
 
 ```bash
-# Create Helm-based application
+# Create a Kustomize-based application that renders a Helm chart
 argocd-autopilot app create redis \
-  --app https://charts.bitnami.com/bitnami/redis \
+  --app https://github.com/your-org/charts.git/redis \
   --project production \
-  --type helm \
-  --helm-set replica.replicaCount=3 \
-  --helm-set auth.enabled=true
+  --type kustomize
+```
+
+```yaml
+# redis/kustomization.yaml in the source repo
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+helmCharts:
+  - name: redis
+    repo: https://charts.bitnami.com/bitnami
+    version: 19.0.0
+    releaseName: redis
+    valuesInline:
+      replica:
+        replicaCount: 3
+      auth:
+        enabled: true
 ```
 
 ### Generated Application Structure
