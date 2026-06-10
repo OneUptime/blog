@@ -233,18 +233,9 @@ username           v-token-myapp-read-abc123def456
 
 The `lease_id` is important. You need it to renew or revoke credentials before they expire.
 
-### Generate Credentials with Custom TTL
-
-Override the default TTL when requesting credentials.
-
-```bash
-# Request credentials with a 30-minute TTL instead of the default 1 hour
-vault read -ttl=30m database/creds/myapp-readonly
-```
-
 ### Renew Credentials Before Expiration
 
-If your application needs credentials longer than the default TTL, renew the lease before it expires.
+If your application needs credentials longer than the default TTL, renew the lease before it expires. The lease can be extended up to the role's `max_ttl`.
 
 ```bash
 # Renew the lease for another period (up to max_ttl)
@@ -253,6 +244,8 @@ vault lease renew database/creds/myapp-readonly/abc123def456
 # Renew with a specific duration
 vault lease renew -increment=30m database/creds/myapp-readonly/abc123def456
 ```
+
+If you need a different TTL for a workload, define a separate role with its own `default_ttl` and `max_ttl` rather than overriding per-request — the database credentials endpoint takes its TTL from the role configuration.
 
 ### Revoke Credentials Immediately
 
@@ -616,7 +609,6 @@ func (c *VaultDBClient) ShouldRenew(threshold time.Duration) bool {
 // RenewCredentials extends the lease or fetches new credentials
 func (c *VaultDBClient) RenewCredentials(ctx context.Context) error {
     c.mu.Lock()
-    defer c.mu.Unlock()
 
     if c.leaseID == "" {
         c.mu.Unlock()
@@ -626,15 +618,18 @@ func (c *VaultDBClient) RenewCredentials(ctx context.Context) error {
     // Attempt to renew the lease
     secret, err := c.vaultClient.Sys().RenewWithContext(ctx, c.leaseID, 0)
     if err != nil {
-        log.Printf("Lease renewal failed: %v, fetching new credentials", err)
         c.mu.Unlock()
+        log.Printf("Lease renewal failed: %v, fetching new credentials", err)
         return c.FetchCredentials(ctx)
     }
 
     c.leaseDuration = secret.LeaseDuration
     c.leaseObtained = time.Now()
+    leaseID := c.leaseID
+    duration := c.leaseDuration
+    c.mu.Unlock()
 
-    log.Printf("Renewed lease %s, new duration: %ds", c.leaseID, c.leaseDuration)
+    log.Printf("Renewed lease %s, new duration: %ds", leaseID, duration)
 
     return nil
 }
