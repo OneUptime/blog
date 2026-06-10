@@ -959,7 +959,7 @@ function deserializeSpanContext(serialized: string): SpanContext {
         spanId: data.spanId,
         traceFlags: data.traceFlags,
         traceState: data.traceState ?
-            TraceState.fromString(data.traceState) : undefined,
+            createTraceState(data.traceState) : undefined,
         isRemote: true,
     };
 }
