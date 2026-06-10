@@ -44,7 +44,7 @@ flowchart TB
 Key components requiring HA consideration:
 - **API Server** - Handles UI and CLI requests, stateless and horizontally scalable
 - **Repo Server** - Clones and renders manifests from Git, stateless and scalable
-- **Application Controller** - Reconciles application state, requires leader election
+- **Application Controller** - Reconciles application state, scaled horizontally via cluster sharding
 - **Redis** - Caches Git repository data and application state
 - **Dex** - Handles SSO authentication, stateless
 
@@ -141,13 +141,14 @@ repoServer:
       cpu: 1000m
       memory: 1Gi
 
-# Application Controller uses leader election, only one active at a time
+# Application Controller distributes managed clusters across replicas via sharding
 controller:
-  replicas: 1
-  # Enable HA mode for controller leader election
+  replicas: 2
+  # ARGOCD_CONTROLLER_REPLICAS must match the replica count so each instance
+  # knows how many peers exist and which shard it owns
   env:
     - name: ARGOCD_CONTROLLER_REPLICAS
-      value: "1"
+      value: "2"
   resources:
     requests:
       cpu: 250m
@@ -237,12 +238,12 @@ data:
 For larger deployments, use a managed Redis service or external Redis cluster.
 
 ```yaml
-# argocd-cm-external-redis.yaml
+# argocd-cmd-params-cm-external-redis.yaml
 # ConfigMap pointing ArgoCD to an external Redis cluster
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: argocd-cm
+  name: argocd-cmd-params-cm
   namespace: argocd
 data:
   # External Redis connection string
@@ -267,11 +268,11 @@ stringData:
 
 ## Application Controller HA Configuration
 
-The Application Controller requires special handling because only one instance can be active at a time. Leader election ensures automatic failover.
+The Application Controller scales horizontally by sharding managed clusters across replicas. Each replica is assigned a subset of clusters via the configured sharding algorithm, so all replicas remain active simultaneously rather than electing a single leader.
 
 ```yaml
 # argocd-application-controller-statefulset.yaml
-# StatefulSet for Application Controller with leader election
+# StatefulSet for Application Controller with cluster sharding
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -295,11 +296,12 @@ spec:
           command:
             - argocd-application-controller
           env:
-            # Enable leader election for HA
+            # Must equal the StatefulSet replica count so each instance
+            # knows the total shard count and computes its own shard ID
             - name: ARGOCD_CONTROLLER_REPLICAS
               value: "3"
           args:
-            # Shard applications across controller replicas
+            # Shard clusters across controller replicas
             - --app-state-cache-expiration
             - 1h
             - --repo-server
@@ -327,68 +329,16 @@ spec:
               topologyKey: kubernetes.io/hostname
 ```
 
-## Configuring External Database Backend
+## State Storage Considerations
 
-For enterprise deployments, use PostgreSQL instead of the embedded database for better reliability and backup options.
+Unlike many controllers, ArgoCD does not use an external relational database. All durable state is stored in Kubernetes-native objects:
 
-```mermaid
-flowchart LR
-    subgraph "ArgoCD HA Cluster"
-        API1[API Server 1]
-        API2[API Server 2]
-        API3[API Server 3]
-    end
+- **Applications and AppProjects** are stored as Custom Resource Definitions in the cluster's etcd.
+- **Configuration** lives in ConfigMaps such as `argocd-cm` and `argocd-cmd-params-cm`.
+- **Repository, cluster, and SSO credentials** live in Secrets.
+- **Redis** is used only as a cache; losing Redis is recoverable because state is rebuilt from Kubernetes.
 
-    subgraph "Database HA"
-        PG1[(PostgreSQL Primary)]
-        PG2[(PostgreSQL Replica)]
-        PG3[(PostgreSQL Replica)]
-    end
-
-    API1 --> PG1
-    API2 --> PG1
-    API3 --> PG1
-    PG1 --> PG2
-    PG1 --> PG3
-```
-
-Configure ArgoCD to use an external PostgreSQL database.
-
-```yaml
-# argocd-cm-postgres.yaml
-# ConfigMap for external PostgreSQL connection
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: argocd-cm
-  namespace: argocd
-data:
-  # Connection string for PostgreSQL
-  # Using read replicas for read operations improves performance
-  dex.config: |
-    connectors:
-      - type: ldap
-        id: ldap
-        name: LDAP
-        config:
-          # LDAP configuration here
-```
-
-Create the database credentials secret.
-
-```yaml
-# argocd-postgres-secret.yaml
-# Secret containing PostgreSQL connection credentials
-apiVersion: v1
-kind: Secret
-metadata:
-  name: argocd-postgres-secret
-  namespace: argocd
-type: Opaque
-stringData:
-  # PostgreSQL connection URL with credentials
-  db-url: "postgresql://argocd:password@postgres-primary.database:5432/argocd?sslmode=require"
-```
+For HA, this means etcd reliability and your Kubernetes backup strategy (for example Velero of the `argocd` namespace plus CRDs) are what protect ArgoCD state — there is no separate database tier to provision or replicate.
 
 ## Network Policies for Security
 
@@ -565,16 +515,16 @@ spec:
             summary: "ArgoCD Redis HA quorum at risk"
             description: "Less than 2 Redis instances are available"
 
-        # Alert when Application Controller has no leader
-        - alert: ArgoCDControllerNoLeader
+        # Alert when one or more Application Controller replicas are missing
+        - alert: ArgoCDControllerReplicaDown
           expr: |
-            sum(argocd_app_controller_leader) == 0
+            sum(up{job="argocd-application-controller"}) < 2
           for: 5m
           labels:
             severity: critical
           annotations:
-            summary: "ArgoCD Application Controller has no leader"
-            description: "No Application Controller has acquired leadership"
+            summary: "ArgoCD Application Controller replica missing"
+            description: "Fewer Application Controller replicas are running than expected, which can leave shards unprocessed"
 
         # Alert on sync failures
         - alert: ArgoCDSyncFailures
@@ -779,9 +729,11 @@ else
     echo "Redis HA: WARN (only $REDIS_REPLICAS replicas)"
 fi
 
-# Check Application Controller leader election
-LEADER=$(kubectl get configmap argocd-cm -n argocd -o jsonpath='{.data.controller\.status\.processors}' 2>/dev/null)
-echo "Controller status: Leader election enabled"
+# Check Application Controller replicas (sharding is keyed off ARGOCD_CONTROLLER_REPLICAS)
+CTRL_REPLICAS=$(kubectl get statefulset argocd-application-controller -n argocd -o jsonpath='{.status.readyReplicas}')
+CTRL_EXPECTED=$(kubectl get statefulset argocd-application-controller -n argocd \
+  -o jsonpath='{.spec.template.spec.containers[?(@.name=="argocd-application-controller")].env[?(@.name=="ARGOCD_CONTROLLER_REPLICAS")].value}')
+echo "Application Controller: $CTRL_REPLICAS ready / ARGOCD_CONTROLLER_REPLICAS=$CTRL_EXPECTED"
 
 # Verify Pod Disruption Budgets
 echo ""
