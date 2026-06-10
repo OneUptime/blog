@@ -393,13 +393,17 @@ class HyperLogLogAggregator {
 
     accumulate(event: { id: string }): void {
         const hashValue = this.hash(event.id);
+        const precision = Math.log2(this.numRegisters);
 
-        // Use first bits to determine register
+        // Use low bits to determine register
         const registerIndex = hashValue & (this.numRegisters - 1);
 
-        // Count leading zeros in remaining bits
-        const leadingZeros = this.countLeadingZeros(hashValue >>>
-            Math.log2(this.numRegisters)) + 1;
+        // Count leading zeros in remaining (32 - precision) upper bits.
+        // countLeadingZeros sees a 32-bit value, so subtract precision
+        // to discount the zero bits introduced by the shift.
+        const remaining = hashValue >>> precision;
+        const leadingZeros =
+            this.countLeadingZeros(remaining) - precision + 1;
 
         // Keep maximum leading zeros seen for this register
         if (leadingZeros > this.registers[registerIndex]) {
@@ -1055,14 +1059,19 @@ describe('TumblingWindowSum', () => {
     });
 
     it('handles late events within allowed lateness', () => {
-        const agg = new WatermarkedAggregator(60000, 10000);
+        const agg = new WatermarkedAggregator(60000, 30000);
 
-        // Normal event
+        // Normal event in window 0-60000
         expect(agg.accumulate({ eventTime: 50000, value: 10 }))
             .toBe('accepted');
 
-        // Late but within allowed lateness
-        expect(agg.accumulate({ eventTime: 45000, value: 20 }))
+        // Process a later event to advance the watermark past
+        // the end of window 0-60000
+        agg.accumulate({ eventTime: 100000, value: 20 });
+
+        // Late event for the now-closed window, still within
+        // allowed lateness
+        expect(agg.accumulate({ eventTime: 55000, value: 30 }))
             .toBe('late_accepted');
     });
 });
