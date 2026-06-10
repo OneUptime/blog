@@ -127,13 +127,16 @@ Unused volumes consume disk space. Clean them up carefully since deletion is per
 # Remove a specific volume (fails if volume is in use)
 docker volume rm postgres-data
 
-# Remove all unused volumes (not attached to any container)
+# Remove unused anonymous volumes (Docker 23.0+ default behavior)
 docker volume prune
 
-# Remove all unused volumes without confirmation prompt
-docker volume prune -f
+# Remove all unused volumes, including named ones not attached to any container
+docker volume prune --all
 
-# Remove volumes along with the container
+# Remove all unused volumes without confirmation prompt
+docker volume prune --all -f
+
+# Remove anonymous volumes associated with the container (named volumes are preserved)
 docker rm -v mycontainer
 ```
 
