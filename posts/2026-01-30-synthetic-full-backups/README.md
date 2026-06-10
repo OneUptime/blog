@@ -431,6 +431,7 @@ create_synthetic_full() {
 EOF
 
     cat >> "$temp_path/postgresql.conf" << EOF
+port = 5433
 restore_command = 'cp $temp_path/pg_wal/%f %p'
 recovery_target = 'immediate'
 recovery_target_action = 'promote'
