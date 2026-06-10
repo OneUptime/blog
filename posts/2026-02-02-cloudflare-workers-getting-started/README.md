@@ -78,7 +78,7 @@ Use Wrangler to scaffold a new Worker project with all the necessary configurati
 ```bash
 # Create a new Worker project
 # This generates a project directory with starter files
-wrangler init my-first-worker
+npm create cloudflare@latest -- my-first-worker
 
 # Navigate to the project directory
 cd my-first-worker
@@ -260,10 +260,10 @@ main = "src/index.js"
 compatibility_date = "2024-01-01"
 
 # KV namespace binding
-# Create the namespace first: wrangler kv:namespace create "MY_KV"
+# Create the namespace first: wrangler kv namespace create "MY_KV"
 [[kv_namespaces]]
 binding = "MY_KV"          # Variable name in your Worker
-id = "abc123..."           # Namespace ID from wrangler kv:namespace create
+id = "abc123..."           # Namespace ID from wrangler kv namespace create
 preview_id = "def456..."   # Optional: separate namespace for local dev
 ```
 
@@ -453,10 +453,11 @@ compatibility_date = "2024-01-01"
 name = "COUNTER"           # Binding name in your Worker
 class_name = "Counter"     # Class name exported from your code
 
-# Tell Wrangler where to find the Durable Object class
+# Declare new Durable Object classes via migrations
+# new_sqlite_classes uses SQLite-backed storage (recommended for new projects)
 [[migrations]]
 tag = "v1"
-new_classes = ["Counter"]
+new_sqlite_classes = ["Counter"]
 ```
 
 ### Use Durable Objects from Your Worker
@@ -884,32 +885,37 @@ Write tests to ensure your Worker behaves correctly before deploying.
 
 ### Unit Testing with Vitest
 
-Vitest works well with Workers thanks to Miniflare integration.
+The `@cloudflare/vitest-pool-workers` package runs your tests inside the workerd runtime, so you can call your Worker through the `SELF` binding without spinning up a separate dev server.
+
+```javascript
+// vitest.config.js
+// Configure Vitest to run tests inside the Workers runtime
+
+import { defineWorkersConfig } from '@cloudflare/vitest-pool-workers/config';
+
+export default defineWorkersConfig({
+  test: {
+    poolOptions: {
+      workers: {
+        // Point at your existing wrangler.toml so bindings are picked up
+        wrangler: { configPath: './wrangler.toml' },
+      },
+    },
+  },
+});
+```
 
 ```javascript
 // test/worker.test.js
-// Unit tests for Worker using Vitest and Miniflare
+// Unit tests for the Worker using @cloudflare/vitest-pool-workers
+// SELF is a fetcher bound to your Worker's default export
 
-import { describe, it, expect, beforeAll } from 'vitest';
-import { unstable_dev } from 'wrangler';
+import { describe, it, expect } from 'vitest';
+import { SELF } from 'cloudflare:test';
 
 describe('Worker', () => {
-  let worker;
-
-  // Start the Worker before running tests
-  beforeAll(async () => {
-    worker = await unstable_dev('src/index.js', {
-      experimental: { disableExperimentalWarning: true },
-    });
-  });
-
-  // Stop the Worker after tests complete
-  afterAll(async () => {
-    await worker.stop();
-  });
-
   it('returns hello message', async () => {
-    const response = await worker.fetch('/api/hello');
+    const response = await SELF.fetch('https://example.com/api/hello');
     const data = await response.json();
 
     expect(response.status).toBe(200);
@@ -917,7 +923,7 @@ describe('Worker', () => {
   });
 
   it('handles POST requests', async () => {
-    const response = await worker.fetch('/api/echo', {
+    const response = await SELF.fetch('https://example.com/api/echo', {
       method: 'POST',
       body: JSON.stringify({ test: 'data' }),
       headers: { 'Content-Type': 'application/json' },
@@ -930,7 +936,7 @@ describe('Worker', () => {
   });
 
   it('returns 404 for unknown routes', async () => {
-    const response = await worker.fetch('/unknown');
+    const response = await SELF.fetch('https://example.com/unknown');
 
     expect(response.status).toBe(404);
   });
