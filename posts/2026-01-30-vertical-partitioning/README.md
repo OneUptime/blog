@@ -166,7 +166,7 @@ sequenceDiagram
 
 ## Practical Implementation in PostgreSQL
 
-PostgreSQL offers table inheritance as a native mechanism for implementing vertical partitioning patterns. This example demonstrates a complete implementation with insert triggers.
+PostgreSQL is well suited to vertical partitioning patterns thanks to features like JSONB columns, referential integrity, and PL/pgSQL helper functions. This example demonstrates a complete implementation with a stored procedure that inserts across partitions atomically.
 
 ```sql
 -- Create base table with common columns
