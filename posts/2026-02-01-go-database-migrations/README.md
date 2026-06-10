@@ -62,7 +62,7 @@ Create your migrations directory and your first migration:
 
 mkdir -p db/migrations
 
-# Create a new migration with timestamp versioning
+# Create a new migration with sequential numbering (use -seq for sequential; omit it for Unix timestamps)
 migrate create -ext sql -dir db/migrations -seq create_users_table
 ```
 
