@@ -87,7 +87,7 @@ For production, deploy a multi-node cluster. CockroachDB Cloud provides a manage
 
 ```bash
 # Example: CockroachDB Cloud connection string
-cockroachdb://username:password@free-tier.gcp-us-central1.cockroachlabs.cloud:26257/myapp?sslmode=verify-full
+postgresql://username:password@free-tier.gcp-us-central1.cockroachlabs.cloud:26257/myapp?sslmode=verify-full
 ```
 
 ## Connecting Node.js to CockroachDB
@@ -287,7 +287,7 @@ async function createSchema() {
       )
     `);
 
-    // Order items with interleaved storage for locality
+    // Order items with composite primary key prefixed by user_id for locality
     await client.query(`
       CREATE TABLE IF NOT EXISTS order_items (
         order_id UUID NOT NULL,
@@ -317,8 +317,7 @@ Managing schema changes through migrations ensures reproducible database states 
 ```javascript
 // migrations/20260202_create_users.js
 exports.up = async function(knex) {
-  // Enable UUID extension
-  await knex.raw('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"');
+  // gen_random_uuid() is built into CockroachDB, no extension required
 
   // Create users table
   await knex.schema.createTable('users', (table) => {
@@ -1177,16 +1176,17 @@ async function optimizeIndexes() {
       WHERE status = 'pending'
     `);
 
-    // Analyze index usage
+    // Analyze index usage via CockroachDB's internal table
     const usageResult = await client.query(`
       SELECT
-        table_name,
+        descriptor_name as table_name,
         index_name,
-        idx_scan as scans,
-        idx_tup_read as tuples_read
-      FROM pg_stat_user_indexes
-      WHERE schemaname = 'public'
-      ORDER BY idx_scan DESC
+        total_reads as reads,
+        last_read
+      FROM crdb_internal.index_usage_statistics us
+      JOIN crdb_internal.table_indexes ti
+        ON us.table_id = ti.descriptor_id AND us.index_id = ti.index_id
+      ORDER BY total_reads DESC
     `);
     console.log('Index usage statistics:', usageResult.rows);
 
@@ -1331,9 +1331,8 @@ async function healthCheck() {
     const clusterResult = await pool.query(`
       SELECT
         node_id,
-        is_live,
-        is_available
-      FROM crdb_internal.gossip_liveness
+        is_live
+      FROM crdb_internal.gossip_nodes
     `);
 
     const liveNodes = clusterResult.rows.filter(n => n.is_live).length;
