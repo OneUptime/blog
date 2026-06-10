@@ -43,13 +43,14 @@ AppRole is the most flexible built-in auth method for machine-to-machine authent
 Here is a production-ready AppRole configuration with custom constraints:
 
 ```hcl
-# approle-config.hcl
+# approle-config.tf
 
 # Custom AppRole configuration with security constraints
 
-# Enable AppRole auth method at a custom path
-path "auth/custom-approle" {
-  type = "approle"
+# Enable AppRole auth method at a custom mount path
+resource "vault_auth_backend" "custom_approle" {
+  type        = "approle"
+  path        = "custom-approle"
   description = "Custom AppRole for CI/CD pipelines"
 }
 ```
@@ -122,6 +123,7 @@ import (
     "fmt"
     "net/http"
     "os"
+    "time"
 
     "github.com/hashicorp/vault/api"
     "github.com/hashicorp/vault/sdk/framework"
@@ -201,7 +203,7 @@ func (b *backend) handleLogin(ctx context.Context, req *logical.Request, d *fram
             "identity_id":  identity.ID,
         },
         LeaseOptions: logical.LeaseOptions{
-            TTL:       3600 * 1e9, // 1 hour
+            TTL:       time.Hour,
             Renewable: true,
         },
         Alias: &logical.Alias{
