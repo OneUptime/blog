@@ -178,12 +178,13 @@ spec:
   image:
     name: cockroachdb/cockroach:v24.1.0
   nodes: 9
-  topology:
-    - key: topology.kubernetes.io/zone
-      values:
-        - us-east1-a
-        - us-east1-b
-        - us-east1-c
+  topologySpreadConstraints:
+    - maxSkew: 1
+      topologyKey: topology.kubernetes.io/zone
+      whenUnsatisfiable: DoNotSchedule
+      labelSelector:
+        matchLabels:
+          app.kubernetes.io/name: cockroachdb
   additionalArgs:
     - --locality=region=us-east,zone=$(POD_ZONE)
 ```
@@ -248,7 +249,7 @@ ALTER RANGE default CONFIGURE ZONE USING
   gc.ttlseconds = 90000;
 
 -- View current zone configuration
-SHOW ZONE CONFIGURATION FOR RANGE default;
+SHOW ZONE CONFIGURATION FROM RANGE default;
 
 -- Configure constraints to spread replicas across zones
 ALTER RANGE default CONFIGURE ZONE USING
@@ -573,6 +574,7 @@ Configure the node-postgres client with connection pooling and automatic reconne
 ```javascript
 // db.js - Node.js connection configuration
 const { Pool } = require('pg');
+const fs = require('fs');
 
 // Configure the connection pool with failover settings
 const pool = new Pool({
