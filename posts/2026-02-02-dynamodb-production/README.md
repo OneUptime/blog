@@ -1223,7 +1223,7 @@ The following code configures the DAX client for production use with fallback to
 ```javascript
 // src/dynamodb/dax-client.js
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
-const { DynamoDBDocumentClient } = require('@aws-sdk/lib-dynamodb');
+const { DynamoDBDocumentClient, GetCommand } = require('@aws-sdk/lib-dynamodb');
 
 // DAX client for Node.js
 let AmazonDaxClient;
@@ -1278,10 +1278,10 @@ async function checkDAXHealth(docClient, tableName) {
   try {
     const start = Date.now();
     // Simple read to verify DAX is working
-    await docClient.send({
+    await docClient.send(new GetCommand({
       TableName: tableName,
       Key: { pk: '__health_check__' },
-    });
+    }));
 
     return {
       healthy: true,
