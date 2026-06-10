@@ -25,7 +25,7 @@ Before diving into the technical details, let us understand why Deno KV stands o
 
 ## Getting Started with Deno KV
 
-Opening a Deno KV database is straightforward. You can use the default database or specify a custom path for local development.
+Opening a Deno KV database is straightforward. You can use the default database or specify a custom path for local development. Note that Deno KV is still considered an unstable API, so you must run your scripts with the `--unstable-kv` flag (for example, `deno run --unstable-kv main.ts`).
 
 The following code demonstrates how to open a KV database:
 
