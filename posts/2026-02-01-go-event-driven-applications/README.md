@@ -461,9 +461,7 @@ Define your events and handlers:
 package main
 
 import (
-    "context"
     "encoding/json"
-    "fmt"
     "log"
     "sync"
     "time"
@@ -628,7 +626,7 @@ func TestUserSignupFlow(t *testing.T) {
     }
     data, _ := json.Marshal(event)
     
-    // PublishSync waits for all handlers
+    // Publish waits for all handlers (this EventBus implementation is synchronous)
     bus.Publish("user.signed_up", data)
     
     if !emailCalled {
