@@ -45,7 +45,7 @@ Attributes enable:
 
 - **Filtering**: Find all spans where `http.status_code >= 500`
 - **Grouping**: Aggregate latency by `db.table` or `customer.tier`
-- **Root cause analysis**: Correlate slow spans with specific `deployment.version` values
+- **Root cause analysis**: Correlate slow spans with specific `service.version` values
 - **Alerting**: Trigger alerts when `error.type = "TimeoutException"` exceeds threshold
 
 ---
@@ -81,7 +81,7 @@ Semantic conventions provide:
 | Category | Namespace | Example Attributes |
 |----------|-----------|-------------------|
 | HTTP | `http.*` | `http.request.method`, `http.response.status_code`, `http.route` |
-| Database | `db.*` | `db.system`, `db.name`, `db.operation`, `db.statement` |
+| Database | `db.*` | `db.system.name`, `db.namespace`, `db.operation.name`, `db.query.text` |
 | Messaging | `messaging.*` | `messaging.system`, `messaging.destination.name`, `messaging.operation` |
 | RPC | `rpc.*` | `rpc.system`, `rpc.service`, `rpc.method` |
 | Network | `network.*` | `network.peer.address`, `network.peer.port` |
@@ -151,20 +151,20 @@ export async function instrumentedQuery<T>(
   options: QueryOptions,
   executor: () => Promise<T>
 ): Promise<T> {
-  // Span name follows convention: db.operation db.name.table
+  // Span name follows convention: <db.operation.name> <db.collection.name>
   const spanName = `${options.operation} ${options.table}`;
 
   const span = tracer.startSpan(spanName, {
     kind: SpanKind.CLIENT,
     attributes: {
-      // Database semantic attributes
-      'db.system': 'postgresql',                    // Database type
-      'db.name': process.env.DB_NAME || 'app',      // Database name
-      'db.operation': options.operation,            // SELECT, INSERT, etc.
-      'db.sql.table': options.table,                // Target table
+      // Database semantic attributes (current stable conventions)
+      'db.system.name': 'postgresql',               // Database type
+      'db.namespace': process.env.DB_NAME || 'app', // Database / schema
+      'db.operation.name': options.operation,       // SELECT, INSERT, etc.
+      'db.collection.name': options.table,          // Target table/collection
 
-      // Include sanitized statement (no values, just structure)
-      'db.statement': sanitizeStatement(options.statement),
+      // Include sanitized query text (no values, just structure)
+      'db.query.text': sanitizeStatement(options.statement),
 
       // Connection info
       'server.address': process.env.DB_HOST,
@@ -256,9 +256,9 @@ export const featureFlagAttributes = (flags: Record<string, boolean>) => ({
 
 // Deployment attributes - critical for canary analysis and rollback decisions
 export const deploymentAttributes = () => ({
-  'deployment.version': process.env.APP_VERSION || 'unknown',
+  'service.version': process.env.APP_VERSION || 'unknown',
   'deployment.commit_sha': process.env.GIT_SHA?.slice(0, 8),
-  'deployment.environment': process.env.NODE_ENV,
+  'deployment.environment.name': process.env.NODE_ENV,
   'deployment.region': process.env.AWS_REGION || process.env.REGION,
   'deployment.instance_id': process.env.HOSTNAME,
 });
@@ -406,18 +406,18 @@ OpenTelemetry SDKs and backends impose limits on attributes to prevent resource 
 
 ```mermaid
 graph TB
-    subgraph "Attribute Limits (Defaults)"
-        L1[Max Attributes per Span: 128]
-        L2[Max Attribute Key Length: 256 chars]
-        L3[Max Attribute Value Length: 16384 chars]
-        L4[Max Array Elements: 128]
+    subgraph "Span Limits (SDK Defaults)"
+        L1[Attributes per Span: 128]
+        L2[Attribute Value Length: unlimited]
+        L3[Events per Span: 128]
+        L4[Links per Span: 128]
     end
 
     subgraph "What Happens at Limit"
-        L1 --> D1[New attributes dropped]
-        L2 --> D2[Key truncated]
-        L3 --> D3[Value truncated]
-        L4 --> D4[Array truncated]
+        L1 --> D1[Excess attributes dropped]
+        L2 --> D2[Configure to truncate values]
+        L3 --> D3[Excess events dropped]
+        L4 --> D4[Excess links dropped]
     end
 ```
 
@@ -434,18 +434,16 @@ const spanLimits: SpanLimits = {
   // Default: 128, increase if you have rich context needs
   attributeCountLimit: 64,
 
-  // Maximum length of attribute keys
-  // Default: no limit in SDK, but backends may truncate
-  attributeKeyLengthLimit: 128,
-
   // Maximum length of attribute values (strings)
-  // Default: no limit in SDK, but backends may truncate
+  // Default: unlimited (Infinity) in the JS SDK; backends may truncate
   attributeValueLengthLimit: 1024,
 
   // Maximum number of events per span
+  // Default: 128
   eventCountLimit: 32,
 
   // Maximum number of links per span
+  // Default: 128
   linkCountLimit: 16,
 };
 
@@ -702,9 +700,9 @@ processors:
         action: hash
 
       # Truncate potentially large values
-      - key: db.statement
+      - key: db.query.text
         action: update
-        value: ${db.statement:0:500}
+        value: ${db.query.text:0:500}
 
       # Redact patterns in any attribute value
 
@@ -744,8 +742,8 @@ export async function handleRequest(req: Request) {
   return tracer.startActiveSpan('handle_request', async (span) => {
     // Layer 1: Infrastructure context (from environment)
     span.setAttributes({
-      'deployment.environment': process.env.NODE_ENV,
-      'deployment.version': process.env.APP_VERSION,
+      'deployment.environment.name': process.env.NODE_ENV,
+      'service.version': process.env.APP_VERSION,
       'deployment.region': process.env.AWS_REGION,
       'k8s.pod.name': process.env.HOSTNAME,
     });
