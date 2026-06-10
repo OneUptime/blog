@@ -490,6 +490,7 @@ Configure transaction isolation levels in `settings.py`:
 
 ```python
 # settings.py
+from django.db.backends.postgresql.psycopg_any import IsolationLevel
 
 DATABASES = {
     'default': {
@@ -500,10 +501,11 @@ DATABASES = {
         'HOST': 'localhost',
         'PORT': '5432',
         'OPTIONS': {
-            # Set default isolation level for all transactions
-            # Options: 'read uncommitted', 'read committed',
-            # 'repeatable read', 'serializable'
-            'isolation_level': 'read committed',
+            # Set default isolation level for all transactions.
+            # Use the IsolationLevel enum, not a string.
+            # Options: READ_UNCOMMITTED, READ_COMMITTED,
+            # REPEATABLE_READ, SERIALIZABLE
+            'isolation_level': IsolationLevel.READ_COMMITTED,
         },
         'ATOMIC_REQUESTS': False,  # Set True to wrap all views in transactions
     }
@@ -514,17 +516,20 @@ For per-transaction isolation control (PostgreSQL):
 
 ```python
 # myapp/services.py
-from django.db import connection
+from django.db import connection, transaction
 
 def serializable_transaction():
     """
     Run with serializable isolation for maximum consistency.
     Use sparingly as it can cause more rollbacks.
     """
-    with connection.cursor() as cursor:
-        cursor.execute("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE")
-
     with transaction.atomic():
+        # SET TRANSACTION ISOLATION LEVEL only affects the current
+        # transaction and must be issued inside it, before any other
+        # data access.
+        with connection.cursor() as cursor:
+            cursor.execute("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE")
+
         # Operations here run with serializable isolation
         perform_critical_operation()
 ```
