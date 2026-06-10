@@ -69,12 +69,12 @@ The notification flow works as follows:
 
 ### Installation
 
-ArgoCD Notifications comes bundled with ArgoCD starting from version 2.4. For earlier versions, install it separately.
+ArgoCD Notifications comes bundled with ArgoCD starting from version 2.3. For earlier versions, install it separately.
 
 The following command installs the notifications controller in your cluster.
 
 ```bash
-# For ArgoCD 2.4+, notifications are included by default
+# For ArgoCD 2.3+, notifications are included by default
 
 # Verify the notifications controller is running
 kubectl get pods -n argocd -l app.kubernetes.io/name=argocd-notifications-controller
@@ -221,7 +221,7 @@ flowchart TD
     subgraph Context["Template Context"]
         App["app - Application Object"]
         Context2["context - ArgoCD Context"]
-        Notif["notificationName"]
+        Notif["recipient - Notification Recipient"]
     end
 
     subgraph AppFields["Application Fields"]
@@ -684,8 +684,7 @@ data:
             {"title": "Namespace", "value": "{{.app.spec.destination.namespace}}", "short": true},
             {"title": "Health", "value": "{{.app.status.health.status}}", "short": true}
           ],
-          "footer": "{{.app.spec.source.repoURL}}",
-          "ts": "{{.app.status.operationState.finishedAt | toUnixSeconds}}"
+          "footer": "{{.app.spec.source.repoURL}}"
         }]
 
   # Template: Failed sync
@@ -850,7 +849,7 @@ data:
 
 ### Using Template Functions
 
-ArgoCD provides several built-in template functions.
+ArgoCD notifications templates have access to the Sprig template function library along with a few helpers from the notifications engine.
 
 ```yaml
 # Template demonstrating built-in functions
@@ -859,17 +858,17 @@ data:
     message: |
       Application: {{.app.metadata.name}}
 
-      {{/* String manipulation */}}
+      {{/* String manipulation (Sprig) */}}
       Short Revision: {{.app.status.sync.revision | trunc 7}}
       Uppercase Name: {{.app.metadata.name | upper}}
 
-      {{/* Time formatting */}}
-      Started: {{.app.status.operationState.startedAt | toUnixSeconds | formatTime "2006-01-02 15:04:05"}}
+      {{/* Timestamps are RFC3339 strings — display as-is */}}
+      Started: {{.app.status.operationState.startedAt}}
 
-      {{/* Default values */}}
+      {{/* Default values (Sprig) */}}
       Environment: {{index .app.metadata.labels "env" | default "not-specified"}}
 
-      {{/* JSON encoding */}}
+      {{/* JSON encoding (Sprig) */}}
       Labels: {{.app.metadata.labels | toJson}}
 
       {{/* Conditional logic */}}
@@ -968,24 +967,21 @@ data:
 
 ### Using the ArgoCD CLI
 
-Test your notification configuration using the ArgoCD notifications CLI.
+Test your notification configuration using the `argocd admin notifications` subcommand (bundled with the ArgoCD CLI since v2.3).
 
 ```bash
-# Install the argocd-notifications CLI plugin
-# The plugin allows testing templates locally
-
-# Test a specific template with a sample application
-argocd-notifications template notify app-deployed my-application \
+# Send a specific template to a recipient for an application
+argocd admin notifications template notify app-deployed my-application \
     --recipient slack:deployments-channel
 
-# Preview template output without sending
-argocd-notifications template get app-deployed --format json
+# Print a configured template definition
+argocd admin notifications template get app-deployed -o json
 
 # List all configured triggers
-argocd-notifications trigger list
+argocd admin notifications trigger get
 
-# Test trigger evaluation against an application
-argocd-notifications trigger eval on-sync-succeeded my-application
+# Evaluate a trigger against an application
+argocd admin notifications trigger run on-sync-succeeded my-application
 ```
 
 ### Manual Testing with kubectl
