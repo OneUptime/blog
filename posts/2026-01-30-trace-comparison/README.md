@@ -186,7 +186,7 @@ gantt
     order.create              :current5, 275, 5
 ```
 
-Reading this diagram: The current trace takes 280ms vs 150ms baseline. The `inventory.check` span grew from 30ms to 150ms. That is your regression.
+Reading this diagram: The current trace takes 280ms vs 150ms baseline. The `inventory.check` span grew from 60ms to 180ms. That is your regression.
 
 ### Structural Diff View
 
