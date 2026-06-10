@@ -1009,7 +1009,7 @@ CHANNEL_LAYERS = {
             # Use Redis Sentinel for high availability
             'hosts': [
                 {
-                    'address': ('redis-sentinel-host', 26379),
+                    'sentinels': [('redis-sentinel-host', 26379)],
                     'master_name': 'mymaster',
                 }
             ],
