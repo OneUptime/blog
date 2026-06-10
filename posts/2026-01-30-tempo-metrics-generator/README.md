@@ -80,7 +80,7 @@ metrics_generator:
         span_name: true
         span_kind: true
         status_code: true
-      # Enable all three RED metrics
+      # Generate the traces_target_info metric (joins span metrics with resource attributes)
       enable_target_info: true
 
   # Storage configuration for the metrics generator
@@ -102,7 +102,9 @@ metrics_generator:
     # Collection interval
     collection_interval: 15s
 
-# Distributor must be configured to send spans to the metrics generator
+# Distributor configuration. Spans are forwarded to the metrics generator automatically
+# whenever the metrics_generator block is configured and the processors are enabled
+# in the overrides below.
 distributor:
   receivers:
     otlp:
@@ -111,9 +113,6 @@ distributor:
           endpoint: 0.0.0.0:4317
         http:
           endpoint: 0.0.0.0:4318
-  # Enable forwarding to metrics generator
-  metrics_generator_ring:
-    instance_addr: 127.0.0.1
 
 # Override configuration to enable the metrics generator per tenant
 overrides:
@@ -262,7 +261,7 @@ storage:
         min_shards: 1
         max_samples_per_send: 2000
         batch_send_deadline: 5s
-      # Retry configuration
+      # Metadata sending configuration
       metadata_config:
         send: true
         send_interval: 1m
@@ -351,16 +350,18 @@ When running the metrics generator in production, keep these recommendations in 
 4. **Dimension limits** - Start with fewer dimensions and add more as needed. It is easier to add than to remove.
 
 ```yaml
-# Production-ready resource limits
+# Rename / combine span attributes into a single metric label to reduce cardinality
 metrics_generator:
   processor:
     span_metrics:
-      # Limit the number of label value pairs
+      # Each entry produces a single label `name`, populated from the first non-empty
+      # value found in `source_labels`. Multiple values are joined using `join`.
       dimension_mappings:
-        - name: http.status_code
-          source_labels: [http.status_code]
-          # Group status codes to reduce cardinality
-          regex: "(2..|3..|4..|5..)"
+        - name: http_status_code
+          source_labels:
+            - http.response.status_code
+            - http.status_code
+          join: "/"
 ```
 
 ## Troubleshooting Common Issues
