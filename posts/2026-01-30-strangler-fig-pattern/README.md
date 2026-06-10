@@ -297,7 +297,7 @@ Use Debezium to sync data between databases:
 
 services:
   debezium:
-    image: debezium/connect:2.4
+    image: debezium/connect:2.4.2.Final
     environment:
       BOOTSTRAP_SERVERS: kafka:9092
       GROUP_ID: strangler-sync
