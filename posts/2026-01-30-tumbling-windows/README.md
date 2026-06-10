@@ -256,7 +256,6 @@ import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.windowing.assigners.TumblingEventTimeWindows;
-import org.apache.flink.streaming.api.windowing.time.Time;
 
 import java.time.Duration;
 
@@ -296,7 +295,7 @@ public class FlinkTumblingWindowExample {
             // Key the stream by page URL
             .keyBy(event -> event.pageUrl)
             // Apply 1-minute tumbling window based on event time
-            .window(TumblingEventTimeWindows.of(Time.minutes(1)))
+            .window(TumblingEventTimeWindows.of(Duration.ofMinutes(1)))
             // Aggregate: count events in each window
             .aggregate(new CountAggregator());
 
@@ -332,34 +331,32 @@ public class FlinkTumblingWindowExample {
      * - merge: Combine accumulators (for parallel processing)
      */
     public static class CountAggregator
-            implements AggregateFunction<PageViewEvent, Long, Tuple2<String, Long>> {
-
-        private String currentKey;
+            implements AggregateFunction<PageViewEvent, Tuple2<String, Long>, Tuple2<String, Long>> {
 
         @Override
-        public Long createAccumulator() {
-            // Start counting from zero
-            return 0L;
+        public Tuple2<String, Long> createAccumulator() {
+            // Start with no key and a zero count; the key is filled in on the first event
+            return Tuple2.of(null, 0L);
         }
 
         @Override
-        public Long add(PageViewEvent event, Long accumulator) {
-            // Store the key for result extraction
-            this.currentKey = event.pageUrl;
-            // Increment the count
-            return accumulator + 1;
+        public Tuple2<String, Long> add(PageViewEvent event, Tuple2<String, Long> accumulator) {
+            // Carry the key inside the accumulator: the AggregateFunction instance is
+            // shared across keys, so per-key state must live in the accumulator itself
+            return Tuple2.of(event.pageUrl, accumulator.f1 + 1);
         }
 
         @Override
-        public Tuple2<String, Long> getResult(Long accumulator) {
+        public Tuple2<String, Long> getResult(Tuple2<String, Long> accumulator) {
             // Return the page URL and its count
-            return Tuple2.of(currentKey, accumulator);
+            return accumulator;
         }
 
         @Override
-        public Long merge(Long acc1, Long acc2) {
+        public Tuple2<String, Long> merge(Tuple2<String, Long> a, Tuple2<String, Long> b) {
             // Merge two partial counts (used in parallel processing)
-            return acc1 + acc2;
+            String key = a.f0 != null ? a.f0 : b.f0;
+            return Tuple2.of(key, a.f1 + b.f1);
         }
     }
 }
@@ -510,8 +507,9 @@ flowchart TD
 ```java
 import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.streaming.api.windowing.assigners.TumblingEventTimeWindows;
-import org.apache.flink.streaming.api.windowing.time.Time;
 import org.apache.flink.util.OutputTag;
+
+import java.time.Duration;
 
 /**
  * Demonstrates handling late data with Flink side outputs.
@@ -533,9 +531,9 @@ public class LateDataHandling {
 
         SingleOutputStreamOperator<WindowedPageViewCount> mainOutput = events
             .keyBy(event -> event.pageUrl)
-            .window(TumblingEventTimeWindows.of(Time.minutes(1)))
+            .window(TumblingEventTimeWindows.of(Duration.ofMinutes(1)))
             // Allow events up to 30 seconds late
-            .allowedLateness(Time.seconds(30))
+            .allowedLateness(Duration.ofSeconds(30))
             // Route events that are even later to side output
             .sideOutputLateData(LATE_EVENTS)
             .process(new PageViewWindowFunction());
@@ -609,9 +607,13 @@ Tumbling windows must maintain state until the window closes. For high-cardinali
 
 ```java
 // Configure state backend for large state
-env.setStateBackend(new RocksDBStateBackend("hdfs://namenode:9000/flink/checkpoints"));
+// EmbeddedRocksDBStateBackend(true) enables incremental checkpoints
+env.setStateBackend(new EmbeddedRocksDBStateBackend(true));
 
-// Enable incremental checkpointing for faster recovery
+// Checkpoint storage is now configured separately from the state backend
+env.getCheckpointConfig().setCheckpointStorage("hdfs://namenode:9000/flink/checkpoints");
+
+// Configure checkpointing mode and minimum pause between checkpoints
 env.getCheckpointConfig().setCheckpointingMode(CheckpointingMode.EXACTLY_ONCE);
 env.getCheckpointConfig().setMinPauseBetweenCheckpoints(500);
 ```
@@ -621,7 +623,8 @@ env.getCheckpointConfig().setMinPauseBetweenCheckpoints(500);
 ### Pitfall 1: Incorrect Timestamp Assignment
 
 ```java
-// Wrong: Using processing time when you need event time
+// Wrong: No timestamp assigner provided, so events have no event time
+// extracted from their payload. Windows will never fire as expected.
 .assignTimestampsAndWatermarks(
     WatermarkStrategy.forMonotonousTimestamps()
 );
@@ -630,7 +633,7 @@ env.getCheckpointConfig().setMinPauseBetweenCheckpoints(500);
 .assignTimestampsAndWatermarks(
     WatermarkStrategy
         .<PageViewEvent>forBoundedOutOfOrderness(Duration.ofSeconds(5))
-        .withTimestampAssigner((event, timestamp) -> event.eventTime)
+        .withTimestampAssigner((event, timestamp) -> event.timestamp)
 );
 ```
 
@@ -652,8 +655,8 @@ By default, tumbling windows align to the epoch (1970-01-01 00:00:00 UTC). For c
 ```java
 // Align 1-hour windows to start at minute 30 of each hour
 TumblingEventTimeWindows.of(
-    Time.hours(1),           // Window size
-    Time.minutes(30)         // Offset
+    Duration.ofHours(1),     // Window size
+    Duration.ofMinutes(30)   // Offset
 );
 ```
 
