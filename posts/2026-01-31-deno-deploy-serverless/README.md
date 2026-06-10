@@ -12,7 +12,7 @@ Serverless computing has revolutionized how we build and deploy applications. In
 
 ## What is Deno Deploy?
 
-Deno Deploy is a distributed serverless platform built on the Deno runtime. It allows you to deploy JavaScript and TypeScript applications to edge locations around the world with zero configuration. Your code runs on V8 isolates, which provide fast cold starts (typically under 10ms) and excellent performance characteristics.
+Deno Deploy is a distributed serverless platform built on the Deno runtime. It allows you to deploy JavaScript and TypeScript applications to edge locations around the world with zero configuration. Your code runs on V8 isolates, which provide fast cold starts and excellent performance characteristics.
 
 Key features of Deno Deploy include:
 
@@ -78,7 +78,7 @@ Deno Deploy offers multiple ways to deploy your applications. The most common ap
 The `deployctl` CLI provides a straightforward way to deploy from your terminal. First, install the tool.
 
 ```bash
-deno install -Arf jsr:@deno/deployctl
+deno install -gArf jsr:@deno/deployctl
 ```
 
 Now you can deploy your application with a single command. The `--project` flag specifies your project name on Deno Deploy.
