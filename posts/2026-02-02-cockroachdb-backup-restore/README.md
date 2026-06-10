@@ -186,7 +186,7 @@ Checking backup history helps you understand your recovery options.
 SHOW BACKUPS IN 's3://my-bucket/backups/mydb?AWS_ACCESS_KEY_ID=xxx&AWS_SECRET_ACCESS_KEY=yyy';
 
 -- Show details of a specific backup
-SHOW BACKUP 's3://my-bucket/backups/mydb/2024/01/15-120000.00?AWS_ACCESS_KEY_ID=xxx&AWS_SECRET_ACCESS_KEY=yyy';
+SHOW BACKUP FROM '2024/01/15-120000.00' IN 's3://my-bucket/backups/mydb?AWS_ACCESS_KEY_ID=xxx&AWS_SECRET_ACCESS_KEY=yyy';
 
 -- Show backup contents
 SHOW BACKUP SCHEMAS IN 's3://my-bucket/backups/mydb?AWS_ACCESS_KEY_ID=xxx&AWS_SECRET_ACCESS_KEY=yyy';
@@ -290,10 +290,11 @@ FROM LATEST IN 's3://my-bucket/backups/mydb?AWS_ACCESS_KEY_ID=xxx&AWS_SECRET_ACC
 RESTORE TABLE mydb.users, mydb.orders, mydb.products
 FROM LATEST IN 's3://my-bucket/backups/mydb?AWS_ACCESS_KEY_ID=xxx&AWS_SECRET_ACCESS_KEY=yyy';
 
--- Restore table with new name
+-- Restore a table into a different database (e.g. for side-by-side comparison)
+-- The target database must already exist
 RESTORE TABLE mydb.users
 FROM LATEST IN 's3://my-bucket/backups/mydb?AWS_ACCESS_KEY_ID=xxx&AWS_SECRET_ACCESS_KEY=yyy'
-WITH into_db = 'mydb', new_table_name = 'users_restored';
+WITH into_db = 'mydb_restored';
 ```
 
 ### Point-in-Time Recovery
@@ -344,7 +345,7 @@ Restoring a full cluster requires careful preparation of the target environment.
 RESTORE
 FROM LATEST IN 's3://my-bucket/cluster-backups?AWS_ACCESS_KEY_ID=xxx&AWS_SECRET_ACCESS_KEY=yyy';
 
--- Restore cluster with specific databases excluded
+-- Restore cluster while skipping foreign key constraints that reference missing tables
 RESTORE
 FROM LATEST IN 's3://my-bucket/cluster-backups?AWS_ACCESS_KEY_ID=xxx&AWS_SECRET_ACCESS_KEY=yyy'
 WITH skip_missing_foreign_keys;
