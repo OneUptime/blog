@@ -121,8 +121,9 @@ When signing large files, hash locally and send the hash to Vault.
 # Hash the file locally (SHA-256)
 HASH=$(sha256sum large-file.bin | awk '{print $1}' | xxd -r -p | base64)
 
-# Sign the hash with prehashed=true
-vault write transit/sign/my-signing-key \
+# Sign the hash with prehashed=true (ECDSA/RSA supported on OSS; Ed25519
+# prehashed requires Vault Enterprise with sha2-512)
+vault write transit/sign/ecdsa-key \
     input="$HASH" \
     prehashed=true
 
@@ -171,8 +172,8 @@ vault write transit/sign/ecdsa-key \
     input="SGVsbG8sIFdvcmxkIQ==" \
     marshaling_algorithm=asn1
 
-# JWS encoding (for JWT use cases)
-vault write transit/sign/my-signing-key \
+# JWS encoding (for JWT use cases, ECDSA keys only)
+vault write transit/sign/ecdsa-key \
     input="SGVsbG8sIFdvcmxkIQ==" \
     marshaling_algorithm=jws
 ```
@@ -613,7 +614,7 @@ vault read transit/keys/my-signing-key
 
 ```bash
 # Prevent verification with old key versions
-vault write transit/keys/my-signing-key \
+vault write transit/keys/my-signing-key/config \
     min_decryption_version=2
 
 # Now signatures made with v1 will fail verification
@@ -688,7 +689,7 @@ Use Vault quotas to prevent abuse.
 vault write sys/quotas/rate-limit/signing-limit \
     path="transit/sign" \
     rate=100 \
-    interval=60
+    interval=1m
 ```
 
 ## Common Use Cases
