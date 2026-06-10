@@ -578,7 +578,8 @@ class RedisTokenBucket {
         end
 
         -- Persist updated bucket state to Redis
-        redis.call('HMSET', key, 'tokens', tokens, 'lastRefill', now)
+        -- HSET supports multiple field-value pairs (HMSET is deprecated as of Redis 4.0.0)
+        redis.call('HSET', key, 'tokens', tokens, 'lastRefill', now)
 
         -- Set TTL to automatically clean up idle buckets
         -- This prevents Redis memory from growing indefinitely
