@@ -160,7 +160,7 @@ rule "aws_instance_previous_type" {
   enabled = true
 }
 
-# Require encryption
+# Disallow default DB parameter groups (they cannot be modified)
 rule "aws_db_instance_default_parameter_group" {
   enabled = true
 }
@@ -681,13 +681,13 @@ jobs:
           tflint --format compact
 
       - name: Checkov
-        run: checkov -d . --output sarif --output-file checkov.sarif
+        run: checkov -d . --output sarif --output-file-path .
         continue-on-error: true
 
       - name: Upload Checkov SARIF
         uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: checkov.sarif
+          sarif_file: results_sarif.sarif
 
       - name: Terraform Plan
         run: |
