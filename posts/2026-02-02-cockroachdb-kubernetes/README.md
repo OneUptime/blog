@@ -204,13 +204,19 @@ storage:
 # TLS configuration for secure communication
 tls:
   enabled: true
-  # Use cert-manager for automatic certificate management
+  # Use cert-manager for automatic certificate management.
+  # Use a self-signed CA Issuer for internal cluster certs —
+  # public CAs like Let's Encrypt cannot sign internal *.svc.cluster.local names.
   certs:
     provided: false
+    selfSigner:
+      enabled: false
     certManager: true
     certManagerIssuer:
-      kind: ClusterIssuer
-      name: letsencrypt-prod
+      group: cert-manager.io
+      kind: Issuer
+      name: cockroachdb-ca-issuer
+      isSelfSignedIssuer: true
 
 # CockroachDB configuration
 conf:
@@ -225,12 +231,17 @@ conf:
 
 # Networking configuration
 service:
+  # SQL and HTTP/Admin UI ports
+  ports:
+    grpc:
+      external:
+        port: 26257
+        name: grpc
+    http:
+      port: 8080
+      name: http
   public:
     type: ClusterIP
-    # External access port for SQL connections
-    ports:
-      sql: 26257
-      http: 8080
 
 # Pod anti-affinity for high availability
 affinity:
@@ -829,9 +840,9 @@ Optimize CockroachDB for your specific workload patterns.
 Apply performance-related SQL settings based on your workload characteristics.
 
 ```sql
--- Increase parallelism for analytical queries
--- Default is based on CPU count, increase for analytics workloads
-SET CLUSTER SETTING sql.defaults.distsql_workmem = '64MiB';
+-- Increase per-operator memory before spilling to disk for analytical queries
+-- Default is 64MiB; raise it for analytics workloads
+SET CLUSTER SETTING sql.distsql.temp_storage.workmem = '64MiB';
 
 -- Configure statement timeout to prevent runaway queries
 SET CLUSTER SETTING sql.defaults.statement_timeout = '300s';
@@ -839,9 +850,10 @@ SET CLUSTER SETTING sql.defaults.statement_timeout = '300s';
 -- Enable automatic statistics collection for query optimization
 SET CLUSTER SETTING sql.stats.automatic_collection.enabled = true;
 
--- Configure garbage collection for time-series data
--- Reduce for faster cleanup, increase for longer history
-SET CLUSTER SETTING kv.gc.ttlseconds = 86400;
+-- Configure garbage collection TTL via zone configs (the cluster-setting
+-- form was removed; GC TTL is now a zone configuration).
+-- Reduce for faster cleanup, increase for longer history.
+ALTER RANGE default CONFIGURE ZONE USING gc.ttlseconds = 86400;
 
 -- Optimize for OLTP workloads
 SET CLUSTER SETTING kv.range_merge.queue_enabled = true;
