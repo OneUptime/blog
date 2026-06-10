@@ -174,7 +174,8 @@ This middleware adds standard deprecation headers to responses.
 ```python
 # deprecation_middleware.py
 
-# Middleware that adds RFC 8594 deprecation headers to API responses
+# Middleware that adds Deprecation (RFC 9745) and Sunset (RFC 8594) headers
+# to API responses.
 
 from datetime import datetime
 from email.utils import formatdate
@@ -201,10 +202,20 @@ DEPRECATION_CONFIG = {
 def format_http_date(dt):
     """
     Convert datetime to HTTP-date format per RFC 7231.
+    Used for the Sunset header (RFC 8594).
     Example: Sun, 01 Feb 2026 00:00:00 GMT
     """
     stamp = mktime(dt.timetuple())
     return formatdate(timeval=stamp, localtime=False, usegmt=True)
+
+
+def format_sf_date(dt):
+    """
+    Convert datetime to sf-date format per RFC 9651 Section 3.3.7.
+    Used for the Deprecation header (RFC 9745).
+    Example: @1738368000
+    """
+    return f'@{int(dt.timestamp())}'
 
 
 def get_deprecation_config(path):
@@ -238,10 +249,10 @@ class DeprecationMiddleware:
         config = get_deprecation_config(path)
 
         if config:
-            # Deprecation header with announcement date
-            headers['Deprecation'] = format_http_date(config['deprecated_at'])
+            # Deprecation header (RFC 9745) is an sf-date (Unix timestamp)
+            headers['Deprecation'] = format_sf_date(config['deprecated_at'])
 
-            # Sunset header with removal date
+            # Sunset header (RFC 8594) uses HTTP-date format
             headers['Sunset'] = format_http_date(config['sunset_at'])
 
             # Link headers for documentation and successor
@@ -1076,8 +1087,9 @@ class TestDeprecationHeaders:
 
         assert response.status_code == 200
         assert 'Deprecation' in response.headers
-        # Verify date format is HTTP-date
-        assert 'GMT' in response.headers['Deprecation']
+        # Verify value is an sf-date (RFC 9745): leading '@' + integer seconds
+        assert response.headers['Deprecation'].startswith('@')
+        assert response.headers['Deprecation'][1:].isdigit()
 
     def test_deprecated_endpoint_includes_sunset_header(self, client):
         """Deprecated endpoints must include Sunset header."""
@@ -1169,7 +1181,7 @@ class TestDeprecationTracking:
 
 1. **Announce early and often** - Give at least 6 months notice for major changes
 2. **Provide a clear migration path** - Documentation, examples, and support
-3. **Use standard headers** - Deprecation and Sunset headers per RFC 8594
+3. **Use standard headers** - Deprecation header per RFC 9745 and Sunset header per RFC 8594
 4. **Monitor adoption** - Track who uses deprecated endpoints
 5. **Communicate through multiple channels** - Email, docs, headers, dashboards
 6. **Return 410 Gone** - Not 404, after sunset
