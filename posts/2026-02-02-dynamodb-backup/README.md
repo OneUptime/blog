@@ -628,7 +628,7 @@ The following Python class handles both full and incremental exports to S3 with 
 ```python
 import boto3
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from botocore.exceptions import ClientError
 
 class DynamoDBExporter:
