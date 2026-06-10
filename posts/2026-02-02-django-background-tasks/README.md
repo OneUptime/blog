@@ -51,7 +51,7 @@ Django offers several options for background task processing, each with differen
 | Django-Q | Medium | Simpler setups, Django admin integration | Redis/Database |
 | Django-RQ | Low | Simple queues, Redis already in use | Redis |
 | Huey | Low | Lightweight needs, minimal setup | Redis/SQLite |
-| Native async | Low | I/O-bound tasks, Django 4.1+ | None |
+| Native async | Low | I/O-bound tasks, Django 3.1+ | None |
 
 ---
 
@@ -698,9 +698,9 @@ python manage.py run_huey
 
 ---
 
-## Approach 5: Native Async (Django 4.1+)
+## Approach 5: Native Async (Django 3.1+)
 
-Django 4.1 introduced native async view support. For I/O-bound tasks that do not require persistence or retries, you can use Python asyncio directly.
+Django 3.1 introduced native async view support. For I/O-bound tasks that do not require persistence or retries, you can use Python asyncio directly.
 
 ### Async Views
 
