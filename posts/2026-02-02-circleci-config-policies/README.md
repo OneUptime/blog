@@ -512,17 +512,14 @@ workflows:
 Use the CircleCI CLI to evaluate configurations against your policies:
 
 ```bash
-# Validate policy syntax before testing
-circleci policy validate policies/
+# Run policy tests (executes test/*_test.rego files alongside policies)
+circleci policy test policies/
 
 # Test a valid configuration against policies
 circleci policy decide policies/ --input test/fixtures/valid_config.yml
 
 # Test an invalid configuration to see failure messages
 circleci policy decide policies/ --input test/fixtures/invalid_config.yml
-
-# Output in JSON format for automation
-circleci policy decide policies/ --input test/fixtures/invalid_config.yml --output json
 ```
 
 Example output for a failing configuration:
@@ -560,14 +557,14 @@ Once policies are tested, deploy them to your CircleCI organization.
 
 ### Creating a Policy Bundle
 
-Package your policies into a bundle for deployment:
+Push your policy directory to CircleCI. The CLI uploads each `.rego` file in the directory as the new active policy bundle for your organization:
 
 ```bash
-# Create a tarball of your policies directory
-tar -czvf policy-bundle.tar.gz -C policies .
-
-# Alternatively, push directly using the CLI
+# Push the policy bundle to your CircleCI organization
 circleci policy push policies/ --owner-id YOUR_ORG_ID
+
+# Optionally, archive a local copy of the bundle for backup or distribution
+tar -czvf policy-bundle.tar.gz -C policies .
 ```
 
 ### Viewing Active Policies
@@ -575,11 +572,11 @@ circleci policy push policies/ --owner-id YOUR_ORG_ID
 Check what policies are currently deployed:
 
 ```bash
-# List all policy files in your organization
-circleci policy list --owner-id YOUR_ORG_ID
+# List all policies in your organization (omit the policy name to fetch the whole bundle)
+circleci policy fetch --owner-id YOUR_ORG_ID
 
-# View the content of a specific policy
-circleci policy fetch --owner-id YOUR_ORG_ID --policy-name security/docker_images.rego
+# View the content of a specific policy by name
+circleci policy fetch security/docker_images --owner-id YOUR_ORG_ID
 ```
 
 ### Rolling Out Policies Gradually
@@ -677,16 +674,17 @@ package org
 
 import future.keywords
 
-# Production project identifiers - add your project slugs
+# Production project identifiers - add your project IDs (UUIDs)
 production_projects := {
-    "gh/my-org/payment-service",
-    "gh/my-org/user-service",
-    "gh/my-org/api-gateway"
+    "11111111-1111-1111-1111-111111111111",
+    "22222222-2222-2222-2222-222222222222",
+    "33333333-3333-3333-3333-333333333333"
 }
 
-# Check if current project is production-critical
+# Check if current project is production-critical.
+# CircleCI exposes pipeline metadata (project_id, branch, etc.) via data.meta.
 is_production_project if {
-    input._project_slug in production_projects
+    data.meta.project_id in production_projects
 }
 
 # Only enforce strict branch protection for production projects
