@@ -125,7 +125,14 @@ DATABASES = {
 }
 
 # Static files with compression
-STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+STORAGES = {
+    'default': {
+        'BACKEND': 'django.core.files.storage.FileSystemStorage',
+    },
+    'staticfiles': {
+        'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage',
+    },
+}
 ```
 
 ---
@@ -172,9 +179,16 @@ X_FRAME_OPTIONS = 'DENY'
 SECURE_CONTENT_TYPE_NOSNIFF = True
 
 # Content Security Policy - adjust based on your needs
-CSP_DEFAULT_SRC = ("'self'",)
-CSP_SCRIPT_SRC = ("'self'",)
-CSP_STYLE_SRC = ("'self'", "'unsafe-inline'")
+# django-csp 4.0+ uses a single CONTENT_SECURITY_POLICY dict
+from csp.constants import SELF
+
+CONTENT_SECURITY_POLICY = {
+    'DIRECTIVES': {
+        'default-src': [SELF],
+        'script-src': [SELF],
+        'style-src': [SELF, "'unsafe-inline'"],
+    },
+}
 ```
 
 ---
@@ -239,8 +253,15 @@ Use WhiteNoise to serve static files efficiently without needing a separate web 
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
-# WhiteNoise compression and caching
-STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+# WhiteNoise compression and caching (Django 4.2+ STORAGES setting)
+STORAGES = {
+    'default': {
+        'BACKEND': 'django.core.files.storage.FileSystemStorage',
+    },
+    'staticfiles': {
+        'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage',
+    },
+}
 
 # Collect static files during deployment
 # Run: python manage.py collectstatic --noinput
@@ -264,7 +285,7 @@ LOGGING = {
             'style': '{',
         },
         'json': {
-            '()': 'pythonjsonlogger.jsonlogger.JsonFormatter',
+            '()': 'pythonjsonlogger.json.JsonFormatter',
             'format': '%(asctime)s %(levelname)s %(name)s %(message)s',
         },
     },
