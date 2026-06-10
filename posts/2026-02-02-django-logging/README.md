@@ -193,7 +193,7 @@ LOGGING = {
 
     'formatters': {
         'json': {
-            '()': 'pythonjsonlogger.jsonlogger.JsonFormatter',
+            '()': 'pythonjsonlogger.json.JsonFormatter',
             'format': '%(asctime)s %(levelname)s %(name)s %(message)s',
         },
     },
