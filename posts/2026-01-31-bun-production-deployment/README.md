@@ -240,23 +240,23 @@ Docker is the standard for packaging applications for deployment. Here is an opt
 # Uses official Bun image with minimal production footprint
 
 # Stage 1: Install dependencies
-FROM oven/bun:1.1-alpine AS dependencies
+FROM oven/bun:1-alpine AS dependencies
 
 WORKDIR /app
 
 # Copy package files first for better layer caching
-COPY package.json bun.lockb ./
+COPY package.json bun.lock ./
 
 # Install production dependencies only
 RUN bun install --frozen-lockfile --production
 
 # Stage 2: Build the application
-FROM oven/bun:1.1-alpine AS builder
+FROM oven/bun:1-alpine AS builder
 
 WORKDIR /app
 
 # Copy all package files
-COPY package.json bun.lockb ./
+COPY package.json bun.lock ./
 
 # Install all dependencies including devDependencies
 RUN bun install --frozen-lockfile
@@ -269,7 +269,7 @@ COPY src ./src
 RUN bun build ./src/index.ts --outdir ./dist --target bun
 
 # Stage 3: Production image
-FROM oven/bun:1.1-alpine AS production
+FROM oven/bun:1-alpine AS production
 
 WORKDIR /app
 
@@ -1058,7 +1058,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v1
+        uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
 
