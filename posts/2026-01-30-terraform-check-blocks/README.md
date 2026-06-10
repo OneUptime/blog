@@ -170,7 +170,7 @@ check "s3_security" {
   }
 
   assert {
-    condition     = !data.aws_s3_bucket.data.website_endpoint
+    condition     = data.aws_s3_bucket.data.website_endpoint == ""
     error_message = "S3 bucket should not have static website hosting enabled"
   }
 }
@@ -391,10 +391,10 @@ check "db_check" { ... }
 Include context that helps operators understand and fix issues.
 
 ```hcl
-check "api_response_time" {
+check "api_health_status" {
   assert {
-    condition     = data.http.api.response_time_ms < 1000
-    error_message = "API response time (${data.http.api.response_time_ms}ms) exceeds 1000ms threshold. Check application performance."
+    condition     = data.http.api.status_code == 200
+    error_message = "API health endpoint returned status ${data.http.api.status_code} instead of 200. Check application availability."
   }
 }
 ```
@@ -424,25 +424,25 @@ Remember that checks run on every apply. Avoid checks that:
 
 ## Integration with CI/CD
 
-Check blocks integrate naturally with CI/CD pipelines. Use the `-detailed-exitcode` flag to handle warnings appropriately.
+Check blocks integrate naturally with CI/CD pipelines. Check warnings appear in the apply output and can be detected by parsing the logs or by running a follow-up `terraform plan` to surface them.
 
 ```yaml
 # GitHub Actions example
 - name: Terraform Apply
   id: apply
-  run: terraform apply -auto-approve -detailed-exitcode
-  continue-on-error: true
+  run: terraform apply -auto-approve | tee apply.log
 
-- name: Check for Warnings
-  if: steps.apply.outputs.exitcode == 0
-  run: echo "Apply successful with no warnings"
-
-- name: Handle Warnings
-  if: steps.apply.outputs.exitcode == 2
+- name: Detect Check Warnings
   run: |
-    echo "Apply successful but checks produced warnings"
-    # Optionally notify team or create ticket
+    if grep -q "Warning:" apply.log; then
+      echo "Apply successful but checks produced warnings"
+      # Optionally notify team or create ticket
+    else
+      echo "Apply successful with no warnings"
+    fi
 ```
+
+Note that `terraform apply` does not currently support the `-detailed-exitcode` flag, so the exit code will be `0` on a successful apply even when check blocks produce warnings. Track [terraform#33174](https://github.com/hashicorp/terraform/issues/33174) for updates on detailed exit codes for `apply`.
 
 ## Monitoring Check Results
 
