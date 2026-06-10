@@ -125,6 +125,8 @@ Create `pyproject.toml`:
 [tool.ruff]
 target-version = "py311"
 line-length = 100
+
+[tool.ruff.lint]
 select = [
     "E",   # pycodestyle errors
     "W",   # pycodestyle warnings
@@ -139,10 +141,10 @@ ignore = [
     "E501",  # line too long (handled by formatter)
 ]
 
-[tool.ruff.per-file-ignores]
+[tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S101"]  # Allow assert in tests
 
-[tool.ruff.isort]
+[tool.ruff.lint.isort]
 known-first-party = ["myproject"]
 ```
 
@@ -171,7 +173,8 @@ linters:
 
 linters-settings:
   govet:
-    check-shadowing: true
+    enable:
+      - shadow
   gosec:
     excludes:
       - G104  # Audit errors not checked
