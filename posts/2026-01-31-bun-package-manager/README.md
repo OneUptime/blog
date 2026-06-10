@@ -91,22 +91,22 @@ bun add -g typescript
 
 ## Understanding the Lockfile Format
 
-Bun uses a binary lockfile called `bun.lockb` instead of the text-based lockfiles used by npm (`package-lock.json`) or yarn (`yarn.lock`). This binary format is significantly smaller and faster to read and write.
+Since Bun v1.2, Bun uses a text-based lockfile called `bun.lock` (a JSONC format) by default. Before v1.2, Bun used a binary lockfile called `bun.lockb`, which is still supported but no longer the default. The text-based `bun.lock` renders in diffs on GitHub and is easy to review in pull requests, while still being fast for Bun to read and write.
 
-The binary lockfile offers several advantages over text-based alternatives:
+The `bun.lock` file is human-readable, so you can open it directly in your editor:
 
 ```bash
-# View the contents of your lockfile in a human-readable YAML format
-bun bun.lockb
+# Open the lockfile in your editor
+cat bun.lock
 
-# Generate a yarn.lock file from bun.lockb for compatibility
+# Generate a yarn.lock file alongside bun.lock for compatibility
 bun install --yarn
 ```
 
 If you need to work with team members who use different package managers, Bun can generate traditional lockfiles:
 
 ```bash
-# This creates both bun.lockb and yarn.lock
+# This creates both bun.lock and yarn.lock
 bun install --yarn
 
 # You can also configure this in bunfig.toml
@@ -116,8 +116,16 @@ Here is how to configure automatic lockfile generation in your bunfig.toml:
 
 ```toml
 [install.lockfile]
-# Always generate a yarn.lock file alongside bun.lockb
+# Always generate a yarn.lock file alongside bun.lock
 print = "yarn"
+```
+
+If you have an existing `bun.lockb` from before Bun v1.2, you can migrate it to the new text-based format:
+
+```bash
+# Migrate bun.lockb to bun.lock without changing dependency versions
+bun install --save-text-lockfile --frozen-lockfile --lockfile-only
+rm bun.lockb
 ```
 
 ## Workspaces Configuration
@@ -142,7 +150,7 @@ Here is an example monorepo structure with multiple packages:
 ```text
 my-monorepo/
 ├── package.json
-├── bun.lockb
+├── bun.lock
 ├── packages/
 │   ├── shared-utils/
 │   │   └── package.json
@@ -194,7 +202,7 @@ peer = true
 # Install optional dependencies (default: true)
 optional = true
 
-# Install dev dependencies (default: true in development)
+# Install dev dependencies (default: true)
 dev = true
 ```
 
@@ -230,13 +238,11 @@ Configure registries in your bunfig.toml file:
 
 ```toml
 [install]
-# Set the default registry
+# Set the default registry as a string
 registry = "https://registry.npmjs.org"
 
-# Configure authentication for the default registry
-[install.registry]
-url = "https://registry.npmjs.org"
-token = "$NPM_TOKEN"
+# Or use an inline table to configure authentication
+# registry = { url = "https://registry.npmjs.org", token = "$NPM_TOKEN" }
 
 # Configure a scoped registry for private packages
 [install.scopes]
@@ -343,27 +349,30 @@ Before publishing, ensure your package.json is properly configured:
 Publish your package using these commands:
 
 ```bash
-# Login to npm registry
+# Login to npm registry (Bun does not ship its own login command, so use npm's)
 bunx npm login
 
-# Publish the package
-bunx npm publish
+# Publish the package using Bun's native publish command
+bun publish
 
 # Publish with a specific tag
-bunx npm publish --tag beta
+bun publish --tag beta
 
 # Publish a scoped package publicly
-bunx npm publish --access public
+bun publish --access public
+
+# Simulate the publish without actually publishing
+bun publish --dry-run
 ```
 
-For automated publishing in CI/CD pipelines, use authentication tokens:
+For automated publishing in CI/CD pipelines, use authentication tokens. `bun publish` reads tokens from `bunfig.toml`, `.npmrc`, or the `NPM_CONFIG_TOKEN` environment variable:
 
 ```bash
-# Set the auth token
+# Set the auth token via .npmrc
 echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > .npmrc
 
 # Publish using the token
-bunx npm publish
+bun publish
 ```
 
 ## Performance Comparison
@@ -391,7 +400,7 @@ rm -rf $PROJECT_DIR/node_modules $PROJECT_DIR/pnpm-lock.yaml
 time pnpm install --dir $PROJECT_DIR
 
 echo "Testing bun..."
-rm -rf $PROJECT_DIR/node_modules $PROJECT_DIR/bun.lockb
+rm -rf $PROJECT_DIR/node_modules $PROJECT_DIR/bun.lock
 time bun install --cwd $PROJECT_DIR
 ```
 
@@ -418,15 +427,15 @@ jobs:
       - uses: actions/checkout@v4
       
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v1
+        uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
       
       - name: Cache Bun dependencies
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ~/.bun/install/cache
-          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lockb') }}
+          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lock') }}
           restore-keys: |
             ${{ runner.os }}-bun-
       
@@ -451,14 +460,14 @@ peer = true
 # Install optional dependencies
 optional = true
 
-# Run lifecycle scripts after install
-scripts = true
+# Skip lifecycle scripts during install (default: false)
+ignoreScripts = false
 
 # Exact versions only (no ranges)
 exact = false
 
-# Save packages to dependencies by default
-save = true
+# Save a text-based bun.lock instead of binary bun.lockb (default: true since v1.2)
+saveTextLockfile = true
 
 # Global packages directory
 globalDir = "~/.bun/install/global"
@@ -466,11 +475,14 @@ globalDir = "~/.bun/install/global"
 # Global bin directory
 globalBinDir = "~/.bun/bin"
 
+# Default registry (string form, or inline table with token)
+registry = "https://registry.npmjs.org"
+
 [install.lockfile]
-# Save lockfile
+# Save lockfile (default: true)
 save = true
 
-# Print yarn.lock alongside bun.lockb
+# Print yarn.lock alongside bun.lock
 print = "yarn"
 
 [install.cache]
@@ -480,23 +492,16 @@ dir = "~/.bun/install/cache"
 # Disable cache
 disable = false
 
-[install.registry]
-# Default registry URL
-url = "https://registry.npmjs.org"
-
-# Authentication token
-token = "$NPM_TOKEN"
-
 [install.scopes]
 # Scoped registry configuration
 "@mycompany" = { url = "https://npm.mycompany.com", token = "$PRIVATE_TOKEN" }
 
 [run]
-# Shell to use for scripts
-shell = "/bin/bash"
+# Shell to use for scripts: "bun" or "system"
+shell = "system"
 
-# Enable watch mode by default
-watch = false
+# Suppress reporting of the command being run
+silent = false
 ```
 
 ## Troubleshooting Common Issues
@@ -508,7 +513,7 @@ If you experience resolution conflicts, try clearing the cache and reinstalling:
 ```bash
 # Clear cache and force reinstall
 bun pm cache rm
-rm -rf node_modules bun.lockb
+rm -rf node_modules bun.lock
 bun install
 ```
 
@@ -536,7 +541,7 @@ Here are the essential best practices for using Bun as your package manager:
 
 1. **Use bunfig.toml for configuration** - Keep your configuration centralized and version-controlled in bunfig.toml rather than using command-line flags.
 
-2. **Commit bun.lockb to version control** - Always commit your lockfile to ensure reproducible builds across all environments and team members.
+2. **Commit bun.lock to version control** - Always commit your lockfile to ensure reproducible builds across all environments and team members.
 
 3. **Use frozen lockfile in CI/CD** - Run `bun install --frozen-lockfile` in continuous integration to fail builds if the lockfile would change.
 
@@ -552,13 +557,13 @@ Here are the essential best practices for using Bun as your package manager:
 
 9. **Audit dependencies regularly** - Run `bun pm ls` to review your dependency tree and identify potential issues.
 
-10. **Prefer bun.lockb over other lockfiles** - While Bun can generate yarn.lock for compatibility, the binary lockfile is faster and more efficient.
+10. **Prefer bun.lock over other lockfiles** - While Bun can generate yarn.lock for compatibility, the text-based bun.lock is what Bun reads fastest and produces clean PR diffs.
 
 ## Conclusion
 
 Bun's package manager represents a significant leap forward in JavaScript dependency management. Its incredible speed, combined with full npm compatibility, makes it an excellent choice for both new projects and existing applications looking to improve their development workflow.
 
-The key advantages of using Bun as your package manager include dramatically faster installation times, a smaller and more efficient lockfile format, seamless workspace support for monorepos, and straightforward configuration through bunfig.toml. Whether you are working on a small personal project or a large enterprise application, Bun can handle your package management needs with ease.
+The key advantages of using Bun as your package manager include dramatically faster installation times, a clean text-based lockfile format that diffs nicely in pull requests, seamless workspace support for monorepos, and straightforward configuration through bunfig.toml. Whether you are working on a small personal project or a large enterprise application, Bun can handle your package management needs with ease.
 
 As the JavaScript ecosystem continues to evolve, tools like Bun are pushing the boundaries of what we expect from our development tooling. By adopting Bun as your package manager today, you position yourself to take advantage of ongoing improvements and maintain a modern, efficient development workflow.
 
