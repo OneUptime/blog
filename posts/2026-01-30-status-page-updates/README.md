@@ -150,6 +150,7 @@ Trigger maintenance windows automatically from your deployment pipeline:
   run: |
     curl -X POST https://oneuptime.com/api/status-page/maintenance \
       -H "Authorization: Bearer ${{ secrets.ONEUPTIME_API_KEY }}" \
+      -H "Content-Type: application/json" \
       -d '{
         "title": "Scheduled deployment - v2.4.0",
         "components": ["api"],
