@@ -844,7 +844,7 @@ Integration tests benefit enormously from trace visibility. Instead of debugging
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { InMemorySpanExporter } from '@opentelemetry/sdk-trace-base';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
-import { Resource } from '@opentelemetry/resources';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 
 export class IntegrationTestTracer {
   private sdk: NodeSDK;
@@ -854,7 +854,7 @@ export class IntegrationTestTracer {
     this.exporter = new InMemorySpanExporter();
 
     this.sdk = new NodeSDK({
-      resource: new Resource({ 'service.name': serviceName }),
+      resource: resourceFromAttributes({ 'service.name': serviceName }),
       traceExporter: this.exporter,
       instrumentations: [getNodeAutoInstrumentations()],
     });
@@ -1417,7 +1417,6 @@ services:
     image: jaegertracing/all-in-one:latest
     ports:
       - "16686:16686"  # UI
-      - "14250:14250"  # gRPC
 
   postgres:
     image: postgres:15
@@ -1457,12 +1456,12 @@ processors:
     timeout: 1s
 
 exporters:
-  jaeger:
-    endpoint: jaeger:14250
+  otlp/jaeger:
+    endpoint: jaeger:4317
     tls:
       insecure: true
 
-  logging:
+  debug:
     verbosity: detailed
 
 service:
@@ -1470,7 +1469,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [jaeger, logging]
+      exporters: [otlp/jaeger, debug]
 ```
 
 ### GitHub Actions Workflow
@@ -1821,7 +1820,7 @@ describe('Checkout Flow - Complete Trace Validation', () => {
       const spans = await collectTraceSpans(response.body.traceId);
 
       // Inventory error should be present
-      traceEngine.addSpan(...spans);
+      spans.forEach(span => traceEngine.addSpan(span));
       const inventorySpan = traceEngine.assertSpanExists('inventory.reserve');
       expect(inventorySpan.status.code).toBe(2);
     });
