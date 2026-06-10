@@ -245,7 +245,7 @@ flowchart TB
 ### Tweak Source Options
 
 ```bash
-# Internal: Vault manages tweaks automatically (stored with ciphertext)
+# Internal: Vault uses a fixed tweak stored with the transformation (deterministic)
 vault write transform/transformation/cc-internal \
     type=fpe \
     template=credit-card \
@@ -560,6 +560,7 @@ def encrypt_credit_card_cached(card_number):
 
 ```python
 import hvac
+import requests
 from urllib3.util.retry import Retry
 from requests.adapters import HTTPAdapter
 
