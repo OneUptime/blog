@@ -191,16 +191,17 @@ flowchart LR
 
     P1 -->|Valid| V[Code Accepted]
     P2 -->|Valid| V
-    P3 -->|Invalid| X[Code Rejected]
+    P3 -->|Valid| V
 
     style P1 fill:#90EE90
     style P2 fill:#90EE90
-    style P3 fill:#FFB6C1
+    style P3 fill:#90EE90
 ```
 
-With `skew=1` (default), Vault accepts:
+With `skew=1` (default), Vault accepts codes from a window of one period on either side of the current time:
 - The current period's code
-- The previous period's code (to handle slight clock delays)
+- The previous period's code (to handle clients running slightly behind)
+- The next period's code (to handle clients running slightly ahead)
 
 Set `skew=0` for stricter validation that only accepts the current period's code.
 
