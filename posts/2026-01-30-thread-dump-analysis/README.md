@@ -353,6 +353,8 @@ public class DeadlockDemo {
         ThreadMXBean threadMXBean = ManagementFactory.getThreadMXBean();
 
         // Find threads that are in deadlock waiting to acquire object monitors
+        // or ownable synchronizers (e.g. ReentrantLock). Use
+        // findMonitorDeadlockedThreads() if you only care about monitor locks.
         long[] deadlockedThreadIds = threadMXBean.findDeadlockedThreads();
 
         if (deadlockedThreadIds != null) {
