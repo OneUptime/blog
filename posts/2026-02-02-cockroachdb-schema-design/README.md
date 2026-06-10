@@ -305,7 +305,7 @@ CREATE TABLE users (
     name VARCHAR(255),
     region crdb_internal_region NOT NULL DEFAULT 'us-east1',
     created_at TIMESTAMPTZ DEFAULT now()
-) LOCALITY REGIONAL BY ROW;
+) LOCALITY REGIONAL BY ROW AS region;
 
 -- Insert user in their region
 INSERT INTO users (email, name, region)
@@ -515,44 +515,26 @@ ALTER TABLE products RENAME COLUMN price_new TO price;
 For large data migrations, process in batches to avoid overwhelming the cluster.
 
 ```sql
--- Migration function that processes in batches
-CREATE OR REPLACE FUNCTION migrate_orders_batch(
-    batch_size INT DEFAULT 1000
-) RETURNS INT AS $$
-DECLARE
-    migrated INT := 0;
-    batch INT;
-BEGIN
-    LOOP
-        -- Process one batch
-        WITH batch_rows AS (
-            SELECT customer_id, order_id
-            FROM orders
-            WHERE migrated_at IS NULL
-            LIMIT batch_size
-        )
-        UPDATE orders o
-        SET
-            migrated_at = now(),
-            new_field = compute_new_value(o.old_field)
-        FROM batch_rows b
-        WHERE o.customer_id = b.customer_id
-        AND o.order_id = b.order_id;
-
-        GET DIAGNOSTICS batch = ROW_COUNT;
-        migrated := migrated + batch;
-
-        -- Exit when done
-        EXIT WHEN batch = 0;
-
-        -- Brief pause to reduce cluster load
-        PERFORM pg_sleep(0.1);
-    END LOOP;
-
-    RETURN migrated;
-END;
-$$ LANGUAGE plpgsql;
+-- Run this batched UPDATE from your application in a loop.
+-- Repeat until RETURNING yields zero rows, pausing briefly between
+-- iterations to keep cluster load steady.
+WITH batch_rows AS (
+    SELECT customer_id, order_id
+    FROM orders
+    WHERE migrated_at IS NULL
+    LIMIT 1000
+)
+UPDATE orders o
+SET
+    migrated_at = now(),
+    new_field = compute_new_value(o.old_field)
+FROM batch_rows b
+WHERE o.customer_id = b.customer_id
+AND o.order_id = b.order_id
+RETURNING o.order_id;
 ```
+
+Driving the loop from your application (rather than a stored procedure) gives you straightforward control over batch size, throttling, retries on transient errors, and progress logging.
 
 ## Performance Optimization Patterns
 
