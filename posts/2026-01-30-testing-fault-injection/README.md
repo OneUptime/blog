@@ -712,7 +712,7 @@ describe('Error Handling', () => {
 
 ---
 
-Resource Exhaustion Testing
+## Resource Exhaustion Testing
 
 Simulate running out of memory, CPU, or disk to verify your service degrades gracefully.
 
