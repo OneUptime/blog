@@ -662,9 +662,9 @@ metadata:
   namespace: argocd
 data:
   # Increase timeout for large repos
-  reposerver.git.request.timeout: "300"
-  # Enable shallow clones
-  reposerver.git.lsremote.parallelism: "20"
+  reposerver.git.request.timeout: "300s"
+  # Increase parallelism for git ls-remote calls
+  reposerver.git.lsremote.parallelism.limit: "20"
 ```
 
 ### Scale ArgoCD for Many Applications
@@ -685,9 +685,9 @@ spec:
         - name: argocd-application-controller
           env:
             # Increase parallel operations
-            - name: ARGOCD_CONTROLLER_STATUS_PROCESSORS
+            - name: ARGOCD_APPLICATION_CONTROLLER_STATUS_PROCESSORS
               value: "50"
-            - name: ARGOCD_CONTROLLER_OPERATION_PROCESSORS
+            - name: ARGOCD_APPLICATION_CONTROLLER_OPERATION_PROCESSORS
               value: "25"
             # Increase reconciliation timeout
             - name: ARGOCD_RECONCILIATION_TIMEOUT
