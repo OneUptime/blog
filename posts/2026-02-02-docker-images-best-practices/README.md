@@ -156,7 +156,8 @@ FROM gcr.io/distroless/static-debian12
 # Copy the binary from builder
 COPY --from=builder /app/server /server
 
-# Distroless runs as nonroot by default (UID 65532)
+# Distroless images run as root by default; the 'nonroot' user (UID 65532)
+# is included so we can explicitly switch to it here.
 USER nonroot:nonroot
 
 ENTRYPOINT ["/server"]
