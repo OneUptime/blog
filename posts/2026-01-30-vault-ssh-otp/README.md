@@ -90,8 +90,8 @@ vault write ssh/roles/otp_key_role \
 | default_user | Default SSH username if none specified | ubuntu |
 | allowed_users | Comma-separated list of allowed usernames | ubuntu,admin |
 | cidr_list | IP ranges of target hosts | 10.0.0.0/8 |
+| exclude_cidr_list | IP ranges to exclude from cidr_list | 10.0.99.0/24 |
 | port | SSH port on target hosts | 22 |
-| ttl | OTP validity period | 30s |
 
 ### Advanced Role Configuration
 
@@ -102,8 +102,7 @@ vault write ssh/roles/production_servers \
     default_user=deploy \
     allowed_users="deploy" \
     cidr_list="10.100.0.0/16" \
-    port=22 \
-    ttl=30s
+    port=22
 ```
 
 ## Install vault-ssh-helper on Target Hosts
@@ -114,10 +113,10 @@ The target host needs vault-ssh-helper to verify OTPs against Vault. This lightw
 
 ```bash
 # Download vault-ssh-helper
-wget https://releases.hashicorp.com/vault-ssh-helper/0.2.1/vault-ssh-helper_0.2.1_linux_amd64.zip
+wget https://releases.hashicorp.com/vault-ssh-helper/0.2.4/vault-ssh-helper_0.2.4_linux_amd64.zip
 
 # Unzip and install
-unzip vault-ssh-helper_0.2.1_linux_amd64.zip
+unzip vault-ssh-helper_0.2.4_linux_amd64.zip
 sudo mv vault-ssh-helper /usr/local/bin/
 sudo chmod 0755 /usr/local/bin/vault-ssh-helper
 
@@ -229,7 +228,7 @@ flowchart TD
 
 ### Configure SSHD for PAM Authentication
 
-Update the SSH daemon configuration to use PAM and allow password authentication.
+Update the SSH daemon configuration to use PAM and keyboard-interactive authentication for the OTP.
 
 ```bash
 # Edit SSHD configuration
@@ -476,8 +475,8 @@ sudo iptables -L -n | grep 8200
 **PAM authentication not working**
 
 ```bash
-# Check PAM configuration syntax
-sudo pam_parse /etc/pam.d/sshd
+# Test PAM authentication stack with pamtester
+sudo pamtester sshd ubuntu authenticate
 
 # Test vault-ssh-helper manually
 echo "test-otp" | /usr/local/bin/vault-ssh-helper -config=/etc/vault-ssh-helper.d/config.hcl
@@ -500,7 +499,7 @@ auth requisite pam_exec.so quiet expose_authtok log=/var/log/vault-ssh.log /usr/
 ### Recommendations
 
 1. **Use TLS**: Always configure TLS between vault-ssh-helper and Vault
-2. **Short TTLs**: Set short OTP TTLs (30 seconds or less) to minimize exposure
+2. **One-time use**: OTPs are inherently one-time use and invalidated immediately after verification — never log or reuse them
 3. **Restrict CIDR**: Limit allowed CIDR ranges to only necessary hosts
 4. **Audit logging**: Enable Vault audit logging for all OTP requests
 5. **Separate roles**: Create distinct roles for different environments
@@ -510,7 +509,6 @@ auth requisite pam_exec.so quiet expose_authtok log=/var/log/vault-ssh.log /usr/
 
 - [ ] TLS enabled for Vault communication
 - [ ] CA certificate properly configured on target hosts
-- [ ] OTP TTL set to 30 seconds or less
 - [ ] CIDR restrictions in place for each role
 - [ ] Vault audit logging enabled
 - [ ] PAM configuration restricts fallback authentication
