@@ -58,7 +58,7 @@ Complete isolation. Each tenant has their own database, potentially on different
 - Connection management overhead
 - Deployment complexity increases significantly
 
-For this guide, I will focus on schema-per-tenant and database-per-tenant approaches since they are the most common for production SaaS applications. The discriminator column approach is straightforward JPA filtering - you just add `@Where(clause = "tenant_id = :tenantId")` to your entities and call it a day.
+For this guide, I will focus on schema-per-tenant and database-per-tenant approaches since they are the most common for production SaaS applications. The discriminator column approach uses Hibernate's `@Filter`/`@FilterDef` annotations (or the dedicated `@TenantId` annotation in Hibernate 6.3+) - you parameterize a filter on `tenant_id` and enable it with the current tenant on each session.
 
 ## Setting Up Tenant Context
 
