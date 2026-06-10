@@ -92,19 +92,16 @@ podman --version
 
 ### Install on Ubuntu/Debian
 
-Ubuntu and Debian require adding the Kubic repository for the latest versions:
+Recent Ubuntu (22.04+) and Debian (12+) releases ship both tools in the default repositories:
 
 ```bash
-# Add the Kubic project repository for up-to-date packages
-. /etc/os-release
-sudo sh -c "echo 'deb https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/xUbuntu_${VERSION_ID}/ /' > /etc/apt/sources.list.d/devel:kubic:libcontainers:stable.list"
-
-# Import the repository signing key
-curl -fsSL "https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/xUbuntu_${VERSION_ID}/Release.key" | sudo apt-key add -
-
 # Update package cache and install both tools
 sudo apt update
 sudo apt install -y buildah podman
+
+# Verify the installed versions
+buildah --version
+podman --version
 ```
 
 ### Install on macOS
