@@ -17,8 +17,8 @@ Bun is built on JavaScriptCore (the same engine that powers Safari) rather than 
 Key architectural features that affect performance:
 - Native TypeScript and JSX support without transpilation overhead
 - Built-in SQLite database
-- Native file system operations using io_uring on Linux
-- Zero-copy networking with native HTTP implementation
+- Fast native file system operations
+- Native, low-overhead HTTP implementation built on uSockets
 
 ## Profiling Bun Applications
 
@@ -58,7 +58,7 @@ console.log(`Execution time: ${durationMs.toFixed(2)}ms`);
 
 ### CPU Profiling with Bun
 
-You can generate CPU profiles to analyze performance hotspots using the inspect flag:
+You can attach the WebKit Inspector to your Bun process to debug and analyze performance hotspots (including a built-in profiler tab) using the inspect flag:
 
 ```bash
 bun --inspect run server.ts
@@ -495,9 +495,14 @@ const connectionStats = {
 const server = Bun.serve({
     port: 3000,
     
-    fetch(request: Request): Response {
+    fetch(request: Request, server): Response | undefined {
         connectionStats.totalRequests++;
-        
+
+        // Upgrade WebSocket connections; handlers below fire on success
+        if (server.upgrade(request)) {
+            return;
+        }
+
         return Response.json({
             activeConnections: connectionStats.activeConnections,
             totalRequests: connectionStats.totalRequests
