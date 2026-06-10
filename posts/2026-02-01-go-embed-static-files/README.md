@@ -479,7 +479,7 @@ Some tips to keep binary size reasonable:
 You can inspect what's actually embedded in your binary:
 
 ```bash
-# List embedded files (requires Go 1.18+)
+# List embedded files (requires Go 1.16+)
 go list -f '{{.EmbedFiles}}' ./...
 ```
 
