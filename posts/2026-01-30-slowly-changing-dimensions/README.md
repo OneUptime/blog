@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Data Warehouse, SCD, Dimensional Modeling, Data Engineering
 
-Description: Learn how to implement slowly changing dimensions (SCD Types 1, 2, 3) for historical tracking.
+Description: Learn how to implement slowly changing dimensions (SCD Types 1, 2, 3, 4, 6) for historical tracking.
 
 ---
 
@@ -541,44 +541,24 @@ CREATE INDEX idx_history_customer_id ON dim_customer_history(customer_id);
 -- Step 4: Procedure to handle Type 4 SCD updates
 -- This procedure maintains both tables in sync
 
--- Step 4a: Capture current state before changes (for records that will change)
-INSERT INTO dim_customer_history (
-    customer_key,
-    customer_id,
-    customer_name,
-    email,
-    city,
-    state,
-    country,
-    effective_date,
-    expiration_date,
-    change_type
-)
-SELECT
-    c.customer_key,
-    c.customer_id,
-    c.customer_name,
-    c.email,
-    c.city,
-    c.state,
-    c.country,
-    COALESCE(
-        (SELECT MAX(expiration_date) + INTERVAL '1 day'
-         FROM dim_customer_history h
-         WHERE h.customer_key = c.customer_key),
-        c.created_date::DATE
-    ),
-    CURRENT_DATE - INTERVAL '1 day',
-    'UPDATE'
-FROM dim_customer_current c
-JOIN staging_customer s ON c.customer_id = s.customer_id
+-- Step 4a: Identify customers whose attributes have changed
+CREATE TEMPORARY TABLE changed_customers AS
+SELECT s.customer_id
+FROM staging_customer s
+JOIN dim_customer_current c ON c.customer_id = s.customer_id
 WHERE c.customer_name != s.customer_name
    OR c.email != s.email
    OR c.city != s.city
    OR c.state != s.state
    OR c.country != s.country;
 
--- Step 4b: Update current table with new values
+-- Step 4b: Close the open history record for each changed customer
+UPDATE dim_customer_history
+SET expiration_date = CURRENT_DATE - INTERVAL '1 day'
+WHERE customer_id IN (SELECT customer_id FROM changed_customers)
+  AND expiration_date = '9999-12-31';
+
+-- Step 4c: Update current table with new values
 UPDATE dim_customer_current c
 SET
     customer_name = s.customer_name,
@@ -590,14 +570,14 @@ SET
 FROM staging_customer s
 WHERE c.customer_id = s.customer_id;
 
--- Step 4c: Insert new customers into current table
+-- Step 4d: Insert new customers into current table
 INSERT INTO dim_customer_current (customer_id, customer_name, email, city, state, country)
 SELECT s.customer_id, s.customer_name, s.email, s.city, s.state, s.country
 FROM staging_customer s
 LEFT JOIN dim_customer_current c ON s.customer_id = c.customer_id
 WHERE c.customer_key IS NULL;
 
--- Step 4d: Record new customers in history
+-- Step 4e: Insert new open-ended history records for both new and changed customers
 INSERT INTO dim_customer_history (
     customer_key,
     customer_id,
@@ -620,9 +600,13 @@ SELECT
     c.country,
     CURRENT_DATE,
     '9999-12-31',
-    'INSERT'
+    CASE
+        WHEN c.created_date::DATE = CURRENT_DATE THEN 'INSERT'
+        ELSE 'UPDATE'
+    END
 FROM dim_customer_current c
-WHERE c.created_date::DATE = CURRENT_DATE;
+WHERE c.customer_id IN (SELECT customer_id FROM changed_customers)
+   OR c.created_date::DATE = CURRENT_DATE;
 
 -- Step 5: Query examples
 
