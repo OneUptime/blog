@@ -286,14 +286,13 @@ storage:
 
 # Redis connection settings
 redis:
-  addr: redis:6379
+  addrs: [redis:6379]
   password: your-redis-password
   db: 0
   # Connection pool settings
-  pool:
-    maxidle: 16
-    maxactive: 64
-    idletimeout: 300s
+  maxidleconns: 16
+  poolsize: 64
+  connmaxidletime: 300s
   # Dial timeout for establishing connections
   dialtimeout: 10ms
   readtimeout: 10ms
@@ -509,7 +508,7 @@ auth:
     issuer: auth.example.com
     # Path to public key for verifying tokens
     rootcertbundle: /certs/auth.crt
-    # Auto-refresh public keys from JWKS endpoint
+    # When true, the realm is automatically set to the request Host header
     autoredirect: false
 ```
 
@@ -953,7 +952,7 @@ storage:
     blobdescriptor: redis
 
 redis:
-  addr: redis-cluster.example.com:6379
+  addrs: [redis-cluster.example.com:6379]
   password: your-redis-password
   db: 0
 ```
