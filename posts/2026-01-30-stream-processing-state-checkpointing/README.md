@@ -783,8 +783,8 @@ public class FlinkCheckpointingExample {
         checkpointConfig.setMaxConcurrentCheckpoints(1);
 
         // Keep checkpoint on job cancellation for recovery
-        checkpointConfig.setExternalizedCheckpointCleanup(
-            ExternalizedCheckpointCleanup.RETAIN_ON_CANCELLATION);
+        checkpointConfig.setExternalizedCheckpointRetention(
+            ExternalizedCheckpointRetention.RETAIN_ON_CANCELLATION);
 
         // Enable unaligned checkpoints for back-pressure scenarios
         checkpointConfig.enableUnalignedCheckpoints();
@@ -1209,8 +1209,7 @@ public class StateSizeOptimization {
             String name,
             Duration ttl) {
 
-        StateTtlConfig ttlConfig = StateTtlConfig.newBuilder(
-                Time.milliseconds(ttl.toMillis()))
+        StateTtlConfig ttlConfig = StateTtlConfig.newBuilder(ttl)
             .setUpdateType(StateTtlConfig.UpdateType.OnReadAndWrite)
             .setStateVisibility(
                 StateTtlConfig.StateVisibility.NeverReturnExpired)
