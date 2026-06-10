@@ -791,7 +791,7 @@ public class PageViewWindowEnricher
 // Usage: Combine aggregate and process for efficiency
 DataStream<PageViewStats> stats = pageViews
     .keyBy(PageView::getUrl)
-    .window(TumblingEventTimeWindows.of(Time.minutes(5)))
+    .window(TumblingEventTimeWindows.of(Duration.ofMinutes(5)))
     .aggregate(
         new PageViewAggregator(),      // Incremental aggregation
         new PageViewWindowEnricher()   // Add window context
@@ -995,7 +995,7 @@ public class RobustProcessFunction
     public void open(Configuration parameters) throws Exception {
         // Initialize state with TTL for automatic cleanup
         StateTtlConfig ttlConfig = StateTtlConfig
-            .newBuilder(Time.hours(24))
+            .newBuilder(Duration.ofHours(24))
             .setUpdateType(StateTtlConfig.UpdateType.OnReadAndWrite)
             .setStateVisibility(StateTtlConfig.StateVisibility.NeverReturnExpired)
             .cleanupFullSnapshot()  // Clean during checkpoints
