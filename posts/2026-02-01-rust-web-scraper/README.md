@@ -31,9 +31,10 @@ tokio = { version = "1", features = ["full"] }
 thiserror = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+futures = "0.3"
 ```
 
-We're using `reqwest` for HTTP requests (it's the most popular HTTP client in Rust), `scraper` for HTML parsing, `tokio` for async runtime, and `thiserror` for clean error handling.
+We're using `reqwest` for HTTP requests (it's the most popular HTTP client in Rust), `scraper` for HTML parsing, `tokio` for async runtime, `thiserror` for clean error handling, and `futures` for concurrent stream processing.
 
 ## Making Your First HTTP Request
 
