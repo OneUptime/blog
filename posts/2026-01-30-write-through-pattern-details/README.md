@@ -94,9 +94,6 @@ export async function writeThroughSet<T>(
       [key, serialized]
     );
 
-    // Only update cache after database confirms
-    await redis.setex(key, ttlSeconds, serialized);
-
     await client.query("COMMIT");
   } catch (error) {
     await client.query("ROLLBACK");
@@ -104,6 +101,9 @@ export async function writeThroughSet<T>(
   } finally {
     client.release();
   }
+
+  // Update cache after the database has confirmed persistence
+  await redis.setex(key, ttlSeconds, serialized);
 }
 
 // Read with cache-first strategy
@@ -137,11 +137,11 @@ export async function readThrough<T>(
 }
 ```
 
-The functions above handle the basic pattern. The `writeThroughSet` function uses a database transaction to ensure the write either fully succeeds or fully fails. If the Redis operation fails after the database commit, you have a brief inconsistency window, but the database remains the source of truth.
+The functions above handle the basic pattern. The `writeThroughSet` function wraps the database write in a transaction so the persisted record is atomic, then updates the cache only after the commit succeeds. If the Redis operation fails after the database commit, you have a brief inconsistency window, but the database remains the source of truth and the next cache miss will repopulate it.
 
 ## Handling Edge Cases
 
-Real systems need to handle failures gracefully. The implementation below adds retry logic and circuit breaker patterns for production use.
+Real systems need to handle failures gracefully. The implementation below adds retry logic with exponential backoff for production use.
 
 ```typescript
 // services/resilient-cache.ts
