@@ -157,7 +157,7 @@ Let us implement a simple HNSW-inspired index structure.
 
 import numpy as np
 from dataclasses import dataclass
-from typing import List, Tuple, Optional, Dict, Any
+from typing import List, Tuple, Optional, Dict, Any, Callable
 import heapq
 
 @dataclass
@@ -198,7 +198,7 @@ class VectorIndex:
         self,
         query_vector: np.ndarray,
         k: int = 10,
-        filter_fn: Optional[callable] = None
+        filter_fn: Optional[Callable] = None
     ) -> List[Tuple[str, float, Dict[str, Any]]]:
         """
         Find the k nearest neighbors to the query vector.
