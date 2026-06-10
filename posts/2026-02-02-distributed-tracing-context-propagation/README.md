@@ -379,7 +379,8 @@ import {
   context,
   propagation,
   ROOT_CONTEXT,
-  SpanKind
+  SpanKind,
+  SpanStatusCode
 } from '@opentelemetry/api';
 import { Request, Response, NextFunction } from 'express';
 
@@ -1219,13 +1220,14 @@ While trace context handles span correlation, baggage allows you to propagate ar
 import {
   context,
   propagation,
-  Baggage,
+  Context,
   baggageEntryMetadataFromString
 } from '@opentelemetry/api';
+import { Request, Response, NextFunction } from 'express';
 
 // Set baggage in the current context
 // This data will propagate to all downstream services
-function setBaggage(key: string, value: string): typeof context {
+function setBaggage(key: string, value: string): Context {
   const currentBaggage = propagation.getBaggage(context.active())
     || propagation.createBaggage();
 
@@ -1320,8 +1322,9 @@ const compositePropagator = new CompositePropagator({
 // - x-b3-traceid, x-b3-spanid, x-b3-sampled (B3)
 // - uber-trace-id (Jaeger)
 
-// When extracting, the propagator tries each format
-// until one successfully extracts context
+// When extracting, the propagator runs each format's extract
+// in order, accumulating results into the context. Later
+// propagators can override values set by earlier ones.
 ```
 
 ## Best Practices
