@@ -427,7 +427,7 @@ Several tools help verify unsafe code:
 
 **AddressSanitizer** - Catches memory errors at runtime. Enable with `RUSTFLAGS="-Z sanitizer=address"`.
 
-**Clippy** - The linter has specific lints for unsafe code patterns. Use `#![deny(unsafe_op_in_unsafe_fn)]` to require explicit unsafe blocks even inside unsafe functions.
+**Clippy** - The linter has specific lints for unsafe code patterns, including `undocumented_unsafe_blocks` and `multiple_unsafe_ops_per_block`. The rustc built-in lint `#![deny(unsafe_op_in_unsafe_fn)]` requires explicit unsafe blocks even inside unsafe functions (warn-by-default in the 2024 edition).
 
 ## Wrapping Up
 
