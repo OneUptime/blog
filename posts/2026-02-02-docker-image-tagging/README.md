@@ -450,9 +450,11 @@ if [[ ${#SHA_TAGS[@]} -gt ${KEEP_LAST} ]]; then
         DELETE_COUNT=$((DELETE_COUNT + 1))
 
         if [[ "${DRY_RUN}" != "true" ]]; then
-            # Get manifest digest
-            DIGEST=$(curl -s -H "Accept: application/vnd.docker.distribution.manifest.v2+json" \
-                "https://${REGISTRY}/v2/${REPOSITORY}/manifests/${tag}" | jq -r '.config.digest')
+            # Get manifest digest from the Docker-Content-Digest response header
+            DIGEST=$(curl -s -I -H "Accept: application/vnd.docker.distribution.manifest.v2+json" \
+                "https://${REGISTRY}/v2/${REPOSITORY}/manifests/${tag}" \
+                | awk 'BEGIN{IGNORECASE=1} /^docker-content-digest:/ {print $2}' \
+                | tr -d '\r\n')
 
             # Delete by digest
             curl -X DELETE "https://${REGISTRY}/v2/${REPOSITORY}/manifests/${DIGEST}"
