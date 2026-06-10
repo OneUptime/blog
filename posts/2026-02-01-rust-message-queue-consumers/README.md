@@ -35,6 +35,9 @@ async-nats = "0.33"
 # Async runtime
 tokio = { version = "1.35", features = ["full"] }
 
+# Stream utilities (provides StreamExt for .next() on consumer streams)
+futures = "0.3"
+
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
@@ -61,6 +64,7 @@ use lapin::{
     options::*, types::FieldTable, BasicProperties, Channel, Connection,
     ConnectionProperties, Consumer,
 };
+use futures::StreamExt;
 use tokio::sync::mpsc;
 use tracing::{error, info, warn};
 
