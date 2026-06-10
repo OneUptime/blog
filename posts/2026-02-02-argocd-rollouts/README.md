@@ -340,9 +340,9 @@ spec:
       activeService: myapp-active
       # Service for testing new version before promotion
       previewService: myapp-preview
-      # Automatically promote after successful analysis
-      autoPromotionEnabled: true
-      # Wait for analysis before auto-promotion
+      # Disable immediate promotion so autoPromotionSeconds takes effect
+      autoPromotionEnabled: false
+      # Automatically promote after this many seconds in the paused state
       autoPromotionSeconds: 300
       # Scale down old version after this delay
       scaleDownDelaySeconds: 30
@@ -509,12 +509,15 @@ spec:
     - name: smoke-test
       # Run once
       count: 1
-      # Success if status code is 200
-      successCondition: result.statusCode == 200
+      # Web provider already fails on non-2xx; check the parsed JSON body
+      # (e.g. {"status": "ok"}) returned by the health endpoint
+      successCondition: result == "ok"
       provider:
         web:
           url: "http://{{args.service-name}}.production.svc.cluster.local/health"
           timeoutSeconds: 30
+          # Extract the "status" field from the response JSON
+          jsonPath: "{$.status}"
           headers:
             - key: X-Test-Header
               value: smoke-test
@@ -802,11 +805,11 @@ Argo Rollouts includes a web dashboard for visualizing and managing rollouts.
 
 ### Starting the Dashboard
 
-The dashboard can be accessed through port-forwarding or by enabling it in the Helm installation.
+The dashboard can be started locally with the kubectl plugin or by enabling the in-cluster dashboard via the Helm installation.
 
 ```bash
-# Port-forward the dashboard
-kubectl argo rollouts dashboard -n argo-rollouts
+# Run the dashboard locally (connects to the cluster via your kubeconfig)
+kubectl argo rollouts dashboard
 
 # Access at http://localhost:3100
 ```
