@@ -89,6 +89,7 @@ The foundation is a scheduled scanner that inventories resources and correlates 
 Resource Inventory Collection
 
 ```python
+import os
 import boto3
 from datetime import datetime, timedelta
 from dataclasses import dataclass
