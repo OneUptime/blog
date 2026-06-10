@@ -915,7 +915,7 @@ oncall_compensation.py
 Calculate on-call compensation based on shifts and incidents.
 """
 
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 from dataclasses import dataclass
 
 
@@ -964,28 +964,27 @@ def calculate_shift_compensation(
     }
 
     # Calculate base rate for each day in shift
-    current = shift_start
-    while current < shift_end:
-        if current.date() in [h.date() for h in holidays]:
+    holiday_dates = {h.date() for h in holidays}
+    current = shift_start.date()
+    end_date = shift_end.date()
+    while current < end_date:
+        if current in holiday_dates:
             compensation['base'] += rates.holiday_shift
             compensation['details'].append(
-                f"{current.date()}: Holiday rate ${rates.holiday_shift}"
+                f"{current}: Holiday rate ${rates.holiday_shift}"
             )
         elif current.weekday() >= 5:  # Weekend
             compensation['base'] += rates.weekend_shift
             compensation['details'].append(
-                f"{current.date()}: Weekend rate ${rates.weekend_shift}"
+                f"{current}: Weekend rate ${rates.weekend_shift}"
             )
         else:
             compensation['base'] += rates.weekday_shift
             compensation['details'].append(
-                f"{current.date()}: Weekday rate ${rates.weekday_shift}"
+                f"{current}: Weekday rate ${rates.weekday_shift}"
             )
 
-        current = datetime.combine(
-            current.date(),
-            time(0, 0)
-        ) + timedelta(days=1)
+        current += timedelta(days=1)
 
     # Calculate incident bonuses
     night_start = time(22, 0)  # 10 PM
@@ -1025,8 +1024,6 @@ def calculate_shift_compensation(
 
 
 # Usage example
-from datetime import timedelta
-
 rates = CompensationRates()
 
 shift_comp = calculate_shift_compensation(
