@@ -560,13 +560,21 @@ bun build ./cli.ts --compile --target=bun-linux-arm64 --outfile my-cli-linux-arm
 bun build ./cli.ts --compile --target=bun-windows-x64 --outfile my-cli-windows-x64.exe
 ```
 
-You can also embed static assets and configuration files:
+You can also embed static assets into the executable by importing them with the `type: "file"` import attribute:
+
+```typescript
+// cli.ts - Embedding a static asset into the executable
+import iconPath from "./assets/icon.png" with { type: "file" };
+
+console.log("Embedded asset available at:", iconPath);
+```
+
+When compiling, control the asset filenames embedded in the binary with `--asset-naming`:
 
 ```bash
 # Embed assets into the executable
 bun build ./cli.ts --compile --outfile my-cli \
-  --public-path=./assets \
-  --asset-naming=[name].[ext]
+  --asset-naming="[name].[ext]"
 ```
 
 ## Distribution and Installation
