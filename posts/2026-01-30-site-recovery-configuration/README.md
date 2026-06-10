@@ -174,11 +174,11 @@ data:
     hot_standby_feedback = on
     wal_receiver_status_interval = 10s
     max_standby_streaming_delay = 30s
-
-  recovery.conf: |
-    standby_mode = on
+    # Recovery/standby parameters live in postgresql.conf since PG 12
+    # (recovery.conf was removed in PG 12; standby mode is enabled via a
+    # standby.signal file in the data directory)
     primary_conninfo = 'host=postgres-primary.region-a.example.com port=5432 user=replicator password=<password> application_name=recovery_site'
-    trigger_file = '/tmp/promote_to_primary'
+    promote_trigger_file = '/tmp/promote_to_primary'
     recovery_target_timeline = 'latest'
 ---
 apiVersion: apps/v1
