@@ -17,7 +17,7 @@ Deno's test runner offers several advantages over traditional testing frameworks
 - **Zero configuration**: No need to install or configure external packages
 - **TypeScript support**: Tests can be written in TypeScript without additional setup
 - **Built-in assertions**: Standard library includes a comprehensive assertion module
-- **Parallel execution**: Tests run in parallel by default for faster feedback
+- **Parallel execution**: Test modules can be executed in parallel with the `--parallel` flag
 - **Permission aware**: Tests respect Deno's security model
 - **Coverage reports**: Built-in code coverage without external tools
 
@@ -77,14 +77,14 @@ import {
   assertStringIncludes,
   assertArrayIncludes,
   assertMatch,
-} from "https://deno.land/std/assert/mod.ts";
+} from "jsr:@std/assert";
 ```
 
 Here are examples demonstrating each assertion type:
 
 ```typescript
 // equality_test.ts
-import { assertEquals, assertNotEquals, assertStrictEquals } from "https://deno.land/std/assert/mod.ts";
+import { assertEquals, assertNotEquals, assertStrictEquals } from "jsr:@std/assert";
 
 Deno.test("assertEquals compares values deeply", () => {
   // Works with primitives
@@ -117,7 +117,7 @@ import {
   assertThrows,
   assertStringIncludes,
   assertMatch,
-} from "https://deno.land/std/assert/mod.ts";
+} from "jsr:@std/assert";
 
 // Function that throws an error
 function divideByZero(a: number, b: number): number {
@@ -154,7 +154,7 @@ This example demonstrates testing async functions that fetch data or perform I/O
 
 ```typescript
 // async_test.ts
-import { assertEquals } from "https://deno.land/std/assert/mod.ts";
+import { assertEquals } from "jsr:@std/assert";
 
 // Simulated async function that fetches user data
 async function fetchUser(id: number): Promise<{ id: number; name: string }> {
@@ -184,7 +184,7 @@ For testing async functions that should reject, use `assertRejects`:
 
 ```typescript
 // async_error_test.ts
-import { assertRejects } from "https://deno.land/std/assert/mod.ts";
+import { assertRejects } from "jsr:@std/assert";
 
 async function fetchWithError(): Promise<void> {
   throw new Error("Network error");
@@ -262,7 +262,7 @@ Deno.test("this test will be skipped when 'only' is used", () => {
 });
 ```
 
-Note: The `only` option requires the `--allow-only` flag when running tests to prevent accidentally committing focused tests.
+Note: When any test is flagged with `only`, the overall test run will always exit with a non-zero status code, even if all the focused tests pass. This is intentional, ensuring that focused tests are not accidentally committed to your codebase.
 
 ## Test Steps for Grouped Assertions
 
@@ -272,7 +272,7 @@ The following example shows how to organize related tests using steps:
 
 ```typescript
 // steps_test.ts
-import { assertEquals } from "https://deno.land/std/assert/mod.ts";
+import { assertEquals } from "jsr:@std/assert";
 
 interface User {
   id: number;
@@ -325,8 +325,8 @@ Spies allow you to track function calls without changing their behavior:
 
 ```typescript
 // spy_test.ts
-import { spy, assertSpyCall, assertSpyCalls } from "https://deno.land/std/testing/mock.ts";
-import { assertEquals } from "https://deno.land/std/assert/mod.ts";
+import { spy, assertSpyCall, assertSpyCalls } from "jsr:@std/testing/mock";
+import { assertEquals } from "jsr:@std/assert";
 
 class Logger {
   log(message: string): void {
@@ -360,8 +360,8 @@ Stubs replace function implementations entirely:
 
 ```typescript
 // stub_test.ts
-import { stub, returnsNext } from "https://deno.land/std/testing/mock.ts";
-import { assertEquals } from "https://deno.land/std/assert/mod.ts";
+import { stub, returnsNext } from "jsr:@std/testing/mock";
+import { assertEquals } from "jsr:@std/assert";
 
 // Service that depends on external API
 class WeatherService {
@@ -401,8 +401,8 @@ For time-dependent tests, use the FakeTime utility:
 
 ```typescript
 // fake_time_test.ts
-import { FakeTime } from "https://deno.land/std/testing/time.ts";
-import { assertEquals } from "https://deno.land/std/assert/mod.ts";
+import { FakeTime } from "jsr:@std/testing/time";
+import { assertEquals } from "jsr:@std/assert";
 
 function getGreeting(): string {
   const hour = new Date().getHours();
@@ -439,7 +439,7 @@ This example demonstrates how to use snapshot testing for complex data structure
 
 ```typescript
 // snapshot_test.ts
-import { assertSnapshot } from "https://deno.land/std/testing/snapshot.ts";
+import { assertSnapshot } from "jsr:@std/testing/snapshot";
 
 interface Report {
   title: string;
@@ -490,8 +490,8 @@ import {
   afterAll,
   beforeEach,
   afterEach,
-} from "https://deno.land/std/testing/bdd.ts";
-import { assertEquals } from "https://deno.land/std/assert/mod.ts";
+} from "jsr:@std/testing/bdd";
+import { assertEquals } from "jsr:@std/assert";
 
 // Simple calculator class to test
 class Calculator {
@@ -603,7 +603,7 @@ Since Deno is secure by default, your tests need appropriate permissions. You ca
 
 ```typescript
 // permissions_test.ts
-import { assertEquals } from "https://deno.land/std/assert/mod.ts";
+import { assertEquals } from "jsr:@std/assert";
 
 Deno.test({
   name: "read file with permission",
