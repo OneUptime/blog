@@ -89,7 +89,7 @@ Here are the essential settings you will want to configure:
 # settings.py
 
 # Allauth configuration
-ACCOUNT_LOGIN_ON_GET = True
+SOCIALACCOUNT_LOGIN_ON_GET = True  # Allow social login via direct GET links
 ACCOUNT_LOGOUT_ON_GET = True
 ACCOUNT_EMAIL_REQUIRED = True
 ACCOUNT_USERNAME_REQUIRED = False
