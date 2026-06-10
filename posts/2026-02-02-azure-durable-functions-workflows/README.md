@@ -118,13 +118,11 @@ Configure your host.json to optimize workflow execution. These settings control 
         "durableTask": {
             "storageProvider": {
                 "connectionStringName": "AzureWebJobsStorage",
-                "partitionCount": 4
+                "partitionCount": 4,
+                "useAppLease": true
             },
             "maxConcurrentActivityFunctions": 10,
             "maxConcurrentOrchestratorFunctions": 5,
-            "extendedSessionsEnabled": true,
-            "extendedSessionIdleTimeoutInSeconds": 30,
-            "useAppLease": true,
             "useGracefulShutdown": true
         }
     },
@@ -259,7 +257,7 @@ const defaultRetryOptions: RetryOptions = new df.RetryOptions(
     5       // Maximum 5 attempts
 );
 defaultRetryOptions.backoffCoefficient = 2;
-defaultRetryOptions.maxRetryInterval = 60000;
+defaultRetryOptions.maxRetryIntervalInMilliseconds = 60000;
 
 // More aggressive retry for critical operations like payments
 const paymentRetryOptions: RetryOptions = new df.RetryOptions(
@@ -267,7 +265,7 @@ const paymentRetryOptions: RetryOptions = new df.RetryOptions(
     3       // Maximum 3 attempts - fail fast for payments
 );
 paymentRetryOptions.backoffCoefficient = 2;
-paymentRetryOptions.maxRetryInterval = 10000;
+paymentRetryOptions.maxRetryIntervalInMilliseconds = 10000;
 
 const orderProcessingOrchestrator: OrchestrationHandler = function* (
     context: OrchestrationContext
