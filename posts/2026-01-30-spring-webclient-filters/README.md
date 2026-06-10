@@ -218,6 +218,7 @@ Network failures happen. This filter automatically retries failed requests with 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.ClientRequest;
 import org.springframework.web.reactive.function.client.ClientResponse;
@@ -235,11 +236,11 @@ public class RetryFilter implements ExchangeFilterFunction {
     private static final Logger log = LoggerFactory.getLogger(RetryFilter.class);
 
     // HTTP status codes that should trigger a retry
-    private static final Set<HttpStatus> RETRYABLE_STATUS_CODES = Set.of(
-            HttpStatus.TOO_MANY_REQUESTS,
-            HttpStatus.SERVICE_UNAVAILABLE,
-            HttpStatus.GATEWAY_TIMEOUT,
-            HttpStatus.BAD_GATEWAY
+    private static final Set<Integer> RETRYABLE_STATUS_CODES = Set.of(
+            HttpStatus.TOO_MANY_REQUESTS.value(),
+            HttpStatus.SERVICE_UNAVAILABLE.value(),
+            HttpStatus.GATEWAY_TIMEOUT.value(),
+            HttpStatus.BAD_GATEWAY.value()
     );
 
     private final RetryConfig config;
@@ -272,8 +273,8 @@ public class RetryFilter implements ExchangeFilterFunction {
                 );
     }
 
-    private boolean shouldRetry(HttpStatus status) {
-        return RETRYABLE_STATUS_CODES.contains(status);
+    private boolean shouldRetry(HttpStatusCode status) {
+        return RETRYABLE_STATUS_CODES.contains(status.value());
     }
 
     private boolean isRetryableException(Throwable throwable) {
