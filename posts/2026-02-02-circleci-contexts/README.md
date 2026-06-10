@@ -66,27 +66,27 @@ curl -fLSs https://raw.githubusercontent.com/CircleCI-Public/circleci-cli/main/i
 circleci setup
 
 # Create a new context in your organization
-# Replace 'your-org' with your actual organization name
-circleci context create github your-org production-aws
+# Replace <org-id> with your organization ID (found in Organization Settings > Overview)
+circleci context create --org-id <org-id> production-aws
 
 # Add environment variables to the context
-# The CLI will prompt for the value to keep it out of shell history
-circleci context store-secret github your-org production-aws AWS_ACCESS_KEY_ID
+# The CLI reads the value from stdin to keep it out of shell history
+circleci context store-secret --org-id <org-id> production-aws AWS_ACCESS_KEY_ID
 
 # Add another secret to the same context
-circleci context store-secret github your-org production-aws AWS_SECRET_ACCESS_KEY
+circleci context store-secret --org-id <org-id> production-aws AWS_SECRET_ACCESS_KEY
 
 # List all contexts in your organization
-circleci context list github your-org
+circleci context list --org-id <org-id>
 
 # Show variables in a specific context (values are masked)
-circleci context show github your-org production-aws
+circleci context show --org-id <org-id> production-aws
 
 # Remove a variable from a context
-circleci context remove-secret github your-org production-aws OLD_API_KEY
+circleci context remove-secret --org-id <org-id> production-aws OLD_API_KEY
 
 # Delete an entire context (use with caution)
-circleci context delete github your-org deprecated-context
+circleci context delete --org-id <org-id> deprecated-context
 ```
 
 ## Using Contexts in Your Configuration
@@ -459,7 +459,7 @@ Follow these steps to rotate secrets without disrupting pipelines:
 
 # Step 2: Add the new credentials to the context
 # Use a temporary name to avoid overwriting the current credentials
-circleci context store-secret github your-org production-aws AWS_ACCESS_KEY_ID_NEW
+circleci context store-secret --org-id <org-id> production-aws AWS_ACCESS_KEY_ID_NEW
 
 # Step 3: Update your configuration to use the new variable temporarily
 # Or if your service supports multiple active keys, proceed to step 4
@@ -467,10 +467,10 @@ circleci context store-secret github your-org production-aws AWS_ACCESS_KEY_ID_N
 # Step 4: Verify the new credentials work by triggering a test pipeline
 
 # Step 5: Update the context with the new credentials using the standard name
-circleci context store-secret github your-org production-aws AWS_ACCESS_KEY_ID
+circleci context store-secret --org-id <org-id> production-aws AWS_ACCESS_KEY_ID
 
 # Step 6: Remove the temporary variable
-circleci context remove-secret github your-org production-aws AWS_ACCESS_KEY_ID_NEW
+circleci context remove-secret --org-id <org-id> production-aws AWS_ACCESS_KEY_ID_NEW
 
 # Step 7: Revoke the old credentials from your service provider
 # For AWS, delete the old access key from IAM
