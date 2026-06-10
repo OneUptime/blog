@@ -281,8 +281,8 @@ def compare_ia_tiers(size_gb, months, restores_per_month):
 
     return standard_ia, one_zone_ia
 
-# Example: 500 GB for 12 months, 2 restores per month
-std, one_zone = compare_ia_tiers(500, 12, 0.17)  # ~2 restores/year
+# Example: 500 GB for 12 months, ~2 restores per year
+std, one_zone = compare_ia_tiers(500, 12, 0.17)  # 0.17/month ≈ 2/year
 print(f"Standard-IA: ${std['total']:.2f}")
 print(f"One Zone-IA: ${one_zone['total']:.2f}")
 print(f"Savings: ${std['total'] - one_zone['total']:.2f}")
@@ -357,7 +357,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "backup_lifecycle" {
     # Move to cold storage after 90 days
     transition {
       days          = 90
-      storage_class = "GLACIER_INSTANT_RETRIEVAL"
+      storage_class = "GLACIER_IR"
     }
 
     # Archive after 1 year
@@ -387,7 +387,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "backup_lifecycle" {
 
     transition {
       days          = 30
-      storage_class = "GLACIER_INSTANT_RETRIEVAL"
+      storage_class = "GLACIER_IR"
     }
 
     expiration {
@@ -423,7 +423,7 @@ Warm storage affects your Recovery Time Objective (RTO). Plan accordingly:
 | S3 Standard | Milliseconds | ~10 minutes | $0.00 |
 | S3 Standard-IA | Milliseconds | ~10 minutes | $1.00 |
 | S3 Glacier Instant | Milliseconds | ~10 minutes | $3.00 |
-| S3 Glacier Flexible | 1-5 minutes (expedited) | ~15 minutes | $10.00 |
+| S3 Glacier Flexible | 1-5 minutes (expedited) | ~15 minutes | $3.00 |
 | S3 Glacier Deep | 12 hours (standard) | ~12 hours | $2.00 |
 
 ### Restore Script with Monitoring
