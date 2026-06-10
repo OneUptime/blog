@@ -913,15 +913,34 @@ class HelmEngine implements RenderEngine {
   extensions = ['.yaml', '.yml', '.tpl'];
 
   async render(template: string, context: RenderContext): Promise<string> {
-    // Use Helm's template engine
-    const helm = require('helm-template');
-    return helm.render(template, {
-      Values: context.values,
-      Release: {
-        Name: context.metadata.templateName,
-        Namespace: context.metadata.namespace,
-      },
-    });
+    // Helm's templating relies on Go's text/template with Sprig and Helm-specific
+    // functions, so the practical approach from Node.js is to shell out to the
+    // `helm` CLI with `helm template`.
+    const { execFile } = require('child_process');
+    const { promisify } = require('util');
+    const { writeFile, mkdtemp, rm } = require('fs').promises;
+    const path = require('path');
+    const os = require('os');
+
+    const execFileAsync = promisify(execFile);
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'helm-'));
+    try {
+      const chartFile = path.join(dir, 'chart.tpl');
+      const valuesFile = path.join(dir, 'values.yaml');
+      await writeFile(chartFile, template);
+      await writeFile(valuesFile, JSON.stringify(context.values));
+
+      const { stdout } = await execFileAsync('helm', [
+        'template',
+        context.metadata.templateName,
+        chartFile,
+        '--namespace', context.metadata.namespace,
+        '-f', valuesFile,
+      ]);
+      return stdout;
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   }
 }
 
@@ -950,13 +969,11 @@ class JsonnetEngine implements RenderEngine {
   extensions = ['.jsonnet', '.libsonnet'];
 
   async render(template: string, context: RenderContext): Promise<string> {
-    const Jsonnet = require('@aspect/rules_jsonnet');
-    return Jsonnet.evaluate(template, {
-      ext_vars: {
-        values: JSON.stringify(context.values),
-        metadata: JSON.stringify(context.metadata),
-      },
-    });
+    const { Jsonnet } = require('@hanazuki/node-jsonnet');
+    const jsonnet = new Jsonnet();
+    jsonnet.extString('values', JSON.stringify(context.values));
+    jsonnet.extString('metadata', JSON.stringify(context.metadata));
+    return jsonnet.evaluateSnippet(template);
   }
 }
 ```
