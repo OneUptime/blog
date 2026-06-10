@@ -218,11 +218,12 @@ client.token = 'hvs.parent-token...'
 
 # Create an orphan token for a background worker
 # The worker will survive even if this process terminates
-orphan_token_response = client.auth.token.create(
+# Use create_orphan to call the /auth/token/create-orphan endpoint,
+# which requires sudo capability on the auth/token/create-orphan path.
+orphan_token_response = client.auth.token.create_orphan(
     policies=['worker-secrets-read'],
     ttl='24h',
     renewable=True,
-    orphan=True,  # Critical: breaks parent-child relationship
     display_name='background-worker'
 )
 
