@@ -88,7 +88,6 @@ package main
 
 import (
     "encoding/json"
-    "fmt"
     "io"
     "log"
     "net/http"
@@ -180,7 +179,7 @@ func deleteState(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleLock(w http.ResponseWriter, r *http.Request) {
-    if r.Method != http.MethodPost && r.Method != http.MethodLock {
+    if r.Method != http.MethodPost && r.Method != "LOCK" {
         http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
         return
     }
@@ -210,7 +209,7 @@ func handleLock(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleUnlock(w http.ResponseWriter, r *http.Request) {
-    if r.Method != http.MethodPost && r.Method != http.MethodUnlock {
+    if r.Method != http.MethodPost && r.Method != "UNLOCK" {
         http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
         return
     }
@@ -273,7 +272,6 @@ package main
 import (
     "context"
     "encoding/json"
-    "fmt"
     "io"
     "log"
     "net/http"
@@ -429,7 +427,7 @@ func handleState(w http.ResponseWriter, r *http.Request) {
 
 ## Building a PostgreSQL-Based Lock Backend
 
-For organizations already using PostgreSQL, here is an implementation using advisory locks:
+For organizations already using PostgreSQL, here is an implementation using a dedicated locks table with a unique constraint. (PostgreSQL advisory locks are session-bound and so cannot be safely held across requests by a stateless HTTP server that returns connections to a pool.)
 
 ```go
 package main
@@ -437,8 +435,6 @@ package main
 import (
     "database/sql"
     "encoding/json"
-    "fmt"
-    "hash/fnv"
     "io"
     "log"
     "net/http"
@@ -669,7 +665,9 @@ Stale locks occur when a Terraform process crashes without releasing its lock. H
 package main
 
 import (
-    "encoding/json"
+    "fmt"
+    "log"
+    "net/http"
     "time"
 )
 
