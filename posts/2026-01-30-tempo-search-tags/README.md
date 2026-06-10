@@ -8,9 +8,9 @@ Description: A practical guide to configuring search tags in Grafana Tempo for f
 
 ---
 
-Finding the right trace in a sea of telemetry data can feel like searching for a needle in a haystack. Grafana Tempo solves this with search tags, a feature that indexes specific span attributes for fast lookups. Instead of scanning millions of spans, you query indexed fields and get results in milliseconds.
+Finding the right trace in a sea of telemetry data can feel like searching for a needle in a haystack. Grafana Tempo's Parquet-based blocks make every span attribute searchable, and dedicated attribute columns make the most-queried tags dramatically faster. Instead of scanning every column for a tag stored in a generic key-value list, queries on dedicated columns read a single column from object storage.
 
-This guide walks through configuring search tags, optimizing tag indexing, and writing TraceQL queries that actually perform well in production.
+This guide walks through configuring dedicated attribute columns, choosing which tags to dedicate, and writing TraceQL queries that actually perform well in production.
 
 ---
 
@@ -31,29 +31,29 @@ This guide walks through configuring search tags, optimizing tag indexing, and w
 
 ## 1. What Are Search Tags
 
-Search tags are span attributes that Tempo indexes for fast retrieval. Without indexing, Tempo must scan all blocks to find matching spans. With indexed tags, it uses bloom filters and columnar lookups to narrow results quickly.
+In Tempo, every span attribute is searchable through TraceQL because blocks are stored in the columnar Parquet format. By default, custom attributes live inside a generic key-value list column, so a query has to read that list across many spans. Dedicated attribute columns promote selected attributes to their own column in the Parquet file, which is what most teams mean colloquially by "search tags."
 
 | Concept | Description |
 |---------|-------------|
-| Search Tag | A span attribute indexed for fast querying |
-| Intrinsic Tag | Built-in tags Tempo always indexes (status, duration, name) |
+| Dedicated Column | An attribute promoted to its own Parquet column for faster queries |
+| Intrinsic Field | Built-in fields Tempo always exposes (span:status, span:duration, span:name) |
 | Resource Attribute | Tags describing the service (service.name, deployment.environment) |
 | Span Attribute | Tags on individual spans (http.method, db.system) |
-| Bloom Filter | Probabilistic data structure for fast "might exist" checks |
+| Bloom Filter | Per-block probabilistic structure used to skip blocks during ID lookups |
 
-Tempo indexes intrinsic fields by default. You configure additional resource and span attributes based on your query patterns.
+Intrinsic fields and well-known attributes (such as `service.name`) are already optimized. You configure additional resource and span attributes as dedicated columns based on your query patterns.
 
 ---
 
 ## 2. How Tag Indexing Works
 
-When Tempo ingests traces, it builds indexes during the compaction process. The flow looks like this:
+When Tempo ingests traces, it writes Parquet blocks that contain bloom filters and dedicated columns. The flow looks like this:
 
 1. Spans arrive via OTLP or other protocols
 2. Distributor validates and forwards to ingesters
-3. Ingesters buffer spans in memory (write-ahead log)
-4. Compactor flushes to object storage with indexes
-5. Queriers use indexes to filter before scanning blocks
+3. Ingesters buffer spans in memory and a write-ahead log
+4. Ingesters flush Parquet blocks to object storage; the compactor merges them
+5. Queriers read column statistics and bloom filters to skip irrelevant blocks before scanning
 
 ```mermaid
 flowchart LR
@@ -82,7 +82,7 @@ flowchart LR
     end
 ```
 
-The bloom filter answers: "Does this block possibly contain spans with tag X?" If yes, Tempo scans that block. If no, it skips entirely. This cuts query time dramatically.
+The bloom filter answers: "Does this block possibly contain a given trace ID?" If yes, Tempo fetches that block; if no, it skips entirely. For attribute filtering, dedicated columns let the querier read just the column it needs instead of unpacking the generic attribute list.
 
 ---
 
@@ -126,7 +126,9 @@ Key insight: tag indexes live inside each block in object storage. Queriers down
 
 ## 4. Configuring Search Tags
 
-Tempo configuration happens in the `tempo.yaml` file. Here is a production-ready example:
+Tempo configuration happens in the `tempo.yaml` file. Dedicated attribute columns are configured under `overrides` as `parquet_dedicated_columns`. Each entry specifies a `name`, a `type` (`string` or `int`), and a `scope` (`resource`, `span`, or `event`). On `vParquet4` you can dedicate up to 10 string columns per scope; `vParquet5` raises this to 20 string columns plus 5 integer columns per scope.
+
+Here is a production-ready example:
 
 ```yaml
 # tempo.yaml
@@ -138,34 +140,59 @@ overrides:
       rate_limit_bytes: 15000000
       burst_size_bytes: 20000000
 
-    # Search tag configuration
-    search_tags:
-      # Resource attributes to index
-      resource_attributes:
-        - service.name
-        - service.namespace
-        - deployment.environment
-        - k8s.namespace.name
-        - k8s.deployment.name
-        - cloud.region
-        - host.name
+    # Dedicated attribute columns for fast filtering
+    parquet_dedicated_columns:
+      # Resource-scoped attributes
+      - name: service.namespace
+        type: string
+        scope: resource
+      - name: deployment.environment
+        type: string
+        scope: resource
+      - name: k8s.namespace.name
+        type: string
+        scope: resource
+      - name: k8s.deployment.name
+        type: string
+        scope: resource
+      - name: cloud.region
+        type: string
+        scope: resource
+      - name: host.name
+        type: string
+        scope: resource
 
-      # Span attributes to index
-      span_attributes:
-        - http.method
-        - http.status_code
-        - http.route
-        - http.url
-        - db.system
-        - db.name
-        - db.operation
-        - rpc.method
-        - rpc.service
-        - messaging.system
-        - messaging.destination
-        - error
-        - user.id
-        - order.id
+      # Span-scoped attributes
+      - name: http.route
+        type: string
+        scope: span
+      - name: http.url
+        type: string
+        scope: span
+      - name: db.system
+        type: string
+        scope: span
+      - name: db.name
+        type: string
+        scope: span
+      - name: db.operation
+        type: string
+        scope: span
+      - name: rpc.method
+        type: string
+        scope: span
+      - name: rpc.service
+        type: string
+        scope: span
+      - name: messaging.system
+        type: string
+        scope: span
+      - name: messaging.destination
+        type: string
+        scope: span
+      - name: order.id
+        type: string
+        scope: span
 
 storage:
   trace:
@@ -178,10 +205,10 @@ storage:
     block:
       # Bloom filter configuration
       bloom_filter_false_positive: 0.01
-      bloom_filter_shard_size_bytes: 100000
+      bloom_filter_shard_size_bytes: 102400
 
-      # Version 2 (vParquet3) enables better search
-      version: vParquet3
+      # Parquet block format (vParquet4 is the current default; vParquet5 is also available)
+      version: vParquet4
 
     wal:
       path: /var/tempo/wal
@@ -201,28 +228,24 @@ compactor:
 querier:
   # Search configuration
   search:
-    # External endpoints for distributed search
-    external_endpoints: []
-    # Prefer recently compacted blocks
-    prefer_self: 10
     # Maximum duration for search queries
     query_timeout: 30s
 ```
 
+Note that `service.name`, `http.method`, `http.status_code`, and span status are already first-class fields in the Parquet schema, so they do not need to be configured as dedicated columns.
+
 ### Per-Tenant Overrides
 
-For multi-tenant deployments, configure tags per tenant:
+For multi-tenant deployments, configure dedicated columns per tenant. Tenant-specific overrides live in a separate file and take precedence over the defaults:
 
 ```yaml
 overrides:
   # Default for all tenants
   defaults:
-    search_tags:
-      resource_attributes:
-        - service.name
-      span_attributes:
-        - http.method
-        - http.status_code
+    parquet_dedicated_columns:
+      - name: deployment.environment
+        type: string
+        scope: resource
 
   # Specific tenant overrides
   per_tenant_override_config: /etc/tempo/overrides.yaml
@@ -233,25 +256,28 @@ overrides:
 
 overrides:
   tenant-production:
-    search_tags:
-      resource_attributes:
-        - service.name
-        - deployment.environment
-        - k8s.namespace.name
-      span_attributes:
-        - http.method
-        - http.status_code
-        - http.route
-        - db.system
-        - order.id
-        - user.id
+    parquet_dedicated_columns:
+      - name: deployment.environment
+        type: string
+        scope: resource
+      - name: k8s.namespace.name
+        type: string
+        scope: resource
+      - name: http.route
+        type: string
+        scope: span
+      - name: db.system
+        type: string
+        scope: span
+      - name: order.id
+        type: string
+        scope: span
 
   tenant-staging:
-    search_tags:
-      resource_attributes:
-        - service.name
-      span_attributes:
-        - http.method
+    parquet_dedicated_columns:
+      - name: deployment.environment
+        type: string
+        scope: resource
 ```
 
 ---
@@ -294,7 +320,7 @@ Rule of thumb: if you can enumerate all possible values, it is safe to index.
 
 ## 6. TraceQL Query Examples
 
-TraceQL is Tempo's query language. Here are practical examples using indexed tags.
+TraceQL is Tempo's query language. Queries against attributes promoted to dedicated columns return faster, but all attributes are queryable.
 
 ### Basic Tag Queries
 
@@ -356,15 +382,17 @@ TraceQL is Tempo's query language. Here are practical examples using indexed tag
 
 ### Aggregation Queries
 
+TraceQL supports `count`, `avg`, `max`, `min`, and `sum` as aggregators, with optional `by()` grouping.
+
 ```text
-# Count traces by service
+# Count spans by service
 { } | count() by (resource.service.name)
 
 # Average duration by endpoint
 { span.http.method = "GET" } | avg(duration) by (span.http.route)
 
-# Error rate by service
-{ status = error } | rate() by (resource.service.name)
+# Count errors by service
+{ span:status = error } | count() by (resource.service.name)
 ```
 
 ### Advanced Patterns
@@ -373,11 +401,11 @@ TraceQL is Tempo's query language. Here are practical examples using indexed tag
 # Find traces that hit both services
 { resource.service.name = "api-gateway" } && { resource.service.name = "database-service" }
 
-# Traces with specific span sequence
+# Traces with a descendant span in the backend service
 { resource.service.name = "frontend" } >> { resource.service.name = "backend" }
 
-# Unscoped search (searches all attributes)
-{ "order-12345" }
+# Match on a specific attribute value (TraceQL requires a scoped field)
+{ span.order.id = "order-12345" }
 ```
 
 ---
@@ -396,7 +424,7 @@ storage:
       bloom_filter_false_positive: 0.01  # 1% false positive rate
 
       # Shard size affects memory usage during queries
-      bloom_filter_shard_size_bytes: 100000
+      bloom_filter_shard_size_bytes: 102400
 ```
 
 | False Positive Rate | Index Size | Query Speed | Use Case |
@@ -412,10 +440,10 @@ Enable caching for repeated queries:
 ```yaml
 query_frontend:
   search:
-    # Cache search results
-    query_backend_after: 5m
+    # Send search requests to the backend after this much data is in long-term storage
+    query_backend_after: 15m
 
-  # Result caching
+  # Result caching backend (configured under cache subsystem in recent versions)
   results_cache:
     backend: memcached
     memcached:
@@ -425,17 +453,25 @@ query_frontend:
 
 ### Parallel Query Execution
 
+Search parallelism is controlled at the query frontend, which splits a search into jobs that queriers run in parallel:
+
 ```yaml
-querier:
+query_frontend:
   search:
-    # Number of concurrent block queries
+    # Number of jobs the frontend dispatches in parallel
     concurrent_jobs: 1000
 
-    # Prefer local querier for recent data
-    prefer_self: 10
+    # Per-job target bytes
+    target_bytes_per_job: 104857600  # 100MB
 
-  # Maximum traces to return
-  max_traceql_results: 1000
+    # Result limits
+    default_result_limit: 20
+    max_result_limit: 0  # 0 = unlimited
+
+querier:
+  search:
+    # Per-query timeout
+    query_timeout: 30s
 ```
 
 ### Block Size Optimization
@@ -456,25 +492,25 @@ compactor:
 
 ## 8. Common Pitfalls
 
-### Pitfall 1: Indexing Everything
+### Pitfall 1: Dedicating Every Attribute
 
-Problem: Developers add every possible tag to the index.
+Problem: Developers promote every possible attribute to a dedicated column. `vParquet4` caps you at 10 string columns per scope, and even `vParquet5` (20 strings + 5 ints per scope) is finite, so wasted slots leave high-value attributes back in the generic key-value list.
 
 ```yaml
-# BAD: Too many tags
-search_tags:
-  span_attributes:
-    - http.method
-    - http.status_code
-    - http.route
-    - http.url
-    - http.request.header.authorization  # PII risk
-    - http.request.body                   # Huge values
-    - request.id                          # High cardinality
-    - timestamp                           # Unique per span
+# BAD: PII risk, huge values, high cardinality
+parquet_dedicated_columns:
+  - name: http.request.header.authorization  # PII risk
+    type: string
+    scope: span
+  - name: http.request.body                  # Huge values
+    type: string
+    scope: span
+  - name: request.id                         # High cardinality
+    type: string
+    scope: span
 ```
 
-Fix: Index only what you query. Review index usage monthly.
+Fix: Dedicate columns only for attributes you filter on frequently. Review usage periodically.
 
 ### Pitfall 2: Missing Service Name
 
@@ -490,29 +526,30 @@ Problem: Queries without `service.name` scan all services.
 
 Fix: Always include `service.name` in queries when possible.
 
-### Pitfall 3: Unindexed Tag Queries
+### Pitfall 3: Querying Non-Dedicated Attributes
 
-Problem: Querying tags that are not indexed falls back to full scan.
+Problem: Attributes not promoted to dedicated columns are still queryable, but the querier has to scan the generic attribute key-value list, which is much slower at scale.
 
 ```text
-# If custom.business.metric is not indexed, this is slow
+# If custom.business.metric does not have a dedicated column, this is slow
 { span.custom.business.metric = "important" }
 ```
 
-Fix: Check your configuration before adding queries. Add tags to index before dashboards depend on them.
+Fix: Check your configuration before standing up dashboards. Promote heavily queried attributes to dedicated columns first.
 
 ### Pitfall 4: Cardinality Explosion
 
-Problem: Indexing high-cardinality fields bloats storage.
+Problem: Promoting high-cardinality fields to dedicated columns bloats Parquet files and slows compaction.
 
 ```yaml
 # BAD: user.id might have millions of values
-search_tags:
-  span_attributes:
-    - user.id
+parquet_dedicated_columns:
+  - name: user.id
+    type: string
+    scope: span
 ```
 
-Fix: For high-cardinality fields, use full-text search on unindexed attributes sparingly, or sample at ingestion.
+Fix: For high-cardinality fields, query them as generic span attributes instead, or apply head/tail sampling at ingestion.
 
 ### Pitfall 5: Forgetting Resource vs Span
 
@@ -537,19 +574,19 @@ Track these metrics to ensure search stays fast:
 ### Key Metrics
 
 ```promql
-# Query latency histogram
+# Query frontend request latency (p99 by route)
 histogram_quantile(0.99,
-  sum(rate(tempo_query_frontend_search_query_seconds_bucket[5m])) by (le)
+  sum by (le, route) (rate(tempo_query_frontend_request_duration_seconds_bucket[5m]))
 )
 
-# Bloom filter effectiveness
-sum(rate(tempo_bloom_filter_inserts_total[5m])) by (tenant)
+# Bytes inspected by search/trace queries per tenant
+sum by (tenant, op) (rate(tempo_query_frontend_bytes_inspected_total[5m]))
 
-# Blocks scanned per query
-avg(tempo_querier_blocks_inspected_total) by (tenant)
+# In-memory live trace bytes per ingester
+sum by (tenant) (tempo_ingester_live_trace_bytes)
 
-# Index size growth
-sum(tempo_ingester_index_bytes) by (tenant)
+# Object storage backend errors
+sum by (operation) (rate(tempodb_backend_request_duration_seconds_count{status_code!~"2.."}[5m]))
 ```
 
 ### Alerting Rules
@@ -561,7 +598,7 @@ groups:
       - alert: TempoSearchSlow
         expr: |
           histogram_quantile(0.99,
-            sum(rate(tempo_query_frontend_search_query_seconds_bucket[5m])) by (le)
+            sum by (le) (rate(tempo_query_frontend_request_duration_seconds_bucket{op="search"}[5m]))
           ) > 10
         for: 5m
         labels:
@@ -569,13 +606,14 @@ groups:
         annotations:
           summary: "Tempo search p99 latency above 10 seconds"
 
-      - alert: TempoIndexTooLarge
-        expr: sum(tempo_ingester_index_bytes) > 10737418240  # 10GB
+      - alert: TempoSearchBytesInspectedHigh
+        expr: |
+          sum by (tenant) (rate(tempo_query_frontend_bytes_inspected_total{op="search"}[5m])) > 1e9
         for: 10m
         labels:
           severity: warning
         annotations:
-          summary: "Tempo index size exceeds 10GB"
+          summary: "Tempo search inspecting more than 1 GB/s per tenant"
 ```
 
 ### Dashboard Queries
@@ -584,9 +622,9 @@ Build a dashboard with:
 
 1. Search latency percentiles (p50, p95, p99)
 2. Queries per second by tenant
-3. Blocks inspected per query
-4. Index size over time
-5. Bloom filter hit rate
+3. Bytes inspected by query type
+4. Live trace bytes per ingester
+5. Backend request error rate
 
 ---
 
@@ -617,28 +655,33 @@ Common queries:
 
 ### Step 3: Validate Cardinality
 
-Before adding tags, check their cardinality in your telemetry:
+Before promoting an attribute to a dedicated column, check its cardinality. Use the Tempo API's tag values endpoint to enumerate distinct values:
 
-```promql
-# Check distinct values for a tag (in a metrics-enabled setup)
-count(count by (order_id) (tempo_span_received_total))
+```bash
+# List values for a span-scoped attribute (TraceQL identifier syntax)
+curl -G "http://tempo:3200/api/v2/search/tag/span.order.id/values"
 ```
 
-Or sample span data directly and count unique values.
+Or sample span data from your OpenTelemetry Collector and count unique values.
 
 ### Step 4: Deploy Configuration
 
 ```yaml
-search_tags:
-  resource_attributes:
-    - service.name
-    - deployment.environment
-  span_attributes:
-    - http.method
-    - http.status_code
-    - db.system
-    - order.id
-    - payment.status
+overrides:
+  defaults:
+    parquet_dedicated_columns:
+      - name: deployment.environment
+        type: string
+        scope: resource
+      - name: db.system
+        type: string
+        scope: span
+      - name: order.id
+        type: string
+        scope: span
+      - name: payment.status
+        type: string
+        scope: span
 ```
 
 ### Step 5: Wait for Compaction
@@ -658,7 +701,7 @@ Verify indexed queries are fast:
 
 ### Step 7: Monitor and Iterate
 
-Watch index size and query latency. Remove unused tags. Add new ones as query patterns evolve.
+Watch bytes inspected and query latency. Drop unused dedicated columns. Add new ones as query patterns evolve.
 
 ---
 
@@ -666,13 +709,13 @@ Watch index size and query latency. Remove unused tags. Add new ones as query pa
 
 | What | How |
 |------|-----|
-| Enable search tags | Configure `search_tags` in tempo.yaml |
-| Choose tags wisely | Low cardinality, frequently queried attributes |
-| Write efficient queries | Always include service.name, use indexed tags |
+| Promote attributes | Configure `parquet_dedicated_columns` under `overrides` in tempo.yaml |
+| Choose tags wisely | Frequently queried, moderate-cardinality attributes |
+| Write efficient queries | Always include service.name, use scoped attributes |
 | Tune bloom filters | Balance false positive rate vs index size |
-| Monitor performance | Track query latency, index size, blocks scanned |
+| Monitor performance | Track query latency, block scan counts, dedicated column usage |
 
-Search tags transform Tempo from a trace store into a trace search engine. Configure them thoughtfully, monitor their impact, and your team will find the right traces in seconds instead of minutes.
+Dedicated columns turn Tempo's Parquet blocks into a fast trace search engine. Configure them thoughtfully, monitor their impact, and your team will find the right traces in seconds instead of minutes.
 
 ---
 
