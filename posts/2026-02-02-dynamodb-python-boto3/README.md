@@ -229,14 +229,20 @@ def create_on_demand_table(dynamodb=None):
         AttributeDefinitions=[
             {'AttributeName': 'session_id', 'AttributeType': 'S'}
         ],
-        BillingMode='PAY_PER_REQUEST',  # On-demand pricing
+        BillingMode='PAY_PER_REQUEST'  # On-demand pricing
+    )
+
+    table.wait_until_exists()
+
+    # TTL must be enabled via a separate API call after the table is created
+    boto3.client('dynamodb').update_time_to_live(
+        TableName='Sessions',
         TimeToLiveSpecification={
             'Enabled': True,
             'AttributeName': 'expires_at'  # TTL attribute for auto-deletion
         }
     )
 
-    table.wait_until_exists()
     return table
 ```
 
@@ -633,7 +639,7 @@ def add_item_to_order(customer_id, order_id, new_item):
 def add_or_update_attribute(customer_id, order_id, attr_name, attr_value):
     """
     Add a new attribute or update existing one.
-    Uses if_not_exists to set default for new attributes.
+    SET creates the attribute if missing or overwrites it if present.
     """
     table = get_table()
 
@@ -1793,7 +1799,7 @@ Following best practices ensures your DynamoDB implementation is efficient, cost
 # DynamoDB best practices implementation
 import boto3
 from decimal import Decimal
-from datetime import datetime
+from datetime import datetime, timedelta
 import hashlib
 import json
 
