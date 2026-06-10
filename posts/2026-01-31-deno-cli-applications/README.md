@@ -691,7 +691,7 @@ main();
 ## Installation
 
 ```bash
-deno install --allow-read --allow-write -n {{ name }} ./mod.ts
+deno install --global --allow-read --allow-write -n {{ name }} ./mod.ts
 ```
 
 ## Usage
@@ -892,7 +892,7 @@ Users can install directly from a URL using Deno's install command.
 
 ```bash
 # Install from a URL (requires Deno runtime)
-deno install --allow-read --allow-write -n mycli https://example.com/mycli/mod.ts
+deno install --global --allow-read --allow-write -n mycli https://example.com/mycli/mod.ts
 ```
 
 ### Method 2: GitHub Releases
