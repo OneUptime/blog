@@ -895,17 +895,18 @@ jobs:
     steps:
       - checkout
 
-      # Generate week number for cache key
+      # Write the week number to a file so it can be used in cache keys
+      # CircleCI cache keys do not support shell variable expansion,
+      # so we rely on the checksum template to read the file contents
       - run:
           name: Generate Cache Key
-          command: |
-            echo "WEEK_NUM=$(date +%Y-%W)" >> $BASH_ENV
+          command: date +%Y-%W > cache-week.txt
 
-      # Include week number in cache key
+      # Include the week number via the checksum of the generated file
       - restore_cache:
           keys:
-            - deps-v1-${WEEK_NUM}-{{ checksum "package-lock.json" }}
-            - deps-v1-${WEEK_NUM}-
+            - deps-v1-{{ checksum "cache-week.txt" }}-{{ checksum "package-lock.json" }}
+            - deps-v1-{{ checksum "cache-week.txt" }}-
             - deps-v1-
 
       - run:
@@ -913,7 +914,7 @@ jobs:
           command: npm ci
 
       - save_cache:
-          key: deps-v1-${WEEK_NUM}-{{ checksum "package-lock.json" }}
+          key: deps-v1-{{ checksum "cache-week.txt" }}-{{ checksum "package-lock.json" }}
           paths:
             - node_modules
 ```
