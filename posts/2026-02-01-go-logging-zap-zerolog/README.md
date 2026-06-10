@@ -288,6 +288,7 @@ package main
 
 import (
     "os"
+    "time"
     "github.com/rs/zerolog"
 )
 
@@ -437,6 +438,7 @@ package main
 import (
     "context"
     "github.com/rs/zerolog"
+    "github.com/rs/zerolog/log"
     "go.opentelemetry.io/otel/trace"
 )
 
