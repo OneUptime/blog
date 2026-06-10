@@ -119,8 +119,8 @@ path "database/creds/{{identity.entity.metadata.environment}}-readonly" {
   capabilities = ["read"]
 }
 
-# Allow services with write permission to get read-write credentials
-# Only works if the entity has metadata write_access=true
+# Allow read-write credentials for the service's environment
+# Attach this policy only to entities that should have write access
 path "database/creds/{{identity.entity.metadata.environment}}-readwrite" {
   capabilities = ["read"]
 }
@@ -262,8 +262,8 @@ path "secret/data/teams/{{identity.entity.metadata.team}}/shared/*" {
   capabilities = ["read", "list"]
 }
 
-# Write access path - only accessible if entity has admin metadata
-# You would only add this alias to admin entities
+# Write access path under the team's admin subtree
+# Attach this policy only to entities that should have admin access
 path "secret/data/teams/{{identity.entity.metadata.team}}/admin/*" {
   capabilities = ["create", "read", "update", "delete", "list"]
 }
@@ -271,11 +271,12 @@ path "secret/data/teams/{{identity.entity.metadata.team}}/admin/*" {
 
 ### Pattern 3: Cross-Reference Group and Entity
 
-Access group information through entity membership.
+Access group information through entity membership. Note that Vault policy templating does not support wildcards in template variables, so you must reference a specific group by name or ID.
 
 ```hcl
-# Allow access based on the first group the entity belongs to
-path "secret/data/projects/{{identity.groups.ids.*.name}}/*" {
+# Allow access scoped by a specific group's metadata
+# The entity must be a member of the "developers" group for this to resolve
+path "secret/data/projects/{{identity.groups.names.developers.metadata.project}}/*" {
   capabilities = ["read", "list"]
 }
 ```
