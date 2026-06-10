@@ -270,8 +270,9 @@ TOKEN=$(vault read -field=token gcp/roleset/compute-viewer/token)
 curl -H "Authorization: Bearer $TOKEN" \
     "https://compute.googleapis.com/compute/v1/projects/your-project-id/zones/us-central1-a/instances"
 
-# Use with gcloud
-gcloud config set auth/access_token_file /dev/stdin <<< "$TOKEN"
+# Use with gcloud (write the token to a file, then point gcloud at it)
+echo "$TOKEN" > /tmp/gcp-access-token
+gcloud config set auth/access_token_file /tmp/gcp-access-token
 ```
 
 ## Configuring Static Accounts
@@ -483,9 +484,10 @@ resource "vault_gcp_secret_roleset" "bigquery_writer" {
 }
 
 # Read credentials for use in other resources
-data "vault_gcp_secret_roleset_credentials" "bigquery_creds" {
-  backend = vault_gcp_secret_roleset.bigquery_writer.backend
-  roleset = vault_gcp_secret_roleset.bigquery_writer.roleset
+# The Vault provider has no dedicated data source for GCP roleset credentials,
+# so use the generic secret data source pointed at the roleset's key endpoint.
+data "vault_generic_secret" "bigquery_creds" {
+  path = "${vault_gcp_secret_roleset.bigquery_writer.backend}/roleset/${vault_gcp_secret_roleset.bigquery_writer.roleset}/key"
 }
 ```
 
