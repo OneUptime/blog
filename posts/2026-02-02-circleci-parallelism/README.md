@@ -659,7 +659,7 @@ jobs:
       # Store test results even on failure for debugging
       - store_test_results:
           path: test-results
-        when: always
+          when: always
 ```
 
 ---
