@@ -615,4 +615,4 @@ Vector clocks form the foundation for many distributed systems including Amazon 
 - Leslie Lamport's original paper on logical clocks
 - The Dynamo paper from Amazon
 - Research on dotted version vectors and delta-state CRDTs
-- Practical implementations in databases like Riak and Cassandra
+- Practical implementations in databases like Riak and Voldemort
