@@ -665,9 +665,9 @@ def main():
     # Test scenarios
     scenarios = [
         {"name": "Normal operation", "error_rate": 0.0005},
-        {"name": "Slight degradation", "error_rate": 0.001},
-        {"name": "Moderate issues", "error_rate": 0.003},
-        {"name": "Significant problems", "error_rate": 0.006},
+        {"name": "Slight degradation", "error_rate": 0.0011},
+        {"name": "Moderate issues", "error_rate": 0.0031},
+        {"name": "Significant problems", "error_rate": 0.0061},
         {"name": "Major incident", "error_rate": 0.015},
         {"name": "Critical outage", "error_rate": 0.05},
     ]
@@ -712,9 +712,9 @@ SLO Window: 30 days
 Scenario                  Error Rate   Burn Rate    Days to Exhaust Alert Level
 --------------------------------------------------------------------------------
 Normal operation               0.05%        0.5x          60.0d None
-Slight degradation             0.10%        1.0x          30.0d INFO
-Moderate issues                0.30%        3.0x          10.0d WARNING
-Significant problems           0.60%        6.0x           5.0d CRITICAL (Medium)
+Slight degradation             0.11%        1.1x          27.3d INFO
+Moderate issues                0.31%        3.1x           9.7d WARNING
+Significant problems           0.61%        6.1x           4.9d CRITICAL (Medium)
 Major incident                 1.50%       15.0x           2.0d CRITICAL (Fast)
 Critical outage                5.00%       50.0x           0.6d CRITICAL (Fast)
 ```
