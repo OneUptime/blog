@@ -123,7 +123,7 @@ A real application needs to track multiple connected clients. We will create a c
 
 ```typescript
 // services/connections.ts - Managing multiple WebSocket connections
-// Using a Set provides O(1) add/delete operations for connection management
+// Using a Map provides O(1) add/delete operations for connection management
 
 interface Client {
   id: string;
@@ -377,7 +377,7 @@ const SECRET_KEY = await crypto.subtle.generateKey(
   ["sign", "verify"]
 );
 
-interface UserPayload {
+export interface UserPayload {
   userId: string;
   username: string;
   roles: string[];
@@ -506,9 +506,9 @@ const DEFAULT_CONFIG: HeartbeatConfig = {
 
 class HeartbeatManager {
   // Track pending pongs for each client
-  private pendingPongs: Map<string, NodeJS.Timeout> = new Map();
+  private pendingPongs: Map<string, number> = new Map();
   // Track ping intervals for each client
-  private pingIntervals: Map<string, NodeJS.Timeout> = new Map();
+  private pingIntervals: Map<string, number> = new Map();
   
   private config: HeartbeatConfig;
 
