@@ -139,13 +139,13 @@ SELECT zone_name, delivery_fee
 FROM delivery_zones
 WHERE ST_Contains(
     boundary::geometry,
-    ST_MakePoint(-73.9857, 40.7484)::geometry
+    ST_SetSRID(ST_MakePoint(-73.9857, 40.7484), 4326)
 );
 ```
 
-## Compound Spatial Indexes
+## Partial Spatial Indexes
 
-When queries filter on both spatial and non-spatial columns, a compound index can improve performance. PostGIS supports including regular columns alongside geometry columns.
+When queries filter on both spatial and non-spatial columns, partial indexes can improve performance by indexing only the rows matched by a predicate. This keeps the index smaller and faster for common query patterns.
 
 ```sql
 -- Table with category and location data
@@ -157,8 +157,8 @@ CREATE TABLE restaurants (
     rating DECIMAL(2,1)
 );
 
--- Create compound index for filtered spatial queries
--- First column should be the most selective filter
+-- Partial index for rows that have a cuisine_type set
+-- The predicate should match the queries that benefit from the index
 CREATE INDEX idx_restaurants_cuisine_location
 ON restaurants USING GIST (coordinates)
 WHERE cuisine_type IS NOT NULL;
