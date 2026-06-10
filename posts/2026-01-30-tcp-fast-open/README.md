@@ -167,27 +167,23 @@ server {
 
 ### Apache Configuration
 
-Enable TFO in Apache HTTP Server:
+Apache HTTP Server does not expose a configuration directive for TCP Fast Open; the `Listen` directive in Apache 2.4 only accepts an optional protocol argument and has no `fastopen=` parameter. To use TFO with Apache, rely on the kernel-level setting and (optionally) `AcceptFilter` to defer wakeup until data arrives:
 
 ```apache
 # In httpd.conf or virtual host configuration
-# Requires Apache 2.4.24 or later
 
-# Load the required module
-LoadModule mpm_event_module modules/mod_mpm_event.so
-
-# Enable TCP Fast Open
-# The value specifies the queue length
+# Defer accept until the request data arrives.
+# On Linux this uses TCP_DEFER_ACCEPT (it does not by itself enable TFO).
 AcceptFilter http data
 AcceptFilter https data
 
-# For specific virtual hosts
 <VirtualHost *:443>
     ServerName example.com
-    # Enable TFO with queue size
-    Listen 443 https fastopen=256
+    # ...
 </VirtualHost>
 ```
+
+Enable TFO globally for the server via the kernel sysctl shown above (`net.ipv4.tcp_fastopen=3`). Apache will then accept TFO connections on its listening sockets without any additional configuration.
 
 ## Client Configuration
 
@@ -336,6 +332,7 @@ package main
 import (
     "fmt"
     "net"
+    "os"
     "syscall"
 )
 
@@ -362,7 +359,7 @@ func DialTFO(network, address string, data []byte) (net.Conn, error) {
     err = syscall.SetsockoptInt(
         fd,
         syscall.IPPROTO_TCP,
-        23, // TCP_FASTOPEN_CONNECT
+        30, // TCP_FASTOPEN_CONNECT
         1,
     )
     if err != nil {
@@ -456,14 +453,20 @@ Servers accepting TFO connections may be vulnerable to resource exhaustion attac
 **Mitigation strategies:**
 
 ```bash
-# Limit TFO queue size to prevent resource exhaustion
-# This limits pending TFO connections
-sysctl -w net.ipv4.tcp_fastopen=0x203
+# Configure the TFO bitmap. The sysctl itself does not cap queue length;
+# per-listener queue length is set via the TCP_FASTOPEN setsockopt value
+# (or `fastopen=N` on the nginx listen directive).
+sysctl -w net.ipv4.tcp_fastopen=3
 
-# The hex value breaks down as:
-# 0x001 = Enable client TFO
-# 0x002 = Enable server TFO
-# 0x200 = Enable TFO with a cookie even if no SYN data
+# The bitmap values (from kernel ip-sysctl.txt) are:
+# 0x001 = Enable client TFO (active opens)
+# 0x002 = Enable server TFO (passive opens, cookie required)
+# 0x004 = Client: allow TFO without a cookie
+# 0x200 = Server: accept data-in-SYN even when no cookie is present
+#         (only use this on trusted networks - it weakens TFO's
+#         SYN flood amplification protections)
+# 0x400 = Server: enable TFO on all listeners by default,
+#         without an explicit TCP_FASTOPEN setsockopt call
 ```
 
 ```nginx
@@ -547,10 +550,10 @@ For a typical mobile connection with 100ms RTT, TFO saves 100ms per new connecti
 
 | Client | TFO Support |
 |--------|-------------|
-| Chrome | Enabled by default (Linux, ChromeOS) |
-| Firefox | Configurable via network.tcp.tcp_fastopen_enable |
+| Chrome / Chromium | Historically supported on Linux/ChromeOS; no longer enabled by default in current releases due to middlebox interference |
+| Firefox | Support removed in Firefox 87 (the `network.tcp.tcp_fastopen_enable` pref no longer takes effect) |
 | Safari | Supported on macOS and iOS |
-| curl | Supported with --tcp-fastopen flag |
+| curl | Supported with `--tcp-fastopen` flag |
 | wget | Not supported |
 
 ## Debugging TFO Connections
