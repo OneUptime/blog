@@ -122,10 +122,10 @@ console.log(`User name: ${userName}`);
 const userFields = await redis.hmget("user:1001", "name", "email");
 console.log(userFields); // Output: ["Alice Johnson", "alice@example.com"]
 
-// Get all fields and values
+// Get all fields and values (returned as a flat array of alternating field/value pairs)
 const fullUser = await redis.hgetall("user:1001");
 console.log(fullUser);
-// Output: { name: "Alice Johnson", email: "alice@example.com", ... }
+// Output: ["name", "Alice Johnson", "email", "alice@example.com", ...]
 
 // Check if a field exists
 const hasEmail = await redis.hexists("user:1001", "email");
@@ -172,7 +172,8 @@ console.log(`Last task: ${lastTask}`);
 // Useful for worker queues
 const result = await redis.blpop(5, "task_queue"); // 5 second timeout
 if (result) {
-  console.log(`Received task from ${result.key}: ${result.value}`);
+  const [key, value] = result;
+  console.log(`Received task from ${key}: ${value}`);
 }
 ```
 
@@ -454,14 +455,20 @@ async function getSession(
   const sessionKey = `${SESSION_PREFIX}${sessionId}`;
   const data = await redis.hgetall(sessionKey);
 
-  if (Object.keys(data).length === 0) {
+  if (data.length === 0) {
     return null;
   }
 
   // Refresh the session TTL on access
   await redis.expire(sessionKey, SESSION_TTL);
 
-  return data;
+  // hgetall returns a flat array of alternating field/value pairs;
+  // convert it to a plain object
+  const result: Record<string, string> = {};
+  for (let i = 0; i < data.length; i += 2) {
+    result[data[i]] = data[i + 1];
+  }
+  return result;
 }
 
 // Update session data
