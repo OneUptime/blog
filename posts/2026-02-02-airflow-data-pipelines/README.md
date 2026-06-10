@@ -840,7 +840,6 @@ from airflow.operators.empty import EmptyOperator
 from airflow.sensors.filesystem import FileSensor
 from airflow.sensors.external_task import ExternalTaskSensor
 from airflow.sensors.base import BaseSensorOperator
-from airflow.utils.decorators import apply_defaults
 
 # Custom sensor for checking API availability
 # This pattern is useful when you need to wait for external services
@@ -850,7 +849,6 @@ class ApiAvailabilitySensor(BaseSensorOperator):
     Pokes the endpoint until it returns a successful response.
     """
 
-    @apply_defaults
     def __init__(self, endpoint_url, expected_status=200, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.endpoint_url = endpoint_url
