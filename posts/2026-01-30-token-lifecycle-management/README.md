@@ -269,7 +269,10 @@ Token renewal extends access without requiring users to re-authenticate. The ref
 ```typescript
 // token-renewal.ts
 class TokenRenewal {
-  async refresh(refreshToken: string, context: { ip: string }): Promise<IssuedToken | null> {
+  async refresh(
+    refreshToken: string,
+    context: { ip: string; deviceFingerprint?: string }
+  ): Promise<IssuedToken | null> {
     const tokenHash = this.hashToken(refreshToken);
     const metadata = await this.tokenStore.findByHash(tokenHash);
 
@@ -314,7 +317,7 @@ class TokenRenewal {
 
   private async detectAnomaly(
     metadata: TokenMetadata,
-    context: { ip: string }
+    context: { ip: string; deviceFingerprint?: string }
   ): Promise<string | null> {
     // Check for impossible travel
     const lastAccess = await this.getLastAccess(metadata.userId);
