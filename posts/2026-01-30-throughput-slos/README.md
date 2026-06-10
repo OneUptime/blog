@@ -432,24 +432,29 @@ class ThroughputBurnRate:
 
     def time_to_exhaustion_hours(self, burn_rate, budget_remaining_percentage):
         # How long until error budget is exhausted at current burn rate
+        # At burn_rate=1, the budget is consumed exactly over the SLO window;
+        # at burn_rate=N, the remaining budget is consumed N times faster.
         if burn_rate <= 0:
             return float('inf')
 
-        total_budget_hours = self.slo_window_days * 24 * self.allowed_error_rate
-        remaining_hours = total_budget_hours * (budget_remaining_percentage / 100)
+        slo_window_hours = self.slo_window_days * 24
+        remaining_hours = slo_window_hours * (budget_remaining_percentage / 100)
 
         return round(remaining_hours / burn_rate, 1)
 
     def get_alert_severity(self, burn_rate):
-        # Determine alert severity based on burn rate
+        # Determine alert severity based on burn rate.
+        # Thresholds follow the multi-window burn-rate alerts in the
+        # Google SRE Workbook (Chapter 5): at a sustained burn rate, a
+        # 30-day budget is exhausted in (slo_window_days / burn_rate) days.
         if burn_rate >= 14.4:
-            # Will exhaust monthly budget in 2 hours
+            # 2% of a 30-day budget in 1 hour; exhausts budget in ~2 days
             return "critical"
         elif burn_rate >= 6:
-            # Will exhaust monthly budget in 5 hours
+            # 5% of a 30-day budget in 6 hours; exhausts budget in ~5 days
             return "high"
         elif burn_rate >= 3:
-            # Will exhaust monthly budget in 10 hours
+            # Exhausts a 30-day budget in ~10 days
             return "medium"
         elif burn_rate >= 1:
             # Consuming budget faster than sustainable
