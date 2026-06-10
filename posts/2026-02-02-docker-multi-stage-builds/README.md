@@ -83,7 +83,7 @@ WORKDIR /app
 
 # Only copy production dependencies
 COPY package*.json ./
-RUN npm ci --only=production && npm cache clean --force
+RUN npm ci --omit=dev && npm cache clean --force
 
 # Copy built artifacts from builder stage
 # This is the key - we only take what we need
@@ -540,7 +540,7 @@ FROM node:20-alpine AS production
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 COPY --from=builder /app/dist ./dist
 
@@ -584,7 +584,7 @@ RUN pip install safety pip-audit
 
 # Scan for known vulnerabilities
 # The || true prevents build failure - review results in CI
-RUN safety check -r requirements.txt --json > /tmp/safety-report.json || true
+RUN safety scan -r requirements.txt --output json > /tmp/safety-report.json || true
 RUN pip-audit --format json > /tmp/pip-audit-report.json || true
 
 # Stage 3: Production
