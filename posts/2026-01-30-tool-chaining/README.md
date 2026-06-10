@@ -253,7 +253,7 @@ The orchestrator is the brain of your tool chaining system. It decides which too
 // It handles planning, execution, and context management
 
 class ToolChainOrchestrator {
-  private tools: Map<string, ChainableTool>;
+  tools: Map<string, ChainableTool>;
   private context: ChainContext;
 
   constructor() {
@@ -322,6 +322,25 @@ class ToolChainOrchestrator {
       results,
       context: this.context
     };
+  }
+
+  // Execute a single step against the current context
+  async executeSingleStep(step: ExecutionPlanStep): Promise<ToolOutput> {
+    const tool = this.tools.get(step.toolName);
+
+    if (!tool) {
+      throw new Error(`Tool not found: ${step.toolName}`);
+    }
+
+    const input: ToolInput = {
+      params: this.resolveParams(step.params),
+      context: this.context
+    };
+
+    const output = await tool.execute(input);
+    this.context.results.set(tool.name, output);
+
+    return output;
   }
 
   // Resolve parameter references like ${previousTool.result.field}
@@ -1025,8 +1044,21 @@ class CachingToolExecutor {
 
   // Generate a cache key from tool name and parameters
   private generateCacheKey(toolName: string, params: Record<string, unknown>): string {
-    const paramsHash = JSON.stringify(params, Object.keys(params).sort());
-    return `${toolName}:${paramsHash}`;
+    // Use a recursive sort so nested keys are also normalized for stable hashing
+    const stableStringify = (value: unknown): string => {
+      if (value === null || typeof value !== 'object') {
+        return JSON.stringify(value);
+      }
+      if (Array.isArray(value)) {
+        return `[${value.map(stableStringify).join(',')}]`;
+      }
+      const keys = Object.keys(value as Record<string, unknown>).sort();
+      const entries = keys.map(
+        k => `${JSON.stringify(k)}:${stableStringify((value as Record<string, unknown>)[k])}`
+      );
+      return `{${entries.join(',')}}`;
+    };
+    return `${toolName}:${stableStringify(params)}`;
   }
 
   async executeWithCache(
