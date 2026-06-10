@@ -502,7 +502,7 @@ variable "custom_domain" {
 
 ## Conditional Validation Based on Other Variables
 
-While validation blocks cannot directly reference other variables, you can use locals for cross-variable validation:
+As of Terraform 1.9 (June 2024), validation blocks can reference other input variables, data sources, local values, and resources, as long as the values are known at plan time. This makes cross-variable validation straightforward:
 
 ```hcl
 variable "enable_encryption" {
@@ -515,17 +515,24 @@ variable "kms_key_arn" {
   description = "KMS key ARN for encryption"
   type        = string
   default     = ""
-}
 
-locals {
-  # Cross-variable validation
-  validate_encryption = var.enable_encryption && var.kms_key_arn == "" ? tobool("ERROR: kms_key_arn is required when encryption is enabled") : true
+  validation {
+    condition     = !var.enable_encryption || var.kms_key_arn != ""
+    error_message = "kms_key_arn is required when enable_encryption is true."
+  }
 }
-
-# Alternative approach using a validation in a null_resource or check block (Terraform 1.5+)
 ```
 
-For Terraform 1.5 and later, use check blocks for cross-variable validation:
+For Terraform versions before 1.9, validation conditions could only reference the variable being validated. A common workaround was to abuse `tobool()` inside a local, which errors on any string other than `"true"` or `"false"`:
+
+```hcl
+locals {
+  # Legacy workaround for Terraform < 1.9
+  validate_encryption = var.enable_encryption && var.kms_key_arn == "" ? tobool("ERROR: kms_key_arn is required when encryption is enabled") : true
+}
+```
+
+Another option, available since Terraform 1.5, is a top-level `check` block. Unlike validation blocks, check assertions emit warnings rather than halting execution, which makes them better suited for post-apply functional checks than for blocking invalid input:
 
 ```hcl
 check "encryption_config" {
@@ -676,7 +683,7 @@ variable "log_retention_days" {
   default     = 30
 
   validation {
-    condition     = contains([1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1827, 3653], var.log_retention_days)
+    condition     = contains([1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1096, 1827, 2192, 2557, 2922, 3288, 3653], var.log_retention_days)
     error_message = "Log retention must be a valid CloudWatch retention period."
   }
 }
