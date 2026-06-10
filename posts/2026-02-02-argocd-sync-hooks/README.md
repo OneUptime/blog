@@ -31,7 +31,7 @@ flowchart LR
 
 ### Hook Phases
 
-ArgoCD provides five hook phases for running custom logic at different stages:
+ArgoCD provides the following hook phases for running custom logic at different stages of a sync operation:
 
 | Phase | When It Runs | Common Use Cases |
 |-------|--------------|------------------|
@@ -40,6 +40,8 @@ ArgoCD provides five hook phases for running custom logic at different stages:
 | PostSync | After all manifests are healthy | Smoke tests, notifications |
 | SyncFail | When sync operation fails | Rollback triggers, alerts |
 | Skip | Never executed by sync | Manual-only resources |
+
+ArgoCD also supports `PreDelete` and `PostDelete` hook phases (the latter added in v2.10) that run during Application deletion rather than sync.
 
 ## Creating Your First Pre-Sync Hook
 
@@ -567,8 +569,10 @@ ArgoCD maps Helm hooks to its own hook system:
 |-----------|--------------|
 | pre-install, pre-upgrade | PreSync |
 | post-install, post-upgrade | PostSync |
-| pre-delete | PreSync (on delete) |
-| post-delete | PostSync (on delete) |
+| pre-delete | PreDelete |
+| post-delete | PostDelete |
+
+Note that if you define any ArgoCD hooks on a resource, Helm hooks on that same resource are ignored — the two systems are mutually exclusive per resource.
 
 ## Monitoring Hook Execution
 
@@ -589,18 +593,17 @@ kubectl logs -n production job/db-migration
 
 ### Prometheus Metrics
 
-ArgoCD exposes hook metrics for monitoring:
+ArgoCD does not expose hook-specific metrics directly, but you can monitor sync operations (which include hook execution) using ArgoCD's application controller metrics:
 
 ```promql
-# Hook execution duration
-argocd_app_sync_hook_duration_seconds_bucket{
-  name="myapp",
-  phase="PreSync"
-}
+# Sync operations by outcome (phase label is the sync result: Succeeded, Failed, Error, etc.)
+argocd_app_sync_total{name="myapp", phase="Succeeded"}
 
-# Failed hooks count
-argocd_app_sync_hook_failed_total{name="myapp"}
+# Total time spent on sync operations
+argocd_app_sync_duration_seconds_total{name="myapp"}
 ```
+
+For finer-grained visibility into hook Jobs themselves, scrape `kube-state-metrics` and watch the Job status metrics (e.g. `kube_job_status_failed`, `kube_job_status_succeeded`) for the hook Job names.
 
 ## Common Pitfalls and Solutions
 
