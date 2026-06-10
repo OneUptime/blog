@@ -382,11 +382,19 @@ MIDDLEWARE = [
 ]
 
 # Enable WhiteNoise compression and caching
-# This adds far-future cache headers and gzip compression
-STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+# This adds far-future cache headers and gzip/brotli compression
+# Use the STORAGES setting (Django 4.2+; required in Django 5.1+)
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
 
-# Alternative: Use manifest storage without compression
-# STATICFILES_STORAGE = 'whitenoise.storage.CompressedStaticFilesStorage'
+# Alternative: Use compression without the hashed manifest
+# "BACKEND": "whitenoise.storage.CompressedStaticFilesStorage",
 ```
 
 ### Nginx Configuration for Production
@@ -478,12 +486,17 @@ AWS_S3_OBJECT_PARAMETERS = {
 # Prevent overwriting files with same name
 AWS_S3_FILE_OVERWRITE = False
 
-# Use S3 for static files
-STATICFILES_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
+# Use S3 for both static files and media files via the STORAGES setting
+# (Django 4.2+; STATICFILES_STORAGE / DEFAULT_FILE_STORAGE were removed in 5.1)
+STORAGES = {
+    "default": {
+        "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
+    },
+    "staticfiles": {
+        "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
+    },
+}
 STATIC_URL = f'https://{AWS_S3_CUSTOM_DOMAIN}/static/'
-
-# Use S3 for media files
-DEFAULT_FILE_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
 MEDIA_URL = f'https://{AWS_S3_CUSTOM_DOMAIN}/media/'
 ```
 
@@ -544,9 +557,15 @@ class PrivateMediaStorage(S3Boto3Storage):
 ```python
 # settings.py
 
-# Use custom storage backends
-STATICFILES_STORAGE = 'myproject.storage_backends.StaticStorage'
-DEFAULT_FILE_STORAGE = 'myproject.storage_backends.MediaStorage'
+# Use custom storage backends via the STORAGES setting
+STORAGES = {
+    "default": {
+        "BACKEND": "myproject.storage_backends.MediaStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "myproject.storage_backends.StaticStorage",
+    },
+}
 
 # For private files, use in specific model fields
 # file = models.FileField(storage=PrivateMediaStorage())
@@ -571,9 +590,15 @@ GS_PROJECT_ID = os.environ.get('GS_PROJECT_ID')
 # Path to service account credentials JSON file
 GS_CREDENTIALS = os.environ.get('GOOGLE_APPLICATION_CREDENTIALS')
 
-# Use GCS for file storage
-DEFAULT_FILE_STORAGE = 'storages.backends.gcloud.GoogleCloudStorage'
-STATICFILES_STORAGE = 'storages.backends.gcloud.GoogleCloudStorage'
+# Use GCS for file storage via the STORAGES setting
+STORAGES = {
+    "default": {
+        "BACKEND": "storages.backends.gcloud.GoogleCloudStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "storages.backends.gcloud.GoogleCloudStorage",
+    },
+}
 
 # Custom domain (if using Cloud CDN)
 GS_CUSTOM_ENDPOINT = f'https://storage.googleapis.com/{GS_BUCKET_NAME}'
@@ -953,12 +978,19 @@ def secure_filename(instance, filename):
 ```python
 # settings.py
 
-# Use ManifestStaticFilesStorage for cache-busting
-# This appends content hash to filenames
-STATICFILES_STORAGE = 'django.contrib.staticfiles.storage.ManifestStaticFilesStorage'
+# Use ManifestStaticFilesStorage for cache-busting (appends content hash to filenames)
+# Configure via the STORAGES setting (Django 4.2+; required in 5.1+)
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "django.contrib.staticfiles.storage.ManifestStaticFilesStorage",
+    },
+}
 
-# For WhiteNoise with compression
-STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+# For WhiteNoise with compression, swap the staticfiles backend:
+# "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
 
 # Configure file upload handlers for large files
 FILE_UPLOAD_HANDLERS = [
