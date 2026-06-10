@@ -524,7 +524,7 @@ flowchart TB
         FA -->|30 days no access| IA[Infrequent Access Tier<br/>$0.0125/GB]
         IA -->|Access detected| FA
 
-        IA -->|90 days no access| AA[Archive Access Tier<br/>$0.004/GB]
+        IA -->|90 days no access| AA[Archive Access Tier<br/>$0.0036/GB]
         AA -->|Access detected| FA
 
         AA -->|180 days no access| DA[Deep Archive Access Tier<br/>$0.00099/GB]
@@ -657,8 +657,8 @@ class ArchiveManager:
         """
         Initiate restoration of an archived object.
 
-        Tiers:
-        - Expedited: 1-5 minutes (Glacier Instant/Flexible only)
+        Tiers (Glacier Flexible Retrieval):
+        - Expedited: 1-5 minutes (Glacier Flexible Retrieval only)
         - Standard: 3-5 hours
         - Bulk: 5-12 hours
         """
@@ -734,7 +734,8 @@ class ArchiveManager:
 
         for page in paginator.paginate(Bucket=self.bucket_name, Prefix=prefix):
             for obj in page.get('Contents', []):
-                if obj.get('StorageClass') in ['GLACIER', 'DEEP_ARCHIVE', 'GLACIER_IR']:
+                # GLACIER_IR objects are accessible via GetObject directly and do not require restore
+                if obj.get('StorageClass') in ['GLACIER', 'DEEP_ARCHIVE']:
                     result = self.initiate_restore(obj['Key'], days, tier)
                     results.append(result)
 
@@ -875,7 +876,7 @@ AWS_TIERS = {
     'STANDARD_IA': StorageTier('Standard-IA', 0.0125, 0.01, 30, 0.0125),
     'ONEZONE_IA': StorageTier('One Zone-IA', 0.01, 0.01, 30, 0.01),
     'GLACIER_IR': StorageTier('Glacier Instant', 0.004, 0.03, 90, 0.004),
-    'GLACIER': StorageTier('Glacier Flexible', 0.0036, 0.03, 90, 0.0036),
+    'GLACIER': StorageTier('Glacier Flexible', 0.0036, 0.01, 90, 0.0036),
     'DEEP_ARCHIVE': StorageTier('Deep Archive', 0.00099, 0.02, 180, 0.00099),
 }
 
