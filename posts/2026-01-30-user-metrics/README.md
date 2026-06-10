@@ -377,7 +377,9 @@ class CoreWebVitalsMonitor {
 
             // Stop observing LCP after user interaction
             // LCP is only valid before first input
-            ['keydown', 'click', 'scroll'].forEach(type => {
+            // Note: don't include 'scroll' here — it can fire before the
+            // browser dispatches the final LCP entry, cutting LCP short
+            ['keydown', 'click', 'pointerdown'].forEach(type => {
                 window.addEventListener(type, () => {
                     lcpObserver.disconnect();
                 }, { once: true, capture: true });
@@ -393,20 +395,46 @@ class CoreWebVitalsMonitor {
         // CLS measures visual stability
         // Good: < 0.1, Needs Improvement: < 0.25, Poor: >= 0.25
 
+        // CLS is the largest "session window" of layout shifts, where a
+        // session window is at most 5s of activity with no gaps > 1s.
+        // This matches the current web.dev specification.
+        let sessionValue = 0;
+        let sessionEntries = [];
+
         try {
             const clsObserver = new PerformanceObserver((entryList) => {
                 for (const entry of entryList.getEntries()) {
                     // Only count shifts without recent user input
                     // hadRecentInput filters out intentional layout changes
-                    if (!entry.hadRecentInput) {
-                        this.clsValue += entry.value;
-                        this.clsEntries.push({
-                            value: entry.value,
-                            time: entry.startTime,
-                            sources: entry.sources
-                                ? entry.sources.map(s => s.node?.tagName)
+                    if (entry.hadRecentInput) continue;
+
+                    const firstEntry = sessionEntries[0];
+                    const lastEntry = sessionEntries[sessionEntries.length - 1];
+
+                    // Start a new session window if the gap is > 1s
+                    // or the window is already > 5s long
+                    if (
+                        sessionEntries.length &&
+                        (entry.startTime - lastEntry.startTime > 1000 ||
+                         entry.startTime - firstEntry.startTime > 5000)
+                    ) {
+                        sessionValue = 0;
+                        sessionEntries = [];
+                    }
+
+                    sessionValue += entry.value;
+                    sessionEntries.push(entry);
+
+                    // CLS is the maximum session value seen so far
+                    if (sessionValue > this.clsValue) {
+                        this.clsValue = sessionValue;
+                        this.clsEntries = sessionEntries.map(e => ({
+                            value: e.value,
+                            time: e.startTime,
+                            sources: e.sources
+                                ? e.sources.map(s => s.node?.tagName)
                                 : []
-                        });
+                        }));
                     }
                 }
 
@@ -443,8 +471,8 @@ class CoreWebVitalsMonitor {
                     });
                 }
 
-                // Calculate INP as the 98th percentile of interactions
-                // For most pages, this equals the worst interaction
+                // Calculate INP: worst interaction for short sessions, or
+                // skip the top 1-per-50 outliers for longer sessions
                 const inp = this.calculateINP();
 
                 if (inp !== null) {
@@ -467,32 +495,40 @@ class CoreWebVitalsMonitor {
     }
 
     calculateINP() {
-        // INP is calculated as the 98th percentile of interaction durations
-        // This typically represents the worst interaction on most pages
+        // INP rule (per web.dev):
+        //   - Pages with < 50 interactions: report the longest interaction
+        //   - Pages with >= 50 interactions: drop the top floor(N/50)
+        //     interactions and report the next-longest
+        // This approximates the 98th percentile while being robust to
+        // single-outlier interactions on long-lived pages.
 
         if (this.inpEntries.length === 0) {
             return null;
         }
 
         // Group by interactionId to get unique interactions
+        // (a single interaction may produce multiple event entries)
         const interactionMap = new Map();
         for (const entry of this.inpEntries) {
+            // Ignore entries with no interactionId (non-interaction events)
+            if (!entry.interactionId) continue;
             const existing = interactionMap.get(entry.interactionId);
             if (!existing || entry.duration > existing.duration) {
                 interactionMap.set(entry.interactionId, entry);
             }
         }
 
+        if (interactionMap.size === 0) {
+            return null;
+        }
+
+        // Sort interactions descending by duration so index 0 is the worst
         const interactions = Array.from(interactionMap.values());
         interactions.sort((a, b) => b.duration - a.duration);
 
-        // 98th percentile calculation
-        const index = Math.min(
-            interactions.length - 1,
-            Math.floor(interactions.length * 0.98)
-        );
-
-        return interactions[index]?.duration || null;
+        // Skip the top floor(N/50) outliers
+        const skip = Math.floor(interactions.length / 50);
+        return interactions[skip]?.duration ?? null;
     }
 
     rateLCP(value) {
@@ -1242,7 +1278,7 @@ Here is a Python service that collects, processes, and stores user metrics:
 from fastapi import FastAPI, Request, Response
 from pydantic import BaseModel
 from typing import List, Dict, Optional, Any
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 from prometheus_client import (
     Counter, Histogram, Gauge,
     generate_latest, CONTENT_TYPE_LATEST
@@ -1382,6 +1418,8 @@ class JourneyEvent(BaseModel):
     timestamp: int
     step: Optional[str] = None
     stepNumber: Optional[int] = None
+    elapsedFromStart: Optional[int] = None
+    elapsedFromPrevious: Optional[int] = None
     outcome: Optional[str] = None
     reason: Optional[str] = None
     lastStep: Optional[str] = None
@@ -1583,7 +1621,7 @@ async def prometheus_metrics():
 @app.get("/health")
 async def health_check():
     """Health check endpoint for load balancers."""
-    return {"status": "healthy", "timestamp": datetime.utcnow().isoformat()}
+    return {"status": "healthy", "timestamp": datetime.now(timezone.utc).isoformat()}
 
 
 # Run with: uvicorn user_metrics_service:app --host 0.0.0.0 --port 8000
