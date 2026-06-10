@@ -805,6 +805,7 @@ def validate_dependencies(graph: TaskGraph) -> list[str]:
         for dep_id in task.dependencies:
             if dep_id not in graph.tasks:
                 errors.append(f"Task {task.id} depends on missing task {dep_id}")
+                continue
 
             # Check for circular dependencies
             if has_circular_dependency(graph, task.id, dep_id, set()):
@@ -814,8 +815,10 @@ def validate_dependencies(graph: TaskGraph) -> list[str]:
 
 def has_circular_dependency(graph: TaskGraph, start: str, current: str, visited: set) -> bool:
     """Detect circular dependencies using DFS."""
+    if current == start:
+        return True
     if current in visited:
-        return current == start
+        return False
 
     visited.add(current)
     for dep_id in graph.tasks[current].dependencies:
