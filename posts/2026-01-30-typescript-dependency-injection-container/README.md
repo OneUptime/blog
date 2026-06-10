@@ -754,10 +754,10 @@ export { Container, InjectionToken, Injectable, Inject, Token, Scope };
 
 | Feature | Custom Container | tsyringe | InversifyJS |
 |---------|-----------------|----------|-------------|
-| Bundle size | ~2KB | ~8KB | ~50KB |
+| Bundle size (minified) | ~2KB | ~13KB | ~65KB |
 | Decorators required | Optional | Yes | Yes |
 | Auto-wiring | Yes | Yes | Yes |
-| Scopes | All | Singleton, Transient | All |
+| Scopes | All | Transient, Singleton, ResolutionScoped, ContainerScoped | All |
 | Child containers | Yes | Yes | Yes |
 | Lazy injection | Manual | Yes | Yes |
 | Circular dependency detection | Manual | Yes | Yes |
