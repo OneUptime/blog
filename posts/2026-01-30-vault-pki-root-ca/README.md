@@ -88,7 +88,7 @@ This creates a self-signed root certificate. The private key never leaves Vault.
 
 ### Option 2: Generate CSR for External Signing
 
-If you have an existing root CA or need an external CA to sign:
+If you need an external CA to sign Vault's CA certificate (Vault then operates as an intermediate of that external root):
 
 ```bash
 # Generate a CSR
@@ -273,7 +273,7 @@ vault read pki/crl/rotate
 Use Vault Agent or cert-manager for automatic renewal:
 
 ```bash
-# Check certificate expiration
+# Clean up expired certificates from storage
 vault write pki/tidy \
     tidy_cert_store=true \
     tidy_revoked_certs=true \
@@ -295,6 +295,8 @@ spec:
       kubernetes:
         role: cert-manager
         mountPath: /v1/auth/kubernetes
+        serviceAccountRef:
+          name: cert-manager
 ```
 
 ## Best Practices
