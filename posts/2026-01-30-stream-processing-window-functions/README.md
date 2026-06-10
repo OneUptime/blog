@@ -543,7 +543,8 @@ Configure how long windows stay open for late arrivals.
  * - Late events with t < 5min arriving before t=10min trigger re-emission
  * - Events arriving after t=10min are dropped (or sent to side output)
  */
-DataStream<WindowStats> withLateness = metricsStream
+// Note: must be SingleOutputStreamOperator (not DataStream) to call getSideOutput
+SingleOutputStreamOperator<PartialStats> withLateness = metricsStream
     .keyBy(Metric::getName)
     .window(TumblingEventTimeWindows.of(Time.minutes(5)))
     .allowedLateness(Time.minutes(5))  // Accept late data for 5 extra minutes
