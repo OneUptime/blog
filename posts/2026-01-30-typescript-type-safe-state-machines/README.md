@@ -668,7 +668,7 @@ Wrapping the transition logic in a class provides a cleaner API and enables feat
 ```typescript
 type Listener<St> = (state: St) => void;
 
-class StateMachine<State, Event> {
+class StateMachine<State extends { type: string }, Event> {
   private state: State;
   private listeners: Set<Listener<State>> = new Set();
 
@@ -739,7 +739,7 @@ Here is a comparison of building state machines manually versus using XState:
 | Feature | Manual Implementation | XState |
 |---------|----------------------|--------|
 | Type Safety | Full control over types | Built-in TypeScript support |
-| Bundle Size | Zero dependencies | ~15KB minified |
+| Bundle Size | Zero dependencies | ~17KB minified + gzipped |
 | Visualization | None | XState Visualizer tool |
 | DevTools | Custom implementation | Chrome extension available |
 | Hierarchical States | Manual implementation | Built-in support |
@@ -747,7 +747,7 @@ Here is a comparison of building state machines manually versus using XState:
 | Guards | Manual if statements | Declarative configuration |
 | Actions/Side Effects | Manual handling | Built-in action system |
 | Learning Curve | Lower | Moderate |
-| Testing | Standard unit tests | @xstate/test package |
+| Testing | Standard unit tests | @xstate/graph package |
 
 ## XState Integration Basics
 
@@ -1032,7 +1032,7 @@ describe("orderTransition", () => {
 
 ## Visualizing State Machines
 
-One advantage of formal state machines is the ability to generate visual diagrams. XState provides an online visualizer at stately.ai/viz.
+One advantage of formal state machines is the ability to generate visual diagrams. XState provides an online editor and visualizer at stately.ai/editor.
 
 For manual state machines, you can generate Mermaid diagrams:
 
