@@ -519,10 +519,9 @@ go test -v -timeout 30m -run TestVpcCreation
 
 # Run tests in parallel (default)
 go test -v -timeout 30m -parallel 4
-
-# Skip destroy for debugging
-SKIP_terraform_destroy=true go test -v -timeout 30m
 ```
+
+To skip destroy while iterating locally, wrap your stages with `test_structure.RunTestStage` and set `SKIP_<stage>=true` — see the Terratest [iterating locally using test stages](https://terratest.gruntwork.io/docs/testing-best-practices/iterating-locally-using-test-stages/) guide. A bare `defer terraform.Destroy(...)` is not affected by any `SKIP_*` environment variable.
 
 ## CI/CD Integration
 
@@ -642,7 +641,7 @@ Prevent naming collisions in shared test accounts:
 ```go
 import "github.com/gruntwork-io/terratest/modules/random"
 
-uniqueId := random.UniqueId()
+uniqueId := random.UniqueID()
 vpcName := fmt.Sprintf("test-vpc-%s", uniqueId)
 ```
 
