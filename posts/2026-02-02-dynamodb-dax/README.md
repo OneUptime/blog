@@ -122,8 +122,8 @@ aws dax create-cluster \
     --node-type dax.r5.large \
     --replication-factor 3 \
     --iam-role-arn arn:aws:iam::123456789012:role/DAXServiceRole \
-    --subnet-group my-dax-subnet-group \
-    --parameter-group my-dax-params \
+    --subnet-group-name my-dax-subnet-group \
+    --parameter-group-name my-dax-params \
     --sse-specification Enabled=true \
     --tags Key=Environment,Value=Production
 ```
@@ -247,26 +247,31 @@ The DAX SDK is a drop-in replacement for the DynamoDB SDK. Update your client in
 
 ```bash
 # Install the DAX client for Node.js
-npm install amazon-dax-client @aws-sdk/client-dynamodb
+# amazon-dax-client integrates with AWS SDK for JavaScript v2
+npm install amazon-dax-client aws-sdk
 ```
 
 ### Basic DAX Client Setup
 
-The DAX client uses the cluster discovery endpoint to find all nodes. Connection pooling and failover happen automatically.
+The DAX client uses the cluster discovery endpoint to find all nodes. Connection pooling and failover happen automatically. The official `amazon-dax-client` package is built on top of AWS SDK for JavaScript v2 and plugs into the standard `DynamoDB.DocumentClient` via its `service` option.
 
 ```javascript
-// Import the DAX client - it wraps the standard DynamoDB client
+// Import the DAX client and AWS SDK v2
+// amazon-dax-client is designed to work with aws-sdk v2
 const AmazonDaxClient = require('amazon-dax-client');
-const { DynamoDBDocumentClient, GetCommand, PutCommand, QueryCommand } = require('@aws-sdk/lib-dynamodb');
+const AWS = require('aws-sdk');
 
 // DAX endpoint from your cluster configuration
-// Format: dax://cluster-name.region.amazonaws.com
+// Format: dax://<cluster-id>.<random>.dax-clusters.<region>.amazonaws.com
+// Use daxs:// when the cluster has TLS endpoint encryption enabled
 const DAX_ENDPOINT = 'dax://my-dax-cluster.abc123.dax-clusters.us-east-1.amazonaws.com';
+
+AWS.config.update({ region: 'us-east-1' });
 
 // Create DAX client with connection settings
 // maxRetries handles transient failures
 // connectTimeout prevents hanging on network issues
-const daxClient = new AmazonDaxClient({
+const dax = new AmazonDaxClient({
   endpoints: [DAX_ENDPOINT],
   region: 'us-east-1',
   maxRetries: 3,
@@ -274,27 +279,21 @@ const daxClient = new AmazonDaxClient({
   requestTimeout: 60000,
 });
 
-// Wrap with DocumentClient for easier object handling
-const docClient = DynamoDBDocumentClient.from(daxClient, {
-  marshallOptions: {
-    removeUndefinedValues: true,
-  },
-});
+// Wire DAX into the DocumentClient by passing it as the underlying service
+const docClient = new AWS.DynamoDB.DocumentClient({ service: dax });
 
 // GetItem example - served from cache on subsequent calls
 async function getUser(userId) {
-  const command = new GetCommand({
+  const result = await docClient.get({
     TableName: 'Users',
     Key: { userId },
-  });
-
-  const result = await docClient.send(command);
+  }).promise();
   return result.Item;
 }
 
 // PutItem example - writes to DynamoDB and updates cache
 async function createUser(user) {
-  const command = new PutCommand({
+  await docClient.put({
     TableName: 'Users',
     Item: {
       userId: user.id,
@@ -302,27 +301,24 @@ async function createUser(user) {
       name: user.name,
       createdAt: new Date().toISOString(),
     },
-  });
-
-  await docClient.send(command);
+  }).promise();
   return user;
 }
 
 // Query example - results cached based on query-ttl-millis
 async function getUsersByStatus(status) {
-  const command = new QueryCommand({
+  const result = await docClient.query({
     TableName: 'Users',
     IndexName: 'StatusIndex',
-    KeyConditionExpression: 'status = :status',
-    ExpressionAttributeValues: {
-      ':status': status,
-    },
-  });
-
-  const result = await docClient.send(command);
+    KeyConditionExpression: '#s = :status',
+    ExpressionAttributeNames: { '#s': 'status' },
+    ExpressionAttributeValues: { ':status': status },
+  }).promise();
   return result.Items;
 }
 ```
+
+> Note: At the time of writing, the official `@aws-sdk/client-dax` package in AWS SDK for JavaScript v3 only supports control-plane operations (managing clusters). For data-plane access through DAX (GetItem, PutItem, Query, and so on), use `amazon-dax-client` with AWS SDK v2 as shown above, or use a community v3 port such as `amazon-dax-client-v3`.
 
 ### Fallback to DynamoDB
 
@@ -330,36 +326,36 @@ A resilient application should fall back to DynamoDB if DAX becomes unavailable.
 
 ```javascript
 const AmazonDaxClient = require('amazon-dax-client');
-const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
-const { DynamoDBDocumentClient, GetCommand } = require('@aws-sdk/lib-dynamodb');
+const AWS = require('aws-sdk');
 
-// Factory function creates appropriate client based on availability
+// Factory class creates appropriate client based on availability
 // Checks DAX health and falls back to DynamoDB on failure
 class ResilientDynamoClient {
   constructor(config) {
     this.daxEndpoint = config.daxEndpoint;
     this.region = config.region;
     this.useDax = true;
-    this.daxClient = null;
-    this.dynamoClient = null;
+    this.daxDocClient = null;
+    this.dynamoDocClient = null;
     this.healthCheckInterval = null;
   }
 
   // Initialize both clients - DAX as primary, DynamoDB as fallback
   async initialize() {
-    // Create direct DynamoDB client as fallback
-    const rawDynamoClient = new DynamoDBClient({ region: this.region });
-    this.dynamoClient = DynamoDBDocumentClient.from(rawDynamoClient);
+    AWS.config.update({ region: this.region });
 
-    // Try to create DAX client
+    // Create direct DynamoDB DocumentClient as fallback
+    this.dynamoDocClient = new AWS.DynamoDB.DocumentClient();
+
+    // Try to create DAX-backed DocumentClient
     try {
-      const rawDaxClient = new AmazonDaxClient({
+      const dax = new AmazonDaxClient({
         endpoints: [this.daxEndpoint],
         region: this.region,
         maxRetries: 2,
         connectTimeout: 3000,
       });
-      this.daxClient = DynamoDBDocumentClient.from(rawDaxClient);
+      this.daxDocClient = new AWS.DynamoDB.DocumentClient({ service: dax });
 
       // Verify DAX is reachable with a simple operation
       await this.healthCheck();
@@ -375,18 +371,18 @@ class ResilientDynamoClient {
 
   // Health check determines which client to use
   async healthCheck() {
-    if (!this.daxClient) return;
+    if (!this.daxDocClient) return;
 
     try {
-      // Simple DescribeTable call to verify connectivity
-      await this.daxClient.send(new GetCommand({
+      // Lightweight GetItem against a known key to verify connectivity
+      await this.daxDocClient.get({
         TableName: 'HealthCheck',
         Key: { id: 'ping' },
-      }));
+      }).promise();
       this.useDax = true;
     } catch (error) {
-      // Ignore item not found errors - we just want connectivity check
-      if (error.name === 'ResourceNotFoundException') {
+      // Ignore table-not-found and item-not-found - we just want connectivity check
+      if (error.code === 'ResourceNotFoundException') {
         this.useDax = true;
       } else {
         console.warn('DAX health check failed:', error.message);
@@ -397,25 +393,26 @@ class ResilientDynamoClient {
 
   // Get the active client - DAX if available, otherwise DynamoDB
   getClient() {
-    return this.useDax && this.daxClient ? this.daxClient : this.dynamoClient;
+    return this.useDax && this.daxDocClient ? this.daxDocClient : this.dynamoDocClient;
   }
 
-  // Execute command with automatic fallback on DAX failure
-  async send(command) {
-    if (this.useDax && this.daxClient) {
+  // Execute a DocumentClient operation with automatic fallback on DAX failure
+  // method is one of 'get', 'put', 'update', 'delete', 'query', 'scan', etc.
+  async execute(method, params) {
+    if (this.useDax && this.daxDocClient) {
       try {
-        return await this.daxClient.send(command);
+        return await this.daxDocClient[method](params).promise();
       } catch (error) {
         // Only fallback on connection errors, not application errors
         if (this.isConnectionError(error)) {
           console.warn('DAX request failed, falling back to DynamoDB:', error.message);
           this.useDax = false;
-          return await this.dynamoClient.send(command);
+          return await this.dynamoDocClient[method](params).promise();
         }
         throw error;
       }
     }
-    return await this.dynamoClient.send(command);
+    return await this.dynamoDocClient[method](params).promise();
   }
 
   // Determine if error is a connection issue vs application error
@@ -428,7 +425,9 @@ class ResilientDynamoClient {
       'ENOTFOUND',
     ];
     return connectionErrors.some(e =>
-      error.name?.includes(e) || error.message?.includes(e)
+      (error.name && error.name.includes(e)) ||
+      (error.code && error.code.includes(e)) ||
+      (error.message && error.message.includes(e))
     );
   }
 
@@ -448,10 +447,10 @@ const client = new ResilientDynamoClient({
 
 await client.initialize();
 
-const result = await client.send(new GetCommand({
+const result = await client.execute('get', {
   TableName: 'Users',
   Key: { userId: '123' },
-}));
+});
 ```
 
 ## Connecting to DAX from Python
@@ -688,49 +687,46 @@ Query cache results can become stale because writes do not invalidate query cach
 ```javascript
 // Cache invalidation strategies for DAX
 // Different approaches for different consistency requirements
+// daxDocClient and dynamoDocClient are AWS.DynamoDB.DocumentClient instances
+// (one backed by amazon-dax-client, one direct to DynamoDB)
 
 class CacheAwareRepository {
-  constructor(daxClient, dynamoClient, tableName) {
-    this.daxClient = daxClient;
-    this.dynamoClient = dynamoClient; // Direct DynamoDB for consistent reads
+  constructor(daxDocClient, dynamoDocClient, tableName) {
+    this.daxDocClient = daxDocClient;
+    this.dynamoDocClient = dynamoDocClient; // Direct DynamoDB for consistent reads
     this.tableName = tableName;
   }
 
   // Standard read - uses DAX cache
   // Good for: frequently accessed, tolerance for slightly stale data
   async getItem(key) {
-    const command = new GetCommand({
+    return await this.daxDocClient.get({
       TableName: this.tableName,
       Key: key,
-    });
-    return await this.daxClient.send(command);
+    }).promise();
   }
 
-  // Consistent read - bypasses DAX cache
+  // Consistent read - DAX passes these through to DynamoDB and does not cache
   // Good for: critical data that must be current
   async getItemConsistent(key) {
-    const command = new GetCommand({
+    // Going direct to DynamoDB avoids the extra DAX hop for reads that won't be cached
+    return await this.dynamoDocClient.get({
       TableName: this.tableName,
       Key: key,
       ConsistentRead: true,
-    });
-    // Use direct DynamoDB client for consistent reads
-    // DAX does not cache ConsistentRead results
-    return await this.dynamoClient.send(command);
+    }).promise();
   }
 
   // Write with cache-aware read-after-write
   // Prevents returning stale data immediately after write
-  async updateItem(key, updates) {
-    const command = new UpdateCommand({
+  async updateItem(key, updateParams) {
+    // Write goes through DAX (updates item cache)
+    const result = await this.daxDocClient.update({
       TableName: this.tableName,
       Key: key,
-      ...updates,
+      ...updateParams,
       ReturnValues: 'ALL_NEW',
-    });
-
-    // Write goes through DAX (updates item cache)
-    const result = await this.daxClient.send(command);
+    }).promise();
 
     // Return the updated item from the response
     // No need for separate read - we have fresh data
@@ -742,23 +738,23 @@ class CacheAwareRepository {
   async queryItems(params, options = {}) {
     const { bypassCache = false } = options;
 
-    const command = new QueryCommand({
+    const queryParams = {
       TableName: this.tableName,
       ...params,
-    });
+    };
 
     if (bypassCache) {
       // Go direct to DynamoDB for fresh results
-      return await this.dynamoClient.send(command);
+      return await this.dynamoDocClient.query(queryParams).promise();
     }
 
     // Use DAX query cache
-    return await this.daxClient.send(command);
+    return await this.daxDocClient.query(queryParams).promise();
   }
 }
 
 // Usage patterns
-const repo = new CacheAwareRepository(daxClient, dynamoClient, 'Orders');
+const repo = new CacheAwareRepository(daxDocClient, dynamoDocClient, 'Orders');
 
 // Normal read - cache is fine
 const order = await repo.getItem({ orderId: '123' });
@@ -767,9 +763,19 @@ const order = await repo.getItem({ orderId: '123' });
 const currentBalance = await repo.getItemConsistent({ userId: 'user123' });
 
 // After a write, get fresh list
-await repo.updateItem({ orderId: '123' }, { status: 'shipped' });
+await repo.updateItem(
+  { orderId: '123' },
+  {
+    UpdateExpression: 'SET #s = :s',
+    ExpressionAttributeNames: { '#s': 'status' },
+    ExpressionAttributeValues: { ':s': 'shipped' },
+  }
+);
 const freshOrders = await repo.queryItems(
-  { KeyConditionExpression: 'userId = :uid', ... },
+  {
+    KeyConditionExpression: 'userId = :uid',
+    ExpressionAttributeValues: { ':uid': 'user123' },
+  },
   { bypassCache: true }
 );
 ```
@@ -1020,9 +1026,9 @@ flowchart TD
 |------------|--------|------------|
 | **VPC-only** | Cannot access from internet | Use VPN or PrivateLink |
 | **Query cache staleness** | Writes do not invalidate queries | Use appropriate TTL, bypass cache after writes |
-| **Consistent reads not cached** | No benefit for ConsistentRead | Minimize consistent reads |
-| **Scan operations** | Full table scans bypass cache effectively | Avoid Scan, use Query |
-| **Large items** | Items > 64KB not cached | Keep items small |
+| **Consistent reads not cached** | No benefit for ConsistentRead and TransactGetItems | Minimize consistent reads |
+| **Scan operations** | Scans are cached in the query cache, but large result sets evict other entries and reduce overall cache efficiency | Avoid Scan, use Query |
+| **Large items / wide result sets** | Items up to DynamoDB's 400 KB max are cacheable, but they consume more cache memory and can trigger LRU eviction | Keep items small, size your cluster for working set |
 
 ### Configuration Recommendations
 
