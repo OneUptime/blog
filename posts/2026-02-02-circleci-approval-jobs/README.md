@@ -180,24 +180,36 @@ curl --request POST \
 echo "Approval request sent for workflow: ${WORKFLOW_ID}"
 ```
 
-### Using the CircleCI CLI
+### Using the CircleCI CLI with a curl Wrapper
 
-If you have the CircleCI CLI installed, approving jobs becomes straightforward from your terminal.
+The CircleCI CLI does not include built-in subcommands for listing or approving workflows. For terminal-based approval, wrap the API call in a shell function that you can invoke from your local environment.
 
 ```bash
-# Install CircleCI CLI if not already installed
+# Install CircleCI CLI if not already installed (useful for config validation and orbs)
 brew install circleci
 
-# Authenticate with your token
+# Authenticate with your token (used by other CLI commands like orb publish)
 circleci setup
 
-# List workflows for your project to find the workflow ID
-circleci workflow list --project-slug gh/your-org/your-repo
+# Helper to list workflows for a recent pipeline
+list_workflows() {
+  local pipeline_id="$1"
+  curl -s \
+    --header "Circle-Token: ${CIRCLECI_TOKEN}" \
+    "https://circleci.com/api/v2/pipeline/${pipeline_id}/workflow"
+}
 
-# Approve a specific job in a workflow
-circleci workflow approve \
-  --workflow-id <workflow-id> \
-  --job-id <approval-job-id>
+# Helper to approve a workflow's approval job
+approve_workflow() {
+  local workflow_id="$1"
+  local approval_request_id="$2"
+  curl --request POST \
+    --url "https://circleci.com/api/v2/workflow/${workflow_id}/approve/${approval_request_id}" \
+    --header "Circle-Token: ${CIRCLECI_TOKEN}"
+}
+
+# Approve a specific approval job
+approve_workflow "<workflow-id>" "<approval-request-id>"
 ```
 
 ## Multi-Stage Approval Workflows
@@ -826,18 +838,31 @@ jobs:
       - run:
           name: Cancel workflows waiting more than 4 hours
           command: |
-            # Get workflows in "on_hold" status
-            STALE_WORKFLOWS=$(curl -s \
-              --header "Circle-Token: ${CIRCLECI_TOKEN}" \
-              "https://circleci.com/api/v2/insights/${CIRCLE_PROJECT_USERNAME}/${CIRCLE_PROJECT_REPONAME}/workflows?branch=main" \
-              | jq -r '.items[] | select(.status == "on_hold") | select(.created_at < (now - 14400 | strftime("%Y-%m-%dT%H:%M:%SZ"))) | .id')
+            # CircleCI API v2 does not expose a single endpoint for listing
+            # workflows by status. Iterate recent pipelines and inspect their
+            # workflows for on_hold status older than the threshold.
+            PROJECT_SLUG="gh/${CIRCLE_PROJECT_USERNAME}/${CIRCLE_PROJECT_REPONAME}"
+            THRESHOLD=$(date -u -d "4 hours ago" +"%Y-%m-%dT%H:%M:%SZ")
 
-            # Cancel each stale workflow
-            for WORKFLOW_ID in $STALE_WORKFLOWS; do
-              echo "Cancelling stale workflow: $WORKFLOW_ID"
-              curl --request POST \
-                --url "https://circleci.com/api/v2/workflow/${WORKFLOW_ID}/cancel" \
-                --header "Circle-Token: ${CIRCLECI_TOKEN}"
+            # Get recent pipelines on the main branch
+            PIPELINE_IDS=$(curl -s \
+              --header "Circle-Token: ${CIRCLECI_TOKEN}" \
+              "https://circleci.com/api/v2/project/${PROJECT_SLUG}/pipeline?branch=main" \
+              | jq -r '.items[].id')
+
+            # For each pipeline, find on_hold workflows older than the threshold
+            for PIPELINE_ID in $PIPELINE_IDS; do
+              STALE_WORKFLOWS=$(curl -s \
+                --header "Circle-Token: ${CIRCLECI_TOKEN}" \
+                "https://circleci.com/api/v2/pipeline/${PIPELINE_ID}/workflow" \
+                | jq -r --arg t "$THRESHOLD" '.items[] | select(.status == "on_hold") | select(.created_at < $t) | .id')
+
+              for WORKFLOW_ID in $STALE_WORKFLOWS; do
+                echo "Cancelling stale workflow: $WORKFLOW_ID"
+                curl --request POST \
+                  --url "https://circleci.com/api/v2/workflow/${WORKFLOW_ID}/cancel" \
+                  --header "Circle-Token: ${CIRCLECI_TOKEN}"
+              done
             done
 
 workflows:
