@@ -429,7 +429,7 @@ def calculate_growth_rates(df: pd.DataFrame) -> dict:
     # Compound monthly growth rate
     n_months = len(monthly)
     total_growth = monthly.iloc[-1] / monthly.iloc[0]
-    cmgr = (total_growth ** (1 / n_months)) - 1
+    cmgr = (total_growth ** (1 / (n_months - 1))) - 1
 
     return {
         'avg_mom_growth': mom_growth.mean(),
