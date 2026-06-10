@@ -274,7 +274,7 @@ const result = await sql`
   SELECT * FROM users WHERE email = ${userInput}
 `;
 
-// For dynamic column names or table names, use sql.identifier()
+// For dynamic column names or table names, call sql() as a function with the identifier
 const columnName = "email";
 const tableName = "users";
 
@@ -722,7 +722,7 @@ Define your schema:
 
 ```typescript
 // schema.ts
-import { pgTable, serial, varchar, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, serial, integer, varchar, timestamp } from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
@@ -736,7 +736,7 @@ export const posts = pgTable("posts", {
   id: serial("id").primaryKey(),
   title: varchar("title", { length: 255 }).notNull(),
   content: varchar("content", { length: 10000 }),
-  authorId: serial("author_id").references(() => users.id),
+  authorId: integer("author_id").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow(),
 });
 ```
