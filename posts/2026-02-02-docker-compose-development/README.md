@@ -736,7 +736,7 @@ EXPOSE 3000 9229
 CMD ["nodemon", "--inspect=0.0.0.0:9229", "src/index.ts"]
 ```
 
-Resource Limits and Reservations
+## Resource Limits and Reservations
 
 Setting resource limits prevents runaway containers from consuming all system resources during development.
 
