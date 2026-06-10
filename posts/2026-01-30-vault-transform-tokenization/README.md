@@ -10,7 +10,7 @@ Description: Use HashiCorp Vault Transform secrets engine to tokenize sensitive 
 
 Tokenization replaces sensitive data with non-sensitive placeholders called tokens. Unlike encryption, tokens have no mathematical relationship to the original data. This makes tokenization ideal for protecting PII, credit card numbers, and other regulated data while preserving data format and usability.
 
-HashiCorp Vault provides the Transform secrets engine specifically for tokenization. It handles token generation, secure storage of original values, and controlled detokenization.
+HashiCorp Vault provides the Transform secrets engine specifically for tokenization. It handles token generation, secure storage of original values, and controlled detokenization. Note that Transform is a Vault Enterprise feature and is not available in the open-source edition.
 
 ## Tokenization vs Encryption
 
@@ -69,7 +69,7 @@ Vault needs a persistent store for token mappings. This is typically an external
 # The connection_string should point to a dedicated database for token storage
 vault write transform/stores/payments-store \
     type=sql \
-    driver=postgresql \
+    driver=postgres \
     connection_string="postgresql://vault:secretpassword@db.internal:5432/tokenstore?sslmode=require" \
     supported_transformations=tokenization
 ```
@@ -171,19 +171,24 @@ Example response:
 }
 ```
 
-## Token Rotation
+## Tokenization Key Rotation
 
-Rotate tokens periodically to limit exposure from potential breaches:
+Rotate the underlying tokenization key periodically to limit exposure from potential key compromise. Vault rotates the transformation's key, not individual tokens — existing tokens remain decodable through retained prior key versions:
 
 ```bash
-# Rotate a token to generate a new token for the same underlying value
-# The old token becomes invalid after rotation
-vault write transform/rotate/payments \
-    value="tok_9f8e7d6c5b4a3210" \
-    transformation=credit-card
+# Rotate the tokenization key for the credit-card transformation
+# New tokens will be generated with the new key version
+# Existing tokens continue to decode using their original key version
+vault write -f transform/tokenization/keys/credit-card/rotate
 ```
 
-The response contains a new token that maps to the same original value. Update your systems to use the new token and invalidate the old one.
+To phase out older key versions for decode operations, update the `min_decryption_version` on the key:
+
+```bash
+# Restrict decode operations to key version 2 and above
+vault write transform/tokenization/keys/credit-card/config \
+    min_decryption_version=2
+```
 
 ## Validate Tokens
 
@@ -215,8 +220,8 @@ Remove tokens when data retention periods expire:
 ```bash
 # Permanently delete a token and its mapping
 # This operation is irreversible
-vault write transform/delete/payments \
-    value="tok_9f8e7d6c5b4a3210" \
+vault delete transform/tokens/payments \
+    token="tok_9f8e7d6c5b4a3210" \
     transformation=credit-card
 ```
 
