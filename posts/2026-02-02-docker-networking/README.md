@@ -264,8 +264,8 @@ docker network create dns-test
 docker run -d \
   --name database \
   --network dns-test \
-  postgres:15-alpine \
-  -e POSTGRES_PASSWORD=secret
+  -e POSTGRES_PASSWORD=secret \
+  postgres:15-alpine
 
 # Start an application container and test DNS resolution
 docker run --rm \
@@ -288,8 +288,8 @@ docker run -d \
   --network-alias database \
   --network-alias db \
   --network-alias postgres.local \
-  postgres:15-alpine \
-  -e POSTGRES_PASSWORD=secret
+  -e POSTGRES_PASSWORD=secret \
+  postgres:15-alpine
 
 # All these names resolve to the same container:
 # - postgres-primary (container name)
