@@ -154,10 +154,6 @@ data:
 
           # Use team slug for group names (e.g., 'devops' instead of full name)
           teamNameField: slug
-
-          # Request read:org scope to access organization membership
-          scopes:
-            - read:org
 ```
 
 ### Step 3: Store Client Secret Securely
@@ -881,11 +877,11 @@ metadata:
   name: argocd-cmd-params-cm
   namespace: argocd
 data:
-  # Set log level to debug for troubleshooting
-  log.level: info
+  # Set log level for the ArgoCD server (debug, info, warn, error)
+  server.log.level: info
 
-  # Enable audit logging (ArgoCD 2.4+)
-  server.audit.enabled: "true"
+  # Set log format - use json for structured logs ingestible by log aggregators
+  server.log.format: json
 ```
 
 ---
