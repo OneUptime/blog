@@ -73,8 +73,7 @@ helm repo update
 
 # Install the controller in the kube-system namespace
 helm install sealed-secrets sealed-secrets/sealed-secrets \
-  --namespace kube-system \
-  --set controller.create=true
+  --namespace kube-system
 
 # Install the kubeseal CLI for encrypting secrets
 # macOS
@@ -157,23 +156,25 @@ spec:
 
 ### Rotating Sealed Secrets Keys
 
-Periodically rotating encryption keys enhances security. The controller can manage multiple keys, allowing gradual migration of secrets.
+Periodically rotating encryption keys enhances security. The controller automatically renews keys every 30 days by default (controlled by the `--key-renew-period` flag) and retains old keys so existing SealedSecrets remain decryptable.
 
 ```bash
 # Fetch the current public key and save it
 kubeseal --fetch-cert > sealed-secrets-cert.pem
 
-# Force key rotation by restarting the controller
-kubectl rollout restart deployment sealed-secrets-controller -n kube-system
+# To force generation of a new key, delete the currently active key Secret;
+# the controller will create a fresh one on its next reconcile.
+kubectl delete secret -n kube-system \
+  -l sealedsecrets.bitnami.com/sealed-secrets-key=active
 
-# Re-encrypt all secrets with the new key
+# Re-encrypt all secrets with the latest key
 for file in $(find . -name "sealed-*.yaml"); do
   # Extract the secret name and namespace
   name=$(yq '.metadata.name' $file)
   ns=$(yq '.metadata.namespace' $file)
 
   # Re-seal with fresh key
-  kubeseal --format yaml --re-encrypt < $file > $file.new
+  kubeseal --re-encrypt --format yaml < $file > $file.new
   mv $file.new $file
 done
 ```
@@ -860,15 +861,17 @@ spec:
 
 Enable audit logging for secret operations to track access and changes.
 
-```yaml
-# vault-audit-policy.hcl
+Vault audit logging is enabled cluster-wide via an audit device (not per-policy). Combine that with scoped read policies for ArgoCD.
+
+```bash
+# Enable a file audit device (run once per Vault cluster)
+vault audit enable file file_path=/var/log/vault_audit.log
+```
+
+```hcl
+# vault-policies.hcl
 path "secret/data/production/*" {
   capabilities = ["read"]
-
-  # Log all access
-  audit = {
-    enabled = true
-  }
 }
 
 # ArgoCD specific policy
