@@ -179,18 +179,18 @@ syncPolicy:
     - Replace=true
 ```
 
-### Selective Sync
+### Per-Resource Sync Options
 
-You can exclude specific resources from automated sync while keeping automation for everything else.
+You can apply sync options to individual resources to override behavior for that resource only.
 
 ```yaml
-# This ConfigMap will not be auto-synced
+# This ConfigMap is preserved even if removed from Git
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: feature-flags
   annotations:
-    # Requires manual sync
+    # Prevents this resource from being deleted during prune
     argocd.argoproj.io/sync-options: Prune=false
 ```
 
