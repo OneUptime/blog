@@ -438,11 +438,30 @@ Private Git servers require additional configuration for TLS certificates and cu
 
 ### Configure Custom TLS Certificate
 
-When your Git server uses a self-signed certificate or private CA, provide the certificate to ArgoCD.
+When your Git server uses a self-signed certificate or private CA, you need to tell ArgoCD to trust it. Trust is configured in the `argocd-tls-certs-cm` ConfigMap, not in the repository secret.
+
+```yaml
+# argocd-tls-certs-cm.yaml
+# Trust a custom CA for a self-hosted Git server.
+# The key is the server's hostname (no scheme, no port);
+# the value is one or more PEM-encoded CA certificates.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-tls-certs-cm
+  namespace: argocd
+data:
+  git.internal.company.com: |
+    -----BEGIN CERTIFICATE-----
+    MIIDXTCCAkWgAwIBAgIJAJC1...
+    -----END CERTIFICATE-----
+```
+
+The repository secret itself only needs the standard fields. If the Git server also requires mTLS client authentication, add `tlsClientCertData` and `tlsClientCertKey` — these hold the client certificate ArgoCD presents to the server, not the server's CA.
 
 ```yaml
 # argocd-self-hosted-repo.yaml
-# Self-hosted Git server with custom CA
+# Self-hosted Git server repository secret
 apiVersion: v1
 kind: Secret
 metadata:
@@ -455,17 +474,17 @@ stringData:
   url: https://git.internal.company.com/team/repo.git
   username: service-account
   password: xxxxxxxxxxxx
-  # Skip TLS verification (not recommended for production)
+  # Skip TLS verification entirely (not recommended for production)
   # insecure: "true"
-  # Or provide CA certificate (recommended)
-  tlsClientCertData: |
-    -----BEGIN CERTIFICATE-----
-    MIIDXTCCAkWgAwIBAgIJAJC1...
-    -----END CERTIFICATE-----
-  tlsClientCertKey: |
-    -----BEGIN RSA PRIVATE KEY-----
-    MIIEowIBAAKCAQEA...
-    -----END RSA PRIVATE KEY-----
+  # mTLS client certificate (only if the Git server requires client auth)
+  # tlsClientCertData: |
+  #   -----BEGIN CERTIFICATE-----
+  #   MIIDXTCCAkWgAwIBAgIJAJC1...
+  #   -----END CERTIFICATE-----
+  # tlsClientCertKey: |
+  #   -----BEGIN RSA PRIVATE KEY-----
+  #   MIIEowIBAAKCAQEA...
+  #   -----END RSA PRIVATE KEY-----
 ```
 
 ### Configure Known Hosts for SSH
@@ -626,7 +645,7 @@ Store credentials in a secret manager rather than raw Kubernetes secrets.
 ```yaml
 # external-secret.yaml
 # Pull credentials from Vault using External Secrets Operator
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: argocd-repo-creds
