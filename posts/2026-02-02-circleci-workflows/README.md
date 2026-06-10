@@ -398,6 +398,8 @@ graph LR
 
 Scheduled workflows run on a cron schedule, independent of code pushes. This is useful for nightly builds, periodic security scans, or cleanup tasks.
 
+Note that CircleCI now recommends configuring schedules using Scheduled Pipelines (also called Schedule Triggers), which are managed through the CircleCI UI or API rather than in `config.yml`. The `triggers: schedule:` syntax in `config.yml` shown below is the legacy approach and is kept for reference and for projects that have not migrated yet.
+
 The following configuration runs a nightly workflow at 2 AM UTC every day.
 
 ```yaml
@@ -576,9 +578,9 @@ graph TB
 
 ## Conditional Workflow Execution
 
-CircleCI allows conditional execution based on pipeline parameters or configuration values.
+CircleCI allows conditional execution based on pipeline parameters or configuration values. The `when` key is supported at the workflow level, allowing you to gate an entire workflow on a parameter value. To conditionally run a subset of jobs, define multiple workflows, each guarded by its own `when` clause.
 
-The following example shows how to conditionally run jobs based on parameters.
+The following example shows how to conditionally run workflows based on pipeline parameters.
 
 ```yaml
 version: 2.1
@@ -634,28 +636,28 @@ jobs:
           command: ./deploy.sh << parameters.environment >>
 
 workflows:
-  # Conditional workflow based on pipeline parameters
-  conditional-build:
+  # Always-on workflow runs the build on every pipeline
+  build-pipeline:
     jobs:
       - build
 
-      # Only run if parameter is true
-      - integration-tests:
-          requires:
-            - build
-          # Use when clause for conditional execution
-          when: << pipeline.parameters.run-integration-tests >>
+  # Integration tests workflow only runs when the parameter is true
+  integration-tests-pipeline:
+    when: << pipeline.parameters.run-integration-tests >>
+    jobs:
+      - integration-tests
 
-      - e2e-tests:
-          requires:
-            - build
-          when: << pipeline.parameters.run-e2e-tests >>
+  # E2E tests workflow only runs when the parameter is true
+  e2e-tests-pipeline:
+    when: << pipeline.parameters.run-e2e-tests >>
+    jobs:
+      - e2e-tests
 
-      # Deploy only when target is not 'none'
+  # Deploy workflow runs on the develop branch
+  deploy-pipeline:
+    jobs:
       - deploy:
           environment: staging
-          requires:
-            - build
           filters:
             branches:
               only: develop
@@ -771,7 +773,7 @@ version: 2.1
 
 # Path filtering requires the path-filtering orb
 orbs:
-  path-filtering: circleci/path-filtering@1.0.0
+  path-filtering: circleci/path-filtering@2.1.0
 
 # Setup workflow determines which other workflows to run
 setup: true
