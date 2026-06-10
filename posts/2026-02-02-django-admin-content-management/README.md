@@ -91,7 +91,7 @@ from .models import Category, Article, ArticleImage
 @admin.register(Article)
 class ArticleAdmin(admin.ModelAdmin):
     # Columns shown in the list view
-    list_display = ['title', 'author', 'category', 'status_badge', 'published_date', 'created_at']
+    list_display = ['title', 'author', 'category', 'status', 'status_badge', 'published_date', 'created_at']
 
     # Clickable filters in the sidebar
     list_filter = ['status', 'category', 'author', 'created_at']
