@@ -549,7 +549,7 @@ public void processBroadcastElement(
     BroadcastState<String, Rule> rulesState =
         ctx.getBroadcastState(rulesDescriptor);
 
-    if (rule == null || rule.isDeleted()) {
+    if (rule.isDeleted()) {
         // Handle rule deletion
         // Remove from state so it no longer applies to events
         rulesState.remove(rule.getRuleId());
@@ -711,8 +711,8 @@ A common challenge is ensuring broadcast state is populated before processing da
 
 ```java
 // BufferingRuleFunction.java
-import org.apache.flink.api.common.state.ListState;
-import org.apache.flink.api.common.state.ListStateDescriptor;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Buffers data events until rules are loaded.
@@ -721,22 +721,17 @@ import org.apache.flink.api.common.state.ListStateDescriptor;
 public class BufferingRuleFunction
     extends BroadcastProcessFunction<Event, Rule, Alert> {
 
-    // Buffer for events that arrive before rules
-    private ListState<Event> bufferedEvents;
+    // Buffer for events that arrive before rules.
+    // BroadcastProcessFunction runs in a non-keyed context, so keyed
+    // state (e.g. getRuntimeContext().getListState()) is not available.
+    // For fault-tolerant buffering, implement CheckpointedFunction and
+    // store this buffer in OperatorStateStore.
+    private final List<Event> bufferedEvents = new ArrayList<>();
 
     // Flag to track if initial rules have been loaded
     private boolean rulesLoaded = false;
 
     private final MapStateDescriptor<String, Rule> rulesDescriptor;
-
-    @Override
-    public void open(Configuration parameters) {
-        // Initialize the event buffer as operator state
-        ListStateDescriptor<Event> bufferDescriptor =
-            new ListStateDescriptor<>("bufferedEvents", Event.class);
-        bufferedEvents = getRuntimeContext()
-            .getListState(bufferDescriptor);
-    }
 
     @Override
     public void processElement(
@@ -769,7 +764,7 @@ public class BufferingRuleFunction
             rulesLoaded = true;
 
             // Process all buffered events
-            for (Event bufferedEvent : bufferedEvents.get()) {
+            for (Event bufferedEvent : bufferedEvents) {
                 evaluateRules(bufferedEvent, ctx, out);
             }
 
@@ -921,10 +916,10 @@ public void processBroadcastElement(
 
     rulesState.put(rule.getRuleId(), rule);
 
-    // Emit metrics for monitoring
-    getRuntimeContext()
-        .getMetricGroup()
-        .gauge("broadcastStateRuleCount", () -> ruleCount + 1);
+    // For monitoring, register a gauge once in open() that reads from a
+    // member field updated here, e.g. this.currentRuleCount. Metric
+    // registration cannot be repeated per element - Flink rejects
+    // duplicate metric names with an IllegalStateException.
 }
 ```
 
