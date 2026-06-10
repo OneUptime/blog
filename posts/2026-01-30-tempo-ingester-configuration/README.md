@@ -122,13 +122,13 @@ ingester:
         store: memberlist
       replication_factor: 3
 
-    # How long to wait before joining the ring
+    # How long to wait before joining the ring after startup
     join_after: 10s
 
-    # Time to wait before marking unhealthy ingesters as dead
+    # Time to observe tokens after generating them to resolve ring collisions
     observe_period: 10s
 
-    # Minimum time to remain in LEAVING state
+    # Minimum time to wait after readiness checks pass before reporting ready
     min_ready_duration: 15s
 
   # Concurrent flushes to object storage
@@ -143,12 +143,13 @@ ingester:
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `max_block_duration` | 5m | Maximum time before a block is force-flushed |
-| `max_block_bytes` | 1GB | Size threshold triggering block flush |
+| `max_block_duration` | 30m | Maximum time before a block is force-flushed |
+| `max_block_bytes` | 500MB | Size threshold triggering block flush |
 | `flush_check_period` | 10s | Interval for flush eligibility checks |
-| `trace_idle_period` | 30s | Time after last span before trace is considered complete |
+| `flush_op_timeout` | 5m | Per-flush operation timeout |
+| `trace_idle_period` | 10s | Time after last span before trace is considered complete |
 | `concurrent_flushes` | 4 | Parallel uploads to object storage |
-| `flush_all_on_shutdown` | true | Ensure data durability on graceful shutdown |
+| `flush_all_on_shutdown` | false | Drain all in-memory data on graceful shutdown |
 
 ---
 
@@ -192,14 +193,21 @@ ingester:
   # Longer = better trace completeness but higher memory usage
   trace_idle_period: 30s
 
-  # Maximum trace duration regardless of activity
-  # Protects against unbounded memory growth from stuck traces
-  max_trace_idle_period: 5m
+  # Maximum time before a block is force-flushed regardless of size
+  # Protects against unbounded memory growth and caps trace lifetime in the ingester
+  max_block_duration: 5m
 
-  # Maximum number of spans per trace
-  # Prevents single traces from consuming excessive memory
-  max_spans_per_trace: 50000
-```
+  # Hold completed (flushed) blocks in memory for this long
+  # so queries can still hit them before they only live in object storage
+  complete_block_timeout: 15m
+
+# Per-tenant limits live under `overrides`, not `ingester`
+overrides:
+  defaults:
+    # Maximum trace size in bytes. Applies to ingestion, compaction and search.
+    max_bytes_per_trace: 5000000  # 5MB
+    # Maximum active (in-memory) traces per tenant, per ingester
+    max_traces_per_user: 50000
 
 ### Trace Lifecycle Timeline Example
 
@@ -327,25 +335,21 @@ Memory management is critical for ingester stability. Without proper limits, a s
 
 ```yaml
 # tempo.yaml - Memory and concurrency limits
-ingester:
-  # Per-trace limits
-  max_spans_per_trace: 50000    # Maximum spans in a single trace
-  max_bytes_per_trace: 5000000  # 5MB per trace maximum
 
-  # Global ingester limits
-  max_traces: 100000            # Maximum concurrent traces in memory
-
-  # gRPC server limits for receiving spans
+# gRPC server limits live under `server`, not `ingester`
+server:
   grpc_server_max_recv_msg_size: 4194304   # 4MB max message
   grpc_server_max_send_msg_size: 4194304   # 4MB max message
   grpc_server_max_concurrent_streams: 1000
 
+# Per-tenant trace and ingestion limits live under `overrides`.
+# The flat keys below are the legacy override field names and are still accepted.
 overrides:
-  # Per-tenant overrides (multi-tenant deployments)
   defaults:
     ingestion_rate_limit_bytes: 15000000  # 15MB/s per tenant
     ingestion_burst_size_bytes: 20000000  # 20MB burst allowed
-    max_traces_per_user: 50000            # Per-tenant trace limit
+    max_traces_per_user: 50000            # Active traces per tenant, per ingester
+    max_global_traces_per_user: 0         # Cluster-wide active traces (0 = disabled)
     max_bytes_per_trace: 5000000          # 5MB per trace
 ```
 
@@ -354,11 +358,11 @@ overrides:
 Estimate ingester memory requirements:
 
 ```text
-Memory = (avg_trace_size * max_traces) + (block_buffer * 2) + overhead
+Memory = (avg_trace_size * max_traces_per_user) + (block_buffer * 2) + overhead
 
 Example:
 - avg_trace_size: 10KB
-- max_traces: 100,000
+- max_traces_per_user: 100,000
 - block_buffer: 1GB
 - overhead: 500MB
 
@@ -375,19 +379,18 @@ ingester:
   # Flush concurrency
   concurrent_flushes: 4
 
-  # WAL configuration affects write concurrency
-  wal:
-    # Number of WAL segments to keep
-    wal_segments: 10
+# WAL configuration lives under storage.trace.wal, not under ingester
+storage:
+  trace:
+    wal:
+      # Encoding for WAL data
+      encoding: snappy
 
-    # Encoding for WAL entries
-    encoding: snappy
+      # Search data encoding (e.g. none or snappy)
+      search_encoding: none
 
-    # Search encoding in WAL
-    search_encoding: snappy
-
-    # Ingestion concurrency
-    ingestion_time_range_slack: 2m
+      # Allow spans with timestamps slightly in the past or future
+      ingestion_time_range_slack: 2m
 ```
 
 Resource Requests for Kubernetes
@@ -425,26 +428,25 @@ The WAL provides durability for in-flight traces. If an ingester crashes, the WA
 
 ```yaml
 # tempo.yaml - WAL configuration
-ingester:
-  wal:
-    # Directory for WAL files
-    path: /var/tempo/wal
+# Note: WAL settings live under storage.trace.wal, NOT under ingester.
+storage:
+  trace:
+    wal:
+      # Directory for WAL files
+      path: /var/tempo/wal
 
-    # Encoding for WAL data (none, gzip, lz4, snappy, zstd)
-    encoding: snappy
+      # Encoding for WAL data (none, gzip, lz4-64k, lz4-256k, lz4-1M, lz4, snappy, zstd, s2)
+      encoding: snappy
 
-    # Search data encoding
-    search_encoding: snappy
+      # Search data encoding
+      search_encoding: none
 
-    # WAL segment configuration
-    wal_segments: 10
+      # Block version used when cutting new WAL blocks
+      # (must match a supported encoding such as vParquet3 or vParquet4)
+      version: vParquet3
 
-    # Version 2 WAL format (recommended)
-    version: v2
-
-    # Ingestion slack time
-    # Allows spans with timestamps slightly in the future
-    ingestion_time_range_slack: 2m
+      # Allows spans with timestamps slightly in the past or future
+      ingestion_time_range_slack: 2m
 ```
 
 ### WAL Recovery Process
@@ -532,14 +534,9 @@ ingester:
 
   # Trace lifecycle
   trace_idle_period: 30s
-  max_trace_idle_period: 5m
 
-  # Per-trace limits
-  max_spans_per_trace: 50000
-  max_bytes_per_trace: 5000000
-
-  # Global limits
-  max_traces: 100000
+  # Hold completed (flushed) blocks in memory for queries
+  complete_block_timeout: 15m
 
   # Lifecycler (ring membership)
   lifecycler:
@@ -554,14 +551,6 @@ ingester:
     num_tokens: 512
     heartbeat_period: 5s
     heartbeat_timeout: 1m
-
-  # WAL configuration
-  wal:
-    path: /var/tempo/wal
-    encoding: snappy
-    search_encoding: snappy
-    version: v2
-    ingestion_time_range_slack: 2m
 
 # Storage configuration
 storage:
@@ -584,6 +573,10 @@ storage:
     # WAL storage
     wal:
       path: /var/tempo/wal
+      encoding: snappy
+      search_encoding: none
+      version: vParquet3
+      ingestion_time_range_slack: 2m
 
     # Local cache for blocks
     cache: memcached
