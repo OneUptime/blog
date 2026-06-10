@@ -332,7 +332,7 @@ setInterval(() => {
   const now = Date.now();
   const staleUsers: string[] = [];
   
-  presenceStore.forEach((presence, odUserId) => {
+  presenceStore.forEach((presence, userId) => {
     if (now - presence.lastSeen > PRESENCE_TIMEOUT) {
       staleUsers.push(userId);
     }
