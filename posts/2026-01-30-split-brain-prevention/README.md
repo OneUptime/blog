@@ -686,10 +686,13 @@ flowchart TB
 
 ### etcd Witness Node Configuration
 
+Note: etcd does not have a dedicated witness/arbiter member type. All voting members in etcd replicate the full keyspace. The pattern below deploys a third voting member (joined first as a learner, then promoted) sized smaller than the main data nodes — it still stores all data, but its purpose in the topology is primarily to break ties for quorum.
+
 ```yaml
 # etcd-witness-statefulset.yaml
-# Deploys a lightweight etcd witness (learner promoted to voter)
-# The witness participates in quorum but stores minimal data
+# Deploys a small third voting member used as a tie-breaker.
+# In etcd every voting member stores the full keyspace,
+# so size the volume to match cluster data growth.
 
 apiVersion: apps/v1
 kind: StatefulSet
@@ -731,8 +734,9 @@ spec:
             - --initial-advertise-peer-urls=https://etcd-witness-0.etcd-witness:2380
             # Join existing cluster
             - --initial-cluster-state=existing
-            # Minimal resource allocation - witness does not need much
-            # It only participates in voting, not data storage
+            # Reduced resource allocation for a tie-breaker member.
+            # Voting members still replicate all data, so monitor
+            # storage usage and resize if the cluster grows.
           resources:
             requests:
               cpu: 100m
@@ -755,7 +759,8 @@ spec:
         name: data
       spec:
         accessModes: ["ReadWriteOnce"]
-        # Small volume - witness stores minimal data
+        # Sized small for a low-traffic cluster; voting members
+        # replicate the full keyspace, so scale to match data growth.
         resources:
           requests:
             storage: 1Gi
