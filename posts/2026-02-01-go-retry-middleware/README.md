@@ -30,7 +30,6 @@ Below is a basic retry function that attempts an operation up to a maximum numbe
 package retry
 
 import (
-    "errors"
     "time"
 )
 
@@ -277,10 +276,8 @@ package retry
 
 import (
     "bytes"
-    "context"
     "io"
     "math"
-    "math/rand"
     "net/http"
     "time"
 )
