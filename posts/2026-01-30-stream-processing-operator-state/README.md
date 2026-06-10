@@ -767,6 +767,7 @@ sequenceDiagram
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.CheckpointingMode;
 import org.apache.flink.streaming.api.environment.CheckpointConfig;
+import org.apache.flink.configuration.ExternalizedCheckpointRetention;
 
 public class CheckpointingConfiguration {
 
@@ -790,8 +791,8 @@ public class CheckpointingConfiguration {
         config.setMaxConcurrentCheckpoints(1);
 
         // Enable externalized checkpoints (retained on cancellation)
-        config.setExternalizedCheckpointCleanup(
-            CheckpointConfig.ExternalizedCheckpointCleanup.RETAIN_ON_CANCELLATION
+        config.setExternalizedCheckpointRetention(
+            ExternalizedCheckpointRetention.RETAIN_ON_CANCELLATION
         );
 
         // Enable unaligned checkpoints for better latency under backpressure
@@ -1028,6 +1029,7 @@ public class FileSourceWithOperatorState
 Sinks often need operator state to buffer records before flushing to external systems.
 
 ```java
+import org.apache.flink.api.common.state.CheckpointListener;
 import org.apache.flink.api.common.state.ListState;
 import org.apache.flink.api.common.state.ListStateDescriptor;
 import org.apache.flink.configuration.Configuration;
@@ -1045,7 +1047,7 @@ import java.util.List;
  */
 public class BufferedSinkWithOperatorState
         extends RichSinkFunction<String>
-        implements CheckpointedFunction {
+        implements CheckpointedFunction, CheckpointListener {
 
     // Configuration
     private final int bufferSize;
@@ -1163,6 +1165,7 @@ public class BufferedSinkWithOperatorState
      * Called when checkpoint is completed successfully.
      * Safe to acknowledge records to upstream systems.
      */
+    @Override
     public void notifyCheckpointComplete(long checkpointId) throws Exception {
         if (checkpointId > lastCompletedCheckpointId) {
             lastCompletedCheckpointId = checkpointId;
@@ -1599,7 +1602,7 @@ public class CompleteOperatorStateExample {
     }
 
     public static class RuleSource
-            extends org.apache.flink.streaming.api.functions.source.SourceFunction<Rule> {
+            implements org.apache.flink.streaming.api.functions.source.SourceFunction<Rule> {
 
         private volatile boolean isRunning = true;
 
