@@ -42,7 +42,7 @@ flowchart LR
 
 Key benefits of CDC with CockroachDB:
 
-- Exactly-once delivery semantics with enterprise changefeeds
+- At-least-once delivery semantics with checkpointing via resolved timestamps
 - No application code changes required to capture events
 - Consistent capture across distributed database nodes
 - Support for multiple output formats (JSON, Avro, Parquet)
@@ -56,21 +56,21 @@ CockroachDB offers two types of changefeeds:
 |---------|-----------------|----------------------|
 | License | Free | Enterprise |
 | Output | SQL client cursor | Kafka, Cloud Storage, Webhook |
-| Delivery | At-least-once | Exactly-once (with Kafka) |
+| Delivery | At-least-once | At-least-once with resolved checkpoints |
 | Schema Changes | Limited | Full support |
 | Filtering | None | WHERE clause support |
 | Aggregation | None | CDC queries support |
 
 ```mermaid
 flowchart TB
-    subgraph Core["Core Changefeed (Free)"]
-        C1["EXPERIMENTAL CHANGEFEED FOR"]
+    subgraph Core["Core / Sinkless Changefeed (Free)"]
+        C1["CREATE CHANGEFEED FOR TABLE (no INTO)"]
         C1 --> SQL["SQL Client Connection"]
         SQL --> App["Application Processes<br/>Row by Row"]
     end
 
     subgraph Enterprise["Enterprise Changefeed"]
-        E1["CREATE CHANGEFEED"]
+        E1["CREATE CHANGEFEED ... INTO"]
         E1 --> Kafka["Kafka Topics"]
         E1 --> Storage["Cloud Storage"]
         E1 --> Webhook["Webhook URLs"]
@@ -84,11 +84,12 @@ Core changefeeds are available in the free tier and stream changes directly to a
 The following SQL statement creates a core changefeed that streams all changes from the orders table.
 
 ```sql
--- Core changefeed streams changes to the SQL client connection
+-- Core (sinkless) changefeed streams changes to the SQL client connection
 -- Each change is returned as a row with the timestamp and JSON payload
--- Note: Core changefeeds are experimental and intended for development use
+-- Note: As of v25.2, EXPERIMENTAL CHANGEFEED FOR is deprecated; use
+-- CREATE CHANGEFEED FOR TABLE ... without an INTO clause for the same behavior
 
-EXPERIMENTAL CHANGEFEED FOR orders
+CREATE CHANGEFEED FOR TABLE orders
 WITH updated, resolved='10s';
 ```
 
@@ -99,7 +100,7 @@ Here is a complete example using Node.js to consume a core changefeed.
 // Consume CockroachDB core changefeed using the PostgreSQL driver
 // Core changefeeds stream changes directly through the SQL connection
 
-const { Client } = require('pg');
+const { Client, Query } = require('pg');
 
 // CockroachDB connection configuration
 // Use the same connection string you would use for regular queries
@@ -121,7 +122,7 @@ async function consumeCoreChangefeed() {
         // Start the changefeed query
         // The query runs indefinitely, streaming changes as they occur
         const query = `
-            EXPERIMENTAL CHANGEFEED FOR orders
+            CREATE CHANGEFEED FOR TABLE orders
             WITH updated, resolved='10s'
         `;
 
@@ -201,18 +202,15 @@ Here is a more complete configuration with authentication and schema registry.
 -- Enterprise changefeed with Avro format and schema registry
 -- Avro provides schema evolution and smaller message sizes
 -- Schema registry ensures consumers can decode messages correctly
+-- SASL options (sasl_enabled, sasl_mechanism, sasl_user, sasl_password)
+-- and tls_enabled are passed as URI query parameters on the kafka:// scheme
 
 CREATE CHANGEFEED FOR TABLE orders
-INTO 'kafka://kafka-broker:9092'
+INTO 'kafka://kafka-broker:9092?tls_enabled=true&sasl_enabled=true&sasl_mechanism=PLAIN&sasl_user=changefeed-user&sasl_password=secure-password'
 WITH format = 'avro',
      confluent_schema_registry = 'https://schema-registry:8081',
      updated,
      resolved = '10s',
-     -- Configure SASL authentication for secure Kafka clusters
-     sasl_enabled = true,
-     sasl_mechanism = 'PLAIN',
-     sasl_user = 'changefeed-user',
-     sasl_password = 'secure-password',
      -- Topic naming: database_schema_table format
      full_table_name;
 ```
@@ -393,21 +391,17 @@ Enterprise changefeeds can write directly to cloud storage buckets for data lake
 -- Stream changes to Google Cloud Storage
 -- Files are written in batches based on time and size thresholds
 -- Useful for data lake ingestion and batch analytics
+-- AUTH and CREDENTIALS are URI query parameters on the gs:// scheme
 
 CREATE CHANGEFEED FOR TABLE orders, order_items
-INTO 'gs://my-bucket/changefeeds/orders'
+INTO 'gs://my-bucket/changefeeds/orders?AUTH=specified&CREDENTIALS=base64-encoded-service-account-json'
 WITH format = 'json',
      updated,
      resolved = '1m',
-     -- Control file partitioning
+     -- Control file partitioning (daily, hourly, or flat)
      partition_format = 'daily',
      -- Compress output files
-     compression = 'gzip',
-     -- Include schema information
-     schema_prefix = 'schema',
-     -- Use service account for authentication
-     AUTH = 'specified',
-     CREDENTIALS = 'service-account-key-json';
+     compression = 'gzip';
 ```
 
 Here is the equivalent for AWS S3.
@@ -1032,6 +1026,9 @@ Here is the changefeed configuration for multiple tables.
 -- Each changefeed writes to its own Kafka topic
 
 -- Orders changefeed with high-value filtering
+-- Note: paused changefeeds protect data from garbage collection automatically
+-- via protected timestamps; the protect_data_from_gc_on_pause option was
+-- deprecated in v23.2 and is no longer needed
 CREATE CHANGEFEED FOR TABLE orders
 INTO 'kafka://kafka:9092'
 WITH format = 'avro',
@@ -1040,7 +1037,6 @@ WITH format = 'avro',
      updated,
      resolved = '10s',
      min_checkpoint_frequency = '30s',
-     protect_data_from_gc_on_pause,
      on_error = 'pause'
 AS SELECT * FROM orders WHERE total >= 10.00;
 
@@ -1094,10 +1090,6 @@ WITH
 
     -- Minimum checkpoint frequency prevents too-frequent checkpointing
     min_checkpoint_frequency = '30s',
-
-    -- Protect data from garbage collection when paused
-    -- Important for long-running changefeeds
-    protect_data_from_gc_on_pause,
 
     -- Pause on error instead of failing completely
     on_error = 'pause',
@@ -1222,7 +1214,7 @@ if __name__ == '__main__':
 | Memory pressure | OOM errors on CRDB nodes | Reduce changefeed count, increase resolved interval |
 | Kafka timeouts | Message delivery failures | Tune kafka_sink_config flush settings |
 | Schema conflicts | Avro serialization errors | Use schema registry, configure compatibility |
-| GC threshold exceeded | Changefeed fails to start | Increase gc.ttlseconds, use protect_data_from_gc_on_pause |
+| GC threshold exceeded | Changefeed fails to start | Increase gc.ttlseconds; paused changefeeds protect data via protected timestamps automatically |
 
 Debug a problematic changefeed with these queries.
 
