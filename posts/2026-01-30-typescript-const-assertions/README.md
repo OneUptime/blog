@@ -520,7 +520,7 @@ type Action =
   | ResetAction;
 
 // Type-safe reducer
-function reducer(state: unknown, action: Action): unknown {
+function reducer(state: object, action: Action): object {
   switch (action.type) {
     case ActionTypes.FETCH_START:
       return { ...state, loading: true };
@@ -947,9 +947,9 @@ const original = { x: 1, y: 2 } as const;
 // Type: { readonly x: 1; readonly y: 2 }
 
 const copy = { ...original };
-// Type: { x: number; y: number } - readonly and literal types are lost!
+// Type: { x: 1; y: 2 } - literal types are preserved, but readonly is lost!
 
-// Solution: Add as const to the spread result
+// Solution: Add as const to the spread result to keep readonly
 const copyConst = { ...original } as const;
 // Type: { readonly x: 1; readonly y: 2 }
 ```
