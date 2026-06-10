@@ -141,7 +141,7 @@ Use glob patterns to allow policies matching a pattern:
 # The asterisk acts as a wildcard for flexible policy matching
 vault write auth/token/roles/team-a-role \
     allowed_policies_glob="team-a-*" \
-    disallowed_policies="*-admin"
+    disallowed_policies_glob="*-admin"
 ```
 
 ---
@@ -400,7 +400,6 @@ Create and use token roles in Go applications:
 package main
 
 import (
-    "context"
     "fmt"
     "log"
     "os"
@@ -545,7 +544,7 @@ vault write auth/token/roles/comprehensive-role \
 | token_max_ttl | Maximum TTL with renewals | System default |
 | token_explicit_max_ttl | Absolute maximum lifetime | 0 (no limit) |
 | token_period | Renewal period for periodic tokens | 0 |
-| token_type | Token type (service, batch, default) | default |
+| token_type | Token type (service, batch, default) | default-service |
 | token_no_default_policy | Exclude default policy | false |
 | token_num_uses | Maximum uses (0 = unlimited) | 0 |
 | token_bound_cidrs | IP ranges that can use token | [] |
