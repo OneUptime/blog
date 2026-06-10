@@ -69,7 +69,8 @@ const docClient = DynamoDBDocumentClient.from(client, {
   marshallOptions: {
     // Remove undefined values from objects
     removeUndefinedValues: true,
-    // Convert empty strings to null (DynamoDB does not support empty strings)
+    // Convert empty strings, blobs, and sets to null. DynamoDB supports empty
+    // strings for non-key attributes since May 2020, so this is optional.
     convertEmptyValues: true,
   },
   unmarshallOptions: {
