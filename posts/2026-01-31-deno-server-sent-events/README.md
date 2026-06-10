@@ -733,7 +733,9 @@ This implementation uses a broadcast channel for multi-instance coordination:
 
 ```typescript
 // Scalable SSE server using BroadcastChannel
-// Enables event distribution across multiple server instances
+// On Deno Deploy, BroadcastChannel distributes events across all isolates globally.
+// In standalone Deno it only spans Workers within a single process, so for
+// multi-process deployments swap this for Redis Pub/Sub, NATS, or similar.
 
 // Create a broadcast channel for cross-instance communication
 const channel = new BroadcastChannel("sse-events");
