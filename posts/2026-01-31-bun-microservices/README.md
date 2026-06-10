@@ -223,6 +223,18 @@ export class BaseService {
     process.on("SIGINT", shutdown);
   }
 
+  // Match a registered pattern (e.g. "/users/:id") against an actual path
+  private matchPattern(pattern: string, path: string): boolean {
+    const patternParts = pattern.split("/");
+    const pathParts = path.split("/");
+    if (patternParts.length !== pathParts.length) return false;
+    for (let i = 0; i < patternParts.length; i++) {
+      if (patternParts[i].startsWith(":")) continue;
+      if (patternParts[i] !== pathParts[i]) return false;
+    }
+    return true;
+  }
+
   // Main request handler that routes to appropriate handler
   protected async handleRequest(req: Request): Promise<Response> {
     const url = new URL(req.url);
@@ -231,7 +243,17 @@ export class BaseService {
 
     const methodRoutes = this.routes.get(method);
     if (methodRoutes) {
-      const handler = methodRoutes.get(path);
+      // Try exact match first, then fall back to pattern matching for routes like "/users/:id"
+      let handler = methodRoutes.get(path);
+      if (!handler) {
+        for (const [pattern, registered] of methodRoutes) {
+          if (pattern.includes(":") && this.matchPattern(pattern, path)) {
+            handler = registered;
+            break;
+          }
+        }
+      }
+
       if (handler) {
         try {
           return await handler(req);
