@@ -83,13 +83,18 @@ The following code initializes the DynamoDB client with the Document Client wrap
 // dynamodb-client.js
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
 const { DynamoDBDocumentClient } = require('@aws-sdk/lib-dynamodb');
+const { NodeHttpHandler } = require('@smithy/node-http-handler');
 
 // Create the base DynamoDB client
 // Region is automatically picked up from Lambda environment
 const client = new DynamoDBClient({
-  // Reduce connection timeout for faster failures
-  requestTimeout: 5000,
-  // Reuse connections across invocations
+  // Configure request timeouts via the HTTP handler
+  // (the SDK enables HTTP keep-alive by default)
+  requestHandler: new NodeHttpHandler({
+    connectionTimeout: 3000,
+    requestTimeout: 5000,
+  }),
+  // Maximum retry attempts on retryable errors
   maxAttempts: 3,
 });
 
@@ -99,8 +104,10 @@ const docClient = DynamoDBDocumentClient.from(client, {
   marshallOptions: {
     // Remove undefined values from objects
     removeUndefinedValues: true,
-    // Convert empty strings to null (DynamoDB doesn't support empty strings)
-    convertEmptyValues: true,
+    // DynamoDB supports empty strings for String/Binary attributes
+    // since May 2020, so leave this off unless you specifically want
+    // empty values to be marshalled as NULL
+    convertEmptyValues: false,
   },
   unmarshallOptions: {
     // Return numbers as native JS numbers instead of strings
@@ -909,11 +916,10 @@ Lambda containers can be reused across invocations. Initialize the DynamoDB clie
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
 const { DynamoDBDocumentClient, GetCommand } = require('@aws-sdk/lib-dynamodb');
 
-// Configure keep-alive for connection reuse
-const client = new DynamoDBClient({
-  // Enable HTTP keep-alive
-  keepAlive: true,
-});
+// AWS SDK v3 enables HTTP keep-alive by default in the Node.js handler,
+// so simply initializing the client outside the handler is enough to
+// reuse the underlying TCP connections across warm invocations.
+const client = new DynamoDBClient({});
 
 const docClient = DynamoDBDocumentClient.from(client);
 
@@ -1071,7 +1077,7 @@ Transform: AWS::Serverless-2016-10-31
 
 Globals:
   Function:
-    Runtime: nodejs18.x
+    Runtime: nodejs20.x
     Timeout: 30
     MemorySize: 256
     Environment:
