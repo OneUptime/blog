@@ -78,8 +78,8 @@ query_frontend:
 
   # Search configuration for the frontend
   search:
-    # Duration to search for recent traces in ingesters
-    query_ingesters_until: 30m
+    # Prefer backend storage after this duration
+    query_backend_after: 15m
 
     # Maximum duration for a single search query
     max_duration: 0  # 0 means no limit
@@ -104,14 +104,13 @@ Query sharding is where the Query Frontend really shines. It splits time-range q
 # tempo.yaml - Advanced Sharding Configuration
 
 query_frontend:
-  # Enable trace-by-ID query sharding
+  # Trace-by-ID query sharding
   trace_by_id:
     # Number of shards for trace by ID queries
     query_shards: 50
 
-    # Enable hedged requests for faster responses
-    hedge_requests_at: 2s
-    hedge_requests_up_to: 2
+    # Maximum concurrent shards executed per query
+    concurrent_shards: 10
 
   # Search query sharding configuration
   search:
@@ -122,16 +121,8 @@ query_frontend:
     # Smaller values create more shards (more parallelism)
     target_bytes_per_job: 104857600  # 100MB
 
-    # Duration to wait before starting ingester queries
-    query_ingesters_until: 30m
-
-    # Enable sharding by block ID
-    sharder:
-      # Maximum number of shards
-      max_shards: 100
-
-      # Query backend blocks in addition to ingesters
-      query_backend_after: 15m
+    # Query backend blocks after this duration
+    query_backend_after: 15m
 
   # Metrics query configuration
   metrics:
@@ -190,7 +181,7 @@ sequenceDiagram
 
 ## Caching Configuration
 
-Caching dramatically reduces query latency for repeated queries. Tempo supports multiple cache backends.
+Caching dramatically reduces query latency for repeated queries. Tempo uses a top-level `cache:` block where you define one or more cache instances and assign them roles. Valid roles include `bloom`, `parquet-footer`, `parquet-page`, `parquet-column-idx`, `parquet-offset-idx`, `trace-id-index`, and `frontend-search`. Tempo supports both Redis and Memcached backends.
 
 ### Redis Cache Configuration
 
@@ -198,20 +189,16 @@ Caching dramatically reduces query latency for repeated queries. Tempo supports 
 # tempo.yaml - Redis Cache Configuration
 
 cache:
-  # Background cache configuration
+  # Background cache write-back configuration
   background:
     writeback_goroutines: 10
     writeback_buffer: 10000
 
-# Query Frontend with Redis caching
-query_frontend:
-  search:
-    # Enable search result caching
-    cache_results: true
-
-    # Cache configuration for search
-    cache:
-      # Use Redis as the cache backend
+  # Define one or more caches and assign roles to each
+  caches:
+    - roles:
+        # Frontend search caches TraceQL search results
+        - frontend-search
       redis:
         endpoint: redis:6379
         timeout: 500ms
@@ -223,20 +210,16 @@ query_frontend:
         # tls_enabled: true
         # tls_insecure_skip_verify: false
 
-      # Default expiration for cache entries
-      default_validity: 1h
-
-      # Compression for cached data
-      compression: snappy
-
-  # Trace by ID caching
-  trace_by_id:
-    cache_results: true
-    cache:
+    - roles:
+        # Lower-level caches see much higher hit rates
+        - bloom
+        - parquet-footer
+        - parquet-page
       redis:
         endpoint: redis:6379
         timeout: 500ms
-        expiration: 30m
+        expiration: 24h
+        db: 1
 ```
 
 ### Memcached Cache Configuration
@@ -244,13 +227,16 @@ query_frontend:
 ```yaml
 # tempo.yaml - Memcached Cache Configuration
 
-query_frontend:
-  search:
-    cache_results: true
-    cache:
+cache:
+  caches:
+    - roles:
+        - frontend-search
+        - bloom
+        - parquet-footer
+        - parquet-page
       memcached:
-        # List of memcached servers
-        addresses: dns+memcached:11211
+        # List of memcached servers (dns+ prefix enables SRV discovery)
+        host: dns+memcached:11211
 
         # Connection timeout
         timeout: 500ms
@@ -276,19 +262,19 @@ The Query Frontend has special handling for TraceQL queries, which are Tempo's p
 # tempo.yaml - TraceQL Query Configuration
 
 query_frontend:
+  # Maximum size (in bytes) of a TraceQL query expression
+  max_query_expression_size_bytes: 131072
+
   # TraceQL specific settings
   search:
+    # Default number of spans returned per spanset
+    default_spans_per_span_set: 3
+
     # Maximum number of spans per spanset
     max_spans_per_span_set: 100
 
-    # Query ingesters for recent data
-    query_ingesters_until: 30m
-
     # Prefer backend storage after this duration
     query_backend_after: 15m
-
-    # Enable streaming for large result sets
-    enable_streaming: true
 
     # Maximum duration for TraceQL queries
     max_duration: 168h  # 7 days
@@ -298,10 +284,10 @@ query_frontend:
     # Enable metrics query handling
     concurrent_jobs: 1000
 
-    # Time range for metrics queries
+    # Maximum time range for metrics queries
     max_duration: 24h
 
-    # Interval for metrics data points
+    # Query backend blocks after this duration
     query_backend_after: 15m
 ```
 
@@ -312,8 +298,8 @@ Here is a complete production-ready configuration that combines all the componen
 ```yaml
 # tempo.yaml - Complete Production Configuration
 
-# Multi-target deployment
-target: scalable-single-binary
+# Single-binary deployment runs all components in one process
+target: all
 
 server:
   http_listen_port: 3200
@@ -346,13 +332,32 @@ storage:
       region: us-east-1
     block:
       bloom_filter_false_positive: 0.01
-      v2_index_downsample_bytes: 1000
-      v2_encoding: zstd
+      version: vParquet4
     wal:
       path: /var/tempo/wal
     pool:
       max_workers: 100
       queue_depth: 10000
+
+# Top-level cache block with role-based assignment
+cache:
+  background:
+    writeback_goroutines: 10
+    writeback_buffer: 10000
+  caches:
+    - roles:
+        - frontend-search
+      redis:
+        endpoint: redis:6379
+        expiration: 1h
+    - roles:
+        - bloom
+        - parquet-footer
+        - parquet-page
+      redis:
+        endpoint: redis:6379
+        expiration: 24h
+        db: 1
 
 # Query Frontend configuration
 query_frontend:
@@ -363,13 +368,7 @@ query_frontend:
   # Trace by ID configuration
   trace_by_id:
     query_shards: 50
-    hedge_requests_at: 2s
-    hedge_requests_up_to: 2
-    cache_results: true
-    cache:
-      redis:
-        endpoint: redis:6379
-        expiration: 30m
+    concurrent_shards: 10
 
   # Search configuration
   search:
@@ -377,16 +376,8 @@ query_frontend:
     target_bytes_per_job: 104857600
     default_result_limit: 20
     max_result_limit: 500
-    query_ingesters_until: 30m
     query_backend_after: 15m
     max_duration: 168h
-    cache_results: true
-    cache:
-      redis:
-        endpoint: redis:6379
-        expiration: 1h
-    sharder:
-      max_shards: 100
 
   # Metrics configuration
   metrics:
@@ -397,8 +388,6 @@ query_frontend:
 # Querier configuration
 querier:
   max_concurrent_queries: 20
-  search:
-    prefer_self: 10
   frontend_worker:
     frontend_address: tempo-query-frontend:9095
     grpc_client_config:
@@ -415,10 +404,12 @@ compactor:
 # Overrides for per-tenant configuration
 overrides:
   defaults:
-    ingestion_rate_limit_bytes: 15000000
-    ingestion_burst_size_bytes: 20000000
-    max_traces_per_user: 10000
-    max_search_duration: 168h
+    ingestion:
+      rate_limit_bytes: 15000000
+      burst_size_bytes: 20000000
+      max_traces_per_user: 10000
+    read:
+      max_search_duration: 168h
 ```
 
 ## Kubernetes Deployment
@@ -536,7 +527,7 @@ Here are some best practices for optimizing your Query Frontend:
 1. **Adjust shard count based on cluster size**: More queriers allow for more parallel shards
 2. **Tune cache expiration**: Balance freshness requirements with cache efficiency
 3. **Monitor queue depth**: Increase max_outstanding_per_tenant if queries queue up
-4. **Use hedged requests**: Enable for trace-by-ID queries to reduce tail latency
+4. **Assign cache roles thoughtfully**: Low-level caches (bloom, parquet-footer, parquet-page) hit at ~90%; frontend-search hits only on repeated queries
 5. **Size target_bytes_per_job appropriately**: Smaller values increase parallelism but add overhead
 
 ## Conclusion
