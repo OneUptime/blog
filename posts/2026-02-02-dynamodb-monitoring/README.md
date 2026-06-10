@@ -59,9 +59,9 @@ flowchart LR
 
     subgraph "Latency Metrics"
         C1[SuccessfulRequestLatency]
-        C2[GetLatency]
-        C3[PutLatency]
-        C4[QueryLatency]
+        C2[Operation: GetItem]
+        C3[Operation: PutItem]
+        C4[Operation: Query]
     end
 
     subgraph "Error Metrics"
