@@ -221,7 +221,7 @@ For Python developers, here is an equivalent implementation:
 ```python
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import TypeVar, Generic, Callable, List
+from typing import TypeVar, Generic, Callable, List, Any
 import time
 
 T = TypeVar('T')
@@ -261,7 +261,7 @@ class SlidingWindow(Generic[T]):
         for key in keys_to_delete:
             del self.buckets[key]
 
-    def aggregate(self, fn: Callable[[List[T]], any], current_time: float = None) -> any:
+    def aggregate(self, fn: Callable[[List[T]], Any], current_time: float = None) -> Any:
         if current_time is None:
             current_time = time.time()
 
