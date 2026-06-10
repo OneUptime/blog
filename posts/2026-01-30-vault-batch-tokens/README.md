@@ -28,7 +28,8 @@ Batch tokens are lightweight tokens designed for high-volume workloads. Unlike s
 | Performance | High | Standard |
 | Token size | Larger | Smaller |
 | Child tokens | Cannot create | Can create |
-| Root/orphan capable | No | Yes |
+| Can be root token | No | Yes |
+| Can be orphan | Yes | Yes |
 | TTL limits | Capped by parent | Configurable |
 
 ## Batch Token Flow
@@ -181,7 +182,7 @@ def create_batch_token(policies, ttl='1h', metadata=None):
     response = client.auth.token.create(
         policies=policies,
         ttl=ttl,
-        token_type='batch',  # Key parameter for batch tokens
+        type='batch',  # Key parameter for batch tokens
         meta=metadata
     )
 
@@ -390,6 +391,14 @@ data:
       address = "https://vault.example.com:8200"
     }
 
+    # Configure the Kubernetes auth role in Vault with token_type="batch"
+    # so that tokens issued via auto_auth are batch tokens:
+    #   vault write auth/kubernetes/role/app-role \
+    #     bound_service_account_names=vault-auth \
+    #     bound_service_account_namespaces=app \
+    #     policies=ci-secrets \
+    #     token_type=batch \
+    #     token_ttl=30m
     auto_auth {
       method "kubernetes" {
         mount_path = "auth/kubernetes"
@@ -403,12 +412,6 @@ data:
           path = "/vault/secrets/.token"
         }
       }
-    }
-
-    template_config {
-      # Use batch tokens for templating operations
-      generate_token = true
-      token_type = "batch"
     }
 
     template {
@@ -452,10 +455,10 @@ Batch tokens are self-contained and encoded, making them larger than service tok
 
 ```bash
 # Service token example (shorter)
-s.aBcDeFgHiJkLmNoP
+hvs.CvmS4c0DPTvHv5eJgXWMJg9r
 
 # Batch token example (longer, base64 encoded)
-b.AAAAAQ...encoded_data...
+hvb.AAAAAQ...encoded_data...
 ```
 
 This larger size may impact:
