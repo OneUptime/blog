@@ -47,10 +47,11 @@ management:
     web:
       exposure:
         include: prometheus, health, info, metrics
-  metrics:
-    export:
-      prometheus:
+  prometheus:
+    metrics:
+      export:
         enabled: true
+  metrics:
     tags:
       application: ${spring.application.name}
       environment: ${ENVIRONMENT:development}
@@ -214,6 +215,7 @@ public class QueueMetrics {
     }
 
     public Item dequeue() {
+        Item item = pollFromQueue();
         queueSize.decrementAndGet();
         return item;
     }
@@ -257,16 +259,18 @@ For more control over timing boundaries:
 @Service
 public class OrderProcessor {
 
+    private final MeterRegistry meterRegistry;
     private final Timer processingTimer;
 
     public OrderProcessor(MeterRegistry meterRegistry) {
+        this.meterRegistry = meterRegistry;
         this.processingTimer = Timer.builder("order.processing.duration")
             .description("Order processing duration")
             .register(meterRegistry);
     }
 
     public void processOrder(Order order) {
-        Timer.Sample sample = Timer.start();
+        Timer.Sample sample = Timer.start(meterRegistry);
 
         try {
             validateOrder(order);
@@ -441,7 +445,7 @@ histogram_quantile(0.99, rate(payment_gateway_duration_seconds_bucket[5m]))
 rate(payment_gateway_duration_seconds_sum[5m]) / rate(payment_gateway_duration_seconds_count[5m])
 
 # Median order value
-histogram_quantile(0.5, rate(order_value_bucket[5m]))
+histogram_quantile(0.5, rate(order_value_usd_bucket[5m]))
 
 # Current queue size
 queue_size
