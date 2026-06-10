@@ -154,7 +154,7 @@ import boto3
 import json
 
 sqs = boto3.client('sqs', region_name='us-east-1')
-QUEUE_URL = 'https://sqs.us-east-1.amazonaws.com/123456789/my-application-queue'
+QUEUE_URL = 'https://sqs.us-east-1.amazonaws.com/123456789012/my-application-queue'
 
 def send_message(message_body, attributes=None):
     """
@@ -556,7 +556,7 @@ def process_dlq():
     Process messages from the Dead Letter Queue.
     These are messages that failed multiple times.
     """
-    dlq_url = 'https://sqs.us-east-1.amazonaws.com/123456789/my-application-dlq'
+    dlq_url = 'https://sqs.us-east-1.amazonaws.com/123456789012/my-application-dlq'
 
     while True:
         messages = sqs.receive_message(
@@ -596,7 +596,7 @@ FIFO queues guarantee exactly-once processing and strict ordering. Use them when
 
 ```python
 # Working with FIFO queues
-FIFO_QUEUE_URL = 'https://sqs.us-east-1.amazonaws.com/123456789/orders.fifo'
+FIFO_QUEUE_URL = 'https://sqs.us-east-1.amazonaws.com/123456789012/orders.fifo'
 
 def send_fifo_message(message_body, group_id, deduplication_id=None):
     """
