@@ -25,7 +25,7 @@ sequenceDiagram
     App->>Vault: 3. Request identity token
     Vault-->>App: 4. Signed JWT
     App->>Ext: 5. API call with JWT in header
-    Ext->>Vault: 6. Fetch JWKS from /.well-known/jwks.json
+    Ext->>Vault: 6. Fetch JWKS from /.well-known/keys
     Vault-->>Ext: 7. Public keys
     Ext->>Ext: 8. Validate JWT signature
     Ext-->>App: 9. Authorized response
