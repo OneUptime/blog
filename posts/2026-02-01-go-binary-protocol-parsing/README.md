@@ -459,7 +459,7 @@ func main() {
         0x02,                   // Version 2
         0x00,                   // Flags
         0x00, 0x00, 0x00, 0x05, // Length: 5
-        0x02, 0x1C,             // Checksum for "hello"
+        0x02, 0x14,             // Checksum for "hello"
         'h', 'e', 'l', 'l', 'o',
     }
     
@@ -487,7 +487,6 @@ package main
 import (
     "encoding/binary"
     "fmt"
-    "io"
 )
 
 type ParserState int
