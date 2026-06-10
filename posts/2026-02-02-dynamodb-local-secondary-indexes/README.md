@@ -621,31 +621,36 @@ def check_item_collection_size(table_name: str, partition_key_value: str) -> dic
     }
 
 
-def enable_item_collection_metrics(table_name: str):
+def write_with_collection_metrics(table_name: str, item: dict) -> dict:
     """
-    Enable CloudWatch metrics for item collection size.
-    This helps monitor partitions approaching the 10 GB limit.
-    """
-    cloudwatch = boto3.client('cloudwatch', region_name='us-east-1')
+    Write an item and inspect the resulting item collection size.
 
-    # Create an alarm for large item collections
-    cloudwatch.put_metric_alarm(
-        AlarmName=f'{table_name}-ItemCollectionSize-Warning',
-        MetricName='ItemCollectionSizeBytes',
-        Namespace='AWS/DynamoDB',
-        Dimensions=[
-            {'Name': 'TableName', 'Value': table_name}
-        ],
-        Statistic='Maximum',
-        Period=300,
-        EvaluationPeriods=1,
-        # Alert at 8 GB (80% of limit)
-        Threshold=8 * 1024 * 1024 * 1024,
-        ComparisonOperator='GreaterThanThreshold',
-        AlarmDescription='Item collection approaching 10 GB limit'
+    DynamoDB does not publish item collection size as a CloudWatch metric.
+    Instead, pass ReturnItemCollectionMetrics='SIZE' on write operations
+    (PutItem, UpdateItem, DeleteItem, BatchWriteItem, TransactWriteItems)
+    to receive a SizeEstimateRangeGB range in the response.
+    """
+    dynamodb = boto3.client('dynamodb', region_name='us-east-1')
+
+    response = dynamodb.put_item(
+        TableName=table_name,
+        Item=item,
+        # Request item collection size estimate in the response
+        ReturnItemCollectionMetrics='SIZE'
     )
 
-    print(f"Created alarm for {table_name} item collection size")
+    metrics = response.get('ItemCollectionMetrics', {})
+    # SizeEstimateRangeGB is a [lower, upper] estimate in gigabytes
+    size_range = metrics.get('SizeEstimateRangeGB', [0, 0])
+
+    # Warn when the upper bound approaches the 10 GB limit
+    if size_range and size_range[1] >= 8:
+        print(
+            f"WARNING: item collection size estimate {size_range} GB "
+            f"approaching the 10 GB limit for table {table_name}"
+        )
+
+    return metrics
 ```
 
 ## Best Practices for LSI Design
@@ -848,9 +853,14 @@ def setup_lsi_monitoring(table_name: str):
     print(f"Created monitoring alarms for {table_name}")
 
 
-def get_lsi_metrics(table_name: str, index_name: str, hours: int = 1) -> dict:
+def get_lsi_metrics(table_name: str, hours: int = 1) -> dict:
     """
-    Get CloudWatch metrics for an LSI.
+    Get CloudWatch metrics for a table that has LSIs.
+
+    Note: DynamoDB does not expose a per-LSI CloudWatch dimension.
+    Valid dimensions include TableName and GlobalSecondaryIndexName, but
+    there is no LocalSecondaryIndexName dimension. Traffic against LSIs
+    is rolled up into the base table's metrics.
     """
     cloudwatch = boto3.client('cloudwatch', region_name='us-east-1')
 
@@ -864,8 +874,7 @@ def get_lsi_metrics(table_name: str, index_name: str, hours: int = 1) -> dict:
             Namespace='AWS/DynamoDB',
             MetricName=metric_name,
             Dimensions=[
-                {'Name': 'TableName', 'Value': table_name},
-                {'Name': 'LocalSecondaryIndexName', 'Value': index_name}
+                {'Name': 'TableName', 'Value': table_name}
             ],
             StartTime=start_time,
             EndTime=end_time,
