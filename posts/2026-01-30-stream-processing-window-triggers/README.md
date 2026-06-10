@@ -234,6 +234,7 @@ val intervalQuery = stream
   .start()
 
 // Process all available data once, then stop
+// Note: Trigger.Once() is deprecated since Spark 3.4 in favor of Trigger.AvailableNow()
 val onceQuery = stream
   .writeStream
   .trigger(Trigger.Once())
@@ -555,7 +556,7 @@ WatermarkStrategy<Event> watermarkStrategy = WatermarkStrategy
     .withTimestampAssigner((event, timestamp) -> event.getEventTime())
     .withIdleness(Duration.ofMinutes(5));  // Handle idle partitions
 
-DataStream<Result> results = events
+SingleOutputStreamOperator<Result> results = events
     .assignTimestampsAndWatermarks(watermarkStrategy)
     .keyBy(Event::getKey)
     .window(TumblingEventTimeWindows.of(Time.minutes(10)))
@@ -930,7 +931,6 @@ public class TriggerIntegrationTest {
             StreamExecutionEnvironment.getExecutionEnvironment();
 
         env.setParallelism(1);
-        env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime);
 
         List<Event> input = Arrays.asList(
             new Event("key1", 1000L, 10),
