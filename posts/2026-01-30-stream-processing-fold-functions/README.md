@@ -794,15 +794,16 @@ public class AverageAccumulator {
 
 ```java
 import org.apache.flink.streaming.api.datastream.DataStream;
-import org.apache.flink.streaming.api.windowing.time.Time;
+import org.apache.flink.streaming.api.windowing.assigners.TumblingProcessingTimeWindows;
+import java.time.Duration;
 
 // Apply fold over a windowed stream
 DataStream<SensorReading> readings = env.addSource(new SensorSource());
 
 DataStream<Double> averages = readings
-    .keyBy(reading -> reading.sensorId)           // Group by sensor
-    .window(TumblingProcessingTimeWindows.of(Time.minutes(1)))  // 1-minute windows
-    .aggregate(new AverageAggregate());           // Apply fold
+    .keyBy(reading -> reading.sensorId)                              // Group by sensor
+    .window(TumblingProcessingTimeWindows.of(Duration.ofMinutes(1))) // 1-minute windows
+    .aggregate(new AverageAggregate());                              // Apply fold
 
 // The aggregate function is called for each window:
 // 1. createAccumulator() - once per window
@@ -1110,8 +1111,8 @@ async function streamingExample() {
 }
 // Output:
 // Running total: 6   (1+2+3)
-// Running total: 15  (1+2+3+4+5+6)
-// Running total: 24  (1+2+3+4+5+6+7+8+9)
+// Running total: 21  (1+2+3+4+5+6)
+// Running total: 45  (1+2+3+4+5+6+7+8+9)
 // Running total: 55  (final)
 ```
 
