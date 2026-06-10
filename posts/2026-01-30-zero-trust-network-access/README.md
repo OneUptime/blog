@@ -76,7 +76,7 @@ Identity is the new perimeter. Every access decision starts with strong authenti
 - Multi-factor authentication (MFA) on every access point
 - Single Sign-On (SSO) with SAML or OIDC
 - Passwordless authentication where possible (FIDO2, WebAuthn)
-- Just-in-time (JIT) provisioning through SCIM
+- Just-in-time (JIT) provisioning via SAML or OIDC, paired with SCIM for ongoing lifecycle management
 
 ### Pillar 2: Device Trust
 
