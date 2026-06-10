@@ -232,9 +232,9 @@ data "aws_ami" "ubuntu" {
 }
 ```
 
-## Output Postconditions
+## Output Preconditions
 
-Outputs can have preconditions to validate values before they are exposed.
+Outputs can have preconditions to validate values before they are exposed. Note that outputs only support `precondition`, not `postcondition`.
 
 ```hcl
 output "api_endpoint" {
