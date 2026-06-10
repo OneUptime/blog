@@ -111,7 +111,7 @@ struct AppState {
 #[tokio::main]
 async fn main() {
     // Initialize tracing for structured logging
-    tracing_subscriber::init();
+    tracing_subscriber::fmt::init();
 
     // Create shared state wrapped in Arc for thread-safe sharing
     let state = Arc::new(AppState {
