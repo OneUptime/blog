@@ -131,7 +131,7 @@ func main() {
     }
     
     // Alternative: check if channel is closed
-    value, ok := <-ch
+    _, ok := <-ch
     if !ok {
         fmt.Println("Channel is closed")
     }
@@ -400,13 +400,11 @@ func merge(channels ...<-chan int) <-chan int {
 func main() {
     in := producer(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
     
-    // Fan-out to two workers
+    // Fan-out to two workers - both read from the same input channel.
+    // Each value sent on `in` is received by exactly one of the workers
+    // (competitive consumption), so the work is distributed between them.
     c1 := square(in)
     c2 := square(in)
-    
-    // Note: This does not work as expected because the input
-    // channel is already being consumed by c1. For proper fan-out,
-    // you need to distribute work explicitly or use separate input channels.
     
     // Fan-in results
     for result := range merge(c1, c2) {
@@ -415,10 +413,10 @@ func main() {
 }
 ```
 
-For proper fan-out, you need to explicitly distribute work to multiple workers:
+This pattern generalizes naturally to any number of workers:
 
 ```go
-// Proper fan-out with explicit distribution
+// Generalized fan-out: spawn N workers competing on the same input channel
 func fanOut(in <-chan int, numWorkers int) []<-chan int {
     channels := make([]<-chan int, numWorkers)
     for i := 0; i < numWorkers; i++ {
