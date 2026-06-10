@@ -76,11 +76,8 @@ compactor:
     # Maximum size of a compacted block in bytes (5GB)
     max_block_bytes: 5368709120
 
-    # Maximum duration of traces in a compacted block
-    max_compaction_range: 1h
-
-    # Number of blocks to compact together
-    max_compaction_objects: 6
+    # Maximum number of objects per compacted block
+    max_compaction_objects: 6000000
 
     # How often to run compaction cycles
     compaction_cycle: 30s
@@ -140,28 +137,23 @@ compactor:
         host: consul.example.com:8500
 
   compaction:
-    # Level-based compaction settings
-    # Blocks at each level are compacted when count exceeds this threshold
+    # Time window for grouping blocks for compaction
     compaction_window: 4h
 
-    # Maximum number of compaction cycles running concurrently
+    # Maximum time to spend compacting a single tenant before moving on
     max_time_per_tenant: 5m
 
-    # Block selector determines which blocks to compact
-    # Options: time-window, none
-    block_selector: time-window
-
-    # v2 encoding settings for better compression
+    # v2 encoding settings for better compression (only used with v2 block format)
     v2_in_buffer_bytes: 5242880   # 5MB input buffer
     v2_out_buffer_bytes: 20971520 # 20MB output buffer
     v2_prefetch_traces_count: 1000
 
-    # Enable iterating over all tenants during compaction
-    # Useful for multi-tenant deployments
+    # How long compacted (input) blocks are kept before being deleted
+    # This provides a safety buffer for in-flight queries
     compacted_block_retention: 1h
 
-  # Resource limits to prevent compactor from consuming too many resources
-  max_block_bytes: 107374182400  # 100GB maximum block size
+    # Maximum size of a single compacted block
+    max_block_bytes: 107374182400  # 100GB maximum block size
 ```
 
 ## Retention and Lifecycle Management
@@ -175,12 +167,11 @@ compactor:
     # Primary retention period for all blocks
     block_retention: 336h  # 14 days
 
-    # How long to keep compacted blocks before deletion
+    # How long to keep compacted (input) blocks before deletion
     # This provides a safety buffer
     compacted_block_retention: 1h
 
-    # Retention for blocks that could not be compacted
-    # Usually due to corruption or other issues
+    # Number of tenants whose retention can be processed concurrently
     retention_concurrency: 10
 
 # Storage configuration with lifecycle rules
@@ -198,13 +189,12 @@ storage:
       bloom_filter_false_positive: 0.01
       bloom_filter_shard_size_bytes: 102400
 
-      # Version 2 encoding provides better compression
-      version: vParquet3
+      # Current default block format
+      version: vParquet4
 
     # Write-Ahead Log settings
     wal:
       path: /var/tempo/wal
-      encoding: snappy
 
     # Local block storage for temporary files
     local:
@@ -218,11 +208,12 @@ For deployments serving multiple tenants with different retention requirements:
 ```yaml
 # tempo.yaml - Per-tenant retention overrides
 overrides:
-  # Default retention for all tenants
+  # Default values applied to all tenants
   defaults:
-    block_retention: 336h  # 14 days
+    compaction:
+      block_retention: 336h  # 14 days
 
-  # Per-tenant overrides
+  # Per-tenant overrides file
   per_tenant_override_config: /etc/tempo/overrides.yaml
 ```
 
@@ -231,18 +222,24 @@ overrides:
 overrides:
   tenant-a:
     # Premium tenant with longer retention
-    block_retention: 720h  # 30 days
-    max_traces_per_user: 100000
+    compaction:
+      block_retention: 720h  # 30 days
+    ingestion:
+      max_traces_per_user: 100000
 
   tenant-b:
     # Standard tenant with default retention
-    block_retention: 168h  # 7 days
-    max_traces_per_user: 50000
+    compaction:
+      block_retention: 168h  # 7 days
+    ingestion:
+      max_traces_per_user: 50000
 
   tenant-c:
     # Trial tenant with minimal retention
-    block_retention: 48h  # 2 days
-    max_traces_per_user: 10000
+    compaction:
+      block_retention: 48h  # 2 days
+    ingestion:
+      max_traces_per_user: 10000
 ```
 
 ## Compaction Window Configuration
@@ -278,37 +275,24 @@ compactor:
     # Blocks within the same window are candidates for compaction
     compaction_window: 1h
 
-    # Maximum range of time a single compacted block can span
-    # Larger values mean fewer blocks but longer query times
-    max_compaction_range: 6h
-
-    # Number of tenants to process in parallel
-    tenant_shard_size: 0  # 0 means all tenants
-
-    # Time to wait before starting compaction after Tempo starts
-    # Allows the system to stabilize
+    # How often to run a compaction cycle
     compaction_cycle: 30s
+
+    # Maximum size of a single compacted output block
+    max_block_bytes: 5368709120  # 5GB
+
+ingester:
+  # Ingester block lifecycle affects compaction input
+  # Shorter times mean more small blocks for compaction
+  max_block_duration: 5m
+  max_block_bytes: 1073741824  # 1GB
+  flush_all_on_shutdown: true
 
 storage:
   trace:
-    # Block flush configuration affects compaction input
-    block:
-      # How long before flushing a block from memory
-      # Shorter times mean more small blocks for compaction
-      flush_all_on_shutdown: true
-
     wal:
-      # WAL flush settings
+      # WAL path on local disk
       path: /var/tempo/wal
-
-      # Flush WAL to block storage at this interval
-      v2_encoding: snappy
-
-      # Truncate WAL after this duration
-      truncate_frequency: 15m
-
-      # Compress WAL entries
-      encoding: snappy
 ```
 
 ## Production Configuration Example
@@ -349,9 +333,8 @@ compactor:
 
   compaction:
     # Block size limits
-    max_block_bytes: 5368709120        # 5GB max block size
-    max_compaction_objects: 6          # Compact up to 6 blocks together
-    max_compaction_range: 1h           # Max time range per block
+    max_block_bytes: 5368709120        # 5GB max compacted block size
+    max_compaction_objects: 6000000    # Max objects per compacted block
 
     # Timing configuration
     compaction_window: 4h              # 4-hour compaction windows
@@ -359,12 +342,13 @@ compactor:
 
     # Retention settings
     block_retention: 336h              # Keep blocks for 14 days
-    compacted_block_retention: 1h      # Keep compacted blocks 1 hour before cleanup
+    compacted_block_retention: 1h      # Keep input blocks 1 hour after compaction
 
     # Performance tuning
-    v2_in_buffer_bytes: 5242880        # 5MB input buffer
-    v2_out_buffer_bytes: 20971520      # 20MB output buffer
-    v2_prefetch_traces_count: 1000     # Prefetch 1000 traces
+    retention_concurrency: 10          # Tenant retention concurrency
+    v2_in_buffer_bytes: 5242880        # 5MB input buffer (v2 only)
+    v2_out_buffer_bytes: 20971520      # 20MB output buffer (v2 only)
+    v2_prefetch_traces_count: 1000     # Prefetch 1000 traces (v2 only)
 
 # Query frontend for distributed queries
 query_frontend:
@@ -384,17 +368,12 @@ storage:
       secret_key: ${AWS_SECRET_ACCESS_KEY}
 
     block:
-      version: vParquet3
+      version: vParquet4
       bloom_filter_false_positive: 0.01
       bloom_filter_shard_size_bytes: 102400
-      v2_index_downsample_bytes: 1048576
-      v2_encoding: zstd
 
     wal:
       path: /var/tempo/wal
-      encoding: snappy
-      v2_encoding: snappy
-      truncate_frequency: 15m
 
     local:
       path: /var/tempo/blocks
@@ -413,11 +392,14 @@ memberlist:
 # Override configurations per tenant
 overrides:
   defaults:
-    block_retention: 336h
-    max_traces_per_user: 50000
-    max_bytes_per_tag_values_query: 5000000
-    ingestion_rate_limit_bytes: 15000000
-    ingestion_burst_size_bytes: 20000000
+    compaction:
+      block_retention: 336h
+    ingestion:
+      max_traces_per_user: 50000
+      rate_limit_bytes: 15000000
+      burst_size_bytes: 20000000
+    read:
+      max_bytes_per_tag_values_query: 5000000
 ```
 
 ## Monitoring Compactor Performance
@@ -432,7 +414,7 @@ groups:
       # Alert when compaction is falling behind
       - alert: TempoCompactorFallingBehind
         expr: |
-          rate(tempodb_compaction_outstanding_blocks[5m]) > 0.1
+          tempodb_compaction_outstanding_blocks > 100
         for: 15m
         labels:
           severity: warning
@@ -452,7 +434,7 @@ groups:
       # Alert when retention is not being enforced
       - alert: TempoRetentionNotEnforced
         expr: |
-          tempo_retention_deleted_blocks_total == 0
+          increase(tempodb_retention_deleted_total[24h]) == 0
         for: 24h
         labels:
           severity: warning
@@ -468,7 +450,7 @@ groups:
 
 3. **Monitor compaction lag** - If the compactor falls behind, you will have many small blocks which increases query latency and storage costs.
 
-4. **Use appropriate block encoding** - vParquet3 with zstd compression provides excellent compression ratios for trace data.
+4. **Use the latest block format** - vParquet4 is the current default and provides the best compression and query performance for trace data.
 
 5. **Configure per-tenant overrides** - Not all tenants need the same retention. Use overrides to optimize costs for different use cases.
 
