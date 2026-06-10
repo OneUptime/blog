@@ -376,7 +376,7 @@ module "networking" {
 }
 ```
 
-Resource Type Changes
+### Resource Type Changes
 
 Sometimes you need to change resource types (e.g., upgrading from `aws_instance` to `aws_launch_template`). This requires destroy and recreate since Terraform cannot migrate between different resource types.
 
