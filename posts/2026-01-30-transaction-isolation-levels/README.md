@@ -65,7 +65,9 @@ This level provides no isolation between transactions. It offers the best perfor
 BEGIN;
 SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;
 
--- This query might see uncommitted changes from other transactions
+-- Note: PostgreSQL accepts this syntax but internally maps READ UNCOMMITTED
+-- to READ COMMITTED, so dirty reads are not actually possible here.
+-- True dirty reads require databases like MySQL or SQL Server.
 SELECT * FROM account_balances WHERE user_id = 123;
 
 COMMIT;
@@ -268,6 +270,8 @@ def execute_with_retry(operation, max_retries=3):
 
     raise Exception("Max retries exceeded for serializable transaction")
 
+
+product_id = 100
 
 def place_order(conn):
     cursor = conn.cursor()
