@@ -18,7 +18,7 @@ Deno provides a built-in `Deno.env` object for interacting with environment vari
 
 ### Getting Environment Variables
 
-The most common operation is retrieving the value of an environment variable. Deno provides two methods for this purpose.
+The most common operation is retrieving the value of an environment variable. Deno provides the `get()` method for this purpose.
 
 The `get()` method returns the value of an environment variable or `undefined` if it does not exist:
 
