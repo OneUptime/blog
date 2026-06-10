@@ -422,11 +422,11 @@ gantt
 // telemetry.ts
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
-import { OTLPTraceExporter } from '@opentelemetry/exporter-otlp-http';
-import { Resource } from '@opentelemetry/resources';
+import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 
 const sdk = new NodeSDK({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     'service.name': 'user-api',
   }),
   traceExporter: new OTLPTraceExporter({
@@ -653,11 +653,13 @@ setTimeout(() => {
 
 ```typescript
 // When enqueueing a job, include trace context
+const ctx = span.spanContext();
 await queue.add('process-order', {
   orderId: order.id,
   traceContext: {
-    traceId: span.spanContext().traceId,
-    spanId: span.spanContext().spanId,
+    traceId: ctx.traceId,
+    spanId: ctx.spanId,
+    traceFlags: ctx.traceFlags, // Required for a valid SpanContext link
     userId: user.id,
   },
 });
@@ -667,7 +669,13 @@ worker.process('process-order', async (job) => {
   const { traceContext } = job.data;
 
   const span = tracer.startSpan('job.process-order', {
-    links: [{ context: traceContext }],
+    links: [{
+      context: {
+        traceId: traceContext.traceId,
+        spanId: traceContext.spanId,
+        traceFlags: traceContext.traceFlags,
+      },
+    }],
   });
 
   span.setAttribute('user.id', traceContext.userId);
