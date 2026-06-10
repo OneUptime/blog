@@ -118,6 +118,7 @@ package myengine
 
 import (
     "context"
+    "fmt"
     "sync"
 
     "github.com/hashicorp/vault/sdk/framework"
@@ -935,7 +936,7 @@ Build the plugin and register it with Vault.
 
 ```bash
 # Build the plugin binary
-go build -o vault/plugins/myengine ./cmd/myengine
+go build -o vault/plugins/myengine .
 
 # Calculate the SHA256 checksum
 SHASUM=$(sha256sum vault/plugins/myengine | cut -d ' ' -f1)
@@ -1173,10 +1174,9 @@ Configure Vault to use the plugin directory:
 ```hcl
 # vault.hcl
 plugin_directory = "/etc/vault/plugins"
-
-# Enable plugin multiplexing for better performance
-plugin_multiplexed = true
 ```
+
+Plugin multiplexing is enabled by the plugin itself via `plugin.ServeMultiplex` (shown in `main.go` above); there is no server-side toggle.
 
 Register and enable on the leader node:
 
