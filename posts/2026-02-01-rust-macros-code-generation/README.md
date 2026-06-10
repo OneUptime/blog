@@ -484,6 +484,12 @@ pub fn derive_builder(input: TokenStream) -> TokenStream {
         }
     });
     
+    // Generate initial None values for the builder() constructor
+    let init_fields = fields.iter().map(|f| {
+        let name = &f.ident;
+        quote! { #name: None }
+    });
+    
     // Generate the build method that constructs the final struct
     let build_fields = fields.iter().map(|f| {
         let name = &f.ident;
@@ -500,10 +506,7 @@ pub fn derive_builder(input: TokenStream) -> TokenStream {
         impl #name {
             pub fn builder() -> #builder_name {
                 #builder_name {
-                    #(#fields.iter().map(|f| {
-                        let name = &f.ident;
-                        quote! { #name: None }
-                    })),*
+                    #(#init_fields),*
                 }
             }
         }
