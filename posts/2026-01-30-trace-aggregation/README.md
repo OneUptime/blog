@@ -172,7 +172,7 @@ For high-volume systems, storing all durations for percentile calculation is imp
 
 ```typescript
 // Using tdigest library for memory-efficient percentiles
-import TDigest from 'tdigest';
+import { TDigest } from 'tdigest';
 
 interface StreamingMetrics {
   count: number;
@@ -1975,7 +1975,7 @@ async function batchInsertAggregates(
 
 // 2. Use bloom filters for high-cardinality lookups
 class TraceIdBloomFilter {
-  private filter: Set<string>; // Simplified - use actual bloom filter lib
+  private filter: Set<string> = new Set(); // Simplified - use actual bloom filter lib
 
   add(traceId: string): void {
     this.filter.add(traceId.slice(0, 8)); // Hash prefix
@@ -2032,15 +2032,20 @@ const wrongP95 = (bucket1.p95 + bucket2.p95) / 2;
 // Option 3: Store histograms and interpolate
 ```
 
-### Pitfall 3: Missing Time Zone Handling
+### Pitfall 3: Missing Time Zone Handling for Calendar Buckets
+
+Fixed-width buckets (minutes, hours) work fine on epoch milliseconds because the
+epoch is timezone-agnostic. The trap appears when you bucket by *calendar*
+units (day, week, month) — those boundaries depend on the viewer's timezone.
 
 ```typescript
-// BAD: Assuming all timestamps are in the same timezone
-const bucket = Math.floor(timestamp / 60000) * 60000;
+// BAD: Day boundary using local time on the aggregator host
+// This shifts the boundary based on wherever the process happens to run.
+const day = new Date(timestamp).setHours(0, 0, 0, 0);
 
-// GOOD: Normalize to UTC
-const utcTimestamp = new Date(timestamp).getTime();
-const bucket = Math.floor(utcTimestamp / 60000) * 60000;
+// GOOD: Pick an explicit timezone (typically UTC) and stick with it
+const d = new Date(timestamp);
+const utcDay = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
 ```
 
 ### Pitfall 4: Not Handling Late-Arriving Data
