@@ -84,15 +84,12 @@ The decision propagates via context (W3C `traceparent` header). All downstream s
 // head-sampler.ts
 // Probabilistic head sampler that decides at trace root
 
+import { Context, SpanKind, Attributes, Link } from '@opentelemetry/api';
 import {
   Sampler,
   SamplingDecision,
-  SamplingResult,
-  Context,
-  SpanKind,
-  Attributes,
-  Link
-} from '@opentelemetry/api';
+  SamplingResult
+} from '@opentelemetry/sdk-trace-base';
 
 export class ProbabilisticHeadSampler implements Sampler {
   // Sampling rate between 0.0 (drop all) and 1.0 (keep all)
@@ -168,15 +165,12 @@ When you want a fixed number of traces per time window rather than a percentage:
 // rate-limited-sampler.ts
 // Keeps at most N traces per second using token bucket algorithm
 
+import { Context, SpanKind, Attributes, Link } from '@opentelemetry/api';
 import {
   Sampler,
   SamplingDecision,
-  SamplingResult,
-  Context,
-  SpanKind,
-  Attributes,
-  Link
-} from '@opentelemetry/api';
+  SamplingResult
+} from '@opentelemetry/sdk-trace-base';
 
 export class RateLimitedSampler implements Sampler {
   private readonly maxTracesPerSecond: number;
@@ -453,15 +447,12 @@ flowchart TB
 // adaptive-sampler.ts
 // Increases sampling rate when errors spike, reduces when stable
 
+import { Context, SpanKind, Attributes, Link } from '@opentelemetry/api';
 import {
   Sampler,
   SamplingDecision,
-  SamplingResult,
-  Context,
-  SpanKind,
-  Attributes,
-  Link
-} from '@opentelemetry/api';
+  SamplingResult
+} from '@opentelemetry/sdk-trace-base';
 
 interface AdaptiveConfig {
   // Minimum sampling rate (floor)
@@ -595,15 +586,12 @@ export class AdaptiveSampler implements Sampler {
 // traffic-adaptive-sampler.ts
 // Adjusts sampling based on traffic volume to maintain consistent trace count
 
+import { Context, SpanKind, Attributes, Link } from '@opentelemetry/api';
 import {
   Sampler,
   SamplingDecision,
-  SamplingResult,
-  Context,
-  SpanKind,
-  Attributes,
-  Link
-} from '@opentelemetry/api';
+  SamplingResult
+} from '@opentelemetry/sdk-trace-base';
 
 interface TrafficAdaptiveConfig {
   // Target traces per minute to keep
@@ -733,15 +721,12 @@ flowchart LR
 // priority-sampler.ts
 // Calculates priority score from multiple factors and samples accordingly
 
+import { Context, SpanKind, Attributes, Link } from '@opentelemetry/api';
 import {
   Sampler,
   SamplingDecision,
-  SamplingResult,
-  Context,
-  SpanKind,
-  Attributes,
-  Link
-} from '@opentelemetry/api';
+  SamplingResult
+} from '@opentelemetry/sdk-trace-base';
 
 // Priority levels with their sampling rates
 enum Priority {
@@ -985,15 +970,12 @@ flowchart TB
 // composite-sampler.ts
 // Combines multiple sampling strategies with configurable logic
 
+import { Context, SpanKind, Attributes, Link } from '@opentelemetry/api';
 import {
   Sampler,
   SamplingDecision,
-  SamplingResult,
-  Context,
-  SpanKind,
-  Attributes,
-  Link
-} from '@opentelemetry/api';
+  SamplingResult
+} from '@opentelemetry/sdk-trace-base';
 
 type CompositeMode = 'any' | 'all' | 'priority';
 
@@ -1143,7 +1125,7 @@ function createSampler() {
   if (isDevelopment) {
     // In development, sample everything for debugging
     return new ParentBasedSampler({
-      root: { shouldSample: () => ({ decision: 1 }) } as any
+      root: { shouldSample: () => ({ decision: 2 }) } as any  // 2 = RECORD_AND_SAMPLED
     });
   }
 
@@ -1785,6 +1767,11 @@ flowchart LR
 ```typescript
 // Ensure propagation is configured
 import { W3CTraceContextPropagator } from '@opentelemetry/core';
+import {
+  ParentBasedSampler,
+  AlwaysOnSampler,
+  AlwaysOffSampler
+} from '@opentelemetry/sdk-trace-base';
 
 const sdk = new NodeSDK({
   textMapPropagator: new W3CTraceContextPropagator(),
@@ -1829,7 +1816,7 @@ exporters:
 // sampling-test-utils.ts
 // Utilities for testing sampling behavior
 
-import { Sampler, SamplingDecision } from '@opentelemetry/api';
+import { Sampler, SamplingDecision } from '@opentelemetry/sdk-trace-base';
 
 export function testSampler(
   sampler: Sampler,
