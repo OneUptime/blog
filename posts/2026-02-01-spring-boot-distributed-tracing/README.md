@@ -290,11 +290,14 @@ public class BaggageService {
         this.tracer = tracer;
     }
     
-    // Add baggage that will propagate to all downstream services
-    public void setUserContext(String userId, String tenantId) {
-        // Baggage is attached to the current span and propagated automatically
-        tracer.createBaggage("user.id", userId);
-        tracer.createBaggage("tenant.id", tenantId);
+    // Run work with user and tenant baggage in scope
+    // Baggage propagates to all downstream service calls inside the try block
+    public <T> T withUserContext(String userId, String tenantId, Supplier<T> work) {
+        // createBaggageInScope returns a BaggageInScope that must be closed
+        try (BaggageInScope userScope = tracer.createBaggageInScope("user.id", userId);
+             BaggageInScope tenantScope = tracer.createBaggageInScope("tenant.id", tenantId)) {
+            return work.get();
+        }
     }
     
     // Read baggage that was set by an upstream service
@@ -465,11 +468,12 @@ class OrderController {
     
     @PostMapping
     public ResponseEntity<Order> createOrder(@RequestBody OrderRequest request) {
-        // Set baggage for downstream services
-        tracer.createBaggage("customer.tier", request.getCustomerTier());
-        
-        Order order = orderService.createOrder(request);
-        return ResponseEntity.ok(order);
+        // Baggage propagates to downstream services within this scope
+        try (BaggageInScope ignored = tracer.createBaggageInScope(
+                "customer.tier", request.getCustomerTier())) {
+            Order order = orderService.createOrder(request);
+            return ResponseEntity.ok(order);
+        }
     }
 }
 ```
