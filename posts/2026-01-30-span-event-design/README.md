@@ -193,7 +193,10 @@ async function fetchWithRetry(
 
             // Record each exception as a separate event
             // This preserves the history of all failures
-            span.recordException(lastError, {
+            span.recordException(lastError);
+
+            // Add a separate event with retry-specific context
+            span.addEvent('fetch.attempt_failed', {
                 'attempt.number': attempt,
                 'retry.will_retry': attempt < maxRetries,
             });
@@ -498,6 +501,7 @@ interface PaymentResult {
 }
 
 async function checkout(cart: Cart, paymentToken: string): Promise<string> {
+    const checkoutStartMs = Date.now();
     const span = tracer.startSpan('checkout.process', {
         attributes: {
             'cart.id': cart.id,
@@ -553,7 +557,7 @@ async function checkout(cart: Cart, paymentToken: string): Promise<string> {
         const orderId = await createOrderFromCart(cart, paymentResult);
         span.addEvent('checkout.completed', {
             'order.id': orderId,
-            'checkout.duration_ms': Date.now() - span.startTime[0] * 1000,
+            'checkout.duration_ms': Date.now() - checkoutStartMs,
         });
 
         span.setAttribute('order.id', orderId);
