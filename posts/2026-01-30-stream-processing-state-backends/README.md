@@ -282,13 +282,10 @@ RocksDBStateBackend uses RocksDB, an embedded key-value store, to manage state. 
 // RocksDB stores state on local disk with memory caching
 StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
 
-// Create RocksDB state backend
-// This stores working state in RocksDB (local disk + cache)
-EmbeddedRocksDBStateBackend rocksDBBackend = new EmbeddedRocksDBStateBackend();
-
-// Enable incremental checkpoints for efficiency
+// Create RocksDB state backend with incremental checkpointing enabled
+// The boolean constructor argument enables incremental checkpoints
 // Only changed state is written during checkpoint (much faster for large state)
-rocksDBBackend.enableIncrementalCheckpointing(true);
+EmbeddedRocksDBStateBackend rocksDBBackend = new EmbeddedRocksDBStateBackend(true);
 
 // Set the state backend
 env.setStateBackend(rocksDBBackend);
@@ -924,13 +921,9 @@ config.enableUnalignedCheckpoints();
 config.setTolerableCheckpointFailureNumber(3);
 
 // Keep checkpoints on job cancellation for recovery
-config.setExternalizedCheckpointCleanup(
-    CheckpointConfig.ExternalizedCheckpointCleanup.RETAIN_ON_CANCELLATION
+config.setExternalizedCheckpointRetention(
+    ExternalizedCheckpointRetention.RETAIN_ON_CANCELLATION
 );
-
-// Force checkpointing in iterative jobs
-// Required for jobs with feedback loops
-config.setForceCheckpointing(true);
 ```
 
 ### State TTL Configuration
@@ -946,7 +939,7 @@ public class StateTTLExample {
         // Configure TTL with various options
         StateTtlConfig ttlConfig = StateTtlConfig
             // State expires 1 hour after last update
-            .newBuilder(Time.hours(1))
+            .newBuilder(Duration.ofHours(1))
 
             // When to update the timestamp
             // OnCreateAndWrite: Update on creation and every write
