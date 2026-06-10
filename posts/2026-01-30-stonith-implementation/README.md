@@ -342,8 +342,8 @@ pcs stonith status
 # Test fence agent without executing (dry run)
 fence_ipmilan -a 192.168.1.10 -l admin -p password -P -o status
 
-# Validate all STONITH resources
-pcs stonith verify --full
+# Validate the cluster configuration (including STONITH)
+pcs cluster verify --full
 ```
 
 ### Test Actual Fencing
@@ -358,8 +358,8 @@ pcs stonith fence node2 --off
 # Confirm node is fenced
 pcs status nodes
 
-# Power node back on
-pcs stonith fence node2 --on
+# Power node back on (call the fence agent directly with the 'on' action)
+fence_ipmilan -a 192.168.1.11 -l admin -p password -P -o on
 ```
 
 ### Automated STONITH Testing Script
@@ -523,8 +523,9 @@ pcs alert create id=smtp-alert path=/usr/share/pacemaker/alerts/alert_smtp.sh
 pcs alert recipient add smtp-alert id=email-admin value=admin@example.com \
     options email_sender=pacemaker@example.com
 
-# Alert on specific events
-pcs alert update smtp-alert select fencing
+# Filter alerts to specific event types by editing the CIB directly.
+# The example below restricts the alert to fencing events only.
+cibadmin --modify --xml-text '<alert id="smtp-alert"><select><select_fencing/></select></alert>'
 ```
 
 ### Custom Alert Script
@@ -635,18 +636,20 @@ pcs stonith history
 # Clear failed fence operations
 pcs stonith cleanup fence-node1
 
-# Force fence a node (emergency)
-pcs stonith fence node2 --force
+# Manually confirm a fenced node is powered off (emergency, when automatic confirmation fails)
+pcs stonith confirm node2 --force
 ```
 
 ### Debug Mode
 
 ```bash
 # Enable debug logging for fence agents
-pcs stonith update fence-node1 debug=/var/log/fence_node1.log
+pcs stonith update fence-node1 debug_file=/var/log/fence_node1.log
 
-# Or set cluster-wide debug
-pcs property set debug=true
+# Or enable cluster-wide debug logging by editing /etc/sysconfig/pacemaker
+# and setting PCMK_debug=yes, then restarting pacemaker
+echo 'PCMK_debug=yes' | sudo tee -a /etc/sysconfig/pacemaker
+sudo systemctl restart pacemaker
 
 # Check pacemaker logs
 tail -f /var/log/pacemaker/pacemaker.log
