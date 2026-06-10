@@ -304,21 +304,19 @@ func main() {
 }
 ```
 
-### Querying Items
+### Getting Items by Key
 
-Querying is more efficient than scanning because it uses indexes. Always prefer queries when possible:
+Reading by primary key with `GetItem` is the most efficient way to fetch a known item - it's a direct key lookup rather than a query or scan:
 
 ```go
 package main
 
 import (
     "context"
-    "log"
 
-    "github.com/aws/aws-sdk-go-v2/aws"
-    "github.com/aws/aws-sdk-go-v2/config"
     "github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
     "github.com/aws/aws-sdk-go-v2/service/dynamodb"
+    "github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 )
 
 func getUserByID(client *dynamodb.Client, tableName, userID string) (*User, error) {
@@ -423,7 +421,7 @@ func main() {
             return retry.NewStandard(func(o *retry.StandardOptions) {
                 // Increase max attempts for better resilience
                 o.MaxAttempts = 5
-                // Add jitter to prevent thundering herd
+                // Cap the maximum delay between retries
                 o.MaxBackoff = 30 * time.Second
             })
         }),
