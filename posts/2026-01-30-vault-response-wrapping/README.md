@@ -66,13 +66,13 @@ You can configure the TTL (time-to-live) for wrapped tokens to control how long 
 ```bash
 # Wrap a secret with a 5-minute TTL
 
-vault kv get -wrap-ttl=5m secret/data/myapp/credentials
+vault kv get -wrap-ttl=5m secret/myapp/credentials
 
 # Wrap a secret with a 1-hour TTL
-vault kv get -wrap-ttl=1h secret/data/myapp/api-key
+vault kv get -wrap-ttl=1h secret/myapp/api-key
 
 # Wrap with a 30-second TTL for highly sensitive operations
-vault kv get -wrap-ttl=30s secret/data/myapp/one-time-password
+vault kv get -wrap-ttl=30s secret/myapp/one-time-password
 ```
 
 ### Setting TTL via API
@@ -264,7 +264,7 @@ Before attempting to unwrap, you can look up the wrapping token to verify it is 
 
 ```bash
 # Look up wrapping token metadata without unwrapping
-vault token lookup $WRAPPING_TOKEN
+vault write sys/wrapping/lookup token=$WRAPPING_TOKEN
 
 # Or via API
 curl \
