@@ -111,6 +111,7 @@ vault write ssh-client-signer/roles/default-user \
     allowed_users="ubuntu,deploy,app" \
     allowed_extensions="permit-pty,permit-agent-forwarding" \
     default_extensions='{"permit-pty": ""}' \
+    allow_user_certificates=true \
     ttl=30m \
     max_ttl=24h
 ```
