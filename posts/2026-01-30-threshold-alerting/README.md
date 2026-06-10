@@ -95,7 +95,7 @@ historical_latency = [45, 52, 48, 55, 47, 51, 49, 53, 46, 50]  # milliseconds
 bounds = threshold_calculator.calculate_bounds(historical_latency)
 
 print(f"Normal range: {bounds['lower_bound']:.1f}ms - {bounds['upper_bound']:.1f}ms")
-# Output: Normal range: 40.2ms - 59.8ms
+# Output: Normal range: 42.0ms - 57.2ms
 ```
 
 **When to use dynamic thresholds:**
@@ -160,7 +160,7 @@ def percentile_threshold(data, percentile=95, headroom=1.2):
 latency_samples = [12, 15, 18, 22, 25, 28, 35, 42, 55, 120]  # ms
 threshold = percentile_threshold(latency_samples, percentile=95, headroom=1.2)
 print(f"Alert threshold: {threshold:.1f}ms")
-# Output: Alert threshold: 103.2ms
+# Output: Alert threshold: 108.9ms
 ```
 
 ### Moving Average with Bands
@@ -173,7 +173,7 @@ class MovingAverageThreshold:
         """
         Args:
             alpha: Smoothing factor (0-1). Higher = more responsive to recent data
-            band_multiplier: How many MADs (median absolute deviations) for bounds
+            band_multiplier: How many standard deviations for bounds
         """
         self.alpha = alpha
         self.band_multiplier = band_multiplier
@@ -508,8 +508,8 @@ readings = [
     (80, 0),    # Below enter, no alert
     (86, 10),   # Above enter, alert starts
     (82, 20),   # Below enter but above exit, still alerting
-    (75, 30),   # Below exit but min duration not met
-    (72, 150),  # Below exit and min duration met, clears
+    (65, 30),   # Below exit but min duration not met
+    (68, 150),  # Below exit and min duration met, clears
 ]
 
 for cpu, timestamp in readings:
@@ -523,8 +523,8 @@ Output:
 Time 0s: CPU=80%, State=OK
 Time 10s: CPU=86%, State=ALERTING (changed)
 Time 20s: CPU=82%, State=ALERTING
-Time 30s: CPU=75%, State=ALERTING
-Time 150s: CPU=72%, State=OK (changed)
+Time 30s: CPU=65%, State=ALERTING
+Time 150s: CPU=68%, State=OK (changed)
 ```
 
 The following diagram shows how hysteresis prevents alert flapping:
