@@ -247,7 +247,7 @@ Bun also supports JSX in `.js` files if you configure the `jsxImportSource` in y
     "target": "ESNext",
     "strict": true,
     "skipLibCheck": true,
-    "types": ["bun-types"]
+    "types": ["bun"]
   }
 }
 ```
@@ -583,7 +583,7 @@ Based on our exploration of Bun, here are the recommended best practices:
 
 6. **Write tests with `bun:test`**: Use the built-in test runner for faster test execution.
 
-7. **Lock dependencies with `bun.lockb`**: Commit the lockfile to ensure reproducible builds.
+7. **Lock dependencies with `bun.lock`**: Commit the lockfile to ensure reproducible builds.
 
 8. **Use `Bun.env` over `process.env`**: While both work, `Bun.env` is typed and more explicit.
 
