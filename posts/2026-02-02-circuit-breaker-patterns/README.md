@@ -267,7 +267,7 @@ except requests.RequestException as e:
 A circuit breaker is more useful when combined with a fallback strategy. When the primary service is unavailable, the fallback provides degraded but functional behavior.
 
 ```python
-from typing import Callable, Optional, TypeVar, Generic
+from typing import Callable, Optional, TypeVar
 import logging
 
 logger = logging.getLogger(__name__)
@@ -302,7 +302,7 @@ class CircuitBreakerWithFallback(CircuitBreaker):
 
         try:
             return self.call(func, *args, **kwargs)
-        except (CircuitBreakerError, self.expected_exceptions) as e:
+        except (CircuitBreakerError, *self.expected_exceptions) as e:
             if active_fallback:
                 logger.warning(
                     f"Circuit '{self.name}' using fallback: {e}"
@@ -747,10 +747,8 @@ Monitoring circuit breaker state is essential for understanding your system's he
 This example shows how to track circuit breaker state and transitions using Prometheus client library.
 
 ```python
-from prometheus_client import Gauge, Counter, Histogram
-from datetime import datetime
+from prometheus_client import Gauge, Counter
 from typing import Callable
-import functools
 
 # Define Prometheus metrics
 circuit_state_gauge = Gauge(
@@ -977,6 +975,8 @@ except Exception as e:
 Configure your circuit breaker to treat slow calls as failures. A service responding in 30 seconds is often worse than no response.
 
 ```python
+import time
+
 # Consider slow responses as failures
 class TimeoutAwareCircuitBreaker(CircuitBreaker):
     def __init__(self, *args, slow_call_threshold: float = 5.0, **kwargs):
