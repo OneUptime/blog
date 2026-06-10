@@ -60,13 +60,12 @@ flowchart TD
 
 ## Installing the ApplicationSet Controller
 
-ApplicationSets are included by default in ArgoCD 2.3 and later versions. For earlier versions, you need to install the controller separately.
+ApplicationSets are bundled with ArgoCD starting from version 2.3. The standard ArgoCD install manifest deploys the ApplicationSet controller alongside the other ArgoCD components, so no separate installation step is required for current versions.
 
-The following command installs the ApplicationSet controller in your ArgoCD namespace:
+The following commands install ArgoCD (including the ApplicationSet controller) and verify the controller is running:
 
 ```bash
-# Install ApplicationSet controller for ArgoCD versions prior to 2.3
-
+# Install ArgoCD; the ApplicationSet controller is included in 2.3+
 kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 
 # Verify the controller is running
