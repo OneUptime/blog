@@ -371,6 +371,7 @@ Real applications often need to process events that may or may not trigger trans
 
 ```rust
 // Events that can occur in the order system.
+#[derive(Debug)]
 enum OrderEvent {
     PaymentReceived { payment_id: String },
     ShipmentDispatched { tracking_number: String },
