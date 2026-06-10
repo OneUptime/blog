@@ -300,12 +300,13 @@ class SudoService {
 
   private getRequiredVerificationLevel(scope: SudoScope): VerificationLevel {
     // Higher risk actions require stronger verification
+    let level: VerificationLevel = 'password';
     for (const action of scope.actions) {
       const required = this.config.scopeVerificationRequirements.get(action);
       if (required === 'hardware_key') return 'hardware_key';
-      if (required === 'mfa') return 'mfa';
+      if (required === 'mfa') level = 'mfa';
     }
-    return 'password';
+    return level;
   }
 
   private scopeCoversAction(
