@@ -326,7 +326,7 @@ metrics_generator:
       # Dimension mapping for attribute renaming
       dimension_mappings:
         - name: http.target
-          source_attributes:
+          source_labels:
             - http.route
             - http.url
 ```
@@ -479,13 +479,13 @@ Tempo generates three primary metrics:
 # Throughput trend (requests per minute, smoothed)
 sum(rate(traces_spanmetrics_calls_total[5m])) * 60
 
-# Apdex score (satisfied < 100ms, tolerating < 400ms)
+# Apdex score (satisfied <= 100ms, tolerating <= 400ms)
+# Apdex = (Satisfied + Tolerating/2) / Total
+#       = (bucket{le=0.1} + bucket{le=0.4}) / 2 / total
 (
   sum(rate(traces_spanmetrics_latency_bucket{le="0.1"}[5m]))
   +
   sum(rate(traces_spanmetrics_latency_bucket{le="0.4"}[5m]))
-  -
-  sum(rate(traces_spanmetrics_latency_bucket{le="0.1"}[5m]))
 ) / 2
 /
 sum(rate(traces_spanmetrics_latency_count[5m]))
@@ -576,18 +576,24 @@ spec:
 
 ### Cardinality Limits
 
-Protect against cardinality explosions:
+Protect against cardinality explosions. The `max_active_series` limit is configured under the
+per-tenant overrides section (not under the `span_metrics` processor itself). The limit is enforced
+per generator instance — the total active series remote-written will be
+`<# of generators> * max_active_series`. When the limit is reached, new label combinations are
+collapsed into overflow series labeled with `metric_overflow="true"` rather than dropped:
 
 ```yaml
-metrics_generator:
-  processor:
-    span_metrics:
-      # Maximum unique label combinations
+# Per-tenant override for the metrics-generator active series limit
+overrides:
+  defaults:
+    metrics_generator:
+      # Maximum unique active series per generator instance
       max_active_series: 100000
-
-      # Drop dimensions if cardinality exceeds limit
-      drop_high_cardinality_dimensions: true
 ```
+
+To keep cardinality bounded at the source, restrict the `dimensions` list to attributes with known
+bounded value sets (avoid `http.url`, `user.id`, `trace.id`, etc.) and use `filter_policies` to drop
+spans that should not contribute to metrics.
 
 ---
 
@@ -696,9 +702,8 @@ metrics_generator:
         - http.route
         - http.status_code
 
-      # Protect against cardinality issues
+      # Emit a target_info metric with resource attributes
       enable_target_info: true
-      max_active_series: 50000
 
   # Metrics storage and export
   storage:
@@ -708,6 +713,13 @@ metrics_generator:
         send_exemplars: true
         headers:
           X-Scope-OrgID: tempo
+
+# Per-tenant overrides: enable the generator processors and cap active series
+overrides:
+  defaults:
+    metrics_generator:
+      processors: [span-metrics]
+      max_active_series: 50000
 
 ingester:
   lifecycler:
