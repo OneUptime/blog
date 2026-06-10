@@ -297,8 +297,7 @@ For workloads running in Azure, you can configure Vault to use managed identitie
 # Configure Vault to use managed identity
 vault write azure/config \
     subscription_id="your-subscription-id" \
-    tenant_id="your-tenant-id" \
-    use_microsoft_graph_api=true
+    tenant_id="your-tenant-id"
 ```
 
 When `client_id` and `client_secret` are omitted, Vault will automatically use the managed identity of the VM or container it is running on.
