@@ -460,6 +460,11 @@ impl RabbitMQProducer {
         let conn = Connection::connect(amqp_url, ConnectionProperties::default()).await?;
         let channel = conn.create_channel().await?;
         
+        // Enable publisher confirms so basic_publish returns Ack/Nack
+        channel
+            .confirm_select(ConfirmSelectOptions::default())
+            .await?;
+        
         // Declare a topic exchange for flexible routing
         channel
             .exchange_declare(
@@ -645,7 +650,7 @@ This metrics collector tracks key performance indicators for your event processi
 
 ```rust
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::Instant;
+use std::time::Duration;
 
 pub struct EventMetrics {
     events_processed: AtomicU64,
