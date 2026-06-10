@@ -693,6 +693,10 @@ setup_firewall() {
 
     # Allow corporate traffic only through VPN
     for network in "${CORPORATE_NETWORKS[@]}"; do
+        # Log corporate traffic on non-VPN interfaces before dropping
+        iptables -A OUTPUT -d "$network" ! -o "$VPN_INTERFACE" \
+            -j LOG --log-prefix "SPLIT-TUNNEL-DROP: "
+
         # Block corporate traffic on non-VPN interfaces
         iptables -A OUTPUT -d "$network" ! -o "$VPN_INTERFACE" -j DROP
 
@@ -702,9 +706,6 @@ setup_firewall() {
 
     # Allow all other outbound traffic
     iptables -A OUTPUT -j ACCEPT
-
-    # Log dropped packets for monitoring
-    iptables -A OUTPUT -j LOG --log-prefix "SPLIT-TUNNEL-DROP: "
 }
 
 setup_firewall
