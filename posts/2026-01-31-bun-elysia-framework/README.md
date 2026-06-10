@@ -580,7 +580,7 @@ sequenceDiagram
     participant Handler
     participant afterHandle
     participant mapResponse
-    participant onResponse
+    participant afterResponse
 
     Client->>onRequest: Request arrives
     onRequest->>parse: Parse body
@@ -589,8 +589,8 @@ sequenceDiagram
     beforeHandle->>Handler: Execute handler
     Handler->>afterHandle: Post-handler logic
     afterHandle->>mapResponse: Map response
-    mapResponse->>onResponse: Send response
-    onResponse->>Client: Response
+    mapResponse->>afterResponse: Send response
+    afterResponse->>Client: Response
 ```
 
 Here is a comprehensive middleware example:
@@ -665,8 +665,8 @@ const app = new Elysia()
     }
   })
   
-  // onResponse: Runs after response is sent (for logging/cleanup)
-  .onResponse(({ request, set }) => {
+  // onAfterResponse: Runs after response is sent (for logging/cleanup)
+  .onAfterResponse(({ request, set }) => {
     console.log(`Response sent: ${set.status} for ${request.url}`);
   })
   
