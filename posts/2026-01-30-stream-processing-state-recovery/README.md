@@ -311,11 +311,9 @@ public class StateBackendConfiguration {
         // Best for: Large state, incremental checkpoints
         // Benefit: State can exceed available memory
 
-        EmbeddedRocksDBStateBackend rocksDBBackend = new EmbeddedRocksDBStateBackend();
-
-        // Enable incremental checkpoints for faster checkpoint creation
+        // Enable incremental checkpoints via constructor for faster checkpoint creation
         // Only changed data is written to checkpoint storage
-        rocksDBBackend.setIncrementalCheckpointsEnabled(true);
+        EmbeddedRocksDBStateBackend rocksDBBackend = new EmbeddedRocksDBStateBackend(true);
 
         env.setStateBackend(rocksDBBackend);
 
@@ -340,16 +338,14 @@ import org.apache.flink.configuration.Configuration;
 public class RocksDBTuning {
 
     public static EmbeddedRocksDBStateBackend createOptimizedBackend() {
-        EmbeddedRocksDBStateBackend backend = new EmbeddedRocksDBStateBackend();
+        // Enable incremental checkpoints via constructor
+        // Significantly reduces checkpoint time for large state
+        EmbeddedRocksDBStateBackend backend = new EmbeddedRocksDBStateBackend(true);
 
         // Use predefined options optimized for spinning disks or flash storage
         // SPINNING_DISK_OPTIMIZED: Reduces write amplification
         // FLASH_SSD_OPTIMIZED: Optimizes for SSD characteristics
         backend.setPredefinedOptions(PredefinedOptions.FLASH_SSD_OPTIMIZED);
-
-        // Enable incremental checkpoints
-        // Significantly reduces checkpoint time for large state
-        backend.setIncrementalCheckpointsEnabled(true);
 
         return backend;
     }
@@ -1236,8 +1232,7 @@ env.enableCheckpointing(300000);  // 5 minutes
 // Incremental checkpoints only write changed data
 // Dramatically reduces checkpoint time for large state
 
-EmbeddedRocksDBStateBackend backend = new EmbeddedRocksDBStateBackend();
-backend.setIncrementalCheckpointsEnabled(true);
+EmbeddedRocksDBStateBackend backend = new EmbeddedRocksDBStateBackend(true);
 env.setStateBackend(backend);
 ```
 
