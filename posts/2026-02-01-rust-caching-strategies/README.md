@@ -467,7 +467,8 @@ struct CacheEntry<V> {
 
 impl<V> CacheEntry<V> {
     // Check if entry should be refreshed early to prevent stampede
-    // Uses exponential decay - refresh probability increases as expiration approaches
+    // Refresh probability grows inversely with remaining TTL, so a single
+    // request is likely to refresh before the herd hits an expired entry
     fn should_refresh_early(&self) -> bool {
         let elapsed = self.created_at.elapsed();
         let remaining = self.ttl.saturating_sub(elapsed);
@@ -478,7 +479,7 @@ impl<V> CacheEntry<V> {
         }
         
         // Probability increases as we approach expiration
-        // At 20% remaining: ~5% chance, at 5% remaining: ~20% chance
+        // At 20% remaining: ~25% chance, at 10% remaining: ~50% chance, at 5% or below: ~100% chance
         let remaining_ratio = remaining.as_secs_f64() / self.ttl.as_secs_f64();
         let refresh_probability = 0.05 / remaining_ratio.max(0.01);
         
