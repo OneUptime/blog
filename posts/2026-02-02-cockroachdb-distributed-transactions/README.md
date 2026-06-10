@@ -128,8 +128,6 @@ import (
     "context"
     "database/sql"
     "fmt"
-    "math/rand"
-    "time"
 
     "github.com/cockroachdb/cockroach-go/v2/crdb"
     _ "github.com/lib/pq"
@@ -202,7 +200,6 @@ package main
 import (
     "context"
     "database/sql"
-    "errors"
     "math/rand"
     "strings"
     "time"
@@ -223,7 +220,6 @@ func isRetryableError(err error) bool {
     // Check for common retryable error codes
     return strings.Contains(errStr, "40001") || // serialization_failure
            strings.Contains(errStr, "40003") || // statement_completion_unknown
-           strings.Contains(errStr, "CR000") || // CockroachDB retry error
            strings.Contains(errStr, "restart transaction")
 }
 
@@ -703,15 +699,13 @@ Understanding transaction behavior is crucial for maintaining system health.
 The following query helps identify problematic transactions by showing their duration and conflict status.
 
 ```sql
--- View active transactions and their duration
+-- View active queries and their duration
 SELECT
     application_name,
     query,
     phase,
-    EXTRACT(EPOCH FROM (now() - start)) as duration_seconds,
-    num_retries,
-    num_auto_retries
-FROM crdb_internal.cluster_transactions
+    EXTRACT(EPOCH FROM (now() - start)) as duration_seconds
+FROM crdb_internal.cluster_queries
 WHERE application_name NOT LIKE '%internal%'
 ORDER BY duration_seconds DESC
 LIMIT 20;
