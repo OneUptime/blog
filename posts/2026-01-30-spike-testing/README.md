@@ -58,9 +58,11 @@ First, install k6 and create the project structure:
 
 brew install k6
 
-# Or on Linux
-sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
-echo "deb https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+# Or on Linux (Debian/Ubuntu) using the signed-by keyring approach;
+# apt-key has been deprecated.
+sudo gpg -k
+sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
 sudo apt-get update
 sudo apt-get install k6
 
@@ -106,14 +108,12 @@ export const options = {
 
   // Thresholds define pass/fail criteria
   thresholds: {
-    // 95% of requests should complete under 2 seconds even during spike
-    http_req_duration: ['p(95)<2000'],
+    // 95% of requests under 2s, 99% under 5s (combine into one array;
+    // a duplicate key would silently override the first entry)
+    http_req_duration: ['p(95)<2000', 'p(99)<5000'],
 
     // Error rate should stay below 5%
     errors: ['rate<0.05'],
-
-    // 99% of requests should complete under 5 seconds
-    http_req_duration: ['p(99)<5000'],
   },
 };
 
@@ -182,6 +182,7 @@ Real traffic patterns often include multiple spikes. This test simulates a scena
 import http from 'k6/http';
 import { check, sleep, group } from 'k6';
 import { Counter, Rate, Trend } from 'k6/metrics';
+import exec from 'k6/execution';
 
 // Metrics for detailed analysis
 const spikeCounter = new Counter('spike_requests');
@@ -230,10 +231,11 @@ export const options = {
 
 const BASE_URL = __ENV.BASE_URL || 'https://api.example.com';
 
-// Track whether we are currently in a spike phase
+// Track whether we are currently in a spike phase.
+// __VU is the current VU's unique ID, not the active VU count,
+// so use exec.instance.vusActive to read the live count.
 function isInSpike() {
-  const vus = __VU;
-  return vus > 100;
+  return exec.instance.vusActive > 100;
 }
 
 export default function () {
@@ -293,10 +295,11 @@ This test specifically validates that auto-scaling triggers correctly and handle
 import http from 'k6/http';
 import { check, sleep } from 'k6';
 import { Trend, Counter, Gauge } from 'k6/metrics';
+import exec from 'k6/execution';
 
 // Metrics to correlate with infrastructure scaling
 const responseTimeByPhase = new Trend('response_time_by_phase');
-const requestsInFlight = new Gauge('requests_in_flight');
+const activeVUs = new Gauge('active_vus');
 const scalingLagRequests = new Counter('requests_before_scale');
 
 export const options = {
@@ -354,7 +357,9 @@ export default function (data) {
     phase = 'cooldown';
   }
 
-  requestsInFlight.add(1);
+  // k6 Gauge stores the latest value, so record the current active VU
+  // count rather than trying to increment/decrement around the request.
+  activeVUs.add(exec.instance.vusActive);
 
   const response = http.get(`${BASE_URL}/api/health/deep`, {
     headers: {
@@ -363,8 +368,6 @@ export default function (data) {
     },
     timeout: '30s',
   });
-
-  requestsInFlight.add(-1);
 
   // Record response time tagged by phase
   responseTimeByPhase.add(response.timings.duration, { phase: phase });
