@@ -37,7 +37,7 @@ Start with Spring Initializr and include these dependencies:
 
 <!-- PostgreSQL R2DBC driver -->
 <dependency>
-    <groupId>io.r2dbc</groupId>
+    <groupId>org.postgresql</groupId>
     <artifactId>r2dbc-postgresql</artifactId>
     <scope>runtime</scope>
 </dependency>
