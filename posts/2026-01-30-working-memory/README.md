@@ -80,7 +80,7 @@ class WorkingMemoryBuffer:
     def __init__(self, capacity: int = 7):
         self.capacity = capacity
         self._items: Dict[str, MemoryItem] = {}
-        self._priority_queue: List[tuple] = []  # (negative_relevance, id)
+        self._priority_queue: List[tuple] = []  # (relevance, id) — min-heap on relevance
 
     def add(self, item_id: str, item: MemoryItem) -> Optional[MemoryItem]:
         """
@@ -92,7 +92,7 @@ class WorkingMemoryBuffer:
             evicted = self._evict_lowest_relevance()
 
         self._items[item_id] = item
-        heapq.heappush(self._priority_queue, (-item.relevance_score, item_id))
+        heapq.heappush(self._priority_queue, (item.relevance_score, item_id))
 
         return evicted
 
@@ -119,7 +119,7 @@ class WorkingMemoryBuffer:
             item.decay()
 
         self._priority_queue = [
-            (-item.relevance_score, item_id)
+            (item.relevance_score, item_id)
             for item_id, item in self._items.items()
         ]
         heapq.heapify(self._priority_queue)
