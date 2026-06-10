@@ -89,7 +89,7 @@ module "application" {
   db_name           = "myapp"
 
   # Kubernetes settings
-  cluster_version = "1.28"
+  cluster_version = "1.31"
   node_count      = 3
 
   # Application settings
@@ -124,7 +124,7 @@ module "database" {
 module "kubernetes" {
   source = "./modules/eks"
 
-  cluster_version     = "1.28"
+  cluster_version     = "1.31"
   subnet_ids          = module.vpc.private_subnet_ids
   node_count          = 3
 }
@@ -294,7 +294,7 @@ module "compute_layer" {
   private_subnet_ids = module.foundation.private_subnet_ids
 
   eks_config = {
-    cluster_version = "1.28"
+    cluster_version = "1.31"
     node_groups = {
       general = {
         instance_types = ["m6i.xlarge"]
@@ -850,7 +850,7 @@ module "eks" {
 # Or using a private registry
 module "vpc" {
   source  = "app.terraform.io/myorg/vpc/aws"
-  version = "~> 2.1"  # Allows 2.1.x but not 2.2.0
+  version = "~> 2.1.0"  # Allows 2.1.x but not 2.2.0
 }
 
 module "eks" {
@@ -922,7 +922,7 @@ output "security_group_ids" {} # List of security groups
  *   source = "./modules/eks"
  *
  *   cluster_name    = "my-cluster"
- *   cluster_version = "1.28"
+ *   cluster_version = "1.31"
  *   vpc_id          = module.vpc.vpc_id
  *   subnet_ids      = module.vpc.private_subnet_ids
  * }
@@ -1106,7 +1106,7 @@ module "compute" {
   subnet_ids  = module.foundation.private_subnet_ids
 
   eks_config = {
-    cluster_version = "1.28"
+    cluster_version = "1.31"
 
     node_groups = {
       general = {
