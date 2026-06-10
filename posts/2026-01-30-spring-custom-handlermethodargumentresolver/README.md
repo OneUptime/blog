@@ -202,7 +202,9 @@ public class WebMvcConfig implements WebMvcConfigurer {
     }
 
     // Add our custom resolver to the list of argument resolvers
-    // Custom resolvers are checked before the default ones
+    // Custom resolvers run after Spring's built-in annotation-based resolvers
+    // (@RequestParam, @PathVariable, @RequestBody, etc.) but before the
+    // catch-all type-based fallback resolvers
     @Override
     public void addArgumentResolvers(List<HandlerMethodArgumentResolver> resolvers) {
         resolvers.add(currentUserArgumentResolver);
@@ -496,7 +498,7 @@ public record TenantContext(
     public boolean hasFeature(String feature) {
         return switch (plan) {
             case ENTERPRISE -> true;
-            case PROFESSIONAL -> !feature.equals("sso") || !feature.equals("audit-logs");
+            case PROFESSIONAL -> !feature.equals("sso") && !feature.equals("audit-logs");
             case STARTER -> feature.equals("basic-reports");
             case FREE -> false;
         };
