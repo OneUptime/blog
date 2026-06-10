@@ -181,8 +181,8 @@ get_ec2_instances = func() {
     return filter tfplan.resource_changes as _, rc {
         rc.type is "aws_instance" and
         rc.mode is "managed" and
-        rc.change.actions contains "create" or
-        rc.change.actions contains "update"
+        (rc.change.actions contains "create" or
+         rc.change.actions contains "update")
     }
 }
 
@@ -345,14 +345,14 @@ get_security_groups = func() {
 check_ingress_rules = func(sg) {
     ingress = sg.change.after.ingress else []
 
-    for ingress as rule {
-        cidr_blocks = rule.cidr_blocks else []
+    for ingress as ing {
+        cidr_blocks = ing.cidr_blocks else []
 
         for cidr_blocks as cidr {
             # Block 0.0.0.0/0 on sensitive ports
             if cidr is "0.0.0.0/0" {
-                from_port = rule.from_port else 0
-                to_port = rule.to_port else 65535
+                from_port = ing.from_port else 0
+                to_port = ing.to_port else 65535
 
                 # SSH
                 if from_port <= 22 and to_port >= 22 {
@@ -519,8 +519,8 @@ test {
 Install the Sentinel CLI and run tests:
 
 ```bash
-# Install Sentinel CLI (macOS)
-brew install sentinel
+# Install Sentinel CLI - download the binary from
+# https://developer.hashicorp.com/sentinel/install and place it on your PATH
 
 # Run all tests
 sentinel test
@@ -733,10 +733,7 @@ param max_monthly_increase default 1000
 
 # Check cost estimation
 cost_within_limit = rule when tfrun.cost_estimation.prior_monthly_cost is not null {
-    delta = decimal.new(tfrun.cost_estimation.delta_monthly_cost)
-    max = decimal.new(max_monthly_increase)
-
-    delta.less_than_or_equals(max)
+    decimal.new(tfrun.cost_estimation.delta_monthly_cost).less_than_or_equal(decimal.new(max_monthly_increase))
 }
 
 # If no cost estimation, pass by default
@@ -784,7 +781,8 @@ check_module_sources = func() {
     return violations
 }
 
-main = rule {
+# Report violations and return overall pass/fail
+report_module_violations = func() {
     violations = check_module_sources()
 
     if length(violations) > 0 {
@@ -794,7 +792,11 @@ main = rule {
         }
     }
 
-    length(violations) is 0
+    return length(violations) is 0
+}
+
+main = rule {
+    report_module_violations()
 }
 ```
 
@@ -819,17 +821,21 @@ get_deletions = func() {
 }
 
 # Block mass deletions in production
-no_mass_deletions = rule when is_production() {
+check_mass_deletions = func() {
     deletions = get_deletions()
     count = length(deletions)
 
     if count > 5 {
         print("Blocking deletion of", count, "resources in production")
         print("Maximum allowed: 5")
-        false
-    } else {
-        true
+        return false
     }
+
+    return true
+}
+
+no_mass_deletions = rule when is_production() {
+    check_mass_deletions()
 }
 
 main = rule {
