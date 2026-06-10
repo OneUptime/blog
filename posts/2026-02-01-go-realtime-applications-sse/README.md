@@ -289,32 +289,29 @@ func (b *Broker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 ### Heartbeats
 
-Proxies and load balancers often close idle connections. Send periodic heartbeats to keep the connection alive:
+Proxies and load balancers often close idle connections. Send periodic heartbeats to keep the connection alive.
+
+`http.ResponseWriter` is not safe for concurrent use, so the heartbeat must not be written from a separate goroutine that races with the main event loop. The clean approach is to add a heartbeat ticker case to the same `select` that writes events:
 
 ```go
-// startHeartbeat sends a comment every 30 seconds to keep the connection alive
-func startHeartbeat(ctx context.Context, w http.ResponseWriter, flusher http.Flusher) {
-	ticker := time.NewTicker(30 * time.Second)
-	defer ticker.Stop()
+// Add a heartbeat ticker to the main select loop so all writes to w
+// happen from a single goroutine.
+heartbeat := time.NewTicker(30 * time.Second)
+defer heartbeat.Stop()
 
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			// SSE comment - starts with colon, ignored by browser but keeps connection alive
-			fmt.Fprint(w, ": heartbeat\n\n")
-			flusher.Flush()
-		}
+for {
+	select {
+	case <-ctx.Done():
+		return
+	case event := <-clientChan:
+		writeEvent(w, event)
+		flusher.Flush()
+	case <-heartbeat.C:
+		// SSE comment - starts with colon, ignored by browser but keeps connection alive
+		fmt.Fprint(w, ": heartbeat\n\n")
+		flusher.Flush()
 	}
 }
-```
-
-Integrate heartbeats into your handler by running it as a goroutine:
-
-```go
-// Start heartbeat in the background
-go startHeartbeat(ctx, w, flusher)
 ```
 
 ## Handling Reconnection
@@ -496,21 +493,11 @@ func (b *DashboardBroker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	ctx := r.Context()
-	
-	// Start heartbeat goroutine
-	go func() {
-		ticker := time.NewTicker(30 * time.Second)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				fmt.Fprint(w, ": ping\n\n")
-				flusher.Flush()
-			}
-		}
-	}()
+
+	// Heartbeat ticker is handled in the main select loop because
+	// http.ResponseWriter is not safe for concurrent use.
+	heartbeat := time.NewTicker(30 * time.Second)
+	defer heartbeat.Stop()
 
 	for {
 		select {
@@ -518,6 +505,9 @@ func (b *DashboardBroker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		case data := <-clientChan:
 			fmt.Fprintf(w, "event: metrics\ndata: %s\n\n", data)
+			flusher.Flush()
+		case <-heartbeat.C:
+			fmt.Fprint(w, ": ping\n\n")
 			flusher.Flush()
 		}
 	}
@@ -850,7 +840,7 @@ func subscribeToRedis(broker *Broker) {
 SSE requires sticky sessions or proper handling of long-lived connections. Configure your load balancer:
 
 - **Nginx**: Disable proxy buffering for SSE endpoints
-- **HAProxy**: Use `http-server-close` to allow long-lived connections
+- **HAProxy**: Raise `timeout client` and `timeout server` above your heartbeat interval (note: `timeout tunnel` only applies after a protocol upgrade like WebSockets, not to SSE)
 - **AWS ALB**: Increase idle timeout (default 60 seconds is too short)
 
 Nginx configuration example:
