@@ -623,7 +623,7 @@ SELECT node_id, address, is_live, locality FROM crdb_internal.gossip_nodes;
 
 -- View range distribution across nodes
 SELECT node_id, range_count, lease_count
-FROM crdb_internal.kv_node_status;
+FROM crdb_internal.kv_store_status;
 
 -- Check for under-replicated ranges
 SELECT * FROM crdb_internal.ranges WHERE array_length(replicas, 1) < 3;
@@ -733,8 +733,8 @@ cockroach node decommission <node-id> \
     --host=node1.example.com
 
 # Wait for decommissioning to complete
-# Then stop the node
-cockroach quit --certs-dir=/var/lib/cockroach/certs --host=node4.example.com
+# Then drain and stop the node
+cockroach node drain --certs-dir=/var/lib/cockroach/certs --host=node4.example.com
 ```
 
 ### Kubernetes Scaling
@@ -863,7 +863,7 @@ cockroach cert create-node \
     --overwrite
 
 # Restart the node after certificate renewal
-cockroach quit --certs-dir=/var/lib/cockroach/certs --host=node1.example.com
+cockroach node drain --certs-dir=/var/lib/cockroach/certs --host=node1.example.com
 cockroach start --certs-dir=/var/lib/cockroach/certs ...
 ```
 
@@ -880,11 +880,12 @@ cockroach sql --certs-dir=/var/lib/cockroach/certs \
 ping node2.example.com
 nc -zv node2.example.com 26257
 
-# Force leader election in extreme cases (use with caution)
-# Only when you are certain the majority of nodes are healthy
-cockroach debug unsafe-remove-dead-replicas \
-    --certs-dir=/var/lib/cockroach/certs \
-    --store=/var/lib/cockroach/data
+# Recover from loss of quorum in extreme cases (use with caution)
+# Only when you are certain the majority of nodes are unrecoverable
+# This is a multi-step offline process - see CockroachDB docs for the full workflow
+cockroach debug recover collect-info \
+    --store=/var/lib/cockroach/data \
+    > recovery-info.json
 ```
 
 ## Best Practices Summary
