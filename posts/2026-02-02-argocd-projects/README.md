@@ -683,17 +683,17 @@ spec:
           - path: 'teams/*/services/*'
   template:
     metadata:
-      name: '{{path[2]}}-{{path[4]}}'
+      name: '{{path[1]}}-{{path[3]}}'
     spec:
       # Project derived from directory structure
-      project: 'team-{{path[2]}}'
+      project: 'team-{{path[1]}}'
       source:
         repoURL: https://github.com/myorg/services-config.git
         targetRevision: HEAD
         path: '{{path}}'
       destination:
         server: https://kubernetes.default.svc
-        namespace: '{{path[2]}}-{{path[4]}}'
+        namespace: '{{path[1]}}-{{path[3]}}'
       syncPolicy:
         automated:
           prune: true
@@ -711,15 +711,16 @@ metadata:
   name: team-backend-repo
   namespace: argocd
   labels:
-    argocd.argoproj.io/secret-type: repo-creds
+    argocd.argoproj.io/secret-type: repository
 stringData:
+  type: git
   url: https://github.com/myorg/backend-services.git
   username: git
   password: <personal-access-token>
   project: team-backend
 ```
 
-Repository credentials with a project label are only available to applications in that project.
+Repositories with a project label are only available to applications in that project.
 
 ## Best Practices
 
