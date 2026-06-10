@@ -1252,8 +1252,7 @@ SQLAlchemy provides a high-level ORM that works well with CockroachDB. The cockr
 # SQLAlchemy models for CockroachDB
 from sqlalchemy import create_engine, Column, Integer, String, Boolean, DateTime, ForeignKey, Numeric
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship, sessionmaker
+from sqlalchemy.orm import declarative_base, relationship, sessionmaker
 from sqlalchemy.sql import func
 import uuid
 import os
