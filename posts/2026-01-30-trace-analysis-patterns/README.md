@@ -565,9 +565,8 @@ export function buildDependencyGraph(traces: Trace[]): DependencyGraph {
       const duration = span.endTime - span.startTime;
       service.spanCount++;
       service.avgLatency = ((service.avgLatency * (service.spanCount - 1)) + duration) / service.spanCount;
-      if (span.status?.code === 'ERROR') {
-        service.errorRate = (service.errorRate * (service.spanCount - 1) + 1) / service.spanCount;
-      }
+      const isError = span.status?.code === 'ERROR' ? 1 : 0;
+      service.errorRate = ((service.errorRate * (service.spanCount - 1)) + isError) / service.spanCount;
 
       // Track edges (parent-child across services)
       if (span.parentSpanId) {
