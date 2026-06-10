@@ -521,7 +521,7 @@ interface WarningAlert {
   suggestedActions: string[];
   runbook: string;
   dashboardUrl: string;
-  estimatedTimeToClirical: string | null;
+  estimatedTimeToCritical: string | null;
 }
 
 function formatWarningAlert(alert: WarningAlert): string {
@@ -541,7 +541,7 @@ function formatWarningAlert(alert: WarningAlert): string {
 - **Warning Threshold**: ${alert.metric.warningThreshold}${alert.metric.unit}
 - **Critical Threshold**: ${alert.metric.criticalThreshold}${alert.metric.unit}
 - **Buffer to Critical**: ${percentToCritical}%
-${alert.estimatedTimeToClirical ? `- **Estimated Time to Critical**: ${alert.estimatedTimeToClirical}` : ''}
+${alert.estimatedTimeToCritical ? `- **Estimated Time to Critical**: ${alert.estimatedTimeToCritical}` : ''}
 
 ### Impact
 ${alert.impact}
@@ -580,7 +580,7 @@ const alert: WarningAlert = {
   ],
   runbook: 'https://wiki.example.com/runbooks/checkout-latency',
   dashboardUrl: 'https://oneuptime.example.com/dashboard/checkout-api',
-  estimatedTimeToClirical: '~45 minutes at current rate'
+  estimatedTimeToCritical: '~45 minutes at current rate'
 };
 
 console.log(formatWarningAlert(alert));
