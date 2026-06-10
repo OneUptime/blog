@@ -137,9 +137,12 @@ fn load_config() -> Result<Settings, config::ConfigError> {
         
         // Environment variables take highest precedence
         // APP_SERVER__PORT=9000 would override server.port
+        // try_parsing(true) coerces env var strings into typed fields
+        // like u16/u32/bool - without it numeric fields fail to deserialize
         .add_source(
             Environment::with_prefix("APP")
                 .separator("__")
+                .try_parsing(true)
         )
         
         .build()?;
@@ -318,9 +321,9 @@ For long-running applications, you might want to reload configuration without re
 // services where you want to adjust settings without downtime. Use with
 // caution - some settings like database connections may require restarts anyway.
 use std::sync::{Arc, RwLock};
-use notify::{Watcher, RecursiveMode, watcher};
 use std::sync::mpsc::channel;
-use std::time::Duration;
+use std::path::Path;
+use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 
 pub struct ConfigManager {
     config: Arc<RwLock<Settings>>,
@@ -345,12 +348,16 @@ impl ConfigManager {
         let config = self.config.clone();
         let (tx, rx) = channel();
         
-        let mut watcher = watcher(tx, Duration::from_secs(2))?;
-        watcher.watch("config", RecursiveMode::Recursive)?;
+        // recommended_watcher picks the best backend for the platform.
+        // For debouncing rapid filesystem events, use notify-debouncer-mini.
+        let mut watcher: RecommendedWatcher = notify::recommended_watcher(tx)?;
+        watcher.watch(Path::new("config"), RecursiveMode::Recursive)?;
         
         std::thread::spawn(move || {
-            loop {
-                match rx.recv() {
+            // Move the watcher into the thread so it isn't dropped early
+            let _watcher = watcher;
+            for res in rx {
+                match res {
                     Ok(_event) => {
                         println!("Configuration file changed, reloading...");
                         match load_config() {
@@ -481,7 +488,7 @@ pub fn load_config() -> Result<Settings, config::ConfigError> {
         .add_source(File::with_name("config/default"))
         .add_source(File::with_name(&format!("config/{}", run_env)).required(false))
         .add_source(File::with_name("config/local").required(false))
-        .add_source(Environment::with_prefix("APP").separator("__"))
+        .add_source(Environment::with_prefix("APP").separator("__").try_parsing(true))
         .build()?
         .try_deserialize()
 }
