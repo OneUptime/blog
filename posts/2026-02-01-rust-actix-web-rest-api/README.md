@@ -426,7 +426,7 @@ HttpServer::new(move || {
 })
 ```
 
-Add `actix-cors = "0.6"` to your dependencies for CORS support.
+Add `actix-cors = "0.7"` to your dependencies for CORS support.
 
 For custom middleware, you can use the `wrap_fn` helper for simple cases:
 
@@ -459,18 +459,17 @@ As your API grows, organize routes with scopes. This groups related endpoints an
 use actix_web::web;
 
 // Group all task routes under /api/v1
+// Handler attribute macros already include the /tasks prefix,
+// so we don't nest another /tasks scope here
 fn configure_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/api/v1")
             .service(health_check)
-            .service(
-                web::scope("/tasks")
-                    .service(list_tasks)
-                    .service(get_task)
-                    .service(create_task)
-                    .service(update_task)
-                    .service(delete_task)
-            )
+            .service(list_tasks)
+            .service(get_task)
+            .service(create_task)
+            .service(update_task)
+            .service(delete_task)
     );
 }
 
