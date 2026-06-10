@@ -175,7 +175,7 @@ Apply the retry annotation to your service method:
 
 ```java
 // Combining retry with circuit breaker
-// Order matters: retry happens first, then circuit breaker evaluates
+// In Resilience4j the aspect order is fixed: Retry wraps CircuitBreaker
 @Retry(name = "paymentService", fallbackMethod = "processPaymentFallback")
 @CircuitBreaker(name = "paymentService", fallbackMethod = "processPaymentFallback")
 public PaymentResponse processPayment(PaymentRequest request) {
@@ -188,7 +188,7 @@ public PaymentResponse processPayment(PaymentRequest request) {
 }
 ```
 
-With the configuration above, a failing call will retry 3 times with waits of 500ms, 1000ms, and 2000ms. Only after all retries fail does it count as a circuit breaker failure.
+With the configuration above, a failing call will retry up to 3 times in total (one initial call plus two retries) with waits of 500ms and 1000ms between attempts. Because Retry is the outermost aspect, each attempt goes through the circuit breaker and is recorded as a separate call in its sliding window.
 
 ## Rate Limiting External Calls
 
@@ -282,13 +282,13 @@ private PaymentResponse bulkheadFallback(PaymentRequest request, BulkheadFullExc
 
 ## Combining Multiple Patterns
 
-Real applications need multiple resilience patterns working together. The execution order matters:
+Real applications need multiple resilience patterns working together. Resilience4j applies its aspects in a fixed order regardless of how you stack the annotations:
 
 ```text
-Bulkhead -> TimeLimiter -> RateLimiter -> CircuitBreaker -> Retry -> Method
+Retry ( CircuitBreaker ( RateLimiter ( TimeLimiter ( Bulkhead ( Method ) ) ) ) )
 ```
 
-This means Retry wraps the method call first, then CircuitBreaker evaluates, and so on outward.
+Read from outside in: a call enters the Retry aspect first, then CircuitBreaker, RateLimiter, TimeLimiter, Bulkhead, and finally the method. Retry is the outermost wrapper, so it sees the result after the inner aspects have run and decides whether to attempt the chain again.
 
 Here is a service combining all patterns:
 
@@ -304,8 +304,8 @@ public class ResilientPaymentService {
         this.restTemplate = restTemplate;
     }
 
-    // Patterns execute from right to left in the call chain
-    // Retry -> CircuitBreaker -> Bulkhead -> RateLimiter
+    // Aspect order is fixed by Resilience4j, not by annotation order:
+    // Retry -> CircuitBreaker -> RateLimiter -> Bulkhead -> Method
     @Retry(name = "paymentService")
     @CircuitBreaker(name = "paymentService", fallbackMethod = "fallback")
     @Bulkhead(name = "paymentService")
@@ -359,25 +359,47 @@ management:
       enabled: true
 ```
 
-Now you can query circuit breaker states:
+Now you can list the configured circuit breakers:
 
 ```bash
-# Get all circuit breaker states
+# Lists the names of all configured circuit breakers
 curl http://localhost:8080/actuator/circuitbreakers
 
-# Response shows current state for each instance
+# Response is just a list of names
 {
-  "circuitBreakers": {
-    "paymentService": {
-      "failureRate": "25.0%",
-      "slowCallRate": "0.0%",
-      "slowCallRateThreshold": "100.0%",
-      "bufferedCalls": 4,
-      "slowCalls": 0,
-      "slowFailedCalls": 0,
-      "failedCalls": 1,
-      "notPermittedCalls": 0,
-      "state": "CLOSED"
+  "circuitBreakers": ["paymentService"]
+}
+```
+
+For runtime state and metrics, query the health endpoint (with the circuit breaker health indicator enabled as shown above):
+
+```bash
+# Detailed circuit breaker state surfaces under /actuator/health
+curl http://localhost:8080/actuator/health
+
+# Each circuit breaker shows its current state and metrics
+{
+  "status": "UP",
+  "components": {
+    "circuitBreakers": {
+      "status": "UP",
+      "details": {
+        "paymentService": {
+          "status": "UP",
+          "details": {
+            "failureRate": "25.0%",
+            "slowCallRate": "0.0%",
+            "slowCallRateThreshold": "100.0%",
+            "failureRateThreshold": "50.0%",
+            "bufferedCalls": 4,
+            "slowCalls": 0,
+            "slowFailedCalls": 0,
+            "failedCalls": 1,
+            "notPermittedCalls": 0,
+            "state": "CLOSED"
+          }
+        }
+      }
     }
   }
 }
@@ -501,7 +523,7 @@ class PaymentServiceCircuitBreakerTest {
 
 **Fallback method signature mismatch** - The fallback must have the same parameters as the original method, optionally followed by an Exception/Throwable parameter. Return types must match exactly.
 
-**Annotation order confusion** - Remember that annotations execute from bottom to top (innermost to outermost). Place `@Retry` below `@CircuitBreaker` so retries happen before circuit breaker evaluation.
+**Assuming annotation order controls aspect order** - Resilience4j's aspect order is hardcoded (Retry wraps CircuitBreaker wraps RateLimiter wraps TimeLimiter wraps Bulkhead), so reordering the annotations on the method has no effect. If you need a different order, change the aspect order via the `resilience4j.*.aspect-order` properties.
 
 **Ignoring the wrong exceptions** - Be careful with `ignore-exceptions`. If you ignore `RuntimeException`, most failures will not trigger the circuit breaker.
 
