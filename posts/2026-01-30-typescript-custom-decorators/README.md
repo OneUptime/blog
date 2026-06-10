@@ -287,7 +287,7 @@ Parameter decorators mark specific parameters for special handling. They receive
 
 ```typescript
 // Storage for injection metadata
-const injectableParams = new Map<string, Map<string, number[]>>();
+const injectableParams = new Map<string, Map<string, number>>();
 
 // Parameter decorator to mark injectable dependencies
 function Inject(serviceKey: string) {
