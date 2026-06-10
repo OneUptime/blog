@@ -17,7 +17,7 @@ In this comprehensive guide, we will explore how to take full advantage of Deno'
 Before diving into the technical details, let us understand why Deno is an excellent choice for TypeScript development:
 
 1. **Zero Configuration**: No need for `tsconfig.json`, `babel.config.js`, or webpack configurations to run TypeScript.
-2. **Built-in Type Checking**: Deno includes a TypeScript compiler that performs type checking at runtime.
+2. **Built-in Type Checking**: Deno ships with a TypeScript compiler so you can type check your code on demand (with `deno check` or `deno run --check`) without installing or configuring `tsc`.
 3. **URL-based Imports**: Import modules directly from URLs without a package manager.
 4. **Secure by Default**: Deno runs in a sandbox and requires explicit permissions for file, network, and environment access.
 5. **Modern Standards**: Built on web standards with native support for ES modules, fetch API, and Web Workers.
@@ -35,7 +35,7 @@ function greet(name: string): string {
   return `Hello, ${name}! Welcome to Deno.`;
 }
 
-// TypeScript will catch type errors at runtime
+// TypeScript will catch type errors when type checking is enabled
 const message: string = greet("Developer");
 console.log(message);
 
@@ -49,7 +49,7 @@ To run this file, simply execute:
 deno run greeting.ts
 ```
 
-Deno automatically compiles the TypeScript code and executes it. If there are type errors, Deno will report them before running the code.
+Deno strips the TypeScript types and executes the resulting JavaScript directly. To also catch type errors before execution, pass the `--check` flag (see the next section).
 
 ## Type Checking in Deno
 
@@ -57,18 +57,24 @@ Deno provides multiple levels of type checking that you can configure based on y
 
 ### Default Type Checking
 
-By default, Deno performs type checking on your TypeScript files. You can explicitly enable strict type checking using the `--check` flag:
+By default, `deno run` does not type check your TypeScript files — it strips the types and executes the resulting JavaScript for faster startup. To opt in to type checking before execution, use the `--check` flag:
 
 ```bash
 deno run --check main.ts
 ```
 
-### Skipping Type Checking
-
-For faster development iterations, you can skip type checking entirely. This is useful when you want quick feedback during development:
+To also type check remote modules and npm packages, use `--check=all`:
 
 ```bash
-deno run --no-check main.ts
+deno run --check=all main.ts
+```
+
+### Skipping Type Checking
+
+Because `deno run` already skips type checking by default, the `--no-check` flag is mostly useful for commands that do type check by default, such as `deno test`:
+
+```bash
+deno test --no-check
 ```
 
 ### Type Checking Only
@@ -431,12 +437,13 @@ Deno allows you to import types directly from URLs:
 
 ```typescript
 // Using types from deno.land/std
-import type { ServerRequest } from "https://deno.land/std@0.224.0/http/server.ts";
+import type { Handler } from "https://deno.land/std@0.224.0/http/server.ts";
 
 // The imported type can be used in function signatures
-function handleRequest(request: ServerRequest): void {
+const handleRequest: Handler = (request) => {
   console.log("Handling request:", request.url);
-}
+  return new Response("Hello from Deno!");
+};
 ```
 
 ### Type-Only Imports
