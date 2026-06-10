@@ -458,34 +458,36 @@ jobs:
             sudo apt-get update && sudo apt-get install vault
 
       # Fetch secrets from Vault and export to BASH_ENV
-      # VAULT_TOKEN and VAULT_ADDR should be set in CircleCI
+      # VAULT_ADDR should be set in CircleCI; VAULT_TOKEN is obtained via OIDC below
       - run:
           name: Fetch secrets from Vault
           command: |
-            # Authenticate with Vault
+            # Authenticate with Vault using CircleCI's OIDC token
             export VAULT_TOKEN=$(vault write -field=token auth/jwt/login role=circleci jwt=$CIRCLE_OIDC_TOKEN)
 
-            # Fetch secrets and write to BASH_ENV
-            vault kv get -field=api_key secret/production/app >> $BASH_ENV
-            vault kv get -field=database_url secret/production/db >> $BASH_ENV
+            # `vault kv get -field=...` prints only the raw value, so wrap it
+            # in an `export` statement before appending to BASH_ENV.
+            echo "export API_KEY=$(vault kv get -field=api_key secret/production/app)" >> $BASH_ENV
+            echo "export DATABASE_URL=$(vault kv get -field=database_url secret/production/db)" >> $BASH_ENV
 
       - run:
           name: Deploy with secrets
           command: ./deploy.sh
 ```
 
-### Masking Custom Variables
+### Handling Dynamically Generated Secrets
 
-CircleCI automatically masks project-level variables. For dynamic secrets, use the `mask` orb:
+CircleCI automatically masks environment variables that you set via Project
+Settings or Contexts. Secrets that you generate at runtime and append to
+`$BASH_ENV` are **not** automatically masked, so treat them as sensitive and
+avoid printing them yourself:
 
 ```yaml
 # .circleci/config.yml
-# Use the circleci orb to mask dynamically generated secrets
-# Prevents accidental exposure in build logs
+# Best practices when working with runtime-generated secrets.
+# CircleCI cannot mask values created during a build, so the safest
+# approach is to never echo them and to redirect noisy command output.
 version: 2.1
-
-orbs:
-  circleci-cli: circleci/circleci-cli@0.1.9
 
 jobs:
   deploy:
@@ -494,20 +496,20 @@ jobs:
     steps:
       - checkout
       - run:
-          name: Generate and mask secret
+          name: Generate a short-lived token
           command: |
-            # Generate a dynamic token
+            # Fetch a dynamic token from an internal API
             TOKEN=$(curl -s https://api.example.com/token)
 
-            # Mask it in logs using CircleCI's built-in function
+            # Persist it for later steps without echoing it to the log
             echo "export DYNAMIC_TOKEN='$TOKEN'" >> $BASH_ENV
-            # Any output containing $TOKEN will now show as ****
 
       - run:
-          name: Use masked token
+          name: Use the token
           command: |
-            # Even if this echoes, the token will be masked
-            curl -H "Authorization: Bearer $DYNAMIC_TOKEN" https://api.example.com/deploy
+            # Send output to /dev/null if the command might echo the token
+            curl -sS -H "Authorization: Bearer $DYNAMIC_TOKEN" \
+              https://api.example.com/deploy > /dev/null
 ```
 
 ### Preventing Secret Leakage
