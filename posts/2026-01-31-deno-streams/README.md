@@ -454,17 +454,18 @@ const csvParser = new TransformStream<string, string[]>({
 });
 
 // Transform stream that converts text to lines
+// Use a closure to maintain state between transform calls
+let buffer = "";
 const lineBreaker = new TransformStream<Uint8Array, string>({
-  buffer: "",
   transform(chunk, controller) {
     // Decode the chunk and add to buffer
     const text = new TextDecoder().decode(chunk);
-    this.buffer += text;
+    buffer += text;
     
     // Split by newlines and emit complete lines
-    const lines = this.buffer.split("\n");
+    const lines = buffer.split("\n");
     // Keep the last potentially incomplete line in the buffer
-    this.buffer = lines.pop() || "";
+    buffer = lines.pop() || "";
     
     for (const line of lines) {
       controller.enqueue(line);
@@ -472,8 +473,8 @@ const lineBreaker = new TransformStream<Uint8Array, string>({
   },
   flush(controller) {
     // Emit any remaining data when stream ends
-    if (this.buffer) {
-      controller.enqueue(this.buffer);
+    if (buffer) {
+      controller.enqueue(buffer);
     }
   },
 });
