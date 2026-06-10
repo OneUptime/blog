@@ -219,8 +219,8 @@ deno fmt src/main.ts src/utils.ts
 # Check formatting without modifying files
 deno fmt --check
 
-# Format and write to stdout
-deno fmt --stdout app.ts
+# Format code from stdin and print to stdout
+cat app.ts | deno fmt -
 ```
 
 ### Linting Code
@@ -307,20 +307,17 @@ deno run --allow-env=API_KEY,DATABASE_URL app.ts # Specific variables
 deno run --allow-run app.ts                     # Run any subprocess
 deno run --allow-run=git,npm app.ts             # Run specific commands
 
-# High-resolution time (for timing attacks prevention)
-deno run --allow-hrtime app.ts
-
 # FFI (Foreign Function Interface)
 deno run --allow-ffi app.ts
 ```
 
 ### Permission Prompts
 
-Instead of granting permissions upfront, you can use `--prompt` to get asked at runtime when permissions are needed:
+When running in an interactive terminal, Deno will prompt you to grant permissions on demand whenever a script tries to access a protected resource without an explicit `--allow-*` flag. To disable this behavior and have any missing permission raise a `PermissionDenied` error immediately, use the `--no-prompt` flag:
 
 ```bash
-# Enable permission prompts for interactive approval
-deno run --prompt app.ts
+# Disable interactive permission prompts (e.g. in CI environments)
+deno run --no-prompt app.ts
 ```
 
 ### Practical Permission Example
@@ -642,7 +639,7 @@ router.get("/api/tasks/:id", (ctx: Context) => {
 
 // POST /api/tasks - Create a new task
 router.post("/api/tasks", async (ctx: Context) => {
-  const body = await ctx.request.body.json();
+  const body = await ctx.request.body({ type: "json" }).value;
 
   if (!body.title || typeof body.title !== "string") {
     ctx.response.status = 400;
@@ -683,7 +680,7 @@ router.put("/api/tasks/:id", async (ctx: Context) => {
     return;
   }
 
-  const body = await ctx.request.body.json();
+  const body = await ctx.request.body({ type: "json" }).value;
 
   const updatedTask: Task = {
     ...existingTask,
