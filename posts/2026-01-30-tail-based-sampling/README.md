@@ -178,7 +178,7 @@ processors:
     # Size based on: (traces/sec * decision_wait_sec * safety_margin)
     num_traces: 100000
 
-    # How often to check for traces that exceeded decision_wait
+    # Hint for sizing internal data structures (expected throughput)
     expected_new_traces_per_sec: 1000
 
     # Sampling policies (evaluated in order, first match wins)
@@ -245,7 +245,7 @@ processors:
           sampling_percentage: 5
 ```
 
-The latency policy evaluates the root span duration. For more granular control, you can combine latency with other policies.
+The latency policy evaluates the total trace duration (from the earliest span start to the latest span end across the entire trace). For more granular control, you can combine latency with other policies.
 
 ### Dynamic Latency Thresholds by Endpoint
 
@@ -372,7 +372,7 @@ processors:
 
 ### Span Event Based Sampling
 
-Capture traces that have specific events recorded:
+Capture traces that have specific events recorded. Because span events (such as those recorded by `recordException`) are not span attributes, use the `ottl_condition` policy, which can match against both span and span event contexts:
 
 ```yaml
 processors:
@@ -380,19 +380,20 @@ processors:
     decision_wait: 10s
     num_traces: 100000
     policies:
-      # Keep traces where any span has an exception event
+      # Keep traces where any span has an exception event recorded
       - name: exception-events
-        type: span_count
-        span_count:
-          min_spans: 1
-          max_spans: 0  # 0 means no upper limit
+        type: ottl_condition
+        ottl_condition:
+          error_mode: ignore
+          spanevent:
+            - 'name == "exception"'
 ```
 
 ---
 
 ## 7. Combining Multiple Policies
 
-Real-world sampling requires combining multiple conditions. The tail sampling processor supports `and`, `or`, and composite policies.
+Real-world sampling requires combining multiple conditions. The tail sampling processor supports logical types such as `and`, `not`, `drop`, and `composite`. Note that multiple top-level policies are evaluated independently and combined with OR logic — if any policy votes to sample, the trace is kept (a `drop` decision overrides sample decisions).
 
 ```mermaid
 flowchart TD
@@ -778,13 +779,13 @@ Tail sampling is CPU-intensive due to policy evaluation. Monitor these metrics:
 ```yaml
 # Prometheus queries for collector monitoring
 # Traces waiting in buffer
-otelcol_processor_tail_sampling_count_traces_on_memory
+otelcol_processor_tail_sampling_sampling_traces_on_memory
 
 # Sampling decisions per second
 rate(otelcol_processor_tail_sampling_count_spans_sampled[5m])
 
 # Policy evaluation latency
-otelcol_processor_tail_sampling_sampling_decision_latency
+otelcol_processor_tail_sampling_sampling_decision_timer_latency
 ```
 
 ### Scaling Strategy
@@ -917,20 +918,20 @@ groups:
   - name: otel-collector
     rules:
       - alert: TailSamplingBufferHigh
-        expr: otelcol_processor_tail_sampling_count_traces_on_memory > 250000
+        expr: otelcol_processor_tail_sampling_sampling_traces_on_memory > 250000
         for: 5m
         labels:
           severity: warning
         annotations:
           summary: "Tail sampling buffer is filling up"
 
-      - alert: TailSamplingDroppedSpans
-        expr: rate(otelcol_processor_tail_sampling_count_spans_dropped[5m]) > 100
+      - alert: TailSamplingDroppedTraces
+        expr: rate(otelcol_processor_tail_sampling_sampling_trace_dropped_too_early[5m]) > 0
         for: 5m
         labels:
           severity: critical
         annotations:
-          summary: "Tail sampling is dropping spans"
+          summary: "Tail sampling is dropping traces before a decision could be made"
 ```
 
 ---
