@@ -351,8 +351,8 @@ DataStream<Transaction> totalPerUser = transactions
 When you need access to runtime context or state management:
 
 ```java
+import org.apache.flink.api.common.functions.OpenContext;
 import org.apache.flink.api.common.functions.RichReduceFunction;
-import org.apache.flink.configuration.Configuration;
 import org.apache.flink.metrics.Counter;
 
 public class MonitoredSumReduce extends RichReduceFunction<Transaction> {
@@ -361,7 +361,7 @@ public class MonitoredSumReduce extends RichReduceFunction<Transaction> {
     private transient Counter reduceCounter;
 
     @Override
-    public void open(Configuration parameters) {
+    public void open(OpenContext openContext) {
         // Initialize metrics when the function starts
         this.reduceCounter = getRuntimeContext()
             .getMetricGroup()
@@ -520,12 +520,12 @@ Windowed reduces limit the scope of aggregation to specific time or count bounda
 
 ```java
 import org.apache.flink.streaming.api.windowing.assigners.TumblingEventTimeWindows;
-import org.apache.flink.streaming.api.windowing.time.Time;
+import java.time.Duration;
 
 // Sum transactions per user within 1-minute tumbling windows
 DataStream<Transaction> windowedSums = transactions
     .keyBy(Transaction::getUserId)
-    .window(TumblingEventTimeWindows.of(Time.minutes(1)))
+    .window(TumblingEventTimeWindows.of(Duration.ofMinutes(1)))
     .reduce(new TransactionSumReduce());
 ```
 
@@ -533,11 +533,12 @@ DataStream<Transaction> windowedSums = transactions
 
 ```java
 import org.apache.flink.streaming.api.windowing.assigners.SlidingEventTimeWindows;
+import java.time.Duration;
 
 // Sum transactions in 5-minute windows that slide every 1 minute
 DataStream<Transaction> slidingSums = transactions
     .keyBy(Transaction::getUserId)
-    .window(SlidingEventTimeWindows.of(Time.minutes(5), Time.minutes(1)))
+    .window(SlidingEventTimeWindows.of(Duration.ofMinutes(5), Duration.ofMinutes(1)))
     .reduce(new TransactionSumReduce());
 ```
 
@@ -545,11 +546,12 @@ DataStream<Transaction> slidingSums = transactions
 
 ```java
 import org.apache.flink.streaming.api.windowing.assigners.EventTimeSessionWindows;
+import java.time.Duration;
 
 // Sum transactions within sessions (gap of 30 minutes triggers new session)
 DataStream<Transaction> sessionSums = transactions
     .keyBy(Transaction::getUserId)
-    .window(EventTimeSessionWindows.withGap(Time.minutes(30)))
+    .window(EventTimeSessionWindows.withGap(Duration.ofMinutes(30)))
     .reduce(new TransactionSumReduce());
 ```
 
@@ -708,7 +710,10 @@ class TransactionSumReduceTest {
 ### Integration Testing with Flink Test Harness
 
 ```java
-import org.apache.flink.streaming.api.operators.StreamReduce;
+import org.apache.flink.api.common.ExecutionConfig;
+import org.apache.flink.api.common.typeinfo.TypeInformation;
+import org.apache.flink.api.common.typeinfo.Types;
+import org.apache.flink.streaming.api.operators.StreamGroupedReduceOperator;
 import org.apache.flink.streaming.util.KeyedOneInputStreamOperatorTestHarness;
 import org.junit.jupiter.api.Test;
 
@@ -716,10 +721,16 @@ class ReduceIntegrationTest {
 
     @Test
     void shouldReduceKeyedStream() throws Exception {
-        // Create test harness
+        // Build the type serializer required by the grouped reduce operator
+        TypeInformation<Transaction> typeInfo = TypeInformation.of(Transaction.class);
+
+        // Create test harness around the grouped reduce operator
         KeyedOneInputStreamOperatorTestHarness<String, Transaction, Transaction> harness =
             new KeyedOneInputStreamOperatorTestHarness<>(
-                new StreamReduce<>(new TransactionSumReduce()),
+                new StreamGroupedReduceOperator<>(
+                    new TransactionSumReduce(),
+                    typeInfo.createSerializer(new ExecutionConfig())
+                ),
                 Transaction::getUserId,
                 Types.STRING
             );
