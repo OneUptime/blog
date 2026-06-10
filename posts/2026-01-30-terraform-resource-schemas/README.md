@@ -490,6 +490,7 @@ import (
     "context"
     "fmt"
 
+    "github.com/hashicorp/terraform-plugin-framework/path"
     "github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
     "github.com/hashicorp/terraform-plugin-framework/types"
 )
