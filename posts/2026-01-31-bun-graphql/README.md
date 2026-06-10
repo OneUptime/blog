@@ -44,7 +44,6 @@ Let's start with a basic GraphQL server setup. Create the main entry file that w
 
 ```typescript
 // src/index.ts
-import { createServer } from "http";
 import { createYoga } from "graphql-yoga";
 import { makeExecutableSchema } from "@graphql-tools/schema";
 import { typeDefs } from "./schema";
@@ -330,11 +329,8 @@ export const resolvers = {
         text: args.text,
       });
 
-      // Publish event for subscriptions
-      pubsub.publish(COMMENT_ADDED, {
-        commentAdded: comment,
-        postId: args.postId,
-      });
+      // Publish event for subscriptions, scoped to the post ID
+      pubsub.publish(COMMENT_ADDED, args.postId, { commentAdded: comment });
 
       return comment;
     },
@@ -346,10 +342,9 @@ export const resolvers = {
       subscribe: () => pubsub.subscribe(POST_CREATED),
     },
     commentAdded: {
+      // Subscribe only to events published with this post ID
       subscribe: (_: unknown, args: { postId: string }) => {
-        return pubsub.subscribe(COMMENT_ADDED, {
-          filter: (payload) => payload.postId === args.postId,
-        });
+        return pubsub.subscribe(COMMENT_ADDED, args.postId);
       },
     },
   },
@@ -562,7 +557,7 @@ console.log(`GraphQL API running at http://localhost:${server.port}/graphql`);
 
 ## Implementing Subscriptions
 
-Subscriptions enable real-time updates via WebSocket connections. Create a pub/sub system for broadcasting events.
+Subscriptions enable real-time updates. By default, graphql-yoga delivers subscription events over Server-Sent Events (SSE) on the same HTTP endpoint, so no extra transport setup is required. Create a pub/sub system for broadcasting events.
 
 ```typescript
 // src/pubsub.ts
@@ -572,20 +567,21 @@ import { createPubSub } from "graphql-yoga";
 export const POST_CREATED = "POST_CREATED";
 export const COMMENT_ADDED = "COMMENT_ADDED";
 
-// Define event payload types
+// Define event payload types. COMMENT_ADDED is scoped by post ID so
+// subscribers only receive events for the post they are watching.
 interface PubSubEvents {
   [POST_CREATED]: [{ postCreated: Post }];
-  [COMMENT_ADDED]: [{ commentAdded: Comment; postId: string }];
+  [COMMENT_ADDED]: [postId: string, { commentAdded: Comment }];
 }
 
 // Create typed pub/sub instance
 export const pubsub = createPubSub<PubSubEvents>();
 ```
 
-Enable WebSocket support in your server for subscription operations.
+Wire the pub/sub into your server. Because graphql-yoga uses SSE for subscriptions by default, the standard `Bun.serve` setup is all that is needed — clients can subscribe over the same `/graphql` endpoint.
 
 ```typescript
-// src/index.ts (with WebSocket support)
+// src/index.ts (with subscriptions enabled via SSE)
 import { createYoga } from "graphql-yoga";
 import { makeExecutableSchema } from "@graphql-tools/schema";
 import { typeDefs } from "./schema";
@@ -602,15 +598,16 @@ const yoga = createYoga({
   context: ({ request }) => createContext(request),
 });
 
-// Bun natively supports WebSocket upgrades
+// Subscriptions are streamed over SSE on the same HTTP endpoint
 const server = Bun.serve({
   port: 4000,
-  fetch: yoga.fetch,
-  websocket: yoga.websocket,
+  fetch: yoga,
 });
 
 console.log(`GraphQL API with subscriptions at http://localhost:${server.port}/graphql`);
 ```
+
+If you specifically need the `graphql-ws` WebSocket protocol instead of SSE, install `graphql-ws` and wire its Bun adapter into the `websocket` handler of `Bun.serve` separately — graphql-yoga itself does not expose a built-in WebSocket handler.
 
 ## Error Handling
 
