@@ -111,7 +111,6 @@ The metrics-generator is disabled by default. You enable it in your Tempo config
 # tempo.yaml
 
 metrics_generator:
-  # Enable the metrics-generator
   registry:
     external_labels:
       source: tempo
@@ -125,8 +124,6 @@ metrics_generator:
     path: /var/tempo/generator/traces
   processor:
     service_graphs:
-      # Enable service graph generation
-      enabled: true
       # How long to wait for matching client/server spans
       wait: 10s
       # Maximum number of edges to track
@@ -139,6 +136,14 @@ metrics_generator:
       histogram_buckets: [0.1, 0.2, 0.5, 1, 2, 5, 10]
       # Enable virtual nodes for uninstrumented services
       enable_virtual_node_label: true
+
+# Processors are disabled by default — enable them per tenant via the
+# overrides section. Use "defaults" to apply to all tenants.
+overrides:
+  defaults:
+    metrics_generator:
+      processors:
+        - service-graphs
 ```
 
 ### Full Production Configuration
@@ -187,7 +192,6 @@ metrics_generator:
     collection_interval: 15s
   storage:
     path: /var/tempo/generator/wal
-    wal_flush_frequency: 1m
     remote_write:
       - url: http://prometheus:9090/api/v1/write
         send_exemplars: true
@@ -197,7 +201,6 @@ metrics_generator:
     path: /var/tempo/generator/traces
   processor:
     service_graphs:
-      enabled: true
       wait: 10s
       max_items: 10000
       workers: 10
@@ -208,13 +211,13 @@ metrics_generator:
       histogram_buckets: [0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10]
       enable_virtual_node_label: true
     span_metrics:
-      enabled: true
       dimensions:
         - service.name
         - http.method
         - http.status_code
       histogram_buckets: [0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10]
 
+# Enable both processors for all tenants
 overrides:
   defaults:
     metrics_generator:
@@ -229,20 +232,26 @@ If you are deploying Tempo via Helm, here is the equivalent configuration:
 
 ```yaml
 # values.yaml
-tempo:
-  metricsGenerator:
-    enabled: true
-    remoteWriteUrl: http://prometheus:9090/api/v1/write
-    processor:
-      service_graphs:
-        enabled: true
-        wait: 10s
-        max_items: 10000
-        dimensions:
-          - http.method
-          - http.status_code
-      span_metrics:
-        enabled: true
+metricsGenerator:
+  enabled: true
+  remoteWriteUrl: http://prometheus:9090/api/v1/write
+  processor:
+    service_graphs:
+      wait: 10s
+      max_items: 10000
+      dimensions:
+        - http.method
+        - http.status_code
+
+# The chart's top-level metricsGenerator.enabled turns the component on,
+# but you still need to list the processors in the overrides section
+# so they actually run.
+overrides:
+  defaults:
+    metrics_generator:
+      processors:
+        - service-graphs
+        - span-metrics
 ```
 
 ---
@@ -624,7 +633,7 @@ If spans are being dropped, increase `max_items` or add more resources.
 
 | What You Want | How to Get It |
 |---------------|---------------|
-| Enable service graphs | Set `processor.service_graphs.enabled: true` |
+| Enable service graphs | Add `service-graphs` to `overrides.defaults.metrics_generator.processors` |
 | Store metrics | Configure `remote_write` to Prometheus |
 | Visualize | Use Grafana Node Graph panel with Tempo |
 | Add detail | Configure custom `dimensions` |
