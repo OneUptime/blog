@@ -251,11 +251,11 @@ vault write consul/roles/admin \
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `policies` | Comma-separated list of Consul policies | Required |
+| `consul_policies` | Comma-separated list of Consul policies (alias: `policies`) | Required |
+| `consul_roles` | Comma-separated list of Consul roles (Consul 1.5+) | None |
 | `ttl` | Default lease duration | System default |
 | `max_ttl` | Maximum lease duration | System default |
 | `local` | Create local tokens (not replicated) | false |
-| `token_type` | Token type: client or management | client |
 | `consul_namespace` | Consul Enterprise namespace | default |
 
 List all configured roles:
@@ -473,9 +473,13 @@ spec:
           # Login to Vault using Kubernetes auth
           vault login -method=kubernetes role=app-role
 
-          # Get Consul token and write to shared volume
-          vault read -field=token consul/creds/app-service > /consul/token
-          vault read -field=lease_id consul/creds/app-service > /consul/lease_id
+          # Generate the token once, then extract both the token and lease_id
+          # from the same response (separate vault read calls would create
+          # two different tokens and leak the first one).
+          apk add --no-cache jq
+          RESPONSE=$(vault read -format=json consul/creds/app-service)
+          echo "$RESPONSE" | jq -r '.data.token' > /consul/token
+          echo "$RESPONSE" | jq -r '.lease_id' > /consul/lease_id
       env:
         - name: VAULT_ADDR
           value: "https://vault.example.com:8200"
