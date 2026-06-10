@@ -22,7 +22,6 @@ The following code defines our core health status types and a struct to represen
 package health
 
 import (
-    "sync"
     "time"
 )
 
@@ -42,7 +41,7 @@ type CheckResult struct {
     Status      Status            `json:"status"`
     Message     string            `json:"message,omitempty"`
     LastChecked time.Time         `json:"last_checked"`
-    Latency     time.Duration     `json:"latency_ms"`
+    Latency     time.Duration     `json:"latency"`
     Metadata    map[string]string `json:"metadata,omitempty"`
 }
 
@@ -643,7 +642,7 @@ func main() {
 
     // Register all health checkers
     aggregator.RegisterChecker(health.NewPostgresChecker("primary-db", db))
-    aggregator.RegisterChecker(health.NewHTTPChecker("redis", "http://redis:6379/health", 2*time.Second))
+    aggregator.RegisterChecker(health.NewHTTPChecker("cache-service", "http://cache-service:8080/health", 2*time.Second))
     aggregator.RegisterChecker(health.NewServiceDependency("user-service", "http://user-service:8080/health", 3*time.Second, true))
     aggregator.RegisterChecker(health.NewServiceDependency("notification-service", "http://notification-service:8080/health", 3*time.Second, false))
 
