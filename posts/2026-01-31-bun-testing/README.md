@@ -30,9 +30,10 @@ curl -fsSL https://bun.sh/install | bash
 ```
 
 Bun automatically discovers and runs test files that match these patterns:
-- `*.test.ts` or `*.test.js`
-- `*.spec.ts` or `*.spec.js`
-- Any file in a `__tests__` directory
+- `*.test.{js,jsx,ts,tsx}`
+- `*_test.{js,jsx,ts,tsx}`
+- `*.spec.{js,jsx,ts,tsx}`
+- `*_spec.{js,jsx,ts,tsx}`
 
 ## Basic Test Structure
 
@@ -482,15 +483,15 @@ Bun allows you to mock entire modules for complete isolation.
 
 ```typescript
 import { test, expect, mock } from "bun:test";
+import { getUser, saveUser } from "./database";
 
-// Mock a module before importing it
+// Override the module's exports — live bindings ensure existing imports
+// see the mocked values. For mocks that must run before any module side
+// effects, use bun test --preload instead.
 mock.module("./database", () => ({
   getUser: mock(() => ({ id: 1, name: "Mock User" })),
   saveUser: mock(() => true),
 }));
-
-// Now import the module - it will use the mocked version
-import { getUser, saveUser } from "./database";
 
 test("mocked module functions", () => {
   const user = getUser(1);
