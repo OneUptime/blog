@@ -77,7 +77,7 @@ Start by installing the necessary OpenTelemetry packages. These provide the inst
 npm install @opentelemetry/api \
             @opentelemetry/sdk-node \
             @opentelemetry/auto-instrumentations-node \
-            @opentelemetry/exporter-otlp-http \
+            @opentelemetry/exporter-trace-otlp-http \
             winston
 ```
 
@@ -87,7 +87,7 @@ The telemetry initialization must happen before any other imports to ensure auto
 // telemetry.ts
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
-import { OTLPTraceExporter } from '@opentelemetry/exporter-otlp-http';
+import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { Resource } from '@opentelemetry/resources';
 import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
 
@@ -247,7 +247,7 @@ The propagation API handles header injection automatically when you use it corre
 
 ```typescript
 // services/payment-client.ts
-import { propagation, context, trace } from '@opentelemetry/api';
+import { propagation, context, trace, SpanStatusCode } from '@opentelemetry/api';
 import { logger } from '../logger';
 
 export async function processPayment(orderId: string, amount: number): Promise<boolean> {
