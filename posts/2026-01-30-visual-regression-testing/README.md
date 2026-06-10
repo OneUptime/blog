@@ -83,14 +83,14 @@ export default defineConfig({
   // Retry failed tests on CI to handle flakiness
   retries: process.env.CI ? 2 : 0,
 
+  // Store baseline screenshots in this directory
+  snapshotDir: './screenshots/baseline',
+
   // Configure screenshot comparison settings
   expect: {
     toHaveScreenshot: {
       // Allow 0.1% pixel difference to handle anti-aliasing variations
       maxDiffPixelRatio: 0.001,
-
-      // Store baseline screenshots in this directory
-      snapshotDir: './screenshots/baseline',
     },
   },
 
