@@ -170,10 +170,8 @@ export const options = {
   thresholds: {
     // Error rate should stay below 1%
     'errors': ['rate<0.01'],
-    // 95th percentile response time should stay under 500ms
-    'http_req_duration': ['p(95)<500'],
-    // 99th percentile should stay under 1 second
-    'http_req_duration': ['p(99)<1000'],
+    // 95th percentile under 500ms and 99th percentile under 1 second
+    'http_req_duration': ['p(95)<500', 'p(99)<1000'],
   },
 };
 
