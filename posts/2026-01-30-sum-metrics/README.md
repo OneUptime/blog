@@ -112,10 +112,11 @@ For values that are expensive to compute or come from external sources, use obse
 ```python
 import psutil
 
-def get_disk_bytes_read():
+def get_disk_bytes_read(options):
     """
     Callback function that returns disk I/O statistics.
     This is called automatically during metric collection.
+    The callback receives a CallbackOptions instance with a timeout hint.
     """
     disk_io = psutil.disk_io_counters()
     # Yield observations with attributes for each disk
