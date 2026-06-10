@@ -163,7 +163,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 
 ## Reading Response Bodies with Timeouts
 
-One subtle issue is that the `client.Timeout` stops the timer when response headers are received, not when the body is fully read. If you're downloading large files or dealing with streaming responses, you need additional protection.
+While `client.Timeout` covers the whole request including reading the response body, it imposes a single deadline on the entire operation. For long-running downloads or streaming responses you often want finer-grained control - for example, a per-call timeout that's different from the client-wide value, or a separate deadline applied only to body reads to detect slow-loris-style attacks where the server trickles data to keep the connection open.
 
 ```go
 // Read response body with a separate timeout to prevent slow-loris style attacks
@@ -192,24 +192,6 @@ func readBodySafely(resp *http.Response, maxBytes int64) ([]byte, error) {
     // Limit the amount of data we'll read to prevent memory exhaustion
     limitedReader := io.LimitReader(resp.Body, maxBytes)
     return io.ReadAll(limitedReader)
-}
-```
-
-For streaming scenarios, consider using a deadline on the underlying connection:
-
-```go
-// Set a read deadline on the connection for streaming scenarios
-// This requires accessing the underlying connection through Hijacker
-func readWithDeadline(resp *http.Response, timeout time.Duration) error {
-    // Use ResponseController for per-request deadline control (Go 1.20+)
-    rc := http.NewResponseController(resp)
-    if err := rc.SetReadDeadline(time.Now().Add(timeout)); err != nil {
-        return fmt.Errorf("failed to set read deadline: %w", err)
-    }
-    
-    // Now read operations will fail if they exceed the deadline
-    _, err := io.Copy(io.Discard, resp.Body)
-    return err
 }
 ```
 
