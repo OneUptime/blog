@@ -25,10 +25,10 @@ Here is a visual representation of a star schema:
 
 ```mermaid
 erDiagram
-    FACT_SALES ||--o{ DIM_DATE : "date_key"
-    FACT_SALES ||--o{ DIM_PRODUCT : "product_key"
-    FACT_SALES ||--o{ DIM_CUSTOMER : "customer_key"
-    FACT_SALES ||--o{ DIM_STORE : "store_key"
+    FACT_SALES }o--|| DIM_DATE : "date_key"
+    FACT_SALES }o--|| DIM_PRODUCT : "product_key"
+    FACT_SALES }o--|| DIM_CUSTOMER : "customer_key"
+    FACT_SALES }o--|| DIM_STORE : "store_key"
 
     FACT_SALES {
         int sale_id PK
