@@ -25,7 +25,7 @@ That said, REST still wins for browser-facing APIs and when human readability ma
 
 ## Project Setup
 
-We will use the `grpc-spring-boot-starter` library from LogNet. It integrates cleanly with Spring Boot and handles the gRPC server lifecycle automatically.
+We will use the `grpc-spring-boot-starter` library by yidongnan (`net.devh`). It integrates cleanly with Spring Boot and handles the gRPC server lifecycle automatically.
 
 Start by creating a new Spring Boot project. Add these dependencies to your `pom.xml`:
 
@@ -486,21 +486,21 @@ package com.example.grpc;
 
 import com.example.grpc.user.*;
 import io.grpc.ManagedChannel;
+import io.grpc.Server;
 import io.grpc.inprocess.InProcessChannelBuilder;
 import io.grpc.inprocess.InProcessServerBuilder;
-import io.grpc.testing.GrpcCleanupRule;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.Rule;
+
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 public class UserServiceTest {
     
-    // Automatically cleans up channels and servers after tests
-    @Rule
-    public final GrpcCleanupRule grpcCleanup = new GrpcCleanupRule();
-    
+    private Server server;
+    private ManagedChannel channel;
     private UserServiceGrpc.UserServiceBlockingStub blockingStub;
     
     @BeforeEach
@@ -509,23 +509,26 @@ public class UserServiceTest {
         String serverName = InProcessServerBuilder.generateName();
         
         // Create an in-process server with our service implementation
-        grpcCleanup.register(
-            InProcessServerBuilder.forName(serverName)
-                .directExecutor()
-                .addService(new UserServiceImpl())
-                .build()
-                .start()
-        );
+        server = InProcessServerBuilder.forName(serverName)
+            .directExecutor()
+            .addService(new UserServiceImpl())
+            .build()
+            .start();
         
         // Create a channel to the in-process server
-        ManagedChannel channel = grpcCleanup.register(
-            InProcessChannelBuilder.forName(serverName)
-                .directExecutor()
-                .build()
-        );
+        channel = InProcessChannelBuilder.forName(serverName)
+            .directExecutor()
+            .build();
         
         // Create a blocking stub for synchronous tests
         blockingStub = UserServiceGrpc.newBlockingStub(channel);
+    }
+    
+    @AfterEach
+    void tearDown() throws Exception {
+        // Shut down channel and server to release resources
+        channel.shutdownNow().awaitTermination(5, TimeUnit.SECONDS);
+        server.shutdownNow().awaitTermination(5, TimeUnit.SECONDS);
     }
     
     @Test
