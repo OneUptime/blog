@@ -534,9 +534,10 @@ export async function updateMembershipRole(
         PK: `USER#${userId}`,
         SK: `GROUP#${groupId}`,
       },
-      UpdateExpression: "SET #role = :role, permissions = :permissions, updatedAt = :updatedAt",
+      UpdateExpression: "SET #role = :role, #permissions = :permissions, updatedAt = :updatedAt",
       ExpressionAttributeNames: {
         "#role": "role",
+        "#permissions": "permissions",
       },
       ExpressionAttributeValues: {
         ":role": newRole,
@@ -1087,9 +1088,6 @@ export async function removeUserFromGroupWithCount(
               SK: "INFO",
             },
             UpdateExpression: "SET memberCount = memberCount - :one",
-            ExpressionAttributeValues: {
-              ":one": 1,
-            },
             ConditionExpression: "memberCount > :zero",
             ExpressionAttributeValues: {
               ":one": 1,
