@@ -307,6 +307,8 @@ import (
     "os/signal"
     "syscall"
     "time"
+
+    "github.com/gorilla/websocket"
 )
 
 var hub *Hub
