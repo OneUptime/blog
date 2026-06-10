@@ -50,7 +50,6 @@ Every Trivy Rego policy needs specific metadata and structure.
 
 ```rego
 # METADATA
-
 # title: Containers must not run as root
 # description: Running as root increases the attack surface
 # schemas:
@@ -62,7 +61,7 @@ Every Trivy Rego policy needs specific metadata and structure.
 #   avd_id: AVD-CUSTOM-0001
 #   severity: HIGH
 #   short_code: no-root-containers
-#   recommended_action: Set securityContext.runAsNonRoot to true
+#   recommended_actions: Set securityContext.runAsNonRoot to true
 #   input:
 #     selector:
 #       - type: kubernetes
@@ -103,7 +102,7 @@ The metadata block tells Trivy how to handle your policy:
 #   avd_id: AVD-CUSTOM-0001       # Aqua Vulnerability Database ID
 #   severity: HIGH                 # LOW, MEDIUM, HIGH, CRITICAL
 #   short_code: descriptive-name   # URL-friendly identifier
-#   recommended_action: How to fix the issue
+#   recommended_actions: How to fix the issue
 #   input:
 #     selector:
 #       - type: kubernetes         # Target type: kubernetes, dockerfile, terraform
@@ -500,23 +499,23 @@ opa test policies/ -v --coverage
 ```bash
 # Scan a Kubernetes manifest with custom policies
 trivy config ./manifests \
-    --policy ./policies \
-    --namespaces custom
+    --config-check ./policies \
+    --check-namespaces custom
 
 # Scan with both built-in and custom policies
 trivy config ./manifests \
-    --policy ./policies \
-    --namespaces builtin,custom
+    --config-check ./policies \
+    --check-namespaces builtin,custom
 
 # Scan a Dockerfile
 trivy config ./Dockerfile \
-    --policy ./policies/dockerfile \
-    --namespaces custom
+    --config-check ./policies/dockerfile \
+    --check-namespaces custom
 
 # Output as JSON for CI/CD integration
 trivy config ./manifests \
-    --policy ./policies \
-    --namespaces custom \
+    --config-check ./policies \
+    --check-namespaces custom \
     --format json \
     --output results.json
 ```
@@ -531,7 +530,7 @@ sequenceDiagram
     participant RegoEngine
     participant Policy
 
-    User->>Trivy: trivy config ./manifests --policy ./policies
+    User->>Trivy: trivy config ./manifests --config-check ./policies
     Trivy->>Parser: Parse input files
     Parser->>Trivy: Normalized input documents
 
@@ -578,8 +577,8 @@ jobs:
       - name: Run custom policy scan
         run: |
           trivy config ./manifests \
-            --policy ./policies \
-            --namespaces custom \
+            --config-check ./policies \
+            --check-namespaces custom \
             --exit-code 1 \
             --severity HIGH,CRITICAL
 ```
@@ -589,11 +588,11 @@ jobs:
 ```yaml
 # trivy.yaml
 scan:
-  security-checks:
-    - config
+  scanners:
+    - misconfig
 
-config:
-  policy:
+rego:
+  check:
     - ./policies
   namespaces:
     - custom
@@ -626,13 +625,13 @@ exit-code: 1
 
 ```rego
 # Good: Tells the user exactly what to do
-# recommended_action: |
+# recommended_actions: |
 #   Set securityContext.runAsNonRoot to true in your container spec:
 #   securityContext:
 #     runAsNonRoot: true
 
 # Avoid: Vague or unhelpful
-# recommended_action: Fix the security issue
+# recommended_actions: Fix the security issue
 ```
 
 ### 3. Include Related Resources
