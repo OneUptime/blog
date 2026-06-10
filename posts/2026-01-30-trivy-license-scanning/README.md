@@ -107,52 +107,55 @@ flowchart LR
 
 ## Creating a License Policy File
 
-Trivy uses YAML policy files to define allowed, denied, and flagged licenses. Store this in your repository for version-controlled compliance rules.
+Trivy reads its configuration from `trivy.yaml` by default. The `license` section maps licenses into Trivy's built-in risk categories (forbidden, restricted, reciprocal, notice, permissive, unencumbered) so they receive the appropriate severity when scanned. Store this file in your repository for version-controlled compliance rules.
 
 ```yaml
-# trivy-license-policy.yaml
+# trivy.yaml
 # Define organizational license compliance rules
 
-# Packages matching these rules are always allowed
-allowlist:
-  licenses:
-    - MIT
-    - Apache-2.0
-    - BSD-2-Clause
-    - BSD-3-Clause
-    - ISC
-    - Unlicense
-    - CC0-1.0
-    - 0BSD
-  # Allow specific packages regardless of license (use sparingly)
-  packages:
-    - name: "gnu-libc"
-      reason: "System library, not distributed with application"
+license:
+  # Inspect file headers in addition to package metadata
+  full: true
+  # Minimum confidence required to record a license match (0.0 - 1.0)
+  confidenceLevel: 0.9
 
-# Packages matching these rules will fail the scan
-denylist:
-  licenses:
+  # Forbidden licenses are reported as CRITICAL
+  forbidden:
     - GPL-3.0-only
     - GPL-3.0-or-later
     - AGPL-3.0-only
     - AGPL-3.0-or-later
     - SSPL-1.0
     - BUSL-1.1
-  # Block specific packages regardless of license
-  packages:
-    - name: "crypto-banned-lib"
-      reason: "Export control restrictions"
 
-# Packages matching these rules generate warnings but do not fail
-# Use for licenses requiring legal review before approval
-flaglist:
-  licenses:
+  # Restricted (strong copyleft) licenses are reported as HIGH
+  restricted:
     - LGPL-2.1-only
     - LGPL-2.1-or-later
     - LGPL-3.0-only
+
+  # Reciprocal (weak copyleft) licenses are reported as MEDIUM
+  reciprocal:
     - MPL-2.0
     - EPL-2.0
     - CDDL-1.0
+
+  # Notice licenses require attribution but are otherwise permissive (LOW)
+  notice:
+    - MIT
+    - Apache-2.0
+    - BSD-2-Clause
+    - BSD-3-Clause
+    - ISC
+
+  # Unencumbered licenses have no meaningful restrictions (LOW)
+  unencumbered:
+    - Unlicense
+    - CC0-1.0
+    - 0BSD
+
+  # Ignored licenses are excluded from the report entirely
+  ignored: []
 ```
 
 ## Running Scans with Policy Enforcement
@@ -160,26 +163,26 @@ flaglist:
 Apply your policy file during scans to automate compliance checking. Non-compliant dependencies will cause the scan to exit with a non-zero status.
 
 ```bash
-# Run license scan with policy enforcement
-# --license-policy: Path to your policy YAML file
-# --exit-code 1: Return exit code 1 if policy violations found
+# Run license scan using trivy.yaml from the current directory
+# --config: Path to your Trivy config file (defaults to trivy.yaml)
+# --exit-code 1: Return exit code 1 if findings match the filters
 trivy fs --scanners license \
-  --license-policy trivy-license-policy.yaml \
+  --config trivy.yaml \
   --exit-code 1 \
   .
 
 # Scan with severity filtering
-# Only fail on high-severity (denied) licenses, warn on others
+# Only fail when CRITICAL or HIGH severity license findings are reported
 trivy fs --scanners license \
-  --license-policy trivy-license-policy.yaml \
-  --severity HIGH \
+  --config trivy.yaml \
+  --severity CRITICAL,HIGH \
   --exit-code 1 \
   .
 
 # Generate compliance report in SARIF format for GitHub integration
 # SARIF uploads to GitHub Security tab for visibility
 trivy fs --scanners license \
-  --license-policy trivy-license-policy.yaml \
+  --config trivy.yaml \
   --format sarif \
   --output license-results.sarif \
   .
@@ -212,8 +215,8 @@ jobs:
         with:
           scan-type: 'fs'
           scanners: 'license'
-          # Path to policy file in repository
-          trivy-config: trivy-license-policy.yaml
+          # Path to trivy.yaml config in repository
+          trivy-config: trivy.yaml
           # Fail workflow on policy violations
           exit-code: '1'
           # Output format for GitHub Security integration
@@ -253,17 +256,25 @@ trivy fs --scanners license --format json . | \
 # 4. Binary-only distributions
 ```
 
-Add approved unknown-license packages to your allowlist after legal review:
+After legal review, suppress specific license identifiers so they no longer trigger findings. Use the `ignored` list in `trivy.yaml`, or pass them on the command line with `--ignored-licenses`:
 
 ```yaml
-# trivy-license-policy.yaml
-allowlist:
-  packages:
-    - name: "internal-shared-lib"
-      version: ">=1.0.0"
-      reason: "Internal package, proprietary license approved by legal team"
-    - name: "legacy-vendor-sdk"
-      reason: "Commercial license on file, contract #12345"
+# trivy.yaml
+license:
+  # Licenses listed here are excluded from the scan report
+  # Document the rationale alongside the entry for auditability
+  ignored:
+    # Internal proprietary license approved by legal team
+    - LicenseRef-Internal-Proprietary
+    # Commercial license on file, contract #12345
+    - LicenseRef-Vendor-Commercial
+```
+
+```bash
+# Equivalent inline form
+trivy fs --scanners license \
+  --ignored-licenses LicenseRef-Internal-Proprietary,LicenseRef-Vendor-Commercial \
+  .
 ```
 
 ## Generating License Reports
@@ -333,7 +344,7 @@ echo "License inventory saved to $OUTPUT_DIR/all-licenses.json"
 
 1. **Scan Early**: Run license checks on pull requests before code merges, not just before releases.
 
-2. **Version Your Policy**: Store trivy-license-policy.yaml in version control. Changes to allowed licenses should go through code review.
+2. **Version Your Policy**: Store trivy.yaml in version control. Changes to allowed licenses should go through code review.
 
 3. **Document Exceptions**: When adding packages to the allowlist, include the reason and any legal approval references.
 
