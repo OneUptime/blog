@@ -158,27 +158,30 @@ When built-in rules are not enough, you can define custom detection rules. Creat
 rules:
   # Internal API tokens with company-specific prefix
   - id: internal-api-token
-    description: "Internal API Token"
+    category: general
+    title: "Internal API Token"
     # Pattern matches: MYCOMPANY-API- followed by 32 hex characters
-    pattern: "MYCOMPANY-API-[a-f0-9]{32}"
+    regex: "MYCOMPANY-API-[a-f0-9]{32}"
     severity: HIGH
     keywords:
       - MYCOMPANY-API
 
   # Legacy system credentials
   - id: legacy-system-password
-    description: "Legacy System Password"
+    category: general
+    title: "Legacy System Password"
     # Pattern matches: password= followed by quoted string
-    pattern: 'password\s*=\s*["\'][^"\']{8,}["\']'
+    regex: 'password\s*=\s*["\'][^"\']{8,}["\']'
     severity: MEDIUM
     keywords:
       - password
 
   # Internal certificate private keys
   - id: internal-private-key
-    description: "Internal Private Key"
+    category: AsymmetricPrivateKey
+    title: "Internal Private Key"
     # Pattern matches: BEGIN PRIVATE KEY blocks
-    pattern: "-----BEGIN (RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----"
+    regex: "-----BEGIN (RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----"
     severity: CRITICAL
     keywords:
       - PRIVATE KEY
@@ -186,18 +189,20 @@ rules:
 
   # JWT tokens (often contain sensitive claims)
   - id: jwt-token
-    description: "JWT Token"
+    category: general
+    title: "JWT Token"
     # Pattern matches: base64 encoded JWT structure (header.payload.signature)
-    pattern: "eyJ[a-zA-Z0-9_-]*\\.eyJ[a-zA-Z0-9_-]*\\.[a-zA-Z0-9_-]*"
+    regex: "eyJ[a-zA-Z0-9_-]*\\.eyJ[a-zA-Z0-9_-]*\\.[a-zA-Z0-9_-]*"
     severity: MEDIUM
     keywords:
       - eyJ
 
   # Database credentials in environment variables
   - id: db-credentials-env
-    description: "Database Credentials in Environment Variable"
+    category: general
+    title: "Database Credentials in Environment Variable"
     # Pattern matches: common database credential variable names
-    pattern: "(DB_PASSWORD|DATABASE_PASSWORD|MYSQL_PASSWORD|POSTGRES_PASSWORD)\\s*=\\s*['\"]?[^\\s'\"]+['\"]?"
+    regex: "(DB_PASSWORD|DATABASE_PASSWORD|MYSQL_PASSWORD|POSTGRES_PASSWORD)\\s*=\\s*['\"]?[^\\s'\"]+['\"]?"
     severity: HIGH
     keywords:
       - PASSWORD
@@ -246,76 +251,79 @@ vendor/
 node_modules/
 ```
 
-### Using Inline Comments
+### Ignoring Specific Rule IDs
 
-You can suppress specific findings with inline comments:
+You can suppress findings for specific built-in rule IDs by listing them in `.trivyignore`. Each rule ID applies globally to all files scanned:
 
-```python
-# config.py
-# Example credentials for documentation purposes
+```bash
+# .trivyignore
+# Ignore findings by rule ID
 
-# trivy:ignore:generic-api-key
-# This is a placeholder value for documentation
-EXAMPLE_API_KEY = "sk_test_XXXXXXXXXXXXXXXXXXXXXXXX"
+# Skip generic API key matches (often false positives)
+generic-api-key
 
-# trivy:ignore:aws-access-key-id
-# This is a dummy value used in unit tests
-TEST_AWS_KEY = "AKIAIOSFODNN7EXAMPLE"
+# Skip AWS access key matches in the entire scan
+aws-access-key-id
+```
+
+For more granular per-file control, use `.trivyignore.yaml` to scope a rule to specific paths:
+
+```yaml
+# .trivyignore.yaml
+secrets:
+  # Skip generic-api-key in documentation examples
+  - id: generic-api-key
+    paths:
+      - "docs/**"
+      - "examples/**"
+
+  # Skip aws-access-key-id in test fixtures
+  - id: aws-access-key-id
+    paths:
+      - "tests/fixtures/**"
 ```
 
 ### Configuration File Exclusions
 
-Create a detailed exclusion configuration:
+Create a detailed exclusion configuration using Trivy's secret config format. The secret config supports `disable-rules` for turning off built-in rules entirely and `allow-rules` for skipping matches that match a regex or file path:
 
 ```yaml
 # trivy-secret-exclusions.yaml
 # Detailed exclusion rules for false positive management
 
-# Exclude by file path patterns
-exclude-paths:
-  # Test directories commonly contain mock credentials
-  - "**/*_test.go"
-  - "**/test_*.py"
-  - "**/*.test.js"
-  - "**/tests/**"
-  - "**/fixtures/**"
+# Disable specific built-in rules globally
+# Use this when a rule generates too many false positives in your codebase
+disable-rules:
+  - generic-api-key
+  - jwt-token
 
-  # Documentation and examples
-  - "**/docs/**"
-  - "**/examples/**"
-  - "**/*.example"
-  - "**/*.sample"
-
-  # Build artifacts and dependencies
-  - "**/node_modules/**"
-  - "**/vendor/**"
-  - "**/.git/**"
-  - "**/dist/**"
-  - "**/build/**"
-
-# Exclude specific secret types that generate false positives
-# in your environment
-exclude-rules:
-  # If you have legitimate high-entropy strings
-  - id: generic-api-key
-    paths:
-      - "config/encryption_keys.yaml"
-
-  # Exclude JWT patterns in test files
-  - id: jwt-token
-    paths:
-      - "**/test/**"
-      - "**/*_test.*"
-
-# Allow-list for specific known safe values
-# Use sparingly and document why each is safe
+# Allow-rules skip matches that meet additional criteria.
+# Each entry needs an id, description, and either a regex or path (Go regexp).
 allow-rules:
-  - description: "Documentation example AWS key"
-    value: "AKIAIOSFODNN7EXAMPLE"
+  # Skip findings in test directories
+  - id: skip-tests
+    description: "Skip findings in test files and fixtures"
+    path: "(_test\\.(go|py|js|ts)$|/tests?/|/fixtures/)"
 
-  - description: "Test Stripe key (Stripe test mode)"
-    value: "sk_test_"
-    is_prefix: true
+  # Skip findings in documentation and examples
+  - id: skip-docs
+    description: "Skip findings in docs and examples"
+    path: "(/docs/|/examples/|\\.example$|\\.sample$)"
+
+  # Skip findings in build artifacts and dependencies
+  - id: skip-vendor
+    description: "Skip findings in vendor and build directories"
+    path: "(/node_modules/|/vendor/|/\\.git/|/dist/|/build/)"
+
+  # Allow well-known documentation example AWS key
+  - id: allow-aws-doc-example
+    description: "AWS documentation example access key"
+    regex: "AKIAIOSFODNN7EXAMPLE"
+
+  # Allow Stripe test-mode keys (the sk_test_ prefix is publicly safe)
+  - id: allow-stripe-test-keys
+    description: "Stripe test-mode keys"
+    regex: "sk_test_[0-9a-zA-Z]{24,}"
 ```
 
 Run with exclusions:
@@ -437,11 +445,12 @@ trivy fs --scanners secret \
 # trivy.yaml
 # Global configuration file
 
+# Point Trivy at your custom secret config (built-in rules stay enabled by default)
 secret:
-  # Only scan specific file extensions
-  enable-builtin-rules: true
+  config: trivy-secret-config.yaml
 
-  # Skip binary files
+# Skip binary files across all scanners
+scan:
   skip-files:
     - "**/*.png"
     - "**/*.jpg"
