@@ -531,7 +531,7 @@ spec:
         - /spec/clusterIP
 ```
 
-Resource Limits Exceeded
+### Resource Limits Exceeded
 
 If ArgoCD is running slow, increase resource limits:
 
