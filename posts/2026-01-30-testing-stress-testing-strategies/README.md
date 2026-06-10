@@ -31,7 +31,7 @@ Load testing asks: "Can we handle expected traffic?" Stress testing asks: "What 
 
 Start low and increase load incrementally until the system fails. This approach identifies the exact threshold where degradation begins.
 
-The following k6 script demonstrates a gradual ramp-up pattern that increases virtual users over time, then holds at peak before ramping down. Each stage increases load by 50 users over 2 minutes.
+The following k6 script demonstrates a gradual ramp-up pattern that increases virtual users over time, then holds at peak before ramping down. Each ramp stage lasts 2 minutes, with the target VU count increasing through 50, 100, 200, 400, 800, 1000, and 1500.
 
 ```javascript
 // k6 stress test with gradual ramp-up
