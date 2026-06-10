@@ -1636,7 +1636,7 @@ if __name__ == "__main__":
 
 ---
 
-Resource Tagging Strategy
+## Resource Tagging Strategy
 
 Effective cost allocation requires consistent resource tagging. The following policy enforces tagging compliance:
 
