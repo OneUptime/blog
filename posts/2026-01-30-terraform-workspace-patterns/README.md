@@ -182,13 +182,18 @@ graph LR
 # workspace_parser.tf
 locals {
   # Parse workspace name: project-environment-region[-variant]
-  workspace_parts = split("-", terraform.workspace)
+  # A regex is used because AWS region names contain hyphens (e.g. us-east-1),
+  # so a simple split("-", ...) would not separate the components correctly.
+  workspace_matches = regex(
+    "^(?P<project>[^-]+)-(?P<environment>[^-]+)-(?P<region>[a-z]{2}-[a-z]+-[0-9]+)(?:-(?P<variant>.+))?$",
+    terraform.workspace
+  )
 
-  # Extract components with defaults
-  project     = local.workspace_parts[0]
-  environment = length(local.workspace_parts) > 1 ? local.workspace_parts[1] : "dev"
-  region      = length(local.workspace_parts) > 2 ? local.workspace_parts[2] : "us-east-1"
-  variant     = length(local.workspace_parts) > 3 ? local.workspace_parts[3] : ""
+  # Extract components
+  project     = local.workspace_matches.project
+  environment = local.workspace_matches.environment
+  region      = local.workspace_matches.region
+  variant     = local.workspace_matches.variant != null ? local.workspace_matches.variant : ""
 
   # Determine if this is a production environment
   is_production = contains(["prod", "production"], local.environment)
@@ -444,9 +449,14 @@ data "terraform_remote_state" "networking" {
 
   config = {
     bucket = "company-terraform-state"
-    key    = "env:/platform-networking-${local.environment}/terraform.tfstate"
+    key    = "infrastructure/terraform.tfstate"
     region = "us-east-1"
   }
+
+  # The S3 backend constructs the full path as
+  # <workspace_key_prefix>/<workspace>/<key>, so the workspace is selected
+  # via the workspace argument rather than embedded in the key.
+  workspace = "platform-networking-${local.environment}"
 }
 
 # Use outputs from the networking state
@@ -652,9 +662,9 @@ jobs:
         with:
           script: |
             const output = `#### Terraform Plan - ${{ matrix.environment }}
-            ```
+            \`\`\`
             ${{ steps.plan.outputs.stdout }}
-            ```
+            \`\`\`
             `;
             github.rest.issues.createComment({
               issue_number: context.issue.number,
@@ -785,9 +795,9 @@ locals {
     CostCenter  = var.cost_center
     Owner       = var.team_email
 
-    # Auto-generated tags for cost tracking
+    # Auto-generated tag for cost tracking. Avoid timestamp() in default_tags
+    # because it changes on every apply and forces an update to every resource.
     TerraformManaged = "true"
-    CreatedAt        = timestamp()
   }
 }
 
