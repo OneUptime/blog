@@ -251,7 +251,7 @@ requirements = ServiceRequirements(
 
 target_min, target_max = calculate_optimal_target(requirements)
 print(f"Recommended utilization target: {target_min:.0f}% - {target_max:.0f}%")
-# Output: Recommended utilization target: 27% - 47%
+# Output: Recommended utilization target: 20% - 30%
 ```
 
 ## Utilization Monitoring
