@@ -191,42 +191,21 @@ To enable efficient tag-based search in Tempo, you need to configure which attri
 
 ### Tempo Configuration
 
-Configure the `metrics_generator` and `overrides` sections in your Tempo configuration:
+Configure the `query_frontend` and `storage` sections in your Tempo configuration. With vParquet blocks, search runs against all attributes by default; you can promote frequently searched attributes to dedicated columns for better performance:
 
 ```yaml
 # tempo.yaml configuration for tag-based search
 
-# Enable search on specific tags
-
-search:
-  # Maximum number of concurrent search jobs
-  concurrent_jobs: 2000
-  # Maximum number of results per search
-  max_result_limit: 20
-
-# Configure which tags to index for search
-overrides:
-  defaults:
-    search:
-      # Resource-level attributes to index
-      resource_attributes:
-        - service.name
-        - service.namespace
-        - service.version
-        - k8s.namespace.name
-        - k8s.pod.name
-        - deployment.environment
-
-      # Span-level attributes to index
-      span_attributes:
-        - http.method
-        - http.status_code
-        - http.url
-        - db.system
-        - db.statement
-        - rpc.method
-        - rpc.service
-        - error.type
+# Query frontend search settings
+query_frontend:
+  search:
+    # Maximum number of concurrent search jobs across all queriers
+    concurrent_jobs: 1000
+    # Default and maximum number of results returned per search
+    default_result_limit: 20
+    max_result_limit: 0
+    # Maximum duration a search can cover (0 = unlimited)
+    max_duration: 0
 
 # Storage configuration for search
 storage:
@@ -238,51 +217,57 @@ storage:
 
     # Block configuration affects search performance
     block:
-      # Version 2 blocks support more efficient search
+      # Parquet block versions support efficient TraceQL search
       version: vParquet3
-
-    # Search configuration
-    search:
-      # Chunk size for search operations
-      chunk_size_bytes: 1000000
-      # Prefetch trace count
-      prefetch_trace_count: 1000
+      # Promote frequently searched attributes to dedicated columns
+      # for faster filtering. Up to 10 string columns of each scope are supported.
+      parquet_dedicated_columns:
+        - name: http.method
+          type: string
+          scope: span
+        - name: http.url
+          type: string
+          scope: span
+        - name: db.system
+          type: string
+          scope: span
+        - name: db.statement
+          type: string
+          scope: span
+        - name: error.type
+          type: string
+          scope: span
 ```
 
 ### Helm Chart Configuration
 
-When deploying Tempo with Helm, configure search in your values file:
+When deploying Tempo with Helm (`grafana/tempo-distributed`), pass the same query frontend and storage settings through the chart's `tempo.structuredConfig` override:
 
 ```yaml
-# values.yaml for Tempo Helm chart
+# values.yaml for the grafana/tempo-distributed Helm chart
 
 tempo:
-  searchEnabled: true
-
-  # Configure search-specific settings
-  search:
-    concurrent_jobs: 2000
-    max_result_limit: 20
-
-  # Override configuration
-  overrides:
-    search:
-      resource_attributes:
-        - service.name
-        - service.namespace
-        - k8s.namespace.name
-      span_attributes:
-        - http.method
-        - http.status_code
-        - db.system
-
-# Query frontend configuration
-queryFrontend:
-  search:
-    # Duration for which search queries are cached
-    query_result_cache_ttl: 5m
-    # Maximum duration for search queries
-    max_duration: 0
+  structuredConfig:
+    query_frontend:
+      search:
+        concurrent_jobs: 1000
+        default_result_limit: 20
+        max_result_limit: 0
+        max_duration: 0
+    storage:
+      trace:
+        block:
+          version: vParquet3
+          parquet_dedicated_columns:
+            - name: http.method
+              type: string
+              scope: span
+            - name: http.url
+              type: string
+              scope: span
+            - name: db.system
+              type: string
+              scope: span
 ```
 
 ## Integration with Grafana Explore
@@ -380,7 +365,7 @@ Create a dashboard panel that displays recent traces with errors:
   "targets": [
     {
       "queryType": "traceql",
-      "query": "{ status = error && duration > 500ms } | count() by (resource.service.name)",
+      "query": "{ status = error && duration > 500ms }",
       "limit": 20
     }
   ],
