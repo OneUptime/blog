@@ -227,7 +227,7 @@ The following Python example demonstrates structured JSON logging:
 import logging
 import json
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 
 class JSONFormatter(logging.Formatter):
     """
@@ -236,7 +236,7 @@ class JSONFormatter(logging.Formatter):
     """
     def format(self, record):
         log_entry = {
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),
@@ -568,10 +568,9 @@ docker inspect my-container --format '{{.LogPath}}' | xargs sudo ls -lh
 # Truncate logs without stopping the container (use with caution)
 docker inspect my-container --format '{{.LogPath}}' | xargs sudo truncate -s 0
 
-# Better approach: update container with rotation settings
-docker update --log-opt max-size=50m --log-opt max-file=3 my-container
-
-# Recreate container with proper log limits
+# Better approach: recreate the container with proper log limits.
+# Note: docker update cannot change logging configuration — the
+# container must be recreated for log-driver/log-opt changes to take effect.
 docker stop my-container
 docker rm my-container
 docker run -d \
