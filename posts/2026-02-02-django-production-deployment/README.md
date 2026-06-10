@@ -8,7 +8,7 @@ Description: Learn how to deploy Django applications to production servers with 
 
 ---
 
-Deploying Django to production is more than just running `python manage.py runserver` on a server. The development server is single-threaded, not secure, and will fall over under any real traffic. This guide walks through setting up a production-ready Django deployment with Gunicorn, Nginx, PostgreSQL, and proper security hardening.
+Deploying Django to production is more than just running `python manage.py runserver` on a server. The development server is not designed for production use, lacks security hardening, and will fall over under any real traffic. This guide walks through setting up a production-ready Django deployment with Gunicorn, Nginx, PostgreSQL, and proper security hardening.
 
 ## Production Architecture Overview
 
