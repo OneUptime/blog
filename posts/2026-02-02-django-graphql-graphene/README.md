@@ -849,7 +849,7 @@ from books.types import UserType
 User = get_user_model()
 
 
-class ObtainJSONWebToken(graphql_jwt.ObtainJSONWebToken):
+class ObtainJSONWebToken(graphql_jwt.JSONWebTokenMutation):
     """
     Custom JWT mutation that returns user data along with the token.
     Extends the default behavior to include user information.
@@ -1107,8 +1107,7 @@ Protect your API from expensive queries by limiting depth and complexity:
 ```python
 # complexity.py
 from graphene_django.views import GraphQLView
-from graphql import parse, validate
-from graphql.validation import NoSchemaIntrospectionCustomRule
+from graphql import ExecutionResult, GraphQLError, parse
 
 
 class QueryComplexityValidator:
@@ -1192,12 +1191,12 @@ class ProtectedGraphQLView(GraphQLView):
     def execute_graphql_request(self, request, data, query, *args, **kwargs):
         """
         Validates query before execution.
-        Returns error response for invalid queries.
+        Returns an ExecutionResult with errors for invalid queries.
         """
         if query:
             is_valid, error = self.validator.validate(query)
             if not is_valid:
-                return self.json_response(request, {"errors": [{"message": error}]})
+                return ExecutionResult(errors=[GraphQLError(error)])
 
         return super().execute_graphql_request(request, data, query, *args, **kwargs)
 ```
