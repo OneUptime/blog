@@ -343,7 +343,7 @@ class TimePartitionManager:
         elif self.granularity == TimeGranularity.DAILY:
             return timestamp.strftime("%Y%m%d")
         elif self.granularity == TimeGranularity.WEEKLY:
-            # ISO week number
+            # Week number (Monday as first day of week)
             return timestamp.strftime("%Y_W%W")
         elif self.granularity == TimeGranularity.MONTHLY:
             return timestamp.strftime("%Y%m")
@@ -1436,7 +1436,7 @@ class MilvusPartitionManager:
 # Pinecone namespace-based partitioning
 # Pinecone uses namespaces within indexes for logical partitioning
 
-import pinecone
+from pinecone import Pinecone
 from typing import List, Dict, Optional
 
 
@@ -1446,11 +1446,11 @@ class PineconePartitionManager:
     Each namespace acts as an isolated partition within an index.
     """
 
-    def __init__(self, api_key: str, environment: str, index_name: str):
-        # Initialize Pinecone
-        pinecone.init(api_key=api_key, environment=environment)
+    def __init__(self, api_key: str, index_name: str):
+        # Initialize Pinecone client
+        self.pc = Pinecone(api_key=api_key)
 
-        self.index = pinecone.Index(index_name)
+        self.index = self.pc.Index(index_name)
         self.index_name = index_name
 
     def insert_to_namespace(
@@ -1553,7 +1553,6 @@ class PineconePartitionManager:
 # Usage Example
 pinecone_manager = PineconePartitionManager(
     api_key="your-api-key",
-    environment="us-west1-gcp",
     index_name="production-embeddings"
 )
 
