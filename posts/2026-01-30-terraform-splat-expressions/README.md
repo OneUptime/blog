@@ -161,9 +161,9 @@ output "subnet_cidrs" {
 
 ## Combining Splats with Other Expressions
 
-### Splat with Conditional Logic
+### Filtering with For Expressions
 
-Filter results by combining splats with conditional expressions.
+Splat expressions cannot filter elements, so when you need conditional logic you must use a `for` expression instead.
 
 ```hcl
 variable "instances" {
