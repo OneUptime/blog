@@ -441,7 +441,7 @@ import json
 import uuid
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field
 from enum import Enum
 
 
@@ -1703,9 +1703,8 @@ Expose metrics for monitoring runbook execution.
 # Prometheus metrics for runbook monitoring.
 # These metrics help track runbook health and performance.
 
-from prometheus_client import Counter, Histogram, Gauge, Info
+from prometheus_client import Counter, Histogram, Gauge
 from functools import wraps
-import time
 
 
 # Execution counters
@@ -1828,7 +1827,6 @@ def track_execution(runbook_name: str):
         @wraps(func)
         def wrapper(*args, **kwargs):
             runbook_active_executions.labels(runbook_name=runbook_name).inc()
-            start_time = time.time()
 
             try:
                 result = func(*args, **kwargs)
