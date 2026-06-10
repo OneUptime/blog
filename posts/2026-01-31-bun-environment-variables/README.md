@@ -14,7 +14,7 @@ In this guide, we will explore everything you need to know about using environme
 
 ## Understanding Bun.env
 
-Bun provides a built-in `Bun.env` object that gives you access to all environment variables in your application. Unlike Node.js where you use `process.env`, Bun offers `Bun.env` as a more performant and type-safe alternative.
+Bun provides a built-in `Bun.env` object that gives you access to all environment variables in your application. In Bun, `Bun.env`, `process.env`, and `import.meta.env` are all aliases of the same underlying object, so you can use whichever feels most natural in your code.
 
 Here is a basic example of accessing environment variables in Bun:
 
@@ -39,7 +39,7 @@ const host = process.env.HOST;
 console.log(`Server will run on ${host}:${port}`);
 ```
 
-The key difference is that `Bun.env` is slightly faster since it does not need to go through the Node.js compatibility layer.
+Since `Bun.env` and `process.env` point to the same underlying object, either form works identically — pick whichever style suits your project.
 
 ## Working with .env Files
 
@@ -86,9 +86,8 @@ Bun supports multiple `.env` files with a specific loading order, allowing you t
 Here is the loading order Bun follows (later files override earlier ones):
 
 1. `.env` - Base configuration
-2. `.env.local` - Local overrides (not committed to git)
-3. `.env.development` or `.env.production` - Environment-specific settings
-4. `.env.development.local` or `.env.production.local` - Local environment-specific overrides
+2. `.env.development`, `.env.production`, or `.env.test` - Environment-specific settings (selected by `NODE_ENV`)
+3. `.env.local` - Local overrides (not committed to git)
 
 Create a `.env.local` file for local development secrets:
 
@@ -373,8 +372,6 @@ Always add sensitive files to your `.gitignore`:
 # .gitignore - Ignore local environment files
 .env.local
 .env.*.local
-.env.development.local
-.env.production.local
 
 # Keep the base .env file if it only contains non-sensitive defaults
 # .env
@@ -642,7 +639,7 @@ console.log(`Debug mode: ${env.DEBUG}`);
 
 Follow these best practices when working with environment variables in Bun:
 
-1. **Use Bun.env over process.env** - It is faster and more idiomatic for Bun applications.
+1. **Pick one style and stick with it** - `Bun.env`, `process.env`, and `import.meta.env` are all aliases of the same object. Choose whichever is most idiomatic for your project and use it consistently.
 
 2. **Create a centralized configuration module** - Define all environment variables in one place with proper typing and validation.
 
