@@ -62,7 +62,7 @@ Now you can use C functions directly without manual declarations:
 ```rust
 // The libc crate provides cross-platform bindings to standard C library functions.
 // This is much safer than manual extern declarations since types are verified.
-use libc::{c_char, c_int, printf};
+use libc::{c_int, printf};
 use std::ffi::CString;
 
 fn main() {
