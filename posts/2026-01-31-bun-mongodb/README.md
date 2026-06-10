@@ -935,7 +935,7 @@ export function handleMongoError(error: any): never {
   // Validation error
   if (error.code === MongoErrorCodes.DOCUMENT_VALIDATION_FAILURE) {
     throw new DatabaseError(
-      "Document validation failed: " + error.errInfo?.details?.schemaRulesNotSatisfied?.[0]?.description || "Invalid document",
+      "Document validation failed: " + (error.errInfo?.details?.schemaRulesNotSatisfied?.[0]?.description || "Invalid document"),
       "VALIDATION_FAILED",
       false
     );
