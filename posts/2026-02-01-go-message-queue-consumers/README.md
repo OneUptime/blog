@@ -49,6 +49,7 @@ type Consumer struct {
     conn    *amqp.Connection
     channel *amqp.Channel
     queue   string
+    tag     string
     done    chan struct{}
 }
 
@@ -78,6 +79,7 @@ func NewConsumer(url, queue string) (*Consumer, error) {
         conn:    conn,
         channel: ch,
         queue:   queue,
+        tag:     "consumer-" + queue,
         done:    make(chan struct{}),
     }, nil
 }
@@ -148,7 +150,7 @@ func (c *Consumer) Start(handler func([]byte) error) error {
     // autoAck is false - we acknowledge manually after processing
     msgs, err := c.channel.Consume(
         c.queue,
-        "",    // consumer tag - empty means auto-generated
+        c.tag, // consumer tag - we set it explicitly so we can Cancel later
         false, // autoAck - we handle ack manually
         false, // exclusive
         false, // noLocal
@@ -305,8 +307,8 @@ func (c *Consumer) Shutdown() error {
     close(c.done)
 
     // Cancel the consumer - this stops new message delivery
-    // The empty string matches our consumer tag
-    if err := c.channel.Cancel("", false); err != nil {
+    // Must use the same tag we passed to Consume; an empty tag would not match
+    if err := c.channel.Cancel(c.tag, false); err != nil {
         return err
     }
 
@@ -404,8 +406,8 @@ func NewNATSConsumer(url, stream, consumer string) (*NATSConsumer, error) {
 
     ctx, cancel := context.WithCancel(context.Background())
 
-    // Get or create the consumer
-    // Durable consumers survive restarts and remember their position
+    // Look up an existing durable consumer on the stream
+    // Use js.CreateOrUpdateConsumer if you want to create one from this code
     cons, err := js.Consumer(ctx, stream, consumer)
     if err != nil {
         cancel()
@@ -431,7 +433,7 @@ func (c *NATSConsumer) Start(handler func([]byte) error) error {
         if err != nil {
             log.Printf("Processing failed: %v", err)
             // Nak tells NATS to redeliver the message
-            // WithDelay adds backoff before redelivery
+            // Use msg.NakWithDelay(duration) if you want backoff before redelivery
             msg.Nak()
             return
         }
