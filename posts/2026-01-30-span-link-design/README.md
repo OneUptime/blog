@@ -249,11 +249,11 @@ async function handleAsyncWorkflow(
       try {
         // Execute the workflow logic
         await workflowFn(span);
-        span.setStatus({ code: 0 }); // OK status
+        span.setStatus({ code: 1 }); // OK status (SpanStatusCode.OK)
       } catch (error) {
         // Record any errors that occur during workflow execution
         span.setStatus({
-          code: 2, // ERROR status
+          code: 2, // ERROR status (SpanStatusCode.ERROR)
           message: error instanceof Error ? error.message : 'Unknown error'
         });
         span.recordException(error as Error);
