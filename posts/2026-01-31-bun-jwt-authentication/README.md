@@ -394,8 +394,8 @@ export async function validateCredentials(
   const user = Array.from(users.values()).find((u) => u.email === email);
 
   if (!user) {
-    // Use constant-time comparison to prevent timing attacks
-    // Hash a dummy password to maintain consistent timing
+    // Prevent user enumeration via timing attacks by performing a
+    // dummy hash so the response time is similar to the valid path.
     await bcrypt.hash(password, SALT_ROUNDS);
     return null;
   }
@@ -1065,7 +1065,7 @@ export function getBlacklistSize(): number {
 
 ## Rate Limiting
 
-Rate limiting protects authentication endpoints from brute force attacks. This implementation uses a sliding window approach with configurable limits.
+Rate limiting protects authentication endpoints from brute force attacks. This implementation uses a fixed window approach with configurable limits.
 
 ```typescript
 // src/middleware/rateLimit.ts
@@ -1212,13 +1212,13 @@ describe("JWT Token Operations", () => {
   test("rejects invalid access token", async () => {
     const invalidToken = "invalid.token.here";
 
-    expect(verifyAccessToken(invalidToken)).rejects.toThrow();
+    await expect(verifyAccessToken(invalidToken)).rejects.toThrow();
   });
 
   test("rejects refresh token as access token", async () => {
     const { token } = await createRefreshToken(testUserId, testEmail);
 
-    expect(verifyAccessToken(token)).rejects.toThrow();
+    await expect(verifyAccessToken(token)).rejects.toThrow();
   });
 
   test("creates valid refresh token", async () => {
