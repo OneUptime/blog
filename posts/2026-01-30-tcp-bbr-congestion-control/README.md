@@ -114,7 +114,7 @@ lsmod | grep tcp_bbr
 ### Requirements
 
 - Linux kernel 4.9 or later (BBR was merged in 4.9)
-- For BBRv2, kernel 5.18 or later is recommended
+- Note: BBRv2 was developed by Google but was never merged into the mainline Linux kernel; it only exists as an out-of-tree patch. BBRv3, announced in 2023, is the successor that targets the issues with BBRv1 and is being worked on for upstream inclusion.
 
 ### Step 1: Load the BBR Module
 
@@ -500,7 +500,7 @@ The performance gains can be substantial, especially on high-bandwidth, high-lat
 
 ## Further Reading
 
-- **Google's BBR Paper**: "BBR: Congestion-Based Congestion Control" - The original research paper
-- **Linux Kernel Documentation**: Documentation/networking/tcp-bbr.txt
+- **Google's BBR Paper**: "BBR: Congestion-Based Congestion Control" - The original research paper (ACM Queue, 2016)
+- **Linux Kernel Documentation**: BBR-related sysctls are documented in `Documentation/networking/ip-sysctl.rst`; the BBR implementation lives in `net/ipv4/tcp_bbr.c`
 - **IETF Draft**: draft-cardwell-iccrg-bbr-congestion-control - Standardization efforts
-- **BBRv2**: Improvements addressing fairness concerns with the original BBR
+- **BBRv3**: The successor to BBRv1 (BBRv2 was never upstreamed) that targets fairness concerns and other improvements
