@@ -427,12 +427,30 @@ resource "aws_route_table" "example" {
     }
   }
 
-  dynamic "tags" {
+  tags = merge(each.value.tags, { Name = each.key })
+}
+
+# When a resource exposes tags as nested blocks (for example,
+# aws_autoscaling_group's `tag` block), a second iterator alias keeps
+# the inner and outer iterations distinct.
+
+resource "aws_autoscaling_group" "example" {
+  for_each = var.route_tables
+  name     = each.key
+
+  max_size         = 3
+  min_size         = 1
+  desired_capacity = 1
+
+  vpc_zone_identifier = var.subnet_ids
+
+  dynamic "tag" {
     for_each = merge(each.value.tags, { Name = each.key })
-    iterator = tag_item  # Different iterator for tags
+    iterator = tag_item  # Different iterator name for clarity
     content {
-      key   = tag_item.key
-      value = tag_item.value
+      key                 = tag_item.key
+      value               = tag_item.value
+      propagate_at_launch = true
     }
   }
 }
