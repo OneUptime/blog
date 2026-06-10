@@ -90,7 +90,7 @@ After your cluster is running across multiple regions, enable multi-region featu
 
 ```sql
 -- Add regions to your database
-ALTER DATABASE myapp PRIMARY REGION "us-east";
+ALTER DATABASE myapp SET PRIMARY REGION "us-east";
 ALTER DATABASE myapp ADD REGION "us-west";
 ALTER DATABASE myapp ADD REGION "eu-west";
 
@@ -209,9 +209,9 @@ CREATE TABLE user_profiles (
     name STRING,
     region crdb_internal_region NOT NULL DEFAULT 'us-east',
     created_at TIMESTAMPTZ DEFAULT now()
-) LOCALITY REGIONAL BY ROW;
+) LOCALITY REGIONAL BY ROW AS region;
 
--- The hidden crdb_region column determines where each row lives
+-- The region column determines where each row lives
 -- Insert data with explicit region
 INSERT INTO user_profiles (email, name, region)
 VALUES ('user@example.com', 'John Doe', 'eu-west');
@@ -292,12 +292,14 @@ SELECT
 FROM crdb_internal.ranges_no_leases
 GROUP BY locality;
 
--- Monitor replication lag
+-- Monitor node liveness and heartbeat freshness across regions
 SELECT
-    node_id,
-    locality,
-    round(extract(epoch from (now() - last_up_at)))::int as seconds_behind
-FROM crdb_internal.gossip_nodes;
+    n.node_id,
+    n.locality,
+    n.is_live,
+    l.updated_at AS last_heartbeat
+FROM crdb_internal.gossip_nodes n
+JOIN crdb_internal.gossip_liveness l USING (node_id);
 
 -- Identify hot ranges
 SELECT
@@ -460,8 +462,8 @@ CockroachDB handles schema changes online, but multi-region deployments require 
 -- Add columns with defaults - fast, no rewrite
 ALTER TABLE user_profiles ADD COLUMN preferences JSONB DEFAULT '{}';
 
--- Create indexes concurrently
-CREATE INDEX CONCURRENTLY idx_profiles_created
+-- Create indexes online (schema changes are non-blocking by default)
+CREATE INDEX idx_profiles_created
 ON user_profiles (created_at);
 
 -- Check schema change progress
