@@ -96,12 +96,18 @@ Weaviate provides clients for multiple languages. We will use the Python and Nod
 Python installation:
 
 ```bash
-pip install weaviate-client
+# The examples below use the Weaviate Python v3 client API.
+# Pin to v3 because `pip install weaviate-client` defaults to v4,
+# which uses a different (collections-based) API.
+pip install "weaviate-client>=3.26.7,<4.0.0"
 ```
 
 Node.js installation:
 
 ```bash
+# The examples below use the weaviate-ts-client (v2) API.
+# Note: weaviate-ts-client is in maintenance mode; the newer
+# `weaviate-client` JS package uses a different API.
 npm install weaviate-ts-client
 ```
 
