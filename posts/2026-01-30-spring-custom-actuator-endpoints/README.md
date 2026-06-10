@@ -37,7 +37,7 @@ Spring Boot Actuator supports three types of endpoint exposure:
 | JMX | Exposed via Java Management Extensions | JMX clients like JConsole |
 | Both | Available through web and JMX | Either method |
 
-By default, most endpoints are exposed over JMX but not over the web. You control this through configuration:
+By default, only the `health` endpoint is exposed over the web. JMX is disabled by default since Spring Boot 2.2 (`spring.jmx.enabled=false`), so JMX exposure also requires explicit opt-in. You control endpoint exposure through configuration:
 
 ```yaml
 management:
@@ -132,10 +132,18 @@ public class CacheStatisticsEndpoint {
     }
 
     // GET /actuator/cache-stats
-    // Returns statistics for all caches
+    // GET /actuator/cache-stats?region=us-east
+    // Non-@Selector parameters are bound from the query string.
+    // Each operation type (read/write/delete) must have a unique
+    // route, so combine the no-parameter and query-parameter cases
+    // into a single method using a @Nullable argument.
     @ReadOperation
-    public Map<String, CacheStatistics> allCacheStats() {
-        return cacheManager.getAllStatistics();
+    public Map<String, CacheStatistics> allCacheStats(
+            @Nullable String region) {
+        if (region == null) {
+            return cacheManager.getAllStatistics();
+        }
+        return cacheManager.getStatisticsByRegion(region);
     }
 
     // GET /actuator/cache-stats/{cacheName}
@@ -148,17 +156,6 @@ public class CacheStatisticsEndpoint {
             return null;
         }
         return stats;
-    }
-
-    // GET /actuator/cache-stats?region=us-east
-    // Query parameters are passed as method arguments
-    @ReadOperation
-    public Map<String, CacheStatistics> cacheStatsByRegion(
-            @Nullable String region) {
-        if (region == null) {
-            return cacheManager.getAllStatistics();
-        }
-        return cacheManager.getStatisticsByRegion(region);
     }
 }
 ```
@@ -265,6 +262,8 @@ import org.springframework.boot.actuate.endpoint.annotation.Endpoint;
 import org.springframework.boot.actuate.endpoint.annotation.Selector;
 import org.springframework.stereotype.Component;
 
+import java.util.Map;
+
 @Component
 @Endpoint(id = "temp-files")
 public class TempFilesEndpoint {
@@ -303,14 +302,12 @@ public class TempFilesEndpoint {
 
 ## Web-Specific Endpoints
 
-Sometimes you need access to the underlying HTTP request and response objects. The `@WebEndpoint` annotation creates endpoints that only work over HTTP.
+Sometimes you need access to the underlying HTTP request and response objects. The `@WebEndpoint` annotation creates endpoints that only work over HTTP (using the standard operation annotations). When you need full Spring MVC features — `ResponseEntity`, request headers, `@GetMapping` with path patterns — use `@RestControllerEndpoint` instead. Note that `@RestControllerEndpoint` is deprecated since Spring Boot 3.3.0 in favor of `@Endpoint`/`@WebEndpoint`; it still works but plan a migration if you adopt it today.
 
 ```java
 package com.example.actuator;
 
-import org.springframework.boot.actuate.endpoint.web.annotation.WebEndpoint;
 import org.springframework.boot.actuate.endpoint.web.annotation.RestControllerEndpoint;
-import org.springframework.boot.actuate.endpoint.annotation.ReadOperation;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
@@ -319,6 +316,9 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.ResponseBody;
 
 import jakarta.servlet.http.HttpServletRequest;
+
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Web-only endpoint with full Spring MVC support.
@@ -493,6 +493,7 @@ package com.example.actuator.health;
 import org.springframework.boot.actuate.health.Health;
 import org.springframework.boot.actuate.health.ReactiveHealthIndicator;
 import org.springframework.stereotype.Component;
+import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
 import java.time.Duration;
@@ -732,6 +733,8 @@ import org.springframework.boot.actuate.endpoint.annotation.ReadOperation;
 import org.springframework.boot.actuate.endpoint.annotation.WriteOperation;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Component;
+
+import java.util.Map;
 
 @Component
 @Endpoint(id = "config-manager")
