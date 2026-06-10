@@ -208,13 +208,20 @@ logging:
     com.example: DEBUG
 ```
 
-Now configure your services to pull from the config server. Add the config client dependency:
+Now configure your services to pull from the config server. Add the config client dependency. Since Spring Cloud 2020.0 (Ilford), the bootstrap context is no longer enabled by default - if you want to use bootstrap.yml, include the bootstrap starter as well:
 
 ```xml
 <!-- Config client - pulls configuration from the central config server -->
 <dependency>
     <groupId>org.springframework.cloud</groupId>
     <artifactId>spring-cloud-starter-config</artifactId>
+</dependency>
+
+<!-- Bootstrap starter - required for bootstrap.yml on Spring Cloud 2020.0+ -->
+<!-- Alternative: skip this and use spring.config.import in application.yml -->
+<dependency>
+    <groupId>org.springframework.cloud</groupId>
+    <artifactId>spring-cloud-starter-bootstrap</artifactId>
 </dependency>
 ```
 
