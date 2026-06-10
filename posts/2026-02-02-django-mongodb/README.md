@@ -243,10 +243,9 @@ class Order(models.Model):
         model_container=OrderItem
     )
 
-    # Simple array of strings
-    tags = djongo_models.ArrayField(
-        model_container=models.CharField(max_length=50)
-    )
+    # Simple array of strings (use JSONField for primitive arrays;
+    # Djongo's ArrayField requires a Model class for model_container)
+    tags = models.JSONField(default=list)
 
     status = models.CharField(
         max_length=20,
@@ -499,8 +498,8 @@ MONGODB_SETTINGS = {
     # Write concern
     'w': 'majority',
     'j': True,
-    # Read preference
-    'read_preference': 'primaryPreferred',
+    # Read preference (use camelCase URI option to accept a string value)
+    'readPreference': 'primaryPreferred',
     # Replica set (if applicable)
     # 'replicaSet': 'myReplicaSet',
 }
@@ -1455,7 +1454,10 @@ Proper indexing is crucial for MongoDB performance. Define indexes in your docum
 
 ```python
 # documents.py - Index examples
-from mongoengine import Document, StringField, DateTimeField, IntField
+from datetime import datetime
+from mongoengine import (
+    Document, StringField, DateTimeField, IntField, BooleanField
+)
 
 class Product(Document):
     """
