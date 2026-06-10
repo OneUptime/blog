@@ -59,16 +59,17 @@ Vault supports glob patterns and templating to create flexible, reusable policie
 ### Glob Pattern Types
 
 ```hcl
-# Single asterisk: matches any characters within a single path segment
+# Single asterisk: matches any number of characters at the end of the path,
+# including additional path segments. Only valid as the last character of the path.
 # Matches: secret/data/myapp/config
-# Does NOT match: secret/data/myapp/nested/config
+# Matches: secret/data/myapp/nested/deep/config
 path "secret/data/myapp/*" {
   capabilities = ["read"]
 }
 
-# Plus sign: matches one or more path segments
+# Plus sign: matches any number of characters within a single path segment
 # Matches: secret/data/myapp/config
-# Matches: secret/data/myapp/nested/deep/config
+# Does NOT match: secret/data/myapp/nested/config
 path "secret/data/myapp/+" {
   capabilities = ["read"]
 }
@@ -157,31 +158,28 @@ Vault policies can restrict which parameters can be set when writing secrets or 
 ### Parameter Restrictions
 
 ```hcl
-# Restrict which keys can be written to a secret
-path "secret/data/production/database" {
+# Restrict which parameters can be written when configuring a database connection
+path "database/config/production-db" {
   capabilities = ["create", "update"]
 
-  # Only allow these specific parameters
+  # Only allow these specific top-level parameters
   allowed_parameters = {
-    "data" = {
-      "username" = []
-      "password" = []
-      "host"     = []
-      "port"     = []
-    }
+    "plugin_name"    = []
+    "connection_url" = []
+    "username"       = []
+    "password"       = []
+    "allowed_roles"  = []
   }
 }
 
-# Deny specific sensitive parameters
-path "secret/data/production/app-config" {
-  capabilities = ["create", "update", "read"]
+# Deny specific sensitive parameters when creating tokens
+path "auth/token/create" {
+  capabilities = ["create", "update"]
 
   # Prevent setting these parameters
   denied_parameters = {
-    "data" = {
-      "admin_password" = []
-      "root_token"     = []
-    }
+    "no_default_policy" = []
+    "no_parent"         = []
   }
 }
 ```
@@ -206,25 +204,21 @@ path "auth/userpass/users/*" {
 ### Combining Allowed and Denied Parameters
 
 ```hcl
-# Complex parameter control
-path "secret/data/shared/config" {
+# Complex parameter control on a database role configuration
+path "database/roles/my-role" {
   capabilities = ["create", "update", "read"]
 
   # Allow only these parameters
   allowed_parameters = {
-    "data" = {
-      "api_endpoint" = []
-      "api_version"  = ["v1", "v2"]
-      "timeout"      = []
-      "retry_count"  = []
-    }
+    "db_name"             = []
+    "default_ttl"         = ["1h", "4h", "8h"]
+    "max_ttl"             = []
+    "creation_statements" = []
   }
 
-  # But deny setting timeout to zero
+  # But deny setting max_ttl to zero
   denied_parameters = {
-    "data" = {
-      "timeout" = ["0"]
-    }
+    "max_ttl" = ["0"]
   }
 }
 ```
@@ -343,18 +337,9 @@ path "secret/data/production/payment-service/config" {
   capabilities = ["read"]
 }
 
-# Manage application secrets with rotation
+# Read application credentials
 path "secret/data/production/payment-service/credentials/*" {
   capabilities = ["read"]
-
-  # Restrict to specific credential types
-  allowed_parameters = {
-    "data" = {
-      "api_key"      = []
-      "api_secret"   = []
-      "webhook_key"  = []
-    }
-  }
 }
 
 # Access database credentials through dynamic secrets
