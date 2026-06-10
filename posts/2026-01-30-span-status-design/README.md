@@ -154,10 +154,10 @@ def process_with_retry(data: dict) -> dict:
 
                 # If we get here after a previous error,
                 # explicitly set OK to override the ERROR status
+                # Note: per the OpenTelemetry spec, description is ignored
+                # when the status code is OK, so we omit it here.
                 if last_error is not None:
-                    span.set_status(
-                        Status(StatusCode.OK, "Succeeded after retry")
-                    )
+                    span.set_status(Status(StatusCode.OK))
 
                 return result
 
@@ -320,11 +320,10 @@ package main
 
 import (
     "context"
-    "errors"
 
     "go.opentelemetry.io/otel"
+    "go.opentelemetry.io/otel/attribute"
     "go.opentelemetry.io/otel/codes"
-    "go.opentelemetry.io/otel/trace"
 )
 
 var tracer = otel.Tracer("order-service")
