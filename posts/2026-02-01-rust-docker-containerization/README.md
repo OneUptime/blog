@@ -140,8 +140,7 @@ COPY Cargo.toml Cargo.lock ./
 COPY src ./src
 
 # Build a statically linked binary
-# RUSTFLAGS tells the linker to produce a static binary
-ENV RUSTFLAGS='-C target-feature=-crt-static'
+# The musl target produces a fully static binary by default
 RUN cargo build --release --target x86_64-unknown-linux-musl
 
 # Stage 2: Use scratch for the smallest possible image
