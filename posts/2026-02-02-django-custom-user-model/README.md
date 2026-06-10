@@ -283,7 +283,7 @@ AUTH_PASSWORD_VALIDATORS = [
         'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
     },
     {
-        # Requires mixed content
+        # Rejects passwords that are entirely numeric
         'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
     },
 ]
