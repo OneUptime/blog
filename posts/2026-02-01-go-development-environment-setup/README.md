@@ -27,7 +27,7 @@ brew install go
 go version
 ```
 
-You should see output like `go version go1.23.x darwin/arm64` (or amd64 for Intel Macs).
+You should see output like `go version go1.25.x darwin/arm64` (or amd64 for Intel Macs).
 
 ### Linux
 
@@ -35,11 +35,11 @@ For Linux systems, download the official tarball from the Go website:
 
 ```bash
 # Download the latest Go release (check golang.org/dl for current version)
-wget https://go.dev/dl/go1.23.4.linux-amd64.tar.gz
+wget https://go.dev/dl/go1.25.11.linux-amd64.tar.gz
 
 # Remove any previous installation and extract
 sudo rm -rf /usr/local/go
-sudo tar -C /usr/local -xzf go1.23.4.linux-amd64.tar.gz
+sudo tar -C /usr/local -xzf go1.25.11.linux-amd64.tar.gz
 
 # Add Go to your PATH (add this to ~/.bashrc or ~/.zshrc)
 export PATH=$PATH:/usr/local/go/bin
@@ -84,7 +84,7 @@ This creates a `go.mod` file that tracks your dependencies:
 // go.mod - defines the module path and Go version
 module github.com/yourusername/myapp
 
-go 1.23
+go 1.25
 ```
 
 ### Essential Environment Variables
@@ -185,8 +185,8 @@ Beyond the basics, these tools will improve your code quality and productivity.
 This is the most popular linter aggregator for Go. It runs dozens of linters in parallel:
 
 ```bash
-# Install golangci-lint
-go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+# Install golangci-lint (v2)
+go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
 
 # Run it in your project
 golangci-lint run
@@ -198,26 +198,29 @@ golangci-lint run --fix
 Create a `.golangci.yml` configuration file in your project root:
 
 ```yaml
-# .golangci.yml - configure which linters to run
-linters:
-  enable:
-    - errcheck      # Check for unchecked errors
-    - gosimple      # Simplify code suggestions
-    - govet         # Report suspicious constructs
-    - ineffassign   # Detect unused variable assignments  
-    - staticcheck   # Advanced static analysis
-    - unused        # Find unused code
-    - gofmt         # Check formatting
-    - goimports     # Check import ordering
-
-linters-settings:
-  errcheck:
-    # Check type assertions
-    check-type-assertions: true
+# .golangci.yml - configure which linters to run (golangci-lint v2)
+version: "2"
 
 run:
   # Timeout for analysis
   timeout: 5m
+
+linters:
+  enable:
+    - errcheck      # Check for unchecked errors
+    - govet         # Report suspicious constructs
+    - ineffassign   # Detect unused variable assignments
+    - staticcheck   # Advanced static analysis (includes former gosimple/stylecheck)
+    - unused        # Find unused code
+  settings:
+    errcheck:
+      # Check type assertions
+      check-type-assertions: true
+
+formatters:
+  enable:
+    - gofmt         # Check formatting
+    - goimports     # Check import ordering
 ```
 
 ### gofmt and goimports
@@ -391,7 +394,7 @@ func rootHandler(w http.ResponseWriter, r *http.Request) {
 // go.mod - module definition with dependencies
 module github.com/yourusername/myapp
 
-go 1.23
+go 1.25
 
 require (
     github.com/gorilla/mux v1.8.1
