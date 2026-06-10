@@ -231,34 +231,34 @@ check_drift() {
     cd "${dir}"
     terraform init -backend=true -input=false > /dev/null 2>&1
 
-    # Run plan and capture output
-    if ! terraform plan -detailed-exitcode -out=tfplan > plan_output.txt 2>&1; then
-        local exit_code=$?
+    # Run plan and capture exit code (-detailed-exitcode returns 2 for drift, which
+    # would otherwise terminate the script under set -e)
+    local exit_code=0
+    terraform plan -detailed-exitcode -out=tfplan > plan_output.txt 2>&1 || exit_code=$?
 
-        if [ $exit_code -eq 2 ]; then
-            echo "Drift detected in ${env}"
+    if [ $exit_code -eq 2 ]; then
+        echo "Drift detected in ${env}"
 
-            # Check for critical resources
-            local is_critical=false
-            for resource in "${CRITICAL_RESOURCES[@]}"; do
-                if grep -q "${resource}" plan_output.txt; then
-                    is_critical=true
-                    break
-                fi
-            done
-
-            # Send appropriate alert
-            if [ "$is_critical" = true ]; then
-                send_critical_alert "${env}"
-            else
-                send_drift_alert "${env}"
+        # Check for critical resources
+        local is_critical=false
+        for resource in "${CRITICAL_RESOURCES[@]}"; do
+            if grep -q "${resource}" plan_output.txt; then
+                is_critical=true
+                break
             fi
+        done
 
-            return 2
+        # Send appropriate alert
+        if [ "$is_critical" = true ]; then
+            send_critical_alert "${env}"
         else
-            echo "Error running plan in ${env}"
-            return 1
+            send_drift_alert "${env}"
         fi
+
+        return 2
+    elif [ $exit_code -ne 0 ]; then
+        echo "Error running plan in ${env}"
+        return 1
     fi
 
     echo "No drift in ${env}"
@@ -679,7 +679,7 @@ resource "aws_instance" "example" {
 import datetime
 
 def check_change_freeze():
-    now = datetime.datetime.utcnow()
+    now = datetime.datetime.now(datetime.timezone.utc)
 
     # No changes on weekends
     if now.weekday() >= 5:
@@ -698,7 +698,7 @@ Track drift over time to identify patterns:
 
 ```python
 # drift_metrics.py
-from prometheus_client import Counter, Gauge, push_to_gateway
+from prometheus_client import Counter, Gauge, REGISTRY, push_to_gateway
 
 drift_detected = Counter(
     'terraform_drift_detected_total',
@@ -725,7 +725,7 @@ def record_drift(environment: str, severity: str, resource_count: int):
     push_to_gateway(
         'prometheus-pushgateway:9091',
         job='terraform_drift_detection',
-        registry=None
+        registry=REGISTRY
     )
 ```
 
