@@ -683,7 +683,7 @@ sequenceDiagram
     Participant2-->>Coordinator: ACK
 ```
 
-The PRE-COMMIT phase allows participants to safely abort if they timeout waiting for the final COMMIT, because they know no other participant has committed yet.
+The PRE-COMMIT phase allows participants to make a safe decision on timeout: a participant that times out before receiving PRE-COMMIT can safely abort (no participant has been told to commit yet), and a participant that times out after acknowledging PRE-COMMIT can safely commit (it knows every participant voted to commit and reached the pre-committed state).
 
 ---
 
@@ -1188,11 +1188,13 @@ SELECT pg_reload_conf();
 **CockroachDB (Raft-based):**
 
 ```sql
--- Strong consistency is default, configure replication factor
+-- Strong consistency is the default; configure replication factor
 ALTER DATABASE mydb CONFIGURE ZONE USING num_replicas = 3;
 
--- Require all reads to go through Raft leader
-SET CLUSTER SETTING kv.follower_read.enabled = false;
+-- Regular SELECT statements are already strongly consistent (served by
+-- the leaseholder). Disable the follower-reads optimization cluster-wide
+-- if you want to prevent any opt-in stale reads from being served.
+SET CLUSTER SETTING kv.closed_timestamp.follower_reads_enabled = false;
 ```
 
 **etcd (Raft-based):**
