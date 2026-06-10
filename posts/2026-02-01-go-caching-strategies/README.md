@@ -597,7 +597,10 @@ func (c *StampedeProtectedCache) GetOrCompute(
         return err
     }
     
-    return nil
+    // Populate target with the computed value by reading it back from
+    // the cache so the caller receives the value through target.
+    _, err = c.cache.Get(ctx, key, target)
+    return err
 }
 ```
 
