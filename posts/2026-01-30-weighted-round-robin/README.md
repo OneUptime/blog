@@ -111,7 +111,7 @@ for (let i = 0; i < 10; i++) {
 
 ## Smooth Weighted Round Robin
 
-The smooth variant spreads requests more evenly. Instead of A,A,A,A,A,B,B,B,C,C, you get A,B,A,C,A,B,A,B,A,C. Same proportions, better distribution.
+The smooth variant spreads requests more evenly. Instead of A,A,A,A,A,B,B,B,C,C, you get A,B,C,A,A,B,A,C,B,A. Same proportions, better distribution.
 
 ```mermaid
 flowchart LR
@@ -122,7 +122,7 @@ flowchart LR
 
     subgraph "Smooth (Interleaved)"
         direction LR
-        S1[A] --> S2[B] --> S3[A] --> S4[C] --> S5[A] --> S6[B] --> S7[A] --> S8[B] --> S9[A] --> S10[C]
+        S1[A] --> S2[B] --> S3[C] --> S4[A] --> S5[A] --> S6[B] --> S7[A] --> S8[C] --> S9[B] --> S10[A]
     end
 ```
 
@@ -192,7 +192,7 @@ const balancer = new SmoothWeightedRoundRobin([
   { id: 'srv-3', address: '10.0.0.3:8080', weight: 2 },
 ]);
 
-// Produces interleaved sequence: srv-1, srv-2, srv-1, srv-3, srv-1, srv-2, srv-1, srv-2, srv-1, srv-3
+// Produces interleaved sequence: srv-1, srv-2, srv-3, srv-1, srv-1, srv-2, srv-1, srv-3, srv-2, srv-1
 for (let i = 0; i < 10; i++) {
   const server = balancer.getNext();
   console.log(`Request ${i + 1} -> ${server.id}`);
@@ -260,7 +260,7 @@ const weights = servers.map(s => ({
   weight: calculateWeight(s)
 }));
 
-// Results: large=38, medium=18, small=6
+// Results: large=39, medium=20, small=6
 ```
 
 ### Benchmark-Based Weights
@@ -301,7 +301,7 @@ const benchmarks: BenchmarkResult[] = [
 ];
 
 const weights = weightsFromBenchmarks(benchmarks);
-// Results roughly: srv-1=5, srv-2=3, srv-3=1
+// Results roughly: srv-1=5, srv-2=2, srv-3=1
 ```
 
 ---
