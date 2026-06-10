@@ -98,7 +98,7 @@ use futures_util::{SinkExt, StreamExt};
 #[tokio::main]
 async fn main() {
     // Initialize logging for debugging connection issues
-    tracing_subscriber::init();
+    tracing_subscriber::fmt::init();
 
     // Create broadcast channel with buffer for 100 messages
     // If a slow client falls behind by 100+ messages, they'll miss some
