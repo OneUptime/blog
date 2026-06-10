@@ -463,7 +463,7 @@ public class JobMonitoringService {
 
     public void checkRecentExecutions(String jobName) {
         // Get the last 10 executions of this job
-        List<JobInstance> instances = jobExplorer.findJobInstancesByJobName(jobName, 0, 10);
+        List<JobInstance> instances = jobExplorer.getJobInstances(jobName, 0, 10);
         
         for (JobInstance instance : instances) {
             List<JobExecution> executions = jobExplorer.getJobExecutions(instance);
