@@ -46,7 +46,7 @@ const redisWithConfig = new Redis({
   port: 6379,
   password: "your-password", // Optional
   db: 0, // Database index
-  retryDelayOnFailover: 100,
+  retryStrategy: (times) => Math.min(times * 50, 2000),
   maxRetriesPerRequest: 3,
 });
 
