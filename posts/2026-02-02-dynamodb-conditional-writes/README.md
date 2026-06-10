@@ -58,11 +58,15 @@ The following code demonstrates the main condition functions.
 ```javascript
 // attribute_exists - Check if an attribute is present
 // Useful for ensuring you're updating an existing item, not creating a new one
+// Note: status is a DynamoDB reserved word, so it must be aliased with ExpressionAttributeNames
 const updateExisting = {
     TableName: 'Orders',
     Key: { orderId: { S: 'order-123' } },
-    UpdateExpression: 'SET status = :newStatus',
+    UpdateExpression: 'SET #status = :newStatus',
     ConditionExpression: 'attribute_exists(orderId)',
+    ExpressionAttributeNames: {
+        '#status': 'status'
+    },
     ExpressionAttributeValues: {
         ':newStatus': { S: 'processing' }
     }
@@ -126,8 +130,12 @@ The following code shows how to build complex conditions.
 
 ```javascript
 // AND - All conditions must be true
+// Note: status is a DynamoDB reserved word, so it must be aliased
 const andCondition = {
-    ConditionExpression: 'status = :pending AND attribute_exists(customerId)',
+    ConditionExpression: '#status = :pending AND attribute_exists(customerId)',
+    ExpressionAttributeNames: {
+        '#status': 'status'
+    },
     ExpressionAttributeValues: {
         ':pending': { S: 'pending' }
     }
@@ -135,7 +143,10 @@ const andCondition = {
 
 // OR - At least one condition must be true
 const orCondition = {
-    ConditionExpression: 'status = :pending OR status = :processing',
+    ConditionExpression: '#status = :pending OR #status = :processing',
+    ExpressionAttributeNames: {
+        '#status': 'status'
+    },
     ExpressionAttributeValues: {
         ':pending': { S: 'pending' },
         ':processing': { S: 'processing' }
@@ -144,7 +155,10 @@ const orCondition = {
 
 // NOT - Negates a condition
 const notCondition = {
-    ConditionExpression: 'NOT status = :deleted',
+    ConditionExpression: 'NOT #status = :deleted',
+    ExpressionAttributeNames: {
+        '#status': 'status'
+    },
     ExpressionAttributeValues: {
         ':deleted': { S: 'deleted' }
     }
@@ -154,7 +168,10 @@ const notCondition = {
 // Only allow update if: item exists, status is pending or processing, and not locked
 const complexCondition = {
     ConditionExpression:
-        'attribute_exists(orderId) AND (status = :pending OR status = :processing) AND NOT isLocked = :true',
+        'attribute_exists(orderId) AND (#status = :pending OR #status = :processing) AND NOT isLocked = :true',
+    ExpressionAttributeNames: {
+        '#status': 'status'
+    },
     ExpressionAttributeValues: {
         ':pending': { S: 'pending' },
         ':processing': { S: 'processing' },
@@ -253,11 +270,13 @@ class OptimisticLock {
                 };
 
                 // Perform conditional update
+                // The condition handles items where the version attribute does not exist yet
                 const command = new UpdateCommand({
                     TableName: this.tableName,
                     Key: key,
                     UpdateExpression: fullUpdateExpression,
-                    ConditionExpression: 'version = :currentVersion',
+                    ConditionExpression:
+                        'attribute_not_exists(version) OR version = :currentVersion',
                     ExpressionAttributeValues: fullExpressionAttributeValues,
                     ExpressionAttributeNames: expressionAttributeNames,
                     ReturnValues: 'ALL_NEW'
@@ -524,11 +543,13 @@ async function transitionOrderState(docClient, orderId, newState, metadata = {})
     const conditionExpression = `(${conditionParts.join(' OR ')}) AND attribute_exists(orderId)`;
 
     // Build expression attribute values
+    // DynamoDB cannot copy the previous attribute value into the new transition record
+    // within a single UpdateExpression, so we capture the prior state from the ALL_OLD
+    // return values after the update succeeds.
     const expressionAttributeValues = {
         ':newState': newState,
         ':now': new Date().toISOString(),
         ':transition': {
-            from: 'CURRENT_STATE',  // Placeholder, actual value set by DynamoDB
             to: newState,
             timestamp: new Date().toISOString(),
             ...metadata
@@ -549,15 +570,16 @@ async function transitionOrderState(docClient, orderId, newState, metadata = {})
             '#status': 'status'
         },
         ExpressionAttributeValues: expressionAttributeValues,
-        ReturnValues: 'ALL_NEW'
+        ReturnValues: 'ALL_OLD'
     });
 
     try {
         const response = await docClient.send(command);
-        console.log(`Order ${orderId} transitioned to ${newState}`);
+        const previousState = response.Attributes ? response.Attributes.status : undefined;
+        console.log(`Order ${orderId} transitioned from ${previousState} to ${newState}`);
         return {
             success: true,
-            order: response.Attributes
+            previousState: previousState
         };
     } catch (error) {
         if (error.name === 'ConditionalCheckFailedException') {
