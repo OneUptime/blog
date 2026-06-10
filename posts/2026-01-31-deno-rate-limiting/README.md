@@ -511,12 +511,12 @@ export function redisRateLimiter(options: RedisRateLimiterOptions): Middleware {
     const windowStart = Math.floor(Date.now() / windowMs) * windowMs;
     const redisKey = `${keyPrefix}${clientKey}:${windowStart}`;
 
-    // Use Redis MULTI for atomic operations
-    const pipeline = redis.pipeline();
-    pipeline.incr(redisKey);
-    pipeline.pexpire(redisKey, windowMs);
+    // Use Redis MULTI/EXEC transaction for atomic operations
+    const tx = redis.tx();
+    tx.incr(redisKey);
+    tx.pexpire(redisKey, windowMs);
     
-    const results = await pipeline.flush();
+    const results = await tx.flush();
     const currentCount = results[0] as number;
 
     const remaining = Math.max(0, maxRequests - currentCount);
