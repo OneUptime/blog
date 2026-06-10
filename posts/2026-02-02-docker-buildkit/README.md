@@ -477,10 +477,10 @@ Configure automatic garbage collection in the BuildKit daemon:
 
 [worker.oci]
   gc = true
-  gckeepstorage = 20000000000  # 20GB
+  gcreservedspace = "20GB"
 
 [[worker.oci.gcpolicy]]
-  keepBytes = 10000000000      # Keep 10GB minimum
+  reservedSpace = "10GB"       # Reserve 10GB minimum
   keepDuration = 604800        # Keep for 7 days
   all = true
 ```
@@ -497,8 +497,8 @@ docker builder prune --filter "until=24h"
 # Remove cache for a specific builder
 docker buildx prune --builder mybuilder
 
-# Show what would be removed without actually removing
-docker builder prune --all --dry-run
+# Skip confirmation prompt when pruning
+docker builder prune --all --force
 ```
 
 ## Custom BuildKit Configuration
@@ -519,11 +519,11 @@ debug = true
 [worker.oci]
   enabled = true
   gc = true
-  gckeepstorage = 50000000000  # 50GB for CI builders
+  gcreservedspace = "50GB"  # 50GB for CI builders
 
   [[worker.oci.gcpolicy]]
     all = true
-    keepBytes = 20000000000
+    reservedSpace = "20GB"
     keepDuration = 1209600      # 14 days
 
 [registry."docker.io"]
