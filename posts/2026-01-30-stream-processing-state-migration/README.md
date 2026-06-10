@@ -433,9 +433,9 @@ public class UserSessionStateSerializerSnapshot
 
         if (newVersion > serializerVersion) {
             // Newer serializer can read older format with migration
-            // Return the serializer that can perform the migration
+            // Migration uses the serializer returned by restoreSerializer()
             return TypeSerializerSchemaCompatibility
-                .compatibleAfterMigration(typedSerializer);
+                .compatibleAfterMigration();
         }
 
         // Older serializer cannot read newer format
@@ -485,11 +485,12 @@ public class CompatibilityModeExamples {
 
     // COMPATIBLE_AFTER_MIGRATION: State needs transformation
     // Use when: Schema changed but migration path exists
-    public TypeSerializerSchemaCompatibility<MyState>
-            schemaEvolved(TypeSerializer<MyState> migrator) {
-        // Pass the serializer that can read old format and write new
+    public TypeSerializerSchemaCompatibility<MyState> schemaEvolved() {
+        // No argument: the runtime uses the serializer returned by
+        // the snapshot's restoreSerializer() to read the old format,
+        // then re-serializes with the new serializer.
         return TypeSerializerSchemaCompatibility
-            .compatibleAfterMigration(migrator);
+            .compatibleAfterMigration();
     }
 
     // COMPATIBLE_WITH_RECONFIGURED_SERIALIZER: Config changed
@@ -780,40 +781,45 @@ The State Processor API enables offline state migration and inspection:
 // StateProcessorMigration.java
 // Using Flink State Processor API for batch state migration
 
-import org.apache.flink.state.api.Savepoint;
+import org.apache.flink.state.api.SavepointReader;
+import org.apache.flink.state.api.SavepointWriter;
+import org.apache.flink.state.api.OperatorIdentifier;
 import org.apache.flink.state.api.OperatorTransformation;
 import org.apache.flink.state.api.functions.KeyedStateReaderFunction;
 import org.apache.flink.state.api.functions.KeyedStateBootstrapFunction;
+import org.apache.flink.runtime.state.hashmap.HashMapStateBackend;
+import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.streaming.api.datastream.DataStream;
 
 public class StateProcessorMigration {
 
     public void migrateState(String oldSavepointPath,
             String newSavepointPath) throws Exception {
 
-        // Create execution environment for batch processing
-        ExecutionEnvironment env = ExecutionEnvironment
+        // The modern State Processor API runs on DataStream in BATCH mode
+        StreamExecutionEnvironment env = StreamExecutionEnvironment
             .getExecutionEnvironment();
 
         // Load the existing savepoint
-        ExistingSavepoint savepoint = Savepoint
-            .load(env, oldSavepointPath, new MemoryStateBackend());
+        SavepointReader savepoint = SavepointReader
+            .read(env, oldSavepointPath, new HashMapStateBackend());
 
         // Read state from the old operator
-        DataSet<UserSessionState> oldState = savepoint
+        DataStream<UserSessionState> oldState = savepoint
             .readKeyedState(
-                "session-operator",     // Operator UID
+                OperatorIdentifier.forUid("session-operator"),
                 new SessionStateReader() // Custom reader function
             );
 
         // Transform the state to new schema
-        DataSet<UserSessionStateV2> newState = oldState
+        DataStream<UserSessionStateV2> newState = oldState
             .map(old -> migrateToV2(old));
 
         // Create new savepoint with migrated state
-        Savepoint
-            .create(new MemoryStateBackend(), 128)
+        SavepointWriter
+            .newSavepoint(env, new HashMapStateBackend(), 128)
             .withOperator(
-                "session-operator",
+                OperatorIdentifier.forUid("session-operator"),
                 OperatorTransformation
                     .bootstrapWith(newState)
                     .keyBy(state -> state.getSessionId())
