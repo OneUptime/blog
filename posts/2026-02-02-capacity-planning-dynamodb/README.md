@@ -515,8 +515,8 @@ async function analyzeCapacity(tableName) {
   const [readMetrics, writeMetrics, throttledReads, throttledWrites] = await Promise.all([
     getConsumedCapacity(tableName, "ConsumedReadCapacityUnits", 300, 24),
     getConsumedCapacity(tableName, "ConsumedWriteCapacityUnits", 300, 24),
-    getConsumedCapacity(tableName, "ReadThrottledRequests", 300, 24),
-    getConsumedCapacity(tableName, "WriteThrottledRequests", 300, 24)
+    getConsumedCapacity(tableName, "ReadThrottleEvents", 300, 24),
+    getConsumedCapacity(tableName, "WriteThrottleEvents", 300, 24)
   ]);
 
   // Calculate statistics
@@ -786,12 +786,12 @@ class ReservedCapacityAnalyzer {
         wcu: 0.00065   // Per WCU-hour
       },
       reserved1Year: {
-        rcu: 0.0001,   // ~23% discount
-        wcu: 0.0005    // ~23% discount
+        rcu: 0.00006,  // ~54% discount
+        wcu: 0.0003    // ~54% discount
       },
       reserved3Year: {
-        rcu: 0.000052, // ~60% discount
-        wcu: 0.00026   // ~60% discount
+        rcu: 0.00003,  // ~77% discount
+        wcu: 0.00015   // ~77% discount
       }
     };
   }
