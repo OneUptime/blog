@@ -261,7 +261,7 @@ console.log('Errors:', result.errors);
 
 ## Performance-Critical: Working with Binary Data
 
-For image processing, file parsing, or any binary data work, you want to avoid copying data between JavaScript and WASM memory. Use typed arrays:
+For image processing, file parsing, or any binary data work, you want to minimize the cost of moving data between JavaScript and WASM. Byte slices keep this straightforward — wasm-bindgen copies the bytes into WASM memory, runs your code, and copies any mutations back. For true zero-copy access, use `js_sys::Uint8Array` views into WASM linear memory directly. For most use cases, the slice approach below is fast enough:
 
 ```rust
 use wasm_bindgen::prelude::*;
@@ -304,7 +304,7 @@ const canvas = document.getElementById('myCanvas');
 const ctx = canvas.getContext('2d');
 const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
-// Pass the raw pixel data to Rust - this is a view into WASM memory
+// Pass the raw pixel data to Rust - wasm-bindgen handles the memory transfer
 grayscale(imageData.data);
 
 // Put the modified data back
