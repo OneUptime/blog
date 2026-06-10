@@ -552,7 +552,7 @@ func (db *DB) ExecuteInTransaction(ctx context.Context, fn TxFunc) error {
 
         lastErr = err
 
-        // Exponential backoff with jitter
+        // Exponential backoff between retries
         delay := baseDelay * time.Duration(1<<attempt)
         select {
         case <-ctx.Done():
@@ -595,15 +595,12 @@ func (db *DB) executeTransaction(ctx context.Context, fn TxFunc) error {
 }
 
 // isRetryableError checks if an error indicates a transient condition
-// CockroachDB uses specific error codes for serialization conflicts
+// CockroachDB returns SQLSTATE 40001 for all transaction retry errors
 func isRetryableError(err error) bool {
     var pgErr *pgconn.PgError
     if errors.As(err, &pgErr) {
         // 40001: serialization_failure - retry the transaction
-        // 40003: statement_completion_unknown - connection issue
-        // CR000: CockroachDB-specific retry code
-        switch pgErr.Code {
-        case "40001", "40003", "CR000":
+        if pgErr.Code == "40001" {
             return true
         }
     }
