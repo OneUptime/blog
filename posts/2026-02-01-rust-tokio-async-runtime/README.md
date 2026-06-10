@@ -550,7 +550,7 @@ let result = tokio::task::spawn_blocking(|| {
 }).await.unwrap();
 ```
 
-**Be careful with shared state.** Use `Arc<Mutex<T>>` from `tokio::sync` for shared mutable state, not the standard library's Mutex.
+**Be careful with shared state.** Use `Arc<Mutex<T>>` for shared mutable state - the standard library's `std::sync::Mutex` is usually preferred and has lower overhead, but reach for `tokio::sync::Mutex` when you need to hold the lock across an `.await` point.
 
 **Watch your buffer sizes.** Channel buffer sizes affect memory usage and backpressure. Start small and increase if you see performance issues.
 
