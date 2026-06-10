@@ -105,7 +105,7 @@ class SlidingWindowLog:
         # Generate a unique key for this client's request log
         key = f"rate_limit:sliding_log:{client_id}"
 
-        # Get current timestamp in milliseconds for precision
+        # Get current timestamp in seconds (float, with sub-second precision)
         now = time.time()
 
         # Calculate the start of our sliding window
@@ -128,8 +128,9 @@ class SlidingWindowLog:
         # Step 3: Check if we are under the limit
         if current_count < self.limit:
             # Add the current request timestamp
-            # Using timestamp as both score and member ensures uniqueness
-            # Adding a small random component handles concurrent requests
+            # Using timestamp as the score allows range-based expiration
+            # Note: under heavy concurrency, consider appending a uuid to the member
+            # to avoid two requests at the same float timestamp overwriting each other
             pipe = self.redis.pipeline()
             pipe.zadd(key, {f"{now}": now})
 
@@ -444,7 +445,7 @@ def get_rate_limit_headers(limiter, client_id: str) -> dict:
 ### Middleware Example (FastAPI)
 
 ```python
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 app = FastAPI()
