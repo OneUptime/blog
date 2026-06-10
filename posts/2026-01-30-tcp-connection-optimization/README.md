@@ -243,6 +243,7 @@ function processData(socket, data) {
 package main
 
 import (
+    "context"
     "net"
     "syscall"
     "time"
@@ -275,7 +276,7 @@ func createOptimizedListener(address string) (net.Listener, error) {
         KeepAlive: 60 * time.Second,
     }
 
-    return lc.Listen(nil, "tcp", address)
+    return lc.Listen(context.Background(), "tcp", address)
 }
 
 // configureConnection applies optimizations to an accepted connection.
@@ -547,7 +548,7 @@ server.setsockopt(socket.SOL_TCP, socket.TCP_FASTOPEN, 10)  # Queue length of 10
 server.bind(('0.0.0.0', 8080))
 server.listen(100)
 
-# Client-side TFO (Linux 4.11+)
+# Client-side TFO (Linux 3.7+ for MSG_FASTOPEN)
 client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 # Use sendto with MSG_FASTOPEN flag to send data with SYN
 client.sendto(b'GET / HTTP/1.1\r\n\r\n',
