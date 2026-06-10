@@ -162,12 +162,12 @@ vault write pki_int/roles/internal-services \
 
 ```bash
 # Role allowing multiple SANs from different domains
+# Constrain Other SANs and URI SANs by leaving them empty (deny by default)
 vault write pki_int/roles/multi-domain \
     allowed_domains="example.com,example.org,example.net" \
     allow_subdomains=true \
     allow_bare_domains=true \
     max_ttl="720h" \
-    # Limit number of SANs
     allowed_other_sans="" \
     allowed_uri_sans=""
 ```
@@ -222,7 +222,7 @@ vault write pki_int/roles/tls-server \
 ### Client Authentication Role
 
 ```bash
-# Role for mTLS client certificates
+# Role for mTLS client certificates with organizational constraints
 vault write pki_int/roles/mtls-client \
     allowed_domains="clients.example.com" \
     allow_subdomains=true \
@@ -231,7 +231,6 @@ vault write pki_int/roles/mtls-client \
     server_flag=false \
     client_flag=true \
     max_ttl="168h" \
-    # Organizational constraints
     organization="Example Corp" \
     ou="Engineering"
 ```
@@ -240,6 +239,7 @@ vault write pki_int/roles/mtls-client \
 
 ```bash
 # Role for services that need both server and client auth
+# Short TTL is appropriate for service mesh workloads
 vault write pki_int/roles/service-mesh \
     allowed_domains="mesh.internal" \
     allow_subdomains=true \
@@ -248,7 +248,6 @@ vault write pki_int/roles/service-mesh \
     server_flag=true \
     client_flag=true \
     max_ttl="24h" \
-    # Short TTL for service mesh
     ttl="1h"
 ```
 
@@ -389,7 +388,6 @@ print(f"Certificate issued, expires: {response['data']['expiration']}")
 package main
 
 import (
-    "context"
     "fmt"
     "log"
     "os"
@@ -423,7 +421,6 @@ func main() {
     // Extract certificate data
     cert := secret.Data["certificate"].(string)
     key := secret.Data["private_key"].(string)
-    caChain := secret.Data["ca_chain"].([]interface{})
 
     // Write certificate to file
     os.WriteFile("cert.pem", []byte(cert), 0644)
@@ -607,9 +604,16 @@ vault policy read <policy-name>
 ## Role Configuration Reference
 
 ```bash
-# Complete role with all common options
+# Complete role with all common options grouped by purpose:
+#   - Domain constraints
+#   - SAN constraints
+#   - Key configuration
+#   - Usage flags
+#   - TTL settings
+#   - Certificate subject fields
+#   - Storage options
+#   - Policy identifiers (OIDs)
 vault write pki_int/roles/complete-example \
-    # Domain constraints
     allowed_domains="example.com,example.org" \
     allow_subdomains=true \
     allow_bare_domains=false \
@@ -617,42 +621,28 @@ vault write pki_int/roles/complete-example \
     allow_wildcard_certificates=true \
     allow_any_name=false \
     enforce_hostnames=true \
-
-    # SAN constraints
     allow_ip_sans=true \
     allowed_uri_sans="spiffe://cluster.local/*" \
     allowed_other_sans="" \
-
-    # Key configuration
     key_type="rsa" \
     key_bits=2048 \
     signature_bits=256 \
-
-    # Usage flags
     key_usage="DigitalSignature,KeyEncipherment" \
     ext_key_usage="ServerAuth,ClientAuth" \
     server_flag=true \
     client_flag=true \
     code_signing_flag=false \
     email_protection_flag=false \
-
-    # TTL settings
     ttl="72h" \
     max_ttl="720h" \
-
-    # Certificate fields
     organization="Example Corp" \
     ou="Engineering" \
     country="US" \
     locality="San Francisco" \
     province="California" \
-
-    # Storage options
     generate_lease=false \
     no_store=false \
     require_cn=true \
-
-    # Policy identifiers (OIDs)
     policy_identifiers="1.3.6.1.4.1.example"
 ```
 
