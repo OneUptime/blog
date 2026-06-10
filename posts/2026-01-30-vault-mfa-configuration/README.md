@@ -70,7 +70,7 @@ Explanation of parameters:
 - `period`: How often codes rotate (30 seconds is standard)
 - `key_size`: Length of the secret key in bytes
 - `qr_size`: Size of the QR code image in pixels
-- `algorithm`: Hash algorithm (SHA1, SHA256, or SHA512)
+- `algorithm`: Hash algorithm (SHA1, SHA256, or SHA512; default is SHA1)
 - `digits`: Number of digits in the code (6 or 8)
 
 ### Duo Security
@@ -157,8 +157,7 @@ vault auth list -detailed
 ```bash
 # Admin generates TOTP secret for user
 vault write sys/mfa/method/totp/my-totp/admin-generate \
-    entity_id="entity-uuid-here" \
-    method_name="my-totp"
+    entity_id="entity-uuid-here"
 
 # Response includes:
 # - barcode (base64 PNG of QR code)
@@ -178,9 +177,15 @@ vault login -method=userpass username=alice password=secret
 #   mfa_request_id        a1b2c3d4-e5f6-7890-abcd-ef1234567890
 #   mfa_constraint        my-totp
 
-# Complete login with TOTP code
+# Two-phase: validate the MFA challenge using the returned request_id
+vault write sys/mfa/validate \
+    mfa_request_id="a1b2c3d4-e5f6-7890-abcd-ef1234567890" \
+    mfa_payload="my-totp=123456"
+
+# Single-phase alternative: supply the passcode via the X-Vault-MFA header
+# so the initial login also satisfies the MFA challenge
 vault login -method=userpass username=alice password=secret \
-    -mfa="my-totp:123456"
+    -header="X-Vault-MFA: my-totp:123456"
 ```
 
 ## MFA Flow Diagram
@@ -221,24 +226,22 @@ Step-up MFA requires additional authentication when accessing high-value secrets
 
 ```hcl
 # policy-sensitive.hcl
-# This policy grants access to sensitive paths but requires MFA
+# This policy grants access to sensitive paths and requires MFA via the
+# legacy Step-Up Enterprise MFA `mfa_methods` field (Vault Enterprise).
+# For Vault Community Edition, enforce MFA via `identity/mfa/login-enforcement`
+# instead — ACL policies have no path-level MFA field in CE.
 
 path "secret/data/production/*" {
     capabilities = ["read", "list"]
 
-    # Require MFA for any access to production secrets
-    required_parameters = ["mfa_method_name"]
-
-    # Alternative: use control groups for approval workflow
+    # Step-Up Enterprise MFA: require these MFA methods on this path
+    mfa_methods = ["my-totp"]
 }
 
 path "secret/data/pci/*" {
     capabilities = ["read"]
 
-    # Multiple MFA methods can be required
-    mfa {
-        method_id = "my-totp"
-    }
+    mfa_methods = ["my-totp"]
 }
 ```
 
@@ -271,7 +274,7 @@ is_sensitive = func(path) {
 # Main rule
 main = rule {
     if is_sensitive(request.path) {
-        mfa.methods.my-totp.valid
+        mfa.methods["my-totp"].valid
     } else {
         true
     }
@@ -307,22 +310,25 @@ vault write sys/mfa/login-enforcement/production-access \
 
 Recovery options are critical for business continuity when users lose MFA devices.
 
-### Generating Recovery Codes
+### Re-Enrollment as Recovery
+
+Vault Login MFA does not generate one-time recovery codes for TOTP. The
+`admin-generate` endpoint returns only a `barcode` (base64 PNG) and a `url`
+(otpauth:// URL). Recovery is therefore handled by destroying the existing
+enrollment and generating a new one for the user.
 
 ```bash
-# Generate recovery codes for a user (admin operation)
-# These are one-time use codes that bypass MFA
+# Step 1: Destroy the user's existing TOTP enrollment
+vault write sys/mfa/method/totp/my-totp/admin-destroy \
+    entity_id="entity-uuid-here"
 
+# Step 2: Generate a fresh TOTP enrollment for the user
 vault write sys/mfa/method/totp/my-totp/admin-generate \
-    entity_id="entity-uuid-here" \
-    method_name="my-totp"
+    entity_id="entity-uuid-here"
 
-# Store recovery codes securely
-# Example output:
-# recovery_codes:
-#   - ABCD-EFGH-IJKL
-#   - MNOP-QRST-UVWX
-#   - 1234-5678-9012
+# Response includes:
+# - barcode (base64 PNG of QR code)
+# - url (otpauth:// URL for manual entry)
 ```
 
 ### Creating an MFA Bypass Policy
@@ -330,13 +336,15 @@ vault write sys/mfa/method/totp/my-totp/admin-generate \
 ```bash
 # Create a special bypass token for emergency access
 # Use sparingly and audit all uses
+# `vault token create` accepts repeated -metadata=key=value pairs;
+# the `meta` field on `vault write auth/token/create` is a map, not a string.
 
-vault write auth/token/create \
-    policies="emergency-bypass" \
-    ttl="1h" \
-    num_uses=1 \
-    meta="reason=mfa-recovery" \
-    meta="approved_by=security-team"
+vault token create \
+    -policy=emergency-bypass \
+    -ttl=1h \
+    -use-limit=1 \
+    -metadata=reason=mfa-recovery \
+    -metadata=approved_by=security-team
 ```
 
 ### Implementing a Recovery Workflow
@@ -367,18 +375,19 @@ flowchart TB
 # Step 1: Verify user identity through out-of-band channel
 
 # Step 2: Destroy existing MFA enrollment
-vault delete sys/mfa/method/totp/my-totp/admin-destroy \
+# admin-destroy is a POST operation that takes entity_id
+vault write sys/mfa/method/totp/my-totp/admin-destroy \
     entity_id="entity-uuid-here"
 
 # Step 3: Generate new TOTP enrollment
 vault write sys/mfa/method/totp/my-totp/admin-generate \
-    entity_id="entity-uuid-here" \
-    method_name="my-totp"
+    entity_id="entity-uuid-here"
 
 # Step 4: Provide QR code to user securely
 
-# Step 5: Log the recovery event
-vault audit log -format=json | jq 'select(.request.path | contains("mfa"))'
+# Step 5: Review audit log entries for the recovery event
+# (Read directly from the configured audit log file — Vault has no `audit log` subcommand)
+jq 'select(.request.path | contains("mfa"))' /var/log/vault/audit.log
 ```
 
 ## Multiple MFA Methods Configuration
@@ -395,12 +404,12 @@ vault write sys/mfa/login-enforcement/high-security \
 ### Login with Multiple MFA Methods
 
 ```bash
-# User must provide both factors
+# User must provide both factors via repeated X-Vault-MFA headers
 vault login -method=userpass \
     username=alice \
     password=secret \
-    -mfa="my-totp:123456" \
-    -mfa="my-duo:push"
+    -header="X-Vault-MFA: my-totp:123456" \
+    -header="X-Vault-MFA: my-duo:push"
 ```
 
 ## User Self-Service MFA Enrollment
@@ -411,18 +420,17 @@ Allow users to manage their own MFA enrollment.
 
 ```hcl
 # self-service-mfa.hcl
-# Allow users to manage their own MFA
+# Allow users to manage their own MFA enrollment.
+# The user-facing `generate` endpoint uses the calling token's entity
+# automatically — no entity_id parameter is needed.
 
-path "identity/mfa/method/totp/generate" {
+path "sys/mfa/method/totp/my-totp/generate" {
     capabilities = ["update"]
-
-    # Users can only generate for their own entity
-    allowed_parameters = {
-        "entity_id" = ["{{identity.entity.id}}"]
-    }
 }
 
-path "identity/mfa/method/totp/admin-destroy" {
+# Optional: let the user destroy their own enrollment via admin-destroy.
+# Restrict the entity_id so users can only destroy their own enrollment.
+path "sys/mfa/method/totp/my-totp/admin-destroy" {
     capabilities = ["update"]
 
     allowed_parameters = {
@@ -448,9 +456,10 @@ if [ -z "$ENTITY_ID" ]; then
     exit 1
 fi
 
-# Generate TOTP enrollment
-RESULT=$(vault write -format=json sys/mfa/method/totp/my-totp/generate \
-    entity_id="$ENTITY_ID")
+# Generate TOTP enrollment for the calling token's entity.
+# The user `generate` endpoint takes no entity_id — it always uses
+# the entity of the calling token.
+RESULT=$(vault write -format=json -force sys/mfa/method/totp/my-totp/generate)
 
 # Extract QR code URL
 URL=$(echo "$RESULT" | jq -r '.data.url')
