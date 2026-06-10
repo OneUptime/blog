@@ -74,48 +74,49 @@ The quantile labels contain pre-calculated values. The sum and count let you com
 
 ## Implementing Summaries in Code
 
-Here is a Python implementation using the Prometheus client library. The key configuration is the quantile list and the time window for calculation.
+Here is a Go implementation using the Prometheus client library. The key configuration is the quantile objectives and the time window for calculation. The Python `prometheus_client` does not compute quantiles on the client — it only exposes `_sum` and `_count` — so configurable summaries are a Go-client feature.
 
-```python
-# metrics.py
-from prometheus_client import Summary, start_http_server
-import time
-import random
+```go
+// metrics.go
+package main
 
-# Define quantiles with acceptable error margins
-# Format: (quantile, allowed_error)
-# Lower error = more memory usage
-REQUEST_LATENCY = Summary(
-    'http_request_duration_seconds',
-    'Request latency in seconds',
-    ['endpoint', 'method'],
-    # Calculate these specific quantiles
-    # Each tuple: (quantile_value, acceptable_error)
-    quantiles=[
-        (0.5, 0.05),   # Median with 5% error tolerance
-        (0.9, 0.01),   # p90 with 1% error tolerance
-        (0.95, 0.005), # p95 with 0.5% error tolerance
-        (0.99, 0.001), # p99 with 0.1% error tolerance
-    ]
+import (
+    "math/rand"
+    "time"
+
+    "github.com/prometheus/client_golang/prometheus"
+    "github.com/prometheus/client_golang/prometheus/promauto"
 )
 
-def handle_request(endpoint: str, method: str):
-    """Simulate request handling with latency tracking."""
-    start_time = time.time()
+// Objectives map each quantile to an acceptable error.
+// Lower error = more memory usage.
+var requestLatency = promauto.NewSummaryVec(
+    prometheus.SummaryOpts{
+        Name: "http_request_duration_seconds",
+        Help: "Request latency in seconds",
+        // quantile -> acceptable error
+        Objectives: map[float64]float64{
+            0.5:  0.05,  // Median with 5% error tolerance
+            0.9:  0.01,  // p90 with 1% error tolerance
+            0.95: 0.005, // p95 with 0.5% error tolerance
+            0.99: 0.001, // p99 with 0.1% error tolerance
+        },
+    },
+    []string{"endpoint", "method"},
+)
 
-    # Simulate variable latency
-    base_latency = 0.02  # 20ms base
-    jitter = random.expovariate(10)  # Exponential jitter
-    time.sleep(base_latency + jitter)
+func handleRequest(endpoint, method string) time.Duration {
+    start := time.Now()
 
-    # Record the observation
-    duration = time.time() - start_time
-    REQUEST_LATENCY.labels(
-        endpoint=endpoint,
-        method=method
-    ).observe(duration)
+    // Simulate variable latency
+    baseLatency := 20 * time.Millisecond
+    jitter := time.Duration(rand.ExpFloat64() / 10 * float64(time.Second))
+    time.Sleep(baseLatency + jitter)
 
+    duration := time.Since(start)
+    requestLatency.WithLabelValues(endpoint, method).Observe(duration.Seconds())
     return duration
+}
 ```
 
 The error tolerance parameter controls memory usage. Tighter tolerances require more samples to be stored in the sliding window.
@@ -145,19 +146,26 @@ flowchart TB
 
 Configure the window based on your alerting requirements. A 10-minute window smooths short spikes but delays detection of gradual degradation. A 1-minute window responds faster but produces noisier data.
 
-```python
-# Go implementation with explicit window configuration
-from prometheus_client import Summary
+```go
+// Go implementation with explicit window configuration
+import (
+    "time"
 
-# 5-minute window with 10 age buckets
-LATENCY_SUMMARY = Summary(
-    'request_latency_seconds',
-    'Request latency with 5-minute window',
-    ['service'],
-    # max_age: how long observations stay in the window
-    # age_buckets: number of sub-windows for decay calculation
-    max_age_seconds=300,  # 5 minutes
-    age_buckets=5         # 5 sub-buckets of 1 minute each
+    "github.com/prometheus/client_golang/prometheus"
+    "github.com/prometheus/client_golang/prometheus/promauto"
+)
+
+// 5-minute window split into 5 age buckets
+var latencySummary = promauto.NewSummaryVec(
+    prometheus.SummaryOpts{
+        Name: "request_latency_seconds",
+        Help: "Request latency with 5-minute window",
+        // MaxAge: how long observations stay in the window
+        // AgeBuckets: number of sub-windows for decay calculation
+        MaxAge:     5 * time.Minute, // 5 minutes
+        AgeBuckets: 5,               // 5 sub-buckets of ~1 minute each
+    },
+    []string{"service"},
 )
 ```
 
@@ -228,29 +236,40 @@ For multi-instance services, use histograms instead. The bucket-based approach a
 
 Some teams use both metric types. Summaries provide accurate single-instance quantiles for debugging. Histograms enable aggregated views for dashboards and alerts.
 
-```python
-# Track the same measurement with both metric types
-from prometheus_client import Summary, Histogram
-
-# Summary for accurate per-instance quantiles
-LATENCY_SUMMARY = Summary(
-    'request_latency_summary_seconds',
-    'Request latency (summary)',
-    ['endpoint']
+```go
+// Track the same measurement with both metric types
+import (
+    "github.com/prometheus/client_golang/prometheus"
+    "github.com/prometheus/client_golang/prometheus/promauto"
 )
 
-# Histogram for aggregation across instances
-LATENCY_HISTOGRAM = Histogram(
-    'request_latency_histogram_seconds',
-    'Request latency (histogram)',
-    ['endpoint'],
-    buckets=[0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5]
+// Summary for accurate per-instance quantiles
+var latencySummary = promauto.NewSummaryVec(
+    prometheus.SummaryOpts{
+        Name: "request_latency_summary_seconds",
+        Help: "Request latency (summary)",
+        Objectives: map[float64]float64{
+            0.5: 0.05, 0.9: 0.01, 0.99: 0.001,
+        },
+    },
+    []string{"endpoint"},
 )
 
-def observe_latency(endpoint: str, duration: float):
-    """Record latency to both metric types."""
-    LATENCY_SUMMARY.labels(endpoint=endpoint).observe(duration)
-    LATENCY_HISTOGRAM.labels(endpoint=endpoint).observe(duration)
+// Histogram for aggregation across instances
+var latencyHistogram = promauto.NewHistogramVec(
+    prometheus.HistogramOpts{
+        Name:    "request_latency_histogram_seconds",
+        Help:    "Request latency (histogram)",
+        Buckets: []float64{0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5},
+    },
+    []string{"endpoint"},
+)
+
+// Record latency to both metric types.
+func observeLatency(endpoint string, duration float64) {
+    latencySummary.WithLabelValues(endpoint).Observe(duration)
+    latencyHistogram.WithLabelValues(endpoint).Observe(duration)
+}
 ```
 
 This doubles storage cost but gives you the benefits of both approaches. Use this pattern when you need both precise instance-level debugging and cluster-wide SLO tracking.
