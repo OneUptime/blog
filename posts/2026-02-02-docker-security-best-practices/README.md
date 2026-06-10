@@ -553,8 +553,9 @@ Build with the secret:
 ```bash
 # Build with BuildKit secrets
 # The secret is passed to the build but never stored in the image
+# The source file should contain only the token value (no .npmrc directives)
 DOCKER_BUILDKIT=1 docker build \
-    --secret id=npm_token,src=$HOME/.npmrc \
+    --secret id=npm_token,src=$HOME/.npm_token \
     -t myapp:latest .
 ```
 
