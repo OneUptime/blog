@@ -31,7 +31,7 @@ graph LR
     A[Burn Rate 1x] --> B[Budget lasts full window]
     C[Burn Rate 2x] --> D[Budget exhausts in half the window]
     E[Burn Rate 10x] --> F[Budget exhausts in 1/10th of window]
-    G[Burn Rate 14.4x] --> H[Budget exhausts in 5% of window]
+    G[Burn Rate 14.4x] --> H[Budget exhausts in ~7% of window]
 ```
 
 A burn rate of 1 means you are consuming budget exactly as planned. Greater than 1 means trouble is coming.
