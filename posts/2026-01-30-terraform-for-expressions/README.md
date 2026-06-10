@@ -596,9 +596,9 @@ resource "aws_instance" "servers" {
 }
 ```
 
-### Error: Cannot Use Conditional in For Expression Key
+### Error: Null Value in For Expression Key
 
-The key expression cannot be conditional, but the whole entry can be filtered:
+The key expression must not produce a null value. Filter the entries with an `if` clause instead of returning null from a conditional:
 
 ```hcl
 # BAD: Conditional in key position
