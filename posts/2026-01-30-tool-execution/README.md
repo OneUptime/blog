@@ -173,8 +173,8 @@ The execution engine is the core component that handles tool invocation:
 ```python
 import asyncio
 import traceback
-from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional
 from datetime import datetime
 from enum import Enum
 
