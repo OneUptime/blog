@@ -147,6 +147,15 @@ func (tb *TokenBucket) WaitTime() time.Duration {
     return time.Duration(waitSeconds * float64(time.Second))
 }
 
+// Tokens returns the current number of tokens available
+func (tb *TokenBucket) Tokens() float64 {
+    tb.mu.Lock()
+    defer tb.mu.Unlock()
+
+    tb.refill()
+    return tb.tokens
+}
+
 func min(a, b float64) float64 {
     if a < b {
         return a
@@ -692,6 +701,7 @@ package gateway
 
 import (
     "context"
+    "fmt"
     "net/http"
     "strings"
 )
@@ -990,7 +1000,7 @@ func NewGracefulThrottler(capacity, refillRate float64) *GracefulThrottler {
 // Check returns the degradation level for the current load
 func (gt *GracefulThrottler) Check() DegradationLevel {
     // Calculate current usage
-    remaining := float64(gt.bucket.getRemaining())
+    remaining := gt.bucket.Tokens()
     capacity := gt.bucket.capacity
     usage := 1 - (remaining / capacity)
 
