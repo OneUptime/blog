@@ -84,7 +84,7 @@ jobs:
           name: Generate Dynamic Config
           command: |
             # Create the continuation config
-            cat > /tmp/generated-config.yml \<< 'EOF'
+            cat > /tmp/generated-config.yml << 'EOF'
             version: 2.1
             workflows:
               main:
@@ -847,7 +847,7 @@ jobs:
             else
               echo "Config generation failed, using fallback"
               # Create a minimal fallback config
-              cat > /tmp/generated-config.yml \<< 'EOF'
+              cat > /tmp/generated-config.yml << 'EOF'
             version: 2.1
             jobs:
               fallback-build:
@@ -1132,7 +1132,7 @@ jobs:
           name: Generate Minimal Config
           command: |
             # Generate config inline without Python
-            cat > /tmp/generated-config.yml \<< EOF
+            cat > /tmp/generated-config.yml << EOF
             version: 2.1
             workflows:
               main:
