@@ -113,7 +113,7 @@ distributor:
         # gRPC receiver on port 4317 (high performance, binary protocol)
         grpc:
           endpoint: "0.0.0.0:4317"
-          # Maximum message size in bytes (default: 4MB)
+          # Maximum message size in MiB (default: 4 MiB)
           max_recv_msg_size_mib: 16
           # Enable TLS for production
           # tls:
@@ -212,17 +212,18 @@ These limits apply cluster-wide:
 overrides:
   defaults:
     ingestion:
-      # Maximum spans per second across all distributors for this tenant
+      # Maximum ingested bytes per second across all distributors for this tenant
       rate_limit_bytes: 15000000  # 15 MB/s
 
       # Burst allowance (short-term spike tolerance)
       burst_size_bytes: 20000000  # 20 MB burst
 
-    # Maximum number of traces in memory per ingester
-    max_traces_per_user: 50000
+      # Maximum number of traces in memory per ingester
+      max_traces_per_user: 50000
 
-    # Maximum bytes per trace (reject traces larger than this)
-    max_bytes_per_trace: 5000000  # 5 MB
+    global:
+      # Maximum bytes per trace (reject traces larger than this)
+      max_bytes_per_trace: 5000000  # 5 MB
 ```
 
 ### Per-Tenant Overrides
@@ -246,18 +247,18 @@ Create a separate overrides file:
 # /etc/tempo/overrides.yaml
 overrides:
   # High-volume production tenant
-  tenant-prod:
+  "tenant-prod":
     ingestion:
       rate_limit_bytes: 50000000   # 50 MB/s
       burst_size_bytes: 100000000  # 100 MB burst
-    max_traces_per_user: 200000
+      max_traces_per_user: 200000
 
   # Development tenant with lower limits
-  tenant-dev:
+  "tenant-dev":
     ingestion:
       rate_limit_bytes: 1000000    # 1 MB/s
       burst_size_bytes: 2000000    # 2 MB burst
-    max_traces_per_user: 10000
+      max_traces_per_user: 10000
 ```
 
 ### Rate Limiting Flow
@@ -366,11 +367,8 @@ flowchart LR
 ```yaml
 # Distributor settings for ingester communication
 distributor:
-  # How long to wait for ingester responses
-  ring_check_period: 5s
-
-  # Require this many successful writes for success
-  # Should be <= replication_factor
+  # Receivers are configured here; ingester write quorum is derived
+  # from the ingester replication_factor below.
   # Quorum = (replication_factor / 2) + 1
   receivers:
     otlp:
@@ -379,7 +377,7 @@ distributor:
           endpoint: "0.0.0.0:4317"
 
 # The replication factor determines durability
-# With replication_factor: 3, traces survive 2 ingester failures
+# With replication_factor: 3, traces are stored on 3 ingesters
 ingester:
   lifecycler:
     ring:
@@ -476,9 +474,9 @@ overrides:
     ingestion:
       rate_limit_bytes: 15000000
       burst_size_bytes: 30000000
-    max_traces_per_user: 50000
-    max_bytes_per_trace: 5000000
-    max_search_bytes_per_trace: 5000
+      max_traces_per_user: 50000
+    global:
+      max_bytes_per_trace: 5000000
 
   # Enable per-tenant overrides from file
   per_tenant_override_config: /etc/tempo/overrides.yaml
