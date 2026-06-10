@@ -366,14 +366,13 @@ router bgp 65001
   neighbor 192.168.1.1 activate
   # Advertise all local VNIs
   advertise-all-vni
+  # Per-VNI configuration for EVPN
+  vni 100
+   rd 192.168.1.10:100
+   route-target import 65001:100
+   route-target export 65001:100
+  exit-vni
  exit-address-family
-
-# VNI configuration for EVPN
-vni 100
- rd 192.168.1.10:100
- route-target import 65001:100
- route-target export 65001:100
-exit
 ```
 
 ### Create EVPN-Enabled VXLAN Interface
@@ -640,7 +639,7 @@ net.ipv4.neigh.default.gc_thresh1 = 4096
 net.ipv4.neigh.default.gc_thresh2 = 8192
 net.ipv4.neigh.default.gc_thresh3 = 16384
 
-# Increase FDB table size
+# Skip netfilter processing for bridged frames to reduce bridge overhead
 net.bridge.bridge-nf-call-iptables = 0
 ```
 
@@ -761,13 +760,15 @@ ipsec status
 # Firewall rules for VXLAN
 # Allow VXLAN from trusted VTEPs only
 iptables -A INPUT -p udp --dport 4789 -s 192.168.1.0/24 -j ACCEPT
-iptables -A INPUT -p udp --dport 4789 -j DROP
 
 # Allow multicast for VXLAN
 iptables -A INPUT -d 239.1.1.0/24 -j ACCEPT
 
-# Log unauthorized VXLAN attempts
+# Log unauthorized VXLAN attempts (LOG does not terminate, so it must precede DROP)
 iptables -A INPUT -p udp --dport 4789 -j LOG --log-prefix "VXLAN-DENIED: "
+
+# Drop any remaining VXLAN traffic from untrusted sources
+iptables -A INPUT -p udp --dport 4789 -j DROP
 ```
 
 ---
