@@ -842,7 +842,7 @@ const productService = new ServiceClient(
 // In-memory rate limiter (use Redis in production)
 const rateLimits = new Map<string, { count: number; resetTime: number }>();
 
-// Rate limiting middleware with sliding window
+// Rate limiting middleware with fixed window
 function rateLimiter(maxRequests: number, windowMs: number): Middleware {
   return async (ctx, next) => {
     // Use client IP as rate limit key
@@ -1210,8 +1210,8 @@ export class Tracer {
     parentContext?: { traceId: string; spanId: string }
   ): Span {
     const span: Span = {
-      traceId: parentContext?.traceId || this.generateId(),
-      spanId: this.generateId(),
+      traceId: parentContext?.traceId || this.generateTraceId(),
+      spanId: this.generateSpanId(),
       parentSpanId: parentContext?.spanId,
       operationName,
       serviceName: this.serviceName,
@@ -1266,8 +1266,13 @@ export class Tracer {
     headers["X-Trace-Id"] = span.traceId;
   }
 
-  // Generate random ID for trace/span
-  private generateId(): string {
+  // Generate 32-hex-char trace ID per W3C Trace Context spec (16 bytes)
+  private generateTraceId(): string {
+    return crypto.randomUUID().replace(/-/g, "");
+  }
+
+  // Generate 16-hex-char span ID per W3C Trace Context spec (8 bytes)
+  private generateSpanId(): string {
     return crypto.randomUUID().replace(/-/g, "").slice(0, 16);
   }
 
