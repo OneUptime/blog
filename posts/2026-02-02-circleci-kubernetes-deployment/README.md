@@ -423,8 +423,8 @@ jobs:
 
       # Install and configure AWS CLI
       - aws-cli/setup:
-          role-arn: $AWS_ROLE_ARN
-          role-session-name: "circleci-eks-deploy"
+          role_arn: $AWS_ROLE_ARN
+          role_session_name: "circleci-eks-deploy"
 
       - run:
           name: Configure EKS kubeconfig
