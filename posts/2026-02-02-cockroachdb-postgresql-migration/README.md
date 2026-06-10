@@ -895,7 +895,7 @@ CockroachDB has default limits on transaction size.
 
 ```sql
 -- Increase transaction memory limit for large operations
-SET kv.transaction.max_intents_bytes = 4194304;  -- 4MB
+SET CLUSTER SETTING kv.transaction.max_intents_bytes = 4194304;  -- 4MB
 
 -- For bulk operations, use IMPORT or batch your changes
 -- Instead of one large INSERT, batch into smaller chunks
@@ -910,22 +910,22 @@ SET kv.transaction.max_intents_bytes = 4194304;  -- 4MB
 SELECT node_id, address, is_live, ranges, leases
 FROM crdb_internal.gossip_nodes;
 
--- Monitor replication lag
+-- Monitor range health and replication state
 SELECT range_id, lease_holder, replicas,
-       split_enforced_until, crdb_internal.range_stats(start_key)->'stats'
-FROM crdb_internal.ranges_no_leases
+       split_enforced_until, crdb_internal.range_stats(start_key)
+FROM crdb_internal.ranges
 LIMIT 10;
 
 -- Query performance statistics
-SELECT query, calls, total_time, mean_time, rows
+SELECT key, count, service_lat_avg, rows_avg
 FROM crdb_internal.node_statement_statistics
-ORDER BY total_time DESC
+ORDER BY service_lat_avg DESC
 LIMIT 20;
 
 -- Check for transaction contention
-SELECT key, txn_id, ts, duration
+SELECT contending_key, waiting_txn_id, collection_ts, contention_duration
 FROM crdb_internal.transaction_contention_events
-ORDER BY duration DESC
+ORDER BY contention_duration DESC
 LIMIT 10;
 ```
 
