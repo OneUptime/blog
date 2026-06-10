@@ -99,23 +99,23 @@ deny contains res if {
 
 ## Severity Levels
 
-Trivy policies support four severity levels that determine how violations appear in scan results:
+Trivy policies support five severity levels (UNKNOWN, LOW, MEDIUM, HIGH, CRITICAL) that you assign in policy metadata. By default Trivy exits 0 regardless of findings — you opt into failing the build with `--exit-code` combined with a `--severity` filter:
 
-| Severity | Use Case | Exit Code Behavior |
-|----------|----------|-------------------|
-| CRITICAL | Must fix before deployment | Fails CI by default |
-| HIGH | Should fix soon | Fails with --exit-code 1 |
-| MEDIUM | Fix when possible | Warning only |
-| LOW | Informational | Warning only |
+| Severity | Use Case |
+|----------|----------|
+| CRITICAL | Must fix before deployment |
+| HIGH | Should fix soon |
+| MEDIUM | Fix when possible |
+| LOW | Informational |
 
 Configure severity thresholds in your CI pipeline:
 
 ```bash
-# Fail only on CRITICAL and HIGH
+# Report all severities, exit 1 only when CRITICAL or HIGH findings exist
 trivy config --severity CRITICAL,HIGH --exit-code 1 .
 
-# Report all severities but only fail on CRITICAL
-trivy config --severity CRITICAL --exit-code 1 --severity HIGH,MEDIUM,LOW --exit-code 0 .
+# Report only CRITICAL findings and fail the build if any are found
+trivy config --severity CRITICAL --exit-code 1 .
 ```
 
 ## Writing Dockerfile Policies
@@ -556,13 +556,13 @@ policies/
 
 ```bash
 # Scan with custom policies directory
-trivy config --policy ./policies --namespaces custom .
+trivy config --config-check ./policies --check-namespaces custom .
 
 # Scan specific file types
-trivy config --policy ./policies --namespaces custom --include-non-failures ./terraform
+trivy config --config-check ./policies --check-namespaces custom --include-non-failures ./terraform
 
 # Output as JSON for CI integration
-trivy config --policy ./policies --namespaces custom --format json --output results.json .
+trivy config --config-check ./policies --check-namespaces custom --format json --output results.json .
 ```
 
 ### CI Pipeline Integration
@@ -597,8 +597,8 @@ jobs:
 
 ```yaml
 # trivy.yaml
-scan:
-  policy:
+rego:
+  check:
     - ./policies
   namespaces:
     - custom
@@ -627,7 +627,7 @@ import data.custom.dockerfile.no_root
 
 # Test: Should fail when no USER instruction
 test_no_user_instruction if {
-    input := {
+    test_input := {
         "Stages": [{
             "Commands": [
                 {"Cmd": "from", "Value": ["ubuntu:22.04"]},
@@ -635,12 +635,12 @@ test_no_user_instruction if {
             ]
         }]
     }
-    count(no_root.deny) > 0
+    count(no_root.deny) > 0 with input as test_input
 }
 
 # Test: Should fail when USER is root
 test_user_root if {
-    input := {
+    test_input := {
         "Stages": [{
             "Commands": [
                 {"Cmd": "from", "Value": ["ubuntu:22.04"]},
@@ -648,12 +648,12 @@ test_user_root if {
             ]
         }]
     }
-    count(no_root.deny) > 0
+    count(no_root.deny) > 0 with input as test_input
 }
 
 # Test: Should pass when USER is non-root
 test_user_nonroot if {
-    input := {
+    test_input := {
         "Stages": [{
             "Commands": [
                 {"Cmd": "from", "Value": ["ubuntu:22.04"]},
@@ -661,7 +661,7 @@ test_user_nonroot if {
             ]
         }]
     }
-    count(no_root.deny) == 0
+    count(no_root.deny) == 0 with input as test_input
 }
 ```
 
@@ -730,7 +730,7 @@ sequenceDiagram
     participant PolicyEngine
     participant Rego
 
-    User->>Trivy: trivy config --policy ./policies .
+    User->>Trivy: trivy config --config-check ./policies .
     Trivy->>Parser: Parse input files
     Parser-->>Trivy: Structured data
     Trivy->>PolicyEngine: Load policies from ./policies
@@ -753,7 +753,7 @@ When policies do not work as expected:
 
 ```bash
 # Enable debug output
-trivy config --policy ./policies --debug .
+trivy config --config-check ./policies --debug .
 
 # Check policy syntax with OPA
 opa check ./policies
@@ -762,7 +762,7 @@ opa check ./policies
 opa eval --data ./policies --input sample-dockerfile.json "data.custom.dockerfile.no_root.deny"
 
 # Print input structure Trivy sees
-trivy config --policy ./policies --format json . | jq '.Results[].Input'
+trivy config --config-check ./policies --format json . | jq '.Results[].Input'
 ```
 
 ## Best Practices
