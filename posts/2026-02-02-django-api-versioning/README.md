@@ -46,8 +46,8 @@ flowchart TB
     end
 
     subgraph Namespace["Namespace Versioning"]
-        N1["Accept: application/vnd.api.v1+json"]
-        N2["Accept: application/vnd.api.v2+json"]
+        N1["/api/v1/users (URL namespace: v1)"]
+        N2["/api/v2/users (URL namespace: v2)"]
     end
 ```
 
@@ -56,7 +56,7 @@ flowchart TB
 | **URL Path** | Simple, cacheable, visible | Clutters URLs | Public APIs |
 | **Query Parameter** | Easy to test | Not RESTful, cache issues | Internal APIs |
 | **Header** | Clean URLs | Less visible | Mobile apps |
-| **Namespace** | RESTful, flexible | Complex clients | Enterprise APIs |
+| **Namespace** | Same as URL path for clients, cleaner server-side URL config | Requires `app_name` in URLconfs | Apps with many versioned modules |
 
 ---
 
@@ -478,11 +478,11 @@ curl -H "Accept: application/json; version=v3" \
 
 ## Namespace Versioning
 
-Namespace versioning uses vendor media types in the Accept header for a more RESTful approach.
+Namespace versioning uses Django URL namespacing to determine the API version. To the client, it looks identical to URL path versioning, but internally the version is resolved from the URL namespace rather than a URL keyword argument.
 
 ### Configure Namespace Versioning
 
-Set up DRF to parse vendor media types from the Accept header.
+Set up DRF to resolve the version from the URL namespace.
 
 ```python
 # myapi/settings.py
@@ -531,16 +531,14 @@ urlpatterns = [
 
 ### Testing Namespace Versioning
 
-Use vendor media types in the Accept header to specify the version.
+The version is resolved from the URL namespace, so requests look the same as URL path versioning.
 
 ```bash
-# V1 using vendor media type
-curl -H "Accept: application/vnd.myapi.v1+json" \
-     http://localhost:8000/api/v1/products/
+# V1 - version resolved from URL namespace
+curl http://localhost:8000/api/v1/products/
 
-# V2 using vendor media type
-curl -H "Accept: application/vnd.myapi.v2+json" \
-     http://localhost:8000/api/v2/products/
+# V2 - version resolved from URL namespace
+curl http://localhost:8000/api/v2/products/
 ```
 
 ---
