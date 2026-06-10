@@ -609,7 +609,7 @@ class ResilientWriteBehindCache<T> extends EventEmitter {
     const delay = this.retryPolicy.baseDelayMs *
       Math.pow(this.retryPolicy.backoffMultiplier, retryCount);
 
-    // Add jitter (plus or minus 20%)
+    // Add jitter (plus or minus 10%)
     const jitter = delay * 0.2 * (Math.random() - 0.5);
 
     return Math.min(delay + jitter, this.retryPolicy.maxDelayMs);
