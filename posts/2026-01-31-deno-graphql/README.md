@@ -166,6 +166,7 @@ import {
   GraphQLSchema,
   GraphQLEnumType,
 } from "../deps.ts";
+import { posts } from "./resolvers.ts";
 
 // Enum for post status
 const PostStatusEnum = new GraphQLEnumType({
