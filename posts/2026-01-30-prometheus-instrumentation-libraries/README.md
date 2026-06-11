@@ -537,7 +537,7 @@ var DbQueryDuration = promauto.NewHistogramVec(
 	prometheus.HistogramOpts{
 		Name:    "db_query_duration_seconds",
 		Help:    "Database query duration in seconds",
-		Buckets: prometheus.ExponentialBuckets(0.001, 2, 12), // 1ms to ~4s
+		Buckets: prometheus.ExponentialBuckets(0.001, 2, 12), // 1ms to ~2s
 	},
 	[]string{"operation", "table"},
 )
