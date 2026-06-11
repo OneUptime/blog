@@ -25,8 +25,8 @@ flowchart LR
     subgraph Hidden["Hidden Index"]
         Q2[Query] --> P2[Query Planner]
         P2 -.->|Ignored| I2[Hidden Index]
-        P2 --> CS[Collection Scan]
-        CS --> R2[Results]
+        P2 --> AP[Alternative Plan]
+        AP --> R2[Results]
     end
 ```
 
@@ -39,12 +39,16 @@ flowchart LR
 
 ## Prerequisites
 
-Hidden indexes require MongoDB 4.4 or later. Check your version:
+Hidden indexes were introduced in MongoDB 4.4. You must also have the required `featureCompatibilityVersion` for your MongoDB release. Check your version and feature compatibility:
 
 ```javascript
 db.version()
 // "7.0.4"
+
+db.adminCommand({ getParameter: 1, featureCompatibilityVersion: 1 })
 ```
+
+You cannot hide the default `_id` index.
 
 ## Hiding an Existing Index
 
@@ -167,7 +171,10 @@ Watch these metrics during the testing period:
 
 ```javascript
 // Check current operations for slow queries
-db.currentOp({ "secs_running": { $gt: 1 } })
+db.getSiblingDB("admin").aggregate([
+  { $currentOp: { allUsers: true, localOps: true } },
+  { $match: { secs_running: { $gt: 1 } } }
+])
 
 // Review the profiler for slow operations
 db.setProfilingLevel(1, { slowms: 100 })
@@ -204,7 +211,7 @@ db.orders.find({ customer_id: "cust_12345" }).explain("executionStats")
 }
 ```
 
-### After Hiding (Collection Scan)
+### After Hiding (Possible Collection Scan)
 
 ```json
 {
@@ -222,7 +229,7 @@ db.orders.find({ customer_id: "cust_12345" }).explain("executionStats")
 }
 ```
 
-The difference is dramatic - from 2ms examining 15 documents to 2847ms examining 1.25 million documents.
+If no other suitable index can support the query, the difference can be dramatic - from 2ms examining 15 documents to 2847ms examining 1.25 million documents.
 
 ## Impact Assessment Framework
 
@@ -386,13 +393,18 @@ Set up alerts before hiding indexes:
 ```javascript
 // Example: Create a monitoring query
 function checkSlowQueries(thresholdMs) {
-    const slowOps = db.currentOp({
-        "secs_running": { $gt: thresholdMs / 1000 },
-        "op": { $in: ["query", "getmore"] }
-    });
+    const slowOps = db.getSiblingDB("admin").aggregate([
+        { $currentOp: { allUsers: true, localOps: true } },
+        {
+            $match: {
+                secs_running: { $gt: thresholdMs / 1000 },
+                op: { $in: ["query", "getmore", "command"] }
+            }
+        }
+    ]).toArray();
 
-    if (slowOps.inprog.length > 0) {
-        print("WARNING: " + slowOps.inprog.length + " slow queries detected");
+    if (slowOps.length > 0) {
+        print("WARNING: " + slowOps.length + " slow operations detected");
         return false;
     }
     return true;
@@ -417,17 +429,15 @@ db.index_tests.insertOne({
 });
 ```
 
-### 4. Gradual Rollout for Sharded Clusters
+### 4. Handle Sharded Clusters Carefully
 
-On sharded clusters, test on one shard first:
+On sharded clusters, keep index definitions and options consistent across shards. Hide the index through `mongos` so the change applies consistently, and do not hide an index if it is the only non-hidden index that supports the shard key:
 
 ```javascript
-// Connect to primary of shard0
-// Hide index only on this shard
+// Connect through mongos
 db.orders.hideIndex("customer_id_1")
 
-// Monitor shard0 specifically
-// If successful, proceed to other shards
+// Monitor the sharded collection and all affected shards
 ```
 
 ## Common Pitfalls
@@ -491,16 +501,14 @@ Consider this when evaluating whether to drop the index entirely.
 
 ## Integration with MongoDB Atlas
 
-If you are using MongoDB Atlas, you can hide indexes through the UI or CLI:
+If you are using MongoDB Atlas, you can hide indexes through the Atlas UI or by connecting with `mongosh` and using the same shell helper:
 
-```bash
-# Using Atlas CLI
+```javascript
+// Connected to your Atlas cluster with mongosh
+db.orders.hideIndex("customer_id_1")
 
-atlas clusters indexes update myCluster \
-    --db myDatabase \
-    --collection orders \
-    --indexName customer_id_1 \
-    --hidden true
+// Restore it if needed
+db.orders.unhideIndex("customer_id_1")
 ```
 
 Atlas also provides index suggestions and usage statistics:
@@ -522,7 +530,7 @@ Output shows usage frequency:
 }
 ```
 
-An index with zero operations since creation is a candidate for hiding and eventual removal.
+An index with zero operations since the reported `since` timestamp is a candidate for hiding and eventual removal. Remember that `$indexStats` is node-local and resets on events such as `mongod` restart, index recreation, and hiding or unhiding that index, so check the right nodes before making a decision.
 
 ## Complete Workflow Example
 
@@ -561,7 +569,7 @@ sequenceDiagram
 // Step 1: Check if index is unused
 const stats = db.orders.aggregate([{ $indexStats: {} }]).toArray();
 const customerIdIndex = stats.find(s => s.name === "customer_id_1");
-print("Index ops since restart: " + customerIdIndex.accesses.ops);
+print("Index ops since " + customerIdIndex.accesses.since + ": " + customerIdIndex.accesses.ops);
 
 // Step 2: If unused, proceed with hidden test
 if (customerIdIndex.accesses.ops === 0) {
