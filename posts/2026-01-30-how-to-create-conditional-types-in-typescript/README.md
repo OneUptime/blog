@@ -82,7 +82,7 @@ type StrOrNumArray = ToArrayNonDist<string | number>;
 
 ## Built-in Conditional Types
 
-TypeScript provides several utility types built with conditional types that you should know:
+TypeScript provides several utility types related to conditional type transformations that you should know:
 
 ### Exclude and Extract
 
@@ -108,12 +108,12 @@ type T3 = Extract<string | number | (() => void), Function>; // () => void
 type T4 = NonNullable<string | number | undefined | null>; // string | number
 ```
 
-Here is how these utility types are implemented:
+Here is how `Exclude` and `Extract` are implemented, along with the current `NonNullable` definition:
 
 ```typescript
 type Exclude<T, U> = T extends U ? never : T;
 type Extract<T, U> = T extends U ? T : never;
-type NonNullable<T> = T extends null | undefined ? never : T;
+type NonNullable<T> = T & {};
 ```
 
 ## Practical Examples
