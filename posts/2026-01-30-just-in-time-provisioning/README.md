@@ -39,7 +39,7 @@ sequenceDiagram
 |---------------------|------------------|
 | Admin creates accounts before user can access | Users get access immediately on first login |
 | Attributes become stale over time | Attributes update on every login |
-| Orphaned accounts when offboarding is missed | Access revoked when IdP removes user |
+| Orphaned accounts when offboarding is missed | New SSO access blocked when IdP removes user |
 | IT ticket required for new employee setup | Zero IT involvement for standard access |
 
 ## Architecture Overview
@@ -151,14 +151,27 @@ export function mapAttributes(
 
   // Apply the mapping
   for (const [claimName, fieldName] of Object.entries(mapping)) {
-    if (claims[claimName] !== undefined) {
-      mapped[fieldName as keyof JITUserAttributes] = claims[claimName];
+    const claimValue = claims[claimName];
+
+    if (claimValue === undefined) {
+      continue;
+    }
+
+    if (fieldName === 'groups') {
+      if (Array.isArray(claimValue)) {
+        mapped.groups = claimValue.filter(
+          (group): group is string => typeof group === 'string'
+        );
+      }
+    } else if (typeof claimValue === 'string') {
+      mapped[fieldName as 'externalId' | 'email' | 'firstName' | 'lastName'] =
+        claimValue;
     }
   }
 
   // Validate required fields
-  if (!mapped.externalId || !mapped.email) {
-    throw new Error('Missing required claims: externalId or email');
+  if (!mapped.externalId || !mapped.email || !mapped.firstName || !mapped.lastName) {
+    throw new Error('Missing required claims: externalId, email, firstName, or lastName');
   }
 
   return mapped as JITUserAttributes;
@@ -343,18 +356,19 @@ Always verify that the SSO response comes from a trusted identity provider. Chec
 
 ```typescript
 // Verify the OIDC token before processing
-function validateToken(token: string, expectedIssuer: string): boolean {
-  const decoded = jwt.decode(token, { complete: true });
+import jwt from 'jsonwebtoken';
 
-  // Check issuer matches configuration
-  if (decoded.payload.iss !== expectedIssuer) {
-    throw new Error('Token issuer mismatch');
-  }
-
-  // Check token is not expired
-  if (decoded.payload.exp < Date.now() / 1000) {
-    throw new Error('Token expired');
-  }
+function validateToken(
+  token: string,
+  publicKey: string,
+  expectedIssuer: string,
+  expectedAudience: string
+): boolean {
+  jwt.verify(token, publicKey, {
+    issuer: expectedIssuer,
+    audience: expectedAudience,
+    algorithms: ['RS256'],
+  });
 
   return true;
 }
@@ -368,7 +382,12 @@ Limit which email domains can be provisioned to prevent unauthorized access.
 const ALLOWED_DOMAINS = ['yourcompany.com', 'subsidiary.com'];
 
 function validateEmailDomain(email: string): boolean {
-  const domain = email.split('@')[1];
+  const parts = email.toLowerCase().split('@');
+  if (parts.length !== 2) {
+    return false;
+  }
+
+  const domain = parts[1];
   return ALLOWED_DOMAINS.includes(domain);
 }
 ```
