@@ -73,13 +73,13 @@ Different regulations mandate specific retention periods. Here is a reference ta
 
 | Regulation | Log Type | Minimum Retention | Notes |
 |------------|----------|-------------------|-------|
-| HIPAA | Access logs | 6 years | PHI access must be auditable |
-| PCI-DSS | Security logs | 1 year | 3 months immediately available |
-| SOX | Financial system logs | 7 years | Audit trail required |
+| HIPAA | Security Rule documentation and audit review records | 6 years | Required Security Rule documentation must be retained |
+| PCI-DSS | Audit logs | 1 year | 3 months immediately available for analysis |
+| SOX | Audit and review records | 7 years | Applies to issuer audit and review records |
 | GDPR | Processing logs | Varies | Balance with data minimization |
-| SOC 2 | Security events | 1 year | Access and change logs |
+| SOC 2 | Security events | Organization-defined | Based on service commitments and system requirements |
 
-Your policy should meet the strictest applicable requirement. If you handle payment data (PCI-DSS) and health data (HIPAA), apply the 6-year HIPAA requirement to relevant logs.
+Your policy should meet the strictest applicable requirement. If you handle payment data (PCI-DSS) and health data (HIPAA), apply the stricter applicable requirement to the relevant log categories.
 
 ---
 
@@ -125,11 +125,10 @@ Each tier serves a different purpose. Hot storage handles active debugging and a
 This Python class demonstrates automated log lifecycle management. It classifies incoming logs, applies retention rules, and manages tier transitions.
 
 ```python
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 from enum import Enum
 from dataclasses import dataclass
 from typing import Optional
-import json
 
 class LogCategory(Enum):
     """Classification categories for log retention."""
@@ -213,7 +212,9 @@ class LogRetentionManager:
     ) -> Optional[StorageTier]:
         """Determine which storage tier a log belongs in."""
         rule = self.rules[category]
-        age_days = (datetime.utcnow() - log_timestamp).days
+        if log_timestamp.tzinfo is None:
+            log_timestamp = log_timestamp.replace(tzinfo=timezone.utc)
+        age_days = (datetime.now(timezone.utc) - log_timestamp).total_seconds() / 86400
 
         # Calculate tier boundaries
         hot_boundary = rule.hot_days
@@ -221,13 +222,13 @@ class LogRetentionManager:
         cold_boundary = warm_boundary + rule.cold_days
         archive_boundary = cold_boundary + (rule.archive_years * 365)
 
-        if age_days <= hot_boundary:
+        if rule.hot_days > 0 and age_days < hot_boundary:
             return StorageTier.HOT
-        elif age_days <= warm_boundary:
+        elif rule.warm_days > 0 and age_days < warm_boundary:
             return StorageTier.WARM
-        elif age_days <= cold_boundary:
+        elif rule.cold_days > 0 and age_days < cold_boundary:
             return StorageTier.COLD
-        elif age_days <= archive_boundary:
+        elif rule.archive_years > 0 and age_days < archive_boundary:
             return StorageTier.ARCHIVE
         else:
             return None  # Eligible for deletion
