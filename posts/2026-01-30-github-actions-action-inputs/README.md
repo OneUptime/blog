@@ -32,7 +32,7 @@ flowchart LR
 
 ## Basic Input Definition in action.yml
 
-Every custom action needs an `action.yml` file at its root. Here's how to define inputs:
+Every custom action needs an `action.yml` or `action.yaml` metadata file at its root. Here's how to define inputs:
 
 ```yaml
 name: 'Deploy Application'
@@ -71,6 +71,8 @@ runs:
 
 ## How Input Processing Works
 
+GitHub uses defaults from `action.yml`, but `required: true` in action metadata does not automatically fail the workflow when an input is missing. Enforce required inputs in your action code or validation steps.
+
 ```mermaid
 flowchart TB
     subgraph "Workflow Execution"
@@ -79,12 +81,13 @@ flowchart TB
         B -->|No| D{Has default?}
         D -->|Yes| E[Use default value]
         D -->|No| F{Is required?}
-        F -->|Yes| G[Fail workflow]
+        F -->|Yes| G[Validate in action code]
         F -->|No| H[Empty string]
     end
 
     C --> I[Input available to action]
     E --> I
+    G --> I
     H --> I
 ```
 
@@ -170,7 +173,7 @@ runs:
 
 ### Docker Actions
 
-Docker actions receive inputs as environment variables prefixed with `INPUT_`:
+Docker actions should pass inputs to the container entrypoint with `runs.args`:
 
 ```yaml
 # action.yml
@@ -194,16 +197,20 @@ inputs:
 runs:
   using: 'docker'
   image: 'Dockerfile'
+  args:
+    - ${{ inputs.image }}
+    - ${{ inputs.severity }}
+    - ${{ inputs.fail-on-findings }}
 ```
 
 ```bash
 #!/bin/bash
 # entrypoint.sh
 
-# Inputs are available as uppercase environment variables with INPUT_ prefix
-IMAGE="${INPUT_IMAGE}"
-SEVERITY="${INPUT_SEVERITY:-HIGH}"
-FAIL_ON_FINDINGS="${INPUT_FAIL_ON_FINDINGS:-true}"
+# Inputs are passed from action.yml as positional arguments
+IMAGE="$1"
+SEVERITY="${2:-HIGH}"
+FAIL_ON_FINDINGS="${3:-true}"
 
 echo "Scanning image: ${IMAGE}"
 echo "Minimum severity: ${SEVERITY}"
@@ -286,17 +293,20 @@ runs:
   steps:
     - name: Validate environment
       shell: bash
+      env:
+        ENVIRONMENT: ${{ inputs.environment }}
       run: |
         VALID_ENVS="development staging production"
-        if [[ ! " ${VALID_ENVS} " =~ " ${{ inputs.environment }} " ]]; then
-          echo "::error::Invalid environment '${{ inputs.environment }}'. Must be one of: ${VALID_ENVS}"
+        if [[ ! " ${VALID_ENVS} " =~ " ${ENVIRONMENT} " ]]; then
+          echo "::error::Invalid environment '${ENVIRONMENT}'. Must be one of: ${VALID_ENVS}"
           exit 1
         fi
 
     - name: Validate replicas
       shell: bash
+      env:
+        REPLICAS: ${{ inputs.replicas }}
       run: |
-        REPLICAS="${{ inputs.replicas }}"
         if ! [[ "${REPLICAS}" =~ ^[0-9]+$ ]] || [ "${REPLICAS}" -lt 1 ] || [ "${REPLICAS}" -gt 10 ]; then
           echo "::error::Invalid replicas '${REPLICAS}'. Must be a number between 1 and 10"
           exit 1
@@ -304,8 +314,11 @@ runs:
 
     - name: Deploy
       shell: bash
+      env:
+        ENVIRONMENT: ${{ inputs.environment }}
+        REPLICAS: ${{ inputs.replicas }}
       run: |
-        echo "Deploying to ${{ inputs.environment }} with ${{ inputs.replicas }} replicas"
+        echo "Deploying to ${ENVIRONMENT} with ${REPLICAS} replicas"
 ```
 
 ## Working with Complex Input Types
@@ -762,7 +775,7 @@ jobs:
         uses: your-org/application-deployer@v1
         with:
           environment: ${{ github.event.inputs.environment || 'development' }}
-          version: ${{ github.sha }}
+          version: 1.0.0
           replicas: 3
           timeout: 600
           enable-rollback: true
