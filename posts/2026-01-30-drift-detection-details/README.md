@@ -70,9 +70,10 @@ Start by collecting the desired state from your Git repository. This example use
 ```python
 # state_collector.py
 
-import yaml
 import subprocess
 from pathlib import Path
+
+import yaml
 from kubernetes import client, config
 
 class StateCollector:
@@ -94,8 +95,21 @@ class StateCollector:
         manifests = {}
         path = Path(git_path)
 
+        # Check if this is a Helm chart directory
+        if (path / "Chart.yaml").exists():
+            output = subprocess.run(
+                ["helm", "template", path.name, str(path), "--namespace", namespace],
+                capture_output=True,
+                text=True,
+                check=True
+            )
+            docs = yaml.safe_load_all(output.stdout)
+
         # Check if this is a Kustomize directory
-        if (path / "kustomization.yaml").exists():
+        elif any(
+            (path / name).exists()
+            for name in ["kustomization.yaml", "kustomization.yml", "Kustomization"]
+        ):
             output = subprocess.run(
                 ["kubectl", "kustomize", str(path)],
                 capture_output=True,
@@ -146,7 +160,7 @@ class StateCollector:
         return resources
 ```
 
-This collector handles three common source formats. Plain YAML files work directly. Kustomize directories get rendered through kubectl. The actual state comes from the Kubernetes API with proper serialization.
+This collector handles three common source formats. Plain YAML files work directly. Helm chart directories get rendered through helm template. Kustomize directories get rendered through kubectl. The actual state comes from the Kubernetes API with proper serialization.
 
 ## Normalizing Resources for Comparison
 
@@ -207,7 +221,7 @@ def normalize_deployment(resource: dict) -> dict:
     cleaned = normalize_resource(resource)
     spec = cleaned.get("spec", {})
 
-    # Remove fields set by controllers
+    # Remove fields defaulted by the Kubernetes API
     spec.pop("revisionHistoryLimit", None)
     spec.pop("progressDeadlineSeconds", None)
 
@@ -249,9 +263,9 @@ def compute_diff(desired: dict, actual: dict, path: str = "") -> list[DriftItem]
     if desired is None and actual is None:
         return diffs
     if desired is None:
-        return [DriftItem(path or "/", "removed", None, actual)]
+        return [DriftItem(path or "/", "added", None, actual)]
     if actual is None:
-        return [DriftItem(path or "/", "added", desired, None)]
+        return [DriftItem(path or "/", "removed", desired, None)]
 
     # Compare dictionaries
     if isinstance(desired, dict) and isinstance(actual, dict):
@@ -366,9 +380,8 @@ When drift is detected, the system needs to notify the right people. Here is a s
 
 ```python
 # alerter.py
-import json
 import requests
-from datetime import datetime
+from datetime import datetime, timezone
 
 def send_drift_alert(
     webhook_url: str,
@@ -397,7 +410,7 @@ def send_drift_alert(
 
     payload = {
         "text": f"Drift detected in {namespace}/{resource_key}",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "namespace": namespace,
         "resource": resource_key,
         "change_count": len(diffs),
