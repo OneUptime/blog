@@ -216,7 +216,7 @@ The simplest approach is to set a time-to-live for cached entries.
 
 ```typescript
 // TTL-based cache configuration
-interface CacheConfig {
+const CacheConfig = {
     // Short TTL for frequently changing data
     userSessions: 300,      // 5 minutes
 
@@ -225,7 +225,7 @@ interface CacheConfig {
 
     // Long TTL for rarely changing data
     staticContent: 86400    // 24 hours
-}
+} as const;
 
 // Implementation example
 async function getCachedProducts(categoryId: string): Promise<Product[]> {
