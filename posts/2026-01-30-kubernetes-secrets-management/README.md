@@ -100,7 +100,7 @@ Kubernetes supports several secret types for different use cases:
 | kubernetes.io/dockerconfigjson | Docker registry auth | .dockerconfigjson |
 | kubernetes.io/basic-auth | Basic authentication | username, password |
 | kubernetes.io/ssh-auth | SSH authentication | ssh-privatekey |
-| kubernetes.io/service-account-token | Service account token | Auto-generated |
+| kubernetes.io/service-account-token | Legacy service account token | kubernetes.io/service-account.name annotation; token key auto-generated |
 
 Docker registry secret for pulling private images:
 
@@ -274,12 +274,12 @@ resources:
           keys:
             - name: key1
               # Generate with: head -c 32 /dev/urandom | base64
-              secret: dGhpcy1pcy1hLTMyLWJ5dGUtc2VjcmV0LWtleQ==
+              secret: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
       # Fallback to identity for reading old unencrypted secrets
       - identity: {}
 ```
 
-For stronger encryption, use AES-GCM or secretbox:
+As alternatives, use AES-GCM or secretbox:
 
 ```yaml
 apiVersion: apiserver.config.k8s.io/v1
@@ -293,12 +293,12 @@ resources:
       - aesgcm:
           keys:
             - name: key1
-              secret: dGhpcy1pcy1hLTMyLWJ5dGUtc2VjcmV0LWtleQ==
+              secret: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
       # secretbox uses XSalsa20 and Poly1305
       - secretbox:
           keys:
             - name: key1
-              secret: dGhpcy1pcy1hLTMyLWJ5dGUtc2VjcmV0LWtleQ==
+              secret: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
       - identity: {}
 ```
 
@@ -369,10 +369,10 @@ resources:
           keys:
             # New key first (used for encryption)
             - name: key2
-              secret: bmV3LXNlY3JldC1rZXktZm9yLXJvdGF0aW9u
+              secret: ZmVkY2JhOTg3NjU0MzIxMGZlZGNiYTk4NzY1NDMyMTA=
             # Old key second (still used for decryption)
             - name: key1
-              secret: dGhpcy1pcy1hLTMyLWJ5dGUtc2VjcmV0LWtleQ==
+              secret: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
       - identity: {}
 ```
 
@@ -416,7 +416,7 @@ stringData:
 Configure a ClusterSecretStore for AWS:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: aws-secrets-manager
@@ -440,7 +440,7 @@ spec:
 Create an ExternalSecret to sync from AWS:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: database-credentials
@@ -475,7 +475,7 @@ spec:
 Configure Vault authentication using Kubernetes service account:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: vault-backend
@@ -492,12 +492,14 @@ spec:
           serviceAccountRef:
             name: external-secrets
             namespace: external-secrets
+            audiences:
+              - vault
 ```
 
 Sync secrets from Vault:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: vault-secrets
@@ -512,18 +514,18 @@ spec:
   data:
     - secretKey: api-key
       remoteRef:
-        key: secret/data/production/api
+        key: production/api
         property: key
     - secretKey: api-secret
       remoteRef:
-        key: secret/data/production/api
+        key: production/api
         property: secret
 ```
 
 ### Azure Key Vault Integration
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: azure-keyvault
@@ -561,9 +563,9 @@ helm install sealed-secrets sealed-secrets/sealed-secrets \
 brew install kubeseal
 
 # Install CLI (Linux)
-wget https://github.com/bitnami-labs/sealed-secrets/releases/download/v0.24.0/kubeseal-0.24.0-linux-amd64.tar.gz
-tar -xvzf kubeseal-0.24.0-linux-amd64.tar.gz
-sudo mv kubeseal /usr/local/bin/
+wget https://github.com/bitnami-labs/sealed-secrets/releases/download/v0.37.0/kubeseal-0.37.0-linux-amd64.tar.gz
+tar -xvzf kubeseal-0.37.0-linux-amd64.tar.gz kubeseal
+sudo install -m 755 kubeseal /usr/local/bin/kubeseal
 ```
 
 ### Creating Sealed Secrets
@@ -704,9 +706,9 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
 ```
 
-### Deny Access Pattern
+### No Secret Access Pattern
 
-Create a restrictive policy that denies secret access by default:
+Create a restrictive role that omits secret access:
 
 ```yaml
 # Default role with no secret access
@@ -716,7 +718,10 @@ metadata:
   name: developer-no-secrets
 rules:
   - apiGroups: [""]
-    resources: ["pods", "services", "configmaps", "deployments"]
+    resources: ["pods", "services", "configmaps"]
+    verbs: ["get", "list", "watch", "create", "update", "delete"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
     verbs: ["get", "list", "watch", "create", "update", "delete"]
   # Explicitly exclude secrets by not listing them
 ```
@@ -730,12 +735,12 @@ Enable audit logging to track secret access:
 apiVersion: audit.k8s.io/v1
 kind: Policy
 rules:
-  # Log all secret operations at RequestResponse level
-  - level: RequestResponse
+  # Log all secret operations without recording secret values
+  - level: Metadata
     resources:
       - group: ""
         resources: ["secrets"]
-    # Omit the request/response body (contains secret data)
+    # Skip the earliest stage to reduce duplicate events
     omitStages:
       - RequestReceived
 ```
@@ -762,7 +767,7 @@ kubectl rollout restart deployment/myapp -n production
 Configure automatic refresh in ExternalSecret:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: rotating-secret
@@ -916,7 +921,7 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
 ---
 # External secret synced from AWS
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: app-secrets
@@ -998,7 +1003,9 @@ kubectl get secret my-secret -o jsonpath='{.data}' | jq 'keys'
 kubectl exec -it mypod -- ls -la /etc/secrets
 
 # Check if pod can access secret
-kubectl auth can-i get secrets --as=system:serviceaccount:production:myapp
+kubectl auth can-i get secret app-secrets \
+  --as=system:serviceaccount:production:myapp \
+  -n production
 ```
 
 Debug External Secrets Operator:
