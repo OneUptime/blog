@@ -62,9 +62,9 @@ Before building custom channels, let's understand the core abstractions. A chann
 | Writer | `ChannelWriter<T>` | Async write operations |
 | Reader | `ChannelReader<T>` | Async read operations |
 
-The standard factory methods create channels with different behaviors.
+The standard factory methods create bounded and unbounded channels with different behaviors.
 
-This code shows the three main channel types and when to use each one.
+This code shows three common channel configurations and when to use each one.
 
 ```csharp
 // Unbounded: grows infinitely, use when producers must not block
@@ -76,7 +76,7 @@ var boundedWait = Channel.CreateBounded<Message>(new BoundedChannelOptions(100)
     FullMode = BoundedChannelFullMode.Wait
 });
 
-// Bounded with drop: drops items when full (useful for telemetry)
+// Bounded with drop: drops the oldest item when full (useful for telemetry)
 var boundedDrop = Channel.CreateBounded<Message>(new BoundedChannelOptions(100)
 {
     FullMode = BoundedChannelFullMode.DropOldest
@@ -478,7 +478,7 @@ flowchart TB
     PQ --> O5
 ```
 
-The priority channel uses a priority queue internally and wraps the standard channel interfaces.
+The priority channel uses an ordered queue internally and exposes channel-like read and write methods.
 
 ```csharp
 using System.Threading.Channels;
@@ -502,6 +502,7 @@ public class PriorityChannel<T>
 {
     private readonly SortedSet<PrioritizedItem<T>> _queue;
     private readonly SemaphoreSlim _itemAvailable;
+    private readonly SemaphoreSlim _spaceAvailable;
     private readonly SemaphoreSlim _lock;
     private readonly int _capacity;
     private long _sequence;
@@ -512,6 +513,7 @@ public class PriorityChannel<T>
     {
         _capacity = capacity;
         _itemAvailable = new SemaphoreSlim(0);
+        _spaceAvailable = new SemaphoreSlim(capacity, int.MaxValue);
         _lock = new SemaphoreSlim(1, 1);
 
         // Compare by priority first, then by sequence for FIFO within priority
@@ -533,20 +535,18 @@ public class PriorityChannel<T>
         Priority priority,
         CancellationToken cancellationToken = default)
     {
-        await _lock.WaitAsync(cancellationToken);
+        await _spaceAvailable.WaitAsync(cancellationToken);
+        var releaseSpace = true;
+        var lockTaken = false;
+
         try
         {
+            await _lock.WaitAsync(cancellationToken);
+            lockTaken = true;
+
             if (_completed)
             {
                 throw new ChannelClosedException("Channel has been completed");
-            }
-
-            // Wait if at capacity
-            while (_queue.Count >= _capacity)
-            {
-                _lock.Release();
-                await Task.Delay(10, cancellationToken);
-                await _lock.WaitAsync(cancellationToken);
             }
 
             var prioritizedItem = new PrioritizedItem<T>(
@@ -556,10 +556,19 @@ public class PriorityChannel<T>
             );
 
             _queue.Add(prioritizedItem);
+            releaseSpace = false;
         }
         finally
         {
-            _lock.Release();
+            if (lockTaken)
+            {
+                _lock.Release();
+            }
+
+            if (releaseSpace)
+            {
+                _spaceAvailable.Release();
+            }
         }
 
         _itemAvailable.Release();
@@ -571,6 +580,19 @@ public class PriorityChannel<T>
     {
         while (true)
         {
+            await _lock.WaitAsync(cancellationToken);
+            try
+            {
+                if (_completed && _queue.Count == 0)
+                {
+                    throw new ChannelClosedException("Channel completed with no more items");
+                }
+            }
+            finally
+            {
+                _lock.Release();
+            }
+
             await _itemAvailable.WaitAsync(cancellationToken);
 
             await _lock.WaitAsync(cancellationToken);
@@ -580,6 +602,7 @@ public class PriorityChannel<T>
                 {
                     var item = _queue.Min!;
                     _queue.Remove(item);
+                    _spaceAvailable.Release();
                     return item.Item;
                 }
 
@@ -613,6 +636,7 @@ public class PriorityChannel<T>
             {
                 var prioritizedItem = _queue.Min!;
                 _queue.Remove(prioritizedItem);
+                _spaceAvailable.Release();
                 item = prioritizedItem.Item;
                 return true;
             }
@@ -649,16 +673,28 @@ public class PriorityChannel<T>
 
     public void Complete()
     {
+        var completedNow = false;
+
         _lock.Wait();
         try
         {
-            _completed = true;
+            if (!_completed)
+            {
+                _completed = true;
+                completedNow = true;
+            }
         }
         finally
         {
             _lock.Release();
         }
-        _itemAvailable.Release(); // Wake up any waiting readers
+
+        if (completedNow)
+        {
+            // Wake up waiting readers and writers so they can observe completion.
+            _itemAvailable.Release(_capacity);
+            _spaceAvailable.Release(_capacity);
+        }
     }
 }
 ```
@@ -902,10 +938,19 @@ public class MetricsChannel<T>
     {
         var timestamped = new TimestampedItem<T>(item, Stopwatch.GetTimestamp());
 
-        await _channel.Writer.WriteAsync(timestamped, cancellationToken);
+        while (await _channel.Writer.WaitToWriteAsync(cancellationToken))
+        {
+            Interlocked.Increment(ref _currentDepth);
+            if (_channel.Writer.TryWrite(timestamped))
+            {
+                _itemsWritten.Add(1);
+                return;
+            }
 
-        Interlocked.Increment(ref _currentDepth);
-        _itemsWritten.Add(1);
+            Interlocked.Decrement(ref _currentDepth);
+        }
+
+        throw new ChannelClosedException();
     }
 
     // ReadAsync records timing and metrics when items are read.
@@ -944,13 +989,14 @@ public class MetricsChannel<T>
     {
         var timestamped = new TimestampedItem<T>(item, Stopwatch.GetTimestamp());
 
+        Interlocked.Increment(ref _currentDepth);
         if (_channel.Writer.TryWrite(timestamped))
         {
-            Interlocked.Increment(ref _currentDepth);
             _itemsWritten.Add(1);
             return true;
         }
 
+        Interlocked.Decrement(ref _currentDepth);
         return false;
     }
 
@@ -984,6 +1030,8 @@ builder.Services.AddSingleton(sp =>
 });
 
 var app = builder.Build();
+
+app.UseOpenTelemetryPrometheusScrapingEndpoint();
 
 // Use the channel
 app.MapPost("/process", async (
