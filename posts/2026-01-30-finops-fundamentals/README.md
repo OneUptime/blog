@@ -52,13 +52,13 @@ At minimum, every resource should have these tags:
 | `environment` | Dev, staging, or production | `production`, `staging` |
 | `cost-center` | Financial allocation | `eng-platform-2024` |
 
-Enforce tagging with policy-as-code tools. Here is an example using Terraform that prevents untagged resources from being created:
+Enforce tagging with policy-as-code tools. Here is an example using Terraform that requires a module to receive the expected tags and applies them through the AWS provider's `default_tags` block:
 
 ```hcl
 # Require mandatory tags on all resources
 
 # This Terraform variable validation runs at plan time
-# and blocks any apply that is missing required tags
+# and blocks any apply when the module input is missing required tags
 variable "required_tags" {
   type = map(string)
   validation {
@@ -71,7 +71,8 @@ variable "required_tags" {
   }
 }
 
-# Apply tags to all resources in the module using default_tags
+# Apply tags to supported resources managed by this provider
+# using default_tags
 provider "aws" {
   default_tags {
     tags = var.required_tags
@@ -136,19 +137,20 @@ A practical approach:
 # This script pulls 14 days of CPU metrics and flags instances
 # averaging below 20% utilization
 import boto3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 cloudwatch = boto3.client('cloudwatch')
 ec2 = boto3.client('ec2')
 
 def get_avg_cpu(instance_id: str, days: int = 14) -> float:
     """Fetch average CPU utilization over the given period."""
+    end_time = datetime.now(timezone.utc)
     response = cloudwatch.get_metric_statistics(
         Namespace='AWS/EC2',
         MetricName='CPUUtilization',
         Dimensions=[{'Name': 'InstanceId', 'Value': instance_id}],
-        StartTime=datetime.utcnow() - timedelta(days=days),
-        EndTime=datetime.utcnow(),
+        StartTime=end_time - timedelta(days=days),
+        EndTime=end_time,
         Period=3600,  # 1-hour granularity
         Statistics=['Average']
     )
@@ -159,21 +161,22 @@ def get_avg_cpu(instance_id: str, days: int = 14) -> float:
 
 def find_oversized_instances(threshold: float = 20.0):
     """List running instances with average CPU below the threshold."""
-    instances = ec2.describe_instances(
-        Filters=[{'Name': 'instance-state-name', 'Values': ['running']}]
-    )
+    paginator = ec2.get_paginator('describe_instances')
     results = []
-    for reservation in instances['Reservations']:
-        for instance in reservation['Instances']:
-            instance_id = instance['InstanceId']
-            instance_type = instance['InstanceType']
-            avg_cpu = get_avg_cpu(instance_id)
-            if avg_cpu < threshold:
-                results.append({
-                    'instance_id': instance_id,
-                    'instance_type': instance_type,
-                    'avg_cpu': round(avg_cpu, 2)
-                })
+    for page in paginator.paginate(
+        Filters=[{'Name': 'instance-state-name', 'Values': ['running']}]
+    ):
+        for reservation in page['Reservations']:
+            for instance in reservation['Instances']:
+                instance_id = instance['InstanceId']
+                instance_type = instance['InstanceType']
+                avg_cpu = get_avg_cpu(instance_id)
+                if avg_cpu < threshold:
+                    results.append({
+                        'instance_id': instance_id,
+                        'instance_type': instance_type,
+                        'avg_cpu': round(avg_cpu, 2)
+                    })
     return results
 ```
 
