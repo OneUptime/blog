@@ -379,8 +379,9 @@ Conditional breakpoints are powerful for debugging specific scenarios without st
 
 ```typescript
 // conditional.evaluator.ts
-// Safely evaluates breakpoint conditions in a sandboxed context.
-// Supports common debugging expressions without allowing arbitrary code execution.
+// Evaluates breakpoint conditions in a constrained VM context.
+// Node's vm module is not a security boundary, so do not use this
+// approach for untrusted user-supplied expressions.
 
 import * as vm from 'vm';
 
@@ -407,9 +408,9 @@ export class ConditionEvaluator {
   // Maximum time allowed for condition evaluation (prevent infinite loops)
   private timeout = 100; // milliseconds
 
-  // Evaluate a condition expression safely
+  // Evaluate a condition expression
   evaluate(condition: string, context: EvaluationContext): boolean {
-    // Create a sandboxed context with only the allowed variables
+    // Create a constrained context with only the allowed variables
     const sandbox = this.createSandbox(context);
 
     try {
@@ -428,7 +429,7 @@ export class ConditionEvaluator {
     }
   }
 
-  // Create a restricted sandbox for safe evaluation
+  // Create a restricted context for evaluation
   private createSandbox(context: EvaluationContext): vm.Context {
     // Start with local variables
     const sandbox: Record<string, unknown> = { ...context.locals };
@@ -752,6 +753,9 @@ The debug agent runs inside your application and manages breakpoint execution:
 // debug.agent.ts
 // Debug agent that runs inside target applications.
 // Connects to the breakpoint service and handles breakpoint execution.
+// For production agents, prefer controlling the target over an inspector
+// WebSocket or from a worker thread. Same-thread inspector sessions can
+// pause the code that is acting as the debugger.
 
 import * as inspector from 'inspector';
 import WebSocket from 'ws';
@@ -1256,7 +1260,6 @@ Implement the remote debugging proxy:
 // Proxy server that enables remote debugging of containerized applications.
 // Handles secure tunneling and connection management.
 
-import * as net from 'net';
 import * as http from 'http';
 import { spawn, ChildProcess } from 'child_process';
 import WebSocket, { WebSocketServer } from 'ws';
@@ -1271,7 +1274,9 @@ interface RemoteTarget {
   // Pod name
   podName: string;
 
-  // Container name (optional if single container)
+  // Container name for display/metadata.
+  // kubectl port-forward targets the pod network namespace, not a
+  // specific container.
   containerName?: string;
 
   // Debug port inside container
@@ -1279,6 +1284,9 @@ interface RemoteTarget {
 
   // Local port for this tunnel
   localPort: number;
+
+  // WebSocket endpoint reported by the Node inspector /json/list endpoint
+  inspectorWebSocketUrl?: string;
 
   // Tunnel process
   tunnel?: ChildProcess;
@@ -1292,8 +1300,11 @@ export class RemoteDebugProxy {
   private server: http.Server;
   private wss: WebSocketServer;
   private portCounter = 19229; // Starting port for tunnels
+  private proxyPort: number;
 
   constructor(port: number = 9339) {
+    this.proxyPort = port;
+
     // HTTP server for REST API
     this.server = http.createServer(this.handleHttpRequest.bind(this));
 
@@ -1340,12 +1351,12 @@ export class RemoteDebugProxy {
       .filter(t => t.status === 'connected')
       .map(t => ({
         description: `${t.namespace}/${t.podName}`,
-        devtoolsFrontendUrl: `devtools://devtools/bundled/js_app.html?ws=localhost:${t.localPort}`,
+        devtoolsFrontendUrl: `devtools://devtools/bundled/js_app.html?ws=localhost:${this.proxyPort}/ws/${t.id}`,
         id: t.id,
         title: `${t.podName} (${t.namespace})`,
         type: 'node',
-        url: `ws://localhost:${t.localPort}`,
-        webSocketDebuggerUrl: `ws://localhost:${t.localPort}`
+        url: `file://${t.podName}`,
+        webSocketDebuggerUrl: `ws://localhost:${this.proxyPort}/ws/${t.id}`
       }));
 
     res.end(JSON.stringify(targets));
@@ -1407,10 +1418,6 @@ export class RemoteDebugProxy {
       `${localPort}:${debugPort}`
     ];
 
-    if (config.containerName) {
-      args.push('-c', config.containerName);
-    }
-
     target.tunnel = spawn('kubectl', args);
 
     // Handle tunnel output
@@ -1437,8 +1444,32 @@ export class RemoteDebugProxy {
 
     // Wait for connection with timeout
     await this.waitForConnection(target, 10000);
+    target.inspectorWebSocketUrl = await this.fetchInspectorWebSocketUrl(target.localPort);
 
     return target;
+  }
+
+  // Discover the actual inspector WebSocket URL exposed by Node
+  private fetchInspectorWebSocketUrl(localPort: number): Promise<string> {
+    return new Promise((resolve, reject) => {
+      http.get(`http://127.0.0.1:${localPort}/json/list`, (res) => {
+        let body = '';
+        res.on('data', chunk => { body += chunk; });
+        res.on('end', () => {
+          try {
+            const targets = JSON.parse(body) as Array<{ webSocketDebuggerUrl?: string }>;
+            const webSocketUrl = targets[0]?.webSocketDebuggerUrl;
+            if (!webSocketUrl) {
+              reject(new Error('Inspector target did not expose a WebSocket URL'));
+              return;
+            }
+            resolve(webSocketUrl);
+          } catch (error) {
+            reject(error);
+          }
+        });
+      }).on('error', reject);
+    });
   }
 
   // Wait for tunnel to be ready
@@ -1480,8 +1511,13 @@ export class RemoteDebugProxy {
       return;
     }
 
+    if (!target.inspectorWebSocketUrl) {
+      clientWs.close(4005, 'Inspector WebSocket URL not available');
+      return;
+    }
+
     // Connect to the actual debug target
-    const targetWs = new WebSocket(`ws://localhost:${target.localPort}`);
+    const targetWs = new WebSocket(target.inspectorWebSocketUrl);
 
     // Forward messages bidirectionally
     clientWs.on('message', (data) => {
@@ -1852,7 +1888,13 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('breakpointManager.toggle', (item) => provider.toggleBreakpoint(item)),
     vscode.commands.registerCommand('breakpointManager.delete', (item) => provider.deleteBreakpoint(item)),
     vscode.commands.registerCommand('breakpointManager.gotoBreakpoint', (bp: ManagedBreakpoint) => {
-      const uri = vscode.Uri.file(bp.file);
+      const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+      if (!workspaceFolder) {
+        vscode.window.showErrorMessage('Open a workspace folder to navigate to breakpoints');
+        return;
+      }
+
+      const uri = vscode.Uri.joinPath(workspaceFolder.uri, bp.file);
       vscode.window.showTextDocument(uri, {
         selection: new vscode.Range(bp.line - 1, 0, bp.line - 1, 0)
       });
@@ -2098,7 +2140,7 @@ describe('Breakpoint Management Integration', () => {
     });
 
     it('should timeout on infinite loops', () => {
-      const result = evaluator.evaluate('while(true){}', {
+      const result = evaluator.evaluate('(() => { while (true) {} })()', {
         locals: {},
         callStack: []
       });
@@ -2151,7 +2193,7 @@ Building a comprehensive breakpoint management system requires attention to seve
 |-----------|---------|
 | **Data Model** | Define flexible types supporting standard, conditional, logpoint, and hit count breakpoints |
 | **Breakpoint Store** | Persist breakpoints with querying and grouping capabilities |
-| **Condition Evaluator** | Safely evaluate expressions in sandboxed context |
+| **Condition Evaluator** | Evaluate trusted expressions in a constrained context |
 | **Logpoint Processor** | Format and output log messages without pausing execution |
 | **Debug Agent** | Run inside target applications to execute breakpoints |
 | **Remote Proxy** | Enable debugging of containerized and distributed applications |
