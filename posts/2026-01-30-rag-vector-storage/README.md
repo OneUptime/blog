@@ -551,6 +551,7 @@ pgvector is a PostgreSQL extension that adds vector similarity search. It is per
 ```python
 import psycopg2
 from psycopg2.extras import execute_values
+from pgvector.psycopg2 import register_vector
 import numpy as np
 from typing import List, Tuple, Optional
 
@@ -560,7 +561,7 @@ class PgVectorStore:
 
     Prerequisites:
         1. Install pgvector: CREATE EXTENSION vector;
-        2. pip install psycopg2-binary
+        2. pip install psycopg2-binary pgvector
 
     Benefits:
         - ACID transactions
@@ -587,6 +588,14 @@ class PgVectorStore:
         """Establish database connection."""
         self.conn = psycopg2.connect(self.connection_string)
         self.conn.autocommit = True
+
+        # Ensure the extension exists before registering the vector adapter,
+        # since register_vector queries pg_type for the vector OID.
+        with self.conn.cursor() as cur:
+            cur.execute("CREATE EXTENSION IF NOT EXISTS vector")
+
+        # Register pgvector adapter so numpy arrays bind to vector columns.
+        register_vector(self.conn)
 
     def create_table(self, index_type: str = "ivfflat") -> None:
         """
@@ -646,7 +655,7 @@ class PgVectorStore:
                 ON CONFLICT (id) DO UPDATE
                 SET embedding = EXCLUDED.embedding,
                     metadata = EXCLUDED.metadata
-            """, (id, embedding.tolist(), json.dumps(metadata or {})))
+            """, (id, embedding, json.dumps(metadata or {})))
 
     def insert_batch(self, ids: List[str], embeddings: np.ndarray,
                      metadata_list: List[dict] = None) -> None:
@@ -664,7 +673,7 @@ class PgVectorStore:
             metadata_list = [{}] * len(ids)
 
         data = [
-            (id_, emb.tolist(), json.dumps(meta))
+            (id_, emb, json.dumps(meta))
             for id_, emb, meta in zip(ids, embeddings, metadata_list)
         ]
 
@@ -690,16 +699,24 @@ class PgVectorStore:
         Returns:
             List of (id, similarity, metadata) tuples
         """
-        with self.conn.cursor() as cur:
-            # Build query with optional filter
-            filter_clause = ""
-            params = [query_embedding.tolist(), top_k]
+        import json
 
+        with self.conn.cursor() as cur:
+            # Build query with optional filter. The vector parameter appears
+            # twice (SELECT and ORDER BY); build the params list in the exact
+            # order the placeholders appear in the SQL.
             if filter_metadata:
                 # Example: {"source": "wiki"} becomes metadata @> '{"source": "wiki"}'
-                import json
                 filter_clause = "WHERE metadata @> %s"
-                params.insert(1, json.dumps(filter_metadata))
+                params = [
+                    query_embedding,
+                    json.dumps(filter_metadata),
+                    query_embedding,
+                    top_k,
+                ]
+            else:
+                filter_clause = ""
+                params = [query_embedding, query_embedding, top_k]
 
             cur.execute(f"""
                 SELECT id, 1 - (embedding <=> %s) as similarity, metadata
@@ -707,7 +724,7 @@ class PgVectorStore:
                 {filter_clause}
                 ORDER BY embedding <=> %s
                 LIMIT %s
-            """, params[:1] + params)
+            """, params)
 
             results = []
             for row in cur.fetchall():
@@ -876,8 +893,9 @@ class HNSWVectorStore:
             if idx == -1:  # FAISS returns -1 for missing results
                 continue
             id_ = self.idx_to_id[idx]
-            # FAISS returns L2 distance; convert to similarity
-            # For normalized vectors: similarity = 1 - distance/2
+            # FAISS returns squared L2 distance for METRIC_L2; convert to similarity.
+            # For unit-normalized vectors: ||a-b||^2 = 2 - 2*cos(a,b),
+            # so cosine similarity = 1 - squared_distance/2.
             similarity = 1 - dist / 2
             results.append((id_, float(similarity), self.metadata[idx]))
 
