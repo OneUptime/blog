@@ -70,7 +70,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 
-import javax.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletRequest;
 
 @Component
 public class AuthTokenInterceptor implements RequestInterceptor {
@@ -198,10 +198,10 @@ import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
-import javax.servlet.FilterChain;
-import javax.servlet.ServletException;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.UUID;
 
@@ -367,6 +367,8 @@ import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.context.annotation.Bean;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 
 import java.util.List;
 
@@ -383,6 +385,12 @@ public interface PaymentClient {
 
     @GetMapping("/payments")
     List<PaymentResponse> listPayments();
+
+    @PostMapping("/payments")
+    PaymentResponse createPayment(@RequestBody CreatePaymentRequest request);
+
+    record PaymentResponse(String id, int amount) {}
+    record CreatePaymentRequest(int amount) {}
 
     // Configuration class - not a @Component, applied only to this client
     class PaymentClientConfig {
@@ -515,7 +523,7 @@ public class RequestEnhancementInterceptor implements RequestInterceptor {
 
 ## Interceptor Execution Order
 
-When multiple interceptors exist, control execution order with `@Order`.
+When multiple Spring-managed interceptors exist in Spring Cloud OpenFeign, control execution order with `@Order`.
 
 ```mermaid
 flowchart LR
@@ -705,7 +713,7 @@ class PaymentClientIntegrationTest {
             .willReturn(okJson("{\"id\":\"456\",\"amount\":200}")));
 
         // Make POST request
-        // paymentClient.createPayment(new CreatePaymentRequest(...));
+        paymentClient.createPayment(new PaymentClient.CreatePaymentRequest(200));
 
         wireMock.verify(postRequestedFor(urlEqualTo("/payments"))
             .withHeader("Idempotency-Key", matching("[a-f0-9-]{36}")));
