@@ -162,23 +162,23 @@ sequenceDiagram
 
 **Pattern 2: Idempotent Writes**
 
-If your sink supports idempotent writes (upserts with unique keys), you can achieve exactly-once with at-least-once delivery:
+If your sink supports idempotent writes (upserts with unique keys), you can achieve effectively exactly-once results with at-least-once delivery:
 
 ```mermaid
 flowchart LR
     A[Record with ID=123] --> B{Sink}
     B --> C[Upsert: INSERT or UPDATE]
     A2[Retry: ID=123] --> B
-    Note: Duplicate writes have no effect
+    B --> D[Duplicate writes have no effect]
 ```
 
 ### Implementing Exactly-Once in Flink
 
-Here is a complete Flink job that reads from Kafka, processes events, and writes to PostgreSQL with exactly-once guarantees:
+Here is a Flink job that reads from Kafka, processes events, and writes to PostgreSQL with idempotent upserts. The JDBC sink itself is at-least-once; the unique `event_id` and `ON CONFLICT` clause make retries safe:
 
 ```java
 // StreamingLoadingJob.java
-// Demonstrates exactly-once streaming loading from Kafka to PostgreSQL using Flink
+// Demonstrates idempotent streaming loading from Kafka to PostgreSQL using Flink
 
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.api.common.serialization.SimpleStringSchema;
@@ -191,6 +191,7 @@ import org.apache.flink.streaming.api.CheckpointingMode;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.sql.Timestamp;
 
 public class StreamingLoadingJob {
 
@@ -215,10 +216,10 @@ public class StreamingLoadingJob {
             .setValueOnlyDeserializer(new SimpleStringSchema())
             .build();
 
-        // Create the data stream with event-time processing
+        // Create the data stream; event-time watermarks can be assigned after parsing
         DataStream<String> eventStream = env.fromSource(
             kafkaSource,
-            WatermarkStrategy.forMonotonousTimestamps(),
+            WatermarkStrategy.noWatermarks(),
             "Kafka Source"
         );
 
@@ -234,7 +235,7 @@ public class StreamingLoadingJob {
             .filter(event -> event.getUserId() != null && !event.getUserId().isEmpty())
             .name("Filter Valid Events");
 
-        // Define the JDBC sink with exactly-once guarantees
+        // Define the JDBC sink with idempotent writes
         // Uses upsert (ON CONFLICT) for idempotent writes
         validEvents.addSink(
             JdbcSink.sink(
@@ -279,7 +280,7 @@ public class StreamingLoadingJob {
 
 // Event.java
 // Data class representing an incoming event
-public class Event {
+class Event {
     private String eventId;      // Unique identifier for idempotency
     private String userId;       // User who triggered the event
     private String eventType;    // Type of event (click, purchase, etc.)
@@ -294,7 +295,7 @@ Key points in the code:
 
 1. **Checkpointing enabled**: `enableCheckpointing(10000, CheckpointingMode.EXACTLY_ONCE)` ensures periodic state snapshots
 2. **Idempotent writes**: The `ON CONFLICT DO UPDATE` clause handles duplicate deliveries gracefully
-3. **Batch flushing**: JDBC sink batches writes for efficiency while respecting checkpoint boundaries
+3. **Batch flushing**: JDBC sink batches writes for efficiency; idempotent SQL handles retries after failures
 
 ## Kafka Producer: Generating Events
 
@@ -332,7 +333,7 @@ def create_producer():
         key_serializer=lambda k: k.encode('utf-8') if k else None,
         acks='all',                    # Wait for all replicas
         retries=3,                     # Retry on transient failures
-        enable_idempotence=True,       # Exactly-once producer semantics
+        enable_idempotence=True,       # Prevent duplicates from producer retries
         max_in_flight_requests_per_connection=5,  # Allow pipelining
         compression_type='lz4',        # Compress for network efficiency
     )
@@ -348,7 +349,7 @@ def generate_event(user_id: str, event_type: str, details: dict) -> dict:
         'event_id': str(uuid.uuid4()),  # Unique ID for deduplication
         'user_id': user_id,
         'event_type': event_type,
-        'payload': details,
+        'payload': json.dumps(details),
         'created_at': datetime.utcnow().isoformat(),
         'source': 'web_app',
         'version': '1.0'
@@ -461,7 +462,7 @@ CREATE TABLE kafka_events (
 );
 
 -- Create the PostgreSQL sink table
--- Uses JDBC connector with upsert mode for exactly-once semantics
+-- Uses JDBC connector with upsert mode for idempotent writes
 CREATE TABLE postgres_events (
     event_id STRING,
     user_id STRING,
@@ -504,10 +505,13 @@ For search and analytics workloads, Elasticsearch is a common destination:
 // Writes streaming events to Elasticsearch for real-time search
 
 import org.apache.flink.connector.elasticsearch.sink.Elasticsearch7SinkBuilder;
+import org.apache.flink.connector.elasticsearch.sink.ElasticsearchSink;
 import org.apache.flink.connector.elasticsearch.sink.FlushBackoffType;
 import org.apache.http.HttpHost;
 import org.elasticsearch.action.index.IndexRequest;
 import org.elasticsearch.client.Requests;
+import java.util.HashMap;
+import java.util.Map;
 
 // Build the Elasticsearch sink with retry and batching configuration
 ElasticsearchSink<Event> esSink = new Elasticsearch7SinkBuilder<Event>()
@@ -523,10 +527,9 @@ ElasticsearchSink<Event> esSink = new Elasticsearch7SinkBuilder<Event>()
         document.put("event_type", event.getEventType());
         document.put("payload", event.getPayload());
         document.put("created_at", event.getCreatedAt().toInstant().toString());
-        document.put("indexed_at", Instant.now().toString());
 
         // Create an index request
-        // Uses event_id as document ID for idempotent writes
+        // Uses event_id as document ID so retries replace the same document
         IndexRequest request = Requests.indexRequest()
             .index("events")           // Target index
             .id(event.getEventId())    // Document ID (enables upsert)
@@ -563,6 +566,7 @@ import org.apache.flink.core.fs.Path;
 import org.apache.flink.formats.parquet.avro.AvroParquetWriters;
 import org.apache.flink.streaming.api.functions.sink.filesystem.rollingpolicies.OnCheckpointRollingPolicy;
 import org.apache.flink.streaming.api.functions.sink.filesystem.bucketassigners.DateTimeBucketAssigner;
+import org.apache.flink.streaming.api.functions.sink.filesystem.OutputFileConfig;
 
 // Build the S3 Parquet sink
 // Files are organized by date partitions: s3://bucket/events/2026/01/30/
@@ -580,7 +584,7 @@ FileSink<Event> s3Sink = FileSink
     )
 
     // Roll files on checkpoint for exactly-once semantics
-    // Each checkpoint creates a new file, ensuring no partial writes
+    // Bulk formats roll part files on checkpoints, ensuring no partial writes
     .withRollingPolicy(OnCheckpointRollingPolicy.build())
 
     // File naming: part-{subtask}-{sequence}.parquet
@@ -730,8 +734,7 @@ Integrate with OneUptime for pipeline monitoring:
 # Exposes pipeline health for monitoring systems
 
 from flask import Flask, jsonify
-from kafka import KafkaConsumer, KafkaAdminClient
-from kafka.admin import ConsumerGroupDescription
+from kafka.admin import KafkaAdminClient
 
 app = Flask(__name__)
 
@@ -749,8 +752,8 @@ def health_check():
         # Check Kafka connectivity
         admin = KafkaAdminClient(bootstrap_servers=['kafka:9092'])
 
-        # Get consumer group lag
-        consumer_groups = admin.describe_consumer_groups(['streaming-loader'])
+        # Verify that the consumer group can be described
+        admin.describe_consumer_groups(['streaming-loader'])
 
         # Check if lag is acceptable (under 10000 messages)
         # In production, query the actual lag from Kafka metrics
@@ -796,11 +799,17 @@ JdbcExecutionOptions executionOptions = JdbcExecutionOptions.builder()
 
 // For more control, wrap the sink with a retry mechanism
 // This example uses Flink's async I/O with retries
-AsyncDataStream.unorderedWait(
+AsyncRetryStrategy<Event> retryStrategy =
+    new AsyncRetryStrategies.FixedDelayRetryStrategyBuilder<Event>(maxRetries, backoffMs)
+        .ifException(RetryPredicates.HAS_EXCEPTION_PREDICATE)
+        .build();
+
+AsyncDataStream.unorderedWaitWithRetry(
     eventStream,
     new RetryingAsyncSinkFunction(maxRetries, backoffMs),
     30, TimeUnit.SECONDS,  // Timeout per request
-    100                    // Max concurrent requests
+    100,                   // Max concurrent requests
+    retryStrategy
 );
 ```
 
