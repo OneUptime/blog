@@ -10,7 +10,7 @@ Description: Configure pod priority classes in Kubernetes for workload prioritiz
 
 ## Introduction
 
-When your Kubernetes cluster runs low on resources, the scheduler needs to make decisions about which pods get resources and which ones wait. Pod Priority Classes give you control over these decisions by assigning priority values to different workloads. Critical services like databases and payment processors can be configured to always get resources, while batch jobs and development workloads wait or get preempted.
+When your Kubernetes cluster runs low on resources, the scheduler needs to make decisions about which pods get resources and which ones wait. Pod Priority Classes give you control over these decisions by assigning priority values to different workloads. Critical services like databases and payment processors can be configured to be scheduled before lower priority workloads and to preempt them during resource contention, while batch jobs and development workloads wait or get preempted.
 
 This guide covers everything you need to implement priority classes in production, from basic configuration to advanced preemption policies.
 
@@ -56,8 +56,8 @@ The priority value determines the actual scheduling priority. Here are the recom
 
 | Range | Use Case | Examples |
 |-------|----------|----------|
-| 1000000000 | System critical | system-cluster-critical, system-node-critical |
-| 900000000 - 999999999 | Reserved for system | Do not use for user workloads |
+| Values above 1000000000 | System critical | system-cluster-critical, system-node-critical |
+| 1000000000 | Highest user-defined priority | Platform-reserved critical workloads |
 | 100000 - 1000000 | Critical production | Databases, payment services, core APIs |
 | 10000 - 99999 | Standard production | Web servers, application services |
 | 1000 - 9999 | Background tasks | Batch jobs, reports, analytics |
@@ -94,7 +94,13 @@ metadata:
   name: coredns
   namespace: kube-system
 spec:
+  selector:
+    matchLabels:
+      k8s-app: kube-dns
   template:
+    metadata:
+      labels:
+        k8s-app: kube-dns
     spec:
       priorityClassName: system-cluster-critical
       containers:
@@ -118,7 +124,13 @@ metadata:
   name: kube-proxy
   namespace: kube-system
 spec:
+  selector:
+    matchLabels:
+      k8s-app: kube-proxy
   template:
+    metadata:
+      labels:
+        k8s-app: kube-proxy
     spec:
       priorityClassName: system-node-critical
       containers:
@@ -126,7 +138,7 @@ spec:
         image: registry.k8s.io/kube-proxy:v1.29.0
 ```
 
-**Important**: Never assign these system priority classes to user workloads. User workloads should use custom priority classes with values below 1000000000.
+**Important**: Never assign these system priority classes to user workloads. User workloads should use custom priority classes with values at or below 1000000000.
 
 ## Creating Custom Priority Classes
 
@@ -134,7 +146,7 @@ Let us create a complete set of priority classes for a production environment.
 
 ### Critical Priority Class
 
-For workloads that must always run, such as databases and core services:
+For the highest priority production workloads, such as databases and core services:
 
 ```yaml
 # critical-priority.yaml
@@ -150,7 +162,7 @@ metadata:
 value: 1000000
 globalDefault: false
 preemptionPolicy: PreemptLowerPriority
-description: "Critical workloads that must always run. Use for databases and core services only."
+description: "Critical workloads that should be scheduled ahead of other user workloads. Use for databases and core services only."
 ```
 
 ### High Priority Class
@@ -441,16 +453,16 @@ spec:
 
 ## Understanding Preemption Behavior
 
-Preemption occurs when a high priority pod cannot be scheduled due to insufficient resources. The scheduler will evict lower priority pods to make room.
+Preemption occurs when a high priority pod cannot be scheduled due to insufficient resources. The scheduler can evict lower priority pods to make room.
 
 ### Preemption Flow
 
 1. High priority pod enters the scheduling queue
 2. Scheduler attempts to find a node with sufficient resources
-3. If no node has resources, scheduler looks for preemption victims
+3. If no feasible node has enough resources, scheduler looks for preemption victims
 4. Scheduler selects pods with lower priority that would free enough resources
 5. Selected pods receive a termination signal
-6. Once pods terminate, high priority pod gets scheduled
+6. Once pods terminate, the high priority pod can be scheduled
 
 ### Preemption Policies
 
@@ -479,10 +491,10 @@ description: "High priority but will never preempt. For important batch jobs."
 
 ### Preemption Guarantees
 
-The scheduler provides these guarantees during preemption:
+The scheduler provides these behaviors during preemption:
 
-1. **Minimum disruption**: Scheduler preempts the minimum number of pods needed
-2. **Priority ordering**: Higher priority pods are never preempted for lower priority ones
+1. **Reduced disruption**: Scheduler tries to preempt the minimum number of pods needed
+2. **Priority ordering**: A preempting pod only selects victims with lower priority
 3. **Graceful termination**: Preempted pods receive SIGTERM and their termination grace period
 4. **PodDisruptionBudget respect**: PDBs are respected when possible (but can be violated for critical scheduling)
 
@@ -672,7 +684,7 @@ spec:
   minAvailable: 1
   selector:
     matchLabels:
-      job-name: data-migration
+      batch.kubernetes.io/job-name: data-migration
 ```
 
 ## Best Practices
@@ -719,7 +731,7 @@ description: "For long-running batch jobs that should not preempt"
 
 ### 4. Protect Critical Workloads with Resource Quotas
 
-Combine priority classes with resource quotas to prevent lower priority workloads from consuming all resources:
+Combine priority classes with resource quotas to control resource consumption by priority tier:
 
 ```yaml
 # resource-quota-by-priority.yaml
@@ -780,7 +792,7 @@ spec:
       expr: |
         sum(kube_pod_status_phase{phase="Pending"}
         * on(pod, namespace) group_left(priority_class)
-        kube_pod_priority_class{priority_class="critical"}) > 0
+        kube_pod_info{priority_class="critical"}) > 0
       for: 5m
       labels:
         severity: critical
@@ -791,7 +803,7 @@ spec:
     # Alert on high preemption rate
     - alert: HighPreemptionRate
       expr: |
-        rate(scheduler_preemption_victims[5m]) > 1
+        rate(scheduler_preemption_victims_sum[5m]) > 1
       for: 10m
       labels:
         severity: warning
@@ -882,7 +894,7 @@ Pod Priority Classes provide a straightforward mechanism for workload prioritiza
 5. Monitor preemption events and priority distribution across the cluster
 6. Document priority class usage and ownership
 
-With properly configured priority classes, your critical workloads will maintain availability during resource contention while lower priority workloads gracefully yield resources when needed.
+With properly configured priority classes, your critical workloads are more likely to be scheduled during resource contention while lower priority workloads gracefully yield resources when needed.
 
 ## Additional Resources
 
