@@ -91,7 +91,7 @@ def collect_metrics(metric_name: str, days: int = 365) -> pd.DataFrame:
 
     # Return as DataFrame with timestamp index
     return pd.DataFrame({
-        'timestamp': pd.date_range(start=start_time, end=end_time, freq='H'),
+        'timestamp': pd.date_range(start=start_time, end=end_time, freq='h'),
         'value': [...]  # Your metric values
     }).set_index('timestamp')
 ```
@@ -110,7 +110,7 @@ def clean_metric_data(df: pd.DataFrame) -> pd.DataFrame:
     df = df[(df['value'] > mean - 3*std) & (df['value'] < mean + 3*std)]
 
     # Fill small gaps with interpolation
-    df = df.resample('H').mean()
+    df = df.resample('h').mean()
     df['value'] = df['value'].interpolate(method='linear', limit=6)
 
     # Handle larger gaps (mark as missing, don't interpolate)
@@ -138,6 +138,15 @@ def aggregate_for_trends(df: pd.DataFrame, period: str = 'D') -> pd.DataFrame:
         return daily
     elif period == 'W':
         return df.resample('W').mean()
+```
+
+The examples below use `value` for raw data and `mean` for aggregated data:
+
+```python
+def metric_series(df: pd.DataFrame) -> pd.Series:
+    """Return the primary metric series from raw or aggregated data."""
+    column = 'value' if 'value' in df.columns else 'mean'
+    return df[column].dropna()
 ```
 
 ## Step 3: Identify the Growth Pattern
@@ -191,7 +200,7 @@ flowchart LR
 
 **Exponential growth**: Constant percentage increase. Growing 10% per month.
 
-**How to tell the difference**: Plot on a log scale. Linear growth curves upward on a log scale. Exponential growth appears as a straight line.
+**How to tell the difference**: Plot on a log scale (log y-axis). Linear growth appears concave and flattens out on a log scale. Exponential growth appears as a straight line.
 
 ```python
 def identify_growth_type(df: pd.DataFrame) -> str:
@@ -202,7 +211,8 @@ def identify_growth_type(df: pd.DataFrame) -> str:
     import numpy as np
     from scipy import stats
 
-    values = df['value'].dropna().values
+    series = metric_series(df)
+    values = series.values
     x = np.arange(len(values))
 
     # Fit linear model
@@ -210,8 +220,9 @@ def identify_growth_type(df: pd.DataFrame) -> str:
     linear_r_squared = linear_r ** 2
 
     # Fit exponential model (linear regression on log values)
-    log_values = np.log(values[values > 0])
-    x_log = x[:len(log_values)]
+    positive_mask = values > 0
+    log_values = np.log(values[positive_mask])
+    x_log = x[positive_mask]
     exp_slope, exp_intercept, exp_r, _, _ = stats.linregress(x_log, log_values)
     exp_r_squared = exp_r ** 2
 
@@ -238,7 +249,8 @@ def linear_projection(df: pd.DataFrame, days_ahead: int = 90) -> pd.DataFrame:
     """
     Project future values using linear regression.
     """
-    values = df['value'].dropna().values
+    series = metric_series(df)
+    values = series.values
     x = np.arange(len(values))
 
     # Fit the model
@@ -248,9 +260,13 @@ def linear_projection(df: pd.DataFrame, days_ahead: int = 90) -> pd.DataFrame:
     future_x = np.arange(len(values), len(values) + days_ahead)
     future_values = slope * future_x + intercept
 
-    # Calculate confidence interval (95%)
+    # Calculate prediction interval (95%)
     n = len(values)
-    se = std_err * np.sqrt(1 + 1/n + (future_x - x.mean())**2 / np.sum((x - x.mean())**2))
+    fitted = slope * x + intercept
+    residual_std_error = np.sqrt(np.sum((values - fitted) ** 2) / (n - 2))
+    se = residual_std_error * np.sqrt(
+        1 + 1/n + (future_x - x.mean())**2 / np.sum((x - x.mean())**2)
+    )
     ci_lower = future_values - 1.96 * se
     ci_upper = future_values + 1.96 * se
 
@@ -283,12 +299,15 @@ def exponential_projection(df: pd.DataFrame, days_ahead: int = 90) -> pd.DataFra
     """
     Project future values using exponential growth model.
     """
-    values = df['value'].dropna().values
+    series = metric_series(df)
+    values = series.values
     x = np.arange(len(values))
 
     # Fit exponential model (linear regression on log values)
-    log_values = np.log(values[values > 0])
-    slope, intercept, r_value, _, std_err = stats.linregress(x[:len(log_values)], log_values)
+    positive_mask = values > 0
+    log_values = np.log(values[positive_mask])
+    x_log = x[positive_mask]
+    slope, intercept, r_value, _, std_err = stats.linregress(x_log, log_values)
 
     # Daily growth rate
     daily_growth_rate = np.exp(slope) - 1
@@ -298,8 +317,14 @@ def exponential_projection(df: pd.DataFrame, days_ahead: int = 90) -> pd.DataFra
     future_log_values = slope * future_x + intercept
     future_values = np.exp(future_log_values)
 
-    # Confidence interval
-    se = std_err * np.sqrt(1 + 1/len(log_values))
+    # Prediction interval on the log scale
+    fitted_log_values = slope * x_log + intercept
+    residual_std_error = np.sqrt(
+        np.sum((log_values - fitted_log_values) ** 2) / (len(log_values) - 2)
+    )
+    se = residual_std_error * np.sqrt(
+        1 + 1/len(log_values) + (future_x - x_log.mean())**2 / np.sum((x_log - x_log.mean())**2)
+    )
     ci_lower = np.exp(future_log_values - 1.96 * se)
     ci_upper = np.exp(future_log_values + 1.96 * se)
 
@@ -356,15 +381,17 @@ from statsmodels.tsa.seasonal import seasonal_decompose
 def decompose_seasonality(df: pd.DataFrame, period: int = 7) -> dict:
     """
     Decompose time series into trend, seasonal, and residual components.
-    period: 7 for weekly, 365 for yearly
+    period: observations per seasonal cycle (7 for weekly seasonality in daily data).
+    The series must contain at least two complete cycles.
     """
-    result = seasonal_decompose(df['value'].dropna(), period=period, extrapolate_trend='freq')
+    series = metric_series(df)
+    result = seasonal_decompose(series, period=period, extrapolate_trend='freq')
 
     return {
         'trend': result.trend,
         'seasonal': result.seasonal,
         'residual': result.resid,
-        'seasonal_factors': result.seasonal[:period].values
+        'seasonal_adjustments': result.seasonal[:period].values
     }
 ```
 
@@ -374,20 +401,24 @@ def decompose_seasonality(df: pd.DataFrame, period: int = 7) -> dict:
 def project_with_seasonality(
     df: pd.DataFrame,
     days_ahead: int = 90,
-    weekly_factors: list = None
+    weekly_factors: list = None,
+    base_projection: pd.DataFrame = None
 ) -> pd.DataFrame:
     """
     Project with seasonal adjustments.
     weekly_factors: list of 7 multipliers (Mon=0 through Sun=6)
     """
     # Get base projection
-    base_projection = linear_projection(df, days_ahead)
+    if base_projection is None:
+        base_projection = linear_projection(df, days_ahead)
 
     # Apply weekly seasonality
     if weekly_factors is None:
         # Default: calculate from historical data
-        df['dayofweek'] = df.index.dayofweek
-        weekly_factors = df.groupby('dayofweek')['value'].mean()
+        historical = df.copy()
+        historical['dayofweek'] = historical.index.dayofweek
+        series_column = 'value' if 'value' in historical.columns else 'mean'
+        weekly_factors = historical.groupby('dayofweek')[series_column].mean()
         weekly_factors = (weekly_factors / weekly_factors.mean()).values
 
     # Adjust projections by day of week
@@ -530,7 +561,8 @@ class GrowthProjector:
         if include_seasonality:
             self.projection = project_with_seasonality(
                 self.historical_data,
-                days_ahead
+                days_ahead,
+                base_projection=base
             )
         else:
             self.projection = base
