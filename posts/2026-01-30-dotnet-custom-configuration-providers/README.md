@@ -41,6 +41,7 @@ public class DatabaseConfigurationSource : IConfigurationSource
     public string ConnectionString { get; set; } = string.Empty;
     public string TableName { get; set; } = "AppConfiguration";
     public TimeSpan? ReloadInterval { get; set; }
+    public bool Optional { get; set; } = false;
 
     public IConfigurationProvider Build(IConfigurationBuilder builder)
     {
@@ -62,12 +63,12 @@ public abstract class ConfigurationProvider : IConfigurationProvider
 
     public virtual void Load() { }
 
-    public virtual bool TryGet(string key, out string? value);
-    public virtual void Set(string key, string? value);
+    public virtual bool TryGet(string key, out string? value) => Data.TryGetValue(key, out value);
+    public virtual void Set(string key, string? value) => Data[key] = value;
     public virtual IEnumerable<string> GetChildKeys(
         IEnumerable<string> earlierKeys,
-        string? parentPath);
-    public virtual IChangeToken GetReloadToken();
+        string? parentPath) => earlierKeys;
+    public virtual IChangeToken GetReloadToken() => NullChangeToken.Singleton;
 }
 ```
 
@@ -102,7 +103,6 @@ Now implement the provider:
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Primitives;
-using System.Collections.Concurrent;
 
 public class DatabaseConfigurationProvider : ConfigurationProvider, IDisposable
 {
@@ -285,6 +285,16 @@ Change tokens notify the configuration system when data changes. The base `Confi
 Here is a provider that uses SQL Server Service Broker for real-time notifications:
 
 ```csharp
+public class SqlDependencyConfigurationSource : IConfigurationSource
+{
+    public string ConnectionString { get; set; } = string.Empty;
+
+    public IConfigurationProvider Build(IConfigurationBuilder builder)
+    {
+        return new SqlDependencyConfigurationProvider(this);
+    }
+}
+
 public class SqlDependencyConfigurationProvider : ConfigurationProvider, IDisposable
 {
     private readonly SqlDependencyConfigurationSource _source;
@@ -364,6 +374,8 @@ public class SqlDependencyConfigurationProvider : ConfigurationProvider, IDispos
 For microservices, you might need to fetch configuration from a central config server. Here is a provider that loads from an HTTP endpoint:
 
 ```csharp
+using System.Text.Json;
+
 public class RemoteConfigurationSource : IConfigurationSource
 {
     public string Endpoint { get; set; } = string.Empty;
@@ -474,10 +486,10 @@ public class RemoteConfigurationProvider : ConfigurationProvider, IDisposable
     {
         while (!_cts.Token.IsCancellationRequested)
         {
-            await Task.Delay(_source.ReloadInterval!.Value, _cts.Token);
-
             try
             {
+                await Task.Delay(_source.ReloadInterval!.Value, _cts.Token);
+
                 var previousData = Data;
                 await LoadAsync();
 
@@ -485,6 +497,10 @@ public class RemoteConfigurationProvider : ConfigurationProvider, IDisposable
                 {
                     OnReload();
                 }
+            }
+            catch (TaskCanceledException)
+            {
+                break;
             }
             catch (Exception ex)
             {
@@ -560,11 +576,7 @@ builder.Services.Configure<ApplicationSettings>(
 builder.Services.Configure<FeatureSettings>(
     builder.Configuration.GetSection("Features"));
 
-// Use IOptionsMonitor for hot reload support
-builder.Services.AddSingleton<IOptionsChangeTokenSource<FeatureSettings>>(
-    sp => new ConfigurationChangeTokenSource<FeatureSettings>(
-        Options.DefaultName,
-        sp.GetRequiredService<IConfiguration>().GetSection("Features")));
+// Use IOptionsMonitor in your services for hot reload support
 ```
 
 Inject and use the settings in your services:
@@ -603,6 +615,7 @@ public class CacheService
         // Cache implementation with configurable duration
         var duration = TimeSpan.FromSeconds(settings.CacheDuration);
         // ... cache logic
+        return await factory();
     }
 }
 ```
@@ -768,6 +781,11 @@ public class ResilientDatabaseConfigurationProvider : ConfigurationProvider
     private readonly int _maxRetries = 3;
     private readonly TimeSpan _retryDelay = TimeSpan.FromSeconds(2);
 
+    public ResilientDatabaseConfigurationProvider(DatabaseConfigurationSource source)
+    {
+        _source = source ?? throw new ArgumentNullException(nameof(source));
+    }
+
     public override void Load()
     {
         var data = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
@@ -806,6 +824,26 @@ public class ResilientDatabaseConfigurationProvider : ConfigurationProvider
             throw new InvalidOperationException(
                 $"Failed to load required database configuration after {_maxRetries} attempts",
                 lastException);
+        }
+    }
+
+    private void LoadFromDatabase(IDictionary<string, string?> data)
+    {
+        using var connection = new SqlConnection(_source.ConnectionString);
+        connection.Open();
+
+        var query = $@"
+            SELECT ConfigKey, ConfigValue
+            FROM {_source.TableName}
+            WHERE IsEnabled = 1";
+
+        using var command = new SqlCommand(query, connection);
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            var key = reader.GetString(0);
+            var value = reader.IsDBNull(1) ? null : reader.GetString(1);
+            data[key] = value;
         }
     }
 }
