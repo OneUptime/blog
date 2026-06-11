@@ -104,11 +104,12 @@ plugins:
   - name: request-transformer
     service: user-service
     config:
-      # Add new headers to every request
+      # Add new headers to every request. Template expressions inside $(...)
+      # are evaluated as Lua, so we can call standard libraries inline.
       add:
         headers:
-          - "X-Request-ID:$(uuid)"           # Generate unique request ID
-          - "X-Gateway-Time:$(timestamp)"     # Add gateway timestamp
+          - "X-Request-ID:$(require('resty.jit-uuid').generate_v4())"  # Unique request ID
+          - "X-Gateway-Time:$(os.time())"     # Add gateway timestamp (unix seconds)
           - "X-Service-Version:2.0"           # Inject service version
 
       # Remove headers that should not reach backend
@@ -129,20 +130,26 @@ plugins:
           - "Host:user-service.internal"      # Override host header
 ```
 
-For more advanced transformations, use the `request-transformer-advanced` plugin:
+For more advanced transformations, use the `request-transformer-advanced` plugin
+(Kong Enterprise). It uses the same `$(...)` Lua-expression templating, which lets
+you derive header values from other request properties:
 
 ```yaml
-# Advanced header transformation with conditionals
+# Advanced header transformation using Lua expression templates
 plugins:
   - name: request-transformer-advanced
     service: user-service
     config:
       add:
         headers:
-          # Conditionally add headers based on request properties
-          - "X-Premium-User:true:$(headers.X-Subscription) == 'premium'"
-          - "X-Rate-Limit-Tier:high:$(headers.X-API-Key) matches '^premium-.*'"
+          # Derive header values from existing request headers
+          - "X-User-Tier:$(headers['x-subscription'] or 'standard')"
+          - "X-API-Key-Prefix:$((headers['x-api-key'] or ''):sub(1, 8))"
 ```
+
+For true conditional logic (only adding a header when a condition is met), use the
+`pre-function` or `post-function` plugin, which lets you run arbitrary Lua in the
+request lifecycle.
 
 ### NGINX Header Transformation
 
@@ -156,15 +163,15 @@ upstream user_backend {
     keepalive 32;
 }
 
+# Use incoming X-Request-ID if present, otherwise NGINX's generated id
+map $http_x_request_id $final_request_id {
+    ""      $request_id;
+    default $http_x_request_id;
+}
+
 server {
     listen 80;
     server_name api.example.com;
-
-    # Generate unique request ID if not present
-    map $request_id $final_request_id {
-        ""      $request_id;
-        default $http_x_request_id;
-    }
 
     location /api/v1/users {
         # Add new headers to proxied request
@@ -270,7 +277,7 @@ plugins:
         body:
           - "source:api-gateway"
           - "api_version:v2"
-          - "processed_at:$(timestamp)"
+          - "processed_at:$(os.time())"
 
       # Remove fields from body
       remove:
@@ -560,6 +567,16 @@ services:
           - /api/v2/users
         strip_path: true
 
+  # Use regex routes for complex URL patterns
+  - name: resource-service
+    url: http://resource-service:8080
+    routes:
+      - name: resource-by-id
+        # Match /resources/{type}/{id} and transform to /v2/{type}/item/{id}
+        paths:
+          - "~/resources/(?<type>[^/]+)/(?<id>[^/]+)"
+        strip_path: false
+
 plugins:
   # Request Transformer for query parameter manipulation
   - name: request-transformer
@@ -574,28 +591,18 @@ plugins:
           - "user_id:id"
           - "page_num:page"
 
-  # Route by header for canary deployments
+  # Route by header for canary deployments. The `condition` is a map of
+  # header-name -> expected-value (header names lowercased). When all
+  # headers match, requests are routed to the named upstream.
   - name: route-by-header
     service: user-service-v2
     config:
       rules:
         - condition:
-            header_name: X-Canary
-            header_value: "true"
+            x-canary: "true"
           upstream_name: user-service-canary
 
-# Use regex routes for complex URL patterns
-services:
-  - name: resource-service
-    url: http://resource-service:8080
-    routes:
-      - name: resource-by-id
-        # Match /resources/{type}/{id} and transform to /v2/{type}/item/{id}
-        paths:
-          - "~/resources/(?<type>[^/]+)/(?<id>[^/]+)"
-        strip_path: false
-
-plugins:
+  # Rewrite the URI on the resource-service route using named regex captures
   - name: request-transformer
     route: resource-by-id
     config:
@@ -941,17 +948,16 @@ plugins:
       rename:
         headers:
           - "Authorization:X-Internal-Auth"
-      add:
-        headers:
-          - "X-Gateway-Version:2.0"
-          - "X-Request-Time:$(timestamp)"
-        body:
-          - "source:api-gateway"
-          - "api_version:v1"
-      rename:
         body:
           - "user:customer_id"
           - "items:line_items"
+      add:
+        headers:
+          - "X-Gateway-Version:2.0"
+          - "X-Request-Time:$(os.time())"
+        body:
+          - "source:api-gateway"
+          - "api_version:v1"
 
   # Step 3: Rate limiting per tenant
   - name: rate-limiting
