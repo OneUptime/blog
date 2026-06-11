@@ -27,8 +27,8 @@ flowchart LR
         Instances[New EC2 Instances]
     end
 
-    Pods -->|Unschedulable| Scheduler
-    Scheduler -->|Watches| Karpenter
+    Pods -->|Pending| Scheduler
+    Karpenter -->|Watches unschedulable pods| Pods
     Karpenter -->|Provisions| EC2
     EC2 -->|Launches| Instances
     Instances -->|Joins| Cluster
@@ -139,7 +139,7 @@ Apply the EC2NodeClass:
 
 ```bash
 # Apply the EC2NodeClass configuration
-kubectl apply -f ec2nodeclass.yaml
+envsubst < ec2nodeclass.yaml | kubectl apply -f -
 
 # Verify the EC2NodeClass was created successfully
 kubectl get ec2nodeclasses
@@ -436,9 +436,9 @@ flowchart TB
         N6[Node 6]
     end
 
-    Karpenter[Karpenter Controller] -->|Balances| AZ1
-    Karpenter -->|Balances| AZ2
-    Karpenter -->|Balances| AZ3
+    Karpenter[Karpenter Controller] -->|Respects pod spread constraints| AZ1
+    Karpenter -->|Respects pod spread constraints| AZ2
+    Karpenter -->|Respects pod spread constraints| AZ3
 ```
 
 ### Deploying Pods with Topology Spread
@@ -557,7 +557,7 @@ spec:
     budgets:
       # Allow disrupting 20% of nodes at a time
       - nodes: "20%"
-      # Or at least 1 node
+      # Also cap voluntary disruption at 1 node
       - nodes: "1"
 ```
 
@@ -680,7 +680,7 @@ spec:
 
 ```bash
 # List all nodes provisioned by Karpenter
-kubectl get nodes -l karpenter.sh/registered=true
+kubectl get nodes -l karpenter.sh/nodepool
 
 # View node details including instance type and capacity type
 kubectl get nodes -L node.kubernetes.io/instance-type,karpenter.sh/capacity-type,topology.kubernetes.io/zone
@@ -728,11 +728,12 @@ spec:
 
 Key metrics to monitor:
 
-- `karpenter_nodes_total`: Total nodes managed by Karpenter
+- `karpenter_cluster_state_node_count`: Current node count in Karpenter's cluster state
+- `karpenter_nodes_created_total`: Total nodes created by Karpenter
 - `karpenter_pods_state`: Pod scheduling state
 - `karpenter_nodepools_limit`: Resource limits per NodePool
 - `karpenter_nodepools_usage`: Current resource usage per NodePool
-- `karpenter_interruption_received_total`: Spot interruption events
+- `karpenter_interruption_received_messages_total`: Interruption messages received from the SQS queue
 
 ## Troubleshooting
 
