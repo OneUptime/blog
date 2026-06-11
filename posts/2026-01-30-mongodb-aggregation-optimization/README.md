@@ -64,9 +64,9 @@ db.orders.aggregate([
 ]);
 ```
 
-### Use $project Early to Reduce Document Size
+### Use $project to Shape Data for Expensive Stages
 
-Smaller documents move through the pipeline faster. Remove unnecessary fields before expensive operations.
+Smaller intermediate documents can help before expensive stages such as `$lookup` or `$group`, but do not add early `$project` stages just to reduce returned fields. MongoDB already performs field-pruning optimizations for many pipelines, so use `$project` when it changes the shape of the data needed by later stages or limits fields returned from a join.
 
 ```javascript
 // Keep only fields needed for downstream stages
@@ -105,10 +105,11 @@ Aggregation pipelines can use indexes, but only under specific conditions. Under
 
 ### Stages That Can Use Indexes
 
-Only these stages at the beginning of a pipeline can use indexes:
+These stages can use indexes when they appear early enough in the pipeline for MongoDB to apply the index:
 
-- `$match` (when first or after $sort)
-- `$sort` (when first or after $match)
+- `$match` (when first after query-planner optimizations)
+- `$sort` (when first or preceded only by `$match`)
+- `$group` (in limited cases, such as finding `$first` or `$last` after sorting and grouping by the same indexed field)
 - `$geoNear` (must be first)
 
 ```javascript
@@ -154,7 +155,8 @@ db.orders.createIndex({
   amount: 1
 });
 
-// This aggregation can be covered (no document fetch)
+// This aggregation can be covered by the index for the fields it reads.
+// Verify with explain() that totalDocsExamined is 0 for your MongoDB version and query shape.
 db.orders.aggregate([
   { $match: { status: "completed" } },
   { $group: {
@@ -166,7 +168,7 @@ db.orders.aggregate([
 
 ## Memory Management
 
-By default, each pipeline stage can use up to 100MB of RAM. Exceeding this limit causes an error unless you explicitly allow disk usage.
+Many blocking pipeline stages have a 100MB in-memory limit. Starting in MongoDB 6.0, the `allowDiskUseByDefault` server parameter controls whether stages that exceed 100MB spill to temporary files by default or raise an error. You can still override this per aggregation with `allowDiskUse`.
 
 ### Allow Disk Use for Large Datasets
 
@@ -179,7 +181,7 @@ db.orders.aggregate([
 ], { allowDiskUse: true });
 ```
 
-Disk-based processing is slower than in-memory, so it is better to reduce data volume through filtering and projection first.
+Disk-based processing is slower than in-memory, so it is better to reduce data volume through filtering first and through projection where it changes what later stages must process.
 
 ### Reduce Memory with $bucket and $bucketAuto
 
@@ -276,10 +278,9 @@ const explanation = db.orders.explain("executionStats").aggregate([
   { $limit: 10 }
 ]);
 
-// Key metrics to examine
-console.log("Execution time:", explanation.stages[0].$cursor.executionStats.executionTimeMillis);
-console.log("Documents examined:", explanation.stages[0].$cursor.executionStats.totalDocsExamined);
-console.log("Index used:", explanation.stages[0].$cursor.queryPlanner.winningPlan.inputStage?.indexName);
+// The exact explain shape varies by MongoDB version and execution engine.
+// Inspect the output for executionStats, totalDocsExamined, IXSCAN/COLLSCAN, and usedDisk.
+printjson(explanation);
 ```
 
 ### What to Look For
@@ -354,7 +355,7 @@ db.events.aggregate([
 Before deploying an aggregation pipeline to production, verify these items:
 
 1. **$match is first** and uses an indexed field
-2. **$project reduces document size** before expensive operations
+2. **$project is used intentionally** when later stages need a smaller or different document shape
 3. **$lookup foreign fields are indexed**
 4. **$sort combined with $limit** for top-k queries
 5. **explain() shows IXSCAN**, not COLLSCAN
