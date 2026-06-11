@@ -60,13 +60,13 @@ The Ruler is configured in the main Loki configuration file. Here is a basic con
 # Basic Ruler configuration for Loki
 
 ruler:
-  # Directory to store temporary rule files
+  # Backend rule storage
   storage:
     type: local
     local:
       directory: /loki/rules
 
-  # Path prefix for the ruler API endpoints
+  # File path to store temporary rule files
   rule_path: /tmp/loki/rules-temp
 
   # Alertmanager configuration for sending alerts
@@ -78,7 +78,7 @@ ruler:
   # Enable the ruler API for managing rules
   enable_api: true
 
-  # Enable alerting functionality
+  # Use Alertmanager API v2
   enable_alertmanager_v2: true
 ```
 
@@ -100,6 +100,8 @@ ruler:
       # Structure: /loki/rules/<tenant_id>/<rule_group>.yaml
       directory: /loki/rules
 ```
+
+Local storage is read-only for the Ruler API. It can evaluate rules from files on disk, but creating, updating, and deleting rules through the API requires an object storage backend such as S3 or GCS.
 
 ### Amazon S3 Storage
 
@@ -141,9 +143,10 @@ ruler:
       # GCS bucket name
       bucket_name: my-loki-rules-bucket
 
-      # Path to service account JSON key file
+      # Service account JSON key content
       # Alternatively, use GOOGLE_APPLICATION_CREDENTIALS env var
-      service_account: /path/to/service-account.json
+      service_account: |
+        {"type": "service_account", "project_id": "my-project"}
 ```
 
 ## Writing Alerting Rules
@@ -301,7 +304,7 @@ ruler:
     local:
       directory: /loki/rules
 
-  # Alertmanager endpoints (can specify multiple for HA)
+  # Alertmanager endpoints
   alertmanager_url: http://alertmanager-1:9093,http://alertmanager-2:9093
 
   # How often to refresh the list of Alertmanager instances
@@ -329,8 +332,9 @@ ruler:
   # Sends recorded metrics to Prometheus/Mimir
   remote_write:
     enabled: true
-    client:
-      url: http://prometheus:9090/api/v1/write
+    clients:
+      prometheus:
+        url: http://prometheus:9090/api/v1/write
 ```
 
 ## Multi-Tenant Configuration
@@ -414,10 +418,9 @@ ruler:
   # Remote write for recording rules
   remote_write:
     enabled: true
-    client:
-      url: http://mimir:9009/api/v1/push
-      headers:
-        X-Scope-OrgID: ruler
+    clients:
+      mimir:
+        url: http://mimir:9009/api/v1/push
 
   # Notification settings
   notification_queue_capacity: 10000
@@ -479,7 +482,7 @@ curl -X DELETE -H "X-Scope-OrgID: tenant-a" \
 ### Common Issues and Solutions
 
 1. **Rules not being evaluated**
-   - Check that `enable_api: true` is set
+   - Check that the ruler is running and rule storage is configured
    - Verify rule files are in the correct directory structure
    - Check Loki logs for rule loading errors
 
