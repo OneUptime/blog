@@ -134,18 +134,19 @@ The backup window is the time available to complete backups without impacting pr
 Most organizations schedule backups during periods of low activity:
 
 ```bash
-# Analyze database activity patterns (PostgreSQL example)
+# Analyze current database activity patterns (PostgreSQL example)
 
-# This query shows hourly transaction counts to identify low-activity periods
+# This query shows currently active transactions by start hour. For historical
+# low-activity patterns, capture this periodically or use database/query logs.
 
 psql -c "
 SELECT
     extract(hour from xact_start) as hour,
-    count(*) as transaction_count
+    count(*) as active_transaction_count
 FROM pg_stat_activity
-WHERE xact_start > now() - interval '7 days'
+WHERE xact_start IS NOT NULL
 GROUP BY hour
-ORDER BY transaction_count ASC
+ORDER BY active_transaction_count ASC
 LIMIT 10;
 "
 ```
@@ -333,7 +334,7 @@ spec:
       rules:
         - alert: HighCPUDuringBackup
           expr: |
-            (node_cpu_seconds_total{mode="idle"} < 0.2)
+            (1 - avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) > 0.8)
             and on(instance) (backup_job_running == 1)
           for: 15m
           labels:
@@ -343,7 +344,7 @@ spec:
 
         - alert: HighIOWaitDuringBackup
           expr: |
-            (node_cpu_seconds_total{mode="iowait"} > 0.3)
+            (avg by (instance) (rate(node_cpu_seconds_total{mode="iowait"}[5m])) > 0.3)
             and on(instance) (backup_job_running == 1)
           for: 10m
           labels:
@@ -383,7 +384,7 @@ backup_retention.py
 Implements Grandfather-Father-Son backup retention policy.
 """
 
-import os
+import re
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -410,11 +411,11 @@ class BackupRetention:
         self.yearly_keep = yearly_keep
 
     def get_backup_date(self, filename):
-        """Extract date from backup filename (format: backup_YYYYMMDD_HHMMSS.*)"""
+        """Extract date from backup filename (format: *_YYYYMMDD_HHMMSS.*)"""
         try:
-            date_part = filename.split('_')[1]
+            date_part = re.search(r'_(\d{8})_\d{6}', filename).group(1)
             return datetime.strptime(date_part, '%Y%m%d')
-        except (IndexError, ValueError):
+        except (AttributeError, ValueError):
             return None
 
     def categorize_backups(self, backups):
@@ -487,8 +488,8 @@ class BackupRetention:
 
     def apply_retention(self, dry_run=True):
         """Apply retention policy to backup directory."""
-        backups = list(self.backup_dir.glob('backup_*.dump')) + \
-                  list(self.backup_dir.glob('backup_*.sql.gz'))
+        backups = list(self.backup_dir.glob('*_*.dump')) + \
+                  list(self.backup_dir.glob('*_*.sql.gz'))
 
         result = self.categorize_backups(backups)
 
@@ -948,6 +949,8 @@ check_lock() {
 pre_backup_checks() {
     log "INFO" "Running pre-backup checks..."
 
+    mkdir -p "${BACKUP_DIR}" "${BACKUP_DIR}/logs"
+
     # Check disk space (require 20% free)
     local free_percent=$(df "${BACKUP_DIR}" | tail -1 | awk '{print 100-$5}' | tr -d '%')
     if [ "${free_percent}" -lt 20 ]; then
@@ -974,9 +977,6 @@ execute_backup() {
     notify "started" "Full backup started"
 
     local start_time=$(date +%s)
-
-    # Create backup directory
-    mkdir -p "${BACKUP_DIR}" "${BACKUP_DIR}/logs"
 
     # Execute backup with resource throttling
     nice -n 19 ionice -c 3 \
@@ -1127,7 +1127,8 @@ spec:
         spec:
           containers:
             - name: backup
-              image: postgres:15
+              # Build this image with postgresql-client, aws-cli, curl, util-linux, and coreutils.
+              image: your-registry/postgres-backup-tools:15
               command: ["/scripts/automated-full-backup.sh"]
               envFrom:
                 - configMapRef:
