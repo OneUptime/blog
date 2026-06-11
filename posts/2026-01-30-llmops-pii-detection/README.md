@@ -91,7 +91,7 @@ This module provides a simple interface to detect PII in text.
 Presidio combines multiple detection methods:
 1. Named Entity Recognition (NER) using spaCy
 2. Pattern matching with regular expressions
-3. Checksum validation for structured data (credit cards, SSNs)
+3. Checksum validation for structured data where applicable (credit cards, for example)
 """
 
 from presidio_analyzer import AnalyzerEngine, PatternRecognizer, Pattern
@@ -130,13 +130,13 @@ def detect_pii(text: str, analyzer: AnalyzerEngine) -> List[Dict[str, Any]]:
     results = analyzer.analyze(
         text=text,
         language="en",
-        # You can specify entities to look for, or omit for all
-        # entities=["EMAIL_ADDRESS", "PHONE_NUMBER", "PERSON"]
+        # Specify the entities you need, or omit this argument for all supported entities
+        entities=["EMAIL_ADDRESS", "PHONE_NUMBER", "PERSON", "CREDIT_CARD"]
     )
 
     # Convert results to a more usable format
     detections = []
-    for result in results:
+    for result in sorted(results, key=lambda item: item.start):
         detections.append({
             "entity_type": result.entity_type,
             "start": result.start,
@@ -208,7 +208,7 @@ def create_api_key_recognizer() -> PatternRecognizer:
         # OpenAI API keys
         Pattern(
             name="openai_api_key",
-            regex=r"sk-[a-zA-Z0-9]{32,}",
+            regex=r"sk-[a-zA-Z0-9_-]{20,}",
             score=0.95
         ),
         # AWS Access Key IDs
@@ -399,6 +399,28 @@ class PIIMasker:
         self.entity_map: Dict[str, str] = {}
         self.entity_counter: Dict[str, int] = {}
 
+    @staticmethod
+    def _remove_overlapping_results(results):
+        """
+        Keep the highest-confidence result when recognizers return overlapping spans.
+        """
+        selected = []
+        candidates = sorted(
+            results,
+            key=lambda item: (item.score, item.end - item.start),
+            reverse=True
+        )
+
+        for result in candidates:
+            overlaps = any(
+                result.start < existing.end and result.end > existing.start
+                for existing in selected
+            )
+            if not overlaps:
+                selected.append(result)
+
+        return sorted(selected, key=lambda item: item.start, reverse=True)
+
     def redact(self, text: str) -> str:
         """
         Replace all PII with [REDACTED].
@@ -475,7 +497,7 @@ class PIIMasker:
         results = self.analyzer.analyze(text=text, language="en")
 
         # Sort by position (descending) to replace from end
-        sorted_results = sorted(results, key=lambda x: x.start, reverse=True)
+        sorted_results = self._remove_overlapping_results(results)
 
         hash_map = {}
         modified_text = text
@@ -506,7 +528,7 @@ class PIIMasker:
         Example: "John Smith" becomes "<PERSON_1>"
         """
         results = self.analyzer.analyze(text=text, language="en")
-        sorted_results = sorted(results, key=lambda x: x.start, reverse=True)
+        sorted_results = self._remove_overlapping_results(results)
 
         modified_text = text
 
@@ -545,7 +567,7 @@ class PIIMasker:
         Cons: Requires key management
         """
         results = self.analyzer.analyze(text=text, language="en")
-        sorted_results = sorted(results, key=lambda x: x.start, reverse=True)
+        sorted_results = self._remove_overlapping_results(results)
 
         encrypted_map = {}
         modified_text = text
@@ -627,7 +649,7 @@ an LLM inference pipeline. Key features:
 import json
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Dict, List, Any
 from presidio_analyzer import AnalyzerEngine
 from presidio_anonymizer import AnonymizerEngine
@@ -654,7 +676,9 @@ class ProcessedPrompt:
     sanitized_text: str
     detections: List[PIIDetection]
     entity_mapping: Dict[str, str]  # placeholder -> original
-    timestamp: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    timestamp: str = field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat()
+    )
 
 
 class PIISafeLLMPipeline:
@@ -778,7 +802,7 @@ class PIISafeLLMPipeline:
             return
 
         audit_entry = {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "event_type": event_type,
             **data
         }
@@ -842,6 +866,7 @@ class PIISafeLLMPipeline:
                         d.entity_type for d in response_processed.detections
                     ))
                 })
+                llm_output = response_processed.sanitized_text
 
         # Step 4: Optionally restore PII in response
         final_response = llm_output
@@ -996,7 +1021,7 @@ class OptimizedPIIDetector:
             "phone": self._compile_pattern(r"\b\d{3}[-.]?\d{3}[-.]?\d{4}\b"),
             "ssn": self._compile_pattern(r"\b\d{3}-\d{2}-\d{4}\b"),
             "credit_card": self._compile_pattern(r"\b\d{4}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4}\b"),
-            "api_key": self._compile_pattern(r"(sk-|AKIA|ghp_)[a-zA-Z0-9]{16,}"),
+            "api_key": self._compile_pattern(r"(sk-|AKIA|ghp_)[a-zA-Z0-9_-]{16,}"),
         }
 
     def quick_check(self, text: str) -> Set[str]:
@@ -1022,7 +1047,12 @@ class OptimizedPIIDetector:
             return hashlib.sha256(text.encode()).hexdigest()
         return text
 
-    def analyze(self, text: str, use_cache: bool = True) -> List[RecognizerResult]:
+    def analyze(
+        self,
+        text: str,
+        use_cache: bool = True,
+        quick_pattern_only: bool = False
+    ) -> List[RecognizerResult]:
         """
         Analyze text for PII with caching.
         """
@@ -1034,11 +1064,11 @@ class OptimizedPIIDetector:
         # Quick check first
         potential_pii = self.quick_check(text)
 
-        if not potential_pii:
-            # No potential PII found, skip full analysis
+        if not potential_pii and quick_pattern_only:
+            # Only skip full analysis when you explicitly do not need NER-based entities.
             return []
 
-        # Full analysis
+        # Full analysis is still needed for NER-based entities like PERSON and LOCATION.
         results = self.analyzer.analyze(text=text, language="en")
 
         # Cache results
@@ -1296,6 +1326,18 @@ def get_profile(regulation: str) -> ComplianceProfile:
     return profiles[regulation]
 
 
+def strictest_retention_days(
+    current: Optional[int],
+    candidate: Optional[int]
+) -> Optional[int]:
+    """Return the shortest fixed retention period, preserving 0 as a valid value."""
+    if current is None:
+        return candidate
+    if candidate is None:
+        return current
+    return min(current, candidate)
+
+
 def merge_profiles(regulations: List[str]) -> ComplianceProfile:
     """
     Merge multiple compliance profiles.
@@ -1320,10 +1362,10 @@ def merge_profiles(regulations: List[str]) -> ComplianceProfile:
                         if MaskingStrategy.ENCRYPT in [existing.masking_strategy, entity.masking_strategy]
                         else existing.masking_strategy,
                     retain_in_logs=existing.retain_in_logs and entity.retain_in_logs,
-                    retention_days=min(
-                        existing.retention_days or 0,
-                        entity.retention_days or 0
-                    ) or None
+                    retention_days=strictest_retention_days(
+                        existing.retention_days,
+                        entity.retention_days
+                    )
                 )
             else:
                 entity_map[entity.entity_type] = entity
@@ -1367,7 +1409,7 @@ TRUE_POSITIVE_CASES: List[Tuple[str, List[str]]] = [
     # Phone numbers
     ("Call 555-123-4567 for support", ["PHONE_NUMBER"]),
     ("Phone: (555) 123-4567", ["PHONE_NUMBER"]),
-    ("Intl: +1-555-123-4567", ["PHONE_NUMBER"]),
+    ("Intl phone: +1 212 555 5555", ["PHONE_NUMBER"]),
 
     # Names
     ("John Smith placed an order", ["PERSON"]),
@@ -1417,7 +1459,7 @@ EDGE_CASES: List[Tuple[str, str, bool]] = [
     ("See ticket JIRA-12345", "INTERNAL_ID", False),
 
     # Dates that could be birthdates
-    ("DOB: 01/15/1990", "DATE_TIME", True),
+    ("Date of birth: 01/15/1990", "DATE_TIME", True),
 
     # Masked data
     ("Email: j***@***.com", "EMAIL_ADDRESS", False),
