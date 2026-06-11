@@ -17,10 +17,10 @@ Start with the smallest base image that meets your requirements. Alpine Linux an
 ```dockerfile
 # Instead of using full ubuntu or debian
 
-FROM node:20-alpine
+FROM node:22-alpine
 
 # Or even better for production - distroless
-FROM gcr.io/distroless/nodejs20-debian12
+FROM gcr.io/distroless/nodejs22-debian13
 ```
 
 Distroless images contain only your application and its runtime dependencies, removing shells, package managers, and other utilities that attackers could exploit.
@@ -31,15 +31,16 @@ Multi-stage builds allow you to use different images for building and running yo
 
 ```dockerfile
 # Build stage
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci
 COPY . .
 RUN npm run build
+RUN npm prune --omit=dev
 
 # Production stage
-FROM node:20-alpine AS production
+FROM node:22-alpine AS production
 WORKDIR /app
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
@@ -54,7 +55,7 @@ This approach keeps build tools, source code, and development dependencies out o
 Never run containers as root in production. Create a dedicated user with minimal privileges.
 
 ```dockerfile
-FROM node:20-alpine
+FROM node:22-alpine
 
 # Create non-root user
 RUN addgroup -g 1001 appgroup && \
@@ -71,10 +72,10 @@ Running as non-root limits the damage an attacker can do if they compromise your
 
 ## Implement Health Checks
 
-Health checks enable orchestrators like Kubernetes to monitor container health and restart unhealthy instances automatically.
+Health checks enable Docker and Docker Compose to monitor container health. In Kubernetes, configure liveness, readiness, and startup probes in your Pod specs instead of relying on Dockerfile `HEALTHCHECK`.
 
 ```dockerfile
-FROM node:20-alpine
+FROM node:22-alpine
 WORKDIR /app
 COPY . .
 
@@ -94,9 +95,22 @@ Containers receive SIGTERM when stopping. Your application must handle this sign
 // Proper signal handling in Node.js
 process.on('SIGTERM', async () => {
     console.log('SIGTERM received, shutting down gracefully');
-    await server.close();
-    await database.disconnect();
-    process.exit(0);
+    try {
+        await new Promise((resolve, reject) => {
+            server.close((error) => {
+                if (error) {
+                    reject(error);
+                    return;
+                }
+                resolve();
+            });
+        });
+        await database.disconnect();
+        process.exit(0);
+    } catch (error) {
+        console.error('Graceful shutdown failed', error);
+        process.exit(1);
+    }
 });
 ```
 
@@ -115,7 +129,7 @@ CMD node server.js
 Send logs to stdout/stderr so container orchestrators can collect them properly.
 
 ```dockerfile
-FROM node:20-alpine
+FROM node:22-alpine
 WORKDIR /app
 COPY . .
 
@@ -151,13 +165,10 @@ trivy image --severity HIGH,CRITICAL myapp:latest
 docker scout cves myapp:latest
 ```
 
-Include scanning in your Dockerfile for build-time checks:
+For source and dependency checks before building the image, run a filesystem scan in CI:
 
-```dockerfile
-FROM node:20-alpine
-RUN apk add --no-cache trivy
-COPY . .
-RUN trivy filesystem --exit-code 1 --severity HIGH,CRITICAL /app
+```bash
+trivy fs --exit-code 1 --severity HIGH,CRITICAL .
 ```
 
 ## Pin Dependencies and Versions
@@ -166,11 +177,11 @@ Always pin base image versions and dependency versions to ensure reproducible bu
 
 ```dockerfile
 # Pin specific version
-FROM node:20.11.0-alpine3.19
+FROM node:22.22.3-alpine3.23
 
 # Pin package versions
 RUN apk add --no-cache \
-    curl=8.5.0-r0 \
+    curl=8.19.0-r0 \
     dumb-init=1.2.5-r3
 ```
 
