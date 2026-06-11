@@ -8,11 +8,11 @@ Description: Learn how to secure your Kubernetes workloads with Linkerd Authoriz
 
 ---
 
-Linkerd provides a powerful policy system for controlling which workloads can communicate with each other. Unlike Kubernetes Network Policies that operate at Layer 3/4, Linkerd Authorization Policies work at Layer 7 and leverage mutual TLS identities for cryptographically verified access control.
+Linkerd provides a powerful policy system for controlling which workloads can communicate with each other. Unlike Kubernetes Network Policies that operate at Layer 3/4, Linkerd Authorization Policies can apply at the service port or HTTP/gRPC route level and leverage mutual TLS identities for cryptographically verified access control.
 
 ## Understanding Linkerd Authorization Policy
 
-Authorization Policies in Linkerd define who can access your workloads based on their mesh identity. Every workload in the Linkerd mesh gets a cryptographic identity derived from its Kubernetes ServiceAccount, enabling secure, identity-based access control.
+Authorization Policies in Linkerd define who can access your workloads based on authentication rules such as mesh identity or source network. Every workload in the Linkerd mesh gets a cryptographic identity derived from its Kubernetes ServiceAccount, enabling secure, identity-based access control.
 
 ```mermaid
 flowchart TB
@@ -37,14 +37,14 @@ The `AuthorizationPolicy` resource is the core building block. It specifies whic
 ```yaml
 # AuthorizationPolicy defines access rules for a target workload
 
-apiVersion: policy.linkerd.io/v1beta3
+apiVersion: policy.linkerd.io/v1alpha1
 kind: AuthorizationPolicy
 metadata:
   name: api-authz           # Name of this policy
   namespace: production     # Namespace where target workload lives
 spec:
   targetRef:
-    group: core             # API group of the target resource
+    group: policy.linkerd.io # API group of the target resource
     kind: Server            # Can be Server, HTTPRoute, or GRPCRoute
     name: api-server        # Name of the target resource
   requiredAuthenticationRefs:
@@ -60,7 +60,7 @@ The `targetRef` field supports multiple resource types:
 ```yaml
 # Target a Server resource (most common)
 targetRef:
-  group: core
+  group: policy.linkerd.io
   kind: Server
   name: my-server
 
@@ -72,7 +72,7 @@ targetRef:
 
 # Target a GRPCRoute for gRPC services
 targetRef:
-  group: policy.linkerd.io
+  group: gateway.networking.k8s.io
   kind: GRPCRoute
   name: grpc-routes
 ```
@@ -83,7 +83,7 @@ Before creating an AuthorizationPolicy, define a `Server` resource to identify t
 
 ```yaml
 # Server resource identifies ports that require authorization
-apiVersion: policy.linkerd.io/v1beta2
+apiVersion: policy.linkerd.io/v1beta3
 kind: Server
 metadata:
   name: api-server
@@ -115,8 +115,19 @@ spec:
   identities:
     # Allow the frontend ServiceAccount from production namespace
     - "frontend.production.serviceaccount.identity.linkerd.cluster.local"
+```
+
+Or reference ServiceAccounts directly:
+
+```yaml
+# MeshTLSAuthentication verifies client identity via mTLS
+apiVersion: policy.linkerd.io/v1alpha1
+kind: MeshTLSAuthentication
+metadata:
+  name: frontend-identity
+  namespace: production
+spec:
   identityRefs:
-    # Or reference ServiceAccounts directly
     - kind: ServiceAccount
       name: frontend
       namespace: production
@@ -146,7 +157,7 @@ Understanding how Linkerd evaluates policies is crucial for debugging.
 ```mermaid
 flowchart TD
     R[Incoming Request] --> S{Server Defined?}
-    S -->|No| A1[Allow - No policy]
+    S -->|No| D1[Default Action]
     S -->|Yes| P{AuthorizationPolicy Exists?}
     P -->|No| D1[Default Action]
     P -->|Yes| E{Evaluate Rules}
@@ -186,7 +197,7 @@ spec:
       kind: Server
       group: policy.linkerd.io
   rules:
-    # Public health endpoint - no auth required
+    # Health endpoint route match
     - matches:
         - path:
             type: Exact
@@ -200,7 +211,22 @@ spec:
             value: /api/v1
           method: GET
 
-    # Admin endpoints - separate policy
+```
+
+Define a separate route if admin endpoints need their own authorization policy:
+
+```yaml
+apiVersion: policy.linkerd.io/v1beta3
+kind: HTTPRoute
+metadata:
+  name: admin-routes
+  namespace: production
+spec:
+  parentRefs:
+    - name: api-server
+      kind: Server
+      group: policy.linkerd.io
+  rules:
     - matches:
         - path:
             type: PathPrefix
@@ -211,7 +237,7 @@ spec:
 
 ```yaml
 # AuthorizationPolicy for specific routes
-apiVersion: policy.linkerd.io/v1beta3
+apiVersion: policy.linkerd.io/v1alpha1
 kind: AuthorizationPolicy
 metadata:
   name: api-read-policy
@@ -227,7 +253,7 @@ spec:
       group: policy.linkerd.io
 ---
 # Separate policy for admin routes
-apiVersion: policy.linkerd.io/v1beta3
+apiVersion: policy.linkerd.io/v1alpha1
 kind: AuthorizationPolicy
 metadata:
   name: admin-policy
@@ -249,7 +275,7 @@ Here is a complete example securing a three-tier application.
 
 ```yaml
 # Define the Server for the API service
-apiVersion: policy.linkerd.io/v1beta2
+apiVersion: policy.linkerd.io/v1beta3
 kind: Server
 metadata:
   name: api-server
@@ -262,7 +288,7 @@ spec:
   proxyProtocol: HTTP/2
 ---
 # Define the Server for the database service
-apiVersion: policy.linkerd.io/v1beta2
+apiVersion: policy.linkerd.io/v1beta3
 kind: Server
 metadata:
   name: postgres-server
@@ -299,14 +325,14 @@ spec:
       namespace: production
 ---
 # API authorization - only frontend can access
-apiVersion: policy.linkerd.io/v1beta3
+apiVersion: policy.linkerd.io/v1alpha1
 kind: AuthorizationPolicy
 metadata:
   name: api-authz
   namespace: production
 spec:
   targetRef:
-    group: core
+    group: policy.linkerd.io
     kind: Server
     name: api-server
   requiredAuthenticationRefs:
@@ -315,14 +341,14 @@ spec:
       group: policy.linkerd.io
 ---
 # Database authorization - only API can access
-apiVersion: policy.linkerd.io/v1beta3
+apiVersion: policy.linkerd.io/v1alpha1
 kind: AuthorizationPolicy
 metadata:
   name: postgres-authz
   namespace: production
 spec:
   targetRef:
-    group: core
+    group: policy.linkerd.io
     kind: Server
     name: postgres-server
   requiredAuthenticationRefs:
@@ -384,25 +410,38 @@ spec:
   networks:
     - cidr: 10.100.0.0/16    # Legacy VM subnet
 ---
-apiVersion: policy.linkerd.io/v1beta3
+apiVersion: policy.linkerd.io/v1alpha1
 kind: AuthorizationPolicy
 metadata:
   name: hybrid-authz
   namespace: production
 spec:
   targetRef:
-    group: core
+    group: policy.linkerd.io
     kind: Server
     name: api-server
   requiredAuthenticationRefs:
-    # Either mesh identity OR network match will allow access
     - name: mesh-clients
       kind: MeshTLSAuthentication
       group: policy.linkerd.io
+---
+apiVersion: policy.linkerd.io/v1alpha1
+kind: AuthorizationPolicy
+metadata:
+  name: hybrid-legacy-authz
+  namespace: production
+spec:
+  targetRef:
+    group: policy.linkerd.io
+    kind: Server
+    name: api-server
+  requiredAuthenticationRefs:
     - name: legacy-clients
       kind: NetworkAuthentication
       group: policy.linkerd.io
 ```
+
+When multiple entries are listed in a single `requiredAuthenticationRefs` array, Linkerd requires all of them to match. Use separate `AuthorizationPolicy` resources when either authentication method should be sufficient.
 
 ## Default Policy Configuration
 
@@ -410,11 +449,9 @@ Set cluster-wide defaults using Linkerd's configuration.
 
 ```yaml
 # Configure default policy during Linkerd installation
-# In your Linkerd Helm values
-policy:
-  defaultPolicy: deny              # Options: deny, all-authenticated, all-unauthenticated, audit
-  defaultInboundPolicy: deny       # Default for inbound traffic
-  defaultOutboundPolicy: allow     # Default for outbound traffic
+# In your Linkerd control-plane Helm values
+proxy:
+  defaultInboundPolicy: deny       # Options include deny, all-authenticated, all-unauthenticated, cluster-authenticated, cluster-unauthenticated, audit
 ```
 
 ### Per-Namespace Defaults
@@ -502,10 +539,8 @@ kubectl get pods -n production -o jsonpath='{range .items[*]}{.metadata.name}{"\
 # View proxy logs for auth decisions
 kubectl logs deployment/api -n production -c linkerd-proxy | grep -i auth
 
-# Check client identity
-kubectl exec deployment/frontend -n production -c linkerd-proxy -- \
-  cat /var/run/secrets/kubernetes.io/serviceaccount/token | \
-  cut -d. -f2 | base64 -d | jq .sub
+# Check the Linkerd proxy certificate identity
+linkerd identity -n production -l app=frontend
 ```
 
 ## Best Practices
@@ -515,13 +550,18 @@ kubectl exec deployment/frontend -n production -c linkerd-proxy -- \
 Before enforcing deny policies, use audit mode to understand traffic patterns.
 
 ```yaml
-# Start with audit mode to log without blocking
-apiVersion: v1
-kind: Namespace
+# Start with audit mode to log without blocking on a specific Server
+apiVersion: policy.linkerd.io/v1beta3
+kind: Server
 metadata:
-  name: production
-  annotations:
-    config.linkerd.io/default-inbound-policy: audit
+  name: api-server
+  namespace: production
+spec:
+  accessPolicy: audit
+  podSelector:
+    matchLabels:
+      app: api
+  port: 8080
 ```
 
 ### 2. Use Explicit ServiceAccount References
@@ -553,7 +593,7 @@ policies/
 ### 4. Document Policy Intent
 
 ```yaml
-apiVersion: policy.linkerd.io/v1beta3
+apiVersion: policy.linkerd.io/v1alpha1
 kind: AuthorizationPolicy
 metadata:
   name: api-authz
