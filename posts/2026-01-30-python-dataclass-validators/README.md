@@ -429,7 +429,7 @@ class NumberConstraints:
             raise ValueError(f"{field_name} must be <= {self.le}")
         if self.gt is not None and value <= self.gt:
             raise ValueError(f"{field_name} must be > {self.gt}")
-        if self.lt is not None and value < self.lt:
+        if self.lt is not None and value >= self.lt:
             raise ValueError(f"{field_name} must be < {self.lt}")
 
 
@@ -546,8 +546,8 @@ class PydanticUser:
     username: str
     email: str
     age: int
-    tags: List[str] = None
-    created_at: datetime = None
+    tags: Optional[List[str]] = None
+    created_at: Optional[datetime] = None
 
     @field_validator('username')
     @classmethod
