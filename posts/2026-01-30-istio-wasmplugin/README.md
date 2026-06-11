@@ -29,7 +29,7 @@ flowchart TB
             AUTHN[AUTHN Phase<br/>Authentication Plugins]
             AUTHZ[AUTHZ Phase<br/>Authorization Plugins]
             STATS[STATS Phase<br/>Metrics/Logging Plugins]
-            UNSPECIFIED[UNSPECIFIED Phase<br/>General Plugins]
+            UNSPECIFIED[Omitted/UNSPECIFIED_PHASE<br/>General Plugins]
         end
 
         Router[Router]
@@ -55,7 +55,7 @@ flowchart TB
 | AUTHN | First | Token validation, identity extraction |
 | AUTHZ | Second | Access control, permission checks |
 | STATS | Third | Metrics collection, request logging |
-| UNSPECIFIED | Last | General request/response modification |
+| Omitted/UNSPECIFIED_PHASE | Last | General request/response modification |
 
 ## WasmPlugin Resource Specification
 
@@ -85,7 +85,7 @@ spec:
   # Phase determines when the plugin executes in the filter chain
   phase: AUTHN
 
-  # Priority within the phase (lower runs first)
+  # Priority within the phase (higher runs first)
   priority: 10
 ```
 
@@ -110,12 +110,12 @@ spec:
   url: oci://ghcr.io/myorg/auth-plugin:v2.1.0
 
   # SHA256 verification for the module
-  sha256: a]b1c2d3e4f5...
+  sha256: abc123def456abc123def456abc123def456abc123def456abc123def456abcd
 
   # Plugin execution phase
   phase: AUTHN
 
-  # Priority within phase (0-1000, lower = earlier)
+  # Priority within phase (higher = earlier)
   priority: 5
 
   # Plugin configuration passed to the module
@@ -138,14 +138,9 @@ spec:
       - name: LOG_LEVEL
         value: "debug"
       - name: SERVICE_NAME
-        valueFrom:
-          fieldRef:
-            fieldPath: metadata.name
+        value: "api-gateway"
       - name: API_KEY
-        valueFrom:
-          secretKeyRef:
-            name: plugin-secrets
-            key: api-key
+        valueFrom: HOST
 
   # Image pull policy
   imagePullPolicy: IfNotPresent
@@ -177,7 +172,7 @@ sequenceDiagram
     participant A as AUTHN Plugins
     participant Z as AUTHZ Plugins
     participant S as STATS Plugins
-    participant U as UNSPECIFIED Plugins
+    participant U as Omitted Phase Plugins
     participant B as Backend
 
     C->>E: HTTP Request
@@ -293,10 +288,10 @@ Package and distribute your Wasm modules using OCI registries.
 
 ```bash
 # Build the Wasm module (example using Rust)
-cargo build --target wasm32-wasi --release
+cargo build --target wasm32-wasip1 --release
 
 # Copy the module
-cp target/wasm32-wasi/release/my_plugin.wasm ./plugin.wasm
+cp target/wasm32-wasip1/release/my_plugin.wasm ./plugin.wasm
 
 # Create OCI artifact using ORAS
 oras push ghcr.io/myorg/my-wasm-plugin:v1.0.0 \
@@ -345,8 +340,8 @@ spec:
     matchLabels:
       app: my-service
   url: oci://ghcr.io/myorg/my-plugin:v1.0.0
-  # Get SHA256: oras manifest fetch ghcr.io/myorg/my-plugin:v1.0.0 | jq -r '.layers[0].digest'
-  sha256: sha256:abc123def456...
+  # Get SHA256: oras manifest fetch ghcr.io/myorg/my-plugin:v1.0.0 | jq -r '.layers[0].digest' | cut -d: -f2
+  sha256: abc123def456abc123def456abc123def456abc123def456abc123def456abcd
 ```
 
 ## Plugin Configuration
@@ -367,7 +362,7 @@ spec:
     matchLabels:
       app: api-gateway
   url: oci://ghcr.io/myorg/rate-limiter:v1.0.0
-  phase: UNSPECIFIED
+  # Omit phase for plugins that are independent of Istio authentication, authorization, and stats filters.
   pluginConfig:
     # Rate limiting rules
     default_limit: 100
@@ -393,7 +388,7 @@ spec:
 ### Environment Variables
 
 ```yaml
-# Environment variables from various sources
+# Environment variables from inline values or the proxy environment
 apiVersion: extensions.istio.io/v1alpha1
 kind: WasmPlugin
 metadata:
@@ -410,30 +405,16 @@ spec:
       - name: LOG_LEVEL
         value: "info"
 
-      # From pod metadata
+      # Inline values
       - name: POD_NAME
-        valueFrom:
-          fieldRef:
-            fieldPath: metadata.name
+        value: "my-service-pod"
 
       - name: POD_NAMESPACE
-        valueFrom:
-          fieldRef:
-            fieldPath: metadata.namespace
+        value: "default"
 
-      # From Secret
+      # From the proxy environment variable with the same name
       - name: API_SECRET
-        valueFrom:
-          secretKeyRef:
-            name: plugin-secrets
-            key: api-secret
-
-      # From ConfigMap
-      - name: CONFIG_VALUE
-        valueFrom:
-          configMapKeyRef:
-            name: plugin-config
-            key: some-value
+        valueFrom: HOST
 ```
 
 ## Writing a Wasm Plugin
@@ -621,11 +602,11 @@ impl HttpContext for HeaderModifierHttp {
 
 ```bash
 # Build the Wasm module
-cargo build --target wasm32-wasi --release
+cargo build --target wasm32-wasip1 --release
 
 # Optimize the module size (optional)
 wasm-opt -Os -o plugin-optimized.wasm \
-  target/wasm32-wasi/release/header_modifier.wasm
+  target/wasm32-wasip1/release/header_modifier.wasm
 
 # Push to registry
 oras push ghcr.io/myorg/header-modifier:v1.0.0 \
@@ -773,8 +754,8 @@ kubectl get wasmplugins -A
 # Describe specific plugin
 kubectl describe wasmplugin my-plugin -n istio-system
 
-# Check if module is loaded in Envoy
-istioctl proxy-config wasm deploy/my-service -n default
+# Check if the extension configuration is loaded in Envoy
+istioctl proxy-config ecds deploy/my-service -n default
 ```
 
 ### View Plugin Logs
