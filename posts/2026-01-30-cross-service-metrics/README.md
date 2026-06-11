@@ -67,7 +67,7 @@ The fundamental challenge is correlation. How do you connect a metric emitted by
 
 Solutions include:
 
-- **Trace ID propagation**: Attach a unique trace ID to every request and include it in metric labels
+- **Trace ID propagation**: Attach a unique trace ID to every request and use traces or exemplars for high-cardinality correlation instead of putting trace IDs in ordinary metric labels
 - **Service graph construction**: Build a dependency graph and aggregate metrics along edges
 - **Semantic conventions**: Use consistent naming (e.g., `operation.name`, `service.name`) so metrics from different services can be joined
 
@@ -131,7 +131,17 @@ The key insight is that you already have trace data with timing information. You
 // flow-metrics-processor.ts
 // This processor runs in your OpenTelemetry Collector or a dedicated aggregator
 
-import { Span, SpanStatusCode } from '@opentelemetry/api';
+import { SpanStatusCode } from '@opentelemetry/api';
+
+interface CollectedSpan {
+  name: string;
+  startTimeMs: number;
+  endTimeMs: number;
+  attributes: Record<string, string | number | boolean | undefined>;
+  status: {
+    code: SpanStatusCode;
+  };
+}
 
 interface FlowMetrics {
   flowName: string;
@@ -143,21 +153,21 @@ interface FlowMetrics {
 }
 
 // Aggregate spans belonging to the same trace into flow metrics
-function aggregateTraceToFlowMetrics(spans: Span[]): FlowMetrics {
+function aggregateTraceToFlowMetrics(spans: CollectedSpan[]): FlowMetrics {
   // Sort spans by start time to find the root
   const sortedSpans = [...spans].sort((a, b) =>
-    a.startTime[0] - b.startTime[0]
+    a.startTimeMs - b.startTimeMs
   );
 
   const rootSpan = sortedSpans[0];
   const lastSpan = sortedSpans.reduce((latest, span) => {
-    const spanEnd = span.endTime[0];
-    const latestEnd = latest.endTime[0];
+    const spanEnd = span.endTimeMs;
+    const latestEnd = latest.endTimeMs;
     return spanEnd > latestEnd ? span : latest;
   }, sortedSpans[0]);
 
   // Calculate total duration from first span start to last span end
-  const totalDuration = lastSpan.endTime[0] - rootSpan.startTime[0];
+  const totalDuration = (lastSpan.endTimeMs - rootSpan.startTimeMs) / 1000;
 
   // Count unique services
   const services = new Set(spans.map(s => s.attributes['service.name']));
@@ -166,7 +176,7 @@ function aggregateTraceToFlowMetrics(spans: Span[]): FlowMetrics {
   const stages = new Map<string, number>();
   spans.forEach(span => {
     const stageName = `${span.attributes['service.name']}.${span.name}`;
-    const duration = span.endTime[0] - span.startTime[0];
+    const duration = (span.endTimeMs - span.startTimeMs) / 1000;
     stages.set(stageName, (stages.get(stageName) || 0) + duration);
   });
 
@@ -192,27 +202,33 @@ Each service must propagate context and add consistent attributes:
 // instrumentation.ts
 // Add this to each service in the request flow
 
-import { trace, context, SpanStatusCode } from '@opentelemetry/api';
-import { SemanticAttributes } from '@opentelemetry/semantic-conventions';
-
-const tracer = trace.getTracer('checkout-service', '1.0.0');
+import { trace, context } from '@opentelemetry/api';
+import { Request, Response, NextFunction } from 'express';
+import {
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+} from '@opentelemetry/semantic-conventions';
 
 // Middleware that extracts flow metadata and ensures propagation
-export function flowTrackingMiddleware(req: Request, res: Response, next: Function) {
+export function flowTrackingMiddleware(req: Request, res: Response, next: NextFunction) {
   const activeSpan = trace.getSpan(context.active());
 
   if (activeSpan) {
     // Add flow-level attributes that will be used for aggregation
     activeSpan.setAttribute('flow.name', determineFlowName(req));
-    activeSpan.setAttribute('flow.entry_point', req.headers['x-flow-entry'] || 'direct');
+    activeSpan.setAttribute('flow.entry_point', getFirstHeader(req.headers['x-flow-entry']) || 'direct');
     activeSpan.setAttribute('flow.stage', 'checkout-service');
 
     // Add service identity for cross-service correlation
-    activeSpan.setAttribute(SemanticAttributes.SERVICE_NAME, 'checkout-service');
-    activeSpan.setAttribute(SemanticAttributes.SERVICE_VERSION, process.env.VERSION || '1.0.0');
+    activeSpan.setAttribute(ATTR_SERVICE_NAME, 'checkout-service');
+    activeSpan.setAttribute(ATTR_SERVICE_VERSION, process.env.VERSION || '1.0.0');
   }
 
   next();
+}
+
+function getFirstHeader(value: string | string[] | undefined): string {
+  return Array.isArray(value) ? value[0] : value || '';
 }
 
 // Determine the business flow based on the request
@@ -302,8 +318,8 @@ Wrap all outbound calls to automatically collect dependency metrics:
 // dependency-tracker.ts
 // Wraps HTTP clients and other outbound calls to collect dependency metrics
 
-import { trace, SpanKind, SpanStatusCode, context } from '@opentelemetry/api';
-import { Counter, Histogram, Registry } from 'prom-client';
+import { trace, SpanKind, SpanStatusCode } from '@opentelemetry/api';
+import { Counter, Histogram } from 'prom-client';
 
 // Initialize metrics
 const dependencyDuration = new Histogram({
@@ -534,8 +550,8 @@ If you are running a service mesh like Istio, Linkerd, or Cilium, you get cross-
 | `istio_requests_total` | Total requests between services | Envoy sidecar |
 | `istio_request_duration_milliseconds` | Request latency distribution | Envoy sidecar |
 | `istio_tcp_connections_opened_total` | TCP connections established | Envoy sidecar |
-| `linkerd_request_total` | Total requests (Linkerd) | Linkerd proxy |
-| `linkerd_response_latency_ms` | Response latency (Linkerd) | Linkerd proxy |
+| `request_total` | Total requests (Linkerd) | Linkerd proxy |
+| `response_latency_ms` | Response latency (Linkerd) | Linkerd proxy |
 
 ### 5.2 Service Mesh Architecture
 
@@ -575,7 +591,7 @@ Configure Istio to expose detailed cross-service metrics:
 
 # Apply with: kubectl apply -f istio-telemetry.yaml
 
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: mesh-default
@@ -726,14 +742,14 @@ OpenTelemetry provides the foundation for cross-service metrics through context 
 
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
-import { OTLPTraceExporter } from '@opentelemetry/exporter-otlp-http';
+import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
 import { PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
-import { Resource } from '@opentelemetry/resources';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 import {
-  SEMRESATTRS_SERVICE_NAME,
-  SEMRESATTRS_SERVICE_VERSION,
-  SEMRESATTRS_DEPLOYMENT_ENVIRONMENT,
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+  ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
 } from '@opentelemetry/semantic-conventions';
 
 interface TelemetryConfig {
@@ -765,24 +781,28 @@ export function initializeTelemetry(config: TelemetryConfig): NodeSDK {
   // Create SDK with shared resource attributes
   // These attributes will be attached to all telemetry
   const sdk = new NodeSDK({
-    resource: new Resource({
-      [SEMRESATTRS_SERVICE_NAME]: config.serviceName,
-      [SEMRESATTRS_SERVICE_VERSION]: config.serviceVersion,
-      [SEMRESATTRS_DEPLOYMENT_ENVIRONMENT]: config.environment,
+    resource: resourceFromAttributes({
+      [ATTR_SERVICE_NAME]: config.serviceName,
+      [ATTR_SERVICE_VERSION]: config.serviceVersion,
+      [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: config.environment,
       // Custom attributes for cross-service correlation
       'service.team': process.env.TEAM_NAME || 'platform',
       'service.tier': process.env.SERVICE_TIER || 'standard',
     }),
     traceExporter,
-    metricReader,
+    metricReaders: [metricReader],
     instrumentations: [
       getNodeAutoInstrumentations({
         // Configure HTTP instrumentation to propagate context
         '@opentelemetry/instrumentation-http': {
           requestHook: (span, request) => {
+            const headers = (request as { headers?: Record<string, string | string[] | undefined> }).headers || {};
+            const requestId = Array.isArray(headers['x-request-id']) ? headers['x-request-id'][0] : headers['x-request-id'];
+            const flowName = Array.isArray(headers['x-flow-name']) ? headers['x-flow-name'][0] : headers['x-flow-name'];
+
             // Add cross-service correlation attributes
-            span.setAttribute('http.request.id', request.headers['x-request-id'] || '');
-            span.setAttribute('flow.name', request.headers['x-flow-name'] || 'unknown');
+            span.setAttribute('http.request.id', requestId || '');
+            span.setAttribute('flow.name', flowName || 'unknown');
           },
         },
       }),
@@ -812,16 +832,15 @@ export function initializeTelemetry(config: TelemetryConfig): NodeSDK {
 import {
   metrics,
   ValueType,
-  ObservableResult,
 } from '@opentelemetry/api';
 
 const meter = metrics.getMeter('cross-service-metrics', '1.0.0');
 
 // Histogram for tracking request duration across service boundaries
 // The combination of labels enables cross-service queries
-const requestDuration = meter.createHistogram('cross_service_request_duration', {
+const requestDuration = meter.createHistogram('cross_service_request_duration_seconds', {
   description: 'Duration of requests that may span multiple services',
-  unit: 'ms',
+  unit: 's',
   valueType: ValueType.DOUBLE,
 });
 
@@ -870,7 +889,7 @@ export function recordCrossServiceRequest(
     'error.type': ctx.errorType || '',
   };
 
-  requestDuration.record(durationMs, labels);
+  requestDuration.record(durationMs / 1000, labels);
   requestCounter.add(1, labels);
 }
 
@@ -1148,7 +1167,7 @@ service:
 # 1. End-to-end latency for a business flow
 # Aggregates timing across all services in the checkout flow
 histogram_quantile(0.95,
-  sum(rate(cross_service_request_duration_bucket{
+  sum(rate(cross_service_request_duration_seconds_bucket{
     flow_name="checkout_flow"
   }[5m])) by (le)
 )
@@ -1174,7 +1193,7 @@ sum(rate(dependency_request_total[5m])) by (caller, callee)
 # Identifies which service-to-service calls are slowest
 topk(10,
   histogram_quantile(0.95,
-    sum(rate(cross_service_request_duration_bucket[5m])) by (source_service, target_service, le)
+    sum(rate(cross_service_request_duration_seconds_bucket[5m])) by (source_service, target_service, le)
   )
 )
 
@@ -1315,7 +1334,7 @@ const crossServiceDashboard = {
       gridPos: { x: 12, y: 4, w: 12, h: 10 },
       queries: [{
         expr: `
-          sum(rate(cross_service_request_duration_bucket[5m])) by (source_service, target_service, le)
+          sum(rate(cross_service_request_duration_seconds_bucket[5m])) by (source_service, target_service, le)
         `,
       }],
     },
@@ -1476,7 +1495,7 @@ export type StatusValue = typeof StatusValues[keyof typeof StatusValues];
 // async-flow-tracking.ts
 // Handling async flows like message queues
 
-import { trace, SpanKind, Link } from '@opentelemetry/api';
+import { context, trace, SpanKind, Link, TraceFlags } from '@opentelemetry/api';
 
 const tracer = trace.getTracer('async-flow');
 
@@ -1497,7 +1516,7 @@ export function produceMessage(
   payload: any,
   flowContext: { flowId: string; flowName: string }
 ): QueueMessage {
-  const currentSpan = trace.getSpan(trace.getActiveSpan()?.spanContext() ? undefined : undefined);
+  const currentSpan = trace.getSpan(context.active());
   const spanContext = currentSpan?.spanContext();
 
   return {
@@ -1523,7 +1542,7 @@ export function consumeMessage(message: QueueMessage): void {
       context: {
         traceId: metadata.producerTraceId,
         spanId: metadata.producerSpanId,
-        traceFlags: 1,
+        traceFlags: TraceFlags.SAMPLED,
       },
       attributes: {
         'link.type': 'async_producer',
@@ -1841,9 +1860,9 @@ With this setup, you can query:
 )
 
 # Time spent in each service
-avg(rate(cross_service_request_duration_sum{flow_name="checkout_flow"}[5m])) by (target_service)
+avg(rate(cross_service_request_duration_seconds_sum{flow_name="checkout_flow"}[5m])) by (target_service)
 /
-avg(rate(cross_service_request_duration_count{flow_name="checkout_flow"}[5m])) by (target_service)
+avg(rate(cross_service_request_duration_seconds_count{flow_name="checkout_flow"}[5m])) by (target_service)
 
 # Stripe dependency health
 sum(rate(dependency_error_total{callee="stripe-api"}[5m]))
