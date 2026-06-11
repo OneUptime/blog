@@ -224,8 +224,14 @@ function semanticMerge<T extends Record<string, any>>(
       // Use custom semantic merger for this field
       result[key] = mergers[key](base[key], ours[key], theirs[key]);
     } else {
-      // Fall back to last-write-wins for unspecified fields
-      result[key] = theirs[key] ?? ours[key] ?? base[key];
+      // Fall back to a simple three-way field merge for unspecified fields
+      const oursChanged = !deepEqual(base[key], ours[key]);
+      const theirsChanged = !deepEqual(base[key], theirs[key]);
+
+      if (oursChanged && !theirsChanged) result[key] = ours[key];
+      else if (!oursChanged && theirsChanged) result[key] = theirs[key];
+      else if (deepEqual(ours[key], theirs[key])) result[key] = ours[key];
+      else result[key] = theirs[key]; // unresolved field-level conflict policy
     }
   }
 
@@ -379,7 +385,7 @@ class MergeStrategyRegistry<T> {
 ### Example: Document Merge Strategies
 
 ```typescript
-interface Document {
+interface CollaborativeDocument {
   id: string;
   title: string;
   content: string;
@@ -399,7 +405,7 @@ interface Section {
 }
 
 // Strategy 1: Section-level merge (non-overlapping section edits)
-const sectionMergeStrategy: MergeStrategy<Document> = {
+const sectionMergeStrategy: MergeStrategy<CollaborativeDocument> = {
   name: 'section-merge',
 
   canMerge: (base, ours, theirs) => {
@@ -451,7 +457,7 @@ const sectionMergeStrategy: MergeStrategy<Document> = {
 };
 
 // Strategy 2: Operational transformation for text
-const operationalTransformStrategy: MergeStrategy<Document> = {
+const operationalTransformStrategy: MergeStrategy<CollaborativeDocument> = {
   name: 'operational-transform',
 
   canMerge: (base, ours, theirs) => {
@@ -486,7 +492,10 @@ const operationalTransformStrategy: MergeStrategy<Document> = {
   },
 };
 
-function getEditedSectionIds(base: Document, modified: Document): string[] {
+function getEditedSectionIds(
+  base: CollaborativeDocument,
+  modified: CollaborativeDocument
+): string[] {
   return modified.sections
     .filter(modSection => {
       const baseSection = base.sections.find(s => s.id === modSection.id);
@@ -751,17 +760,30 @@ interface ResolutionRequest {
   resolutions: ConflictResolution[];
 }
 
+interface VersionedResource<T> {
+  data: T;
+  version: number;
+}
+
+interface MergeStorage<T> {
+  get(resourceId: string): Promise<VersionedResource<T> | null>;
+  getVersion(resourceId: string, version: number): Promise<VersionedResource<T> | null>;
+  save(resourceId: string, data: T, version: number): Promise<void>;
+}
+
 class MergeService<T extends Record<string, any>> {
   private pendingSessions: Map<string, {
+    resourceId: string;
     base: T;
     ours: T;
     theirs: T;
     conflicts: ConflictInfo[];
+    currentVersion: number;
     expiresAt: number;
   }> = new Map();
 
   constructor(
-    private storage: Storage<T>,
+    private storage: MergeStorage<T>,
     private config: ConflictConfig,
     private mergers: FieldMergers
   ) {}
@@ -809,10 +831,12 @@ class MergeService<T extends Record<string, any>> {
     // Needs user intervention
     const sessionId = crypto.randomUUID();
     this.pendingSessions.set(sessionId, {
+      resourceId: request.resourceId,
       base: base.data,
       ours: request.ours,
       theirs: current.data,
       conflicts: detection.conflicts,
+      currentVersion: current.version,
       expiresAt: Date.now() + 30 * 60 * 1000,  // 30 min timeout
     });
 
@@ -839,9 +863,16 @@ class MergeService<T extends Record<string, any>> {
     // Clean up session
     this.pendingSessions.delete(request.mergeSessionId);
 
-    // Save - but re-check for new concurrent changes
-    // In production, you'd loop back to conflict detection here
-    return { status: 'merged', result: resolved };
+    // Save - but re-check for new concurrent changes first
+    const current = await this.storage.get(session.resourceId);
+    if (!current || current.version !== session.currentVersion) {
+      // In production, you'd loop back to conflict detection here
+      return { status: 'error' };
+    }
+
+    const newVersion = current.version + 1;
+    await this.storage.save(session.resourceId, resolved, newVersion);
+    return { status: 'merged', result: resolved, newVersion };
   }
 
   private applyAutoResolutions(
@@ -853,7 +884,13 @@ class MergeService<T extends Record<string, any>> {
     const result: Record<string, any> = { ...base };
 
     // Apply non-conflicting changes
-    for (const key of Object.keys(ours)) {
+    const allKeys = new Set([
+      ...Object.keys(base),
+      ...Object.keys(ours),
+      ...Object.keys(theirs),
+    ]);
+
+    for (const key of allKeys) {
       if (!detection.conflicts.find(c => c.field === key)) {
         const oursChanged = !deepEqual(base[key], ours[key]);
         const theirsChanged = !deepEqual(base[key], theirs[key]);
@@ -1050,7 +1087,8 @@ inventoryValidator.addRule({
     const warnings: string[] = [];
 
     // Check if any non-null values became null
-    for (const key of Object.keys(context.base)) {
+    const keys = Object.keys(context.base) as (keyof InventoryItem)[];
+    for (const key of keys) {
       if (context.base[key] !== null && merged[key] === null) {
         warnings.push(`Field '${key}' was set to null (was: ${context.base[key]})`);
       }
@@ -1177,7 +1215,7 @@ const pipeline = new MergePipeline<InventoryItem>({
     status: priorityMerger(['active', 'low_stock', 'out_of_stock']),
   },
   validator: inventoryValidator,
-  strategies: [sectionMergeStrategy],  // Add domain-specific strategies
+  strategies: [],  // Add domain-specific inventory strategies here
 });
 
 // Use the pipeline
@@ -1280,7 +1318,14 @@ describe('InventoryMerger', () => {
   });
 
   it('should fail validation when reserved exceeds quantity', () => {
-    const merged = { quantity: 5, reservedQuantity: 10, status: 'active', tags: [], lastUpdated: 0, sku: 'X' };
+    const merged: InventoryItem = {
+      quantity: 5,
+      reservedQuantity: 10,
+      status: 'active',
+      tags: [],
+      lastUpdated: 0,
+      sku: 'X',
+    };
 
     const validation = inventoryValidator.validate(merged, { base: merged, ours: merged, theirs: merged });
 
