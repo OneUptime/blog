@@ -193,7 +193,7 @@ const pool = new Pool({
 interface StoredAssignment {
     userId: string;
     experimentId: string;
-    variantId: string;
+    variantId: string | null;
     assignedAt: Date;
 }
 
@@ -309,14 +309,14 @@ const checkoutButtonFlag: ABTestFlag = {
 };
 
 // Usage in your application
-async function renderCheckoutButton(userId: string) {
+async function renderCheckoutButton(userId: string, sessionId: string) {
     const { value, assignment } = await evaluateABTestFlag<{ color: string; text: string }>(
         checkoutButtonFlag,
         { userId }
     );
 
     // Log exposure for analytics
-    await trackExposure(userId, assignment);
+    await trackExposure(userId, assignment, sessionId);
 
     return `<button style="background: ${value.color}">${value.text}</button>`;
 }
@@ -559,10 +559,10 @@ function trackConversionToSegment(
 ### Amplitude Integration
 
 ```typescript
-import Amplitude from '@amplitude/analytics-node';
+import { Identify, identify, init, track } from '@amplitude/analytics-node';
 
 // Initialize Amplitude client
-Amplitude.init(process.env.AMPLITUDE_API_KEY!);
+init(process.env.AMPLITUDE_API_KEY!);
 
 /**
  * Sets user properties and tracks exposure in Amplitude.
@@ -576,13 +576,13 @@ async function trackExposureToAmplitude(
 
     // Set user property for the experiment variant
     // This enables filtering and segmentation by variant
-    const identify = new Amplitude.Identify();
-    identify.set(`experiment_${assignment.experimentId}`, assignment.variantId);
+    const identifyObj = new Identify();
+    identifyObj.set(`experiment_${assignment.experimentId}`, assignment.variantId);
 
-    await Amplitude.identify(userId, undefined, identify);
+    await identify(identifyObj, { user_id: userId });
 
     // Track the exposure event
-    await Amplitude.track(
+    await track(
         'Experiment Exposure',
         {
             experiment_id: assignment.experimentId,
@@ -610,7 +610,7 @@ async function trackConversionToAmplitude(
         })
     };
 
-    await Amplitude.track(eventName, eventProperties, { user_id: userId });
+    await track(eventName, eventProperties, { user_id: userId });
 }
 ```
 
@@ -788,7 +788,7 @@ function zScoreToPValue(zScore: number): number {
     const cdf = 0.5 * (1.0 + sign * y);
 
     // Two-tailed p-value
-    return 2 * (1 - cdf);
+    return 2 * Math.min(cdf, 1 - cdf);
 }
 
 /**
@@ -916,7 +916,7 @@ const requiredSampleSize = calculateRequiredSampleSize(
 );
 
 console.log(`Required sample size per variant: ${requiredSampleSize}`);
-// Output: Required sample size per variant: approximately 30,000
+// Output: Required sample size per variant: 45312
 ```
 
 ## Step 6: Putting It All Together
@@ -925,9 +925,22 @@ Here is a complete example showing how all the pieces work together in a real ap
 
 ```typescript
 import express from 'express';
+import cookieParser from 'cookie-parser';
 import { v4 as uuidv4 } from 'uuid';
 
 const app = express();
+
+declare global {
+    namespace Express {
+        interface Request {
+            userId: string;
+            sessionId: string;
+        }
+    }
+}
+
+app.use(cookieParser());
+app.use(express.json());
 
 // Store for active experiments
 const experiments: Map<string, Experiment> = new Map();
@@ -1080,10 +1093,10 @@ Do not check results too frequently or make decisions before reaching statistica
  */
 function canMakeDecision(
     analysis: ExperimentAnalysis,
+    experimentStartTime: number,
     minimumSampleSize: number = 1000,
     minimumRuntime: number = 7 * 24 * 60 * 60 * 1000 // 7 days in ms
 ): { canDecide: boolean; reason: string } {
-    const experimentStartTime = /* fetch from database */;
     const runtime = Date.now() - experimentStartTime;
 
     // Check minimum sample size
