@@ -107,31 +107,36 @@ flowchart TB
 
 ## 3. How Threshold Evaluation Works
 
-Grafana evaluates thresholds from highest to lowest. The first threshold that the current value exceeds determines the color.
+Grafana evaluates sorted threshold steps from the base upward. The last threshold that the current value meets or exceeds determines the color.
 
 **Evaluation order example:**
 
 Thresholds defined:
-- Base (Green): 0
+- Base (Green): no value
 - Warning (Yellow): 70
 - Critical (Red): 90
 
 For a value of 85:
-1. Is 85 >= 90? No, skip red
-2. Is 85 >= 70? Yes, apply yellow
-3. Result: Yellow
+1. Start with the base color: green
+2. Is 85 >= 70? Yes, update to yellow
+3. Is 85 >= 90? No, keep yellow
+4. Result: Yellow
 
 ```mermaid
 flowchart TD
-    V["Value: 85"] --> C1{"Is value >= 90?"}
-    C1 -->|No| C2{"Is value >= 70?"}
-    C1 -->|Yes| R["Apply RED"]
-    C2 -->|No| G["Apply GREEN<br/>(base)"]
-    C2 -->|Yes| Y["Apply YELLOW"]
+    V["Value: 85"] --> G["Start with GREEN<br/>(base)"]
+    G --> C1{"Is value >= 70?"}
+    C1 -->|No| RG["Keep GREEN"]
+    C1 -->|Yes| Y["Update to YELLOW"]
+    Y --> C2{"Is value >= 90?"}
+    C2 -->|No| RY["Keep YELLOW"]
+    C2 -->|Yes| R["Update to RED"]
 
     style R fill:#ff4444
     style Y fill:#ffcc00
     style G fill:#44bb44
+    style RG fill:#44bb44
+    style RY fill:#ffcc00
 ```
 
 ---
@@ -180,7 +185,7 @@ The following JSON snippet shows how thresholds are defined in a Grafana dashboa
 
 Key points about the JSON structure:
 - The first step with `value: null` is the base color (applied when below all other thresholds)
-- Steps are evaluated from highest value to lowest
+- Steps are sorted by value, and the highest matching step determines the color
 - Colors can be named colors ("green", "red") or hex codes ("#44bb44")
 
 ### Standard Three-Tier Threshold
@@ -380,24 +385,19 @@ flowchart TB
 
 ## 8. Dynamic Thresholds with Variables
 
-You can make thresholds dynamic using Grafana variables, but this requires using overrides or calculated thresholds in queries.
+Stat panel threshold values are field configuration, so they are best treated as static panel settings. To make the displayed status dynamic, calculate the status in your query and map it to colors, or use field overrides to apply different threshold sets to different fields.
 
 ### Using Query-Based Thresholds
 
-One approach is to calculate threshold values in your query and use special series names.
+One approach is to calculate the status in your query and return a value that the stat panel can color with thresholds or value mappings.
 
-Prometheus query example that includes threshold lines:
+Prometheus query example that returns a 5xx error-rate percentage:
 
 ```promql
-# Main metric
-
-avg(rate(http_requests_total{status="500"}[5m])) * 100
-
-# Warning threshold (as separate series)
-vector(5) # 5% error rate warning
-
-# Critical threshold (as separate series)
-vector(10) # 10% error rate critical
+sum(rate(http_requests_total{status=~"5.."}[5m]))
+/
+sum(rate(http_requests_total[5m]))
+* 100
 ```
 
 ### Using Overrides for Different Hosts
@@ -406,44 +406,47 @@ You can apply different thresholds to different series using field overrides.
 
 ```json
 {
-  "overrides": [
-    {
-      "matcher": {
-        "id": "byName",
-        "options": "production-server"
-      },
-      "properties": [
-        {
-          "id": "thresholds",
-          "value": {
-            "mode": "absolute",
-            "steps": [
-              { "color": "green", "value": null },
-              { "color": "red", "value": 80 }
-            ]
+  "fieldConfig": {
+    "defaults": {},
+    "overrides": [
+      {
+        "matcher": {
+          "id": "byName",
+          "options": "production-server"
+        },
+        "properties": [
+          {
+            "id": "thresholds",
+            "value": {
+              "mode": "absolute",
+              "steps": [
+                { "color": "green", "value": null },
+                { "color": "red", "value": 80 }
+              ]
+            }
           }
-        }
-      ]
-    },
-    {
-      "matcher": {
-        "id": "byName",
-        "options": "staging-server"
+        ]
       },
-      "properties": [
-        {
-          "id": "thresholds",
-          "value": {
-            "mode": "absolute",
-            "steps": [
-              { "color": "green", "value": null },
-              { "color": "red", "value": 95 }
-            ]
+      {
+        "matcher": {
+          "id": "byName",
+          "options": "staging-server"
+        },
+        "properties": [
+          {
+            "id": "thresholds",
+            "value": {
+              "mode": "absolute",
+              "steps": [
+                { "color": "green", "value": null },
+                { "color": "red", "value": 95 }
+              ]
+            }
           }
-        }
-      ]
-    }
-  ]
+        ]
+      }
+    ]
+  }
 }
 ```
 
@@ -458,6 +461,7 @@ Standard server CPU thresholds. Higher values indicate more load.
 ```json
 {
   "thresholds": {
+    "mode": "absolute",
     "steps": [
       { "color": "green", "value": null },
       { "color": "yellow", "value": 70 },
@@ -475,6 +479,7 @@ Similar to CPU but often with different tolerance levels.
 ```json
 {
   "thresholds": {
+    "mode": "absolute",
     "steps": [
       { "color": "green", "value": null },
       { "color": "yellow", "value": 75 },
@@ -491,6 +496,7 @@ Disk thresholds should trigger earlier because disk exhaustion is catastrophic.
 ```json
 {
   "thresholds": {
+    "mode": "absolute",
     "steps": [
       { "color": "green", "value": null },
       { "color": "yellow", "value": 70 },
@@ -508,6 +514,7 @@ Response time thresholds depend heavily on your SLO. This example targets a 200m
 ```json
 {
   "thresholds": {
+    "mode": "absolute",
     "steps": [
       { "color": "green", "value": null },
       { "color": "yellow", "value": 150 },
@@ -525,6 +532,7 @@ Error rates should have tight thresholds since even small increases matter.
 ```json
 {
   "thresholds": {
+    "mode": "absolute",
     "steps": [
       { "color": "green", "value": null },
       { "color": "yellow", "value": 1 },
@@ -542,6 +550,7 @@ High values are good. Uses inverse coloring.
 ```json
 {
   "thresholds": {
+    "mode": "absolute",
     "steps": [
       { "color": "red", "value": null },
       { "color": "orange", "value": 95 },
@@ -559,6 +568,7 @@ Queue depth indicates backpressure. Thresholds depend on your system capacity.
 ```json
 {
   "thresholds": {
+    "mode": "absolute",
     "steps": [
       { "color": "green", "value": null },
       { "color": "yellow", "value": 100 },
@@ -618,7 +628,7 @@ What is normal during peak hours may be abnormal at 3 AM. Consider separate pane
 
 More than 4-5 levels creates confusion. Keep it simple.
 
-```json
+```jsonc
 // BAD: Too granular
 {
   "steps": [
@@ -633,7 +643,9 @@ More than 4-5 levels creates confusion. Keep it simple.
     { "color": "dark-red", "value": 95 }
   ]
 }
+```
 
+```jsonc
 // GOOD: Clear and actionable
 {
   "steps": [
@@ -750,6 +762,7 @@ This example shows how to configure a row of stat panels for quick system overvi
         "defaults": {
           "unit": "percent",
           "thresholds": {
+            "mode": "absolute",
             "steps": [
               { "color": "green", "value": null },
               { "color": "yellow", "value": 70 },
@@ -772,6 +785,7 @@ This example shows how to configure a row of stat panels for quick system overvi
         "defaults": {
           "unit": "percent",
           "thresholds": {
+            "mode": "absolute",
             "steps": [
               { "color": "green", "value": null },
               { "color": "yellow", "value": 75 },
@@ -794,6 +808,7 @@ This example shows how to configure a row of stat panels for quick system overvi
         "defaults": {
           "unit": "percent",
           "thresholds": {
+            "mode": "absolute",
             "steps": [
               { "color": "green", "value": null },
               { "color": "yellow", "value": 70 },
@@ -817,6 +832,7 @@ This example shows how to configure a row of stat panels for quick system overvi
           "unit": "percent",
           "decimals": 2,
           "thresholds": {
+            "mode": "absolute",
             "steps": [
               { "color": "green", "value": null },
               { "color": "yellow", "value": 1 },
@@ -839,6 +855,7 @@ This example shows how to configure a row of stat panels for quick system overvi
         "defaults": {
           "unit": "ms",
           "thresholds": {
+            "mode": "absolute",
             "steps": [
               { "color": "green", "value": null },
               { "color": "yellow", "value": 200 },
@@ -861,6 +878,7 @@ This example shows how to configure a row of stat panels for quick system overvi
         "defaults": {
           "unit": "reqps",
           "thresholds": {
+            "mode": "absolute",
             "steps": [
               { "color": "blue", "value": null }
             ]
@@ -941,7 +959,7 @@ This panel shows SLO compliance with detailed thresholds matching your error bud
 | Topic | Key Takeaway |
 |-------|--------------|
 | Purpose | Thresholds transform numbers into instant visual health indicators |
-| Evaluation | Grafana checks from highest threshold down, first match wins |
+| Evaluation | Grafana uses the highest threshold step the value meets or exceeds |
 | Modes | Use absolute for fixed scales, percentage for relative scales |
 | Colors | Stick to semantic colors: green (good), yellow (warning), red (critical) |
 | Alignment | Match thresholds with alert rules for consistency |
@@ -950,7 +968,7 @@ This panel shows SLO compliance with detailed thresholds matching your error bud
 
 ### Quick Reference
 
-```json
+```jsonc
 // Standard threshold pattern
 {
   "thresholds": {
@@ -962,7 +980,9 @@ This panel shows SLO compliance with detailed thresholds matching your error bud
     ]
   }
 }
+```
 
+```jsonc
 // Inverse threshold pattern (high is good)
 {
   "thresholds": {
