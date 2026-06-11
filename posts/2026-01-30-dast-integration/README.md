@@ -111,8 +111,9 @@ env:
       authentication:
         method: "form"
         parameters:
-          loginUrl: "https://staging.yourapp.com/login"
-          loginRequestData: "username={%username%}&password={%password%}"
+          loginPageUrl: "https://staging.yourapp.com/login"
+          loginRequestUrl: "https://staging.yourapp.com/login"
+          loginRequestBody: "username={%username%}&password={%password%}"
         verification:
           method: "response"
           loggedInRegex: "\\QWelcome\\E"
@@ -217,10 +218,9 @@ class BurpScanner:
     Handles scan creation, monitoring, and report retrieval.
     """
 
-    def __init__(self, api_url: str, api_key: str):
-        self.api_url = api_url.rstrip('/')
+    def __init__(self, api_link: str):
+        self.api_url = api_link.rstrip('/')
         self.headers = {
-            'Authorization': f'Bearer {api_key}',
             'Content-Type': 'application/json'
         }
 
@@ -230,8 +230,12 @@ class BurpScanner:
         Returns the scan ID for tracking.
         """
         payload = {
-            'scan_configurations': [{'name': scan_config}],
-            'urls': [target_url]
+            'name': f'CI scan for {target_url}',
+            'scan_configurations': [
+                {'name': scan_config, 'type': 'NamedConfiguration'}
+            ],
+            'urls': [target_url],
+            'scope': [{'url': target_url}]
         }
 
         response = requests.post(
@@ -303,11 +307,10 @@ def main():
     Example usage of BurpScanner for CI/CD integration.
     """
     # Load configuration from environment
-    api_url = os.environ['BURP_API_URL']
-    api_key = os.environ['BURP_API_KEY']
+    api_link = os.environ['BURP_API_LINK']
     target = os.environ['SCAN_TARGET_URL']
 
-    scanner = BurpScanner(api_url, api_key)
+    scanner = BurpScanner(api_link)
 
     # Start scan
     print(f'Starting scan of {target}')
@@ -427,7 +430,15 @@ class GraphQLScanner:
                                 name
                                 args {
                                     name
-                                    type { name kind }
+                                    type {
+                                        name
+                                        kind
+                                        ofType {
+                                            name
+                                            kind
+                                            ofType { name kind }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -503,6 +514,14 @@ class GraphQLScanner:
 
         return findings
 
+    def _type_name(self, type_ref: dict) -> str:
+        """
+        Unwrap GraphQL NonNull/List references to get the underlying type name.
+        """
+        while type_ref and type_ref.get('ofType'):
+            type_ref = type_ref['ofType']
+        return type_ref.get('name', '') if type_ref else ''
+
     def scan_all_fields(self) -> List[dict]:
         """
         Scan all queryable fields for vulnerabilities.
@@ -521,7 +540,7 @@ class GraphQLScanner:
                     field_name = field.get('name')
                     for arg in field.get('args', []):
                         arg_name = arg.get('name')
-                        arg_type = arg.get('type', {}).get('name', '')
+                        arg_type = self._type_name(arg.get('type', {}))
 
                         # Test string arguments for injection
                         if arg_type in ['String', 'ID']:
@@ -550,9 +569,10 @@ env:
         method: "form"
         parameters:
           # The login page URL
-          loginUrl: "https://app.example.com/login"
+          loginPageUrl: "https://app.example.com/login"
+          loginRequestUrl: "https://app.example.com/login"
           # POST data format with placeholders
-          loginRequestData: "email={%username%}&password={%password%}&csrf_token={%csrf%}"
+          loginRequestBody: "email={%username%}&password={%password%}"
         verification:
           method: "response"
           # Regex to detect successful login
@@ -688,10 +708,12 @@ env:
         method: "script"
         parameters:
           # Use custom script for OAuth flow
-          scriptName: "oauth2-auth.js"
+          script: "/zap/scripts/oauth2-auth.js"
           scriptEngine: "ECMAScript"
       sessionManagement:
-        method: "httpAuth"
+        method: "headers"
+        parameters:
+          Authorization: "Bearer {%json:access_token%}"
       users:
         - name: "oauth-user"
           credentials:
@@ -737,12 +759,8 @@ function authenticate(helper, paramsValues, credentials) {
     // Send token request
     helper.sendAndReceive(tokenRequest, false);
 
-    // Parse response to get access token
-    var response = JSON.parse(tokenRequest.getResponseBody().toString());
-    var accessToken = response.access_token;
-
-    // Return token for ZAP to use in subsequent requests
-    return accessToken;
+    // Return the authentication message so ZAP can extract the token
+    return tokenRequest;
 }
 
 function getRequiredParamsNames() {
@@ -806,41 +824,28 @@ jobs:
           exit 1
 
       - name: Run ZAP Baseline Scan
-        uses: zaproxy/action-baseline@v0.12.0
+        uses: zaproxy/action-baseline@v0.15.0
         with:
           target: ${{ needs.deploy-staging.outputs.staging_url }}
           rules_file_name: '.zap/rules.tsv'
           cmd_options: '-a'
+          fail_action: true
 
       - name: Run ZAP Full Scan
         if: github.event_name == 'schedule'
-        uses: zaproxy/action-full-scan@v0.10.0
+        uses: zaproxy/action-full-scan@v0.13.0
         with:
           target: ${{ needs.deploy-staging.outputs.staging_url }}
           rules_file_name: '.zap/rules.tsv'
+          fail_action: true
 
       - name: Run ZAP API Scan
-        uses: zaproxy/action-api-scan@v0.7.0
+        uses: zaproxy/action-api-scan@v0.10.0
         with:
           target: ${{ needs.deploy-staging.outputs.staging_url }}/openapi.json
           format: openapi
-
-      - name: Upload SARIF results
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: results.sarif
-        if: always()
-
-      - name: Check for high severity findings
-        run: |
-          # Parse ZAP report and fail if high severity issues found
-          HIGH_COUNT=$(jq '[.runs[].results[] | select(.level == "error")] | length' results.sarif)
-          if [ "$HIGH_COUNT" -gt 0 ]; then
-            echo "Found $HIGH_COUNT high severity vulnerabilities!"
-            jq '.runs[].results[] | select(.level == "error") | .message.text' results.sarif
-            exit 1
-          fi
-          echo "No high severity vulnerabilities found"
+          rules_file_name: '.zap/rules.tsv'
+          fail_action: true
 ```
 
 ### GitLab CI Integration
@@ -885,7 +890,7 @@ dast_scan:
       - zap-report.html
       - zap-report.sarif
     reports:
-      sast: zap-report.sarif
+      sarif: zap-report.sarif
     when: always
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
@@ -958,6 +963,7 @@ flowchart TB
 
 import json
 import hashlib
+from datetime import datetime
 from typing import List, Dict
 from pathlib import Path
 
@@ -1326,25 +1332,21 @@ class DASTOrchestrator:
 
     def _generate_reports(self):
         """Generate HTML and SARIF reports."""
-        # HTML report
-        html_report = requests.get(
-            f"{self.zap_api}/OTHER/core/other/htmlreport/",
-            params={'apikey': self.zap_key}
-        )
-        with open('/app/reports/dast-report.html', 'w') as f:
-            f.write(html_report.text)
-
-        # SARIF report for CI integration
-        sarif_report = requests.get(
-            f"{self.zap_api}/OTHER/reports/other/generate/",
-            params={
-                'apikey': self.zap_key,
-                'template': 'sarif-json',
-                'sites': self.target
-            }
-        )
-        with open('/app/reports/dast-report.sarif', 'w') as f:
-            f.write(sarif_report.text)
+        for template, file_name in [
+            ('traditional-html', 'dast-report.html'),
+            ('sarif-json', 'dast-report.sarif')
+        ]:
+            response = requests.get(
+                f"{self.zap_api}/JSON/reports/action/generate/",
+                params={
+                    'apikey': self.zap_key,
+                    'template': template,
+                    'sites': self.target,
+                    'reportDir': '/zap/reports',
+                    'reportFileName': file_name
+                }
+            )
+            response.raise_for_status()
 
     def _send_slack_notification(self, summary: dict):
         """Send scan results to Slack."""
