@@ -10,7 +10,7 @@ Description: Learn how to build custom samplers in Spring Cloud Sleuth for intel
 
 Distributed tracing generates massive amounts of data in production systems. A microservices application handling 10,000 requests per second can easily produce millions of spans per minute. Storing and analyzing all this data becomes expensive and impractical. Samplers solve this problem by deciding which traces to keep and which to discard.
 
-Spring Cloud Sleuth provides default probability-based sampling, but real-world applications often need smarter sampling strategies. You might want to always trace error responses, sample more from premium customers, or reduce sampling during traffic spikes. Custom samplers give you this control.
+Spring Cloud Sleuth provides default sampling, but real-world applications often need smarter sampling strategies. You might want to sample more from premium customers, suppress noisy health checks, or reduce sampling during traffic spikes. Custom samplers give you this control.
 
 ## How Sleuth Sampling Works
 
@@ -39,7 +39,7 @@ public abstract class Sampler {
 
 ## Setting Up the Project
 
-Start with a Spring Boot application that has Sleuth configured.
+Start with a Spring Boot 2.x application that has Sleuth configured. Spring Cloud Sleuth's last minor version is 3.1 and it does not support Spring Boot 3.x; for Spring Boot 3.x applications, use Micrometer Tracing instead.
 
 ```xml
 <!-- pom.xml dependencies for Spring Cloud Sleuth with custom samplers -->
@@ -58,6 +58,17 @@ Start with a Spring Boot application that has Sleuth configured.
         <groupId>org.springframework.cloud</groupId>
         <artifactId>spring-cloud-sleuth-zipkin</artifactId>
     </dependency>
+
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-actuator</artifactId>
+    </dependency>
+
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-test</artifactId>
+        <scope>test</scope>
+    </dependency>
 </dependencies>
 
 <dependencyManagement>
@@ -65,7 +76,7 @@ Start with a Spring Boot application that has Sleuth configured.
         <dependency>
             <groupId>org.springframework.cloud</groupId>
             <artifactId>spring-cloud-dependencies</artifactId>
-            <version>2023.0.0</version>
+            <version>2021.0.9</version>
             <type>pom</type>
             <scope>import</scope>
         </dependency>
@@ -121,7 +132,7 @@ public class ProbabilitySamplerConfig {
 
 ## Request-Aware Sampling with SamplerFunction
 
-The basic Sampler only sees the trace ID. To make decisions based on request attributes, use `SamplerFunction<HttpRequest>` from Sleuth.
+The basic Sampler only sees the trace ID. To make decisions based on request attributes, register Brave's `SamplerFunction<HttpRequest>` through Sleuth.
 
 ```mermaid
 flowchart TD
@@ -140,7 +151,6 @@ Implement this logic with a custom SamplerFunction.
 ```java
 import brave.http.HttpRequest;
 import brave.sampler.SamplerFunction;
-import brave.sampler.SamplerFunctions;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -212,6 +222,11 @@ public class CompleteSamplerConfig {
                 return true;
             }
 
+            String debugHeader = request.header("X-Debug-Trace");
+            if ("true".equalsIgnoreCase(debugHeader)) {
+                return true;
+            }
+
             return null;
         };
     }
@@ -242,7 +257,6 @@ import org.springframework.cloud.sleuth.instrument.web.HttpServerSampler;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
-import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -391,9 +405,6 @@ Smart systems adjust sampling based on current conditions. This sampler reduces 
 
 ```java
 import brave.sampler.Sampler;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.actuate.health.HealthEndpoint;
-import org.springframework.boot.actuate.health.Status;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.annotation.EnableScheduling;
@@ -480,8 +491,8 @@ sequenceDiagram
     S-->>R: Maybe sample
     R->>A: Process request
     A->>E: Error occurs!
-    E->>T: Force report this trace
-    T->>T: Override sampling decision
+    E->>T: Add error tags if a span exists
+    T->>T: Report only if the trace was sampled
 ```
 
 Implement error-aware tracing with a SpanHandler.
@@ -512,9 +523,9 @@ public class ErrorAwareSamplerConfig {
                 String httpStatus = span.tag("http.status_code");
 
                 if (httpStatus != null && ERROR_STATUSES.contains(httpStatus)) {
-                    // Force this trace to be reported by not dropping it
-                    // Note: This only works if the trace was already being collected
-                    // For completely unsampled traces, we need a different approach
+                    // Keep this span visible to later handlers such as Zipkin.
+                    // This does not override the original sampling decision.
+                    // For completely unsampled traces, this handler is not enough.
                     return true;
                 }
 
@@ -526,7 +537,7 @@ public class ErrorAwareSamplerConfig {
 }
 ```
 
-For true error-based sampling, use a deferred sampling strategy.
+For practical error analysis in Sleuth, tag sampled spans after the response is available.
 
 ```java
 import brave.Span;
@@ -671,7 +682,10 @@ public class RuleBasedSamplerConfig {
     private boolean matchesRule(SamplingRule rule, HttpRequest request,
                                 String path, AntPathMatcher matcher) {
         // Check path pattern if specified
-        if (rule.getPathPattern() != null && path != null) {
+        if (rule.getPathPattern() != null) {
+            if (path == null) {
+                return false;
+            }
             if (!matcher.match(rule.getPathPattern(), path)) {
                 return false;
             }
@@ -708,8 +722,12 @@ import java.util.List;
 public class CompositeSamplerConfig {
 
     @Bean(name = HttpServerSampler.NAME)
-    public SamplerFunction<HttpRequest> compositeSampler(
-            List<SamplerFunction<HttpRequest>> samplers) {
+    public SamplerFunction<HttpRequest> compositeSampler() {
+        List<SamplerFunction<HttpRequest>> samplers = List.of(
+            skipHealthChecks(),
+            alwaysTraceErrors(),
+            debugHeaderSampler()
+        );
 
         return request -> {
             // Try each sampler in order
@@ -849,8 +867,8 @@ public class MonitoredSamplerConfig {
 
     @Bean(name = HttpServerSampler.NAME)
     public SamplerFunction<HttpRequest> monitoredSampler(
-            MeterRegistry meterRegistry,
-            SamplerFunction<HttpRequest> delegateSampler) {
+            MeterRegistry meterRegistry) {
+        SamplerFunction<HttpRequest> delegateSampler = delegateSampler();
 
         Counter sampledCounter = Counter.builder("tracing.sampler.decisions")
             .tag("decision", "sampled")
@@ -877,6 +895,11 @@ public class MonitoredSamplerConfig {
 
             return decision;
         };
+    }
+
+    @Bean
+    public SamplerFunction<HttpRequest> delegateSampler() {
+        return request -> null;
     }
 }
 ```
