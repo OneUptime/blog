@@ -69,7 +69,7 @@ Avoid Canvas when simple time series charts or tables would communicate the info
 
 In your Grafana dashboard, click Add panel and select Canvas from the visualization options.
 
-You will see an empty canvas with a toolbar at the top.
+You will see an empty canvas with Canvas options in the panel editor.
 
 ### Step 2: Add Basic Elements
 
@@ -82,7 +82,7 @@ The Canvas panel supports several element types:
 - **Button** - Interactive elements for links or actions
 - **Metric Value** - Display query results directly
 
-To add an element, click the element type in the toolbar, then click on the canvas where you want to place it.
+To add an element, use **Add item** in the Canvas layer options, choose the element type, then position it on the canvas.
 
 ### Step 3: Configure Element Properties
 
@@ -108,7 +108,7 @@ First, add a query to your panel. For this example, we will query Prometheus for
 Create a query that returns the metrics you want to visualize.
 
 ```promql
-avg(rate(node_cpu_seconds_total{mode!="idle"}[5m])) by (instance) * 100
+100 * (1 - avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])))
 ```
 
 ### Binding Data to Elements
@@ -117,23 +117,26 @@ With your query configured, you can bind element properties to the results.
 
 Select an element and find the data binding options in the properties panel.
 
-The binding configuration looks like this.
+For example, configure an icon or server element with a field-backed fill or status color, then use the panel's field thresholds to map values to colors.
 
-```yaml
-# Element: Server Icon
-
-properties:
-  color:
-    field: Value
-    thresholds:
-      - value: 0
-        color: green
-      - value: 70
-        color: yellow
-      - value: 90
-        color: red
-  text:
-    field: instance
+```json
+{
+  "fieldConfig": {
+    "defaults": {
+      "color": {
+        "mode": "thresholds"
+      },
+      "thresholds": {
+        "mode": "absolute",
+        "steps": [
+          { "color": "green", "value": null },
+          { "color": "yellow", "value": 70 },
+          { "color": "red", "value": 90 }
+        ]
+      }
+    }
+  }
+}
 ```
 
 This configuration changes the server icon color based on CPU usage thresholds.
@@ -188,7 +191,7 @@ Place server icons within each tier rectangle. Use the icon library to select ap
 
 **3. Add connection lines**
 
-Use the line element to draw connections between components. Lines can be straight or have anchor points for routing.
+Enable inline editing, then drag from a connection anchor on one element to another element. Connections can be straight or adjusted with midpoint controls for routing.
 
 **4. Configure queries for each component**
 
@@ -199,13 +202,13 @@ Add queries for each server's metrics.
 up{job="web-servers"}
 
 # API server response time
-histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="api"}[5m]))
+histogram_quantile(0.95, sum by (le, instance) (rate(http_request_duration_seconds_bucket{job="api"}[5m])))
 
 # Database connections
-pg_stat_activity_count{datname="production"}
+sum(pg_stat_activity_count{datname="production"})
 
 # Cache hit rate
-redis_keyspace_hits_total / (redis_keyspace_hits_total + redis_keyspace_misses_total)
+rate(redis_keyspace_hits_total[5m]) / (rate(redis_keyspace_hits_total[5m]) + rate(redis_keyspace_misses_total[5m])) * 100
 ```
 
 **5. Bind data to visual properties**
@@ -220,29 +223,45 @@ For each server icon, bind the color property to the corresponding query with ap
 
 Display live metric values directly on your canvas.
 
-Add a Metric Value element and configure it.
+Add a Metric Value element and configure the text source to use a field from your query result.
 
-```yaml
-element: metric-value
-query: A  # Reference your query
-field: Value
-unit: percent
-decimals: 1
-textSize: 24
+```json
+{
+  "type": "metric-value",
+  "config": {
+    "text": {
+      "mode": "field",
+      "field": "Value"
+    },
+    "size": 24
+  }
+}
 ```
 
 ### Conditional Visibility
 
-Show or hide elements based on data conditions. This is useful for displaying warning icons only when issues occur.
+Show warning states based on data conditions. Canvas does not provide a separate per-element visibility rule in the standard options, so use value mappings, thresholds, or data links/actions to make warning indicators obvious only when the underlying value is unhealthy.
 
-In the element properties, configure the visibility condition.
-
-```yaml
-visibility:
-  condition: field
-  field: Value
-  operator: greaterThan
-  value: 90
+```json
+{
+  "fieldConfig": {
+    "defaults": {
+      "mappings": [
+        {
+          "type": "range",
+          "options": {
+            "from": 90,
+            "to": null,
+            "result": {
+              "text": "High CPU",
+              "color": "red"
+            }
+          }
+        }
+      ]
+    }
+  }
+}
 ```
 
 ### Using Variables
@@ -254,15 +273,9 @@ text: "Server: ${server}"
 link: "/d/server-detail?var-host=${server}"
 ```
 
-### Animation and Transitions
+### Blink Rates
 
-Canvas supports basic animations for state changes. Configure transition duration for smooth color changes.
-
-```yaml
-transition:
-  duration: 500ms
-  property: background-color
-```
+Server elements support a bulb blink rate that can be configured with a fixed value or a field value. This is useful for drawing attention to unhealthy servers without relying on custom animation settings.
 
 ---
 
@@ -282,9 +295,21 @@ Here is a simplified example of a Canvas panel configuration.
         {
           "type": "rectangle",
           "name": "frontend-tier",
-          "config": {
-            "backgroundColor": {
+          "constraint": {
+            "horizontal": "left",
+            "vertical": "top"
+          },
+          "background": {
+            "color": {
               "fixed": "#2a2a2a"
+            }
+          },
+          "config": {
+            "align": "center",
+            "valign": "middle",
+            "text": {
+              "mode": "fixed",
+              "fixed": "Frontend"
             }
           },
           "placement": {
@@ -297,10 +322,16 @@ Here is a simplified example of a Canvas panel configuration.
         {
           "type": "icon",
           "name": "web-server-1",
+          "constraint": {
+            "horizontal": "left",
+            "vertical": "top"
+          },
           "config": {
-            "path": "img/icons/unicons/server.svg",
+            "path": {
+              "mode": "fixed",
+              "fixed": "img/icons/unicons/server.svg"
+            },
             "fill": {
-              "field": "Value",
               "fixed": "#73BF69"
             }
           },
@@ -314,11 +345,16 @@ Here is a simplified example of a Canvas panel configuration.
         {
           "type": "metric-value",
           "name": "cpu-value",
+          "constraint": {
+            "horizontal": "left",
+            "vertical": "top"
+          },
           "config": {
             "text": {
+              "mode": "field",
               "field": "Value"
             },
-            "unit": "percent"
+            "size": 20
           },
           "placement": {
             "top": 100,
@@ -326,14 +362,42 @@ Here is a simplified example of a Canvas panel configuration.
             "width": 80,
             "height": 30
           }
+        },
+        {
+          "type": "server",
+          "name": "api-server-1",
+          "constraint": {
+            "horizontal": "left",
+            "vertical": "top"
+          },
+          "config": {
+            "serverType": "server",
+            "statusColor": {
+              "fixed": "#73BF69"
+            }
+          },
+          "placement": {
+            "top": 50,
+            "left": 200,
+            "width": 80,
+            "height": 80
+          }
         }
       ],
       "connections": [
         {
-          "source": "web-server-1",
-          "target": "api-server-1",
-          "color": "#888888",
-          "size": 2
+          "source": {
+            "element": "web-server-1"
+          },
+          "target": {
+            "element": "api-server-1"
+          },
+          "color": {
+            "fixed": "#888888"
+          },
+          "size": {
+            "fixed": 2
+          }
         }
       ]
     }
@@ -349,7 +413,7 @@ Canvas panels can impact dashboard performance if not designed carefully.
 
 ### Best Practices for Performance
 
-**Limit element count** - Keep elements under 50 per panel for smooth rendering.
+**Limit element count** - Keep each panel focused and test dashboard performance as you add elements.
 
 **Optimize queries** - Use efficient queries with appropriate time ranges and aggregations.
 
@@ -357,11 +421,11 @@ Canvas panels can impact dashboard performance if not designed carefully.
 
 **Use efficient data binding** - Bind only necessary properties to data.
 
-| Elements | Recommended Refresh |
-|----------|-------------------|
-| Under 20 | 10 seconds |
-| 20-50 | 30 seconds |
-| Over 50 | 1 minute or more |
+| Panel Complexity | Recommended Refresh |
+|------------------|-------------------|
+| Simple status board | 10 seconds or slower |
+| Multi-service diagram | 30 seconds or slower |
+| Large topology view | 1 minute or slower |
 
 ---
 
@@ -389,7 +453,7 @@ flowchart TB
 
 ### Data Flow Diagram
 
-Visualize data moving through your pipeline with animated connections.
+Visualize data moving through your pipeline with directional connections.
 
 ```mermaid
 flowchart LR
@@ -438,8 +502,8 @@ flowchart TB
 ### Layout Issues
 
 - Use the alignment tools in the toolbar
-- Enable snap-to-grid for consistent spacing
-- Check element z-index if elements overlap unexpectedly
+- Use snapping and alignment guides for consistent spacing
+- Check element layer ordering if elements overlap unexpectedly
 
 ### Performance Problems
 
@@ -475,10 +539,10 @@ Example integration for monitoring service health.
 up{job="oneuptime-monitors"}
 
 # Service response times
-oneuptime_monitor_response_time_seconds{monitor_type="http"}
+avg(oneuptime_monitor_response_time_seconds{monitor_type="http"}) * 1000
 
 # Incident status
-oneuptime_incident_status{severity="critical"}
+count(oneuptime_incident_status{state="active"})
 ```
 
 Bind these queries to Canvas elements to create a unified view of your infrastructure health alongside your existing monitoring setup.
