@@ -8,7 +8,7 @@ Description: Learn how to implement memory pools to reduce allocation overhead, 
 
 ---
 
-Memory allocation is one of the most expensive operations in any application. Every time you create an object, the runtime must find suitable memory, initialize it, and eventually garbage collect it. For high-throughput systems handling thousands of requests per second, this overhead adds up quickly. Memory pools solve this by pre-allocating objects and reusing them, turning expensive allocations into simple pointer operations.
+Memory allocation can be one of the more expensive operations in hot paths. Every time you create an object, the runtime must find suitable memory, initialize it, and eventually garbage collect it. For high-throughput systems handling thousands of requests per second, this overhead adds up quickly. Memory pools solve this by pre-allocating objects and reusing them, turning repeated allocations into inexpensive reuse operations.
 
 ## What is a Memory Pool?
 
@@ -60,9 +60,9 @@ This creates:
 ### Benefits of Memory Pools
 
 1. **Reduced allocation overhead**: Borrowing from a pool is a simple array pop operation
-2. **Eliminated fragmentation**: Fixed-size blocks prevent memory from becoming scattered
+2. **Reduced fragmentation**: Fixed-size blocks help prevent memory from becoming scattered
 3. **Lower GC pressure**: Objects stay alive, so garbage collector has less work
-4. **Predictable latency**: No surprise GC pauses during critical operations
+4. **More predictable latency**: Fewer allocations reduce the chance of GC pauses during critical operations
 
 ## Basic Memory Pool Implementation
 
@@ -469,6 +469,7 @@ class BufferRing {
     this.readIndex = 0;
     this.writeIndex = 0;
     this.count = bufferCount;
+    this.used = 0;
 
     // Pre-allocate all buffers
     for (let i = 0; i < bufferCount; i++) {
@@ -478,26 +479,36 @@ class BufferRing {
 
   // Get next buffer for writing
   getWriteBuffer() {
+    if (this.isFull()) {
+      return null;
+    }
+
     const buffer = this.buffers[this.writeIndex];
     this.writeIndex = (this.writeIndex + 1) % this.count;
+    this.used++;
     return buffer;
   }
 
   // Get next buffer for reading
   getReadBuffer() {
+    if (this.isEmpty()) {
+      return null;
+    }
+
     const buffer = this.buffers[this.readIndex];
     this.readIndex = (this.readIndex + 1) % this.count;
+    this.used--;
     return buffer;
   }
 
   // Check if ring is full
   isFull() {
-    return (this.writeIndex + 1) % this.count === this.readIndex;
+    return this.used === this.count;
   }
 
   // Check if ring is empty
   isEmpty() {
-    return this.writeIndex === this.readIndex;
+    return this.used === 0;
   }
 }
 
@@ -505,14 +516,16 @@ class BufferRing {
 const packetRing = new BufferRing(64, 1500); // 64 MTU-sized buffers
 
 socket.on('data', (data) => {
-  if (!packetRing.isFull()) {
-    const buffer = packetRing.getWriteBuffer();
-    data.copy(buffer);
-    processPacket(buffer);
-  } else {
+  const buffer = packetRing.getWriteBuffer();
+
+  if (!buffer) {
     // Ring full, drop packet or apply backpressure
     console.warn('Buffer ring full, dropping packet');
+    return;
   }
+
+  data.copy(buffer);
+  processPacket(buffer);
 });
 ```
 
@@ -766,17 +779,21 @@ async function withPooledBuffer(fn) {
 }
 
 // Usage
-const result = await withPooledBuffer(async (buffer) => {
-  // Use buffer safely
-  return processData(buffer);
-});
+async function processWithBuffer() {
+  const result = await withPooledBuffer(async (buffer) => {
+    // Use buffer safely
+    return processData(buffer);
+  });
+
+  return result;
+}
 ```
 
 ### Pitfall 2: Incomplete Reset
 
 ```javascript
 // BAD: Sensitive data persists
-const contextPool = new ObjectPool({
+const safeContextPool = new ObjectPool({
   factory: () => ({ user: null, token: null, data: {} }),
   reset: (ctx) => {
     ctx.user = null;
@@ -842,4 +859,4 @@ async function processRequest(req) {
 | **Pre-warm pools** | Allocate objects at startup to avoid cold-start latency |
 | **Implement backpressure** | Limit waiting queue size to prevent memory exhaustion |
 
-Memory pools are one of the most effective optimization techniques for high-throughput systems. By eliminating per-request allocation overhead and reducing garbage collection pressure, pools enable consistent, predictable performance even under heavy load. Start with simple static pools, measure their effectiveness, and evolve to dynamic sizing as your understanding of traffic patterns grows.
+Memory pools are one of the most effective optimization techniques for high-throughput systems. By reducing per-request allocation overhead and lowering garbage collection pressure, pools enable more consistent, predictable performance even under heavy load. Start with simple static pools, measure their effectiveness, and evolve to dynamic sizing as your understanding of traffic patterns grows.
