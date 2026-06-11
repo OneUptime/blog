@@ -331,7 +331,12 @@ Filebeat is part of the Elastic Stack. It is lightweight, written in Go, and foc
 ```yaml
 # filebeat.yml - Production configuration example
 filebeat.inputs:
-  - type: container
+  - type: filestream
+    id: kubernetes-container-logs
+    prospector.scanner.symlinks: true
+    parsers:
+      - container:
+          format: auto
     paths:
       - /var/log/containers/*.log
     processors:
@@ -361,22 +366,14 @@ processors:
   - drop_fields:
       fields: ["agent.ephemeral_id", "host.ip"]
 
-# Queue configuration for reliability
-queue.mem:
-  events: 4096
-  flush.min_events: 512
-  flush.timeout: 5s
-
 # Disk queue for persistence during outages
 queue.disk:
   max_size: 10GB
   path: /var/lib/filebeat/diskqueue
 
-# Output to OTLP endpoint
-output.otlp:
-  hosts: ["https://oneuptime.com"]
-  headers:
-    x-oneuptime-token: "${ONEUPTIME_TOKEN}"
+# Output to Logstash or another Beats-compatible endpoint
+output.logstash:
+  hosts: ["logstash.example.com:5044"]
 
   # Retry configuration
   backoff.init: 1s
@@ -464,8 +461,8 @@ method = "post"
 [sinks.oneuptime.request]
 headers.x-oneuptime-token = "${ONEUPTIME_TOKEN}"
 timeout_secs = 30
-retry_initial_backoff_secs = 1
-retry_max_duration_secs = 300
+retry_attempts = 10
+retry_backoff_secs = 1
 
 [sinks.oneuptime.buffer]
 type = "disk"
@@ -573,22 +570,28 @@ This reduces the number of outbound connections and allows central aggregators t
 
 ### Pattern: Graceful Degradation
 
-When your primary destination is down, automatically route to a backup.
+When your primary destination is down, keep a secondary durable destination enabled so logs continue to land somewhere recoverable.
 
 ```toml
-# Vector configuration for failover
+# Vector configuration with a secondary archive
 [sinks.primary]
 type = "http"
 inputs = ["logs"]
 uri = "https://oneuptime.com/vector/v1/logs"
 healthcheck.enabled = true
+encoding.codec = "json"
+
+[sinks.primary.buffer]
+type = "disk"
+max_size = 5368709120
+when_full = "block"
 
 [sinks.backup]
 type = "aws_s3"
 inputs = ["logs"]
 bucket = "logs-backup"
-# Only activate when primary is unhealthy
-healthcheck.enabled = true
+compression = "gzip"
+encoding.codec = "json"
 ```
 
 ---
