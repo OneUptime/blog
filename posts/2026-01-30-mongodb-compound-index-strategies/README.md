@@ -31,7 +31,9 @@ The ESR rule is the most important principle for designing compound indexes. It 
 |----------|------------|-------------|
 | First | Equality | Fields with exact match conditions (e.g., `status: "active"`) |
 | Second | Sort | Fields used in sort operations |
-| Third | Range | Fields with range conditions (e.g., `$gt`, `$lt`, `$in`) |
+| Third | Range | Fields with range conditions (e.g., `$gt`, `$lt`) |
+
+Note: `$in` depends on how it is used. When used alone, it acts like a series of equality matches. When used with `.sort()`, small `$in` arrays behave more like equality predicates, while very large `$in` arrays behave more like range predicates.
 
 ### Why ESR Works
 
@@ -253,7 +255,7 @@ db.articles.createIndex({ category: 1, tags: 1, views: -1 })
 
 ### The Multikey Limitation
 
-A compound index can have at most one array field. MongoDB cannot create a compound index where more than one field is an array.
+In a compound multikey index, each indexed document can have at most one indexed field whose value is an array. MongoDB cannot create a compound multikey index when a document has array values for more than one field in the index specification.
 
 ```javascript
 // Document with two array fields
@@ -263,7 +265,7 @@ db.recipes.insertOne({
     tags: ["dessert", "chocolate", "baking"]
 })
 
-// This will FAIL - cannot have two array fields in compound index
+// This will FAIL because this document has two array fields in the compound index
 db.recipes.createIndex({ ingredients: 1, tags: 1 })
 // Error: cannot index parallel arrays
 ```
@@ -503,8 +505,9 @@ db.orders.getIndexes()
 // Step 4: Apply ESR rule
 // E: region (equality)
 // S: priority (sort)
-// R: status ($in is effectively a range), orderDate (range)
-db.orders.createIndex({ region: 1, priority: -1, status: 1, orderDate: 1 })
+// E: status ($in with a small array behaves like equality with sort)
+// R: orderDate (range)
+db.orders.createIndex({ region: 1, status: 1, priority: -1, orderDate: 1 })
 
 // Step 5: Verify improvement
 db.orders.find({
@@ -720,10 +723,9 @@ Here is a reference for common index operations:
 // List all indexes on a collection
 db.orders.getIndexes()
 
-// Create index in background (does not block operations)
+// Create an index
 db.orders.createIndex(
-    { status: 1, createdAt: -1 },
-    { background: true }
+    { status: 1, createdAt: -1 }
 )
 
 // Create unique compound index
@@ -735,7 +737,7 @@ db.users.createIndex(
 // Create partial index (only index documents matching filter)
 db.orders.createIndex(
     { status: 1, createdAt: -1 },
-    { partialFilterExpression: { status: { $ne: "archived" } } }
+    { partialFilterExpression: { status: "pending" } }
 )
 
 // Drop an index by name
@@ -744,7 +746,7 @@ db.orders.dropIndex("status_1_createdAt_-1")
 // Drop an index by specification
 db.orders.dropIndex({ status: 1, createdAt: -1 })
 
-// Rebuild all indexes on a collection
+// Rebuild all indexes on a collection (deprecated since MongoDB 6.0 and standalone-only)
 db.orders.reIndex()
 ```
 
@@ -755,7 +757,7 @@ Building effective compound indexes requires understanding your query patterns a
 1. Apply ESR: Equality fields first, then Sort fields, then Range fields
 2. Use prefixes: Design compound indexes to support multiple query patterns
 3. Mind the direction: Match sort directions for multi-field sorts
-4. Avoid multikey limits: Only one array field per compound index
+4. Avoid multikey limits: Each indexed document can have at most one array field in a compound multikey index
 5. Test with explain(): Always validate index usage with real queries
 6. Balance coverage and count: Fewer well-designed indexes beat many specific ones
 
