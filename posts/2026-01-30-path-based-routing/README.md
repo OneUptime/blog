@@ -313,7 +313,7 @@ spec:
   entryPoints:
     - websecure
   routes:
-    - match: Host(`api.example.com`) && PathPrefix(`/api/v{version:[0-9]+}`)
+    - match: Host(`api.example.com`) && PathRegexp(`^/api/v[0-9]+/`)
       kind: Rule
       services:
         - name: api-gateway
