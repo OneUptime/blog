@@ -525,7 +525,7 @@ nom = "7.1"
 ```rust
 use nom::{
     IResult,
-    bytes::complete::{tag, take_while1, take_until},
+    bytes::complete::{tag, take_while, take_while1, take_until},
     character::complete::{char, multispace0, digit1},
     combinator::{map, map_res, opt, recognize},
     sequence::{delimited, preceded, separated_pair, tuple},
@@ -539,7 +539,7 @@ use nom::{
 fn identifier(input: &str) -> IResult<&str, &str> {
     recognize(tuple((
         take_while1(|c: char| c.is_alphabetic() || c == '_'),
-        take_while1(|c: char| c.is_alphanumeric() || c == '_'),
+        take_while(|c: char| c.is_alphanumeric() || c == '_'),
     )))(input)
 }
 
