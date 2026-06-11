@@ -163,16 +163,24 @@ type responseWriter struct {
     http.ResponseWriter
     statusCode   int
     bytesWritten int
+    wroteHeader  bool
 }
 
 // WriteHeader captures the status code
 func (rw *responseWriter) WriteHeader(code int) {
+    if rw.wroteHeader {
+        return
+    }
+    rw.wroteHeader = true
     rw.statusCode = code
     rw.ResponseWriter.WriteHeader(code)
 }
 
 // Write captures the number of bytes written
 func (rw *responseWriter) Write(b []byte) (int, error) {
+    if !rw.wroteHeader {
+        rw.WriteHeader(http.StatusOK)
+    }
     n, err := rw.ResponseWriter.Write(b)
     rw.bytesWritten += n
     return n, err
@@ -274,7 +282,11 @@ Register the custom collector in your main function:
 
 ```go
 // Add this to main.go
-import "prometheus-client/collectors"
+import (
+    "prometheus-client/collectors"
+
+    "github.com/prometheus/client_golang/prometheus"
+)
 
 func init() {
     // Register the custom collector
