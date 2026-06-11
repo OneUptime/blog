@@ -153,11 +153,14 @@ public static class EmailServiceExtensions
 }
 ```
 
-The service consumes options through constructor injection.
+The service consumes options through constructor injection. This example uses the MailKit NuGet package for SMTP because Microsoft does not recommend `System.Net.Mail.SmtpClient` for new development.
 
 ```csharp
 // Services/SmtpEmailService.cs
+using MailKit.Net.Smtp;
+using MailKit.Security;
 using Microsoft.Extensions.Options;
+using MimeKit;
 using MyApp.Options;
 
 namespace MyApp.Services;
@@ -174,26 +177,38 @@ public class SmtpEmailService : IEmailService
 
     public async Task SendEmailAsync(string to, string subject, string body)
     {
-        using var client = new SmtpClient(_options.SmtpHost, _options.SmtpPort);
-        client.EnableSsl = _options.UseSsl;
+        var message = new MimeMessage();
+        message.From.Add(new MailboxAddress(
+            _options.FromName,
+            _options.FromAddress));
+        message.To.Add(MailboxAddress.Parse(to));
+        message.Subject = subject;
+        message.Body = new BodyBuilder
+        {
+            HtmlBody = body
+        }.ToMessageBody();
+
+        var socketOptions = _options.UseSsl
+            ? (_options.SmtpPort == 465
+                ? SecureSocketOptions.SslOnConnect
+                : SecureSocketOptions.StartTls)
+            : SecureSocketOptions.None;
+
+        using var client = new SmtpClient();
+        await client.ConnectAsync(
+            _options.SmtpHost,
+            _options.SmtpPort,
+            socketOptions);
 
         if (!string.IsNullOrEmpty(_options.Username))
         {
-            client.Credentials = new NetworkCredential(
+            await client.AuthenticateAsync(
                 _options.Username,
-                _options.Password);
+                _options.Password ?? string.Empty);
         }
 
-        var message = new MailMessage(
-            new MailAddress(_options.FromAddress, _options.FromName),
-            new MailAddress(to))
-        {
-            Subject = subject,
-            Body = body,
-            IsBodyHtml = true
-        };
-
-        await client.SendMailAsync(message);
+        await client.SendAsync(message);
+        await client.DisconnectAsync(true);
     }
 }
 ```
@@ -483,7 +498,7 @@ public class PaymentServicesBuilder
         return this;
     }
 
-    // Configure retry policy for failed payments
+    // Configure retry policy options for failed payments
     public PaymentServicesBuilder WithRetryPolicy(int maxRetries = 3)
     {
         _services.Configure<PaymentRetryOptions>(options =>
@@ -491,8 +506,6 @@ public class PaymentServicesBuilder
             options.MaxRetries = maxRetries;
             options.RetryDelaySeconds = 5;
         });
-
-        _services.Decorate<IPaymentService, RetryingPaymentService>();
 
         return this;
     }
@@ -787,7 +800,9 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using MyApp.Ordering.Extensions;
 using MyApp.Ordering.Options;
+using MyApp.Ordering.Repositories;
 using MyApp.Ordering.Services;
+using Xunit;
 
 namespace MyApp.Tests.Extensions;
 
@@ -845,7 +860,7 @@ public class OrderingModuleExtensionsTests
         // Act
         services.AddOrderingModule(configuration);
 
-        // Assert - Should throw on build due to ValidateOnStart
+        // Assert - Should throw when options are validated
         Assert.Throws<OptionsValidationException>(() =>
         {
             using var provider = services.BuildServiceProvider();
@@ -887,4 +902,3 @@ Custom DI extensions organize your service registrations into reusable, testable
 Start with basic extensions and add complexity as needed. Validate options at startup to catch configuration errors early. Use the builder pattern when your extension has many optional features. Test your extensions to verify all services resolve correctly.
 
 The extension pattern scales from simple helper methods to full feature modules. It is the foundation of clean, maintainable .NET applications.
-
