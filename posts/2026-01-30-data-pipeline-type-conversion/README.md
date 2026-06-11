@@ -202,7 +202,7 @@ flowchart TB
  * Represents the result of a type conversion operation.
  * Contains the converted value, success status, and any error information.
  */
-interface ConversionResult<T> {
+export interface ConversionResult<T> {
     success: boolean;           // Whether conversion succeeded
     value: T | null;            // The converted value (null if failed)
     originalValue: unknown;     // The input value for debugging
@@ -216,9 +216,9 @@ interface ConversionResult<T> {
  * Configuration options for type conversion behavior.
  * Controls how edge cases and ambiguous values are handled.
  */
-interface ConversionOptions {
+export interface ConversionOptions {
     strict: boolean;            // If true, fail on any ambiguity
-    nullValue: 'null' | 'empty' | 'default';  // How to handle nulls
+    nullValue: 'null' | 'empty' | 'default' | 'error';  // How to handle nulls
     defaultValue?: unknown;     // Default when nullValue is 'default'
     trimStrings: boolean;       // Trim whitespace from strings
     dateFormat?: string;        // Expected date format (e.g., 'YYYY-MM-DD')
@@ -234,7 +234,7 @@ interface ConversionOptions {
  * Base interface for all type converters.
  * Each converter handles conversion to a specific target type.
  */
-interface TypeConverter<T> {
+export interface TypeConverter<T> {
     // The target type this converter produces
     targetType: string;
 
@@ -253,6 +253,8 @@ interface TypeConverter<T> {
 
 ```typescript
 // config/defaults.ts
+
+import { ConversionOptions } from '../types/converter';
 
 /**
  * Default configuration for type conversions.
@@ -392,6 +394,8 @@ class StringConverter implements TypeConverter<string> {
             case 'default':
                 const defaultVal = String(options.defaultValue ?? '');
                 return this.createSuccess(defaultVal, value, ['Null converted to default']);
+            case 'error':
+                return this.createError(value, 'Null value encountered');
             case 'null':
             default:
                 return {
@@ -622,6 +626,8 @@ class IntegerConverter implements TypeConverter<number> {
                     return this.createError(value, 'Default value is not an integer');
                 }
                 return this.createSuccess(defaultVal, value, ['Null converted to default']);
+            case 'error':
+                return this.createError(value, 'Null value encountered');
             case 'null':
             default:
                 return {
@@ -857,6 +863,8 @@ class BooleanConverter implements TypeConverter<boolean> {
             case 'default':
                 const defaultVal = Boolean(options.defaultValue ?? false);
                 return this.createSuccess(defaultVal, value, ['Null converted to default']);
+            case 'error':
+                return this.createError(value, 'Null value encountered');
             case 'null':
             default:
                 return {
@@ -990,7 +998,7 @@ For financial and scientific data, floating-point errors are unacceptable. Use d
 ```python
 # converters/decimal_converter.py
 
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP, ROUND_DOWN
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP, ROUND_DOWN, ROUND_HALF_EVEN
 from dataclasses import dataclass
 from typing import Any, Optional, List, Union
 from enum import Enum
@@ -1000,7 +1008,7 @@ class RoundingMode(Enum):
     """Rounding strategies for decimal conversion."""
     HALF_UP = ROUND_HALF_UP      # Standard rounding (0.5 -> 1)
     DOWN = ROUND_DOWN            # Truncation toward zero
-    BANKER = 'ROUND_HALF_EVEN'   # Banker's rounding (0.5 -> nearest even)
+    BANKER = ROUND_HALF_EVEN     # Banker's rounding (0.5 -> nearest even)
 
 
 @dataclass
@@ -1085,7 +1093,17 @@ class DecimalConverter:
 
         # Apply scale if specified
         if self.scale is not None:
-            decimal_value = self._apply_scale(decimal_value, warnings)
+            try:
+                decimal_value = self._apply_scale(decimal_value, warnings)
+            except (InvalidOperation, ValueError) as e:
+                return DecimalConversionResult(
+                    success=False,
+                    value=None,
+                    original_value=value,
+                    source_type=source_type,
+                    warnings=warnings,
+                    error=f"Cannot apply scale: {e}"
+                )
 
         # Validate precision
         if not self._check_precision(decimal_value):
@@ -1132,13 +1150,13 @@ class DecimalConverter:
             if abs(value) == float('inf'):
                 raise ValueError("Cannot convert Infinity to Decimal")
 
-            # Use repr() for maximum precision preservation
-            # str() rounds, repr() preserves the actual float value
+            # Use repr() to get a shortest string that round-trips to the same float.
+            # This avoids Decimal.from_float artifacts, but it cannot recover an
+            # intended decimal value that was already rounded into a binary float.
             string_repr = repr(value)
             decimal_value = Decimal(string_repr)
 
-            # Check if float representation introduced artifacts
-            # e.g., 0.1 -> 0.1000000000000000055511151231257827021181583404541015625
+            # Warn that the input arrived as a binary float before conversion.
             if len(string_repr) > 20:
                 warnings.append(
                     f"Float {value} has limited precision. "
@@ -1179,8 +1197,9 @@ class DecimalConverter:
         # Get the tuple representation
         sign, digits, exponent = value.as_tuple()
 
-        # Count total significant digits
-        total_digits = len(digits)
+        # Count total significant digits, including trailing zeros implied by
+        # positive exponents such as Decimal('1E+5').
+        total_digits = len(digits) + max(exponent, 0)
 
         return total_digits <= self.precision
 
@@ -1278,8 +1297,10 @@ class JsonConverter implements TypeConverter<object> {
             case 'empty':
                 return this.createSuccess({}, value, ['Null converted to empty object']);
             case 'default':
-                const defaultVal = options.defaultValue as object ?? {};
+                const defaultVal = (options.defaultValue as object | undefined) ?? {};
                 return this.createSuccess(defaultVal, value, ['Null converted to default']);
+            case 'error':
+                return this.createError(value, 'Null value encountered');
             case 'null':
             default:
                 return {
@@ -1516,7 +1537,7 @@ class NullHandler {
         // Build set of values to treat as null
         this.nullValues = new Set([
             ...DEFAULT_NULL_VALUES,
-            ...this.config.treatAsNull,
+            ...(this.config.treatAsNull ?? []),
         ]);
     }
 
@@ -1789,6 +1810,8 @@ class DateConverter implements TypeConverter<Date> {
                     return this.createSuccess(new Date(defaultVal), value, ['Null converted to default']);
                 }
                 return this.createError(value, 'Default value is not a Date');
+            case 'error':
+                return this.createError(value, 'Null value encountered');
             case 'null':
             default:
                 return {
@@ -2597,7 +2620,7 @@ class CoercionEngine {
                 return {
                     ...baseOptions,
                     strict: true,
-                    nullValue: schema.nullable ? 'null' : 'error' as any,
+                    nullValue: schema.nullable ? 'null' : 'error',
                     trimStrings: false,
                 };
 
@@ -3352,7 +3375,7 @@ async function main() {
             name: '  Bob Jones  ',  // Has whitespace
             age: '',                // Empty = null
             is_active: '1',
-            created_at: '1705312200',  // Unix timestamp
+            created_at: '1705314600',  // Unix timestamp
             metadata: null,
         },
         {
