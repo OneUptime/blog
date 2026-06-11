@@ -46,7 +46,7 @@ flowchart LR
 
 ### Major Egress Cost Centers
 
-| Source | Typical Cost (AWS) | Common Culprits |
+| Source | Typical Cost (AWS, region-dependent) | Common Culprits |
 |--------|-------------------|-----------------|
 | Internet egress | $0.09/GB | API responses, media serving, downloads |
 | Cross-region transfer | $0.02/GB | Multi-region replication, DR |
@@ -60,7 +60,7 @@ The first step: enable Cost Allocation Tags and use tools like AWS Cost Explorer
 
 ## Strategy 1: CDN Offloading (The 80/20 Win)
 
-A CDN moves content closer to users and shifts egress from your cloud to the CDN's network. CDN egress is typically 3-10x cheaper than cloud provider egress.
+A CDN moves content closer to users and shifts origin egress from your cloud to the CDN's network. CDN egress is often cheaper than cloud provider internet egress, especially at committed or high-volume tiers.
 
 ### When CDN Offloading Works Best
 
@@ -327,7 +327,7 @@ const bytes = protoUser.serializeBinary();
 
 ## Strategy 3: Caching at the Edge (Reduce Round Trips)
 
-Edge caching eliminates egress entirely for repeated requests. The goal: serve from cache, not origin.
+Edge caching eliminates origin egress for repeated requests. The goal: serve from cache, not origin.
 
 ### Multi-Layer Caching Architecture
 
@@ -415,11 +415,6 @@ app.get('/api/products/:id', async (req, res) => {
 ### Cache Invalidation Strategy
 
 ```ts
-// Event-driven cache invalidation
-import { EventEmitter } from 'events';
-
-const cacheEvents = new EventEmitter();
-
 // When data changes, invalidate relevant caches
 async function updateProduct(id: string, data: ProductUpdate) {
   const updated = await db.products.update(id, data);
@@ -439,9 +434,11 @@ async function updateProduct(id: string, data: ProductUpdate) {
   return updated;
 }
 
-// Subscribe to invalidation events (for multi-instance)
-redis.subscribe('cache:invalidate');
-redis.on('message', async (channel, message) => {
+// Subscribe to invalidation events (for multi-instance).
+// A subscribed ioredis connection cannot also run normal commands.
+const subscriber = redis.duplicate();
+subscriber.subscribe('cache:invalidate');
+subscriber.on('message', async (channel, message) => {
   if (channel === 'cache:invalidate') {
     const { type, id } = JSON.parse(message);
     await redis.del(`${type}:${id}`);
@@ -585,6 +582,8 @@ interface EgressMetric {
 }
 
 async function recordEgressMetric(metric: EgressMetric) {
+  const timestamp = new Date();
+
   await cloudwatch.putMetricData({
     Namespace: 'Custom/Egress',
     MetricData: [
@@ -597,7 +596,13 @@ async function recordEgressMetric(metric: EgressMetric) {
           { Name: 'Endpoint', Value: metric.endpoint },
           { Name: 'Destination', Value: metric.destination }
         ],
-        Timestamp: new Date()
+        Timestamp: timestamp
+      },
+      {
+        MetricName: 'BytesOut',
+        Value: metric.bytesOut,
+        Unit: 'Bytes',
+        Timestamp: timestamp
       }
     ]
   });
@@ -611,9 +616,12 @@ function egressTracker(serviceName: string) {
     const originalSend = res.send;
 
     res.send = function(body: any) {
-      const bytes = Buffer.isBuffer(body)
+      const responseBody = Buffer.isBuffer(body) || typeof body === 'string'
+        ? body
+        : JSON.stringify(body ?? '');
+      const bytes = Buffer.isBuffer(responseBody)
         ? body.length
-        : Buffer.byteLength(body || '', 'utf8');
+        : Buffer.byteLength(responseBody, 'utf8');
 
       // Record asynchronously
       recordEgressMetric({
@@ -657,25 +665,25 @@ Resources:
           UsageType:
             - USE1-DataTransfer-Out-Bytes
             - USE1-DataTransfer-Regional-Bytes
-        NotificationsWithSubscribers:
-          - Notification:
-              NotificationType: ACTUAL
-              ComparisonOperator: GREATER_THAN
-              Threshold: 80
-              ThresholdType: PERCENTAGE
-            Subscribers:
-              - SubscriptionType: EMAIL
-                Address: platform-team@example.com
-              - SubscriptionType: SNS
-                Address: !Ref EgressAlertTopic
-          - Notification:
-              NotificationType: FORECASTED
-              ComparisonOperator: GREATER_THAN
-              Threshold: 100
-              ThresholdType: PERCENTAGE
-            Subscribers:
-              - SubscriptionType: EMAIL
-                Address: platform-team@example.com
+      NotificationsWithSubscribers:
+        - Notification:
+            NotificationType: ACTUAL
+            ComparisonOperator: GREATER_THAN
+            Threshold: 80
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - SubscriptionType: EMAIL
+              Address: platform-team@example.com
+            - SubscriptionType: SNS
+              Address: !Ref EgressAlertTopic
+        - Notification:
+            NotificationType: FORECASTED
+            ComparisonOperator: GREATER_THAN
+            Threshold: 100
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - SubscriptionType: EMAIL
+              Address: platform-team@example.com
 
   EgressAlertTopic:
     Type: AWS::SNS::Topic
@@ -786,7 +794,7 @@ The compound effect: implementing all five strategies typically reduces egress c
 1. **Measure first.** Enable detailed billing and attribute egress to services before optimizing.
 2. **CDN is the biggest lever.** Moving static content to CDN is high-impact, low-effort.
 3. **Compress everything.** Modern compression (Brotli) is CPU-cheap and bandwidth-expensive.
-4. **Cache aggressively.** Every cache hit is zero egress cost.
+4. **Cache aggressively.** Every cache hit avoids origin egress.
 5. **Keep data close to compute.** Process data in the region where it lives.
 6. **Monitor continuously.** Egress patterns change; your optimization must evolve.
 
