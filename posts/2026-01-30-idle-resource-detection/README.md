@@ -133,43 +133,45 @@ class IdleResourceDetector:
         idle_instances = []
 
         # Get all running instances
-        response = self.ec2_client.describe_instances(
+        paginator = self.ec2_client.get_paginator('describe_instances')
+        pages = paginator.paginate(
             Filters=[{'Name': 'instance-state-name', 'Values': ['running']}]
         )
 
-        for reservation in response['Reservations']:
-            for instance in reservation['Instances']:
-                instance_id = instance['InstanceId']
+        for page in pages:
+            for reservation in page['Reservations']:
+                for instance in reservation['Instances']:
+                    instance_id = instance['InstanceId']
 
-                # Get CPU utilization metrics from CloudWatch
-                cpu_utilization = self._get_average_cpu(instance_id)
-                network_in = self._get_network_metric(instance_id, 'NetworkIn')
-                network_out = self._get_network_metric(instance_id, 'NetworkOut')
+                    # Get CPU utilization metrics from CloudWatch
+                    cpu_utilization = self._get_average_cpu(instance_id)
+                    network_in = self._get_network_metric(instance_id, 'NetworkIn')
+                    network_out = self._get_network_metric(instance_id, 'NetworkOut')
 
-                # Check if instance meets idle criteria
-                # An instance is idle if CPU is low AND network activity is minimal
-                is_idle = (
-                    cpu_utilization < self.cpu_threshold and
-                    network_in < self.network_threshold and
-                    network_out < self.network_threshold
-                )
+                    # Check if instance meets idle criteria
+                    # An instance is idle if CPU is low AND network activity is minimal
+                    is_idle = (
+                        cpu_utilization < self.cpu_threshold and
+                        network_in < self.network_threshold and
+                        network_out < self.network_threshold
+                    )
 
-                if is_idle:
-                    # Extract instance name from tags if available
-                    name = self._get_tag_value(instance.get('Tags', []), 'Name')
+                    if is_idle:
+                        # Extract instance name from tags if available
+                        name = self._get_tag_value(instance.get('Tags', []), 'Name')
 
-                    idle_instances.append({
-                        'instance_id': instance_id,
-                        'name': name,
-                        'instance_type': instance['InstanceType'],
-                        'launch_time': instance['LaunchTime'].isoformat(),
-                        'avg_cpu': round(cpu_utilization, 2),
-                        'avg_network_in': round(network_in, 2),
-                        'avg_network_out': round(network_out, 2),
-                        'region': self.region
-                    })
+                        idle_instances.append({
+                            'instance_id': instance_id,
+                            'name': name,
+                            'instance_type': instance['InstanceType'],
+                            'launch_time': instance['LaunchTime'].isoformat(),
+                            'avg_cpu': round(cpu_utilization, 2),
+                            'avg_network_in': round(network_in, 2),
+                            'avg_network_out': round(network_out, 2),
+                            'region': self.region
+                        })
 
-                    logger.info(f"Idle instance detected: {instance_id} ({name})")
+                        logger.info(f"Idle instance detected: {instance_id} ({name})")
 
         return idle_instances
 
@@ -199,7 +201,8 @@ class IdleResourceDetector:
         # Calculate overall average from datapoints
         datapoints = response.get('Datapoints', [])
         if not datapoints:
-            return 0.0
+            # Missing metrics should not cause a running instance to be classified as idle
+            return float('inf')
 
         return sum(dp['Average'] for dp in datapoints) / len(datapoints)
 
@@ -224,14 +227,15 @@ class IdleResourceDetector:
             StartTime=start_time,
             EndTime=end_time,
             Period=3600,
-            Statistics=['Average']
+            Statistics=['Sum']
         )
 
         datapoints = response.get('Datapoints', [])
         if not datapoints:
-            return 0.0
+            # Missing metrics should not cause a running instance to be classified as idle
+            return float('inf')
 
-        return sum(dp['Average'] for dp in datapoints) / len(datapoints)
+        return sum(dp['Sum'] for dp in datapoints) / len(datapoints)
 
     def _get_tag_value(self, tags: List[Dict], key: str) -> str:
         """
@@ -262,37 +266,39 @@ class IdleResourceDetector:
         unused_volumes = []
 
         # Query for volumes in 'available' state (not attached)
-        response = self.ec2_client.describe_volumes(
+        paginator = self.ec2_client.get_paginator('describe_volumes')
+        pages = paginator.paginate(
             Filters=[{'Name': 'status', 'Values': ['available']}]
         )
 
-        for volume in response['Volumes']:
-            volume_id = volume['VolumeId']
-            name = self._get_tag_value(volume.get('Tags', []), 'Name')
+        for page in pages:
+            for volume in page['Volumes']:
+                volume_id = volume['VolumeId']
+                name = self._get_tag_value(volume.get('Tags', []), 'Name')
 
-            # Calculate how long the volume has been unattached
-            create_time = volume['CreateTime']
-            age_days = (datetime.now(create_time.tzinfo) - create_time).days
+                # Calculate how long the volume has been unattached
+                create_time = volume['CreateTime']
+                age_days = (datetime.now(create_time.tzinfo) - create_time).days
 
-            # Calculate estimated monthly cost based on volume type and size
-            monthly_cost = self._estimate_ebs_cost(
-                volume['VolumeType'],
-                volume['Size'],
-                volume.get('Iops', 0)
-            )
+                # Calculate estimated monthly cost based on volume type and size
+                monthly_cost = self._estimate_ebs_cost(
+                    volume['VolumeType'],
+                    volume['Size'],
+                    volume.get('Iops', 0)
+                )
 
-            unused_volumes.append({
-                'volume_id': volume_id,
-                'name': name,
-                'size_gb': volume['Size'],
-                'volume_type': volume['VolumeType'],
-                'create_time': create_time.isoformat(),
-                'age_days': age_days,
-                'estimated_monthly_cost': round(monthly_cost, 2),
-                'region': self.region
-            })
+                unused_volumes.append({
+                    'volume_id': volume_id,
+                    'name': name,
+                    'size_gb': volume['Size'],
+                    'volume_type': volume['VolumeType'],
+                    'create_time': create_time.isoformat(),
+                    'age_days': age_days,
+                    'estimated_monthly_cost': round(monthly_cost, 2),
+                    'region': self.region
+                })
 
-            logger.info(f"Unused volume detected: {volume_id} ({volume['Size']}GB)")
+                logger.info(f"Unused volume detected: {volume_id} ({volume['Size']}GB)")
 
         return unused_volumes
 
@@ -353,7 +359,7 @@ class IdleResourceDetector:
                 # Get tags if available
                 name = self._get_tag_value(address.get('Tags', []), 'Name')
 
-                # Elastic IPs cost approximately $3.60/month when unattached
+                # Elastic IPs cost approximately $3.60/month in a 30-day month
                 unattached_eips.append({
                     'public_ip': public_ip,
                     'allocation_id': allocation_id,
