@@ -98,16 +98,16 @@ on:
 jobs:
   semgrep:
     runs-on: ubuntu-latest
+    # Run inside the official Semgrep container
+    container:
+      image: semgrep/semgrep
     steps:
       # Check out the repository code
       - uses: actions/checkout@v4
 
-      # Run Semgrep with security-focused rules
+      # Run Semgrep CI with security-focused rules
       - name: Run Semgrep
-        uses: returntocorp/semgrep-action@v1
-        with:
-          # Use security audit ruleset for comprehensive coverage
-          config: p/security-audit
+        run: semgrep ci --config p/security-audit --sarif --output=semgrep.sarif
         env:
           # Optional: connect to Semgrep Cloud for team dashboards
           SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
@@ -126,14 +126,14 @@ jobs:
 # .gitlab-ci.yml
 sast:
   stage: test
-  image: returntocorp/semgrep
+  image: semgrep/semgrep
   script:
-    # Run scan and output SARIF format for GitLab integration
-    - semgrep scan --config p/security-audit --sarif > gl-sast-report.sarif
+    # Run scan and output GitLab SAST JSON format for native integration
+    - semgrep ci --config p/security-audit --gitlab-sast --output gl-sast-report.json
   artifacts:
     reports:
-      # GitLab parses SARIF and shows results in merge request
-      sast: gl-sast-report.sarif
+      # GitLab parses the SAST report and shows results in merge request
+      sast: gl-sast-report.json
   rules:
     # Run on merge requests and main branch
     - if: $CI_MERGE_REQUEST_ID
@@ -282,7 +282,7 @@ jobs:
     steps:
       # ZAP baseline scan for quick results
       - name: ZAP Baseline Scan
-        uses: zaproxy/action-baseline@v0.10.0
+        uses: zaproxy/action-baseline@v0.15.0
         with:
           # Target your staging URL
           target: 'https://staging.example.com'
@@ -311,7 +311,7 @@ zap-full-scan:
   if: startsWith(github.ref, 'refs/heads/release/')
   steps:
     - name: ZAP Full Scan
-      uses: zaproxy/action-full-scan@v0.8.0
+      uses: zaproxy/action-full-scan@v0.13.0
       with:
         target: 'https://staging.example.com'
         # Custom context file with authentication
@@ -394,16 +394,18 @@ jobs:
   # SAST runs first and fastest
   sast:
     runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep
     steps:
       - uses: actions/checkout@v4
 
       - name: Run Semgrep
-        uses: returntocorp/semgrep-action@v1
-        with:
-          config: >-
-            p/security-audit
-            p/secrets
-            p/owasp-top-ten
+        run: |
+          semgrep ci \
+            --config p/security-audit \
+            --config p/secrets \
+            --config p/owasp-top-ten \
+            --sarif --output=semgrep.sarif
 
       - name: Upload SARIF
         uses: github/codeql-action/upload-sarif@v3
@@ -509,7 +511,7 @@ jobs:
           exit 1
 
       - name: ZAP Scan
-        uses: zaproxy/action-baseline@v0.10.0
+        uses: zaproxy/action-baseline@v0.15.0
         with:
           target: 'https://staging.example.com'
           fail_action: true
