@@ -483,7 +483,7 @@ def vector_search(
             query_results.append({
                 "id": hit.id,
                 "distance": hit.distance,
-                "score": 1 - hit.distance,  # Convert distance to similarity score
+                "score": hit.distance,  # COSINE returns a similarity score; higher is more similar
                 **{field: hit.entity.get(field) for field in output_fields}
             })
         formatted_results.append(query_results)
@@ -536,7 +536,7 @@ def filtered_search(
     return [
         {
             "id": hit.id,
-            "score": 1 - hit.distance,
+            "score": hit.distance,
             "document_id": hit.entity.get("document_id"),
             "content": hit.entity.get("content"),
             "metadata": hit.entity.get("metadata")
@@ -616,7 +616,7 @@ def hybrid_search(
     sparse_req = AnnSearchRequest(
         data=[sparse_vector],
         anns_field="sparse_embedding",
-        param={"metric_type": "IP"},
+        param={"metric_type": "IP", "params": {"drop_ratio_search": 0.2}},
         limit=top_k
     )
 
@@ -627,7 +627,7 @@ def hybrid_search(
 
     results = collection.hybrid_search(
         reqs=[dense_req, sparse_req],
-        ranker=ranker,
+        rerank=ranker,
         limit=top_k,
         output_fields=["document_id", "content"]
     )
@@ -832,7 +832,7 @@ def robust_search(
                 limit=10,
                 output_fields=["document_id", "content"]
             )
-            return [{"id": hit.id, "score": 1 - hit.distance} for hit in results[0]]
+            return [{"id": hit.id, "score": hit.distance} for hit in results[0]]
 
         except CollectionNotExistException:
             raise  # Do not retry - collection does not exist
@@ -999,7 +999,7 @@ class MilvusVectorStore:
                 "id": hit.entity.get("doc_id"),
                 "content": hit.entity.get("content"),
                 "metadata": hit.entity.get("metadata"),
-                "score": 1 - hit.distance
+                "score": hit.distance
             }
             for hit in results[0]
         ]
