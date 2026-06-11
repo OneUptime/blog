@@ -71,18 +71,19 @@ Start by adding OpenTelemetry instrumentation to emit meaningful metrics. Here i
 // This module sets up metric collection for your application.
 // It creates instruments that track key performance indicators.
 
-import { metrics, MeterProvider } from '@opentelemetry/api';
+import { metrics } from '@opentelemetry/api';
 import {
     OTLPMetricExporter
 } from '@opentelemetry/exporter-metrics-otlp-http';
 import {
+    MeterProvider,
     PeriodicExportingMetricReader
 } from '@opentelemetry/sdk-metrics';
 
 // Initialize the meter provider with OTLP export
 // The exporter sends metrics to your collector every 10 seconds
 const exporter = new OTLPMetricExporter({
-    url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4318/v1/metrics',
+    url: process.env.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT || 'http://localhost:4318/v1/metrics',
 });
 
 const meterProvider = new MeterProvider({
@@ -130,6 +131,20 @@ export const activeConnections = meter.createObservableGauge(
     }
 );
 
+let activeConnectionCount = 0;
+
+activeConnections.addCallback(result => {
+    result.observe(activeConnectionCount);
+});
+
+export function incrementActiveConnections() {
+    activeConnectionCount += 1;
+}
+
+export function decrementActiveConnections() {
+    activeConnectionCount = Math.max(0, activeConnectionCount - 1);
+}
+
 // UpDownCounter: tracks values that increment and decrement
 // Use for: items in queue, active requests, cache size
 export const queueSize = meter.createUpDownCounter('queue_size', {
@@ -148,6 +163,11 @@ import express, { Request, Response, NextFunction } from 'express';
 import { requestCounter, requestDuration, queueSize } from './metrics';
 
 const app = express();
+app.use(express.json());
+
+async function processJob(job: unknown): Promise<void> {
+    // Replace this with your actual job processing logic
+}
 
 // Middleware to track request metrics
 // This captures timing and counts for every request
@@ -215,7 +235,7 @@ import os
 # Configure the OTLP exporter
 # This sends metrics to your collector endpoint
 exporter = OTLPMetricExporter(
-    endpoint=os.getenv('OTEL_EXPORTER_OTLP_ENDPOINT', 'http://localhost:4318/v1/metrics')
+    endpoint=os.getenv('OTEL_EXPORTER_OTLP_METRICS_ENDPOINT', 'http://localhost:4318/v1/metrics')
 )
 
 # Create a metric reader that exports periodically
@@ -311,7 +331,7 @@ exporters:
   prometheus:
     endpoint: 0.0.0.0:8889
     namespace: devmetrics
-    # Enable exemplars for trace correlation
+    # Use OpenMetrics format, which is required for exemplar output
     enable_open_metrics: true
 
   # Debug exporter prints metrics to console
@@ -654,6 +674,48 @@ const Sparkline: React.FC<SparklineProps> = ({ data, color }) => {
     );
 };
 
+const CombinedMetricsChart: React.FC<{ series: MetricSeries[] }> = ({ series }) => {
+    const width = 800;
+    const height = 240;
+    const padding = 32;
+    const allPoints = series.flatMap(metric => metric.data);
+
+    if (allPoints.length < 2) {
+        return <div className="empty-chart">Waiting for metrics...</div>;
+    }
+
+    const minTime = Math.min(...allPoints.map(point => point.timestamp));
+    const maxTime = Math.max(...allPoints.map(point => point.timestamp));
+    const maxValue = Math.max(...allPoints.map(point => point.value), 1);
+    const timeRange = maxTime - minTime || 1;
+
+    return (
+        <svg viewBox={`0 0 ${width} ${height}`} className="combined-chart-svg">
+            {series.map(metric => {
+                if (metric.data.length < 2) return null;
+
+                const points = metric.data.map(point => {
+                    const x = padding + ((point.timestamp - minTime) / timeRange) * (width - 2 * padding);
+                    const y = height - padding - (point.value / maxValue) * (height - 2 * padding);
+                    return `${x},${y}`;
+                });
+
+                return (
+                    <path
+                        key={metric.name}
+                        d={`M ${points.join(' L ')}`}
+                        fill="none"
+                        stroke={metric.color}
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                    />
+                );
+            })}
+        </svg>
+    );
+};
+
 // Helper components and utilities
 const StatusIndicator: React.FC<{ connected: boolean; lastUpdate: Date | null }> = ({
     connected,
@@ -826,6 +888,17 @@ Add accompanying CSS for the dashboard:
     padding: 24px;
     border: 1px solid #334155;
 }
+
+.combined-chart-svg {
+    display: block;
+    width: 100%;
+    height: 240px;
+}
+
+.empty-chart {
+    color: #94a3b8;
+    font-size: 0.875rem;
+}
 ```
 
 ---
@@ -946,7 +1019,7 @@ function parsePrometheusMetrics(text: string): void {
         if (line.startsWith('#') || line.trim() === '') continue;
 
         // Parse metric line: metric_name{labels} value
-        const match = line.match(/^(\w+)(\{[^}]*\})?\s+([\d.]+)/);
+        const match = line.match(/^([a-zA-Z_:][a-zA-Z0-9_:]*)(\{[^}]*\})?\s+([-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?|NaN|\+Inf|-Inf)/);
         if (match) {
             const [, name, , valueStr] = match;
             const value = parseFloat(valueStr);
@@ -984,7 +1057,7 @@ function updateEditorDecorations(editor: vscode.TextEditor): void {
 
     // Find metric references in the code
     // Look for patterns like: meter.createCounter('metric_name', ...)
-    const metricPattern = /(?:createCounter|createHistogram|createGauge|create_counter|create_histogram)\s*\(\s*['"]([^'"]+)['"]/g;
+    const metricPattern = /(?:createCounter|createHistogram|createGauge|createUpDownCounter|createObservableGauge|create_counter|create_histogram|create_observable_gauge)\s*\(\s*['"]([^'"]+)['"]/g;
 
     let match;
     const decorations: vscode.DecorationOptions[] = [];
@@ -1285,7 +1358,7 @@ function parsePrometheusFormat(text: string): MetricData[] {
         if (line.startsWith('#') || line.trim() === '') continue;
 
         // Match: metric_name{label1="value1",label2="value2"} 123.45
-        const match = line.match(/^(\w+)(\{([^}]*)\})?\s+([\d.eE+-]+)/);
+        const match = line.match(/^([a-zA-Z_:][a-zA-Z0-9_:]*)(\{([^}]*)\})?\s+([-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?|NaN|\+Inf|-Inf)/);
         if (match) {
             const [, name, , labelsStr, valueStr] = match;
             const labels: Record<string, string> = {};
@@ -1414,8 +1487,6 @@ Here is a Docker Compose configuration that ties everything together:
 # docker-compose.yml
 # Complete development metrics stack
 
-version: '3.8'
-
 services:
   # OpenTelemetry Collector
   otel-collector:
@@ -1539,7 +1610,7 @@ sequenceDiagram
 
 4. **Use Histograms for Latency**: Counters and gauges cannot capture percentile distributions. Histograms reveal tail latency.
 
-5. **Correlate with Traces**: Add `trace_id` and `span_id` to metric labels for drill-down capability. This enables jumping from a metric spike to the specific request that caused it.
+5. **Correlate with Traces**: Use exemplars or your backend's trace-correlation features for drill-down. Avoid adding `trace_id` and `span_id` as ordinary metric labels because they create high-cardinality time series.
 
 6. **Set Up Alerts Early**: Even in development, alerts help you notice performance regressions as you code.
 
