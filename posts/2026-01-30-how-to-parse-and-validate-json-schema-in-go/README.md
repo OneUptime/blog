@@ -16,7 +16,7 @@ JSON Schema is a vocabulary that allows you to annotate and validate JSON docume
 
 ```json
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
   "properties": {
     "name": {
@@ -41,7 +41,7 @@ This schema defines an object with a required name and email, plus an optional a
 
 ## Using gojsonschema Library
 
-The `gojsonschema` library is one of the most popular choices for JSON Schema validation in Go. Let's start by installing it:
+The `gojsonschema` library is one of the most popular choices for JSON Schema validation in Go and supports draft-04, draft-06, and draft-07. Let's start by installing it:
 
 ```bash
 go get github.com/xeipuuv/gojsonschema
@@ -104,15 +104,27 @@ package main
 
 import (
     "fmt"
+    "path/filepath"
+
     "github.com/xeipuuv/gojsonschema"
 )
 
 func validateFromFile(schemaPath, documentPath string) error {
+    absSchemaPath, err := filepath.Abs(schemaPath)
+    if err != nil {
+        return fmt.Errorf("invalid schema path: %w", err)
+    }
+
+    absDocumentPath, err := filepath.Abs(documentPath)
+    if err != nil {
+        return fmt.Errorf("invalid document path: %w", err)
+    }
+
     // Load schema from file using file:// URI
-    schemaLoader := gojsonschema.NewReferenceLoader("file://" + schemaPath)
+    schemaLoader := gojsonschema.NewReferenceLoader("file://" + absSchemaPath)
 
     // Load document from file
-    documentLoader := gojsonschema.NewReferenceLoader("file://" + documentPath)
+    documentLoader := gojsonschema.NewReferenceLoader("file://" + absDocumentPath)
 
     result, err := gojsonschema.Validate(schemaLoader, documentLoader)
     if err != nil {
@@ -137,7 +149,7 @@ func validateFromFile(schemaPath, documentPath string) error {
 For reusable validation logic, wrap the functionality in a custom validator struct:
 
 ```go
-package validator
+package main
 
 import (
     "encoding/json"
@@ -290,7 +302,7 @@ func FormatValidationErrors(result *gojsonschema.Result) map[string][]string {
 
 ## Conclusion
 
-JSON Schema validation in Go provides a robust way to ensure data integrity in your APIs. The `gojsonschema` library offers comprehensive support for JSON Schema drafts and integrates well with Go's type system. By implementing schema validation at your API boundaries, you can catch invalid data early and provide meaningful error messages to your clients.
+JSON Schema validation in Go provides a robust way to ensure data integrity in your APIs. The `gojsonschema` library supports draft-04, draft-06, and draft-07 and integrates well with Go's type system. By implementing schema validation at your API boundaries, you can catch invalid data early and provide meaningful error messages to your clients.
 
 Key takeaways:
 - Use JSON Schema to define clear contracts for your API data
