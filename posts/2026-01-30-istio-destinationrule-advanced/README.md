@@ -44,7 +44,7 @@ Subsets let you partition service endpoints based on pod labels. This enables ca
 ```yaml
 # Define subsets based on version labels
 
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: reviews-destination
@@ -70,7 +70,7 @@ spec:
 
 ```yaml
 # Target pods matching multiple labels
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: payment-service
@@ -100,7 +100,7 @@ spec:
 
 ```yaml
 # Each subset can have its own traffic policy
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: api-gateway
@@ -136,7 +136,7 @@ Connection pooling prevents your services from being overwhelmed and helps manag
 ### TCP Connection Pool
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: database-pool
@@ -160,7 +160,7 @@ spec:
 ### HTTP Connection Pool
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: api-connection-pool
@@ -174,8 +174,8 @@ spec:
       http:
         # Maximum pending HTTP requests to a destination
         http1MaxPendingRequests: 1000
-        # Maximum requests per connection (HTTP/1.1)
-        http1MaxRequestsPerConnection: 100
+        # Maximum requests per connection
+        maxRequestsPerConnection: 100
         # Maximum concurrent HTTP/2 requests to a destination
         http2MaxRequests: 1000
         # Maximum retries that can be outstanding
@@ -189,7 +189,7 @@ spec:
 ### Combined Pool Configuration for High Traffic Services
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: high-traffic-service
@@ -235,7 +235,7 @@ flowchart TB
 ### Basic Outlier Detection
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: reviews-outlier
@@ -257,7 +257,7 @@ spec:
 ### Advanced Outlier Detection
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: payment-circuit-breaker
@@ -276,8 +276,6 @@ spec:
       interval: 5s
       # Base ejection time (doubles with each ejection)
       baseEjectionTime: 30s
-      # Maximum ejection time cap
-      maxEjectionTime: 300s
       # Percentage of hosts that can be ejected
       maxEjectionPercent: 30
       # Minimum number of hosts to keep in rotation
@@ -289,7 +287,7 @@ spec:
 ### Outlier Detection with Subset Overrides
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: api-resilience
@@ -356,7 +354,7 @@ flowchart TB
 
 ```yaml
 # Random selection distributes load evenly on average
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: random-lb
@@ -372,7 +370,7 @@ spec:
 
 ```yaml
 # Sequential distribution across all healthy hosts
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: round-robin-lb
@@ -389,7 +387,7 @@ spec:
 ```yaml
 # Routes to host with fewest active requests
 # Best for varying request durations
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: least-request-lb
@@ -404,9 +402,9 @@ spec:
 ### PASSTHROUGH Load Balancing
 
 ```yaml
-# Let the destination service handle load balancing
-# Useful for services with their own discovery
-apiVersion: networking.istio.io/v1beta1
+# Forward to the original destination IP without load balancing
+# Useful for advanced original-destination routing cases
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: passthrough-lb
@@ -422,7 +420,7 @@ spec:
 
 ```yaml
 # Session affinity based on headers, cookies, or source IP
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: consistent-hash-lb
@@ -440,7 +438,7 @@ spec:
 
 ```yaml
 # Sticky sessions using cookies
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: cookie-affinity
@@ -460,7 +458,7 @@ spec:
 
 ```yaml
 # Consistent routing based on client IP
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: source-ip-hash
@@ -477,7 +475,7 @@ spec:
 
 ```yaml
 # Route based on query parameter for cache optimization
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: query-param-hash
@@ -494,7 +492,7 @@ spec:
 
 ```yaml
 # Prefer local endpoints, failover to remote
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: locality-aware-lb
@@ -505,7 +503,7 @@ spec:
     loadBalancer:
       localityLbSetting:
         enabled: true
-        # Distribute remaining traffic when local is overloaded
+        # Distribute traffic based on the source locality
         distribute:
           - from: us-east1/us-east1-a/*
             to:
@@ -555,7 +553,7 @@ flowchart LR
 
 ```yaml
 # Automatic mTLS using Istio certificates
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: mtls-default
@@ -572,7 +570,7 @@ spec:
 
 ```yaml
 # mTLS with your own certificates
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: custom-mtls
@@ -596,7 +594,7 @@ spec:
 
 ```yaml
 # One-way TLS (client verifies server only)
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: simple-tls
@@ -615,7 +613,7 @@ spec:
 
 ```yaml
 # Disable TLS for legacy services that cannot support it
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: legacy-no-tls
@@ -631,7 +629,7 @@ spec:
 
 ```yaml
 # Different TLS settings per port
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: multi-port-tls
@@ -665,7 +663,7 @@ spec:
 
 ```yaml
 # Different TLS settings per subset
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: subset-tls
@@ -698,7 +696,7 @@ spec:
 Here is a comprehensive DestinationRule combining all features for a production service.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: production-api-complete
@@ -734,7 +732,6 @@ spec:
       consecutiveGatewayErrors: 3
       interval: 10s
       baseEjectionTime: 30s
-      maxEjectionTime: 300s
       maxEjectionPercent: 30
       minHealthPercent: 50
       splitExternalLocalOriginErrors: true
@@ -796,7 +793,7 @@ spec:
             maxConnections: 100
 ---
 # Corresponding VirtualService for routing
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-routing
@@ -838,7 +835,7 @@ spec:
 kubectl get destinationrules -n production
 
 # Describe a specific rule
-kubectl describe destinationrule api-production -n production
+kubectl describe destinationrule production-api-complete -n production
 
 # View Envoy proxy configuration
 istioctl proxy-config cluster <pod-name> -n production
@@ -850,8 +847,11 @@ istioctl proxy-config endpoint <pod-name> -n production | grep api
 ### Verify TLS Configuration
 
 ```bash
-# Check mTLS status between services
-istioctl authn tls-check <pod-name>.production api.production.svc.cluster.local
+# Check pod mesh and TLS-related configuration
+istioctl x describe pod <pod-name> -n production
+
+# Compare root CAs for two workloads
+istioctl proxy-config rootca-compare <source-pod>.production <destination-pod>.production
 
 # View certificate details
 istioctl proxy-config secret <pod-name> -n production
