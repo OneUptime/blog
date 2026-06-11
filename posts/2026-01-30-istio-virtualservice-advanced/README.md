@@ -8,7 +8,7 @@ Description: A practical guide to advanced Istio VirtualService configurations i
 
 ---
 
-Istio VirtualService is where traffic management gets interesting. Basic routing is just the beginning. The real power comes when you start matching headers, injecting faults for chaos testing, configuring retries with exponential backoff, and mirroring production traffic to canary deployments. This guide walks through advanced patterns that will make your service mesh actually useful.
+Istio VirtualService is where traffic management gets interesting. Basic routing is just the beginning. The real power comes when you start matching headers, injecting faults for chaos testing, configuring retries with backoff, and mirroring production traffic to canary deployments. This guide walks through advanced patterns that will make your service mesh actually useful.
 
 ## VirtualService Fundamentals
 
@@ -334,25 +334,27 @@ Common `retryOn` values:
 
 ### Advanced Retry with Backoff
 
-Combine retries with DestinationRule for exponential backoff:
+Set `backoff` on the retry policy to control the minimum duration between retry attempts. If unset, Istio uses a 25ms base interval for exponential backoff:
 
 ```yaml
 apiVersion: networking.istio.io/v1beta1
-kind: DestinationRule
+kind: VirtualService
 metadata:
-  name: inventory-dr
+  name: inventory-service
   namespace: production
 spec:
-  host: inventory
-  trafficPolicy:
-    connectionPool:
-      http:
-        h2UpgradePolicy: UPGRADE
-    outlierDetection:
-      consecutive5xxErrors: 5
-      interval: 30s
-      baseEjectionTime: 30s
-      maxEjectionPercent: 50
+  hosts:
+    - inventory
+  http:
+    - route:
+        - destination:
+            host: inventory
+            subset: v1
+      retries:
+        attempts: 3
+        perTryTimeout: 2s
+        retryOn: gateway-error,connect-failure,refused-stream
+        backoff: 1s
 ```
 
 ## Timeout Configuration
@@ -403,7 +405,7 @@ spec:
         retryOn: 5xx,reset
 ```
 
-With 3 attempts at 8 seconds each, you need at least 24 seconds for all retries. The 30-second overall timeout gives some buffer.
+With 3 retries at 8 seconds each, Istio can make up to 4 total attempts including the initial request. The 30-second overall timeout may stop the final retry from using the full per-try timeout.
 
 ### Timeout Flow
 
@@ -659,8 +661,8 @@ istioctl proxy-config listener deploy/product-catalog -n production -o json
 - Ensure service returns retriable status codes
 
 **Issue: Fault injection not triggering**
-- Header matching is case-sensitive
-- Percentage is a float (use `value: 10.0`)
+- Header values are case-sensitive, and header keys in the VirtualService must be lowercase
+- `percentage.value` is a double from 0.0 to 100.0
 - Check request path matches route
 
 ## Best Practices
@@ -669,7 +671,7 @@ istioctl proxy-config listener deploy/product-catalog -n production -o json
 
 2. **Use consistent naming.** Match VirtualService names to service names. It makes debugging easier.
 
-3. **Set timeouts everywhere.** Default Istio timeout is 15 seconds. That is probably too long for most services.
+3. **Set timeouts everywhere.** Istio disables HTTP route timeouts by default. Explicit timeouts keep slow services from tying up callers indefinitely.
 
 4. **Limit retry attempts.** Three retries is usually enough. More just delays the inevitable failure.
 
