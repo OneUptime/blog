@@ -195,7 +195,7 @@ const cache = new CacheHeadersMiddleware();
 
 // Public product catalog - cacheable by CDN
 app.get('/api/products', cache.middleware('api'), (req, res) => {
-  res.json({ products: [...] });
+  res.json({ products: [] });
 });
 
 // User profile - private, browser-only cache
@@ -215,7 +215,7 @@ app.get('/api/exchange-rates', cache.custom({
   public: true,
   staleWhileRevalidate: 120,  // Serve stale for 2 minutes while fetching
 }), (req, res) => {
-  res.json({ rates: {...} });
+  res.json({ rates: {} });
 });
 ```
 
@@ -249,7 +249,10 @@ class ETagMiddleware {
   }
 
   // Check if client's cached version matches
-  isMatch(clientETag, serverETag) {
+  isMatch(req, serverETag) {
+    if (!['GET', 'HEAD'].includes(req.method)) return false;
+
+    const clientETag = req.get('If-None-Match');
     if (!clientETag) return false;
 
     // Handle comma-separated list of ETags
@@ -279,9 +282,7 @@ class ETagMiddleware {
         res.set('ETag', etag);
 
         // Check for conditional request
-        const clientETag = req.get('If-None-Match');
-
-        if (this.isMatch(clientETag, etag)) {
+        if (this.isMatch(req, etag)) {
           // Content unchanged - return 304
           return res.status(304).end();
         }
@@ -334,6 +335,9 @@ class LastModifiedMiddleware {
 
     const clientDate = new Date(ifModifiedSince);
     const serverDate = new Date(lastModified);
+    if (Number.isNaN(clientDate.getTime()) || Number.isNaN(serverDate.getTime())) {
+      return true;
+    }
 
     // HTTP dates are only precise to the second
     // So we compare at second precision
@@ -358,7 +362,7 @@ class LastModifiedMiddleware {
 
           const ifModifiedSince = req.get('If-Modified-Since');
 
-          if (!this.isModified(ifModifiedSince, lastModified)) {
+          if (!req.get('If-None-Match') && !this.isModified(ifModifiedSince, lastModified)) {
             return res.status(304).end();
           }
         }
@@ -504,7 +508,7 @@ class APICacheController {
       standard: {
         cacheControl: 'public, max-age=300, s-maxage=600, stale-while-revalidate=60',
         etag: true,
-        lastModified: false,
+        lastModified: true,
         vary: ['Accept-Encoding', 'Accept'],
       },
 
@@ -553,6 +557,10 @@ class APICacheController {
 
   // Check conditional request headers
   checkConditional(req, etag, lastModified) {
+    if (!['GET', 'HEAD'].includes(req.method)) {
+      return false;
+    }
+
     // Check If-None-Match (ETag)
     const ifNoneMatch = req.get('If-None-Match');
     if (ifNoneMatch && etag) {
@@ -561,6 +569,7 @@ class APICacheController {
       if (tags.includes(serverTag) || tags.includes('*')) {
         return true;  // Not modified
       }
+      return false;  // If-None-Match takes precedence over If-Modified-Since
     }
 
     // Check If-Modified-Since (Last-Modified)
@@ -568,7 +577,7 @@ class APICacheController {
     if (ifModifiedSince && lastModified) {
       const clientTime = new Date(ifModifiedSince).getTime();
       const serverTime = new Date(lastModified).getTime();
-      if (serverTime <= clientTime) {
+      if (!Number.isNaN(clientTime) && !Number.isNaN(serverTime) && serverTime <= clientTime) {
         return true;  // Not modified
       }
     }
@@ -918,7 +927,7 @@ curl -I https://api.example.com/products
 curl -H "If-None-Match: W/\"abc123\"" -I https://api.example.com/products
 
 # Test conditional request with Last-Modified
-curl -H "If-Modified-Since: Wed, 29 Jan 2026 12:00:00 GMT" -I https://api.example.com/products
+curl -H "If-Modified-Since: Thu, 29 Jan 2026 12:00:00 GMT" -I https://api.example.com/products
 
 # See full request/response including cache behavior
 curl -v https://api.example.com/products
