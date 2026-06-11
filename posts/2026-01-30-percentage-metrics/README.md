@@ -802,7 +802,7 @@ Use consistent color schemes across all percentage metrics:
       "datasource": "Prometheus",
       "targets": [
         {
-          "expr": "avg(system_cpu_utilization) * 100",
+          "expr": "avg(system_cpu_utilization)",
           "legendFormat": "CPU %"
         }
       ],
@@ -829,7 +829,7 @@ Use consistent color schemes across all percentage metrics:
       "datasource": "Prometheus",
       "targets": [
         {
-          "expr": "system_memory_utilization * 100",
+          "expr": "system_memory_utilization",
           "legendFormat": "Memory %"
         }
       ],
@@ -905,17 +905,17 @@ groups:
     rules:
       # CPU utilization warning
       - alert: HighCpuUtilization
-        expr: avg(system_cpu_utilization) > 0.85
+        expr: avg(system_cpu_utilization) > 85
         for: 5m
         labels:
           severity: warning
         annotations:
           summary: "CPU utilization above 85%"
-          description: "CPU at {{ $value | humanizePercentage }} for 5 minutes"
+          description: "CPU at {{ $value }}% for 5 minutes"
 
       # CPU utilization critical
       - alert: CriticalCpuUtilization
-        expr: avg(system_cpu_utilization) > 0.95
+        expr: avg(system_cpu_utilization) > 95
         for: 2m
         labels:
           severity: critical
@@ -924,7 +924,7 @@ groups:
 
       # Memory utilization
       - alert: HighMemoryUtilization
-        expr: system_memory_utilization > 0.90
+        expr: system_memory_utilization > 90
         for: 5m
         labels:
           severity: warning
