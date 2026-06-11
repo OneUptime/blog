@@ -72,6 +72,8 @@ classDiagram
 The tool definition tells the AI agent what the tool does and when to use it. A well-written definition is crucial for proper tool selection.
 
 ```typescript
+type JSONSchema = Record<string, any>;
+
 interface ToolDefinition {
   name: string;
   description: string;
@@ -239,9 +241,11 @@ class WeatherToolHandler {
       };
 
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+
       return {
         success: false,
-        error: `Failed to fetch weather: ${error.message}`
+        error: `Failed to fetch weather: ${message}`
       };
     }
   }
@@ -313,7 +317,7 @@ class ToolErrorHandler {
     // Default unknown error
     return {
       code: ToolErrorCode.UNKNOWN_ERROR,
-      message: `An unexpected error occurred: ${error.message}`,
+      message: `An unexpected error occurred: ${error instanceof Error ? error.message : String(error)}`,
       retryable: false
     };
   }
@@ -351,15 +355,15 @@ Here is a complete implementation of a custom tool with all components integrate
 import Anthropic from "@anthropic-ai/sdk";
 
 // Define the tool
-const calculatorTool = {
+const calculatorTool: Anthropic.Tool = {
   name: "calculator",
-  description: "Performs mathematical calculations. Supports basic arithmetic, percentages, and unit conversions. Use when the user needs precise mathematical results.",
+  description: "Performs mathematical calculations. Supports basic arithmetic and percentages. Use when the user needs precise mathematical results.",
   input_schema: {
     type: "object",
     properties: {
       operation: {
         type: "string",
-        enum: ["add", "subtract", "multiply", "divide", "percentage", "convert"],
+        enum: ["add", "subtract", "multiply", "divide", "percentage"],
         description: "The mathematical operation to perform"
       },
       operands: {
@@ -376,9 +380,7 @@ const calculatorTool = {
             type: "integer",
             description: "Decimal places in result",
             default: 2
-          },
-          fromUnit: { type: "string" },
-          toUnit: { type: "string" }
+          }
         }
       }
     },
@@ -386,9 +388,17 @@ const calculatorTool = {
   }
 };
 
+type CalculatorArgs = {
+  operation: "add" | "subtract" | "multiply" | "divide" | "percentage";
+  operands: number[];
+  options?: {
+    precision?: number;
+  };
+};
+
 // Implement the handler
 class CalculatorHandler {
-  execute(args: any): { success: boolean; result?: number; error?: string } {
+  execute(args: CalculatorArgs): { success: boolean; result?: number; error?: string } {
     const { operation, operands, options = {} } = args;
     const precision = options.precision ?? 2;
 
@@ -412,10 +422,11 @@ class CalculatorHandler {
           result = operands.reduce((a: number, b: number) => a / b);
           break;
         case "percentage":
+          if (operands.length < 2) {
+            throw new Error("Percentage operation requires two operands");
+          }
           result = (operands[0] / 100) * operands[1];
           break;
-        default:
-          throw new Error(`Unknown operation: ${operation}`);
       }
 
       return {
@@ -424,9 +435,11 @@ class CalculatorHandler {
       };
 
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+
       return {
         success: false,
-        error: error.message
+        error: message
       };
     }
   }
@@ -437,13 +450,13 @@ async function runAgentWithTools() {
   const client = new Anthropic();
   const calculator = new CalculatorHandler();
 
-  const messages = [
+  const messages: Anthropic.MessageParam[] = [
     { role: "user", content: "What is 15% of 250?" }
   ];
 
   // Initial request with tool definition
   let response = await client.messages.create({
-    model: "claude-sonnet-4-20250514",
+    model: "claude-opus-4-8",
     max_tokens: 1024,
     tools: [calculatorTool],
     messages: messages
@@ -452,33 +465,36 @@ async function runAgentWithTools() {
   // Process tool calls in a loop
   while (response.stop_reason === "tool_use") {
     const toolUse = response.content.find(
-      (block) => block.type === "tool_use"
+      (block): block is Anthropic.ToolUseBlock => block.type === "tool_use"
     );
 
-    if (toolUse && toolUse.name === "calculator") {
-      const toolResult = calculator.execute(toolUse.input);
-
-      // Add assistant response and tool result to messages
-      messages.push({ role: "assistant", content: response.content });
-      messages.push({
-        role: "user",
-        content: [
-          {
-            type: "tool_result",
-            tool_use_id: toolUse.id,
-            content: JSON.stringify(toolResult)
-          }
-        ]
-      });
-
-      // Continue the conversation
-      response = await client.messages.create({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 1024,
-        tools: [calculatorTool],
-        messages: messages
-      });
+    if (!toolUse || toolUse.name !== "calculator") {
+      break;
     }
+
+    const toolResult = calculator.execute(toolUse.input as CalculatorArgs);
+
+    // Add assistant response and tool result to messages
+    messages.push({ role: "assistant", content: response.content });
+    messages.push({
+      role: "user",
+      content: [
+        {
+          type: "tool_result",
+          tool_use_id: toolUse.id,
+          content: JSON.stringify(toolResult),
+          is_error: !toolResult.success
+        }
+      ]
+    });
+
+    // Continue the conversation
+    response = await client.messages.create({
+      model: "claude-opus-4-8",
+      max_tokens: 1024,
+      tools: [calculatorTool],
+      messages: messages
+    });
   }
 
   // Extract final text response
@@ -572,10 +588,10 @@ describe("WeatherToolHandler Integration", () => {
       }
     };
 
-    global.fetch = vi.fn().mockResolvedValue({
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
       ok: true,
       json: () => Promise.resolve(mockResponse)
-    });
+    }));
 
     const handler = new WeatherToolHandler("test-api-key");
     const result = await handler.execute({
@@ -623,8 +639,8 @@ Combine multiple tools to create more powerful capabilities:
 ```typescript
 const compositeToolHandler = {
   async execute(args: { workflow: string; data: any }) {
-    const workflows = {
-      "analyze-and-report": async (data) => {
+    const workflows: Record<string, (data: any) => Promise<any>> = {
+      "analyze-and-report": async (data: any) => {
         // Step 1: Fetch data
         const fetchResult = await dataFetchTool.execute(data.source);
 
@@ -641,7 +657,13 @@ const compositeToolHandler = {
       }
     };
 
-    return workflows[args.workflow](args.data);
+    const workflow = workflows[args.workflow];
+
+    if (!workflow) {
+      throw new Error(`Unknown workflow: ${args.workflow}`);
+    }
+
+    return workflow(args.data);
   }
 };
 ```
@@ -670,6 +692,10 @@ class CachedToolHandler {
 
     return result;
   }
+
+  protected async fetchFreshData(args: any): Promise<any> {
+    throw new Error("fetchFreshData must be implemented by a subclass");
+  }
 }
 ```
 
@@ -689,6 +715,6 @@ Start with simple tools and iterate. As your agent grows, you can compose tools 
 
 ## Further Reading
 
-- [Anthropic Tool Use Documentation](https://docs.anthropic.com/en/docs/build-with-claude/tool-use/overview)
+- [Anthropic Tool Use Documentation](https://platform.claude.com/docs/en/agents-and-tools/tool-use/overview)
 - [JSON Schema Specification](https://json-schema.org/specification)
 - [API Design Best Practices](https://swagger.io/resources/articles/best-practices-in-api-design/)
