@@ -368,23 +368,23 @@ Introspection allows clients to discover your entire schema. While useful in dev
 // Disable introspection in production environments
 import { ApolloServer } from '@apollo/server';
 import { ApolloServerPluginLandingPageDisabled } from '@apollo/server/plugin/disabled';
+import { GraphQLError, visit } from 'graphql';
 
 // Plugin that blocks introspection queries
 function disableIntrospectionPlugin() {
   return {
     requestDidStart: async () => ({
-      async didResolveOperation({ request, document }) {
+      async didResolveOperation({ document }) {
         // Check if query contains introspection
-        const isIntrospection = document.definitions.some((def) => {
-          if (def.kind === 'OperationDefinition') {
-            return def.selectionSet.selections.some((sel) => {
-              if (sel.kind === 'Field') {
-                return sel.name.value.startsWith('__');
-              }
+        let isIntrospection = false;
+
+        visit(document, {
+          Field(node) {
+            if (node.name.value.startsWith('__')) {
+              isIntrospection = true;
               return false;
-            });
-          }
-          return false;
+            }
+          },
         });
 
         if (isIntrospection && process.env.NODE_ENV === 'production') {
@@ -816,40 +816,13 @@ extractQueries();
 
 GraphQL supports query batching, which can be exploited to bypass rate limits or amplify attacks. Control batch sizes and implement per-operation limits.
 
-```typescript
-// plugins/batchLimit.ts
-// Plugin to limit batch query sizes
-import { GraphQLError } from 'graphql';
-
-export function batchLimitPlugin(maxBatchSize: number = 10) {
-  return {
-    async requestDidStart({ request }) {
-      // Check if this is a batched request
-      const isBatch = Array.isArray(request);
-
-      if (isBatch && request.length > maxBatchSize) {
-        throw new GraphQLError(
-          `Batch size ${request.length} exceeds maximum of ${maxBatchSize}`,
-          {
-            extensions: {
-              code: 'BATCH_SIZE_EXCEEDED',
-              maxBatchSize,
-              actualSize: request.length,
-            },
-          }
-        );
-      }
-
-      return {};
-    },
-  };
-}
-```
+Apollo Server only accepts HTTP batch requests when you explicitly enable `allowBatchedHttpRequests`. Enforce batch limits at the HTTP middleware layer before the request reaches Apollo.
 
 ```typescript
 // middleware/batchControl.ts
 // Express middleware for batch control before reaching Apollo
 import { Request, Response, NextFunction } from 'express';
+import { parse } from 'graphql';
 
 interface BatchControlOptions {
   maxBatchSize: number;
@@ -864,7 +837,7 @@ export function batchControlMiddleware(options: BatchControlOptions) {
     // Check if this is a batch request
     if (Array.isArray(body)) {
       // Reject batch requests from anonymous users if configured
-      if (!options.allowAnonymousBatching && !req.user) {
+      if (!options.allowAnonymousBatching && !req.headers.authorization) {
         return res.status(400).json({
           errors: [
             {
@@ -889,10 +862,29 @@ export function batchControlMiddleware(options: BatchControlOptions) {
 
       // Count total operations across all queries in batch
       let totalOperations = 0;
-      for (const query of body) {
-        // Rough estimate: count query and mutation keywords
-        const ops = (query.query?.match(/\b(query|mutation|subscription)\b/g) || []).length;
-        totalOperations += Math.max(1, ops);
+      for (const operation of body) {
+        if (typeof operation.query !== 'string') {
+          // Persisted-query-only requests still count as one operation.
+          totalOperations += 1;
+          continue;
+        }
+
+        try {
+          const document = parse(operation.query);
+          const ops = document.definitions.filter(
+            (def) => def.kind === 'OperationDefinition'
+          ).length;
+          totalOperations += Math.max(1, ops);
+        } catch {
+          return res.status(400).json({
+            errors: [
+              {
+                message: 'Invalid GraphQL query in batch request',
+                extensions: { code: 'BAD_GRAPHQL_REQUEST' },
+              },
+            ],
+          });
+        }
       }
 
       if (totalOperations > options.maxOperationsPerRequest) {
@@ -1002,7 +994,7 @@ export function configureCors() {
       }
 
       // Check if origin is in whitelist
-      if (allowedOrigins.includes(origin)) {
+      if (origin && allowedOrigins.includes(origin)) {
         return callback(null, true);
       }
 
@@ -1038,23 +1030,23 @@ export function configureHelmet() {
     },
 
     // Prevent clickjacking
-    frameguard: { action: 'deny' },
+    xFrameOptions: { action: 'deny' },
 
     // Hide X-Powered-By header
-    hidePoweredBy: true,
+    xPoweredBy: true,
 
     // HTTP Strict Transport Security
-    hsts: {
+    strictTransportSecurity: {
       maxAge: 31536000,
       includeSubDomains: true,
       preload: true,
     },
 
     // Prevent MIME type sniffing
-    noSniff: true,
+    xContentTypeOptions: true,
 
-    // XSS protection
-    xssFilter: true,
+    // Disable the legacy browser XSS filter
+    xXssProtection: true,
   });
 }
 ```
@@ -1090,6 +1082,11 @@ export function auditLogPlugin() {
 
       return {
         async willSendResponse({ response }) {
+          const result =
+            response.body.kind === 'single'
+              ? response.body.singleResult
+              : response.body.initialResult;
+
           const entry: AuditLogEntry = {
             timestamp: new Date().toISOString(),
             requestId: contextValue.requestId,
@@ -1102,8 +1099,8 @@ export function auditLogPlugin() {
             variables: redactVariables(request.variables),
             complexity: contextValue.queryComplexity,
             duration: Date.now() - startTime,
-            status: response.errors?.length ? 'error' : 'success',
-            errorCode: response.errors?.[0]?.extensions?.code as string,
+            status: result.errors?.length ? 'error' : 'success',
+            errorCode: result.errors?.[0]?.extensions?.code as string,
           };
 
           // Log to structured logging system
@@ -1200,6 +1197,7 @@ async function startServer() {
     schema,
     formatError,
     introspection: process.env.NODE_ENV !== 'production',
+    allowBatchedHttpRequests: true,
 
     validationRules: [
       // Limit query depth to prevent deeply nested attacks
