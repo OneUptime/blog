@@ -618,14 +618,23 @@ class APIKeyProvider(ABC):
 
 
 class StripeAPIKeyProvider(APIKeyProvider):
-    """Stripe API key rotation - uses restricted keys"""
+    """
+    Stripe API key rotation - illustrative example.
+
+    NOTE: Stripe does not expose a public REST API for creating or revoking
+    restricted API keys. Restricted keys must be managed through the Stripe
+    Dashboard. Treat the calls below as pseudo-code showing the provider
+    interface - in practice, rotate Stripe keys via the Dashboard (or
+    Stripe's AWS Secrets Manager rotation integration) and store the
+    resulting secret in your secret store.
+    """
 
     def __init__(self, admin_key: str):
         self.admin_key = admin_key
         self.base_url = "https://api.stripe.com/v1"
 
     def create_key(self, name: str) -> Dict[str, str]:
-        # Create a restricted API key with specific permissions
+        # Illustrative only - Stripe does not expose a public endpoint for this.
         response = requests.post(
             f"{self.base_url}/api_keys",
             auth=(self.admin_key, ''),
@@ -677,7 +686,7 @@ class SendGridAPIKeyProvider(APIKeyProvider):
             },
             json={
                 "name": f"{name}-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}",
-                "scopes": ["mail.send", "sender_verification_eligible"]
+                "scopes": ["mail.send"]
             }
         )
         response.raise_for_status()
@@ -1142,7 +1151,8 @@ template {
   # Run this command after rendering (signal app to reload)
   command     = "pkill -HUP myapp || true"
 
-  # Re-render when credentials are about to expire
+  # Fail rendering if a referenced key is missing from the secret data
+  # (credential renewal is driven automatically by the lease duration)
   error_on_missing_key = true
 }
 
