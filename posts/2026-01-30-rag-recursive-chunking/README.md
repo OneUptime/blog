@@ -214,7 +214,7 @@ splitter = RecursiveCharacterTextSplitter(
     # Use tiktoken for token-based splitting with LLMs
     length_function=len,
 
-    # Whether to include separator in chunk
+    # Whether to include each chunk's start index in metadata
     add_start_index=True,
 
     # Custom separator hierarchy
@@ -777,6 +777,6 @@ flowchart TD
 
 ## Related Resources
 
-- [LangChain Text Splitters Documentation](https://python.langchain.com/docs/modules/data_connection/document_transformers/)
+- [LangChain Text Splitters Documentation](https://python.langchain.com/docs/how_to/recursive_text_splitter/)
 - [OpenAI Tokenizer](https://platform.openai.com/tokenizer)
 - [Chunking Strategies for RAG](https://www.pinecone.io/learn/chunking-strategies/)
