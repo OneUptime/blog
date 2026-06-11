@@ -16,7 +16,7 @@ Parallel query execution allows PostgreSQL to split a single query into multiple
 
 ## Key Configuration Parameters
 
-PostgreSQL provides several parameters to control parallel query behavior. These settings can be configured in `postgresql.conf` or set per-session.
+PostgreSQL provides several parameters to control parallel query behavior. These settings can be configured in `postgresql.conf` or with `ALTER SYSTEM`; planner cost settings can also be adjusted per-session with `SET`.
 
 ### max_parallel_workers
 
@@ -38,7 +38,7 @@ Controls how many workers can be assigned to a single parallel operation:
 -- Set maximum workers per query
 SET max_parallel_workers_per_gather = 4;
 
--- Or permanently in postgresql.conf
+-- Or persistently in postgresql.auto.conf
 ALTER SYSTEM SET max_parallel_workers_per_gather = 4;
 ```
 
@@ -67,7 +67,7 @@ SET min_parallel_table_scan_size = '8MB';
 
 PostgreSQL automatically considers parallel execution when:
 
-1. The table size exceeds `min_parallel_table_scan_size`
+1. The amount of table data to scan meets or exceeds `min_parallel_table_scan_size`
 2. The estimated cost of the parallel plan is lower than the sequential plan
 3. The query involves operations that support parallelization (seq scans, hash joins, aggregates)
 4. Sufficient workers are available based on `max_parallel_workers`
@@ -116,8 +116,8 @@ Key indicators of parallel execution:
 
 Here is a balanced configuration for a server with 8 CPU cores:
 
-```sql
--- postgresql.conf settings
+```conf
+# postgresql.conf settings
 max_worker_processes = 8
 max_parallel_workers = 8
 max_parallel_workers_per_gather = 4
@@ -135,7 +135,7 @@ While powerful, parallel queries have limitations:
 1. **Not all operations support parallelization**: Certain functions marked as `PARALLEL UNSAFE` prevent parallel execution
 2. **Overhead costs**: Small tables may perform worse with parallel queries due to coordination overhead
 3. **Resource contention**: Excessive parallelization can overwhelm CPU and memory resources
-4. **Transaction isolation**: Queries in serializable isolation level cannot use parallel workers
+4. **Data modification and row locking**: Queries that write data or lock rows generally cannot use parallel query plans
 5. **Cursor operations**: Queries using cursors run without parallel workers
 
 Check if a function is parallel-safe:
