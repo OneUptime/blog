@@ -153,17 +153,14 @@ class ThresholdAlertEvaluator:
         """
         Process a log line and return True if alert should fire.
         """
-        # Check if log matches the pattern
-        if not self.compiled_pattern.search(log_line):
-            return False
-
-        # Add match timestamp
-        self.matches.append(timestamp)
-
         # Remove matches outside the time window
         cutoff = timestamp - timedelta(seconds=self.rule.window_seconds)
         while self.matches and self.matches[0] < cutoff:
             self.matches.popleft()
+
+        # Check if log matches the pattern
+        if self.compiled_pattern.search(log_line):
+            self.matches.append(timestamp)
 
         # Check if threshold is exceeded
         match_count = len(self.matches)
@@ -204,11 +201,9 @@ class RateAnomalyDetector:
     def __init__(
         self,
         baseline_window_minutes: int = 60,
-        evaluation_window_seconds: int = 60,
         std_dev_threshold: float = 3.0
     ):
         self.baseline_window = timedelta(minutes=baseline_window_minutes)
-        self.eval_window = timedelta(seconds=evaluation_window_seconds)
         self.std_dev_threshold = std_dev_threshold
         # Store (timestamp, count) tuples for baseline calculation
         self.minute_counts: deque = deque()
@@ -322,6 +317,7 @@ function processPayment(orderId, amount) {
     log('error', 'Payment processing failed', {
       event: 'payment.failed',
       order_id: orderId,
+      amount: amount,
       error_type: error.name,
       error_message: error.message,
       retry_count: 0
@@ -376,23 +372,19 @@ processors:
 
   # Filter processor to route error logs to alerting
   filter/errors:
-    logs:
-      include:
-        match_type: regexp
-        bodies:
-          - ".*ERROR.*"
-          - ".*FATAL.*"
-          - ".*Exception.*"
+    error_mode: ignore
+    log_conditions:
+      - 'not (IsMatch(log.body, ".*ERROR.*") or IsMatch(log.body, ".*FATAL.*") or IsMatch(log.body, ".*Exception.*"))'
 
 exporters:
   # Primary log storage
-  otlphttp:
+  otlp_http:
     endpoint: "https://oneuptime.com/otlp"
     headers:
       x-oneuptime-token: "${ONEUPTIME_TOKEN}"
 
   # Debug output for local development
-  logging:
+  debug:
     verbosity: basic
 
 service:
@@ -400,12 +392,12 @@ service:
     logs:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlphttp]
+      exporters: [otlp_http]
 
     logs/alerts:
       receivers: [otlp]
       processors: [filter/errors, batch]
-      exporters: [otlphttp, logging]
+      exporters: [otlp_http, debug]
 ```
 
 ## Alert Notification Flow
