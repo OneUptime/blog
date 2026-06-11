@@ -104,13 +104,12 @@ Schema Registry supports several compatibility modes. Each defines what schema c
 New schema can read data written by the old schema. Consumers can be upgraded first.
 
 **Allowed changes:**
-- Delete fields (with defaults in old schema)
+- Delete fields
 - Add optional fields with defaults
 
 **Not allowed:**
 - Add required fields
-- Delete fields without defaults
-- Change field types
+- Incompatible field type changes
 
 ```mermaid
 flowchart LR
@@ -130,12 +129,12 @@ flowchart LR
 Old schema can read data written by the new schema. Producers can be upgraded first.
 
 **Allowed changes:**
-- Add fields (with defaults)
-- Delete optional fields
+- Add fields
+- Delete fields that had defaults in the old schema
 
 **Not allowed:**
 - Delete required fields
-- Add fields without defaults
+- Incompatible field type changes
 
 ```mermaid
 flowchart LR
@@ -155,12 +154,13 @@ flowchart LR
 Both BACKWARD and FORWARD compatible. Either producers or consumers can be upgraded first.
 
 **Allowed changes:**
-- Add optional fields with defaults
-- Delete optional fields with defaults
+- Add fields with defaults
+- Delete fields that had defaults in the old schema
 
 **Not allowed:**
-- Any required field changes
-- Type changes
+- Add fields without defaults
+- Delete fields without defaults in the old schema
+- Incompatible field type changes
 
 ```mermaid
 flowchart LR
@@ -223,7 +223,10 @@ services:
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
 
   schema-registry:
@@ -234,7 +237,7 @@ services:
       - "8081:8081"
     environment:
       SCHEMA_REGISTRY_HOST_NAME: schema-registry
-      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: kafka:9092
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: kafka:29092
       SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
 ```
 
@@ -275,14 +278,14 @@ props.put("schema.registry.url", "http://localhost:8081");
 // Optional: Auto-register schemas (disable in production)
 props.put("auto.register.schemas", "false");
 
-// Optional: Use specific schema ID
+// Optional: Use the latest registered schema version
 props.put("use.latest.version", "true");
 ```
 
 ### Schema Registry Client Configuration (Python)
 
 ```python
-from confluent_kafka import Producer
+from confluent_kafka import SerializingProducer
 from confluent_kafka.schema_registry import SchemaRegistryClient
 from confluent_kafka.schema_registry.avro import AvroSerializer
 
@@ -299,6 +302,8 @@ producer_conf = {
     'bootstrap.servers': 'localhost:9092',
     'value.serializer': avro_serializer
 }
+
+producer = SerializingProducer(producer_conf)
 ```
 
 ---
@@ -315,9 +320,8 @@ flowchart TD
     C -->|Compatible| D[Register Schema]
     C -->|Incompatible| E[Revise Schema]
     E --> A
-    D --> F[Deploy Consumers]
-    F --> G[Deploy Producers]
-    G --> H[Monitor]
+    D --> F[Deploy According to Compatibility Mode]
+    F --> H[Monitor]
     H -->|Issues| I[Rollback]
     H -->|Success| J[Done]
 ```
@@ -331,7 +335,7 @@ Start with your existing schema and make changes according to compatibility rule
 ```bash
 # Test if a schema is compatible before registering
 curl -X POST -H "Content-Type: application/vnd.schemaregistry.v1+json" \
-  --data '{"schema": "{\"type\":\"record\",\"name\":\"Order\",\"fields\":[{\"name\":\"id\",\"type\":\"string\"},{\"name\":\"amount\",\"type\":\"double\"},{\"name\":\"currency\",\"type\":{\"type\":\"string\",\"default\":\"USD\"}}]}"}' \
+  --data '{"schema": "{\"type\":\"record\",\"name\":\"Order\",\"fields\":[{\"name\":\"id\",\"type\":\"string\"},{\"name\":\"amount\",\"type\":\"double\"},{\"name\":\"currency\",\"type\":\"string\",\"default\":\"USD\"}]}"}' \
   http://localhost:8081/compatibility/subjects/orders-value/versions/latest
 ```
 
@@ -345,7 +349,7 @@ Response:
 ```bash
 # Register the new schema version
 curl -X POST -H "Content-Type: application/vnd.schemaregistry.v1+json" \
-  --data '{"schema": "{\"type\":\"record\",\"name\":\"Order\",\"fields\":[{\"name\":\"id\",\"type\":\"string\"},{\"name\":\"amount\",\"type\":\"double\"},{\"name\":\"currency\",\"type\":{\"type\":\"string\",\"default\":\"USD\"}}]}"}' \
+  --data '{"schema": "{\"type\":\"record\",\"name\":\"Order\",\"fields\":[{\"name\":\"id\",\"type\":\"string\"},{\"name\":\"amount\",\"type\":\"double\"},{\"name\":\"currency\",\"type\":\"string\",\"default\":\"USD\"}]}"}' \
   http://localhost:8081/subjects/orders-value/versions
 ```
 
@@ -456,7 +460,7 @@ Original schema:
 
 Attempting to add a required field:
 
-```json
+```jsonc
 {
   "type": "record",
   "name": "Payment",
@@ -525,7 +529,7 @@ Adding a new enum value (BACKWARD compatible):
 }
 ```
 
-Note: The default is required for new enum values to maintain BACKWARD compatibility.
+Note: An enum default gives readers a fallback when they encounter an unknown writer symbol. To maintain FORWARD compatibility for future enum additions, include the fallback default before new symbols are introduced.
 
 ### Example 5: Widening Numeric Types
 
@@ -542,7 +546,7 @@ Original schema:
 }
 ```
 
-Widening int to long (FULL compatible):
+Widening int to long (BACKWARD compatible):
 
 ```json
 {
@@ -604,7 +608,7 @@ kafka-topics --create --topic orders-v2 --bootstrap-server localhost:9092
 
 # 2. Register new schema
 curl -X POST -H "Content-Type: application/vnd.schemaregistry.v1+json" \
-  --data @new-schema.json \
+  --data "{\"schema\": $(jq -Rs . < new-schema.avsc)}" \
   http://localhost:8081/subjects/orders-v2-value/versions
 
 # 3. Deploy transformer service to copy and transform
@@ -615,7 +619,7 @@ curl -X POST -H "Content-Type: application/vnd.schemaregistry.v1+json" \
 
 ### Strategy 3: Schema Aliasing
 
-Use schema references to create compatibility layers.
+Use Avro aliases to create compatibility layers for renamed records and fields.
 
 ```json
 {
@@ -632,7 +636,7 @@ Use schema references to create compatibility layers.
 
 ### Strategy 4: Union Types for Gradual Migration
 
-Use union types to support multiple versions in the same field.
+Use union types to support multiple versions in the same field when those named schemas are defined in the schema or registered as schema references.
 
 ```json
 {
@@ -681,8 +685,7 @@ void testBackwardCompatibility() {
 ### Integration Testing
 
 ```python
-import pytest
-from confluent_kafka.schema_registry import SchemaRegistryClient
+from confluent_kafka.schema_registry import Schema, SchemaRegistryClient
 
 def test_schema_compatibility():
     client = SchemaRegistryClient({'url': 'http://localhost:8081'})
@@ -750,7 +753,7 @@ jobs:
 
 ### Pitfall 1: Forgetting Defaults
 
-```json
+```jsonc
 // WRONG: No default for optional field
 {"name": "nickname", "type": ["null", "string"]}
 
@@ -760,7 +763,7 @@ jobs:
 
 ### Pitfall 2: Changing Field Order in Unions
 
-```json
+```jsonc
 // V1
 {"name": "value", "type": ["null", "string"], "default": null}
 
@@ -772,7 +775,7 @@ The first type in a union determines the default type.
 
 ### Pitfall 3: Namespace Changes
 
-```json
+```jsonc
 // V1
 {"namespace": "com.example", "name": "User"}
 
@@ -782,7 +785,7 @@ The first type in a union determines the default type.
 
 ### Pitfall 4: Logical Type Mismatches
 
-```json
+```jsonc
 // V1
 {"name": "timestamp", "type": "long"}
 
