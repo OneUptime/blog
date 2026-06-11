@@ -35,7 +35,7 @@ Falco outputs are defined in rule files and control how alerts appear when a rul
 
 ## Field Placeholders and Formatting
 
-Falco provides a rich set of field placeholders that extract information from the system call context. These fields are wrapped in `%` symbols and get replaced with actual values at alert time.
+Falco provides a rich set of field placeholders that extract information from the system call context. These fields are prefixed with `%` and get replaced with actual values at alert time.
 
 ### Common Field Categories
 
@@ -102,7 +102,7 @@ flowchart TD
     H --> I[stdout]
     H --> J[File]
     H --> K[HTTP Endpoint]
-    H --> L[gRPC]
+    H --> L[Syslog]
     H --> M[Program/Script]
 
     subgraph Field Extraction
@@ -133,8 +133,8 @@ Configure Falco to emit JSON-formatted alerts in the configuration file:
 # Enable JSON output format
 json_output: true
 
-# Include output fields as a separate JSON object
-json_include_output_property: true
+# Include templated output fields as a separate JSON object
+json_include_output_fields_property: true
 
 # Include tags in the JSON output
 json_include_tags_property: true
@@ -149,7 +149,6 @@ When JSON output is enabled, alerts have this structure:
 
 ```json
 {
-  "uuid": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "output": "Shell spawned in container (user=root command=bash container=nginx-pod image=nginx pod=nginx-pod-abc123)",
   "priority": "Warning",
   "rule": "Detect Shell in Container",
@@ -174,10 +173,10 @@ When JSON output is enabled, alerts have this structure:
 
 ### Custom Output Fields
 
-You can specify which fields appear in the `output_fields` object:
+Any fields included in a rule's `output` string are also included in the `output_fields` object when `json_output` is enabled. To add fields to `output_fields`, include them in the output text or use `append_output.extra_fields` in `falco.yaml`.
 
 ```yaml
-# Rule with explicit output fields for JSON
+# Rule with fields included in JSON output_fields
 - rule: Network Connection to Suspicious Port
   desc: Detects outbound connections to commonly exploited ports
   condition: >
@@ -186,17 +185,10 @@ You can specify which fields appear in the `output_fields` object:
   output: >
     Suspicious outbound connection detected
     (process=%proc.name destination=%fd.sip:%fd.sport
-    container=%container.name pod=%k8s.pod.name)
-  priority: HIGH
-  output_fields:
-    - proc.name
-    - proc.cmdline
-    - fd.sip
-    - fd.sport
-    - container.name
-    - container.image.repository
-    - k8s.pod.name
-    - k8s.ns.name
+    cmdline=%proc.cmdline container=%container.name
+    image=%container.image.repository pod=%k8s.pod.name
+    namespace=%k8s.ns.name)
+  priority: WARNING
   tags: [network, suspicious_connection]
 ```
 
@@ -219,11 +211,11 @@ file_output:
   keep_alive: false
   filename: /var/log/falco/events.log
 
-# HTTP webhook for external integrations
+# HTTP webhook for Falcosidekick or external integrations
 http_output:
   enabled: true
-  url: https://alerts.example.com/falco/webhook
-  user_agent: "Falco/0.38.0"
+  url: http://falcosidekick:2801/
+  user_agent: "falcosecurity/falco"
 
 # Program output for custom processing
 program_output:
@@ -237,22 +229,13 @@ program_output:
       timestamp: .time
     }' | curl -X POST -H "Content-Type: application/json"
     -d @- https://siem.example.com/api/events
-
-# gRPC output for Falcosidekick integration
-grpc_output:
-  enabled: true
-
-grpc:
-  enabled: true
-  bind_address: "0.0.0.0:5060"
-  threadiness: 8
 ```
 
 ### Integration Architecture
 
 ```mermaid
 flowchart LR
-    F[Falco] --> |gRPC| FS[Falcosidekick]
+    F[Falco] --> |HTTP| FS[Falcosidekick]
 
     FS --> S1[Slack]
     FS --> S2[PagerDuty]
@@ -315,28 +298,26 @@ config:
   webhook:
     address: "https://oneuptime.example.com/api/alerts"
     minimumpriority: "warning"
-    customheaders:
-      Authorization: "Bearer ${API_TOKEN}"
+    customHeaders: "Authorization:Bearer ${API_TOKEN}"
 ```
 
 ## Practical Examples with Comments
 
-### Example 1: Privilege Escalation Detection
+### Example 1: Writable Executable Detection
 
 ```yaml
-# Detect attempts to escalate privileges via setuid binaries
-- rule: Setuid Execution
-  desc: Detects execution of setuid binaries that could lead to privilege escalation
+# Detect execution of writable binaries that could lead to privilege escalation
+- rule: Writable Executable Execution
+  desc: Detects execution of writable binaries that could lead to privilege escalation
   condition: >
     spawned_process and
     proc.is_exe_upper_layer=true and
-    proc.is_exe_writable=false and
-    user.uid != 0 and
-    proc.suid = 0
+    proc.is_exe_writable=true and
+    user.uid != 0
   # Output includes all context needed for incident response
   # The format follows: what happened, who did it, where, how
   output: >
-    Setuid binary executed for potential privilege escalation
+    Writable binary executed for potential privilege escalation
     (binary=%proc.exepath user=%user.name uid=%user.uid
     container=%container.name image=%container.image.repository
     namespace=%k8s.ns.name pod=%k8s.pod.name
@@ -391,18 +372,9 @@ config:
     (domain=%fd.name process=%proc.name pid=%proc.pid
     user=%user.name container=%container.name
     pod=%k8s.pod.name namespace=%k8s.ns.name
+    image=%container.image.repository cmdline=%proc.cmdline
     connection=%fd.name)
-  priority: HIGH
-  output_fields:
-    - fd.name
-    - proc.name
-    - proc.pid
-    - proc.cmdline
-    - user.name
-    - container.name
-    - container.image.repository
-    - k8s.pod.name
-    - k8s.ns.name
+  priority: WARNING
   tags: [network, dns, suspicious_domain, mitre_command_and_control]
 ```
 
