@@ -28,13 +28,13 @@ kubectl get pods -n kyverno
 
 ## Understanding Mutation Rules
 
-Mutation policies intercept Kubernetes API requests and modify resources before they are persisted. Kyverno supports three mutation methods:
+Mutation policies intercept Kubernetes API requests and modify resources before they are persisted. Kyverno supports strategic merge patches and RFC 6902 JSON patches, and `foreach` can be used with either form when you need to loop over arrays:
 
 | Method | Use Case | Complexity |
 |--------|----------|------------|
 | patchStrategicMerge | Add or modify fields using Kubernetes strategic merge | Low |
 | patchesJson6902 | RFC 6902 JSON patch operations | Medium |
-| foreach | Iterate over arrays and apply mutations | Medium-High |
+| foreach | Iterate over arrays and apply either patch form | Medium-High |
 
 Start with patchStrategicMerge for simple additions, move to patchesJson6902 when you need precise control, and use foreach when dealing with arrays.
 
@@ -110,8 +110,6 @@ JSON Patch gives you surgical control. Each operation specifies exactly what to 
 | add | Insert value at path | Add sidecar to containers array |
 | remove | Delete value at path | Remove a specific annotation |
 | replace | Overwrite value at path | Change image registry |
-| copy | Duplicate value to new path | Copy label to annotation |
-| move | Relocate value | Move annotation to label |
 
 ### Injecting a Sidecar Container
 
@@ -154,6 +152,9 @@ spec:
                 - name: varlog
                   mountPath: /var/log
           - op: add
+            path: /metadata/labels/sidecar.logging~1injected
+            value: "true"
+          - op: add
             path: /spec/template/spec/volumes/-
             value:
               name: varlog
@@ -188,9 +189,9 @@ spec:
                 - Pod
       preconditions:
         all:
-          - key: "{{ request.object.spec.containers[0].resources.limits.nvidia\\.com/gpu || '' }}"
+          - key: "{{ request.object.spec.containers[0].resources.limits.\"nvidia.com/gpu\" || '0' }}"
             operator: GreaterThan
-            value: "0"
+            value: 0
       mutate:
         patchStrategicMerge:
           spec:
@@ -269,7 +270,7 @@ spec:
               spec:
                 containers:
                   - name: "{{ element.name }}"
-                    image: "registry.internal.company.com/{{ images.containers.{{element.name}}.path }}:{{ images.containers.{{element.name}}.tag }}"
+                    image: "registry.internal.company.com/{{ images.containers.\"{{element.name}}\".name }}:{{ images.containers.\"{{element.name}}\".tag }}"
 ```
 
 ### Iterating Over Init Containers
@@ -398,9 +399,9 @@ Testing is critical. Kyverno provides a CLI tool for policy testing.
 brew install kyverno
 
 # Linux
-curl -LO https://github.com/kyverno/kyverno/releases/download/v1.11.0/kyverno-cli_v1.11.0_linux_x86_64.tar.gz
-tar -xvf kyverno-cli_v1.11.0_linux_x86_64.tar.gz
-sudo mv kyverno /usr/local/bin/
+curl -LO https://github.com/kyverno/kyverno/releases/download/v1.18.1/kyverno-cli_v1.18.1_linux_x86_64.tar.gz
+tar -xvf kyverno-cli_v1.18.1_linux_x86_64.tar.gz
+sudo cp kyverno /usr/local/bin/
 ```
 
 ### Run Policy Tests
@@ -422,7 +423,10 @@ Create structured tests with expected results:
 
 ```yaml
 # kyverno-test.yaml
-name: mutation-tests
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: mutation-tests
 policies:
   - add-default-labels.yaml
 resources:
@@ -430,9 +434,10 @@ resources:
 results:
   - policy: add-default-labels
     rule: add-team-label
-    resource: test-app
+    resources:
+      - test-app
     kind: Deployment
-    patchedResource: expected-deployment.yaml
+    patchedResources: expected-deployment.yaml
     result: pass
 ```
 
@@ -499,9 +504,9 @@ subjects:
 
 ## Production Best Practices
 
-### Use Audit Mode First
+### Test in a Limited Scope First
 
-Deploy policies in audit mode before enforcing:
+Mutation rules change matching resources when they are admitted, so test them with the Kyverno CLI and deploy them to a limited set of namespaces before broad rollout:
 
 ```yaml
 apiVersion: kyverno.io/v1
@@ -509,10 +514,21 @@ kind: ClusterPolicy
 metadata:
   name: add-default-labels
 spec:
-  validationFailureAction: Audit
   background: true
   rules:
-    # ... rules here
+    - name: add-team-label
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaces:
+                - staging
+      mutate:
+        patchStrategicMerge:
+          metadata:
+            labels:
+              +(team): platform
 ```
 
 ### Exclude System Namespaces
@@ -555,7 +571,6 @@ metadata:
     policies.kyverno.io/category: Best Practices
     app.kubernetes.io/version: "2.0.0"
 spec:
-  validationFailureAction: Audit
   background: true
   rules:
     - name: add-standard-labels
@@ -638,4 +653,4 @@ spec:
 
 ---
 
-Kyverno mutation policies reduce configuration drift and enforce standards automatically. Start simple with patchStrategicMerge for labels and annotations. Progress to patchesJson6902 when you need precision. Use foreach for array operations. Always test in audit mode before enforcing, and monitor policy performance in production.
+Kyverno mutation policies reduce configuration drift and enforce standards automatically. Start simple with patchStrategicMerge for labels and annotations. Progress to patchesJson6902 when you need precision. Use foreach for array operations. Always test before broad rollout, and monitor policy performance in production.
