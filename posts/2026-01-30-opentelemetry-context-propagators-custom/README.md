@@ -79,7 +79,7 @@ The same interface in Python:
 # All custom propagators inherit from this base class
 
 from abc import ABC, abstractmethod
-from typing import Optional, Sequence
+from typing import Optional
 from opentelemetry.context import Context
 from opentelemetry.propagators import textmap
 
@@ -104,8 +104,9 @@ class TextMapPropagator(ABC):
         """Inject context into carrier"""
         pass
 
+    @property
     @abstractmethod
-    def fields(self) -> Sequence[str]:
+    def fields(self) -> set[str]:
         """Return list of header names used by this propagator"""
         pass
 ```
@@ -133,6 +134,8 @@ import {
   TraceFlags,
   trace,
   isSpanContextValid,
+  isValidSpanId,
+  isValidTraceId,
 } from '@opentelemetry/api';
 
 // Header name constant - change this to match your system
@@ -194,13 +197,13 @@ export class CustomTracePropagator implements TextMapPropagator {
 
     const [traceId, spanId, sampled] = parts;
 
-    // Validate trace ID (must be 32 hex characters)
-    if (!/^[0-9a-f]{32}$/.test(traceId)) {
+    // Validate trace ID (must be 32 lowercase hex characters and not all zeroes)
+    if (!isValidTraceId(traceId)) {
       return context;
     }
 
-    // Validate span ID (must be 16 hex characters)
-    if (!/^[0-9a-f]{16}$/.test(spanId)) {
+    // Validate span ID (must be 16 lowercase hex characters and not all zeroes)
+    if (!isValidSpanId(spanId)) {
       return context;
     }
 
@@ -238,7 +241,7 @@ Here is the same propagator in Python:
 # Python implementation of the custom X-Custom-Trace propagator
 
 import re
-from typing import Optional, Sequence, Set
+from typing import Optional, Set
 from opentelemetry import trace
 from opentelemetry.context import Context
 from opentelemetry.propagators import textmap
@@ -278,9 +281,8 @@ class CustomTracePropagator(textmap.TextMapPropagator):
         if not header_value:
             return context
 
-        # Handle list values (some frameworks return lists)
-        if isinstance(header_value, list):
-            header_value = header_value[0]
+        # The default getter returns a list of values
+        header_value = header_value[0]
 
         # Parse the header: trace_id:span_id:sampled
         parts = header_value.split(":")
@@ -308,6 +310,9 @@ class CustomTracePropagator(textmap.TextMapPropagator):
             is_remote=True,
             trace_flags=trace_flags,
         )
+
+        if not span_context.is_valid:
+            return context
 
         # Return context with the extracted span
         return trace.set_span_in_context(
@@ -361,6 +366,7 @@ Many legacy systems use more complex header formats. Let's look at a propagator 
 
 import {
   Context,
+  createContextKey,
   TextMapGetter,
   TextMapSetter,
   TextMapPropagator,
@@ -368,6 +374,8 @@ import {
   TraceFlags,
   trace,
   isSpanContextValid,
+  isValidSpanId,
+  isValidTraceId,
 } from '@opentelemetry/api';
 
 // Header definitions for the legacy system
@@ -387,7 +395,7 @@ interface LegacyTraceContext {
 }
 
 // Symbol for storing legacy context in the OpenTelemetry context
-const LEGACY_CONTEXT_KEY = Symbol('legacy-trace-context');
+const LEGACY_CONTEXT_KEY = createContextKey('legacy-trace-context');
 
 export class MultiHeaderPropagator implements TextMapPropagator {
 
@@ -434,13 +442,13 @@ export class MultiHeaderPropagator implements TextMapPropagator {
   ): Context {
     // Extract trace ID
     const traceId = this.getHeaderValue(getter, carrier, HEADERS.TRACE_ID);
-    if (!traceId || !/^[0-9a-f]{32}$/.test(traceId)) {
+    if (!traceId || !isValidTraceId(traceId)) {
       return context;
     }
 
     // Extract span ID
     const spanId = this.getHeaderValue(getter, carrier, HEADERS.SPAN_ID);
-    if (!spanId || !/^[0-9a-f]{16}$/.test(spanId)) {
+    if (!spanId || !isValidSpanId(spanId)) {
       return context;
     }
 
@@ -523,6 +531,7 @@ import {
   TextMapSetter,
   TextMapPropagator,
   trace,
+  isSpanContextValid,
 } from '@opentelemetry/api';
 
 interface PropagatorConfig {
@@ -580,7 +589,7 @@ export class PriorityCompositePropagator implements TextMapPropagator {
         // If we got a new valid span, use this extraction
         if (extractedSpan && extractedSpan !== originalSpan) {
           const spanContext = extractedSpan.spanContext();
-          if (spanContext.traceId !== '00000000000000000000000000000000') {
+          if (isSpanContextValid(spanContext)) {
             return extractedContext;
           }
         }
@@ -663,6 +672,7 @@ import {
   TraceFlags,
   trace,
   isSpanContextValid,
+  isValidSpanId,
 } from '@opentelemetry/api';
 
 const LEGACY_TRACE_HEADER = 'x-legacy-trace';
@@ -688,7 +698,7 @@ export class LegacyIntegrationPropagator implements TextMapPropagator {
     }
 
     // Convert 128-bit trace ID to 64-bit by taking the lower 64 bits
-    // This maintains compatibility with legacy systems while preserving uniqueness
+    // This maintains compatibility with legacy systems, but it loses entropy
     const legacyTraceId = this.convert128To64BitId(spanContext.traceId);
 
     setter.set(carrier, LEGACY_TRACE_HEADER, legacyTraceId);
@@ -712,12 +722,12 @@ export class LegacyIntegrationPropagator implements TextMapPropagator {
     }
 
     // Validate legacy trace ID (64-bit = 16 hex chars)
-    if (!/^[0-9a-f]{16}$/.test(legacyTraceId)) {
+    if (!/^[0-9a-f]{16}$/.test(legacyTraceId) || legacyTraceId === '0000000000000000') {
       return context;
     }
 
     // Validate span ID
-    if (!/^[0-9a-f]{16}$/.test(spanId)) {
+    if (!isValidSpanId(spanId)) {
       return context;
     }
 
@@ -731,6 +741,10 @@ export class LegacyIntegrationPropagator implements TextMapPropagator {
       isRemote: true,
     };
 
+    if (!isSpanContextValid(spanContext)) {
+      return context;
+    }
+
     return trace.setSpanContext(context, spanContext);
   }
 
@@ -742,7 +756,8 @@ export class LegacyIntegrationPropagator implements TextMapPropagator {
 
   // Convert 64-bit trace ID to 128-bit (pad with zeros)
   private convert64To128BitId(legacyId: string): string {
-    // Pad with zeros on the left to make 32 characters
+    // Pad with zeros on the left to make 32 characters.
+    // This is valid only when the 64-bit legacy ID is not all zeroes.
     return '0'.repeat(16) + legacyId;
   }
 
@@ -929,13 +944,12 @@ After building your propagator, you need to register it with the OpenTelemetry S
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
-import { propagation } from '@opentelemetry/api';
 import { CustomTracePropagator } from './custom-trace-propagator';
 import { PriorityCompositePropagator } from './composite-propagator';
 import { W3CTraceContextPropagator } from '@opentelemetry/core';
 
-// Option 1: Register a single custom propagator
-propagation.setGlobalPropagator(new CustomTracePropagator());
+// Option 1: Use a single custom propagator
+const customPropagator = new CustomTracePropagator();
 
 // Option 2: Use a composite propagator for migration scenarios
 const compositePropagator = new PriorityCompositePropagator([
@@ -951,7 +965,8 @@ const compositePropagator = new PriorityCompositePropagator([
   },
 ]);
 
-propagation.setGlobalPropagator(compositePropagator);
+const useComposite = true;
+const selectedPropagator = useComposite ? compositePropagator : customPropagator;
 
 // Initialize the SDK with the custom propagator
 const sdk = new NodeSDK({
@@ -959,7 +974,7 @@ const sdk = new NodeSDK({
     url: 'http://localhost:4318/v1/traces',
   }),
   instrumentations: [getNodeAutoInstrumentations()],
-  // Note: The SDK uses the global propagator set above
+  textMapPropagator: selectedPropagator,
 });
 
 sdk.start();
