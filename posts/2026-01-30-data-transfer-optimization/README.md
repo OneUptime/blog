@@ -55,16 +55,10 @@ The first step is understanding where your data flows. You cannot optimize what 
 # Get data transfer costs from AWS Cost Explorer
 
 aws ce get-cost-and-usage \
-  --time-period Start=2026-01-01,End=2026-01-31 \
+  --time-period Start=2026-01-01,End=2026-02-01 \
   --granularity MONTHLY \
   --metrics "BlendedCost" "UsageQuantity" \
-  --group-by Type=DIMENSION,Key=USAGE_TYPE \
-  --filter '{
-    "Dimensions": {
-      "Key": "USAGE_TYPE",
-      "Values": ["DataTransfer-Out-Bytes", "DataTransfer-Regional-Bytes"]
-    }
-  }'
+  --group-by Type=DIMENSION,Key=USAGE_TYPE
 ```
 
 ### Kubernetes Traffic Analysis with OpenTelemetry
@@ -187,7 +181,7 @@ Configure your service mesh to prefer same-zone endpoints.
 
 ```yaml
 # Istio DestinationRule for locality load balancing
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: cache-locality
@@ -252,7 +246,7 @@ Instead of streaming raw data, aggregate before transfer.
 import asyncio
 from dataclasses import dataclass, field
 from typing import Dict, List
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 import aiohttp
 
 @dataclass
@@ -294,7 +288,7 @@ class MetricAggregator:
             await session.post(
                 self.remote_endpoint,
                 json={
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
                     "metrics": aggregates
                 }
             )
@@ -308,19 +302,23 @@ class MetricAggregator:
             await self.flush()
 
 
-# Usage: Reduces 1000s of individual transfers to 1
-aggregator = MetricAggregator(
-    flush_interval=60,
-    remote_endpoint="https://metrics.eu-west-1.example.com/ingest"
-)
+async def main() -> None:
+    # Usage: Reduces 1000s of individual transfers to 1
+    aggregator = MetricAggregator(
+        flush_interval=60,
+        remote_endpoint="https://metrics.eu-west-1.example.com/ingest"
+    )
 
-# Instead of sending each metric immediately
-for i in range(10000):
-    aggregator.record("request_latency_ms", 45.2)
-    aggregator.record("cpu_utilization", 0.67)
+    # Instead of sending each metric immediately
+    for i in range(10000):
+        aggregator.record("request_latency_ms", 45.2)
+        aggregator.record("cpu_utilization", 0.67)
 
-# Sends single aggregated payload
-await aggregator.flush()
+    # Sends single aggregated payload
+    await aggregator.flush()
+
+
+asyncio.run(main())
 ```
 
 ### Cross-Region Replication Strategy
@@ -354,10 +352,9 @@ Only replicate data that is actually needed in remote regions.
 -- PostgreSQL: Create publication for selective replication
 CREATE PUBLICATION eu_region_pub
 FOR TABLE
-    users,
-    products,
-    orders
-WHERE (region = 'EU' OR is_global = true);
+    users WHERE (region = 'EU' OR is_global = true),
+    products WHERE (region = 'EU' OR is_global = true),
+    orders WHERE (region = 'EU' OR is_global = true);
 
 -- On EU replica
 CREATE SUBSCRIPTION eu_region_sub
@@ -469,8 +466,12 @@ const largePayload = {
     })
 };
 
-const result = await transfer.compress(largePayload);
-// Typical result: 95% compression for JSON data
+async function main() {
+    const result = await transfer.compress(largePayload);
+    // Typical result: 95% compression for JSON data
+}
+
+main().catch(console.error);
 ```
 
 ### Protocol Buffers for Structured Data
@@ -504,7 +505,7 @@ async function sendMetrics(metrics) {
 
     const payload = {
         timestamp: Date.now(),
-        sourceRegion: 'us-east-1',
+        source_region: 'us-east-1',
         metrics: metrics
     };
 
@@ -555,7 +556,7 @@ flowchart LR
 import redis
 import json
 import hashlib
-from typing import Optional, Any, Callable
+from typing import Any, Callable
 from functools import wraps
 from dataclasses import dataclass
 
@@ -578,7 +579,7 @@ class CostAwareCache:
         if source_region == current_region:
             return self.config.same_region_ttl
         elif source_region.split('-')[0] == current_region.split('-')[0]:
-            # Same cloud provider region prefix (e.g., us-east vs us-west)
+            # Same broad geographic prefix (e.g., us-east vs us-west)
             return self.config.same_region_ttl * 2
         else:
             return self.config.cross_region_ttl
@@ -611,7 +612,7 @@ class CostAwareCache:
 
                 # Cache with cost-aware TTL
                 ttl = self._get_ttl(source_region, current_region)
-                self.redis.setex(key, ttl, json.dumps(result))
+                self.redis.set(key, json.dumps(result), ex=ttl)
 
                 return result
             return wrapper
@@ -665,7 +666,6 @@ Resources:
             HeaderBehavior: whitelist
             Headers:
               - Authorization
-              - Accept-Encoding
           QueryStringsConfig:
             QueryStringBehavior: whitelist
             QueryStrings:
@@ -840,7 +840,6 @@ groups:
 ```python
 # Python: Custom metrics collector for transfer tracking
 from prometheus_client import Counter, Gauge, Histogram
-import psutil
 from typing import Dict
 
 # Define metrics
