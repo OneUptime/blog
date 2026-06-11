@@ -39,7 +39,7 @@ flowchart LR
 | Setup Complexity | Simple | Complex |
 | Custom Storage Backend | No | Yes |
 | Custom Validation Logic | Limited (webhooks) | Full control |
-| Subresources | Limited | Full control |
+| Subresources | Status and scale | Full control |
 | Protocol Conversion | No | Yes |
 | Multiple API Versions | Basic | Advanced |
 
@@ -203,13 +203,18 @@ package workflow
 import (
     "context"
     "fmt"
+    "strconv"
     "sync"
 
     "k8s.io/apimachinery/pkg/api/errors"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+    metainternalversion "k8s.io/apimachinery/pkg/apis/meta/internalversion"
     "k8s.io/apimachinery/pkg/runtime"
+    "k8s.io/apimachinery/pkg/types"
     "k8s.io/apimachinery/pkg/watch"
+    genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
     "k8s.io/apiserver/pkg/registry/rest"
+    "github.com/google/uuid"
 
     workflowv1alpha1 "example.com/workflow-server/pkg/apis/workflow/v1alpha1"
 )
@@ -253,6 +258,17 @@ func (s *WorkflowStorage) GetSingularName() string {
     return "workflow"
 }
 
+// ConvertToTable enables kubectl table output for list and get operations
+func (s *WorkflowStorage) ConvertToTable(
+    ctx context.Context,
+    object runtime.Object,
+    tableOptions runtime.Object,
+) (*metav1.Table, error) {
+    return rest.NewDefaultTableConvertor(
+        workflowv1alpha1.Resource("workflows"),
+    ).ConvertToTable(ctx, object, tableOptions)
+}
+
 // key generates a unique key for a namespaced resource
 func key(namespace, name string) string {
     return fmt.Sprintf("%s/%s", namespace, name)
@@ -289,7 +305,7 @@ func (s *WorkflowStorage) List(
     namespace := genericapirequest.NamespaceValue(ctx)
     list := &workflowv1alpha1.WorkflowList{}
 
-    for k, wf := range s.workflows {
+    for _, wf := range s.workflows {
         // Filter by namespace if specified
         if namespace != "" && wf.Namespace != namespace {
             continue
@@ -410,6 +426,12 @@ func (s *WorkflowStorage) Delete(
         )
     }
 
+    if deleteValidation != nil {
+        if err := deleteValidation(ctx, wf); err != nil {
+            return nil, false, err
+        }
+    }
+
     delete(s.workflows, k)
     s.notifyWatchers(watch.Event{Type: watch.Deleted, Object: wf})
 
@@ -473,9 +495,10 @@ package main
 
 import (
     "flag"
-    "os"
 
+    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/apimachinery/pkg/runtime"
+    "k8s.io/apimachinery/pkg/runtime/schema"
     "k8s.io/apimachinery/pkg/runtime/serializer"
     "k8s.io/apiserver/pkg/registry/rest"
     genericapiserver "k8s.io/apiserver/pkg/server"
@@ -628,6 +651,11 @@ func (s *WorkflowStatusStorage) New() runtime.Object {
 // Destroy cleans up resources
 func (s *WorkflowStatusStorage) Destroy() {}
 
+// NamespaceScoped returns true because workflows are namespaced
+func (s *WorkflowStatusStorage) NamespaceScoped() bool {
+    return true
+}
+
 // Get retrieves a workflow
 func (s *WorkflowStatusStorage) Get(
     ctx context.Context,
@@ -725,7 +753,7 @@ spec:
   # This should be base64-encoded CA certificate
   caBundle: LS0tLS1CRUdJTi...
 
-  # Set to false if your API server serves aggregated resources
+  # Keep false and use caBundle so the aggregator verifies the service certificate
   insecureSkipTLSVerify: false
 ```
 
@@ -868,7 +896,7 @@ import (
 // ConfigureAuthentication sets up request header authentication
 func ConfigureAuthentication(opts *options.RecommendedOptions) error {
     // Configure request header authentication
-    opts.Authentication.RequestHeader = &options.RequestHeaderAuthenticationOptions{
+    opts.Authentication.RequestHeader = options.RequestHeaderAuthenticationOptions{
         // Path to the CA that signed the proxy client certificates
         ClientCAFile: "/etc/apiserver/certs/requestheader-ca.crt",
 
@@ -886,18 +914,14 @@ func ConfigureAuthentication(opts *options.RecommendedOptions) error {
 
 // CreateAuthenticator creates the combined authenticator
 func CreateAuthenticator(config *authenticatorfactory.RequestHeaderConfig) (authenticator.Request, error) {
-    requestHeaderAuthenticator, err := headerrequest.New(
-        config.ClientCA,
-        config.AllowedClientNames,
+    // The serving layer validates the proxy client certificate and allowed
+    // names; this authenticator extracts the original user from the headers.
+    return headerrequest.New(
         config.UsernameHeaders,
+        config.UIDHeaders,
         config.GroupHeaders,
         config.ExtraHeaderPrefixes,
     )
-    if err != nil {
-        return nil, err
-    }
-
-    return requestHeaderAuthenticator, nil
 }
 ```
 
@@ -974,22 +998,127 @@ import (
     "context"
     "database/sql"
     "encoding/json"
+    stderrors "errors"
     "fmt"
+    "sync"
 
-    "k8s.io/apimachinery/pkg/api/errors"
+    apierrors "k8s.io/apimachinery/pkg/api/errors"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+    metainternalversion "k8s.io/apimachinery/pkg/apis/meta/internalversion"
     "k8s.io/apimachinery/pkg/runtime"
+    "k8s.io/apimachinery/pkg/types"
     "k8s.io/apimachinery/pkg/watch"
+    genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
     "k8s.io/apiserver/pkg/registry/rest"
-    _ "github.com/lib/pq"
+    "github.com/google/uuid"
+    "github.com/lib/pq"
 
     workflowv1alpha1 "example.com/workflow-server/pkg/apis/workflow/v1alpha1"
 )
+
+// WatcherHub fans out watch events to active watchers.
+type WatcherHub struct {
+    mu        sync.RWMutex
+    watchers  map[int64]chan watch.Event
+    watcherID int64
+}
+
+func NewWatcherHub() *WatcherHub {
+    return &WatcherHub{
+        watchers: make(map[int64]chan watch.Event),
+    }
+}
+
+func (h *WatcherHub) Notify(event watch.Event) {
+    h.mu.RLock()
+    defer h.mu.RUnlock()
+
+    for _, ch := range h.watchers {
+        select {
+        case ch <- event:
+        default:
+        }
+    }
+}
+
+func (h *WatcherHub) Watch() watch.Interface {
+    h.mu.Lock()
+    defer h.mu.Unlock()
+
+    h.watcherID++
+    id := h.watcherID
+    ch := make(chan watch.Event, 100)
+    h.watchers[id] = ch
+
+    return &postgresWatcher{
+        id:  id,
+        ch:  ch,
+        hub: h,
+    }
+}
+
+type postgresWatcher struct {
+    id  int64
+    ch  chan watch.Event
+    hub *WatcherHub
+}
+
+func (w *postgresWatcher) Stop() {
+    w.hub.mu.Lock()
+    defer w.hub.mu.Unlock()
+    delete(w.hub.watchers, w.id)
+    close(w.ch)
+}
+
+func (w *postgresWatcher) ResultChan() <-chan watch.Event {
+    return w.ch
+}
+
+func isUniqueViolation(err error) bool {
+    var pqErr *pq.Error
+    return stderrors.As(err, &pqErr) && pqErr.Code == "23505"
+}
 
 // PostgresStorage implements REST storage backed by PostgreSQL
 type PostgresStorage struct {
     db       *sql.DB
     watchers *WatcherHub
+}
+
+// New returns a new instance of the resource
+func (s *PostgresStorage) New() runtime.Object {
+    return &workflowv1alpha1.Workflow{}
+}
+
+// Destroy cleans up database resources
+func (s *PostgresStorage) Destroy() {
+    s.db.Close()
+}
+
+// NewList returns a new list instance
+func (s *PostgresStorage) NewList() runtime.Object {
+    return &workflowv1alpha1.WorkflowList{}
+}
+
+// NamespaceScoped returns true if the resource is namespaced
+func (s *PostgresStorage) NamespaceScoped() bool {
+    return true
+}
+
+// GetSingularName returns the singular name of the resource
+func (s *PostgresStorage) GetSingularName() string {
+    return "workflow"
+}
+
+// ConvertToTable enables kubectl table output for list and get operations
+func (s *PostgresStorage) ConvertToTable(
+    ctx context.Context,
+    object runtime.Object,
+    tableOptions runtime.Object,
+) (*metav1.Table, error) {
+    return rest.NewDefaultTableConvertor(
+        workflowv1alpha1.Resource("workflows"),
+    ).ConvertToTable(ctx, object, tableOptions)
 }
 
 // NewPostgresStorage creates a new PostgreSQL-backed storage
@@ -1038,7 +1167,7 @@ func (s *PostgresStorage) Get(
     ).Scan(&data)
 
     if err == sql.ErrNoRows {
-        return nil, errors.NewNotFound(
+        return nil, apierrors.NewNotFound(
             workflowv1alpha1.Resource("workflows"),
             name,
         )
@@ -1090,7 +1219,7 @@ func (s *PostgresStorage) Create(
     if err != nil {
         // Check for unique constraint violation
         if isUniqueViolation(err) {
-            return nil, errors.NewAlreadyExists(
+            return nil, apierrors.NewAlreadyExists(
                 workflowv1alpha1.Resource("workflows"),
                 wf.Name,
             )
@@ -1130,7 +1259,7 @@ func (s *PostgresStorage) Update(
     ).Scan(&data, &currentVersion)
 
     if err == sql.ErrNoRows {
-        return nil, false, errors.NewNotFound(
+        return nil, false, apierrors.NewNotFound(
             workflowv1alpha1.Resource("workflows"),
             name,
         )
@@ -1222,6 +1351,47 @@ func (s *PostgresStorage) List(
     }
 
     return list, nil
+}
+
+// Delete removes a workflow from PostgreSQL
+func (s *PostgresStorage) Delete(
+    ctx context.Context,
+    name string,
+    deleteValidation rest.ValidateObjectFunc,
+    options *metav1.DeleteOptions,
+) (runtime.Object, bool, error) {
+    obj, err := s.Get(ctx, name, &metav1.GetOptions{})
+    if err != nil {
+        return nil, false, err
+    }
+
+    if deleteValidation != nil {
+        if err := deleteValidation(ctx, obj); err != nil {
+            return nil, false, err
+        }
+    }
+
+    namespace := genericapirequest.NamespaceValue(ctx)
+    _, err = s.db.ExecContext(
+        ctx,
+        "DELETE FROM workflows WHERE namespace = $1 AND name = $2",
+        namespace,
+        name,
+    )
+    if err != nil {
+        return nil, false, fmt.Errorf("database error: %w", err)
+    }
+
+    s.watchers.Notify(watch.Event{Type: watch.Deleted, Object: obj})
+    return obj, true, nil
+}
+
+// Watch returns a channel of events for workflows
+func (s *PostgresStorage) Watch(
+    ctx context.Context,
+    options *metainternalversion.ListOptions,
+) (watch.Interface, error) {
+    return s.watchers.Watch(), nil
 }
 ```
 
