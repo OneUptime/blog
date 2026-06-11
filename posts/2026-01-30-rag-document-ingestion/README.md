@@ -2006,14 +2006,10 @@ class ChromaDBStore(VectorStore):
             embedding_function: Optional embedding function for queries
         """
         import chromadb
-        from chromadb.config import Settings
 
         # Initialize client
         if persist_directory:
-            self.client = chromadb.Client(Settings(
-                chroma_db_impl="duckdb+parquet",
-                persist_directory=persist_directory
-            ))
+            self.client = chromadb.PersistentClient(path=persist_directory)
         else:
             self.client = chromadb.Client()
 
@@ -2106,9 +2102,10 @@ class ChromaDBStore(VectorStore):
 
         search_results = []
         for i in range(len(results['ids'][0])):
-            # Convert distance to similarity score (ChromaDB returns L2 distance)
+            # Convert distance to similarity score. With hnsw:space="cosine"
+            # ChromaDB returns cosine distance in [0, 2], where 0 means identical.
             distance = results['distances'][0][i]
-            score = 1 / (1 + distance)  # Convert to similarity
+            score = 1 - (distance / 2)  # Convert to similarity in [0, 1]
 
             search_results.append(SearchResult(
                 id=results['ids'][0][i],
@@ -2139,7 +2136,6 @@ class PineconeStore(VectorStore):
         self,
         index_name: str,
         api_key: str,
-        environment: str,
         namespace: str = ""
     ):
         """
@@ -2148,13 +2144,12 @@ class PineconeStore(VectorStore):
         Args:
             index_name: Name of the Pinecone index
             api_key: Pinecone API key
-            environment: Pinecone environment
             namespace: Optional namespace for multi-tenancy
         """
-        import pinecone
+        from pinecone import Pinecone
 
-        pinecone.init(api_key=api_key, environment=environment)
-        self.index = pinecone.Index(index_name)
+        self.pc = Pinecone(api_key=api_key)
+        self.index = self.pc.Index(index_name)
         self.namespace = namespace
 
     def add(
