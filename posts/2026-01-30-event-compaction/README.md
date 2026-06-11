@@ -84,7 +84,7 @@ kafka-topics.sh --create \
   --bootstrap-server localhost:9092 \
   --topic user-profiles \
   --partitions 6 \
-  --replication-factor 3 \
+  --replication-factor 1 \
   --config cleanup.policy=compact \
   --config min.cleanable.dirty.ratio=0.5 \
   --config segment.ms=86400000 \
@@ -112,7 +112,7 @@ import json
 producer = KafkaProducer(
     bootstrap_servers=['localhost:9092'],
     key_serializer=lambda k: k.encode('utf-8'),
-    value_serializer=lambda v: json.dumps(v).encode('utf-8')
+    value_serializer=lambda v: None if v is None else json.dumps(v).encode('utf-8')
 )
 
 def publish_user_update(user_id: str, profile_data: dict):
