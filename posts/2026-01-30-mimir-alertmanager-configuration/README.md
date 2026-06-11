@@ -56,20 +56,19 @@ Configure the Alertmanager component in your Mimir configuration file:
 ```yaml
 # mimir-config.yaml
 
+# Include the optional alertmanager component in a single-binary deployment.
+target: all,alertmanager
+
 # Alertmanager component configuration
-
 alertmanager:
-  # Enable the alertmanager component
-  enabled: true
-
   # Data directory for local state
   data_dir: /data/alertmanager
 
   # How often to poll for updated alertmanager configs
   poll_interval: 15s
 
-  # Maximum size of an alertmanager config file
-  max_config_size_bytes: 1048576  # 1MB
+  # Maximum size of an accepted HTTP request body
+  max_recv_msg_size: 104857600  # 100MB
 
   # Enable API to accept configuration via HTTP
   enable_api: true
@@ -81,9 +80,7 @@ alertmanager:
   sharding_ring:
     # Key-value store for ring
     kvstore:
-      store: consul
-      consul:
-        host: consul.example.com:8500
+      store: memberlist
     # Replication factor for alert state
     replication_factor: 3
     # Heartbeat interval
@@ -91,18 +88,18 @@ alertmanager:
     # Timeout for ring heartbeats
     heartbeat_timeout: 1m
 
-  # Cluster configuration for gossip
-  cluster:
-    # Peers to join (for gossip)
-    peers: alertmanager-0:9094,alertmanager-1:9094,alertmanager-2:9094
-    # Port for cluster communication
-    listen_address: 0.0.0.0:9094
-
   # Persist notification state to object storage
   persist_interval: 15m
 
   # Retention for alert state
   retention: 120h
+
+# Memberlist gossip configuration for the hash ring
+memberlist:
+  join_members:
+    - alertmanager-0:7946
+    - alertmanager-1:7946
+    - alertmanager-2:7946
 ```
 
 ### Storage Backend Configuration
@@ -156,10 +153,10 @@ global:
 # Inhibition rules: suppress alerts based on other firing alerts
 inhibit_rules:
   # If a critical alert fires, suppress warning alerts for same service
-  - source_match:
-      severity: critical
-    target_match:
-      severity: warning
+  - source_matchers:
+      - severity="critical"
+    target_matchers:
+      - severity="warning"
     # Only inhibit if these labels match
     equal:
       - alertname
@@ -167,10 +164,10 @@ inhibit_rules:
       - namespace
 
   # Suppress all alerts if cluster is in maintenance
-  - source_match:
-      alertname: ClusterMaintenance
-    target_match_re:
-      severity: .*
+  - source_matchers:
+      - alertname="ClusterMaintenance"
+    target_matchers:
+      - severity=~".*"
     equal:
       - cluster
 
@@ -194,34 +191,34 @@ route:
     - service
     - namespace
 
-  # Child routes (evaluated in order, first match wins)
+  # Child routes (evaluated in order; processing stops unless continue is true)
   routes:
     # Critical alerts go to PagerDuty immediately
-    - match:
-        severity: critical
+    - matchers:
+        - severity="critical"
       receiver: pagerduty-critical
       group_wait: 10s
       repeat_interval: 1h
-      continue: false  # Stop processing after match
+      continue: true  # Continue processing so team-specific critical routes can also match
 
     # Platform team alerts
-    - match:
-        team: platform
+    - matchers:
+        - team="platform"
       receiver: platform-slack
       routes:
         # Platform critical also pages
-        - match:
-            severity: critical
+        - matchers:
+            - severity="critical"
           receiver: platform-pagerduty
 
     # Frontend team alerts
-    - match:
-        team: frontend
+    - matchers:
+        - team="frontend"
       receiver: frontend-slack
 
     # Database alerts with special grouping
-    - match_re:
-        alertname: ^(Postgres|MySQL|Redis).*
+    - matchers:
+        - alertname=~"^(Postgres|MySQL|Redis).*"
       receiver: dba-slack
       group_by:
         - alertname
@@ -313,7 +310,8 @@ flowchart TD
 
     F --> G{Match severity=critical?}
     G -->|Yes| H[pagerduty-critical]
-    G -->|No| I{Match team=platform?}
+    H --> I{Continue: match team=platform?}
+    G -->|No| I
 
     I -->|Yes| J{Match severity=critical?}
     J -->|Yes| K[platform-pagerduty]
@@ -324,7 +322,9 @@ flowchart TD
     M -->|No| O{Match alertname=^DB.*?}
 
     O -->|Yes| P[dba-slack]
-    O -->|No| Q[default-email]
+    O -->|No| V{Already matched critical?}
+    V -->|Yes| R
+    V -->|No| Q[default-email]
 
     H --> R[Apply group_wait: 10s]
     L --> S[Apply group_wait: 30s]
@@ -379,8 +379,8 @@ Create template files:
 {{ range .Alerts }}
 *Alert:* {{ .Labels.alertname }}
 *Severity:* {{ .Labels.severity }}
-*Service:* {{ .Labels.service | default "unknown" }}
-*Namespace:* {{ .Labels.namespace | default "unknown" }}
+*Service:* {{ if .Labels.service }}{{ .Labels.service }}{{ else }}unknown{{ end }}
+*Namespace:* {{ if .Labels.namespace }}{{ .Labels.namespace }}{{ else }}unknown{{ end }}
 {{ if .Annotations.summary }}*Summary:* {{ .Annotations.summary }}{{ end }}
 {{ if .Annotations.description }}*Description:* {{ .Annotations.description }}{{ end }}
 {{ if .Annotations.runbook_url }}*Runbook:* {{ .Annotations.runbook_url }}{{ end }}
@@ -491,16 +491,17 @@ alertmanager:
     heartbeat_period: 15s
     heartbeat_timeout: 1m
 
-  # Cluster peers for gossip protocol
-  cluster:
-    # Automatically discover peers via DNS
-    peers_pattern: alertmanager-*.alertmanager-headless.mimir.svc.cluster.local:9094
-
   # Fallback configuration if sharding is disabled
   fallback_config_file: /etc/alertmanager/fallback.yaml
 
   # State persistence to object storage
   persist_interval: 15m
+
+# Cluster peers for gossip protocol
+memberlist:
+  # Automatically discover peers via DNS
+  join_members:
+    - alertmanager-headless.mimir.svc.cluster.local:7946
 ```
 
 ### State Storage Flow
@@ -589,24 +590,24 @@ templates:
 # Inhibition rules
 inhibit_rules:
   # Critical inhibits warning for same alert
-  - source_match:
-      severity: critical
-    target_match:
-      severity: warning
+  - source_matchers:
+      - severity="critical"
+    target_matchers:
+      - severity="warning"
     equal: [alertname, service]
 
   # Cluster down inhibits individual node alerts
-  - source_match:
-      alertname: KubernetesClusterDown
-    target_match_re:
-      alertname: ^Kubernetes.*
+  - source_matchers:
+      - alertname="KubernetesClusterDown"
+    target_matchers:
+      - alertname=~"^Kubernetes.*"
     equal: [cluster]
 
   # During maintenance, suppress non-critical alerts
-  - source_match:
-      alertname: PlannedMaintenance
-    target_match_re:
-      severity: (info|warning)
+  - source_matchers:
+      - alertname="PlannedMaintenance"
+    target_matchers:
+      - severity=~"(info|warning)"
     equal: [environment]
 
 # Routing configuration
@@ -619,55 +620,55 @@ route:
 
   routes:
     # Infrastructure alerts - highest priority
-    - match:
-        category: infrastructure
+    - matchers:
+        - category="infrastructure"
       receiver: infrastructure-team
       group_wait: 10s
       routes:
-        - match:
-            severity: critical
+        - matchers:
+            - severity="critical"
           receiver: infrastructure-pagerduty
           repeat_interval: 30m
 
     # Application alerts by team
-    - match:
-        team: payments
+    - matchers:
+        - team="payments"
       receiver: payments-slack
       routes:
-        - match:
-            severity: critical
+        - matchers:
+            - severity="critical"
           receiver: payments-pagerduty
-        - match:
-            severity: warning
+        - matchers:
+            - severity="warning"
           receiver: payments-slack
 
-    - match:
-        team: checkout
+    - matchers:
+        - team="checkout"
       receiver: checkout-slack
       routes:
-        - match:
-            severity: critical
+        - matchers:
+            - severity="critical"
           receiver: checkout-pagerduty
 
-    - match:
-        team: data-platform
+    - matchers:
+        - team="data-platform"
       receiver: data-platform-slack
       group_by: [alertname, pipeline, dataset]
       routes:
-        - match:
-            severity: critical
+        - matchers:
+            - severity="critical"
           receiver: data-platform-pagerduty
 
     # Security alerts - always escalate
-    - match:
-        category: security
+    - matchers:
+        - category="security"
       receiver: security-pagerduty
       group_wait: 0s
       repeat_interval: 15m
 
     # Cost alerts - daily digest
-    - match:
-        category: cost
+    - matchers:
+        - category="cost"
       receiver: finops-email
       group_interval: 24h
       repeat_interval: 24h
@@ -767,7 +768,8 @@ receivers:
       - url: https://remediation.example.com/api/v1/alerts
         send_resolved: true
         http_config:
-          bearer_token: ${REMEDIATION_API_TOKEN}
+          authorization:
+            credentials: ${REMEDIATION_API_TOKEN}
           tls_config:
             insecure_skip_verify: false
         # Retry configuration
@@ -830,22 +832,22 @@ amtool config routes test \
 route:
   routes:
     # Critical: fast notification, frequent repeat
-    - match:
-        severity: critical
+    - matchers:
+        - severity="critical"
       group_wait: 10s      # Notify quickly
       group_interval: 1m   # Aggregate new alerts fast
       repeat_interval: 1h  # Re-page if unresolved
 
     # Warning: moderate timing
-    - match:
-        severity: warning
+    - matchers:
+        - severity="warning"
       group_wait: 30s
       group_interval: 5m
       repeat_interval: 4h
 
     # Info: relaxed timing
-    - match:
-        severity: info
+    - matchers:
+        - severity="info"
       group_wait: 5m
       group_interval: 30m
       repeat_interval: 24h
@@ -870,13 +872,13 @@ Define standard labels across your alerting rules:
 # Multi-stage escalation example
 route:
   routes:
-    - match:
-        severity: critical
+    - matchers:
+        - severity="critical"
       receiver: team-slack
       routes:
         # If not acknowledged in 15 minutes, page
-        - match:
-            escalation: page
+        - matchers:
+            - escalation="page"
           receiver: team-pagerduty
           repeat_interval: 15m
 ```
