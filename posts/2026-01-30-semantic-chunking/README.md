@@ -146,21 +146,29 @@ class SemanticChunker:
         Split text into sentences using regex patterns.
         Handles common edge cases like abbreviations and decimal numbers.
         """
-        # Pattern matches sentence-ending punctuation followed by space and capital
-        # Negative lookbehind prevents splitting on common abbreviations
-        pattern = r'(?<!\b(?:Mr|Mrs|Ms|Dr|Prof|Sr|Jr|vs|etc|e\.g|i\.e))\.\s+(?=[A-Z])'
+        # Protect common abbreviations to prevent false sentence splits.
+        # Python's re module requires fixed-width lookbehind, so we use
+        # placeholders instead of a variable-width negative lookbehind.
+        abbreviations = [
+            'Mr.', 'Mrs.', 'Ms.', 'Dr.', 'Prof.',
+            'Sr.', 'Jr.', 'vs.', 'etc.', 'e.g.', 'i.e.'
+        ]
+        protected = text
+        for i, abbr in enumerate(abbreviations):
+            protected = protected.replace(abbr, f'__ABBR{i}__')
 
-        sentences = re.split(pattern, text)
+        # Split on sentence-ending punctuation followed by space and capital
+        sentences = re.split(r'(?<=[.!?])\s+(?=[A-Z])', protected)
 
-        # Also split on other sentence terminators
+        # Restore abbreviations, clean whitespace, and drop empty entries
         result = []
         for sentence in sentences:
-            # Handle question marks and exclamation points
-            sub_sentences = re.split(r'[?!]\s+(?=[A-Z])', sentence)
-            result.extend(sub_sentences)
+            for i, abbr in enumerate(abbreviations):
+                sentence = sentence.replace(f'__ABBR{i}__', abbr)
+            if sentence.strip():
+                result.append(sentence.strip())
 
-        # Clean up whitespace and filter empty strings
-        return [s.strip() for s in result if s.strip()]
+        return result
 
     def compute_embeddings(self, sentences: List[str]) -> np.ndarray:
         """
