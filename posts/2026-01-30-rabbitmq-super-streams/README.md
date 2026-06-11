@@ -52,8 +52,9 @@ The simplest way to create a super stream is using the `rabbitmq-streams` CLI to
 
 rabbitmq-streams add_super_stream orders --partitions 3
 
-# Verify the super stream was created
-rabbitmq-streams list_super_streams
+# Verify the super stream and its partitions exist
+rabbitmqctl list_exchanges name type | grep orders
+rabbitmqctl list_queues name type | grep orders
 ```
 
 This command creates:
@@ -61,30 +62,13 @@ This command creates:
 - Three partitions: `orders-0`, `orders-1`, `orders-2`
 - Bindings from the exchange to each partition
 
-### Using the Management HTTP API
-
-You can also create super streams programmatically via the HTTP API:
-
-```bash
-curl -u guest:guest -X PUT \
-  http://localhost:15672/api/stream/super-streams/orders \
-  -H "Content-Type: application/json" \
-  -d '{
-    "partitions": 5,
-    "arguments": {
-      "x-max-length-bytes": 5000000000,
-      "x-stream-max-segment-size-bytes": 500000000
-    }
-  }'
-```
-
 ### Using Named Partitions
 
-Instead of numbered partitions, you can specify custom partition names based on your business logic:
+Instead of numbered partitions, you can specify custom partition names based on your business logic using the `--binding-keys` flag:
 
 ```bash
 rabbitmq-streams add_super_stream events \
-  --routing-keys "us-east,us-west,eu-central,ap-south"
+  --binding-keys "us-east,us-west,eu-central,ap-south"
 ```
 
 This creates partitions named:
@@ -329,8 +313,8 @@ Consumer consumer = environment.consumerBuilder()
 ### Monitoring Partition Status
 
 ```bash
-# List all streams in a super stream
-rabbitmq-streams list_stream_consumers --super-stream orders
+# List all stream consumers (filter for the super stream's partitions)
+rabbitmq-streams list_stream_consumers --formatter pretty_table | grep orders
 
 # Check partition sizes
 rabbitmqctl list_queues name messages message_bytes \
@@ -358,12 +342,12 @@ Configure retention per partition:
 rabbitmq-streams add_super_stream logs \
   --partitions 3 \
   --max-length-bytes 10000000000 \
-  --max-age PT24H
+  --max-age 24h
 
 # Or via policy
 rabbitmqctl set_policy logs-retention \
   "^logs-" \
-  '{"max-age": "24h", "max-segment-size": "500mb"}' \
+  '{"max-age": "24h", "stream-max-segment-size-bytes": 500000000}' \
   --apply-to queues
 ```
 
@@ -504,21 +488,25 @@ class OrderConsumer:
         )
         self.channel = self.connection.channel()
 
+        # Stream consumers require an explicit QoS and a stream offset
+        self.channel.basic_qos(prefetch_count=100)
+
         # Declare consumer for each assigned partition
         for partition in self.partitions:
             self.channel.basic_consume(
                 queue=partition,
                 on_message_callback=self._process_order,
-                auto_ack=False
+                auto_ack=False,
+                arguments={'x-stream-offset': 'first'}
             )
 
     def _process_order(self, channel, method, properties, body):
         """Process incoming order"""
         order = json.loads(body)
-        partition = method.routing_key if method.routing_key else 'unknown'
+        partition = method.exchange if method.exchange else 'unknown'
 
         print(f"[{self.consumer_id}] Processing order {order['order_id']} "
-              f"from partition {method.delivery_tag}")
+              f"from partition {partition}")
 
         # Simulate processing
         time.sleep(0.1)
@@ -586,7 +574,7 @@ Increase resources for existing partitions:
 # Increase segment size for better throughput
 rabbitmqctl set_policy high-throughput \
   "^orders-" \
-  '{"max-segment-size": "1gb", "initial-cluster-size": 3}' \
+  '{"stream-max-segment-size-bytes": 1000000000, "initial-cluster-size": 3}' \
   --apply-to queues
 ```
 
@@ -594,21 +582,21 @@ rabbitmqctl set_policy high-throughput \
 
 ```mermaid
 graph LR
-    subgraph "Before Scaling"
+    subgraph BEFORE [Before Scaling]
         direction TB
         SS1[Super Stream<br/>3 Partitions]
         C1[Consumer Group<br/>3 Instances]
         SS1 --> C1
     end
 
-    subgraph "After Scaling"
+    subgraph AFTER [After Scaling]
         direction TB
         SS2[Super Stream<br/>6 Partitions]
         C2[Consumer Group<br/>6 Instances]
         SS2 --> C2
     end
 
-    Before Scaling -->|Migration| After Scaling
+    BEFORE -->|Migration| AFTER
 ```
 
 ### Scaling Best Practices
