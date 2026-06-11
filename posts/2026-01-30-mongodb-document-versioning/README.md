@@ -202,7 +202,7 @@ class HistoryTrackedCollection {
     const session = this.mainCollection.client.startSession();
 
     try {
-      await session.withTransaction(async () => {
+      return await session.withTransaction(async () => {
         const now = new Date();
         const versionedDoc = {
           ...document,
@@ -247,18 +247,6 @@ class HistoryTrackedCollection {
           throw new Error('Document not found');
         }
 
-        // Save current state to history before updating
-        const { _id, __v, __createdAt, __createdBy, __lastModified, __modifiedBy, ...snapshot } = currentDoc;
-
-        await this.historyCollection.insertOne({
-          __docId: currentDoc._id,
-          __v: currentDoc.__v,
-          __timestamp: currentDoc.__lastModified,
-          __modifiedBy: currentDoc.__modifiedBy,
-          __operation: 'update',
-          snapshot
-        }, { session });
-
         // Update the main document
         const now = new Date();
         result = await this.mainCollection.findOneAndUpdate(
@@ -273,6 +261,17 @@ class HistoryTrackedCollection {
           },
           { returnDocument: 'after', session }
         );
+
+        const { _id, __v, __createdAt, __createdBy, __lastModified, __modifiedBy, ...snapshot } = result;
+
+        await this.historyCollection.insertOne({
+          __docId: result._id,
+          __v: result.__v,
+          __timestamp: now,
+          __modifiedBy: userId,
+          __operation: 'update',
+          snapshot
+        }, { session });
       });
 
       return result;
@@ -394,19 +393,20 @@ class ChangeTrackingCollection {
         const differences = deepDiff(currentData, mergedData);
 
         if (!differences || differences.length === 0) {
-          return currentDoc; // No changes
+          result = currentDoc; // No changes
+          return;
         }
 
         // Store the changes
         await this.changesCollection.insertOne({
           __docId: currentDoc._id,
-          __v: currentDoc.__v,
+          __v: currentDoc.__v + 1,
           __timestamp: new Date(),
           __modifiedBy: userId,
           __reason: reason,
           changes: differences.map(diff => ({
             kind: diff.kind,  // N: new, D: deleted, E: edited, A: array
-            path: diff.path,
+            path: (diff.path || []).join('.'),
             oldValue: diff.lhs,
             newValue: diff.rhs
           }))
@@ -447,7 +447,7 @@ class ChangeTrackingCollection {
       modifiedBy: change.__modifiedBy,
       reason: change.__reason,
       changes: change.changes.map(c => {
-        const path = c.path.join('.');
+        const path = c.path;
         switch (c.kind) {
           case 'E':
             return `Changed ${path} from "${c.oldValue}" to "${c.newValue}"`;
@@ -544,19 +544,6 @@ class RestorableCollection extends HistoryTrackedCollection {
           throw new Error('Document not found or has been deleted');
         }
 
-        // Save current state to history
-        const { _id, __v, __createdAt, __createdBy, __lastModified, __modifiedBy, ...snapshot } = currentDoc;
-
-        await this.historyCollection.insertOne({
-          __docId: currentDoc._id,
-          __v: currentDoc.__v,
-          __timestamp: currentDoc.__lastModified,
-          __modifiedBy: currentDoc.__modifiedBy,
-          __operation: 'update',
-          __restorationNote: `Before restoration to version ${targetVersion}`,
-          snapshot
-        }, { session });
-
         // Restore the document
         const now = new Date();
         result = await this.mainCollection.findOneAndUpdate(
@@ -607,36 +594,25 @@ class RestorableCollection extends HistoryTrackedCollection {
 
   // Selective field restoration
   async restoreFields(id, targetVersion, fields, userId, reason = null) {
-    const session = this.mainCollection.client.startSession();
+    const targetState = await this.historyCollection.findOne({
+      __docId: new ObjectId(id),
+      __v: targetVersion
+    });
 
-    try {
-      let result;
-      await session.withTransaction(async () => {
-        const targetState = await this.historyCollection.findOne({
-          __docId: new ObjectId(id),
-          __v: targetVersion
-        }, { session });
-
-        if (!targetState) {
-          throw new Error(`Version ${targetVersion} not found`);
-        }
-
-        // Extract only specified fields from target version
-        const fieldsToRestore = {};
-        fields.forEach(field => {
-          if (targetState.snapshot.hasOwnProperty(field)) {
-            fieldsToRestore[field] = targetState.snapshot[field];
-          }
-        });
-
-        // Update using standard update method which handles history
-        result = await this.update(id, fieldsToRestore, userId);
-      });
-
-      return result;
-    } finally {
-      await session.endSession();
+    if (!targetState) {
+      throw new Error(`Version ${targetVersion} not found`);
     }
+
+    // Extract only specified fields from target version
+    const fieldsToRestore = {};
+    fields.forEach(field => {
+      if (Object.prototype.hasOwnProperty.call(targetState.snapshot, field)) {
+        fieldsToRestore[field] = targetState.snapshot[field];
+      }
+    });
+
+    // Update using standard update method which handles history
+    return await this.update(id, fieldsToRestore, userId);
   }
 }
 
@@ -866,8 +842,8 @@ function versioningPlugin(schema, options = {}) {
     next();
   });
 
-  // Pre-remove middleware
-  schema.pre('remove', async function(next) {
+  // Pre-delete middleware
+  schema.pre('deleteOne', { document: true, query: false }, async function(next) {
     const History = mongoose.connection.collection(historyCollectionName);
     const { _id, __v, __lastModified, __modifiedBy, ...snapshot } = this.toObject();
 
@@ -925,7 +901,7 @@ userSchema.plugin(versioningPlugin, {
 
 const User = mongoose.model('User', userSchema);
 
-// Now all User operations are automatically versioned
+// Now User save operations are automatically versioned
 const user = await User.findById(userId);
 user.role = 'admin';
 user.__modifiedBy = adminUserId;
