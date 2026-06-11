@@ -499,6 +499,20 @@ def create_classification_validator(
     --------
     ModelValidator: Configured validator instance
     """
+    def roc_auc_metric(y_true, y_prob):
+        y_prob_array = np.asarray(y_prob)
+        if y_prob_array.ndim == 2:
+            if y_prob_array.shape[1] == 2:
+                y_prob_array = y_prob_array[:, 1]
+            else:
+                return roc_auc_score(
+                    y_true,
+                    y_prob_array,
+                    multi_class='ovr',
+                    average='weighted'
+                )
+        return roc_auc_score(y_true, y_prob_array)
+
     thresholds = [
         MetricThreshold(
             name='accuracy',
@@ -523,7 +537,7 @@ def create_classification_validator(
         MetricThreshold(
             name='roc_auc',
             threshold=auc_threshold,
-            metric_fn=roc_auc_score
+            metric_fn=roc_auc_metric
         )
     ]
 
@@ -1130,5 +1144,5 @@ Remember that validation is not a one-time activity. Continuously monitor your m
 ## References
 
 - Scikit-learn Documentation: [Cross-validation](https://scikit-learn.org/stable/modules/cross_validation.html)
-- MLflow Model Validation: [Model Validation Guide](https://mlflow.org/docs/latest/models.html)
-- Google ML Best Practices: [Testing and Debugging in Machine Learning](https://developers.google.com/machine-learning/testing-debugging)
+- MLflow Model Evaluation: [Model Evaluation Guide](https://mlflow.org/docs/latest/ml/evaluation/)
+- Google ML Best Practices: [Rules of Machine Learning](https://developers.google.com/machine-learning/guides/rules-of-ml)
