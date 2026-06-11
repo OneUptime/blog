@@ -63,7 +63,7 @@ The snapshot appears in the volume's snapshot list within seconds. You can creat
 
 ## Creating Snapshots with kubectl
 
-For scripting and automation, use Longhorn's custom resources directly.
+For scripting and automation, you can use the Longhorn API through `kubectl exec` or use Kubernetes `VolumeSnapshot` resources as shown later in this guide.
 
 ### List Existing Volumes
 
@@ -77,7 +77,7 @@ kubectl get volumes.longhorn.io <volume-name> -n longhorn-system -o yaml
 
 ### Create a Snapshot Using the Longhorn API
 
-Longhorn does not have a dedicated Snapshot CRD for creation. Instead, you interact with the Longhorn API. The simplest method is through the `longhorn-manager` pod:
+Longhorn exposes snapshot operations through the Longhorn API. The simplest method is through the `longhorn-manager` pod:
 
 ```bash
 # Find a longhorn-manager pod
@@ -107,14 +107,17 @@ Longhorn supports the CSI VolumeSnapshot interface, which provides a Kubernetes-
 If your cluster does not have the snapshot controller installed:
 
 ```bash
-# Install snapshot CRDs
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/master/client/config/crd/snapshot.storage.k8s.io_volumesnapshotclasses.yaml
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/master/client/config/crd/snapshot.storage.k8s.io_volumesnapshotcontents.yaml
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/master/client/config/crd/snapshot.storage.k8s.io_volumesnapshots.yaml
+# Use the external-snapshotter version that matches your Longhorn CSI sidecars
+SNAPSHOTTER_VERSION=<version>
 
-# Install snapshot controller
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/master/deploy/kubernetes/snapshot-controller/rbac-snapshot-controller.yaml
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/master/deploy/kubernetes/snapshot-controller/setup-snapshot-controller.yaml
+git clone --depth 1 --branch "$SNAPSHOTTER_VERSION" https://github.com/kubernetes-csi/external-snapshotter.git
+cd external-snapshotter
+
+# Install snapshot CRDs
+kubectl create -k client/config/crd
+
+# Install the snapshot controller
+kubectl create -k deploy/kubernetes/snapshot-controller
 ```
 
 ### Create a VolumeSnapshotClass
@@ -285,6 +288,8 @@ kubectl apply -f restored-pvc.yaml
 kubectl get pvc postgres-data-restored -n production -w
 ```
 
+For Longhorn CSI snapshots, the restored PVC's `spec.resources.requests.storage` value must match the size of the `VolumeSnapshot`.
+
 ### Revert a Volume to a Snapshot (In-Place)
 
 To revert an existing volume to a previous snapshot (destructive operation):
@@ -373,11 +378,11 @@ The underlying Longhorn snapshot is deleted based on your VolumeSnapshotClass `d
 ### Check Snapshot Space Usage
 
 ```bash
-# Get volume details including snapshot count
+# Get volume details including actual space usage
 kubectl get volumes.longhorn.io -n longhorn-system -o custom-columns=\
 NAME:.metadata.name,\
 SIZE:.spec.size,\
-SNAPSHOTS:.status.actualSize
+ACTUAL_SIZE:.status.actualSize
 ```
 
 ### Prometheus Metrics
@@ -385,7 +390,7 @@ SNAPSHOTS:.status.actualSize
 Longhorn exposes metrics for monitoring. Key snapshot-related metrics:
 
 - `longhorn_volume_actual_size_bytes`: Actual space used including snapshots
-- `longhorn_snapshot_count`: Number of snapshots per volume
+- `longhorn_snapshot_actual_size_bytes`: Actual size of individual snapshots
 
 Add alerting for volumes approaching capacity:
 
