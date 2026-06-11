@@ -99,7 +99,7 @@ SELECT * FROM pgstattuple('your_index_name');
 
 ### MySQL Index Statistics
 
-MySQL provides index statistics through the `INFORMATION_SCHEMA`:
+MySQL provides index metadata and cardinality estimates through the `INFORMATION_SCHEMA`. It does not expose a SQL Server-style fragmentation percentage:
 
 ```sql
 -- Analyze table to update statistics first
@@ -138,7 +138,7 @@ flowchart TD
 
     F --> J[Minimal Locking]
     H --> K[Full Table Lock]
-    I --> L[Row-Level Locking]
+    I --> L[Concurrent Access]
 ```
 
 ---
@@ -155,14 +155,14 @@ This approach works best for systems with defined maintenance windows. It provid
 ALTER INDEX ALL ON dbo.orders
 REBUILD WITH (
     FILLFACTOR = 80,           -- Leave 20% free space for inserts
-    SORT_IN_TEMPDB = ON,       -- Use tempdb to reduce log growth
+    SORT_IN_TEMPDB = ON,       -- Use tempdb for intermediate sort results
     STATISTICS_NORECOMPUTE = OFF,  -- Update statistics after rebuild
     ONLINE = OFF               -- Fastest option, requires downtime
 );
 
 -- PostgreSQL: REINDEX rebuilds the index from scratch
 -- Locks the table for writes during operation
-REINDEX INDEX CONCURRENTLY idx_orders_customer_id;
+REINDEX INDEX idx_orders_customer_id;
 
 -- MySQL: Rebuild using ALTER TABLE
 ALTER TABLE orders DROP INDEX idx_customer_id,
@@ -175,23 +175,24 @@ Online rebuilds allow queries to continue during maintenance. This is essential 
 
 ```sql
 -- SQL Server: Online rebuild with minimal blocking
--- Enterprise Edition required for ONLINE = ON
+-- Requires an edition or service tier that supports ONLINE = ON
 ALTER INDEX idx_orders_date ON dbo.orders
 REBUILD WITH (
-    ONLINE = ON,
+    ONLINE = ON (
+        WAIT_AT_LOW_PRIORITY (
+            MAX_DURATION = 10 MINUTES,
+            ABORT_AFTER_WAIT = SELF  -- Abort rebuild, not user queries
+        )
+    ),
     RESUMABLE = ON,           -- Can pause and resume
-    MAX_DURATION = 60,        -- Minutes before auto-pause
-    WAIT_AT_LOW_PRIORITY (
-        MAX_DURATION = 10 MINUTES,
-        ABORT_AFTER_WAIT = SELF  -- Abort rebuild, not user queries
-    )
+    MAX_DURATION = 60         -- Minutes before auto-pause
 );
 
 -- PostgreSQL 12+: REINDEX CONCURRENTLY
 -- Does not block reads or writes
 REINDEX INDEX CONCURRENTLY idx_orders_customer_id;
 
--- MySQL 8.0+: Instant DDL for supported operations
+-- MySQL 8.0+: Online DDL for supported secondary index operations
 ALTER TABLE orders
     DROP INDEX idx_customer_id,
     ADD INDEX idx_customer_id (customer_id),
@@ -363,10 +364,9 @@ class IndexMonitor:
 
     def __init__(self, connection_string: str):
         self.conn_string = connection_string
-        self.fragmentation_threshold = 30.0
 
     def check_index_health(self) -> list:
-        """Query index statistics and return problematic indexes"""
+        """Query index usage statistics and return indexes needing review"""
         query = """
         SELECT
             schemaname,
@@ -390,7 +390,7 @@ class IndexMonitor:
     def send_alert(self, indexes: list):
         """Send alert for indexes needing attention"""
         if not indexes:
-            logger.info("All indexes healthy")
+            logger.info("No low-usage indexes found")
             return
 
         logger.warning(f"Found {len(indexes)} indexes needing review")
