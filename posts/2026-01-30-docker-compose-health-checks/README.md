@@ -30,7 +30,7 @@ sequenceDiagram
     Note over DB: Database now ready
 ```
 
-With health checks, Docker Compose waits until the service is genuinely ready:
+With health checks and `depends_on` conditions, Docker Compose waits until the service is genuinely ready:
 
 ```mermaid
 sequenceDiagram
@@ -76,7 +76,7 @@ services:
 | `timeout` | Maximum time for a check to complete | 30s |
 | `retries` | Consecutive failures needed to be unhealthy | 3 |
 | `start_period` | Grace period for container initialization | 0s |
-| `start_interval` | Interval during start period (Compose v2.3+) | Same as interval |
+| `start_interval` | Interval during start period (Compose v2.20.2+; Docker Engine 25.0+) | 5s |
 
 ## Health Check Test Commands
 
@@ -258,8 +258,6 @@ flowchart TD
 ### Complete Example with Dependencies
 
 ```yaml
-version: "3.9"
-
 services:
   postgres:
     image: postgres:16
@@ -517,16 +515,16 @@ healthcheck:
 healthcheck:
   test: ["CMD-SHELL", "nc -z localhost 8080 || exit 1"]
 
-# Or use shell built-ins
+# Or use Bash's /dev/tcp if Bash is installed
 healthcheck:
-  test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/8080 && echo -e 'GET /health HTTP/1.1\\r\\nHost: localhost\\r\\n\\r\\n' >&3 && cat <&3 | grep -q '200 OK'"]
+  test: ["CMD-SHELL", "bash -c \"exec 3<>/dev/tcp/localhost/8080 && printf 'GET /health HTTP/1.1\\r\\nHost: localhost\\r\\n\\r\\n' >&3 && cat <&3 | grep -q '200 OK'\""]
 ```
 
 ### Issue: Health Check Works Manually But Fails in Docker
 
 The health check runs inside the container network namespace. Ensure:
 
-1. The service binds to `0.0.0.0`, not just `127.0.0.1`
+1. The service is listening inside the container, and binds to `0.0.0.0` if other containers must connect to it
 2. The health check uses `localhost` or `127.0.0.1`, not the external IP
 3. The correct port is being checked
 
