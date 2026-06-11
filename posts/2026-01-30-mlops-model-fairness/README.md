@@ -422,12 +422,12 @@ threshold_optimizer = ThresholdOptimizer(
     predict_method="predict_proba"  # Use probability predictions
 )
 
-# Fit the threshold optimizer on the test data
+# Fit the threshold optimizer on training or calibration data
 # This finds the optimal thresholds for each sensitive group
 threshold_optimizer.fit(
-    X_test_scaled,
-    y_test,
-    sensitive_features=sf_test
+    X_train_scaled,
+    y_train,
+    sensitive_features=sf_train
 )
 
 # Generate fair predictions using group-specific thresholds
@@ -645,10 +645,9 @@ This module provides real-time fairness monitoring for deployed ML models.
 """
 
 import json
-import time
-from datetime import datetime
-from typing import Dict, List, Optional
-from dataclasses import dataclass, asdict
+from datetime import datetime, timezone
+from typing import Callable, Dict, List, Optional
+from dataclasses import dataclass
 import numpy as np
 
 @dataclass
@@ -680,7 +679,7 @@ class FairnessMonitor:
         dp_threshold: float = 0.1,
         eq_odds_threshold: float = 0.1,
         window_size: int = 1000,
-        alert_callback: Optional[callable] = None
+        alert_callback: Optional[Callable[[FairnessMetricSnapshot], None]] = None
     ):
         """
         Initialize the fairness monitor.
@@ -753,8 +752,17 @@ class FairnessMonitor:
         privileged_mask = sensitive == 1
         unprivileged_mask = sensitive == 0
 
-        sr_privileged = preds[privileged_mask].mean()
-        sr_unprivileged = preds[unprivileged_mask].mean()
+        if privileged_mask.sum() == 0 or unprivileged_mask.sum() == 0:
+            return {
+                'demographic_parity_diff': None,
+                'equalized_odds_diff': None,
+                'selection_rate_privileged': None,
+                'selection_rate_unprivileged': None,
+                'sample_count': len(self.predictions)
+            }
+
+        sr_privileged = float(preds[privileged_mask].mean())
+        sr_unprivileged = float(preds[unprivileged_mask].mean())
 
         dp_diff = sr_privileged - sr_unprivileged
 
@@ -768,15 +776,15 @@ class FairnessMonitor:
             pos_unprivileged = (actuals == 1) & unprivileged_mask & valid_actuals
 
             if pos_privileged.sum() > 0 and pos_unprivileged.sum() > 0:
-                tpr_privileged = preds[pos_privileged].mean()
-                tpr_unprivileged = preds[pos_unprivileged].mean()
+                tpr_privileged = float(preds[pos_privileged].mean())
+                tpr_unprivileged = float(preds[pos_unprivileged].mean())
 
                 # False positive rates by group
                 neg_privileged = (actuals == 0) & privileged_mask & valid_actuals
                 neg_unprivileged = (actuals == 0) & unprivileged_mask & valid_actuals
 
-                fpr_privileged = preds[neg_privileged].mean() if neg_privileged.sum() > 0 else 0
-                fpr_unprivileged = preds[neg_unprivileged].mean() if neg_unprivileged.sum() > 0 else 0
+                fpr_privileged = float(preds[neg_privileged].mean()) if neg_privileged.sum() > 0 else 0
+                fpr_unprivileged = float(preds[neg_unprivileged].mean()) if neg_unprivileged.sum() > 0 else 0
 
                 eq_odds_diff = max(
                     abs(tpr_privileged - tpr_unprivileged),
@@ -814,12 +822,12 @@ class FairnessMonitor:
 
         # Create snapshot
         snapshot = FairnessMetricSnapshot(
-            timestamp=datetime.utcnow().isoformat(),
+            timestamp=datetime.now(timezone.utc).isoformat(),
             model_id=self.model_id,
             demographic_parity_diff=metrics['demographic_parity_diff'] or 0.0,
             equalized_odds_diff=metrics['equalized_odds_diff'] or 0.0,
-            selection_rate_privileged=metrics.get('selection_rate_privileged', 0.0),
-            selection_rate_unprivileged=metrics.get('selection_rate_unprivileged', 0.0),
+            selection_rate_privileged=metrics.get('selection_rate_privileged') or 0.0,
+            selection_rate_unprivileged=metrics.get('selection_rate_unprivileged') or 0.0,
             sample_count=metrics['sample_count'],
             alert_triggered=alert_triggered
         )
@@ -840,7 +848,7 @@ class FairnessMonitor:
         metrics = self.compute_current_metrics()
         return json.dumps({
             'model_id': self.model_id,
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'metrics': metrics,
             'thresholds': {
                 'demographic_parity': self.dp_threshold,
@@ -1001,13 +1009,17 @@ class FairnessGate:
             g: (sensitive_features == g).sum()
             for g in unique_groups
         }
+        serializable_group_sizes = {
+            str(g): int(size)
+            for g, size in group_sizes.items()
+        }
 
         min_group_size = min(group_sizes.values())
         if min_group_size < self.min_samples_per_group:
             return False, {
                 'status': 'FAILED',
                 'reason': f'Insufficient samples: {min_group_size} < {self.min_samples_per_group}',
-                'group_sizes': group_sizes
+                'group_sizes': serializable_group_sizes
             }
 
         # Compute metrics
@@ -1033,7 +1045,7 @@ class FairnessGate:
                 'max_dp_difference': self.dp_max,
                 'max_eq_odds_difference': self.eq_odds_max
             },
-            'group_sizes': {str(k): int(v) for k, v in group_sizes.items()},
+            'group_sizes': serializable_group_sizes,
             'checks': []
         }
 
@@ -1241,6 +1253,6 @@ The tools covered in this guide (Fairlearn, AIF360) provide practical implementa
 ## Further Reading
 
 - Fairlearn Documentation: https://fairlearn.org/
-- AI Fairness 360 Documentation: https://aif360.mybluemix.net/
+- AI Fairness 360 Documentation: https://aif360.readthedocs.io/
 - "Fairness and Machine Learning" by Barocas, Hardt, and Narayanan
 - Google's Responsible AI Practices: https://ai.google/responsibilities/responsible-ai-practices/
