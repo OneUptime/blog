@@ -21,7 +21,7 @@ flowchart LR
     C --> D[Summary Page Display]
 ```
 
-Every job gets its own summary section. Multiple steps can append to the same summary, building a comprehensive report as your workflow progresses.
+Every job gets its own summary section. Each step writes to its own summary file, and GitHub groups those step summaries together for the job when they are uploaded.
 
 ## Basic Usage
 
@@ -124,7 +124,7 @@ Multi-line content is easier with heredocs.
 ```yaml
       - name: Deployment summary
         run: |
-          cat << 'EOF' >> $GITHUB_STEP_SUMMARY
+          cat << EOF >> $GITHUB_STEP_SUMMARY
           ## Deployment Report
 
           ### Environment Details
@@ -287,7 +287,7 @@ LINT_RESULTS="${2:-lint-results.json}"
 COVERAGE_REPORT="${3:-coverage/coverage-summary.json}"
 
 # Start summary
-cat << 'HEADER' >> $GITHUB_STEP_SUMMARY
+cat << HEADER >> $GITHUB_STEP_SUMMARY
 # CI Pipeline Report
 
 Generated at: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
@@ -375,7 +375,7 @@ Call it from your workflow:
 
 ## Size Limits and Best Practices
 
-GitHub imposes a 1MB limit per step summary. Keep summaries focused:
+GitHub imposes a 1 MiB limit per step summary and displays up to 20 step summaries per job. Keep summaries focused:
 
 - Truncate long logs with `head` or `tail`
 - Use collapsible sections for verbose output
@@ -397,14 +397,14 @@ GitHub imposes a 1MB limit per step summary. Keep summaries focused:
 
 ## Clearing Previous Content
 
-To replace rather than append, use single angle bracket:
+To replace the current step's summary content rather than append to it, use single angle bracket:
 
 ```yaml
       - name: Overwrite summary
         run: echo "## Fresh Summary" > $GITHUB_STEP_SUMMARY
 ```
 
-This is useful when re-running a step that should not accumulate output.
+This is useful inside a step that should not accumulate earlier summary output from that same step.
 
 ## Summary Flow in Complex Pipelines
 
@@ -423,7 +423,7 @@ sequenceDiagram
     G->>G: Display formatted markdown
 ```
 
-Content accumulates throughout the job and renders when the job completes.
+Summary content is uploaded after each step completes and displayed with the job summary.
 
 ## Debugging Summaries
 
