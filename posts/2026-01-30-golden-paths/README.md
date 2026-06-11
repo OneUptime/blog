@@ -157,13 +157,13 @@ FROM node:20-alpine AS production
 
 # Security: run as non-root user
 RUN addgroup -g 1001 -S nodejs && \
-    adduser -S nodejs -u 1001
+    adduser -S nodejs -u 1001 -G nodejs
 
 WORKDIR /app
 
 # Copy only production dependencies
 COPY package*.json ./
-RUN npm ci --only=production && npm cache clean --force
+RUN npm ci --omit=dev && npm cache clean --force
 
 # Copy built application from builder stage
 COPY --from=builder /app/dist ./dist
@@ -190,6 +190,7 @@ This GitHub Actions workflow handles the entire lifecycle: test, build, scan, an
 # Golden Path CI/CD Pipeline for Node.js Microservices
 # This pipeline runs on every push and handles testing, building, and deployment
 
+{% raw %}
 name: CI/CD Pipeline
 
 on:
@@ -201,6 +202,8 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
+  AZURE_RESOURCE_GROUP: your-resource-group
+  AKS_CLUSTER_NAME: your-aks-cluster
 
 jobs:
   # First job: Run all tests and quality checks
@@ -249,16 +252,16 @@ jobs:
 
       - name: Extract metadata for Docker
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=sha,prefix=
+            type=sha,prefix=,format=long
             type=ref,event=branch
             type=semver,pattern={{version}}
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           push: ${{ github.event_name != 'pull_request' }}
@@ -269,8 +272,19 @@ jobs:
   security:
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+      security-events: write
     steps:
       - uses: actions/checkout@v4
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@master
@@ -289,22 +303,40 @@ jobs:
     needs: [build, security]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
+    permissions:
+      id-token: write
+      contents: read
+      actions: read
 
     steps:
       - uses: actions/checkout@v4
 
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Set Kubernetes context
+        uses: azure/aks-set-context@v5
+        with:
+          resource-group: ${{ env.AZURE_RESOURCE_GROUP }}
+          cluster-name: ${{ env.AKS_CLUSTER_NAME }}
+
       - name: Deploy to Kubernetes
-        uses: azure/k8s-deploy@v4
+        uses: azure/k8s-deploy@v6
         with:
           manifests: |
             k8s/overlays/production/
           images: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+{% endraw %}
 ```
 
 ### Step 4: Configure Kubernetes Manifests
 
-The base deployment includes everything needed for production: resource limits, health checks, and pod disruption budgets.
+The base deployment includes production-ready defaults: resource limits, health checks, security settings, and pod spreading.
 
 ```yaml
 # k8s/base/deployment.yaml
@@ -412,14 +444,18 @@ import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentation
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
 import { PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
-import { Resource } from '@opentelemetry/resources';
-import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
+import { resourceFromAttributes } from '@opentelemetry/resources';
+import {
+  ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+} from '@opentelemetry/semantic-conventions';
 
 // Service identification for distributed tracing
-const resource = new Resource({
-  [SemanticResourceAttributes.SERVICE_NAME]: process.env.SERVICE_NAME || '{{cookiecutter.service_name}}',
-  [SemanticResourceAttributes.SERVICE_VERSION]: process.env.SERVICE_VERSION || '1.0.0',
-  [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: process.env.NODE_ENV || 'development',
+const resource = resourceFromAttributes({
+  [ATTR_SERVICE_NAME]: process.env.SERVICE_NAME || '{{cookiecutter.service_name}}',
+  [ATTR_SERVICE_VERSION]: process.env.SERVICE_VERSION || '1.0.0',
+  [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: process.env.NODE_ENV || 'development',
 });
 
 // Configure the OpenTelemetry SDK with automatic instrumentation
@@ -427,12 +463,12 @@ const sdk = new NodeSDK({
   resource,
   // Trace exporter sends spans to the collector
   traceExporter: new OTLPTraceExporter({
-    url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://otel-collector:4318/v1/traces',
+    url: process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT || 'http://otel-collector:4318/v1/traces',
   }),
   // Metric reader periodically exports metrics
   metricReader: new PeriodicExportingMetricReader({
     exporter: new OTLPMetricExporter({
-      url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://otel-collector:4318/v1/metrics',
+      url: process.env.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT || 'http://otel-collector:4318/v1/metrics',
     }),
     exportIntervalMillis: 60000, // Export every minute
   }),
@@ -441,7 +477,10 @@ const sdk = new NodeSDK({
     getNodeAutoInstrumentations({
       // Customize instrumentation as needed
       '@opentelemetry/instrumentation-http': {
-        ignoreIncomingPaths: ['/health', '/health/live', '/health/ready'],
+        ignoreIncomingRequestHook: (req) => {
+          const path = req.url?.split('?')[0];
+          return ['/health', '/health/live', '/health/ready'].includes(path || '');
+        },
       },
       '@opentelemetry/instrumentation-fs': {
         enabled: false, // Disable file system tracing (too noisy)
@@ -593,8 +632,8 @@ spec:
           description: Team that owns this service
           ui:field: OwnerPicker
           ui:options:
-            allowedKinds:
-              - Group
+            catalogFilter:
+              - kind: Group
 
     - title: Technical Configuration
       properties:
@@ -684,8 +723,10 @@ Use Open Policy Agent (OPA) to enforce standards automatically.
 
 package kubernetes.admission
 
+import rego.v1
+
 # Deny deployments without resource limits
-deny[msg] {
+deny contains msg if {
     input.kind == "Deployment"
     container := input.spec.template.spec.containers[_]
     not container.resources.limits
@@ -693,7 +734,7 @@ deny[msg] {
 }
 
 # Deny deployments without health checks
-deny[msg] {
+deny contains msg if {
     input.kind == "Deployment"
     container := input.spec.template.spec.containers[_]
     not container.livenessProbe
@@ -701,7 +742,7 @@ deny[msg] {
 }
 
 # Deny deployments without readiness checks
-deny[msg] {
+deny contains msg if {
     input.kind == "Deployment"
     container := input.spec.template.spec.containers[_]
     not container.readinessProbe
@@ -709,16 +750,15 @@ deny[msg] {
 }
 
 # Warn about deployments with single replica
-warn[msg] {
+warn contains msg if {
     input.kind == "Deployment"
     input.spec.replicas == 1
     msg := "Production deployments should have at least 2 replicas for high availability"
 }
 
 # Deny containers running as root
-deny[msg] {
+deny contains msg if {
     input.kind == "Deployment"
-    container := input.spec.template.spec.containers[_]
     not input.spec.template.spec.securityContext.runAsNonRoot
     msg := "Pods must run as non-root user"
 }
