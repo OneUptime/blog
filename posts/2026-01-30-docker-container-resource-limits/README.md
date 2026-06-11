@@ -42,7 +42,7 @@ Verify Docker can enforce limits:
 # Check Docker info for cgroup driver
 docker info | grep -i cgroup
 
-# Output should show:
+# Output on a cgroups v2 host may show:
 # Cgroup Driver: systemd
 # Cgroup Version: 2
 ```
@@ -129,20 +129,9 @@ This configuration tells Docker:
 
 ### Kernel Memory Limit
 
-Kernel memory includes stack pages, slab pages, and socket memory buffers. You can limit kernel memory separately from user memory.
+Kernel memory includes stack pages, slab pages, and socket memory buffers. Older Docker releases exposed a `--kernel-memory` flag to limit kernel memory separately from user memory.
 
-Set kernel memory limit:
-
-```bash
-# Limit kernel memory to 50MB within a 512MB container
-docker run -d \
-  --name kernel-limited \
-  --memory=512m \
-  --kernel-memory=50m \
-  nginx:latest
-```
-
-Note: Kernel memory limits are deprecated in cgroups v2 and may not work on newer systems.
+Note: Kernel memory limits were deprecated in Docker 20.10 and removed in Docker 23.0 because Linux deprecated the underlying kernel memory controller. Current Docker releases no longer support `--kernel-memory`.
 
 ---
 
@@ -268,7 +257,7 @@ Disk I/O limits prevent containers from saturating storage bandwidth. Docker sup
 
 ### Block I/O Weight
 
-Similar to CPU shares, `--blkio-weight` sets relative I/O priority between containers. Values range from 10 to 1000, with 500 as default.
+Similar to CPU shares, `--blkio-weight` sets relative I/O priority between containers. Values range from 10 to 1000, or 0 to leave the setting disabled. A value of 500 is commonly used as a neutral weight.
 
 Set I/O priority:
 
@@ -382,7 +371,7 @@ docker run -d \
 
 ### Disable OOM Killer
 
-You can disable the OOM killer for a container. The container will hang instead of having processes killed.
+You can disable the OOM killer for a container on cgroups v1. The container will hang instead of having processes killed. Docker discards this flag on cgroups v2.
 
 Disable OOM killer (use with caution):
 
@@ -496,20 +485,18 @@ docker run -d \
 
 ## Docker Compose Resource Configuration
 
-Docker Compose supports resource limits through the `deploy` section (Swarm mode) or `resources` under services.
+Docker Compose supports resource limits through service-level keys such as `mem_limit` and `cpus`, and through `deploy.resources` for platforms that implement the Compose Deploy Specification, such as Swarm mode.
 
 ### Compose File with Resource Limits
 
 Complete docker-compose.yml with resource constraints:
 
 ```yaml
-version: '3.8'
-
 services:
   web:
     image: nginx:latest
     container_name: web-server
-    # Resource limits for docker-compose up (requires compose v2)
+    # Resource limits for docker compose up
     mem_limit: 512m
     mem_reservation: 256m
     memswap_limit: 512m
@@ -604,8 +591,8 @@ volumes:
 Start services with resource limits:
 
 ```bash
-# Start all services
-docker-compose up -d
+# Start all services with Docker Compose v2
+docker compose up -d
 
 # Verify resource limits are applied
 docker stats --no-stream
@@ -623,8 +610,6 @@ docker inspect web-server --format='Memory: {{.HostConfig.Memory}}, CPUs: {{.Hos
 A typical production configuration for a web application:
 
 ```yaml
-version: '3.8'
-
 services:
   nginx:
     image: nginx:latest
@@ -682,8 +667,6 @@ services:
 Java applications require careful memory tuning:
 
 ```yaml
-version: '3.8'
-
 services:
   java-app:
     image: openjdk:17-slim
