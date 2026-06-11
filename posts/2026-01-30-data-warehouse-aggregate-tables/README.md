@@ -137,7 +137,7 @@ CREATE TABLE sales_daily_agg (
 
     -- Components for non-additive measures
     total_order_value   DECIMAL(18, 2),  -- For calculating average order value
-    distinct_customers  INT,              -- Approximation or exact depending on volume
+    distinct_customers  INT,              -- Exact only at this grain; use sketches for rollups
 
     -- Metadata for maintenance
     created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -314,12 +314,21 @@ CREATE TABLE sales_daily_agg_2026_01
     FOR VALUES FROM ('2026-01-01') TO ('2026-02-01');
 
 -- Step 3: To refresh January 2026, build in a staging table
-CREATE TABLE sales_daily_agg_2026_01_new AS
+-- LIKE keeps the staging table aligned with the parent table definition
+CREATE TABLE sales_daily_agg_2026_01_new
+    (LIKE sales_daily_agg INCLUDING DEFAULTS INCLUDING CONSTRAINTS);
+
+INSERT INTO sales_daily_agg_2026_01_new
 SELECT ...
 FROM sales_fact
 WHERE order_timestamp >= '2026-01-01'
   AND order_timestamp < '2026-02-01'
 GROUP BY ...;
+
+-- Add a matching CHECK constraint so ATTACH PARTITION can skip a validation scan
+ALTER TABLE sales_daily_agg_2026_01_new
+    ADD CONSTRAINT sales_daily_agg_2026_01_new_check
+    CHECK (sale_date >= DATE '2026-01-01' AND sale_date < DATE '2026-02-01');
 
 -- Step 4: Swap partitions atomically
 BEGIN;
