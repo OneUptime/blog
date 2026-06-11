@@ -459,14 +459,14 @@ const blackFridaySale = new TimeBasedFlag({
   valueWhenActive: true,
 });
 
-// Example: Feature available only during business hours
+// Example: Feature available during a scheduled support period
 const liveChatSupport = new TimeBasedFlag({
   key: 'live_chat_support',
   defaultValue: false,
   enabled: true,
   windows: [
     {
-      // Monday-Friday 9 AM - 6 PM (simplified example)
+      // Simplified date range for 2026 support availability
       startTime: new Date('2026-01-01T09:00:00Z'),
       endTime: new Date('2026-12-31T18:00:00Z'),
     },
@@ -627,6 +627,14 @@ class FlagManager {
     }
   }
 
+  private requireBooleanValue(config: FlagConfig): boolean {
+    if (typeof config.value !== 'boolean') {
+      throw new Error(`Boolean flag ${config.key} requires a boolean value`);
+    }
+
+    return config.value;
+  }
+
   // Get boolean flag value with type safety
   getBool(flagKey: string, context: EvaluationContext): boolean {
     const value = this.evaluate(flagKey, context);
@@ -659,15 +667,43 @@ class FlagManager {
   private createFlag(config: FlagConfig): Flag | null {
     switch (config.type) {
       case FlagType.BOOLEAN:
-        return new BooleanFlag(config as BooleanFlagConfig);
+        return new BooleanFlag({
+          key: config.key,
+          defaultValue: Boolean(config.defaultValue),
+          enabled: config.enabled,
+          value: this.requireBooleanValue(config),
+        });
       case FlagType.PERCENTAGE:
-        return new PercentageFlag(config as PercentageFlagConfig);
+        return new PercentageFlag({
+          key: config.key,
+          defaultValue: Boolean(config.defaultValue),
+          enabled: config.enabled,
+          percentage: config.percentage ?? 0,
+          salt: config.salt,
+        });
       case FlagType.USER_SEGMENT:
-        return new UserSegmentFlag(config as UserSegmentFlagConfig);
+        return new UserSegmentFlag({
+          key: config.key,
+          defaultValue: config.defaultValue,
+          enabled: config.enabled,
+          rules: config.rules ?? [],
+        });
       case FlagType.TIME_BASED:
-        return new TimeBasedFlag(config as TimeBasedFlagConfig);
+        return new TimeBasedFlag({
+          key: config.key,
+          defaultValue: config.defaultValue,
+          enabled: config.enabled,
+          windows: config.windows ?? [],
+          valueWhenActive: config.valueWhenActive ?? config.defaultValue,
+        });
       case FlagType.MULTIVARIATE:
-        return new MultivariateFlag(config as MultivariateFlagConfig);
+        return new MultivariateFlag({
+          key: config.key,
+          defaultValue: config.defaultValue,
+          enabled: config.enabled,
+          variants: config.variants ?? [],
+          salt: config.salt,
+        });
       default:
         console.warn(`Unknown flag type: ${config.type}`);
         return null;
@@ -868,7 +904,7 @@ interface FlagConfig {
   salt?: string;                      // Percentage, Multivariate
 }
 
-// Example configuration file (flags.json)
+// Example TypeScript configuration file (flags.ts)
 const flagsConfig: FlagConfig[] = [
   {
     key: 'dark_mode',
@@ -1014,4 +1050,3 @@ A well-designed flag type system provides the flexibility to handle diverse feat
 - **Multivariate flags** for A/B testing with multiple variants
 
 Start with boolean flags for basic feature toggles, then add percentage-based rollouts as you gain confidence. Use targeting rules for beta programs and experiments. The key is building a consistent evaluation interface that makes it easy to swap flag types without changing application code.
-
