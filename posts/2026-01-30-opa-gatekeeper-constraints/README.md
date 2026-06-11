@@ -34,7 +34,7 @@ helm repo add gatekeeper https://open-policy-agent.github.io/gatekeeper/charts
 helm install gatekeeper/gatekeeper --name-template=gatekeeper --namespace gatekeeper-system --create-namespace
 
 # Using manifests
-kubectl apply -f https://raw.githubusercontent.com/open-policy-agent/gatekeeper/v3.14.0/deploy/gatekeeper.yaml
+kubectl apply -f https://raw.githubusercontent.com/open-policy-agent/gatekeeper/v3.22.2/deploy/gatekeeper.yaml
 ```
 
 Verify the installation:
@@ -511,6 +511,7 @@ Test Rego policies before deploying:
 brew install conftest
 
 # Create test file
+mkdir -p policy
 cat > policy/k8s-required-labels.rego << 'EOF'
 package k8srequiredlabels
 
@@ -537,30 +538,27 @@ parameters:
 EOF
 
 # Run test
-conftest test test-input.yaml -p policy/
+conftest test test-input.yaml -p policy/ --namespace k8srequiredlabels
 ```
 
-### Using Gatekeeper's Built-in Testing
+### Using Gatekeeper's gator Testing
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: gatekeeper-test
-  namespace: gatekeeper-system
-data:
-  test.yaml: |
-    violations:
-      - template: k8srequiredlabels
-        constraint: require-team-label
-        cases:
-          - name: pod-without-labels
-            object:
-              apiVersion: v1
-              kind: Pod
-              metadata:
-                name: test-pod
-            expectViolation: true
+apiVersion: test.gatekeeper.sh/v1alpha1
+kind: Suite
+tests:
+  - name: required-labels
+    template: k8srequiredlabels_template.yaml
+    constraint: require-team-label.yaml
+    cases:
+      - name: pod-without-labels
+        object:
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: test-pod
+        assertions:
+          - violations: yes
 ```
 
 ## Debugging Policies
@@ -709,16 +707,16 @@ jobs:
 
       - name: Install gator
         run: |
-          curl -L https://github.com/open-policy-agent/gatekeeper/releases/download/v3.14.0/gator-v3.14.0-linux-amd64.tar.gz | tar xz
+          curl -L https://github.com/open-policy-agent/gatekeeper/releases/download/v3.22.2/gator-v3.22.2-linux-amd64.tar.gz | tar xz
           sudo mv gator /usr/local/bin/
 
       - name: Test policies
         run: |
-          gator test --filename=policies/
+          gator verify policies/...
 
       - name: Verify manifests
         run: |
-          gator verify --filename=manifests/ --filename=policies/
+          gator test --filename=manifests/ --filename=policies/
 ```
 
 ---
