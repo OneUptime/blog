@@ -204,9 +204,9 @@ func (c *Client) writePump() {
 }
 ```
 
-## HTTP Handler and Graceful Shutdown
+## HTTP Handler and Server Shutdown
 
-Wire everything together with an HTTP handler and implement graceful shutdown:
+Wire everything together with an HTTP handler and implement HTTP server shutdown. Note that Go's HTTP server shutdown does not close already upgraded WebSocket connections, so long-lived WebSocket connections should be notified and closed separately if needed:
 
 ```go
 import (
@@ -247,9 +247,12 @@ func main() {
     })
 
     server := &http.Server{Addr: ":8080"}
+    shutdownDone := make(chan struct{})
 
-    // Handle graceful shutdown
+    // Handle server shutdown
     go func() {
+        defer close(shutdownDone)
+
         sigChan := make(chan os.Signal, 1)
         signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
         <-sigChan
@@ -267,6 +270,7 @@ func main() {
     if err := server.ListenAndServe(); err != http.ErrServerClosed {
         log.Fatalf("Server error: %v", err)
     }
+    <-shutdownDone
     log.Println("Server stopped")
 }
 ```
@@ -276,7 +280,7 @@ func main() {
 For production deployments with multiple server instances, you need external message passing. Redis Pub/Sub is a common choice:
 
 ```go
-import "github.com/go-redis/redis/v8"
+import "github.com/redis/go-redis/v9"
 
 // Subscribe to Redis and forward messages to the local hub
 func subscribeToRedis(ctx context.Context, rdb *redis.Client, hub *Hub) {
@@ -294,4 +298,4 @@ This architecture allows multiple WebSocket servers to share messages across ins
 
 ## Conclusion
 
-The Gorilla WebSocket library provides a solid foundation for building real-time applications in Go. Key takeaways include configuring the upgrader with proper origin checks, using a hub pattern for connection management, implementing ping/pong heartbeats to detect dead connections, and handling graceful shutdown. For production systems, consider adding authentication middleware, rate limiting, and external message passing for multi-instance deployments.
+The Gorilla WebSocket library provides a solid foundation for building real-time applications in Go. Key takeaways include configuring the upgrader with proper origin checks, using a hub pattern for connection management, implementing ping/pong heartbeats to detect dead connections, and handling HTTP server shutdown. For production systems, consider adding authentication middleware, rate limiting, explicit WebSocket connection shutdown, and external message passing for multi-instance deployments.
