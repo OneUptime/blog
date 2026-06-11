@@ -10,7 +10,7 @@ Description: Learn to implement Elasticsearch normalizers for keyword field norm
 
 ## Introduction
 
-When working with Elasticsearch, you often need to perform case-insensitive searches or normalize special characters on keyword fields. Unlike text fields that use analyzers, keyword fields require **normalizers** - a special type of analysis that processes the entire field value as a single token.
+When working with Elasticsearch, you often need to perform case-insensitive searches or normalize special characters on keyword fields. Unlike text fields that use analyzers, keyword fields use **normalizers** for this preprocessing - a special type of analysis that processes the entire field value as a single token.
 
 This guide walks you through implementing Elasticsearch normalizers for effective keyword field normalization.
 
@@ -277,8 +277,8 @@ flowchart TD
     Doc["Document: { title: 'User GUIDE' }"]
     Doc --> F1["title (keyword)"]
     Doc --> F2["title.normalized (keyword + normalizer)"]
-    F1 --> V1["Stored: 'User GUIDE'"]
-    F2 --> V2["Stored: 'user guide'"]
+    F1 --> V1["Indexed/doc values: 'User GUIDE'"]
+    F2 --> V2["Indexed/doc values: 'user guide'"]
 ```
 
 ### Searching with Multi-fields
@@ -299,7 +299,7 @@ GET /documents/_search
 {
   "query": {
     "term": {
-      "title.normalized": "user guide"
+      "title.normalized": "USER GUIDE"
     }
   }
 }
@@ -320,7 +320,7 @@ Normalizers significantly impact sorting behavior. Without normalizers, uppercas
 
 ```json
 // Data: ["apple", "Banana", "cherry", "Apple"]
-// Sort result: ["apple", "Apple", "Banana", "cherry"]
+// Sort result: ["apple", "Apple", "Banana", "cherry"] or ["Apple", "apple", "Banana", "cherry"]
 ```
 
 ```mermaid
@@ -478,12 +478,12 @@ POST /product_catalog/_bulk
 ### Querying with Normalizers
 
 ```json
-// Search for C++ books (symbol converted to "plus")
+// Search for C++ books (each "+" is converted to "plus")
 GET /product_catalog/_search
 {
   "query": {
     "term": {
-      "name": "c plus plus programming guide"
+      "name": "cplusplus programming guide"
     }
   }
 }
@@ -538,18 +538,23 @@ flowchart TD
 
 ## Troubleshooting Common Issues
 
-### Issue: Normalizer Not Applied to Existing Data
+### Issue: Changed Normalizer Not Applied to Existing Data
 
-Normalizers only affect new data. To apply to existing data:
+Normalizers are applied when values are indexed. If you need to change the normalizer for an existing field, create a new index with the updated mapping and reindex your data:
 
 ```json
-POST /product_catalog/_update_by_query?refresh
+POST /_reindex
 {
-  "query": {
-    "match_all": {}
+  "source": {
+    "index": "product_catalog"
+  },
+  "dest": {
+    "index": "product_catalog_v2"
   }
 }
 ```
+
+If you add a new multi-field to an existing field, existing documents will not have values for that new multi-field until you populate it with `_update_by_query`.
 
 ### Issue: Unexpected Search Results
 
