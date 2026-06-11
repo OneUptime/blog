@@ -12,7 +12,7 @@ Kyverno policies enforce security and compliance across your Kubernetes cluster.
 
 ## Understanding Policy Exceptions
 
-PolicyException is a Kyverno resource that allows specific resources to bypass policy rules. It keeps your policies strict by default while enabling controlled deviations where necessary.
+PolicyException is a Kyverno resource that allows specific resources to bypass policy rules. PolicyExceptions are disabled by default and must be enabled in Kyverno before they can be used. They keep your policies strict by default while enabling controlled deviations where necessary.
 
 ```mermaid
 flowchart TD
@@ -62,11 +62,11 @@ Here is the basic structure of a PolicyException:
 # PolicyException allows specific resources to bypass policy rules
 
 # This creates a targeted exemption without modifying the original policy
-apiVersion: kyverno.io/v2beta1
+apiVersion: kyverno.io/v2
 kind: PolicyException
 metadata:
   name: allow-privileged-debugger
-  namespace: kyverno  # PolicyExceptions typically live in the kyverno namespace
+  namespace: kyverno  # Must be in a namespace allowed by Kyverno's policyExceptions setting
 spec:
   # exceptions lists the policies and rules to exempt
   exceptions:
@@ -105,7 +105,7 @@ PolicyException supports granular scoping at multiple levels.
 Limit exceptions to specific namespaces:
 
 ```yaml
-apiVersion: kyverno.io/v2beta1
+apiVersion: kyverno.io/v2
 kind: PolicyException
 metadata:
   name: legacy-app-exception
@@ -132,7 +132,7 @@ Resource Name Scoping
 Target specific resources by name pattern:
 
 ```yaml
-apiVersion: kyverno.io/v2beta1
+apiVersion: kyverno.io/v2
 kind: PolicyException
 metadata:
   name: monitoring-exception
@@ -160,7 +160,7 @@ spec:
 Use label selectors for dynamic matching:
 
 ```yaml
-apiVersion: kyverno.io/v2beta1
+apiVersion: kyverno.io/v2
 kind: PolicyException
 metadata:
   name: ci-runner-exception
@@ -187,7 +187,7 @@ spec:
 Exempt specific rules while keeping others enforced:
 
 ```yaml
-apiVersion: kyverno.io/v2beta1
+apiVersion: kyverno.io/v2
 kind: PolicyException
 metadata:
   name: partial-policy-exception
@@ -235,6 +235,7 @@ flowchart TB
         EVAL[Evaluate Rule]
         PASS[Rule Passes]
         FAIL[Rule Fails]
+        COMPLETE[All Applicable Rules Pass or Skip]
     end
 
     subgraph Final["Final Decision"]
@@ -252,11 +253,12 @@ flowchart TB
     COND -->|Conditions Met| SKIP
     COND -->|Conditions Not Met| EVAL
 
-    SKIP --> ALLOW
+    SKIP --> COMPLETE
     EVAL --> PASS
     EVAL --> FAIL
 
-    PASS --> ALLOW
+    PASS --> COMPLETE
+    COMPLETE --> ALLOW
     FAIL --> DENY
 
     style ALLOW fill:#90EE90
@@ -271,7 +273,7 @@ Add conditions to make exceptions more specific. Conditions evaluate against the
 ### Basic Condition Example
 
 ```yaml
-apiVersion: kyverno.io/v2beta1
+apiVersion: kyverno.io/v2
 kind: PolicyException
 metadata:
   name: conditional-exception
@@ -300,12 +302,13 @@ spec:
 ### Multiple Conditions
 
 ```yaml
-apiVersion: kyverno.io/v2beta1
+apiVersion: kyverno.io/v2
 kind: PolicyException
 metadata:
   name: time-limited-exception
   namespace: kyverno
 spec:
+  background: false
   exceptions:
     - policyName: require-readonly-root
       ruleNames:
@@ -321,11 +324,11 @@ spec:
     # All conditions must be true (AND logic)
     all:
       # Must have the debugging label
-      - key: "{{ request.object.metadata.labels.purpose }}"
+      - key: "{{ request.object.metadata.labels.purpose || '' }}"
         operator: Equals
         value: "debugging"
       # Must have TTL annotation
-      - key: "{{ request.object.metadata.annotations.ttl }}"
+      - key: "{{ request.object.metadata.annotations.ttl || '' }}"
         operator: NotEquals
         value: ""
       # Must be created by approved user
@@ -339,7 +342,7 @@ spec:
 ### Combining Any and All Conditions
 
 ```yaml
-apiVersion: kyverno.io/v2beta1
+apiVersion: kyverno.io/v2
 kind: PolicyException
 metadata:
   name: complex-conditions
@@ -357,17 +360,17 @@ spec:
   conditions:
     # Must satisfy ALL of these
     all:
-      - key: "{{ request.object.metadata.namespace }}"
+      - key: "{{ request.object.metadata.namespace || '' }}"
         operator: AnyIn
         value:
           - "system-tools"
           - "monitoring"
     # AND must satisfy ANY of these
     any:
-      - key: "{{ request.object.metadata.labels.app }}"
+      - key: "{{ request.object.metadata.labels.app || '' }}"
         operator: Equals
         value: "network-scanner"
-      - key: "{{ request.object.metadata.labels.app }}"
+      - key: "{{ request.object.metadata.labels.app || '' }}"
         operator: Equals
         value: "security-audit"
 ```
@@ -379,7 +382,7 @@ Tracking who created exceptions and why is critical for security compliance.
 ### Adding Metadata for Auditing
 
 ```yaml
-apiVersion: kyverno.io/v2beta1
+apiVersion: kyverno.io/v2
 kind: PolicyException
 metadata:
   name: database-migration-exception
@@ -467,9 +470,13 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app.kubernetes.io/name: kyverno
+      app.kubernetes.io/part-of: kyverno
+      app.kubernetes.io/component: admission-controller
+  namespaceSelector:
+    matchNames:
+      - kyverno
   endpoints:
-    - port: metrics
+    - port: metrics-port
       interval: 30s
 ---
 # Alert for new exceptions
@@ -483,8 +490,8 @@ spec:
     - name: kyverno-exceptions
       rules:
         - alert: NewPolicyExceptionCreated
-          # Kyverno emits metrics when exceptions are used
-          expr: increase(kyverno_policy_results_total{rule_result="skip"}[1h]) > 0
+          # Kyverno records skipped results when policy exceptions are used
+          expr: increase(kyverno_policy_results{rule_result="skip"}[1h]) > 0
           for: 5m
           labels:
             severity: info
@@ -493,7 +500,7 @@ spec:
             description: "{{ $value }} resources skipped policy rules in the last hour"
 
         - alert: HighExceptionUsage
-          expr: kyverno_policy_results_total{rule_result="skip"} > 100
+          expr: kyverno_policy_results{rule_result="skip"} > 100
           for: 10m
           labels:
             severity: warning
@@ -508,7 +515,7 @@ spec:
 Allow engineers to run privileged debug pods temporarily:
 
 ```yaml
-apiVersion: kyverno.io/v2beta1
+apiVersion: kyverno.io/v2
 kind: PolicyException
 metadata:
   name: debug-pod-exception
@@ -517,6 +524,7 @@ metadata:
     exception-reason: "Allow privileged debug pods for troubleshooting"
     approved-by: "platform-team@example.com"
 spec:
+  background: false
   exceptions:
     - policyName: disallow-privileged-containers
       ruleNames:
@@ -538,7 +546,7 @@ spec:
   conditions:
     all:
       # Must have TTL label for automatic cleanup
-      - key: "{{ request.object.metadata.labels.ttl }}"
+      - key: "{{ request.object.metadata.labels.ttl || '' }}"
         operator: NotEquals
         value: ""
       # Must be created by SRE team
@@ -554,7 +562,7 @@ spec:
 Exempt a vendor tool that requires specific capabilities:
 
 ```yaml
-apiVersion: kyverno.io/v2beta1
+apiVersion: kyverno.io/v2
 kind: PolicyException
 metadata:
   name: vault-agent-exception
@@ -581,7 +589,7 @@ spec:
   conditions:
     all:
       # Only allow the specific capability needed
-      - key: "{{ request.object.spec.containers[].securityContext.capabilities.add[] }}"
+      - key: "{{ request.object.spec.containers[].securityContext.capabilities.add[] || `[]` }}"
         operator: AnyIn
         value:
           - "IPC_LOCK"
@@ -592,7 +600,7 @@ spec:
 Allow CI runners to use images from any registry during builds:
 
 ```yaml
-apiVersion: kyverno.io/v2beta1
+apiVersion: kyverno.io/v2
 kind: PolicyException
 metadata:
   name: ci-runner-registry-exception
@@ -621,10 +629,10 @@ spec:
               app: gitlab-runner
   conditions:
     any:
-      - key: "{{ request.object.metadata.annotations.ci-job-type }}"
+      - key: "{{ request.object.metadata.annotations.\"ci-job-type\" || '' }}"
         operator: Equals
         value: "build"
-      - key: "{{ request.object.metadata.annotations.ci-job-type }}"
+      - key: "{{ request.object.metadata.annotations.\"ci-job-type\" || '' }}"
         operator: Equals
         value: "test"
 ```
@@ -634,7 +642,7 @@ spec:
 Use exceptions during policy migration:
 
 ```yaml
-apiVersion: kyverno.io/v2beta1
+apiVersion: kyverno.io/v2
 kind: PolicyException
 metadata:
   name: migration-grace-period
@@ -662,7 +670,7 @@ spec:
   conditions:
     all:
       # Only apply to existing workloads
-      - key: "{{ request.object.metadata.annotations.migration-exemption }}"
+      - key: "{{ request.object.metadata.annotations.\"migration-exemption\" || '' }}"
         operator: Equals
         value: "approved"
 ```
@@ -673,7 +681,7 @@ spec:
 
 ```yaml
 # 1. Create exception request in Git
-apiVersion: kyverno.io/v2beta1
+apiVersion: kyverno.io/v2
 kind: PolicyException
 metadata:
   name: my-exception-request
@@ -735,7 +743,6 @@ kind: ClusterPolicy
 metadata:
   name: require-exception-approval
 spec:
-  validationFailureAction: Enforce
   rules:
     - name: require-approval-annotations
       match:
@@ -744,6 +751,7 @@ spec:
               kinds:
                 - PolicyException
       validate:
+        failureAction: Enforce
         message: "PolicyExceptions must have approval metadata"
         pattern:
           metadata:
@@ -794,6 +802,7 @@ metadata:
 Add conditions to limit exception applicability:
 
 ```yaml
+background: false  # Required when using request.userInfo in PolicyException conditions
 conditions:
   all:
     # Limit to specific users
@@ -812,7 +821,7 @@ Track when exceptions are actually used:
 
 ```bash
 # Check Kyverno admission controller logs
-kubectl logs -n kyverno -l app=kyverno -c kyverno | \
+kubectl logs -n kyverno -l app.kubernetes.io/component=admission-controller -c kyverno | \
   grep "policy rule skipped" | \
   jq -r '.policy, .rule, .resource'
 ```
