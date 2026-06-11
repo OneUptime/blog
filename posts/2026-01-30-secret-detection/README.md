@@ -99,12 +99,11 @@ Create a `.pre-commit-config.yaml` file in your repository root:
 
 repos:
   # Gitleaks hook scans staged changes for secrets
+  # The hook's default entry already runs 'gitleaks protect --verbose --redact --staged'
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.18.0
     hooks:
       - id: gitleaks
-        # Only scan staged files, not entire history
-        args: ["protect", "--staged"]
 
   # detect-secrets hook checks against baseline
   - repo: https://github.com/Yelp/detect-secrets
@@ -162,8 +161,12 @@ jobs:
         env:
           # Token needed to post findings as PR comments
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Fail the workflow if secrets are found
+          # Enable PR comments when secrets are found (default: true)
+          # The action fails the workflow automatically when leaks are detected
           GITLEAKS_ENABLE_COMMENTS: true
+          # Required for organization-owned repos (free key from gitleaks.io)
+          # Not required for personal repositories
+          # GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
 ```
 
 ### GitLab CI
