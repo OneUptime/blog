@@ -420,7 +420,7 @@ import DataLoader from 'dataloader';
 function createLoaders(db: Database) {
   return {
     // Batches all customer lookups within a single tick
-    customers: new DataLoader<string, Customer>(async (ids) => {
+    customers: new DataLoader<string, Customer | null>(async (ids) => {
       const customers = await db.customers.findMany({
         where: { id: { in: [...ids] } }
       });
@@ -431,7 +431,7 @@ function createLoaders(db: Database) {
     }),
 
     // Batches all product lookups
-    products: new DataLoader<string, Product>(async (ids) => {
+    products: new DataLoader<string, Product | null>(async (ids) => {
       const products = await db.products.findMany({
         where: { id: { in: [...ids] } }
       });
@@ -476,7 +476,7 @@ function validateExpansions(
   currentDepth: number = 0
 ): { valid: boolean; error?: string } {
 
-  if (currentDepth > limits.maxDepth) {
+  if (currentDepth >= limits.maxDepth && expansions.size > 0) {
     return {
       valid: false,
       error: `Expansion depth exceeds maximum of ${limits.maxDepth}`
@@ -581,13 +581,16 @@ class ExpansionCache {
     ttl: number = this.defaultTTL
   ): Promise<void> {
     const key = this.generateKey(resourceType, resourceId, expansions);
-    await this.redis.setex(key, ttl, JSON.stringify(data));
+    await this.redis.set(key, JSON.stringify(data), { EX: ttl });
   }
 
   // Invalidate all cached expansions for a resource when it changes
   async invalidate(resourceType: string, resourceId: string): Promise<void> {
     const pattern = `expand:${resourceType}:${resourceId}:*`;
-    const keys = await this.redis.keys(pattern);
+    const keys: string[] = [];
+    for await (const batch of this.redis.scanIterator({ MATCH: pattern })) {
+      keys.push(...batch);
+    }
 
     if (keys.length > 0) {
       await this.redis.del(...keys);
@@ -640,13 +643,13 @@ Stripe's API is the gold standard for REST expansion. They use a simple yet powe
 ```bash
 # Expand a single field
 
-curl https://api.stripe.com/v1/charges/ch_123?expand[]=customer
+curl "https://api.stripe.com/v1/charges/ch_123?expand[]=customer"
 
 # Expand multiple fields
-curl https://api.stripe.com/v1/charges/ch_123?expand[]=customer&expand[]=invoice
+curl "https://api.stripe.com/v1/charges/ch_123?expand[]=customer&expand[]=invoice"
 
 # Nested expansion
-curl https://api.stripe.com/v1/charges/ch_123?expand[]=invoice.subscription
+curl "https://api.stripe.com/v1/charges/ch_123?expand[]=invoice.subscription"
 ```
 
 ### GitHub-Style Expansion via Accept Header
@@ -655,11 +658,11 @@ GitHub uses a different approach with custom media types:
 
 ```bash
 # Standard response
-curl -H "Accept: application/vnd.github.v3+json" \
+curl -H "Accept: application/vnd.github+json" \
   https://api.github.com/repos/owner/repo/pulls/1
 
 # With additional data
-curl -H "Accept: application/vnd.github.v3.full+json" \
+curl -H "Accept: application/vnd.github.full+json" \
   https://api.github.com/repos/owner/repo/pulls/1
 ```
 
@@ -684,36 +687,40 @@ function parseFields(fieldsParam: string | undefined): FieldSelector | null {
     nested: new Map()
   };
 
-  const fieldList = fieldsParam.split(',').map(f => f.trim());
+  const fieldList = fieldsParam.split(',').map(f => f.trim()).filter(Boolean);
 
   for (const field of fieldList) {
-    const parts = field.split('.');
-
-    if (parts.length === 1) {
-      selector.fields.add(parts[0]);
-    } else {
-      const [parent, ...rest] = parts;
-      selector.fields.add(parent);
-
-      if (!selector.nested.has(parent)) {
-        selector.nested.set(parent, { fields: new Set(), nested: new Map() });
-      }
-
-      // Recursively handle nested field selection
-      const nested = selector.nested.get(parent)!;
-      nested.fields.add(rest.join('.'));
-    }
+    addField(selector, field.split('.'));
   }
 
   return selector;
 }
 
+function addField(selector: FieldSelector, parts: string[]): void {
+  const [current, ...rest] = parts;
+  if (!current) return;
+
+  selector.fields.add(current);
+
+  if (rest.length > 0) {
+    if (!selector.nested.has(current)) {
+      selector.nested.set(current, { fields: new Set(), nested: new Map() });
+    }
+
+    addField(selector.nested.get(current)!, rest);
+  }
+}
+
 // Apply field selection to filter response
 function applyFieldSelection<T extends object>(
-  data: T,
+  data: T | T[],
   selector: FieldSelector | null
-): Partial<T> {
+): Partial<T> | Partial<T>[] {
   if (!selector) return data;
+
+  if (Array.isArray(data)) {
+    return data.map(item => applyFieldSelection(item, selector) as Partial<T>);
+  }
 
   const result: Partial<T> = {};
 
@@ -875,7 +882,7 @@ describe('ResourceExpander', () => {
     };
 
     const expansions = parseExpansions('customer');
-    const result = await expander.expand(order, expansions);
+    const result = await expander.expand(order, expansions) as any;
 
     expect(result).toHaveProperty('customer');
     expect(result.customer).toEqual({
@@ -893,7 +900,7 @@ describe('ResourceExpander', () => {
     };
 
     const expansions = parseExpansions('items');
-    const result = await expander.expand(order, expansions);
+    const result = await expander.expand(order, expansions) as any;
 
     expect(result.items).toHaveLength(2);
     expect(result.items[0].name).toBe('Widget');
@@ -908,7 +915,7 @@ describe('ResourceExpander', () => {
     };
 
     const expansions = parseExpansions('customer');
-    const result = await expander.expand(order, expansions);
+    const result = await expander.expand(order, expansions) as any;
 
     expect(result.customer).toBeUndefined();
   });
