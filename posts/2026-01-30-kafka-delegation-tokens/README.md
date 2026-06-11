@@ -51,7 +51,7 @@ Delegation tokens solve several common problems in distributed Kafka deployments
 Before implementing delegation tokens, ensure your Kafka cluster meets these requirements:
 
 - Kafka version 1.1.0 or later
-- SASL authentication enabled (SASL/SCRAM, SASL/PLAIN, or Kerberos)
+- SASL or SSL authentication enabled for token management requests, and SASL/SCRAM enabled for clients that authenticate with delegation tokens
 - Proper ACLs configured for token operations
 - Secure inter-broker communication
 
@@ -64,7 +64,7 @@ Enable delegation tokens in your Kafka broker configuration:
 
 # Enable delegation token authentication
 
-delegation.token.master.key=your-secret-master-key
+delegation.token.secret.key=your-secret-master-key
 delegation.token.max.lifetime.ms=604800000
 delegation.token.expiry.time.ms=86400000
 delegation.token.expiry.check.interval.ms=3600000
@@ -78,6 +78,8 @@ security.inter.broker.protocol=SASL_SSL
 listeners=SASL_SSL://0.0.0.0:9093
 advertised.listeners=SASL_SSL://broker1.example.com:9093
 ```
+
+For Confluent Platform, the equivalent secret-key setting is `delegation.token.master.key`.
 
 ---
 
@@ -123,7 +125,7 @@ kafka-delegation-tokens.sh --bootstrap-server kafka:9093 \
 
 # Output will include:
 # Token ID: xyz123
-# HMAC: abc456...
+# HMAC: base64-encoded-hmac...
 # Owner: User:admin
 # Renewers: [User:worker-service]
 # Issue Timestamp: 2026-01-30T10:00:00Z
@@ -197,7 +199,7 @@ public class DelegationTokenManager {
 
         CreateDelegationTokenOptions options = new CreateDelegationTokenOptions()
             .renewers(renewers)
-            .maxlifeTimeMs(maxLifetimeMs);
+            .maxLifetimeMs(maxLifetimeMs);
 
         CreateDelegationTokenResult result = adminClient.createDelegationToken(options);
         return result.delegationToken().get();
@@ -211,19 +213,17 @@ public class DelegationTokenManager {
 
 ### Using Python (confluent-kafka)
 
-For Python applications, use the confluent-kafka library:
+For Python applications, use the confluent-kafka library to configure clients with token credentials created by the Java Admin client or CLI:
 
 ```python
 # delegation_token_manager.py
-from confluent_kafka.admin import AdminClient, NewTopic
-from confluent_kafka import KafkaException
-import base64
-import json
+from confluent_kafka.admin import AdminClient
 
 class DelegationTokenManager:
     """
     Manages Kafka delegation tokens for Python applications.
-    Handles creation, renewal, and expiration of tokens.
+    confluent-kafka does not expose delegation-token creation APIs; use
+    the Java AdminClient or kafka-delegation-tokens.sh for token management.
     """
 
     def __init__(self, bootstrap_servers: str, sasl_config: dict):
@@ -255,40 +255,32 @@ class DelegationTokenManager:
         Returns:
             Dictionary containing token information
         """
-        # Note: confluent-kafka has limited delegation token support
-        # For full functionality, use the Java AdminClient or CLI
-
-        # This example shows the expected token structure
-        # In production, call the Kafka protocol directly or use subprocess
-        token_info = {
-            'token_id': None,
-            'hmac': None,
-            'owner': self.config['sasl.username'],
-            'renewers': renewers or [],
-            'issue_timestamp': None,
-            'expiry_timestamp': None,
-            'max_timestamp': None
-        }
-
-        return token_info
+        raise NotImplementedError(
+            "confluent-kafka does not expose delegation-token management APIs; "
+            "create tokens with the Java AdminClient or kafka-delegation-tokens.sh"
+        )
 
     def get_token_auth_config(self, token_id: str, hmac: str) -> dict:
         """
-        Generate client configuration for delegation token authentication.
+        Generate Java client properties for delegation token authentication.
 
         Args:
             token_id: The delegation token ID
             hmac: The token HMAC (secret)
 
         Returns:
-            Dictionary with client configuration for token auth
+            Dictionary with Java client configuration for token auth
         """
         return {
             'bootstrap.servers': self.config['bootstrap.servers'],
             'security.protocol': 'SASL_SSL',
-            'sasl.mechanisms': 'SCRAM-SHA-256',
-            'sasl.username': token_id,
-            'sasl.password': hmac,
+            'sasl.mechanism': 'SCRAM-SHA-256',
+            'sasl.jaas.config': (
+                'org.apache.kafka.common.security.scram.ScramLoginModule required '
+                f'username="{token_id}" '
+                f'password="{hmac}" '
+                'tokenauth="true";'
+            ),
             'ssl.ca.location': self.config.get('ssl.ca.location', '/etc/kafka/certs/ca.crt')
         }
 ```
@@ -306,6 +298,7 @@ Tokens must be renewed before expiration to maintain access. Only the token owne
 import org.apache.kafka.clients.admin.*;
 import org.apache.kafka.common.security.token.delegation.DelegationToken;
 
+import java.util.Properties;
 import java.util.concurrent.*;
 import java.util.logging.Logger;
 
@@ -690,7 +683,7 @@ public class TokenDistributionService {
         TokenInfo tokenInfo = activeTokens.get(serviceName);
         if (tokenInfo != null) {
             ExpireDelegationTokenOptions options = new ExpireDelegationTokenOptions()
-                .expiryTimePeriodMs(0);
+                .expiryTimePeriodMs(-1);
 
             adminClient.expireDelegationToken(tokenInfo.hmac(), options).expiryTimestamp().get();
             activeTokens.remove(serviceName);
@@ -868,9 +861,9 @@ public class TokenRevocationService {
      * The HMAC is used to identify the token to revoke.
      */
     public void revokeToken(byte[] hmac) throws ExecutionException, InterruptedException {
-        // Setting expiryTimePeriodMs to 0 immediately expires the token
+        // Setting expiryTimePeriodMs below 0 immediately expires the token
         ExpireDelegationTokenOptions options = new ExpireDelegationTokenOptions()
-            .expiryTimePeriodMs(0);
+            .expiryTimePeriodMs(-1);
 
         ExpireDelegationTokenResult result = adminClient.expireDelegationToken(hmac, options);
         long newExpiry = result.expiryTimestamp().get();
@@ -963,23 +956,23 @@ kafka-delegation-tokens.sh --bootstrap-server kafka:9093 \
 Proper ACL configuration is essential for delegation token security:
 
 ```bash
-# Allow a user to create delegation tokens
+# Allow a user to create delegation tokens for token-admin
 kafka-acls.sh --bootstrap-server kafka:9093 \
     --command-config admin.properties \
     --add \
     --allow-principal User:token-admin \
     --operation CreateTokens \
-    --cluster
+    --user-principal token-admin
 
-# Allow a service to use tokens (authenticate with tokens)
+# Allow a service to describe worker-service tokens
 kafka-acls.sh --bootstrap-server kafka:9093 \
     --command-config admin.properties \
     --add \
     --allow-principal User:worker-service \
     --operation DescribeTokens \
-    --cluster
+    --user-principal worker-service
 
-# Grant topic-level permissions (tokens inherit these from the token owner)
+# Grant topic-level permissions to the token owner
 kafka-acls.sh --bootstrap-server kafka:9093 \
     --command-config admin.properties \
     --add \
@@ -1121,7 +1114,6 @@ public class TokenMetrics {
     private final Counter tokenRenewals;
     private final Counter tokenRevocations;
     private final Counter tokenErrors;
-    private final Gauge activeTokenCount;
 
     public TokenMetrics(MeterRegistry registry) {
         this.registry = registry;
@@ -1350,7 +1342,7 @@ spec:
 |-------|-------|----------|
 | `Token has expired` | Token not renewed before expiry | Implement automatic renewal |
 | `Token not found` | Token was revoked or never created | Create a new token |
-| `Delegation Token feature is not enabled` | Broker not configured | Set `delegation.token.master.key` |
+| `Delegation Token feature is not enabled` | Broker not configured | Set `delegation.token.secret.key` in Apache Kafka, or `delegation.token.master.key` in Confluent Platform |
 | `Invalid HMAC` | Wrong token secret used | Verify token credentials |
 | `Principal does not have permission` | Missing ACLs | Grant CreateTokens permission |
 
