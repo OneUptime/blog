@@ -68,8 +68,6 @@ Create an isolated environment where flag state is fully controllable:
 ```yaml
 # docker-compose.test.yml
 
-version: '3.8'
-
 services:
   # Flag service with test-specific configuration
   flag-service:
@@ -98,6 +96,11 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 2s
+      timeout: 5s
+      retries: 3
 
   # Service B - consumes flags
   service-b:
@@ -111,6 +114,11 @@ services:
         condition: service_healthy
       service-a:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 2s
+      timeout: 5s
+      retries: 3
 
   # Test database
   postgres:
@@ -134,9 +142,14 @@ services:
       - FLAG_SERVICE_URL=http://flag-service:8080
       - SERVICE_A_URL=http://service-a:3000
       - SERVICE_B_URL=http://service-b:3000
+      - DATABASE_URL=postgres://test:test@postgres:5432/testdb
     depends_on:
-      - service-a
-      - service-b
+      service-a:
+        condition: service_healthy
+      service-b:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
     volumes:
       - ./test-results:/app/results
 ```
@@ -168,7 +181,7 @@ export async function initializeTestEnvironment(): Promise<TestEnvironment> {
   ]);
 
   // Reset to known state
-  await flags.resetAllFlags();
+  await flags.resetToDefaults();
   await db.truncateAllTables();
   await db.seedTestData();
 
@@ -245,11 +258,15 @@ export class FlagClient {
       this.originalStates.set(key, original);
     }
 
-    await fetch(`${this.baseUrl}/api/flags/${key}`, {
+    const response = await fetch(`${this.baseUrl}/api/flags/${key}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(config),
     });
+
+    if (!response.ok) {
+      throw new Error(`Failed to update flag ${key}: ${response.status}`);
+    }
 
     // Wait for propagation to all services
     await this.waitForPropagation(key, config);
@@ -276,6 +293,29 @@ export class FlagClient {
   // Get current flag state
   async getFlag(key: string): Promise<Flag> {
     const response = await fetch(`${this.baseUrl}/api/flags/${key}`);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch flag ${key}: ${response.status}`);
+    }
+    return response.json();
+  }
+
+  // Reset all flags to their test defaults
+  async resetToDefaults(): Promise<void> {
+    const response = await fetch(`${this.baseUrl}/api/flags/reset`, {
+      method: 'POST',
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to reset flags: ${response.status}`);
+    }
+  }
+
+  // Get all current flag states for reporting
+  async getAllFlagStates(): Promise<Record<string, boolean>> {
+    const response = await fetch(`${this.baseUrl}/api/flags`);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch flag states: ${response.status}`);
+    }
     return response.json();
   }
 
@@ -285,23 +325,33 @@ export class FlagClient {
     expectedConfig: Partial<Flag>,
     timeout = 5000
   ): Promise<void> {
-    const startTime = Date.now();
     const services = [
       process.env.SERVICE_A_URL,
       process.env.SERVICE_B_URL,
-    ];
+    ].filter((url): url is string => Boolean(url));
 
     for (const serviceUrl of services) {
+      const startTime = Date.now();
+      let propagated = false;
+
       while (Date.now() - startTime < timeout) {
         const response = await fetch(
           `${serviceUrl}/internal/flags/${key}/state`
         );
         const state = await response.json();
 
-        if (state.enabled === expectedConfig.enabled) {
+        if (
+          expectedConfig.enabled === undefined ||
+          state.enabled === expectedConfig.enabled
+        ) {
+          propagated = true;
           break;
         }
         await sleep(50);
+      }
+
+      if (!propagated) {
+        throw new Error(`Flag ${key} did not propagate to ${serviceUrl}`);
       }
     }
   }
@@ -309,11 +359,17 @@ export class FlagClient {
   // Reset all flags to original state (call in afterEach)
   async resetAllFlags(): Promise<void> {
     for (const [key, original] of this.originalStates) {
-      await fetch(`${this.baseUrl}/api/flags/${key}`, {
+      const response = await fetch(`${this.baseUrl}/api/flags/${key}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(original),
       });
+
+      if (!response.ok) {
+        throw new Error(`Failed to reset flag ${key}: ${response.status}`);
+      }
+
+      await this.waitForPropagation(key, original);
     }
     this.originalStates.clear();
   }
@@ -329,11 +385,15 @@ export class FlagClient {
     }
 
     // Atomic bulk update
-    await fetch(`${this.baseUrl}/api/flags/bulk`, {
+    const response = await fetch(`${this.baseUrl}/api/flags/bulk`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(flags),
     });
+
+    if (!response.ok) {
+      throw new Error(`Failed to bulk update flags: ${response.status}`);
+    }
 
     // Wait for all to propagate
     await Promise.all(
@@ -669,8 +729,10 @@ Feature flags often introduce new response fields or modify existing ones. Contr
 ```typescript
 // tests/contracts/api-contracts.test.ts
 import Ajv from 'ajv';
+import addFormats from 'ajv-formats';
 
 const ajv = new Ajv();
+addFormats(ajv);
 
 // Schema for legacy checkout response
 const legacyCheckoutSchema = {
@@ -1164,7 +1226,7 @@ jobs:
 
       - name: Start test environment
         run: |
-          docker compose -f docker-compose.test.yml up -d
+          docker compose -f docker-compose.test.yml up -d flag-service service-a service-b postgres
           ./scripts/wait-for-services.sh
 
       - name: Run flag integration tests
@@ -1210,7 +1272,7 @@ jobs:
 
       - name: Start test environment
         run: |
-          docker compose -f docker-compose.test.yml up -d
+          docker compose -f docker-compose.test.yml up -d flag-service service-a service-b postgres
           ./scripts/wait-for-services.sh
 
       - name: Apply flag scenario
