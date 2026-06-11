@@ -205,8 +205,8 @@ class OfflineDatabase {
         return this.executeTransaction(storeName, 'readwrite', (store) => {
             const record = {
                 ...data,
-                _syncStatus: 'pending',
-                _updatedAt: Date.now()
+                _syncStatus: data._syncStatus || 'pending',
+                _updatedAt: data._updatedAt || Date.now()
             };
             return store.put(record);
         });
@@ -273,7 +273,8 @@ await offlineDB.init([
         autoIncrement: true,
         indexes: [
             { name: 'timestamp', keyPath: 'timestamp' },
-            { name: 'operation', keyPath: 'operation' }
+            { name: 'operation', keyPath: 'operation' },
+            { name: 'status', keyPath: 'status' }
         ]
     }
 ]);
@@ -1058,7 +1059,7 @@ app.init().catch(console.error);
 
 5. **Monitor network status actively** - Do not rely solely on browser events; implement periodic connectivity checks.
 
-6. **Leverage service workers** - They provide robust caching and enable background sync capabilities.
+6. **Leverage service workers** - They provide robust caching and, where supported, enable background sync capabilities.
 
 7. **Handle edge cases** - Consider scenarios like partial sync failures, storage quota limits, and data migration.
 
