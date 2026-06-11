@@ -12,7 +12,7 @@ Description: Configure Istio Sidecar resources to limit proxy configuration scop
 
 When running Istio in production, one of the first performance issues you encounter is the size of Envoy proxy configuration. By default, every sidecar proxy in your mesh receives configuration for every service in the mesh. In a cluster with hundreds of services, this becomes a serious problem.
 
-The Istio Sidecar resource solves this by letting you explicitly define which services a workload can communicate with. This reduces memory consumption, speeds up configuration propagation, and improves overall mesh performance.
+The Istio Sidecar resource solves this by letting you explicitly define which service configurations a workload imports. This reduces memory consumption, speeds up configuration propagation, and improves overall mesh performance.
 
 ## Understanding the Problem
 
@@ -33,12 +33,12 @@ A Sidecar resource has three main sections:
 
 1. **workloadSelector** - Which pods this configuration applies to
 2. **ingress** - How traffic enters the workload
-3. **egress** - Which external services the workload can reach
+3. **egress** - Which outbound service configurations the workload imports
 
-Here is a minimal Sidecar resource that restricts a workload to only communicate with services in its own namespace and the istio-system namespace.
+Here is a minimal Sidecar resource that limits the workload's imported outbound configuration to services in its own namespace and the istio-system namespace.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -50,7 +50,7 @@ spec:
         - "istio-system/*"
 ```
 
-This configuration tells Istio: "For all workloads in the frontend namespace, only push configuration for services in the frontend namespace and istio-system namespace."
+This configuration tells Istio: "For all workloads in the frontend namespace, import outbound configuration for services in the frontend namespace and istio-system namespace."
 
 ## Workload Selector
 
@@ -59,7 +59,7 @@ The workloadSelector field lets you target specific pods instead of all pods in 
 The following example applies only to pods with the label `app: api-gateway`.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: api-gateway-sidecar
@@ -79,7 +79,7 @@ When no workloadSelector is specified, the Sidecar applies to all workloads in t
 
 ## Egress Configuration
 
-The egress section defines what services your workload can call. Each entry in the egress list can specify:
+The egress section defines what service configurations your workload imports for outbound traffic. Each entry in the egress list can specify:
 
 - **hosts** - Service hostnames in `namespace/dnsName` format
 - **port** - Optional port restrictions
@@ -95,8 +95,8 @@ The host format follows the pattern `namespace/dnsName`:
 | `./*` | All services in the same namespace |
 | `backend/*` | All services in the backend namespace |
 | `*/orders.backend.svc.cluster.local` | Specific service in any namespace |
-| `backend/orders` | Specific service in specific namespace |
-| `~/*` | Services in the root namespace |
+| `backend/orders.backend.svc.cluster.local` | Specific service in specific namespace |
+| `~/*` | No-namespace hosts; commonly used to trim outbound configuration for workloads that make no outbound calls |
 | `*/*` | All services in all namespaces (defeats the purpose) |
 
 ### Restricting to Specific Services
@@ -104,7 +104,7 @@ The host format follows the pattern `namespace/dnsName`:
 For maximum efficiency, list only the services your workload actually needs.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: checkout-service-sidecar
@@ -116,9 +116,9 @@ spec:
   egress:
     - hosts:
         # Services this workload calls
-        - "backend/orders-service"
-        - "backend/inventory-service"
-        - "backend/payment-service"
+        - "backend/orders-service.backend.svc.cluster.local"
+        - "backend/inventory-service.backend.svc.cluster.local"
+        - "backend/payment-service.backend.svc.cluster.local"
         # Istio control plane
         - "istio-system/*"
 ```
@@ -128,7 +128,7 @@ spec:
 You can create different egress rules for different ports. This is useful when you need different capture modes or bindings per port.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: multi-port-sidecar
@@ -151,7 +151,7 @@ spec:
         protocol: GRPC
         name: grpc
       hosts:
-        - "backend/grpc-service"
+        - "backend/grpc-service.backend.svc.cluster.local"
     # Database traffic - bypass Envoy
     - port:
         number: 5432
@@ -171,7 +171,7 @@ The ingress section defines how traffic enters your workload. While Kubernetes S
 This example configures the ingress listener for a web application.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: web-app-sidecar
@@ -199,7 +199,7 @@ The `defaultEndpoint` specifies where the proxy forwards traffic after processin
 Workloads that expose multiple ports need separate ingress entries.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: multi-port-app-sidecar
@@ -242,7 +242,7 @@ You can combine namespace-wide defaults with workload-specific overrides.
 First, create a default Sidecar for the namespace. This applies to all workloads without a specific Sidecar.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -260,7 +260,7 @@ spec:
 Then create specific Sidecars for workloads that need different configuration.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: external-api-client-sidecar
@@ -281,7 +281,7 @@ spec:
         protocol: TLS
         name: tls
       hosts:
-        - "~/*"  # Root namespace for ServiceEntry hosts
+        - "./external-api.example.com"  # ServiceEntry host in this namespace
 ```
 
 ### Priority Rules
@@ -307,10 +307,10 @@ Service A updated -> Push to all 500 proxies -> Each proxy processes 50MB config
 
 ### After Optimization
 
-With Sidecars, only proxies that reference the changed service receive updates.
+With Sidecars, proxies that do not import the changed service can avoid receiving that service's updated configuration.
 
 ```text
-Service A updated -> Push to 20 proxies that use Service A -> Each proxy processes 5MB config
+Service A updated -> Proxies that import Service A process the scoped update -> Each affected proxy processes 5MB config
 ```
 
 ### Measuring Configuration Size
@@ -329,7 +329,7 @@ kubectl exec -n frontend deployment/web-app -c istio-proxy -- \
 
 # Check number of listeners
 kubectl exec -n frontend deployment/web-app -c istio-proxy -- \
-  curl -s localhost:15000/listeners | grep -c "name"
+  curl -s 'localhost:15000/listeners?format=json' | jq '.listener_statuses | length'
 ```
 
 ### Configuration Dump Analysis
@@ -339,7 +339,7 @@ Dump the full configuration to analyze what is being pushed to a proxy.
 ```bash
 # Full config dump (can be very large)
 kubectl exec -n frontend deployment/web-app -c istio-proxy -- \
-  curl -s localhost:15000/config_dump > config_dump.json
+  curl -s 'localhost:15000/config_dump?include_eds' > config_dump.json
 
 # Check the size
 ls -lh config_dump.json
@@ -358,7 +358,7 @@ Most services only need to communicate within their namespace plus shared infras
 
 ```yaml
 # Apply to all application namespaces
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -370,7 +370,7 @@ spec:
         - "shared-services/*"      # Shared infrastructure
         - "istio-system/*"         # Istio control plane
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -389,7 +389,7 @@ Map your actual service dependencies and configure Sidecars accordingly.
 
 ```yaml
 # Frontend services need backend and auth
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -403,7 +403,7 @@ spec:
         - "istio-system/*"
 ---
 # Backend services need database and cache
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -417,7 +417,7 @@ spec:
         - "istio-system/*"
 ---
 # Database namespace only needs local communication
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -434,7 +434,7 @@ spec:
 Some services (like Prometheus or log collectors) have endpoints in every namespace. Exclude them from standard proxies.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -443,8 +443,8 @@ spec:
   egress:
     - hosts:
         - "./*"
-        - "istio-system/istiod"
-        - "istio-system/istio-ingressgateway"
+        - "istio-system/istiod.istio-system.svc.cluster.local"
+        - "istio-system/istio-ingressgateway.istio-system.svc.cluster.local"
         # Explicitly exclude monitoring to reduce config size
         # Use ServiceEntry for specific monitoring endpoints if needed
 ```
@@ -497,7 +497,7 @@ Create default Sidecars for each namespace based on actual communication pattern
 
 ```yaml
 # Frontend namespace - calls catalog, orders, shared
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -512,7 +512,7 @@ spec:
         - "istio-system/*"
 ---
 # Catalog namespace - calls shared, no external dependencies
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -525,7 +525,7 @@ spec:
         - "istio-system/*"
 ---
 # Orders namespace - calls catalog, shipping, shared
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -540,7 +540,7 @@ spec:
         - "istio-system/*"
 ---
 # Shipping namespace - calls orders (for status updates), shared
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -549,12 +549,12 @@ spec:
   egress:
     - hosts:
         - "./*"
-        - "orders/order-service"
+        - "orders/order-service.orders.svc.cluster.local"
         - "shared/*"
         - "istio-system/*"
 ---
 # Shared namespace - only local communication
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -572,7 +572,7 @@ Some workloads need access beyond their namespace default.
 
 ```yaml
 # Payment service needs external payment gateway
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: payment-service-sidecar
@@ -593,10 +593,11 @@ spec:
         protocol: TLS
         name: tls
       hosts:
-        - "~/*"
+        - "./api.stripe.com"
+        - "./api.paypal.com"
 ---
 # Notification service needs external email/SMS providers
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: notification-service-sidecar
@@ -614,7 +615,14 @@ spec:
         protocol: TLS
         name: tls
       hosts:
-        - "~/*"
+        - "./api.sendgrid.com"
+        - "./smtp.sendgrid.net"
+    - port:
+        number: 587
+        protocol: TCP
+        name: smtp
+      hosts:
+        - "./smtp.sendgrid.net"
 ```
 
 ### External Service Entries
@@ -623,7 +631,7 @@ Define ServiceEntry resources for external services that workloads need to reach
 
 ```yaml
 # Payment gateway ServiceEntry
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: payment-gateway
@@ -640,7 +648,7 @@ spec:
   location: MESH_EXTERNAL
 ---
 # Email provider ServiceEntry
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: email-provider
@@ -679,7 +687,7 @@ kubectl get pods -n frontend -l app=web-app --show-labels
 
 ### Debug Proxy Configuration
 
-When traffic is blocked unexpectedly, check what configuration the proxy has.
+When traffic fails unexpectedly or loses expected mesh routing behavior, check what configuration the proxy has.
 
 ```bash
 # Check if destination cluster exists
@@ -688,21 +696,21 @@ kubectl exec -n frontend deployment/web-app -c istio-proxy -- \
 
 # Check listener configuration
 kubectl exec -n frontend deployment/web-app -c istio-proxy -- \
-  curl -s localhost:15000/listeners | jq '.[] | .name'
+  curl -s 'localhost:15000/listeners?format=json' | jq '.listener_statuses[] | .name'
 
 # Check routes
 kubectl exec -n frontend deployment/web-app -c istio-proxy -- \
-  curl -s localhost:15000/config_dump?resource=dynamic_route_configs
+  curl -s 'localhost:15000/config_dump?resource=dynamic_route_configs'
 ```
 
 ### Common Issues
 
 | Issue | Cause | Solution |
 |-------|-------|----------|
-| 503 errors after adding Sidecar | Destination not in egress hosts | Add missing service to egress hosts |
+| 503 errors after adding Sidecar | Destination configuration not imported by egress hosts | Add missing service to egress hosts |
 | Slow startup after Sidecar change | Large config still being pushed | Verify Sidecar is applied, check for wildcards |
 | Metrics not working | Prometheus endpoint excluded | Add prometheus namespace to egress or use direct access |
-| External calls failing | ServiceEntry not referenced | Add ServiceEntry namespace to egress hosts |
+| External calls failing | ServiceEntry host not imported, or unknown outbound traffic is denied by policy | Add the ServiceEntry host to egress hosts |
 
 ### Istiod Logs
 
@@ -724,7 +732,7 @@ Begin by creating namespace default Sidecars before workload-specific ones.
 
 ```yaml
 # Start simple
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -800,9 +808,9 @@ The Istio Sidecar resource is essential for running Istio at scale. By limiting 
 - Lower CPU usage during config updates
 - Improve overall mesh stability
 
-Start with namespace defaults that restrict egress to local services and istio-system. Then add workload-specific Sidecars for services with unique requirements. Monitor your proxy resource usage and adjust as your service dependencies evolve.
+Start with namespace defaults that scope egress configuration to local services and istio-system. Then add workload-specific Sidecars for services with unique requirements. Monitor your proxy resource usage and adjust as your service dependencies evolve.
 
-The key is to be explicit about service dependencies. This forces you to understand your architecture better and prevents accidental communication between services that should be isolated.
+The key is to be explicit about service dependencies. This forces you to understand your architecture better and prevents accidental configuration bloat. Use Istio authorization policies, egress gateways, or outbound traffic policy when you need traffic enforcement.
 
 ## References
 
