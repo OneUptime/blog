@@ -68,7 +68,7 @@ flowchart TB
 
 Before getting started, ensure you have:
 
-- A Kubernetes cluster (v1.24 or later recommended)
+- A Kubernetes cluster supported by the Gateway API bundle and implementation you install
 - kubectl configured to access your cluster
 - A Gateway API implementation installed (we will use Envoy Gateway in examples)
 
@@ -79,7 +79,7 @@ First, install the Gateway API Custom Resource Definitions:
 ```bash
 # Install the standard Gateway API CRDs
 
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.0.0/standard-install.yaml
+kubectl apply --server-side -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.5.1/standard-install.yaml
 
 # Verify the installation
 kubectl get crd | grep gateway
@@ -482,8 +482,8 @@ spec:
         - name: orders-read-replica
           port: 8080
 
-    # Match any request with query parameter matching
-    # Note: Query parameter matching requires experimental CRDs
+    # Match any remaining request to /api/orders
+    # Query parameter matching is also available with extended support
     - matches:
         - path:
             type: PathPrefix
@@ -615,11 +615,12 @@ kind: Gateway
 metadata:
   name: production-gateway
   namespace: gateway-system
-  annotations:
-    # Cloud provider specific annotations for load balancer
-    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
 spec:
   gatewayClassName: production-class
+  infrastructure:
+    annotations:
+      # Cloud provider specific annotations for generated infrastructure
+      service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
 
   listeners:
     # Redirect HTTP to HTTPS
@@ -791,7 +792,7 @@ kubectl describe httproute app-route
 ## Best Practices
 
 1. **Namespace Organization**
-   - Keep GatewayClass and Gateway in a dedicated namespace (e.g., gateway-system)
+   - Keep Gateways in a dedicated namespace (e.g., gateway-system); GatewayClasses are cluster-scoped resources
    - Use namespace selectors to control which namespaces can attach routes
 
 2. **Security**
