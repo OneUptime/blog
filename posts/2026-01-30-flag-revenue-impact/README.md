@@ -257,8 +257,8 @@ class PurchaseTracker {
 
       flags: flagEvaluations,
 
-      userSegment: await this.getUserSegment(userId),
-      cohort: await this.getUserCohort(userId),
+      userSegment: context.userSegment,
+      cohort: context.cohort,
       acquisitionChannel: context.acquisitionChannel,
 
       timestamp: new Date().toISOString(),
@@ -271,7 +271,7 @@ class PurchaseTracker {
           price: item.price,
         })),
         paymentMethod: order.paymentMethod,
-        isFirstPurchase: await this.isFirstPurchase(userId),
+        isFirstPurchase: context.isFirstPurchase,
         deviceType: context.deviceType,
         browser: context.browser,
       },
@@ -311,8 +311,13 @@ class PurchaseTracker {
   }
 
   normalizeRevenue(amount, currency) {
-    // Convert to cents/smallest unit to avoid floating point issues
-    return Math.round(amount * 100);
+    // Convert to the currency's smallest unit to avoid floating point issues
+    const { maximumFractionDigits } = new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency,
+    }).resolvedOptions();
+
+    return Math.round(amount * 10 ** maximumFractionDigits);
   }
 
   async trackFlagRevenue(event) {
@@ -337,11 +342,17 @@ async function trackRefund(userId, originalOrderId, refundAmount, reason) {
     return;
   }
 
+  const { maximumFractionDigits } = new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: originalPurchase.currency,
+  }).resolvedOptions();
+  const refundAmountMinorUnits = Math.round(refundAmount * 10 ** maximumFractionDigits);
+
   const refundEvent = {
     eventType: 'refund',
     userId,
     originalOrderId,
-    refundAmount: Math.round(refundAmount * 100),
+    refundAmount: refundAmountMinorUnits,
     reason,
     timestamp: new Date().toISOString(),
 
@@ -349,7 +360,7 @@ async function trackRefund(userId, originalOrderId, refundAmount, reason) {
     flags: originalPurchase.flags,
 
     // Calculate net impact
-    netRevenue: originalPurchase.revenue - Math.round(refundAmount * 100),
+    netRevenue: originalPurchase.revenue - refundAmountMinorUnits,
   };
 
   await analyticsService.track('refund', refundEvent);
@@ -358,7 +369,7 @@ async function trackRefund(userId, originalOrderId, refundAmount, reason) {
   for (const [flagKey, evaluation] of Object.entries(refundEvent.flags)) {
     await analyticsService.decrement(
       `flag_revenue:${flagKey}:${evaluation.variation}`,
-      Math.round(refundAmount * 100)
+      refundAmountMinorUnits
     );
   }
 }
@@ -445,7 +456,7 @@ class SegmentRevenueAnalyzer {
       eventType: 'purchase',
       dateRange: { start: startDate, end: endDate },
       groupBy: ['flags.' + flagKey + '.variation', 'userSegment'],
-      metrics: ['sum(revenue)', 'count(*)', 'avg(revenue)'],
+      metrics: ['sum(revenue)', 'count(*)', 'avg(revenue)', 'count(distinct userId)'],
     });
 
     // Transform into segment-variation matrix
@@ -463,7 +474,7 @@ class SegmentRevenueAnalyzer {
         totalRevenue: row['sum(revenue)'],
         purchaseCount: row['count(*)'],
         avgOrderValue: row['avg(revenue)'],
-        revenuePerUser: row['sum(revenue)'] / await this.getUniqueUsers(segment, variation),
+        revenuePerUser: row['sum(revenue)'] / row['count(distinct userId)'],
       };
     }
 
@@ -698,7 +709,9 @@ class FlagLTVAnalyzer {
     return {
       recommendedVariation: bestVariation,
       expectedLiftPercent: bestLift,
-      confidence: this.assessConfidence(comparisons[bestVariation]),
+      confidence: bestVariation === 'control'
+        ? 'baseline'
+        : this.assessConfidence(comparisons[bestVariation]),
     };
   }
 
@@ -1019,9 +1032,8 @@ function calculateRequiredSampleSize(
   statisticalPower = 0.8,
   significanceLevel = 0.05
 ) {
-  // Z-scores for common values
-  const zAlpha = 1.96;  // 95% confidence (two-tailed)
-  const zBeta = 0.84;   // 80% power
+  const zAlpha = inverseNormalCDF(1 - significanceLevel / 2);
+  const zBeta = inverseNormalCDF(statisticalPower);
 
   const p1 = baselineConversionRate;
   const p2 = baselineConversionRate * (1 + minimumDetectableEffect);
@@ -1045,12 +1057,58 @@ function calculateRequiredSampleSize(
   };
 }
 
+function inverseNormalCDF(p) {
+  if (p <= 0 || p >= 1) {
+    throw new Error('p must be between 0 and 1');
+  }
+
+  // Peter John Acklam's rational approximation.
+  const a = [
+    -3.969683028665376e+01, 2.209460984245205e+02,
+    -2.759285104469687e+02, 1.383577518672690e+02,
+    -3.066479806614716e+01, 2.506628277459239e+00,
+  ];
+  const b = [
+    -5.447609879822406e+01, 1.615858368580409e+02,
+    -1.556989798598866e+02, 6.680131188771972e+01,
+    -1.328068155288572e+01,
+  ];
+  const c = [
+    -7.784894002430293e-03, -3.223964580411365e-01,
+    -2.400758277161838e+00, -2.549732539343734e+00,
+    4.374664141464968e+00, 2.938163982698783e+00,
+  ];
+  const d = [
+    7.784695709041462e-03, 3.224671290700398e-01,
+    2.445134137142996e+00, 3.754408661907416e+00,
+  ];
+  const pLow = 0.02425;
+  const pHigh = 1 - pLow;
+
+  if (p < pLow) {
+    const q = Math.sqrt(-2 * Math.log(p));
+    return (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) /
+      ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1);
+  }
+
+  if (p <= pHigh) {
+    const q = p - 0.5;
+    const r = q * q;
+    return (((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5]) * q /
+      (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1);
+  }
+
+  const q = Math.sqrt(-2 * Math.log(1 - p));
+  return -(((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) /
+    ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1);
+}
+
 // Example usage
 const sampleSize = calculateRequiredSampleSize(
   0.03,   // 3% baseline conversion rate
   0.10,   // 10% minimum detectable effect
 );
-// Output: { perVariation: 14751, total: 29502, ... }
+// Output: { perVariation: 53211, total: 106422, ... }
 ```
 
 ---
@@ -1099,7 +1157,9 @@ class FlagROICalculator {
 
     // Calculate ROI
     const totalInvestment = costs.development + costs.infrastructure + costs.opportunity;
-    const roi = ((incrementalRevenue - totalInvestment) / totalInvestment) * 100;
+    const roi = totalInvestment > 0
+      ? ((incrementalRevenue - totalInvestment) / totalInvestment) * 100
+      : null;
 
     return {
       flagKey,
@@ -1139,6 +1199,7 @@ class FlagROICalculator {
   calculatePaybackPeriod(incrementalRevenue, investment, startDate, endDate) {
     const days = (new Date(endDate) - new Date(startDate)) / (1000 * 60 * 60 * 24);
     const dailyRevenue = incrementalRevenue / days;
+    if (dailyRevenue <= 0) return null;
     return Math.ceil(investment / dailyRevenue);
   }
 }
@@ -1268,7 +1329,9 @@ class ROIReportGenerator {
   generateRecommendations(report) {
     const recommendations = [];
 
-    const hitRate = report.summary.flagsWithPositiveROI / report.summary.totalFlags;
+    const hitRate = report.summary.totalFlags > 0
+      ? report.summary.flagsWithPositiveROI / report.summary.totalFlags
+      : 0;
 
     if (hitRate < 0.3) {
       recommendations.push(
