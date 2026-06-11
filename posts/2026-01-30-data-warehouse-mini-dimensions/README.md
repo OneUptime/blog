@@ -114,7 +114,7 @@ Avoid mini-dimensions when:
 
 - Attributes rarely change (use SCD2 in the main dimension)
 - You need to track individual customer history for these attributes (consider a bridge table or factless fact)
-- The number of distinct combinations would be extremely large (thousands of rows defeats the purpose)
+- The number of distinct combinations would be extremely large (hundreds of thousands or millions of rows defeats the purpose)
 
 ---
 
@@ -191,12 +191,12 @@ Estimate the total rows in your mini-dimension:
 | Attribute | Distinct Values |
 |-----------|-----------------|
 | age_band | 8 |
-| income_bracket | 5 |
+| income_bracket | 6 |
 | loyalty_tier | 4 |
-| credit_score_band | 5 |
+| credit_score_band | 6 |
 | activity_segment | 4 |
 
-Total combinations: 8 x 5 x 4 x 5 x 4 = 3,200 rows
+Total combinations: 8 x 6 x 4 x 6 x 4 = 4,608 rows
 
 This is small enough to fit entirely in memory during query execution.
 
@@ -207,12 +207,13 @@ This is small enough to fit entirely in memory during query execution.
 ### Create the Mini-Dimension Table
 
 ```sql
+-- PostgreSQL 15+ syntax
 -- Create the mini-dimension table for customer demographics
 -- This table stores all possible combinations of rapidly changing attributes
 
 CREATE TABLE dim_customer_demo (
     -- Surrogate key for the mini-dimension
-    customer_demo_sk INT IDENTITY(1,1) PRIMARY KEY,
+    customer_demo_sk INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
 
     -- Rapidly changing attributes (banded values)
     age_band VARCHAR(20) NOT NULL,
@@ -280,7 +281,8 @@ CROSS JOIN
      SELECT 'Low' UNION ALL
      SELECT 'Medium' UNION ALL
      SELECT 'High' UNION ALL
-     SELECT 'Very High') income
+     SELECT 'Very High' UNION ALL
+     SELECT 'Unknown') income
 CROSS JOIN
     -- Loyalty tiers
     (SELECT 'Bronze' AS loyalty_tier UNION ALL
@@ -293,7 +295,8 @@ CROSS JOIN
      SELECT 'Fair' UNION ALL
      SELECT 'Good' UNION ALL
      SELECT 'Very Good' UNION ALL
-     SELECT 'Excellent') credit
+     SELECT 'Excellent' UNION ALL
+     SELECT 'Unknown') credit
 CROSS JOIN
     -- Activity segments
     (SELECT 'New' AS activity_segment UNION ALL
@@ -302,7 +305,7 @@ CROSS JOIN
      SELECT 'Churned') activity;
 
 -- Verify row count matches expected combinations
--- Expected: 8 * 5 * 4 * 5 * 4 = 3,200 rows
+-- Expected: 8 * 6 * 4 * 6 * 4 = 4,608 rows
 SELECT COUNT(*) AS total_combinations FROM dim_customer_demo;
 ```
 
@@ -333,11 +336,13 @@ ON fact_sales(customer_demo_sk);
 ### ETL Load Process
 
 ```sql
+-- PostgreSQL 15+ syntax
 -- ETL procedure to load sales facts with mini-dimension lookup
 -- This procedure demonstrates the pattern for resolving mini-dimension keys
 
-CREATE PROCEDURE sp_load_fact_sales
-AS
+CREATE PROCEDURE sp_load_fact_sales()
+LANGUAGE plpgsql
+AS $$
 BEGIN
     -- Step 1: Stage incoming sales data with current customer attributes
     CREATE TEMP TABLE stg_sales AS
@@ -414,6 +419,7 @@ BEGIN
 
     DROP TABLE stg_sales;
 END;
+$$;
 ```
 
 ---
@@ -445,11 +451,13 @@ ON customer_demo_current(customer_demo_sk);
 ### Update Procedure
 
 ```sql
+-- PostgreSQL 15+ syntax
 -- Procedure to update current mini-dimension assignments
 -- Run this after customer attribute changes are detected
 
-CREATE PROCEDURE sp_update_customer_demo_current
-AS
+CREATE PROCEDURE sp_update_customer_demo_current()
+LANGUAGE plpgsql
+AS $$
 BEGIN
     -- Merge pattern: update existing, insert new
     MERGE INTO customer_demo_current target
@@ -489,6 +497,7 @@ BEGIN
         INSERT (customer_id, customer_demo_sk)
         VALUES (source.customer_id, source.customer_demo_sk);
 END;
+$$;
 ```
 
 ---
@@ -531,16 +540,18 @@ WHERE dcd.age_band = '25-34'
 GROUP BY dcd.age_band, dcd.loyalty_tier;
 
 -- Query plan benefits:
---   Full scan of dim_customer_demo (3,200 rows) is instant
+--   Full scan of dim_customer_demo (4,608 rows) is instant
 --   Index seek on fact table foreign key
 --   Minimal memory for dimension join
 ```
 
-### Performance Metrics
+### Illustrative Performance Metrics
+
+Actual results depend on table design, indexing, partitioning, optimizer behavior, warehouse engine, and workload. The following numbers illustrate the kind of difference a mini-dimension can make when it removes volatile attributes from a very large SCD2 dimension:
 
 | Metric | Without Mini-Dimension | With Mini-Dimension | Improvement |
 |--------|------------------------|---------------------|-------------|
-| Dimension table size | 130M rows (15 GB) | 3,200 rows (200 KB) | 99.99% smaller |
+| Dimension table size | 130M rows (15 GB) | 4,608 rows (hundreds of KB) | 99.99% smaller |
 | Dimension scan time | 45 seconds | < 1 ms | 45,000x faster |
 | Join memory | 2 GB | 50 KB | 40,000x less |
 | Typical query time | 120 seconds | 8 seconds | 15x faster |
@@ -550,7 +561,7 @@ GROUP BY dcd.age_band, dcd.loyalty_tier;
 
 ```mermaid
 pie title Dimension Storage Comparison
-    "Mini-Dimension (3,200 rows)" : 0.2
+    "Mini-Dimension (4,608 rows)" : 0.2
     "SCD2 Customer Rows Avoided" : 115
     "Remaining SCD2 Rows" : 15
 ```
@@ -613,7 +624,7 @@ age_band VARCHAR(20)  -- 8 distinct values
 
 **Problem:** The mini-dimension does not track which customer had which attributes over time.
 
-**Solution:** The fact table preserves this. Each transaction captures the `customer_demo_sk` at the time of the event. To analyze how a customer's demographics changed, query the fact table chronologically.
+**Solution:** The fact table preserves this for events that occurred. Each transaction captures the `customer_demo_sk` at the time of the event. To analyze how a customer's demographics changed as observed through transactions, query the fact table chronologically. If you need complete attribute-change history even when no transaction occurs, maintain a separate factless fact, snapshot, or history table.
 
 ```sql
 -- Track a customer's demographic profile over time via their transactions
