@@ -167,14 +167,16 @@ class BM25:
         """
         Compute Inverse Document Frequency for a term.
 
-        Uses the standard BM25 IDF formula which can produce
-        negative values for very common terms (a feature, not a bug).
+        Uses the Lucene/BM25+ IDF variant. The `+ 1` inside the
+        log argument guarantees a non-negative result, avoiding
+        the negative IDF that the original Robertson BM25 can
+        produce for terms appearing in more than half the corpus.
         """
         # Number of documents containing the term
         df = self.doc_freqs.get(term, 0)
 
-        # BM25 IDF formula
-        # Adding 0.5 for smoothing to avoid division issues
+        # BM25 IDF formula (Lucene variant)
+        # The 0.5 terms provide smoothing; the trailing + 1 ensures idf >= 0
         idf = math.log((self.corpus_size - df + 0.5) / (df + 0.5) + 1)
         return idf
 
@@ -292,9 +294,9 @@ class ElasticsearchKeywordSearch:
             port: Elasticsearch port (default 9200)
         """
         self.client = Elasticsearch(
-            hosts=[{"host": host, "port": port}],
+            hosts=[{"host": host, "port": port, "scheme": "http"}],
             # Add authentication for production
-            # http_auth=("user", "password"),
+            # basic_auth=("user", "password"),
         )
         self.index_name = "documents"
 
@@ -347,11 +349,10 @@ class ElasticsearchKeywordSearch:
                             }
                         }
                     },
-                    # Title gets boosted in search
+                    # Title gets boosted at query time (see search method)
                     "title": {
                         "type": "text",
-                        "analyzer": "custom_analyzer",
-                        "boost": 2.0
+                        "analyzer": "custom_analyzer"
                     },
                     # Metadata for filtering
                     "category": {
@@ -609,13 +610,14 @@ class AdvancedTokenizer:
         Returns:
             List of processed tokens
         """
-        # Step 1: Lowercase if configured
+        # Step 1: Handle special patterns before splitting
+        # Preserve technical identifiers like error codes
+        # (must run before lowercasing so uppercase patterns still match)
+        text = self._preserve_identifiers(text)
+
+        # Step 2: Lowercase if configured
         if self.config.lowercase:
             text = text.lower()
-
-        # Step 2: Handle special patterns before splitting
-        # Preserve technical identifiers like error codes
-        text = self._preserve_identifiers(text)
 
         # Step 3: Split into tokens
         # Use regex to handle various separators
