@@ -536,8 +536,8 @@ class InstrumentedConsumer<T> {
   private emitMetrics(): void {
     // Send to OneUptime, Prometheus, StatsD, etc.
     console.log('Consumer metrics:', {
-      pollsPerMinute: this.metrics.pollCount,
-      throughput: this.metrics.messagesProcessed,
+      totalPolls: this.metrics.pollCount,
+      messagesProcessed: this.metrics.messagesProcessed,
       errorRate: this.metrics.messagesFailed /
                  (this.metrics.messagesProcessed + this.metrics.messagesFailed),
       emptyPollRatio: this.metrics.emptyPolls / this.metrics.pollCount,
