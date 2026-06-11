@@ -531,10 +531,19 @@ Understanding how handlers execute is important for performance and correctness.
 |----------|-------------|
 | All handlers run | By default, every registered handler runs even if one has already succeeded |
 | First success wins | A requirement passes as soon as any handler calls `Succeed` |
-| Explicit failure | Calling `Fail()` immediately fails the entire authorization, regardless of other handlers |
+| Explicit failure | Calling `Fail()` causes the entire authorization to fail, regardless of other handlers |
 | No action = pending | Not calling `Succeed` or `Fail` leaves the requirement unsatisfied by that handler |
 
-Here's how to implement short-circuit behavior with explicit failure:
+By default, other handlers still run after `Fail()` so they can log or produce side effects. To stop invoking handlers after an explicit failure, set `InvokeHandlersAfterFailure` to `false`:
+
+```csharp
+builder.Services.AddAuthorization(options =>
+{
+    options.InvokeHandlersAfterFailure = false;
+});
+```
+
+Here's how to implement explicit failure:
 
 ```csharp
 public class BlockedUserHandler : AuthorizationHandler<PremiumAccessRequirement>
@@ -559,7 +568,7 @@ public class BlockedUserHandler : AuthorizationHandler<PremiumAccessRequirement>
 
         var user = await _userService.GetUserAsync(userId);
 
-        // If user is blocked, fail immediately - no other handler can override this
+        // If user is blocked, fail authorization - no other handler can override this
         if (user != null && user.IsBlocked)
         {
             context.Fail(new AuthorizationFailureReason(this, "User is blocked"));
@@ -976,6 +985,6 @@ Custom authorization handlers provide a clean separation between authorization l
 - **Policies group requirements** - all requirements must pass (AND logic)
 - **Multiple handlers per requirement** - any handler can satisfy it (OR logic)
 - **Resource-based authorization** - pass the resource to `IAuthorizationService.AuthorizeAsync`
-- **Explicit failure stops everything** - use `context.Fail()` only when you need to block all other handlers
+- **Explicit failure overrides success** - use `context.Fail()` only when you need to deny authorization regardless of other handlers
 
 This approach scales well from simple role checks to complex, database-driven permission systems. Start with basic requirements and handlers, then add complexity only when needed.
