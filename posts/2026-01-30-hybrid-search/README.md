@@ -22,7 +22,7 @@ This guide walks through what hybrid search is, when you need it, and how to imp
 2. Why Not Just Use One Approach?
 3. Architecture Overview
 4. Setting Up the Foundation
-5. Implementing Keyword Search (BM25)
+5. Implementing Keyword Search (PostgreSQL Full-Text Ranking)
 6. Implementing Vector Search
 7. Combining Results with Reciprocal Rank Fusion
 8. Building a Complete Hybrid Search System
@@ -140,7 +140,7 @@ CREATE TABLE documents (
     id SERIAL PRIMARY KEY,
     title TEXT NOT NULL,
     content TEXT NOT NULL,
-    -- Vector embedding for semantic search (1536 dimensions for OpenAI ada-002)
+    -- Vector embedding for semantic search (1536 dimensions for OpenAI text-embedding-3-small)
     embedding vector(1536),
     -- Precomputed text search vector for keyword search
     content_tsv tsvector GENERATED ALWAYS AS (
@@ -164,9 +164,9 @@ The schema stores both the raw text (for keyword search) and embeddings (for vec
 
 ---
 
-## 5. Implementing Keyword Search (BM25)
+## 5. Implementing Keyword Search (PostgreSQL Full-Text Ranking)
 
-PostgreSQL's full-text search uses a ranking algorithm similar to BM25. Here's how to implement it.
+PostgreSQL's full-text search provides built-in ranking functions for keyword search. Here's how to implement it.
 
 ```python
 import psycopg2
@@ -176,8 +176,7 @@ from typing import List, Dict, Any
 class KeywordSearch:
     """
     Keyword-based search using PostgreSQL full-text search.
-    Uses ts_rank_cd which implements a cover density ranking
-    similar to BM25 in behavior.
+    Uses ts_rank_cd, which implements cover density ranking.
     """
 
     def __init__(self, connection_string: str):
@@ -254,7 +253,7 @@ class KeywordSearch:
         return [dict(row) for row in results]
 ```
 
-The key insight here is that PostgreSQL's `ts_rank_cd` function ranks results by how well they match and how close the matching terms are to each other. This gives behavior similar to BM25, which is the gold standard for keyword search.
+The key insight here is that PostgreSQL's `ts_rank_cd` function ranks results by how well they match and how close the matching terms are to each other. This gives strong keyword-search behavior without trying to compare raw scores directly with vector similarity scores.
 
 ---
 
@@ -263,8 +262,9 @@ The key insight here is that PostgreSQL's `ts_rank_cd` function ranks results by
 Vector search finds documents whose embeddings are similar to the query embedding.
 
 ```python
-import openai
-import numpy as np
+import psycopg2
+from openai import OpenAI
+from psycopg2.extras import RealDictCursor
 from typing import List, Dict, Any
 
 class VectorSearch:
@@ -275,8 +275,8 @@ class VectorSearch:
 
     def __init__(self, connection_string: str, openai_api_key: str):
         self.conn = psycopg2.connect(connection_string)
-        openai.api_key = openai_api_key
-        self.embedding_model = "text-embedding-ada-002"
+        self.client = OpenAI(api_key=openai_api_key)
+        self.embedding_model = "text-embedding-3-small"
 
     def get_embedding(self, text: str) -> List[float]:
         """
@@ -285,7 +285,7 @@ class VectorSearch:
         The embedding captures the semantic meaning of the text
         in a 1536-dimensional vector space.
         """
-        response = openai.embeddings.create(
+        response = self.client.embeddings.create(
             model=self.embedding_model,
             input=text
         )
@@ -653,7 +653,7 @@ The optimal keyword vs vector weight depends on your use case.
 ### A/B Testing Framework
 
 ```python
-import random
+import hashlib
 from dataclasses import dataclass
 from typing import List, Dict, Any, Callable
 import json
@@ -706,7 +706,11 @@ class ExperimentalHybridSearch(HybridSearch):
 
         if self.experiment and user_id:
             # Deterministic assignment based on user_id
-            hash_value = hash(f"{self.experiment.experiment_id}:{user_id}")
+            assignment_key = f"{self.experiment.experiment_id}:{user_id}"
+            hash_value = int(
+                hashlib.sha256(assignment_key.encode("utf-8")).hexdigest(),
+                16
+            )
             in_treatment = (hash_value % 100) < (self.experiment.traffic_percentage * 100)
 
             if in_treatment:
@@ -836,9 +840,9 @@ When you have millions of documents, vector search becomes the bottleneck.
 ```mermaid
 flowchart TB
     subgraph Options
-        A[Exact Search\nO n] --> |"< 100K docs"| SMALL[Small Scale]
-        B[HNSW Index\nO log n] --> |"100K - 10M docs"| MEDIUM[Medium Scale]
-        C[IVF + PQ\nO sqrt n] --> |"> 10M docs"| LARGE[Large Scale]
+        A[Exact Search\nlinear scan] --> |"< 100K docs"| SMALL[Small Scale]
+        B[HNSW Index\napproximate ANN] --> |"100K - 10M docs"| MEDIUM[Medium Scale]
+        C[IVF or quantization\napproximate ANN] --> |"> 10M docs"| LARGE[Large Scale]
         D[Distributed Index] --> |"> 100M docs"| XLARGE[Very Large Scale]
     end
 ```
@@ -922,6 +926,7 @@ For high-throughput systems, run both searches concurrently.
 ```python
 import asyncio
 import asyncpg
+from openai import AsyncOpenAI
 from typing import List, Dict, Any
 
 class AsyncHybridSearch:
@@ -934,12 +939,21 @@ class AsyncHybridSearch:
 
     def __init__(self, connection_string: str, openai_api_key: str):
         self.connection_string = connection_string
-        self.openai_api_key = openai_api_key
+        self.openai_client = AsyncOpenAI(api_key=openai_api_key)
+        self.embedding_model = "text-embedding-3-small"
         self.pool = None
 
     async def initialize(self):
         """Initialize the connection pool."""
         self.pool = await asyncpg.create_pool(self.connection_string)
+
+    async def _get_embedding_async(self, text: str) -> List[float]:
+        """Generate an embedding vector asynchronously."""
+        response = await self.openai_client.embeddings.create(
+            model=self.embedding_model,
+            input=text
+        )
+        return response.data[0].embedding
 
     async def keyword_search(
         self,
@@ -987,7 +1001,7 @@ class AsyncHybridSearch:
         """
         Run both searches concurrently and combine results.
 
-        This cuts latency roughly in half compared to sequential execution.
+        This can reduce latency compared to sequential execution.
         """
         # Run both searches in parallel
         keyword_task = asyncio.create_task(
@@ -1070,7 +1084,7 @@ def classify_query(query: str) -> Tuple[float, float]:
 
 Hybrid search combines the precision of keyword matching with the understanding of semantic search. The key components are:
 
-1. **Dual indexing:** Maintain both keyword (BM25/full-text) and vector indexes
+1. **Dual indexing:** Maintain both keyword (full-text ranking) and vector indexes
 2. **Parallel retrieval:** Fetch candidates from both methods
 3. **Smart fusion:** Use Reciprocal Rank Fusion to combine rankings
 4. **Tunable weights:** Adjust keyword vs vector emphasis for your use case
