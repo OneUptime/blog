@@ -10,7 +10,7 @@ Description: Learn how to configure and customize Grafana Alert List panels to d
 
 You have spent hours setting up alerts in Grafana. They fire. They resolve. But every time you need to check the current alert state, you open a new tab, navigate to Alerting, filter by folder, scroll through the list. It works, but it breaks your flow.
 
-The Alert List panel solves this by embedding a live view of your alerts directly into any dashboard. You get real-time visibility into firing alerts, recent state changes, and alert history without leaving your operational dashboard. For teams running incident response or maintaining service health dashboards, this panel is essential.
+The Alert List panel solves this by embedding a live view of your alerts directly into any dashboard. You get current visibility into firing, pending, recovering, no data, error, and normal alert states without leaving your operational dashboard. For teams running incident response or maintaining service health dashboards, this panel is essential.
 
 This guide covers everything from basic setup to advanced configurations including filtering, grouping, styling, and integration patterns that make your Alert List panels genuinely useful.
 
@@ -41,9 +41,8 @@ flowchart LR
 
 Key capabilities include:
 
-- Display alerts by state (firing, pending, normal, no data, error)
+- Display alerts by state (firing, pending, recovering, normal, no data, error)
 - Filter by alert name, folder, label, or data source
-- Show recent state transitions
 - Link directly to alert rule details
 - Group alerts by label or folder
 
@@ -66,17 +65,17 @@ Panel Options:
 Options:
   View mode: List
   Max items: 20
-  Sort order: Alerting first
-  Show alerts from: This dashboard
+  Sort order: Importance
+  Alerts linked to this dashboard: Enabled
 ```
 
-This configuration displays up to 20 alerts associated with the current dashboard, sorted with firing alerts at the top.
+This configuration displays up to 20 alerts linked to the current dashboard, sorted with firing alerts at the top.
 
 ### Step 3: Choose What to Display
 
-The Alert List panel offers two primary modes. The first mode shows current alert state, displaying the current state of alert rules. The second mode shows state changes, displaying a history of recent state transitions.
+The Alert List panel offers two primary view modes. List mode shows matching alert rules and instances in a detailed list. Stat mode shows a single summarized count of matching alerts.
 
-For an operational dashboard, you typically want state changes to see what fired recently and what just resolved.
+For an operational dashboard, you typically want List mode for triage panels and Stat mode for high-level summaries.
 
 ## Filtering Alerts
 
@@ -98,13 +97,13 @@ Options:
 
 ### Filter by Alert Name
 
-Use regex patterns to filter alerts by name. This is useful when you want to show only alerts matching a specific pattern.
+Use alert name text to filter alerts by name. This is useful when you want to show only alerts containing a specific string.
 
 This example configuration filters to show only payment-related alerts:
 
 ```yaml
 Options:
-  Alert name: "payment.*"
+  Alert name: "payment"
 ```
 
 ### Filter by Labels
@@ -115,7 +114,7 @@ Here is an example that filters to show only critical severity alerts for the pl
 
 ```yaml
 Options:
-  Alert instance label: "team=platform, severity=critical"
+  Alert instance label: '{team="platform", severity="critical"}'
 ```
 
 Multiple label filters use AND logic. The alert must match all specified labels.
@@ -129,7 +128,9 @@ stateDiagram-v2
     [*] --> Normal
     Normal --> Pending: Threshold breached
     Pending --> Alerting: For duration elapsed
-    Alerting --> Normal: Threshold recovered
+    Alerting --> Recovering: Threshold recovered, keep firing period active
+    Recovering --> Normal: Keep firing period elapsed
+    Alerting --> Normal: Threshold recovered, no keep firing period
     Pending --> Normal: Threshold recovered before for duration
     Normal --> NoData: No data points
     NoData --> Normal: Data returns
@@ -140,8 +141,9 @@ stateDiagram-v2
 Each state has distinct meaning:
 
 - **Normal**: Alert condition is not met, everything is healthy
-- **Pending**: Condition is met but the "for" duration has not elapsed yet
-- **Alerting**: Condition is met and has been firing long enough to trigger
+- **Pending**: Condition is met but the pending period has not elapsed yet
+- **Alerting**: Threshold has been breached after the pending period has elapsed
+- **Recovering**: A firing alert's threshold is no longer breached, but the keep firing for period has not elapsed
 - **No Data**: The query returned no data points
 - **Error**: The alert rule failed to evaluate (query error, datasource issue)
 
@@ -154,6 +156,7 @@ Options:
   State filter:
     Alerting: true
     Pending: false
+    Recovering: false
     Normal: false
     No Data: false
     Error: true
@@ -163,15 +166,14 @@ Options:
 
 ### List View
 
-List view shows alerts as individual rows with state indicators, labels, and timestamps.
+List view shows alerts as rows with state indicators, labels, and timestamps.
 
 ```yaml
 Options:
   View mode: List
-  Show instances: true
 ```
 
-With "Show instances" enabled, you see individual alert instances. When disabled, you see aggregated rule status.
+In default grouping, alert instances are grouped by alert rule. In custom grouping, alert instances are grouped by the labels you select.
 
 ### Stat View
 
@@ -193,7 +195,7 @@ When you have many alerts with a common label, grouping provides visual organiza
 ```yaml
 Options:
   Group mode: Custom
-  Group by: team
+  Group by: [team]
 ```
 
 This creates collapsible sections for each unique value of the `team` label.
@@ -216,14 +218,14 @@ graph TB
     subgraph "Alert Dashboard Layout"
         A[Critical Alerts - Full Width]
         B[Warning Alerts]
-        C[Recent State Changes]
+        C[Current Alert States]
         D[No Data Alerts]
         E[Alert Statistics]
     end
 
     A --> |"severity=critical"| F[Immediate Action Required]
     B --> |"severity=warning"| G[Needs Attention]
-    C --> |"State changes mode"| H[Activity Feed]
+    C --> |"All selected states"| H[Current Status]
     D --> |"NoData filter"| I[Data Collection Issues]
     E --> |"Stat view"| J[Health Summary]
 ```
@@ -238,11 +240,12 @@ This panel shows all critical severity alerts that are currently firing.
   "title": "Critical Alerts",
   "options": {
     "maxItems": 50,
-    "sortOrder": 1,
-    "alertInstanceLabelFilter": "severity=critical",
+    "sortOrder": 3,
+    "alertInstanceLabelFilter": "{severity=\"critical\"}",
     "stateFilter": {
       "firing": true,
       "pending": false,
+      "recovering": false,
       "normal": false,
       "noData": false,
       "error": true
@@ -268,11 +271,12 @@ Similar configuration but filtered for warning severity.
   "title": "Warning Alerts",
   "options": {
     "maxItems": 30,
-    "sortOrder": 1,
-    "alertInstanceLabelFilter": "severity=warning",
+    "sortOrder": 3,
+    "alertInstanceLabelFilter": "{severity=\"warning\"}",
     "stateFilter": {
       "firing": true,
       "pending": true,
+      "recovering": false,
       "normal": false,
       "noData": false,
       "error": false
@@ -288,22 +292,22 @@ Similar configuration but filtered for warning severity.
 }
 ```
 
-### Panel 3: Recent State Changes
+### Panel 3: Current Alert States
 
-Show the activity feed of alert state transitions.
+Show the current status of alerts across all selected states.
 
 ```json
 {
   "type": "alertlist",
-  "title": "Recent State Changes",
+  "title": "Current Alert States",
   "options": {
     "maxItems": 20,
     "sortOrder": 3,
-    "showInstances": true,
     "viewMode": "list",
     "stateFilter": {
       "firing": true,
       "pending": true,
+      "recovering": true,
       "normal": true,
       "noData": true,
       "error": true
@@ -331,6 +335,7 @@ Use stat view to show counts by state.
     "stateFilter": {
       "firing": true,
       "pending": true,
+      "recovering": true,
       "normal": true,
       "noData": true,
       "error": true
@@ -368,10 +373,10 @@ Use the variable in your alert instance label filter:
 
 ```yaml
 Options:
-  Alert instance label: "team=${team}"
+  Alert instance label: '{team=~"${team}"}'
 ```
 
-Now users can select one or more teams from the dropdown, and the Alert List panel updates dynamically.
+Now users can select one or more teams from the dropdown, and the Alert List panel updates dynamically. The regex matcher is important for multi-value variables.
 
 ### Service Variable from Labels
 
@@ -382,21 +387,28 @@ Variable:
   Name: service
   Type: Query
   Data source: Prometheus
-  Query: label_values(ALERTS, service)
+  Query type: Label values
+  Label: service
+  Metric: ALERTS
 ```
 
 ## Styling and Appearance
 
 ### Panel Background
 
-For critical alert panels, consider using a distinct background color. In panel options:
+For stat alert panels, consider using stat color options and thresholds. In panel options:
 
 ```yaml
 Panel options:
   Transparent: false
 
-Standard options:
-  Color scheme: From thresholds (by value)
+Stat styles:
+  Color mode: Background Solid
+  Thresholds:
+    - Value: 0
+      Color: green
+    - Value: 1
+      Color: red
 ```
 
 ### Link to Alert Details
@@ -421,10 +433,10 @@ Each service gets its own Alert List panel filtered by service label.
 ```mermaid
 graph TB
     subgraph "Service Health Dashboard"
-        A[API Service Alerts<br/>service=api]
-        B[Database Alerts<br/>service=database]
-        C[Cache Alerts<br/>service=cache]
-        D[Queue Alerts<br/>service=queue]
+        A[API Service Alerts<br/>{service="api"}]
+        B[Database Alerts<br/>{service="database"}]
+        C[Cache Alerts<br/>{service="cache"}]
+        D[Queue Alerts<br/>{service="queue"}]
     end
 ```
 
@@ -438,10 +450,11 @@ Show alerts grouped by the on-call team responsible.
   "title": "On-Call Alerts",
   "options": {
     "groupMode": "custom",
-    "groupBy": "oncall_team",
+    "groupBy": ["oncall_team"],
     "stateFilter": {
       "firing": true,
       "pending": true,
+      "recovering": false,
       "normal": false,
       "noData": false,
       "error": true
@@ -456,9 +469,10 @@ Filter to show only SLA-impacting alerts.
 
 ```yaml
 Options:
-  Alert instance label: "sla_impact=true"
+  Alert instance label: '{sla_impact="true"}'
   State filter:
     Alerting: true
+    Recovering: false
     Error: true
 ```
 
@@ -471,7 +485,7 @@ Options:
 3. **Confirm alert state**: Normal state alerts only appear if you enable that state filter
 4. **Check permissions**: The viewer must have permission to view the alert rules
 
-### Panel Shows "No data"
+### Panel Shows "No alerts matching filters"
 
 This usually means no alerts match your filter criteria. To debug:
 
@@ -481,7 +495,7 @@ This usually means no alerts match your filter criteria. To debug:
 
 ### Slow Panel Loading
 
-Alert List panels query the Grafana alerting database. If loading is slow:
+Alert List panels query Grafana alerting rule sources. If loading is slow:
 
 1. Reduce the max items setting
 2. Add more specific filters
@@ -517,11 +531,12 @@ Here is a complete dashboard JSON you can import to get started:
         "gridPos": {"h": 8, "w": 24, "x": 0, "y": 0},
         "options": {
           "maxItems": 50,
-          "sortOrder": 1,
-          "alertInstanceLabelFilter": "severity=critical",
+          "sortOrder": 3,
+          "alertInstanceLabelFilter": "{severity=\"critical\"}",
           "stateFilter": {
             "firing": true,
             "pending": false,
+            "recovering": false,
             "normal": false,
             "noData": false,
             "error": true
@@ -536,11 +551,12 @@ Here is a complete dashboard JSON you can import to get started:
         "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
         "options": {
           "maxItems": 30,
-          "sortOrder": 1,
-          "alertInstanceLabelFilter": "severity=warning",
+          "sortOrder": 3,
+          "alertInstanceLabelFilter": "{severity=\"warning\"}",
           "stateFilter": {
             "firing": true,
             "pending": true,
+            "recovering": false,
             "normal": false,
             "noData": false,
             "error": false
@@ -551,13 +567,20 @@ Here is a complete dashboard JSON you can import to get started:
       {
         "id": 3,
         "type": "alertlist",
-        "title": "Recent State Changes",
+        "title": "Current Alert States",
         "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
         "options": {
           "maxItems": 20,
           "sortOrder": 3,
-          "showInstances": true,
-          "viewMode": "list"
+          "viewMode": "list",
+          "stateFilter": {
+            "firing": true,
+            "pending": true,
+            "recovering": true,
+            "normal": true,
+            "noData": true,
+            "error": true
+          }
         }
       },
       {
@@ -567,10 +590,11 @@ Here is a complete dashboard JSON you can import to get started:
         "gridPos": {"h": 6, "w": 12, "x": 0, "y": 16},
         "options": {
           "maxItems": 15,
-          "sortOrder": 1,
+          "sortOrder": 3,
           "stateFilter": {
             "firing": false,
             "pending": false,
+            "recovering": false,
             "normal": false,
             "noData": true,
             "error": false
@@ -584,7 +608,15 @@ Here is a complete dashboard JSON you can import to get started:
         "title": "Alert Statistics",
         "gridPos": {"h": 6, "w": 12, "x": 12, "y": 16},
         "options": {
-          "viewMode": "stat"
+          "viewMode": "stat",
+          "stateFilter": {
+            "firing": true,
+            "pending": true,
+            "recovering": true,
+            "normal": true,
+            "noData": true,
+            "error": true
+          }
         }
       }
     ],
