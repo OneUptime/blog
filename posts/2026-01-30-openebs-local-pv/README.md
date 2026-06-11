@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: OpenEBS, Kubernetes, Storage, Local PV
 
-Description: A comprehensive guide to implementing OpenEBS Local PV for high-performance local persistent storage in Kubernetes, covering hostpath and device provisioners, storage classes.
+Description: A comprehensive guide to implementing OpenEBS Local PV for high-performance local persistent storage in Kubernetes, covering hostpath and LVM provisioners, storage classes.
 
 ---
 
@@ -14,7 +14,7 @@ This guide walks through everything you need to deploy OpenEBS Local PV in produ
 
 ## What is OpenEBS Local PV?
 
-OpenEBS Local PV is a Container Storage Interface (CSI) driver that provisions persistent volumes using local storage on Kubernetes nodes. Unlike replicated storage solutions, Local PV does not copy data across nodes. Instead, it binds pods to the node where their data lives.
+OpenEBS Local PV provisions persistent volumes using local storage on Kubernetes nodes. The Hostpath provisioner creates node-local directories, while the LVM and ZFS Local PV engines use CSI drivers for volume management. Unlike replicated storage solutions, Local PV does not copy data across nodes. Instead, it binds pods to the node where their data lives.
 
 ```mermaid
 flowchart LR
@@ -40,31 +40,30 @@ flowchart LR
     end
 ```
 
-### Two Provisioner Types
+### Common Local Storage Options
 
-OpenEBS Local PV offers two provisioners:
+OpenEBS Local PV offers several local engines. Two common choices are:
 
 | Provisioner | Storage Type | Use Case | Performance |
 |-------------|--------------|----------|-------------|
 | **Hostpath** | Directory on node filesystem | Development, CI/CD, ephemeral workloads | Limited by node filesystem |
-| **Device** | Raw block device | Production databases, high-IOPS workloads | Full device bandwidth |
+| **LVM Local PV** | Logical volumes from local volume groups | Production databases, high-IOPS workloads | Close to local device bandwidth with LVM management |
 
-The hostpath provisioner creates directories under a base path (typically `/var/openebs/local`), while the device provisioner uses entire block devices for maximum throughput.
+The hostpath provisioner creates directories under a base path (typically `/var/openebs/local`), while the LVM Local PV driver provisions logical volumes from LVM volume groups on your nodes.
 
 ## Prerequisites
 
 Before installing OpenEBS Local PV, ensure your cluster meets these requirements:
 
-- Kubernetes 1.21 or later
+- Kubernetes 1.23 or later
 - Helm 3.x installed
 - `kubectl` configured with cluster admin access
-- For device provisioner: unformatted block devices on worker nodes
-- iSCSI client utilities (some installations require these)
+- For LVM Local PV: LVM2 installed and volume groups created on worker nodes
 
 Check your Kubernetes version:
 
 ```bash
-kubectl version --short
+kubectl version
 ```
 
 Verify Helm is installed:
@@ -86,18 +85,20 @@ helm repo update
 
 ### Step 2: Install OpenEBS with Local PV Only
 
-For clusters that only need Local PV (without Mayastor or cStor), use a minimal installation:
+For clusters that only need Hostpath and LVM Local PV, use a minimal installation:
 
 ```bash
 helm install openebs openebs/openebs \
   --namespace openebs \
   --create-namespace \
-  --set engines.local.lvm.enabled=false \
   --set engines.local.zfs.enabled=false \
-  --set engines.replicated.mayastor.enabled=false
+  --set engines.local.rawfile.enabled=false \
+  --set engines.replicated.mayastor.enabled=false \
+  --set loki.enabled=false \
+  --set alloy.enabled=false
 ```
 
-This installs only the Local PV hostpath and device provisioners, keeping your cluster lean.
+This installs the Hostpath and LVM Local PV components while disabling ZFS, Rawfile, Mayastor, and the bundled observability add-ons.
 
 ### Step 3: Verify the Installation
 
@@ -107,16 +108,15 @@ Check that the OpenEBS pods are running:
 kubectl get pods -n openebs
 ```
 
-Expected output:
+You should see the Local PV provisioner and LVM CSI pods running, with names similar to:
 
 ```text
 NAME                                              READY   STATUS    RESTARTS   AGE
 openebs-localpv-provisioner-5b4f7d9c8b-xk2mj     1/1     Running   0          2m
-openebs-ndm-cluster-exporter-7f8c9d6b4-9pqrs     1/1     Running   0          2m
-openebs-ndm-node-exporter-4xk8p                   1/1     Running   0          2m
-openebs-ndm-node-exporter-7r2nq                   1/1     Running   0          2m
-openebs-ndm-node-exporter-bz9mc                   1/1     Running   0          2m
-openebs-ndm-operator-6c4d8f9b7-j4qwz             1/1     Running   0          2m
+openebs-lvm-controller-0                          5/5     Running   0          2m
+openebs-lvm-node-4xk8p                            2/2     Running   0          2m
+openebs-lvm-node-7r2nq                            2/2     Running   0          2m
+openebs-lvm-node-bz9mc                            2/2     Running   0          2m
 ```
 
 Verify the default storage classes were created:
@@ -148,7 +148,6 @@ metadata:
 provisioner: openebs.io/local
 reclaimPolicy: Delete
 volumeBindingMode: WaitForFirstConsumer
-allowVolumeExpansion: true
 ```
 
 Apply this configuration:
@@ -163,51 +162,47 @@ Key configuration options:
 - **volumeBindingMode: WaitForFirstConsumer**: Delays volume binding until a pod uses the PVC, ensuring the volume gets created on the right node.
 - **reclaimPolicy**: `Delete` removes the volume when the PVC is deleted; `Retain` preserves data for manual recovery.
 
-### Device Storage Class
+### LVM Storage Class
 
-The device provisioner delivers maximum performance by giving pods exclusive access to block devices.
+The LVM provisioner delivers high performance by creating logical volumes from local volume groups.
 
-First, identify available block devices using Node Device Manager (NDM):
+First, create an LVM volume group on each storage node. For example, on each worker node:
 
 ```bash
-kubectl get blockdevices -n openebs
+sudo pvcreate /dev/nvme1n1
+sudo vgcreate localpv-vg /dev/nvme1n1
 ```
 
-Example output:
+Verify the volume group exists:
 
-```text
-NAME                                           NODENAME    SIZE          CLAIMSTATE   STATUS   AGE
-blockdevice-1234567890abcdef12345678           worker-1    107374182400  Unclaimed    Active   5m
-blockdevice-abcdef1234567890abcdef12           worker-2    107374182400  Unclaimed    Active   5m
-blockdevice-567890abcdef1234567890ab           worker-3    107374182400  Unclaimed    Active   5m
+```bash
+sudo vgs localpv-vg
 ```
 
-Create a device storage class:
+Create an LVM storage class:
 
 ```yaml
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
-  name: openebs-device-nvme
-  annotations:
-    openebs.io/cas-type: local
-    cas.openebs.io/config: |
-      - name: StorageType
-        value: device
-      - name: FSType
-        value: ext4
-provisioner: openebs.io/local
+  name: openebs-lvm-nvme
+parameters:
+  storage: "lvm"
+  volgroup: "localpv-vg"
+  fsType: "ext4"
+provisioner: local.csi.openebs.io
 reclaimPolicy: Delete
 volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
 ```
 
 Apply it:
 
 ```bash
-kubectl apply -f device-storageclass.yaml
+kubectl apply -f lvm-storageclass.yaml
 ```
 
-The device provisioner automatically selects an unclaimed block device when a PVC requests storage.
+The LVM provisioner creates logical volumes from the configured volume group when a PVC requests storage.
 
 ## Practical Examples
 
@@ -285,9 +280,9 @@ Deploy PostgreSQL:
 kubectl apply -f postgres-statefulset.yaml
 ```
 
-### Example 2: Redis with Device Local PV for High Performance
+### Example 2: Redis with LVM Local PV for High Performance
 
-For latency-sensitive workloads like Redis, the device provisioner provides direct block device access.
+For latency-sensitive workloads like Redis, the LVM provisioner provides fast node-local storage with dynamic provisioning.
 
 ```yaml
 apiVersion: v1
@@ -297,7 +292,7 @@ metadata:
 spec:
   accessModes:
     - ReadWriteOnce
-  storageClassName: openebs-device-nvme
+  storageClassName: openebs-lvm-nvme
   resources:
     requests:
       storage: 50Gi
@@ -348,6 +343,20 @@ spec:
 For distributed workloads like Elasticsearch, combine Local PV with pod anti-affinity to spread data across nodes.
 
 ```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: elasticsearch
+spec:
+  clusterIP: None
+  selector:
+    app: elasticsearch
+  ports:
+    - port: 9200
+      name: http
+    - port: 9300
+      name: transport
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -421,7 +430,7 @@ spec:
       spec:
         accessModes:
           - ReadWriteOnce
-        storageClassName: openebs-device-nvme
+        storageClassName: openebs-lvm-nvme
         resources:
           requests:
             storage: 100Gi
@@ -440,83 +449,49 @@ flowchart TB
 
     subgraph OpenEBS["OpenEBS Components"]
         Provisioner[Local PV Provisioner]
-        NDM[Node Device Manager]
-        Exporter[NDM Exporter]
+        LVMController[LVM CSI Controller]
     end
 
     subgraph Worker["Worker Node"]
         Kubelet[Kubelet]
-        CSIDriver[CSI Node Driver]
+        LVMNode[LVM CSI Node Driver]
         Hostpath[/var/openebs/local]
-        Device[(Block Device)]
+        VG[(LVM Volume Group)]
     end
 
     API --> Provisioner
     Provisioner --> API
-    NDM --> API
-    NDM --> Device
-    Exporter --> NDM
+    LVMController --> API
 
     Scheduler --> API
     API --> Kubelet
-    Kubelet --> CSIDriver
-    CSIDriver --> Hostpath
-    CSIDriver --> Device
+    Kubelet --> LVMNode
+    Kubelet --> Hostpath
+    LVMNode --> VG
 ```
 
 ### Volume Lifecycle
 
 1. **PVC Creation**: A user creates a PersistentVolumeClaim requesting storage.
 2. **Scheduler Decision**: With `WaitForFirstConsumer`, the scheduler places the pod first, then provisions the volume on that node.
-3. **Volume Provisioning**: The Local PV provisioner creates either a directory (hostpath) or formats a block device.
+3. **Volume Provisioning**: The Hostpath provisioner creates a directory, or the LVM CSI driver creates and formats a logical volume.
 4. **Volume Binding**: The PV binds to the PVC, and the pod mounts the volume.
 5. **Node Affinity**: The PV includes a node affinity rule ensuring future pods using this PVC land on the same node.
 
-### Node Device Manager (NDM)
+### LVM Volume Groups
 
-NDM discovers and manages block devices across your cluster:
+Local PV LVM provisions from volume groups that already exist on the storage nodes:
 
 ```bash
-# List all discovered block devices
+# List volume groups on a node
 
-kubectl get blockdevices -n openebs -o wide
+sudo vgs
 
-# Get details about a specific device
-kubectl describe blockdevice blockdevice-1234567890abcdef -n openebs
+# List logical volumes created for PVCs
+sudo lvs
 ```
 
-NDM filters out:
-
-- Boot devices and partitions
-- Devices with existing filesystems (unless configured otherwise)
-- Loop devices and LVM volumes
-
-Configure NDM filters via the ConfigMap:
-
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: openebs-ndm-config
-  namespace: openebs
-data:
-  node-disk-manager.config: |
-    filterconfigs:
-      - key: os-disk-exclude-filter
-        name: os disk exclude filter
-        state: true
-        exclude: "/,/boot"
-      - key: vendor-filter
-        name: vendor filter
-        state: true
-        include: ""
-        exclude: "CLOUDBYT,OpenEBS"
-      - key: path-filter
-        name: path filter
-        state: true
-        include: ""
-        exclude: "loop,fd0,sr0,/dev/ram,/dev/dm-,/dev/md"
-```
+The `volgroup` or `vgpattern` parameter in the StorageClass controls which volume groups the LVM driver can use.
 
 ## Monitoring and Observability
 
@@ -524,31 +499,22 @@ Production deployments need visibility into storage health and performance.
 
 ### Prometheus Metrics
 
-OpenEBS exports metrics through the NDM exporter. Add this ServiceMonitor if you use the Prometheus Operator:
+OpenEBS provides a monitoring Helm chart with Prometheus and Grafana dashboards for Local PV LVM, Local PV ZFS, and Mayastor. You can install it with:
 
-```yaml
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: openebs-ndm
-  namespace: openebs
-spec:
-  selector:
-    matchLabels:
-      app: openebs-ndm-exporter
-  endpoints:
-    - port: metrics
-      interval: 30s
+```bash
+helm repo add monitoring https://openebs.github.io/monitoring/
+helm repo update
+helm install monitoring monitoring/monitoring --namespace openebs --create-namespace
 ```
 
 Key metrics to monitor:
 
-| Metric | Description |
-|--------|-------------|
-| `openebs_ndm_block_device_state` | Device state (Active, Inactive, Unknown) |
-| `openebs_ndm_block_device_capacity_bytes` | Total capacity of each device |
-| `openebs_ndm_block_device_used_bytes` | Used capacity |
-| `openebs_pv_capacity_bytes` | Provisioned PV capacity |
+| Area | Description |
+|------|-------------|
+| Hostpath filesystem capacity | Free and used space on the hostpath mount |
+| LVM volume group capacity | Total, used, and available volume group capacity |
+| LVM volume group I/O | Read/write activity and utilization |
+| Thin pool health | Thin pool capacity, metadata capacity, and health status |
 
 ### Alerting Rules
 
@@ -574,15 +540,6 @@ spec:
           annotations:
             summary: "OpenEBS Local PV space low on {{ $labels.instance }}"
             description: "Local PV storage on {{ $labels.mountpoint }} is {{ $value | humanizePercentage }} full"
-
-        - alert: OpenEBSBlockDeviceInactive
-          expr: openebs_ndm_block_device_state != 1
-          for: 5m
-          labels:
-            severity: critical
-          annotations:
-            summary: "OpenEBS block device inactive"
-            description: "Block device {{ $labels.blockdevice }} is not in Active state"
 ```
 
 ### Integration with OneUptime
@@ -601,12 +558,12 @@ data:
       prometheus:
         config:
           scrape_configs:
-            - job_name: 'openebs-ndm'
+            - job_name: 'openebs'
               kubernetes_sd_configs:
                 - role: pod
               relabel_configs:
-                - source_labels: [__meta_kubernetes_pod_label_app]
-                  regex: openebs-ndm-exporter
+                - source_labels: [__meta_kubernetes_namespace]
+                  regex: openebs
                   action: keep
 
     exporters:
@@ -642,11 +599,16 @@ metadata:
   annotations:
     cas.openebs.io/config: |
       - name: StorageType
-        value: device
-      - name: NodeAffinityLabels
-        value: "storage-tier=nvme"
+        value: hostpath
+      - name: BasePath
+        value: /mnt/nvme/openebs
 provisioner: openebs.io/local
 volumeBindingMode: WaitForFirstConsumer
+allowedTopologies:
+  - matchLabelExpressions:
+      - key: storage-tier
+        values:
+          - nvme
 ```
 
 ### 2. Implement Backup Strategies
@@ -748,13 +710,13 @@ mount | grep openebs
 Check the provisioner logs:
 
 ```bash
-kubectl logs -n openebs -l app=openebs-localpv-provisioner
+kubectl logs -n openebs -l app=localpv-provisioner
 ```
 
 Common causes:
 
 - No available nodes match the storage class requirements
-- Block devices are all claimed
+- The LVM volume group does not exist or does not have enough free capacity
 - Insufficient space on the hostpath directory
 
 ### Pod Stuck in ContainerCreating
@@ -765,24 +727,25 @@ Inspect the pod events:
 kubectl describe pod <pod-name>
 ```
 
-Check the CSI driver logs:
+Check the provisioner or CSI driver logs:
 
 ```bash
-kubectl logs -n openebs -l app=openebs-csi-node
+kubectl logs -n openebs -l app=localpv-provisioner
+kubectl logs -n openebs -l app=openebs-lvm-node
 ```
 
-### Block Device Not Appearing
+### LVM Volume Group Not Available
 
-Verify NDM is discovering devices:
+Verify that the volume group exists on the target node:
 
 ```bash
-kubectl logs -n openebs -l app=openebs-ndm
+sudo vgs localpv-vg
 ```
 
-Check if the device is filtered:
+Check the LVM node driver logs:
 
 ```bash
-kubectl get configmap openebs-ndm-config -n openebs -o yaml
+kubectl logs -n openebs -l app=openebs-lvm-node
 ```
 
 ## Comparison with Other Local Storage Options
@@ -790,22 +753,22 @@ kubectl get configmap openebs-ndm-config -n openebs -o yaml
 | Feature | OpenEBS Local PV | Kubernetes Local PV | TopoLVM |
 |---------|------------------|---------------------|---------|
 | Dynamic Provisioning | Yes | No | Yes |
-| Device Discovery | Automatic (NDM) | Manual | Manual |
-| Volume Expansion | Yes (hostpath) | No | Yes |
+| Local storage management | Hostpath, LVM, ZFS | Manual PVs | LVM |
+| Volume Expansion | Yes (LVM/ZFS; hostpath depends on underlying filesystem capacity) | No | Yes |
 | Filesystem Choice | ext4, xfs | Manual | ext4, xfs |
-| LVM Support | Separate driver | No | Native |
+| LVM Support | Local PV LVM driver | No | Native |
 | Maintenance Overhead | Low | Lowest | Medium |
 
 OpenEBS Local PV strikes a balance between automation and simplicity, making it ideal for teams that want dynamic provisioning without managing complex storage backends.
 
 ## Summary
 
-OpenEBS Local PV provides a production-ready path to high-performance local storage in Kubernetes. The hostpath provisioner handles development and moderate workloads, while the device provisioner delivers maximum throughput for databases and caches.
+OpenEBS Local PV provides a production-ready path to high-performance local storage in Kubernetes. The hostpath provisioner handles development and moderate workloads, while Local PV LVM delivers dynamically provisioned local volumes for databases and caches.
 
 Key takeaways:
 
 - Use `WaitForFirstConsumer` volume binding mode to ensure volumes land on the right nodes
-- Choose hostpath for flexibility and device for performance
+- Choose hostpath for simple directory-backed volumes and LVM for managed local block storage
 - Implement backup strategies since local storage does not replicate
 - Monitor storage health and capacity with Prometheus and OneUptime
 - Plan your node failure response before you need it
