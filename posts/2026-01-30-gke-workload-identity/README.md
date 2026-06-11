@@ -12,7 +12,7 @@ Description: Configure GKE Workload Identity to grant Kubernetes pods access to 
 
 Managing credentials for applications running on Kubernetes has always been a challenge. The traditional approach involves creating Google Cloud service account keys, storing them as Kubernetes secrets, and mounting them into pods. This method works but introduces significant security risks: keys can be leaked, they never expire unless manually rotated, and tracking their usage becomes difficult at scale.
 
-GKE Workload Identity solves this problem by allowing Kubernetes service accounts to act as Google Cloud IAM service accounts. Your pods get automatic, short-lived credentials without any keys to manage. The credentials are automatically rotated, and you get a clear audit trail of which workloads accessed which Google Cloud resources.
+GKE Workload Identity solves this problem by allowing Kubernetes service accounts to authenticate to Google Cloud APIs, either directly as IAM principals or by acting as Google Cloud IAM service accounts. Your pods get automatic, short-lived credentials without any keys to manage. The credentials are automatically rotated, and you get a clear audit trail of which workloads accessed which Google Cloud resources.
 
 This guide walks through the complete implementation of Workload Identity, from cluster setup to production-ready configurations.
 
@@ -24,12 +24,12 @@ Before starting, ensure you have:
 - The `gcloud` CLI installed and configured
 - `kubectl` installed
 - `terraform` installed (version 1.0 or later)
-- Owner or Editor role on the Google Cloud project
+- IAM roles that can manage GKE, service accounts, IAM policies, and API enablement, such as `roles/container.admin`, `roles/iam.serviceAccountAdmin`, `roles/resourcemanager.projectIamAdmin`, and `roles/serviceusage.serviceUsageAdmin`
 - Basic familiarity with Kubernetes concepts
 
 ## Understanding Workload Identity Architecture
 
-Workload Identity creates a trust relationship between Kubernetes service accounts and Google Cloud IAM service accounts. Here is how the components interact:
+Workload Identity creates a trust relationship between Kubernetes service accounts and Google Cloud IAM. This guide uses the supported service account impersonation pattern, where a Kubernetes service account acts as a Google Cloud IAM service account. For supported APIs, Google recommends granting IAM roles directly to the Kubernetes workload principal instead. Here is how the components interact:
 
 | Component | Role | Location |
 |-----------|------|----------|
@@ -285,7 +285,7 @@ gcloud container node-pools update default-pool \
     --workload-metadata=GKE_METADATA
 ```
 
-Note: Updating the node pool requires a rolling restart of all nodes in that pool.
+Note: Updating the node pool immediately changes the metadata behavior for workloads on that node pool and can disrupt workloads that still depend on the node service account. Plan this change as a workload migration.
 
 ## Configuring IAM Service Accounts
 
@@ -372,6 +372,8 @@ metadata:
   annotations:
     # This annotation links the KSA to the GSA
     iam.gke.io/gcp-service-account: workload-identity-demo-sa@YOUR_PROJECT_ID.iam.gserviceaccount.com
+    # Optional: return an IAM principal-style identifier from the metadata server
+    iam.gke.io/return-principal-id-as-email: "true"
 ```
 
 Apply the configuration:
@@ -450,6 +452,8 @@ output "ksa_annotation" {
 
 Create a test deployment that uses the configured service account:
 
+If you use a Standard cluster with a mix of Workload Identity and non-Workload Identity node pools, add `nodeSelector: { iam.gke.io/gke-metadata-server-enabled: "true" }` under `spec.template.spec` so the pods land on nodes with the GKE metadata server. Do not add this nodeSelector on Autopilot clusters.
+
 ```yaml
 # test-deployment.yaml
 apiVersion: apps/v1
@@ -499,12 +503,12 @@ POD_NAME=$(kubectl get pods -n demo -l app=workload-identity-test -o jsonpath='{
 kubectl exec -it $POD_NAME -n demo -- gcloud auth list
 ```
 
-The output should show the Google Cloud service account as the active account:
+The output should show an active account. With the optional `iam.gke.io/return-principal-id-as-email` annotation, linked service accounts return an IAM principal-style identifier:
 
 ```text
                   Credentialed Accounts
 ACTIVE  ACCOUNT
-*       workload-identity-demo-sa@your-project-id.iam.gserviceaccount.com
+*       principal://iam.googleapis.com/projects/123456789/locations/global/workloadIdentityPools/your-project-id.svc.id.goog/subject/ns/demo/sa/demo-ksa
 ```
 
 ### Test API Access
@@ -515,7 +519,7 @@ Verify that the pod can access Google Cloud APIs:
 # Test access to Cloud Storage (list buckets)
 kubectl exec -it $POD_NAME -n demo -- gsutil ls
 
-# Test access to Compute Engine metadata
+# Test the metadata server's service account identifier
 kubectl exec -it $POD_NAME -n demo -- \
     curl -H "Metadata-Flavor: Google" \
     http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/email
@@ -533,7 +537,6 @@ set -e
 
 NAMESPACE=${1:-demo}
 KSA_NAME=${2:-demo-ksa}
-GSA_EMAIL=${3:-""}
 
 echo "=== Workload Identity Verification ==="
 echo ""
@@ -590,10 +593,6 @@ ACTIVE_ACCOUNT=$(kubectl exec wi-test-pod -n $NAMESPACE -- \
 
 if [ -n "$ACTIVE_ACCOUNT" ]; then
     echo "   Active account: $ACTIVE_ACCOUNT"
-
-    if [ -n "$GSA_EMAIL" ] && [ "$ACTIVE_ACCOUNT" != "$GSA_EMAIL" ]; then
-        echo "   WARNING: Expected $GSA_EMAIL but got $ACTIVE_ACCOUNT"
-    fi
 else
     echo "   ERROR: No active account found"
 fi
@@ -713,6 +712,8 @@ gunicorn==21.2.0
 
 ### Kubernetes Deployment
 
+For Standard clusters with mixed node pools, add the same GKE metadata server nodeSelector described in the test deployment section. Omit it for Autopilot clusters.
+
 ```yaml
 # storage-app-deployment.yaml
 apiVersion: apps/v1
@@ -800,9 +801,9 @@ kubectl get pods -n demo -l app=storage-app
 
 | Issue | Cause | Solution |
 |-------|-------|----------|
-| Pod stuck in Pending | Node pool not configured for Workload Identity | Update node pool with `--workload-metadata=GKE_METADATA` |
+| Pod stuck in Pending | A Standard-cluster workload uses the GKE metadata server nodeSelector but no matching nodes are available | Update or create a node pool with `--workload-metadata=GKE_METADATA`, or remove the nodeSelector on Autopilot |
 | "Permission denied" errors | IAM binding missing or incorrect | Verify GSA has required roles and KSA binding exists |
-| Metadata endpoint timeout | Workload Identity not enabled on cluster | Check cluster workload-pool configuration |
+| Metadata endpoint timeout | GKE metadata server is not ready yet, network policy blocks metadata traffic, or Workload Identity is not enabled on the node pool | Retry on startup, allow metadata server egress, and check the cluster and node pool configuration |
 | Wrong service account | KSA annotation incorrect | Verify annotation format and GSA email |
 
 ### Debugging Commands
@@ -1089,27 +1090,26 @@ Key metrics to monitor for Workload Identity:
 
 | Metric | Description | Alert Threshold |
 |--------|-------------|-----------------|
-| `kubernetes.io/pod/network/received_bytes_count` | Network traffic to metadata server | Unusual spikes |
-| IAM audit logs | Authentication events | Failed authentications |
-| `custom.googleapis.com/workload_identity/token_requests` | Token request count | High error rates |
+| `iam.googleapis.com/service_account/authn_events_count` | IAM service account authentication events | Unusual spikes |
+| IAM audit logs | Detailed authentication and authorization events | Failed authentications |
+| `iam.googleapis.com/workload_identity_federation/count` | Workload Identity Federation token exchange count | Non-success results |
 
 ### Sample Alert Policy
 
-Create a Cloud Monitoring alert for failed authentication attempts:
+Create a Cloud Monitoring alert for failed Workload Identity Federation token exchanges:
 
 ```yaml
 # monitoring-alert.yaml
-displayName: "Workload Identity Authentication Failures"
+displayName: "Workload Identity Federation Token Exchange Failures"
 combiner: OR
 conditions:
-- displayName: "High auth failure rate"
+- displayName: "Failed token exchange rate"
   conditionThreshold:
     filter: |
-      resource.type="iam_service_account"
-      AND metric.type="iam.googleapis.com/service_account/authn_events_count"
-      AND metric.labels.result="FAILURE"
+      metric.type="iam.googleapis.com/workload_identity_federation/count"
+      AND metric.labels.result!="success"
     comparison: COMPARISON_GT
-    thresholdValue: 10
+    thresholdValue: 0
     duration: 300s
     aggregations:
     - alignmentPeriod: 60s
