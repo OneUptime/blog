@@ -49,13 +49,14 @@ Important rules for error middleware:
 | **Four parameters required** | Express uses parameter count to identify error handlers |
 | **Chain with next(err)** | Call `next(err)` to pass errors to the next error handler |
 | **Sync errors auto-caught** | Thrown errors in sync code are caught automatically |
-| **Async needs explicit handling** | Async errors must be passed to `next()` manually (or use a wrapper) |
+| **Express 4 async needs explicit handling** | Async errors must be passed to `next()` manually (or use a wrapper) |
 
 ## The Problem with Default Error Handling
 
 Without custom error handling, Express uses its default handler which:
 
-- Sends the full stack trace to clients (security risk in production)
+- Sends the full stack trace to clients in development
+- Sends a default HTML error response in production instead of your API format
 - Uses inconsistent response formats
 - Does not log errors properly
 - Cannot distinguish between different error types
@@ -65,7 +66,7 @@ Without custom error handling, Express uses its default handler which:
 app.get('/user/:id', async (req, res) => {
   const user = await db.findUser(req.params.id);
   if (!user) {
-    throw new Error('User not found'); // Returns 500, leaks stack trace
+    throw new Error('User not found'); // Returns 500 instead of 404
   }
   res.json(user);
 });
@@ -262,7 +263,7 @@ app.get('/users/:id', asyncHandler(async (req, res) => {
 
 **Option 3: Express 5.x (handles async errors natively)**
 
-If you are using Express 5 (currently in beta), async errors are caught automatically.
+If you are using Express 5, async errors are caught automatically.
 
 ```javascript
 // Express 5.x - async errors caught automatically
@@ -339,6 +340,10 @@ const sendErrorProd = (err, req, res) => {
  * Normalizes errors and sends appropriate response based on environment.
  */
 const errorHandler = (err, req, res, next) => {
+  if (res.headersSent) {
+    return next(err);
+  }
+
   err.statusCode = err.statusCode || 500;
   err.status = err.status || 'error';
 
@@ -358,14 +363,19 @@ Database libraries, validators, and other packages throw their own error types. 
 
 ```javascript
 // middleware/errorHandler.js (extended)
-const { AppError, ValidationError, NotFoundError } = require('../errors');
+const {
+  AppError,
+  ConflictError,
+  ValidationError,
+  UnauthorizedError,
+} = require('../errors');
 
 /**
- * Convert Mongoose CastError to NotFoundError.
+ * Convert Mongoose CastError to ValidationError.
  * Happens when an invalid ObjectId is passed.
  */
 const handleCastErrorDB = (err) => {
-  return new NotFoundError(`Invalid ${err.path}: ${err.value}`);
+  return new ValidationError(`Invalid ${err.path}: ${err.value}`);
 };
 
 /**
@@ -373,7 +383,7 @@ const handleCastErrorDB = (err) => {
  */
 const handleDuplicateFieldsDB = (err) => {
   const field = Object.keys(err.keyValue)[0];
-  return new AppError(`${field} already exists`, 409);
+  return new ConflictError(`${field} already exists`);
 };
 
 /**
@@ -391,11 +401,11 @@ const handleValidationErrorDB = (err) => {
  * Convert JWT errors to UnauthorizedError.
  */
 const handleJWTError = () => {
-  return new AppError('Invalid token. Please log in again.', 401);
+  return new UnauthorizedError('Invalid token. Please log in again.');
 };
 
 const handleJWTExpiredError = () => {
-  return new AppError('Token expired. Please log in again.', 401);
+  return new UnauthorizedError('Token expired. Please log in again.');
 };
 
 /**
@@ -428,7 +438,7 @@ const normalizeError = (err) => {
   // Sequelize unique constraint error
   if (err.name === 'SequelizeUniqueConstraintError') {
     const field = err.errors[0]?.path || 'field';
-    return new AppError(`${field} already exists`, 409);
+    return new ConflictError(`${field} already exists`);
   }
 
   // Sequelize validation error
@@ -444,6 +454,10 @@ const normalizeError = (err) => {
 };
 
 const errorHandler = (err, req, res, next) => {
+  if (res.headersSent) {
+    return next(err);
+  }
+
   // Normalize third-party errors
   let error = normalizeError(err);
 
@@ -558,6 +572,10 @@ Update the error handler to log errors.
 const logger = require('../utils/logger');
 
 const errorHandler = (err, req, res, next) => {
+  if (res.headersSent) {
+    return next(err);
+  }
+
   let error = normalizeError(err);
 
   if (!(error instanceof AppError)) {
