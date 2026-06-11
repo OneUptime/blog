@@ -108,7 +108,7 @@ const actionItemScores: Omit<PrioritizationScore, 'finalPriority'> = {
 };
 
 const priority = calculatePriority(actionItemScores);
-console.log(`Priority Score: ${priority.toFixed(2)}`); // Output: Priority Score: 7.90
+console.log(`Priority Score: ${priority.toFixed(2)}`); // Output: Priority Score: 8.05
 ```
 
 ### SLA-Based Prioritization
@@ -624,7 +624,7 @@ function validateChangeRequest(change: ChangeRequest): ChangeValidation {
   const hour = change.scheduledTime.getHours();
   const dayOfWeek = change.scheduledTime.getDay();
 
-  if (change.riskLevel !== 'low' && (dayOfWeek === 5 || dayOfWeek === 6)) {
+  if (change.riskLevel !== 'low' && (dayOfWeek === 0 || dayOfWeek === 6)) {
     warnings.push('Non-low-risk changes on weekends require additional justification');
     riskScore += 15;
   }
