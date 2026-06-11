@@ -75,7 +75,7 @@ docker network inspect my-bridge-network
 docker run -d --name web-server --network my-bridge-network nginx:latest
 
 # Start another container on the same network
-docker run -d --name api-server --network my-bridge-network node:18-alpine
+docker run -d --name api-server --network my-bridge-network node:18-alpine tail -f /dev/null
 
 # Containers can now communicate using container names as hostnames
 docker exec api-server ping web-server
@@ -173,8 +173,8 @@ docker run -d \
 # Check for port conflicts before using host networking
 netstat -tlnp | grep :80
 
-# Host networking is only available on Linux
-# On macOS and Windows, Docker runs in a VM, so host mode has limitations
+# Host networking is available on Docker Engine for Linux
+# and as an opt-in feature in Docker Desktop 4.34 and later
 ```
 
 ---
@@ -303,10 +303,10 @@ docker service create \
   --name api-service \
   --network my-overlay-network \
   --replicas 2 \
-  node:18-alpine
+  nginx:latest
 
 # Services can communicate using service names
-# web-service can reach api-service at http://api-service:<port>
+# web-service can reach api-service at http://api-service:80
 ```
 
 ### Encrypted Overlay Networks
