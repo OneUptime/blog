@@ -106,7 +106,7 @@ This class represents a single model version with all its associated metadata. E
 import hashlib
 import json
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 import uuid
@@ -132,7 +132,9 @@ class ModelVersion:
     parameters: dict[str, Any] = field(default_factory=dict)
     tags: dict[str, str] = field(default_factory=dict)
     artifact_path: Optional[str] = None
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(
+        default_factory=lambda: datetime.now(timezone.utc)
+    )
     model_hash: Optional[str] = None
 
     def to_dict(self) -> dict:
@@ -386,7 +388,9 @@ class ModelRegistry:
 
         # Update the stage tag
         model_version.tags["stage"] = stage
-        model_version.tags["stage_updated_at"] = datetime.utcnow().isoformat()
+        model_version.tags["stage_updated_at"] = (
+            datetime.now(timezone.utc).isoformat()
+        )
 
         # Persist the change
         self._save_metadata(model_version)
@@ -433,7 +437,7 @@ Lineage tracking connects models to their origins: what data trained them, what 
 ```python
 # lineage.py
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Optional
 import json
 
@@ -491,7 +495,9 @@ class ModelLineage:
     code: Optional[CodeReference] = None
     environment: Optional[EnvironmentInfo] = None
     parent_model: Optional[str] = None  # For fine-tuned models
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(
+        default_factory=lambda: datetime.now(timezone.utc)
+    )
 
     def to_dict(self) -> dict:
         """Serialize for storage."""
@@ -521,7 +527,7 @@ The best lineage tracking happens automatically during training. Here is a decor
 # lineage.py (continued)
 import subprocess
 import sys
-import pkg_resources
+from importlib.metadata import distributions
 
 def get_git_info() -> Optional[CodeReference]:
     """
@@ -564,8 +570,8 @@ def get_environment_info() -> EnvironmentInfo:
     Records all installed packages and their versions.
     """
     packages = {
-        pkg.key: pkg.version
-        for pkg in pkg_resources.working_set
+        dist.metadata["Name"]: dist.version
+        for dist in distributions()
     }
 
     return EnvironmentInfo(
@@ -1000,7 +1006,7 @@ def setup_mlflow_tracking(tracking_uri: str = "sqlite:///mlflow.db"):
 
     MLflow provides:
     - Experiment tracking
-    - Model registry with stages
+    - Model registry with aliases and tags
     - Artifact storage
     - UI for visualization
     """
@@ -1011,8 +1017,8 @@ def train_with_mlflow():
     """
     Training script using MLflow for versioning.
 
-    MLflow automatically tracks parameters, metrics, and artifacts
-    when you use its context manager.
+    MLflow associates logged parameters, metrics, and artifacts with the
+    active run created by its context manager.
     """
     from sklearn.ensemble import RandomForestClassifier
     from sklearn.datasets import make_classification
@@ -1024,7 +1030,7 @@ def train_with_mlflow():
 
     # Start a new run
     with mlflow.start_run():
-        # Log parameters (automatically versioned)
+        # Log parameters for this run
         params = {
             "n_estimators": 100,
             "max_depth": 10,
@@ -1051,28 +1057,29 @@ def train_with_mlflow():
         # Log the model to the registry
         mlflow.sklearn.log_model(
             model,
-            artifact_path="model",
+            name="model",
             registered_model_name="fraud-detector",
         )
 
         print(f"Run ID: {mlflow.active_run().info.run_id}")
 
-def promote_model_mlflow(model_name: str, version: int, stage: str):
+def promote_model_mlflow(
+    model_name: str,
+    version: int,
+    alias: str = "champion",
+):
     """
-    Promote a model version to a new stage in MLflow.
+    Promote a model version by assigning it a registry alias.
 
-    Stages: None -> Staging -> Production -> Archived
+    Aliases are the recommended way to create stable deployment references
+    such as "champion" or "candidate" in current MLflow versions.
     """
     client = MlflowClient()
 
-    # Transition the model version
-    client.transition_model_version_stage(
-        name=model_name,
-        version=version,
-        stage=stage,
-    )
+    # Point the alias at the selected model version
+    client.set_registered_model_alias(model_name, alias, str(version))
 
-    print(f"Transitioned {model_name} v{version} to {stage}")
+    print(f"Set alias {alias} for {model_name} v{version}")
 
 def load_production_model_mlflow(model_name: str):
     """
@@ -1080,7 +1087,7 @@ def load_production_model_mlflow(model_name: str):
 
     MLflow handles artifact location and deserialization automatically.
     """
-    model_uri = f"models:/{model_name}/Production"
+    model_uri = f"models:/{model_name}@champion"
     model = mlflow.sklearn.load_model(model_uri)
     return model
 ```
@@ -1153,6 +1160,9 @@ def validate_model_for_promotion(
     model_version = registry.get_version(model_name, version)
     failures = []
 
+    if model_version is None:
+        return False, [f"Model {model_name} version {version} not found"]
+
     # Check each metric meets minimum threshold
     for metric, min_value in min_metrics.items():
         actual = model_version.metrics.get(metric)
@@ -1208,7 +1218,11 @@ def rollback_to_previous(
         return None
 
     # Sort by when they were archived (most recent first)
-    previous = archived[0]
+    previous = sorted(
+        archived,
+        key=lambda v: v.tags.get("stage_updated_at", v.created_at.isoformat()),
+        reverse=True,
+    )[0]
 
     # Perform rollback
     registry.set_stage(model_name, current_prod.version, ModelStage.ARCHIVED)
