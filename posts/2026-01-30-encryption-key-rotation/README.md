@@ -17,7 +17,7 @@ This guide walks through implementing key rotation for both data-at-rest and dat
 Key rotation provides several security benefits:
 
 - **Limits exposure window** - A compromised key only decrypts data from a specific time period
-- **Meets compliance requirements** - PCI-DSS, HIPAA, and SOC2 require periodic key rotation
+- **Supports compliance requirements** - PCI-DSS requires key changes at the end of defined cryptoperiods, while HIPAA and SOC2 programs commonly expect documented key management controls
 - **Reduces key wear** - Cryptographic keys used extensively become more vulnerable to analysis
 - **Enables recovery from potential breaches** - Even if you suspect a compromise, rotation contains the damage
 
@@ -73,7 +73,7 @@ flowchart LR
 
 ### Full Re-encryption
 
-Full re-encryption decrypts all data with the old key and re-encrypts with the new key. This approach is simpler but requires downtime and significant compute resources for large datasets.
+Full re-encryption decrypts all data with the old key and re-encrypts with the new key. This approach is simpler but can require downtime and significant compute resources for large datasets.
 
 ## Building a Key Rotation System
 
@@ -95,7 +95,7 @@ class KeyManager {
     this.currentKeyVersion = 0;
   }
 
-  // Load existing keys from secure storage
+  // Load existing keys from restricted local storage
   async initialize() {
     try {
       const data = await fs.readFile(this.keyStorePath, 'utf8');
@@ -110,8 +110,12 @@ class KeyManager {
       }
       this.currentKeyVersion = keyData.currentVersion;
     } catch (err) {
-      // No existing keys, start fresh
-      await this.generateNewKey();
+      if (err.code === 'ENOENT') {
+        // No existing keys, start fresh
+        await this.generateNewKey();
+        return;
+      }
+      throw err;
     }
   }
 
@@ -159,7 +163,7 @@ class KeyManager {
     return keyInfo.key;
   }
 
-  // Save keys to secure storage
+  // Save keys to restricted local storage
   async persistKeys() {
     const keyData = {
       currentVersion: this.currentKeyVersion,
@@ -202,7 +206,7 @@ class EncryptionService {
   // Encrypt data with the current key version
   encrypt(plaintext) {
     const { version, key } = this.keyManager.getCurrentKey();
-    const iv = crypto.randomBytes(16);
+    const iv = crypto.randomBytes(12);
     const cipher = crypto.createCipheriv(this.algorithm, key, iv);
 
     let encrypted = cipher.update(plaintext, 'utf8', 'hex');
@@ -248,7 +252,7 @@ module.exports = EncryptionService;
 
 ### Automated Key Rotation
 
-Set up a scheduler to rotate keys automatically based on your security policy. The example below rotates keys every 90 days.
+Set up a scheduler to rotate keys automatically based on your security policy. The example below rotates keys every three months.
 
 ```javascript
 // rotation-scheduler.js
@@ -304,7 +308,7 @@ class RotationScheduler {
   }
 
   async retireOldKeys(keepVersions) {
-    const minVersion = this.keyManager.currentKeyVersion - keepVersions;
+    const minVersion = this.keyManager.currentKeyVersion - keepVersions + 1;
     for (const [version, keyInfo] of this.keyManager.keys) {
       if (version < minVersion && keyInfo.status !== 'retired') {
         keyInfo.status = 'retired';
@@ -323,12 +327,13 @@ Cloud providers offer managed key rotation that handles much of the complexity. 
 
 ### AWS KMS Configuration
 
-AWS KMS supports automatic annual rotation. You can also trigger rotation manually for more frequent schedules.
+AWS KMS supports automatic rotation with a default period of 365 days. You can configure a custom rotation period between 90 and 2,560 days, or trigger on-demand rotation for supported customer managed keys.
 
 ```javascript
 // aws-kms-rotation.js
 const { KMSClient, CreateKeyCommand, EnableKeyRotationCommand,
-        EncryptCommand, DecryptCommand } = require('@aws-sdk/client-kms');
+        RotateKeyOnDemandCommand, EncryptCommand,
+        DecryptCommand } = require('@aws-sdk/client-kms');
 
 class AWSKMSService {
   constructor(region) {
@@ -337,7 +342,7 @@ class AWSKMSService {
   }
 
   // Create a new KMS key with automatic rotation enabled
-  async createKeyWithRotation() {
+  async createKeyWithRotation(rotationPeriodInDays = 365) {
     const createResponse = await this.client.send(new CreateKeyCommand({
       Description: 'Application encryption key with auto-rotation',
       KeyUsage: 'ENCRYPT_DECRYPT',
@@ -346,19 +351,32 @@ class AWSKMSService {
 
     this.keyId = createResponse.KeyMetadata.KeyId;
 
-    // Enable automatic annual rotation
+    // Enable automatic rotation
     await this.client.send(new EnableKeyRotationCommand({
-      KeyId: this.keyId
+      KeyId: this.keyId,
+      RotationPeriodInDays: rotationPeriodInDays
     }));
 
     return this.keyId;
   }
 
-  // Encrypt using KMS - AWS handles key versioning automatically
+  // Trigger on-demand rotation when needed
+  async rotateNow() {
+    await this.client.send(new RotateKeyOnDemandCommand({
+      KeyId: this.keyId
+    }));
+  }
+
+  // Encrypt small payloads using KMS - AWS handles key versioning automatically
   async encrypt(plaintext) {
+    const plaintextBuffer = Buffer.from(plaintext);
+    if (plaintextBuffer.length > 4096) {
+      throw new Error('AWS KMS Encrypt supports plaintext up to 4096 bytes; use envelope encryption for larger data');
+    }
+
     const response = await this.client.send(new EncryptCommand({
       KeyId: this.keyId,
-      Plaintext: Buffer.from(plaintext)
+      Plaintext: plaintextBuffer
     }));
 
     return response.CiphertextBlob;
@@ -401,6 +419,7 @@ This script handles certificate rotation for services running behind a load bala
 CERT_DIR="/etc/ssl/app"
 BACKUP_DIR="/etc/ssl/app/backup"
 DOMAIN="api.example.com"
+LE_LIVE_DIR="/etc/letsencrypt/live/$DOMAIN"
 
 # Create backup of current certificates
 
@@ -418,9 +437,14 @@ generate_new_cert() {
         --dns-cloudflare \
         --dns-cloudflare-credentials /root/.cloudflare/credentials \
         -d "$DOMAIN" \
-        --cert-path "$CERT_DIR/server.crt" \
-        --key-path "$CERT_DIR/server.key" \
+        --cert-name "$DOMAIN" \
         --non-interactive
+}
+
+# Install the renewed certificate where the service expects it
+install_new_cert() {
+    cp "$LE_LIVE_DIR/fullchain.pem" "$CERT_DIR/server.crt"
+    cp "$LE_LIVE_DIR/privkey.pem" "$CERT_DIR/server.key"
 }
 
 # Reload service to pick up new certificates
@@ -448,6 +472,7 @@ main() {
     backup_current_certs
 
     if generate_new_cert; then
+        install_new_cert
         if verify_cert; then
             reload_service
             echo "Certificate rotation completed successfully"
