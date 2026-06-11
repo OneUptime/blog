@@ -817,7 +817,7 @@ class OCRExtractor(BaseExtractor):
     Configuration options:
         - language: OCR language(s) (default: 'eng')
         - psm: Page segmentation mode (default: 3 - auto)
-        - oem: OCR engine mode (default: 3 - LSTM only)
+        - oem: OCR engine mode (default: 3 - Default, based on what is available)
         - dpi: Resolution for PDF conversion (default: 300)
         - preprocess: Enable image preprocessing (default: True)
     """
