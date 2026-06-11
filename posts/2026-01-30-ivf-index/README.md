@@ -69,12 +69,11 @@ graph LR
 
 ## Step 1: Implementing K-Means Clustering
 
-The foundation of IVF is k-means clustering. Here is a production-ready implementation:
+The foundation of IVF is k-means clustering. Here is a clear NumPy implementation:
 
 ```python
 import numpy as np
 from typing import Tuple, List
-import faiss
 
 class KMeansQuantizer:
     """
@@ -102,7 +101,7 @@ class KMeansQuantizer:
         Args:
             vectors: Training vectors of shape (n_samples, dimension)
         """
-        # Ensure vectors are float32 for FAISS compatibility
+        # Use float32, which is the standard data type for FAISS-style indexes
         vectors = vectors.astype(np.float32)
 
         # Initialize centroids using k-means++
@@ -150,7 +149,14 @@ class KMeansQuantizer:
             ], axis=0)
 
             # Sample proportional to squared distance
-            probabilities = distances / distances.sum()
+            total_distance = distances.sum()
+            if total_distance == 0:
+                centroids[k:] = vectors[
+                    np.random.choice(n_samples, self.n_clusters - k, replace=True)
+                ]
+                break
+
+            probabilities = distances / total_distance
             centroids[k] = vectors[np.random.choice(n_samples, p=probabilities)]
 
         return centroids
@@ -186,9 +192,9 @@ class KMeansQuantizer:
 Once we have our centroids, we build inverted lists that map each cluster to its member vectors:
 
 ```python
-from collections import defaultdict
 from dataclasses import dataclass
 import numpy as np
+from typing import List
 
 @dataclass
 class InvertedList:
@@ -260,20 +266,25 @@ class IVFIndex:
         for i, (vector, vector_id, cluster_id) in enumerate(
             zip(vectors, ids, assignments)
         ):
-            self.inverted_lists[cluster_id]["ids"].append(vector_id)
-            self.inverted_lists[cluster_id]["vectors"].append(vector)
+            inv_list = self.inverted_lists[cluster_id]
+            inv_list["ids"].append(vector_id)
+            if isinstance(inv_list["vectors"], np.ndarray):
+                inv_list["vectors"] = inv_list["vectors"].tolist()
+            inv_list["vectors"].append(vector)
 
         # Convert lists to arrays for efficiency
         for cluster_id in range(self.n_clusters):
-            if self.inverted_lists[cluster_id]["vectors"]:
-                self.inverted_lists[cluster_id]["vectors"] = np.array(
-                    self.inverted_lists[cluster_id]["vectors"]
+            vectors_in_list = self.inverted_lists[cluster_id]["vectors"]
+            if isinstance(vectors_in_list, list) and vectors_in_list:
+                self.inverted_lists[cluster_id]["vectors"] = np.asarray(
+                    vectors_in_list,
+                    dtype=np.float32
                 )
 ```
 
 ## Step 3: Implementing Search with Probe Configuration
 
-The `n_probe` parameter controls the accuracy-speed tradeoff:
+The `n_probe` parameter controls the accuracy-speed tradeoff. Add this method to `IVFIndex`:
 
 ```python
 def search(
@@ -360,6 +371,11 @@ def calculate_optimal_clusters(n_vectors: int, target_list_size: int = 1000) -> 
     Returns:
         Recommended number of clusters
     """
+    if n_vectors < 1:
+        raise ValueError("n_vectors must be positive")
+    if target_list_size < 1:
+        raise ValueError("target_list_size must be positive")
+
     # Basic formula
     sqrt_n = int(np.sqrt(n_vectors))
 
@@ -372,7 +388,8 @@ def calculate_optimal_clusters(n_vectors: int, target_list_size: int = 1000) -> 
     # Round to power of 2 for memory alignment (optional)
     power_of_2 = 2 ** int(np.ceil(np.log2(recommended)))
 
-    return min(power_of_2, n_vectors // 10)  # At least 10 vectors per cluster
+    max_clusters = max(1, n_vectors // 10)  # At least 10 vectors per cluster
+    return max(1, min(power_of_2, max_clusters))
 
 
 class AdvancedCentroidSelection:
@@ -398,9 +415,6 @@ class AdvancedCentroidSelection:
             quantizer.train(vectors)
             return quantizer.centroids
 
-        # Build hierarchy
-        n_levels = int(np.ceil(np.log(n_clusters) / np.log(branching_factor)))
-
         # First level clustering
         level_quantizer = KMeansQuantizer(branching_factor, vectors.shape[1])
         level_quantizer.train(vectors)
@@ -409,7 +423,7 @@ class AdvancedCentroidSelection:
         all_centroids = []
         assignments = level_quantizer._assign_to_centroids(vectors)
 
-        centroids_per_branch = n_clusters // branching_factor
+        centroids_per_branch = int(np.ceil(n_clusters / branching_factor))
 
         for branch in range(branching_factor):
             branch_vectors = vectors[assignments == branch]
@@ -460,8 +474,8 @@ class AdvancedCentroidSelection:
             for cluster_id in range(n_clusters):
                 if cluster_sizes[cluster_id] > max_size:
                     # Find vectors furthest from centroid
-                    cluster_mask = assignments == cluster_id
-                    cluster_vectors = vectors[cluster_mask]
+                    cluster_indices = np.where(assignments == cluster_id)[0]
+                    cluster_vectors = vectors[cluster_indices]
                     distances = np.sum(
                         (cluster_vectors - quantizer.centroids[cluster_id]) ** 2,
                         axis=1
@@ -484,11 +498,19 @@ class AdvancedCentroidSelection:
                             if cluster_sizes[c] >= max_size:
                                 centroid_distances[c] = np.inf
 
+                        if not np.isfinite(centroid_distances).any():
+                            continue
+
                         new_cluster = np.argmin(centroid_distances)
-                        # Update assignment (simplified - actual implementation
-                        # would update the assignments array)
+                        assignments[cluster_indices[idx]] = new_cluster
                         cluster_sizes[cluster_id] -= 1
                         cluster_sizes[new_cluster] += 1
+
+            # Keep centroids consistent with the rebalanced assignments
+            for cluster_id in range(n_clusters):
+                cluster_vectors = vectors[assignments == cluster_id]
+                if len(cluster_vectors) > 0:
+                    quantizer.centroids[cluster_id] = cluster_vectors.mean(axis=0)
 
         return quantizer.centroids, assignments
 ```
@@ -520,12 +542,14 @@ class ProductQuantizer:
             n_bits: Bits per subquantizer code (typically 8 = 256 centroids)
         """
         assert dimension % n_subquantizers == 0
+        assert 1 <= n_bits <= 16
 
         self.dimension = dimension
         self.n_subquantizers = n_subquantizers
         self.n_bits = n_bits
         self.n_centroids = 2 ** n_bits  # 256 for 8 bits
         self.subvector_dim = dimension // n_subquantizers
+        self.code_dtype = np.uint8 if n_bits <= 8 else np.uint16
 
         # Codebooks: one for each subspace
         self.codebooks = None  # Shape: (M, K, D/M)
@@ -559,10 +583,11 @@ class ProductQuantizer:
             vectors: Vectors to encode, shape (N, D)
 
         Returns:
-            PQ codes, shape (N, M) with dtype uint8
+            PQ codes, shape (N, M) with dtype uint8 for up to 8 bits
+            or uint16 for 9-16 bits
         """
         n_vectors = len(vectors)
-        codes = np.zeros((n_vectors, self.n_subquantizers), dtype=np.uint8)
+        codes = np.zeros((n_vectors, self.n_subquantizers), dtype=self.code_dtype)
 
         for m in range(self.n_subquantizers):
             start_idx = m * self.subvector_dim
@@ -814,7 +839,11 @@ class IVFPQIndex:
 
         # Inverted lists (PQ codes)
         n_vectors = sum(len(inv["ids"]) for inv in self.inverted_lists)
-        codes_memory = n_vectors * self.pq.n_subquantizers  # uint8
+        codes_memory = (
+            n_vectors *
+            self.pq.n_subquantizers *
+            np.dtype(self.pq.code_dtype).itemsize
+        )
 
         # IDs
         ids_memory = n_vectors * 8  # int64
@@ -881,12 +910,12 @@ def benchmark_nprobe(
 
 ### Memory vs Accuracy Tradeoffs
 
-| Configuration | Memory per Vector | Typical Recall@10 |
+| Configuration | Approx. Memory per Vector with 64-bit IDs | Typical Recall@10 |
 |---------------|-------------------|-------------------|
-| IVF (flat) | 512 bytes (128d float32) | 99%+ |
+| IVF (flat) | 520 bytes (128d float32 + ID) | 99%+ |
 | IVF-PQ8x8 | 16 bytes | 90-95% |
 | IVF-PQ16x8 | 24 bytes | 95-98% |
-| IVF-PQ32x4 | 20 bytes | 85-90% |
+| IVF-PQ32x4 | 24 bytes | 85-90% |
 
 ## Using FAISS for Production
 
@@ -944,7 +973,7 @@ def build_and_search_example():
     index = create_faiss_ivf_index(dimension, n_clusters)
 
     # Train on subset
-    train_size = min(n_vectors, 100_000)
+    train_size = min(n_vectors, max(100_000, 30 * n_clusters))
     train_indices = np.random.choice(n_vectors, train_size, replace=False)
     index.train(vectors[train_indices])
 
@@ -983,7 +1012,7 @@ if __name__ == "__main__":
 
 3. **Probe Configuration**: Start with `n_probe = n_clusters / 10` and tune based on recall measurements.
 
-4. **Product Quantization**: Use `n_subquantizers = dimension / 8` for good compression with reasonable accuracy.
+4. **Product Quantization**: Use `n_subquantizers = dimension // 8` for good compression with reasonable accuracy.
 
 5. **Batch Operations**: Always add and search vectors in batches for better throughput.
 
