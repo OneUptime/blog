@@ -204,7 +204,6 @@ spec:
       configMap:
         name: pgbouncer-config
 
-  # Ensure containers start in order if needed
   restartPolicy: Always
 ```
 
@@ -246,7 +245,8 @@ data:
 
         # HTTPS server - externally facing
         server {
-            listen 443 ssl http2;
+            listen 443 ssl;
+            http2 on;
             server_name _;
 
             # TLS configuration
@@ -454,6 +454,11 @@ spec:
     # Ambassador container - Fluent Bit log forwarder
     - name: fluentbit-ambassador
       image: fluent/fluent-bit:2.2
+      env:
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
       volumeMounts:
         # Same shared volume - read logs written by main app
         - name: app-logs
