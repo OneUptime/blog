@@ -151,7 +151,7 @@ spec:
       position: 4
       required: false
       description: "Optional variant identifier for experiments"
-      pattern: "^[a-z0-9]+$"
+      pattern: "^v[0-9]+$"
 
   examples:
     valid:
@@ -217,12 +217,12 @@ class FlagNamingValidator {
       return { valid: false, errors, warnings };
     }
 
-    // Parse segments
-    const parts = flagName.split('-');
-    const parsedSegments: Record<string, string> = {};
+    // Parse segments. The first two segments are fixed; the feature segment
+    // can contain hyphens, and experiment variants use a v-number suffix.
+    const parsedSegments = this.parseSegments(flagName);
 
     for (const segment of this.policy.segments) {
-      const value = parts[segment.position - 1];
+      const value = parsedSegments[segment.name];
 
       // Check required segments
       if (segment.required && !value) {
@@ -274,6 +274,32 @@ class FlagNamingValidator {
     }
     return parts.join('-').toLowerCase().replace(/[^a-z0-9-]/g, '-');
   }
+
+  private parseSegments(flagName: string): Record<string, string> {
+    const parts = flagName.split('-');
+    const [category = '', team = ''] = parts;
+    const variantSegment = this.policy.segments.find(segment => segment.name === 'variant');
+    const variantRegex = variantSegment?.pattern ? new RegExp(variantSegment.pattern) : null;
+    const lastPart = parts[parts.length - 1];
+    const hasVariant =
+      parts.length > 3 &&
+      category === 'experiment' &&
+      !!variantRegex &&
+      variantRegex.test(lastPart);
+
+    const featureParts = hasVariant ? parts.slice(2, -1) : parts.slice(2);
+    const parsedSegments: Record<string, string> = {
+      category,
+      team,
+      feature: featureParts.join('-')
+    };
+
+    if (hasVariant) {
+      parsedSegments.variant = lastPart;
+    }
+
+    return parsedSegments;
+  }
 }
 
 // Example usage
@@ -303,7 +329,7 @@ const policy: NamingPolicy = {
       name: "variant",
       position: 4,
       required: false,
-      pattern: "^[a-z0-9]+$"
+      pattern: "^v[0-9]+$"
     }
   ]
 };
@@ -550,22 +576,28 @@ class FlagOwnershipService {
 // Example usage
 const ownershipService = new FlagOwnershipService();
 
-// Assign ownership when flag is created
-await ownershipService.assignOwnership(
-  'release-checkout-express-shipping',
-  'alice@company.com',
-  'checkout',
-  ['bob@company.com', 'carol@company.com']
-);
+async function main(): Promise<void> {
+  // Assign ownership when flag is created
+  await ownershipService.assignOwnership(
+    'release-checkout-express-shipping',
+    'alice@company.com',
+    'checkout',
+    ['bob@company.com', 'carol@company.com']
+  );
 
-// Transfer ownership when Alice leaves
-await ownershipService.transferOwnership(
-  'release-checkout-express-shipping',
-  'alice@company.com',
-  'bob@company.com',
-  'Alice departing company',
-  'checkout-lead@company.com'
-);
+  // Transfer ownership when Alice leaves
+  await ownershipService.transferOwnership(
+    'release-checkout-express-shipping',
+    'alice@company.com',
+    'bob@company.com',
+    'Alice departing company',
+    'checkout-lead@company.com'
+  );
+}
+
+main().catch(error => {
+  console.error('Ownership workflow failed:', error);
+});
 ```
 
 ## Review Processes
@@ -610,7 +642,7 @@ flowchart TD
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import List, Optional, Dict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import uuid
 
 class FlagCategory(Enum):
@@ -648,8 +680,8 @@ class FlagChangeRequest:
     description: str
     previous_value: Optional[Dict] = None
     new_value: Optional[Dict] = None
-    created_at: datetime = field(default_factory=datetime.utcnow)
-    expires_at: datetime = field(default_factory=lambda: datetime.utcnow() + timedelta(days=7))
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    expires_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc) + timedelta(days=7))
 
 @dataclass
 class ReviewStep:
@@ -762,7 +794,7 @@ class FlagReviewService:
         # Record the review
         current_step.reviewer = reviewer
         current_step.status = ReviewStatus.APPROVED if approved else ReviewStatus.REJECTED
-        current_step.reviewed_at = datetime.utcnow()
+        current_step.reviewed_at = datetime.now(timezone.utc)
         current_step.comments = comments
 
         if not approved:
@@ -1242,6 +1274,19 @@ class FlagComplianceChecker {
     const requirements = this.requirements.get(flag.category) || [];
     const results: ComplianceCheckResult[] = [];
 
+    if (requirements.length === 0) {
+      return {
+        compliant: false,
+        results: [{
+          passed: false,
+          requirement: 'known_category',
+          message: `Unknown flag category: ${flag.category}`,
+          severity: 'error'
+        }],
+        score: 0
+      };
+    }
+
     for (const req of requirements) {
       const result = req.check(flag);
       results.push(result);
@@ -1305,7 +1350,9 @@ class FlagComplianceChecker {
     return {
       totalFlags: flags.length,
       compliantFlags: compliantCount,
-      complianceRate: Math.round((compliantCount / flags.length) * 100),
+      complianceRate: flags.length > 0
+        ? Math.round((compliantCount / flags.length) * 100)
+        : 100,
       byCategory,
       violations
     };
@@ -1368,8 +1415,9 @@ flowchart TB
 # flag_governance_metrics.py
 from dataclasses import dataclass, field
 from typing import List, Dict, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
+import math
 import statistics
 
 @dataclass
@@ -1438,7 +1486,7 @@ class GovernanceMetricsCollector:
                 by_category[flag.category]['orphaned'] += 1
 
         return {
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'total_flags': total_flags,
             'compliance_rate': round(compliant_flags / total_flags * 100, 2) if total_flags > 0 else 100,
             'orphaned_count': orphaned_flags,
@@ -1451,10 +1499,11 @@ class GovernanceMetricsCollector:
     async def collect_lifecycle_metrics(self, days: int = 30) -> Dict:
         """Collect metrics about flag lifecycle."""
         flags = await self.flag_service.get_all_flags()
-        cutoff = datetime.utcnow() - timedelta(days=days)
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
 
         # Calculate ages
-        ages = [(datetime.utcnow() - f.created_at).days for f in flags]
+        now = datetime.now(timezone.utc)
+        ages = [(now - f.created_at).days for f in flags]
 
         # Get recently created and deleted flags
         created_recently = [f for f in flags if f.created_at >= cutoff]
@@ -1469,7 +1518,7 @@ class GovernanceMetricsCollector:
                 cleanup_times.append(actual_age - max_age)  # negative = early cleanup
 
         return {
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'period_days': days,
             'average_age_days': round(statistics.mean(ages), 1) if ages else 0,
             'median_age_days': round(statistics.median(ages), 1) if ages else 0,
@@ -1489,7 +1538,7 @@ class GovernanceMetricsCollector:
 
     async def collect_operational_metrics(self, days: int = 30) -> Dict:
         """Collect metrics about operational processes."""
-        cutoff = datetime.utcnow() - timedelta(days=days)
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
 
         # Get reviews from period
         reviews = await self.review_service.get_reviews(since=cutoff)
@@ -1508,7 +1557,7 @@ class GovernanceMetricsCollector:
         incidents = await self.incident_service.get_flag_incidents(since=cutoff)
 
         return {
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'period_days': days,
             'reviews': {
                 'total': len(reviews),
@@ -1520,7 +1569,7 @@ class GovernanceMetricsCollector:
                 'avg_review_time_hours': round(statistics.mean(review_times), 2) if review_times else 0,
                 'avg_time_to_first_review_hours': round(statistics.mean(time_to_first), 2) if time_to_first else 0,
                 'p95_review_time_hours': round(
-                    sorted(review_times)[int(len(review_times) * 0.95)] if review_times else 0, 2
+                    sorted(review_times)[math.ceil(len(review_times) * 0.95) - 1] if review_times else 0, 2
                 )
             },
             'incidents': {
@@ -1568,7 +1617,7 @@ class GovernanceMetricsCollector:
             grade = 'F'
 
         return {
-            'generated_at': datetime.utcnow().isoformat(),
+            'generated_at': datetime.now(timezone.utc).isoformat(),
             'overall_score': round(overall_score, 1),
             'grade': grade,
             'component_scores': scores,
