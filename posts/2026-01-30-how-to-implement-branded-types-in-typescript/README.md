@@ -53,7 +53,7 @@ function createOrderId(id: string): OrderId {
 }
 ```
 
-The `unique symbol` ensures that each brand is globally unique, even across different modules.
+The `unique symbol` ensures that each brand has a distinct type identity tied to its declaration, even across module boundaries when that declaration is imported and reused.
 
 ## UserId vs OrderId Example
 
@@ -144,8 +144,7 @@ const OrderIdSchema = z.string()
   .startsWith("order-")
   .brand<"OrderId">();
 
-const EmailSchema = z.string()
-  .email()
+const EmailSchema = z.email()
   .brand<"Email">();
 
 // Infer the branded types
@@ -159,8 +158,8 @@ const orderId = OrderIdSchema.parse("order-456");  // Returns OrderId
 const email = EmailSchema.parse("user@example.com");  // Returns Email
 
 // Invalid input throws ZodError
-UserIdSchema.parse("invalid");  // Throws: String must start with "user-"
-EmailSchema.parse("not-an-email");  // Throws: Invalid email
+UserIdSchema.parse("invalid");  // Throws ZodError
+EmailSchema.parse("not-an-email");  // Throws ZodError
 ```
 
 Zod's `.safeParse()` method returns a result object instead of throwing:
