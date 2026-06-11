@@ -396,9 +396,9 @@ def detect_cost_anomaly(
 result = detect_cost_anomaly(
     current=Decimal("18500"),
     previous_values=[Decimal("15000"), Decimal("16200"), Decimal("17500")],
-    threshold_pct=15.0
+    threshold_pct=10.0
 )
-# Result: {"anomaly": True, "change_percent": 14.1, "direction": "increase", ...}
+# Result: {"anomaly": True, "change_percent": 13.96, "direction": "increase", ...}
 ```
 
 ---
