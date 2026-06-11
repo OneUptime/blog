@@ -18,7 +18,7 @@ This post walks you through how query sharding works, how to configure it, and h
 
 Query sharding is a technique where the query frontend breaks a single PromQL query into multiple independent sub-queries. Each sub-query processes a subset of the data, and the results are merged before being returned to the user.
 
-The splitting happens based on label matchers. Mimir uses a configurable number of shards and distributes the work by hashing series across those shards.
+The splitting happens by adding an internal `__query_shard__` label matcher to shardable selectors. Mimir uses a configurable number of shards and distributes the work by hashing series across those shards.
 
 ```mermaid
 flowchart TB
@@ -56,28 +56,29 @@ Without sharding, a single querier must process the entire query. This creates b
 With sharding, you get:
 
 - **Parallelism**: Multiple queriers work simultaneously
-- **Reduced latency**: Wall clock time drops proportionally to shard count
+- **Reduced latency**: Wall clock time can drop significantly for high-cardinality and CPU-intensive queries
 - **Better resource utilization**: Distribute load across the cluster
 - **Horizontal scaling**: Add more queriers to handle more shards
 
 ## Enabling Query Sharding
 
-Query sharding is configured in the query frontend. Here is a minimal configuration:
+Query sharding is enabled in the query frontend, while shard-count limits are configured in the limits block. Here is a minimal configuration:
 
 ```yaml
 # mimir-config.yaml
 
 # Enable query sharding in the query frontend
 
-query_frontend:
+frontend:
   # Enable sharding for range queries
   parallelize_shardable_queries: true
 
+limits:
   # Number of shards to split queries into
   # Higher values mean more parallelism but also more overhead
   query_sharding_total_shards: 16
 
-  # Maximum number of shards that can be used per query
+  # Maximum number of partial queries a single input query can generate
   # Useful for limiting resource consumption
   query_sharding_max_sharded_queries: 128
 ```
@@ -87,14 +88,12 @@ For a complete production configuration:
 ```yaml
 # mimir-config.yaml - Production query frontend settings
 
-query_frontend:
+frontend:
   # Core sharding settings
   parallelize_shardable_queries: true
-  query_sharding_total_shards: 16
-  query_sharding_max_sharded_queries: 128
 
-  # Target number of shards to use per query
-  # The frontend will try to hit this target based on cardinality estimates
+  # Target number of series per shard when cardinality estimates are available
+  # The frontend can reduce the shard count based on previous executions
   query_sharding_target_series_per_shard: 2500
 
   # Query splitting by time interval
@@ -111,6 +110,10 @@ query_frontend:
       addresses: dns+memcached.mimir.svc.cluster.local:11211
       timeout: 500ms
       max_idle_connections: 100
+
+limits:
+  query_sharding_total_shards: 16
+  query_sharding_max_sharded_queries: 128
 ```
 
 ## Shard Count and Query Splitting
@@ -123,14 +126,11 @@ Choosing the right shard count involves tradeoffs:
 | Medium (16-32) | Good balance of parallelism and overhead | Requires more queriers |
 | High (64-128) | Maximum parallelism for huge queries | High coordination overhead |
 
-The query frontend uses this formula to determine sharding:
+The query frontend uses the configured shard count as an upper bound. If cardinality-based sharding is enabled, it can reduce the number of shards for queries that previously fetched fewer series:
 
 ```text
-effective_shards = min(
-    query_sharding_total_shards,
-    query_sharding_max_sharded_queries,
-    estimated_series / query_sharding_target_series_per_shard
-)
+effective_shards <= query_sharding_total_shards
+total_partial_queries <= query_sharding_max_sharded_queries
 ```
 
 Here is how a query gets transformed:
@@ -142,9 +142,6 @@ sum(rate(http_requests_total{job="api"}[5m])) by (status_code)
 # Sharded into 4 sub-queries (simplified representation)
 # Each shard processes a subset of series based on hash(series_labels) % 4
 
-# Shard 0
-sum(rate(http_requests_total{job="api", __query_shard__="0_of_4"}[5m])) by (status_code)
-
 # Shard 1
 sum(rate(http_requests_total{job="api", __query_shard__="1_of_4"}[5m])) by (status_code)
 
@@ -153,43 +150,50 @@ sum(rate(http_requests_total{job="api", __query_shard__="2_of_4"}[5m])) by (stat
 
 # Shard 3
 sum(rate(http_requests_total{job="api", __query_shard__="3_of_4"}[5m])) by (status_code)
+
+# Shard 4
+sum(rate(http_requests_total{job="api", __query_shard__="4_of_4"}[5m])) by (status_code)
 ```
 
 The results are then merged using the appropriate aggregation function.
 
 ## Cardinality Estimation for Sharding Decisions
 
-Mimir uses cardinality estimation to make intelligent sharding decisions. The query frontend estimates how many series a query will touch before executing it.
+Mimir can use cardinality estimation to make intelligent sharding decisions. The query frontend uses cardinality observed during previous executions of the same query for similar time ranges.
 
 ```yaml
 # Configure cardinality estimation
-query_frontend:
+frontend:
   # Enable cardinality-based sharding decisions
   query_sharding_target_series_per_shard: 2500
 
-  # Cache cardinality estimates
-  cache_results: true
+  # Configure the results cache used to store cardinality estimates
+  results_cache:
+    backend: memcached
+    memcached:
+      addresses: dns+memcached.mimir.svc.cluster.local:11211
 
 limits:
   # Maximum series a single query can return
   max_fetched_series_per_query: 1000000
 
-  # Maximum samples a single query can process
-  max_fetched_samples_per_query: 50000000
+querier:
+  # Maximum samples a single query can load into memory
+  max_samples: 50000000
 ```
 
 The cardinality estimator works by:
 
-1. Analyzing the query label matchers
-2. Looking up series counts in the index
-3. Estimating the result set size
-4. Choosing an appropriate shard count
+1. Recording the actual number of series fetched by previous executions
+2. Storing those observations in the results cache
+3. Reusing estimates for the same query over similar time ranges
+4. Reducing the shard count when fewer shards are enough
 
 ```mermaid
 flowchart LR
     Q[Query] --> P[Parse Query]
     P --> E[Extract Matchers]
-    E --> L[Lookup Index]
+    E --> L[Load Previous Observations]
     L --> C[Estimate Cardinality]
     C --> D{Cardinality > Threshold?}
     D --> |Yes| S[Calculate Shard Count]
@@ -204,28 +208,20 @@ Here is a comprehensive query frontend configuration with explanations:
 
 ```yaml
 # Complete query frontend configuration
-query_frontend:
+frontend:
   # Sharding configuration
   parallelize_shardable_queries: true
-  query_sharding_total_shards: 16
-  query_sharding_max_sharded_queries: 128
   query_sharding_target_series_per_shard: 2500
 
   # Time-based splitting
   # Long queries are split into chunks of this duration
   split_queries_by_interval: 24h
 
-  # Align queries to this interval for better caching
-  align_queries_with_step: true
-
-  # Maximum time range for a single query
-  max_total_query_length: 0  # 0 means unlimited
-
   # Retry configuration
   max_retries: 5
 
-  # Timeout for downstream requests
-  downstream_url: ""
+  # Query scheduler address when DNS-based scheduler discovery is used
+  scheduler_address: query-scheduler.mimir.svc.cluster.local:9095
 
   # GRPC client configuration for talking to queriers
   grpc_client_config:
@@ -248,6 +244,12 @@ query_frontend:
 
   # Log queries that take longer than this
   log_queries_longer_than: 10s
+
+limits:
+  query_sharding_total_shards: 16
+  query_sharding_max_sharded_queries: 128
+  max_total_query_length: 0s  # 0s means unlimited
+  align_queries_with_step: true
 ```
 
 ## Practical Code Examples
@@ -311,10 +313,8 @@ data:
     multitenancy_enabled: true
 
     # Query frontend with sharding
-    query_frontend:
+    frontend:
       parallelize_shardable_queries: true
-      query_sharding_total_shards: 16
-      query_sharding_max_sharded_queries: 128
       query_sharding_target_series_per_shard: 2500
       split_queries_by_interval: 24h
       max_retries: 5
@@ -328,11 +328,13 @@ data:
     querier:
       max_concurrent: 20
       timeout: 2m
+      max_samples: 50000000
 
     # Limits
     limits:
+      query_sharding_total_shards: 16
+      query_sharding_max_sharded_queries: 128
       max_fetched_series_per_query: 1000000
-      max_fetched_samples_per_query: 50000000
       max_query_parallelism: 32
 ```
 
@@ -346,15 +348,18 @@ query_scheduler:
   # Maximum number of outstanding requests per tenant
   max_outstanding_requests_per_tenant: 100
 
-  # Enable query scheduler
-  service_discovery_mode: ring
-
-query_frontend:
+frontend:
   # Point frontend to scheduler instead of queriers
-  scheduler_address: dns:///query-scheduler.mimir.svc.cluster.local:9095
+  scheduler_address: query-scheduler.mimir.svc.cluster.local:9095
 
-  # Sharding still configured here
+  # Sharding still enabled here
   parallelize_shardable_queries: true
+
+querier:
+  # Point queriers to the scheduler too
+  scheduler_address: query-scheduler.mimir.svc.cluster.local:9095
+
+limits:
   query_sharding_total_shards: 16
 ```
 
@@ -383,19 +388,22 @@ Track sharding effectiveness with these metrics:
 groups:
   - name: mimir-query-sharding
     rules:
-      # Track sharded vs non-sharded queries
-      - record: mimir:query_frontend_sharded_queries_total
-        expr: sum(rate(cortex_frontend_sharded_queries_total[5m])) by (cluster)
+      # Ratio of successful query-sharding rewrites
+      - record: mimir:query_frontend_query_sharding_success_ratio
+        expr: |
+          sum(rate(cortex_frontend_query_sharding_rewrites_succeeded_total[5m])) by (cluster)
+          /
+          sum(rate(cortex_frontend_query_sharding_rewrites_attempted_total[5m])) by (cluster)
 
       # Average shards per query
       - record: mimir:query_frontend_shards_per_query_avg
         expr: |
-          sum(rate(cortex_frontend_query_shards_total[5m])) by (cluster)
+          sum(rate(cortex_frontend_sharded_queries_per_query_sum[5m])) by (cluster)
           /
-          sum(rate(cortex_frontend_sharded_queries_total[5m])) by (cluster)
+          sum(rate(cortex_frontend_sharded_queries_per_query_count[5m])) by (cluster)
 
-      # Query latency improvement from sharding
-      - record: mimir:query_latency_seconds
+      # Query frontend queue latency
+      - record: mimir:query_frontend_queue_latency_seconds
         expr: |
           histogram_quantile(0.99,
             sum(rate(cortex_query_frontend_queue_duration_seconds_bucket[5m])) by (le, cluster)
@@ -410,12 +418,12 @@ Create a Grafana dashboard panel:
   "type": "timeseries",
   "targets": [
     {
-      "expr": "sum(rate(cortex_frontend_sharded_queries_total{cluster=\"$cluster\"}[5m]))",
-      "legendFormat": "Sharded Queries/sec"
+      "expr": "sum(rate(cortex_frontend_query_sharding_rewrites_succeeded_total{cluster=\"$cluster\"}[5m])) / sum(rate(cortex_frontend_query_sharding_rewrites_attempted_total{cluster=\"$cluster\"}[5m]))",
+      "legendFormat": "Sharding success ratio"
     },
     {
-      "expr": "sum(rate(cortex_query_frontend_queries_total{cluster=\"$cluster\"}[5m])) - sum(rate(cortex_frontend_sharded_queries_total{cluster=\"$cluster\"}[5m]))",
-      "legendFormat": "Non-Sharded Queries/sec"
+      "expr": "histogram_quantile(0.95, sum(rate(cortex_frontend_sharded_queries_per_query_bucket{cluster=\"$cluster\"}[5m])) by (le))",
+      "legendFormat": "p95 sharded subqueries per query"
     }
   ]
 }
@@ -429,7 +437,7 @@ Not all queries can be sharded. Here is what works and what does not:
 - `sum()`, `count()`, `min()`, `max()`
 - `sum(rate(...))`, `sum(increase(...))`
 - `avg()` with proper merging
-- `count_values()`, `topk()`, `bottomk()` with caveats
+- Inner aggregations inside larger queries may be shardable even when the full query is not
 
 **Not shardable (require full data):**
 - `histogram_quantile()` without pre-aggregation
@@ -447,11 +455,11 @@ sum by (service, status_code) (
 )
 ```
 
-Example of a query that cannot be sharded:
+Example of a query where the full query is not shardable, but the inner aggregation can still be sharded:
 
 ```promql
-# histogram_quantile needs all buckets together
-# Cannot be split across shards
+# histogram_quantile needs all buckets together, but Mimir can shard
+# the inner sum by (le) aggregation.
 histogram_quantile(0.99,
   sum by (le) (
     rate(http_request_duration_seconds_bucket{job="api"}[5m])
@@ -465,11 +473,13 @@ Start with these baseline settings and adjust:
 
 ```yaml
 # Conservative starting point
-query_frontend:
+frontend:
   parallelize_shardable_queries: true
-  query_sharding_total_shards: 8
   query_sharding_target_series_per_shard: 5000
   split_queries_by_interval: 24h
+
+limits:
+  query_sharding_total_shards: 8
 ```
 
 Monitor and adjust:
@@ -484,11 +494,12 @@ Test with a specific query:
 ```bash
 # Measure query performance before sharding
 curl -w "@curl-format.txt" -s -o /dev/null \
+  -H "X-Scope-OrgID: tenant-a" \
   "http://mimir:8080/prometheus/api/v1/query" \
   --data-urlencode "query=sum(rate(http_requests_total[5m])) by (service)"
 
 # Enable sharding and compare
-# Look for the X-Query-Parallelism header in responses
+# Look for the sharded_queries field in query-frontend query statistics logs
 ```
 
 ## Common Issues and Solutions
@@ -497,7 +508,7 @@ curl -w "@curl-format.txt" -s -o /dev/null \
 
 ```yaml
 # Increase timeouts for sharded queries
-query_frontend:
+frontend:
   max_retries: 5
 
 querier:
@@ -519,8 +530,8 @@ limits:
 **Issue**: Uneven shard distribution
 
 ```yaml
-# Increase target series per shard for better distribution
-query_frontend:
+# Increase target series per shard to reduce the number of shards chosen
+frontend:
   query_sharding_target_series_per_shard: 10000
 ```
 
@@ -530,7 +541,7 @@ Query sharding transforms Mimir from a capable time series database into a high 
 
 Key takeaways:
 
-- Enable `parallelize_shardable_queries` in the query frontend
+- Enable `parallelize_shardable_queries` in the `frontend` block
 - Start with 8-16 shards and tune based on your workload
 - Use cardinality estimation to make smart sharding decisions
 - Monitor sharding effectiveness with built-in metrics
