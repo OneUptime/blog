@@ -202,6 +202,7 @@ interface BufferedEvent {
 class WindowedJoin {
   private leftBuffer: Map<string, BufferedEvent[]> = new Map();
   private rightBuffer: Map<string, BufferedEvent[]> = new Map();
+  private maxObservedTimestamp: number = 0;
   private config: WindowConfig;
 
   constructor(config: WindowConfig) {
@@ -210,9 +211,10 @@ class WindowedJoin {
 
   // Add event to left stream buffer
   processLeft(event: StreamEvent): JoinedEvent[] {
+    this.advanceTime(event.timestamp);
     this.evictExpired();  // Clean up old events first
 
-    const expiresAt = event.timestamp + this.config.windowSizeMs;
+    const expiresAt = event.timestamp + this.config.windowSizeMs + this.config.allowedLatenessMs;
     const buffered: BufferedEvent = { event, expiresAt };
 
     // Add to buffer
@@ -221,27 +223,29 @@ class WindowedJoin {
     this.leftBuffer.set(event.key, existing);
 
     // Find matches in right buffer
-    return this.findMatches(event, this.rightBuffer);
+    return this.findMatches(event, this.rightBuffer, 'left');
   }
 
   // Add event to right stream buffer
   processRight(event: StreamEvent): JoinedEvent[] {
+    this.advanceTime(event.timestamp);
     this.evictExpired();
 
-    const expiresAt = event.timestamp + this.config.windowSizeMs;
+    const expiresAt = event.timestamp + this.config.windowSizeMs + this.config.allowedLatenessMs;
     const buffered: BufferedEvent = { event, expiresAt };
 
     const existing = this.rightBuffer.get(event.key) || [];
     existing.push(buffered);
     this.rightBuffer.set(event.key, existing);
 
-    return this.findMatches(event, this.leftBuffer);
+    return this.findMatches(event, this.leftBuffer, 'right');
   }
 
   // Search buffer for matching events within window
   private findMatches(
     event: StreamEvent,
-    buffer: Map<string, BufferedEvent[]>
+    buffer: Map<string, BufferedEvent[]>,
+    eventSide: 'left' | 'right'
   ): JoinedEvent[] {
     const results: JoinedEvent[] = [];
     const matches = buffer.get(event.key) || [];
@@ -251,8 +255,8 @@ class WindowedJoin {
       const timeDiff = Math.abs(event.timestamp - buffered.event.timestamp);
       if (timeDiff <= this.config.windowSizeMs) {
         results.push({
-          leftEvent: buffered.event,
-          rightEvent: event,
+          leftEvent: eventSide === 'left' ? event : buffered.event,
+          rightEvent: eventSide === 'right' ? event : buffered.event,
           joinTimestamp: Date.now(),
         });
       }
@@ -261,12 +265,14 @@ class WindowedJoin {
     return results;
   }
 
+  private advanceTime(timestamp: number): void {
+    this.maxObservedTimestamp = Math.max(this.maxObservedTimestamp, timestamp);
+  }
+
   // Remove events that have exceeded their window
   private evictExpired(): void {
-    const now = Date.now();
-
     for (const [key, events] of this.leftBuffer) {
-      const valid = events.filter(e => e.expiresAt > now);
+      const valid = events.filter(e => e.expiresAt > this.maxObservedTimestamp);
       if (valid.length === 0) {
         this.leftBuffer.delete(key);
       } else {
@@ -276,7 +282,7 @@ class WindowedJoin {
 
     // Same for right buffer
     for (const [key, events] of this.rightBuffer) {
-      const valid = events.filter(e => e.expiresAt > now);
+      const valid = events.filter(e => e.expiresAt > this.maxObservedTimestamp);
       if (valid.length === 0) {
         this.rightBuffer.delete(key);
       } else {
