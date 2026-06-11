@@ -24,7 +24,7 @@ type Unmarshaler interface {
 }
 ```
 
-Any type implementing these interfaces will have its custom methods called instead of the default behavior. Here's a basic example:
+When marshaling a non-nil value that implements `Marshaler`, or unmarshaling into a value that implements `Unmarshaler`, Go will call the custom methods instead of the default behavior. Here's a basic example:
 
 ```go
 type Status struct {
@@ -154,12 +154,12 @@ func (u User) MarshalJSON() ([]byte, error) {
         DisplayName string `json:"display_name"`
     }{
         Alias:       Alias(u),
-        DisplayName: strings.Title(u.Name),
+        DisplayName: cases.Title(language.Und).String(u.Name),
     })
 }
 ```
 
-The `type Alias` pattern is crucial to avoid infinite recursion when calling `json.Marshal` within your custom marshaler.
+The local `type Alias User` pattern is crucial to avoid infinite recursion when calling `json.Marshal` within your custom marshaler.
 
 ## Understanding omitempty Edge Cases
 
@@ -169,8 +169,8 @@ The `omitempty` tag has specific behavior that often surprises developers:
 type Config struct {
     Enabled bool           `json:"enabled,omitempty"` // false is omitted!
     Count   int            `json:"count,omitempty"`   // 0 is omitted!
-    Items   []string       `json:"items,omitempty"`   // nil is omitted, empty slice is not
-    Data    map[string]int `json:"data,omitempty"`    // nil is omitted
+    Items   []string       `json:"items,omitempty"`   // nil and empty slices are omitted
+    Data    map[string]int `json:"data,omitempty"`    // nil and empty maps are omitted
 }
 ```
 
