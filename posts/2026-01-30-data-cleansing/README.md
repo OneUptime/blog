@@ -688,7 +688,8 @@ class DataCleansingPipeline:
         logger.info("Step 3: Removing duplicates")
         initial_count = len(df)
         deduplicator = Deduplicator(df)
-        df = deduplicator.remove_duplicates(keep='first')
+        dedupe_subset = self.config.get('dedupe_subset')
+        df = deduplicator.remove_duplicates(subset=dedupe_subset, keep='first')
         self.metrics['duplicates_removed'] = initial_count - len(df)
 
         # Step 4: Standardize data
@@ -723,7 +724,7 @@ class DataCleansingPipeline:
 
 
 # Run the complete pipeline
-pipeline = DataCleansingPipeline()
+pipeline = DataCleansingPipeline(config={'dedupe_subset': ['customer_id']})
 clean_data = pipeline.run(sample_data)
 
 # Display results
