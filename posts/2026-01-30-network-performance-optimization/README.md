@@ -137,9 +137,11 @@ function createOptimizedSocket(host, port) {
     // Prevents idle connections from being silently dropped by firewalls
     socket.setKeepAlive(true, 30000);
 
-    // Set socket timeout to 10 seconds
-    // Prevents hanging on unresponsive connections
+    // Set an inactivity timeout to 10 seconds
     socket.setTimeout(10000);
+    socket.on('timeout', () => {
+        socket.destroy();
+    });
 
     socket.connect(port, host, () => {
         console.log('Connected with optimized settings');
@@ -173,8 +175,10 @@ import httpx
 async def make_optimized_request():
     """
     Use HTTP/2 for multiplexed connections.
+    Install HTTPX with HTTP/2 support first: pip install "httpx[http2]".
     HTTP/2 allows multiple requests over a single TCP connection,
-    eliminating head-of-line blocking and reducing connection overhead.
+    reducing HTTP-level head-of-line blocking and connection overhead.
+    HTTP/3 over QUIC also avoids TCP-level head-of-line blocking.
     """
     async with httpx.AsyncClient(http2=True) as client:
         # Multiple requests share one connection
@@ -231,7 +235,7 @@ sequenceDiagram
 
     Note over App,Server: Without Pooling
     App->>Server: TCP Handshake (1 RTT)
-    App->>Server: TLS Handshake (2 RTT)
+    App->>Server: TLS Handshake (1-2 RTT)
     App->>Server: Request
     Server-->>App: Response
     App->>Server: Close Connection
@@ -287,8 +291,9 @@ class ConnectionPool:
             # Create new connection if under capacity
             with self._lock:
                 if self._created < self.pool_size:
+                    conn = self._create_connection()
                     self._created += 1
-                    return self._create_connection()
+                    return conn
             # Wait for an available connection if at capacity
             return self._pool.get(timeout=timeout)
 
@@ -310,12 +315,12 @@ class ConnectionPool:
             self.return_connection(conn)
 
 
-# Usage example
-pool = ConnectionPool('api.example.com', 443, pool_size=20)
+# Usage example for a raw TCP service
+pool = ConnectionPool('service.example.com', 9000, pool_size=20)
 
 def make_request(data):
     with pool.connection() as conn:
-        conn.send(data)
+        conn.sendall(data)
         return conn.recv(4096)
 ```
 
@@ -341,7 +346,7 @@ async def fetch_with_pooling():
         # Time to keep idle connections alive (seconds)
         keepalive_timeout=30,
 
-        # Enable TCP_NODELAY for lower latency
+        # Keep connections open for reuse after requests complete
         force_close=False,
     )
 
@@ -371,7 +376,7 @@ async def fetch_with_pooling():
 
 ### TCP Fast Open (TFO)
 
-TCP Fast Open allows data to be sent during the initial handshake, saving one round trip.
+TCP Fast Open allows data to be sent during the opening handshake, saving up to one round trip on supported paths, typically after the client has obtained a Fast Open cookie.
 
 ```python
 import socket
@@ -384,16 +389,20 @@ def create_tfo_socket():
     """
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-    # Enable TCP Fast Open (Linux)
-    # The value is the queue length for pending TFO connections
-    sock.setsockopt(socket.SOL_TCP, socket.TCP_FASTOPEN, 5)
+    # Enable client-side TCP Fast Open (Linux 4.11+)
+    # Write immediately after connect() so data can be sent with the SYN
+    # when a Fast Open cookie is available.
+    sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_FASTOPEN_CONNECT, 1)
 
     return sock
 
 
 # Enable TFO at the system level
 # Add to /etc/sysctl.conf:
-# net.ipv4.tcp_fastopen = 3  # Enable for both client and server
+# net.ipv4.tcp_fastopen = 3  # Enable client (0x1) and server (0x2) support
+#
+# For server listener sockets, use TCP_FASTOPEN before listen():
+# server_sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_FASTOPEN, 5)
 ```
 
 ### Congestion Control Algorithm Selection
@@ -410,7 +419,7 @@ sysctl net.ipv4.tcp_congestion_control
 sysctl -w net.ipv4.tcp_congestion_control=bbr
 
 # For data center networks, consider DCTCP
-# DCTCP responds to congestion signals more quickly
+# DCTCP requires ECN support and is intended for controlled data center networks
 sysctl -w net.ipv4.tcp_congestion_control=dctcp
 ```
 
@@ -430,6 +439,7 @@ def cached_resolve(hostname):
     """
     Cache DNS resolutions to avoid repeated lookups.
     Each DNS query can add 20-100ms of latency.
+    In production, expire entries based on DNS TTLs to avoid stale IPs.
     """
     try:
         answers = dns.resolver.resolve(hostname, 'A')
@@ -482,6 +492,7 @@ You cannot optimize what you cannot measure.
 ```python
 import time
 import statistics
+import socket
 from dataclasses import dataclass
 from typing import List
 
