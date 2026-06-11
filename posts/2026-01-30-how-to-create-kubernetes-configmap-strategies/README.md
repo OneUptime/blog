@@ -79,7 +79,7 @@ spec:
       name: app-config
 ```
 
-Volume-mounted ConfigMaps update automatically when the ConfigMap changes, while environment variables require a pod restart.
+Volume-mounted ConfigMaps are updated eventually when the ConfigMap changes, while environment variables require a pod restart. Containers using a ConfigMap through a `subPath` volume mount do not receive those updates, and applications still need to reread the mounted files to apply changes at runtime.
 
 ## Immutable ConfigMaps
 
@@ -95,7 +95,7 @@ data:
   STATIC_VALUE: "never-changes"
 ```
 
-Immutable ConfigMaps cannot be modified. To update the configuration, you must create a new ConfigMap with a different name and update your deployments accordingly.
+Immutable ConfigMaps cannot be modified. To update the configuration, create a new version of the ConfigMap and update your deployments accordingly, or delete and recreate the ConfigMap and restart affected pods.
 
 ## Kustomize Overlays for Environment-Specific Values
 
