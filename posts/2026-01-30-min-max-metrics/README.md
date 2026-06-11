@@ -72,7 +72,7 @@ graph TD
 
 ### 2. Histogram Boundaries
 
-Histograms track distributions of values like request latencies. The bucket boundaries define the observable range.
+Histograms track distributions of values like request latencies. The bucket boundaries define the resolution of the observable range, while the final bucket still captures values above the highest explicit boundary.
 
 ### 3. Counter Rate Extremes
 
@@ -188,7 +188,7 @@ print(f"Range: {window.get_range()}")  # Output: Range: 50.0
 
 ### Pattern 2: OpenTelemetry Min/Max with Histograms
 
-OpenTelemetry histograms automatically track min/max alongside bucket counts.
+OpenTelemetry histograms track min/max alongside bucket counts by default in the standard SDK aggregation, although the SDK aggregation configuration can disable min/max recording.
 
 ```python
 # OpenTelemetry histogram with min/max tracking
@@ -211,7 +211,7 @@ metrics.set_meter_provider(provider)
 meter = metrics.get_meter("payment-service", version="1.0.0")
 
 # Create a histogram for request latency
-# Histograms in OpenTelemetry track min, max, sum, and count automatically
+# Histograms in OpenTelemetry track min, max, sum, and count by default
 request_latency = meter.create_histogram(
     name="http.request.duration",
     description="HTTP request latency in milliseconds",
@@ -222,7 +222,7 @@ def process_request(endpoint: str) -> None:
     """
     Process a request and record its latency.
 
-    The histogram automatically captures:
+    The histogram captures:
     - Minimum value in the export interval
     - Maximum value in the export interval
     - Sum of all values (for computing mean)
@@ -249,7 +249,8 @@ def process_request(endpoint: str) -> None:
         },
     )
 
-# The exported data will include min/max for each export interval
+# With the default histogram aggregation, the exported data will include
+# min/max for each export interval.
 ```
 
 ### Pattern 3: Prometheus Recording Rules for Min/Max
@@ -266,7 +267,10 @@ groups:
       # Track maximum CPU usage over 5-minute windows
       # This captures spikes that point-in-time queries might miss
       - record: cpu:usage:max5m
-        expr: max_over_time(node_cpu_seconds_total{mode!="idle"}[5m])
+        expr: |
+          max_over_time(
+            (1 - avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[1m])))[5m:]
+          )
         labels:
           aggregation: "max"
 
@@ -280,22 +284,35 @@ groups:
       - record: http:latency:max5m
         expr: |
           max_over_time(
-            histogram_quantile(1.0, rate(http_request_duration_seconds_bucket[1m]))[5m:]
+            (
+              histogram_quantile(
+                1.0,
+                sum by (le, service) (rate(http_request_duration_seconds_bucket[1m]))
+              )
+            )[5m:]
           )
         labels:
           aggregation: "max"
 
       # Track minimum throughput (detects traffic drops)
       - record: http:requests:min_rate5m
-        expr: min_over_time(rate(http_requests_total[1m])[5m:])
+        expr: |
+          min_over_time(
+            (sum by (service) (rate(http_requests_total[1m])))[5m:]
+          )
         labels:
           aggregation: "min"
 
       # Track the range (max - min) for volatility detection
       - record: cpu:usage:range5m
         expr: |
-          max_over_time(node_cpu_seconds_total{mode!="idle"}[5m])
-          - min_over_time(node_cpu_seconds_total{mode!="idle"}[5m])
+          max_over_time(
+            (1 - avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[1m])))[5m:]
+          )
+          -
+          min_over_time(
+            (1 - avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[1m])))[5m:]
+          )
         labels:
           aggregation: "range"
 ```
@@ -585,7 +602,7 @@ class PeakDetector:
         peaks: List[Peak] = []
 
         # Check absolute threshold
-        if self.absolute_threshold and value > self.absolute_threshold:
+        if self.absolute_threshold is not None and value > self.absolute_threshold:
             peak = Peak(
                 value=value,
                 peak_type=PeakType.ABSOLUTE,
@@ -617,7 +634,10 @@ class PeakDetector:
         if value > self.window_max:
             # Only alert if significantly higher (avoid noise)
             if self.window_max != float('-inf'):
-                increase_pct = ((value - self.window_max) / self.window_max) * 100
+                if self.window_max == 0:
+                    increase_pct = float('inf') if value > 0 else 0
+                else:
+                    increase_pct = ((value - self.window_max) / self.window_max) * 100
                 if increase_pct > 10:  # 10% increase threshold
                     peak = Peak(
                         value=value,
@@ -633,7 +653,7 @@ class PeakDetector:
             self.window_max = value
 
         # Check rate of change
-        if self.roc_threshold and self.last_value is not None:
+        if self.roc_threshold is not None and self.last_value is not None:
             change = value - self.last_value
             if change > self.roc_threshold:
                 peak = Peak(
@@ -896,7 +916,12 @@ groups:
       - alert: HighMaximumLatency
         expr: |
           max_over_time(
-            histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m]))[15m:]
+            (
+              histogram_quantile(
+                0.99,
+                sum by (le, service) (rate(http_request_duration_seconds_bucket[5m]))
+              )
+            )[15m:]
           ) > 5
         for: 5m
         labels:
@@ -911,8 +936,13 @@ groups:
       # Alert on minimum throughput (traffic drop)
       - alert: TrafficDrop
         expr: |
-          min_over_time(rate(http_requests_total[5m])[15m:])
-          < 0.1 * avg_over_time(rate(http_requests_total[5m])[1h:])
+          min_over_time(
+            (sum by (service) (rate(http_requests_total[5m])))[15m:]
+          )
+          < 0.1 *
+          avg_over_time(
+            (sum by (service) (rate(http_requests_total[5m])))[1h:]
+          )
         for: 5m
         labels:
           severity: critical
@@ -927,8 +957,23 @@ groups:
       - alert: HighLatencyVolatility
         expr: |
           (
-            max_over_time(http_request_duration_seconds{quantile="0.99"}[5m])
-            - min_over_time(http_request_duration_seconds{quantile="0.99"}[5m])
+            max_over_time(
+              (
+                histogram_quantile(
+                  0.99,
+                  sum by (le, service) (rate(http_request_duration_seconds_bucket[5m]))
+                )
+              )[5m:]
+            )
+            -
+            min_over_time(
+              (
+                histogram_quantile(
+                  0.99,
+                  sum by (le, service) (rate(http_request_duration_seconds_bucket[5m]))
+                )
+              )[5m:]
+            )
           ) > 2
         for: 10m
         labels:
@@ -943,7 +988,7 @@ groups:
       # Alert on zero healthy instances
       - alert: NoHealthyInstances
         expr: |
-          min_over_time(up{job="my-service"}[1m]) == 0
+          sum(up{job="my-service"}) == 0
         for: 0m  # Immediate alert
         labels:
           severity: critical
@@ -973,7 +1018,7 @@ groups:
       - alert: SustainedCPUPeak
         expr: |
           min_over_time(
-            (1 - rate(node_cpu_seconds_total{mode="idle"}[1m]))[5m:]
+            (1 - avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[1m])))[5m:]
           ) > 0.9
         for: 5m
         labels:
@@ -1036,7 +1081,7 @@ processors:
       - include: http.request.duration
         action: update
         operations:
-          # Keep only min, max, sum, count from histograms
+          # Keep only the labels needed for this histogram's alerting and dashboards
           - action: aggregate_labels
             aggregation_type: sum
             label_set: [service, endpoint, status_code]
@@ -1104,7 +1149,7 @@ class DampenedAlert:
 
 OneUptime provides built-in support for min/max metric tracking and alerting:
 
-1. **Automatic extremes tracking**: Histograms sent via OTLP include min/max automatically
+1. **Automatic extremes tracking**: Histograms sent via OTLP include min/max when the SDK records those fields
 2. **Flexible alerting**: Create alerts on any metric aggregation including min, max, and range
 3. **SLO integration**: Define SLOs based on maximum latency or minimum availability
 4. **Incident correlation**: Link min/max alerts to traces and logs for faster debugging
