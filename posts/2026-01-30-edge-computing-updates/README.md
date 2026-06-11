@@ -168,7 +168,7 @@ class UpdateAgent:
 
     Features:
     - Atomic updates with A/B partitioning
-    - Cryptographic verification of packages
+    - Integrity verification of packages
     - Automatic rollback on failure
     - Resume support for interrupted downloads
     """
@@ -244,7 +244,11 @@ class UpdateAgent:
             existing_size = file_path.stat().st_size if file_path.exists() else 0
             headers = {}
 
-            if existing_size > 0 and existing_size < component["size"]:
+            if existing_size >= component["size"]:
+                file_path.unlink()
+                existing_size = 0
+
+            if existing_size > 0:
                 # Resume from where we left off
                 headers["Range"] = f"bytes={existing_size}-"
                 logger.info(f"Resuming download from byte {existing_size}")
@@ -258,11 +262,15 @@ class UpdateAgent:
                 )
                 response.raise_for_status()
 
-                # Open in append mode if resuming, write mode otherwise
-                mode = "ab" if existing_size > 0 else "wb"
+                # Append only when the server honors the Range request
+                if existing_size > 0 and response.status_code == 206:
+                    mode = "ab"
+                else:
+                    mode = "wb"
                 with open(file_path, mode) as f:
                     for chunk in response.iter_content(chunk_size=8192):
-                        f.write(chunk)
+                        if chunk:
+                            f.write(chunk)
 
                 logger.info(f"Downloaded {component['file']}")
 
@@ -276,7 +284,8 @@ class UpdateAgent:
     def verify_update(self, manifest: dict) -> bool:
         """
         Verify cryptographic hashes of all downloaded components.
-        Prevents installation of corrupted or tampered packages.
+        Prevents installation of corrupted packages. In production, verify the
+        manifest signature before trusting the expected hashes.
         """
         self.state = UpdateState.VERIFYING
         logger.info("Verifying update integrity")
@@ -414,6 +423,11 @@ class UpdateAgent:
         final_dir = self.install_dir / "app"
         old_dir = self.install_dir / "app_old"
 
+        # Clean up leftovers from any previous interrupted install
+        for path in [temp_dir, old_dir]:
+            if path.exists():
+                shutil.rmtree(path)
+
         # Extract to temporary location
         temp_dir.mkdir(exist_ok=True)
         subprocess.run(
@@ -421,7 +435,7 @@ class UpdateAgent:
             check=True
         )
 
-        # Atomic swap: rename is atomic on most filesystems
+        # Same-filesystem renames avoid exposing partially extracted files
         if final_dir.exists():
             final_dir.rename(old_dir)
         temp_dir.rename(final_dir)
@@ -756,8 +770,9 @@ Edge Update Controller
 Manages staged rollouts across a fleet of edge devices.
 """
 
+import hashlib
 import logging
-import time
+import math
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import Enum
@@ -912,11 +927,18 @@ class UpdateController:
         ]
 
         # Calculate how many devices to include
-        target_count = int(len(eligible) * target_percentage / 100)
+        target_count = math.ceil(len(eligible) * target_percentage / 100)
+        if eligible and target_percentage > 0:
+            target_count = max(1, target_count)
 
-        # Use hash-based selection for determinism
+        # Use stable hash-based selection for determinism
         # This ensures the same devices are selected on repeated calls
-        sorted_devices = sorted(eligible, key=lambda d: hash(d.device_id + config.version))
+        sorted_devices = sorted(
+            eligible,
+            key=lambda d: hashlib.sha256(
+                f"{d.device_id}:{config.version}".encode("utf-8")
+            ).hexdigest()
+        )
         selected = sorted_devices[:target_count]
 
         for device in selected:
@@ -1396,7 +1418,7 @@ Edge devices often have intermittent connectivity. Design for network failures.
 
 `edge-agent/resilient_downloader.py`
 
-This module implements robust download handling with automatic retries, chunk verification, and bandwidth throttling.
+This module implements robust download handling with automatic retries, final hash verification, and bandwidth throttling.
 
 ```python
 #!/usr/bin/env python3
@@ -1442,7 +1464,7 @@ class ResilientDownloader:
     Designed for unreliable edge network conditions:
     - Automatic retry with exponential backoff
     - Resume support for interrupted downloads
-    - Chunk-level verification
+    - Final hash verification
     - Bandwidth throttling option
     """
 
@@ -1987,6 +2009,8 @@ class MetricsExporter:
     def __init__(self):
         self.metrics = UpdateMetrics()
         self.update_start_times: Dict[str, float] = {}
+        self.device_versions: Dict[str, str] = {}
+        self.device_states: Dict[str, str] = {}
 
     def record_update_start(self, device_id: str) -> None:
         """Record when an update begins."""
@@ -2002,7 +2026,7 @@ class MetricsExporter:
             self.metrics.update_duration_seconds.append(duration)
             del self.update_start_times[device_id]
 
-        self.metrics.devices_by_version[version] += 1
+        self._set_device_version(device_id, version)
 
     def record_update_failure(self, device_id: str, reason: str) -> None:
         """Record a failed update."""
@@ -2017,8 +2041,25 @@ class MetricsExporter:
 
     def update_device_state(self, device_id: str, state: str) -> None:
         """Update the current state of a device."""
-        # This would typically decrement old state and increment new
+        old_state = self.device_states.get(device_id)
+        if old_state:
+            self.metrics.devices_by_state[old_state] -= 1
+            if self.metrics.devices_by_state[old_state] == 0:
+                del self.metrics.devices_by_state[old_state]
+
+        self.device_states[device_id] = state
         self.metrics.devices_by_state[state] += 1
+
+    def _set_device_version(self, device_id: str, version: str) -> None:
+        """Update the current version gauge for a device."""
+        old_version = self.device_versions.get(device_id)
+        if old_version:
+            self.metrics.devices_by_version[old_version] -= 1
+            if self.metrics.devices_by_version[old_version] == 0:
+                del self.metrics.devices_by_version[old_version]
+
+        self.device_versions[device_id] = version
+        self.metrics.devices_by_version[version] += 1
 
     def set_rollout_progress(self, progress: float) -> None:
         """Set the current rollout progress percentage."""
