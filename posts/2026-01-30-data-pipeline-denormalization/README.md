@@ -274,7 +274,7 @@ Here is a complete SQL implementation for a data warehouse denormalization pipel
 -- Partitioning by date enables efficient incremental updates and pruning
 CREATE TABLE IF NOT EXISTS analytics.orders_denormalized (
     -- Fact keys
-    order_id BIGINT PRIMARY KEY,
+    order_id BIGINT,
     order_line_id BIGINT,
 
     -- Order attributes (from fact table)
@@ -332,7 +332,9 @@ CREATE TABLE IF NOT EXISTS analytics.orders_denormalized (
     -- Metadata for pipeline management
     _extracted_at TIMESTAMP,
     _loaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    _source_system VARCHAR(50)
+    _source_system VARCHAR(50),
+
+    PRIMARY KEY (order_date, order_id, order_line_id)
 )
 PARTITION BY RANGE (order_date);
 
@@ -551,7 +553,7 @@ from pyspark.sql.types import (
     DecimalType, DateType, TimestampType, BooleanType
 )
 from datetime import datetime, timedelta
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Tuple
 import logging
 
 # Configure logging for pipeline observability
@@ -638,35 +640,35 @@ class DenormalizationPipeline:
         # Load products with category hierarchy
         products = self.spark.read.parquet(
             f"{self.config['source_path']}/products"
-        )
+        ).alias("p")
         categories = self.spark.read.parquet(
             f"{self.config['source_path']}/categories"
-        )
+        ).alias("cat")
 
         # Self-join for parent category name
         parent_categories = categories.select(
-            F.col("category_id").alias("parent_category_id"),
-            F.col("name").alias("parent_category_name")
-        )
+            F.col("cat.category_id").alias("parent_category_id"),
+            F.col("cat.name").alias("parent_category_name")
+        ).alias("parent_cat")
 
         dimensions['products'] = (
             products
             .join(categories, "category_id", "left")
             .join(
                 parent_categories,
-                categories.parent_id == parent_categories.parent_category_id,
+                F.col("cat.parent_id") == F.col("parent_cat.parent_category_id"),
                 "left"
             )
             .select(
                 F.col("product_id"),
-                F.col("products.name").alias("product_name"),
-                F.col("sku").alias("product_sku"),
-                F.col("cost").alias("product_cost"),
-                F.col("supplier_id"),
-                F.col("category_id"),
-                F.col("categories.name").alias("category_name"),
+                F.col("p.name").alias("product_name"),
+                F.col("p.sku").alias("product_sku"),
+                F.col("p.cost").alias("product_cost"),
+                F.col("p.supplier_id"),
+                F.col("cat.category_id"),
+                F.col("cat.name").alias("category_name"),
                 F.col("parent_category_name"),
-                F.col("level").alias("category_level")
+                F.col("cat.level").alias("category_level")
             )
             .cache()
         )
@@ -798,7 +800,7 @@ class DenormalizationPipeline:
             # Time dimension (broadcast join)
             .join(
                 F.broadcast(dimensions['time']),
-                orders.order_date == dimensions['time'].date_value,
+                F.col("order_date") == F.col("date_value"),
                 "left"
             )
             # Calculate derived metrics
@@ -861,7 +863,7 @@ class DenormalizationPipeline:
 
         (
             df
-            # Repartition by date for optimal file sizes (128MB target)
+            # Repartition by date to group each day's records together
             .repartition(F.col("order_date"))
             .write
             .partitionBy("order_year", "order_month")
@@ -909,9 +911,8 @@ class DenormalizationPipeline:
                 chunk_end.strftime('%Y-%m-%d')
             )
 
-            # Write chunk (use dynamic partition overwrite for incremental)
-            write_mode = "overwrite" if not incremental else "append"
-            self.write_output(chunk_df, mode=write_mode)
+            # Write chunk using dynamic partition overwrite for idempotent reruns
+            self.write_output(chunk_df, mode="overwrite")
 
             current_date = chunk_end
 
@@ -990,10 +991,11 @@ CREATE TABLE pipeline.partition_tracker (
     table_name VARCHAR(100),
     partition_key DATE,
     source_max_updated_at TIMESTAMP,
-    target_last_refreshed_at TIMESTAMP,
+    target_last_refreshed_at TIMESTAMP DEFAULT TIMESTAMP '1970-01-01 00:00:00',
     needs_refresh BOOLEAN GENERATED ALWAYS AS (
         source_max_updated_at > target_last_refreshed_at
-    ) STORED
+    ) STORED,
+    PRIMARY KEY (table_name, partition_key)
 );
 
 -- Update tracker with source changes
@@ -1021,8 +1023,9 @@ Process only changed records:
 def process_cdc_changes(
     spark: SparkSession,
     dimensions: Dict[str, DataFrame],
-    cdc_source: str
-) -> DataFrame:
+    cdc_source: str,
+    last_checkpoint: datetime
+) -> Tuple[DataFrame, DataFrame]:
     """
     Process CDC events to update denormalized table incrementally.
 
@@ -1030,9 +1033,10 @@ def process_cdc_changes(
         spark: SparkSession
         dimensions: Dimension DataFrames
         cdc_source: Path to CDC events (e.g., Debezium output)
+        last_checkpoint: Last successfully processed commit timestamp
 
     Returns:
-        DataFrame of changes to apply
+        Tuple of upsert and delete DataFrames to apply
     """
     # Read CDC events since last checkpoint
     cdc_events = (
