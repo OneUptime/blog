@@ -736,10 +736,11 @@ groups:
             ))
             /
             deriv(
-              sum(rate(container_cpu_usage_seconds_total{container!=""}[5m]))
-              /
-              sum(kube_node_status_allocatable{resource="cpu"})
-              [7d]
+              (
+                sum(rate(container_cpu_usage_seconds_total{container!=""}[5m]))
+                /
+                sum(kube_node_status_allocatable{resource="cpu"})
+              )[7d:1h]
             )
           ) / 86400
 
@@ -754,10 +755,11 @@ groups:
             ))
             /
             deriv(
-              sum(container_memory_working_set_bytes{container!=""})
-              /
-              sum(kube_node_status_allocatable{resource="memory"})
-              [7d]
+              (
+                sum(container_memory_working_set_bytes{container!=""})
+                /
+                sum(kube_node_status_allocatable{resource="memory"})
+              )[7d:1h]
             )
           ) / 86400
 ```
