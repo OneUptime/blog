@@ -209,7 +209,7 @@ FROM node:20-bookworm AS builder
 
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci --production=false
+RUN npm ci --include=dev
 
 COPY . .
 RUN npm run build
@@ -221,7 +221,7 @@ WORKDIR /app
 
 # Copy only production dependencies
 COPY package.json package-lock.json ./
-RUN npm ci --production && npm cache clean --force
+RUN npm ci --omit=dev && npm cache clean --force
 
 # Copy built assets from builder stage
 COPY --from=builder /app/dist ./dist
@@ -358,10 +358,10 @@ Fast feedback loops are critical for developer productivity. Configure your serv
 
 ```dockerfile
 # In your Python Dockerfile.dev
-CMD ["python", "-m", "watchdog", "auto-restart", "--patterns=*.py", "--", "python", "app.py"]
+CMD ["watchmedo", "auto-restart", "--pattern=*.py", "--recursive", "--", "python", "app.py"]
 
 # Or with Flask
-CMD ["flask", "run", "--host=0.0.0.0", "--reload", "--debugger"]
+CMD ["flask", "--app", "app", "run", "--host=0.0.0.0", "--debug"]
 ```
 
 ### Volume Mount Optimization
