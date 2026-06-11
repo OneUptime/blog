@@ -925,11 +925,15 @@ $$;
 -- FAST: Bulk update
 CREATE OR REPLACE PROCEDURE update_prices_fast(IN p_increase_percent NUMERIC)
 LANGUAGE plpgsql AS $$
+DECLARE
+    v_row_count INTEGER;
 BEGIN
     UPDATE products
     SET price = price * (1 + p_increase_percent / 100);
 
-    GET DIAGNOSTICS;  -- Optional: get row count
+    -- Optional: get row count
+    GET DIAGNOSTICS v_row_count = ROW_COUNT;
+    RAISE NOTICE 'Updated % rows', v_row_count;
 END;
 $$;
 ```
