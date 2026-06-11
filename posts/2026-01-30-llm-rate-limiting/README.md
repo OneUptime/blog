@@ -77,7 +77,7 @@ class LLMRateLimiter:
         self,
         tokens_per_minute: int = 100000,
         requests_per_minute: int = 100,
-        model: str = "gpt-4"
+        model: str = "gpt-5.4"
     ):
         self.tokens_per_minute = tokens_per_minute
         self.requests_per_minute = requests_per_minute
@@ -199,18 +199,18 @@ from typing import Dict, Optional
 from enum import Enum
 
 class LLMModel(Enum):
-    """LLM models with their pricing (per 1K tokens)"""
-    GPT4_TURBO = ("gpt-4-turbo", 0.01, 0.03)
-    GPT4 = ("gpt-4", 0.03, 0.06)
-    GPT35_TURBO = ("gpt-3.5-turbo", 0.0005, 0.0015)
-    CLAUDE_3_OPUS = ("claude-3-opus", 0.015, 0.075)
-    CLAUDE_3_SONNET = ("claude-3-sonnet", 0.003, 0.015)
-    CLAUDE_3_HAIKU = ("claude-3-haiku", 0.00025, 0.00125)
+    """LLM models with example pricing (per 1M tokens)"""
+    GPT55 = ("gpt-5.5", 5.00, 30.00)
+    GPT54 = ("gpt-5.4", 2.50, 15.00)
+    GPT54_MINI = ("gpt-5.4-mini", 0.75, 4.50)
+    GPT54_NANO = ("gpt-5.4-nano", 0.20, 1.25)
+    CLAUDE_OPUS_4_8 = ("claude-opus-4-8", 5.00, 25.00)
+    CLAUDE_SONNET_4_6 = ("claude-sonnet-4-6", 3.00, 15.00)
 
     def __init__(self, model_id: str, input_price: float, output_price: float):
         self.model_id = model_id
-        self.input_price = input_price    # per 1K tokens
-        self.output_price = output_price  # per 1K tokens
+        self.input_price = input_price    # per 1M tokens
+        self.output_price = output_price  # per 1M tokens
 
 @dataclass
 class CostBucket:
@@ -273,8 +273,8 @@ class CostBasedRateLimiter:
         max_output_tokens: int
     ) -> float:
         """Estimate the maximum cost of a request"""
-        input_cost = (input_tokens / 1000) * model.input_price
-        output_cost = (max_output_tokens / 1000) * model.output_price
+        input_cost = (input_tokens / 1_000_000) * model.input_price
+        output_cost = (max_output_tokens / 1_000_000) * model.output_price
         return input_cost + output_cost
 
     def check_limit(
@@ -329,8 +329,8 @@ class CostBasedRateLimiter:
         bucket = self._get_bucket(key)
 
         actual_cost = (
-            (input_tokens / 1000) * model.input_price +
-            (output_tokens / 1000) * model.output_price
+            (input_tokens / 1_000_000) * model.input_price +
+            (output_tokens / 1_000_000) * model.output_price
         )
 
         bucket.daily_cost += actual_cost
@@ -348,13 +348,13 @@ Different users often need different limits based on their subscription tier.
 flowchart LR
     subgraph Free Tier
         F1[10K tokens/day]
-        F2[GPT-3.5 only]
+        F2[Small-model access]
         F3[100 req/hour]
     end
 
     subgraph Pro Tier
         P1[100K tokens/day]
-        P2[GPT-4 access]
+        P2[Frontier model access]
         P3[1000 req/hour]
     end
 
@@ -375,7 +375,7 @@ Here's the implementation for tiered rate limiting.
 ```python
 # tiered_llm_limiter.py
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Set
+from typing import Dict, Optional, Set
 from enum import Enum
 import time
 
@@ -400,24 +400,24 @@ TIER_CONFIGS: Dict[UserTier, TierConfig] = {
         tokens_per_day=10000,
         tokens_per_minute=1000,
         requests_per_hour=100,
-        allowed_models={"gpt-3.5-turbo"},
-        max_context_length=4096,
+        allowed_models={"gpt-5.4-nano"},
+        max_context_length=400000,
         priority=1
     ),
     UserTier.PRO: TierConfig(
         tokens_per_day=100000,
         tokens_per_minute=10000,
         requests_per_hour=1000,
-        allowed_models={"gpt-3.5-turbo", "gpt-4", "gpt-4-turbo"},
-        max_context_length=8192,
+        allowed_models={"gpt-5.4-nano", "gpt-5.4-mini", "gpt-5.4"},
+        max_context_length=400000,
         priority=5
     ),
     UserTier.ENTERPRISE: TierConfig(
         tokens_per_day=1000000,
         tokens_per_minute=100000,
         requests_per_hour=10000,
-        allowed_models={"gpt-3.5-turbo", "gpt-4", "gpt-4-turbo", "gpt-4-32k"},
-        max_context_length=32768,
+        allowed_models={"gpt-5.4-nano", "gpt-5.4-mini", "gpt-5.4", "gpt-5.5"},
+        max_context_length=1050000,
         priority=10
     )
 }
@@ -562,19 +562,19 @@ Here's a complete FastAPI integration that combines token and cost limiting.
 ```python
 # fastapi_llm_limiter.py
 from fastapi import FastAPI, Request, HTTPException, Depends
-from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import List, Optional
 import openai
-import time
+from openai import AsyncOpenAI
 
 app = FastAPI()
+client = AsyncOpenAI()
 
 # Initialize limiters
 token_limiter = LLMRateLimiter(
     tokens_per_minute=100000,
     requests_per_minute=100,
-    model="gpt-4"
+    model="gpt-5.4"
 )
 
 cost_limiter = CostBasedRateLimiter(
@@ -590,7 +590,7 @@ class ChatMessage(BaseModel):
 
 class ChatRequest(BaseModel):
     messages: List[ChatMessage]
-    model: str = "gpt-4"
+    model: str = "gpt-5.4"
     max_tokens: int = 1000
     user_id: Optional[str] = None
 
@@ -615,7 +615,7 @@ async def chat_completion(
     LLM chat endpoint with comprehensive rate limiting.
     """
     # Estimate tokens for this request
-    messages_text = [m.dict() for m in chat_request.messages]
+    messages_text = [m.model_dump() for m in chat_request.messages]
     estimated_tokens = token_limiter.estimate_request_tokens(
         messages_text,
         chat_request.max_tokens
@@ -639,7 +639,13 @@ async def chat_completion(
         )
 
     # Check cost limit
-    model_enum = LLMModel.GPT4 if "gpt-4" in chat_request.model else LLMModel.GPT35_TURBO
+    model_pricing = {
+        "gpt-5.5": LLMModel.GPT55,
+        "gpt-5.4": LLMModel.GPT54,
+        "gpt-5.4-mini": LLMModel.GPT54_MINI,
+        "gpt-5.4-nano": LLMModel.GPT54_NANO,
+    }
+    model_enum = model_pricing.get(chat_request.model, LLMModel.GPT54_MINI)
     cost_check = cost_limiter.check_limit(
         user_id,
         model_enum,
@@ -677,12 +683,12 @@ async def chat_completion(
 
     # Make the actual API call
     try:
-        response = openai.ChatCompletion.create(
+        response = await client.chat.completions.create(
             model=chat_request.model,
             messages=messages_text,
-            max_tokens=chat_request.max_tokens
+            max_completion_tokens=chat_request.max_tokens
         )
-    except openai.error.RateLimitError:
+    except openai.RateLimitError:
         # Handle upstream rate limit
         raise HTTPException(
             status_code=503,
@@ -690,8 +696,8 @@ async def chat_completion(
         )
 
     # Record actual usage
-    prompt_tokens = response["usage"]["prompt_tokens"]
-    completion_tokens = response["usage"]["completion_tokens"]
+    prompt_tokens = response.usage.prompt_tokens
+    completion_tokens = response.usage.completion_tokens
     total_tokens = prompt_tokens + completion_tokens
 
     token_limiter.record_usage(user_id, prompt_tokens, completion_tokens)
@@ -699,16 +705,16 @@ async def chat_completion(
     tiered_limiter.record_usage(user_id, total_tokens)
 
     return ChatResponse(
-        content=response["choices"][0]["message"]["content"],
+        content=response.choices[0].message.content or "",
         usage={
             "prompt_tokens": prompt_tokens,
             "completion_tokens": completion_tokens,
             "total_tokens": total_tokens
         },
         rate_limit_info={
-            "tokens_remaining_minute": token_check.tokens_remaining - total_tokens,
+            "tokens_remaining_minute": max(token_limiter.tokens_per_minute - token_limiter._get_bucket(user_id).tokens_used, 0),
             "requests_remaining_minute": token_check.requests_remaining,
-            "daily_cost_remaining": f"${cost_check.daily_remaining - cost_check.estimated_cost:.4f}"
+            "daily_cost_remaining": f"${cost_limiter.daily_limit - cost_limiter._get_bucket(user_id).daily_cost:.4f}"
         }
     )
 ```
@@ -794,6 +800,8 @@ class LLMRequestQueue:
         self._processing = True
 
         while True:
+            sleep_for = 0.0
+
             async with self._lock:
                 if not self.queue:
                     self._processing = False
@@ -801,20 +809,26 @@ class LLMRequestQueue:
 
                 # Check concurrent limit
                 if self.active_requests >= self.max_concurrent:
-                    await asyncio.sleep(0.1)
-                    continue
+                    sleep_for = 0.1
 
                 # Check rate limit
-                now = time.time()
-                time_since_last = now - self.last_request_time
-                if time_since_last < self.min_interval:
-                    await asyncio.sleep(self.min_interval - time_since_last)
-                    continue
+                if sleep_for == 0:
+                    now = time.time()
+                    time_since_last = now - self.last_request_time
+                    if time_since_last < self.min_interval:
+                        sleep_for = self.min_interval - time_since_last
 
                 # Get next request
-                request = heapq.heappop(self.queue)
-                self.active_requests += 1
-                self.last_request_time = time.time()
+                if sleep_for == 0:
+                    request = heapq.heappop(self.queue)
+                    self.active_requests += 1
+                    self.last_request_time = time.time()
+                else:
+                    request = None
+
+            if request is None:
+                await asyncio.sleep(sleep_for)
+                continue
 
             # Process request
             asyncio.create_task(self._execute_request(request))
@@ -849,6 +863,9 @@ import asyncio
 import random
 from typing import Any, Callable, TypeVar
 from dataclasses import dataclass
+from openai import AsyncOpenAI
+
+async_client = AsyncOpenAI()
 
 T = TypeVar('T')
 
@@ -926,7 +943,7 @@ async def call_openai_with_retry(messages: list, model: str):
 
     async def make_request():
         # Your OpenAI call here
-        return await openai.ChatCompletion.acreate(
+        return await async_client.chat.completions.create(
             model=model,
             messages=messages
         )
