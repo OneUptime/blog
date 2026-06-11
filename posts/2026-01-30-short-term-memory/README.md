@@ -424,6 +424,7 @@ class ContextManager:
         for entry in source_buffer.entries:
             entry.importance *= 0.7  # Reduce importance of merged content
             target_buffer.entries.append(entry)
+            target_buffer._total_tokens += entry.token_count
 
         target_buffer._enforce_limits()
         del self.contexts[source]
