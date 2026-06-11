@@ -8,7 +8,7 @@ Description: Learn how to configure Linkerd opaque ports to handle non-HTTP traf
 
 ---
 
-Linkerd is a lightweight service mesh that provides observability, reliability, and security for Kubernetes applications. By default, Linkerd's proxy interprets traffic as HTTP or HTTP/2 to provide advanced features like request-level metrics and load balancing. However, not all traffic in your cluster is HTTP. Databases, message queues, and custom protocols require a different approach. This is where opaque ports come in.
+Linkerd is a lightweight service mesh that provides observability, reliability, and security for Kubernetes applications. By default, Linkerd's proxy uses protocol detection to identify HTTP, HTTP/2, and gRPC traffic so it can provide advanced features like request-level metrics and load balancing. However, not all traffic in your cluster is HTTP. Databases, message queues, and custom protocols require a different approach. This is where opaque ports come in.
 
 ## What Are Opaque Ports?
 
@@ -39,7 +39,7 @@ flowchart TB
         I --> J{Port Check}
         J -->|Opaque Port| K[Skip Detection]
         K --> L[Raw TCP Forward]
-        L --> M[mTLS Only]
+        L --> M[mTLS and TCP Metrics]
         M --> N[Target Pod]
     end
 ```
@@ -50,11 +50,11 @@ Opaque ports are essential for several use cases:
 
 ### 1. Database Connections
 
-Databases like PostgreSQL, MySQL, and MongoDB use their own wire protocols that are not HTTP compatible. Without opaque ports, Linkerd may misinterpret database traffic and cause connection failures.
+Databases like PostgreSQL, MySQL, and MongoDB use their own wire protocols that are not HTTP compatible. Without opaque ports, Linkerd may spend up to the protocol detection timeout before treating the connection as TCP, and older Linkerd versions could fail the connection.
 
 ### 2. Custom Protocols
 
-Applications using custom TCP protocols, gRPC with custom codecs, or proprietary messaging formats need opaque ports to function correctly.
+Applications using custom TCP protocols or proprietary messaging formats need opaque ports to function correctly.
 
 ### 3. TLS Passthrough
 
@@ -66,7 +66,7 @@ Systems like Redis, RabbitMQ, and Kafka use binary protocols that should be trea
 
 ## Configuring Opaque Ports
 
-Linkerd provides multiple ways to configure opaque ports, from cluster-wide defaults to pod-level annotations.
+Linkerd provides multiple ways to configure opaque ports, from cluster-wide defaults to pod-level annotations. For normal Service-to-Service traffic, prefer setting the Service port's `appProtocol` to `linkerd.io/opaque`; use `config.linkerd.io/opaque-ports` when `appProtocol` cannot apply, such as direct pod traffic, headless Services, unmeshed clients, or matching Service and pod annotations.
 
 ### Pod-Level Configuration
 
@@ -105,7 +105,7 @@ spec:
 
 ### Service-Level Configuration
 
-You can also configure opaque ports at the Service level. This is useful when you want all traffic to a service to be treated as opaque, regardless of which pods are sending the traffic.
+You can also configure opaque ports at the Service level. This is useful when you want traffic sent through that Service port to be treated as opaque.
 
 ```yaml
 # Service configuration for a PostgreSQL database
@@ -124,6 +124,7 @@ spec:
   ports:
     - name: postgres
       protocol: TCP
+      appProtocol: linkerd.io/opaque
       port: 5432        # Service port
       targetPort: 5432  # Container port
   type: ClusterIP
@@ -131,7 +132,7 @@ spec:
 
 ### Namespace-Level Configuration
 
-For namespaces that contain mostly non-HTTP workloads, you can set opaque ports at the namespace level. All pods in the namespace will inherit this configuration.
+For namespaces that contain mostly non-HTTP workloads, you can set opaque ports at the namespace level. All pods in the namespace will inherit this configuration unless a workload overrides it. Multiple ports are comma-separated, and the values replace Linkerd's default opaque port list rather than adding to it.
 
 ```yaml
 # Namespace configuration for database workloads
@@ -150,12 +151,13 @@ Linkerd also supports a Server resource that provides fine-grained control over 
 
 ```yaml
 # Server resource for fine-grained traffic control
-apiVersion: policy.linkerd.io/v1beta2
+apiVersion: policy.linkerd.io/v1beta1
 kind: Server
 metadata:
   name: postgres-server
   namespace: database
 spec:
+  accessPolicy: audit
   podSelector:
     matchLabels:
       app: postgres
@@ -232,6 +234,7 @@ spec:
     app: postgres
   ports:
     - name: postgres
+      appProtocol: linkerd.io/opaque
       port: 5432
       targetPort: 5432
   clusterIP: None  # Headless service for StatefulSet
@@ -239,7 +242,7 @@ spec:
 
 ## Application Connecting to the Database
 
-When your application connects to the database, ensure the client-side also has proper opaque port configuration:
+When your application connects to the database through a Service, configure the destination Service and database pods as opaque. The client workload does not need its own `config.linkerd.io/opaque-ports` annotation just because it opens an outbound connection to port 5432:
 
 ```yaml
 # Application deployment connecting to PostgreSQL
@@ -259,8 +262,6 @@ spec:
         app: backend-api
       annotations:
         linkerd.io/inject: enabled
-        # Configure opaque ports for outbound database connections
-        config.linkerd.io/opaque-ports: "5432"
     spec:
       containers:
         - name: api
@@ -301,7 +302,7 @@ sequenceDiagram
 
     Note over Client,Server: HTTP Traffic Path
     Client->>Proxy: TCP Connection
-    Proxy->>Proxy: Protocol Detection (5-10ms)
+    Proxy->>Proxy: Protocol Detection
     Proxy->>Proxy: HTTP Parsing
     Proxy->>Proxy: Header Inspection
     Proxy->>Server: Forward Request
@@ -311,7 +312,7 @@ sequenceDiagram
 
     Note over Client,Server: Opaque Port Path
     Client->>Proxy: TCP Connection
-    Proxy->>Proxy: Port Check (< 1ms)
+    Proxy->>Proxy: Port Check
     Proxy->>Server: Raw TCP Forward
     Server->>Proxy: Raw TCP Response
     Proxy->>Client: Forward Response
@@ -322,15 +323,15 @@ sequenceDiagram
 After deploying your configuration, verify that opaque ports are working correctly:
 
 ```bash
-# Check the Linkerd proxy configuration for a specific pod
-# This shows which ports are configured as opaque
-linkerd diagnostics proxy-metrics -n database deploy/postgres | grep opaque
+# Confirm TCP metrics are being emitted for a specific pod
+linkerd diagnostics proxy-metrics -n database sts/postgres | grep '^tcp_'
 
-# Verify the pod annotations
+# Verify the pod and Service configuration
 kubectl get pod -n database -l app=postgres -o jsonpath='{.items[0].metadata.annotations}'
+kubectl get service -n database postgres -o jsonpath='{.metadata.annotations}{"\n"}{.spec.ports[0].appProtocol}'
 
-# Check Linkerd tap for traffic flow (will show TCP instead of HTTP)
-linkerd tap -n database deploy/postgres --to deploy/backend-api
+# Linkerd Viz tap shows HTTP/gRPC requests; opaque traffic is visible through TCP metrics instead
+linkerd viz stat -n database sts/postgres
 ```
 
 ## Common Issues and Solutions
@@ -352,9 +353,9 @@ If you see protocol detection errors in Linkerd proxy logs:
 
 ```bash
 # Check proxy logs for errors
-kubectl logs -n database deploy/postgres -c linkerd-proxy | grep -i error
+kubectl logs -n database statefulset/postgres -c linkerd-proxy | grep -i error
 
-# Solution: Ensure both client and server have opaque port annotations
+# Solution: Ensure the destination pods and any Services targeting those ports are marked opaque
 ```
 
 ### Issue: Missing Annotations After Injection
@@ -363,7 +364,7 @@ If annotations are not being applied correctly:
 
 ```bash
 # Restart the pods to pick up new annotations
-kubectl rollout restart -n database deployment/postgres
+kubectl rollout restart -n database statefulset/postgres
 
 # Verify annotations are present
 kubectl describe pod -n database -l app=postgres | grep opaque
@@ -371,7 +372,7 @@ kubectl describe pod -n database -l app=postgres | grep opaque
 
 ## Best Practices
 
-1. **Always annotate both sides**: Configure opaque ports on both the client and server pods for consistent behavior
+1. **Keep Service and pod configuration consistent**: If a pod port is marked opaque, make sure any Service targeting that port is also marked opaque or uses `appProtocol: linkerd.io/opaque`
 
 2. **Use namespace defaults for database namespaces**: If a namespace contains only database workloads, set opaque ports at the namespace level
 
@@ -385,7 +386,7 @@ kubectl describe pod -n database -l app=postgres | grep opaque
 
 Linkerd opaque ports provide a simple but powerful way to handle non-HTTP traffic in your service mesh. By marking specific ports as opaque, you can safely run databases, message queues, and custom protocols alongside HTTP services while still benefiting from Linkerd's mTLS encryption and connection-level observability.
 
-Remember to configure opaque ports on both client and server sides, and always verify your configuration is working as expected before deploying to production.
+Remember to configure opaque ports on the destination pods and Services consistently, and always verify your configuration is working as expected before deploying to production.
 
 **Related Reading:**
 
