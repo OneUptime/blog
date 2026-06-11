@@ -39,7 +39,7 @@ sequenceDiagram
     participant AuditLog
     participant UserSession
 
-    Admin->>Server: POST /api/impersonate/{userId}
+    Admin->>Server: POST /api/impersonate/users/{userId}
     Server->>Server: Verify admin permissions
     Server->>TokenService: Generate impersonation token
     TokenService->>TokenService: Embed original admin ID
@@ -48,7 +48,7 @@ sequenceDiagram
     Server-->>Admin: Return impersonation token
     Admin->>UserSession: Use token for requests
     UserSession->>Server: API requests (as impersonated user)
-    Server->>Server: Validate token + check impersonation flag
+    Server->>Server: Validate token + active session
     Server-->>UserSession: Response (user's view)
 ```
 
@@ -71,16 +71,12 @@ CREATE TABLE impersonation_sessions (
     ended_at TIMESTAMP WITH TIME ZONE,
     ip_address INET,
     user_agent TEXT,
-    is_active BOOLEAN DEFAULT TRUE,
-
-    -- Prevent the same admin from having multiple active sessions
-    CONSTRAINT unique_active_session
-        UNIQUE (admin_user_id, is_active)
-        WHERE is_active = TRUE
+    is_active BOOLEAN DEFAULT TRUE
 );
 
--- Index for quick lookups of active sessions
-CREATE INDEX idx_impersonation_active
+-- Prevent the same admin from having multiple active sessions
+-- and support quick lookups of active sessions
+CREATE UNIQUE INDEX unique_active_session
     ON impersonation_sessions(admin_user_id)
     WHERE is_active = TRUE;
 ```
@@ -89,7 +85,7 @@ CREATE INDEX idx_impersonation_active
 
 ## Token Structure
 
-The impersonation token must encode several pieces of information. Using JWT (JSON Web Tokens) provides a standard format that can be verified without database lookups:
+The impersonation token must encode several pieces of information. Using JWT (JSON Web Tokens) provides a standard format that can be cryptographically verified before checking the backing session record:
 
 ```typescript
 // types/impersonation.ts
@@ -130,10 +126,15 @@ import { requireAdmin } from '../middleware/auth';
 
 const router = express.Router();
 
-router.post('/impersonate/:userId', requireAdmin, async (req, res) => {
+router.post('/impersonate/users/:userId', requireAdmin, async (req, res) => {
     const adminId = req.user.id;
     const targetUserId = req.params.userId;
     const { reason } = req.body;
+    const jwtSecret = process.env.JWT_SECRET;
+
+    if (!jwtSecret) {
+        return res.status(500).json({ error: 'JWT secret not configured' });
+    }
 
     // Prevent self-impersonation
     if (adminId === targetUserId) {
@@ -175,7 +176,7 @@ router.post('/impersonate/:userId', requireAdmin, async (req, res) => {
             sessionId: sessionId,
             isImpersonation: true,
         },
-        process.env.JWT_SECRET,
+        jwtSecret,
         { expiresIn: '1h' }
     );
 
@@ -196,6 +197,8 @@ router.post('/impersonate/:userId', requireAdmin, async (req, res) => {
 export default router;
 ```
 
+Using `/impersonate/users/:userId` keeps the start route separate from `/impersonate/end`, so the static end route cannot be mistaken for a `userId` route parameter.
+
 ---
 
 ## Authentication Middleware
@@ -204,11 +207,19 @@ Your authentication middleware needs to handle both regular tokens and impersona
 
 ```typescript
 // middleware/auth.ts
-import jwt from 'jsonwebtoken';
+import jwt, { JwtPayload } from 'jsonwebtoken';
 import { Request, Response, NextFunction } from 'express';
+import { db } from '../database';
+
+interface AppJwtPayload extends JwtPayload {
+    sub: string;
+    adminId?: string;
+    sessionId?: string;
+    isImpersonation?: boolean;
+}
 
 interface AuthenticatedRequest extends Request {
-    user: {
+    user?: {
         id: string;
         isImpersonating: boolean;
         impersonatedBy?: string;
@@ -216,23 +227,55 @@ interface AuthenticatedRequest extends Request {
     };
 }
 
-export function authenticateToken(
+function isAppJwtPayload(decoded: string | JwtPayload): decoded is AppJwtPayload {
+    return typeof decoded !== 'string' && typeof decoded.sub === 'string';
+}
+
+export async function authenticateToken(
     req: AuthenticatedRequest,
     res: Response,
     next: NextFunction
 ) {
     const authHeader = req.headers.authorization;
     const token = authHeader?.split(' ')[1];
+    const jwtSecret = process.env.JWT_SECRET;
 
     if (!token) {
         return res.status(401).json({ error: 'No token provided' });
     }
 
+    if (!jwtSecret) {
+        return res.status(500).json({ error: 'JWT secret not configured' });
+    }
+
     try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const decoded = jwt.verify(token, jwtSecret);
+
+        if (!isAppJwtPayload(decoded)) {
+            return res.status(403).json({ error: 'Invalid token payload' });
+        }
 
         // Check if this is an impersonation token
         if (decoded.isImpersonation) {
+            if (
+                typeof decoded.adminId !== 'string' ||
+                typeof decoded.sessionId !== 'string'
+            ) {
+                return res.status(403).json({ error: 'Invalid impersonation token' });
+            }
+
+            const session = await db.impersonationSessions.findActiveById(
+                decoded.sessionId
+            );
+
+            if (
+                !session ||
+                session.adminUserId !== decoded.adminId ||
+                session.targetUserId !== decoded.sub
+            ) {
+                return res.status(403).json({ error: 'Impersonation session ended' });
+            }
+
             req.user = {
                 id: decoded.sub,              // Effective user ID
                 isImpersonating: true,
@@ -263,7 +306,7 @@ Users should always have a clear way to exit impersonation mode. This endpoint t
 // routes/impersonation.ts
 router.post('/impersonate/end', authenticateToken, async (req, res) => {
     // Only allow ending if currently impersonating
-    if (!req.user.isImpersonating) {
+    if (!req.user?.isImpersonating) {
         return res.status(400).json({
             error: 'Not currently impersonating'
         });
@@ -271,6 +314,15 @@ router.post('/impersonate/end', authenticateToken, async (req, res) => {
 
     const sessionId = req.user.sessionId;
     const adminId = req.user.impersonatedBy;
+    const jwtSecret = process.env.JWT_SECRET;
+
+    if (!sessionId || !adminId) {
+        return res.status(403).json({ error: 'Invalid impersonation context' });
+    }
+
+    if (!jwtSecret) {
+        return res.status(500).json({ error: 'JWT secret not configured' });
+    }
 
     // Mark the session as ended
     await db.impersonationSessions.update(sessionId, {
@@ -281,7 +333,7 @@ router.post('/impersonate/end', authenticateToken, async (req, res) => {
     // Generate a fresh token for the admin
     const adminToken = jwt.sign(
         { sub: adminId },
-        process.env.JWT_SECRET,
+        jwtSecret,
         { expiresIn: '24h' }
     );
 
@@ -349,8 +401,17 @@ Every action taken during impersonation must be logged with both identities. Thi
 import { Request, Response, NextFunction } from 'express';
 import { db } from '../database';
 
+interface AuditRequest extends Request {
+    user?: {
+        id: string;
+        isImpersonating: boolean;
+        impersonatedBy?: string;
+        sessionId?: string;
+    };
+}
+
 export function auditLog(
-    req: Request,
+    req: AuditRequest,
     res: Response,
     next: NextFunction
 ) {
