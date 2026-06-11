@@ -46,7 +46,7 @@ flowchart TB
 
 Before working with Server resources, ensure:
 
-- Linkerd 2.12 or later is installed (policy resources were introduced in 2.11 and stabilized in 2.12)
+- Linkerd 2.16 or later is installed for the `v1beta3` examples shown here
 - Your pods are meshed (have the linkerd-proxy injected)
 - You have the `linkerd` CLI installed
 
@@ -69,7 +69,7 @@ kubectl get pods -n my-app -o jsonpath='{.items[*].spec.containers[*].name}' | t
 The simplest Server resource targets a port on selected pods:
 
 ```yaml
-apiVersion: policy.linkerd.io/v1beta2
+apiVersion: policy.linkerd.io/v1beta3
 kind: Server
 metadata:
   name: api-server
@@ -86,6 +86,7 @@ This Server:
 - Selects all pods with label `app: api` in the `my-app` namespace
 - Covers port 8080
 - Tells the proxy to expect HTTP/2 traffic (which includes gRPC)
+- Uses the default `accessPolicy` of `deny`, so clients must be explicitly authorized before they can access this port
 
 Apply it:
 
@@ -106,6 +107,7 @@ flowchart TB
     Spec --> PodSelector[podSelector]
     Spec --> Port[port]
     Spec --> ProxyProtocol[proxyProtocol]
+    Spec --> AccessPolicy[accessPolicy]
 
     PodSelector --> MatchLabels[matchLabels]
     PodSelector --> MatchExpressions[matchExpressions]
@@ -196,11 +198,11 @@ The `proxyProtocol` field tells Linkerd what kind of traffic to expect. This aff
 
 | Protocol | Use Case | Features Available |
 |----------|----------|-------------------|
-| `HTTP/1` | REST APIs, web servers | Per-route metrics, retries, timeouts |
-| `HTTP/2` | gRPC, HTTP/2 services | Per-route metrics, retries, timeouts, multiplexing |
-| `gRPC` | gRPC services (alias for HTTP/2) | Same as HTTP/2 |
-| `opaque` | TCP, databases, non-HTTP | mTLS only, no L7 features |
-| `TLS` | TLS-encrypted non-HTTP | Passthrough, no mTLS |
+| `HTTP/1` | REST APIs, web servers | HTTP metrics and HTTPRoute-based policy, retries, and timeouts |
+| `HTTP/2` | gRPC, HTTP/2 services | HTTP metrics and route-based policy, retries, timeouts, and multiplexing |
+| `gRPC` | gRPC services (alias for HTTP/2) | Same as HTTP/2, with GRPCRoute support |
+| `opaque` | TCP, databases, non-HTTP | mTLS between proxies, no L7 features |
+| `TLS` | TLS-encrypted non-HTTP | TLS detection, mTLS between proxies, no L7 features |
 
 ```yaml
 # HTTP/1 REST API
@@ -229,7 +231,7 @@ spec:
 ### REST API Service
 
 ```yaml
-apiVersion: policy.linkerd.io/v1beta2
+apiVersion: policy.linkerd.io/v1beta3
 kind: Server
 metadata:
   name: users-api
@@ -247,7 +249,7 @@ spec:
 ### gRPC Microservice
 
 ```yaml
-apiVersion: policy.linkerd.io/v1beta2
+apiVersion: policy.linkerd.io/v1beta3
 kind: Server
 metadata:
   name: inventory-grpc
@@ -264,7 +266,7 @@ spec:
 ### Database Proxy
 
 ```yaml
-apiVersion: policy.linkerd.io/v1beta2
+apiVersion: policy.linkerd.io/v1beta3
 kind: Server
 metadata:
   name: postgres-server
@@ -282,7 +284,7 @@ spec:
 For services that expose multiple ports, create a Server for each:
 
 ```yaml
-apiVersion: policy.linkerd.io/v1beta2
+apiVersion: policy.linkerd.io/v1beta3
 kind: Server
 metadata:
   name: api-http
@@ -294,7 +296,7 @@ spec:
   port: 8080
   proxyProtocol: HTTP/1
 ---
-apiVersion: policy.linkerd.io/v1beta2
+apiVersion: policy.linkerd.io/v1beta3
 kind: Server
 metadata:
   name: api-metrics
@@ -306,7 +308,7 @@ spec:
   port: 9090
   proxyProtocol: HTTP/1
 ---
-apiVersion: policy.linkerd.io/v1beta2
+apiVersion: policy.linkerd.io/v1beta3
 kind: Server
 metadata:
   name: api-grpc
@@ -321,7 +323,7 @@ spec:
 
 ## Combining Servers with Authorization
 
-Servers alone do not restrict traffic. They define endpoints. To control access, pair them with ServerAuthorization or AuthorizationPolicy resources.
+When a Server is present, Linkerd denies traffic to that port unless it is explicitly authorized or the Server uses audit mode. To control access, pair Servers with ServerAuthorization or AuthorizationPolicy resources.
 
 ```mermaid
 flowchart LR
@@ -330,16 +332,16 @@ flowchart LR
         P --> S[Server]
         S --> A{Authorization<br/>Check}
         A -->|Allowed| T[Target Pod]
-        A -->|Denied| R[403 Forbidden]
+        A -->|Denied| R[HTTP 403 or TCP denial]
     end
 ```
 
-### ServerAuthorization (Deprecated but Common)
+### ServerAuthorization (Older but Common)
 
-The older ServerAuthorization resource references a Server by name:
+The older ServerAuthorization resource references a Server by name. AuthorizationPolicy is the preferred, more flexible alternative:
 
 ```yaml
-apiVersion: policy.linkerd.io/v1beta2
+apiVersion: policy.linkerd.io/v1beta3
 kind: Server
 metadata:
   name: api-server
@@ -371,7 +373,7 @@ spec:
 The newer AuthorizationPolicy uses targetRef to select Servers:
 
 ```yaml
-apiVersion: policy.linkerd.io/v1beta2
+apiVersion: policy.linkerd.io/v1beta3
 kind: Server
 metadata:
   name: api-server
@@ -416,7 +418,7 @@ When no Server matches a port, Linkerd applies the default policy. Configure it 
 
 ```bash
 # Set default policy during installation
-linkerd install --set policyController.defaultAllowPolicy=all-authenticated | kubectl apply -f -
+linkerd install --set proxy.defaultInboundPolicy=all-authenticated | kubectl apply -f -
 
 # Available policies:
 # - all-unauthenticated: Allow all traffic (default)
@@ -424,6 +426,7 @@ linkerd install --set policyController.defaultAllowPolicy=all-authenticated | ku
 # - cluster-unauthenticated: Allow from cluster only
 # - cluster-authenticated: Require mTLS from cluster
 # - deny: Deny all traffic without explicit authorization
+# - audit: Allow traffic, but log and report requests that would be denied
 ```
 
 ### Per-Namespace Default
@@ -464,7 +467,7 @@ Deny all traffic by default, then explicitly allow specific clients:
 
 ```yaml
 # Server for the API
-apiVersion: policy.linkerd.io/v1beta2
+apiVersion: policy.linkerd.io/v1beta3
 kind: Server
 metadata:
   name: orders-api
@@ -541,7 +544,7 @@ spec:
 Allow only Prometheus to scrape metrics:
 
 ```yaml
-apiVersion: policy.linkerd.io/v1beta2
+apiVersion: policy.linkerd.io/v1beta3
 kind: Server
 metadata:
   name: app-metrics
@@ -583,7 +586,7 @@ spec:
 Restrict database access to specific backend services:
 
 ```yaml
-apiVersion: policy.linkerd.io/v1beta2
+apiVersion: policy.linkerd.io/v1beta3
 kind: Server
 metadata:
   name: postgres
@@ -628,7 +631,7 @@ Allow health checks from kubelet (unauthenticated) while protecting other endpoi
 
 ```yaml
 # Health check port - allow unauthenticated
-apiVersion: policy.linkerd.io/v1beta2
+apiVersion: policy.linkerd.io/v1beta3
 kind: Server
 metadata:
   name: health-server
@@ -666,7 +669,7 @@ spec:
     - cidr: "::/0"
 ---
 # API port - require authentication
-apiVersion: policy.linkerd.io/v1beta2
+apiVersion: policy.linkerd.io/v1beta3
 kind: Server
 metadata:
   name: api-server
@@ -713,9 +716,9 @@ kubectl get pods -n my-app -l app=api
 
 ```bash
 # Check inbound policy for a pod
-linkerd diagnostics policy -n my-app pod/api-xxxxx-yyyyy
+linkerd diagnostics policy -n my-app pod/api-xxxxx-yyyyy 8080
 
-# Sample output shows which Servers and authorizations apply
+# Sample output shows which Servers and authorizations apply on that port
 ```
 
 ### Test Authorization
@@ -734,8 +737,9 @@ kubectl exec -it deploy/debug -n my-app -- curl http://api:8080/health
 # View proxy logs for policy decisions
 kubectl logs deploy/api -n my-app -c linkerd-proxy | grep -i policy
 
-# Enable debug logging temporarily
-kubectl annotate pod api-xxxxx-yyyyy -n my-app config.linkerd.io/proxy-log-level=linkerd=debug,info
+# Enable debug logging by annotating the pod template and restarting the workload
+kubectl patch deploy/api -n my-app -p '{"spec":{"template":{"metadata":{"annotations":{"config.linkerd.io/proxy-log-level":"warn,linkerd2_proxy=info,linkerd=debug"}}}}}'
+kubectl rollout restart deploy/api -n my-app
 ```
 
 ### Common Issues
@@ -752,13 +756,13 @@ kubectl annotate pod api-xxxxx-yyyyy -n my-app config.linkerd.io/proxy-log-level
 - Use `opaque` for databases and non-HTTP TCP
 
 **Policies not taking effect:**
-- Restart pods after creating Servers
+- Restart pods after changing default policy annotations
 - Verify pods have the linkerd-proxy container
 - Check linkerd-proxy logs for errors
 
 ## Best Practices
 
-1. **Start with monitoring, not enforcement.** Create Servers without restrictive authorization first. Use `linkerd viz tap` to understand traffic patterns before adding restrictions.
+1. **Start with audit mode, not enforcement.** Set `accessPolicy: audit` while introducing policies. Use `linkerd viz tap` to understand traffic patterns before switching to deny-by-default enforcement.
 
 2. **Use named ports consistently.** Define port names in your container specs and reference them in Servers. This makes configurations more readable and resilient to port number changes.
 
