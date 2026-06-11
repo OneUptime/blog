@@ -12,11 +12,11 @@ MongoDB shines when the data your application needs most fits in RAM - the **wor
 
 ## What Is the Working Set Problem?
 
-MongoDB's WiredTiger storage engine keeps recently accessed data and indexes in a cache (default: 50% of RAM minus 1GB). When queries pull documents larger than necessary, you waste cache space on cold data and force the engine to evict hot documents.
+MongoDB's WiredTiger storage engine keeps recently accessed data and indexes in a cache (default: the larger of 50% of RAM minus 1GB, or 256MB). When queries pull documents larger than necessary, you waste cache space on cold data and force the engine to evict hot documents.
 
 Common symptoms:
 
-- **Page faults spike** during normal traffic - not just batch jobs.
+- **Disk reads and cache misses spike** during normal traffic - not just batch jobs.
 - **Latency percentiles diverge** - p50 stays low, but p95/p99 climb as cache misses increase.
 - **Index scans slow down** even though indexes fit in RAM - the documents they point to do not.
 
@@ -72,7 +72,7 @@ Keep the primary document small and predictable. Use a fixed-size array for the 
 ```javascript
 // Primary document - lives in "users" collection
 {
-  _id: ObjectId("..."),
+  _id: ObjectId("64b7f3a6e1f2a9c8d7e6b501"),
   user_id: "u_12345",
   email: "alice@example.com",
   name: "Alice Chen",
@@ -94,7 +94,7 @@ Keep the primary document small and predictable. Use a fixed-size array for the 
   last_activity: ISODate("2026-01-28T14:30:00Z"),
 
   // Reference to detail document
-  detail_ref: ObjectId("...detail_id...")
+  detail_ref: ObjectId("64b7f3a6e1f2a9c8d7e6b601")
 }
 ```
 
@@ -105,13 +105,13 @@ The detail collection stores the full dataset. Link it back to the primary docum
 ```javascript
 // Detail document - lives in "user_details" collection
 {
-  _id: ObjectId("...detail_id..."),
+  _id: ObjectId("64b7f3a6e1f2a9c8d7e6b601"),
   user_id: "u_12345",
 
   // Full order history
   order_history: [
-    { order_id: "ord_999", total: 149.99, date: ISODate("2026-01-28"), items: [...] },
-    { order_id: "ord_998", total: 89.50, date: ISODate("2026-01-25"), items: [...] },
+    { order_id: "ord_999", total: 149.99, date: ISODate("2026-01-28"), items: [{ sku: "sku_123", qty: 1 }] },
+    { order_id: "ord_998", total: 89.50, date: ISODate("2026-01-25"), items: [{ sku: "sku_456", qty: 2 }] },
     // ... 125 more orders
   ],
 
@@ -123,9 +123,9 @@ The detail collection stores the full dataset. Link it back to the primary docum
   ],
 
   // Extended profile data rarely needed
-  preferences: { ... },
-  notification_history: [ ... ],
-  audit_trail: [ ... ]
+  preferences: { locale: "en-US", marketing_opt_in: true },
+  notification_history: [],
+  audit_trail: []
 }
 ```
 
@@ -215,7 +215,7 @@ sequenceDiagram
 // Change stream worker
 const changeStream = db.user_details.watch([
   { $match: { operationType: { $in: ["insert", "update"] } } }
-]);
+], { fullDocument: "updateLookup" });
 
 changeStream.on("change", async (change) => {
   const userId = change.fullDocument?.user_id;
@@ -273,9 +273,15 @@ async function recomputeUserSummaries() {
       }
     },
     {
+      $set: { user_id: "$_id" }
+    },
+    {
+      $unset: "_id"
+    },
+    {
       $merge: {
         into: "users",
-        on: "_id",
+        on: "user_id",
         whenMatched: "merge",
         whenNotMatched: "discard"
       }
@@ -352,10 +358,10 @@ flowchart TD
 Even with the subset pattern, always project only the fields you need.
 
 ```javascript
-// Bad - pulls entire document into cache
+// Bad - returns the entire document to the application
 const user = await db.users.findOne({ user_id: "u_12345" });
 
-// Good - pulls only needed fields
+// Good - returns only needed fields
 const user = await db.users.findOne(
   { user_id: "u_12345" },
   { projection: { name: 1, email: 1, recent_orders: 1 } }
@@ -384,12 +390,12 @@ const user = await db.users.findOne(
 
 ### 3. TTL Indexes for Automatic Cleanup
 
-Prevent detail documents from growing unbounded.
+TTL indexes delete whole documents, not individual array elements. Use them on bucketed detail collections so old buckets expire automatically.
 
 ```javascript
-// Automatically delete activity log entries older than 90 days
-db.user_details.createIndex(
-  { "activity_log.timestamp": 1 },
+// Automatically delete activity buckets older than 90 days
+db.activity_buckets.createIndex(
+  { bucket_date: 1 },
   { expireAfterSeconds: 90 * 24 * 60 * 60 }
 );
 ```
@@ -401,7 +407,7 @@ For time-based data, combine subset pattern with bucketing.
 ```javascript
 // Instead of one massive activity_log array, bucket by day
 {
-  _id: ObjectId("..."),
+  _id: ObjectId("64b7f3a6e1f2a9c8d7e6b701"),
   user_id: "u_12345",
   bucket_date: ISODate("2026-01-28T00:00:00Z"),
   activities: [
@@ -436,11 +442,10 @@ const metrics = {
     .executionStats.executionTimeMillis,
 
   // Cache efficiency
-  cacheHitRatio: (() => {
+  cacheFillRatio: (() => {
     const stats = db.serverStatus().wiredTiger.cache;
-    const hits = stats["pages read into cache"];
-    const misses = stats["pages read into cache requiring lookaside entries"];
-    return hits / (hits + misses);
+    return stats["bytes currently in the cache"] /
+      stats["maximum bytes configured"];
   })(),
 
   // Document sizes
@@ -455,8 +460,8 @@ const metrics = {
 Target outcomes:
 
 - Primary document size drops 80-90% compared to the monolithic design.
-- Cache hit ratio improves from sub-90% to 95%+.
-- p99 query latency drops as page faults decrease.
+- Cache fill ratio and bytes read into cache decrease on hot paths.
+- p99 query latency drops as disk reads decrease.
 
 ---
 
