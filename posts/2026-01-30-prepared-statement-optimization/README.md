@@ -70,17 +70,18 @@ const pool = new Pool({
   idleTimeoutMillis: 30000
 });
 
-// The pg driver automatically prepares statements when you use
-// parameterized queries. Each unique query text gets prepared once
-// per connection and cached for reuse.
+// The pg driver only caches prepared statements when you supply a
+// `name`. Without a name, each call uses an unnamed prepared statement
+// that the server discards after execution. Provide a `name` to get
+// per-connection plan caching for hot queries.
 
 async function getUsersByStatus(status, limit) {
-  // This query will be prepared on first execution
-  // Subsequent calls reuse the prepared statement
+  // The `name` enables server-side caching for this query plan
+  // on the connection it runs on.
   const query = {
     text: 'SELECT id, email, created_at FROM users WHERE status = $1 LIMIT $2',
     values: [status, limit],
-    // Optional: name the prepared statement for explicit caching
+    // Required for per-connection plan caching
     name: 'get-users-by-status'
   };
 
@@ -108,8 +109,11 @@ def get_orders_by_customer(customer_id, status):
     conn = connection_pool.getconn()
     try:
         with conn.cursor() as cur:
-            # psycopg2 uses server-side prepared statements automatically
-            # when you use parameterized queries with %s placeholders
+            # psycopg2 performs client-side parameter substitution with
+            # %s placeholders (it does not auto-use server-side PREPARE).
+            # For server-side prepared statements, issue PREPARE/EXECUTE
+            # explicitly, or use psycopg3 which prepares automatically
+            # after a configurable number of executions.
             cur.execute(
                 """
                 SELECT order_id, total, created_at
@@ -141,7 +145,10 @@ public class OrderRepository {
 
     public OrderRepository() {
         HikariConfig config = new HikariConfig();
-        config.setJdbcUrl("jdbc:postgresql://localhost/myapp");
+        // These cache properties are MySQL Connector/J specific.
+        // For PostgreSQL JDBC, use prepareThreshold,
+        // preparedStatementCacheQueries, and preparedStatementCacheSizeMiB.
+        config.setJdbcUrl("jdbc:mysql://localhost/myapp");
         config.setMaximumPoolSize(20);
         // Enable prepared statement caching
         config.addDataSourceProperty("prepStmtCacheSize", "250");
@@ -193,24 +200,41 @@ flowchart TD
     H --> I[Return Results]
 ```
 
-**HikariCP Configuration (Java):**
+**HikariCP Configuration (Java, MySQL Connector/J):**
 
 ```java
 HikariConfig config = new HikariConfig();
-config.setJdbcUrl("jdbc:postgresql://localhost/myapp");
+config.setJdbcUrl("jdbc:mysql://localhost/myapp");
 
-// Statement cache settings
+// Statement cache settings (MySQL Connector/J specific)
 // Number of prepared statements to cache per connection
 config.addDataSourceProperty("prepStmtCacheSize", "250");
 
 // Maximum length of SQL that can be cached
 config.addDataSourceProperty("prepStmtCacheSqlLimit", "2048");
 
-// Enable caching of CallableStatements
+// Enable client-side prepared statement caching
 config.addDataSourceProperty("cachePrepStmts", "true");
 
-// Cache prepared statements on the server side (PostgreSQL)
+// Cache prepared statements on the server side
 config.addDataSourceProperty("useServerPrepStmts", "true");
+```
+
+For PostgreSQL JDBC the equivalent properties are different:
+
+```java
+HikariConfig config = new HikariConfig();
+config.setJdbcUrl("jdbc:postgresql://localhost/myapp");
+
+// Number of executions before switching to a server-side
+// prepared statement (default 5). Set to 1 to prepare on first use.
+config.addDataSourceProperty("prepareThreshold", "5");
+
+// Number of cached server-side prepared statements per connection
+config.addDataSourceProperty("preparedStatementCacheQueries", "256");
+
+// Maximum cache size in MiB per connection
+config.addDataSourceProperty("preparedStatementCacheSizeMiB", "5");
 ```
 
 **Node.js pg driver configuration:**
@@ -264,17 +288,16 @@ async function getUser(userId) {
 **PostgreSQL settings:**
 
 ```sql
--- View current prepared statement settings
-SHOW max_prepared_transactions;
-
--- Check active prepared statements in current session
+-- Check active prepared statements in current session.
+-- Prepared statements in PostgreSQL are per-session and have no
+-- server-wide max; max_prepared_transactions is a separate setting
+-- that controls two-phase commit (PREPARE TRANSACTION), not PREPARE.
 SELECT * FROM pg_prepared_statements;
 
--- Configure in postgresql.conf for server-wide settings
--- max_prepared_transactions = 100
-
--- Plan cache settings
+-- Plan cache mode controls when a generic vs. custom plan is used
+-- for a prepared statement (set per-session or in postgresql.conf).
 -- plan_cache_mode = auto  (auto, force_generic_plan, force_custom_plan)
+SHOW plan_cache_mode;
 ```
 
 **MySQL settings:**
@@ -634,7 +657,10 @@ WHERE query LIKE '%users%'
 ORDER BY calls DESC
 LIMIT 10;
 
--- Monitor plan cache hit rate
+-- Monitor shared buffer cache hit rate. This measures how often data
+-- pages are served from memory vs. read from disk; it is not the
+-- prepared-statement plan cache (which is per-session and not exposed
+-- via pg_stat_statements).
 SELECT
     sum(shared_blks_hit) as cache_hits,
     sum(shared_blks_read) as cache_misses,
