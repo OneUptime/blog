@@ -78,7 +78,7 @@ These required fields should appear in every log entry across all services.
 }
 ```
 
-The naming follows OpenTelemetry semantic conventions. Using dot notation creates a hierarchy that log systems can parse into nested objects. This structure enables precise filtering.
+The naming borrows from OpenTelemetry semantic conventions where possible. If you use the strict OpenTelemetry log data model, map fields such as `service` to the `service.name` resource attribute, `level` to `SeverityText`, `message` to `Body`, and trace/span identifiers to `TraceId` and `SpanId` during ingestion or export. Using dot notation creates a hierarchy that log systems can parse into nested objects. This structure enables precise filtering.
 
 Define a validation layer that rejects logs missing required fields.
 
@@ -245,6 +245,8 @@ When an alert fires, start with the triage workflow. The goal is not to find the
 
 ```typescript
 // triage-workflow.ts - Automated initial triage queries
+import { Client as ElasticsearchClient } from '@elastic/elasticsearch';
+
 interface TriageResult {
   errorCount: number;
   affectedServices: string[];
@@ -261,35 +263,52 @@ async function runTriageWorkflow(
   // Query 1: Get error counts and affected services
   const scopeQuery = await client.search({
     index: 'logs-*',
-    body: {
-      size: 0,
-      query: {
-        bool: {
-          must: [{ match: { level: 'error' } }],
-          filter: [{ range: { timestamp: { gte: `now-${timeWindow}` } } }]
-        }
+    size: 0,
+    query: {
+      bool: {
+        filter: [
+          { term: { level: 'error' } },
+          { range: { timestamp: { gte: `now-${timeWindow}` } } }
+        ]
+      }
+    },
+    aggregations: {
+      affected_services: {
+        terms: { field: 'service', size: 50 }
       },
-      aggs: {
-        affected_services: {
-          terms: { field: 'service', size: 50 }
-        },
-        error_types: {
-          terms: { field: 'error.type', size: 20 }
-        },
-        time_range: {
-          stats: { field: 'timestamp' }
-        }
+      error_types: {
+        terms: { field: 'error.type', size: 20 }
+      },
+      first_occurrence: {
+        min: { field: 'timestamp' }
+      },
+      last_occurrence: {
+        max: { field: 'timestamp' }
       }
     }
   });
 
   // Parse aggregation results into structured triage report
-  const aggs = scopeQuery.aggregations;
+  const aggs = scopeQuery.aggregations as {
+    affected_services: { buckets: Array<{ key: string; doc_count: number }> };
+    error_types: { buckets: Array<{ key: string; doc_count: number }> };
+    first_occurrence: { value: number | null };
+    last_occurrence: { value: number | null };
+  };
+  const totalHits =
+    typeof scopeQuery.hits.total === 'number'
+      ? scopeQuery.hits.total
+      : scopeQuery.hits.total?.value ?? 0;
+
   return {
-    errorCount: scopeQuery.hits.total.value,
+    errorCount: totalHits,
     affectedServices: aggs.affected_services.buckets.map(b => b.key),
-    firstOccurrence: aggs.time_range.min_as_string,
-    lastOccurrence: aggs.time_range.max_as_string,
+    firstOccurrence: aggs.first_occurrence.value
+      ? new Date(aggs.first_occurrence.value).toISOString()
+      : '',
+    lastOccurrence: aggs.last_occurrence.value
+      ? new Date(aggs.last_occurrence.value).toISOString()
+      : '',
     topErrorTypes: aggs.error_types.buckets.map(b => ({
       type: b.key,
       count: b.doc_count
@@ -304,6 +323,10 @@ After triage identifies the scope, deep investigation finds the root cause. This
 
 ```typescript
 // deep-investigation.ts - Detailed error analysis
+import { Client as ElasticsearchClient } from '@elastic/elasticsearch';
+
+type LogEntry = Record<string, unknown>;
+
 interface InvestigationContext {
   service: string;
   errorType: string;
@@ -319,31 +342,29 @@ async function deepInvestigation(
   // Get full log entries with all fields for analysis
   const results = await client.search({
     index: 'logs-*',
-    body: {
-      query: {
-        bool: {
-          must: [
-            { match: { service: ctx.service } },
-            { match: { 'error.type': ctx.errorType } }
-          ],
-          filter: [{
+    query: {
+      bool: {
+        filter: [
+          { term: { service: ctx.service } },
+          { term: { 'error.type': ctx.errorType } },
+          {
             range: {
               timestamp: {
                 gte: ctx.timeStart,
                 lte: ctx.timeEnd
               }
             }
-          }]
-        }
-      },
-      sort: [{ timestamp: 'asc' }],
-      size: 200,
-      // Include all fields for detailed analysis
-      _source: true
-    }
+          }
+        ]
+      }
+    },
+    sort: [{ timestamp: 'asc' }],
+    size: 200,
+    // Include all fields for detailed analysis
+    _source: true
   });
 
-  return results.hits.hits.map(hit => hit._source);
+  return results.hits.hits.map(hit => hit._source as LogEntry);
 }
 
 // Find related logs from upstream/downstream services
@@ -353,16 +374,14 @@ async function findRelatedLogs(
 ): Promise<LogEntry[]> {
   const results = await client.search({
     index: 'logs-*',
-    body: {
-      query: {
-        terms: { trace_id: traceIds }
-      },
-      sort: [{ timestamp: 'asc' }],
-      size: 1000
-    }
+    query: {
+      terms: { trace_id: traceIds }
+    },
+    sort: [{ timestamp: 'asc' }],
+    size: 1000
   });
 
-  return results.hits.hits.map(hit => hit._source);
+  return results.hits.hits.map(hit => hit._source as LogEntry);
 }
 ```
 
