@@ -253,13 +253,17 @@ interface NotificationContext {
 }
 
 class EmailNotificationService {
-  private templates: Map<string, EmailTemplate>;
+  private templates: Map<string, EmailTemplate> = new Map();
 
   async sendIncidentNotification(
     phase: 'initial' | 'update' | 'resolution',
     context: NotificationContext
   ): Promise<void> {
     const template = this.templates.get(phase);
+    if (!template) {
+      throw new Error(`Missing email template for phase: ${phase}`);
+    }
+
     const rendered = this.renderTemplate(template, context);
 
     // Filter customers based on subscription preferences
@@ -327,13 +331,34 @@ interface IncidentBanner {
   dismissible: boolean;
 }
 
-const IncidentBannerComponent: React.FC = () => {
+interface IncidentBannerComponentProps {
+  webSocketUrl?: string;
+}
+
+const IncidentBannerComponent: React.FC<IncidentBannerComponentProps> = ({
+  webSocketUrl = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/api/incidents/stream`
+}) => {
   const [banners, setBanners] = useState<IncidentBanner[]>([]);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
 
+  const handleIncidentUpdate = (incident: Incident) => {
+    setBanners(prev => {
+      const nextBanner = incidentToBanner(incident);
+
+      if (incident.status === 'resolved') {
+        return prev.filter(banner => banner.id !== nextBanner.id);
+      }
+
+      return [
+        nextBanner,
+        ...prev.filter(banner => banner.id !== nextBanner.id)
+      ];
+    });
+  };
+
   useEffect(() => {
     // Subscribe to real-time incident updates
-    const ws = new WebSocket(process.env.INCIDENT_WS_URL);
+    const ws = new WebSocket(webSocketUrl);
 
     ws.onmessage = (event) => {
       const incident = JSON.parse(event.data);
@@ -344,7 +369,7 @@ const IncidentBannerComponent: React.FC = () => {
     fetchActiveIncidents();
 
     return () => ws.close();
-  }, []);
+  }, [webSocketUrl]);
 
   const fetchActiveIncidents = async () => {
     const response = await fetch('/api/incidents/active');
@@ -471,6 +496,7 @@ interface SupportTicket {
   description: string;
   status: 'open' | 'pending' | 'resolved';
   tags: string[];
+  createdAt: string;
   affectedService?: string;
 }
 
@@ -530,7 +556,10 @@ class TicketIncidentLinker {
     let score = 0;
 
     // Check service match
-    if (incident.affectedComponents.includes(ticket.affectedService)) {
+    if (
+      ticket.affectedService &&
+      incident.affectedComponents.includes(ticket.affectedService)
+    ) {
       score += 0.5;
     }
 
@@ -539,7 +568,9 @@ class TicketIncidentLinker {
     const matchedKeywords = incident.keywords.filter(kw =>
       ticketText.includes(kw.toLowerCase())
     );
-    score += (matchedKeywords.length / incident.keywords.length) * 0.3;
+    if (incident.keywords.length > 0) {
+      score += (matchedKeywords.length / incident.keywords.length) * 0.3;
+    }
 
     // Check timing correlation
     const ticketAge = Date.now() - new Date(ticket.createdAt).getTime();
