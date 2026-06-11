@@ -82,7 +82,7 @@ log_categories:
   audit:
     description: "User actions and data changes for compliance"
     retention_days: 2555  # 7 years for financial compliance
-    compliance_driver: "SOX, GDPR Article 17"
+    compliance_driver: "SOX, financial audit requirements"
     patterns:
       - "audit.*"
       - "data_change.*"
@@ -137,8 +137,8 @@ interface RetentionPolicy {
 interface DeletionResult {
   category: string;
   deletedCount: number;
-  oldestDeleted: Date;
-  newestDeleted: Date;
+  oldestDeleted: Date | null;
+  newestDeleted: Date | null;
   durationMs: number;
 }
 
@@ -266,8 +266,8 @@ export class LogDeletionService {
     return {
       category: policy.category,
       deletedCount: totalDeleted,
-      oldestDeleted: oldestDeleted || new Date(),
-      newestDeleted: newestDeleted || new Date(),
+      oldestDeleted,
+      newestDeleted,
       durationMs: Date.now() - startTime
     };
   }
@@ -277,9 +277,7 @@ export class LogDeletionService {
    * Logs older than this date should be deleted.
    */
   private calculateCutoffDate(retentionDays: number): Date {
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - retentionDays);
-    return cutoff;
+    return new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000);
   }
 }
 ```
@@ -288,7 +286,7 @@ export class LogDeletionService {
 
 ## Step 3: Handle GDPR Right to Erasure
 
-GDPR Article 17 gives users the right to request deletion of their personal data. This requires a separate deletion path that targets specific user data across all log categories.
+GDPR Article 17 gives users the right to request deletion of their personal data in specific circumstances. This requires a separate deletion path that targets specific user data across all log categories.
 
 The following diagram shows the user-initiated deletion flow, which differs from time-based retention deletion.
 
@@ -312,12 +310,13 @@ sequenceDiagram
     API-->>User: Confirmation response
 ```
 
-This implementation handles GDPR deletion requests. It searches for user identifiers across all log fields and removes matching entries while maintaining an audit trail of the deletion itself.
+This implementation handles GDPR deletion requests. It searches for user identifiers across common log fields and removes matching entries while maintaining an audit trail of the deletion itself.
 
 ```typescript
 // gdpr-deletion-handler.ts
 // Handles GDPR Article 17 right to erasure requests
 
+import { createHash } from 'node:crypto';
 import { LogStorage } from './log-storage';
 import { AuditLogger } from './audit-logger';
 
@@ -353,7 +352,7 @@ export class GdprDeletionHandler {
     // Log the erasure request for compliance audit trail
     await this.auditLogger.log('gdpr_erasure_requested', {
       requestId: request.requestId,
-      userId: request.userId,
+      userHash: this.hashIdentifier(request.userId),
       requestedBy: request.requestedBy,
       timestamp: new Date().toISOString()
     });
@@ -389,7 +388,7 @@ export class GdprDeletionHandler {
 
     await this.auditLogger.log('gdpr_erasure_completed', {
       ...result,
-      userId: request.userId  // Keep user ID in audit for verification
+      userHash: this.hashIdentifier(request.userId)
     });
 
     return result;
@@ -400,6 +399,8 @@ export class GdprDeletionHandler {
    * Checks common fields where PII appears in logs.
    */
   private buildUserSearchCriteria(request: DeletionRequest): object {
+    const escapedEmail = this.escapeRegex(request.userEmail);
+
     return {
       $or: [
         { 'user_id': request.userId },
@@ -409,19 +410,33 @@ export class GdprDeletionHandler {
         { 'user.email': request.userEmail },
         { 'userEmail': request.userEmail },
         // Check message content for embedded identifiers
-        { 'message': { $regex: request.userEmail, $options: 'i' } }
+        { 'message': { $regex: escapedEmail, $options: 'i' } }
       ]
     };
   }
 
   /**
    * Batch logs into chunks for processing.
-   * Prevents memory issues with large result sets.
+   * Keeps individual delete calls reasonably sized.
    */
   private *batchLogs(logs: any[], batchSize: number): Generator<any[]> {
     for (let i = 0; i < logs.length; i += batchSize) {
       yield logs.slice(i, i + batchSize);
     }
+  }
+
+  /**
+   * Escape user-supplied values before placing them in a regex query.
+   */
+  private escapeRegex(value: string): string {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  /**
+   * Store a stable pseudonymous identifier in the audit trail.
+   */
+  private hashIdentifier(value: string): string {
+    return createHash('sha256').update(value).digest('hex');
   }
 }
 ```
@@ -567,23 +582,23 @@ flowchart LR
     D --> I[Storage Savings]
 ```
 
-Key metrics to track include deletion success rate, logs deleted per cycle, deletion duration, storage reclaimed, and GDPR request completion time. Set alerts for any failures and for GDPR requests approaching their 30-day SLA.
+Key metrics to track include deletion success rate, logs deleted per cycle, deletion duration, storage reclaimed, and GDPR request completion time. Set alerts for any failures and for GDPR requests approaching their one-month response deadline.
 
 ---
 
 ## Retention Period Guidelines
 
-Different regulations require different retention periods. Here is a reference table for common compliance frameworks.
+Different regulations influence retention periods in different ways. Some specify fixed periods for particular audit or compliance records, while privacy laws such as GDPR require purpose-based storage limitation rather than a universal log-retention duration.
 
 | Log Type | GDPR | HIPAA | SOX | PCI-DSS | Recommended |
 |----------|------|-------|-----|---------|-------------|
-| Security/Auth | 90 days min | 6 years | 7 years | 1 year | 1 year |
-| Audit Trail | Minimize | 6 years | 7 years | 1 year | 7 years |
-| Application | 30 days | 6 years | N/A | 90 days | 90 days |
+| Security/Auth | Purpose-based | 6 years for required Security Rule documentation | 7 years if part of audit/review records | 1 year | 1 year |
+| Audit Trail | Minimize | 6 years for required Security Rule documentation | 7 years if part of audit/review records | 1 year | 7 years |
+| Application | Purpose-based | Policy-based unless it documents required Security Rule activity | N/A | N/A unless in PCI scope | 90 days |
 | Debug | 7 days | N/A | N/A | N/A | 7 days |
-| PII-containing | Minimize | 6 years | N/A | N/A | 30 days |
+| PII-containing | Minimize | Policy-based unless it documents required Security Rule activity | N/A | N/A | 30 days |
 
-When requirements conflict, the longer retention period usually wins. However, for PII under GDPR, you must justify any retention beyond the minimum needed for your stated purpose.
+When requirements conflict, the longer retention period usually wins only if you have a lawful basis to keep the data. For PII under GDPR, you must justify any retention beyond the minimum needed for your stated purpose.
 
 ---
 
