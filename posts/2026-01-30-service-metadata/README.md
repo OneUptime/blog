@@ -378,7 +378,7 @@ import json
 from pathlib import Path
 from typing import Optional
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 import subprocess
 
 
@@ -462,7 +462,7 @@ class GitMetadataCollector:
             source_repo=str(repo_path),
             file_path=str(metadata_file.relative_to(repo_path)),
             commit_sha=commit_sha,
-            collected_at=datetime.utcnow()
+            collected_at=datetime.now(timezone.utc)
         )
 
     def _get_commit_sha(self, repo_path: Path) -> str:
@@ -1077,7 +1077,7 @@ CREATE TABLE service_slos (
     service_id UUID REFERENCES services(id) ON DELETE CASCADE,
     name VARCHAR(100) NOT NULL,
     target DECIMAL(5, 2) NOT NULL,
-    window VARCHAR(10) DEFAULT '30d',
+    "window" VARCHAR(10) DEFAULT '30d',
     indicator TEXT,
     UNIQUE(service_id, name)
 );
@@ -1155,7 +1155,7 @@ SELECT
         SELECT jsonb_agg(jsonb_build_object(
             'name', name,
             'target', target,
-            'window', window
+            'window', "window"
         ))
         FROM service_slos WHERE service_id = s.id
     ) as slos
@@ -1412,7 +1412,7 @@ async def create_service(
 
         # Insert links
         if service.links:
-            links_dict = service.links.dict(exclude_none=True)
+            links_dict = service.links.model_dump(exclude_none=True)
             for link_type, url in links_dict.items():
                 await conn.execute("""
                     INSERT INTO service_links (service_id, link_type, url)
@@ -1422,7 +1422,7 @@ async def create_service(
         # Insert SLOs
         for slo in service.slos:
             await conn.execute("""
-                INSERT INTO service_slos (service_id, name, target, window, indicator)
+                INSERT INTO service_slos (service_id, name, target, "window", indicator)
                 VALUES ($1, $2, $3, $4, $5)
             """, service_id, slo.name, slo.target, slo.window, slo.indicator)
 
@@ -1443,7 +1443,7 @@ async def create_service(
         await conn.execute("""
             INSERT INTO service_audit_log (service_id, action, changes, actor)
             VALUES ($1, 'create', $2, $3)
-        """, service_id, service.dict(), user["user_id"])
+        """, service_id, service.model_dump(), user["user_id"])
 
         return await get_service_by_id(service_id, conn)
 
