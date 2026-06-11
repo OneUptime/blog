@@ -47,16 +47,16 @@ MinIO uses Reed-Solomon erasure coding, the same algorithm used in CDs, DVDs, an
 
 ## MinIO Erasure Coding Modes
 
-MinIO supports several erasure coding configurations based on your drive count:
+MinIO supports several erasure coding configurations based on your erasure set size:
 
-| Drives | Data Shards | Parity Shards | Drives Tolerable | Storage Efficiency |
-|--------|-------------|---------------|------------------|-------------------|
-| 4      | 2           | 2             | 2                | 50%               |
-| 8      | 4           | 4             | 4                | 50%               |
-| 12     | 6           | 6             | 6                | 50%               |
-| 16     | 8           | 8             | 8                | 50%               |
+| Drives | Default Data Shards | Default Parity Shards | Read Failures Tolerable | Storage Efficiency |
+|--------|---------------------|-----------------------|-------------------------|-------------------|
+| 4      | 2                   | 2                     | 2                       | 50%               |
+| 8      | 4                   | 4                     | 4                       | 50%               |
+| 12     | 8                   | 4                     | 4                       | 66.7%             |
+| 16     | 12                  | 4                     | 4                       | 75%               |
 
-The default configuration uses half the drives for data and half for parity. You can adjust this ratio based on your durability requirements.
+The default configuration uses `EC:2` parity for 4-5 drive erasure sets, `EC:3` for 6-7 drive erasure sets, and `EC:4` for 8-16 drive erasure sets. You can adjust this ratio based on your durability requirements, up to half the drives in the erasure set.
 
 ## Setting Up Erasure Coded MinIO
 
@@ -92,7 +92,7 @@ Group=minio-user
 # The /mnt/disk{1...4} syntax tells MinIO to use erasure coding
 # across all 4 drives. The ellipsis is not a typo - it is MinIO syntax
 EnvironmentFile=/etc/default/minio
-ExecStart=/usr/local/bin/minio server /mnt/disk{1...4}
+ExecStart=/usr/local/bin/minio server $MINIO_OPTS /mnt/disk{1...4}
 Restart=always
 RestartSec=10
 LimitNOFILE=65536
@@ -133,7 +133,7 @@ sudo systemctl status minio
 
 ## Docker Compose for Erasure Coded MinIO
 
-For development or testing, Docker Compose provides a quick way to spin up an erasure coded cluster.
+For development or testing, Docker Compose provides a quick way to spin up an erasure coded cluster. The Nginx service assumes you also provide an `nginx.conf` file that reverse proxies ports 9000 and 9001 to the MinIO containers.
 
 ```yaml
 # docker-compose.yml
@@ -153,12 +153,12 @@ services:
       MINIO_ROOT_PASSWORD: minioadmin123
     # The server command specifies all nodes in the cluster
     # MinIO automatically configures erasure coding
-    command: server http://minio{1...4}/data --console-address ":9001"
+    command: server --console-address ":9001" http://minio{1...4}/data
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
-      interval: 30s
-      timeout: 20s
-      retries: 3
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
     networks:
       - minio-net
 
@@ -170,12 +170,12 @@ services:
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin123
-    command: server http://minio{1...4}/data --console-address ":9001"
+    command: server --console-address ":9001" http://minio{1...4}/data
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
-      interval: 30s
-      timeout: 20s
-      retries: 3
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
     networks:
       - minio-net
 
@@ -187,12 +187,12 @@ services:
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin123
-    command: server http://minio{1...4}/data --console-address ":9001"
+    command: server --console-address ":9001" http://minio{1...4}/data
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
-      interval: 30s
-      timeout: 20s
-      retries: 3
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
     networks:
       - minio-net
 
@@ -204,12 +204,12 @@ services:
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin123
-    command: server http://minio{1...4}/data --console-address ":9001"
+    command: server --console-address ":9001" http://minio{1...4}/data
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
-      interval: 30s
-      timeout: 20s
-      retries: 3
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
     networks:
       - minio-net
 
@@ -242,7 +242,7 @@ networks:
 
 ## Configuring Storage Classes
 
-MinIO supports two storage classes that let you choose different erasure coding levels per bucket or object.
+MinIO supports two storage classes that let you choose different erasure coding levels for objects.
 
 ```bash
 # Install the MinIO client (mc)
@@ -288,10 +288,10 @@ One of the best features of MinIO erasure coding is automatic healing. When a dr
 
 ```bash
 # Check healing status
-mc admin heal myminio --recursive
+mc admin heal myminio/
 
-# Force a background heal (runs continuously)
-mc admin heal myminio --recursive --background
+# Show verbose healing details across all drives
+mc admin heal --verbose --all-drives myminio/
 
 # Monitor healing progress
 mc admin trace myminio --call heal
@@ -327,9 +327,10 @@ curl http://localhost:9000/minio/v2/metrics/cluster
 
 Key metrics to watch:
 
-- `minio_cluster_drive_offline_total` - Number of offline drives
-- `minio_cluster_health` - Overall cluster health status
-- `minio_heal_objects_total` - Objects healed since start
+- `minio_cluster_disk_offline_total` - Number of offline drives
+- `minio_cluster_health_status` - Overall cluster health status
+- `minio_heal_objects_heal_total` - Objects healed in the current self-healing run
+- `minio_heal_objects_total` - Objects scanned in the current self-healing run
 - `minio_cluster_capacity_usable_free_bytes` - Available storage
 
 ## Best Practices
