@@ -320,7 +320,7 @@ if __name__ == "__main__":
 
 ## Implementing Feature Versioning with Feast
 
-Feast is an open-source feature store that supports feature versioning through its registry and feature views.
+Feast is an open-source feature store that supports feature versioning patterns through its registry, feature views, and feature view metadata.
 
 ```python
 # feast_versioning.py
@@ -478,22 +478,23 @@ def get_features_for_inference(
 
 ## Implementing Feature Versioning with Tecton
 
-Tecton provides built-in versioning through its feature definition workflow and immutable feature services.
+Tecton supports feature versioning through its feature definition workflow and Feature Services that make downstream consumers explicit.
 
 ```python
 # tecton_versioning.py
 # Tecton feature versioning with explicit version management.
-# Tecton treats feature definitions as immutable artifacts.
+# Tecton treats feature definitions as versioned code artifacts.
 
 from tecton import (
     Entity,
     BatchSource,
     FileConfig,
     batch_feature_view,
-    Aggregation,
+    Aggregate,
+    TimeWindow,
     FeatureService,
 )
-from tecton.types import Field, String, Int64, Float64, Timestamp
+from tecton.types import Field, Float64
 from datetime import datetime, timedelta
 
 
@@ -523,25 +524,25 @@ transactions_source = BatchSource(
     sources=[transactions_source],
     entities=[user_entity],
     mode="pandas",
+    online=True,
+    offline=True,
+    timestamp_field="transaction_time",
+    feature_start_time=datetime(2026, 1, 1),
+    batch_schedule=timedelta(days=1),
     aggregation_interval=timedelta(days=1),
-    aggregations=[
-        Aggregation(
-            column="amount",
+    features=[
+        Aggregate(
+            input_column=Field("amount", Float64),
             function="sum",
-            time_window=timedelta(days=30),
+            time_window=TimeWindow(window_size=timedelta(days=30)),
             name="total_spend_30d"
         ),
-        Aggregation(
-            column="amount",
+        Aggregate(
+            input_column=Field("amount", Float64),
             function="count",
-            time_window=timedelta(days=30),
+            time_window=TimeWindow(window_size=timedelta(days=30)),
             name="transaction_count_30d"
         ),
-    ],
-    schema=[
-        Field("user_id", String),
-        Field("amount", Float64),
-        Field("transaction_time", Timestamp),
     ],
     tags={"version": "1.0.0", "status": "deprecated"},
     description="V1: Basic 30-day transaction aggregations"
@@ -557,46 +558,46 @@ def user_transaction_features_v1(transactions):
     sources=[transactions_source],
     entities=[user_entity],
     mode="pandas",
+    online=True,
+    offline=True,
+    timestamp_field="transaction_time",
+    feature_start_time=datetime(2026, 1, 1),
+    batch_schedule=timedelta(days=1),
     aggregation_interval=timedelta(days=1),
-    aggregations=[
+    features=[
         # 30-day aggregations (from v1)
-        Aggregation(
-            column="amount",
+        Aggregate(
+            input_column=Field("amount", Float64),
             function="sum",
-            time_window=timedelta(days=30),
+            time_window=TimeWindow(window_size=timedelta(days=30)),
             name="total_spend_30d"
         ),
-        Aggregation(
-            column="amount",
+        Aggregate(
+            input_column=Field("amount", Float64),
             function="count",
-            time_window=timedelta(days=30),
+            time_window=TimeWindow(window_size=timedelta(days=30)),
             name="transaction_count_30d"
         ),
         # New in v2: 7-day aggregations
-        Aggregation(
-            column="amount",
+        Aggregate(
+            input_column=Field("amount", Float64),
             function="sum",
-            time_window=timedelta(days=7),
+            time_window=TimeWindow(window_size=timedelta(days=7)),
             name="total_spend_7d"
         ),
-        Aggregation(
-            column="amount",
+        Aggregate(
+            input_column=Field("amount", Float64),
             function="count",
-            time_window=timedelta(days=7),
+            time_window=TimeWindow(window_size=timedelta(days=7)),
             name="transaction_count_7d"
         ),
         # New in v2: Average transaction value
-        Aggregation(
-            column="amount",
+        Aggregate(
+            input_column=Field("amount", Float64),
             function="mean",
-            time_window=timedelta(days=30),
+            time_window=TimeWindow(window_size=timedelta(days=30)),
             name="avg_transaction_value_30d"
         ),
-    ],
-    schema=[
-        Field("user_id", String),
-        Field("amount", Float64),
-        Field("transaction_time", Timestamp),
     ],
     tags={"version": "2.0.0", "status": "active", "parent": "v1"},
     description="V2: Enhanced aggregations with 7-day windows and averages"
@@ -1475,7 +1476,7 @@ on:
 
 env:
   PYTHON_VERSION: '3.11'
-  FEAST_VERSION: '0.37.0'
+  FEAST_VERSION: '0.61.0'
 
 jobs:
   # Job 1: Validate feature definitions
@@ -1483,10 +1484,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
@@ -1512,10 +1513,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
@@ -1532,9 +1533,10 @@ jobs:
           pytest tests/features/integration/ -v
 
       - name: Upload coverage
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         with:
           files: ./coverage.xml
+          token: ${{ secrets.CODECOV_TOKEN }}
 
   # Job 3: Deploy to staging
   deploy-staging:
@@ -1544,10 +1546,10 @@ jobs:
     environment: staging
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
@@ -1557,7 +1559,8 @@ jobs:
       - name: Apply feature definitions to staging
         run: |
           cd features/
-          feast apply --registry ${{ secrets.STAGING_REGISTRY_URL }}
+          cp feature_store.staging.yaml feature_store.yaml
+          feast apply
 
       - name: Run smoke tests
         run: |
@@ -1573,10 +1576,10 @@ jobs:
     environment: production
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
@@ -1586,7 +1589,8 @@ jobs:
       - name: Apply feature definitions to production
         run: |
           cd features/
-          feast apply --registry ${{ secrets.PROD_REGISTRY_URL }}
+          cp feature_store.production.yaml feature_store.yaml
+          feast apply
 
       - name: Verify deployment
         run: |
@@ -1595,23 +1599,17 @@ jobs:
             --registry ${{ secrets.PROD_REGISTRY_URL }}
 
       - name: Notify on success
-        uses: slackapi/slack-github-action@v1
+        uses: slackapi/slack-github-action@v2
         with:
+          webhook: ${{ secrets.SLACK_WEBHOOK }}
+          webhook-type: incoming-webhook
           payload: |
-            {
-              "text": "Feature versions deployed to production successfully",
-              "blocks": [
-                {
-                  "type": "section",
-                  "text": {
-                    "type": "mrkdwn",
-                    "text": "Feature deployment complete for commit ${{ github.sha }}"
-                  }
-                }
-              ]
-            }
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
+            text: "Feature versions deployed to production successfully"
+            blocks:
+              - type: "section"
+                text:
+                  type: "mrkdwn"
+                  text: "Feature deployment complete for commit ${{ github.sha }}"
 ```
 
 ## Monitoring Feature Versions in Production
@@ -1625,7 +1623,7 @@ Track feature version usage and detect drift with observability.
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 import statistics
 
 
@@ -1690,7 +1688,7 @@ class FeatureMonitor:
         self,
         feature_name: str,
         version: str
-    ) -> Dict[str, any]:
+    ) -> Dict[str, Any]:
         """
         Detect drift between baseline and recent production stats.
         Returns drift metrics and whether alerting threshold is exceeded.
