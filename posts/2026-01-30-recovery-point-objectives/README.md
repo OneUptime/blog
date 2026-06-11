@@ -306,15 +306,15 @@ data:
     # Feedback to primary about replica status
     hot_standby_feedback = on
 
-  # Recovery configuration (PostgreSQL 12+)
-  # This file signals that this server is a standby
-  standby.signal: ""
-
-  # Primary connection info stored in postgresql.auto.conf
-  # Created during base backup or configured here
-  recovery.conf: |
+    # Primary connection info (PostgreSQL 12+)
+    # recovery.conf was removed in PostgreSQL 12; these parameters
+    # now live in postgresql.conf (or postgresql.auto.conf)
     primary_conninfo = 'host=postgres-primary port=5432 user=replicator password=secure_password application_name=replica1'
     primary_slot_name = 'replica1_slot'
+
+  # The presence of standby.signal puts the server in standby mode
+  # on startup (PostgreSQL 12+ replacement for recovery.conf trigger)
+  standby.signal: ""
 ```
 
 ### Multi-Region Replication Architecture
