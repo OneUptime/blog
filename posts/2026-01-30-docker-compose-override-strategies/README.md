@@ -14,10 +14,12 @@ In this guide, we will explore Docker Compose override strategies that will stre
 
 ## Understanding the Override Mechanism
 
-Docker Compose automatically looks for two files when you run `docker-compose up`:
+Docker Compose automatically looks for two files when you run `docker compose up`:
 
-1. `docker-compose.yml` - The base configuration
-2. `docker-compose.override.yml` - The override configuration (applied automatically)
+1. `compose.yaml` - The base configuration
+2. `compose.override.yaml` - The override configuration (applied automatically)
+
+The older `docker-compose.yml` and `docker-compose.override.yml` names are still widely used and supported, but the Compose Specification examples now prefer `compose.yaml`.
 
 When both files exist, Compose merges them together, with the override file taking precedence for conflicting values.
 
@@ -42,8 +44,6 @@ Let us start with a base `docker-compose.yml` file that defines your application
 
 # Base configuration shared across all environments
 # This file contains production-ready defaults
-
-version: '3.8'
 
 services:
   # Web application service
@@ -77,8 +77,6 @@ Now create a `docker-compose.override.yml` for development:
 # docker-compose.override.yml
 # Development overrides - applied automatically
 # Optimized for local development experience
-
-version: '3.8'
 
 services:
   web:
@@ -145,9 +143,7 @@ flowchart LR
 ```yaml
 # docker-compose.dev.yml
 # Development-specific configuration
-# Run with: docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
-
-version: '3.8'
+# Run with: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
 
 services:
   web:
@@ -192,8 +188,6 @@ services:
 # Staging environment configuration
 # Mirrors production but with debugging capabilities
 
-version: '3.8'
-
 services:
   web:
     image: myapp:staging
@@ -231,8 +225,6 @@ secrets:
 # Production environment configuration
 # Optimized for performance, security, and reliability
 
-version: '3.8'
-
 services:
   web:
     image: myapp:${VERSION:-latest}
@@ -249,7 +241,7 @@ services:
         reservations:
           cpus: '0.5'
           memory: 512M
-      # Rolling update strategy
+      # Rolling update strategy for platforms that implement deploy updates
       update_config:
         parallelism: 1
         delay: 10s
@@ -287,6 +279,8 @@ secrets:
   db_password:
     external: true
 ```
+
+The `deploy` section is part of the Compose Deploy Specification. Some options, such as placement constraints and rolling update behavior, depend on the target platform and may be ignored by Compose implementations that do not support them.
 
 ## Environment Files Strategy
 
@@ -395,8 +389,6 @@ USE_MOCK_EMAIL=false
 # docker-compose.yml
 # Referencing environment files
 
-version: '3.8'
-
 services:
   web:
     image: myapp:latest
@@ -414,13 +406,10 @@ services:
 # docker-compose.dev.yml
 # Development override with specific env file
 
-version: '3.8'
-
 services:
   web:
     env_file:
-      # Load base first, then development overrides
-      - .env
+      # Appended after the base .env from docker-compose.yml
       - .env.development
 ```
 
@@ -543,35 +532,35 @@ Create helper scripts to simplify environment management:
 
 # Development environment
 dev:
-	docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
+	docker compose -f docker-compose.yml -f docker-compose.dev.yml up
 
 # Development with rebuild
 dev-build:
-	docker-compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+	docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 
 # Staging environment
 staging:
-	docker-compose -f docker-compose.yml -f docker-compose.staging.yml up -d
+	docker compose -f docker-compose.yml -f docker-compose.staging.yml up -d
 
 # Production environment
 prod:
-	docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+	docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 
 # Build all images
 build:
-	docker-compose -f docker-compose.yml -f docker-compose.prod.yml build
+	docker compose -f docker-compose.yml -f docker-compose.prod.yml build
 
 # Clean up all containers and volumes
 clean:
-	docker-compose down -v --remove-orphans
+	docker compose down -v --remove-orphans
 
 # View logs
 logs:
-	docker-compose logs -f
+	docker compose logs -f
 
 # Shell into web container
 shell:
-	docker-compose exec web /bin/sh
+	docker compose exec web /bin/sh
 ```
 
 ## Best Practices
@@ -586,7 +575,7 @@ When using multiple override files, order matters. Later files override earlier 
 
 ```bash
 # Correct ordering: base -> environment -> local customizations
-docker-compose \
+docker compose \
   -f docker-compose.yml \
   -f docker-compose.dev.yml \
   -f docker-compose.local.yml \
@@ -600,7 +589,7 @@ Add comments explaining the purpose of each override file and when to use it:
 ```yaml
 # docker-compose.test.yml
 # Purpose: Configuration for running integration tests
-# Usage: docker-compose -f docker-compose.yml -f docker-compose.test.yml run tests
+# Usage: docker compose -f docker-compose.yml -f docker-compose.test.yml run tests
 # Note: This configuration uses isolated test databases
 ```
 
@@ -639,7 +628,7 @@ Set the `COMPOSE_FILE` variable to avoid typing long commands:
 export COMPOSE_FILE=docker-compose.yml:docker-compose.dev.yml
 
 # Now you can simply run:
-docker-compose up
+docker compose up
 ```
 
 ## Override Merge Behavior Reference
@@ -650,9 +639,9 @@ Understanding how Docker Compose merges configurations is essential:
 flowchart TD
     subgraph "Merge Rules"
         A[Single Values] --> A1[Override replaces base]
-        B[Lists/Arrays] --> B1[Override extends base]
+        B[Lists/Arrays] --> B1[Usually appended]
         C[Mappings/Dicts] --> C1[Deep merge by key]
-        D[Volumes] --> D1[Merged by target path]
+        D[Unique Resources] --> D1[Merged by unique key]
     end
 
     style A fill:#ffecb3
@@ -666,10 +655,14 @@ flowchart TD
 | `image` | Replaced |
 | `command` | Replaced |
 | `environment` | Merged by variable name |
-| `ports` | Appended |
+| `ports` | Appended unless the same IP, target, published port, and protocol already exist |
 | `volumes` | Merged by mount target |
+| `secrets` | Merged by target |
+| `configs` | Merged by target |
 | `depends_on` | Merged |
 | `labels` | Merged by key |
+
+Compose also treats `entrypoint` and `healthcheck.test` like `command`: the later file replaces the earlier value instead of appending to it.
 
 ## Conclusion
 
@@ -684,6 +677,6 @@ Start with a simple base configuration and gradually add override files as your 
 
 ## Further Reading
 
-- [Docker Compose File Reference](https://docs.docker.com/compose/compose-file/)
-- [Docker Compose Environment Variables](https://docs.docker.com/compose/environment-variables/)
+- [Docker Compose File Reference](https://docs.docker.com/reference/compose-file/)
+- [Docker Compose Environment Variables](https://docs.docker.com/compose/how-tos/environment-variables/)
 - [Docker Secrets Management](https://docs.docker.com/engine/swarm/secrets/)
