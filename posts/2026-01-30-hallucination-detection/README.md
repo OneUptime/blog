@@ -104,7 +104,7 @@ class GroundingVerifier:
     Uses a secondary LLM call to check each claim against the context.
     """
 
-    def __init__(self, model: str = "gpt-4"):
+    def __init__(self, model: str = "gpt-4o"):
         self.model = model
         self.client = openai.OpenAI()
 
@@ -119,7 +119,7 @@ not opinions or hedged language.
 
 Text: {response}
 
-Return as JSON array of strings."""
+Return as a JSON object with a "claims" array of strings."""
 
         result = self.client.chat.completions.create(
             model=self.model,
@@ -233,7 +233,8 @@ for result in results:
 Self-consistency leverages a simple observation: if an LLM truly "knows" something, it should give consistent answers when asked multiple times with different phrasings. Hallucinations tend to be inconsistent.
 
 ```python
-import hashlib
+import openai
+import json
 from collections import Counter
 from typing import List, Dict, Any
 
@@ -243,7 +244,7 @@ class SelfConsistencyChecker:
     answers across multiple response samples.
     """
 
-    def __init__(self, model: str = "gpt-4", num_samples: int = 5):
+    def __init__(self, model: str = "gpt-4o", num_samples: int = 5):
         self.model = model
         self.num_samples = num_samples
         self.client = openai.OpenAI()
@@ -287,7 +288,7 @@ Return each as a short, normalized statement.
 
 Response: {response}
 
-Return as JSON array of strings. Normalize numbers, dates, and names."""
+Return as a JSON object with a "claims" array of strings. Normalize numbers, dates, and names."""
 
         result = self.client.chat.completions.create(
             model=self.model,
@@ -383,13 +384,16 @@ class NLIHallucinationDetector:
     Checks if generated claims are entailed by the source context.
     """
 
-    def __init__(self, model_name: str = "microsoft/deberta-v3-large-mnli"):
+    def __init__(self, model_name: str = "microsoft/deberta-large-mnli"):
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.model = AutoModelForSequenceClassification.from_pretrained(model_name)
         self.model.eval()
 
-        # Label mapping for MNLI models
-        self.labels = ["contradiction", "neutral", "entailment"]
+        # Use the model's configured label mapping instead of assuming label order.
+        self.labels = {
+            index: label.lower()
+            for index, label in self.model.config.id2label.items()
+        }
 
     def check_entailment(
         self,
@@ -513,8 +517,17 @@ class SemanticSimilarityDetector:
         response_chunks = self.chunk_text(response, chunk_size=50)
         context_chunks = self.chunk_text(context, chunk_size=100)
 
-        if not response_chunks or not context_chunks:
+        if not response_chunks:
             return {"score": 1.0, "flagged_chunks": []}
+        if not context_chunks:
+            return {
+                "score": 0.0,
+                "flagged_chunks": [
+                    {"chunk": chunk, "similarity": 0.0, "position": i}
+                    for i, chunk in enumerate(response_chunks)
+                ],
+                "chunk_similarities": [0.0 for _ in response_chunks]
+            }
 
         # Get embeddings
         response_embeddings = self.get_embeddings(response_chunks)
@@ -899,6 +912,10 @@ For high-throughput systems, run detection asynchronously.
 ```python
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, datetime
+import logging
+
+logger = logging.getLogger(__name__)
 
 class AsyncHallucinationMonitor:
     """
@@ -906,8 +923,9 @@ class AsyncHallucinationMonitor:
     Logs issues for later review rather than blocking responses.
     """
 
-    def __init__(self, pipeline: HallucinationDetectionPipeline):
+    def __init__(self, pipeline: HallucinationDetectionPipeline, alerting_service=None):
         self.pipeline = pipeline
+        self.alerting_service = alerting_service
         self.executor = ThreadPoolExecutor(max_workers=4)
         self.alert_threshold = HallucinationSeverity.HIGH
 
@@ -922,7 +940,7 @@ class AsyncHallucinationMonitor:
         Runs hallucination detection in background.
         Sends alerts for high-severity issues.
         """
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
 
         try:
             result = await loop.run_in_executor(
@@ -934,7 +952,7 @@ class AsyncHallucinationMonitor:
             await self._log_result(request_id, result)
 
             # Alert on high severity
-            if result.severity.value >= self.alert_threshold.value:
+            if self._severity_rank(result.severity) >= self._severity_rank(self.alert_threshold):
                 await self._send_alert(request_id, result)
 
         except Exception as e:
@@ -945,7 +963,7 @@ class AsyncHallucinationMonitor:
         """Logs detection result for analytics and debugging."""
         log_entry = {
             "request_id": request_id,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "overall_score": result.overall_score,
             "severity": result.severity.value,
             "scores": {
@@ -970,7 +988,24 @@ class AsyncHallucinationMonitor:
             "recommendations": result.recommendations
         }
         # Send to alerting system (PagerDuty, Slack, etc.)
-        await alerting_service.send(alert)
+        if self.alerting_service:
+            await self.alerting_service.send(alert)
+
+    async def _log_error(self, request_id: str, error: Exception):
+        """Logs detection errors without failing the request."""
+        logger.exception(
+            "hallucination_detection_failed",
+            extra={"request_id": request_id, "error": str(error)}
+        )
+
+    def _severity_rank(self, severity: HallucinationSeverity) -> int:
+        """Ranks severity values for threshold comparisons."""
+        return {
+            HallucinationSeverity.LOW: 0,
+            HallucinationSeverity.MEDIUM: 1,
+            HallucinationSeverity.HIGH: 2,
+            HallucinationSeverity.CRITICAL: 3
+        }[severity]
 ```
 
 ## Testing Your Detection System
