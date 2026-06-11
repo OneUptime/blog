@@ -102,25 +102,31 @@ spec:
 
 ### SSL Passthrough
 
-For applications that handle TLS termination themselves:
+For applications that handle TLS termination themselves, enable SSL passthrough on the ingress-nginx controller with `--enable-ssl-passthrough` and then annotate the Ingress:
 
 ```yaml
 metadata:
   annotations:
     nginx.ingress.kubernetes.io/ssl-passthrough: "true"
-    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
 ```
 
 ### Custom SSL Ciphers and Protocols
 
-Configure specific TLS versions and cipher suites:
+Configure cipher suites per Ingress, and configure supported TLS protocol versions in the ingress-nginx controller ConfigMap:
 
 ```yaml
 metadata:
   annotations:
     nginx.ingress.kubernetes.io/ssl-ciphers: "ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384"
     nginx.ingress.kubernetes.io/ssl-prefer-server-ciphers: "true"
-    nginx.ingress.kubernetes.io/ssl-protocols: "TLSv1.2 TLSv1.3"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ingress-nginx-controller
+  namespace: ingress-nginx
+data:
+  ssl-protocols: "TLSv1.2 TLSv1.3"
 ```
 
 ```mermaid
@@ -153,6 +159,7 @@ kind: Ingress
 metadata:
   name: rewrite-ingress
   annotations:
+    nginx.ingress.kubernetes.io/use-regex: "true"
     nginx.ingress.kubernetes.io/rewrite-target: /$2
 spec:
   ingressClassName: nginx
@@ -262,7 +269,7 @@ flowchart TD
     D -->|Under Limit| F
     D -->|Over Limit| G{Burst Available?}
     G -->|Yes| F
-    G -->|No| H[Return 429]
+    G -->|No| H[Return 503]
 ```
 
 ## Authentication Annotations
@@ -351,6 +358,8 @@ metadata:
 ## Custom Headers and CORS
 
 ### Adding Custom Headers
+
+Snippet annotations require the ingress-nginx controller ConfigMap option `allow-snippet-annotations` to be enabled.
 
 ```yaml
 metadata:
@@ -521,7 +530,7 @@ spec:
 
 ### Custom NGINX Configuration
 
-Inject custom NGINX directives:
+Inject custom NGINX directives. Snippet annotations require the ingress-nginx controller ConfigMap option `allow-snippet-annotations` to be enabled.
 
 ```yaml
 metadata:
@@ -617,7 +626,6 @@ metadata:
   annotations:
     # SSL Configuration
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
-    nginx.ingress.kubernetes.io/ssl-protocols: "TLSv1.2 TLSv1.3"
 
     # Security Headers
     nginx.ingress.kubernetes.io/configuration-snippet: |
@@ -683,6 +691,8 @@ spec:
 
 ### Enable Debug Logging
 
+Snippet annotations require the ingress-nginx controller ConfigMap option `allow-snippet-annotations` to be enabled.
+
 ```yaml
 metadata:
   annotations:
@@ -720,7 +730,7 @@ kubectl logs -n ingress-nginx <pod-name>
 
 6. **Security First**: Always enable SSL redirect, use strong TLS versions, and implement appropriate rate limits.
 
-7. **Validate Syntax**: Use `kubectl apply --dry-run=client` to validate manifests before applying.
+7. **Validate Syntax**: Use `kubectl apply --dry-run=client` to validate Kubernetes manifest syntax before applying.
 
 ## Conclusion
 
