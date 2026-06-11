@@ -30,7 +30,7 @@ Before writing code, let's compare the two major logging libraries in the Node.j
 | Performance | Good | Excellent (5x faster) |
 | Ecosystem | Large, mature | Growing |
 | Custom formats | Highly flexible | JSON-focused |
-| Transports | 30+ official | Fewer, uses separate process |
+| Transports | Many built-in and community transports | Fewer, uses worker-thread transports |
 | Learning curve | Moderate | Lower |
 | Best for | Complex formatting needs | High-throughput services |
 
@@ -43,10 +43,10 @@ For most applications, Winston provides the flexibility you need. For high-perfo
 First, install the required packages.
 
 ```bash
-npm install winston winston-daily-rotate-file
+npm install winston winston-daily-rotate-file winston-transport
 ```
 
-Here is a basic Winston configuration that sets up console output with colorized levels.
+Here is a basic Winston configuration that sets up console output with structured JSON.
 
 ```javascript
 // src/logger/winston-basic.js
@@ -245,7 +245,7 @@ const winston = require('winston');
 const Transport = require('winston-transport');
 
 class HttpTransport extends Transport {
-  constructor(opts) {
+  constructor(opts = {}) {
     super(opts);
     this.endpoint = opts.endpoint;
     this.headers = opts.headers || {};
@@ -437,6 +437,12 @@ module.exports = contextLogger;
 
 This middleware generates a correlation ID for each request and stores it in AsyncLocalStorage.
 
+If you are running the Express middleware example, install Express and uuid as well.
+
+```bash
+npm install express uuid
+```
+
 ```javascript
 // src/middleware/request-logger.js
 const { v4: uuidv4 } = require('uuid');
@@ -472,29 +478,29 @@ function requestLogger(options = {}) {
 
     const startTime = Date.now();
 
-    // Log request
-    if (logRequests) {
-      logger.info('Request received', {
-        query: req.query,
-        body: options.logBody ? req.body : undefined
-      });
-    }
-
-    // Capture response
-    const originalEnd = res.end;
-    res.end = function(...args) {
-      if (logResponses) {
-        const duration = Date.now() - startTime;
-        logger.info('Request completed', {
-          statusCode: res.statusCode,
-          duration: `${duration}ms`
-        });
-      }
-      originalEnd.apply(res, args);
-    };
-
     // Run the rest of the request in context
     runWithContext(context, () => {
+      // Log request
+      if (logRequests) {
+        logger.info('Request received', {
+          query: req.query,
+          body: options.logBody ? req.body : undefined
+        });
+      }
+
+      // Capture response
+      const originalEnd = res.end;
+      res.end = function(...args) {
+        if (logResponses) {
+          const duration = Date.now() - startTime;
+          logger.info('Request completed', {
+            statusCode: res.statusCode,
+            duration: `${duration}ms`
+          });
+        }
+        originalEnd.apply(res, args);
+      };
+
       next();
     });
   };
@@ -606,7 +612,7 @@ const SENSITIVE_FIELDS = [
 // Patterns to redact
 const SENSITIVE_PATTERNS = [
   { pattern: /Bearer\s+[A-Za-z0-9\-._~+/]+=*/g, replacement: 'Bearer [REDACTED]' },
-  { pattern: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g, replacement: '[EMAIL_REDACTED]' },
+  { pattern: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g, replacement: '[EMAIL_REDACTED]' },
   { pattern: /\b\d{4}[- ]?\d{4}[- ]?\d{4}[- ]?\d{4}\b/g, replacement: '[CARD_REDACTED]' }
 ];
 
@@ -708,12 +714,12 @@ module.exports = secureLogger;
 
 ## Part 6: Pino for High Performance
 
-When you need maximum throughput, Pino is significantly faster than Winston because it uses a separate process for formatting.
+When you need maximum throughput, Pino is significantly faster than Winston and can offload transport work to a worker thread.
 
 ### Basic Pino Setup
 
 ```bash
-npm install pino pino-pretty pino-http
+npm install pino pino-pretty pino-http uuid
 ```
 
 ```javascript
@@ -779,7 +785,14 @@ const httpLogger = pinoHttp({
   logger,
 
   // Generate request ID
-  genReqId: (req) => req.headers['x-correlation-id'] || uuidv4(),
+  genReqId: (req, res) => {
+    const existingId = req.headers['x-correlation-id'];
+    if (existingId) return existingId;
+
+    const id = uuidv4();
+    res.setHeader('x-correlation-id', id);
+    return id;
+  },
 
   // Customize what gets logged for requests
   customProps: (req, res) => ({
@@ -890,7 +903,7 @@ const redactFormat = winston.format((info) => {
 
     const result = Array.isArray(obj) ? [] : {};
     for (const [key, value] of Object.entries(obj)) {
-      if (REDACT_FIELDS.some(f => key.toLowerCase().includes(f))) {
+      if (REDACT_FIELDS.some(f => key.toLowerCase().includes(f.toLowerCase()))) {
         result[key] = '[REDACTED]';
       } else if (typeof value === 'object') {
         result[key] = redact(value, depth + 1);
