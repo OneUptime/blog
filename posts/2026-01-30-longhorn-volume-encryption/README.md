@@ -8,7 +8,7 @@ Description: A practical guide to encrypting Longhorn volumes with LUKS, managin
 
 ---
 
-Persistent data in Kubernetes is a liability until it is encrypted. Longhorn makes volume encryption straightforward by integrating with the Linux Unified Key Setup (LUKS) standard. This guide walks through the end-to-end process: creating encryption secrets, configuring StorageClasses, provisioning encrypted volumes, and rotating keys without downtime.
+Persistent data in Kubernetes is a liability until it is encrypted. Longhorn makes volume encryption straightforward by integrating with the Linux Unified Key Setup (LUKS) standard. This guide walks through the end-to-end process: creating encryption secrets, configuring StorageClasses, provisioning encrypted volumes, and planning key rotation through migration.
 
 ## Why Encrypt Volumes at the Storage Layer
 
@@ -18,7 +18,7 @@ Application-level encryption is valuable, but storage-layer encryption covers ca
 - **Compliance requirements:** PCI-DSS, HIPAA, and SOC 2 often mandate encryption of all persistent data.
 - **Defense in depth:** Combine with network policies and RBAC so a single misconfiguration does not expose everything.
 
-Longhorn uses dm-crypt (LUKS2) under the hood. Each encrypted volume gets its own key, stored in a Kubernetes Secret. The Longhorn engine decrypts blocks on-the-fly when pods read or write.
+Longhorn uses dm-crypt and cryptsetup (LUKS) under the hood. Encrypted volumes use keys stored in Kubernetes Secrets, either a shared Secret referenced by the StorageClass or a per-volume Secret selected with CSI template parameters. Longhorn decrypts blocks on-the-fly when pods read or write.
 
 ## Encryption Flow Overview
 
@@ -54,7 +54,7 @@ Longhorn expects a Secret containing a `CRYPTO_KEY_VALUE` field with a passphras
 # encryption-secret.yaml
 
 # This Secret stores the passphrase for LUKS encryption.
-# The passphrase must be base64-encoded when using stringData.
+# Values in stringData are plain text; use data only for base64-encoded values.
 apiVersion: v1
 kind: Secret
 metadata:
@@ -117,12 +117,18 @@ parameters:
   encrypted: "true"
   # Data locality setting (best-effort places replicas on the same node)
   dataLocality: "best-effort"
+  # Reference the encryption secret for provisioning
+  csi.storage.k8s.io/provisioner-secret-name: "longhorn-crypto-secret"
+  csi.storage.k8s.io/provisioner-secret-namespace: "longhorn-system"
   # Reference the encryption secret for staging (node operations)
   csi.storage.k8s.io/node-stage-secret-name: "longhorn-crypto-secret"
   csi.storage.k8s.io/node-stage-secret-namespace: "longhorn-system"
   # Reference the encryption secret for publishing (pod mount operations)
   csi.storage.k8s.io/node-publish-secret-name: "longhorn-crypto-secret"
   csi.storage.k8s.io/node-publish-secret-namespace: "longhorn-system"
+  # Reference the encryption secret for online expansion
+  csi.storage.k8s.io/node-expand-secret-name: "longhorn-crypto-secret"
+  csi.storage.k8s.io/node-expand-secret-namespace: "longhorn-system"
 ```
 
 Apply the StorageClass:
@@ -256,7 +262,7 @@ Key points:
 
 ## Key Rotation Strategies
 
-Rotating encryption keys is essential for long-term security. Longhorn supports key rotation through a backup-and-restore workflow.
+Rotating encryption keys is essential for long-term security. Longhorn does not currently support in-place passphrase rotation for encrypted volumes, so use a new encrypted volume with a new Secret and migrate the data.
 
 ### Option 1: Rotate by Creating a New Volume
 
@@ -281,37 +287,23 @@ kubectl create secret generic longhorn-crypto-secret-v2 \
 # 4. Copy data from the old volume to the new volume using a migration pod
 ```
 
-### Option 2: Rotate via Backup and Restore
+### Option 2: Use Backup and Restore as a Safety Net
 
-Longhorn backups are encrypted with the volume's key. You can restore to a new volume with a different key.
+Longhorn backups created from encrypted volumes are also encrypted. Keep a backup before migration, but do not rely on backup restore as an in-place key rotation mechanism. Restoring an encrypted backup requires a compatible encryption setup and is separate from changing the key used by a newly provisioned volume.
 
 ```yaml
-# backup-and-restore-rotation.yaml
-# Step 1: Trigger a backup of the existing volume
+# backup-before-migration.yaml
+# Trigger a backup of an existing snapshot before migrating data
 apiVersion: longhorn.io/v1beta2
 kind: Backup
 metadata:
   name: encrypted-data-backup
   namespace: longhorn-system
 spec:
+  backupMode: incremental
   snapshotName: encrypted-data-snapshot
   labels:
-    rotation: "pre-key-change"
----
-# Step 2: Restore to a new volume with the new encryption secret
-apiVersion: longhorn.io/v1beta2
-kind: Volume
-metadata:
-  name: encrypted-data-v2
-  namespace: longhorn-system
-spec:
-  size: "10Gi"
-  numberOfReplicas: 3
-  encrypted: true
-  # Reference the new secret
-  dataSource:
-    kind: Backup
-    name: encrypted-data-backup
+    migration: "pre-key-change"
 ```
 
 ### Key Rotation Workflow
@@ -319,7 +311,7 @@ spec:
 ```mermaid
 flowchart LR
     A[Create New Secret] --> B[Create Backup of Volume]
-    B --> C[Restore to New Volume with New Secret]
+    B --> C[Create New Encrypted PVC with New Secret]
     C --> D[Update Application to Use New PVC]
     D --> E[Verify Data Integrity]
     E --> F[Delete Old Volume and Secret]
@@ -335,9 +327,7 @@ flowchart LR
 set -euo pipefail
 
 NAMESPACE="longhorn-system"
-OLD_SECRET="longhorn-crypto-secret"
 NEW_SECRET="longhorn-crypto-secret-$(date +%Y%m%d)"
-VOLUME_NAME="encrypted-data"
 
 echo "Generating new encryption key..."
 NEW_KEY=$(openssl rand -base64 32)
@@ -352,17 +342,15 @@ kubectl create secret generic "${NEW_SECRET}" \
   --from-literal=CRYPTO_PBKDF="argon2i" \
   -n "${NAMESPACE}"
 
-echo "Creating backup of volume: ${VOLUME_NAME}"
-kubectl exec -n "${NAMESPACE}" deploy/longhorn-driver-deployer -- \
-  longhorn-manager snapshot backup create "${VOLUME_NAME}"
-
 echo "Key rotation prepared. Next steps:"
-echo "1. Restore the backup to a new volume with the new secret"
-echo "2. Update your application to use the new PVC"
-echo "3. Verify data and delete the old volume"
+echo "1. Create a StorageClass or PVC path that references ${NEW_SECRET}"
+echo "2. Create a new encrypted PVC with the new secret"
+echo "3. Copy data from the old PVC to the new PVC using a migration pod or job"
+echo "4. Update your application to use the new PVC"
+echo "5. Verify data and delete the old volume"
 echo ""
 echo "New secret name: ${NEW_SECRET}"
-echo "Store the key securely: ${NEW_KEY}"
+echo "Store the key securely outside the cluster."
 ```
 
 ## Best Practices for Encryption Key Management
@@ -523,6 +511,6 @@ Longhorn volume encryption provides transparent, LUKS-based protection for persi
 
 1. **Encryption Secret:** Stores the passphrase that unlocks volumes.
 2. **Encrypted StorageClass:** References the secret and enables encryption for all provisioned PVCs.
-3. **Key Rotation Strategy:** Either backup-restore or volume migration to safely change keys.
+3. **Key Rotation Strategy:** Provision a new encrypted volume with a new Secret and migrate data to safely change keys.
 
 Pair encryption with external secret management, RBAC restrictions, and audit logging to build a defense-in-depth posture for your cluster's persistent data.
