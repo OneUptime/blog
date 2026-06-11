@@ -176,11 +176,14 @@ message Histogram {
 
 message MetricMetadata {
   enum MetricType {
-    UNKNOWN = 0;
-    COUNTER = 1;
-    GAUGE = 2;
-    SUMMARY = 3;
-    HISTOGRAM = 4;
+    UNKNOWN        = 0;
+    COUNTER        = 1;
+    GAUGE          = 2;
+    HISTOGRAM      = 3;
+    GAUGEHISTOGRAM = 4;
+    SUMMARY        = 5;
+    INFO           = 6;
+    STATESET       = 7;
   }
 
   MetricType type = 1;
@@ -207,9 +210,9 @@ import (
     "io"
     "net/http"
 
+    "github.com/gogo/protobuf/proto"
     "github.com/golang/snappy"
     "github.com/prometheus/prometheus/prompb"
-    "google.golang.org/protobuf/proto"
 )
 
 type WriteHandler struct {
@@ -798,13 +801,13 @@ Check for dropped samples using these Prometheus metrics:
 
 ```promql
 # Rate of dropped samples
-rate(prometheus_remote_storage_dropped_samples_total[5m])
+rate(prometheus_remote_storage_samples_dropped_total[5m])
 
 # Failed samples
-rate(prometheus_remote_storage_failed_samples_total[5m])
+rate(prometheus_remote_storage_samples_failed_total[5m])
 
 # Pending samples in queue
-prometheus_remote_storage_pending_samples
+prometheus_remote_storage_samples_pending
 ```
 
 **Solution**: Increase queue capacity and check network connectivity:
@@ -830,7 +833,7 @@ histogram_quantile(0.99,
 rate(prometheus_remote_storage_samples_total[5m])
 
 # Retries
-rate(prometheus_remote_storage_retried_samples_total[5m])
+rate(prometheus_remote_storage_samples_retried_total[5m])
 ```
 
 **Solution**: Enable compression and increase batch size:
