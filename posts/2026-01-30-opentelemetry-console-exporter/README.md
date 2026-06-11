@@ -53,7 +53,7 @@ npm install @opentelemetry/api \
   @opentelemetry/semantic-conventions
 ```
 
-The SDK packages include the Console Exporter by default, so no additional installation is needed for basic console output.
+The SDK packages include the console exporters, so no additional exporter package is needed for basic console output.
 
 ## Basic Setup for Traces
 
@@ -61,22 +61,21 @@ Create a file called `tracing.js` that configures the Console Exporter for trace
 
 ```javascript
 const { NodeSDK } = require('@opentelemetry/sdk-node');
-const { ConsoleSpanExporter } = require('@opentelemetry/sdk-trace-node');
-const { SimpleSpanProcessor } = require('@opentelemetry/sdk-trace-base');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { ConsoleSpanExporter, SimpleSpanProcessor } = require('@opentelemetry/sdk-trace-node');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } = require('@opentelemetry/semantic-conventions');
 
 // Create the Console Exporter
 const consoleExporter = new ConsoleSpanExporter();
 
 // Initialize the SDK with the Console Exporter
 const sdk = new NodeSDK({
-  resource: new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: 'my-service',
-    [SemanticResourceAttributes.SERVICE_VERSION]: '1.0.0',
+  resource: resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: 'my-service',
+    [ATTR_SERVICE_VERSION]: '1.0.0',
   }),
   // Use SimpleSpanProcessor for immediate output during debugging
-  spanProcessor: new SimpleSpanProcessor(consoleExporter),
+  spanProcessors: [new SimpleSpanProcessor(consoleExporter)],
 });
 
 sdk.start();
@@ -145,31 +144,37 @@ processOrder('ORD-12345');
 
 When you run the application, the Console Exporter outputs span data in a structured format.
 
-```json
+```javascript
 {
-  "traceId": "abc123def456789...",
-  "parentId": undefined,
-  "name": "process-order",
-  "id": "span123456...",
-  "kind": 0,
-  "timestamp": 1706659200000000,
-  "duration": 5234,
-  "attributes": {
-    "order.id": "ORD-12345",
-    "order.type": "standard"
+  resource: {
+    attributes: { 'service.name': 'my-service', 'service.version': '1.0.0' }
   },
-  "status": { "code": 1 },
-  "events": [
+  instrumentationScope: { name: 'example-tracer', version: '1.0.0', schemaUrl: undefined },
+  traceId: 'abc123def456789...',
+  parentSpanContext: undefined,
+  traceState: undefined,
+  name: 'process-order',
+  id: 'span123456...',
+  kind: 0,
+  timestamp: 1706659200000000,
+  duration: 5234,
+  attributes: {
+    'order.id': 'ORD-12345',
+    'order.type': 'standard'
+  },
+  status: { code: 1 },
+  events: [
     {
-      "name": "validation-complete",
-      "attributes": {
-        "validation.checks": 5,
-        "validation.passed": true
+      name: 'validation-complete',
+      attributes: {
+        'validation.checks': 5,
+        'validation.passed': true
       },
-      "time": [1706659200, 123456789]
+      time: [1706659200, 123456789],
+      droppedAttributesCount: 0
     }
   ],
-  "links": []
+  links: []
 }
 ```
 
@@ -178,7 +183,7 @@ When you run the application, the Console Exporter outputs span data in a struct
 The Console Exporter helps you verify that parent-child relationships between spans are correct.
 
 ```javascript
-const { trace, context } = require('@opentelemetry/api');
+const { trace, SpanStatusCode } = require('@opentelemetry/api');
 
 const tracer = trace.getTracer('nested-example');
 
@@ -218,12 +223,12 @@ async function handleRequest() {
 handleRequest();
 ```
 
-The console output shows each span with its `parentId`, allowing you to verify the trace hierarchy.
+The console output shows each child span with a `parentSpanContext`, allowing you to verify the trace hierarchy.
 
 ```mermaid
 flowchart TD
-    A[handle-request<br/>parentId: undefined] --> B[database-query<br/>parentId: handle-request]
-    A --> C[external-api-call<br/>parentId: handle-request]
+    A[handle-request<br/>parentSpanContext: undefined] --> B[database-query<br/>parentSpanContext: handle-request span context]
+    A --> C[external-api-call<br/>parentSpanContext: handle-request span context]
 ```
 
 ## Console Exporter for Metrics
@@ -232,26 +237,25 @@ You can also export metrics to the console for debugging.
 
 ```javascript
 const { MeterProvider, PeriodicExportingMetricReader, ConsoleMetricExporter } = require('@opentelemetry/sdk-metrics');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const { ATTR_SERVICE_NAME } = require('@opentelemetry/semantic-conventions');
 
 // Create the Console Metric Exporter
 const consoleMetricExporter = new ConsoleMetricExporter();
 
-// Create a Meter Provider with the Console Exporter
-const meterProvider = new MeterProvider({
-  resource: new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: 'my-service',
-  }),
+// Add a metric reader that exports to console every 10 seconds
+const metricReader = new PeriodicExportingMetricReader({
+  exporter: consoleMetricExporter,
+  exportIntervalMillis: 10000,
 });
 
-// Add a metric reader that exports to console every 10 seconds
-meterProvider.addMetricReader(
-  new PeriodicExportingMetricReader({
-    exporter: consoleMetricExporter,
-    exportIntervalMillis: 10000,
-  })
-);
+// Create a Meter Provider with the Console Exporter
+const meterProvider = new MeterProvider({
+  resource: resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: 'my-service',
+  }),
+  readers: [metricReader],
+});
 
 // Get a meter and create metrics
 const meter = meterProvider.getMeter('example-meter');
@@ -282,8 +286,8 @@ In development, you might want to send telemetry to both the console and a backe
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { ConsoleSpanExporter, SimpleSpanProcessor, BatchSpanProcessor } = require('@opentelemetry/sdk-trace-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const { ATTR_SERVICE_NAME } = require('@opentelemetry/semantic-conventions');
 
 // Console exporter for local debugging
 const consoleExporter = new ConsoleSpanExporter();
@@ -294,19 +298,16 @@ const otlpExporter = new OTLPTraceExporter({
 });
 
 const sdk = new NodeSDK({
-  resource: new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: 'my-service',
+  resource: resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: 'my-service',
   }),
+  spanProcessors: [
+    // Use SimpleSpanProcessor for console (immediate output)
+    new SimpleSpanProcessor(consoleExporter),
+    // Use BatchSpanProcessor for OTLP (efficient batching)
+    new BatchSpanProcessor(otlpExporter),
+  ],
 });
-
-// Manually add multiple span processors
-const provider = sdk.getTracerProvider();
-
-// Use SimpleSpanProcessor for console (immediate output)
-provider.addSpanProcessor(new SimpleSpanProcessor(consoleExporter));
-
-// Use BatchSpanProcessor for OTLP (efficient batching)
-provider.addSpanProcessor(new BatchSpanProcessor(otlpExporter));
 
 sdk.start();
 ```
@@ -319,8 +320,8 @@ A practical approach is to enable the Console Exporter only in development.
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { ConsoleSpanExporter, SimpleSpanProcessor, BatchSpanProcessor } = require('@opentelemetry/sdk-trace-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const { ATTR_DEPLOYMENT_ENVIRONMENT_NAME, ATTR_SERVICE_NAME } = require('@opentelemetry/semantic-conventions');
 
 const isDevelopment = process.env.NODE_ENV !== 'production';
 const enableConsoleExporter = process.env.OTEL_CONSOLE_EXPORTER === 'true' || isDevelopment;
@@ -340,15 +341,12 @@ const otlpExporter = new OTLPTraceExporter({
 spanProcessors.push(new BatchSpanProcessor(otlpExporter));
 
 const sdk = new NodeSDK({
-  resource: new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: process.env.SERVICE_NAME || 'my-service',
-    [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: process.env.NODE_ENV || 'development',
+  resource: resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: process.env.SERVICE_NAME || 'my-service',
+    [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: process.env.NODE_ENV || 'development',
   }),
+  spanProcessors,
 });
-
-// Add all configured processors
-const provider = sdk.getTracerProvider();
-spanProcessors.forEach(processor => provider.addSpanProcessor(processor));
 
 sdk.start();
 ```
@@ -365,7 +363,7 @@ from opentelemetry.sdk.resources import Resource, SERVICE_NAME
 
 # Create a resource with service information
 
-resource = Resource(attributes={
+resource = Resource.create(attributes={
     SERVICE_NAME: "my-python-service"
 })
 
@@ -403,7 +401,7 @@ The Console Exporter helps identify common instrumentation problems.
 
 ### Missing Parent Spans
 
-If child spans show `parentId: undefined` when they should have a parent, the context is not being propagated correctly.
+If child spans show `parentSpanContext: undefined` when they should have a parent, the context is not being propagated correctly.
 
 ```javascript
 // Wrong: Parent context not propagated
@@ -479,7 +477,7 @@ function riskyOperation() {
 
 ## Performance Considerations
 
-The Console Exporter uses `SimpleSpanProcessor` by default, which exports spans synchronously. This is fine for debugging but can slow down your application in high-throughput scenarios.
+The examples above use `SimpleSpanProcessor`, which exports spans as they end. This is fine for debugging but can slow down your application in high-throughput scenarios.
 
 | Processor | Use Case | Behavior |
 |-----------|----------|----------|
@@ -494,7 +492,7 @@ const { TraceIdRatioBasedSampler } = require('@opentelemetry/sdk-trace-node');
 const sdk = new NodeSDK({
   // Sample 10% of traces for console output
   sampler: new TraceIdRatioBasedSampler(0.1),
-  spanProcessor: new SimpleSpanProcessor(new ConsoleSpanExporter()),
+  spanProcessors: [new SimpleSpanProcessor(new ConsoleSpanExporter())],
 });
 ```
 
@@ -504,7 +502,7 @@ The Console Exporter is an essential tool for developing and debugging OpenTelem
 
 | Feature | Benefit |
 |---------|---------|
-| Zero configuration | Works out of the box with the SDK |
+| No extra exporter package | Console exporters are included with the SDK packages |
 | Immediate feedback | See spans as they are created |
 | Full visibility | View all span attributes, events, and links |
 | Environment support | Easy to enable/disable based on environment |
