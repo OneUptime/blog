@@ -33,12 +33,13 @@ flowchart TB
     end
 
     subgraph External Infrastructure
+        SPIRE[SPIRE Agent]
         VM1[VM + Linkerd Proxy]
         VM2[Bare Metal + Linkerd Proxy]
     end
 
-    Identity -->|Issues Certificates| VM1
-    Identity -->|Issues Certificates| VM2
+    SPIRE -->|Provides Workload Identity| VM1
+    SPIRE -->|Provides Workload Identity| VM2
     Destination -->|Provides Endpoints| PodA
     Destination -->|Provides Endpoints| PodB
     EW -->|Registers| VM1
@@ -60,15 +61,15 @@ flowchart TB
 Before setting up External Workloads, ensure you have:
 
 ```bash
-# Linkerd 2.14+ installed with External Workloads enabled
+# A Linkerd version with mesh expansion support installed
 
 linkerd check
 
-# Verify External Workloads feature is available
-linkerd viz check
+# Verify the ExternalWorkload CRD is available
+kubectl api-resources | grep externalworkloads
 
-# The external machine must be able to reach the Kubernetes API server
-# and the Linkerd identity controller
+# The external machine must be able to resolve in-cluster DNS names
+# and have IP connectivity to the pods it will communicate with
 ```
 
 ## The ExternalWorkload Resource
@@ -90,13 +91,13 @@ metadata:
     environment: production
     location: datacenter-east
 spec:
+  # Workload identity for mTLS
+  meshTLS:
+    identity: spiffe://root.linkerd.cluster.local/payment-processor-vm-1
+    serverName: payment-processor-vm-1.cluster.local
+
   # The IP address of the external workload
   # This must be routable from within the Kubernetes cluster
-  meshTLS:
-    identity: spiffe://cluster.local/payment-processor
-    serverName: payment-processor-vm-1.payments.svc.cluster.local
-
-  # Workload identity for mTLS
   workloadIPs:
     - ip: 10.0.50.100             # Primary IP of the VM
 
@@ -110,11 +111,11 @@ spec:
       protocol: TCP
 ```
 
-### Advanced ExternalWorkload with Health Checks
+### ExternalWorkload with Metadata
 
 ```yaml
 # external-workload-advanced.yaml
-# VM with comprehensive health checking and metadata
+# VM with metadata and multiple exposed ports
 apiVersion: workload.linkerd.io/v1beta1
 kind: ExternalWorkload
 metadata:
@@ -129,6 +130,10 @@ metadata:
     prometheus.io/scrape: "true"
     prometheus.io/port: "9187"
 spec:
+  meshTLS:
+    identity: spiffe://root.linkerd.cluster.local/database-replica-vm-2
+    serverName: database-replica-vm-2.cluster.local
+
   workloadIPs:
     - ip: 10.0.100.25
 
@@ -139,92 +144,36 @@ spec:
     - name: metrics
       port: 9187
       protocol: TCP
-
-  # Health probe configuration
-  # The proxy will mark the workload unhealthy if probes fail
-  probes:
-    - path: /health
-      port: 8081
-      period: 10s
-      timeout: 5s
-      failureThreshold: 3
-      successThreshold: 1
 ```
 
-## Workload Group Registration
+## Managing Multiple ExternalWorkloads
 
-Workload Groups simplify managing multiple external workloads with similar configurations. Instead of creating individual ExternalWorkload resources, you define a template that applies to a group of external machines.
+Open-source Linkerd models each off-cluster instance with its own `ExternalWorkload` resource. To manage a fleet, create one resource per VM and use shared labels so a Kubernetes `Service` can select the whole group.
 
-### Creating a Workload Group
-
-```yaml
-# workload-group.yaml
-# Template for a fleet of cache servers running on VMs
-apiVersion: workload.linkerd.io/v1beta1
-kind: WorkloadGroup
-metadata:
-  name: redis-cache-fleet
-  namespace: caching
-  labels:
-    app: redis
-    tier: cache
-spec:
-  # Template applied to all workloads in this group
-  template:
-    metadata:
-      labels:
-        app: redis
-        tier: cache
-        mesh: linkerd
-      annotations:
-        linkerd.io/inject: enabled
-
-    spec:
-      ports:
-        - name: redis
-          port: 6379
-          protocol: TCP
-        - name: sentinel
-          port: 26379
-          protocol: TCP
-
-      # Probes applied to all group members
-      probes:
-        - path: /health
-          port: 8080
-          period: 15s
-          timeout: 3s
-          failureThreshold: 3
-
-  # Identity template for certificate issuance
-  meshTLS:
-    identity: spiffe://cluster.local/redis-cache
-```
-
-### Registering Workloads to a Group
-
-Once you have a WorkloadGroup, register individual VMs:
+### Creating a Labeled Fleet
 
 ```yaml
 # redis-vm-1.yaml
-# Individual VM joining the redis-cache-fleet group
+# Individual VM in the redis-cache fleet
 apiVersion: workload.linkerd.io/v1beta1
 kind: ExternalWorkload
 metadata:
   name: redis-vm-1
   namespace: caching
   labels:
-    workloadGroup: redis-cache-fleet    # Links to the WorkloadGroup
+    app: redis
+    tier: cache
     instance: "1"
     datacenter: dc-1
 spec:
+  meshTLS:
+    identity: spiffe://root.linkerd.cluster.local/redis-vm-1
+    serverName: redis-vm-1.cluster.local
   workloadIPs:
     - ip: 10.0.200.10
-
-  # Additional ports beyond the group template
   ports:
-    - name: exporter
-      port: 9121
+    - name: redis
+      port: 6379
       protocol: TCP
 ---
 # redis-vm-2.yaml
@@ -234,17 +183,25 @@ metadata:
   name: redis-vm-2
   namespace: caching
   labels:
-    workloadGroup: redis-cache-fleet
+    app: redis
+    tier: cache
     instance: "2"
     datacenter: dc-2
 spec:
+  meshTLS:
+    identity: spiffe://root.linkerd.cluster.local/redis-vm-2
+    serverName: redis-vm-2.cluster.local
   workloadIPs:
     - ip: 10.0.200.11
+  ports:
+    - name: redis
+      port: 6379
+      protocol: TCP
 ```
 
 ## Identity and mTLS for External Workloads
 
-Linkerd provides automatic mTLS for external workloads through its identity system. Each external workload receives a TLS certificate from the Linkerd identity controller.
+Linkerd provides mTLS for external workloads by using identities rooted in the same trust anchor as the cluster. In the documented mesh expansion flow, the proxy on the external machine obtains its workload identity from SPIRE, and Linkerd uses the `meshTLS` identity in the `ExternalWorkload` resource for discovery and policy.
 
 ### How Identity Works
 
@@ -252,15 +209,14 @@ Linkerd provides automatic mTLS for external workloads through its identity syst
 sequenceDiagram
     participant VM as External VM
     participant Proxy as Linkerd Proxy
-    participant Identity as Identity Controller
+    participant Identity as SPIRE Agent
     participant Destination as Destination Controller
     participant Pod as Kubernetes Pod
 
-    VM->>Proxy: Start proxy with bootstrap token
-    Proxy->>Identity: Request certificate (CSR)
-    Identity->>Identity: Validate token and workload
-    Identity->>Proxy: Issue short-lived certificate
-    Proxy->>Destination: Register as endpoint
+    VM->>Proxy: Start proxy with SPIRE socket
+    Proxy->>Identity: Obtain workload SVID from SPIRE
+    Identity->>Proxy: Return short-lived certificate
+    VM->>Destination: ExternalWorkload is discovered from Kubernetes
 
     Pod->>Destination: Discover service endpoints
     Destination->>Pod: Return VM as endpoint
@@ -272,87 +228,79 @@ sequenceDiagram
 
 ### Setting Up Identity on External Workloads
 
-First, generate a bootstrap token on the Kubernetes cluster:
+First, install and configure SPIRE on the external machine with a trust domain and trust anchor that match your Linkerd installation. For local testing, Linkerd's mesh expansion guide uses `root.linkerd.cluster.local` as the trust domain:
 
 ```bash
-# Create a service account for the external workload
-kubectl create serviceaccount payment-processor-sa -n payments
+# Place your Linkerd trust anchor and key where SPIRE can use them
+sudo mkdir -p /opt/SPIRE/certs
+sudo cp ca.crt ca.key /opt/SPIRE/certs/
 
-# Generate a bootstrap token
-# This token is used once to obtain the initial certificate
-kubectl create token payment-processor-sa \
-  --namespace payments \
-  --duration=1h \
-  > /tmp/bootstrap-token.txt
-
-# Copy the token to the external VM securely
-scp /tmp/bootstrap-token.txt admin@10.0.50.100:/etc/linkerd/
-rm /tmp/bootstrap-token.txt
+# After starting the SPIRE server and agent, create a registration entry
+# for the proxy process on the external host.
+/opt/SPIRE/bin/spire-server entry create \
+  -spiffeID spiffe://root.linkerd.cluster.local/payment-processor-vm-1 \
+  -selector unix:uid:2102 \
+  -parentID spiffe://root.linkerd.cluster.local/spire/agent/join_token/node
 ```
 
 ### Installing the Proxy on External Workloads
 
-On the external VM, install and configure the Linkerd proxy:
+On the external VM, install the Linkerd proxy binary, configure traffic redirection, and start the proxy with environment variables that point it at the destination service, policy service, and SPIRE socket:
 
 ```bash
 #!/bin/bash
 # install-linkerd-proxy.sh
 # Run this on the external VM
 
-# Set environment variables
-export LINKERD_PROXY_VERSION="stable-2.14.0"
-export LINKERD_IDENTITY_TRUST_ANCHORS="/etc/linkerd/ca.crt"
-export LINKERD_PROXY_DESTINATION_SVC="destination.linkerd.svc.cluster.local:8086"
-export LINKERD_PROXY_IDENTITY_SVC="identity.linkerd.svc.cluster.local:8080"
+# Extract the proxy binary for your architecture from the Linkerd proxy image
+LINKERD_VERSION=edge-26.6.1
+mkdir -p /opt/linkerd-proxy && cd /opt/linkerd-proxy
+id=$(docker create cr.l5d.io/linkerd/proxy:${LINKERD_VERSION})
+docker cp "$id":/usr/lib/linkerd/linkerd2-proxy ./linkerd-proxy
+docker rm -v "$id"
 
-# Download the proxy binary
-curl -sL "https://run.linkerd.io/install" | sh
-export PATH=$PATH:$HOME/.linkerd2/bin
+# Configure iptables so inbound and outbound workload traffic is routed through the proxy.
+PROXY_INBOUND_PORT=4143
+PROXY_OUTBOUND_PORT=4140
+PROXY_USER_UID=$(id -u linkerd-proxy)
+INBOUND_PORTS_TO_IGNORE="4190,4191,4567,4568"
+OUTBOUND_PORTS_TO_IGNORE="4567,4568"
 
-# Download the proxy specifically for external workloads
-linkerd proxy-init --external-workload
+sudo iptables -t nat -N PROXY_INIT_REDIRECT
+sudo iptables -t nat -A PROXY_INIT_REDIRECT -p tcp --match multiport --dports "$INBOUND_PORTS_TO_IGNORE" -j RETURN
+sudo iptables -t nat -A PROXY_INIT_REDIRECT -p tcp -j REDIRECT --to-port "$PROXY_INBOUND_PORT"
+sudo iptables -t nat -A PREROUTING -j PROXY_INIT_REDIRECT
 
-# Create proxy configuration
-cat > /etc/linkerd/proxy-config.yaml <<EOF
-# Proxy configuration for external workload
-admin:
-  port: 4191
+sudo iptables -t nat -N PROXY_INIT_OUTPUT
+sudo iptables -t nat -A PROXY_INIT_OUTPUT -m owner --uid-owner "$PROXY_USER_UID" -j RETURN
+sudo iptables -t nat -A PROXY_INIT_OUTPUT -o lo -j RETURN
+sudo iptables -t nat -A PROXY_INIT_OUTPUT -p tcp --match multiport --dports "$OUTBOUND_PORTS_TO_IGNORE" -j RETURN
+sudo iptables -t nat -A PROXY_INIT_OUTPUT -p tcp -j REDIRECT --to-port "$PROXY_OUTBOUND_PORT"
+sudo iptables -t nat -A OUTPUT -j PROXY_INIT_OUTPUT
 
-inbound:
-  port: 4143
+# Start the proxy with the same trust anchor used by the cluster and SPIRE
+export LINKERD2_PROXY_IDENTITY_SERVER_ID="spiffe://root.linkerd.cluster.local/payment-processor-vm-1"
+export LINKERD2_PROXY_IDENTITY_SERVER_NAME="payment-processor-vm-1.cluster.local"
+export LINKERD2_PROXY_POLICY_WORKLOAD="{\"ns\":\"payments\", \"external_workload\":\"payment-processor-vm-1\"}"
+export LINKERD2_PROXY_DESTINATION_CONTEXT="{\"ns\":\"payments\", \"nodeName\":\"payment-processor-vm-1\", \"external_workload\":\"payment-processor-vm-1\"}"
+export LINKERD2_PROXY_DESTINATION_SVC_ADDR="linkerd-dst-headless.linkerd.svc.cluster.local.:8086"
+export LINKERD2_PROXY_DESTINATION_SVC_NAME="linkerd-destination.linkerd.serviceaccount.identity.linkerd.cluster.local"
+export LINKERD2_PROXY_POLICY_SVC_ADDR="linkerd-policy.linkerd.svc.cluster.local.:8090"
+export LINKERD2_PROXY_POLICY_SVC_NAME="linkerd-destination.linkerd.serviceaccount.identity.linkerd.cluster.local"
+export LINKERD2_PROXY_IDENTITY_TRUST_ANCHORS="$(cat /opt/SPIRE/certs/ca.crt)"
+export LINKERD2_PROXY_IDENTITY_SPIRE_SOCKET="unix:///tmp/spire-agent/public/api.sock"
 
-outbound:
-  port: 4140
-
-identity:
-  trustAnchors: /etc/linkerd/ca.crt
-  tokenPath: /etc/linkerd/bootstrap-token.txt
-
-destination:
-  endpoint: ${LINKERD_PROXY_DESTINATION_SVC}
-
-workload:
-  name: payment-processor-vm-1
-  namespace: payments
-EOF
-
-# Start the proxy
-linkerd-proxy --config /etc/linkerd/proxy-config.yaml &
+sudo -u linkerd-proxy ./linkerd-proxy
 ```
 
 ### Trust Anchor Distribution
 
-Export the trust anchor from your cluster and distribute it to external workloads:
+The external machine and the cluster must share a trust anchor. If you generated your Linkerd trust anchor during installation, distribute the same `ca.crt` to SPIRE on each external workload:
 
 ```bash
-# Export the trust anchor certificate
-kubectl get configmap linkerd-identity-trust-roots \
-  -n linkerd \
-  -o jsonpath='{.data.ca-bundle\.crt}' > ca.crt
-
 # Copy to all external workloads
 for vm in 10.0.50.100 10.0.50.101 10.0.50.102; do
-  scp ca.crt admin@${vm}:/etc/linkerd/ca.crt
+  scp ca.crt admin@${vm}:/opt/SPIRE/certs/ca.crt
 done
 ```
 
@@ -468,16 +416,15 @@ metadata:
     app: postgres
     role: primary
 spec:
+  meshTLS:
+    identity: spiffe://root.linkerd.cluster.local/postgres-primary
+    serverName: postgres-primary.cluster.local
   workloadIPs:
     - ip: 10.0.100.50
   ports:
     - name: postgres
       port: 5432
       protocol: TCP
-  probes:
-    - path: /health
-      port: 8081
-      period: 10s
 ---
 # redis-external.yaml
 apiVersion: workload.linkerd.io/v1beta1
@@ -489,6 +436,9 @@ metadata:
     app: redis
     role: cache
 spec:
+  meshTLS:
+    identity: spiffe://root.linkerd.cluster.local/redis-cache
+    serverName: redis-cache.cluster.local
   workloadIPs:
     - ip: 10.0.100.51
   ports:
@@ -532,6 +482,12 @@ spec:
 
 ```yaml
 # api-deployment.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: api-server
+  namespace: hybrid-app
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -549,6 +505,7 @@ spec:
       annotations:
         linkerd.io/inject: enabled
     spec:
+      serviceAccountName: api-server
       containers:
         - name: api
           image: myregistry/api-server:v1.0.0
@@ -575,13 +532,13 @@ spec:
 ```yaml
 # traffic-policy.yaml
 # Server resource to configure traffic handling
-apiVersion: policy.linkerd.io/v1beta3
+apiVersion: policy.linkerd.io/v1beta2
 kind: Server
 metadata:
   name: postgres-server
   namespace: hybrid-app
 spec:
-  podSelector:
+  externalWorkloadSelector:
     matchLabels:
       app: postgres
   port: 5432
@@ -608,8 +565,9 @@ spec:
 # Check external workloads are registered
 kubectl get externalworkloads -n hybrid-app
 
-# Verify endpoints are discovered
-kubectl get endpoints postgres redis -n hybrid-app
+# Verify EndpointSlices are discovered
+kubectl get endpointslices -n hybrid-app \
+  -l kubernetes.io/service-name=postgres
 
 # Check mTLS is working
 linkerd viz stat deploy/api-server -n hybrid-app
@@ -619,7 +577,7 @@ linkerd viz edges deploy -n hybrid-app
 
 # Test connectivity from a pod
 kubectl exec -it deploy/api-server -n hybrid-app -- \
-  curl -v http://postgres:5432/
+  nc -zv postgres 5432
 ```
 
 ## Troubleshooting External Workloads
@@ -645,10 +603,10 @@ ssh admin@10.0.50.100 'systemctl status linkerd-proxy'
 ```bash
 # Verify trust anchors are correct
 kubectl get configmap linkerd-identity-trust-roots -n linkerd -o yaml
-ssh admin@10.0.50.100 'cat /etc/linkerd/ca.crt'
+ssh admin@10.0.50.100 'cat /opt/SPIRE/certs/ca.crt'
 
-# Check certificate validity on the VM
-ssh admin@10.0.50.100 'openssl x509 -in /etc/linkerd/proxy.crt -text -noout'
+# Check the SPIRE agent and proxy logs on the VM
+ssh admin@10.0.50.100 'systemctl status spire-agent'
 
 # Look at proxy logs
 ssh admin@10.0.50.100 'journalctl -u linkerd-proxy -f'
@@ -671,11 +629,11 @@ ssh admin@10.0.50.100 'netstat -tlnp | grep linkerd'
 ### Monitoring External Workloads
 
 ```bash
-# View metrics for external workloads
-linkerd viz stat externalworkload -n payments
+# View metrics for the service that selects external workloads
+linkerd viz stat svc/payment-processor -n payments
 
-# Watch live traffic
-linkerd viz tap externalworkload/payment-processor-vm-1 -n payments
+# Inspect Linkerd's discovered endpoints
+linkerd diagnostics endpoints payment-processor.payments.svc.cluster.local:8080
 
 # Check latency and success rates
 linkerd viz routes svc/payment-processor -n payments
@@ -683,9 +641,9 @@ linkerd viz routes svc/payment-processor -n payments
 
 ## Best Practices
 
-1. **Use WorkloadGroups for fleet management** - Avoid duplicating configuration across similar external workloads
+1. **Use consistent labels for fleet management** - Keep labels consistent across similar external workloads so Services and policies select the right instances
 
-2. **Automate token rotation** - Bootstrap tokens should be short-lived and automated through CI/CD
+2. **Automate identity provisioning** - SPIRE registration entries and trust anchor distribution should be managed through automation
 
 3. **Monitor certificate expiry** - Set up alerts for certificate renewal failures
 
@@ -693,9 +651,9 @@ linkerd viz routes svc/payment-processor -n payments
 
 5. **Keep proxies updated** - External workload proxies should match the control plane version
 
-6. **Implement health checks** - Configure probes to remove unhealthy external workloads from load balancing
+6. **Monitor workload health outside Kubernetes** - Open-source Linkerd discovers ExternalWorkloads from their Kubernetes resources, so use host-level monitoring to detect unhealthy VMs
 
-7. **Document network requirements** - External workloads need access to the Kubernetes API and Linkerd control plane ports
+7. **Document network requirements** - External workloads need DNS and network connectivity to in-cluster workloads and the Linkerd destination and policy services
 
 ---
 
