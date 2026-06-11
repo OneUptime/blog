@@ -4,19 +4,19 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Kubernetes, Service Topology, Traffic Routing, Topology Aware
 
-Description: Learn to implement service topology for locality-aware routing with topology keys, zone preference, and traffic optimization.
+Description: Learn to implement topology-aware Service routing for locality-aware traffic, zone preference, and traffic optimization.
 
 ---
 
 ## Introduction
 
-Kubernetes Service Topology enables you to route traffic based on the topology of your cluster. Instead of distributing traffic randomly across all endpoints, you can prefer endpoints that are closer to the originating node - reducing latency, lowering cross-zone data transfer costs, and improving overall application performance.
+Kubernetes topology-aware Service routing enables you to route traffic based on the topology of your cluster. Instead of distributing traffic randomly across all endpoints, you can prefer endpoints that are closer to the originating node - reducing latency, lowering cross-zone data transfer costs, and improving overall application performance.
 
-In this guide, we will explore how to implement service topology for locality-aware traffic routing, covering topology keys, zone and node preferences, fallback behavior, and EndpointSlice topology.
+In this guide, we will explore how to implement topology-aware Service routing for locality-aware traffic routing, covering zone and node preferences, fallback behavior, and EndpointSlice topology.
 
 ## Understanding Service Topology
 
-Service Topology allows a Service to route traffic based on the Node labels of the cluster. This feature uses topology keys to define a preference order for endpoint selection.
+Topology-aware Service routing allows a Service to prefer endpoints based on the topology of the cluster. Modern Kubernetes uses EndpointSlice hints and Service configuration to influence endpoint selection, while the older `topologyKeys` field defined an explicit preference order for endpoint selection.
 
 ```mermaid
 flowchart TD
@@ -50,16 +50,16 @@ flowchart TD
 3. **Improved Reliability** - Local endpoints reduce the number of network hops
 4. **Better Resource Utilization** - Distribute load based on topology constraints
 
-## Topology Keys
+## Topology Labels
 
-Topology keys are node labels that define the routing preference. The most commonly used keys are:
+Topology labels are node labels that Kubernetes uses to understand where nodes and endpoints are located. The older `topologyKeys` Service field used these labels directly as routing preference keys. The most commonly used labels are:
 
-| Topology Key | Description |
+| Topology Label | Description |
 |-------------|-------------|
-| `kubernetes.io/hostname` | Routes to endpoints on the same node |
-| `topology.kubernetes.io/zone` | Routes to endpoints in the same zone |
-| `topology.kubernetes.io/region` | Routes to endpoints in the same region |
-| `*` | Wildcard - serves traffic to any endpoint |
+| `kubernetes.io/hostname` | Identifies the node that hosts an endpoint |
+| `topology.kubernetes.io/zone` | Identifies the zone for a node or endpoint |
+| `topology.kubernetes.io/region` | Identifies the region for a node or endpoint |
+| `*` | Legacy `topologyKeys` wildcard - serves traffic to any endpoint |
 
 ### Node Labels Example
 
@@ -91,9 +91,9 @@ kubectl get nodes -o custom-columns=\
 
 ## Implementing Topology Aware Routing
 
-### Method 1: Topology Aware Hints (Recommended)
+### Method 1: Topology Aware Routing (Recommended)
 
-Starting with Kubernetes 1.21, Topology Aware Hints provide a more flexible approach to topology-aware routing. This is the recommended method for modern clusters.
+Topology Aware Routing, known as Topology Aware Hints before Kubernetes 1.27, provides a more flexible approach to topology-aware routing. This is the recommended annotation-based method for modern clusters.
 
 ```mermaid
 flowchart LR
@@ -117,7 +117,7 @@ flowchart LR
     style Rules fill:#ffcdd2
 ```
 
-Enable topology aware hints on your Service:
+Enable topology-aware routing on your Service:
 
 ```yaml
 apiVersion: v1
@@ -135,7 +135,7 @@ spec:
       targetPort: 8080
 ```
 
-The `topology-mode` annotation accepts the following values:
+The `topology-mode` annotation commonly uses the following values:
 
 - `Auto` - Enable topology aware routing with automatic hint allocation
 - `Disabled` - Disable topology aware hints (default behavior)
@@ -167,15 +167,13 @@ spec:
 
 ### Same-Node Preference
 
-For applications that benefit from co-located traffic (such as caching layers), configure routing to prefer the same node:
+For applications that require co-located traffic (such as caching layers), configure routing to use only same-node endpoints:
 
 ```yaml
 apiVersion: v1
 kind: Service
 metadata:
   name: local-cache
-  annotations:
-    service.kubernetes.io/topology-mode: Auto
 spec:
   selector:
     app: redis-cache
@@ -185,7 +183,7 @@ spec:
   internalTrafficPolicy: Local
 ```
 
-The `internalTrafficPolicy: Local` setting ensures traffic only routes to endpoints on the same node. This is useful for:
+The `internalTrafficPolicy: Local` setting is a strict same-node policy: kube-proxy only routes internal traffic to endpoints on the same node, and drops traffic if there are no node-local endpoints. Topology Aware Hints are not used for a Service that sets `internalTrafficPolicy: Local`. This is useful for:
 
 - Node-local caches
 - DaemonSet services
@@ -231,15 +229,15 @@ spec:
       targetPort: 8080
 ```
 
-With Topology Aware Hints enabled, the EndpointSlice controller automatically calculates hints based on:
+With topology-aware routing enabled, the EndpointSlice controller automatically calculates hints based on:
 
-1. The proportion of endpoints in each zone
-2. The proportion of CPU capacity in each zone
-3. The ratio between these proportions
+1. The allocatable CPU capacity in each zone
+2. The number of endpoints available for the Service
+3. Safeguards that prevent hint assignment when allocation would be too imbalanced
 
 ## Understanding Fallback Behavior
 
-Fallback behavior determines what happens when preferred endpoints are unavailable. With Topology Aware Hints, the system handles this automatically.
+Fallback behavior determines what happens when preferred endpoints are unavailable. With topology-aware routing, kube-proxy falls back to using endpoints from all zones when the safeguards indicate that filtering by hints would be unsafe.
 
 ```mermaid
 sequenceDiagram
@@ -254,7 +252,7 @@ sequenceDiagram
     alt Zone A endpoints available
         kube-proxy->>Zone A Endpoints: Route to local zone
         Zone A Endpoints-->>Client: Response
-    else Zone A endpoints unavailable
+    else No safe Zone A hint set
         kube-proxy->>Zone B Endpoints: Fallback to remote zone
         Zone B Endpoints-->>Client: Response
     end
@@ -299,7 +297,7 @@ spec:
             periodSeconds: 10
 ```
 
-The `topologySpreadConstraints` ensure pods are evenly distributed across zones, which helps Topology Aware Hints work effectively.
+The `topologySpreadConstraints` ensure pods are evenly distributed across zones, which helps topology-aware routing work effectively.
 
 ## EndpointSlice Topology
 
@@ -552,12 +550,12 @@ Enable these Prometheus metrics to monitor topology-aware routing:
 ```yaml
 # kube-proxy metrics
 
-- kube_proxy_sync_proxy_rules_duration_seconds
-- kube_proxy_sync_proxy_rules_endpoint_changes_total
+- kubeproxy_sync_proxy_rules_duration_seconds
+- kubeproxy_sync_proxy_rules_endpoint_changes_total
 
-# EndpointSlice metrics
-- endpoint_slice_controller_syncs_total
-- endpoint_slice_controller_changes
+# EndpointSlice metrics from kube-state-metrics
+- kube_endpointslice_endpoints
+- kube_endpointslice_endpoints_hints
 ```
 
 ## Best Practices
@@ -576,7 +574,7 @@ Enable these Prometheus metrics to monitor topology-aware routing:
 
 ## Conclusion
 
-Kubernetes Service Topology provides powerful capabilities for optimizing traffic routing based on cluster topology. By implementing Topology Aware Hints, you can reduce latency, minimize cross-zone costs, and improve application reliability.
+Kubernetes topology-aware Service routing provides powerful capabilities for optimizing traffic routing based on cluster topology. By implementing Topology Aware Routing, you can reduce latency, minimize cross-zone costs, and improve application reliability.
 
 Key takeaways:
 
@@ -590,6 +588,6 @@ With these techniques, you can build more efficient and cost-effective Kubernete
 
 ## References
 
-- [Kubernetes Topology Aware Hints Documentation](https://kubernetes.io/docs/concepts/services-networking/topology-aware-hints/)
+- [Kubernetes Topology Aware Routing Documentation](https://kubernetes.io/docs/concepts/services-networking/topology-aware-routing/)
 - [EndpointSlice API Reference](https://kubernetes.io/docs/reference/kubernetes-api/service-resources/endpoint-slice-v1/)
 - [Service Internal Traffic Policy](https://kubernetes.io/docs/concepts/services-networking/service-traffic-policy/)
