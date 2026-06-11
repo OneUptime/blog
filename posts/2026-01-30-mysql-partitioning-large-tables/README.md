@@ -12,7 +12,7 @@ When your MySQL tables grow to millions or billions of rows, queries slow down, 
 
 ## What Is Table Partitioning?
 
-Partitioning divides a table's data into separate physical segments based on rules you define. MySQL stores each partition as a separate file, but your application queries the table as if it were a single unit. The database engine automatically routes queries to the relevant partitions.
+Partitioning divides a table's data into separate physical segments based on rules you define. MySQL stores each partition separately, but your application queries the table as if it were a single unit. The database engine automatically routes queries to the relevant partitions.
 
 Benefits of partitioning include:
 
@@ -31,35 +31,25 @@ MySQL supports four main partition types. Each serves different use cases.
 | RANGE | Time-series data, date-based queries | Continuous ranges of values |
 | LIST | Categorical data, geographic regions | Discrete sets of values |
 | HASH | Even data distribution | Integer expression |
-| KEY | Similar to HASH but uses MySQL's internal hashing | Any column type |
+| KEY | Similar to HASH but uses MySQL's internal hashing | Non-BLOB/TEXT column types |
 
 ## Prerequisites
 
 Before creating partitioned tables, verify your MySQL version supports partitioning.
 
-Check if partitioning is enabled in your MySQL installation:
+Check your MySQL version before using partitioning:
 
 ```sql
--- Check MySQL version and partitioning support
+-- Check MySQL version
 SELECT VERSION();
-
--- Verify the partition plugin is active
-SHOW PLUGINS;
-
--- Look for 'partition' with status 'ACTIVE'
-SELECT
-    PLUGIN_NAME,
-    PLUGIN_STATUS
-FROM INFORMATION_SCHEMA.PLUGINS
-WHERE PLUGIN_NAME = 'partition';
 ```
 
 Partitioning requirements to keep in mind:
 
 - The partition key must be part of every unique key (including primary key)
-- Foreign keys are not supported on partitioned tables
-- Full-text indexes are not supported (until MySQL 5.7.6+)
-- Spatial columns cannot be used as partition keys
+- Foreign keys are not supported on user-partitioned InnoDB tables
+- Full-text indexes are not supported on partitioned tables
+- Spatial columns cannot be used in partitioned tables
 
 ## RANGE Partitioning
 
@@ -210,7 +200,7 @@ PARTITIONS 16;
 
 ## KEY Partitioning
 
-KEY partitioning is similar to HASH but uses MySQL's internal hashing function. It can work with non-integer columns and automatically uses the primary key if no column is specified.
+KEY partitioning is similar to HASH but uses MySQL's internal hashing function. It can work with non-integer columns other than BLOB or TEXT columns, and automatically uses the primary key if no column is specified.
 
 ### Creating a KEY Partitioned Table
 
@@ -258,7 +248,7 @@ EXPLAIN SELECT * FROM orders
 WHERE order_date BETWEEN '2025-01-01' AND '2025-12-31';
 
 -- Check the 'partitions' column in the output
-EXPLAIN PARTITIONS SELECT * FROM orders
+EXPLAIN SELECT * FROM orders
 WHERE YEAR(order_date) = 2025;
 ```
 
@@ -356,19 +346,7 @@ ALTER TABLE sales_log REORGANIZE PARTITION p_2024_q1, p_2024_q2 INTO (
 Split one partition into multiple:
 
 ```sql
--- Split yearly partition into quarterly
-ALTER TABLE orders REORGANIZE PARTITION p2025 INTO (
-    PARTITION p2025_q1 VALUES LESS THAN (2025) + INTERVAL 3 MONTH,
-    PARTITION p2025_q2 VALUES LESS THAN (2025) + INTERVAL 6 MONTH,
-    PARTITION p2025_q3 VALUES LESS THAN (2025) + INTERVAL 9 MONTH,
-    PARTITION p2025_q4 VALUES LESS THAN (2026)
-);
-```
-
-Actually, the above syntax is incorrect. Here is the proper way:
-
-```sql
--- Split yearly partition into quarterly (correct syntax)
+-- Split Q1 partition into monthly partitions
 ALTER TABLE sales_log REORGANIZE PARTITION p_2025_q1 INTO (
     PARTITION p_2025_jan VALUES LESS THAN ('2025-02-01'),
     PARTITION p_2025_feb VALUES LESS THAN ('2025-03-01'),
@@ -560,7 +538,7 @@ Create a new partitioned table and migrate data:
 ```sql
 -- Step 1: Create the new partitioned table
 CREATE TABLE orders_partitioned (
-    order_id INT NOT NULL,
+    order_id INT NOT NULL AUTO_INCREMENT,
     customer_id INT NOT NULL,
     order_date DATE NOT NULL,
     amount DECIMAL(10,2) NOT NULL,
@@ -676,30 +654,29 @@ Index tips for partitioned tables:
 
 ### Creating Partitions Automatically with Events
 
-Set up a scheduled event to create future partitions:
+Set up a scheduled event to create future yearly partitions:
 
 ```sql
--- Create an event to add monthly partitions
+-- Create an event to add yearly partitions
 DELIMITER //
 
-CREATE EVENT add_monthly_partition
-ON SCHEDULE EVERY 1 MONTH
-STARTS '2026-02-01 00:00:00'
+CREATE EVENT add_yearly_partition
+ON SCHEDULE EVERY 1 YEAR
+STARTS '2026-01-01 00:00:00'
 DO
 BEGIN
     DECLARE partition_name VARCHAR(20);
-    DECLARE partition_date DATE;
+    DECLARE partition_year INT;
 
-    -- Calculate next month's partition details
-    SET partition_date = DATE_ADD(CURDATE(), INTERVAL 2 MONTH);
-    SET partition_date = DATE_FORMAT(partition_date, '%Y-%m-01');
-    SET partition_name = CONCAT('p', DATE_FORMAT(partition_date, '%Y%m'));
+    -- Calculate next year's partition details
+    SET partition_year = YEAR(CURDATE()) + 1;
+    SET partition_name = CONCAT('p', partition_year);
 
     -- Reorganize the pmax partition
     SET @sql = CONCAT(
         'ALTER TABLE orders REORGANIZE PARTITION pmax INTO (',
-        'PARTITION ', partition_name, ' VALUES LESS THAN (''',
-        DATE_ADD(partition_date, INTERVAL 1 MONTH), '''), ',
+        'PARTITION ', partition_name, ' VALUES LESS THAN (',
+        partition_year + 1, '), ',
         'PARTITION pmax VALUES LESS THAN MAXVALUE)'
     );
 
@@ -730,20 +707,18 @@ BEGIN
     DECLARE part_name VARCHAR(64);
     DECLARE part_desc VARCHAR(64);
     DECLARE retention_date DATE;
-
-    -- Keep 3 years of data
-    SET retention_date = DATE_SUB(CURDATE(), INTERVAL 3 YEAR);
-
-    -- Find partitions to drop
     DECLARE partition_cursor CURSOR FOR
         SELECT PARTITION_NAME, PARTITION_DESCRIPTION
         FROM INFORMATION_SCHEMA.PARTITIONS
         WHERE TABLE_SCHEMA = DATABASE()
           AND TABLE_NAME = 'orders'
           AND PARTITION_NAME != 'pmax'
-          AND CAST(PARTITION_DESCRIPTION AS UNSIGNED) < YEAR(retention_date);
+          AND CAST(PARTITION_DESCRIPTION AS UNSIGNED) <= YEAR(retention_date);
 
     DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = TRUE;
+
+    -- Keep 3 years of data
+    SET retention_date = DATE_SUB(CURDATE(), INTERVAL 3 YEAR);
 
     OPEN partition_cursor;
 
