@@ -8,7 +8,7 @@ Description: Learn how to implement head-based sampling for making sampling deci
 
 ---
 
-Head-based sampling is the practice of making a sampling decision at the very beginning of a trace, before any spans are created. This decision propagates through all downstream services, ensuring that either the entire trace is kept or the entire trace is dropped. No partial traces. No orphaned spans.
+Head-based sampling is the practice of making a sampling decision when the trace starts, before spans are recorded and exported. This decision propagates through downstream services that honor the parent context, ensuring that either the entire trace is kept or the entire trace is dropped. No partial traces. No orphaned spans.
 
 This guide walks through why head-based sampling matters, how to implement it correctly, and how to ensure consistent sampling decisions across your distributed system.
 
@@ -62,9 +62,9 @@ The W3C traceparent header carries the sampling decision:
 traceparent: 00-<trace-id>-<span-id>-<flags>
 ```
 
-The flags byte indicates the sampling decision:
+The least significant bit of the flags byte indicates the sampling decision:
 - `00` = not sampled
-- `01` = sampled
+- `01` = sampled, when no other flags are set
 
 ---
 
@@ -92,7 +92,7 @@ flowchart TB
 | Aspect | Head-Based | Tail-Based |
 |--------|-----------|-----------|
 | Decision timing | Before trace starts | After trace completes |
-| Resource usage | Low (dropped traces cost nothing) | High (must buffer all traces) |
+| Resource usage | Low (dropped traces do not create exportable span data) | High (must buffer all traces) |
 | Error capture | May miss errors (probabilistic) | Can keep all errors |
 | Latency capture | May miss slow requests | Can keep slow requests |
 | Implementation | Simple | Requires collector with state |
@@ -109,7 +109,7 @@ Use tail-based sampling when:
 - You need to keep traces based on outcome
 - You have collector infrastructure to buffer traces
 
-Most production systems use both: head-based sampling as a baseline with tail-based sampling at the collector to rescue interesting traces.
+Many production systems combine strategies: head-based sampling to control SDK-side volume, and tail-based sampling in the collector for traces that were still emitted by the SDK.
 
 ---
 
@@ -135,14 +135,16 @@ The trace ID itself determines the sampling decision. This is deterministic: the
 ```typescript
 // probability-sampler.ts
 import {
-  Sampler,
-  SamplingDecision,
-  SamplingResult,
   Context,
   Link,
   Attributes,
   SpanKind
 } from '@opentelemetry/api';
+import {
+  Sampler,
+  SamplingDecision,
+  SamplingResult
+} from '@opentelemetry/sdk-trace-base';
 
 /**
  * Probability-based sampler that uses trace ID for deterministic decisions.
@@ -153,7 +155,7 @@ import {
  * - 1.0 = sample everything
  */
 export class ProbabilitySampler implements Sampler {
-  private readonly threshold: number;
+  private readonly threshold: bigint;
   private readonly description: string;
 
   constructor(samplingRate: number) {
@@ -161,8 +163,8 @@ export class ProbabilitySampler implements Sampler {
     const rate = Math.max(0, Math.min(1, samplingRate));
 
     // Convert rate to threshold for comparison with trace ID
-    // Trace IDs are 128-bit, we use upper 64 bits for comparison
-    this.threshold = rate * 0xFFFFFFFFFFFFFFFF;
+    // Use 52 bits so the comparison stays precise in JavaScript
+    this.threshold = BigInt(Math.floor(rate * 0x10000000000000));
     this.description = `ProbabilitySampler{rate=${rate}}`;
   }
 
@@ -174,9 +176,9 @@ export class ProbabilitySampler implements Sampler {
     attributes: Attributes,
     links: Link[]
   ): SamplingResult {
-    // Extract upper 64 bits of trace ID and convert to number
-    const traceIdUpper = traceId.substring(0, 16);
-    const traceIdValue = parseInt(traceIdUpper, 16);
+    // Extract upper 52 bits of trace ID
+    const traceIdUpper = traceId.substring(0, 13);
+    const traceIdValue = BigInt(`0x${traceIdUpper}`);
 
     // Deterministic decision based on trace ID
     const shouldSample = traceIdValue < this.threshold;
@@ -204,14 +206,14 @@ OpenTelemetry provides `TraceIdRatioBasedSampler` out of the box:
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { TraceIdRatioBasedSampler } from '@opentelemetry/sdk-trace-node';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
-import { Resource } from '@opentelemetry/resources';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 import { ATTR_SERVICE_NAME } from '@opentelemetry/semantic-conventions';
 
 // Sample 10% of traces
 const sampler = new TraceIdRatioBasedSampler(0.1);
 
 const sdk = new NodeSDK({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     [ATTR_SERVICE_NAME]: 'api-gateway',
   }),
   traceExporter: new OTLPTraceExporter({
@@ -245,8 +247,8 @@ class ProbabilitySampler(Sampler):
     def __init__(self, rate: float):
         # Clamp rate between 0 and 1
         self._rate = max(0.0, min(1.0, rate))
-        # Threshold for 64-bit comparison
-        self._threshold = int(self._rate * 0xFFFFFFFFFFFFFFFF)
+        # Threshold for low-order 64-bit comparison
+        self._threshold = round(self._rate * (1 << 64))
 
     def should_sample(
         self,
@@ -257,11 +259,11 @@ class ProbabilitySampler(Sampler):
         attributes: Attributes = None,
         links: Sequence[Link] = None,
     ) -> SamplingResult:
-        # Use upper 64 bits of trace ID for decision
-        trace_id_upper = trace_id >> 64
+        # Use low-order 64 bits of trace ID for decision
+        trace_id_lower = trace_id & ((1 << 64) - 1)
 
-        if trace_id_upper < self._threshold:
-            return SamplingResult(Decision.RECORD_AND_SAMPLED)
+        if trace_id_lower < self._threshold:
+            return SamplingResult(Decision.RECORD_AND_SAMPLE)
         return SamplingResult(Decision.DROP)
 
     def get_description(self) -> str:
@@ -277,13 +279,13 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.sampling import TraceIdRatioBased
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
-from opentelemetry.sdk.resources import Resource, SERVICE_NAME
+from opentelemetry.sdk.resources import Resource
 
 # Sample 10% of traces
 sampler = TraceIdRatioBased(0.1)
 
-resource = Resource(attributes={
-    SERVICE_NAME: "api-gateway"
+resource = Resource.create({
+    "service.name": "api-gateway"
 })
 
 provider = TracerProvider(resource=resource, sampler=sampler)
@@ -322,14 +324,16 @@ flowchart TB
 ```typescript
 // rate-limit-sampler.ts
 import {
-  Sampler,
-  SamplingDecision,
-  SamplingResult,
   Context,
   Link,
   Attributes,
   SpanKind
 } from '@opentelemetry/api';
+import {
+  Sampler,
+  SamplingDecision,
+  SamplingResult
+} from '@opentelemetry/sdk-trace-base';
 
 /**
  * Token bucket rate limiter for sampling.
@@ -442,7 +446,7 @@ class RateLimitingSampler(Sampler):
 
             if self._tokens >= 1:
                 self._tokens -= 1
-                return SamplingResult(Decision.RECORD_AND_SAMPLED)
+                return SamplingResult(Decision.RECORD_AND_SAMPLE)
 
             return SamplingResult(Decision.DROP)
 
@@ -467,15 +471,17 @@ class RateLimitingSampler(Sampler):
 ```typescript
 // composite-sampler.ts
 import {
-  Sampler,
-  SamplingDecision,
-  SamplingResult,
   Context,
   Link,
   Attributes,
   SpanKind
 } from '@opentelemetry/api';
-import { TraceIdRatioBasedSampler } from '@opentelemetry/sdk-trace-node';
+import {
+  Sampler,
+  SamplingDecision,
+  SamplingResult,
+  TraceIdRatioBasedSampler
+} from '@opentelemetry/sdk-trace-node';
 import { RateLimitingSampler } from './rate-limit-sampler';
 
 /**
@@ -568,7 +574,7 @@ import {
   AlwaysOffSampler
 } from '@opentelemetry/sdk-trace-node';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
-import { Resource } from '@opentelemetry/resources';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 import { ATTR_SERVICE_NAME } from '@opentelemetry/semantic-conventions';
 
 /**
@@ -596,7 +602,7 @@ const sampler = new ParentBasedSampler({
 });
 
 const sdk = new NodeSDK({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     [ATTR_SERVICE_NAME]: process.env.OTEL_SERVICE_NAME || 'my-service',
   }),
   traceExporter: new OTLPTraceExporter({
@@ -630,7 +636,7 @@ from opentelemetry.sdk.trace.sampling import (
 )
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
-from opentelemetry.sdk.resources import Resource, SERVICE_NAME
+from opentelemetry.sdk.resources import Resource
 import os
 
 # ParentBased sampler ensures consistency across services
@@ -644,8 +650,8 @@ sampler = ParentBased(
     local_parent_not_sampled=ALWAYS_OFF,
 )
 
-resource = Resource(attributes={
-    SERVICE_NAME: os.getenv("OTEL_SERVICE_NAME", "my-service")
+resource = Resource.create({
+    "service.name": os.getenv("OTEL_SERVICE_NAME", "my-service")
 })
 
 provider = TracerProvider(resource=resource, sampler=sampler)
@@ -736,6 +742,7 @@ export function traceContextMiddleware(
     // The sampler will see the parent context and honor its decision
     const tracer = trace.getTracer('express');
     const span = tracer.startSpan(`${req.method} ${req.path}`);
+    const spanContext = trace.setSpan(extractedContext, span);
 
     // Store span in request for later use
     (req as any).span = span;
@@ -745,7 +752,7 @@ export function traceContextMiddleware(
       span.end();
     });
 
-    next();
+    context.with(spanContext, next);
   });
 }
 ```
@@ -761,11 +768,11 @@ Complete setup for a Node.js service with head-based sampling.
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
-import { Resource } from '@opentelemetry/resources';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 import {
   ATTR_SERVICE_NAME,
   ATTR_SERVICE_VERSION,
-  ATTR_DEPLOYMENT_ENVIRONMENT
+  ATTR_DEPLOYMENT_ENVIRONMENT_NAME
 } from '@opentelemetry/semantic-conventions';
 import {
   ParentBasedSampler,
@@ -788,10 +795,10 @@ const sampler = new ParentBasedSampler({
 
 // Initialize the SDK
 const sdk = new NodeSDK({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     [ATTR_SERVICE_NAME]: config.serviceName,
     [ATTR_SERVICE_VERSION]: config.serviceVersion,
-    [ATTR_DEPLOYMENT_ENVIRONMENT]: config.environment,
+    [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: config.environment,
   }),
   traceExporter: new OTLPTraceExporter({
     url: `${config.otlpEndpoint}/v1/traces`,
@@ -931,7 +938,7 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.sampling import ParentBased, TraceIdRatioBased
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
-from opentelemetry.sdk.resources import Resource, SERVICE_NAME, SERVICE_VERSION
+from opentelemetry.sdk.resources import Resource
 from opentelemetry.instrumentation.requests import RequestsInstrumentor
 from opentelemetry.instrumentation.flask import FlaskInstrumentor
 
@@ -953,10 +960,10 @@ def start_telemetry() -> None:
     global _provider
 
     # Create resource with service info
-    resource = Resource(attributes={
-        SERVICE_NAME: CONFIG["service_name"],
-        SERVICE_VERSION: CONFIG["service_version"],
-        "deployment.environment": CONFIG["environment"],
+    resource = Resource.create({
+        "service.name": CONFIG["service_name"],
+        "service.version": CONFIG["service_version"],
+        "deployment.environment.name": CONFIG["environment"],
     })
 
     # Parent-based sampler with probability root
@@ -1102,13 +1109,12 @@ processors:
 
   # Filter out noisy spans
   filter:
-    spans:
-      exclude:
-        match_type: regexp
-        span_names:
-          - "health.*"
-          - "ready.*"
-          - "metrics.*"
+    error_mode: ignore
+    traces:
+      span:
+        - 'IsMatch(name, "health.*")'
+        - 'IsMatch(name, "ready.*")'
+        - 'IsMatch(name, "metrics.*")'
 
   # Add resource attributes
   resource:
@@ -1122,10 +1128,10 @@ exporters:
   otlphttp:
     endpoint: "https://oneuptime.com/otlp"
     headers:
-      "x-oneuptime-token": "${ONEUPTIME_TOKEN}"
+      "x-oneuptime-token": "${env:ONEUPTIME_TOKEN}"
 
   # Debug logging
-  logging:
+  debug:
     verbosity: basic
 
 service:
@@ -1133,7 +1139,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, filter, probabilistic_sampler, batch, resource]
-      exporters: [otlphttp, logging]
+      exporters: [otlphttp, debug]
 ```
 
 ### Collector Deployment
@@ -1227,9 +1233,6 @@ flowchart TB
 ```typescript
 // advanced-sampler.ts
 import {
-  Sampler,
-  SamplingDecision,
-  SamplingResult,
   Context,
   Link,
   Attributes,
@@ -1239,7 +1242,9 @@ import {
 import {
   TraceIdRatioBasedSampler,
   ParentBasedSampler,
-  AlwaysOnSampler
+  Sampler,
+  SamplingDecision,
+  SamplingResult
 } from '@opentelemetry/sdk-trace-node';
 
 /**
@@ -1300,8 +1305,8 @@ export class AdvancedSampler implements Sampler {
     }
 
     // Check for priority routes (always sample)
-    const httpTarget = attributes['http.target'] as string;
-    if (httpTarget && PRIORITY_ROUTES.some(route => httpTarget.startsWith(route))) {
+    const urlPath = attributes['url.path'] as string;
+    if (urlPath && PRIORITY_ROUTES.some(route => urlPath.startsWith(route))) {
       return {
         decision: SamplingDecision.RECORD_AND_SAMPLED,
         attributes: { 'sampling.priority': 'high' },
@@ -1350,10 +1355,11 @@ Validate that sampling works correctly before deploying.
 
 ```typescript
 // test-sampling.ts
-import { trace, context } from '@opentelemetry/api';
+import { trace, context, SpanKind } from '@opentelemetry/api';
 import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node';
 import {
   InMemorySpanExporter,
+  SamplingDecision,
   SimpleSpanProcessor
 } from '@opentelemetry/sdk-trace-base';
 import {
@@ -1371,14 +1377,14 @@ describe('Head-Based Sampling', () => {
       sampler: new ParentBasedSampler({
         root: new TraceIdRatioBasedSampler(0.5), // 50% for easier testing
       }),
+      spanProcessors: [new SimpleSpanProcessor(exporter)],
     });
-    provider.addSpanProcessor(new SimpleSpanProcessor(exporter));
     provider.register();
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     exporter.reset();
-    provider.shutdown();
+    await provider.shutdown();
   });
 
   it('should sample approximately 50% of traces', () => {
@@ -1429,18 +1435,22 @@ describe('Head-Based Sampling', () => {
   });
 
   it('should produce deterministic decisions for same trace ID', () => {
-    const tracer = trace.getTracer('test');
+    const sampler = new TraceIdRatioBasedSampler(0.5);
+    const traceId = '4bf92f3577b34da6a3ce929d0e0e4736';
     const results: boolean[] = [];
 
-    // Run multiple times with same trace ID pattern
+    // Run multiple times with the same trace ID
     for (let run = 0; run < 10; run++) {
-      exporter.reset();
+      const result = sampler.shouldSample(
+        context.active(),
+        traceId,
+        'deterministic-test',
+        SpanKind.INTERNAL,
+        {},
+        []
+      );
 
-      // Generate span with deterministic trace ID
-      const span = tracer.startSpan('deterministic-test');
-      span.end();
-
-      results.push(exporter.getFinishedSpans().length > 0);
+      results.push(result.decision === SamplingDecision.RECORD_AND_SAMPLED);
     }
 
     // All results should be the same (either all sampled or all not sampled)
@@ -1612,7 +1622,7 @@ export OTEL_EXPORTER_OTLP_ENDPOINT="https://oneuptime.com/otlp"
 export OTEL_EXPORTER_OTLP_HEADERS="x-oneuptime-token=your-token"
 ```
 
-Head-based sampling provides predictable, low-overhead tracing. Pair it with tail-based sampling at the collector to capture errors and slow requests, and you have a complete sampling strategy that balances cost with observability coverage.
+Head-based sampling provides predictable, low-overhead tracing. Pair it with tail-based sampling at the collector for traces that reach the collector, and you have a sampling strategy that balances cost with observability coverage.
 
 ---
 
