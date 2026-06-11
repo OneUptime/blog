@@ -228,17 +228,15 @@ spec:
 apiVersion: v1
 kind: ResourceQuota
 metadata:
-  name: best-effort-quota
+  name: ephemeral-storage-quota
   namespace: production-team
 spec:
   hard:
-    # Limit pods without resource specs (BestEffort QoS)
-    pods: "10"
-  scopes:
-    - BestEffort
+    requests.ephemeral-storage: 100Gi
+    limits.ephemeral-storage: 200Gi
 ```
 
-The BestEffort scoped quota is clever: it allows some pods without resource specs but limits them to a small number. This gives developers flexibility for debugging while keeping the namespace manageable.
+The ephemeral storage quota is important because containers can consume node-local storage through writable layers, logs, and temporary files. This keeps local storage consumption bounded along with CPU, memory, and object counts.
 
 ## Monitoring Quota Usage
 
@@ -258,10 +256,10 @@ for ns in $(kubectl get resourcequota -A -o jsonpath='{.items[*].metadata.namesp
     echo "---"
     kubectl get resourcequota -n "$ns" -o custom-columns=\
 NAME:.metadata.name,\
-CPU_REQ:.status.used.requests\\.cpu,\
-CPU_LIM:.status.hard.requests\\.cpu,\
-MEM_REQ:.status.used.requests\\.memory,\
-MEM_LIM:.status.hard.requests\\.memory
+CPU_REQ_USED:.status.used.requests\\.cpu,\
+CPU_REQ_HARD:.status.hard.requests\\.cpu,\
+MEM_REQ_USED:.status.used.requests\\.memory,\
+MEM_REQ_HARD:.status.hard.requests\\.memory
     echo ""
 done
 ```
@@ -272,7 +270,7 @@ For production monitoring, expose quota metrics to Prometheus using kube-state-m
 
 A few things to watch out for when implementing quotas:
 
-**Forgetting LimitRange defaults.** Without defaults, pods without resource specs fail silently until someone tries to deploy them.
+**Forgetting LimitRange defaults.** Without defaults, pods without resource specs are rejected at admission when someone tries to deploy them.
 
 **Setting quotas too tight initially.** Start generous and tighten based on actual usage data. Overly restrictive quotas create friction with development teams.
 
