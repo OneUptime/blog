@@ -155,7 +155,7 @@ import {
   ExportResult,
   ExportResultCode
 } from '@opentelemetry/sdk-trace-base';
-import { Context } from '@opentelemetry/api';
+import { Context, TraceFlags } from '@opentelemetry/api';
 
 export class CustomSimpleSpanProcessor implements SpanProcessor {
   private readonly exporter: SpanExporter;
@@ -179,7 +179,7 @@ export class CustomSimpleSpanProcessor implements SpanProcessor {
     }
 
     // Check if the span is sampled (should be exported)
-    if (!span.spanContext().traceFlags) {
+    if ((span.spanContext().traceFlags & TraceFlags.SAMPLED) === 0) {
       return;
     }
 
@@ -230,8 +230,9 @@ const exporter = new ConsoleSpanExporter();
 const processor = new CustomSimpleSpanProcessor(exporter);
 
 // Create and configure the tracer provider
-const provider = new NodeTracerProvider();
-provider.addSpanProcessor(processor);
+const provider = new NodeTracerProvider({
+  spanProcessors: [processor],
+});
 provider.register();
 
 // Get a tracer and create spans
@@ -279,9 +280,9 @@ const otlpExporter = new OTLPTraceExporter({
 const otlpProcessor = new SimpleSpanProcessor(otlpExporter);
 
 // Create provider with both processors
-const provider = new NodeTracerProvider();
-provider.addSpanProcessor(consoleProcessor);
-provider.addSpanProcessor(otlpProcessor);
+const provider = new NodeTracerProvider({
+  spanProcessors: [consoleProcessor, otlpProcessor],
+});
 provider.register();
 ```
 
@@ -292,8 +293,8 @@ You can also configure it through environment-based setup.
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { SimpleSpanProcessor, ConsoleSpanExporter } from '@opentelemetry/sdk-trace-base';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
-import { Resource } from '@opentelemetry/resources';
-import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
+import { resourceFromAttributes } from '@opentelemetry/resources';
+import { ATTR_SERVICE_NAME } from '@opentelemetry/semantic-conventions';
 
 const isDevelopment = process.env.NODE_ENV !== 'production';
 
@@ -313,10 +314,10 @@ function createSpanProcessor() {
 }
 
 const sdk = new NodeSDK({
-  resource: new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: 'my-service',
+  resource: resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: 'my-service',
   }),
-  spanProcessor: createSpanProcessor(),
+  spanProcessors: [createSpanProcessor()],
 });
 
 sdk.start();
@@ -492,9 +493,7 @@ export class LoggingSimpleSpanProcessor implements SpanProcessor {
       span_id: span.spanContext().spanId,
       duration_ms: durationMs.toFixed(2),
       status: span.status.code === SpanStatusCode.ERROR ? 'ERROR' : 'OK',
-      attributes: Object.fromEntries(
-        Array.from(span.attributes).map(([k, v]) => [k, v])
-      ),
+      attributes: { ...span.attributes },
       timestamp: new Date().toISOString()
     }));
 
@@ -573,8 +572,9 @@ async function benchmarkProcessor(
     ? new SimpleSpanProcessor(exporter)
     : new BatchSpanProcessor(exporter);
 
-  const provider = new NodeTracerProvider();
-  provider.addSpanProcessor(processor);
+  const provider = new NodeTracerProvider({
+    spanProcessors: [processor],
+  });
   provider.register();
 
   const tracer = provider.getTracer('benchmark');
@@ -646,8 +646,9 @@ export class TestTracer {
 
   constructor() {
     this.exporter = new InMemorySpanExporter();
-    this.provider = new NodeTracerProvider();
-    this.provider.addSpanProcessor(new SimpleSpanProcessor(this.exporter));
+    this.provider = new NodeTracerProvider({
+      spanProcessors: [new SimpleSpanProcessor(this.exporter)],
+    });
     this.provider.register();
   }
 
@@ -758,7 +759,7 @@ class DebugSpanExporter implements SpanExporter {
 
   private getDepth(span: ReadableSpan): number {
     // Simplified depth calculation
-    return span.parentSpanId ? 1 : 0;
+    return span.parentSpanContext ? 1 : 0;
   }
 
   async shutdown(): Promise<void> {}
@@ -767,8 +768,9 @@ class DebugSpanExporter implements SpanExporter {
 
 // Setup for debugging
 export function setupDebugTracing() {
-  const provider = new NodeTracerProvider();
-  provider.addSpanProcessor(new SimpleSpanProcessor(new DebugSpanExporter()));
+  const provider = new NodeTracerProvider({
+    spanProcessors: [new SimpleSpanProcessor(new DebugSpanExporter())],
+  });
   provider.register();
 
   console.log('Debug tracing enabled - spans will be printed immediately');
@@ -827,8 +829,9 @@ function createOptimalProcessor(): SpanProcessor {
   );
 }
 
-const provider = new NodeTracerProvider();
-provider.addSpanProcessor(createOptimalProcessor());
+const provider = new NodeTracerProvider({
+  spanProcessors: [createOptimalProcessor()],
+});
 provider.register();
 ```
 
@@ -839,8 +842,9 @@ provider.register();
 import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node';
 import { SimpleSpanProcessor, ConsoleSpanExporter } from '@opentelemetry/sdk-trace-base';
 
-const provider = new NodeTracerProvider();
-provider.addSpanProcessor(new SimpleSpanProcessor(new ConsoleSpanExporter()));
+const provider = new NodeTracerProvider({
+  spanProcessors: [new SimpleSpanProcessor(new ConsoleSpanExporter())],
+});
 provider.register();
 
 // Graceful shutdown handlers
