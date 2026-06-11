@@ -185,6 +185,8 @@ spec:
                   type: string
                 prNumber:
                   type: integer
+                commitSHA:
+                  type: string
                 ttl:
                   type: string
                   default: "24h"
@@ -211,8 +213,12 @@ spec:
                   type: string
                 createdAt:
                   type: string
+                  format: date-time
                 expiresAt:
                   type: string
+                  format: date-time
+                prClosed:
+                  type: boolean
                 message:
                   type: string
       additionalPrinterColumns:
@@ -400,6 +406,7 @@ import (
     "time"
 
     corev1 "k8s.io/api/core/v1"
+    apierrors "k8s.io/apimachinery/pkg/api/errors"
     networkingv1 "k8s.io/api/networking/v1"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -408,6 +415,9 @@ import (
 func (r *Reconciler) Reconcile(ctx context.Context, req reconcile.Request) (reconcile.Result, error) {
     env := &EphemeralEnvironment{}
     if err := r.client.Get(ctx, req.NamespacedName, env); err != nil {
+        if apierrors.IsNotFound(err) {
+            return reconcile.Result{}, nil
+        }
         return reconcile.Result{}, err
     }
 
@@ -473,6 +483,7 @@ func (r *Reconciler) provisionResources(ctx context.Context, env *EphemeralEnvir
 }
 
 func (r *Reconciler) createIngress(ctx context.Context, env *EphemeralEnvironment) error {
+    ingressClassName := "nginx"
     pathType := networkingv1.PathTypePrefix
 
     ingress := &networkingv1.Ingress{
@@ -480,13 +491,13 @@ func (r *Reconciler) createIngress(ctx context.Context, env *EphemeralEnvironmen
             Name:      "main",
             Namespace: env.Name,
             Annotations: map[string]string{
-                "kubernetes.io/ingress.class":                 "nginx",
                 "cert-manager.io/cluster-issuer":              "letsencrypt-prod",
                 "nginx.ingress.kubernetes.io/ssl-redirect":    "true",
                 "nginx.ingress.kubernetes.io/proxy-body-size": "50m",
             },
         },
         Spec: networkingv1.IngressSpec{
+            IngressClassName: &ingressClassName,
             TLS: []networkingv1.IngressTLS{
                 {
                     Hosts:      []string{fmt.Sprintf("%s.preview.yourcompany.com", env.Name)},
@@ -833,10 +844,10 @@ package cleanup
 import (
     "context"
     "fmt"
+    "log"
     "time"
 
     corev1 "k8s.io/api/core/v1"
-    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 type CleanupController struct {
@@ -923,7 +934,7 @@ func (c *CleanupController) cleanupEnvironment(ctx context.Context, env *Ephemer
     }
 
     // Delete resources in order
-    resources := []string{"ingresses", "services", "deployments", "statefulsets", "jobs", "configmaps", "secrets", "pvc"}
+    resources := []string{"ingresses", "services", "deployments", "statefulsets", "jobs", "configmaps", "secrets", "persistentvolumeclaims"}
 
     for _, resource := range resources {
         if err := c.deleteResourceType(ctx, env.Name, resource); err != nil {
@@ -1096,6 +1107,9 @@ func (t *CostTracker) CalculateEnvironmentCost(ctx context.Context, envName stri
     pricing := t.cloudProvider.GetCurrentPricing()
     duration := time.Since(env.Status.CreatedAt.Time)
     hours := duration.Hours()
+    if hours <= 0 {
+        hours = 1.0 / 60.0
+    }
 
     cost := &EnvironmentCost{
         Name:           envName,
@@ -1343,11 +1357,14 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Set up gcloud CLI
-        uses: google-github-actions/setup-gcloud@v2
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
         with:
           project_id: ${{ env.PROJECT_ID }}
-          service_account_key: ${{ secrets.GCP_SA_KEY }}
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up gcloud CLI
+        uses: google-github-actions/setup-gcloud@v3
 
       - name: Get GKE credentials
         run: |
@@ -1457,11 +1474,16 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Set up gcloud CLI
-        uses: google-github-actions/setup-gcloud@v2
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
         with:
           project_id: ${{ env.PROJECT_ID }}
-          service_account_key: ${{ secrets.GCP_SA_KEY }}
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up gcloud CLI
+        uses: google-github-actions/setup-gcloud@v3
 
       - name: Get GKE credentials
         run: |
@@ -1592,16 +1614,27 @@ spec:
 
         - record: ephemeral:cost:hourly
           expr: |
-            sum(
-              (container_cpu_usage_seconds_total{namespace=~"pr-.*"} * 0.048) +
-              (container_memory_usage_bytes{namespace=~"pr-.*"} / 1073741824 * 0.006)
-            ) by (namespace)
+            (
+              sum by (namespace) (
+                rate(container_cpu_usage_seconds_total{namespace=~"pr-.*", container!="", image!=""}[1h])
+              ) * 0.048
+            )
+            +
+            (
+              sum by (namespace) (
+                container_memory_working_set_bytes{namespace=~"pr-.*", container!="", image!=""} / 1073741824
+              ) * 0.006
+            )
 
         - alert: EphemeralEnvironmentStuck
           expr: |
-            time() - kube_namespace_created{label_ephemeral="true"} > 3600
-            and
-            kube_namespace_status_phase{label_ephemeral="true"} != "Active"
+            (
+              time() - kube_namespace_created > 3600
+            )
+            * on (namespace) group_left(label_ephemeral)
+              kube_namespace_labels{label_ephemeral="true"}
+            and on (namespace)
+              kube_namespace_status_phase{phase="Active"} == 0
           for: 10m
           labels:
             severity: warning
