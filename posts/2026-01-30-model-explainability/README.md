@@ -56,7 +56,7 @@ First, let us install the necessary libraries and prepare our data:
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.datasets import load_breast_cancer
 import matplotlib.pyplot as plt
 
@@ -116,7 +116,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from sklearn.inspection import permutation_importance
 
-def calculate_feature_importance(model, X_train, y_train, feature_names):
+def calculate_feature_importance(model, X_data, y_data, feature_names):
     """
     Calculate and visualize feature importance using multiple methods.
 
@@ -124,16 +124,16 @@ def calculate_feature_importance(model, X_train, y_train, feature_names):
     -----------
     model : trained sklearn model
         The model to explain
-    X_train : array-like
-        Training features
-    y_train : array-like
-        Training labels
+    X_data : array-like
+        Features used to evaluate permutation importance
+    y_data : array-like
+        Labels used to evaluate permutation importance
     feature_names : list
         Names of the features
 
     Returns:
     --------
-    dict : Dictionary containing importance scores from different methods
+    DataFrame : Importance scores from different methods
     """
 
     # Method 1: Built-in feature importance (Gini importance for tree models)
@@ -142,11 +142,12 @@ def calculate_feature_importance(model, X_train, y_train, feature_names):
 
     # Method 2: Permutation importance
     # This measures the decrease in model performance when a feature is shuffled
-    # More reliable than Gini importance as it accounts for feature interactions
+    # Often more reliable than Gini importance because it evaluates
+    # the impact on the model's score on the supplied dataset
     perm_importance = permutation_importance(
         model,
-        X_train,
-        y_train,
+        X_data,
+        y_data,
         n_repeats=10,  # Number of times to permute each feature
         random_state=42,
         n_jobs=-1  # Use all available CPU cores
@@ -169,10 +170,11 @@ def calculate_feature_importance(model, X_train, y_train, feature_names):
     return importance_df
 
 # Calculate feature importance
+# Use held-out data for permutation importance to measure generalization impact
 importance_results = calculate_feature_importance(
     model,
-    X_train,
-    y_train,
+    X_test,
+    y_test,
     X.columns.tolist()
 )
 
@@ -274,12 +276,12 @@ def explain_with_shap(model, X_train, X_test, feature_names):
 
     Returns:
     --------
-    shap.Explanation : SHAP values for test data
+    tuple : SHAP explainer and SHAP values for test data
     """
 
     # Create a SHAP explainer
     # TreeExplainer is optimized for tree-based models
-    # It computes exact SHAP values efficiently
+    # It computes SHAP values efficiently for tree-based models
     explainer = shap.TreeExplainer(model)
 
     # Calculate SHAP values for test data
@@ -291,9 +293,11 @@ def explain_with_shap(model, X_train, X_test, feature_names):
 # Generate SHAP explanations
 explainer, shap_values = explain_with_shap(model, X_train, X_test, X.columns)
 
-# For binary classification, shap_values is a list with values for each class
-# We typically focus on the positive class (index 1)
-print(f"SHAP values shape: {shap_values[1].shape}")
+# For binary classification with scikit-learn RandomForestClassifier,
+# current SHAP versions return an array shaped (samples, features, classes).
+# We typically focus on the positive class (index 1).
+positive_class_shap_values = shap_values[:, :, 1]
+print(f"SHAP values shape: {positive_class_shap_values.shape}")
 print(f"Number of samples: {X_test.shape[0]}")
 print(f"Number of features: {X_test.shape[1]}")
 ```
@@ -315,12 +319,14 @@ def visualize_shap_explanations(shap_values, X_test, feature_names):
         Names of features
     """
 
+    positive_class_shap_values = shap_values[:, :, 1]
+
     # 1. Summary Plot (Global Explanation)
     # Shows feature importance and impact direction
     # Each dot is a sample; color indicates feature value
     plt.figure(figsize=(10, 8))
     shap.summary_plot(
-        shap_values[1],  # Use positive class for binary classification
+        positive_class_shap_values,  # Use positive class for binary classification
         X_test,
         feature_names=feature_names,
         show=False
@@ -334,7 +340,7 @@ def visualize_shap_explanations(shap_values, X_test, feature_names):
     # Shows mean absolute SHAP value for each feature
     plt.figure(figsize=(10, 6))
     shap.summary_plot(
-        shap_values[1],
+        positive_class_shap_values,
         X_test,
         feature_names=feature_names,
         plot_type="bar",
@@ -372,8 +378,9 @@ def explain_single_prediction(explainer, shap_values, X_test, sample_idx, featur
 
     # Create a SHAP Explanation object for the specific sample
     # This enables the waterfall visualization
+    positive_class_shap_values = shap_values[:, :, 1]
     explanation = shap.Explanation(
-        values=shap_values[1][sample_idx],  # SHAP values for this sample
+        values=positive_class_shap_values[sample_idx],  # SHAP values for this sample
         base_values=explainer.expected_value[1],  # Expected model output
         data=X_test.iloc[sample_idx].values,  # Feature values
         feature_names=feature_names
@@ -391,13 +398,13 @@ def explain_single_prediction(explainer, shap_values, X_test, sample_idx, featur
     # Print the feature contributions
     print(f"\nExplanation for Sample {sample_idx}:")
     print(f"Base value (expected prediction): {explainer.expected_value[1]:.4f}")
-    print(f"Final prediction probability: {explainer.expected_value[1] + sum(shap_values[1][sample_idx]):.4f}")
+    print(f"Final model output: {explainer.expected_value[1] + sum(positive_class_shap_values[sample_idx]):.4f}")
 
     # Show top contributing features
     feature_contributions = pd.DataFrame({
         'feature': feature_names,
         'value': X_test.iloc[sample_idx].values,
-        'shap_value': shap_values[1][sample_idx]
+        'shap_value': positive_class_shap_values[sample_idx]
     }).sort_values('shap_value', key=abs, ascending=False)
 
     print("\nTop 5 Contributing Features:")
@@ -647,7 +654,7 @@ def create_partial_dependence_plots(model, X_train, feature_names, features_to_p
         )
 
         # Extract values
-        feature_values = pd_results['values'][0]
+        feature_values = pd_results['grid_values'][0]
         avg_predictions = pd_results['average'][0]
 
         # Plot
@@ -829,11 +836,19 @@ class ModelExplainer:
     def explain_instance_shap(self, instance):
         """Get SHAP explanation for a single instance."""
         shap_values = self.shap_explainer.shap_values(instance.reshape(1, -1))
+        if isinstance(shap_values, list):
+            instance_shap_values = shap_values[1][0]
+        elif shap_values.ndim == 3:
+            instance_shap_values = shap_values[0, :, 1]
+        else:
+            instance_shap_values = shap_values[0]
+
+        expected_value = self.shap_explainer.expected_value
+        base_value = expected_value[1] if isinstance(expected_value, np.ndarray) else expected_value
+
         return {
-            'shap_values': shap_values[1][0] if isinstance(shap_values, list) else shap_values[0],
-            'base_value': self.shap_explainer.expected_value[1] if isinstance(
-                self.shap_explainer.expected_value, np.ndarray
-            ) else self.shap_explainer.expected_value,
+            'shap_values': instance_shap_values,
+            'base_value': base_value,
             'feature_names': self.feature_names,
             'feature_values': instance
         }
