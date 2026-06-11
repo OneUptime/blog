@@ -150,8 +150,9 @@ FROM orders o
 JOIN products p ON o.product_id = p.id
 GROUP BY DATE(o.created_at), p.category;
 
--- Create index for fast lookups
-CREATE INDEX idx_daily_sales_date ON daily_sales_summary(sale_date);
+-- Create a unique index for fast lookups and concurrent refreshes
+CREATE UNIQUE INDEX idx_daily_sales_unique
+ON daily_sales_summary(sale_date, category);
 
 -- Refresh the view (run periodically via cron or scheduler)
 REFRESH MATERIALIZED VIEW CONCURRENTLY daily_sales_summary;
@@ -164,7 +165,7 @@ The tradeoff with materialized views is data freshness. Choose refresh intervals
 | Manual refresh | Ad-hoc reporting | Minutes to hours |
 | Scheduled refresh | Daily dashboards | Hours |
 | Concurrent refresh | Production queries | Minimal downtime |
-| Incremental refresh | Large datasets | Near real-time |
+| Incremental refresh, when supported by your database or extension | Large datasets | Near real-time |
 
 ## Pattern 4: Denormalized Cache Tables
 
