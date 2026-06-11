@@ -43,8 +43,8 @@ Before implementing maintenance strategies, you need to measure bloat levels. He
 WITH index_stats AS (
     SELECT
         schemaname,
-        tablename,
-        indexname,
+        relname,
+        indexrelname,
         pg_relation_size(indexrelid) AS index_size,
         idx_scan AS index_scans,
         idx_tup_read AS tuples_read,
@@ -56,8 +56,8 @@ WITH index_stats AS (
 bloat_estimate AS (
     SELECT
         schemaname,
-        tablename,
-        indexname,
+        relname,
+        indexrelname,
         index_size,
         index_scans,
         pg_size_pretty(index_size) AS index_size_pretty,
@@ -68,8 +68,8 @@ bloat_estimate AS (
     FROM index_stats
 )
 SELECT
-    schemaname || '.' || tablename AS table_name,
-    indexname,
+    schemaname || '.' || relname AS table_name,
+    indexrelname,
     index_size_pretty,
     index_scans,
     usage_status
@@ -93,8 +93,8 @@ SELECT
     indexrelname,
     pg_size_pretty(pg_relation_size(indexrelid)) AS index_size,
     idx_scan AS scans,
-    round(100.0 * avg_leaf_density, 2) AS leaf_density_pct,
-    round(100.0 - avg_leaf_density, 2) AS bloat_pct
+    round(avg_leaf_density::numeric, 2) AS leaf_density_pct,
+    round((100.0 - avg_leaf_density)::numeric, 2) AS bloat_pct
 FROM pg_stat_user_indexes
 JOIN pgstatindex(indexrelid::regclass::text) ON true
 WHERE schemaname = 'public'
@@ -125,7 +125,7 @@ REINDEX SCHEMA public;
 REINDEX DATABASE myapp;
 ```
 
-**Important:** Standard REINDEX acquires an exclusive lock on the table, blocking all reads and writes until complete.
+**Important:** Standard REINDEX acquires a SHARE lock on the table (blocking writes but allowing reads) and an ACCESS EXCLUSIVE lock on the specific index being rebuilt. In practice this blocks most queries on the table because the planner attempts to acquire locks on all indexes.
 
 ### Concurrent REINDEX (PostgreSQL 12+)
 
@@ -201,7 +201,7 @@ pg_repack -d myapp -t users --only-indexes
 pg_repack -d myapp -i idx_users_email
 
 # Repack all tables in a schema
-pg_repack -d myapp -s public
+pg_repack -d myapp -c public
 
 # Run with parallel jobs for faster processing
 pg_repack -d myapp -t large_table -j 4
@@ -261,7 +261,7 @@ BEGIN
     WITH index_bloat AS (
         SELECT
             schemaname::text,
-            tablename::text,
+            relname::text,
             indexrelname::text,
             pg_relation_size(indexrelid) AS idx_size,
             CASE
@@ -276,7 +276,7 @@ BEGIN
     )
     SELECT
         ib.schemaname,
-        ib.tablename,
+        ib.relname,
         ib.indexrelname,
         pg_size_pretty(ib.idx_size),
         ib.bloat_pct,
@@ -332,7 +332,7 @@ log "Starting index maintenance for database: $DB_NAME"
 
 # Get list of bloated indexes
 BLOATED_INDEXES=$(psql -U "$DB_USER" -d "$DB_NAME" -t -A -F'|' <<EOF
-SELECT indexrelname, schemaname, tablename
+SELECT indexrelname, schemaname, relname
 FROM pg_stat_user_indexes psi
 JOIN pgstatindex(psi.indexrelid::regclass::text) ON true
 WHERE pg_relation_size(indexrelid) > ${MIN_SIZE_MB} * 1024 * 1024
@@ -426,7 +426,7 @@ Create these views for ongoing monitoring:
 -- View for index health overview
 CREATE OR REPLACE VIEW index_health_dashboard AS
 SELECT
-    schemaname || '.' || tablename AS table_name,
+    schemaname || '.' || relname AS table_name,
     indexrelname AS index_name,
     pg_size_pretty(pg_relation_size(indexrelid)) AS size,
     idx_scan AS scans_total,
@@ -443,11 +443,11 @@ ORDER BY pg_relation_size(indexrelid) DESC;
 -- View for maintenance candidates
 CREATE OR REPLACE VIEW maintenance_candidates AS
 SELECT
-    schemaname || '.' || tablename AS table_name,
+    schemaname || '.' || relname AS table_name,
     indexrelname AS index_name,
     pg_size_pretty(pg_relation_size(indexrelid)) AS current_size,
     idx_scan AS total_scans,
-    round(100.0 - avg_leaf_density, 2) AS estimated_bloat_pct,
+    round((100.0 - avg_leaf_density)::numeric, 2) AS estimated_bloat_pct,
     CASE
         WHEN idx_scan = 0 THEN 'Consider dropping'
         WHEN (100.0 - avg_leaf_density) > 50 THEN 'Reindex urgently'
