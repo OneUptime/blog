@@ -50,15 +50,21 @@ MinIO supports granular event filtering. You can subscribe to exactly the events
 
 | Event Type | Trigger |
 | --- | --- |
-| `s3:ObjectCreated:*` | Any object creation (Put, Post, Copy, CompleteMultipartUpload) |
+| `s3:ObjectCreated:*` | All `s3:ObjectCreated`-prefixed events |
 | `s3:ObjectCreated:Put` | Object created via PUT |
 | `s3:ObjectCreated:Post` | Object created via POST |
 | `s3:ObjectCreated:Copy` | Object created via COPY |
 | `s3:ObjectCreated:CompleteMultipartUpload` | Multipart upload completed |
-| `s3:ObjectAccessed:*` | Any object access (Get, Head) |
+| `s3:ObjectCreated:PutTagging` | Object tags added or replaced |
+| `s3:ObjectCreated:DeleteTagging` | Object tags deleted |
+| `s3:ObjectCreated:PutLegalHold` | Object legal hold changed |
+| `s3:ObjectCreated:PutRetention` | Object retention changed |
+| `s3:ObjectAccessed:*` | All `s3:ObjectAccessed`-prefixed events |
 | `s3:ObjectAccessed:Get` | Object retrieved via GET |
 | `s3:ObjectAccessed:Head` | Object metadata retrieved via HEAD |
-| `s3:ObjectRemoved:*` | Any object deletion |
+| `s3:ObjectAccessed:GetRetention` | Object retention configuration retrieved |
+| `s3:ObjectAccessed:GetLegalHold` | Object legal hold configuration retrieved |
+| `s3:ObjectRemoved:*` | All `s3:ObjectRemoved`-prefixed events |
 | `s3:ObjectRemoved:Delete` | Object deleted |
 | `s3:ObjectRemoved:DeleteMarkerCreated` | Delete marker created (versioned bucket) |
 
@@ -77,7 +83,7 @@ export MINIO_NOTIFY_KAFKA_TOPIC_PRIMARY="minio-events"
 
 # Optional: Enable TLS and authentication
 export MINIO_NOTIFY_KAFKA_TLS_PRIMARY="on"
-export MINIO_NOTIFY_KAFKA_SASL_ENABLE_PRIMARY="on"
+export MINIO_NOTIFY_KAFKA_SASL_PRIMARY="sha512"
 export MINIO_NOTIFY_KAFKA_SASL_USERNAME_PRIMARY="minio"
 export MINIO_NOTIFY_KAFKA_SASL_PASSWORD_PRIMARY="secret"
 ```
@@ -182,13 +188,13 @@ Once targets are configured, attach notifications to specific buckets.
 # List current notification configuration
 mc event list myminio/mybucket
 
-# Add notification for all object creation events to Kafka
+# Add notification for object creation and deletion events to Kafka
 mc event add myminio/mybucket arn:minio:sqs::primary:kafka \
     --event put,delete \
     --prefix uploads/ \
     --suffix .jpg
 
-# Add notification for all events to webhook
+# Add notification for object creation events to webhook
 mc event add myminio/mybucket arn:minio:sqs::primary:webhook \
     --event put
 
@@ -434,10 +440,10 @@ mc admin logs myminio --last 1h | grep -i notification
 
 ### Handling Failures
 
-When a target is unavailable, MinIO queues events locally. Configure retry behavior:
+When a target is unavailable, MinIO queues events locally. Configure a persistent queue directory so queued events can survive server restarts:
 
 ```bash
-# Configure retry settings via environment
+# Configure the queue directory via environment
 export MINIO_NOTIFY_KAFKA_QUEUE_DIR_PRIMARY="/data/minio/events"
 ```
 
