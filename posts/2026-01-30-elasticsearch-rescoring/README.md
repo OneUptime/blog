@@ -41,7 +41,7 @@ Why not just use the expensive query directly? Because scoring every document in
 
 ## The Rescore Query Structure
 
-Every rescore request has three parts:
+The query rescorer uses these fields:
 
 | Component | Purpose |
 |-----------|---------|
@@ -409,16 +409,25 @@ Rescoring adds latency. Here is how to keep it in check:
 
 ### Measure Before Optimizing
 
-```json
+```http
 GET /my_index/_search
 {
   "profile": true,
-  "query": { ... },
-  "rescore": { ... }
+  "query": {
+    "match": { "content": "incident management" }
+  },
+  "rescore": {
+    "window_size": 50,
+    "query": {
+      "rescore_query": {
+        "match_phrase": { "content": "incident management" }
+      }
+    }
+  }
 }
 ```
 
-The profile output shows time spent in each phase.
+The profile output shows detailed shard-level timing information. It does not include network latency, queue time, or time spent merging shard responses on the coordinating node.
 
 ### Recommendations
 
@@ -427,7 +436,7 @@ The profile output shows time spent in each phase.
 | Reduce window_size | Direct latency reduction |
 | Simplify rescore query | Fewer operations per document |
 | Use filters in main query | Smaller candidate set |
-| Cache main query results | Speeds up repeated rescores |
+| Put cacheable constraints in filter context | Lets Elasticsearch reuse cached filter results |
 | Avoid script_score in rescore | Scripts are slow |
 
 ### When Rescoring Hurts More Than Helps
@@ -446,25 +455,23 @@ Skip rescoring if:
 flowchart TD
     subgraph "Phase 1: Query Execution"
         A[Parse Query] --> B[Execute on Shards]
-        B --> C[Collect Top N per Shard]
-        C --> D[Merge Results]
-        D --> E[Global Top N]
+        B --> C[Collect Top Candidates Per Shard]
     end
 
     subgraph "Phase 2: Rescoring"
-        E --> F[Fetch Documents for Rescore]
-        F --> G[Apply Rescore Query]
-        G --> H[Combine Scores]
-        H --> I[Re-sort]
+        C --> D[Apply Rescore Query Per Shard]
+        D --> E[Combine Scores]
+        E --> F[Return Rescored Shard Results]
     end
 
     subgraph "Phase 3: Response"
-        I --> J[Apply Pagination]
-        J --> K[Return Results]
+        F --> G[Merge and Sort Results]
+        G --> H[Apply Pagination]
+        H --> I[Return Results]
     end
 ```
 
-Important: rescoring happens after shard-level results are merged. The coordinator node performs rescoring on the global top N.
+Important: rescoring happens on each shard before that shard returns its results to the coordinating node for the final merge and sort.
 
 ---
 
@@ -514,7 +521,7 @@ Favor recent documents:
 
 ### Pattern 3: Personalization
 
-Boost based on user preferences (requires pre-computed scores):
+Boost based on user preferences (requires a pre-computed numeric score field for the user or cohort):
 
 ```json
 {
@@ -525,8 +532,7 @@ Boost based on user preferences (requires pre-computed scores):
         "function_score": {
           "script_score": {
             "script": {
-              "source": "doc['user_affinity_scores'].get(params.user_id, 1)",
-              "params": { "user_id": "user_123" }
+              "source": "doc['user_affinity_score'].size() == 0 ? 1 : doc['user_affinity_score'].value"
             }
           }
         }
@@ -542,7 +548,7 @@ Boost based on user preferences (requires pre-computed scores):
 
 Use the `explain` parameter to see how scores are computed:
 
-```json
+```http
 GET /my_index/_search
 {
   "explain": true,
