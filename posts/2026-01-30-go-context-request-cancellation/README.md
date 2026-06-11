@@ -72,23 +72,14 @@ import (
 // simulateSlowDatabaseQuery represents any slow operation
 // that should respect context cancellation
 func simulateSlowDatabaseQuery(ctx context.Context, userID string) (map[string]string, error) {
-    // Create a channel to signal when our "work" is done
-    resultCh := make(chan map[string]string, 1)
-
-    go func() {
-        // Simulate database latency
-        time.Sleep(2 * time.Second)
-        resultCh <- map[string]string{
+    // Wait for either the simulated database latency or context cancellation
+    select {
+    case <-time.After(2 * time.Second):
+        return map[string]string{
             "id":    userID,
             "name":  "John Doe",
             "email": "john@example.com",
-        }
-    }()
-
-    // Wait for either the result or context cancellation
-    select {
-    case result := <-resultCh:
-        return result, nil
+        }, nil
     case <-ctx.Done():
         // Context was canceled - client disconnected or timeout hit
         return nil, ctx.Err()
@@ -137,7 +128,7 @@ func main() {
 
 ## Adding Request Timeouts
 
-You often want to enforce timeouts that are shorter than the default connection timeout. Here's how to wrap contexts with timeouts.
+You often want to enforce request-level timeouts instead of waiting indefinitely or relying only on server-level timeout settings. Here's how to wrap contexts with timeouts.
 
 ```go
 package main
