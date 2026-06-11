@@ -783,11 +783,11 @@ deploy_application() {
 
     # Pull latest images
     log "Pulling container images..."
-    docker-compose -f /opt/app/docker-compose.yml pull
+    docker compose -f /opt/app/docker-compose.yml pull
 
     # Start containers
     log "Starting containers..."
-    docker-compose -f /opt/app/docker-compose.yml up -d
+    docker compose -f /opt/app/docker-compose.yml up -d
 
     # Wait for containers to be healthy
     log "Waiting for containers to become healthy..."
@@ -796,7 +796,7 @@ deploy_application() {
 
     while [[ $waited -lt $max_wait ]]; do
         local unhealthy
-        unhealthy=$(docker-compose -f /opt/app/docker-compose.yml ps \
+        unhealthy=$(docker compose -f /opt/app/docker-compose.yml ps \
             | grep -c "unhealthy" || true)
 
         if [[ $unhealthy -eq 0 ]]; then
@@ -964,7 +964,7 @@ groups:
         expr: |
           # Calculate time since service became unavailable
           (time() - service_last_healthy_timestamp) > on(service)
-          group_left(rto_tier)
+          group_left(tier)
           (service_rto_threshold_seconds)
         for: 1m
         labels:
@@ -972,7 +972,7 @@ groups:
         annotations:
           summary: "RTO threshold exceeded for {{ $labels.service }}"
           description: |
-            Service {{ $labels.service }} (Tier {{ $labels.rto_tier }})
+            Service {{ $labels.service }} (Tier {{ $labels.tier }})
             has been unavailable for longer than its RTO threshold.
             Current downtime: {{ $value | humanizeDuration }}
           runbook_url: "https://wiki.company.com/runbooks/rto-exceeded"
@@ -982,7 +982,8 @@ groups:
         expr: |
           # Alert at 75% of RTO threshold
           (time() - service_last_healthy_timestamp) >
-          (0.75 * on(service) group_left() service_rto_threshold_seconds)
+          on(service) group_left()
+          (0.75 * service_rto_threshold_seconds)
           and
           (time() - service_last_healthy_timestamp) <
           on(service) group_left() service_rto_threshold_seconds
