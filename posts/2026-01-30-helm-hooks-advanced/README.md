@@ -45,8 +45,8 @@ flowchart TB
 
 | Hook | Timing | Common Use Cases |
 |------|--------|------------------|
-| `pre-install` | Before any release resources are installed | Database setup, namespace preparation |
-| `post-install` | After all release resources are installed | Registration, notifications |
+| `pre-install` | After templates are rendered, but before release resources are created in Kubernetes | Database setup, namespace preparation |
+| `post-install` | After release resources are loaded into Kubernetes (and after they are ready when `--wait` is used) | Registration, notifications |
 | `pre-upgrade` | Before any resources are upgraded | Database migrations, backups |
 | `post-upgrade` | After all resources are upgraded | Cache warming, health checks |
 | `pre-rollback` | Before rollback begins | State preservation |
@@ -57,7 +57,7 @@ flowchart TB
 
 ## Hook Weight and Execution Order
 
-When you have multiple hooks of the same type, Helm executes them based on weight (lower weights run first):
+When you have multiple hooks of the same type, Helm executes them based on weight (lower weights run first). Hooks with the same weight are sorted by resource kind and name:
 
 ```mermaid
 sequenceDiagram
@@ -152,7 +152,8 @@ spec:
       serviceAccountName: {{ .Values.serviceAccount.name }}
       containers:
         - name: backup
-          image: postgres:15-alpine
+          # Use an image that includes pg_dump, gzip, and the AWS CLI.
+          image: your-org/postgres-awscli:15
           env:
             - name: PGHOST
               valueFrom:
@@ -183,7 +184,7 @@ spec:
               BACKUP_FILE="/tmp/backup_${TIMESTAMP}.sql.gz"
 
               echo "Starting database backup..."
-              pg_dump -Fc --no-owner --no-acl | gzip > "${BACKUP_FILE}"
+              pg_dump --no-owner --no-acl | gzip > "${BACKUP_FILE}"
 
               echo "Uploading to S3..."
               aws s3 cp "${BACKUP_FILE}" "s3://${BACKUP_BUCKET}/pre-upgrade/${TIMESTAMP}/"
@@ -322,25 +323,25 @@ spec:
                   key: url
 ```
 
-## Advanced Pattern 2: Canary Deployments with Hooks
+## Advanced Pattern 2: Canary Analysis with Hooks
 
-Use hooks to implement safe canary deployments:
+Use hooks to validate canary-style deployments. Helm hooks do not split traffic by themselves; pair this pattern with a Deployment strategy, service mesh, or progressive delivery controller that manages the canary traffic:
 
 ```mermaid
 flowchart TB
     subgraph Phase1["Phase 1: Canary Deploy"]
-        A[Pre-Upgrade Hook] --> B[Deploy Canary Pods 10%]
+        A[Upgrade Starts] --> B[Canary Traffic Managed Outside Hook]
         B --> C[Wait 5 minutes]
     end
 
     subgraph Phase2["Phase 2: Validation"]
         C --> D{Check Metrics}
         D -->|Error Rate OK| E[Continue]
-        D -->|Error Rate High| F[Rollback]
+        D -->|Error Rate High| F[Fail Release]
     end
 
     subgraph Phase3["Phase 3: Full Rollout"]
-        E --> G[Deploy Remaining 90%]
+        E --> G[Continue Rollout]
         G --> H[Post-Upgrade Verification]
     end
 ```
@@ -365,7 +366,8 @@ spec:
       restartPolicy: Never
       containers:
         - name: canary-analyzer
-          image: curlimages/curl:8.4.0
+          # Use an image that includes curl, jq, and bc.
+          image: your-org/curl-jq-bc:8.4.0
           command:
             - /bin/sh
             - -c
@@ -545,7 +547,8 @@ spec:
       serviceAccountName: {{ .Values.serviceAccount.name }}
       containers:
         - name: rotate-secrets
-          image: hashicorp/vault:1.15
+          # Use an image that includes vault, kubectl, and jq.
+          image: your-org/vault-kubectl-jq:1.15
           env:
             - name: VAULT_ADDR
               value: {{ .Values.vault.address }}
@@ -615,7 +618,7 @@ spec:
       restartPolicy: Never
       initContainers:
         - name: wait-for-ready
-          image: bitnami/kubectl:1.28
+          image: bitnami/kubectl:1.36
           command:
             - /bin/sh
             - -c
@@ -624,6 +627,7 @@ spec:
               kubectl rollout status deployment/{{ .Release.Name }} -n {{ .Release.Namespace }} --timeout=300s
       containers:
         - name: smoke-tests
+          # Image must include curl and bc.
           image: "{{ .Values.testing.image }}"
           env:
             - name: TARGET_URL
@@ -734,7 +738,7 @@ flowchart TB
     subgraph Examples["Common Combinations"]
         D["before-hook-creation,hook-succeeded"] --> D1["Clean start,<br/>keep failures for debugging"]
         E["hook-succeeded,hook-failed"] --> E1["Always cleanup<br/>after completion"]
-        F["before-hook-creation"] --> F1["Keep all history<br/>only cleanup on redeploy"]
+        F["before-hook-creation"] --> F1["Keep previous hook<br/>until the next hook run"]
     end
 ```
 
@@ -749,9 +753,9 @@ annotations:
 annotations:
   "helm.sh/hook-delete-policy": hook-succeeded,hook-failed
 
-# Never auto-delete - manual cleanup required
+# Keep hook resources until the next hook run (the default behavior)
 annotations:
-  "helm.sh/hook-delete-policy": ""
+  "helm.sh/hook-delete-policy": before-hook-creation
 ```
 
 ## Handling Hook Failures
@@ -896,8 +900,8 @@ kubectl logs -l "job-name=my-release-pre-upgrade-hook" -n my-namespace
 # Check events for failures
 kubectl get events --sort-by='.lastTimestamp' -n my-namespace | grep -i hook
 
-# Force delete stuck hooks
-kubectl delete job my-release-pre-upgrade-hook -n my-namespace --force --grace-period=0
+# Delete a stuck hook job
+kubectl delete job my-release-pre-upgrade-hook -n my-namespace --timeout=30s
 ```
 
 ### Hook Debugging Template
@@ -921,7 +925,7 @@ spec:
       restartPolicy: Never
       containers:
         - name: debug
-          image: bitnami/kubectl:1.28
+          image: bitnami/kubectl:1.36
           command:
             - /bin/sh
             - -c
