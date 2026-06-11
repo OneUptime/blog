@@ -189,7 +189,12 @@ BEGIN
     END
 
     -- Step 3: Check if tracked attributes have changed
-    IF @old_status != @customer_status OR @old_city != @city
+    -- EXCEPT treats two NULL values as equal, so this works for nullable attributes.
+    IF EXISTS (
+        SELECT @old_status AS customer_status, @old_city AS city
+        EXCEPT
+        SELECT @customer_status, @city
+    )
     BEGIN
         -- Step 3a: Expire the current record (Type 2 behavior)
         UPDATE dim_customer_type6
@@ -424,7 +429,8 @@ CREATE PARTITION SCHEME ps_customer_date
 AS PARTITION pf_customer_date
 ALL TO ([PRIMARY]);
 
--- Apply partitioning to the table (during table creation or migration)
+-- Apply the partition scheme when creating the table or rebuilding its
+-- clustered index. The partition function and scheme alone do not move data.
 ```
 
 ## Use Cases for Type 6 SCD
