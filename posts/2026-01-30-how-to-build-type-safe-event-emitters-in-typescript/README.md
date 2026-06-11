@@ -52,7 +52,7 @@ Now let us create a type-safe wrapper around the event emitter pattern:
 ```typescript
 type EventCallback<T> = (payload: T) => void;
 
-class TypedEventEmitter<TEvents extends Record<string, unknown>> {
+class TypedEventEmitter<TEvents extends object> {
   private listeners: {
     [K in keyof TEvents]?: EventCallback<TEvents[K]>[];
   } = {};
@@ -133,24 +133,27 @@ If you need to integrate with existing code that expects a Node.js EventEmitter,
 import { EventEmitter } from 'events';
 
 class TypedNodeEventEmitter<
-  TEvents extends Record<string, unknown>
+  TEvents extends object
 > extends EventEmitter {
-  emit<K extends keyof TEvents>(event: K, payload: TEvents[K]): boolean {
-    return super.emit(event as string, payload);
+  emit<K extends keyof TEvents & string>(event: K, payload: TEvents[K]): boolean;
+  emit(event: string | symbol, ...args: unknown[]): boolean {
+    return super.emit(event, ...args);
   }
 
-  on<K extends keyof TEvents>(
+  on<K extends keyof TEvents & string>(
     event: K,
     listener: (payload: TEvents[K]) => void
-  ): this {
-    return super.on(event as string, listener);
+  ): this;
+  on(event: string | symbol, listener: (...args: unknown[]) => void): this {
+    return super.on(event, listener);
   }
 
-  once<K extends keyof TEvents>(
+  once<K extends keyof TEvents & string>(
     event: K,
     listener: (payload: TEvents[K]) => void
-  ): this {
-    return super.once(event as string, listener);
+  ): this;
+  once(event: string | symbol, listener: (...args: unknown[]) => void): this {
+    return super.once(event, listener);
   }
 }
 ```
