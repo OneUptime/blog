@@ -8,7 +8,7 @@ Description: A comprehensive guide to deploying and managing workloads on GKE Au
 
 ---
 
-GKE Autopilot is Google's opinionated, fully managed Kubernetes experience. Unlike Standard mode where you manage node pools, Autopilot provisions and scales nodes based on your Pod specifications. You pay per Pod, not per node, and Google handles the infrastructure.
+GKE Autopilot is Google's opinionated, fully managed Kubernetes experience. Unlike Standard mode where you manage node pools, Autopilot provisions and scales nodes based on your Pod specifications. General-purpose Autopilot workloads use Pod-based billing, while workloads that request specific hardware use node-based billing. Google handles the infrastructure.
 
 ## What Makes Autopilot Different?
 
@@ -32,12 +32,12 @@ Key differences from Standard mode:
 | Feature | Standard Mode | Autopilot Mode |
 | --- | --- | --- |
 | Node management | Manual or autoscaler | Fully automated |
-| Billing | Per node hour | Per Pod vCPU/memory/GPU |
+| Billing | Per node hour | Per Pod vCPU/memory for general-purpose workloads; node-based for specific hardware |
 | Security patching | Your responsibility | Google managed |
 | Node access | SSH available | No SSH access |
 | DaemonSets | Full control | Restricted |
-| Privileged containers | Allowed | Not allowed |
-| Resource requests | Optional | Required |
+| Privileged containers | Allowed | Rejected by default; specific allowlisted privileged workloads are supported |
+| Resource requests | Optional | Defaulted automatically; explicit requests recommended |
 
 ## When to Use Autopilot
 
@@ -50,8 +50,8 @@ Autopilot is ideal when:
 
 Stick with Standard mode if:
 
-- You need privileged containers or custom DaemonSets
-- Workloads require specific node configurations (GPU types, local SSDs)
+- You need privileged containers that are not supported by Autopilot allowlists or custom DaemonSets
+- Workloads require unsupported node configurations or direct node customization
 - You want SSH access to nodes for debugging
 - You have highly variable workloads that benefit from pre-provisioned capacity
 
@@ -210,12 +210,12 @@ You will see nodes created automatically as you deploy workloads.
 
 ## Deploying Workloads
 
-Resource Requests Are Required
+Resource Requests Are Recommended
 
-Autopilot requires resource requests on all containers. This is how it knows what nodes to provision:
+Autopilot uses resource requests to decide what nodes to provision. If you omit CPU or memory requests, Autopilot applies defaults, but you should set them explicitly so that scheduling, performance, and cost match your application requirements:
 
 ```yaml
-# A basic deployment with required resource requests
+# A basic deployment with explicit resource requests
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -235,7 +235,7 @@ spec:
       containers:
         - name: nginx
           image: nginx:1.25
-          # Resource requests are mandatory in Autopilot
+          # Set resource requests explicitly for predictable scheduling and cost
           resources:
             requests:
               cpu: "250m"
@@ -254,10 +254,10 @@ Autopilot offers different compute classes for various workload types:
 ```mermaid
 flowchart LR
     subgraph ComputeClasses["Autopilot Compute Classes"]
-        GP[General Purpose<br/>Default] --> |Balanced| Apps[Web Apps<br/>APIs]
-        Balanced[Balanced] --> |Cost-optimized| Batch[Batch Jobs<br/>CI/CD]
-        ScaleOut[Scale-Out] --> |High throughput| Stream[Streaming<br/>Data Processing]
-        Perf[Performance] --> |Low latency| Trade[Trading<br/>Gaming]
+        GP[General Purpose<br/>Default] --> |General workloads| Apps[Web Apps<br/>APIs]
+        Balanced[Balanced] --> |Larger balanced workloads| Batch[Batch Jobs<br/>CI/CD]
+        ScaleOut[Scale-Out] --> |Physical cores| Stream[Streaming<br/>Data Processing]
+        Perf[Performance] --> |Specific machine series| Trade[Trading<br/>Gaming]
     end
 ```
 
@@ -295,10 +295,10 @@ Available compute classes:
 
 | Compute Class | Use Case | vCPU Range | Memory Range |
 | --- | --- | --- | --- |
-| General-purpose | Default, balanced workloads | 0.25-30 | 0.5Gi-110Gi |
-| Balanced | Cost-optimized batch jobs | 0.5-30 | 2Gi-110Gi |
-| Scale-Out | High-throughput processing | 0.5-30 | 2Gi-110Gi |
-| Performance | Low-latency applications | 4-30 | 16Gi-110Gi |
+| General-purpose | Default, general workloads | 50m or 250m minimum, up to 30 | 52Mi or 512Mi minimum, up to 110Gi |
+| Balanced | Larger balanced workloads | 0.25-222 | 0.5Gi-851Gi |
+| Scale-Out | Physical-core, high-throughput processing | 0.25-54 on amd64, 0.25-43 on arm64 | 1Gi-216Gi on amd64, 1Gi-172Gi on arm64 |
+| Performance | Workloads that need specific machine series | No minimum; maximum depends on machine series | No minimum; maximum depends on machine series |
 
 ### Using Spot Pods
 
@@ -318,7 +318,7 @@ spec:
       # Request Spot Pods for cost savings
       nodeSelector:
         cloud.google.com/gke-spot: "true"
-      # Spot Pods can be preempted, so set appropriate tolerations
+      # GKE also adds the corresponding Spot toleration automatically
       tolerations:
         - key: cloud.google.com/gke-spot
           operator: Equal
@@ -468,7 +468,7 @@ metadata:
   annotations:
     # Use the GCE ingress class
     kubernetes.io/ingress.class: gce
-    # Enable HTTPS redirect
+    # Disable plain HTTP
     kubernetes.io/ingress.allow-http: "false"
 spec:
   tls:
@@ -725,10 +725,10 @@ kubectl get vpa -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.rec
 Before migrating, verify your workloads are compatible:
 
 ```bash
-# Check for privileged containers (not allowed in Autopilot)
+# Check for privileged containers (rejected by default in Autopilot unless allowlisted)
 kubectl get pods --all-namespaces -o jsonpath='{range .items[*]}{.metadata.namespace}{"\t"}{.metadata.name}{"\t"}{.spec.containers[*].securityContext.privileged}{"\n"}{end}' | grep true
 
-# Check for missing resource requests (required in Autopilot)
+# Check for missing resource requests (Autopilot defaults these, but explicit values are recommended)
 kubectl get pods --all-namespaces -o jsonpath='{range .items[*]}{.metadata.namespace}{"\t"}{.metadata.name}{"\t"}{.spec.containers[*].resources.requests}{"\n"}{end}' | grep -v cpu
 
 # Check for hostNetwork or hostPID usage (not allowed)
@@ -796,7 +796,7 @@ kubectl run debug --rm -it --image=nicolaka/netshoot -- /bin/bash
 
 GKE Autopilot removes the burden of node management while providing a secure, cost-effective Kubernetes experience. Start with these key takeaways:
 
-1. **Always specify resource requests** - Autopilot requires them for node provisioning
+1. **Specify resource requests explicitly** - Autopilot uses them for node provisioning and defaults missing values
 2. **Use appropriate compute classes** - Match your workload characteristics
 3. **Embrace Workload Identity** - Secure access to Google Cloud services
 4. **Leverage Spot Pods** - Significant cost savings for fault-tolerant workloads
