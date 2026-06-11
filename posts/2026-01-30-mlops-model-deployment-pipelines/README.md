@@ -50,6 +50,7 @@ The model registry serves as the central repository for all model artifacts. It 
 
 import mlflow
 from mlflow.tracking import MlflowClient
+from mlflow.exceptions import MlflowException
 from typing import Dict, Any, Optional
 import logging
 
@@ -61,7 +62,7 @@ logger = logging.getLogger(__name__)
 class ModelRegistry:
     """
     Manages model lifecycle in MLflow Model Registry.
-    Handles registration, versioning, and stage transitions.
+    Handles registration, versioning, and deployment aliases.
     """
 
     def __init__(self, tracking_uri: str):
@@ -73,7 +74,7 @@ class ModelRegistry:
     def register_model(
         self,
         model_name: str,
-        model_path: str,
+        model: Any,
         metrics: Dict[str, float],
         parameters: Dict[str, Any],
         tags: Optional[Dict[str, str]] = None
@@ -83,7 +84,7 @@ class ModelRegistry:
 
         Args:
             model_name: Name for the registered model
-            model_path: Path to the model artifact
+            model: Trained scikit-learn model object
             metrics: Performance metrics from training/validation
             parameters: Hyperparameters used during training
             tags: Optional tags for categorization
@@ -101,9 +102,9 @@ class ModelRegistry:
             mlflow.log_params(parameters)
 
             # Log the model artifact to the registry
-            model_info = mlflow.sklearn.log_model(
-                sk_model=model_path,
-                artifact_path="model",
+            mlflow.sklearn.log_model(
+                sk_model=model,
+                name="model",
                 registered_model_name=model_name
             )
 
@@ -127,36 +128,60 @@ class ModelRegistry:
             return latest.version
         return "1"
 
-    def transition_model_stage(
+    def set_model_alias(
         self,
         model_name: str,
         version: str,
-        stage: str
+        alias: str
     ) -> None:
         """
-        Move a model version to a different stage.
+        Point a deployment alias at a model version.
 
-        Stages: None, Staging, Production, Archived
+        Aliases: staging, production, archived
         """
-        valid_stages = ["None", "Staging", "Production", "Archived"]
-        if stage not in valid_stages:
-            raise ValueError(f"Stage must be one of {valid_stages}")
+        valid_aliases = ["staging", "production", "archived"]
+        normalized_alias = alias.lower()
+        if normalized_alias not in valid_aliases:
+            raise ValueError(f"Alias must be one of {valid_aliases}")
 
-        self.client.transition_model_version_stage(
+        self.client.set_registered_model_alias(
+            name=model_name,
+            alias=normalized_alias,
+            version=version
+        )
+        self.client.set_model_version_tag(
             name=model_name,
             version=version,
-            stage=stage
+            key="deployment_status",
+            value=normalized_alias
         )
-        logger.info(f"Transitioned {model_name} v{version} to {stage}")
+        logger.info(f"Pointed {model_name} alias '{normalized_alias}' to v{version}")
 
     def get_production_model(self, model_name: str) -> Optional[str]:
         """Get the current production model version."""
-        versions = self.client.search_model_versions(
-            f"name='{model_name}' and current_stage='Production'"
-        )
-        if versions:
-            return versions[0].version
-        return None
+        try:
+            version = self.client.get_model_version_by_alias(
+                model_name,
+                "production"
+            )
+            return version.version
+        except MlflowException:
+            return None
+
+    def get_latest_archived_version(self, model_name: str) -> Optional[str]:
+        """Get the model version currently referenced by the archived alias."""
+        try:
+            version = self.client.get_model_version_by_alias(
+                model_name,
+                "archived"
+            )
+            return version.version
+        except MlflowException:
+            return None
+
+    def load_model(self, model_name: str, version: str) -> Any:
+        """Load a specific scikit-learn model version from the registry."""
+        return mlflow.sklearn.load_model(f"models:/{model_name}/{version}")
 ```
 
 ## Model Validation Pipeline
@@ -246,7 +271,13 @@ class ModelValidator:
         """
         def calculate_psi(reference: np.ndarray, current: np.ndarray) -> float:
             # Bin the data into deciles
-            bins = np.percentile(reference, np.arange(0, 110, 10))
+            bins = np.unique(np.percentile(reference, np.arange(0, 110, 10)))
+            if len(bins) < 2:
+                return 0.0
+
+            # Include values outside the reference range
+            bins[0] = -np.inf
+            bins[-1] = np.inf
 
             # Calculate proportions in each bin
             ref_counts = np.histogram(reference, bins=bins)[0] / len(reference)
@@ -361,6 +392,11 @@ WORKDIR /app
 # Copy installed dependencies from builder
 COPY --from=builder /install /usr/local
 
+# Install runtime dependencies used by the health check
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
 # Create non-root user for security
 RUN useradd --create-home --shell /bin/bash modelserver
 USER modelserver
@@ -390,8 +426,9 @@ CMD ["python", "-m", "uvicorn", "serving.app:app", "--host", "0.0.0.0", "--port"
 # serving/app.py
 # FastAPI application for model inference
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Response
 from fastapi.middleware.cors import CORSMiddleware
+from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
 import numpy as np
@@ -399,6 +436,8 @@ import joblib
 import logging
 import time
 import os
+
+from monitoring.metrics import MODEL_REGISTRY
 
 # Initialize logging
 logging.basicConfig(level=logging.INFO)
@@ -415,7 +454,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -467,21 +506,23 @@ class ModelManager:
         self,
         features: np.ndarray,
         version: Optional[str] = None
-    ) -> np.ndarray:
+    ) -> tuple[np.ndarray, str]:
         """
         Generate predictions using the specified model version.
         Falls back to current production model if version not specified.
         """
         model = self.current_model
+        resolved_version = self.current_version
 
         if version and version != self.current_version:
             # Load specific version from cache or disk
             model = self._get_model_version(version)
+            resolved_version = version
 
         if model is None:
             raise ValueError("No model available for inference")
 
-        return model.predict(features)
+        return model.predict(features), resolved_version
 
     def _get_model_version(self, version: str) -> Any:
         """Retrieve a specific model version, using cache when available."""
@@ -527,6 +568,15 @@ async def readiness_check():
     return {"status": "ready"}
 
 
+@app.get("/metrics")
+async def metrics():
+    """Expose Prometheus metrics for scraping."""
+    return Response(
+        content=generate_latest(MODEL_REGISTRY),
+        media_type=CONTENT_TYPE_LATEST
+    )
+
+
 @app.post("/predict", response_model=PredictionResponse)
 async def predict(request: PredictionRequest):
     """
@@ -542,7 +592,7 @@ async def predict(request: PredictionRequest):
         features = np.array(request.features)
 
         # Generate predictions
-        predictions = model_manager.predict(
+        predictions, model_version = model_manager.predict(
             features,
             version=request.model_version
         )
@@ -552,7 +602,7 @@ async def predict(request: PredictionRequest):
 
         return PredictionResponse(
             predictions=predictions.tolist(),
-            model_version=model_manager.current_version,
+            model_version=model_version,
             latency_ms=round(latency_ms, 2)
         )
 
@@ -668,7 +718,7 @@ jobs:
     if: needs.validate.outputs.validation_passed == 'true'
     runs-on: ubuntu-latest
     outputs:
-      image_tag: ${{ steps.meta.outputs.tags }}
+      image_tag: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}
 
     steps:
       - name: Checkout repository
@@ -713,6 +763,9 @@ jobs:
     services:
       model-server:
         image: ${{ needs.build.outputs.image_tag }}
+        credentials:
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
         ports:
           - 8080:8080
         options: >-
@@ -731,8 +784,7 @@ jobs:
 
       - name: Run integration tests
         run: |
-          python -m pytest tests/integration \
-            --base-url http://localhost:8080 \
+          BASE_URL=http://localhost:8080 python -m pytest tests/integration \
             -v --tb=short
 
   # Job 4: Deploy to staging
@@ -1344,11 +1396,11 @@ class RollbackManager:
 
         # Execute the rollback
         try:
-            # Update model registry stage
-            self.registry.transition_model_stage(
+            # Update model registry alias
+            self.registry.set_model_alias(
                 model_name=deployment_name,
                 version=target_version,
-                stage="Production"
+                alias="production"
             )
 
             # Trigger deployment update
@@ -1387,8 +1439,8 @@ class RollbackManager:
             if event.success and event.to_version:
                 return event.to_version
 
-        # Fall back to registry's archived stable version
-        return self.registry.get_latest_archived_version(deployment_name)
+        # Fall back to the registry's production alias
+        return self.registry.get_production_model(deployment_name)
 
     def _record_rollback(
         self,
@@ -1973,12 +2025,12 @@ class DeploymentOrchestrator:
         )
 
     def _update_registry(self) -> None:
-        """Update model stage in registry."""
-        stage = "Production" if self.config.environment == "production" else "Staging"
-        self.registry.transition_model_stage(
+        """Update model deployment alias in registry."""
+        alias = "production" if self.config.environment == "production" else "staging"
+        self.registry.set_model_alias(
             model_name=self.config.model_name,
             version=self.config.model_version,
-            stage=stage
+            alias=alias
         )
 
     # Helper methods (implementations depend on your infrastructure)
