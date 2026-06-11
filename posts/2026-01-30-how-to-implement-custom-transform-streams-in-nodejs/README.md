@@ -78,15 +78,13 @@ class LineCounter extends Transform {
 
 ## Working with objectMode
 
-By default, streams work with Buffer or string data. Setting `objectMode: true` allows streams to handle JavaScript objects, which is invaluable for processing structured data:
+By default, streams work with Buffer, string, TypedArray, or DataView data. Object mode options allow streams to handle JavaScript objects, which is invaluable for processing structured data:
 
 ```javascript
 class JSONParser extends Transform {
   constructor() {
     super({
-      objectMode: true,
-      readableObjectMode: true,
-      writableObjectMode: false
+      readableObjectMode: true
     });
   }
 
@@ -108,7 +106,8 @@ The `highWaterMark` option controls the internal buffer size. For Transform stre
 
 ```javascript
 const transform = new Transform({
-  highWaterMark: 64 * 1024, // 64KB buffer
+  writableHighWaterMark: 64 * 1024, // 64KB input buffer
+  readableHighWaterMark: 16 * 1024, // 16KB output buffer
   transform(chunk, encoding, callback) {
     this.push(processChunk(chunk));
     callback();
@@ -116,7 +115,7 @@ const transform = new Transform({
 });
 ```
 
-A higher `highWaterMark` improves throughput but uses more memory. Lower values reduce memory usage but may increase processing overhead.
+A higher `highWaterMark` can improve throughput but uses more memory. Lower values reduce memory usage but may increase processing overhead.
 
 ## Practical Example: Compression Stream
 
@@ -186,7 +185,7 @@ Transform streams excel at parsing structured data:
 ```javascript
 class CSVParser extends Transform {
   constructor() {
-    super({ objectMode: true });
+    super({ readableObjectMode: true });
     this.headers = null;
     this.buffer = '';
   }
@@ -199,6 +198,21 @@ class CSVParser extends Transform {
     for (const line of lines) {
       if (!line.trim()) continue;
       const values = line.split(',').map(v => v.trim());
+
+      if (!this.headers) {
+        this.headers = values;
+      } else {
+        const obj = {};
+        this.headers.forEach((h, i) => obj[h] = values[i]);
+        this.push(obj);
+      }
+    }
+    callback();
+  }
+
+  _flush(callback) {
+    if (this.buffer.trim()) {
+      const values = this.buffer.split(',').map(v => v.trim());
 
       if (!this.headers) {
         this.headers = values;
