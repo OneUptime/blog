@@ -334,7 +334,7 @@ Generate standardized agendas automatically before each review.
 
 import boto3
 from datetime import datetime, timedelta
-from jinja2 import Template
+from jinja2 import Environment
 
 AGENDA_TEMPLATE = """
 # {{ review_type }} Cost Review
@@ -547,8 +547,9 @@ def generate_agenda(
     }
 
     # Render template
-    template = Template(AGENDA_TEMPLATE)
-    template.environment.filters['format_currency'] = format_currency
+    env = Environment()
+    env.filters['format_currency'] = format_currency
+    template = env.from_string(AGENDA_TEMPLATE)
 
     return template.render(**context)
 
@@ -927,8 +928,7 @@ def collect_aws_costs(start_date: datetime, end_date: datetime) -> List[CostReco
         Metrics=['UnblendedCost'],
         GroupBy=[
             {'Type': 'DIMENSION', 'Key': 'SERVICE'},
-            {'Type': 'TAG', 'Key': 'team'},
-            {'Type': 'TAG', 'Key': 'environment'}
+            {'Type': 'TAG', 'Key': 'team'}
         ]
     )
 
@@ -945,7 +945,7 @@ def collect_aws_costs(start_date: datetime, end_date: datetime) -> List[CostReco
                 account='production',
                 service=keys[0],
                 team=keys[1].replace('team$', '') if len(keys) > 1 else 'untagged',
-                environment=keys[2].replace('environment$', '') if len(keys) > 2 else 'unknown',
+                environment='unknown',
                 cost=cost
             ))
 
@@ -1018,10 +1018,20 @@ def get_recommendations() -> List[Dict]:
             Service='AmazonEC2'
         )
         for rec in response.get('RightsizingRecommendations', []):
+            if rec.get('RightsizingType') == 'TERMINATE':
+                savings = rec.get('TerminateRecommendationDetail', {}).get('EstimatedMonthlySavings', 0)
+            else:
+                target_instances = rec.get('ModifyRecommendationDetail', {}).get('TargetInstances', [])
+                default_target = next(
+                    (target for target in target_instances if target.get('DefaultTargetInstance')),
+                    target_instances[0] if target_instances else {}
+                )
+                savings = default_target.get('EstimatedMonthlySavings', 0)
+
             recommendations.append({
                 'type': 'rightsizing',
                 'resource': rec.get('CurrentInstance', {}).get('ResourceId', 'Unknown'),
-                'savings': rec.get('RightsizingRecommendation', {}).get('SavingsPercentage', 0),
+                'savings': float(savings or 0),
                 'action': rec.get('RightsizingType', 'Modify')
             })
     except Exception as e:
@@ -1353,22 +1363,33 @@ class ActionItemTracker:
     def _create_jira_ticket(self, item: ActionItem):
         """Create a Jira ticket for the action item."""
         # Integration with Jira API
+        fields = {
+            'project': {'key': 'FINOPS'},
+            'summary': f"[Cost Review] {item.title}",
+            'description': item.description,
+            'issuetype': {'name': 'Task'},
+            'duedate': item.due_date,
+            'labels': ['cost-review', 'finops'],
+            'customfield_10001': item.estimated_savings  # Estimated savings field
+        }
+
+        # Jira Cloud requires accountId for assignees; map owner email to accountId in production.
+        assignee_account_id = self._lookup_jira_account_id(item.owner)
+        if assignee_account_id:
+            fields['assignee'] = {'accountId': assignee_account_id}
+
         jira_payload = {
-            'fields': {
-                'project': {'key': 'FINOPS'},
-                'summary': f"[Cost Review] {item.title}",
-                'description': item.description,
-                'issuetype': {'name': 'Task'},
-                'assignee': {'name': item.owner},
-                'duedate': item.due_date,
-                'labels': ['cost-review', 'finops'],
-                'customfield_10001': item.estimated_savings  # Estimated savings field
-            }
+            'fields': fields
         }
 
         # In production, make actual API call
         # requests.post('https://jira.acme.com/rest/api/2/issue', json=jira_payload)
         print(f"Would create Jira ticket for {item.id}")
+
+    def _lookup_jira_account_id(self, owner_email: str) -> Optional[str]:
+        """Look up the Jira account ID for an owner email."""
+        # In production, call Jira user search and return the matching accountId.
+        return None
 
     def _update_jira_status(self, item: ActionItem):
         """Update Jira ticket status."""
@@ -1546,7 +1567,7 @@ import json
 from datetime import datetime
 from dataclasses import dataclass, asdict, field
 from typing import List, Dict, Optional
-from jinja2 import Template
+from jinja2 import Environment
 import hashlib
 
 @dataclass
@@ -1736,8 +1757,9 @@ class ReviewDocumentationSystem:
 
     def render_markdown(self, doc: ReviewDocument) -> str:
         """Render document as Markdown."""
-        template = Template(DOCUMENTATION_TEMPLATE)
-        template.environment.filters['format_currency'] = format_currency
+        env = Environment()
+        env.filters['format_currency'] = format_currency
+        template = env.from_string(DOCUMENTATION_TEMPLATE)
 
         # Calculate document hash for integrity
         doc_dict = asdict(doc)
