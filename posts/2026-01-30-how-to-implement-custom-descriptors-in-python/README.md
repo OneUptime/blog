@@ -35,7 +35,7 @@ The `obj` parameter is the instance the descriptor is accessed through, and `obj
 
 Python distinguishes between two types of descriptors:
 
-- **Data descriptors**: Implement both `__get__` and `__set__` (or `__delete__`). They take precedence over instance attributes.
+- **Data descriptors**: Implement `__set__` or `__delete__`, typically along with `__get__`. They take precedence over instance attributes.
 - **Non-data descriptors**: Implement only `__get__`. Instance attributes take precedence over non-data descriptors.
 
 This distinction is crucial for understanding attribute lookup order in Python.
@@ -96,7 +96,7 @@ class LazyProperty:
         if obj is None:
             return self
         value = self.func(obj)
-        setattr(obj, self.name, value)  # Replace descriptor with computed value
+        setattr(obj, self.name, value)  # Cache value in the instance dictionary
         return value
 
 
