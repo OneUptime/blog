@@ -8,7 +8,7 @@ Description: Learn to implement lead time tracking with commit-to-deploy measure
 
 ---
 
-Lead time is one of the four key DORA metrics that measures the time it takes for a commit to reach production. Understanding and optimizing lead time directly impacts your team's ability to deliver value quickly and respond to market demands. In this guide, we will walk through implementing a comprehensive lead time tracking system from scratch.
+Lead time is one of the key DORA software delivery performance metrics that measures the time it takes for a commit to reach production. Understanding and optimizing lead time directly impacts your team's ability to deliver value quickly and respond to market demands. In this guide, we will walk through implementing a comprehensive lead time tracking system from scratch.
 
 ## What is Lead Time?
 
@@ -108,10 +108,8 @@ Create a webhook handler service to capture events from your version control and
 ```python
 # webhook_handler.py
 
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request
 from datetime import datetime
-import json
-from typing import Optional
 from pydantic import BaseModel
 
 app = FastAPI()
@@ -172,7 +170,7 @@ async def github_webhook(request: Request):
             event = LeadTimeEvent(
                 event_type="pr_merged",
                 repository=payload["repository"]["full_name"],
-                commit_sha=pr["merge_commit_sha"],
+                commit_sha=pr["head"]["sha"],
                 timestamp=datetime.fromisoformat(
                     pr["merged_at"].replace("Z", "+00:00")
                 ),
@@ -186,7 +184,7 @@ async def github_webhook(request: Request):
     elif event_type == "deployment_status":
         if payload["deployment_status"]["state"] == "success":
             event = LeadTimeEvent(
-                event_type="deployment_success",
+                event_type="deployment_completed",
                 repository=payload["repository"]["full_name"],
                 commit_sha=payload["deployment"]["sha"],
                 timestamp=datetime.fromisoformat(
@@ -206,7 +204,7 @@ def store_event(event: LeadTimeEvent):
     key = f"{event.repository}:{event.commit_sha}"
     if key not in events_store:
         events_store[key] = []
-    events_store[key].append(event.dict())
+    events_store[key].append(event.model_dump())
     print(f"Stored event: {event.event_type} for {key}")
 ```
 
@@ -257,6 +255,15 @@ jobs:
 
       - name: Deploy to production
         run: |
+          curl -X POST ${{ secrets.METRICS_ENDPOINT }}/events \
+            -H "Content-Type: application/json" \
+            -d '{
+              "event_type": "deployment_started",
+              "commit_sha": "${{ github.sha }}",
+              "repository": "${{ github.repository }}",
+              "timestamp": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'",
+              "environment": "production"
+            }'
           kubectl apply -f k8s/
 
       - name: Record deployment complete
@@ -291,6 +298,7 @@ class EventType(Enum):
     PR_MERGED = "pr_merged"
     BUILD_STARTED = "build_started"
     BUILD_COMPLETED = "build_completed"
+    DEPLOYMENT_STARTED = "deployment_started"
     DEPLOYMENT_COMPLETED = "deployment_completed"
 
 @dataclass
@@ -338,6 +346,9 @@ class LeadTimeCalculator:
         build_completed = self.events_by_type.get(
             EventType.BUILD_COMPLETED.value
         )
+        deployment_started = self.events_by_type.get(
+            EventType.DEPLOYMENT_STARTED.value
+        )
 
         coding_time = None
         if pr_opened:
@@ -360,10 +371,10 @@ class LeadTimeCalculator:
             )
 
         deploy_time = None
-        if build_completed:
+        if deployment_started:
             deploy_time = (
                 deployment_time -
-                self._parse_timestamp(build_completed["timestamp"])
+                self._parse_timestamp(deployment_started["timestamp"])
             )
 
         return LeadTimeMetrics(
@@ -395,6 +406,8 @@ from typing import List
 from dataclasses import dataclass
 import statistics
 
+from lead_time_calculator import LeadTimeMetrics
+
 @dataclass
 class LeadTimeStatistics:
     period_start: str
@@ -409,6 +422,7 @@ class LeadTimeStatistics:
     mean_coding_time: timedelta
     mean_review_time: timedelta
     mean_build_time: timedelta
+    mean_deploy_time: timedelta
 
 class LeadTimeAggregator:
     def __init__(self, metrics: List[LeadTimeMetrics]):
@@ -437,6 +451,11 @@ class LeadTimeAggregator:
             for m in self.metrics
             if m.build_time is not None
         ]
+        deploy_times = [
+            m.deploy_time.total_seconds()
+            for m in self.metrics
+            if m.deploy_time is not None
+        ]
 
         sorted_lead_times = sorted(lead_times)
 
@@ -464,6 +483,9 @@ class LeadTimeAggregator:
             ),
             mean_build_time=timedelta(
                 seconds=statistics.mean(build_times) if build_times else 0
+            ),
+            mean_deploy_time=timedelta(
+                seconds=statistics.mean(deploy_times) if deploy_times else 0
             )
         )
 
@@ -502,6 +524,8 @@ from typing import List
 from dataclasses import dataclass
 from enum import Enum
 
+from lead_time_aggregator import LeadTimeStatistics
+
 class Phase(Enum):
     CODING = "coding"
     REVIEW = "review"
@@ -537,7 +561,8 @@ class BottleneckDetector:
         total_seconds = (
             latest.mean_coding_time.total_seconds() +
             latest.mean_review_time.total_seconds() +
-            latest.mean_build_time.total_seconds()
+            latest.mean_build_time.total_seconds() +
+            latest.mean_deploy_time.total_seconds()
         )
 
         results = []
@@ -546,6 +571,7 @@ class BottleneckDetector:
             (Phase.CODING, latest.mean_coding_time),
             (Phase.REVIEW, latest.mean_review_time),
             (Phase.BUILD, latest.mean_build_time),
+            (Phase.DEPLOY, latest.mean_deploy_time),
         ]
 
         for phase, duration in phases_data:
@@ -578,6 +604,7 @@ class BottleneckDetector:
             Phase.CODING: "mean_coding_time",
             Phase.REVIEW: "mean_review_time",
             Phase.BUILD: "mean_build_time",
+            Phase.DEPLOY: "mean_deploy_time",
         }
 
         attr = phase_attr_map.get(phase)
@@ -772,23 +799,23 @@ import {
 
 interface LeadTimeTrend {
   date: string;
-  meanHours: number;
-  medianHours: number;
-  deploymentCount: number;
+  mean_hours: number;
+  median_hours: number;
+  deployment_count: number;
 }
 
 interface PhaseDuration {
   phase: string;
-  durationHours: number;
+  duration_hours: number;
   percentage: number;
 }
 
 interface DashboardData {
-  currentLeadTimeHours: number;
-  leadTimeTrend: string;
-  weeklyTrend: LeadTimeTrend[];
-  phaseBreakdown: PhaseDuration[];
-  deploymentFrequency: number;
+  current_lead_time_hours: number;
+  lead_time_trend: string;
+  weekly_trend: LeadTimeTrend[];
+  phase_breakdown: PhaseDuration[];
+  deployment_frequency: number;
   bottlenecks: string[];
 }
 
@@ -834,10 +861,10 @@ const LeadTimeDashboard: React.FC = () => {
         <h1>Lead Time Metrics</h1>
         <div className="current-metric">
           <span className="value">
-            {data.currentLeadTimeHours.toFixed(1)}h
+            {data.current_lead_time_hours.toFixed(1)}h
           </span>
           <span className="trend">
-            {getTrendIndicator(data.leadTimeTrend)}
+            {getTrendIndicator(data.lead_time_trend)}
           </span>
         </div>
       </header>
@@ -845,7 +872,7 @@ const LeadTimeDashboard: React.FC = () => {
       <section className="chart-section">
         <h2>Lead Time Trend</h2>
         <ResponsiveContainer width="100%" height={300}>
-          <LineChart data={data.weeklyTrend}>
+          <LineChart data={data.weekly_trend}>
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="date" />
             <YAxis
@@ -859,13 +886,13 @@ const LeadTimeDashboard: React.FC = () => {
             <Legend />
             <Line
               type="monotone"
-              dataKey="meanHours"
+              dataKey="mean_hours"
               stroke="#8884d8"
               name="Mean Lead Time"
             />
             <Line
               type="monotone"
-              dataKey="medianHours"
+              dataKey="median_hours"
               stroke="#82ca9d"
               name="Median Lead Time"
             />
@@ -878,8 +905,8 @@ const LeadTimeDashboard: React.FC = () => {
         <ResponsiveContainer width="100%" height={300}>
           <PieChart>
             <Pie
-              data={data.phaseBreakdown}
-              dataKey="durationHours"
+              data={data.phase_breakdown}
+              dataKey="duration_hours"
               nameKey="phase"
               cx="50%"
               cy="50%"
@@ -888,7 +915,7 @@ const LeadTimeDashboard: React.FC = () => {
                 `${phase}: ${percentage.toFixed(1)}%`
               }
             >
-              {data.phaseBreakdown.map((entry, index) => (
+              {data.phase_breakdown.map((entry, index) => (
                 <Cell
                   key={entry.phase}
                   fill={COLORS[index % COLORS.length]}
@@ -968,6 +995,8 @@ This alert manager monitors lead time metrics and notifies your team when thresh
 from dataclasses import dataclass
 from typing import List, Callable
 from datetime import timedelta
+
+from lead_time_aggregator import LeadTimeStatistics
 
 @dataclass
 class AlertRule:
@@ -1143,6 +1172,6 @@ Implementing lead time tracking provides valuable insights into your software de
 4. **Visualize trends** through dashboards and time-series charts
 5. **Drive improvements** with data-driven decision making and automated alerts
 
-Remember that lead time is just one of the four DORA metrics. For a complete picture of your delivery performance, combine lead time tracking with deployment frequency, change failure rate, and mean time to recovery measurements.
+Remember that lead time is just one of the DORA software delivery performance metrics. For a complete picture of your delivery performance, combine lead time tracking with deployment frequency, failed deployment recovery time, change fail rate, and deployment rework rate measurements.
 
 Start with basic event collection, iterate on your measurement approach, and gradually add sophistication as your team's needs evolve. The goal is not just to measure, but to enable continuous improvement in your delivery process.
