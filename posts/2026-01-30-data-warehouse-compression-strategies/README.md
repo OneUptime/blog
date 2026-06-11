@@ -148,6 +148,8 @@ RLE stores consecutive repeated values as a single value with a count. It works 
 
 WITH value_runs AS (
     SELECT
+        order_date,
+        order_id,
         status,
         -- Identify run boundaries using LAG
         CASE
@@ -160,8 +162,10 @@ WITH value_runs AS (
 ),
 run_groups AS (
     SELECT
+        order_date,
+        order_id,
         status,
-        SUM(run_start) OVER (ORDER BY status ROWS UNBOUNDED PRECEDING) AS run_group
+        SUM(run_start) OVER (ORDER BY order_date, order_id ROWS UNBOUNDED PRECEDING) AS run_group
     FROM value_runs
 )
 SELECT
@@ -237,11 +241,11 @@ SELECT
     MIN(quantity) AS min_value,
     MAX(quantity) AS max_value,
     -- Calculate bits needed for the range
-    CEIL(LOG(2, GREATEST(MAX(quantity) - MIN(quantity) + 1, 1))) AS bits_needed,
+    GREATEST(CEIL(LOG(2, GREATEST(MAX(quantity) - MIN(quantity) + 1, 2))), 1) AS bits_needed,
     -- Standard integer uses 32 bits
     32 AS standard_bits,
     -- Compression ratio from bit-packing
-    ROUND(32.0 / CEIL(LOG(2, GREATEST(MAX(quantity) - MIN(quantity) + 1, 1))), 2) AS potential_ratio
+    ROUND(32.0 / GREATEST(CEIL(LOG(2, GREATEST(MAX(quantity) - MIN(quantity) + 1, 2))), 1), 2) AS potential_ratio
 FROM orders
 WHERE quantity IS NOT NULL
 
@@ -251,9 +255,9 @@ SELECT
     'priority_level' AS column_name,
     MIN(priority) AS min_value,
     MAX(priority) AS max_value,
-    CEIL(LOG(2, GREATEST(MAX(priority) - MIN(priority) + 1, 1))) AS bits_needed,
+    GREATEST(CEIL(LOG(2, GREATEST(MAX(priority) - MIN(priority) + 1, 2))), 1) AS bits_needed,
     32 AS standard_bits,
-    ROUND(32.0 / CEIL(LOG(2, GREATEST(MAX(priority) - MIN(priority) + 1, 1))), 2) AS potential_ratio
+    ROUND(32.0 / GREATEST(CEIL(LOG(2, GREATEST(MAX(priority) - MIN(priority) + 1, 2))), 1), 2) AS potential_ratio
 FROM orders
 WHERE priority IS NOT NULL;
 ```
@@ -292,13 +296,10 @@ flowchart TD
 ### Implementing Column-Level Compression in SQL
 
 ```sql
--- PostgreSQL example: Creating a table with compression settings
--- Note: Actual syntax varies by database (Redshift, Snowflake, BigQuery, etc.)
-
--- For Amazon Redshift:
+-- Amazon Redshift example:
 CREATE TABLE sales_fact (
-    -- High cardinality, use LZ4 for general compression
-    sale_id BIGINT ENCODE LZ4,
+    -- High cardinality numeric, use AZ64 for general numeric compression
+    sale_id BIGINT ENCODE AZ64,
 
     -- Low cardinality, dictionary encoding is ideal
     region VARCHAR(50) ENCODE BYTEDICT,
@@ -312,14 +313,14 @@ CREATE TABLE sales_fact (
     -- Sequential customer IDs within regions, delta encoding
     customer_id INTEGER ENCODE DELTA,
 
-    -- Price with small range, run-length encoding after sorting
-    unit_price DECIMAL(10,2) ENCODE RUNLENGTH,
+    -- Price with small range, AZ64 for numeric compression
+    unit_price DECIMAL(10,2) ENCODE AZ64,
 
     -- Quantity typically small numbers, byte dictionary
     quantity INTEGER ENCODE BYTEDICT,
 
-    -- Total varies widely, LZ4 for general compression
-    total_amount DECIMAL(12,2) ENCODE LZ4,
+    -- Total varies widely, AZ64 for general numeric compression
+    total_amount DECIMAL(12,2) ENCODE AZ64,
 
     -- Timestamps are sequential, delta encoding
     created_at TIMESTAMP ENCODE DELTA32K,
@@ -337,9 +338,9 @@ CREATE TABLE sales_fact (
     sale_date Date CODEC(Delta, ZSTD),
     status LowCardinality(String),
     customer_id UInt32 CODEC(Delta, LZ4),
-    unit_price Decimal(10,2) CODEC(Gorilla),  -- Good for floating point
+    unit_price Decimal(10,2) CODEC(ZSTD(1)),
     quantity UInt16 CODEC(T64),  -- Bit-packing for small integers
-    total_amount Decimal(12,2) CODEC(Gorilla),
+    total_amount Decimal(12,2) CODEC(ZSTD(1)),
     created_at DateTime CODEC(Delta, LZ4),
     metadata String CODEC(ZSTD(3))
 ) ENGINE = MergeTree()
@@ -412,15 +413,15 @@ SELECT
     -- Encoding recommendation based on analysis
     CASE
         WHEN data_type = 'varchar' AND distinct_values < 256 THEN 'BYTEDICT'
-        WHEN data_type = 'varchar' AND distinct_values < 65536 THEN 'LZ4'
+        WHEN data_type = 'varchar' AND distinct_values < 65536 THEN 'ZSTD'
         WHEN data_type = 'varchar' THEN 'ZSTD'
         WHEN data_type = 'date' THEN 'DELTA32K'
         WHEN data_type = 'timestamp' THEN 'DELTA32K'
         WHEN data_type = 'integer' AND distinct_values < 256 THEN 'BYTEDICT'
-        WHEN data_type = 'integer' THEN 'DELTA'
-        WHEN data_type = 'bigint' THEN 'DELTA'
+        WHEN data_type = 'integer' THEN 'AZ64'
+        WHEN data_type = 'bigint' THEN 'AZ64'
         WHEN data_type = 'boolean' THEN 'RUNLENGTH'
-        WHEN data_type LIKE 'decimal%' THEN 'LZ4'
+        WHEN data_type LIKE 'decimal%' THEN 'AZ64'
         ELSE 'RAW'
     END AS recommended_encoding,
     -- Estimated compression ratio
@@ -463,16 +464,16 @@ CREATE TABLE compression_test_dict (
 );
 INSERT INTO compression_test_dict SELECT * FROM sales_fact_source LIMIT 10000000;
 
--- Test table 3: LZ4 everywhere
-CREATE TABLE compression_test_lz4 (
-    sale_id BIGINT ENCODE LZ4,
-    region VARCHAR(50) ENCODE LZ4,
-    status VARCHAR(20) ENCODE LZ4,
-    customer_id INTEGER ENCODE LZ4,
-    sale_date DATE ENCODE LZ4,
-    amount DECIMAL(12,2) ENCODE LZ4
+-- Test table 3: ZSTD everywhere
+CREATE TABLE compression_test_zstd (
+    sale_id BIGINT ENCODE ZSTD,
+    region VARCHAR(50) ENCODE ZSTD,
+    status VARCHAR(20) ENCODE ZSTD,
+    customer_id INTEGER ENCODE ZSTD,
+    sale_date DATE ENCODE ZSTD,
+    amount DECIMAL(12,2) ENCODE ZSTD
 );
-INSERT INTO compression_test_lz4 SELECT * FROM sales_fact_source LIMIT 10000000;
+INSERT INTO compression_test_zstd SELECT * FROM sales_fact_source LIMIT 10000000;
 
 -- Test table 4: Mixed optimal encoding
 CREATE TABLE compression_test_optimal (
@@ -481,7 +482,7 @@ CREATE TABLE compression_test_optimal (
     status VARCHAR(20) ENCODE BYTEDICT,
     customer_id INTEGER ENCODE DELTA,
     sale_date DATE ENCODE DELTA32K,
-    amount DECIMAL(12,2) ENCODE LZ4
+    amount DECIMAL(12,2) ENCODE AZ64
 );
 INSERT INTO compression_test_optimal SELECT * FROM sales_fact_source LIMIT 10000000;
 
@@ -495,22 +496,22 @@ FROM svv_table_info
 WHERE "table" LIKE 'compression_test%'
 ORDER BY size_mb;
 
--- Run benchmark queries and compare execution times
+-- Inspect query plans, then run the same queries separately to compare execution times
 -- Query 1: Full table scan
-EXPLAIN ANALYZE
+EXPLAIN
 SELECT COUNT(*), SUM(amount)
 FROM compression_test_optimal
 WHERE sale_date BETWEEN '2025-01-01' AND '2025-12-31';
 
 -- Query 2: Filtered aggregation
-EXPLAIN ANALYZE
+EXPLAIN
 SELECT region, status, COUNT(*), AVG(amount)
 FROM compression_test_optimal
 WHERE sale_date >= '2025-06-01'
 GROUP BY region, status;
 
 -- Query 3: Join operation
-EXPLAIN ANALYZE
+EXPLAIN
 SELECT c.customer_name, SUM(s.amount)
 FROM compression_test_optimal s
 JOIN customers c ON s.customer_id = c.customer_id
@@ -691,16 +692,25 @@ Aggressive compression can hurt query performance. Balance storage savings with 
 
 ```sql
 -- Compare query performance with different compression levels
--- ZSTD supports compression levels 1-22
+-- ClickHouse ZSTD supports configurable compression levels
 
 -- Low compression, fast decompression
-CREATE TABLE logs_zstd_1 (data VARCHAR(MAX) ENCODE ZSTD(1));
+CREATE TABLE logs_zstd_1 (
+    data String CODEC(ZSTD(1))
+) ENGINE = MergeTree()
+ORDER BY tuple();
 
 -- Medium compression (default)
-CREATE TABLE logs_zstd_9 (data VARCHAR(MAX) ENCODE ZSTD(9));
+CREATE TABLE logs_zstd_9 (
+    data String CODEC(ZSTD(9))
+) ENGINE = MergeTree()
+ORDER BY tuple();
 
 -- High compression, slower decompression
-CREATE TABLE logs_zstd_19 (data VARCHAR(MAX) ENCODE ZSTD(19));
+CREATE TABLE logs_zstd_19 (
+    data String CODEC(ZSTD(19))
+) ENGINE = MergeTree()
+ORDER BY tuple();
 
 -- Benchmark results example:
 -- | Compression Level | Size (GB) | Query Time (s) | CPU Cost |
@@ -719,32 +729,32 @@ Partitioning complements compression by isolating data with similar characterist
 ```sql
 -- Partitioned table with compression optimized per partition age
 -- Recent data: faster compression for frequent access
--- Historical data: maximum compression for storage efficiency
+-- Historical data: PostgreSQL's default TOAST compression for archival data
 
 CREATE TABLE sales_partitioned (
     sale_id BIGINT,
     sale_date DATE,
     region VARCHAR(50),
     amount DECIMAL(12,2),
-    details VARCHAR(MAX)
+    details TEXT
 )
 PARTITION BY RANGE (sale_date);
 
 -- Hot partition (current month): prioritize query speed
 CREATE TABLE sales_2026_01 PARTITION OF sales_partitioned
-    FOR VALUES FROM ('2026-01-01') TO ('2026-02-01')
-    WITH (
-        -- Use faster compression for frequent access
-        toast_compression = 'lz4'
-    );
+    FOR VALUES FROM ('2026-01-01') TO ('2026-02-01');
+
+-- Use faster TOAST compression for frequent access
+ALTER TABLE sales_2026_01
+    ALTER COLUMN details SET COMPRESSION lz4;
 
 -- Cold partitions (older data): prioritize storage efficiency
 CREATE TABLE sales_2025_archive PARTITION OF sales_partitioned
-    FOR VALUES FROM ('2025-01-01') TO ('2026-01-01')
-    WITH (
-        -- Use maximum compression for archival data
-        toast_compression = 'pglz'
-    );
+    FOR VALUES FROM ('2025-01-01') TO ('2026-01-01');
+
+-- Use PostgreSQL's default TOAST compression for archival data
+ALTER TABLE sales_2025_archive
+    ALTER COLUMN details SET COMPRESSION pglz;
 ```
 
 ---
@@ -821,8 +831,8 @@ CREATE TABLE sales_fact_compressed (
     -- Low cardinality categories: dictionary encoding
     product_category VARCHAR(100) ENCODE BYTEDICT,
 
-    -- Medium cardinality, often repeated: dictionary with LZ4
-    product_id INTEGER ENCODE LZ4,
+    -- Medium cardinality numeric: AZ64
+    product_id INTEGER ENCODE AZ64,
 
     -- High cardinality but somewhat sequential: delta encoding
     customer_id BIGINT ENCODE DELTA,
@@ -836,11 +846,11 @@ CREATE TABLE sales_fact_compressed (
     -- Small integer range (1-1000): byte dictionary
     quantity SMALLINT ENCODE BYTEDICT,
 
-    -- Price varies but has patterns: LZ4
-    unit_price DECIMAL(10,2) ENCODE LZ4,
+    -- Price varies but has patterns: AZ64
+    unit_price DECIMAL(10,2) ENCODE AZ64,
 
-    -- Calculated total: LZ4
-    total_amount DECIMAL(12,2) ENCODE LZ4,
+    -- Calculated total: AZ64
+    total_amount DECIMAL(12,2) ENCODE AZ64,
 
     -- Low cardinality payment types: dictionary
     payment_method VARCHAR(50) ENCODE BYTEDICT,
