@@ -115,8 +115,8 @@ The routing layer handles lookups and caches results for performance. The follow
 ```python
 import redis
 import psycopg2
+from psycopg2 import sql
 from typing import Optional, Dict
-import json
 
 class ShardRouter:
     def __init__(self, directory_db_config: Dict, cache_config: Dict):
@@ -146,6 +146,13 @@ class ShardRouter:
             }
         cursor.close()
 
+    def _connect_to_shard(self, conn_info: Dict):
+        """Open a connection to a shard database."""
+        return psycopg2.connect(
+            host=conn_info['host'],
+            port=conn_info['port']
+        )
+
     def get_shard(self, entity_type: str, entity_id: str) -> Optional[str]:
         """Find which shard holds a given entity."""
         cache_key = f"shard:{entity_type}:{entity_id}"
@@ -167,7 +174,7 @@ class ShardRouter:
         if row:
             shard_id = row[0]
             # Populate cache for future requests
-            self.cache.setex(cache_key, self.cache_ttl, shard_id)
+            self.cache.set(cache_key, shard_id, ex=self.cache_ttl)
             return shard_id
 
         return None
@@ -180,10 +187,16 @@ class ShardRouter:
             "SELECT shard_id, capacity_weight FROM shard_registry WHERE status = 'active'"
         )
         shards = cursor.fetchall()
+        if not shards:
+            cursor.close()
+            raise RuntimeError("No active shards are available")
 
         # Weighted random selection for even distribution
         import random
         total_weight = sum(weight for _, weight in shards)
+        if total_weight <= 0:
+            cursor.close()
+            raise RuntimeError("Active shards must have positive capacity weight")
         pick = random.randint(1, total_weight)
 
         current = 0
@@ -198,11 +211,15 @@ class ShardRouter:
         cursor.execute(
             """INSERT INTO shard_directory (entity_type, entity_id, shard_id)
                VALUES (%s, %s, %s)
-               ON CONFLICT (entity_type, entity_id) DO UPDATE SET shard_id = %s""",
-            (entity_type, entity_id, selected_shard, selected_shard)
+               ON CONFLICT (entity_type, entity_id)
+               DO UPDATE SET shard_id = EXCLUDED.shard_id, updated_at = NOW()""",
+            (entity_type, entity_id, selected_shard)
         )
         self.db.commit()
         cursor.close()
+
+        cache_key = f"shard:{entity_type}:{entity_id}"
+        self.cache.delete(cache_key)
 
         return selected_shard
 ```
@@ -226,7 +243,7 @@ class UserService:
 
         # Get connection details and query the shard
         conn_info = self.router.shard_connections[shard_id]
-        shard_db = self._connect_to_shard(conn_info)
+        shard_db = self.router._connect_to_shard(conn_info)
 
         cursor = shard_db.cursor()
         cursor.execute("SELECT * FROM users WHERE id = %s", (user_id,))
@@ -242,7 +259,7 @@ class UserService:
 
         # Insert the user on the assigned shard
         conn_info = self.router.shard_connections[shard_id]
-        shard_db = self._connect_to_shard(conn_info)
+        shard_db = self.router._connect_to_shard(conn_info)
 
         cursor = shard_db.cursor()
         cursor.execute(
@@ -276,25 +293,42 @@ def migrate_entity(router: ShardRouter, entity_type: str, entity_id: str, target
     # Find current location
     current_shard = router.get_shard(entity_type, entity_id)
 
+    if not current_shard:
+        return  # Entity is not registered in the directory
+
     if current_shard == target_shard:
         return  # Already on target shard
 
     # Step 1: Copy data to new shard
     source_conn = router._connect_to_shard(router.shard_connections[current_shard])
     target_conn = router._connect_to_shard(router.shard_connections[target_shard])
+    table_name = sql.Identifier(f"{entity_type}s")
 
     # Read from source
     cursor = source_conn.cursor()
-    cursor.execute(f"SELECT * FROM {entity_type}s WHERE id = %s", (entity_id,))
+    cursor.execute(
+        sql.SQL("SELECT * FROM {} WHERE id = %s").format(table_name),
+        (entity_id,)
+    )
     data = cursor.fetchone()
+
+    if not data:
+        cursor.close()
+        return
+
+    placeholders = sql.SQL(', ').join(sql.Placeholder() for _ in data)
 
     # Write to target
     target_cursor = target_conn.cursor()
     target_cursor.execute(
-        f"INSERT INTO {entity_type}s VALUES %s ON CONFLICT DO NOTHING",
-        (data,)
+        sql.SQL("INSERT INTO {} VALUES ({}) ON CONFLICT DO NOTHING").format(
+            table_name,
+            placeholders
+        ),
+        data
     )
     target_conn.commit()
+    target_cursor.close()
 
     # Step 2: Update directory (atomic switch)
     dir_cursor = router.db.cursor()
@@ -309,8 +343,13 @@ def migrate_entity(router: ShardRouter, entity_type: str, entity_id: str, target
     router.cache.delete(cache_key)
 
     # Step 4: Delete from old shard (cleanup)
-    cursor.execute(f"DELETE FROM {entity_type}s WHERE id = %s", (entity_id,))
+    cursor.execute(
+        sql.SQL("DELETE FROM {} WHERE id = %s").format(table_name),
+        (entity_id,)
+    )
     source_conn.commit()
+    cursor.close()
+    dir_cursor.close()
 ```
 
 ## Making the Directory Highly Available
