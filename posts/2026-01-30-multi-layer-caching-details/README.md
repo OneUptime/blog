@@ -71,14 +71,24 @@ class L1Cache implements CacheLayer {
       return null;
     }
 
+    // Refresh insertion order so recently read entries are retained longer
+    this.cache.delete(key);
+    this.cache.set(key, entry);
+
     return entry.value as T;
   }
 
   async set<T>(key: string, value: T, ttlSeconds: number = 60): Promise<void> {
+    if (this.cache.has(key)) {
+      this.cache.delete(key);
+    }
+
     // Evict oldest entries if cache is full
     if (this.cache.size >= this.maxSize) {
       const firstKey = this.cache.keys().next().value;
-      this.cache.delete(firstKey);
+      if (firstKey !== undefined) {
+        this.cache.delete(firstKey);
+      }
     }
 
     this.cache.set(key, {
@@ -93,10 +103,10 @@ class L1Cache implements CacheLayer {
 }
 ```
 
-The L2 cache connects to a local Redis instance. This provides persistence across application restarts and larger storage capacity.
+The L2 cache connects to a local Redis instance. This can provide persistence across application restarts if Redis persistence is enabled, along with larger storage capacity.
 
 ```typescript
-import Redis from 'ioredis';
+import { Redis } from 'ioredis';
 
 // L2 Cache: Local Redis instance
 class L2Cache implements CacheLayer {
@@ -113,7 +123,7 @@ class L2Cache implements CacheLayer {
   }
 
   async set<T>(key: string, value: T, ttlSeconds: number = 300): Promise<void> {
-    await this.redis.setex(key, ttlSeconds, JSON.stringify(value));
+    await this.redis.set(key, JSON.stringify(value), 'EX', ttlSeconds);
   }
 
   async delete(key: string): Promise<void> {
@@ -125,12 +135,14 @@ class L2Cache implements CacheLayer {
 The distributed cache uses a Redis cluster for high availability and serves as the last caching layer before hitting the database.
 
 ```typescript
+import { Cluster } from 'ioredis';
+
 // Distributed Cache: Redis Cluster for cross-server caching
 class DistributedCache implements CacheLayer {
-  private cluster: Redis.Cluster;
+  private cluster: Cluster;
 
   constructor(nodes: { host: string; port: number }[]) {
-    this.cluster = new Redis.Cluster(nodes);
+    this.cluster = new Cluster(nodes);
   }
 
   async get<T>(key: string): Promise<T | null> {
@@ -140,7 +152,7 @@ class DistributedCache implements CacheLayer {
   }
 
   async set<T>(key: string, value: T, ttlSeconds: number = 3600): Promise<void> {
-    await this.cluster.setex(key, ttlSeconds, JSON.stringify(value));
+    await this.cluster.set(key, JSON.stringify(value), 'EX', ttlSeconds);
   }
 
   async delete(key: string): Promise<void> {
@@ -242,8 +254,8 @@ flowchart LR
 | Strategy | Consistency | Complexity | Use Case |
 |----------|-------------|------------|----------|
 | TTL-based | Eventual | Low | Read-heavy, tolerates stale data |
-| Event-based | Strong | Medium | Real-time updates required |
-| Version-based | Strong | High | Critical data integrity |
+| Event-based | Near-real-time | Medium | Real-time updates required |
+| Version-based | Strong per version | High | Critical data integrity |
 
 ## Practical Usage Example
 
@@ -309,6 +321,15 @@ class CacheMetrics {
 
   getStats(): object {
     const total = this.hits.l1 + this.hits.l2 + this.hits.distributed + this.misses;
+    if (total === 0) {
+      return {
+        hitRate: '0.00%',
+        l1HitRate: '0.00%',
+        l2HitRate: '0.00%',
+        distributedHitRate: '0.00%'
+      };
+    }
+
     return {
       hitRate: ((total - this.misses) / total * 100).toFixed(2) + '%',
       l1HitRate: (this.hits.l1 / total * 100).toFixed(2) + '%',
