@@ -142,7 +142,7 @@ If you are using TypeScript, you can add type safety to your events:
 
 ```typescript
 // types.ts
-interface EventMap {
+export interface EventMap {
     'user:created': { id: string; name: string; email: string };
     'user:deleted': { id: string };
     'order:placed': { orderId: string; userId: string; total: number };
@@ -150,6 +150,7 @@ interface EventMap {
 
 // typedEventBus.ts
 import { EventEmitter } from 'events';
+import type { EventMap } from './types';
 
 class TypedEventBus {
     private emitter = new EventEmitter();
@@ -218,6 +219,19 @@ class NotificationService {
             orderNumber: order.id,
             total: payment.amount,
             items: order.items
+        });
+    }
+
+    async sendPasswordResetEmail({ email, resetToken }) {
+        console.log(`Sending password reset email to ${email}`);
+        await this.sendEmail(email, 'password-reset', { resetToken });
+    }
+
+    async sendShippingNotification({ order }) {
+        console.log(`Sending shipping notification for order ${order.id}`);
+        await this.sendEmail(order.userEmail, 'shipping-notification', {
+            orderNumber: order.id,
+            trackingNumber: order.trackingNumber
         });
     }
 
