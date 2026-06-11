@@ -18,7 +18,7 @@ Before implementing the exporter, it helps to understand how data flows from you
 flowchart LR
     subgraph Application
         A[Your Code] --> B[OpenTelemetry SDK]
-        B --> C[Jaeger Exporter]
+        B --> C[Trace Exporter]
     end
 
     subgraph Export Options
@@ -35,7 +35,7 @@ flowchart LR
     end
 ```
 
-The Jaeger exporter converts OpenTelemetry spans into Jaeger's format and sends them to the Jaeger backend. You can export directly to Jaeger or route through an OpenTelemetry Collector for additional processing.
+The exporter sends OpenTelemetry spans to the Jaeger backend. Modern deployments use OTLP, while legacy deployments may use a Jaeger-specific exporter where the language SDK still supports one. You can export directly to Jaeger or route through an OpenTelemetry Collector for additional processing.
 
 ## Export Protocol Options
 
@@ -48,7 +48,7 @@ Jaeger supports multiple protocols for receiving trace data.
 | Jaeger Thrift over HTTP | 14268 | Legacy Jaeger clients |
 | Jaeger gRPC | 14250 | Direct Jaeger protocol |
 
-Modern Jaeger versions (1.35+) natively support OTLP, making the OTLP exporter the recommended choice. For older Jaeger installations, use the dedicated Jaeger exporter.
+Modern Jaeger versions (1.35+) natively support OTLP, making the OTLP exporter the recommended choice. For older Jaeger installations, use the dedicated Jaeger exporter only if your language SDK still maintains one.
 
 ## Node.js Implementation
 
@@ -74,8 +74,12 @@ For older Jaeger installations that do not support OTLP, use the dedicated Jaege
 // tracing.js
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { JaegerExporter } = require('@opentelemetry/exporter-jaeger');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const {
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+  ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
+} = require('@opentelemetry/semantic-conventions');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
 
 // Configure the Jaeger exporter
@@ -86,10 +90,10 @@ const jaegerExporter = new JaegerExporter({
 });
 
 // Define service metadata
-const resource = new Resource({
-  [SemanticResourceAttributes.SERVICE_NAME]: 'my-service',
-  [SemanticResourceAttributes.SERVICE_VERSION]: '1.0.0',
-  [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: process.env.NODE_ENV || 'development',
+const resource = resourceFromAttributes({
+  [ATTR_SERVICE_NAME]: 'my-service',
+  [ATTR_SERVICE_VERSION]: '1.0.0',
+  [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: process.env.NODE_ENV || 'development',
 });
 
 // Initialize the SDK
@@ -120,8 +124,12 @@ For Jaeger 1.35+, use the OTLP exporter which is the modern standard.
 // tracing.js
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const {
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+  ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
+} = require('@opentelemetry/semantic-conventions');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
 const { BatchSpanProcessor } = require('@opentelemetry/sdk-trace-base');
 
@@ -130,22 +138,21 @@ const traceExporter = new OTLPTraceExporter({
   url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4317',
 });
 
-const resource = new Resource({
-  [SemanticResourceAttributes.SERVICE_NAME]: 'order-service',
-  [SemanticResourceAttributes.SERVICE_VERSION]: '2.1.0',
-  [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: 'production',
+const resource = resourceFromAttributes({
+  [ATTR_SERVICE_NAME]: 'order-service',
+  [ATTR_SERVICE_VERSION]: '2.1.0',
+  [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: 'production',
 });
 
 const sdk = new NodeSDK({
   resource,
-  traceExporter,
   // Use batch processing for better performance
-  spanProcessor: new BatchSpanProcessor(traceExporter, {
+  spanProcessors: [new BatchSpanProcessor(traceExporter, {
     maxQueueSize: 2048,
     maxExportBatchSize: 512,
     scheduledDelayMillis: 5000,
     exportTimeoutMillis: 30000,
-  }),
+  })],
   instrumentations: [getNodeAutoInstrumentations()],
 });
 
@@ -186,14 +193,13 @@ Install the OpenTelemetry packages for Python.
 ```bash
 pip install opentelemetry-api \
   opentelemetry-sdk \
-  opentelemetry-exporter-jaeger \
   opentelemetry-exporter-otlp \
   opentelemetry-instrumentation
 ```
 
 ### Basic Setup with Jaeger Exporter
 
-Configure the Jaeger exporter in your Python application.
+The Python Jaeger exporter is no longer tested and stopped at the older OpenTelemetry 1.21 release line. Use it only when you must support a legacy Jaeger backend, and pin your OpenTelemetry packages to the same compatible release family instead of installing it alongside the latest OTLP exporter.
 
 ```python
 # tracing.py
@@ -328,75 +334,12 @@ Add the required modules to your Go project.
 ```bash
 go get go.opentelemetry.io/otel
 go get go.opentelemetry.io/otel/sdk
-go get go.opentelemetry.io/otel/exporters/jaeger
 go get go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc
 ```
 
 ### Setup with Jaeger Exporter
 
-Configure the Jaeger exporter in Go.
-
-```go
-// tracing.go
-package tracing
-
-import (
-    "context"
-    "log"
-    "os"
-
-    "go.opentelemetry.io/otel"
-    "go.opentelemetry.io/otel/attribute"
-    "go.opentelemetry.io/otel/exporters/jaeger"
-    "go.opentelemetry.io/otel/sdk/resource"
-    sdktrace "go.opentelemetry.io/otel/sdk/trace"
-    semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
-)
-
-func InitTracer() (*sdktrace.TracerProvider, error) {
-    // Get Jaeger endpoint from environment
-    jaegerEndpoint := os.Getenv("JAEGER_ENDPOINT")
-    if jaegerEndpoint == "" {
-        jaegerEndpoint = "http://localhost:14268/api/traces"
-    }
-
-    // Create Jaeger exporter
-    exporter, err := jaeger.New(
-        jaeger.WithCollectorEndpoint(jaeger.WithEndpoint(jaegerEndpoint)),
-    )
-    if err != nil {
-        return nil, err
-    }
-
-    // Define service resource
-    res, err := resource.Merge(
-        resource.Default(),
-        resource.NewWithAttributes(
-            semconv.SchemaURL,
-            semconv.ServiceName("user-service"),
-            semconv.ServiceVersion("1.0.0"),
-            attribute.String("environment", os.Getenv("ENVIRONMENT")),
-        ),
-    )
-    if err != nil {
-        return nil, err
-    }
-
-    // Create tracer provider
-    tp := sdktrace.NewTracerProvider(
-        sdktrace.WithBatcher(exporter,
-            sdktrace.WithMaxQueueSize(2048),
-            sdktrace.WithMaxExportBatchSize(512),
-        ),
-        sdktrace.WithResource(res),
-    )
-
-    // Set global tracer provider
-    otel.SetTracerProvider(tp)
-
-    return tp, nil
-}
-```
+The Go Jaeger exporter module is deprecated and no longer supported. For Go applications, use the OTLP exporter with Jaeger instead.
 
 ### Using OTLP with Jaeger in Go
 
@@ -495,6 +438,7 @@ func main() {
 
         // Your handler logic
         users := getUsers(ctx)
+        _ = users
         // ...
     })
 
@@ -659,12 +603,6 @@ exporters:
     tls:
       insecure: true
 
-  # Alternative: Jaeger native protocol
-  jaeger:
-    endpoint: jaeger-collector:14250
-    tls:
-      insecure: true
-
 service:
   pipelines:
     traces:
@@ -776,7 +714,7 @@ const processor = new BatchSpanProcessor(exporter, {
 
 ## Environment Variables Reference
 
-Standard OpenTelemetry environment variables for Jaeger exporter configuration.
+Standard OpenTelemetry environment variables for Jaeger and OTLP trace export configuration.
 
 | Variable | Description | Example |
 |----------|-------------|---------|
@@ -793,13 +731,13 @@ Standard OpenTelemetry environment variables for Jaeger exporter configuration.
 
 | Aspect | Recommendation |
 |--------|----------------|
-| **Protocol** | Use OTLP for Jaeger 1.35+, Jaeger Thrift for older versions |
+| **Protocol** | Use OTLP for Jaeger 1.35+, Jaeger Thrift only for older versions and SDKs that still support it |
 | **Deployment** | Route through OTel Collector for production |
 | **Sampling** | Head sampling for high volume, tail sampling for completeness |
 | **Batching** | Always use BatchSpanProcessor with tuned limits |
 | **Shutdown** | Implement graceful shutdown to flush pending spans |
 
-The OpenTelemetry Jaeger exporter provides a robust way to send distributed traces to Jaeger. For new deployments, prefer the OTLP protocol which offers better performance and is the OpenTelemetry standard. Routing through an OpenTelemetry Collector adds flexibility for sampling, filtering, and multi-backend export.
+OpenTelemetry applications can send distributed traces to Jaeger through OTLP or, for legacy environments, through older Jaeger-specific exporters. For new deployments, prefer the OTLP protocol which offers better performance and is the OpenTelemetry standard. Routing through an OpenTelemetry Collector adds flexibility for sampling, filtering, and multi-backend export.
 
 ---
 
