@@ -111,7 +111,7 @@ console.log('Store in DB:', keyPair.hashedKey);
 
 ### API Key Validation Middleware
 
-This middleware extracts the API key from headers, hashes it, and looks it up in your database. The constant-time comparison prevents timing attacks.
+This middleware extracts the API key from headers, hashes it, and looks it up in your database. The `secureCompare` helper shows how to compare equal-length secrets safely if you need direct comparisons.
 
 ```javascript
 const crypto = require('crypto');
@@ -577,10 +577,8 @@ router.post('/auth/logout', jwtAuth.middleware(), async (req, res) => {
 
   try {
     if (refreshToken) {
-      const decoded = jwt.decode(refreshToken);
-      if (decoded && decoded.jti) {
-        await jwtAuth.revokeRefreshToken(decoded.jti);
-      }
+      const decoded = await jwtAuth.verifyRefreshToken(refreshToken);
+      await jwtAuth.revokeRefreshToken(decoded.jti);
     }
 
     res.json({ message: 'Logged out successfully' });
@@ -791,6 +789,7 @@ Here are the routes that handle the OAuth callback and token management.
 
 ```javascript
 const express = require('express');
+const axios = require('axios');
 const router = express.Router();
 
 const oauthClient = new OAuth2Client({
@@ -952,11 +951,11 @@ class MTLSServer {
       }
 
       // Check if certificate is authorized
-      if (!req.client.authorized) {
+      if (!req.socket.authorized) {
         return res.status(401).json({
           error: 'Unauthorized',
           message: 'Invalid client certificate',
-          reason: req.client.authorizationError,
+          reason: req.socket.authorizationError,
         });
       }
 
@@ -1073,7 +1072,12 @@ const client = new MTLSClient({
   baseURL: 'https://api.example.com',
 });
 
-const response = await client.get('/api/secure');
+async function callSecureApi() {
+  const response = await client.get('/api/secure');
+  return response.data;
+}
+
+callSecureApi().catch(console.error);
 ```
 
 ## Combining Authentication Methods
