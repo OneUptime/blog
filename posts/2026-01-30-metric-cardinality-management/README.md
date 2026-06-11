@@ -76,22 +76,16 @@ The filter processor drops metrics matching specific criteria before they reach 
 # otel-collector-config.yaml
 processors:
   filter/cardinality:
-    metrics:
-      # Drop metrics with known high-cardinality labels
-      exclude:
-        match_type: regexp
-        metric_names:
-          - ".*"
-        resource_attributes:
-          - key: user.id
-            value: ".*"
-          - key: request.id
-            value: ".*"
-          - key: session.id
-            value: ".*"
+    error_mode: ignore
+    metric_conditions:
+      # Drop metrics with known high-cardinality resource attributes
+      - resource.attributes["user.id"] != nil
+      - resource.attributes["request.id"] != nil
+      - resource.attributes["session.id"] != nil
 
   # Transform to aggregate or remove problematic labels
   transform:
+    error_mode: ignore
     metric_statements:
       - context: datapoint
         statements:
@@ -204,7 +198,6 @@ import { Counter, Histogram, Registry } from 'prom-client';
 
 // Define allowed label values for bounded cardinality
 const ALLOWED_METHODS = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'];
-const ALLOWED_STATUS_CLASSES = ['2xx', '3xx', '4xx', '5xx'];
 
 // Normalize status codes to classes to reduce cardinality
 function normalizeStatus(status: number): string {
@@ -280,7 +273,7 @@ export class MetricsManager {
 ```python
 # metrics.py
 import re
-from prometheus_client import Counter, Histogram, REGISTRY
+from prometheus_client import Counter, Histogram
 
 # Patterns for normalizing high-cardinality path segments
 UUID_PATTERN = re.compile(
