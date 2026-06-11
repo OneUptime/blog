@@ -818,52 +818,47 @@ sleep "$DURATION"
 
 ### stress-ng Comprehensive Configuration
 
-```yaml
-# stress-ng-config.yaml
-# Configuration file for stress-ng (use with --yaml option)
-# This exercises multiple resource types simultaneously
+```text
+# stress-ng-job.cfg
+# stress-ng job file (use with the --job option)
+# Each line is a stress-ng option (without the leading --) followed by its value.
+# This exercises multiple resource types simultaneously.
 
 # Global settings
-globals:
-  timeout: 600s              # Total test duration
-  metrics-brief: true        # Show summary at end
-  times: true                # Show timing info
-  verbose: true              # Detailed output
+run parallel           # Run stressors in parallel
+timeout 600s           # Total test duration
+metrics-brief          # Show summary at end
+times                  # Show timing info
+verbose                # Detailed output
 
 # CPU stress configuration
-cpu:
-  instances: 0               # 0 = match CPU count
-  load: 80                   # Target 80% CPU utilization
-  method: all                # Use all CPU stress methods
+cpu 0                  # 0 = match CPU count
+cpu-load 80            # Target 80% CPU utilization
+cpu-method all         # Use all CPU stress methods
 
 # Memory stress configuration
-vm:
-  instances: 2               # Number of memory workers
-  bytes: 75%                 # Use 75% of available memory
-  hang: 10                   # Hold allocation for 10 seconds
-  madvise: normal            # Memory advice hint
+vm 2                   # Number of memory workers
+vm-bytes 75%           # Use 75% of available memory
+vm-hang 10             # Hold allocation for 10 seconds
+vm-madvise normal      # Memory advice hint
 
 # I/O stress configuration
-io:
-  instances: 4               # Number of I/O workers
+io 4                   # Number of sync() I/O workers
 
-hdd:
-  instances: 2               # Disk I/O workers
-  bytes: 1G                  # Write 1GB per worker
-  write-size: 64K            # Write block size
+# Disk I/O stress
+hdd 2                  # Disk I/O workers
+hdd-bytes 1G           # Write 1GB per worker
+hdd-write-size 64K     # Write block size
 
 # Network stress (loopback)
-sock:
-  instances: 4               # Socket workers
+sock 4                 # Socket workers
 
 # File descriptor stress
-open:
-  instances: 2               # File open workers
+open 2                 # File open workers
 
 # Process/thread stress
-fork:
-  instances: 2               # Fork workers
-  max: 100                   # Max child processes
+fork 2                 # Fork workers
+fork-max 100           # Max child processes per fork iteration
 ```
 
 ### Running stress-ng with Configuration
@@ -871,9 +866,9 @@ fork:
 ```bash
 #!/bin/bash
 # run-stress-ng.sh
-# Execute comprehensive stress test using configuration file
+# Execute comprehensive stress test using a job file
 
-CONFIG_FILE="${1:-stress-ng-config.yaml}"
+CONFIG_FILE="${1:-stress-ng-job.cfg}"
 LOG_DIR="/var/log/stress-tests"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 
@@ -884,11 +879,11 @@ echo "Configuration: $CONFIG_FILE"
 echo "Log directory: $LOG_DIR"
 echo "-----------------------------------------"
 
-# Run stress-ng with YAML configuration
-# Output metrics to JSON for analysis
-stress-ng --yaml "$CONFIG_FILE" \
+# Run stress-ng with the job file (--job)
+# Write per-stressor metrics as YAML for later analysis (--yaml)
+stress-ng --job "$CONFIG_FILE" \
           --log-file "$LOG_DIR/stress_${TIMESTAMP}.log" \
-          --metrics "$LOG_DIR/metrics_${TIMESTAMP}.json" \
+          --yaml "$LOG_DIR/metrics_${TIMESTAMP}.yaml" \
           2>&1 | tee "$LOG_DIR/output_${TIMESTAMP}.txt"
 
 echo "-----------------------------------------"
