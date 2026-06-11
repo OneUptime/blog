@@ -282,7 +282,7 @@ For more complex data structures, use `serde` for JSON serialization.
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-wasm-bindgen = { version = "0.2", features = ["serde-serialize"] }
+wasm-bindgen = "0.2"
 ```
 
 ```rust
