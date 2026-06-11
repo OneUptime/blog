@@ -273,7 +273,8 @@ NSSA configuration allows external route redistribution:
 ! On ABR
 router ospf 1
   area 3 nssa
-  ! Optional: suppress default route injection
+  ! Optional: make a totally NSSA - blocks Type 3 LSAs
+  ! and auto-injects a default route from the ABR
   area 3 nssa no-summary
 
 ! On ASBR in NSSA (redistributing external routes)
@@ -359,7 +360,8 @@ protocols {
     ospf {
         area 0.0.0.3 {
             nssa {
-                # Convert Type 7 to Type 5 at ABR
+                # Inject a default route LSA into the NSSA
+                # (Type 7 to Type 5 translation at the ABR is automatic)
                 default-lsa {
                     default-metric 100;
                     metric-type 1;
@@ -491,8 +493,9 @@ router ospf 1
 ```junos
 protocols {
     ospf {
-        area 0.0.0.1 {
-            # Virtual link to remote ABR
+        # Virtual links are always configured under the backbone (area 0.0.0.0)
+        area 0.0.0.0 {
+            # Virtual link to remote ABR through transit area 0.0.0.1
             virtual-link neighbor-id 2.2.2.2 transit-area 0.0.0.1;
         }
     }
