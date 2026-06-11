@@ -156,8 +156,8 @@ def euclidean_distance_simd_optimized(
     """
     SIMD-optimized Euclidean distance.
 
-    NumPy operations are implemented in C and automatically
-    utilize SIMD instructions (SSE, AVX) when available.
+    NumPy operations are implemented in C and can utilize
+    SIMD instructions (SSE, AVX) when available in the build and CPU.
 
     For best performance:
     - Use contiguous arrays (C-order)
@@ -172,7 +172,7 @@ def euclidean_distance_simd_optimized(
     return float(np.sqrt(np.dot(diff, diff)))
 
 
-# For even better SIMD utilization, use einsum
+# As another vectorized option, use einsum
 def euclidean_distance_einsum(vector_a: np.ndarray, vector_b: np.ndarray) -> float:
     """Euclidean distance using Einstein summation convention."""
     diff = vector_a - vector_b
@@ -189,8 +189,8 @@ use std::arch::x86_64::*;
 /// Calculate Euclidean distance using AVX2 SIMD instructions
 ///
 /// # Safety
-/// This function requires AVX2 support on the CPU
-#[target_feature(enable = "avx2")]
+/// This function requires AVX2 and FMA support on the CPU
+#[target_feature(enable = "avx2,fma")]
 unsafe fn euclidean_distance_avx2(a: &[f32], b: &[f32]) -> f32 {
     assert_eq!(a.len(), b.len());
 
@@ -421,7 +421,9 @@ def find_nearest_optimized(
     squared_distances = np.einsum('ij,ij->i', diff, diff)
 
     # Find k smallest
-    return np.argpartition(squared_distances, k)[:k]
+    if k < len(squared_distances):
+        return np.argpartition(squared_distances, k)[:k]
+    return np.argsort(squared_distances)
 ```
 
 ## Comparison with Other Distance Metrics
@@ -572,8 +574,11 @@ class ImageSimilaritySearch:
         distances = np.sqrt(squared_distances)
 
         # Get top k
-        top_indices = np.argpartition(distances, k)[:k]
-        top_indices = top_indices[np.argsort(distances[top_indices])]
+        if k < len(distances):
+            top_indices = np.argpartition(distances, k)[:k]
+            top_indices = top_indices[np.argsort(distances[top_indices])]
+        else:
+            top_indices = np.argsort(distances)
 
         return [
             (self.image_ids[i], float(distances[i]))
