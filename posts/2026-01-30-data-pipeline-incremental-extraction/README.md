@@ -59,7 +59,7 @@ That is a 10,000x reduction in data movement. At scale, this translates to signi
 | Low Watermark | The starting point for the current extraction (previous high watermark) |
 | Change Data Capture (CDC) | Techniques for identifying changed records in source systems |
 | Idempotency | The ability to run the same extraction multiple times without duplicating data |
-| Exactly-once semantics | Guaranteeing each record is processed exactly one time |
+| At-least-once processing | Retrying safely so records are not lost, combined with idempotent loading to avoid duplicates |
 
 ---
 
@@ -353,6 +353,7 @@ class DatabaseWatermarkStore(WatermarkStore):
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 import logging
+from psycopg2 import sql
 
 logger = logging.getLogger(__name__)
 
@@ -394,24 +395,30 @@ class IncrementalExtractor:
         cursor = self.connection.cursor()
 
         # Build the extraction query
-        # Use parameterized queries to prevent SQL injection
+        # Use psycopg2.sql for identifiers and query parameters for values
         if low_watermark is None:
             # First run: extract everything (bootstrap)
-            query = f"""
-                SELECT * FROM {self.table_name}
-                ORDER BY {self.watermark_column} ASC
+            query = sql.SQL("""
+                SELECT * FROM {table}
+                ORDER BY {watermark_column} ASC
                 LIMIT %s
-            """
+            """).format(
+                table=sql.Identifier(self.table_name),
+                watermark_column=sql.Identifier(self.watermark_column)
+            )
             params = (batch_size,)
             logger.info(f"Bootstrap extraction from {self.table_name}")
         else:
             # Incremental: extract only changes after watermark
-            query = f"""
-                SELECT * FROM {self.table_name}
-                WHERE {self.watermark_column} > %s
-                ORDER BY {self.watermark_column} ASC
+            query = sql.SQL("""
+                SELECT * FROM {table}
+                WHERE {watermark_column} > %s
+                ORDER BY {watermark_column} ASC
                 LIMIT %s
-            """
+            """).format(
+                table=sql.Identifier(self.table_name),
+                watermark_column=sql.Identifier(self.watermark_column)
+            )
             params = (low_watermark, batch_size)
             logger.info(f"Incremental extraction from {self.table_name} after {low_watermark}")
 
@@ -451,10 +458,17 @@ class IncrementalExtractor:
         cursor = self.connection.cursor()
 
         if since is None:
-            query = f"SELECT COUNT(*) FROM {self.table_name}"
+            query = sql.SQL("SELECT COUNT(*) FROM {table}").format(
+                table=sql.Identifier(self.table_name)
+            )
             params = ()
         else:
-            query = f"SELECT COUNT(*) FROM {self.table_name} WHERE {self.watermark_column} > %s"
+            query = sql.SQL(
+                "SELECT COUNT(*) FROM {table} WHERE {watermark_column} > %s"
+            ).format(
+                table=sql.Identifier(self.table_name),
+                watermark_column=sql.Identifier(self.watermark_column)
+            )
             params = (since,)
 
         cursor.execute(query, params)
@@ -469,6 +483,7 @@ class IncrementalExtractor:
 
 from typing import List, Dict, Any
 import logging
+from psycopg2 import sql
 
 logger = logging.getLogger(__name__)
 
@@ -516,19 +531,36 @@ class IncrementalLoader:
 
         # Build upsert query (PostgreSQL syntax)
         # Other databases have different syntax for upsert
-        placeholders = ', '.join(['%s'] * len(columns))
-        column_names = ', '.join(columns)
+        placeholders = sql.SQL(', ').join(sql.Placeholder() for _ in columns)
+        column_names = sql.SQL(', ').join(sql.Identifier(col) for col in columns)
 
         # Build update clause for non-primary-key columns
         update_columns = [col for col in columns if col != self.primary_key]
-        update_clause = ', '.join([f"{col} = EXCLUDED.{col}" for col in update_columns])
 
-        query = f"""
-            INSERT INTO {self.table_name} ({column_names})
+        if update_columns:
+            conflict_action = sql.SQL("DO UPDATE SET {update_clause}").format(
+                update_clause=sql.SQL(', ').join(
+                    sql.SQL("{column} = EXCLUDED.{column}").format(
+                        column=sql.Identifier(col)
+                    )
+                    for col in update_columns
+                )
+            )
+        else:
+            conflict_action = sql.SQL("DO NOTHING")
+
+        query = sql.SQL("""
+            INSERT INTO {table} ({columns})
             VALUES ({placeholders})
-            ON CONFLICT ({self.primary_key})
-            DO UPDATE SET {update_clause}
-        """
+            ON CONFLICT ({primary_key})
+            {conflict_action}
+        """).format(
+            table=sql.Identifier(self.table_name),
+            columns=column_names,
+            placeholders=placeholders,
+            primary_key=sql.Identifier(self.primary_key),
+            conflict_action=conflict_action
+        )
 
         # Execute batch insert
         processed = 0
@@ -570,7 +602,7 @@ class IncrementalLoader:
 # pipeline.py
 # Main pipeline orchestration with error handling and metrics
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 import logging
 import time
@@ -652,7 +684,7 @@ class IncrementalPipeline:
             self.metrics['records_loaded'] = loaded_count
 
             # Step 4: Update watermark only after successful load
-            # This is critical for exactly-once semantics
+            # This prevents data loss; idempotent loading makes retries safe
             if high_watermark is not None:
                 self.watermark_store.set_watermark(self.pipeline_id, high_watermark)
                 logger.info(f"Updated watermark to: {high_watermark}")
@@ -708,7 +740,7 @@ class IncrementalPipeline:
             'message': message,
             'pipeline_id': self.pipeline_id,
             'metrics': self.metrics.copy(),
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         }
 
 
@@ -772,6 +804,8 @@ Use a `deleted_at` or `is_deleted` column instead of physically removing records
 # extractor_with_deletes.py
 # Handles soft delete detection in incremental extraction
 
+from psycopg2 import sql
+
 class SoftDeleteExtractor(IncrementalExtractor):
     """
     Extractor that handles soft deletes.
@@ -796,21 +830,29 @@ class SoftDeleteExtractor(IncrementalExtractor):
         cursor = self.connection.cursor()
 
         if low_watermark is None:
-            query = f"""
-                SELECT *, {self.delete_flag_column} as _is_deleted
-                FROM {self.table_name}
-                ORDER BY {self.watermark_column} ASC
+            query = sql.SQL("""
+                SELECT *, {delete_flag_column} as _is_deleted
+                FROM {table}
+                ORDER BY {watermark_column} ASC
                 LIMIT %s
-            """
+            """).format(
+                delete_flag_column=sql.Identifier(self.delete_flag_column),
+                table=sql.Identifier(self.table_name),
+                watermark_column=sql.Identifier(self.watermark_column)
+            )
             params = (batch_size,)
         else:
-            query = f"""
-                SELECT *, {self.delete_flag_column} as _is_deleted
-                FROM {self.table_name}
-                WHERE {self.watermark_column} > %s
-                ORDER BY {self.watermark_column} ASC
+            query = sql.SQL("""
+                SELECT *, {delete_flag_column} as _is_deleted
+                FROM {table}
+                WHERE {watermark_column} > %s
+                ORDER BY {watermark_column} ASC
                 LIMIT %s
-            """
+            """).format(
+                delete_flag_column=sql.Identifier(self.delete_flag_column),
+                table=sql.Identifier(self.table_name),
+                watermark_column=sql.Identifier(self.watermark_column)
+            )
             params = (low_watermark, batch_size)
 
         cursor.execute(query, params)
@@ -840,6 +882,7 @@ Periodically compare current records with target to detect deletions.
 
 from typing import Set
 import logging
+from psycopg2 import sql
 
 logger = logging.getLogger(__name__)
 
@@ -867,13 +910,19 @@ class HardDeleteDetector:
     def get_source_keys(self) -> Set:
         """Get all primary keys from source."""
         cursor = self.source_conn.cursor()
-        cursor.execute(f"SELECT {self.primary_key} FROM {self.source_table}")
+        cursor.execute(sql.SQL("SELECT {primary_key} FROM {table}").format(
+            primary_key=sql.Identifier(self.primary_key),
+            table=sql.Identifier(self.source_table)
+        ))
         return {row[0] for row in cursor.fetchall()}
 
     def get_target_keys(self) -> Set:
         """Get all primary keys from target."""
         cursor = self.target_conn.cursor()
-        cursor.execute(f"SELECT {self.primary_key} FROM {self.target_table}")
+        cursor.execute(sql.SQL("SELECT {primary_key} FROM {table}").format(
+            primary_key=sql.Identifier(self.primary_key),
+            table=sql.Identifier(self.target_table)
+        ))
         return {row[0] for row in cursor.fetchall()}
 
     def detect_deletes(self) -> Set:
@@ -908,20 +957,27 @@ class HardDeleteDetector:
         cursor = self.target_conn.cursor()
 
         # Option 1: Hard delete from target
-        # placeholders = ','.join(['%s'] * len(deleted_keys))
         # cursor.execute(
-        #     f"DELETE FROM {self.target_table} WHERE {self.primary_key} IN ({placeholders})",
+        #     sql.SQL("DELETE FROM {table} WHERE {primary_key} IN ({placeholders})").format(
+        #         table=sql.Identifier(self.target_table),
+        #         primary_key=sql.Identifier(self.primary_key),
+        #         placeholders=sql.SQL(', ').join(sql.Placeholder() for _ in deleted_keys)
+        #     ),
         #     tuple(deleted_keys)
         # )
 
         # Option 2: Soft delete (mark as deleted)
-        placeholders = ','.join(['%s'] * len(deleted_keys))
+        placeholders = sql.SQL(', ').join(sql.Placeholder() for _ in deleted_keys)
         cursor.execute(
-            f"""
-            UPDATE {self.target_table}
+            sql.SQL("""
+            UPDATE {table}
             SET is_deleted = true, deleted_at = CURRENT_TIMESTAMP
-            WHERE {self.primary_key} IN ({placeholders})
-            """,
+            WHERE {primary_key} IN ({placeholders})
+            """).format(
+                table=sql.Identifier(self.target_table),
+                primary_key=sql.Identifier(self.primary_key),
+                placeholders=placeholders
+            ),
             tuple(deleted_keys)
         )
 
@@ -1122,7 +1178,7 @@ Effective monitoring is crucial for incremental pipelines. Track these metrics.
 # monitoring.py
 # Pipeline monitoring and alerting
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Any
 import logging
 
@@ -1185,7 +1241,10 @@ class PipelineMonitor:
             logger.warning(f"Pipeline {self.pipeline_id} has no watermark (not started?)")
             return False
 
-        lag = datetime.utcnow() - current_watermark
+        if current_watermark.tzinfo is None:
+            current_watermark = current_watermark.replace(tzinfo=timezone.utc)
+
+        lag = datetime.now(timezone.utc) - current_watermark
         max_lag = timedelta(hours=self.thresholds['max_watermark_lag_hours'])
 
         if lag > max_lag:
