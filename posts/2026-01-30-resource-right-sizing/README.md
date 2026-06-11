@@ -1128,6 +1128,7 @@ class ContinuousRightSizingController:
     ):
         config.load_incluster_config()
         self.apps_v1 = client.AppsV1Api()
+        self.core_v1 = client.CoreV1Api()
         self.profiler = profiler
         self.engine = engine
         self.validator = validator
@@ -1152,7 +1153,7 @@ class ContinuousRightSizingController:
     def _reconcile_all_namespaces(self):
         """Check all deployments for right-sizing opportunities."""
 
-        namespaces = self.apps_v1.list_namespace()
+        namespaces = self.core_v1.list_namespace()
 
         for ns in namespaces.items:
             namespace = ns.metadata.name
