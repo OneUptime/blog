@@ -73,9 +73,9 @@ flowchart TB
 
 **For macOS (using Keychain):**
 
-```bash
-# The helper comes with Docker Desktop
-# Configure in ~/.docker/config.json
+The helper comes with Docker Desktop. Configure it in `~/.docker/config.json`:
+
+```json
 {
   "credsStore": "osxkeychain"
 }
@@ -89,8 +89,11 @@ sudo apt-get install golang-docker-credential-helpers
 
 # Or download directly
 wget https://github.com/docker/docker-credential-helpers/releases/download/v0.8.0/docker-credential-pass-v0.8.0.linux-amd64
+```
 
-# Configure in ~/.docker/config.json
+Configure it in `~/.docker/config.json`:
+
+```json
 {
   "credsStore": "pass"
 }
@@ -101,8 +104,11 @@ wget https://github.com/docker/docker-credential-helpers/releases/download/v0.8.
 ```bash
 # Install ECR credential helper
 sudo apt-get install amazon-ecr-credential-helper
+```
 
-# Configure in ~/.docker/config.json
+Configure it in `~/.docker/config.json`:
+
+```json
 {
   "credHelpers": {
     "123456789.dkr.ecr.us-east-1.amazonaws.com": "ecr-login"
@@ -113,13 +119,16 @@ sudo apt-get install amazon-ecr-credential-helper
 **For Google Container Registry:**
 
 ```bash
-# Install GCR credential helper
-gcloud components install docker-credential-gcr
+# Install the standalone GCR credential helper
+go install github.com/GoogleCloudPlatform/docker-credential-gcr/v2@latest
 
 # Configure the helper
 docker-credential-gcr configure-docker
+```
 
-# This adds to ~/.docker/config.json
+This adds entries like the following to `~/.docker/config.json`:
+
+```json
 {
   "credHelpers": {
     "gcr.io": "gcr",
@@ -173,15 +182,12 @@ sudo cp client.key /etc/docker/certs.d/registry.company.com:5000/client.key
     └── client.key       # Client private key (optional)
 ```
 
-### Configuring Docker Daemon for TLS
+### Configuring Docker Daemon API TLS
 
-For system-wide TLS configuration, modify the Docker daemon settings:
+The registry certificate configuration above controls TLS trust for private registries. The following daemon settings are only for securing the Docker daemon's own remote API, not for trusting registry certificates:
 
 ```json
-// /etc/docker/daemon.json
 {
-  "insecure-registries": [],
-  "registry-mirrors": [],
   "tls": true,
   "tlscacert": "/etc/docker/ca.pem",
   "tlscert": "/etc/docker/server-cert.pem",
@@ -214,7 +220,6 @@ flowchart TB
 **Configure Docker daemon to use mirrors:**
 
 ```json
-// /etc/docker/daemon.json
 {
   "registry-mirrors": [
     "https://mirror.company.com:5000"
@@ -226,7 +231,6 @@ flowchart TB
 
 ```yaml
 # docker-compose.yml for mirror registry
-version: '3.8'
 services:
   registry-mirror:
     image: registry:2
@@ -252,7 +256,6 @@ volumes:
 For redundancy, configure multiple mirrors with fallback:
 
 ```json
-// /etc/docker/daemon.json
 {
   "registry-mirrors": [
     "https://mirror-primary.company.com:5000",
@@ -289,7 +292,7 @@ FROM ${REGISTRY}/${BASE_IMAGE}
 
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 COPY . .
 
 EXPOSE 3000
@@ -608,7 +611,11 @@ sudo update-ca-certificates
 sudo systemctl restart docker
 
 # Solution 3: For testing only - use insecure registry
-# Add to /etc/docker/daemon.json
+```
+
+Add to `/etc/docker/daemon.json`:
+
+```json
 {
   "insecure-registries": ["registry.company.com:5000"]
 }
@@ -636,7 +643,11 @@ docker pull registry.company.com/test/hello-world:latest
 
 ```bash
 # Configure Docker to use corporate proxy
-# Add to /etc/docker/daemon.json
+```
+
+Add to `/etc/docker/daemon.json`:
+
+```json
 {
   "proxies": {
     "http-proxy": "http://proxy.company.com:8080",
@@ -644,7 +655,9 @@ docker pull registry.company.com/test/hello-world:latest
     "no-proxy": "localhost,127.0.0.1,registry.company.com"
   }
 }
+```
 
+```bash
 # Or set environment variables for Docker client
 export HTTP_PROXY="http://proxy.company.com:8080"
 export HTTPS_PROXY="http://proxy.company.com:8080"
@@ -656,7 +669,7 @@ export NO_PROXY="localhost,127.0.0.1,registry.company.com"
 1. **Never store credentials in plain text** - Use credential helpers or secret management tools
 2. **Always use TLS** - Configure proper certificates for all registry communication
 3. **Implement least privilege** - Create service accounts with minimal required permissions
-4. **Use image signing** - Implement Docker Content Trust or Sigstore for image verification
+4. **Use image signing** - Implement Sigstore or Notation for image verification, and plan migrations away from Docker Content Trust
 5. **Set up mirrors** - Reduce external dependencies and improve build times
 6. **Rotate credentials regularly** - Use short-lived tokens when possible
 7. **Audit access** - Enable logging and monitor registry access patterns
