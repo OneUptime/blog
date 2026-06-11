@@ -158,14 +158,14 @@ async function demonstrateReadYourWrites() {
 }
 ```
 
-### Database-Specific Implementation: PostgreSQL with Logical Replication
+### Database-Specific Implementation: PostgreSQL with Streaming Replication
 
 ```sql
 -- Create a table to track write versions per session
 CREATE TABLE session_write_log (
     session_id UUID NOT NULL,
     entity_key VARCHAR(255) NOT NULL,
-    write_version BIGINT NOT NULL,
+    write_lsn PG_LSN NOT NULL,
     written_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (session_id, entity_key)
 );
@@ -177,46 +177,41 @@ CREATE INDEX idx_session_writes ON session_write_log(session_id, entity_key);
 CREATE OR REPLACE FUNCTION record_write(
     p_session_id UUID,
     p_entity_key VARCHAR(255)
-) RETURNS BIGINT AS $$
+) RETURNS PG_LSN AS $$
 DECLARE
-    v_version BIGINT;
+    v_write_lsn PG_LSN;
 BEGIN
     -- Get the current WAL position as version
-    SELECT pg_current_wal_lsn()::TEXT::BIGINT INTO v_version;
+    SELECT pg_current_wal_lsn() INTO v_write_lsn;
 
     -- Upsert the session write log
-    INSERT INTO session_write_log (session_id, entity_key, write_version)
-    VALUES (p_session_id, p_entity_key, v_version)
+    INSERT INTO session_write_log (session_id, entity_key, write_lsn)
+    VALUES (p_session_id, p_entity_key, v_write_lsn)
     ON CONFLICT (session_id, entity_key)
-    DO UPDATE SET write_version = v_version, written_at = CURRENT_TIMESTAMP;
+    DO UPDATE SET write_lsn = v_write_lsn, written_at = CURRENT_TIMESTAMP;
 
-    RETURN v_version;
+    RETURN v_write_lsn;
 END;
 $$ LANGUAGE plpgsql;
 
--- Function to check if a replica is caught up for read-your-writes
+-- Function to check if a replica is caught up for read-your-writes.
+-- The required LSN should be carried by the client after record_write()
+-- because a stale replica may not have replicated session_write_log yet.
 CREATE OR REPLACE FUNCTION can_serve_read(
-    p_session_id UUID,
-    p_entity_key VARCHAR(255)
+    p_required_lsn PG_LSN
 ) RETURNS BOOLEAN AS $$
 DECLARE
-    v_required_version BIGINT;
-    v_current_version BIGINT;
+    v_current_lsn PG_LSN;
 BEGIN
-    -- Get the version required by this session
-    SELECT write_version INTO v_required_version
-    FROM session_write_log
-    WHERE session_id = p_session_id AND entity_key = p_entity_key;
-
-    -- If no write recorded, any version is fine
-    IF v_required_version IS NULL THEN
+    -- If no write token is required, any replica can serve the read
+    IF p_required_lsn IS NULL THEN
         RETURN TRUE;
     END IF;
 
     -- Check if this replica has caught up
-    SELECT pg_last_wal_replay_lsn()::TEXT::BIGINT INTO v_current_version;
+    SELECT pg_last_wal_replay_lsn() INTO v_current_lsn;
 
-    RETURN v_current_version >= v_required_version;
+    RETURN v_current_lsn IS NOT NULL AND v_current_lsn >= p_required_lsn;
 END;
 $$ LANGUAGE plpgsql;
 ```
@@ -394,7 +389,7 @@ class ReadResult:
 class MonotonicRedisClient:
     """
     Redis client that ensures monotonic reads across replicas.
-    Uses Redis Cluster with read replicas.
+    Uses Redis primary with read replicas.
     """
 
     def __init__(self, master_host: str, replica_hosts: list[str]):
@@ -727,13 +722,11 @@ class VectorClockDatabase<T> {
 
     // Write a value, potentially creating a conflict
     write(key: string, value: T, clientClock?: VectorClock): VersionedValue<T> {
-        // Increment our clock
-        this.nodeClock.increment(this.nodeId);
-
-        // Create new version's clock
+        // Merge dependencies from the client, then increment once for this write
         const newClock = clientClock ? clientClock.clone() : new VectorClock();
         newClock.merge(this.nodeClock);
         newClock.increment(this.nodeId);
+        this.nodeClock = newClock.clone();
 
         const newVersion: VersionedValue<T> = { value, clock: newClock };
 
@@ -1016,7 +1009,7 @@ const documentSchema = new mongoose.Schema({
     versionVector: {
         type: Map,
         of: Number,
-        default: new Map()
+        default: () => new Map()
     },
 
     // Timestamp for LWW fallback
@@ -1037,7 +1030,11 @@ const documentSchema = new mongoose.Schema({
     // Conflicting versions stored for manual resolution
     conflictingVersions: [{
         data: mongoose.Schema.Types.Mixed,
-        versionVector: Map,
+        versionVector: {
+            type: Map,
+            of: Number,
+            default: () => new Map()
+        },
         lastModified: Date,
         lastModifiedBy: String
     }]
