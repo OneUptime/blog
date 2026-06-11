@@ -34,7 +34,7 @@ graph TD
 | Storage | Text | Binary |
 | Duplicate Keys | Preserved | Last value wins |
 | Key Order | Preserved | Not guaranteed |
-| Indexing | Not supported | GIN, GiST supported |
+| Indexing | Not supported | GIN supported |
 | Query Speed | Slower | Faster |
 
 ## Setting Up Sample Data
@@ -358,8 +358,8 @@ graph TD
     A --> C[Expression Index]
     B --> D["jsonb_ops (default)"]
     B --> E["jsonb_path_ops"]
-    D --> F["Supports: @>, ?, ?|, ?&"]
-    E --> G["Supports: @> only, smaller size"]
+    D --> F["Supports: @>, ?, ?|, ?&, @?, @@"]
+    E --> G["Supports: @>, @?, @@, smaller size"]
     C --> H["Index specific paths"]
 ```
 
@@ -373,7 +373,7 @@ ON products USING GIN (metadata);
 
 -- Create a GIN index with jsonb_path_ops
 -- More efficient for @> queries, uses less space
--- But only supports the @> containment operator
+-- Supports @>, @?, and @@ but not the key-exists operators (?, ?|, ?&)
 CREATE INDEX idx_products_metadata_path
 ON products USING GIN (metadata jsonb_path_ops);
 
