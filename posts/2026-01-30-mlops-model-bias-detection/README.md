@@ -205,7 +205,7 @@ def calculate_equal_opportunity(
     # Calculate equality ratio
     valid_rates = [r for r in true_positive_rates.values() if not np.isnan(r)]
 
-    if len(valid_rates) < 2:
+    if len(valid_rates) < 2 or max(valid_rates) == 0:
         equality_ratio = np.nan
     else:
         equality_ratio = min(valid_rates) / max(valid_rates)
@@ -345,7 +345,7 @@ def calculate_predictive_parity(
     # Calculate parity ratio
     valid_precisions = [p for p in precisions.values() if not np.isnan(p)]
 
-    if len(valid_precisions) < 2:
+    if len(valid_precisions) < 2 or max(valid_precisions) == 0:
         parity_ratio = np.nan
     else:
         parity_ratio = min(valid_precisions) / max(valid_precisions)
@@ -853,6 +853,32 @@ class BiasDetectionService:
                 )
                 alerts.append(alert)
 
+            if eqo_result["fpr_equality_ratio"] < self.thresholds["equalized_odds_fpr_ratio"]:
+                alert = self._create_alert(
+                    metric_name="equalized_odds_fpr",
+                    affected_group=attr,
+                    metric_value=eqo_result["fpr_equality_ratio"],
+                    threshold=self.thresholds["equalized_odds_fpr_ratio"],
+                    details=eqo_result
+                )
+                alerts.append(alert)
+
+            # Calculate predictive parity
+            pp_result = self._check_predictive_parity(
+                predictions, labels, attr_values, positive_label
+            )
+            all_metrics[f"{attr}_predictive_parity"] = pp_result["parity_ratio"]
+
+            if pp_result["parity_ratio"] < self.thresholds["predictive_parity_ratio"]:
+                alert = self._create_alert(
+                    metric_name="predictive_parity",
+                    affected_group=attr,
+                    metric_value=pp_result["parity_ratio"],
+                    threshold=self.thresholds["predictive_parity_ratio"],
+                    details=pp_result
+                )
+                alerts.append(alert)
+
         # Store metrics in history
         self.metric_history.append({
             "timestamp": timestamp,
@@ -932,7 +958,7 @@ class BiasDetectionService:
             tprs[str(group)] = tpr
 
         valid_tprs = [t for t in tprs.values() if not np.isnan(t)]
-        equality_ratio = min(valid_tprs) / max(valid_tprs) if len(valid_tprs) >= 2 else np.nan
+        equality_ratio = min(valid_tprs) / max(valid_tprs) if len(valid_tprs) >= 2 and max(valid_tprs) > 0 else np.nan
 
         return {
             "true_positive_rates": tprs,
@@ -987,6 +1013,39 @@ class BiasDetectionService:
             "false_positive_rates": fprs,
             "tpr_equality_ratio": tpr_ratio,
             "fpr_equality_ratio": fpr_ratio
+        }
+
+    def _check_predictive_parity(
+        self,
+        predictions: np.ndarray,
+        labels: np.ndarray,
+        protected_attribute: np.ndarray,
+        positive_label: int
+    ) -> Dict[str, float]:
+        """Calculate predictive parity for a single attribute."""
+        groups = np.unique(protected_attribute)
+        precisions = {}
+
+        for group in groups:
+            mask = protected_attribute == group
+            group_preds = predictions[mask]
+            group_labels = labels[mask]
+
+            pred_pos_mask = group_preds == positive_label
+            if np.sum(pred_pos_mask) > 0:
+                precision = np.sum(
+                    (group_preds == positive_label) & (group_labels == positive_label)
+                ) / np.sum(pred_pos_mask)
+            else:
+                precision = np.nan
+            precisions[str(group)] = precision
+
+        valid_precisions = [p for p in precisions.values() if not np.isnan(p)]
+        parity_ratio = min(valid_precisions) / max(valid_precisions) if len(valid_precisions) >= 2 and max(valid_precisions) > 0 else 0.0
+
+        return {
+            "precisions": precisions,
+            "parity_ratio": parity_ratio
         }
 
     def _create_alert(
@@ -1476,7 +1535,8 @@ jobs:
       - name: Run bias quality gate
         id: bias_gate
         run: |
-          python -c "
+          python <<'PY'
+          import os
           from mlops_integration import run_bias_gate_in_pipeline
 
           passed, report = run_bias_gate_in_pipeline(
@@ -1497,12 +1557,13 @@ jobs:
               }
           )
 
-          print(f'::set-output name=passed::{passed}')
-          print(f'::set-output name=report::{report}')
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              print(f"passed={passed}", file=output)
+              print(f"report={report}", file=output)
 
           if not passed:
               exit(1)
-          "
+          PY
 
       - name: Upload bias report
         uses: actions/upload-artifact@v4
