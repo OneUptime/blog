@@ -42,6 +42,8 @@ flowchart TB
         subgraph NonHeap["Non-Heap Memory"]
             Meta["Metaspace"]
             CodeCache["Code Cache"]
+        end
+        subgraph ThreadMemory["Thread Memory"]
             Stack["Thread Stacks"]
         end
         subgraph Native["Native Memory"]
@@ -206,7 +208,7 @@ public class G1GCTuningExample {
 
 ### ZGC for Low Latency Applications
 
-ZGC is designed for applications requiring sub-millisecond pause times.
+ZGC is designed for applications requiring very low pause times.
 
 ```bash
 # Enable ZGC (Java 15+)
@@ -216,8 +218,13 @@ java -XX:+UseZGC \
      -Xms8g -Xmx8g \
      -jar application.jar
 
-# For Java 21+, use Generational ZGC
+# For Java 21-23, use Generational ZGC
 java -XX:+UseZGC -XX:+ZGenerational \
+     -Xms8g -Xmx8g \
+     -jar application.jar
+
+# For Java 24+, ZGC is generational by default and ZGenerational has been removed
+java -XX:+UseZGC \
      -Xms8g -Xmx8g \
      -jar application.jar
 ```
@@ -281,7 +288,6 @@ java -XX:-TieredCompilation -jar application.jar
 # Increase code cache for large applications
 java -XX:ReservedCodeCacheSize=512m \
      -XX:InitialCodeCacheSize=128m \
-     -XX:CodeCacheExpansionSize=64k \
      -jar application.jar
 ```
 
@@ -351,7 +357,6 @@ java -XX:MaxInlineSize=100 \
 java \
   -Xms4g -Xmx4g \
   -XX:+UseZGC \
-  -XX:+ZGenerational \
   -XX:SoftMaxHeapSize=3500m \
   -XX:+AlwaysPreTouch \
   -XX:+UseNUMA \
@@ -372,7 +377,6 @@ java \
   -XX:+UseParallelGC \
   -XX:ParallelGCThreads=8 \
   -XX:GCTimeRatio=99 \
-  -XX:+UseStringDeduplication \
   -XX:+UseCompressedOops \
   -XX:+OptimizeStringConcat \
   -XX:ReservedCodeCacheSize=512m \
@@ -420,6 +424,7 @@ java -Xlog:gc*=debug:file=gc-debug.log:time,uptime,level,tags \
  * JMX Memory Monitoring Example
  *
  * Enable JMX with:
+ * Local testing only:
  * -Dcom.sun.management.jmxremote
  * -Dcom.sun.management.jmxremote.port=9090
  * -Dcom.sun.management.jmxremote.authenticate=false
@@ -478,9 +483,9 @@ public class JMXMemoryMonitor {
 
 ## Common Tuning Mistakes to Avoid
 
-1. **Setting Xms different from Xmx**: This causes heap resizing overhead. Set them equal for production workloads.
+1. **Setting Xms different from Xmx without measuring**: This can cause heap resizing overhead. Consider setting them equal for predictable, latency-sensitive production workloads.
 
-2. **Ignoring container limits**: Always use `-XX:+UseContainerSupport` and RAM percentage flags in containers.
+2. **Ignoring container limits**: Use container-aware JVMs and RAM percentage flags in containers. `-XX:+UseContainerSupport` is enabled by default on modern Linux JVMs, but it can be set explicitly for clarity.
 
 3. **Over-tuning GC parameters**: Start with defaults and adjust based on metrics, not assumptions.
 
