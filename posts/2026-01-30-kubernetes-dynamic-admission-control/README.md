@@ -64,7 +64,7 @@ Admission webhooks require TLS certificates because the API server communicates 
 First, install cert-manager in your cluster:
 
 ```bash
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.0/cert-manager.yaml
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml
 ```
 
 ### Creating a Self-Signed Issuer
@@ -405,12 +405,12 @@ package main
 
 import (
     "encoding/json"
-    "fmt"
     "io"
     "net/http"
 
     admissionv1 "k8s.io/api/admission/v1"
     corev1 "k8s.io/api/core/v1"
+    "k8s.io/apimachinery/pkg/api/resource"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/klog/v2"
 )
@@ -418,6 +418,10 @@ import (
 const (
     sidecarAnnotation = "sidecar.example.com/inject"
 )
+
+func init() {
+    http.HandleFunc("/mutate", handleMutate)
+}
 
 // patchOperation represents a JSON patch operation
 type patchOperation struct {
@@ -628,12 +632,6 @@ webhooks:
     namespaceSelector:
       matchLabels:
         sidecar-injection: enabled
-    objectSelector:
-      matchExpressions:
-        - key: sidecar.example.com/inject
-          operator: NotIn
-          values:
-            - "false"
 ```
 
 ## Understanding Failure Policies
@@ -801,7 +799,7 @@ set -e
 kind create cluster --name webhook-test
 
 # Install cert-manager
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.0/cert-manager.yaml
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml
 kubectl wait --for=condition=Available deployment --all -n cert-manager --timeout=300s
 
 # Deploy webhook
