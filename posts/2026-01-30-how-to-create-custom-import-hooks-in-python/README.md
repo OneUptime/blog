@@ -20,7 +20,7 @@ import sys
 # View the default meta path finders
 
 for finder in sys.meta_path:
-    print(type(finder).__name__)
+    print(getattr(finder, "__name__", type(finder).__name__))
 ```
 
 This typically outputs `BuiltinImporter`, `FrozenImporter`, and `PathFinder`. You can add your own finder to this list to intercept import statements.
