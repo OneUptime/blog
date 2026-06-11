@@ -12,10 +12,11 @@ Longhorn volumes hold your data. Manual snapshots and backups work until someone
 
 ## What Are Recurring Jobs?
 
-Recurring jobs in Longhorn execute scheduled tasks against volumes. They run on a cron schedule and handle retention automatically. Two job types exist:
+Recurring jobs in Longhorn execute scheduled tasks against volumes. They run on a cron schedule and handle retention automatically. Common job types include:
 
 - **Snapshot**: Creates a point-in-time copy stored locally on the volume replicas
-- **Backup**: Creates a snapshot and uploads it to an external backup target (S3, NFS)
+- **Backup**: Creates a snapshot and uploads it to an external backup target such as S3 or NFS
+- **Filesystem trim**: Reclaims unused filesystem space from a volume
 
 Snapshots are fast but live on the same disks as your data. Backups are slower but survive node failures and cluster disasters.
 
@@ -70,7 +71,7 @@ spec:
   retain: 24
   # Number of concurrent jobs allowed
   concurrency: 1
-  # Labels to identify volumes this job applies to
+  # Recurring job groups this job belongs to
   groups:
     - default
 ```
@@ -157,7 +158,7 @@ sequenceDiagram
     RJ->>V: Get volumes matching group
     loop For each volume
         RJ->>E: Create snapshot
-        E->>E: Freeze I/O briefly
+        E->>E: Sync or optionally freeze filesystem
         E-->>RJ: Snapshot created
         alt Task is backup
             RJ->>E: Upload snapshot
@@ -172,7 +173,7 @@ sequenceDiagram
 
 ## Retention Policies
 
-The `retain` field controls how many snapshots or backups to keep. Longhorn deletes the oldest when the limit is exceeded.
+For snapshot and backup jobs, the `retain` field controls how many snapshots or backups to keep. Longhorn deletes the oldest when the limit is exceeded.
 
 ```yaml
 apiVersion: longhorn.io/v1beta2
@@ -245,7 +246,7 @@ Groups let you apply different recurring jobs to different volumes. Assign volum
 
 ### Assigning Volumes to Groups
 
-Add the `recurringJobSelector` annotation to volumes or use labels:
+Add recurring job labels to the PVC. By default, recurring job labels on a PVC do not affect the Longhorn volume until you enable the PVC as the recurring job source:
 
 ```yaml
 # PersistentVolumeClaim with recurring job group
@@ -253,7 +254,9 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: postgres-data
-  annotations:
+  labels:
+    # Enable Longhorn to sync recurring job labels from this PVC to the volume
+    recurring-job.longhorn.io/source: enabled
     # Assign to the database group
     recurring-job-group.longhorn.io/database: enabled
     # Also assign to production group
@@ -377,7 +380,7 @@ Here is a full example combining all concepts:
 apiVersion: v1
 kind: Secret
 metadata:
-  name: longhorn-backup-secret
+  name: longhorn-backup-target-secret
   namespace: longhorn-system
 type: Opaque
 stringData:
@@ -475,15 +478,19 @@ Update existing PVCs to join groups:
 
 ```bash
 # Add volume to production group
-kubectl annotate pvc my-volume \
+kubectl label pvc my-volume \
+  recurring-job.longhorn.io/source=enabled
+kubectl label pvc my-volume \
   recurring-job-group.longhorn.io/production=enabled
 
 # Add volume to database group
-kubectl annotate pvc postgres-data \
+kubectl label pvc postgres-data \
+  recurring-job.longhorn.io/source=enabled
+kubectl label pvc postgres-data \
   recurring-job-group.longhorn.io/database=enabled
 
 # Remove from a group
-kubectl annotate pvc my-volume \
+kubectl label pvc my-volume \
   recurring-job-group.longhorn.io/general-
 ```
 
@@ -498,11 +505,11 @@ kubectl get recurringjobs -n longhorn-system
 # Describe a specific job
 kubectl describe recurringjob hourly-snapshot -n longhorn-system
 
-# Check volume snapshots
-kubectl get snapshots -n longhorn-system
+# Check Longhorn volume snapshots
+kubectl get snapshots.longhorn.io -n longhorn-system
 
-# Check backups
-kubectl get backups -n longhorn-system
+# Check Longhorn backups
+kubectl get backups.longhorn.io -n longhorn-system
 ```
 
 ### View Job History in UI
@@ -549,10 +556,10 @@ kubectl run -it --rm s3-test --image=amazon/aws-cli \
 
 ```bash
 # List snapshots for a volume
-kubectl get snapshots -n longhorn-system -l longhornvolume=pvc-xxx
+kubectl get snapshots.longhorn.io -n longhorn-system -l longhornvolume=pvc-xxx
 
 # Delete old snapshots manually
-kubectl delete snapshot snapshot-name -n longhorn-system
+kubectl delete snapshots.longhorn.io snapshot-name -n longhorn-system
 
 # Reduce retention in recurring job
 kubectl patch recurringjob hourly-snapshot -n longhorn-system \
