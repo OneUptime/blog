@@ -64,8 +64,8 @@ interface VectorClock {
 }
 
 class SyncManager {
-  private nodeId: string;
-  private vectorClock: VectorClock = {};
+  public readonly nodeId: string;
+  public readonly vectorClock: VectorClock = {};
   private pendingChanges: Change[] = [];
 
   constructor(nodeId: string) {
@@ -509,6 +509,7 @@ class OfflineQueue {
   private db: LocalDatabase;
   private maxRetries: number = 3;
   private batchSize: number = 100;
+  private syncTimeout: ReturnType<typeof setTimeout> | null = null;
 
   constructor(db: LocalDatabase) {
     this.db = db;
@@ -533,7 +534,7 @@ class OfflineQueue {
   }
 
   async getPendingChanges(): Promise<QueuedChange[]> {
-    return this.db.query('sync_queue', {
+    return this.db.query<QueuedChange>('sync_queue', {
       where: {
         status: ['pending', 'failed'],
         retryCount: { lt: this.maxRetries }
@@ -564,7 +565,8 @@ class OfflineQueue {
   }
 
   async markFailed(changeId: string, error: string): Promise<void> {
-    const change = await this.db.findOne('sync_queue', changeId);
+    const change = await this.db.findOne<QueuedChange>('sync_queue', changeId);
+    if (!change) return;
 
     await this.db.update('sync_queue', {
       where: { id: changeId },
@@ -614,8 +616,21 @@ class OfflineQueue {
 ### Persistence Layer for Offline Data
 
 ```typescript
+interface QueryOptions {
+  where?: WhereClause;
+  index?: string;
+  orderBy?: string;
+  limit?: number;
+}
+
+type WhereClause = Record<string, unknown | unknown[] | {
+  lt?: unknown;
+  gt?: unknown;
+  in?: unknown[];
+}>;
+
 class LocalDatabase {
-  private db: IDBDatabase;
+  private db!: IDBDatabase;
 
   async initialize(): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -639,7 +654,7 @@ class LocalDatabase {
         // Local data store
         const dataStore = db.createObjectStore('local_data', { keyPath: 'id' });
         dataStore.createIndex('entityType', 'entityType');
-        dataStore.createIndex('updatedAt', 'updatedAt');
+        dataStore.createIndex('updatedAt', '_updatedAt');
 
         // Sync metadata store
         db.createObjectStore('sync_metadata', { keyPath: 'key' });
@@ -658,11 +673,14 @@ class LocalDatabase {
     });
   }
 
-  async query(storeName: string, options: QueryOptions): Promise<unknown[]> {
+  async query<T>(
+    storeName: string,
+    options: QueryOptions
+  ): Promise<T[]> {
     return new Promise((resolve, reject) => {
       const transaction = this.db.transaction(storeName, 'readonly');
       const store = transaction.objectStore(storeName);
-      const results: unknown[] = [];
+      const results: T[] = [];
 
       let source: IDBObjectStore | IDBIndex = store;
       if (options.index) {
@@ -675,19 +693,123 @@ class LocalDatabase {
       request.onsuccess = (event) => {
         const cursor = (event.target as IDBRequest).result;
 
-        if (cursor && results.length < (options.limit || Infinity)) {
+        if (cursor) {
           if (this.matchesWhere(cursor.value, options.where)) {
             results.push(cursor.value);
           }
           cursor.continue();
         } else {
-          resolve(results);
+          if (options.orderBy) {
+            results.sort((a, b) =>
+              String((a as Record<string, unknown>)[options.orderBy!])
+                .localeCompare(String((b as Record<string, unknown>)[options.orderBy!]))
+            );
+          }
+          resolve(results.slice(0, options.limit));
         }
       };
     });
   }
 
-  private matchesWhere(value: unknown, where: WhereClause): boolean {
+  async put(
+    storeName: string,
+    id: string,
+    data: Record<string, unknown>
+  ): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction(storeName, 'readwrite');
+      const store = transaction.objectStore(storeName);
+      const request = store.put({ ...data, id });
+
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => resolve();
+    });
+  }
+
+  async findOne<T>(
+    storeName: string,
+    id: string
+  ): Promise<T | null> {
+    return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction(storeName, 'readonly');
+      const store = transaction.objectStore(storeName);
+      const request = store.get(id);
+
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => resolve((request.result as T) || null);
+    });
+  }
+
+  async update(
+    storeName: string,
+    options: { where: WhereClause; set: Record<string, unknown> }
+  ): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction(storeName, 'readwrite');
+      const store = transaction.objectStore(storeName);
+      const request = store.openCursor();
+
+      request.onerror = () => reject(request.error);
+      transaction.oncomplete = () => resolve();
+
+      request.onsuccess = (event) => {
+        const cursor = (event.target as IDBRequest<IDBCursorWithValue | null>).result;
+
+        if (!cursor) return;
+        if (this.matchesWhere(cursor.value, options.where)) {
+          cursor.update({ ...cursor.value, ...options.set });
+        }
+        cursor.continue();
+      };
+    });
+  }
+
+  async delete(
+    storeName: string,
+    idOrOptions: string | { where: WhereClause }
+  ): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction(storeName, 'readwrite');
+      const store = transaction.objectStore(storeName);
+
+      transaction.onerror = () => reject(transaction.error);
+      transaction.oncomplete = () => resolve();
+
+      if (typeof idOrOptions === 'string') {
+        store.delete(idOrOptions);
+        return;
+      }
+
+      const request = store.openCursor();
+      request.onerror = () => reject(request.error);
+      request.onsuccess = (event) => {
+        const cursor = (event.target as IDBRequest<IDBCursorWithValue | null>).result;
+
+        if (!cursor) return;
+        if (this.matchesWhere(cursor.value, idOrOptions.where)) {
+          cursor.delete();
+        }
+        cursor.continue();
+      };
+    });
+  }
+
+  async aggregate(
+    storeName: string,
+    options: { groupBy: string; count: true }
+  ): Promise<Record<string, number>> {
+    const rows = await this.query<Record<string, unknown>>(storeName, {});
+    return rows.reduce<Record<string, number>>((counts, row) => {
+      const key = String(row[options.groupBy]);
+      counts[key] = (counts[key] || 0) + 1;
+      return counts;
+    }, {});
+  }
+
+  private matchesWhere(
+    value: Record<string, unknown>,
+    where?: WhereClause
+  ): boolean {
     if (!where) return true;
 
     for (const [key, condition] of Object.entries(where)) {
@@ -695,10 +817,17 @@ class LocalDatabase {
 
       if (Array.isArray(condition)) {
         if (!condition.includes(fieldValue)) return false;
-      } else if (typeof condition === 'object') {
-        if (condition.lt !== undefined && fieldValue >= condition.lt) return false;
-        if (condition.gt !== undefined && fieldValue <= condition.gt) return false;
-        if (condition.in !== undefined && !condition.in.includes(fieldValue)) return false;
+      } else if (condition && typeof condition === 'object') {
+        const range = condition as { lt?: unknown; gt?: unknown; in?: unknown[] };
+        if (
+          range.lt !== undefined &&
+          Number(fieldValue) >= Number(range.lt)
+        ) return false;
+        if (
+          range.gt !== undefined &&
+          Number(fieldValue) <= Number(range.gt)
+        ) return false;
+        if (range.in !== undefined && !range.in.includes(fieldValue)) return false;
       } else {
         if (fieldValue !== condition) return false;
       }
@@ -893,6 +1022,11 @@ class DeltaEncoder {
 ```typescript
 import pako from 'pako';
 
+interface NetworkInfo {
+  effectiveType: 'slow-2g' | '2g' | '3g' | '4g';
+  saveData: boolean;
+}
+
 class BandwidthOptimizer {
   private compressionThreshold: number = 1024; // Compress if larger than 1KB
 
@@ -904,7 +1038,7 @@ class BandwidthOptimizer {
     const serialized = JSON.stringify(deltas);
 
     // Compress if beneficial
-    let payload: ArrayBuffer | string;
+    let payload: Uint8Array | string;
     let compressed = false;
 
     if (serialized.length > this.compressionThreshold) {
@@ -923,7 +1057,7 @@ class BandwidthOptimizer {
       payload,
       compressed,
       originalSize: serialized.length,
-      compressedSize: compressed ? (payload as ArrayBuffer).byteLength : serialized.length,
+      compressedSize: compressed ? (payload as Uint8Array).byteLength : serialized.length,
       changeCount: changes.length
     };
   }
@@ -968,8 +1102,6 @@ class BandwidthOptimizer {
     queue: OfflineQueue,
     networkInfo: NetworkInfo
   ): Promise<SyncPlan> {
-    const stats = await queue.getQueueStats();
-
     // Determine sync strategy based on network quality
     if (networkInfo.effectiveType === '4g' && !networkInfo.saveData) {
       return {
@@ -1036,9 +1168,21 @@ interface ConsistencyConfig {
   maxStaleness?: number; // milliseconds
 }
 
+interface LocalRecord extends Record<string, unknown> {
+  _updatedAt: number;
+  _vectorClock: VectorClock;
+}
+
 class ConsistencyManager {
   private configs: Map<string, ConsistencyConfig> = new Map();
   private sessionTokens: Map<string, VectorClock> = new Map();
+  private cloudEndpoint: string;
+  private localStore: LocalDatabase;
+
+  constructor(cloudEndpoint: string, localStore: LocalDatabase) {
+    this.cloudEndpoint = cloudEndpoint;
+    this.localStore = localStore;
+  }
 
   configure(entityType: string, config: ConsistencyConfig): void {
     this.configs.set(entityType, config);
@@ -1082,9 +1226,9 @@ class ConsistencyManager {
     const data = await response.json();
 
     // Update local cache
-    await this.localStore.put(entityType, entityId, data);
+    await this.localStore.put('local_data', entityId, data);
 
-    return data;
+    return data as T;
   }
 
   private async eventualRead<T>(
@@ -1093,14 +1237,14 @@ class ConsistencyManager {
     maxStaleness?: number
   ): Promise<T> {
     // Try local first
-    const local = await this.localStore.get(entityType, entityId);
+    const local = await this.localStore.findOne<LocalRecord>('local_data', entityId);
 
     if (local) {
       const age = Date.now() - local._updatedAt;
 
       // Return local if within staleness bounds or offline
       if (!navigator.onLine || (maxStaleness && age < maxStaleness)) {
-        return local;
+        return local as T;
       }
     }
 
@@ -1110,11 +1254,11 @@ class ConsistencyManager {
         `${this.cloudEndpoint}/data/${entityType}/${entityId}`
       );
       const data = await response.json();
-      await this.localStore.put(entityType, entityId, data);
-      return data;
+      await this.localStore.put('local_data', entityId, data);
+      return data as T;
     } catch (error) {
       // Fall back to local on network error
-      if (local) return local;
+      if (local) return local as T;
       throw error;
     }
   }
@@ -1124,19 +1268,19 @@ class ConsistencyManager {
     entityId: string,
     afterClock?: VectorClock
   ): Promise<T> {
-    const local = await this.localStore.get(entityType, entityId);
+    const local = await this.localStore.findOne<LocalRecord>('local_data', entityId);
 
     if (!afterClock) {
-      return local || this.fetchFromCloud(entityType, entityId);
+      return local ? local as T : this.fetchFromCloud<T>(entityType, entityId);
     }
 
     // Check if local data satisfies causal dependency
     if (local && this.satisfiesCausality(local._vectorClock, afterClock)) {
-      return local;
+      return local as T;
     }
 
     // Need to fetch from cloud to satisfy causality
-    const cloudData = await this.fetchFromCloud(entityType, entityId);
+    const cloudData = await this.fetchFromCloud<LocalRecord>(entityType, entityId);
 
     if (!this.satisfiesCausality(cloudData._vectorClock, afterClock)) {
       // Causal dependency not yet propagated - wait and retry
@@ -1144,7 +1288,7 @@ class ConsistencyManager {
       return this.causalRead(entityType, entityId, afterClock);
     }
 
-    return cloudData;
+    return cloudData as T;
   }
 
   private async sessionRead<T>(
@@ -1186,6 +1330,31 @@ class ConsistencyManager {
     }
     return true;
   }
+
+  private async fetchFromCloud<T>(
+    entityType: string,
+    entityId: string
+  ): Promise<T> {
+    const response = await fetch(
+      `${this.cloudEndpoint}/data/${entityType}/${entityId}`
+    );
+
+    if (!response.ok) {
+      throw new Error('Cloud read failed');
+    }
+
+    const data = await response.json();
+    await this.localStore.put('local_data', entityId, data);
+    return data as T;
+  }
+
+  private async waitForCausality(
+    entityType: string,
+    entityId: string,
+    afterClock: VectorClock
+  ): Promise<void> {
+    await new Promise(resolve => setTimeout(resolve, 1000));
+  }
 }
 ```
 
@@ -1208,7 +1377,10 @@ class EdgeCloudClient {
     this.offlineQueue = new OfflineQueue(this.localDb);
     this.conflictResolver = new ConflictResolver();
     this.bandwidthOptimizer = new BandwidthOptimizer();
-    this.consistencyManager = new ConsistencyManager();
+    this.consistencyManager = new ConsistencyManager(
+      config.cloudEndpoint,
+      this.localDb
+    );
 
     // Set up network listeners
     this.setupNetworkListeners();
@@ -1357,10 +1529,11 @@ class EdgeCloudClient {
       };
 
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
       for (const change of prioritizedChanges) {
-        await this.offlineQueue.markFailed(change.id, error.message);
+        await this.offlineQueue.markFailed(change.id, message);
       }
-      return { success: false, error: error.message };
+      return { success: false, error: message };
     }
   }
 
