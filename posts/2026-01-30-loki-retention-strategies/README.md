@@ -65,14 +65,14 @@ compactor:
   # Working directory for compaction
   working_directory: /loki/compactor
 
-  # Shared store configuration - must match your chunk storage
-  shared_store: s3
-
   # How often the compactor runs
   compaction_interval: 10m
 
   # Enable retention enforcement
   retention_enabled: true
+
+  # Store used for delete requests
+  delete_request_store: s3
 
   # How often to check for chunks to delete
   retention_delete_delay: 2h
@@ -95,9 +95,6 @@ Set a default retention period that applies to all tenants:
 limits_config:
   # Global retention period - logs older than this are deleted
   retention_period: 744h  # 31 days
-
-  # Allow custom retention through log selectors
-  allow_deletes: true
 ```
 
 The `retention_period` value uses Go duration format. Common values:
@@ -154,9 +151,9 @@ storage_config:
 
 compactor:
   working_directory: /loki/compactor
-  shared_store: s3
   compaction_interval: 10m
   retention_enabled: true
+  delete_request_store: s3
   retention_delete_delay: 2h
   retention_delete_worker_count: 150
 
@@ -261,7 +258,7 @@ Loki historically used the Table Manager for retention with BoltDB indexes. Unde
 
 | Feature | Table Manager | Compactor |
 |---------|---------------|-----------|
-| Index Support | BoltDB-shipper | TSDB, BoltDB |
+| Index Support | Legacy chunk/index stores and BoltDB-shipper | TSDB and BoltDB-shipper |
 | Deletion Granularity | Table-level | Chunk-level |
 | Per-Tenant Overrides | Limited | Full support |
 | Stream Selectors | No | Yes |
@@ -334,9 +331,12 @@ Beyond automatic retention, Loki supports manual deletion through its API. This 
 compactor:
   retention_enabled: true
   delete_request_cancel_period: 24h
+  delete_request_store: s3
 
-limits_config:
-  allow_deletes: true
+# runtime-config.yaml
+overrides:
+  tenant-a:
+    deletion_mode: filter-and-delete
 ```
 
 ### Creating Delete Requests
@@ -349,22 +349,22 @@ curl -X POST \
   "http://loki:3100/loki/api/v1/delete" \
   -H "Content-Type: application/x-www-form-urlencoded" \
   -d "query={app=\"legacy-service\"}" \
-  -d "start=1704067200000000000" \
-  -d "end=1706745600000000000"
+  -d "start=1704067200" \
+  -d "end=1706745600"
 ```
 
-The timestamps are in nanoseconds. Convert from Unix timestamps:
+The timestamps are Unix timestamps in seconds or RFC3339 timestamps. Convert from dates:
 
 ```bash
-# Convert Unix timestamp to nanoseconds
-START_NS=$(($(date -d "2024-01-01" +%s) * 1000000000))
-END_NS=$(($(date -d "2024-02-01" +%s) * 1000000000))
+# Convert dates to Unix timestamps in seconds
+START=$(date -d "2024-01-01" +%s)
+END=$(date -d "2024-02-01" +%s)
 
 curl -X POST \
   "http://loki:3100/loki/api/v1/delete" \
   -d "query={app=\"legacy-service\"}" \
-  -d "start=${START_NS}" \
-  -d "end=${END_NS}"
+  -d "start=${START}" \
+  -d "end=${END}"
 ```
 
 ### Listing and Canceling Delete Requests
@@ -382,11 +382,11 @@ Response:
 [
   {
     "request_id": "abc123",
-    "start_time": 1704067200000000000,
-    "end_time": 1706745600000000000,
+    "start_time": 1704067200,
+    "end_time": 1706745600,
     "query": "{app=\"legacy-service\"}",
     "status": "received",
-    "created_at": 1706800000000000000
+    "created_at": 1706800000
   }
 ]
 ```
@@ -515,9 +515,9 @@ groups:
   - name: loki-retention
     rules:
       # Compactor deletion rate
-      - record: loki:compactor:deletions_per_hour
+      - record: loki:compactor:deleted_lines_per_hour
         expr: |
-          sum(rate(loki_compactor_deleted_bytes_total[1h])) * 3600
+          sum(rate(loki_compactor_deleted_lines[1h])) * 3600
 
       # Pending deletion requests
       - record: loki:compactor:pending_deletions
@@ -527,7 +527,7 @@ groups:
       # Compaction lag
       - record: loki:compactor:lag_seconds
         expr: |
-          time() - max(loki_compactor_last_successful_run_timestamp_seconds)
+          time() - max(loki_compactor_apply_retention_last_successful_run_timestamp_seconds)
 ```
 
 ### Alerting Rules
@@ -540,7 +540,7 @@ groups:
       # Alert if compactor is not running
       - alert: LokiCompactorNotRunning
         expr: |
-          time() - max(loki_compactor_last_successful_run_timestamp_seconds) > 3600
+          time() - max(loki_compactor_apply_retention_last_successful_run_timestamp_seconds) > 3600
         for: 15m
         labels:
           severity: warning
@@ -558,16 +558,15 @@ groups:
         annotations:
           summary: "High number of pending deletion requests"
 
-      # Alert on storage growth despite retention
-      - alert: LokiStorageGrowth
+      # Alert if old delete requests are not being processed
+      - alert: LokiOldestDeleteRequestStalled
         expr: |
-          predict_linear(loki_chunk_store_stored_bytes[7d], 86400 * 30) >
-          loki_chunk_store_stored_bytes * 1.5
+          loki_compactor_oldest_pending_delete_request_age_seconds > 86400
         for: 6h
         labels:
           severity: info
         annotations:
-          summary: "Loki storage growing faster than retention is removing"
+          summary: "Old Loki delete requests are still pending"
 ```
 
 ### Grafana Dashboard Queries
@@ -575,22 +574,17 @@ groups:
 Create a retention monitoring dashboard:
 
 ```sql
--- Deleted bytes over time
-sum(rate(loki_compactor_deleted_bytes_total[$__rate_interval])) by (tenant)
+-- Deleted lines over time
+sum(rate(loki_compactor_deleted_lines[$__rate_interval])) by (user)
 
--- Current storage by tenant
-sum(loki_chunk_store_stored_bytes) by (tenant)
+-- Pending delete requests
+sum(loki_compactor_pending_delete_requests_count)
 
--- Retention efficiency (deleted vs ingested)
-sum(rate(loki_compactor_deleted_bytes_total[24h]))
-/
-sum(rate(loki_distributor_bytes_received_total[24h]))
+-- Delete requests processed over time
+sum(rate(loki_compactor_delete_requests_processed_total[$__rate_interval])) by (user)
 
--- Time until storage exhaustion
-(storage_limit_bytes - sum(loki_chunk_store_stored_bytes))
-/
-(sum(rate(loki_distributor_bytes_received_total[7d]))
-  - sum(rate(loki_compactor_deleted_bytes_total[7d])))
+-- Oldest pending delete request age
+max(loki_compactor_oldest_pending_delete_request_age_seconds)
 ```
 
 ## Production Deployment Patterns
@@ -601,15 +595,14 @@ For smaller deployments, run everything in one process:
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
 services:
   loki:
-    image: grafana/loki:2.9.3
+    image: grafana/loki:3.7.1
     ports:
       - "3100:3100"
     volumes:
       - ./loki-config.yaml:/etc/loki/config.yaml
-      - ./runtime-config.yaml:/etc/loki/runtime.yaml
+      - ./runtime-config.yaml:/loki/runtime-config.yaml
       - loki-data:/loki
     command: -config.file=/etc/loki/config.yaml -target=all
 
@@ -639,7 +632,7 @@ spec:
     spec:
       containers:
         - name: compactor
-          image: grafana/loki:2.9.3
+          image: grafana/loki:3.7.1
           args:
             - -config.file=/etc/loki/config.yaml
             - -target=compactor
@@ -683,13 +676,19 @@ loki:
 
   storage:
     type: s3
+    bucketNames:
+      chunks: loki-chunks
+      ruler: loki-ruler
+      admin: loki-admin
     s3:
       endpoint: s3.us-east-1.amazonaws.com
       region: us-east-1
-      bucketNames:
-        chunks: loki-chunks
-        ruler: loki-ruler
-        admin: loki-admin
+
+  storage_config:
+    aws:
+      region: us-east-1
+      bucketnames: loki-chunks
+      s3forcepathstyle: false
 
   schemaConfig:
     configs:
@@ -703,27 +702,28 @@ loki:
 
   limits_config:
     retention_period: 720h
-    allow_deletes: true
 
   compactor:
     retention_enabled: true
+    delete_request_store: s3
     retention_delete_delay: 2h
     retention_delete_worker_count: 150
 
+  # Runtime configuration for per-tenant overrides
+  runtimeConfig:
+    overrides:
+      team-a:
+        retention_period: 168h
+      team-b:
+        retention_period: 2160h
+
 compactor:
-  enabled: true
   replicas: 1
   persistence:
     enabled: true
-    size: 10Gi
-
-# Runtime configuration for per-tenant overrides
-runtimeConfig:
-  overrides:
-    team-a:
-      retention_period: 168h
-    team-b:
-      retention_period: 2160h
+    claims:
+      - name: data
+        size: 10Gi
 ```
 
 ## Troubleshooting Retention Issues
