@@ -122,7 +122,6 @@ Here is a Python implementation of a shard router:
 
 ```python
 import hashlib
-from typing import Dict, Any
 import psycopg2
 
 class ShardRouter:
@@ -134,7 +133,7 @@ class ShardRouter:
         self.num_shards = len(shard_configs)
 
     def get_shard_id(self, partition_key: str) -> int:
-        # Use consistent hashing to determine shard
+        # Use hash modulo routing to determine shard
         hash_value = int(hashlib.md5(
             str(partition_key).encode()
         ).hexdigest(), 16)
@@ -148,17 +147,23 @@ class ShardRouter:
     def execute_on_shard(self, partition_key: str, query: str, params: tuple):
         # Execute query on the correct shard
         conn = self.get_connection(partition_key)
-        cursor = conn.cursor()
-        cursor.execute(query, params)
-        return cursor.fetchall()
+        with conn.cursor() as cursor:
+            cursor.execute(query, params)
+            if cursor.description:
+                return cursor.fetchall()
+            conn.commit()
+            return []
 
     def execute_on_all_shards(self, query: str, params: tuple = None):
         # Fan out query to all shards and combine results
         results = []
         for shard_id, conn in self.shards.items():
-            cursor = conn.cursor()
-            cursor.execute(query, params)
-            results.extend(cursor.fetchall())
+            with conn.cursor() as cursor:
+                cursor.execute(query, params)
+                if cursor.description:
+                    results.extend(cursor.fetchall())
+                else:
+                    conn.commit()
         return results
 
 
@@ -212,7 +217,7 @@ To minimize cross-partition queries, design your partition key to match your acc
 
 Partitions require ongoing maintenance. For time-based partitions, you need to create new partitions before they are needed and archive old ones.
 
-The following script automates partition creation for PostgreSQL:
+The following script automates partition creation for PostgreSQL tables partitioned by month:
 
 ```sql
 -- Function to create monthly partitions automatically
@@ -242,9 +247,9 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Create partitions for the next 3 months
-SELECT create_monthly_partition('orders', CURRENT_DATE + INTERVAL '1 month');
-SELECT create_monthly_partition('orders', CURRENT_DATE + INTERVAL '2 months');
-SELECT create_monthly_partition('orders', CURRENT_DATE + INTERVAL '3 months');
+SELECT create_monthly_partition('monthly_orders', (CURRENT_DATE + INTERVAL '1 month')::date);
+SELECT create_monthly_partition('monthly_orders', (CURRENT_DATE + INTERVAL '2 months')::date);
+SELECT create_monthly_partition('monthly_orders', (CURRENT_DATE + INTERVAL '3 months')::date);
 ```
 
 ## Performance Considerations
