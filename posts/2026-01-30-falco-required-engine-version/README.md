@@ -23,7 +23,7 @@ The Falco engine version represents the rules engine's capability level. Each ne
 - Enhanced functionality
 - Bug fixes in rule parsing
 
-The engine version is separate from the Falco release version. A single Falco release may include engine updates that affect rule compatibility.
+The engine version is separate from the Falco release version. For example, Falco 0.37.0 reports engine version 0.31.0, while Falco 0.36.0 reports engine version 26. Beginning with Falco 0.37.0, engine versions are reported in SemVer format; older Falco versions used integer engine versions.
 
 ## Engine Version Specification Syntax
 
@@ -51,9 +51,9 @@ To specify a required engine version in your rules file, use the `required_engin
   tags: [container, shell, mitre_execution]
 ```
 
-### Semantic Versioning Format
+### Version Format
 
-The engine version follows semantic versioning (SemVer):
+For Falco 0.37.0 and newer, the engine version follows semantic versioning (SemVer):
 
 ```yaml
 # Format: MAJOR.MINOR.PATCH
@@ -64,6 +64,13 @@ Where:
 - **MAJOR**: Significant changes that may break backward compatibility
 - **MINOR**: New features added in a backward-compatible manner
 - **PATCH**: Backward-compatible bug fixes
+
+For older Falco releases, `required_engine_version` used an integer capability version instead:
+
+```yaml
+# Legacy format used before Falco 0.37.0
+- required_engine_version: 8
+```
 
 ## Version Compatibility Checking Flow
 
@@ -76,12 +83,8 @@ flowchart TD
     B -->|Yes| D[Extract Version Requirement]
     D --> E{Compare with Current Engine}
     E -->|Current >= Required| F[Load Rules Successfully]
-    E -->|Current < Required| G[Emit Warning/Error]
-    G --> H{Strict Mode Enabled?}
-    H -->|Yes| I[Abort Rule Loading]
-    H -->|No| J[Continue with Warning]
+    E -->|Current < Required| G[Return Rule Loading Error]
     C --> F
-    J --> K[Rules May Not Work Correctly]
     F --> L[Rules Ready for Use]
 ```
 
@@ -95,37 +98,35 @@ falco --version
 
 # Example output:
 # Falco version: 0.37.0
-# Engine version: 0.37.0
-# Libs version: 0.14.1
-# Plugin API version: 3.0.0
+# Libs version:  0.14.2
+# Plugin API:    3.2.0
+# Engine:        0.31.0
 ```
 
 You can also check programmatically in your deployment:
 
 ```bash
 # Get just the engine version
-falco --version | grep "Engine version" | awk '{print $3}'
+falco --version | awk '/^Engine:/ {print $2} /^Engine version:/ {print $3}'
 ```
 
 ## Feature-Based Version Requirements
 
-Different engine versions support different features. Here is a reference table for common features:
+Different engine versions support different features. Use `falco --version`, `falco --list=<source>`, and `falco --validate` against the Falco versions you support to choose the minimum engine version. Here are examples of version signals to watch for:
 
 | Feature | Minimum Engine Version | Description |
 |---------|----------------------|-------------|
-| Basic syscall fields | 0.1.0 | Core process and file fields |
-| Container fields | 0.10.0 | Container metadata fields |
-| K8s audit log support | 0.13.0 | Kubernetes audit events |
-| Exceptions support | 0.28.0 | Rule exception blocks |
-| Plugin system | 0.32.0 | Loadable plugin support |
-| Output fields in conditions | 0.35.0 | Enhanced field support |
-| Append operator | 0.37.0 | Rule append functionality |
+| Rule exceptions | 8 in the legacy integer scheme | Rule exception blocks |
+| Falco 0.35.0 | 17 | Falco release 0.35.0 reports engine version 17 |
+| Falco 0.36.0 | 26 | Falco release 0.36.0 reports engine version 26 |
+| Falco 0.37.0 | 0.31.0 | Falco 0.37.0 switches engine versions to SemVer and introduces the `override` key for rules |
+| Falco 0.44.1 | 0.62.0 | Current SemVer-style engine version example |
 
-### Example: Using Exceptions (Requires 0.28.0+)
+### Example: Using Exceptions
 
 ```yaml
-# Requires engine version 0.28.0 for exceptions support
-- required_engine_version: 0.28.0
+# This example was validated with Falco 0.37.0, which reports engine 0.31.0
+- required_engine_version: 0.31.0
 
 - rule: Write Below Etc
   desc: Detect writes to /etc directory
@@ -137,7 +138,7 @@ Different engine versions support different features. Here is a reference table 
     (user=%user.name file=%fd.name)
   priority: ERROR
   exceptions:
-    # Exception block requires engine 0.28.0+
+    # Exception block requires a Falco engine that supports rule exceptions
     - name: known_etc_writers
       fields: [proc.name, fd.name]
       comps: [=, startswith]
@@ -146,11 +147,11 @@ Different engine versions support different features. Here is a reference table 
         - [dhclient, /etc/resolv.conf]
 ```
 
-### Example: Using Plugins (Requires 0.32.0+)
+### Example: Using Plugins
 
 ```yaml
-# Requires engine version 0.32.0 for plugin support
-- required_engine_version: 0.32.0
+# This example was validated with Falco 0.37.0, which reports engine 0.31.0
+- required_engine_version: 0.31.0
 
 # Load the cloudtrail plugin
 - required_plugin_versions:
@@ -180,7 +181,7 @@ When distributing rules that may run on different Falco versions, consider these
 ```yaml
 # Option 1: Separate files for different versions
 # rules-legacy.yaml (for older engines)
-- required_engine_version: 0.26.0
+- required_engine_version: 26
 
 - rule: Detect Privilege Escalation
   desc: Basic privilege escalation detection
@@ -193,7 +194,7 @@ When distributing rules that may run on different Falco versions, consider these
 
 ```yaml
 # rules-modern.yaml (for newer engines with exceptions)
-- required_engine_version: 0.28.0
+- required_engine_version: 0.31.0
 
 - rule: Detect Privilege Escalation
   desc: Advanced privilege escalation detection with exceptions
@@ -221,19 +222,19 @@ Use this script to select the appropriate rules file:
 # Automatically select rules based on engine version
 
 # Get the current engine version
-ENGINE_VERSION=$(falco --version | grep "Engine version" | awk '{print $3}')
-
-# Parse major and minor version
-MAJOR=$(echo "$ENGINE_VERSION" | cut -d. -f1)
-MINOR=$(echo "$ENGINE_VERSION" | cut -d. -f2)
+ENGINE_VERSION=$(falco --version | awk '/^Engine:/ {print $2} /^Engine version:/ {print $3}')
 
 echo "Detected Falco engine version: $ENGINE_VERSION"
 
+version_ge() {
+    [ "$(printf '%s\n%s\n' "$2" "$1" | sort -V | head -n1)" = "$2" ]
+}
+
 # Select rules based on version capabilities
-if [ "$MINOR" -ge 32 ]; then
+if [[ "$ENGINE_VERSION" == *.*.* ]] && version_ge "$ENGINE_VERSION" "0.31.0"; then
     echo "Using modern rules with plugin support"
     RULES_FILE="/etc/falco/rules-modern.yaml"
-elif [ "$MINOR" -ge 28 ]; then
+elif [[ "$ENGINE_VERSION" != *.* ]] && [ "$ENGINE_VERSION" -ge 8 ]; then
     echo "Using rules with exception support"
     RULES_FILE="/etc/falco/rules-exceptions.yaml"
 else
@@ -271,26 +272,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Falco ${{ matrix.falco_version }}
-        run: |
-          curl -fsSL https://falco.org/repo/falcosecurity-packages.asc | \
-            sudo gpg --dearmor -o /usr/share/keyrings/falco-archive-keyring.gpg
-          echo "deb [signed-by=/usr/share/keyrings/falco-archive-keyring.gpg] \
-            https://download.falco.org/packages/deb stable main" | \
-            sudo tee /etc/apt/sources.list.d/falcosecurity.list
-          sudo apt-get update
-          sudo apt-get install -y falco=${{ matrix.falco_version }}
+      - name: Pull Falco ${{ matrix.falco_version }}
+        run: docker pull falcosecurity/falco:${{ matrix.falco_version }}
 
       - name: Validate Rules
         run: |
           # Validate rules syntax and version compatibility
-          falco --validate rules/custom-rules.yaml
+          docker run --rm \
+            -v "$PWD/rules/custom-rules.yaml:/rules/custom-rules.yaml:ro" \
+            falcosecurity/falco:${{ matrix.falco_version }} \
+            --validate /rules/custom-rules.yaml
 
           # Check for version requirement
           if grep -q "required_engine_version" rules/custom-rules.yaml; then
             echo "Engine version requirement found"
             REQUIRED=$(grep "required_engine_version" rules/custom-rules.yaml | \
-              awk '{print $2}')
+              awk '{print $3}')
             echo "Required engine version: $REQUIRED"
           fi
 ```
@@ -308,34 +305,34 @@ graph LR
     end
 
     subgraph "Engine Versions"
-        E35[Engine 0.35.0]
-        E36[Engine 0.36.0]
-        E37[Engine 0.37.0]
+        E17[Engine 17]
+        E26[Engine 26]
+        E31[Engine 0.31.0]
     end
 
     subgraph "Feature Support"
         EXC[Exceptions]
         PLG[Plugins]
-        APD[Append]
+        APD[Override key]
         OUT[Output Fields]
     end
 
-    F35 --> E35
-    F36 --> E36
-    F37 --> E37
+    F35 --> E17
+    F36 --> E26
+    F37 --> E31
 
-    E35 --> EXC
-    E35 --> PLG
-    E35 --> OUT
+    E17 --> EXC
+    E17 --> PLG
+    E17 --> OUT
 
-    E36 --> EXC
-    E36 --> PLG
-    E36 --> OUT
+    E26 --> EXC
+    E26 --> PLG
+    E26 --> OUT
 
-    E37 --> EXC
-    E37 --> PLG
-    E37 --> OUT
-    E37 --> APD
+    E31 --> EXC
+    E31 --> PLG
+    E31 --> OUT
+    E31 --> APD
 ```
 
 ## Best Practices
@@ -344,7 +341,7 @@ graph LR
 
 ```yaml
 # Good: Explicit version requirement
-- required_engine_version: 0.35.0
+- required_engine_version: 0.31.0
 
 - rule: My Custom Rule
   # ...
@@ -359,11 +356,11 @@ graph LR
 ### 2. Document Feature Dependencies
 
 ```yaml
-# Required engine version: 0.28.0
+# Required engine version: 0.31.0
 # Features used:
-#   - Exception blocks (0.28.0+)
-#   - Container fields (0.10.0+)
-- required_engine_version: 0.28.0
+#   - Exception blocks
+#   - Container mount fields
+- required_engine_version: 0.31.0
 
 - rule: Sensitive Mount Detection
   desc: Detect sensitive host path mounts in containers
@@ -402,7 +399,7 @@ for VERSION in "${VERSIONS[@]}"; do
     docker run --rm \
         -v "$(pwd)/$RULES_FILE:/etc/falco/rules.d/custom.yaml:ro" \
         "falcosecurity/falco:$VERSION" \
-        falco --validate /etc/falco/rules.d/custom.yaml
+        --validate /etc/falco/rules.d/custom.yaml
 
     if [ $? -eq 0 ]; then
         echo "PASS: Rules valid for Falco $VERSION"
@@ -421,10 +418,10 @@ done
 Error: Rule uses unknown field 'container.mount.dest'
 ```
 
-**Solution**: This field requires a minimum engine version. Add the appropriate version requirement:
+**Solution**: This field requires a minimum engine version. Set the requirement to the minimum engine version you validated, so older Falco versions fail clearly instead of silently accepting incompatible rules:
 
 ```yaml
-- required_engine_version: 0.26.0
+- required_engine_version: 0.31.0
 ```
 
 ### Error: Unexpected Exception Block
@@ -433,16 +430,16 @@ Error: Rule uses unknown field 'container.mount.dest'
 Error: Unexpected key 'exceptions' in rule definition
 ```
 
-**Solution**: Exceptions require engine version 0.28.0 or higher:
+**Solution**: Exceptions require an engine that supports rule exceptions. For legacy integer engine versions, the official rules note that exceptions start at engine version 8; for Falco 0.37.0 and newer, use the SemVer engine version you validated:
 
 ```yaml
-- required_engine_version: 0.28.0
+- required_engine_version: 0.31.0
 ```
 
-### Warning: Version Requirement Not Met
+### Error: Version Requirement Not Met
 
 ```text
-Warning: Rule file requires engine version 0.35.0, but current engine is 0.32.0
+Runtime error: Rules require engine version 0.31.0, but engine version is 0.26.0
 ```
 
 **Solution**: Either upgrade Falco or create a compatible version of your rules for older engines.
