@@ -53,8 +53,8 @@ The foundation of any flag review process is establishing a consistent cadence f
 
 ```python
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional
+from datetime import UTC, datetime, timedelta
+from typing import Any, Dict, List, Optional
 from enum import Enum
 import json
 
@@ -86,7 +86,7 @@ class Flag:
     is_enabled: bool = False
     enabled_percentage: float = 0.0
     tags: List[str] = field(default_factory=list)
-    metadata: Dict[str, any] = field(default_factory=dict)
+    metadata: Dict[str, Any] = field(default_factory=dict)
 
 @dataclass
 class ReviewCycle:
@@ -148,7 +148,7 @@ class FlagReviewScheduler:
 
         Returns flags grouped by status: due, overdue, upcoming.
         """
-        check_date = as_of or datetime.utcnow()
+        check_date = as_of or datetime.now(UTC)
 
         result = {
             'overdue': [],
@@ -196,7 +196,7 @@ class FlagReviewScheduler:
         if not flag:
             raise ValueError(f"Flag {flag_id} not found")
 
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         flag.last_reviewed = now
 
         # Schedule next review unless flag was removed
@@ -244,9 +244,9 @@ class FlagReviewScheduler:
 
         return calendar
 
-    def generate_review_report(self) -> Dict[str, any]:
+    def generate_review_report(self) -> Dict[str, Any]:
         """Generate a summary report of review status."""
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         due_flags = self.get_flags_due_for_review(now)
 
         # Count by flag type
@@ -288,7 +288,7 @@ scheduler.register_flag(Flag(
     id="flag-001",
     name="new_checkout_flow",
     flag_type=FlagType.RELEASE,
-    created_at=datetime(2026, 1, 15),
+    created_at=datetime(2026, 1, 15, tzinfo=UTC),
     created_by="alice@example.com",
     description="New checkout experience with streamlined steps",
     owner_team="checkout-team",
@@ -300,7 +300,7 @@ scheduler.register_flag(Flag(
     id="flag-002",
     name="pricing_experiment_q1",
     flag_type=FlagType.EXPERIMENT,
-    created_at=datetime(2026, 1, 1),
+    created_at=datetime(2026, 1, 1, tzinfo=UTC),
     created_by="bob@example.com",
     description="Q1 pricing tier experiment",
     owner_team="growth-team",
@@ -312,7 +312,7 @@ scheduler.register_flag(Flag(
     id="flag-003",
     name="emergency_rate_limiter",
     flag_type=FlagType.KILL_SWITCH,
-    created_at=datetime(2025, 6, 1),
+    created_at=datetime(2025, 6, 1, tzinfo=UTC),
     created_by="ops@example.com",
     description="Emergency rate limiting for API endpoints",
     owner_team="platform-team",
@@ -320,7 +320,7 @@ scheduler.register_flag(Flag(
 ))
 
 # Check what is due for review
-due_flags = scheduler.get_flags_due_for_review(datetime(2026, 1, 30))
+due_flags = scheduler.get_flags_due_for_review(datetime(2026, 1, 30, tzinfo=UTC))
 print("Flags due for review:")
 for category, flags in due_flags.items():
     print(f"  {category}: {len(flags)} flags")
@@ -368,8 +368,8 @@ graph TD
 
 ```python
 from dataclasses import dataclass
-from datetime import datetime, timedelta
-from typing import Dict, List, Tuple, Optional
+from datetime import UTC, datetime, timedelta
+from typing import Any, Dict, List, Tuple, Optional
 from enum import Enum
 
 class HealthLevel(Enum):
@@ -441,7 +441,7 @@ class FlagHealthAssessor:
         """
         dimensions = []
         recommendations = []
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
 
         # 1. Ownership assessment
         ownership_dim = self._assess_ownership(flag)
@@ -732,7 +732,7 @@ class FlagHealthAssessor:
     def assess_all_flags(
         self,
         flags: List[Flag]
-    ) -> Dict[str, any]:
+    ) -> Dict[str, Any]:
         """
         Assess health of all flags and generate summary report.
         """
@@ -760,7 +760,7 @@ class FlagHealthAssessor:
                 })
 
         return {
-            'assessed_at': datetime.utcnow().isoformat(),
+            'assessed_at': datetime.now(UTC).isoformat(),
             'total_flags': len(flags),
             'average_health_score': round(avg_score, 1),
             'by_health_level': {
@@ -783,7 +783,7 @@ assessor.register_usage_stats(
     "flag-001",
     evaluations_24h=50000,
     unique_users_24h=5000,
-    last_evaluation=datetime.utcnow() - timedelta(minutes=5)
+    last_evaluation=datetime.now(UTC) - timedelta(minutes=5)
 )
 
 assessor.register_code_references("flag-001", 7)
@@ -793,7 +793,7 @@ flag = Flag(
     id="flag-001",
     name="new_checkout_flow",
     flag_type=FlagType.RELEASE,
-    created_at=datetime(2026, 1, 15),
+    created_at=datetime(2026, 1, 15, tzinfo=UTC),
     created_by="alice@example.com",
     description="New checkout experience with streamlined steps",
     owner_team="checkout-team",
@@ -851,8 +851,8 @@ flowchart TD
 
 ```python
 from dataclasses import dataclass
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Set
+from datetime import UTC, datetime, timedelta
+from typing import Any, Dict, List, Optional, Set
 from enum import Enum
 
 class StalenessReason(Enum):
@@ -915,7 +915,7 @@ class StaleFlagDetector:
         Returns a StaleFlag object if any staleness is detected,
         None if the flag appears healthy.
         """
-        now = as_of or datetime.utcnow()
+        now = as_of or datetime.now(UTC)
         indicators = []
 
         # Check 1: Age exceeded for flag type
@@ -1110,7 +1110,7 @@ class StaleFlagDetector:
                 reason=StalenessReason.OWNER_DEPARTED,
                 severity="medium",
                 details=f"Flag creator ({flag.created_by}) has left - needs new ownership",
-                detected_at=datetime.utcnow()
+                detected_at=datetime.now(UTC)
             )
         return None
 
@@ -1124,6 +1124,8 @@ class StaleFlagDetector:
         expected_end = flag.metadata.get('experiment_end_date')
         if expected_end:
             end_date = datetime.fromisoformat(expected_end)
+            if end_date.tzinfo is None:
+                end_date = end_date.replace(tzinfo=UTC)
             if now > end_date + timedelta(days=7):
                 return StalenessIndicator(
                     reason=StalenessReason.EXPERIMENT_CONCLUDED,
@@ -1194,11 +1196,11 @@ class StaleFlagDetector:
     def scan_all_flags(
         self,
         flags: List[Flag]
-    ) -> Dict[str, any]:
+    ) -> Dict[str, Any]:
         """
         Scan all flags for staleness and generate report.
         """
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         stale_flags = []
 
         for flag in flags:
@@ -1257,8 +1259,8 @@ class StaleFlagDetector:
 detector = StaleFlagDetector()
 
 # Register some tracking data
-detector.register_evaluation("flag-001", datetime.utcnow() - timedelta(hours=1))
-detector.register_code_change("flag-001", datetime.utcnow() - timedelta(days=5))
+detector.register_evaluation("flag-001", datetime.now(UTC) - timedelta(hours=1))
+detector.register_code_change("flag-001", datetime.now(UTC) - timedelta(days=5))
 detector.register_departed_owner("former@example.com")
 
 # Create a stale flag example
@@ -1266,7 +1268,7 @@ stale_flag = Flag(
     id="flag-old-001",
     name="legacy_payment_flow",
     flag_type=FlagType.RELEASE,
-    created_at=datetime(2025, 6, 1),  # Very old for a release flag
+    created_at=datetime(2025, 6, 1, tzinfo=UTC),  # Very old for a release flag
     created_by="former@example.com",
     description="Original payment flow",
     owner_team="payments-team",
@@ -1324,8 +1326,8 @@ graph TD
 
 ```python
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple
+from datetime import UTC, datetime, timedelta
+from typing import Any, Dict, List, Optional, Tuple
 from collections import defaultdict
 import statistics
 
@@ -1336,7 +1338,7 @@ class EvaluationEvent:
     timestamp: datetime
     user_id: str
     result: bool  # True = flag enabled for this evaluation
-    context: Dict[str, any] = field(default_factory=dict)
+    context: Dict[str, Any] = field(default_factory=dict)
     latency_ms: float = 0.0
 
 @dataclass
@@ -1462,7 +1464,7 @@ class FlagUsageAnalyzer:
         Detect anomalies by comparing current usage to baseline.
         """
         anomalies = []
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
 
         baseline = self.analyze_flag_usage(flag_id, baseline_start, baseline_end)
         current = self.analyze_flag_usage(flag_id, current_start, current_end)
@@ -1533,11 +1535,11 @@ class FlagUsageAnalyzer:
         self,
         flag_ids: List[str],
         period_days: int = 7
-    ) -> Dict[str, any]:
+    ) -> Dict[str, Any]:
         """
         Generate comprehensive usage report for multiple flags.
         """
-        end = datetime.utcnow()
+        end = datetime.now(UTC)
         start = end - timedelta(days=period_days)
 
         flag_reports = {}
@@ -1565,7 +1567,7 @@ class FlagUsageAnalyzer:
                 high_usage_flags.append(flag_id)
 
         return {
-            'report_generated': datetime.utcnow().isoformat(),
+            'report_generated': datetime.now(UTC).isoformat(),
             'period': {
                 'start': start.isoformat(),
                 'end': end.isoformat(),
@@ -1588,7 +1590,7 @@ analyzer = FlagUsageAnalyzer()
 # Simulate evaluation events
 import random
 
-base_time = datetime.utcnow() - timedelta(days=7)
+base_time = datetime.now(UTC) - timedelta(days=7)
 for i in range(10000):
     analyzer.record_evaluation(EvaluationEvent(
         flag_id="flag-001",
@@ -1602,8 +1604,8 @@ for i in range(10000):
 # Analyze usage
 metrics = analyzer.analyze_flag_usage(
     "flag-001",
-    datetime.utcnow() - timedelta(days=7),
-    datetime.utcnow()
+    datetime.now(UTC) - timedelta(days=7),
+    datetime.now(UTC)
 )
 
 print(f"Flag Usage Analysis for flag-001:")
@@ -1652,8 +1654,8 @@ graph TD
 
 ```python
 from dataclasses import dataclass
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional
+from datetime import UTC, datetime, timedelta
+from typing import Any, Dict, List, Optional
 from enum import Enum
 
 class DebtCategory(Enum):
@@ -1783,7 +1785,7 @@ class TechnicalDebtAnalyzer:
             ))
 
         # 5. Staleness debt
-        age_days = (datetime.utcnow() - flag.created_at).days
+        age_days = (datetime.now(UTC) - flag.created_at).days
         thresholds = FlagHealthAssessor.AGE_THRESHOLDS[flag.flag_type]
 
         if age_days > thresholds['warning']:
@@ -1844,7 +1846,7 @@ class TechnicalDebtAnalyzer:
     def generate_debt_report(
         self,
         flags: List[Flag]
-    ) -> Dict[str, any]:
+    ) -> Dict[str, Any]:
         """
         Generate comprehensive technical debt report for all flags.
         """
@@ -1875,7 +1877,7 @@ class TechnicalDebtAnalyzer:
         )[:10]
 
         return {
-            'generated_at': datetime.utcnow().isoformat(),
+            'generated_at': datetime.now(UTC).isoformat(),
             'summary': {
                 'total_flags': len(flags),
                 'total_debt_hours': round(total_debt_hours, 1),
@@ -1919,7 +1921,7 @@ flag = Flag(
     id="flag-001",
     name="new_checkout_flow",
     flag_type=FlagType.RELEASE,
-    created_at=datetime(2026, 1, 15),
+    created_at=datetime(2026, 1, 15, tzinfo=UTC),
     created_by="alice@example.com",
     description="New checkout experience",
     owner_team="checkout-team",
@@ -1983,8 +1985,8 @@ flowchart TD
 
 ```python
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional
+from datetime import UTC, datetime, timedelta
+from typing import Any, Dict, List, Optional
 from enum import Enum
 import uuid
 
@@ -2060,7 +2062,7 @@ class ActionItemTracker:
     ) -> ActionItem:
         """Create a new action item."""
         item_id = str(uuid.uuid4())[:8]
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
 
         item = ActionItem(
             id=item_id,
@@ -2093,10 +2095,10 @@ class ActionItemTracker:
         item.status = new_status
 
         if new_status == ActionStatus.COMPLETED:
-            item.completed_at = datetime.utcnow()
+            item.completed_at = datetime.now(UTC)
 
         if note:
-            item.notes.append(f"[{datetime.utcnow().isoformat()}] {note}")
+            item.notes.append(f"[{datetime.now(UTC).isoformat()}] {note}")
 
         return item
 
@@ -2112,7 +2114,7 @@ class ActionItemTracker:
 
         item.status = ActionStatus.BLOCKED
         item.blocked_reason = reason
-        item.notes.append(f"[{datetime.utcnow().isoformat()}] Blocked: {reason}")
+        item.notes.append(f"[{datetime.now(UTC).isoformat()}] Blocked: {reason}")
 
         return item
 
@@ -2132,7 +2134,7 @@ class ActionItemTracker:
         as_of: datetime = None
     ) -> List[ActionItem]:
         """Get all overdue action items."""
-        check_date = as_of or datetime.utcnow()
+        check_date = as_of or datetime.now(UTC)
 
         overdue = []
         for item in self.action_items.values():
@@ -2156,7 +2158,7 @@ class ActionItemTracker:
 
         session = ReviewSession(
             id=session_id,
-            conducted_at=datetime.utcnow(),
+            conducted_at=datetime.now(UTC),
             conducted_by=conducted_by,
             flags_reviewed=flags_reviewed,
             action_items=action_item_ids,
@@ -2166,9 +2168,9 @@ class ActionItemTracker:
         self.review_sessions[session_id] = session
         return session
 
-    def generate_action_report(self) -> Dict[str, any]:
+    def generate_action_report(self) -> Dict[str, Any]:
         """Generate a report on action item status."""
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
 
         # Check for overdue items first
         self.get_overdue_items(now)
@@ -2259,10 +2261,10 @@ class ActionItemTracker:
     def generate_team_report(
         self,
         team_members: List[str]
-    ) -> Dict[str, any]:
+    ) -> Dict[str, Any]:
         """Generate action item report by team member."""
         report = {
-            'generated_at': datetime.utcnow().isoformat(),
+            'generated_at': datetime.now(UTC).isoformat(),
             'team_members': {}
         }
 
@@ -2391,8 +2393,8 @@ flowchart TD
 
 ```python
 from dataclasses import dataclass
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple
+from datetime import UTC, datetime, timedelta
+from typing import Any, Dict, List, Optional, Tuple
 
 @dataclass
 class ReviewPackage:
@@ -2438,7 +2440,7 @@ class FlagReviewOrchestrator:
 
         If no flags specified, reviews all flags due for review.
         """
-        now = as_of or datetime.utcnow()
+        now = as_of or datetime.now(UTC)
 
         # Get flags to review
         if flags is None:
@@ -2648,7 +2650,7 @@ class FlagReviewOrchestrator:
     def generate_review_summary(
         self,
         packages: List[ReviewPackage]
-    ) -> Dict[str, any]:
+    ) -> Dict[str, Any]:
         """Generate summary report for a batch of reviews."""
         if not packages:
             return {'status': 'no_flags_to_review'}
@@ -2671,7 +2673,7 @@ class FlagReviewOrchestrator:
         ]
 
         return {
-            'generated_at': datetime.utcnow().isoformat(),
+            'generated_at': datetime.now(UTC).isoformat(),
             'flags_to_review': len(packages),
             'health_distribution': health_counts,
             'stale_flags': stale_count,
@@ -2730,7 +2732,7 @@ def run_weekly_review():
             id="flag-001",
             name="new_checkout_flow",
             flag_type=FlagType.RELEASE,
-            created_at=datetime(2026, 1, 15),
+            created_at=datetime(2026, 1, 15, tzinfo=UTC),
             created_by="alice@example.com",
             description="New checkout experience",
             owner_team="checkout-team",
@@ -2741,7 +2743,7 @@ def run_weekly_review():
             id="flag-002",
             name="pricing_experiment",
             flag_type=FlagType.EXPERIMENT,
-            created_at=datetime(2025, 11, 1),
+            created_at=datetime(2025, 11, 1, tzinfo=UTC),
             created_by="bob@example.com",
             description="Q4 pricing experiment",
             owner_team="growth-team",
