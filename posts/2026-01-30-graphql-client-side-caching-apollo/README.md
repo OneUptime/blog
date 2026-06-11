@@ -43,7 +43,7 @@ flowchart LR
     end
 ```
 
-With caching, your app feels instant. Users see data immediately while fresh data loads in the background.
+With caching, your app feels instant. Users can see cached data immediately, and policies like `cache-and-network` can refresh that data in the background.
 
 ## Setting Up Apollo Client with Caching
 
@@ -108,7 +108,7 @@ export const client = new ApolloClient({
   // Default options for all queries
   defaultOptions: {
     watchQuery: {
-      // cache-first serves cached data immediately, then fetches updates
+      // cache-first serves complete cached data immediately; otherwise it fetches from the network
       fetchPolicy: 'cache-first',
       // Return partial data from cache while loading
       returnPartialData: true,
@@ -184,7 +184,8 @@ Fetch policies control how Apollo balances between cache and network. Choosing t
 // fetch-policies.js
 // Different fetch policies for different use cases
 
-import { useQuery } from '@apollo/client';
+import { gql, NetworkStatus } from '@apollo/client';
+import { useQuery } from '@apollo/client/react';
 
 // 1. cache-first (default): Use cache if available, otherwise fetch
 // Best for: Static data that rarely changes
@@ -207,7 +208,7 @@ function Dashboard() {
     notifyOnNetworkStatusChange: true,
   });
 
-  const isRefetching = networkStatus === 4;
+  const isRefetching = networkStatus === NetworkStatus.refetch;
 
   return (
     <div>
@@ -248,7 +249,7 @@ function CachedUser({ userId }) {
     fetchPolicy: 'cache-only',
   });
 
-  // Returns null if not in cache
+  // Returns no data if the requested fields are not in cache
   return data ? <UserCard user={data.user} /> : null;
 }
 ```
@@ -261,7 +262,8 @@ When you create, update, or delete data, you need to keep the cache in sync. Apo
 // cache-updates.js
 // Three strategies for updating cache after mutations
 
-import { useMutation, gql } from '@apollo/client';
+import { gql } from '@apollo/client';
+import { useMutation } from '@apollo/client/react';
 
 // Strategy 1: Automatic update (when mutation returns updated object)
 // Apollo automatically updates cached objects that match by id
@@ -364,7 +366,8 @@ Optimistic updates show the expected result immediately, before the server respo
 // optimistic-updates.js
 // Make your UI respond instantly to user actions
 
-import { useMutation } from '@apollo/client';
+import { gql } from '@apollo/client';
+import { useMutation } from '@apollo/client/react';
 
 function LikeButton({ postId, currentLikes, isLiked }) {
   const [toggleLike] = useMutation(
@@ -400,7 +403,7 @@ function LikeButton({ postId, currentLikes, isLiked }) {
 }
 
 // More complex optimistic update: Adding a comment
-function AddComment({ postId }) {
+function AddComment({ postId, currentUser }) {
   const [addComment] = useMutation(
     gql`
       mutation AddComment($postId: ID!, $text: String!) {
@@ -476,7 +479,8 @@ Pagination requires special handling to merge pages correctly in the cache.
 // pagination.js
 // Implement cursor-based pagination with proper cache merging
 
-import { useQuery, gql } from '@apollo/client';
+import { gql, InMemoryCache } from '@apollo/client';
+import { useQuery } from '@apollo/client/react';
 
 const GET_POSTS = gql`
   query GetPosts($cursor: String, $limit: Int!) {
@@ -572,7 +576,13 @@ Persist your cache to localStorage or IndexedDB for offline support and faster i
 // Persist Apollo cache across sessions for offline support
 
 import { ApolloClient, InMemoryCache } from '@apollo/client';
-import { persistCache, LocalStorageWrapper } from 'apollo3-cache-persist';
+import {
+  CachePersistor,
+  LocalForageWrapper,
+  LocalStorageWrapper,
+  persistCache,
+} from 'apollo3-cache-persist';
+import localforage from 'localforage';
 
 async function createClient() {
   const cache = new InMemoryCache({
@@ -585,8 +595,8 @@ async function createClient() {
   await persistCache({
     cache,
     storage: new LocalStorageWrapper(window.localStorage),
-    // Optional: Only persist certain types
-    // trigger: 'write', // Persist on every write (default: 'background')
+    // Optional persistence settings
+    // trigger: 'write', // Persist on every write (the default, with a short debounce)
     // maxSize: 1048576, // 1MB max storage
     // debug: true, // Enable debug logging
   });
@@ -604,9 +614,6 @@ async function createClient() {
 }
 
 // For larger applications, use IndexedDB instead of localStorage
-import { CachePersistor, LocalForageWrapper } from 'apollo3-cache-persist';
-import localforage from 'localforage';
-
 async function createClientWithIndexedDB() {
   const cache = new InMemoryCache();
 
@@ -641,7 +648,9 @@ Sometimes you need to read or modify the cache outside of queries and mutations.
 // direct-cache-access.js
 // Read and write cache data directly for advanced use cases
 
-import { useApolloClient, gql } from '@apollo/client';
+import { gql } from '@apollo/client';
+import { useApolloClient } from '@apollo/client/react';
+import { useEffect } from 'react';
 
 function useUpdateUserStatus() {
   const client = useApolloClient();
@@ -755,7 +764,9 @@ When things go wrong, Apollo DevTools and cache inspection help you understand w
 // debug-cache.js
 // Tools and techniques for debugging Apollo cache issues
 
-import { useApolloClient } from '@apollo/client';
+import { gql } from '@apollo/client';
+import { useApolloClient } from '@apollo/client/react';
+import { useEffect, useState } from 'react';
 
 function CacheDebugger() {
   const client = useApolloClient();
@@ -844,7 +855,8 @@ import {
   from,
   split,
 } from '@apollo/client';
-import { onError } from '@apollo/client/link/error';
+import { CombinedGraphQLErrors } from '@apollo/client/errors';
+import { ErrorLink } from '@apollo/client/link/error';
 import { RetryLink } from '@apollo/client/link/retry';
 import { GraphQLWsLink } from '@apollo/client/link/subscriptions';
 import { getMainDefinition } from '@apollo/client/utilities';
@@ -852,9 +864,9 @@ import { createClient as createWsClient } from 'graphql-ws';
 import { persistCache, LocalStorageWrapper } from 'apollo3-cache-persist';
 
 // Error handling link logs errors and handles auth failures
-const errorLink = onError(({ graphQLErrors, networkError, operation }) => {
-  if (graphQLErrors) {
-    graphQLErrors.forEach(({ message, locations, path }) => {
+const errorLink = new ErrorLink(({ error }) => {
+  if (CombinedGraphQLErrors.is(error)) {
+    error.errors.forEach(({ message, locations, path }) => {
       console.error(`GraphQL error: ${message}`, { locations, path });
 
       // Handle authentication errors
@@ -865,8 +877,8 @@ const errorLink = onError(({ graphQLErrors, networkError, operation }) => {
     });
   }
 
-  if (networkError) {
-    console.error(`Network error: ${networkError.message}`);
+  } else if (error) {
+    console.error(`Network error: ${error.message}`);
   }
 });
 
@@ -958,8 +970,7 @@ const cache = new InMemoryCache({
     },
     Notification: {
       keyFields: ['id'],
-      // Notifications with same ID always merge, keeping newest data
-      merge: true,
+      // Normalized notifications with the same ID share one cache entry
     },
   },
 });
