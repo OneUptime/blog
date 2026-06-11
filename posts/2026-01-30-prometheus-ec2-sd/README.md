@@ -976,7 +976,7 @@ groups:
           summary: "Target {{ $labels.instance }} is down"
 
       - alert: PrometheusEC2SDError
-        expr: prometheus_sd_ec2_refresh_failures_total > 0
+        expr: rate(prometheus_sd_refresh_failures_total{mechanism="ec2"}[5m]) > 0
         for: 5m
         labels:
           severity: warning
