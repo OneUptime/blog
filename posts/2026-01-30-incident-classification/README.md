@@ -715,7 +715,7 @@ Integrate classification with your alerting pipeline:
 from flask import Flask, request, jsonify
 from incident_classifier import IncidentClassifier, Alert
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 
 # Configure logging for audit trail
@@ -749,7 +749,12 @@ def classify_incident():
     """
     try:
         # Parse incoming alert payload
-        data = request.get_json()
+        data = request.get_json(silent=True)
+
+        if data is None:
+            return jsonify({
+                'error': 'Request body must be valid JSON'
+            }), 400
 
         # Validate required fields
         required_fields = [
@@ -788,7 +793,7 @@ def classify_incident():
                 'response_sla_minutes': classification.response_sla_minutes
             },
             'original_alert': data,
-            'classified_at': datetime.utcnow().isoformat() + 'Z'
+            'classified_at': datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
         }
 
         # Log for audit purposes
