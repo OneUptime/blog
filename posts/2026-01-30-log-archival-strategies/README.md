@@ -80,12 +80,9 @@ receivers:
     protocol: rfc5424
 
 processors:
-  # Add timestamps and metadata for archival tracking
+  # Add metadata for archival tracking
   attributes:
     actions:
-      - key: archive.ingested_at
-        value: ${timestamp}
-        action: insert
       - key: archive.retention_tier
         value: hot
         action: insert
@@ -106,8 +103,11 @@ exporters:
   awss3:
     s3uploader:
       region: us-east-1
-      bucket: logs-archive-raw
-      partition: minute
+      s3_bucket: logs-archive-raw
+      s3_prefix: raw
+      s3_partition_format: "%Y/%m/%d/%H/%M"
+      s3_partition_timezone: UTC
+      compression: gzip
 
 service:
   pipelines:
@@ -130,8 +130,10 @@ A background service handles moving logs between storage tiers. This Node.js imp
 // Service that moves logs through storage tiers based on age
 
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
-import { createGzip } from 'zlib';
-import { pipeline } from 'stream/promises';
+import { gzip } from 'zlib';
+import { promisify } from 'util';
+
+const gzipAsync = promisify(gzip);
 
 interface ArchiveConfig {
   hotRetentionDays: number;      // Days to keep in hot storage
@@ -208,7 +210,6 @@ export class LogArchiveService {
 
   // Migrate logs older than coldRetentionDays to Glacier
   private async migrateToArchive(): Promise<void> {
-    const cutoffDate = this.getCutoffDate(this.config.coldRetentionDays);
     // Glacier transition handled by S3 lifecycle rules
     console.log('Deep archive migration handled by S3 lifecycle policies');
   }
@@ -261,16 +262,7 @@ export class LogArchiveService {
     level: number
   ): Promise<Buffer> {
     const jsonData = JSON.stringify(logs);
-    const gzip = createGzip({ level });
-
-    const chunks: Buffer[] = [];
-    gzip.on('data', (chunk) => chunks.push(chunk));
-    gzip.write(jsonData);
-    gzip.end();
-
-    return new Promise((resolve) => {
-      gzip.on('end', () => resolve(Buffer.concat(chunks)));
-    });
+    return gzipAsync(jsonData, { level });
   }
 
   private getCutoffDate(days: number): Date {
@@ -350,6 +342,10 @@ resource "aws_s3_bucket_lifecycle_configuration" "logs_lifecycle" {
     expiration {
       days = 2555
     }
+
+    noncurrent_version_expiration {
+      noncurrent_days = 2555
+    }
   }
 
   # Rule for security logs: longer retention
@@ -374,6 +370,10 @@ resource "aws_s3_bucket_lifecycle_configuration" "logs_lifecycle" {
     # Security logs kept for 10 years
     expiration {
       days = 3650
+    }
+
+    noncurrent_version_expiration {
+      noncurrent_days = 3650
     }
   }
 }
@@ -413,8 +413,13 @@ import {
   S3Client,
   RestoreObjectCommand,
   GetObjectCommand,
-  HeadObjectCommand
+  HeadObjectCommand,
+  ListObjectsV2Command
 } from '@aws-sdk/client-s3';
+import { gunzip } from 'zlib';
+import { promisify } from 'util';
+
+const gunzipAsync = promisify(gunzip);
 
 interface RetrievalRequest {
   service: string;
@@ -429,6 +434,15 @@ interface RetrievalResult {
   estimatedWaitMinutes?: number;
 }
 
+interface LogRecord {
+  timestamp: string;
+  severity: string;
+  body: string;
+  attributes: Record<string, unknown>;
+  traceId?: string;
+  spanId?: string;
+}
+
 export class ArchiveRetrieval {
   private s3Client: S3Client;
 
@@ -438,11 +452,20 @@ export class ArchiveRetrieval {
 
   // Main retrieval method with tier-aware logic
   async retrieveLogs(request: RetrievalRequest): Promise<RetrievalResult> {
-    const keys = this.generateKeysForTimeRange(request);
+    const prefixes = this.generatePrefixesForTimeRange(request);
 
     if (request.tier === 'warm') {
       // Warm tier: direct retrieval
+      const keys = await this.listKeysForPrefixes('logs-archive-warm', prefixes);
+      if (keys.length === 0) {
+        return { status: 'not_found' };
+      }
       return this.retrieveFromStandard(keys, 'logs-archive-warm');
+    }
+
+    const keys = await this.listKeysForPrefixes('logs-archive-cold', prefixes);
+    if (keys.length === 0) {
+      return { status: 'not_found' };
     }
 
     if (request.tier === 'cold') {
@@ -450,7 +473,7 @@ export class ArchiveRetrieval {
       return this.retrieveFromGlacier(keys, 'logs-archive-cold', 'Expedited');
     }
 
-    // Archive tier: standard restore (cheaper but slower)
+    // Archive tier: bulk restore (cheaper but slower)
     return this.retrieveFromGlacier(keys, 'logs-archive-cold', 'Bulk');
   }
 
@@ -468,7 +491,7 @@ export class ArchiveRetrieval {
           Key: key,
         }));
 
-        const body = await response.Body?.transformToString();
+        const body = await response.Body?.transformToByteArray();
         if (body) {
           const decompressed = await this.decompressLogs(body);
           logs.push(...decompressed);
@@ -501,7 +524,7 @@ export class ArchiveRetrieval {
           Bucket: bucket,
           Key: key,
         }));
-        const body = await response.Body?.transformToString();
+        const body = await response.Body?.transformToByteArray();
         if (body) {
           logs.push(...await this.decompressLogs(body));
         }
@@ -561,13 +584,13 @@ export class ArchiveRetrieval {
     }
   }
 
-  // Generate S3 keys for a time range
-  private generateKeysForTimeRange(request: RetrievalRequest): string[] {
-    const keys: string[] = [];
+  // Generate S3 prefixes for a time range
+  private generatePrefixesForTimeRange(request: RetrievalRequest): string[] {
+    const prefixes: string[] = [];
     const current = new Date(request.startTime);
 
     while (current <= request.endTime) {
-      keys.push([
+      prefixes.push([
         request.service,
         current.getUTCFullYear(),
         String(current.getUTCMonth() + 1).padStart(2, '0'),
@@ -575,15 +598,42 @@ export class ArchiveRetrieval {
         String(current.getUTCHours()).padStart(2, '0'),
       ].join('/'));
 
-      current.setHours(current.getHours() + 1);
+      current.setUTCHours(current.getUTCHours() + 1);
+    }
+
+    return prefixes;
+  }
+
+  private async listKeysForPrefixes(bucket: string, prefixes: string[]): Promise<string[]> {
+    const keys: string[] = [];
+
+    for (const prefix of prefixes) {
+      let continuationToken: string | undefined;
+
+      do {
+        const response = await this.s3Client.send(new ListObjectsV2Command({
+          Bucket: bucket,
+          Prefix: prefix,
+          ContinuationToken: continuationToken,
+        }));
+
+        for (const object of response.Contents || []) {
+          if (object.Key) {
+            keys.push(object.Key);
+          }
+        }
+
+        continuationToken = response.NextContinuationToken;
+      } while (continuationToken);
     }
 
     return keys;
   }
 
-  private async decompressLogs(data: string): Promise<LogRecord[]> {
+  private async decompressLogs(data: Uint8Array): Promise<LogRecord[]> {
     // Decompress gzip data and parse JSON
-    return JSON.parse(data);
+    const decompressed = await gunzipAsync(Buffer.from(data));
+    return JSON.parse(decompressed.toString('utf8'));
   }
 }
 ```
