@@ -206,7 +206,7 @@ async function processOutboxBatch(channel) {
             channel.publish(
                 'events',
                 routingKey,
-                Buffer.from(event.payload),
+                Buffer.from(JSON.stringify(event.payload)),
                 {
                     persistent: true,
                     messageId: event.id,
@@ -265,6 +265,7 @@ With tools like Debezium, you configure a connector to watch your outbox table:
         "transforms.outbox.table.field.event.key": "aggregate_id",
         "transforms.outbox.table.field.event.type": "event_type",
         "transforms.outbox.table.field.event.payload": "payload",
+        "transforms.outbox.route.by.field": "aggregate_type",
         "transforms.outbox.route.topic.replacement": "${routedByValue}"
     }
 }
