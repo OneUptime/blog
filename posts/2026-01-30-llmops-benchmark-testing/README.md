@@ -68,8 +68,7 @@ llm-benchmarks/
 │   ├── runners/            # Benchmark execution
 │   └── reports/            # Generated reports
 ├── config/
-│   ├── models.yaml         # Model configurations
-│   └── benchmarks.yaml     # Benchmark definitions
+│   └── benchmark.yaml      # Model and benchmark configuration
 ├── results/                # Historical results
 └── scripts/                # Utility scripts
 ```
@@ -379,7 +378,6 @@ Unified model client supporting multiple LLM providers.
 Abstracts away provider-specific API differences.
 """
 
-import asyncio
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Optional
 import aiohttp
@@ -400,13 +398,13 @@ class BaseModelClient(ABC):
 
 class OpenAIClient(BaseModelClient):
     """
-    Client for OpenAI API (GPT-4, GPT-3.5, etc.).
+    Client for OpenAI API models.
     """
 
     def __init__(
         self,
         api_key: str,
-        model: str = "gpt-4",
+        model: str = "gpt-5.4",
         base_url: str = "https://api.openai.com/v1",
     ):
         self.api_key = api_key
@@ -449,7 +447,7 @@ class OpenAIClient(BaseModelClient):
                     "model": self.model,
                     "messages": messages,
                     "temperature": temperature,
-                    "max_tokens": max_tokens,
+                    "max_completion_tokens": max_tokens,
                 },
             ) as response:
                 data = await response.json()
@@ -471,7 +469,7 @@ class AnthropicClient(BaseModelClient):
     def __init__(
         self,
         api_key: str,
-        model: str = "claude-3-opus-20240229",
+        model: str = "claude-opus-4-8",
     ):
         self.api_key = api_key
         self.model = model
@@ -863,7 +861,7 @@ class LLMJudge:
     def __init__(
         self,
         api_key: str,
-        judge_model: str = "gpt-4",
+        judge_model: str = "gpt-5.4",
     ):
         self.api_key = api_key
         self.judge_model = judge_model
@@ -978,7 +976,7 @@ Be strict but fair. A score of 5 is average, 7+ is good, 9+ is excellent."""
 
 
 # Factory function for use with BenchmarkRunner
-def create_llm_judge(api_key: str, judge_model: str = "gpt-4"):
+def create_llm_judge(api_key: str, judge_model: str = "gpt-5.4"):
     """Create an LLM judge evaluator function."""
     judge = LLMJudge(api_key, judge_model)
 
@@ -1866,6 +1864,7 @@ Main script to run benchmark evaluation pipeline.
 
 import asyncio
 import argparse
+import os
 from pathlib import Path
 import yaml
 
@@ -1884,6 +1883,18 @@ from benchmarks.datasets.custom_benchmarks import create_customer_support_benchm
 from benchmarks.reports.dashboard import BenchmarkDashboard
 
 
+def resolve_env_vars(value):
+    """Recursively replace ${VAR_NAME} strings with environment values."""
+    if isinstance(value, dict):
+        return {k: resolve_env_vars(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [resolve_env_vars(v) for v in value]
+    if isinstance(value, str) and value.startswith("${") and value.endswith("}"):
+        env_name = value[2:-1]
+        return os.environ[env_name]
+    return value
+
+
 async def main():
     parser = argparse.ArgumentParser(description="Run LLM benchmarks")
     parser.add_argument("--config", type=Path, default=Path("config/benchmark.yaml"))
@@ -1894,7 +1905,7 @@ async def main():
 
     # Load configuration
     with open(args.config) as f:
-        config = yaml.safe_load(f)
+        config = resolve_env_vars(yaml.safe_load(f))
 
     # Initialize clients for each model
     clients = {}
@@ -2021,21 +2032,21 @@ api_keys:
   anthropic: ${ANTHROPIC_API_KEY}
 
 models:
-  - id: gpt-4
+  - id: gpt-5.5
     provider: openai
-    model: gpt-4
+    model: gpt-5.5
 
-  - id: gpt-3.5-turbo
+  - id: gpt-5.4-mini
     provider: openai
-    model: gpt-3.5-turbo
+    model: gpt-5.4-mini
 
-  - id: claude-3-opus
+  - id: claude-opus-4-8
     provider: anthropic
-    model: claude-3-opus-20240229
+    model: claude-opus-4-8
 
-  - id: claude-3-sonnet
+  - id: claude-sonnet-4-6
     provider: anthropic
-    model: claude-3-sonnet-20240229
+    model: claude-sonnet-4-6
 
 model_defaults:
   temperature: 0.0
@@ -2071,6 +2082,10 @@ name: LLM Benchmarks
 
 on:
   push:
+    paths:
+      - 'prompts/**'
+      - 'models/**'
+  pull_request:
     paths:
       - 'prompts/**'
       - 'models/**'
