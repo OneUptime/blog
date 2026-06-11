@@ -821,6 +821,7 @@ from opentelemetry.sdk.trace.sampling import (
     TraceIdRatioBased,
 )
 from opentelemetry.trace import SpanKind, Link
+from opentelemetry.trace.span import TraceState
 from opentelemetry.context import Context
 from opentelemetry.util.types import Attributes
 from typing import Optional, Sequence
@@ -849,6 +850,7 @@ class BusinessAwareSampler(Sampler):
         kind: SpanKind = None,
         attributes: Attributes = None,
         links: Sequence[Link] = None,
+        trace_state: Optional[TraceState] = None,
     ) -> SamplingResult:
         attributes = attributes or {}
 
@@ -884,6 +886,7 @@ class BusinessAwareSampler(Sampler):
             kind,
             attributes,
             links,
+            trace_state,
         )
 
     def get_description(self) -> str:
