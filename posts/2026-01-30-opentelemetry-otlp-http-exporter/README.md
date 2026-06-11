@@ -142,7 +142,10 @@ export class OTLPHttpExporter {
   }
 
   protected async sendRequest(path: string, payload: object): Promise<ExportResult> {
-    const url = new URL(path, this.endpoint);
+    // Append the signal path to the configured base endpoint so that base
+    // URLs with a path prefix (e.g. https://example.com/otlp) are preserved.
+    const baseUrl = this.endpoint.toString().replace(/\/+$/, '');
+    const url = new URL(`${baseUrl}${path}`);
     const jsonPayload = JSON.stringify(payload);
 
     // Apply compression if enabled
@@ -176,8 +179,13 @@ export class OTLPHttpExporter {
 
             if (statusCode >= 200 && statusCode < 300) {
               resolve({ success: true, statusCode });
-            } else if (statusCode === 429 || statusCode >= 500) {
-              // Retryable errors
+            } else if (
+              statusCode === 429 ||
+              statusCode === 502 ||
+              statusCode === 503 ||
+              statusCode === 504
+            ) {
+              // Retryable errors per the OTLP/HTTP spec
               const retryAfter = parseInt(res.headers['retry-after'] as string) || undefined;
               resolve({
                 success: false,
@@ -739,8 +747,14 @@ export class RetryableExporter {
     // Check HTTP status code if available
     const statusCode = error.statusCode || error.status;
     if (statusCode) {
-      // 429 Too Many Requests and 5xx errors are retryable
-      return statusCode === 429 || statusCode >= 500;
+      // Per the OTLP/HTTP spec, only 429 and 502/503/504 are retryable.
+      // Other 4xx and 5xx responses must not be retried.
+      return (
+        statusCode === 429 ||
+        statusCode === 502 ||
+        statusCode === 503 ||
+        statusCode === 504
+      );
     }
 
     return true; // Default to retryable for unknown errors
