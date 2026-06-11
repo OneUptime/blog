@@ -10,7 +10,7 @@ Description: A comprehensive guide to configuring Mimir's distributed hash ring 
 
 ## Introduction
 
-Grafana Mimir uses a distributed hash ring to coordinate work among multiple instances of the same component. The ring allows Mimir components like ingesters, distributors, and compactors to discover each other and distribute data consistently across the cluster without requiring a central coordinator.
+Grafana Mimir uses a distributed hash ring to coordinate work among multiple instances of the same component. The ring allows Mimir components like ingesters, distributors, and compactors to discover each other and distribute data consistently across the cluster without requiring a central coordinator inside Mimir.
 
 In this post, we will explore how to configure the Mimir ring for production deployments, covering KV store backends, replication factors, zone awareness, and heartbeat settings.
 
@@ -20,7 +20,7 @@ The hash ring is a data structure that maps tokens to instances. Each instance i
 
 - Even distribution of data across instances
 - Minimal data movement when instances join or leave
-- No single point of failure for coordination
+- No single point of failure for coordination when the selected KV backend is deployed with high availability
 
 ```mermaid
 flowchart TB
@@ -35,7 +35,7 @@ flowchart TB
     end
 
     subgraph KVStore["KV Store Backend"]
-        M["Memberlist / Consul / Etcd"]
+        M["Memberlist / Consul / Etcd / Multi"]
     end
 
     subgraph Components["Mimir Components"]
@@ -55,7 +55,7 @@ flowchart TB
 
 ## KV Store Backends
 
-Mimir supports three KV store backends for ring coordination. Each has different trade-offs for complexity, performance, and operational overhead.
+Mimir supports several KV store backends for ring coordination. Each has different trade-offs for complexity, performance, and operational overhead. Memberlist, Consul, and Etcd are the primary backends for normal operation; the `multi` backend is intended for migrations between backends.
 
 ### Memberlist (Recommended for Most Deployments)
 
@@ -67,8 +67,8 @@ Memberlist uses a gossip protocol for peer-to-peer communication. It requires no
 # Memberlist configuration for Mimir ring coordination
 # This is the recommended approach for most deployments
 
-# Common ring configuration shared by all components
-common:
+# Ingester ring configuration
+ingester:
   ring:
     # Use memberlist as the KV store backend
     kvstore:
@@ -115,17 +115,20 @@ memberlist:
 
 ### Consul Backend
 
-Consul provides a centralized, strongly consistent KV store with built-in health checking.
+Consul provides a centralized KV store that can use consistent reads when configured.
 
 ```yaml
 # consul-ring-config.yaml
 # Consul configuration for Mimir ring coordination
 # Use this when you already have Consul infrastructure
 
-common:
+ingester:
   ring:
     kvstore:
       store: consul
+      # Key prefix for all ring keys
+      # Useful for multi-tenant Consul clusters
+      prefix: "mimir/rings/"
 
       # Consul-specific configuration
       consul:
@@ -147,9 +150,6 @@ common:
         watch_rate_limit: 1.0
         watch_burst_size: 1
 
-        # Key prefix for all ring keys
-        # Useful for multi-tenant Consul clusters
-        prefix: "mimir/rings/"
 ```
 
 ### Etcd Backend
@@ -161,10 +161,12 @@ Etcd offers strong consistency and is commonly used in Kubernetes environments.
 # Etcd configuration for Mimir ring coordination
 # Ideal when running alongside Kubernetes which uses etcd
 
-common:
+ingester:
   ring:
     kvstore:
       store: etcd
+      # Key prefix for ring data
+      prefix: "/mimir/rings/"
 
       # Etcd-specific configuration
       etcd:
@@ -191,8 +193,6 @@ common:
         username: "mimir"
         password: "${ETCD_PASSWORD}"
 
-        # Key prefix for ring data
-        prefix: "/mimir/rings/"
 ```
 
 ## Replication Factor Configuration
@@ -214,12 +214,11 @@ ingester:
     # Recommended: 128 tokens per ingester
     num_tokens: 128
 
-    # Minimum time an ingester must be in ACTIVE state
-    # before it can receive write requests
+    # Minimum duration to wait after internal readiness checks pass
+    # before the readiness endpoint succeeds
     min_ready_duration: 15s
 
-    # Wait this long for a LEAVING ingester to finish
-    # flushing data before forcefully removing it
+    # Sleep before exiting to give metrics time to be scraped
     final_sleep: 30s
 
 distributor:
@@ -278,25 +277,21 @@ flowchart TB
 # zone-awareness-config.yaml
 # Zone-aware configuration for multi-AZ deployments
 
-# Common configuration that applies to all components
-common:
-  # Instance availability zone (set via environment variable or config)
-  # This should be unique per failure domain
-  instance_availability_zone: "${AVAILABILITY_ZONE}"
-
 ingester:
   ring:
     # Enable zone awareness for replica placement
     zone_awareness_enabled: true
 
     # Replication factor must equal number of zones
-    # for optimal distribution
+    # for one replica per zone in classic architecture.
+    # This setting is not used by the ingest storage architecture.
     replication_factor: 3
 
     # Instance-specific configuration
     instance_id: "${POD_NAME}"
     instance_addr: "${POD_IP}"
     instance_port: 9095
+    instance_availability_zone: "${AVAILABILITY_ZONE}"
 
     # Tokens configuration
     num_tokens: 128
@@ -314,7 +309,8 @@ ingester:
 store_gateway:
   sharding_ring:
     zone_awareness_enabled: true
-    replication_factor_for_each_tenant: 3
+    replication_factor: 3
+    instance_availability_zone: "${AVAILABILITY_ZONE}"
 
     # Unregistration on shutdown
     # Disable for faster restarts in stateful deployments
@@ -328,10 +324,11 @@ store_gateway:
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: mimir-ingester
+  name: mimir-ingester-zone-a
   namespace: mimir
 spec:
-  replicas: 9  # 3 replicas per zone x 3 zones
+  replicas: 3  # Deploy one zone-specific StatefulSet per zone
+  serviceName: mimir-ingester
   selector:
     matchLabels:
       app: mimir-ingester
@@ -339,28 +336,26 @@ spec:
     metadata:
       labels:
         app: mimir-ingester
+        availability-zone: zone-a
     spec:
-      # Spread pods across zones
-      topologySpreadConstraints:
-        - maxSkew: 1
-          topologyKey: topology.kubernetes.io/zone
-          whenUnsatisfiable: DoNotSchedule
-          labelSelector:
-            matchLabels:
-              app: mimir-ingester
+      # Pin this StatefulSet to one zone. Create equivalent StatefulSets
+      # with different labels and node selectors for the other zones.
+      nodeSelector:
+        topology.kubernetes.io/zone: zone-a
 
       containers:
         - name: ingester
-          image: grafana/mimir:2.14.0
+          image: grafana/mimir:3.1.0
           args:
             - "-target=ingester"
             - "-config.file=/etc/mimir/config.yaml"
           env:
-            # Pass zone information to Mimir
+            # Pass zone information to Mimir. Set this label differently
+            # for each zone-specific StatefulSet.
             - name: AVAILABILITY_ZONE
               valueFrom:
                 fieldRef:
-                  fieldPath: metadata.labels['topology.kubernetes.io/zone']
+                  fieldPath: metadata.labels['availability-zone']
             - name: POD_NAME
               valueFrom:
                 fieldRef:
@@ -389,26 +384,15 @@ ingester:
     # Should be at least 2-3x heartbeat_period
     heartbeat_timeout: 1m
 
-    # Instance lifecycle states and timeouts
-    # PENDING -> JOINING -> ACTIVE -> LEAVING -> (removed)
-
-    # Time to wait in JOINING state before becoming ACTIVE
-    join_after: 0s
-
-    # Minimum time to remain in PENDING state
+    # Minimum duration to wait after internal readiness checks pass
+    # before the readiness endpoint succeeds
     min_ready_duration: 15s
 
-    # Time to wait after receiving SIGTERM before leaving ring
+    # Sleep before exiting to give metrics time to be scraped
     final_sleep: 30s
 
     # Observe the ring for this duration before considering it stable
     observe_period: 0s
-
-# Global ring client configuration
-ring:
-  # How often to refresh the local ring state
-  # from the KV store
-  ring_check_period: 5s
 
 # Memberlist-specific tuning for gossip protocol
 memberlist:
@@ -430,9 +414,6 @@ memberlist:
 
   # Pull/push interval for full state sync
   pull_push_interval: 30s
-
-  # Number of nodes to contact for indirect health checks
-  indirect_checks: 3
 ```
 
 ## Complete Production Configuration Example
@@ -459,11 +440,6 @@ common:
       bucket_name: mimir-data
       region: us-east-1
 
-  # Ring configuration used by multiple components
-  ring:
-    kvstore:
-      store: memberlist
-
 # Memberlist configuration for ring coordination
 memberlist:
   node_name: "${POD_NAME}"
@@ -474,7 +450,7 @@ memberlist:
 
   # DNS-based discovery in Kubernetes
   join_members:
-    - "dns+mimir-gossip-ring.mimir.svc.cluster.local:7946"
+    - "dnssrv+mimir-gossip-ring.mimir.svc.cluster.local:7946"
 
   # Cluster isolation
   cluster_label: "production"
@@ -530,7 +506,7 @@ distributor:
 # Store-gateway configuration for queries
 store_gateway:
   sharding_ring:
-    replication_factor_for_each_tenant: 3
+    replication_factor: 3
     zone_awareness_enabled: true
     instance_availability_zone: "${AVAILABILITY_ZONE}"
     kvstore:
@@ -583,12 +559,8 @@ limits:
   # Per-tenant limits
   ingestion_rate: 100000
   ingestion_burst_size: 200000
-  max_series_per_user: 5000000
-  max_series_per_metric: 50000
-
-  # Replication factor for writes
-  # Must match ingester.ring.replication_factor
-  replication_factor: 3
+  max_global_series_per_user: 5000000
+  max_global_series_per_metric: 50000
 
 # Server configuration
 server:
