@@ -44,17 +44,26 @@ Every flag modification should trigger a detailed audit event. Here's what to ca
 ### Core Event Structure
 
 ```typescript
+type FlagAuditEventType =
+  | 'FLAG_CREATED'
+  | 'FLAG_UPDATED'
+  | 'FLAG_DELETED'
+  | 'FLAG_TOGGLED'
+  | 'TARGETING_UPDATED'
+  | 'ROLLOUT_CHANGED';
+
 interface FlagAuditEvent {
   // Event identification
   eventId: string;
-  eventType: 'FLAG_CREATED' | 'FLAG_UPDATED' | 'FLAG_DELETED' |
-             'FLAG_TOGGLED' | 'TARGETING_UPDATED' | 'ROLLOUT_CHANGED';
+  eventType: FlagAuditEventType;
   timestamp: string;  // ISO 8601 format
 
   // Actor information
   actor: {
-    userId: string;
-    email: string;
+    userId?: string;
+    email?: string;
+    serviceAccountId?: string;
+    apiKeyId?: string;
     ipAddress: string;
     userAgent: string;
     sessionId: string;
@@ -101,7 +110,7 @@ class FlagAuditLogger {
   }
 
   async logFlagChange(
-    eventType: string,
+    eventType: FlagAuditEventType,
     flag: Flag,
     previousState: FlagState | null,
     newState: FlagState,
@@ -114,8 +123,10 @@ class FlagAuditLogger {
       timestamp: new Date().toISOString(),
 
       actor: {
-        userId: actor.id,
+        userId: actor.userId,
         email: actor.email,
+        serviceAccountId: actor.serviceAccountId,
+        apiKeyId: actor.apiKeyId,
         ipAddress: this.hashPII(actor.ipAddress),  // Hash for privacy
         userAgent: actor.userAgent,
         sessionId: actor.sessionId,
@@ -194,8 +205,8 @@ function auditMiddleware(auditLogger: FlagAuditLogger) {
   };
 }
 
-function getEventType(method: string): string {
-  const mapping: Record<string, string> = {
+function getEventType(method: string): FlagAuditEventType {
+  const mapping: Record<string, FlagAuditEventType> = {
     'POST': 'FLAG_CREATED',
     'PUT': 'FLAG_UPDATED',
     'PATCH': 'FLAG_TOGGLED',
@@ -323,11 +334,11 @@ Precise timing with timezone handling:
 interface Timestamp {
   // Primary timestamp
   iso8601: string;  // "2026-01-30T14:30:00.000Z"
-  unix: number;     // 1769862600000
+  unix: number;     // 1769783400000
 
   // Timezone context
   timezone: string;  // "America/New_York"
-  localTime: string; // "2026-01-30T09:30:00-05:00"
+  localTime: string; // Server-local formatted time
 
   // Sequencing
   sequenceNumber: bigint;  // Monotonic counter for ordering
@@ -358,6 +369,8 @@ Design your schema for both queryability and long-term storage.
 ### Database Schema (PostgreSQL)
 
 ```sql
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 -- Main audit events table
 CREATE TABLE flag_audit_events (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -391,6 +404,9 @@ CREATE TABLE flag_audit_events (
     approved_by VARCHAR(255),
 
     -- Metadata
+    archived BOOLEAN NOT NULL DEFAULT false,
+    legal_hold BOOLEAN NOT NULL DEFAULT false,
+    legal_hold_id VARCHAR(255),
     metadata JSONB DEFAULT '{}',
 
     -- Indexing helpers
@@ -413,7 +429,7 @@ CREATE INDEX idx_audit_summary_search ON flag_audit_events
 
 -- Partitioning for performance (partition by month)
 CREATE TABLE flag_audit_events_partitioned (
-    LIKE flag_audit_events INCLUDING ALL
+    LIKE flag_audit_events INCLUDING DEFAULTS INCLUDING GENERATED
 ) PARTITION BY RANGE (timestamp);
 
 -- Create monthly partitions
@@ -435,7 +451,15 @@ Audit logs must be tamper-proof:
 CREATE OR REPLACE FUNCTION prevent_audit_modification()
 RETURNS TRIGGER AS $$
 BEGIN
-    RAISE EXCEPTION 'Audit log records cannot be modified or deleted';
+    IF current_setting('app.audit_maintenance', true) = 'on' THEN
+        IF TG_OP = 'DELETE' THEN
+            RETURN OLD;
+        END IF;
+
+        RETURN NEW;
+    END IF;
+
+    RAISE EXCEPTION 'Audit log records cannot be modified or deleted outside maintenance operations';
     RETURN NULL;
 END;
 $$ LANGUAGE plpgsql;
@@ -468,8 +492,8 @@ BEGIN
 
     -- Compute hash of this record
     record_data := NEW.event_type || NEW.timestamp || NEW.flag_key ||
-                   NEW.actor_user_id || COALESCE(NEW.previous_hash, '');
-    NEW.record_hash := encode(sha256(record_data::bytea), 'hex');
+                   COALESCE(NEW.actor_user_id, '') || COALESCE(NEW.previous_hash, '');
+    NEW.record_hash := encode(digest(record_data, 'sha256'), 'hex');
 
     RETURN NEW;
 END;
@@ -633,12 +657,17 @@ class RetentionManager {
         StorageClass: 'STANDARD',
       });
 
-      // Mark as archived in hot storage
-      await this.db.query(`
-        UPDATE flag_audit_events
-        SET archived = true
-        WHERE id = ANY($1)
-      `, [batch.map(r => r.id)]);
+      // Mark as archived in hot storage from a controlled maintenance session
+      await this.db.query("SET app.audit_maintenance = 'on'");
+      try {
+        await this.db.query(`
+          UPDATE flag_audit_events
+          SET archived = true
+          WHERE id = ANY($1)
+        `, [batch.map(r => r.id)]);
+      } finally {
+        await this.db.query("RESET app.audit_maintenance");
+      }
     }
   }
 
@@ -654,11 +683,16 @@ class RetentionManager {
       AND legal_hold = false
     `, [coldCutoff]);
 
-    // Permanently delete
-    await this.db.query(`
-      DELETE FROM flag_audit_events
-      WHERE id = ANY($1)
-    `, [recordsToDelete.map(r => r.id)]);
+    // Permanently delete from a controlled maintenance session
+    await this.db.query("SET app.audit_maintenance = 'on'");
+    try {
+      await this.db.query(`
+        DELETE FROM flag_audit_events
+        WHERE id = ANY($1)
+      `, [recordsToDelete.map(r => r.id)]);
+    } finally {
+      await this.db.query("RESET app.audit_maintenance");
+    }
   }
 }
 ```
@@ -682,20 +716,25 @@ interface LegalHold {
 class LegalHoldManager {
   async createHold(hold: LegalHold): Promise<void> {
     // Mark matching records as under legal hold
-    await this.db.query(`
-      UPDATE flag_audit_events
-      SET legal_hold = true,
-          legal_hold_id = $1
-      WHERE (flag_key = ANY($2) OR $2 IS NULL)
-        AND (timestamp BETWEEN $3 AND $4 OR $3 IS NULL)
-        AND (actor_user_id = ANY($5) OR $5 IS NULL)
-    `, [
-      hold.holdId,
-      hold.affectedRecords.flagKeys,
-      hold.affectedRecords.dateRange?.start,
-      hold.affectedRecords.dateRange?.end,
-      hold.affectedRecords.actors,
-    ]);
+    await this.db.query("SET app.audit_maintenance = 'on'");
+    try {
+      await this.db.query(`
+        UPDATE flag_audit_events
+        SET legal_hold = true,
+            legal_hold_id = $1
+        WHERE (flag_key = ANY($2) OR $2 IS NULL)
+          AND (timestamp BETWEEN $3 AND $4 OR $3 IS NULL)
+          AND (actor_user_id = ANY($5) OR $5 IS NULL)
+      `, [
+        hold.holdId,
+        hold.affectedRecords.flagKeys,
+        hold.affectedRecords.dateRange?.start,
+        hold.affectedRecords.dateRange?.end,
+        hold.affectedRecords.actors,
+      ]);
+    } finally {
+      await this.db.query("RESET app.audit_maintenance");
+    }
 
     // Log the hold creation itself
     await this.auditLogger.log({
@@ -778,7 +817,7 @@ interface HIPAAAuditRequirements {
     maintainHashChain: boolean;
   };
 
-  // Retention: Minimum 6 years
+  // Retention for HIPAA-required policies, procedures, and related documentation: Minimum 6 years
   retentionPeriodYears: number;
 }
 
