@@ -126,13 +126,14 @@ CREATE TABLE customers_bad (
     customer_id INT PRIMARY KEY,
     customer_name VARCHAR(100),
     customer_email VARCHAR(100),
-    city VARCHAR(50),
+    city_id INT,
+    city_name VARCHAR(50),
     state VARCHAR(50),
     country VARCHAR(50)
 );
 ```
 
-Here, state depends on city, and country depends on state. These are transitive dependencies. If a city moves to a different state (rare, but administrative boundaries do change), you would have to update every customer in that city.
+Here, city_name, state, and country depend on city_id, which is not the primary key. These are transitive dependencies. If a city record changes, you would have to update every customer in that city.
 
 **Fix:** Separate location data:
 
@@ -236,7 +237,7 @@ CREATE TABLE order_items (
     order_id INT,
     product_id INT,
     quantity INT,
-    line_price DECIMAL(10,2),  -- Snapshot at time of order
+    line_price DECIMAL(10,2),  -- Line total snapshot at time of order
     PRIMARY KEY (order_id, product_id),
     FOREIGN KEY (order_id) REFERENCES orders(order_id),
     FOREIGN KEY (product_id) REFERENCES products(product_id)
