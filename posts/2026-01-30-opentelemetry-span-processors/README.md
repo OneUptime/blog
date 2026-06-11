@@ -198,22 +198,27 @@ Here is how to wire up your custom processor with the OpenTelemetry SDK.
 ```typescript
 // Node.js registration
 import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node';
-import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
+import { BatchSpanProcessor, SpanProcessor } from '@opentelemetry/sdk-trace-base';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { DebugSpanProcessor } from './debug-processor';
 
-const provider = new NodeTracerProvider();
-
-// Add debug processor first (for development only)
-if (process.env.NODE_ENV === 'development') {
-  provider.addSpanProcessor(new DebugSpanProcessor('my-service'));
-}
-
-// Add batch processor for actual export
 const exporter = new OTLPTraceExporter({
   url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT,
 });
-provider.addSpanProcessor(new BatchSpanProcessor(exporter));
+
+// Build the processor list (order matters - they run in sequence)
+const spanProcessors: SpanProcessor[] = [];
+
+// Add debug processor first (for development only)
+if (process.env.NODE_ENV === 'development') {
+  spanProcessors.push(new DebugSpanProcessor('my-service'));
+}
+
+// Add batch processor for actual export
+spanProcessors.push(new BatchSpanProcessor(exporter));
+
+// Pass processors via the constructor (addSpanProcessor was removed in v2.0)
+const provider = new NodeTracerProvider({ spanProcessors });
 
 provider.register();
 ```
@@ -317,6 +322,7 @@ export class FilteringSpanProcessor implements SpanProcessor {
 Configure the filter to drop health checks and fast spans.
 
 ```typescript
+import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node';
 import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { FilteringSpanProcessor } from './filtering-processor';
@@ -340,7 +346,9 @@ const filteringProcessor = new FilteringSpanProcessor(batchProcessor, {
   minDurationMs: 1,  // Drop sub-millisecond spans
 });
 
-provider.addSpanProcessor(filteringProcessor);
+const provider = new NodeTracerProvider({
+  spanProcessors: [filteringProcessor],
+});
 ```
 
 ---
@@ -820,9 +828,10 @@ const enrichmentProcessor = new EnrichmentSpanProcessor(filteringProcessor, {
   dynamicProviders: [commonProviders.systemInfo],
 });
 
-// Register with provider
-const provider = new NodeTracerProvider();
-provider.addSpanProcessor(enrichmentProcessor);
+// Register with provider (spanProcessors must be passed via constructor)
+const provider = new NodeTracerProvider({
+  spanProcessors: [enrichmentProcessor],
+});
 provider.register();
 ```
 
