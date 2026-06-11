@@ -228,36 +228,33 @@ Here is a comprehensive list of events and the commands that trigger them:
 | expire | EXPIRE, PEXPIRE, EXPIREAT, PEXPIREAT, SET with EX/PX |
 | expired | Key expired due to TTL |
 | evicted | Key evicted due to maxmemory policy |
-| set | SET, SETEX, SETNX, GETSET |
-| setex | SETEX |
-| setnx | SETNX |
+| set | SET, SETEX, SETNX, PSETEX, GETSET |
 | setrange | SETRANGE |
-| incrby | INCR, INCRBY, INCRBYFLOAT, DECR, DECRBY |
+| incrby | INCR, INCRBY, DECR, DECRBY |
+| incrbyfloat | INCRBYFLOAT |
 | append | APPEND |
-| lpush | LPUSH, LPUSHX |
-| rpush | RPUSH, RPUSHX |
-| lpop | LPOP, BLPOP |
-| rpop | RPOP, BRPOP |
+| lpush | LPUSH, LPUSHX, LMOVE/BLMOVE (destination, LEFT) |
+| rpush | RPUSH, RPUSHX, LMOVE/BLMOVE (destination, RIGHT) |
+| lpop | LPOP, BLPOP, LMOVE/BLMOVE (source, LEFT) |
+| rpop | RPOP, BRPOP, LMOVE/BLMOVE (source, RIGHT) |
 | lset | LSET |
 | ltrim | LTRIM |
 | linsert | LINSERT |
-| lmove | LMOVE, BLMOVE |
-| sadd | SADD |
-| srem | SREM |
+| sadd | SADD, SMOVE (destination) |
+| srem | SREM, SMOVE (source) |
 | spop | SPOP |
-| smove | SMOVE |
 | sinterstore | SINTERSTORE |
 | sunionstore | SUNIONSTORE |
 | sdiffstore | SDIFFSTORE |
 | hset | HSET, HSETNX, HMSET |
 | hdel | HDEL |
-| hincrby | HINCRBY, HINCRBYFLOAT |
+| hincrby | HINCRBY |
+| hincrbyfloat | HINCRBYFLOAT |
 | zadd | ZADD |
 | zrem | ZREM |
 | zincrby | ZINCRBY |
-| zmpop | ZMPOP, BZMPOP |
-| zpopmin | ZPOPMIN, BZPOPMIN |
-| zpopmax | ZPOPMAX, BZPOPMAX |
+| zpopmin | ZPOPMIN, BZPOPMIN, ZMPOP/BZMPOP (MIN) |
+| zpopmax | ZPOPMAX, BZPOPMAX, ZMPOP/BZMPOP (MAX) |
 | zrangestore | ZRANGESTORE |
 | zinterstore | ZINTERSTORE |
 | zunionstore | ZUNIONSTORE |
@@ -996,7 +993,8 @@ cluster = RedisCluster(host='localhost', port=7000)
 # Get all master nodes
 for node in cluster.get_primaries():
     # Create a subscriber for each node
-    client = redis.Redis(host=node['host'], port=node['port'])
+    # ClusterNode exposes .host and .port attributes
+    client = redis.Redis(host=node.host, port=node.port)
     pubsub = client.pubsub()
     pubsub.psubscribe('__keyevent@0__:expired')
 ```
