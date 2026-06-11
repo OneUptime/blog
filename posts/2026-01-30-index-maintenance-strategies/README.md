@@ -12,7 +12,7 @@ Database indexes degrade over time. Insert, update, and delete operations cause 
 
 ## Why Indexes Need Maintenance
 
-When you modify data, indexes must be updated too. These operations leave gaps in index pages, create imbalanced tree structures, and cause statistics to become outdated. The result is slower queries and wasted storage space.
+When you modify data, indexes must be updated too. These operations leave gaps in index pages, create fragmented page layouts, and cause statistics to become outdated. The result is slower queries and wasted storage space.
 
 Here is how index degradation happens over time:
 
@@ -35,7 +35,7 @@ Before building maintenance strategies, you need to know what to measure. These 
 
 | Metric | Description | Action Threshold |
 |--------|-------------|------------------|
-| Fragmentation | Percentage of pages out of order | > 30% rebuild, 10-30% reorganize |
+| Fragmentation | Percentage of pages out of order | > 30% rebuild, 10-30% reorganize as a starting point |
 | Page Fullness | Average fill percentage of pages | < 60% indicates bloat |
 | Index Size Ratio | Index size vs actual data size | > 3x needs investigation |
 | Statistics Age | Days since last statistics update | > 7 days for active tables |
@@ -67,7 +67,7 @@ FROM sys.dm_db_index_physical_stats(
     NULL,
     NULL,
     NULL,
-    'LIMITED'
+    'SAMPLED'
 ) ips
 INNER JOIN sys.indexes i
     ON ips.object_id = i.object_id
@@ -79,7 +79,7 @@ ORDER BY ips.avg_fragmentation_in_percent DESC;
 
 ## Automated Maintenance Workflow
 
-The maintenance workflow should run during low-traffic periods and handle indexes based on their fragmentation level. Here is the decision process:
+The maintenance workflow should run during low-traffic periods and handle indexes based on their fragmentation level, page density, and measured workload impact. Here is the decision process:
 
 ```mermaid
 flowchart TD
@@ -101,11 +101,11 @@ flowchart TD
 
 ## PostgreSQL Maintenance Script
 
-PostgreSQL uses REINDEX and VACUUM instead of rebuild and reorganize. This script identifies bloated indexes and generates maintenance commands.
+PostgreSQL uses REINDEX and VACUUM instead of rebuild and reorganize. This script identifies large active indexes that may be maintenance candidates and generates maintenance commands.
 
 ```sql
--- Find bloated indexes in PostgreSQL
--- Uses pg_stat_user_indexes to identify candidates
+-- Find large active indexes in PostgreSQL
+-- Uses pg_stat_user_indexes to identify candidates for further review
 WITH index_stats AS (
     SELECT
         schemaname,
@@ -169,26 +169,35 @@ def get_fragmented_indexes(connection, threshold=10):
     Returns list of indexes needing maintenance.
     """
     query = """
-        SELECT index_name, fragmentation_pct, page_count
+        SELECT schema_name, table_name, index_name, fragmentation_pct, page_count
         FROM index_health_view
-        WHERE fragmentation_pct > %s
+        WHERE fragmentation_pct > ?
         ORDER BY page_count DESC
     """
     cursor = connection.cursor()
-    cursor.execute(query, (threshold,))
+    cursor.execute(query, threshold)
     return cursor.fetchall()
 
-def maintain_index(connection, index_name, fragmentation):
+def quote_sqlserver_identifier(identifier):
+    return "[" + identifier.replace("]", "]]") + "]"
+
+def maintain_index(connection, schema_name, table_name, index_name, fragmentation):
     """
     Perform appropriate maintenance based on fragmentation level.
     Rebuild for high fragmentation, reorganize for moderate.
     """
+    qualified_table = (
+        f"{quote_sqlserver_identifier(schema_name)}."
+        f"{quote_sqlserver_identifier(table_name)}"
+    )
+    quoted_index = quote_sqlserver_identifier(index_name)
+
     if fragmentation > 30:
-        # Full rebuild for heavily fragmented indexes
-        sql = f"ALTER INDEX {index_name} REBUILD WITH (ONLINE = ON)"
+        # Full rebuild for heavily fragmented indexes where online rebuild is supported
+        sql = f"ALTER INDEX {quoted_index} ON {qualified_table} REBUILD WITH (ONLINE = ON)"
     else:
         # Reorganize for moderate fragmentation
-        sql = f"ALTER INDEX {index_name} REORGANIZE"
+        sql = f"ALTER INDEX {quoted_index} ON {qualified_table} REORGANIZE"
 
     cursor = connection.cursor()
     cursor.execute(sql)
@@ -205,9 +214,9 @@ def run_maintenance_window():
     conn = get_database_connection()
     indexes = get_fragmented_indexes(conn, threshold=10)
 
-    for index_name, frag_pct, page_count in indexes:
-        print(f"Maintaining {index_name}: {frag_pct}% fragmentation")
-        maintain_index(conn, index_name, frag_pct)
+    for schema_name, table_name, index_name, frag_pct, page_count in indexes:
+        print(f"Maintaining {schema_name}.{table_name}.{index_name}: {frag_pct}% fragmentation")
+        maintain_index(conn, schema_name, table_name, index_name, frag_pct)
 
     conn.close()
 
@@ -225,10 +234,10 @@ while True:
 
 Large tables require special handling to avoid long locks and excessive resource usage. Use these techniques:
 
-1. **Online operations**: Use ONLINE = ON in SQL Server or CONCURRENTLY in PostgreSQL
+1. **Online operations**: Use ONLINE = ON in SQL Server where supported, or CONCURRENTLY in PostgreSQL
 2. **Partitioned maintenance**: Maintain one partition at a time
 3. **Batched rebuilds**: Process indexes in batches with delays between them
-4. **Resource governor**: Limit CPU and memory used by maintenance jobs
+4. **Resource governance**: Limit CPU, memory, and I/O used by maintenance jobs where your database platform supports it
 
 Here is how partitioned maintenance flows:
 
