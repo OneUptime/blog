@@ -182,7 +182,8 @@ flowchart TB
 class FullReplayService {
   constructor(
     private eventStore: EventStore,
-    private stateStore: StateStore
+    private stateStore: StateStore,
+    private handlers: Record<string, EventHandler>
   ) {}
 
   async fullReplay(
@@ -222,7 +223,7 @@ class FullReplayService {
   }
 
   private async applyEvent(event: Event, tx: Transaction): Promise<void> {
-    const handler = this.getHandler(event.type);
+    const handler = this.handlers[event.type];
     if (handler) {
       await handler(event, tx);
     }
@@ -272,7 +273,11 @@ flowchart TB
 
 ```typescript
 class PointInTimeRecovery {
-  constructor(private eventStore: EventStore) {}
+  constructor(
+    private eventStore: EventStore,
+    private initialStateFactory: <T>() => T,
+    private diffCalculator: <T>(before: T | null, after: T | null) => Diff
+  ) {}
 
   async getStateAt<T>(
     aggregateId: string,
@@ -291,7 +296,7 @@ class PointInTimeRecovery {
     }
 
     // Rebuild state by applying events in order
-    let state: T = this.getInitialState<T>();
+    let state: T = this.initialStateFactory<T>();
 
     for (const event of events) {
       state = this.applyEvent(state, event);
@@ -311,7 +316,7 @@ class PointInTimeRecovery {
     return {
       before,
       after,
-      diff: this.calculateDiff(before, after)
+      diff: this.diffCalculator(before, after)
     };
   }
 
@@ -359,9 +364,13 @@ class IdempotentConsumer {
   async process(event: Event): Promise<void> {
     const idempotencyKey = this.getIdempotencyKey(event);
 
-    // Check if already processed
-    const existing = await this.idempotencyStore.get(idempotencyKey);
-    if (existing) {
+    // Atomically reserve the key so concurrent deliveries do not both process it
+    const reserved = await this.idempotencyStore.reserve(idempotencyKey, {
+      eventId: event.id,
+      startedAt: new Date()
+    });
+
+    if (!reserved) {
       console.log(`Event ${event.id} already processed, skipping`);
       return;
     }
@@ -408,6 +417,12 @@ flowchart TB
 
 ```typescript
 class ReplayAwareHandler {
+  constructor(
+    private repository: Repository,
+    private emailService: EmailService,
+    private inventoryService: InventoryService
+  ) {}
+
   async handle(event: Event): Promise<void> {
     const isReplay = event.metadata?.isReplay === true;
 
@@ -487,9 +502,11 @@ class ReplayService {
 
     // Run replay asynchronously
     this.executeReplay(request).catch(error => {
-      this.updateStatus(request.id, {
+      void this.updateStatus(request.id, {
         status: 'failed',
         error: error.message
+      }).catch(statusError => {
+        console.error(`Failed to update replay ${request.id} status:`, statusError);
       });
     });
 
@@ -502,10 +519,10 @@ class ReplayService {
   }
 
   private async executeReplay(request: ReplayRequest): Promise<void> {
-    this.updateStatus(request.id, { status: 'running', startedAt: new Date() });
+    await this.updateStatus(request.id, { status: 'running', startedAt: new Date() });
 
     const events = await this.queryEvents(request);
-    this.updateStatus(request.id, {
+    await this.updateStatus(request.id, {
       progress: { total: events.length, processed: 0, failed: 0 }
     });
 
@@ -516,7 +533,7 @@ class ReplayService {
       await this.delay(request.options.delayBetweenBatches);
     }
 
-    this.updateStatus(request.id, { status: 'completed', completedAt: new Date() });
+    await this.updateStatus(request.id, { status: 'completed', completedAt: new Date() });
   }
 
   private async queryEvents(request: ReplayRequest): Promise<Event[]> {
@@ -566,6 +583,37 @@ class ReplayService {
       }
     };
   }
+
+  private async updateStatus(
+    replayId: string,
+    update: Partial<ReplayStatus>
+  ): Promise<void> {
+    const current = this.activeReplays.get(replayId);
+    if (!current) {
+      throw new Error(`Replay ${replayId} not found`);
+    }
+
+    const next = {
+      ...current,
+      ...update,
+      progress: update.progress ?? current.progress
+    };
+
+    this.activeReplays.set(replayId, next);
+    await this.statusStore.save(next);
+  }
+
+  private createBatches(events: Event[], batchSize: number): Event[][] {
+    const batches: Event[][] = [];
+    for (let i = 0; i < events.length; i += batchSize) {
+      batches.push(events.slice(i, i + batchSize));
+    }
+    return batches;
+  }
+
+  private delay(milliseconds: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, milliseconds));
+  }
 }
 ```
 
@@ -610,15 +658,27 @@ interface ReplayMetrics {
 }
 
 class ReplayMonitor {
+  constructor(
+    private replayService: ReplayService,
+    private queueService: QueueService,
+    private alertService: AlertService
+  ) {}
+
   async collectMetrics(replayId: string): Promise<ReplayMetrics> {
     const status = await this.replayService.getStatus(replayId);
+    if (!status) {
+      throw new Error(`Replay ${replayId} not found`);
+    }
+
     const queueStats = await this.queueService.getStats();
 
     return {
       replayId,
       eventsPerSecond: this.calculateThroughput(status),
       avgProcessingTime: this.getAvgProcessingTime(status),
-      errorRate: status.progress.failed / status.progress.total,
+      errorRate: status.progress.total === 0
+        ? 0
+        : status.progress.failed / status.progress.total,
       queueDepth: queueStats.depth
     };
   }
@@ -637,6 +697,26 @@ class ReplayMonitor {
         message: `Queue backlog during replay: ${metrics.queueDepth} messages`
       });
     }
+  }
+
+  private calculateThroughput(status: ReplayStatus): number {
+    if (!status.startedAt) {
+      return 0;
+    }
+
+    const elapsedSeconds = (Date.now() - status.startedAt.getTime()) / 1000;
+    return elapsedSeconds === 0
+      ? 0
+      : status.progress.processed / elapsedSeconds;
+  }
+
+  private getAvgProcessingTime(status: ReplayStatus): number {
+    if (!status.startedAt || !status.completedAt || status.progress.processed === 0) {
+      return 0;
+    }
+
+    return (status.completedAt.getTime() - status.startedAt.getTime()) /
+      status.progress.processed;
   }
 }
 ```
