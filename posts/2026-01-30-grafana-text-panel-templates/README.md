@@ -43,12 +43,13 @@ In your Grafana dashboard, click **Add panel** and select **Text** from the visu
 
 ### Step 2: Choose the Mode
 
-Grafana text panels support two modes:
+Grafana text panels support three modes:
 
 | Mode | Use Case |
 |------|----------|
 | Markdown | Documentation, simple formatting, links |
-| HTML | Complex layouts, custom styling, advanced formatting |
+| HTML | Sanitized HTML layouts and formatting |
+| Code | Read-only code blocks with syntax highlighting |
 
 ### Step 3: Write Your Content
 
@@ -57,7 +58,7 @@ Here is a basic Markdown example for a dashboard header.
 ```markdown
 # Production Environment
 
-**Last Updated:** ${__from:date:YYYY-MM-DD HH:mm}
+**Last Updated:** ${__from:date:YYYY-MM-DD HHmm}
 
 | Metric | Target |
 |--------|--------|
@@ -80,7 +81,7 @@ Grafana provides several built-in variables you can use in text panels.
 |----------|-------------|----------------|
 | `${__from}` | Start time (epoch ms) | 1706601600000 |
 | `${__to}` | End time (epoch ms) | 1706688000000 |
-| `${__from:date}` | Start time (formatted) | 2026-01-30 |
+| `${__from:date}` | Start time (ISO 8601/RFC 3339) | 2026-01-30T00:00:00.000Z |
 | `${__to:date:YYYY-MM-DD}` | End time (custom format) | 2026-01-30 |
 | `${__user.login}` | Current user login | admin |
 | `${__dashboard}` | Dashboard name | Production Overview |
@@ -109,7 +110,7 @@ Control how multi-value variables render using format specifiers.
 | Pipe | `${variable:pipe}` | [a, b, c] | a\|b\|c |
 | JSON | `${variable:json}` | [a, b, c] | ["a","b","c"] |
 | Regex | `${variable:regex}` | [a, b, c] | (a\|b\|c) |
-| Query | `${variable:queryparam}` | [a, b, c] | var=a&var=b&var=c |
+| Query | `${variable:queryparam}` | [a, b, c] | var-variable=a&var-variable=b&var-variable=c |
 
 ## Advanced Text Panel Patterns
 
@@ -120,7 +121,7 @@ Create a header that shows the current context and time range.
 ```markdown
 # ${environment} Dashboard
 
-**Time Range:** ${__from:date:YYYY-MM-DD HH:mm} to ${__to:date:YYYY-MM-DD HH:mm}
+**Time Range:** ${__from:date:YYYY-MM-DD HHmm} to ${__to:date:YYYY-MM-DD HHmm}
 
 **Services:** ${service:csv}
 
@@ -134,7 +135,7 @@ Quick Links:
 
 ### HTML Mode for Custom Styling
 
-When Markdown is not enough, switch to HTML mode for full control.
+When Markdown is not enough, switch to HTML mode for more layout control. Grafana sanitizes HTML by default, so advanced HTML such as script tags requires the `disable_sanitize_html` configuration setting and is not available in Grafana Cloud.
 
 ```html
 <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -155,7 +156,7 @@ Display different content based on variable values using CSS.
 
 ```html
 <style>
-  .status-prod { color: #ff5722; font-weight: bold; }
+  .status-production { color: #ff5722; font-weight: bold; }
   .status-staging { color: #ff9800; }
   .status-dev { color: #4caf50; }
 </style>
@@ -202,15 +203,15 @@ Create a card-based layout for key information.
 
 ## Text Panels with Query Results
 
-While text panels cannot directly query data sources, you can combine them with other techniques.
+While text panels cannot directly query data sources, you can combine them with links and dashboard variables.
 
-### Using Data Links
+### Using Panel Links
 
-Configure data links in your text panel to create dynamic navigation.
+Configure panel links or links in your text panel content to create dynamic navigation.
 
 ```mermaid
 flowchart TD
-    A[Text Panel] --> B[Data Link]
+    A[Text Panel] --> B[Panel Link or Content Link]
     B --> C[URL with Variables]
     C --> D[Target Dashboard]
     C --> E[External System]
@@ -247,7 +248,7 @@ Here is a comprehensive example that combines multiple techniques.
       </p>
     </div>
     <div style="text-align: right; font-size: 12px; opacity: 0.7;">
-      <div>Time Range: ${__from:date:MMM DD, HH:mm} - ${__to:date:MMM DD, HH:mm}</div>
+      <div>Time Range: ${__from:date:MMM DD HHmm} - ${__to:date:MMM DD HHmm}</div>
       <div>Auto-refresh: ${__interval}</div>
     </div>
   </div>
@@ -356,14 +357,11 @@ Help users understand what variables are available and how they affect the displ
 
 ### 4. Test Variable Edge Cases
 
-Handle cases where variables might be empty or have unexpected values.
+Handle cases where variables might be empty or have unexpected values. Grafana variable interpolation does not evaluate JavaScript expressions, so use clear fallback text or CSS classes based on known variable values.
 
 ```html
 <div>
-  Service:
-  <span style="color: ${service:raw ? '#4caf50' : '#f44336'};">
-    ${service:raw || 'Not Selected'}
-  </span>
+  Service: <span class="service-name">${service}</span>
 </div>
 ```
 
@@ -422,8 +420,7 @@ Ensure text panels work at different dashboard widths.
 <div style="display: inline-block;
             padding: 4px 12px;
             border-radius: 4px;
-            background: ${environment:raw == 'production' ? '#f44336' :
-                         environment:raw == 'staging' ? '#ff9800' : '#4caf50'};
+            background: #607d8b;
             color: white;
             font-weight: bold;
             text-transform: uppercase;">
