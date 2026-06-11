@@ -809,6 +809,3 @@ The key principles to remember:
 7. **Track prevention actions** - Close the loop on systemic improvements
 
 Start with a simple template and evolve it as your team's needs grow. The best resolution documentation is the one your team actually uses.
-
-```bash
-```
