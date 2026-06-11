@@ -48,9 +48,10 @@ jenkins-pipeline-templates/
 │               ├── NotificationHelper.groovy
 │               └── ArtifactManager.groovy
 ├── resources/
-│   └── templates/
-│       ├── docker-compose.yaml
-│       └── sonar-project.properties
+│   ├── templates/
+│   │   ├── docker-compose.yaml
+│   │   └── sonar-project.properties
+│   └── version.txt
 └── README.md
 ```
 
@@ -449,11 +450,12 @@ def runLinter(Map config) {
 def runSecurityAudit(Map config) {
     // Run npm audit and fail on high severity vulnerabilities
     def auditLevel = config.auditLevel ?: 'high'
-    sh "npm audit --audit-level=${auditLevel} || true"
 
     // Generate audit report
     sh 'npm audit --json > npm-audit-report.json || true'
     archiveArtifacts artifacts: 'npm-audit-report.json', allowEmptyArchive: true
+
+    sh "npm audit --audit-level=${auditLevel}"
 }
 
 def runNodeTests(Map config) {
@@ -549,7 +551,7 @@ Sometimes you need templates that other templates can extend. This pattern uses 
 def call(Map config = [:], Closure body = null) {
     def pipelineConfig = [
         // Default configuration
-        agent: 'any',
+        agent: 'linux',
         timeout: 30,
         checkoutEnabled: true,
         cleanupEnabled: true,
@@ -1011,7 +1013,7 @@ def call(String requiredVersion) {
 }
 
 def libraryVersion() {
-    // Read version from a version file in the library
+    // Read version from resources/version.txt in the library
     def versionFile = libraryResource('version.txt')
     return versionFile.trim()
 }
@@ -1095,7 +1097,7 @@ nodePipeline(
 
 ### Multiple Pipelines in One Repository
 
-For monorepos with multiple services:
+For monorepos with multiple services, avoid calling a full Declarative Pipeline template from inside another `pipeline` block. Jenkins supports only one Declarative `pipeline` execution per build, so extract reusable service logic into helper functions or use Scripted Pipeline steps for the fan-out:
 
 ```groovy
 // Jenkinsfile - Monorepo example
@@ -1119,11 +1121,13 @@ pipeline {
                     services.each { service ->
                         parallelStages[service.name] = {
                             dir(service.path) {
-                                standardPipeline(
-                                    appName: service.name,
-                                    buildTool: service.tool,
-                                    checkoutEnabled: false
-                                )
+                                checkout scm
+
+                                if (service.tool == 'gradle') {
+                                    sh './gradlew clean build'
+                                } else {
+                                    sh 'mvn clean package'
+                                }
                             }
                         }
                     }
@@ -1164,23 +1168,12 @@ With a corresponding `.pipeline.yaml` file:
 appName: my-service
 buildTool: maven
 jdkVersion: jdk17
-
-testing:
-  enabled: true
-  coverage: true
-  coverageThreshold: 80
-
-deployment:
-  enabled: true
-  environment: staging
-  strategy: rolling
-
-notifications:
-  slack:
-    enabled: true
-    channel: '#my-service-builds'
-  email:
-    enabled: false
+runTests: true
+sonarEnabled: true
+deployEnabled: true
+deployEnvironment: staging
+notifySlack: true
+slackChannel: '#my-service-builds'
 ```
 
 ## Testing Pipeline Templates
