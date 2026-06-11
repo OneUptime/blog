@@ -23,7 +23,7 @@ sequenceDiagram
 
     Client->>ClientProxy: HTTP Request
     ClientProxy->>ServerProxy: mTLS Handshake
-    Note over ClientProxy,ServerProxy: Client presents certificate with<br/>identity: sa-client.namespace.identity.linkerd.cluster.local
+    Note over ClientProxy,ServerProxy: Client presents certificate with<br/>identity: sa-client.namespace.serviceaccount.identity.linkerd.cluster.local
     ServerProxy->>ServerProxy: Validate certificate against<br/>MeshTLSAuthentication
     alt Identity Allowed
         ServerProxy->>Server: Forward Request
@@ -38,7 +38,7 @@ sequenceDiagram
 
 ## MeshTLSAuthentication Resource Specification
 
-MeshTLSAuthentication defines a set of trusted workload identities. Here is the complete specification:
+MeshTLSAuthentication defines a set of trusted workload identities. Here is a common specification:
 
 ```yaml
 apiVersion: policy.linkerd.io/v1alpha1
@@ -85,10 +85,14 @@ metadata:
   name: database-clients
   namespace: data
 spec:
-  identities:
+  identityRefs:
     # Only these two service accounts can connect
-    - "api-server.backend.serviceaccount.identity.linkerd.cluster.local"
-    - "batch-processor.jobs.serviceaccount.identity.linkerd.cluster.local"
+    - kind: ServiceAccount
+      name: api-server
+      namespace: backend
+    - kind: ServiceAccount
+      name: batch-processor
+      namespace: jobs
 ```
 
 ### Reference by Namespace
@@ -183,7 +187,7 @@ metadata:
 spec:
   # Target workloads with this label
   targetRef:
-    group: core
+    group: policy.linkerd.io
     kind: Server
     name: api-server
   requiredAuthenticationRefs:
@@ -242,6 +246,8 @@ step certificate create identity.linkerd.cluster.local issuer.crt issuer.key \
 
 ```bash
 # Install Linkerd with your certificates
+linkerd install --crds | kubectl apply -f -
+
 linkerd install \
   --identity-trust-anchors-file ca.crt \
   --identity-issuer-certificate-file issuer.crt \
@@ -258,7 +264,7 @@ kubectl get secret linkerd-identity-issuer \
   -o jsonpath='{.data.crt\.pem}' | base64 -d | openssl x509 -text -noout
 
 # Verify workload certificates
-linkerd viz tap deployment/api-server -n backend --to deployment/database -n data
+linkerd viz tap deploy/api-server -n backend --to deploy/database --to-namespace data
 ```
 
 ## Practical Code Examples
@@ -435,21 +441,19 @@ spec:
 ### Verify Pod Identity
 
 ```bash
-# Check the identity assigned to a pod
-kubectl exec -n backend deploy/api-server -c linkerd-proxy -- \
-  cat /var/run/linkerd/identity/certificate.crt | \
-  openssl x509 -text -noout | grep Subject
+# Check proxy identities observed by Linkerd Viz
+linkerd viz edges deploy/api-server -n backend
 
-# Output should show:
-# Subject: CN = api-server.backend.serviceaccount.identity.linkerd.cluster.local
+# Output should include:
+# api-server.backend.serviceaccount.identity.linkerd.cluster.local
 ```
 
 ### Test Authorized Access
 
 ```bash
-# From an authorized pod, this should succeed
+# From an authorized pod with a Postgres client, this should succeed
 kubectl exec -n backend deploy/api-server -- \
-  curl -s http://postgres.data:5432
+  pg_isready -h postgres.data -p 5432
 
 # Check the response
 echo $?  # Should be 0
@@ -458,11 +462,11 @@ echo $?  # Should be 0
 ### Test Unauthorized Access
 
 ```bash
-# From an unauthorized pod, this should fail
+# From an unauthorized pod with a Postgres client, this should fail
 kubectl exec -n frontend deploy/web-app -- \
-  curl -s http://postgres.data:5432
+  pg_isready -h postgres.data -p 5432
 
-# Should receive 403 Forbidden
+# Should fail because the proxy denies the TCP connection
 ```
 
 ### View Policy Violations
@@ -519,7 +523,7 @@ kubectl describe authorizationpolicy postgres-auth -n data
 
 3. **Document identity requirements**: Add comments to your manifests explaining why each identity is allowed.
 
-4. **Test in staging first**: Deploy MeshTLSAuthentication in permissive mode before enforcing.
+4. **Test in staging first**: Use Server `accessPolicy: audit` mode before enforcing.
 
 5. **Monitor policy decisions**: Use `linkerd viz authz` to track authorized and denied requests.
 
