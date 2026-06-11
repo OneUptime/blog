@@ -60,13 +60,12 @@ Field-level encryption gives you the most control. You decide exactly which data
 
 ```typescript
 // encryption/log-encryptor.ts - Field-level encryption for log entries
-import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from 'crypto';
+import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from 'node:crypto';
 
 // Configuration for encryption
 const ALGORITHM = 'aes-256-gcm';    // AES in GCM mode for authenticated encryption
-const IV_LENGTH = 16;                // 128-bit initialization vector
+const IV_LENGTH = 12;                // 96-bit initialization vector recommended for GCM
 const AUTH_TAG_LENGTH = 16;          // GCM authentication tag
-const SALT_LENGTH = 32;              // Salt for key derivation
 
 export class LogEncryptor {
   private key: Buffer;
@@ -332,7 +331,7 @@ export class KeyManager {
 }
 ```
 
-For key rotation, maintain multiple key versions. Tag encrypted data with the key version used.
+For key rotation, maintain multiple key versions. Tag encrypted data with the key version used, and update your decrypt path to select the matching key version.
 
 ```typescript
 // Modified encrypt method with key versioning
@@ -431,7 +430,7 @@ Encrypted logs need a way to decrypt them for debugging. Build a controlled acce
 // tools/log-decryptor.ts - CLI tool for authorized log decryption
 import { LogEncryptor } from '../encryption/log-encryptor';
 import { KeyManager } from '../encryption/key-manager';
-import readline from 'readline';
+import * as readline from 'node:readline';
 
 async function decryptLogEntry(encryptedLog: string): Promise<void> {
   const keyManager = new KeyManager();
