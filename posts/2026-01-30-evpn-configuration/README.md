@@ -16,9 +16,9 @@ This guide walks you through EVPN configuration from fundamentals to production-
 
 ## What is EVPN?
 
-EVPN (Ethernet Virtual Private Network) is a control plane technology defined in RFC 7432 that uses BGP to distribute MAC and IP address information across a network. When combined with VXLAN as the data plane, it provides:
+EVPN (Ethernet Virtual Private Network) is a control plane technology defined in RFC 7432 that uses BGP to distribute MAC address information across a network. Later EVPN extensions add integrated routing and IP prefix advertisement. When combined with VXLAN as the data plane, it provides:
 
-- **MAC learning via control plane** - No flood-and-learn behavior
+- **MAC learning via control plane** - No data-plane flood-and-learn behavior for advertised hosts
 - **Active-active multihoming** - Redundant connections without spanning tree
 - **Integrated routing and bridging** - Seamless Layer 2 and Layer 3 connectivity
 - **Multi-tenancy** - Isolated virtual networks for different customers or applications
@@ -58,7 +58,7 @@ flowchart TB
 
 ## EVPN Route Types
 
-EVPN uses five route types to distribute different types of information. Understanding these is essential for troubleshooting and design.
+RFC 7432 defines the core EVPN route types 1 through 4, and RFC 9136 adds the commonly used Type 5 IP Prefix route. Understanding these is essential for troubleshooting and design.
 
 ```mermaid
 flowchart LR
@@ -188,6 +188,7 @@ feature bgp
 feature nv overlay
 feature vn-segment-vlan-based
 feature interface-vlan
+feature lacp
 
 ! Configure loopback for VTEP source
 interface loopback0
@@ -329,7 +330,7 @@ interface nve1
   ! Enable BGP for host reachability (MAC/IP learning)
   host-reachability protocol bgp
 
-  ! Map VNI 10001 to EVPN with multicast group
+  ! Map VNI 10001 to EVPN with ingress replication
   member vni 10001
     ! Use ingress replication instead of multicast
     ingress-replication protocol bgp
@@ -519,11 +520,11 @@ flowchart TB
     end
 
     subgraph Leaf1["Leaf 1"]
-        ES1["ESI: 0000:0000:0001:0001:0001<br/>Port Ethernet1/5"]
+        ES1["ESI: 0000.0000.0001.0001.0001<br/>Port-Channel5"]
     end
 
     subgraph Leaf2["Leaf 2"]
-        ES2["ESI: 0000:0000:0001:0001:0001<br/>Port Ethernet1/5"]
+        ES2["ESI: 0000.0000.0001.0001.0001<br/>Port-Channel5"]
     end
 
     S1 --> ES1
@@ -534,10 +535,16 @@ flowchart TB
 
 ### Ethernet Segment Configuration
 
-Configure the same Ethernet Segment Identifier (ESI) on both leaves:
+Configure the same Ethernet Segment Identifier (ESI) on both leaves. On Cisco NX-OS, ESI multi-homing also requires platform prerequisites such as TCAM carving, BGP EVPN multipath, and core-link tracking on the Layer 3 uplinks.
 
 ```text
 ! Leaf 1 - Ethernet Segment Configuration
+
+! TCAM carving is required for ESI multi-homing and requires a reload
+hardware access-list tcam region ing-flow-redirect 512
+
+! Enable EVPN multi-homing
+evpn multihoming
 
 interface Ethernet1/5
   description Dual-homed Server-1
@@ -545,14 +552,17 @@ interface Ethernet1/5
   switchport mode trunk
   switchport trunk allowed vlan 100,200
 
-  ! Configure Ethernet Segment for EVPN multi-homing
-  evpn ethernet-segment 1
-    identifier 0000:0000:0001:0001:0001
-    route-target 00:00:00:01:00:01
-
   ! Enable LACP for server-side LAG
   channel-group 5 mode active
   no shutdown
+
+interface Ethernet1/49
+  description To Spine-1
+  evpn multihoming core-tracking
+
+router bgp 65000
+  address-family l2vpn evpn
+    maximum-paths ibgp 4
 
 interface port-channel5
   description LAG to Dual-homed Server-1
@@ -561,9 +571,8 @@ interface port-channel5
   switchport trunk allowed vlan 100,200
 
   ! Ethernet Segment on port-channel
-  evpn ethernet-segment 1
-    identifier 0000:0000:0001:0001:0001
-    route-target 00:00:00:01:00:01
+  ethernet-segment
+    esi 0000.0000.0001.0001.0001
 
   no shutdown
 ```
@@ -571,18 +580,28 @@ interface port-channel5
 ```text
 ! Leaf 2 - Matching Ethernet Segment Configuration
 
+! TCAM carving is required for ESI multi-homing and requires a reload
+hardware access-list tcam region ing-flow-redirect 512
+
+! Enable EVPN multi-homing
+evpn multihoming
+
 interface Ethernet1/5
   description Dual-homed Server-1
   switchport
   switchport mode trunk
   switchport trunk allowed vlan 100,200
 
-  evpn ethernet-segment 1
-    identifier 0000:0000:0001:0001:0001
-    route-target 00:00:00:01:00:01
-
   channel-group 5 mode active
   no shutdown
+
+interface Ethernet1/49
+  description To Spine-1
+  evpn multihoming core-tracking
+
+router bgp 65000
+  address-family l2vpn evpn
+    maximum-paths ibgp 4
 
 interface port-channel5
   description LAG to Dual-homed Server-1
@@ -590,9 +609,8 @@ interface port-channel5
   switchport mode trunk
   switchport trunk allowed vlan 100,200
 
-  evpn ethernet-segment 1
-    identifier 0000:0000:0001:0001:0001
-    route-target 00:00:00:01:00:01
+  ethernet-segment
+    esi 0000.0000.0001.0001.0001
 
   no shutdown
 ```
@@ -658,17 +676,17 @@ show l2route evpn mac all
 
 ```bash
 # Check Ethernet Segment status
-show evpn ethernet-segment
+show nve ethernet-segment
 
 # Expected output shows ESI and DF election
 ESI: 0000.0000.0001.0001.0001
   Parent interface: port-channel5
   ES State: Up
-  Port State: Up
-  DF Election: Elected
+  Port-channel state: Up
+  ESI DF election mode: Modulo
 
-# Check Designated Forwarder status
-show evpn ethernet-segment esi 0000.0000.0001.0001.0001 detail
+# Check Ethernet Segment routes in L2RIB
+show l2route evpn ethernet-segment esi 0000.0000.0001.0001.0001 detail
 ```
 
 ---
@@ -866,10 +884,10 @@ show bgp l2vpn evpn vrf Tenant-A
 
 ```bash
 # Check ES status and DF election
-show evpn ethernet-segment detail
+show nve ethernet-segment
 
 # Verify ESI matches on both leaves
-show evpn ethernet-segment esi 0000.0000.0001.0001.0001
+show l2route evpn ethernet-segment esi 0000.0000.0001.0001.0001 detail
 
 # Check Type 1 and Type 4 routes
 show bgp l2vpn evpn route-type 1
@@ -914,7 +932,7 @@ show bgp l2vpn evpn route-type 4
 
 EVPN with VXLAN provides a robust, scalable solution for modern data center networking. Key takeaways from this guide:
 
-- **Control plane learning** eliminates flood-and-learn, improving efficiency
+- **Control plane learning** reduces data-plane flood-and-learn, improving efficiency
 - **Anycast gateways** enable distributed routing with optimal traffic paths
 - **Multi-homing with EVPN** replaces spanning tree for active-active redundancy
 - **Symmetric IRB** provides consistent routing behavior across the fabric
