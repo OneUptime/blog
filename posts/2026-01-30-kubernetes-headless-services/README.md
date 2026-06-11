@@ -14,13 +14,13 @@ A headless service skips the ClusterIP entirely. Instead of one virtual IP, DNS 
 
 ## What Makes a Service Headless
 
-The only difference between a regular service and a headless service is a single field:
+The key difference between a regular service and a headless service is a single field:
 
 ```yaml
 clusterIP: None
 ```
 
-That is it. Set `clusterIP` to `None` and Kubernetes will not assign a virtual IP. DNS queries for the service name will return A records for each pod backing the service.
+That is it. Set `clusterIP` to `None` and Kubernetes will not assign a virtual IP. DNS queries for the service name will return A records for each ready endpoint backing the service.
 
 ## Regular Service vs. Headless Service
 
@@ -80,7 +80,7 @@ From inside any pod in the cluster, you can resolve the headless service name:
 kubectl run -it --rm dns-test --image=busybox:1.28 --restart=Never -- nslookup redis
 ```
 
-For a headless service with three pods, you will see three A records:
+For a headless service backed by the three Redis StatefulSet pods shown later, you will see three A records:
 
 ```text
 Server:    10.96.0.10
@@ -266,9 +266,15 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.name
-            # Replicas know to connect to postgres-0 as primary
+            # Bootstrap logic can use this to connect replicas to postgres-0
             - name: PRIMARY_HOST
               value: "postgres-0.postgres.database.svc.cluster.local"
+            # Required by the official postgres image on first initialization
+            - name: POSTGRES_PASSWORD
+              value: "change-me"
+            # Use a subdirectory so the mounted volume root can contain system files
+            - name: PGDATA
+              value: "/var/lib/postgresql/data/pgdata"
           volumeMounts:
             - name: data
               mountPath: /var/lib/postgresql/data
@@ -283,9 +289,9 @@ spec:
             storage: 10Gi
 ```
 
-The replicas can determine their role based on their pod name:
-- `postgres-0`: Always the primary
-- `postgres-1`, `postgres-2`: Replicas that connect to `postgres-0`
+A bootstrap script or operator can determine each pod's role based on its pod name:
+- `postgres-0`: Typically configured as the primary
+- `postgres-1`, `postgres-2`: Typically configured as replicas that connect to `postgres-0`
 
 ### Connection Strings
 
@@ -367,6 +373,9 @@ spec:
               value: "elasticsearch-0.elasticsearch,elasticsearch-1.elasticsearch,elasticsearch-2.elasticsearch"
             - name: cluster.initial_master_nodes
               value: "elasticsearch-0,elasticsearch-1,elasticsearch-2"
+            # Development-only: configure TLS/security for production clusters
+            - name: xpack.security.enabled
+              value: "false"
             - name: ES_JAVA_OPTS
               value: "-Xms512m -Xmx512m"
           volumeMounts:
@@ -390,7 +399,7 @@ spec:
             storage: 10Gi
 ```
 
-The `discovery.seed_hosts` environment variable lists the DNS names of all potential cluster members. When a new node starts, it queries these DNS names and connects to form or join the cluster.
+The `discovery.seed_hosts` environment variable lists the DNS names of all potential cluster members. When a new node starts, it queries these DNS names and connects to form or join the cluster. The `cluster.initial_master_nodes` setting is only for bootstrapping a brand-new Elasticsearch cluster and should be removed after the cluster has formed.
 
 ## Combining Headless and Regular Services
 
