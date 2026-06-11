@@ -155,22 +155,23 @@ class FailoverController:
 
         # Step 2: Check replication status
         if not self.verify_replication_lag():
-            logger.warning("Replication lag high. Proceeding with caution.")
+            logger.error("Replication lag exceeds RPO threshold. Aborting failover.")
+            return False
 
-        # Step 3: Update DNS
+        # Step 3: Promote database replica before sending application traffic
+        if not self.promote_database():
+            logger.error("Database promotion failed. Manual intervention required.")
+            return False
+
+        # Step 4: Update DNS
         if not self.update_dns():
             logger.error("DNS update failed. Aborting failover.")
             return False
 
-        # Step 4: Update load balancer
+        # Step 5: Update load balancer
         if not self.update_load_balancer():
             logger.error("Load balancer update failed. Rolling back DNS.")
             self.rollback_dns()
-            return False
-
-        # Step 5: Promote database replica
-        if not self.promote_database():
-            logger.error("Database promotion failed. Manual intervention required.")
             return False
 
         # Step 6: Verify failover
@@ -196,8 +197,8 @@ class FailoverController:
 
         for record in self.config['dns_records']:
             try:
-                response = requests.put(
-                    f"{self.dns_provider}/zones/{record['zone_id']}/records/{record['record_id']}",
+                response = requests.patch(
+                    f"{self.dns_provider}/zones/{record['zone_id']}/dns_records/{record['record_id']}",
                     headers={
                         'Authorization': f'Bearer {dns_api_token}',
                         'Content-Type': 'application/json'
@@ -389,8 +390,8 @@ if __name__ == '__main__':
     }
   ],
   "secondary_ips": {
-    "api.example.com": "10.0.2.100",
-    "app.example.com": "10.0.2.101"
+    "api.example.com": "198.51.100.100",
+    "app.example.com": "198.51.100.101"
   },
   "lb_api_endpoint": "https://lb.example.com/api/v1",
   "lb_pool_id": "pool-primary",
@@ -422,8 +423,13 @@ API_TOKEN="${CLOUDFLARE_API_TOKEN}"
 
 # Records to update (format: record_id:new_ip)
 declare -A FAILOVER_RECORDS
-FAILOVER_RECORDS["record_abc123"]="10.0.2.100"
-FAILOVER_RECORDS["record_def456"]="10.0.2.101"
+FAILOVER_RECORDS["record_abc123"]="198.51.100.100"
+FAILOVER_RECORDS["record_def456"]="198.51.100.101"
+
+# Record IDs mapped to hostnames for post-update verification
+declare -A FAILOVER_RECORD_DOMAINS
+FAILOVER_RECORD_DOMAINS["record_abc123"]="api.example.com"
+FAILOVER_RECORD_DOMAINS["record_def456"]="app.example.com"
 
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"
@@ -461,16 +467,16 @@ verify_dns_propagation() {
     log "Verifying DNS propagation for $domain"
 
     while [ $attempt -lt $max_attempts ]; do
-        resolved_ip=$(dig +short "$domain" @8.8.8.8 | head -n1)
+        resolved_ips=$(dig +short A "$domain" @8.8.8.8)
 
-        if [ "$resolved_ip" = "$expected_ip" ]; then
-            log "DNS propagated: $domain -> $resolved_ip"
+        if echo "$resolved_ips" | grep -Fxq "$expected_ip"; then
+            log "DNS propagated: $domain -> $expected_ip"
             return 0
         fi
 
-        log "Waiting for propagation... ($resolved_ip != $expected_ip)"
+        log "Waiting for propagation... (${resolved_ips:-no answer} != $expected_ip)"
         sleep 10
-        ((attempt++))
+        ((attempt+=1))
     done
 
     log "WARNING: DNS propagation timeout for $domain"
@@ -484,7 +490,7 @@ main() {
 
     for record_id in "${!FAILOVER_RECORDS[@]}"; do
         if ! update_dns_record "$record_id" "${FAILOVER_RECORDS[$record_id]}"; then
-            ((failed++))
+            ((failed+=1))
         fi
     done
 
@@ -494,8 +500,18 @@ main() {
     fi
 
     log "=== DNS Failover Complete ==="
-    log "Waiting for propagation..."
-    sleep 60
+
+    for record_id in "${!FAILOVER_RECORDS[@]}"; do
+        domain="${FAILOVER_RECORD_DOMAINS[$record_id]}"
+        if ! verify_dns_propagation "$domain" "${FAILOVER_RECORDS[$record_id]}"; then
+            ((failed+=1))
+        fi
+    done
+
+    if [ $failed -gt 0 ]; then
+        log "ERROR: $failed record(s) failed DNS propagation verification"
+        exit 1
+    fi
 
     log "=== DNS Failover Verified ==="
 }
@@ -584,6 +600,7 @@ class DataSyncVerifier:
         result = {
             'status': 'unknown',
             'lag_bytes': None,
+            'lag_seconds': None,
             'connected_slaves': 0
         }
 
@@ -600,10 +617,13 @@ class DataSyncVerifier:
 
             # Check slave status
             if result['connected_slaves'] > 0:
-                slave_info = info.get('slave0', '')
-                if 'online' in str(slave_info):
+                slave_info = self.parse_redis_replica_info(info.get('slave0', ''))
+                if slave_info.get('state') == 'online':
+                    master_offset = int(info.get('master_repl_offset', 0))
+                    replica_offset = int(slave_info.get('offset', 0))
                     result['status'] = 'connected'
-                    result['lag_bytes'] = info.get('slave0', {}).get('offset', 0)
+                    result['lag_bytes'] = max(master_offset - replica_offset, 0)
+                    result['lag_seconds'] = int(slave_info.get('lag', 0))
                     result['healthy'] = True
                 else:
                     result['status'] = 'disconnected'
@@ -617,6 +637,18 @@ class DataSyncVerifier:
             result['healthy'] = False
 
         return result
+
+    def parse_redis_replica_info(self, replica_info) -> dict:
+        """Normalize Redis INFO replica details from redis-py or raw INFO output."""
+        if isinstance(replica_info, dict):
+            return replica_info
+
+        parsed = {}
+        for part in str(replica_info).split(','):
+            if '=' in part:
+                key, value = part.split('=', 1)
+                parsed[key] = value
+        return parsed
 
     def verify_data_consistency(self) -> dict:
         """Spot-check data consistency between primary and secondary."""
@@ -732,7 +764,7 @@ Automation should be documented in runbooks that engineers can follow during inc
 
 ### Automated DR Runbook
 
-```markdown
+````markdown
 # Disaster Recovery Runbook: Region Failover
 
 ## Overview
@@ -740,7 +772,7 @@ This runbook covers automated failover from us-east-1 to us-west-2 when primary 
 
 ## Automated Triggers
 - 3 consecutive health check failures (30 seconds)
-- Database replication lag > 5 minutes
+- Primary region unavailable and database replication lag within RPO threshold
 - Manual trigger via PagerDuty or Slack command
 
 ## Pre-Failover Checklist (Automated)
@@ -756,27 +788,27 @@ This runbook covers automated failover from us-east-1 to us-west-2 when primary 
 **Automated Command:**
 ```bash
 /opt/dr/failover.py --execute --region us-west-2
-```bash
+```
 
 **Manual Override:**
 ```bash
 /opt/dr/failover.py --execute --region us-west-2 --skip-health-check
-```bash
+```
 
-### Step 2: DNS Update
-- Records updated: api.example.com, app.example.com
-- TTL reduced to 60 seconds
-- Propagation wait: 60 seconds
-
-### Step 3: Load Balancer Switch
-- Primary pool drained
-- Secondary pool activated
-- Health checks verified
-
-### Step 4: Database Promotion
+### Step 2: Database Promotion
 - Replica promoted to primary
 - Connection strings remain unchanged (via internal DNS)
 - Write operations enabled
+
+### Step 3: DNS Update
+- Records updated: api.example.com, app.example.com
+- TTL reduced to 60 seconds
+- Propagation verified by querying a public resolver
+
+### Step 4: Load Balancer Switch
+- Primary pool drained
+- Secondary pool activated
+- Health checks verified
 
 ### Step 5: Verification
 - All health endpoints return 200
@@ -810,13 +842,13 @@ This runbook covers automated failover from us-east-1 to us-west-2 when primary 
 4. Execute failback during maintenance window:
    ```bash
    /opt/dr/failback.py --execute --target us-east-1 --maintenance-window
-   ```bash
+   ```
 
 ## Escalation Contacts
 - Primary: On-call SRE (PagerDuty)
 - Secondary: Infrastructure Lead
 - Executive: VP Engineering (data loss scenarios only)
-```text
+````
 
 ## Automated Failover Workflow
 
@@ -840,14 +872,14 @@ sequenceDiagram
     FC->>FC: Verify secondary health
     FC->>FC: Check replication lag
 
+    FC->>DB: Promote replica
+    DB-->>FC: Promotion complete
+
     FC->>DNS: Update A records
     DNS-->>FC: Records updated
 
     FC->>LB: Switch to secondary pool
     LB-->>FC: Pool switched
-
-    FC->>DB: Promote replica
-    DB-->>FC: Promotion complete
 
     FC->>FC: Verify all endpoints
 
