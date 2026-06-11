@@ -43,7 +43,7 @@ flowchart LR
 
 Before configuring replication, ensure you have:
 
-- MinIO clusters running version RELEASE.2022-08-25T07-17-05Z or later
+- MinIO clusters running supported, matching server versions
 - Network connectivity between source and destination clusters
 - Admin credentials for both clusters
 - Versioning enabled on buckets (required for bucket replication)
@@ -95,19 +95,34 @@ cat > /tmp/replication-policy.json << 'EOF'
                 "s3:GetBucketLocation",
                 "s3:GetBucketVersioning",
                 "s3:GetReplicationConfiguration",
+                "s3:GetBucketObjectLockConfiguration",
+                "s3:GetEncryptionConfiguration",
                 "s3:ListBucket",
-                "s3:ListBucketMultipartUploads",
+                "s3:ListBucketMultipartUploads"
+            ],
+            "Resource": [
+                "arn:aws:s3:::my-bucket-replica"
+            ]
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "s3:GetReplicationConfiguration",
+                "s3:ReplicateTags",
+                "s3:AbortMultipartUpload",
                 "s3:GetObject",
                 "s3:GetObjectVersion",
                 "s3:GetObjectVersionTagging",
                 "s3:PutObject",
+                "s3:PutObjectRetention",
+                "s3:PutBucketObjectLockConfiguration",
+                "s3:PutObjectLegalHold",
                 "s3:DeleteObject",
+                "s3:DeleteObjectVersion",
                 "s3:ReplicateObject",
-                "s3:ReplicateDelete",
-                "s3:ReplicateTags"
+                "s3:ReplicateDelete"
             ],
             "Resource": [
-                "arn:aws:s3:::my-bucket-replica",
                 "arn:aws:s3:::my-bucket-replica/*"
             ]
         }
@@ -120,31 +135,36 @@ mc admin policy create dest-minio replication-policy /tmp/replication-policy.jso
 mc admin policy attach dest-minio replication-policy --user repl-user
 ```
 
-### Step 3: Add the Remote Target
+### Step 3: Add the Replication Rule
 
-Register the destination cluster as a replication target on the source.
+Create a replication rule on the source. The MinIO client automatically creates the remote target from the `--remote-bucket` URL or alias.
 
 ```bash
-# Add the remote target for replication
-# This returns a target ARN that you will use in the replication rule
-mc admin bucket remote add source-minio/my-bucket \
-  https://repl-user:repl-secret-password@minio-dr.example.com/my-bucket-replica \
-  --service replication
+# Create a replication rule for the remote bucket
+mc replicate add source-minio/my-bucket \
+  --remote-bucket "https://repl-user:repl-secret-password@minio-dr.example.com/my-bucket-replica" \
+  --replicate "delete,delete-marker,existing-objects"
 ```
 
-The command returns an ARN like:
+You can list the configured replication rule and its remote target ARN with:
+
+```bash
+mc replicate ls source-minio/my-bucket
+```
+
+The output includes an ARN like:
 ```text
 arn:minio:replication::unique-id:my-bucket-replica
 ```
 
-### Step 4: Configure the Replication Rule
+### Step 4: Update the Replication Rule
 
-Create a replication rule that specifies what objects to replicate and how.
+Use the rule ID from `mc replicate ls` if you need to change which object operations are replicated.
 
 ```bash
-# Create a replication rule using the ARN from the previous step
-mc replicate add source-minio/my-bucket \
-  --remote-bucket "arn:minio:replication::unique-id:my-bucket-replica" \
+# Update a replication rule using the rule ID from mc replicate ls
+mc replicate update source-minio/my-bucket \
+  --id "replication-rule-id" \
   --replicate "delete,delete-marker,existing-objects"
 ```
 
@@ -184,7 +204,7 @@ Objects are written to both source and destination before acknowledging the clie
 ```bash
 # Enable synchronous replication on a bucket
 mc replicate add source-minio/critical-data \
-  --remote-bucket "arn:minio:replication::unique-id:critical-data-replica" \
+  --remote-bucket "https://repl-user:repl-secret-password@minio-dr.example.com/critical-data-replica" \
   --replicate "delete,delete-marker,existing-objects" \
   --sync
 ```
@@ -215,7 +235,7 @@ sequenceDiagram
 
 ## Site-to-Site Replication Setup
 
-Site replication is a higher-level feature that synchronizes entire MinIO deployments, including buckets, IAM policies, and configurations.
+Site replication is a higher-level feature that synchronizes entire MinIO deployments, including buckets, IAM policies, and bucket/object configurations.
 
 ### Architecture
 
@@ -224,19 +244,19 @@ flowchart TB
     subgraph Primary["Primary Site"]
         P_IAM[IAM Policies]
         P_Buckets[Buckets]
-        P_Config[Configurations]
+        P_Config[Bucket/Object Configurations]
     end
 
     subgraph DR["DR Site"]
         D_IAM[IAM Policies]
         D_Buckets[Buckets]
-        D_Config[Configurations]
+        D_Config[Bucket/Object Configurations]
     end
 
     subgraph Tertiary["Tertiary Site"]
         T_IAM[IAM Policies]
         T_Buckets[Buckets]
-        T_Config[Configurations]
+        T_Config[Bucket/Object Configurations]
     end
 
     Primary <-->|Bidirectional Sync| DR
@@ -246,7 +266,7 @@ flowchart TB
 
 ### Configuring Site Replication
 
-Site replication requires all sites to be accessible and running compatible MinIO versions.
+Site replication requires all sites to be accessible, running matching MinIO versions, and using the same identity provider configuration. Only one site can contain buckets or objects when initializing site replication; the other sites must be empty.
 
 ```bash
 # Step 1: Configure aliases for all sites
@@ -273,14 +293,16 @@ Site replication synchronizes:
 | IAM users | Yes | User accounts |
 | IAM groups | Yes | Group memberships |
 | IAM policies | Yes | Custom policies |
-| Service accounts | Yes | Programmatic access keys |
-| Bucket lifecycle rules | Yes | Expiration and transition rules |
+| Service accounts | Yes | Programmatic access keys, except root-owned access keys |
+| Bucket lifecycle rules | Optional | ILM expiration rule replication requires `--replicate-ilm-expiry`; other lifecycle configuration changes are not replicated |
 | Bucket encryption | Yes | SSE-S3 and SSE-KMS configs |
 | Object lock configs | Yes | Retention and legal holds |
+| Bucket notifications | No | Configure notifications separately on each site |
+| Server configuration settings | No | Configure deployment settings separately on each site |
 
 ### Handling Conflicts
 
-When the same object is modified at multiple sites simultaneously, MinIO uses a last-write-wins strategy based on the object's modification timestamp. To minimize conflicts:
+In active-active replication, concurrent writes or deletes to the same object from multiple sites can create duplicate delete markers or application-level conflicts. To minimize conflicts:
 
 - Designate a primary site for write operations when possible
 - Use object locking for compliance-critical data
@@ -312,7 +334,7 @@ MinIO exposes Prometheus metrics for replication monitoring.
 
 ```bash
 # Get replication metrics
-mc admin prometheus generate source-minio
+mc admin prometheus generate source-minio replication --bucket my-bucket --api-version v3
 ```
 
 Key metrics to monitor:
@@ -323,9 +345,9 @@ Key metrics to monitor:
     # Total bytes sent for replication
 - minio_bucket_replication_received_bytes
     # Total bytes received (on destination)
-- minio_bucket_replication_pending_count
-    # Objects waiting to be replicated
-- minio_bucket_replication_failed_count
+- minio_replication_average_queued_count
+    # Average number of objects waiting to be replicated
+- minio_bucket_replication_total_failed_count
     # Failed replication attempts
 - minio_bucket_replication_latency_ms
     # Replication latency in milliseconds
@@ -342,7 +364,7 @@ groups:
     rules:
       # Alert if replication queue is backing up
       - alert: MinIOReplicationQueueHigh
-        expr: minio_bucket_replication_pending_count > 1000
+        expr: minio_replication_average_queued_count > 1000
         for: 5m
         labels:
           severity: warning
@@ -352,7 +374,7 @@ groups:
 
       # Alert if replication failures are occurring
       - alert: MinIOReplicationFailures
-        expr: increase(minio_bucket_replication_failed_count[5m]) > 0
+        expr: increase(minio_bucket_replication_total_failed_count[5m]) > 0
         for: 1m
         labels:
           severity: critical
@@ -366,13 +388,11 @@ groups:
 If objects fail to replicate, you can trigger a resync:
 
 ```bash
-# Resync all objects that failed replication
-mc replicate resync start source-minio/my-bucket \
-  --remote-bucket "arn:minio:replication::unique-id:my-bucket-replica"
+# Trigger replication for objects with PENDING or FAILED status
+mc replicate resync-backlog source-minio/my-bucket
 
-# Check resync status
-mc replicate resync status source-minio/my-bucket \
-  --remote-bucket "arn:minio:replication::unique-id:my-bucket-replica"
+# Preview backlogged objects without re-queuing them
+mc replicate resync-backlog source-minio/my-bucket --dry-run
 ```
 
 ## Best Practices
@@ -384,18 +404,20 @@ mc replicate resync status source-minio/my-bucket \
 - Consider bandwidth limits during peak hours:
 
 ```bash
-# Set bandwidth limit for replication (e.g., 100 Mbps)
-mc admin config set source-minio api bandwidth_limit=100MB
+# Set an upload bandwidth limit for replication (e.g., 100 MiB/s)
+mc replicate update source-minio/my-bucket \
+  --id "replication-rule-id" \
+  --limit-upload 100M
 ```
 
 ### Performance Tuning
 
 ```bash
-# Increase replication workers for higher throughput
-mc admin config set source-minio replication workers=8
+# Adjust replication priority for higher throughput
+mc admin config set source-minio replication priority=fast
 
-# Set batch size for bulk operations
-mc admin config set source-minio replication batch_size=1000
+# Tune the maximum number of replication workers per node
+mc admin config set source-minio replication max_workers=100
 ```
 
 ### Disaster Recovery Testing
@@ -425,10 +447,10 @@ mc cat dest-minio/my-bucket-replica/dr-test.txt
 mc version info source-minio/my-bucket
 
 # Verify the replication rule is active
-mc replicate ls source-minio/my-bucket --status
+mc replicate status source-minio/my-bucket
 
 # Check MinIO server logs for errors
-mc admin logs source-minio --type replication
+mc admin logs --type application source-minio
 ```
 
 ### High Replication Lag
@@ -442,13 +464,12 @@ mc admin logs source-minio --type replication
 
 ```bash
 # Test connectivity to the remote target
-mc admin bucket remote ls source-minio/my-bucket
+mc replicate ls source-minio/my-bucket
 
-# Re-add the remote target if credentials changed
-mc admin bucket remote rm source-minio/my-bucket --arn "arn:minio:replication::unique-id:my-bucket-replica"
-mc admin bucket remote add source-minio/my-bucket \
-  https://repl-user:new-password@minio-dr.example.com/my-bucket-replica \
-  --service replication
+# Update the replication rule if credentials changed
+mc replicate update source-minio/my-bucket \
+  --id "replication-rule-id" \
+  --remote-bucket "https://repl-user:new-password@minio-dr.example.com/my-bucket-replica"
 ```
 
 ## Summary
