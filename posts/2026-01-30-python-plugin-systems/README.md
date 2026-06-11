@@ -134,7 +134,7 @@ For applications that need to discover plugins at runtime, we can scan directori
 import importlib.util
 import os
 from pathlib import Path
-from typing import Dict, List, Optional, Type
+from typing import Any, Dict, List, Optional, Type
 from plugin_base import PluginInterface
 
 class PluginManager:
@@ -237,7 +237,7 @@ class PluginManager:
         del self._plugin_classes[name]
         return True
 
-    def execute_plugin(self, name: str, context: Dict) -> any:
+    def execute_plugin(self, name: str, context: Dict) -> Any:
         """Execute a specific plugin"""
         plugin = self.get_plugin(name)
         if plugin is None:
@@ -460,7 +460,7 @@ Production plugin systems need proper lifecycle management for initialization, h
 
 from enum import Enum
 from typing import Dict, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 class PluginState(Enum):
     """Possible states for a plugin"""
@@ -502,14 +502,14 @@ class PluginLifecycle:
         self.state = new_state
 
         if new_state == PluginState.ACTIVE:
-            self.loaded_at = datetime.utcnow()
+            self.loaded_at = datetime.now(timezone.utc)
         elif new_state == PluginState.ERROR:
             self.error_message = error
 
     def record_execution(self):
         """Record that the plugin was executed"""
         self.execution_count += 1
-        self.last_executed = datetime.utcnow()
+        self.last_executed = datetime.now(timezone.utc)
 
     def get_status(self) -> Dict:
         """Return current plugin status"""
