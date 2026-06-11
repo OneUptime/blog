@@ -70,7 +70,8 @@ impl SimpleDB {
         let encoded = bincode::serialize(entry).unwrap();
         writer.write_all(&(encoded.len() as u32).to_le_bytes())?;
         writer.write_all(&encoded)?;
-        writer.flush()
+        writer.flush()?;
+        writer.get_ref().sync_all()
     }
 }
 ```
@@ -139,8 +140,11 @@ impl SimpleDB {
     }
 
     pub fn prefix_search(&self, prefix: &str) -> Vec<&Record> {
-        let end = format!("{}~", prefix); // '~' is after alphanumerics in ASCII
-        self.range(prefix, &end)
+        self.index
+            .range(prefix.to_string()..)
+            .take_while(|(key, _)| key.starts_with(prefix))
+            .map(|(_, v)| v)
+            .collect()
     }
 
     pub fn all_keys(&self) -> Vec<&String> {
@@ -157,11 +161,14 @@ Finally, implement persistence to disk and recovery from the WAL:
 impl SimpleDB {
     pub fn flush(&self) -> std::io::Result<()> {
         let file = File::create(&self.data_path)?;
-        let writer = BufWriter::new(file);
-        serde_json::to_writer_pretty(writer, &self.index)?;
+        let mut writer = BufWriter::new(file);
+        serde_json::to_writer_pretty(&mut writer, &self.index)?;
+        writer.flush()?;
+        writer.get_ref().sync_all()?;
 
         // Clear WAL after successful flush
-        File::create(&self.wal_path)?;
+        let wal_file = File::create(&self.wal_path)?;
+        wal_file.sync_all()?;
         Ok(())
     }
 
@@ -192,6 +199,8 @@ impl SimpleDB {
                         }
                     }
                     cursor += len;
+                } else {
+                    break;
                 }
             }
         }
