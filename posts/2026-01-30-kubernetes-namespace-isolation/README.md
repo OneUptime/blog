@@ -8,7 +8,7 @@ Description: Implement namespace isolation in Kubernetes using network policies,
 
 ---
 
-Running multiple teams or applications on a shared Kubernetes cluster without proper isolation is asking for trouble. One team's runaway pod can starve resources from another. A compromised workload can move laterally across the cluster. Namespace isolation solves these problems by creating strong boundaries between tenants.
+Running multiple teams or applications on a shared Kubernetes cluster without proper isolation is asking for trouble. One team's runaway pod can starve resources from another. A compromised workload can move laterally across the cluster. Namespace isolation solves these problems by creating stronger policy boundaries between tenants.
 
 ## Understanding Namespaces
 
@@ -40,11 +40,11 @@ metadata:
 | Resource Quotas | CPU, memory, object counts | Resource consumption | API server |
 | LimitRanges | Default/max container resources | Pod specifications | API server |
 | RBAC | API access permissions | Kubernetes API | API server |
-| Pod Security Standards | Pod security contexts | Runtime security | Admission controller |
+| Pod Security Standards | Pod security settings | Pod admission requirements | Admission controller |
 
 ## Network Policies for Namespace Isolation
 
-Network Policies are the primary tool for network-level isolation. Without them, any pod can communicate with any other pod in the cluster.
+Network Policies are the primary tool for network-level isolation when your CNI plugin supports them. Without them, any pod can communicate with any other pod in the cluster.
 
 ### Default Deny All Traffic
 
@@ -489,6 +489,8 @@ spec:
               kubernetes.io/metadata.name: kube-system
       ports:
         - protocol: UDP
+          port: 53
+        - protocol: TCP
           port: 53
 ---
 apiVersion: networking.k8s.io/v1
