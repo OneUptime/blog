@@ -17,6 +17,10 @@ The `worker_threads` module provides a way to create threads that execute JavaSc
 ```javascript
 const { Worker, isMainThread, parentPort } = require('worker_threads');
 
+function heavyComputation(num) {
+  return num * 2;
+}
+
 if (isMainThread) {
   const worker = new Worker(__filename);
   worker.on('message', (result) => console.log('Result:', result));
@@ -38,7 +42,7 @@ const { Worker } = require('worker_threads');
 const os = require('os');
 
 class ThreadPool {
-  constructor(workerScript, poolSize = os.cpus().length) {
+  constructor(workerScript, poolSize = os.availableParallelism()) {
     this.workerScript = workerScript;
     this.poolSize = poolSize;
     this.workers = [];
@@ -50,12 +54,16 @@ class ThreadPool {
 
   initializeWorkers() {
     for (let i = 0; i < this.poolSize; i++) {
-      const worker = new Worker(this.workerScript);
-      worker.on('message', (result) => this.handleWorkerMessage(worker, result));
-      worker.on('error', (err) => this.handleWorkerError(worker, err));
-      this.workers.push(worker);
-      this.freeWorkers.push(worker);
+      this.addWorker();
     }
+  }
+
+  addWorker() {
+    const worker = new Worker(this.workerScript);
+    worker.on('message', (result) => this.handleWorkerMessage(worker, result));
+    worker.on('error', (err) => this.handleWorkerError(worker, err));
+    this.workers.push(worker);
+    this.freeWorkers.push(worker);
   }
 
   handleWorkerMessage(worker, result) {
@@ -67,10 +75,14 @@ class ThreadPool {
   }
 
   handleWorkerError(worker, error) {
-    const { reject } = worker.currentTask;
-    reject(error);
-    worker.currentTask = null;
-    this.freeWorkers.push(worker);
+    if (worker.currentTask) {
+      const { reject } = worker.currentTask;
+      reject(error);
+      worker.currentTask = null;
+    }
+    this.workers = this.workers.filter((w) => w !== worker);
+    this.freeWorkers = this.freeWorkers.filter((w) => w !== worker);
+    this.addWorker();
     this.processQueue();
   }
 
@@ -148,7 +160,12 @@ const fixedPool = new FixedThreadPool(4, './worker.js', {
 const dynamicPool = new DynamicThreadPool(2, 8, './worker.js');
 
 // Execute tasks
-const result = await fixedPool.execute({ task: 'compute', value: 100 });
+async function main() {
+  const result = await fixedPool.execute({ task: 'compute', value: 100 });
+  console.log(result);
+}
+
+main().catch(console.error);
 ```
 
 Poolifier handles worker lifecycle, error recovery, and provides both fixed and dynamic pool strategies out of the box.
@@ -163,6 +180,6 @@ Worker threads share the same process and memory space, making them more efficie
 
 ## Best Practices
 
-Keep the number of workers close to `os.cpus().length` for CPU-bound tasks. Avoid creating workers dynamically for each task. Transfer large data using `SharedArrayBuffer` or transferable objects. Always handle worker errors and implement graceful shutdown.
+Keep the number of workers close to `os.availableParallelism()` for CPU-bound tasks. Avoid creating workers dynamically for each task. Transfer large data using `SharedArrayBuffer` or transferable objects. Always handle worker errors and implement graceful shutdown.
 
 Worker thread pools transform Node.js into a capable platform for CPU-intensive workloads while preserving its event-driven architecture for I/O operations.
