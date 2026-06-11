@@ -269,7 +269,7 @@ MongoDB supports text search in multiple languages. Each language has its own ru
 |----------|------|----------|------|
 | Danish | da | Norwegian | nb |
 | Dutch | nl | Portuguese | pt |
-| English | english | Romanian | ro |
+| English | en | Romanian | ro |
 | Finnish | fi | Russian | ru |
 | French | fr | Spanish | es |
 | German | de | Swedish | sv |
@@ -348,7 +348,7 @@ db.technical_docs.createIndex(
 );
 
 // Useful for technical content, code snippets, or product codes
-// where you want exact substring matching
+// where you want exact term matching without stemming
 ```
 
 ## Compound Text Indexes
@@ -367,16 +367,16 @@ db.articles.createIndex({
 
 ### Query Optimization with Compound Indexes
 
-Compound text indexes work best when you filter on the prefix fields:
+If a compound text index includes regular keys before the text keys, `$text` queries must include equality conditions on all of those prefix fields:
 
 ```javascript
-// Efficient: filters on 'author' prefix field first
+// Valid: filters on the 'author' prefix field first
 db.articles.find({
     author: "John Smith",
     $text: { $search: "mongodb" }
 });
 
-// Less efficient: no prefix filter
+// Invalid for this compound text index: missing equality filter on 'author'
 db.articles.find({
     $text: { $search: "mongodb" }
 });
@@ -384,22 +384,24 @@ db.articles.find({
 
 ### Index Key Order Matters
 
-The order of fields in a compound text index affects query performance:
+The order of fields in a compound text index affects which `$text` queries are valid and how many text index entries MongoDB scans:
 
 ```javascript
-// Good: regular fields as prefix, text in middle, regular as suffix
+// Good: equality filter field as prefix, text fields listed adjacently
 db.orders.createIndex({
     status: 1,
     productName: "text",
-    description: "text",
-    createdAt: -1
+    description: "text"
 });
 
 // Query pattern this supports:
 db.orders.find({
     status: "active",
     $text: { $search: "laptop" }
-}).sort({ createdAt: -1 });
+});
+
+// Text indexes do not improve performance for sort operations.
+// Sort by a text score when relevance ordering is needed.
 ```
 
 ## Wildcard Text Indexes
@@ -512,7 +514,7 @@ Text indexes consume significant resources:
 
 | Factor | Impact |
 |--------|--------|
-| Index Size | 1-2x the size of indexed text |
+| Index Size | Varies by content; one entry is stored for each unique stemmed term in each indexed field |
 | Build Time | Longer than regular indexes |
 | Memory Usage | Higher during queries |
 | Write Performance | Slower inserts and updates |
@@ -653,11 +655,9 @@ db.tickets.insertMany([
 Create an optimized text index:
 
 ```javascript
-// Compound text index with weights
+// Weighted text index
 db.tickets.createIndex(
     {
-        status: 1,              // Prefix for filtering
-        priority: 1,            // Secondary filter
         subject: "text",        // Searchable fields
         description: "text",
         tags: "text"
@@ -677,7 +677,7 @@ Implement search functionality:
 
 ```javascript
 // Search function with filtering and pagination
-function searchTickets(searchTerm, filters = {}, options = {}) {
+function searchTickets(searchTerm, options = {}) {
     const {
         status = null,
         priority = null,
@@ -772,7 +772,7 @@ Text indexes eliminate the need for a separate search infrastructure in many app
 
 ## References
 
-- [MongoDB Text Indexes Documentation](https://docs.mongodb.com/manual/core/index-text/)
-- [MongoDB $text Operator Reference](https://docs.mongodb.com/manual/reference/operator/query/text/)
-- [MongoDB Aggregation Pipeline](https://docs.mongodb.com/manual/aggregation/)
-- [MongoDB Atlas Search](https://docs.atlas.mongodb.com/atlas-search/)
+- [MongoDB Text Indexes Documentation](https://www.mongodb.com/docs/manual/core/indexes/index-types/index-text/)
+- [MongoDB $text Operator Reference](https://www.mongodb.com/docs/manual/reference/operator/query/text/)
+- [MongoDB Aggregation Pipeline](https://www.mongodb.com/docs/manual/aggregation/)
+- [MongoDB Atlas Search](https://www.mongodb.com/docs/atlas/atlas-search/)
