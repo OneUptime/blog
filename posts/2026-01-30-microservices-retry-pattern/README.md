@@ -307,7 +307,7 @@ class AdvancedRetryConfig:
         self.exceptions = exceptions
         self._previous_delay = base_delay
 
-    def calculate_delay(self, attempt: int) -> float:
+    def calculate_delay(self, attempt: int, previous_delay: float = None) -> float:
         """
         Calculate delay with jitter applied.
 
@@ -336,7 +336,8 @@ class AdvancedRetryConfig:
 
         elif self.jitter == JitterStrategy.DECORRELATED:
             # Each delay is random between base and 3x previous delay
-            delay = random.uniform(self.base_delay, self._previous_delay * 3)
+            previous = previous_delay if previous_delay is not None else self._previous_delay
+            delay = random.uniform(self.base_delay, previous * 3)
             delay = min(delay, self.max_delay)
             self._previous_delay = delay
 
@@ -357,6 +358,7 @@ def retry_with_jitter(config: AdvancedRetryConfig) -> Callable:
         @wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> T:
             last_exception = None
+            previous_delay = config.base_delay
 
             for attempt in range(1, config.max_attempts + 1):
                 try:
@@ -365,7 +367,8 @@ def retry_with_jitter(config: AdvancedRetryConfig) -> Callable:
                     last_exception = e
 
                     if attempt < config.max_attempts:
-                        delay = config.calculate_delay(attempt)
+                        delay = config.calculate_delay(attempt, previous_delay)
+                        previous_delay = delay
                         print(f"Attempt {attempt} failed. Retrying in {delay:.2f}s with {config.jitter.value} jitter")
                         time.sleep(delay)
 
@@ -453,7 +456,7 @@ class RetryBudget:
 
     def __init__(self, config: RetryBudgetConfig):
         self.config = config
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         # Track timestamps of requests and retries
         self._requests: deque = deque()
         self._retries: deque = deque()
@@ -890,11 +893,6 @@ class IdempotentRequest:
                     timeout=10
                 )
 
-                # Handle idempotency-related responses
-                if response.status_code == 409:
-                    # Request already processed - return cached result if available
-                    return response.json()
-
                 response.raise_for_status()
                 return response.json()
 
@@ -1005,7 +1003,8 @@ class RetryPolicy:
         elif self.jitter == JitterStrategy.EQUAL:
             return exp_delay / 2 + random.uniform(0, exp_delay / 2)
         elif self.jitter == JitterStrategy.DECORRELATED:
-            return random.uniform(self.base_delay, max(self.base_delay, previous_delay * 3))
+            delay = random.uniform(self.base_delay, max(self.base_delay, previous_delay * 3))
+            return min(delay, self.max_delay)
         return exp_delay
 
 
