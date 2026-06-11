@@ -56,9 +56,9 @@ Before building custom operations, configure OpenTelemetry in your application.
 Install the required NuGet packages for tracing support:
 
 ```bash
-dotnet add package OpenTelemetry.Extensions.Hosting
-dotnet add package OpenTelemetry.Exporter.OpenTelemetryProtocol
-dotnet add package OpenTelemetry.Instrumentation.AspNetCore
+dotnet package add OpenTelemetry.Extensions.Hosting
+dotnet package add OpenTelemetry.Exporter.OpenTelemetryProtocol
+dotnet package add OpenTelemetry.Instrumentation.AspNetCore
 ```
 
 Configure OpenTelemetry in Program.cs with your custom ActivitySource:
@@ -242,7 +242,7 @@ public class SpanOperation : IDisposable
         if (_activity == null) return this;
 
         _activity.SetStatus(ActivityStatusCode.Error, exception.Message);
-        _activity.RecordException(exception);
+        _activity.AddException(exception);
         _statusSet = true;
         return this;
     }
@@ -464,7 +464,9 @@ public class PaymentSpanOperations
                 EntityType = "CardValidation",
                 Attributes = new Dictionary<string, object?>
                 {
-                    ["card.token_prefix"] = cardToken.Substring(0, 4)
+                    ["card.token_prefix"] = cardToken.Length >= 4
+                        ? cardToken[..4]
+                        : cardToken
                 }
             });
     }
@@ -554,7 +556,7 @@ public class AsyncSpanOperation : IAsyncDisposable
     public void SetError(Exception ex)
     {
         _activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
-        _activity?.RecordException(ex);
+        _activity?.AddException(ex);
         _activity?.SetTag("operation.completed_steps", string.Join(",", _completedSteps));
         _activity?.SetTag("operation.failed_at_step", _completedSteps.Count + 1);
         _statusSet = true;
@@ -679,6 +681,8 @@ public class BatchSpanOperation : IDisposable
 
     public void RecordProgress(int currentIndex, int totalItems)
     {
+        if (totalItems <= 0) return;
+
         var percentComplete = (currentIndex * 100) / totalItems;
 
         // Record progress events at 25%, 50%, 75%, 100%
@@ -699,6 +703,7 @@ public class BatchSpanOperation : IDisposable
         _disposed = true;
 
         _stopwatch.Stop();
+        var elapsedMilliseconds = _stopwatch.ElapsedMilliseconds;
 
         _activity?.SetTag("batch.processed_count", _processedCount);
         _activity?.SetTag("batch.success_count", _successCount);
@@ -706,9 +711,9 @@ public class BatchSpanOperation : IDisposable
         _activity?.SetTag("batch.success_rate", _processedCount > 0
             ? Math.Round(_successCount * 100.0 / _processedCount, 2)
             : 0);
-        _activity?.SetTag("batch.duration_ms", _stopwatch.ElapsedMilliseconds);
-        _activity?.SetTag("batch.items_per_second", _processedCount > 0
-            ? Math.Round(_processedCount * 1000.0 / _stopwatch.ElapsedMilliseconds, 2)
+        _activity?.SetTag("batch.duration_ms", elapsedMilliseconds);
+        _activity?.SetTag("batch.items_per_second", _processedCount > 0 && elapsedMilliseconds > 0
+            ? Math.Round(_processedCount * 1000.0 / elapsedMilliseconds, 2)
             : 0);
 
         if (_errors.Count > 0)
