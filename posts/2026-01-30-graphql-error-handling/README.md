@@ -12,7 +12,7 @@ Building a proper error handling system in GraphQL is different from REST APIs. 
 
 ## Why GraphQL Error Handling Matters
 
-In REST APIs, you rely on HTTP status codes (404, 500, 401) to communicate errors. GraphQL takes a different approach: every response returns HTTP 200, and errors are included in the response body alongside any partial data that was successfully resolved.
+In REST APIs, you rely on HTTP status codes (404, 500, 401) to communicate errors. GraphQL takes a different approach: successful GraphQL execution commonly returns HTTP 200, and execution errors are included in the response body alongside any partial data that was successfully resolved. Malformed HTTP requests, invalid JSON, unsupported methods, or other request-level failures can still return 4xx or 5xx status codes.
 
 ```mermaid
 flowchart TD
@@ -26,7 +26,7 @@ flowchart TD
         G1[Request] --> G2{Success?}
         G2 -->|Yes| G3["HTTP 200 + {data: {...}}"]
         G2 -->|Partial| G4["HTTP 200 + {data: {...}, errors: [...]}"]
-        G2 -->|No| G5["HTTP 200 + {data: null, errors: [...]}"]
+        G2 -->|No| G5["HTTP 200 or 4xx + {errors: [...]}"]
     end
 ```
 
@@ -319,6 +319,18 @@ interface ErrorLogEntry {
 const SENSITIVE_FIELDS = ['password', 'token', 'secret', 'apiKey', 'creditCard'];
 
 // Recursively remove sensitive fields from an object
+function sanitizeValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(sanitizeValue);
+  }
+
+  if (typeof value === 'object' && value !== null) {
+    return sanitizeVariables(value as Record<string, unknown>);
+  }
+
+  return value;
+}
+
 function sanitizeVariables(
   variables: Record<string, unknown> | null
 ): Record<string, unknown> | null {
@@ -327,12 +339,10 @@ function sanitizeVariables(
   const sanitized: Record<string, unknown> = {};
 
   for (const [key, value] of Object.entries(variables)) {
-    if (SENSITIVE_FIELDS.some(field => key.toLowerCase().includes(field))) {
+    if (SENSITIVE_FIELDS.some(field => key.toLowerCase().includes(field.toLowerCase()))) {
       sanitized[key] = '[REDACTED]';
-    } else if (typeof value === 'object' && value !== null) {
-      sanitized[key] = sanitizeVariables(value as Record<string, unknown>);
     } else {
-      sanitized[key] = value;
+      sanitized[key] = sanitizeValue(value);
     }
   }
 
@@ -350,7 +360,7 @@ export interface ErrorLoggingPluginOptions {
   logger?: Pick<Console, 'error' | 'warn' | 'info'>;
 }
 
-export function createErrorLoggingPlugin<TContext extends { user?: { id: string }; requestId: string }>(
+export function createErrorLoggingPlugin<TContext extends { user?: { id: string } | null; requestId: string }>(
   options: ErrorLoggingPluginOptions = {}
 ): ApolloServerPlugin<TContext> {
   const { errorTracker, logger = console } = options;
@@ -672,8 +682,12 @@ Errors in subscriptions should be sent through the subscription stream rather th
 // src/resolvers/subscriptions.ts
 // Subscription resolvers with error handling
 
-import { withFilter } from 'graphql-subscriptions';
-import { AuthenticationError, NotFoundError } from '../errors';
+import {
+  AuthenticationError,
+  AuthorizationError,
+  InternalError,
+  NotFoundError
+} from '../errors';
 
 export const subscriptionResolvers = {
   Subscription: {
@@ -704,7 +718,9 @@ export const subscriptionResolvers = {
         }
 
         // Return the async iterator for the subscription
-        const iterator = context.pubsub.asyncIterator(`MESSAGE_${args.channelId}`);
+        const iterator = context.pubsub.asyncIterableIterator(
+          `MESSAGE_${args.channelId}`
+        );
 
         // Wrap iterator to handle errors during iteration
         try {
@@ -731,20 +747,30 @@ This example shows React components using Apollo Client with proper error handli
 ```typescript
 // Client-side error handling with Apollo Client (React example)
 
-import { useQuery, useMutation, ApolloError } from '@apollo/client';
+import { useMutation, useQuery } from '@apollo/client';
+import { CombinedGraphQLErrors } from '@apollo/client/errors';
+import { useState } from 'react';
 import { GET_USER, UPDATE_USER } from './queries';
 
 // Helper to extract error details from Apollo errors
-function getErrorInfo(error: ApolloError) {
-  const graphQLError = error.graphQLErrors[0];
+function getErrorInfo(error: unknown) {
+  if (CombinedGraphQLErrors.is(error)) {
+    const graphQLError = error.errors[0];
+
+    return {
+      code: graphQLError?.extensions?.code as string || 'UNKNOWN',
+      message: graphQLError?.message || error.message,
+      fieldErrors: graphQLError?.extensions?.fieldErrors as Array<{
+        field: string;
+        message: string;
+      }> || []
+    };
+  }
 
   return {
-    code: graphQLError?.extensions?.code as string || 'UNKNOWN',
-    message: graphQLError?.message || error.message,
-    fieldErrors: graphQLError?.extensions?.fieldErrors as Array<{
-      field: string;
-      message: string;
-    }> || []
+    code: 'UNKNOWN',
+    message: error instanceof Error ? error.message : 'An unexpected error occurred',
+    fieldErrors: []
   };
 }
 
@@ -804,19 +830,17 @@ function UpdateProfileForm({ userId }: { userId: string }) {
       // Success - redirect or show message
       showSuccessToast('Profile updated successfully');
     } catch (error) {
-      if (error instanceof ApolloError) {
-        const { code, message, fieldErrors } = getErrorInfo(error);
+      const { code, message, fieldErrors } = getErrorInfo(error);
 
-        if (code === 'VALIDATION_ERROR' && fieldErrors.length > 0) {
-          // Map field errors to form fields
-          const errorMap: Record<string, string> = {};
-          for (const fieldError of fieldErrors) {
-            errorMap[fieldError.field] = fieldError.message;
-          }
-          setFormErrors(errorMap);
-        } else {
-          setGlobalError(message);
+      if (code === 'VALIDATION_ERROR' && fieldErrors.length > 0) {
+        // Map field errors to form fields
+        const errorMap: Record<string, string> = {};
+        for (const fieldError of fieldErrors) {
+          errorMap[fieldError.field] = fieldError.message;
         }
+        setFormErrors(errorMap);
+      } else {
+        setGlobalError(message);
       }
     }
   }
