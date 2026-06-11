@@ -21,7 +21,7 @@ Here is a comparison between strong and weak references:
 | Aspect | Strong Reference | Weak Reference |
 |--------|------------------|----------------|
 | Keeps object alive | Yes | No |
-| Access method | Direct | Call the reference or use `.ref()` |
+| Access method | Direct | Call the reference |
 | Returns when dead | N/A | `None` |
 | Common use cases | Normal variables | Caches, callbacks, observers |
 | Memory impact | Prevents GC | Allows GC |
@@ -113,8 +113,8 @@ Output:
 ```text
 Processor PROC-001 initialized
 Processor active: True
-Callback triggered - object is being collected
 Processor PROC-001 destroyed
+Callback triggered - object is being collected
 Processor active after del: False
 ```
 
@@ -296,7 +296,7 @@ Tracked widgets after del: 1
 | Guaranteed to run | No | Yes (if registered) |
 | Can access dead object | Tries to | No (by design) |
 | Order of execution | Undefined | Can be controlled |
-| Can be called manually | No | Yes with atexit=False |
+| Can be called manually | No | Yes |
 | Survives reference cycles | Maybe | Yes |
 
 ### Implementing Resource Cleanup
@@ -703,11 +703,10 @@ class Handler:
 
 handler = Handler()
 
-# Bad - regular ref does not work with bound methods
-try:
-    ref = weakref.ref(handler.handle)
-except TypeError as e:
-    print(f"Regular ref to bound method: {e}")
+# Bad - a regular ref to a bound method dies immediately because
+# the bound method is ephemeral (created fresh on each attribute access)
+ref = weakref.ref(handler.handle)
+print(f"Regular ref to bound method: {ref()}")  # Prints None
 
 # Good - use WeakMethod for bound methods
 method_ref = weakref.WeakMethod(handler.handle)
