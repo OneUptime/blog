@@ -72,7 +72,7 @@ The most common approach is to apply a policy to an entire namespace.
 # peer-auth-namespace.yaml
 
 # Enforces mTLS for all workloads in the production namespace
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -94,7 +94,7 @@ kubectl apply -f peer-auth-namespace.yaml
 ```yaml
 # peer-auth-permissive.yaml
 # Allows both mTLS and plaintext during migration
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -111,7 +111,7 @@ To enforce mTLS across the entire mesh, create a policy in the Istio root namesp
 ```yaml
 # peer-auth-mesh-wide.yaml
 # Enforces mTLS across all namespaces in the mesh
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -150,7 +150,7 @@ Target specific workloads using label selectors.
 ```yaml
 # peer-auth-workload.yaml
 # Enforces STRICT mTLS only for the payment service
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: payment-strict
@@ -169,7 +169,7 @@ spec:
 ```yaml
 # peer-auth-pci-zone.yaml
 # Enforces STRICT mTLS for all PCI-compliant services
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: pci-strict
@@ -189,7 +189,7 @@ When you have mesh-wide STRICT mode but need exceptions:
 ```yaml
 # peer-auth-legacy-exception.yaml
 # Disables mTLS for a legacy service that cannot support it
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: legacy-exception
@@ -204,14 +204,14 @@ spec:
 
 ## Port-Level mTLS Configuration
 
-Sometimes a service exposes multiple ports with different security requirements. Use port-level overrides.
+Sometimes a workload exposes multiple ports with different security requirements. Use port-level overrides. The port numbers in `portLevelMtls` are workload container ports, and they only apply when those ports are bound by a Kubernetes Service.
 
 ### Mixed Mode Per Port
 
 ```yaml
 # peer-auth-port-level.yaml
-# Different mTLS modes for different ports on the same service
-apiVersion: security.istio.io/v1beta1
+# Different mTLS modes for different ports on the same workload
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: api-gateway-ports
@@ -239,7 +239,7 @@ spec:
 ```yaml
 # peer-auth-monitoring.yaml
 # Allow plaintext metrics scraping while keeping app traffic encrypted
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: metrics-exception
@@ -251,8 +251,8 @@ spec:
   mtls:
     mode: STRICT
   portLevelMtls:
-    # Prometheus metrics endpoint
-    15020:
+    # Health check port
+    8081:
       mode: DISABLE
     # Application metrics
     9090:
@@ -264,7 +264,7 @@ flowchart LR
     subgraph Service["order-service"]
         P1[Port 443: API]
         P2[Port 9090: Metrics]
-        P3[Port 15020: Health]
+        P3[Port 8081: Health]
     end
 
     Client[Internal Service] -->|STRICT mTLS| P1
@@ -289,7 +289,7 @@ kubectl get pods -A -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metada
 
 ```yaml
 # step1-permissive.yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -325,7 +325,7 @@ Start with non-critical namespaces:
 
 ```yaml
 # step2-strict-staging.yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -339,7 +339,7 @@ Then move to production workloads one by one:
 
 ```yaml
 # step3-strict-workload.yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: api-strict
@@ -358,7 +358,7 @@ Once all workloads are verified:
 
 ```yaml
 # step4-strict-mesh.yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -388,12 +388,12 @@ flowchart TD
 
 ## Combining with DestinationRule
 
-PeerAuthentication controls what traffic a workload accepts. DestinationRule controls what traffic a workload sends. For complete mTLS, configure both.
+PeerAuthentication controls what traffic a workload accepts. DestinationRule controls what traffic a workload sends. Istio automatically configures sidecars to use mTLS when calling other mesh workloads, but you can use a DestinationRule when you need to explicitly set client-side TLS behavior.
 
 ```yaml
 # destination-rule-mtls.yaml
 # Configures outbound mTLS for all services in the namespace
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: default
@@ -422,8 +422,8 @@ spec:
 # View authentication policies
 kubectl get peerauthentications -A
 
-# Check policy for specific workload
-istioctl authn tls-check <pod-name> -n production
+# Check configuration for a specific workload
+istioctl x describe pod <pod-name> -n production
 ```
 
 ### Debug Connection Issues
@@ -448,7 +448,7 @@ Cause: Client does not have sidecar or is outside the mesh.
 Solution:
 ```yaml
 # Add exception for the port or use PERMISSIVE
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: allow-external
@@ -468,8 +468,8 @@ Cause: Prometheus is outside the mesh and cannot present mTLS certificates.
 
 Solution:
 ```yaml
-# Allow plaintext on metrics port
-apiVersion: security.istio.io/v1beta1
+# Allow plaintext on the application metrics port
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: metrics-permissive
@@ -479,7 +479,7 @@ spec:
     matchLabels:
       app: my-service
   portLevelMtls:
-    15020:
+    9090:
       mode: DISABLE
 ```
 
@@ -497,7 +497,7 @@ Here is a complete example for a production namespace with proper mTLS configura
 # production-mtls-config.yaml
 ---
 # Namespace-wide strict mTLS
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -507,7 +507,7 @@ spec:
     mode: STRICT
 ---
 # Exception for legacy service
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: legacy-exception
@@ -520,7 +520,7 @@ spec:
     mode: DISABLE
 ---
 # Port-level configuration for API gateway
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: api-gateway-config
@@ -535,12 +535,12 @@ spec:
     # Health checks from external LB
     8081:
       mode: DISABLE
-    # Prometheus metrics
-    15020:
+    # Application metrics
+    9090:
       mode: PERMISSIVE
 ---
 # DestinationRule for outbound mTLS
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: default
@@ -557,7 +557,7 @@ spec:
 - [ ] Enable PERMISSIVE mode mesh-wide as a baseline
 - [ ] Ensure all workloads have Istio sidecars injected
 - [ ] Monitor mTLS adoption using Kiali or Prometheus
-- [ ] Configure DestinationRules for outbound mTLS
+- [ ] Configure DestinationRules only when you need to override automatic mTLS behavior
 - [ ] Add port-level exceptions only where necessary
 - [ ] Document all DISABLE and PERMISSIVE exceptions
 - [ ] Migrate to STRICT mode progressively
