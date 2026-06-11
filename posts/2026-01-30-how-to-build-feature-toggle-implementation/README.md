@@ -54,7 +54,7 @@ flowchart TB
 
 ## Database Schema
 
-Start with a schema that supports boolean flags, percentage rollouts, and user targeting. This schema uses PostgreSQL but works with any relational database.
+Start with a schema that supports boolean flags, percentage rollouts, and user targeting. This schema uses PostgreSQL and can be adapted for other relational databases.
 
 ```sql
 -- Feature flags table stores flag definitions and default values
@@ -107,7 +107,7 @@ CREATE INDEX idx_audit_log_flag_id ON flag_audit_log(flag_id);
 The API layer handles flag CRUD operations and serves flag values to SDKs. This implementation uses Express and includes caching with Redis.
 
 ```typescript
-import express, { Request, Response, NextFunction } from 'express';
+import express, { Request, Response } from 'express';
 import { Pool } from 'pg';
 import Redis from 'ioredis';
 import { createHash } from 'crypto';
@@ -180,7 +180,7 @@ class FeatureFlagService {
     const flag = this.mapRowToFlag(result.rows[0]);
 
     // Cache the result
-    await this.redis.setex(cacheKey, this.cacheExpiry, JSON.stringify(flag));
+    await this.redis.set(cacheKey, JSON.stringify(flag), 'EX', this.cacheExpiry);
 
     return flag;
   }
@@ -200,7 +200,7 @@ class FeatureFlagService {
     );
 
     const rules = result.rows.map(this.mapRowToRule);
-    await this.redis.setex(cacheKey, this.cacheExpiry, JSON.stringify(rules));
+    await this.redis.set(cacheKey, JSON.stringify(rules), 'EX', this.cacheExpiry);
 
     return rules;
   }
@@ -293,6 +293,22 @@ class FeatureFlagService {
     await this.logChange(flag.id, flag.key, 'create', null, flag);
 
     return flag;
+  }
+
+  // Get all flags with targeting rules for SDK cache refresh
+  async getAllFlags(): Promise<Array<FeatureFlag & { rules: TargetingRule[] }>> {
+    const result = await this.db.query(
+      'SELECT * FROM feature_flags ORDER BY created_at DESC'
+    );
+
+    const flags = result.rows.map((row: any) => this.mapRowToFlag(row));
+
+    return Promise.all(
+      flags.map(async (flag) => ({
+        ...flag,
+        rules: await this.getTargetingRules(flag.id),
+      }))
+    );
   }
 
   // Update an existing flag
@@ -390,13 +406,11 @@ app.post('/api/flags/:key/evaluate', async (req: Request, res: Response) => {
   }
 });
 
-// Get all flags (for admin UI)
+// Get all flags with rules (for SDK cache refresh)
 app.get('/api/flags', async (req: Request, res: Response) => {
   try {
-    const result = await flagService['db'].query(
-      'SELECT * FROM feature_flags ORDER BY created_at DESC'
-    );
-    res.json(result.rows.map((row: any) => flagService['mapRowToFlag'](row)));
+    const flags = await flagService.getAllFlags();
+    res.json(flags);
   } catch (error) {
     console.error('List flags error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -534,7 +548,7 @@ class FeatureFlagClient {
   // Fetch all flags and populate the cache
   async refresh(): Promise<void> {
     try {
-      const response = await fetch(`${this.config.apiUrl}/api/flags/all`, {
+      const response = await fetch(`${this.config.apiUrl}/api/flags`, {
         headers: {
           'Authorization': `Bearer ${this.config.apiKey}`,
         },
@@ -788,7 +802,7 @@ class FeatureFlagClient:
             return
 
         try:
-            async with self._session.get(f"{self.api_url}/api/flags/all") as response:
+            async with self._session.get(f"{self.api_url}/api/flags") as response:
                 if response.status != 200:
                     print(f"Flag refresh failed: {response.status}")
                     return
