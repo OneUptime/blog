@@ -64,7 +64,7 @@ groups:
           severity: critical
         annotations:
           summary: "Error budget burning too fast"
-          description: "At current rate, error budget exhausts in 2 hours"
+          description: "At current rate, error budget exhausts in about 50 hours"
 
       - alert: ErrorBudgetSlowBurn
         expr: |
@@ -89,6 +89,18 @@ interface ErrorBudgetPolicy {
   threshold: number;
   actions: PolicyAction[];
 }
+
+type PolicyAction =
+  | { type: 'notify'; target: string }
+  | { type: 'increase_review'; description: string }
+  | { type: 'freeze_feature_deploys'; exceptions: string[] }
+  | { type: 'escalate'; target: string }
+  | { type: 'schedule'; activity: string }
+  | { type: 'full_deploy_freeze' }
+  | { type: 'redirect_resources'; from: string; to: string }
+  | { type: 'incident_review'; scope: string };
+
+declare function executeAction(action: PolicyAction): Promise<void>;
 
 const errorBudgetPolicies: ErrorBudgetPolicy[] = [
   {
