@@ -16,7 +16,6 @@ The foundation of any HTTP server is a TCP socket listener. Rust's standard libr
 
 ```rust
 use std::net::TcpListener;
-use std::io::{Read, Write};
 
 fn main() {
     let listener = TcpListener::bind("127.0.0.1:8080").unwrap();
@@ -29,6 +28,10 @@ fn main() {
         }
     }
 }
+
+fn handle_connection(stream: std::net::TcpStream) {
+    println!("Accepted connection from {:?}", stream.peer_addr());
+}
 ```
 
 The `TcpListener::bind()` method creates a listener bound to the specified address. The `incoming()` method returns an iterator over incoming connections, each yielding a `TcpStream`.
@@ -38,8 +41,9 @@ The `TcpListener::bind()` method creates a listener bound to the specified addre
 HTTP requests follow a specific format: a request line, headers, and an optional body. Let us parse the essential parts.
 
 ```rust
-use std::net::TcpStream;
 use std::collections::HashMap;
+use std::io::Read;
+use std::net::TcpStream;
 
 struct HttpRequest {
     method: String,
@@ -62,8 +66,8 @@ fn parse_request(stream: &mut TcpStream) -> Option<HttpRequest> {
     let mut headers = HashMap::new();
     for line in lines {
         if line.is_empty() { break; }
-        if let Some((key, value)) = line.split_once(": ") {
-            headers.insert(key.to_lowercase(), value.to_string());
+        if let Some((key, value)) = line.split_once(':') {
+            headers.insert(key.to_lowercase(), value.trim().to_string());
         }
     }
 
@@ -97,7 +101,7 @@ Routing directs requests to appropriate handlers based on the path and method.
 fn route_request(request: &HttpRequest) -> (u16, &str, String) {
     match (request.method.as_str(), request.path.as_str()) {
         ("GET", "/") => (200, "OK", "<h1>Welcome to Rust HTTP Server</h1>".to_string()),
-        ("GET", "/health") => (200, "OK", r#"{"status": "healthy"}"#.to_string()),
+        ("GET", "/health") => (200, "OK", "<p>healthy</p>".to_string()),
         ("GET", "/about") => (200, "OK", "<h1>About Page</h1><p>Built with Rust</p>".to_string()),
         ("POST", "/echo") => (200, "OK", "<p>Echo endpoint received POST</p>".to_string()),
         _ => (404, "Not Found", "<h1>404 - Page Not Found</h1>".to_string()),
@@ -133,7 +137,7 @@ For production use, consider using a thread pool to limit resource consumption.
 
 ## Implementing Keep-Alive Connections
 
-HTTP/1.1 supports persistent connections through the `Connection: keep-alive` header, allowing multiple requests over a single TCP connection.
+HTTP/1.1 uses persistent connections by default unless either side sends `Connection: close`, allowing multiple requests over a single TCP connection.
 
 ```rust
 use std::time::Duration;
@@ -149,7 +153,7 @@ fn handle_connection(mut stream: TcpStream) {
 
         let keep_alive = request.headers
             .get("connection")
-            .map(|v| v.to_lowercase() == "keep-alive")
+            .map(|v| v.to_lowercase() != "close")
             .unwrap_or(true);
 
         let (status, text, body) = route_request(&request);
@@ -171,11 +175,17 @@ fn handle_connection(mut stream: TcpStream) {
 Here is the complete server combining all components.
 
 ```rust
-use std::net::{TcpListener, TcpStream};
-use std::io::{Read, Write};
 use std::collections::HashMap;
+use std::io::{Read, Write};
+use std::net::{TcpListener, TcpStream};
 use std::thread;
 use std::time::Duration;
+
+struct HttpRequest {
+    method: String,
+    path: String,
+    headers: HashMap<String, String>,
+}
 
 fn main() {
     let listener = TcpListener::bind("127.0.0.1:8080").unwrap();
@@ -187,6 +197,88 @@ fn main() {
                 thread::spawn(move || handle_connection(stream));
             }
             Err(e) => eprintln!("Error: {}", e),
+        }
+    }
+}
+
+fn parse_request(stream: &mut TcpStream) -> Option<HttpRequest> {
+    let mut buffer = [0; 4096];
+    let bytes_read = stream.read(&mut buffer).ok()?;
+    if bytes_read == 0 {
+        return None;
+    }
+
+    let request_str = String::from_utf8_lossy(&buffer[..bytes_read]);
+
+    let mut lines = request_str.lines();
+    let request_line = lines.next()?;
+    let mut parts = request_line.split_whitespace();
+
+    let method = parts.next()?.to_string();
+    let path = parts.next()?.to_string();
+
+    let mut headers = HashMap::new();
+    for line in lines {
+        if line.is_empty() {
+            break;
+        }
+        if let Some((key, value)) = line.split_once(':') {
+            headers.insert(key.to_lowercase(), value.trim().to_string());
+        }
+    }
+
+    Some(HttpRequest { method, path, headers })
+}
+
+fn build_response(status_code: u16, status_text: &str, body: &str, keep_alive: bool) -> String {
+    let connection = if keep_alive { "keep-alive" } else { "close" };
+    format!(
+        "HTTP/1.1 {} {}\r\n\
+         Content-Type: text/html\r\n\
+         Content-Length: {}\r\n\
+         Connection: {}\r\n\r\n\
+         {}",
+        status_code,
+        status_text,
+        body.len(),
+        connection,
+        body
+    )
+}
+
+fn route_request(request: &HttpRequest) -> (u16, &str, String) {
+    match (request.method.as_str(), request.path.as_str()) {
+        ("GET", "/") => (200, "OK", "<h1>Welcome to Rust HTTP Server</h1>".to_string()),
+        ("GET", "/health") => (200, "OK", "<p>healthy</p>".to_string()),
+        ("GET", "/about") => (200, "OK", "<h1>About Page</h1><p>Built with Rust</p>".to_string()),
+        ("POST", "/echo") => (200, "OK", "<p>Echo endpoint received POST</p>".to_string()),
+        _ => (404, "Not Found", "<h1>404 - Page Not Found</h1>".to_string()),
+    }
+}
+
+fn handle_connection(mut stream: TcpStream) {
+    stream.set_read_timeout(Some(Duration::from_secs(5))).ok();
+
+    loop {
+        let request = match parse_request(&mut stream) {
+            Some(req) => req,
+            None => break,
+        };
+
+        let keep_alive = request.headers
+            .get("connection")
+            .map(|v| v.to_lowercase() != "close")
+            .unwrap_or(true);
+
+        let (status, text, body) = route_request(&request);
+        let response = build_response(status, text, &body, keep_alive);
+
+        if stream.write_all(response.as_bytes()).is_err() {
+            break;
+        }
+
+        if !keep_alive {
+            break;
         }
     }
 }
