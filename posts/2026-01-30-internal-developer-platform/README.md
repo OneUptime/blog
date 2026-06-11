@@ -63,7 +63,7 @@ Start with a simple data model that captures the essential information about eac
 
 from dataclasses import dataclass
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 
 class ServiceLifecycle(Enum):
@@ -83,11 +83,11 @@ class ServiceMetadata:
     repository_url: str
     documentation_url: Optional[str] = None
     oncall_rotation: Optional[str] = None
-    created_at: datetime = None
+    created_at: Optional[datetime] = None
 
     def __post_init__(self):
         if self.created_at is None:
-            self.created_at = datetime.utcnow()
+            self.created_at = datetime.now(timezone.utc)
 
 @dataclass
 class ServiceDependency:
@@ -106,6 +106,8 @@ The catalog needs an API that developers and automation can query.
 
 from fastapi import FastAPI, HTTPException
 from typing import List
+
+from models.service import ServiceMetadata
 
 app = FastAPI(title="Service Catalog API")
 
@@ -216,7 +218,6 @@ The template engine processes these files with the developer's inputs.
 # engine/template_processor.py
 # Processes golden path templates to generate service scaffolding
 
-import os
 import yaml
 from jinja2 import Environment, FileSystemLoader
 from pathlib import Path
@@ -272,17 +273,37 @@ class TemplateProcessor:
             # Render the source path with parameters
             source = self.env.from_string(source_pattern).render(**parameters)
             dest = self.env.from_string(dest_pattern).render(**parameters)
+            source_path = self.templates_dir / template_name / source
+            dest_root = Path(output_dir) / dest.lstrip("/")
 
-            # Process the template file
-            template = self.env.get_template(f"{template_name}/{source}")
-            content = template.render(**parameters)
+            if source_path.is_dir():
+                template_files = [
+                    path for path in source_path.rglob("*") if path.is_file()
+                ]
+            else:
+                template_files = [source_path]
 
-            # Write to output directory
-            output_path = Path(output_dir) / dest
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            output_path.write_text(content)
+            for template_file in template_files:
+                if source_path.is_dir():
+                    relative_path = template_file.relative_to(source_path)
+                    template_path = (
+                        f"{template_name}/{source.rstrip('/')}/"
+                        f"{relative_path.as_posix()}"
+                    )
+                    output_path = dest_root / relative_path
+                else:
+                    template_path = f"{template_name}/{source}"
+                    output_path = dest_root
 
-            generated_files.append(str(output_path))
+                # Process the template file
+                template = self.env.get_template(template_path)
+                content = template.render(**parameters)
+
+                # Write to output directory
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                output_path.write_text(content)
+
+                generated_files.append(str(output_path))
 
         return generated_files
 ```
@@ -491,6 +512,8 @@ import (
     "context"
     "fmt"
 
+    corev1 "k8s.io/api/core/v1"
+    "k8s.io/apimachinery/pkg/api/resource"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/client-go/kubernetes"
 )
@@ -531,7 +554,7 @@ func (k *KubernetesProvider) ProvisionNamespace(
     return k.applyResourceQuota(ctx, serviceName)
 }
 
-// applyResourceQuota sets default limits for new namespaces
+// applyResourceQuota sets a default quota for new namespaces
 func (k *KubernetesProvider) applyResourceQuota(
     ctx context.Context,
     namespace string,
