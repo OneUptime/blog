@@ -357,7 +357,7 @@ groups:
           summary: "Redis replication is broken"
 
       - alert: RedisOutputBufferHigh
-        expr: redis_client_output_buffer_bytes{type="slave"} > 268435456
+        expr: redis_client_recent_max_output_buffer_bytes > 268435456
         for: 2m
         labels:
           severity: warning
@@ -374,8 +374,7 @@ redis-cli INFO replication
 # Watch for replication events
 redis-cli MONITOR | grep -E "PSYNC|SYNC|REPLCONF"
 
-# Check replica lag
-redis-cli DEBUG SLEEP 0 # Forces processing of pending commands
+# Check replica lag (compare master_repl_offset on primary with slave_repl_offset on replica)
 redis-cli INFO replication | grep offset
 
 # Monitor client connections
@@ -507,8 +506,8 @@ maxmemory-policy volatile-lru
 
 **Diagnosis:**
 ```bash
-# Check for full resync events
-redis-cli INFO replication | grep sync_full
+# Check for full resync events (sync_full, sync_partial_ok, sync_partial_err are in the stats section)
+redis-cli INFO stats | grep -E "sync_full|sync_partial"
 ```
 
 **Solution:** Increase backlog size to accommodate longer disconnection periods.
