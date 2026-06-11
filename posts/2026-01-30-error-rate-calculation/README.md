@@ -49,12 +49,13 @@ const { Counter, Registry } = require('prom-client');
 
 // Create a dedicated registry for your metrics
 const registry = new Registry();
+const serviceName = process.env.SERVICE_NAME || 'api';
 
 // Counter for all HTTP requests
 const httpRequestsTotal = new Counter({
   name: 'http_requests_total',
   help: 'Total number of HTTP requests',
-  labelNames: ['method', 'path', 'status_code'],
+  labelNames: ['service', 'method', 'path', 'status_code'],
   registers: [registry]
 });
 
@@ -62,34 +63,31 @@ const httpRequestsTotal = new Counter({
 const httpErrorsTotal = new Counter({
   name: 'http_errors_total',
   help: 'Total number of HTTP errors',
-  labelNames: ['method', 'path', 'error_type'],
+  labelNames: ['service', 'method', 'path', 'error_type'],
   registers: [registry]
 });
 
 // Middleware to count all requests
 function metricsMiddleware(req, res, next) {
-  // Capture the original end function
-  const originalEnd = res.end;
-
-  res.end = function(...args) {
+  res.on('finish', () => {
     // Increment total requests counter
     httpRequestsTotal.inc({
+      service: serviceName,
       method: req.method,
       path: req.route?.path || req.path,
-      status_code: res.statusCode
+      status_code: String(res.statusCode)
     });
 
     // Increment error counter for 5xx responses
     if (res.statusCode >= 500) {
       httpErrorsTotal.inc({
+        service: serviceName,
         method: req.method,
         path: req.route?.path || req.path,
         error_type: 'server_error'
       });
     }
-
-    return originalEnd.apply(this, args);
-  };
+  });
 
   next();
 }
@@ -97,7 +95,7 @@ function metricsMiddleware(req, res, next) {
 module.exports = { registry, httpRequestsTotal, httpErrorsTotal, metricsMiddleware };
 ```
 
-The middleware wraps the response to capture the final status code. It increments both counters appropriately. Labels like method and path let you slice error rates by endpoint later.
+The middleware listens for the response to finish so it can capture the final status code. It increments both counters appropriately. Labels like method and path let you slice error rates by endpoint later.
 
 ## Calculating Error Rate
 
@@ -109,7 +107,6 @@ Here is a Python function that calculates error rate from Prometheus metrics.
 # error_rate.py
 
 import requests
-from datetime import datetime, timedelta
 
 def calculate_error_rate(prometheus_url: str,
                          service: str,
@@ -268,6 +265,8 @@ Common dimensions to track include endpoint, HTTP method, error type, user segme
 
 ```python
 # dimensional_error_rate.py
+import requests
+
 def calculate_error_rate_by_endpoint(prometheus_url: str,
                                       service: str,
                                       window_minutes: int = 5) -> list:
