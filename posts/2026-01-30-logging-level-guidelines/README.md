@@ -162,7 +162,7 @@ async function fetchWithRetry(url: string, maxRetries: number): Promise<Response
         throw error;
       }
 
-      await sleep(1000 * attempt); // Exponential backoff
+      await sleep(1000 * 2 ** (attempt - 1)); // Exponential backoff
     }
   }
 }
@@ -723,6 +723,8 @@ import winston from 'winston';
 
 const app = express();
 
+app.use(express.json());
+
 // Create logger with mutable level
 const logger = winston.createLogger({
   level: 'info',
@@ -980,11 +982,11 @@ class LevelFilterProcessor implements LogProcessor {
   };
 
   constructor(minLevelName: string) {
-    this.minLevel = this.levelMap[minLevelName] || 1;
+    this.minLevel = this.levelMap[minLevelName] ?? 1;
   }
 
   process(record: LogRecord): LogRecord | null {
-    const recordLevel = this.levelMap[record.level] || 0;
+    const recordLevel = this.levelMap[record.level] ?? 0;
 
     if (recordLevel < this.minLevel) {
       return null;  // Drop the log
@@ -1135,6 +1137,7 @@ module.exports = {
 
           // Flag generic error messages
           if (
+            message &&
             message.type === 'Literal' &&
             /^(error|failed|exception)$/i.test(message.value)
           ) {
