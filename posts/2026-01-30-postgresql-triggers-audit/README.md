@@ -55,7 +55,7 @@ CREATE TABLE audit.change_log (
     new_values      JSONB,
     changed_fields  TEXT[],
     transaction_id  BIGINT DEFAULT txid_current(),
-    statement_id    INTEGER DEFAULT statement_timestamp()::TEXT::HASHTEXT,
+    statement_id    INTEGER DEFAULT hashtext(statement_timestamp()::TEXT),
     session_user    TEXT DEFAULT session_user,
     application_user TEXT,
     client_addr     INET DEFAULT inet_client_addr(),
@@ -568,7 +568,7 @@ Audit triggers add overhead to every write operation. Here are strategies to min
 For high-throughput tables, buffer audit entries and write them in batches:
 
 ```sql
--- Temporary table for buffering (per-session)
+-- Buffer table (UNLOGGED skips WAL for faster writes; not crash-safe)
 CREATE UNLOGGED TABLE audit.buffer (
     data JSONB NOT NULL
 );
