@@ -53,7 +53,7 @@ spec:
     - name: kill-switch-bypass
       description: Emergency kill switches skip approval
       conditions:
-        - field: flag.tags
+        - field: tags
           operator: contains
           value: kill-switch
       approval:
@@ -122,6 +122,12 @@ interface ApprovalRule {
     minApprovers?: number;
     approverRoles?: string[];
   };
+}
+
+interface Condition {
+  field: string;
+  operator: 'equals' | 'contains' | 'greaterThan' | 'regex';
+  value: any;
 }
 
 interface ApprovalResult {
@@ -305,9 +311,23 @@ interface Approval {
   timestamp: Date;
 }
 
+interface NotificationService {
+  notifyApprovers(
+    roles: string[],
+    request: FlagChangeRequest,
+    stageName: string,
+    isEscalation?: boolean
+  ): Promise<void>;
+  notifyRequester(requester: string, message: string): Promise<void>;
+}
+
 class WorkflowManager {
   private workflows: Map<string, ApprovalWorkflow> = new Map();
   private notificationService: NotificationService;
+
+  constructor(notificationService: NotificationService) {
+    this.notificationService = notificationService;
+  }
 
   async createWorkflow(
     request: FlagChangeRequest,
@@ -343,6 +363,7 @@ class WorkflowManager {
 
     const currentStage = workflow.stages[workflow.currentStageIndex];
     const stageApproval = workflow.stageApprovals.get(currentStage.name);
+    if (!stageApproval) throw new Error('Current stage not initialized');
 
     // Validate approver has correct role
     if (!currentStage.approverRoles.includes(role)) {
@@ -433,13 +454,23 @@ class WorkflowManager {
             await this.notifyRejection(workflow, stage.name, 'Approval timeout');
             break;
           case 'auto-approve':
-            await this.submitApproval(
-              workflowId,
-              'system',
-              'auto-approve',
-              'approve',
-              'Auto-approved due to timeout'
-            );
+            stageApproval.approvals.push({
+              approver: 'system',
+              role: 'system',
+              decision: 'approve',
+              comment: 'Auto-approved due to timeout',
+              timestamp: new Date(),
+            });
+            stageApproval.status = 'approved';
+            stageApproval.completedAt = new Date();
+
+            if (workflow.currentStageIndex < workflow.stages.length - 1) {
+              workflow.currentStageIndex++;
+              await this.initializeStage(workflow, workflow.currentStageIndex);
+            } else {
+              workflow.status = 'approved';
+              await this.applyFlagChange(workflow.changeRequest);
+            }
             break;
         }
       },
@@ -1024,18 +1055,20 @@ interface JiraTicket {
   status: string;
   assignee: string;
   labels: string[];
-  customFields: {
-    featureFlag?: string;
-    targetEnvironment?: string;
-    rolloutPercentage?: number;
-  };
+  customFields: Record<string, any>;
 }
 
 interface JiraIntegrationConfig {
   baseUrl: string;
+  email: string;
   apiToken: string;
   projectKey: string;
-  requiredFields: string[];
+  fieldIds: {
+    featureFlag: string;
+    targetEnvironment: string;
+    rolloutPercentage: string;
+  };
+  requiredFields: Array<keyof JiraIntegrationConfig['fieldIds']>;
   allowedStatuses: string[];
 }
 
@@ -1072,16 +1105,17 @@ class JiraIntegration {
 
       // Check required fields are populated
       for (const field of this.config.requiredFields) {
-        if (!ticket.customFields[field]) {
+        const fieldId = this.config.fieldIds[field];
+        if (!ticket.customFields[fieldId]) {
           errors.push(`Required field '${field}' is empty`);
         }
       }
 
       // Check flag key matches if specified
-      if (ticket.customFields.featureFlag &&
-          ticket.customFields.featureFlag !== flagKey) {
+      const ticketFlag = ticket.customFields[this.config.fieldIds.featureFlag];
+      if (ticketFlag && ticketFlag !== flagKey) {
         errors.push(
-          `Ticket flag '${ticket.customFields.featureFlag}' does not match requested flag '${flagKey}'`
+          `Ticket flag '${ticketFlag}' does not match requested flag '${flagKey}'`
         );
       }
 
@@ -1113,7 +1147,11 @@ class JiraIntegration {
     await this.addLabel(ticketKey, 'flag-change-pending');
 
     // Update custom field
-    await this.updateCustomField(ticketKey, 'featureFlag', changeRequest.flagKey);
+    await this.updateCustomField(
+      ticketKey,
+      this.config.fieldIds.featureFlag,
+      changeRequest.flagKey
+    );
   }
 
   async updateTicketOnApproval(
@@ -1163,11 +1201,19 @@ ${comment ? `**Comment:** ${comment}` : ''}`
     );
 
     // Update custom fields
-    await this.updateCustomField(ticketKey, 'targetEnvironment', environment);
+    await this.updateCustomField(
+      ticketKey,
+      this.config.fieldIds.targetEnvironment,
+      environment
+    );
 
     // If this was a percentage rollout, track it
     if (typeof value === 'object' && value.percentage !== undefined) {
-      await this.updateCustomField(ticketKey, 'rolloutPercentage', value.percentage);
+      await this.updateCustomField(
+        ticketKey,
+        this.config.fieldIds.rolloutPercentage,
+        value.percentage
+      );
     }
   }
 
@@ -1176,14 +1222,22 @@ ${comment ? `**Comment:** ${comment}` : ''}`
       `${this.config.baseUrl}/rest/api/3/issue/${ticketKey}`,
       {
         headers: {
-          Authorization: `Basic ${this.config.apiToken}`,
+          Authorization: this.getAuthHeader(),
           'Content-Type': 'application/json',
         },
       }
     );
 
     if (!response.ok) return null;
-    return response.json();
+    const issue = await response.json();
+    return {
+      key: issue.key,
+      summary: issue.fields.summary,
+      status: issue.fields.status?.name,
+      assignee: issue.fields.assignee?.displayName ?? 'Unassigned',
+      labels: issue.fields.labels ?? [],
+      customFields: issue.fields,
+    };
   }
 
   private async addComment(ticketKey: string, body: string): Promise<void> {
@@ -1192,7 +1246,7 @@ ${comment ? `**Comment:** ${comment}` : ''}`
       {
         method: 'POST',
         headers: {
-          Authorization: `Basic ${this.config.apiToken}`,
+          Authorization: this.getAuthHeader(),
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -1215,7 +1269,7 @@ ${comment ? `**Comment:** ${comment}` : ''}`
     await fetch(`${this.config.baseUrl}/rest/api/3/issue/${ticketKey}`, {
       method: 'PUT',
       headers: {
-        Authorization: `Basic ${this.config.apiToken}`,
+        Authorization: this.getAuthHeader(),
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
@@ -1230,7 +1284,7 @@ ${comment ? `**Comment:** ${comment}` : ''}`
     await fetch(`${this.config.baseUrl}/rest/api/3/issue/${ticketKey}`, {
       method: 'PUT',
       headers: {
-        Authorization: `Basic ${this.config.apiToken}`,
+        Authorization: this.getAuthHeader(),
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
@@ -1249,7 +1303,7 @@ ${comment ? `**Comment:** ${comment}` : ''}`
     await fetch(`${this.config.baseUrl}/rest/api/3/issue/${ticketKey}`, {
       method: 'PUT',
       headers: {
-        Authorization: `Basic ${this.config.apiToken}`,
+        Authorization: this.getAuthHeader(),
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
@@ -1269,7 +1323,7 @@ ${comment ? `**Comment:** ${comment}` : ''}`
       `${this.config.baseUrl}/rest/api/3/issue/${ticketKey}/transitions`,
       {
         headers: {
-          Authorization: `Basic ${this.config.apiToken}`,
+          Authorization: this.getAuthHeader(),
         },
       }
     );
@@ -1285,7 +1339,7 @@ ${comment ? `**Comment:** ${comment}` : ''}`
         {
           method: 'POST',
           headers: {
-            Authorization: `Basic ${this.config.apiToken}`,
+            Authorization: this.getAuthHeader(),
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
@@ -1294,6 +1348,13 @@ ${comment ? `**Comment:** ${comment}` : ''}`
         }
       );
     }
+  }
+
+  private getAuthHeader(): string {
+    const credentials = Buffer.from(
+      `${this.config.email}:${this.config.apiToken}`
+    ).toString('base64');
+    return `Basic ${credentials}`;
   }
 }
 ```
