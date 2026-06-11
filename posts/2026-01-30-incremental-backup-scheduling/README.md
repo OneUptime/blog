@@ -156,10 +156,13 @@ archive_mode = on
 # Command to archive WAL segments
 # %p = path to WAL file, %f = filename only
 # This example copies to a local directory; adjust for your storage
-archive_command = 'cp %p /var/lib/postgresql/wal_archive/%f'
+archive_command = 'test ! -f /var/lib/postgresql/wal_archive/%f && cp %p /var/lib/postgresql/wal_archive/%f'
 
 # Alternative: Archive to S3 using aws cli
 # archive_command = 'aws s3 cp %p s3://my-backup-bucket/wal/%f'
+
+# Alternative: Call the archive manager script shown below
+# archive_command = '/opt/scripts/wal_archive_manager.sh archive %p'
 
 # Maximum WAL size before checkpoint
 # Larger values mean fewer checkpoints but more recovery time
@@ -333,6 +336,7 @@ verify_archives() {
     log "Verifying WAL archive integrity"
 
     local error_count=0
+    shopt -s nullglob
 
     for archive in "${WAL_ARCHIVE_DIR}"/*.gz; do
         if ! gzip -t "${archive}" 2>/dev/null; then
@@ -389,8 +393,9 @@ import os
 import subprocess
 import logging
 import json
+import sys
 from datetime import datetime, timedelta
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional, List, Dict
 from enum import Enum
 import hashlib
@@ -439,7 +444,7 @@ class BackupConfig:
     wal_retention: int = 14
 
     # Schedule settings
-    full_backup_day: int = 0  # Monday
+    full_backup_day: int = 6  # Sunday
     full_backup_hour: int = 2  # 2 AM
     incremental_interval_hours: int = 6
 
@@ -536,6 +541,18 @@ class BackupCatalog:
             return None
 
         return max(full_backups, key=lambda b: b.timestamp)
+
+    def get_latest_completed_backup(self) -> Optional[BackupMetadata]:
+        """Retrieve the most recent successful backup of any type."""
+        completed_backups = [
+            b for b in self.backups.values()
+            if b.status == "completed"
+        ]
+
+        if not completed_backups:
+            return None
+
+        return max(completed_backups, key=lambda b: b.timestamp)
 
     def get_restoration_chain(
         self,
@@ -702,6 +719,8 @@ class IncrementalBackupScheduler:
             logger.warning("No full backup found, creating one first")
             return self.create_full_backup()
 
+        latest_backup = self.catalog.get_latest_completed_backup()
+
         backup_id = self._generate_backup_id(BackupType.INCREMENTAL)
         backup_path = os.path.join(self.config.backup_dir, backup_id)
         os.makedirs(backup_path, exist_ok=True)
@@ -713,7 +732,7 @@ class IncrementalBackupScheduler:
             backup_type=BackupType.INCREMENTAL,
             timestamp=datetime.now(),
             size_bytes=0,
-            parent_backup_id=latest_full.backup_id,
+            parent_backup_id=latest_backup.backup_id,
             status="in_progress"
         )
 
@@ -744,8 +763,8 @@ class IncrementalBackupScheduler:
             metadata.wal_end = result.stdout.strip()
 
             # Copy new WAL files to incremental backup directory
-            # Find WAL files modified since last backup
-            last_backup_time = latest_full.timestamp
+            # Find WAL files modified since the last completed backup
+            last_backup_time = latest_backup.timestamp
 
             wal_files_copied = 0
             for wal_file in os.listdir(self.config.wal_archive_dir):
@@ -913,8 +932,17 @@ def main():
 
     scheduler = IncrementalBackupScheduler(config)
 
-    # Run scheduled backup
-    result = scheduler.run_scheduled_backup()
+    # Run requested backup action
+    action = sys.argv[1] if len(sys.argv) > 1 else "scheduled"
+
+    if action == "full":
+        result = scheduler.create_full_backup()
+    elif action == "incremental":
+        result = scheduler.create_incremental_backup()
+    elif action == "scheduled":
+        result = scheduler.run_scheduled_backup()
+    else:
+        raise SystemExit("Usage: backup_scheduler.py [full|incremental|scheduled]")
 
     if result:
         print(f"Backup completed: {result.backup_id}")
@@ -975,13 +1003,8 @@ flowchart TD
     CHAIN --> RESTORE_BASE["Restore Base Backup"]
     RESTORE_BASE --> CONFIGURE["Configure recovery.conf"]
 
-    CONFIGURE --> REPLAY["Replay WAL Archives"]
-    REPLAY --> INCREMENTALS{"More<br/>Incrementals?"}
-
-    INCREMENTALS -->|Yes| APPLY["Apply Incremental"]
-    APPLY --> REPLAY
-
-    INCREMENTALS -->|No| PITR["Point in Time Recovery"]
+    CONFIGURE --> STAGE["Stage Required WAL Archives"]
+    STAGE --> PITR["Point in Time Recovery"]
     PITR --> VERIFY["Verify Data Integrity"]
     VERIFY --> COMPLETE["Restoration Complete"]
 ```
@@ -1041,6 +1064,7 @@ if [[ -d "${RESTORE_DIR}" ]]; then
     log "Clearing existing data directory"
     rm -rf "${RESTORE_DIR:?}"/*
 fi
+mkdir -p "${RESTORE_DIR}"
 
 # Extract base backup
 BACKUP_PATH="${BACKUP_DIR}/${FULL_BACKUP}"
@@ -1060,7 +1084,7 @@ log "Configuring recovery settings"
 
 cat > "${RESTORE_DIR}/postgresql.auto.conf" << EOF
 # Recovery configuration for PITR
-restore_command = 'cp ${WAL_ARCHIVE}/%f %p'
+restore_command = 'sh -c '\''if [ -f "${WAL_ARCHIVE}/\$1.gz" ]; then gunzip -c "${WAL_ARCHIVE}/\$1.gz" > "\$2"; else cp "${WAL_ARCHIVE}/\$1" "\$2"; fi'\'' restore %f %p'
 recovery_target_time = '${TARGET_TIME}'
 recovery_target_action = 'promote'
 EOF
