@@ -116,6 +116,8 @@ DO
     CALL sp_refresh_dashboard_stats();
 
 -- Run every 2 hours
+DELIMITER //
+
 CREATE EVENT sync_external_data
 ON SCHEDULE EVERY 2 HOUR
 STARTS CURRENT_TIMESTAMP
@@ -125,12 +127,16 @@ BEGIN
     CALL sp_sync_external_api();
     UPDATE sync_log SET completed_at = NOW()
     WHERE id = LAST_INSERT_ID();
-END;
+END //
+
+DELIMITER ;
 ```
 
 ### Daily Events
 
 ```sql
+DELIMITER //
+
 -- Run every day at 2:00 AM
 CREATE EVENT daily_cleanup
 ON SCHEDULE EVERY 1 DAY
@@ -145,12 +151,16 @@ BEGIN
 
     -- Update statistics
     ANALYZE TABLE users, orders, products;
-END;
+END //
+
+DELIMITER ;
 ```
 
 ### Weekly Events
 
 ```sql
+DELIMITER //
+
 -- Run every Sunday at 3:00 AM
 CREATE EVENT weekly_report_generation
 ON SCHEDULE EVERY 1 WEEK
@@ -161,12 +171,16 @@ DO
 BEGIN
     CALL sp_generate_weekly_summary();
     CALL sp_send_report_notification();
-END;
+END //
+
+DELIMITER ;
 ```
 
 ### Monthly Events
 
 ```sql
+DELIMITER //
+
 -- Run on the first day of each month at midnight
 CREATE EVENT monthly_data_aggregation
 ON SCHEDULE EVERY 1 MONTH
@@ -184,7 +198,9 @@ BEGIN
     FROM orders
     WHERE order_date >= DATE_FORMAT(NOW() - INTERVAL 1 MONTH, '%Y-%m-01')
       AND order_date < DATE_FORMAT(NOW(), '%Y-%m-01');
-END;
+END //
+
+DELIMITER ;
 ```
 
 ## Event Lifecycle and States
@@ -256,11 +272,11 @@ BEGIN
             @error_code = MYSQL_ERRNO,
             @error_message = MESSAGE_TEXT;
 
+        -- Roll back before logging so the error log entry is not rolled back
+        ROLLBACK;
+
         INSERT INTO event_error_log (event_name, error_code, error_message)
         VALUES ('daily_cleanup', @error_code, @error_message);
-
-        -- Optionally rollback if in transaction
-        ROLLBACK;
     END;
 
     START TRANSACTION;
@@ -422,9 +438,8 @@ BEGIN
         SET @sql = CONCAT('CALL ', p_procedure_name, '()');
         PREPARE stmt FROM @sql;
         EXECUTE stmt;
-        DEALLOCATE PREPARE stmt;
-
         GET DIAGNOSTICS v_rows = ROW_COUNT;
+        DEALLOCATE PREPARE stmt;
     END;
 
     -- Mark as completed
@@ -495,18 +510,18 @@ BEGIN
     DELETE FROM application_logs
     WHERE created_at < NOW() - INTERVAL 30 DAY
     LIMIT 10000;
-    SET v_deleted_logs = ROW_COUNT;
+    SET v_deleted_logs = ROW_COUNT();
 
     -- Delete expired sessions (keep 7 days)
     DELETE FROM user_sessions
     WHERE last_activity < NOW() - INTERVAL 7 DAY
     LIMIT 5000;
-    SET v_deleted_sessions = ROW_COUNT;
+    SET v_deleted_sessions = ROW_COUNT();
 
     -- Clean temporary uploads (keep 24 hours)
     DELETE FROM temp_uploads
     WHERE uploaded_at < NOW() - INTERVAL 24 HOUR;
-    SET v_deleted_temp = ROW_COUNT;
+    SET v_deleted_temp = ROW_COUNT();
 
     -- Log the cleanup results
     INSERT INTO event_execution_log (event_name, started_at, completed_at, status)
@@ -524,6 +539,8 @@ DELIMITER ;
 ### Database Statistics Update
 
 ```sql
+DELIMITER //
+
 CREATE EVENT update_table_statistics
 ON SCHEDULE EVERY 6 HOUR
 STARTS CURRENT_TIMESTAMP
@@ -553,7 +570,9 @@ BEGIN
     FROM INFORMATION_SCHEMA.TABLES
     WHERE TABLE_SCHEMA = DATABASE()
       AND TABLE_TYPE = 'BASE TABLE';
-END;
+END //
+
+DELIMITER ;
 ```
 
 ### Partition Maintenance
@@ -617,12 +636,16 @@ ON SCHEDULE EVERY 1 HOUR
 DO CALL sp_complex_task();
 
 -- Avoid: Complex logic inline
+DELIMITER //
+
 CREATE EVENT avoid_this
 ON SCHEDULE EVERY 1 HOUR
 DO
 BEGIN
     -- Hundreds of lines of SQL...
-END;
+END //
+
+DELIMITER ;
 ```
 
 ### 2. Implement Proper Naming Conventions
