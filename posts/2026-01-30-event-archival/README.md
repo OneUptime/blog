@@ -251,31 +251,39 @@ class ArchiveWorker {
 
   // Write a batch of events to cold storage
   private async writeArchiveBatch(batch: ArchiveBatch): Promise<void> {
+    const sortedEvents = [...batch.events].sort(
+      (a, b) => a.timestamp.getTime() - b.timestamp.getTime()
+    );
+
     // Construct the storage path
     const storagePath = this.buildStoragePath(batch);
 
     // Compress and write the events
     const archiveLocation = await this.archiveWriter.write({
-      events: batch.events,
+      events: sortedEvents,
       path: storagePath,
       format: batch.policy.archiveFormat,
       compression: batch.policy.compressionType,
     });
+
+    // Verify the archive is readable before deleting hot data
+    await this.archiveWriter.verify(archiveLocation, sortedEvents.length);
 
     // Update the index with metadata for later retrieval
     await this.archiveIndex.addEntry({
       eventType: batch.policy.eventType,
       partitionKey: batch.partitionKey,
       location: archiveLocation,
-      eventCount: batch.events.length,
-      minTimestamp: batch.events[0].timestamp,
-      maxTimestamp: batch.events[batch.events.length - 1].timestamp,
-      indexedFields: this.extractIndexedValues(batch.events, batch.policy.indexFields),
+      eventCount: sortedEvents.length,
+      minTimestamp: sortedEvents[0].timestamp,
+      maxTimestamp: sortedEvents[sortedEvents.length - 1].timestamp,
+      indexedFields: this.extractIndexedValues(sortedEvents, batch.policy.indexFields),
     });
   }
 
   private buildStoragePath(batch: ArchiveBatch): string {
-    return `archives/${batch.policy.eventType}/${batch.partitionKey}`;
+    const firstEventId = encodeURIComponent(String(batch.events[0].id));
+    return `archives/${batch.policy.eventType}/${batch.partitionKey}/${Date.now()}-${firstEventId}`;
   }
 
   private getWeekNumber(date: Date): number {
@@ -321,7 +329,7 @@ export { ArchiveWorker };
 
 ## Archive Index Design
 
-The archive index tracks where events are stored and what they contain. Without it, you would need to scan every archive file to find specific events. This design uses a lightweight database to store metadata about each archive partition.
+The archive index tracks where events are stored and what they contain. Without it, you would need to scan every archive file to find specific events. This design uses a lightweight database to store metadata about each archive object.
 
 ```mermaid
 erDiagram
@@ -336,14 +344,14 @@ erDiagram
         timestamp created_at
     }
 
-    INDEX_FIELD_VALUES {
+    ARCHIVE_FIELD_VALUES {
         string id PK
         string archive_id FK
         string field_name
         string field_value
     }
 
-    ARCHIVE_INDEX ||--o{ INDEX_FIELD_VALUES : contains
+    ARCHIVE_INDEX ||--o{ ARCHIVE_FIELD_VALUES : contains
 ```
 
 The schema below creates the index tables. The separate field values table allows efficient lookups by any indexed field without loading full archive metadata.
@@ -362,8 +370,8 @@ CREATE TABLE archive_index (
     max_timestamp TIMESTAMPTZ NOT NULL,
     created_at TIMESTAMPTZ DEFAULT NOW(),
 
-    -- Composite index for time-range queries on specific event types
-    CONSTRAINT unique_partition UNIQUE (event_type, partition_key)
+    -- Object locations should be unique; multiple archive files may share a partition
+    CONSTRAINT unique_archive_location UNIQUE (storage_location)
 );
 
 CREATE INDEX idx_archive_event_type_time
