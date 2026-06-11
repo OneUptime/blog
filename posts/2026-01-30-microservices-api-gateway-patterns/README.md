@@ -38,7 +38,7 @@ Create the project structure:
 ```bash
 mkdir api-gateway && cd api-gateway
 npm init -y
-npm install express axios redis jsonwebtoken rate-limiter-flexible
+npm install express axios ioredis jsonwebtoken
 ```
 
 Here is the base gateway setup that we will extend throughout this post:
@@ -56,7 +56,8 @@ const services = {
     users: 'http://localhost:3001',
     orders: 'http://localhost:3002',
     products: 'http://localhost:3003',
-    payments: 'http://localhost:3004'
+    payments: 'http://localhost:3004',
+    notifications: 'http://localhost:3005'
 };
 
 // Health check endpoint
@@ -183,13 +184,15 @@ class HeaderRouter {
 }
 
 // Usage example
-const versionRoutes = {
-    header: 'X-API-Version',
-    routes: {
-        'v1': 'http://localhost:3001',
-        'v2': 'http://localhost:3002'
+const versionRoutes = [
+    {
+        header: 'X-API-Version',
+        routes: {
+            'v1': 'http://localhost:3001',
+            'v2': 'http://localhost:3002'
+        }
     }
-};
+];
 ```
 
 ### Weighted Routing for Canary Deployments
@@ -345,7 +348,6 @@ class RoleBasedAccessControl {
     // Express middleware
     middleware() {
         return (req, res, next) => {
-            const key = `${req.method}:${req.path}`;
             const requiredPermission = this.findMatchingPermission(req);
 
             if (!requiredPermission) {
@@ -376,7 +378,9 @@ class RoleBasedAccessControl {
 
         // Check pattern matches
         for (const [pattern, permission] of this.routePermissions) {
-            const [method, pathPattern] = pattern.split(':');
+            const separatorIndex = pattern.indexOf(':');
+            const method = pattern.slice(0, separatorIndex);
+            const pathPattern = pattern.slice(separatorIndex + 1);
             if (method === req.method && this.pathMatches(req.path, pathPattern)) {
                 return permission;
             }
@@ -385,8 +389,11 @@ class RoleBasedAccessControl {
     }
 
     pathMatches(path, pattern) {
-        // Convert /users/:id to regex /users/[^/]+
-        const regexPattern = pattern.replace(/:\w+/g, '[^/]+');
+        // Convert /users/:id and /admin/* to regular expressions
+        const regexPattern = pattern
+            .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+            .replace(/\\\*/g, '.*')
+            .replace(/:\w+/g, '[^/]+');
         const regex = new RegExp(`^${regexPattern}$`);
         return regex.test(path);
     }
@@ -431,7 +438,7 @@ class TokenBucketRateLimiter {
         this.keyPrefix = options.keyPrefix || 'ratelimit:';
     }
 
-    async middleware() {
+    middleware() {
         return async (req, res, next) => {
             const identifier = this.getIdentifier(req);
             const key = `${this.keyPrefix}${identifier}`;
@@ -477,7 +484,7 @@ class TokenBucketRateLimiter {
             bucket = JSON.parse(data);
             // Refill tokens based on elapsed time
             const elapsed = (now - bucket.lastRefill) / 1000;
-            const refill = Math.floor(elapsed * this.refillRate);
+            const refill = elapsed * this.refillRate;
             bucket.tokens = Math.min(this.bucketSize, bucket.tokens + refill);
             bucket.lastRefill = now;
         } else {
@@ -535,18 +542,21 @@ class SlidingWindowRateLimiter {
         // Count requests in current window
         pipeline.zcard(key);
 
-        // Add current request
-        pipeline.zadd(key, now, `${now}-${Math.random()}`);
-
-        // Set expiry on the key
-        pipeline.expire(key, Math.ceil(this.windowSize / 1000));
-
         const results = await pipeline.exec();
         const requestCount = results[1][1];
+        const allowed = requestCount < this.maxRequests;
+
+        if (allowed) {
+            await this.redis
+                .pipeline()
+                .zadd(key, now, `${now}-${Math.random()}`)
+                .expire(key, Math.ceil(this.windowSize / 1000))
+                .exec();
+        }
 
         return {
-            allowed: requestCount < this.maxRequests,
-            current: requestCount,
+            allowed,
+            current: allowed ? requestCount + 1 : requestCount,
             limit: this.maxRequests,
             resetIn: this.windowSize
         };
@@ -698,14 +708,18 @@ Allow clients to specify which fields they need:
 
 ```javascript
 // aggregation/field-selector.js
+const axios = require('axios');
+
 class FieldSelector {
     async aggregate(config, fields) {
         const results = {};
         const requests = [];
+        const selectedFields = [];
 
         // Only fetch data for requested fields
         for (const field of fields) {
             if (config[field]) {
+                selectedFields.push(field);
                 requests.push(
                     this.fetchField(field, config[field])
                 );
@@ -714,7 +728,7 @@ class FieldSelector {
 
         const responses = await Promise.all(requests);
         responses.forEach((data, index) => {
-            results[fields[index]] = data;
+            results[selectedFields[index]] = data;
         });
 
         return results;
@@ -1119,8 +1133,6 @@ Here is a complete gateway setup combining all patterns:
 ```javascript
 // gateway-complete.js
 const express = require('express');
-const Redis = require('ioredis');
-
 const PathRouter = require('./routing/path-router');
 const JWTAuthenticator = require('./auth/jwt-auth');
 const RoleBasedAccessControl = require('./auth/rbac');
@@ -1138,11 +1150,10 @@ const config = {
     services: {
         users: process.env.USERS_SERVICE || 'http://localhost:3001',
         orders: process.env.ORDERS_SERVICE || 'http://localhost:3002',
-        products: process.env.PRODUCTS_SERVICE || 'http://localhost:3003'
+        products: process.env.PRODUCTS_SERVICE || 'http://localhost:3003',
+        auth: process.env.AUTH_SERVICE || 'http://localhost:3004'
     }
 };
-
-const redis = new Redis(config.redisUrl);
 
 // Initialize components
 const auth = new JWTAuthenticator({
@@ -1193,7 +1204,7 @@ app.get('/health', (req, res) => {
 });
 
 // Route all other requests
-app.use('*', (req, res) => router.route(req, res));
+app.use((req, res) => router.route(req, res));
 
 // Error handler
 app.use((err, req, res, next) => {
@@ -1354,4 +1365,4 @@ We covered six essential API gateway patterns:
 
 Start with routing and authentication. Add rate limiting early to protect against abuse. Implement aggregation and caching based on your specific performance requirements. The patterns work together - a well-designed gateway uses most of them in combination.
 
-The code examples in this post are production-ready starting points. Adapt them to your specific technology stack and scale requirements.
+The code examples in this post are practical starting points. Adapt and harden them for your specific technology stack and scale requirements before using them in production.
