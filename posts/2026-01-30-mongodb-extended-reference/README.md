@@ -75,7 +75,7 @@ First, define your canonical source documents:
 ```javascript
 // customers collection - the source of truth for customer data
 {
-  _id: ObjectId("customer123"),
+  _id: ObjectId("64b7f1f77bcf86cd79943901"),
   email: "john.doe@example.com",
   firstName: "John",
   lastName: "Doe",
@@ -99,7 +99,7 @@ First, define your canonical source documents:
 
 // products collection - the source of truth for product data
 {
-  _id: ObjectId("product456"),
+  _id: ObjectId("64b7f1f77bcf86cd79943902"),
   sku: "LAPTOP-PRO-15",
   name: "ProBook Laptop 15 inch",
   description: "High-performance laptop with...", // Long description
@@ -124,13 +124,13 @@ Now create an order document with extended references:
 ```javascript
 // orders collection - uses extended references
 {
-  _id: ObjectId("order789"),
+  _id: ObjectId("64b7f1f77bcf86cd79943903"),
   orderNumber: "ORD-2025-001234",
   status: "shipped",
 
   // Extended reference to customer - only essential display fields
   customer: {
-    _id: ObjectId("customer123"),  // Always keep the reference ID
+    _id: ObjectId("64b7f1f77bcf86cd79943901"),  // Always keep the reference ID
     email: "john.doe@example.com",
     name: "John Doe"  // Combined for display convenience
   },
@@ -139,7 +139,7 @@ Now create an order document with extended references:
   items: [
     {
       product: {
-        _id: ObjectId("product456"),  // Always keep the reference ID
+        _id: ObjectId("64b7f1f77bcf86cd79943902"),  // Always keep the reference ID
         sku: "LAPTOP-PRO-15",
         name: "ProBook Laptop 15 inch",
         priceAtPurchase: 1299.99  // Snapshot of price when ordered
@@ -187,7 +187,7 @@ function createProductReference(product, priceOverride = null) {
     _id: product._id,
     sku: product.sku,
     name: product.name,
-    priceAtPurchase: priceOverride || product.price
+    priceAtPurchase: priceOverride ?? product.price
   };
 }
 
@@ -215,7 +215,7 @@ async function createOrder(customerId, cartItems) {
     status: "pending",
     customer: createCustomerReference(customer),
     items: cartItems.map(item => {
-      const product = productMap.get(item.productId);
+      const product = productMap.get(item.productId.toString());
       return {
         product: createProductReference(product),
         quantity: item.quantity
@@ -263,7 +263,7 @@ async function handleCustomerUpdated(event) {
   // Only propagate if extended reference fields changed
   const relevantFields = ['email', 'firstName', 'lastName'];
   const hasRelevantChanges = relevantFields.some(
-    field => changes.hasOwnProperty(field)
+    field => Object.prototype.hasOwnProperty.call(changes, field)
   );
 
   if (!hasRelevantChanges) {
@@ -339,7 +339,7 @@ async function updateCustomerEmail(customerId, newEmail) {
 
 ### Strategy 3: Change Streams for Real-time Propagation
 
-Use MongoDB Change Streams to react to changes in real-time:
+Use MongoDB Change Streams to react to changes in real-time on replica set or sharded cluster deployments:
 
 ```javascript
 async function startCustomerChangeStream() {
@@ -368,11 +368,14 @@ async function startCustomerChangeStream() {
     // Build the update object for extended references
     const refUpdate = {};
 
-    if (updatedFields.email) {
+    if (Object.prototype.hasOwnProperty.call(updatedFields, "email")) {
       refUpdate["customer.email"] = updatedFields.email;
     }
 
-    if (updatedFields.firstName || updatedFields.lastName) {
+    if (
+      Object.prototype.hasOwnProperty.call(updatedFields, "firstName") ||
+      Object.prototype.hasOwnProperty.call(updatedFields, "lastName")
+    ) {
       // Need to fetch the full name since we store combined
       const customer = await customersCollection.findOne({ _id: customerId });
       refUpdate["customer.name"] = `${customer.firstName} ${customer.lastName}`;
@@ -401,7 +404,7 @@ Add version numbers to detect stale data:
 ```javascript
 // Source document with version
 {
-  _id: ObjectId("customer123"),
+  _id: ObjectId("64b7f1f77bcf86cd79943901"),
   email: "john.doe@example.com",
   firstName: "John",
   lastName: "Doe",
@@ -411,9 +414,9 @@ Add version numbers to detect stale data:
 
 // Extended reference includes version
 {
-  _id: ObjectId("order789"),
+  _id: ObjectId("64b7f1f77bcf86cd79943903"),
   customer: {
-    _id: ObjectId("customer123"),
+    _id: ObjectId("64b7f1f77bcf86cd79943901"),
     email: "john.doe@example.com",
     name: "John Doe",
     _version: 5  // Version when reference was last synced
@@ -470,9 +473,9 @@ Track when references were last synchronized:
 
 ```javascript
 {
-  _id: ObjectId("order789"),
+  _id: ObjectId("64b7f1f77bcf86cd79943903"),
   customer: {
-    _id: ObjectId("customer123"),
+    _id: ObjectId("64b7f1f77bcf86cd79943901"),
     email: "john.doe@example.com",
     name: "John Doe",
     _syncedAt: ISODate("2025-12-16T09:15:00Z"),
@@ -525,10 +528,10 @@ You can also create indexes on extended reference fields:
 
 ```javascript
 // Index for finding orders by customer email
-db.collection("orders").createIndex({ "customer.email": 1 });
+await db.collection("orders").createIndex({ "customer.email": 1 });
 
 // Compound index for customer orders by status
-db.collection("orders").createIndex({
+await db.collection("orders").createIndex({
   "customer._id": 1,
   status: 1,
   createdAt: -1
