@@ -78,7 +78,7 @@ flowchart LR
 
 ### Raft Consensus Algorithm
 
-Raft is the gold standard for leader election in production systems. It guarantees that at most one leader exists at any time through term numbers and majority voting.
+Raft is the gold standard for leader election in production systems. It guarantees that at most one leader can be elected in a given term through term numbers and majority voting.
 
 ```mermaid
 stateDiagram-v2
@@ -163,7 +163,8 @@ class RaftNode extends EventEmitter {
         console.log(`[${this.nodeId}] Starting election for term ${this.currentTerm}`);
 
         let votesReceived = 1; // Vote for self
-        const votesNeeded = Math.floor(this.peers.size / 2) + 1;
+        const clusterSize = this.peers.size + 1; // Include this node
+        const votesNeeded = Math.floor(clusterSize / 2) + 1;
 
         const voteRequest: VoteRequest = {
             term: this.currentTerm,
@@ -203,6 +204,12 @@ class RaftNode extends EventEmitter {
             this.currentTerm = request.term;
             this.state = NodeState.FOLLOWER;
             this.votedFor = null;
+            this.leaderId = null;
+
+            if (this.heartbeatInterval) {
+                clearInterval(this.heartbeatInterval);
+                this.heartbeatInterval = null;
+            }
         }
 
         // Grant vote if we haven't voted in this term
@@ -247,10 +254,13 @@ class RaftNode extends EventEmitter {
 
     public handleHeartbeat(term: number, leaderId: string): void {
         if (term >= this.currentTerm) {
+            if (term > this.currentTerm) {
+                this.votedFor = null;
+            }
+
             this.currentTerm = term;
             this.state = NodeState.FOLLOWER;
             this.leaderId = leaderId;
-            this.votedFor = null;
 
             // Stop heartbeat if we were leader
             if (this.heartbeatInterval) {
@@ -394,17 +404,30 @@ class RedisLeaderElection {
             return true;
         }
 
-        // Check if we already hold the lease
-        const currentHolder = await this.redis.get(key);
+        // Renew only if we still own the lease (using Lua script for atomicity)
+        const renewScript = `
+            if redis.call("get", KEYS[1]) == ARGV[1] then
+                return redis.call("expire", KEYS[1], ARGV[2])
+            else
+                return 0
+            end
+        `;
 
-        if (currentHolder === nodeId) {
-            // Renew our lease
-            await this.redis.expire(key, ttlSeconds);
+        const renewed = await this.redis.eval(
+            renewScript,
+            1,
+            key,
+            nodeId,
+            ttlSeconds
+        );
+
+        if (renewed === 1) {
             return true;
         }
 
         // Someone else is leader
         if (this.isLeader) {
+            const currentHolder = await this.redis.get(key);
             console.log(`[${nodeId}] Lost leadership to ${currentHolder}`);
             this.isLeader = false;
             this.onLoseLeadership?.();
@@ -526,7 +549,12 @@ class KubernetesLeaderElection {
             try {
                 await this.acquireOrRenew();
             } catch (error) {
-                console.error('Leader election error:', error);
+                if (this.isConflictError(error)) {
+                    // Another contender updated the Lease first; retry later.
+                } else {
+                    console.error('Leader election error:', error);
+                }
+
                 if (this.isLeader) {
                     this.isLeader = false;
                     this.onStopLeading?.();
@@ -642,6 +670,10 @@ class KubernetesLeaderElection {
             namespace,
             existingLease
         );
+    }
+
+    private isConflictError(error: any): boolean {
+        return error?.statusCode === 409 || error?.response?.statusCode === 409;
     }
 
     private sleep(ms: number): Promise<void> {
@@ -798,11 +830,11 @@ class PostgresLeaderElection {
         try {
             // Check if we still hold the lock
             const result = await this.client.query(
-                `SELECT pg_advisory_locks.granted
-                 FROM pg_advisory_locks
-                 WHERE pg_advisory_locks.objid = $1
-                 AND pg_advisory_locks.pid = pg_backend_pid()`,
-                [this.lockId]
+                `SELECT granted
+                 FROM pg_locks
+                 WHERE locktype = 'advisory'
+                 AND pid = pg_backend_pid()
+                 AND granted = true`
             );
             return result.rows.length > 0;
         } catch {
@@ -859,24 +891,25 @@ WHERE leader_election.expires_at < NOW()
 etcd provides native support for distributed locks and leader election.
 
 ```typescript
-import { Etcd3, Lease } from 'etcd3';
+import { Etcd3 } from 'etcd3';
 
 class EtcdLeaderElection {
     private client: Etcd3;
-    private lease: Lease | null = null;
-    private key: string;
+    private electionName: string;
     private nodeId: string;
     private ttlSeconds: number;
     private isLeader: boolean = false;
+    private stopped: boolean = false;
+    private campaign: { resign: () => Promise<void>; on: (event: string, handler: (...args: any[]) => void) => void } | null = null;
 
     constructor(
         endpoints: string[],
-        key: string,
+        electionName: string,
         nodeId: string,
         ttlSeconds: number = 10
     ) {
         this.client = new Etcd3({ hosts: endpoints });
-        this.key = key;
+        this.electionName = electionName;
         this.nodeId = nodeId;
         this.ttlSeconds = ttlSeconds;
     }
@@ -885,76 +918,43 @@ class EtcdLeaderElection {
         onBecomeLeader: () => void,
         onLoseLeadership: () => void
     ): Promise<void> {
-        // Create a lease that automatically expires
-        this.lease = this.client.lease(this.ttlSeconds);
+        const election = this.client.election(this.electionName, this.ttlSeconds);
 
-        // Handle lease loss
-        this.lease.on('lost', () => {
-            console.log(`[${this.nodeId}] Lease lost`);
-            if (this.isLeader) {
-                this.isLeader = false;
-                onLoseLeadership();
+        const runCampaign = () => {
+            if (this.stopped) {
+                return;
             }
-        });
 
-        // Try to acquire leadership
-        await this.campaign(onBecomeLeader, onLoseLeadership);
-    }
+            const campaign = election.campaign(this.nodeId);
+            this.campaign = campaign;
 
-    private async campaign(
-        onBecomeLeader: () => void,
-        onLoseLeadership: () => void
-    ): Promise<void> {
-        while (true) {
-            try {
-                // Try to create the key with our lease
-                // This will fail if the key already exists
-                await this.client.if(this.key, 'Create', '==', 0)
-                    .then(
-                        this.client.put(this.key)
-                            .value(this.nodeId)
-                            .lease(this.lease!)
-                    )
-                    .commit();
-
-                console.log(`[${this.nodeId}] Became leader`);
+            campaign.on('elected', () => {
                 this.isLeader = true;
+                console.log(`[${this.nodeId}] Became leader`);
                 onBecomeLeader();
+            });
 
-                // Watch for key deletion (leadership loss)
-                const watcher = await this.client.watch()
-                    .key(this.key)
-                    .create();
-
-                for await (const event of watcher) {
-                    if (event.type === 'delete') {
-                        console.log(`[${this.nodeId}] Lost leadership`);
-                        this.isLeader = false;
-                        onLoseLeadership();
-                        break;
-                    }
+            campaign.on('error', (error: Error) => {
+                console.error(`[${this.nodeId}] Campaign failed`, error);
+                if (this.isLeader) {
+                    this.isLeader = false;
+                    onLoseLeadership();
                 }
-            } catch (error: any) {
-                // Key already exists, someone else is leader
-                // Wait for the key to be deleted
-                const watcher = await this.client.watch()
-                    .key(this.key)
-                    .create();
 
-                for await (const event of watcher) {
-                    if (event.type === 'delete') {
-                        // Leader left, try to acquire
-                        break;
-                    }
-                }
-            }
-        }
+                setTimeout(runCampaign, 5000);
+            });
+        };
+
+        runCampaign();
     }
 
     public async stop(): Promise<void> {
-        if (this.lease) {
-            await this.lease.revoke();
+        this.stopped = true;
+
+        if (this.campaign) {
+            await this.campaign.resign();
         }
+
         this.client.close();
     }
 
@@ -1008,6 +1008,7 @@ class ResilientLeaderElection {
     private backoffMs: number;
     private isLeader: boolean = false;
     private demoted: boolean = false;
+    private fencingToken: number = 0;
     private onDemoted?: () => void;
 
     constructor(options: LeaderElectionOptions) {
@@ -1059,11 +1060,19 @@ class ResilientLeaderElection {
         return this.isLeader; // Tentatively remain leader during retry window
     }
 
+    public updateFencingToken(token: number): void {
+        if (token <= this.fencingToken) {
+            throw new Error('Fencing tokens must increase monotonically');
+        }
+
+        this.fencingToken = token;
+    }
+
     // Fencing token to prevent stale leaders from making changes
     public getFencingToken(): number {
-        // In a real implementation, this would come from the lease/lock mechanism
-        // and monotonically increase with each leadership acquisition
-        return Date.now();
+        // In a real implementation, this must come from the lease/lock mechanism
+        // or another linearizable source when leadership is acquired.
+        return this.fencingToken;
     }
 }
 
@@ -1293,7 +1302,7 @@ function onLoseLeadership(durationSeconds: number): void {
 
 | Pattern | Best For | Trade-offs |
 |---------|----------|------------|
-| **Raft-based** | Strong consistency needs, custom implementations | Complex, requires odd number of nodes |
+| **Raft-based** | Strong consistency needs, custom implementations | Complex, odd number of nodes recommended |
 | **Lease-based (Redis)** | Simple setups, already using Redis | Depends on Redis availability |
 | **Kubernetes native** | K8s workloads | Only works in Kubernetes |
 | **Database locks** | Existing database dependency | Database becomes SPOF |
