@@ -58,14 +58,14 @@ A problem matcher is a JSON file with a specific structure. Here is a complete e
 | Field | Description | Required |
 |-------|-------------|----------|
 | `owner` | Unique identifier for this matcher | Yes |
-| `severity` | Maps to error, warning, or notice | No |
+| `severity` | Capture group number for error, warning, or notice | No |
 | `pattern` | Array of regex patterns to match | Yes |
-| `file` | Capture group number for filename | Yes |
+| `file` | Capture group number for filename | No |
 | `line` | Capture group number for line number | No |
 | `column` | Capture group number for column | No |
 | `message` | Capture group number for error message | Yes |
 | `code` | Capture group number for error code | No |
-| `loop` | Whether pattern repeats for multiple errors | No |
+| `loop` | Whether the last pattern in a multi-pattern matcher repeats for multiple errors | No |
 
 ## Creating Your First Problem Matcher
 
@@ -185,7 +185,7 @@ sequenceDiagram
 
 ## Looping Patterns for Repeated Errors
 
-When a tool outputs multiple errors in a repeating format, use the `loop` property to avoid creating separate matchers for each occurrence.
+When a tool outputs one context line followed by multiple errors, use the `loop` property on the final pattern of a multi-pattern matcher. Single-pattern matchers do not need `loop` because they are applied to each log line automatically.
 
 ```json
 {
@@ -194,10 +194,13 @@ When a tool outputs multiple errors in a repeating format, use the `loop` proper
       "owner": "repeating-checker",
       "pattern": [
         {
-          "regexp": "^\\[ERROR\\]\\s+(.+):(\\d+):\\s+(.+)$",
-          "file": 1,
-          "line": 2,
-          "message": 3,
+          "regexp": "^File:\\s+(.+)$",
+          "file": 1
+        },
+        {
+          "regexp": "^\\[ERROR\\]\\s+(\\d+):\\s+(.+)$",
+          "line": 1,
+          "message": 2,
           "loop": true
         }
       ]
@@ -206,7 +209,7 @@ When a tool outputs multiple errors in a repeating format, use the `loop` proper
 }
 ```
 
-With `loop: true`, the matcher continues scanning for matches after finding one, creating multiple annotations from a single tool invocation.
+With `loop: true`, the final pattern continues matching consecutive lines until it no longer matches, creating multiple annotations from a single tool invocation while reusing fields captured by earlier patterns.
 
 ## Real-World Examples
 
@@ -291,8 +294,7 @@ Go compiler errors:
           "file": 1,
           "line": 2,
           "column": 3,
-          "message": 4,
-          "loop": true
+          "message": 4
         }
       ]
     }
@@ -406,13 +408,11 @@ Use an online regex tester with your exact log output. Remember that GitHub Acti
 
 ### 2. Enable Debug Logging
 
-Add the `ACTIONS_STEP_DEBUG` secret to your repository with value `true` to see detailed matcher activity:
+Add the `ACTIONS_STEP_DEBUG` secret or repository variable with value `true` to see detailed matcher activity. This setting must be configured in the repository or organization settings, not as a step-level environment variable:
 
 ```yaml
-- name: Run with debug
+- name: Run linter
   run: npm run lint
-  env:
-    ACTIONS_STEP_DEBUG: true
 ```
 
 ### 3. Print Raw Output
@@ -487,7 +487,14 @@ Document which tool version your matcher supports. Output formats can change bet
   "problemMatcher": [
     {
       "owner": "mypy-v1.5",
-      "pattern": [...]
+      "pattern": [
+        {
+          "regexp": "^(.+):(\\d+):\\s+(.+)$",
+          "file": 1,
+          "line": 2,
+          "message": 3
+        }
+      ]
     }
   ]
 }
@@ -568,7 +575,7 @@ Key takeaways:
 
 - Problem matchers parse log output using regex and create GitHub annotations
 - Multi-line patterns handle complex error formats
-- Use the `loop` property for tools that output multiple errors
+- Use the `loop` property on the final pattern of multi-line matchers that output multiple errors under shared context
 - Always clean up matchers to prevent false positives
 - Test your regex patterns thoroughly before deploying
 
