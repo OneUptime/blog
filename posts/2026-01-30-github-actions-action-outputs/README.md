@@ -264,7 +264,7 @@ jobs:
 
 ### Matrix Job Outputs
 
-When using a matrix strategy, outputs from the last completed job in the matrix are used:
+When using a matrix strategy, the last matrix job that runs overrides any shared output name:
 
 ```yaml
 jobs:
@@ -483,7 +483,7 @@ jobs:
       - name: Generate build metadata
         id: metadata
         run: |
-          METADATA=$(jq -n \
+          METADATA=$(jq -c -n \
             --arg sha "${{ github.sha }}" \
             --arg ref "${{ github.ref }}" \
             --arg run "${{ github.run_number }}" \
@@ -525,7 +525,7 @@ jobs:
 4. **Validate outputs** before using them in critical steps
 5. **Document outputs** in your action.yml with clear descriptions
 6. **Use JSON** for complex structured data that needs to preserve formatting
-7. **Keep outputs small** since there are size limits (1MB per output)
+7. **Keep outputs small** since there are size limits (1 MB per job and 50 MB per workflow run)
 
 ---
 
