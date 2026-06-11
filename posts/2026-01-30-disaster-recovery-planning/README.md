@@ -389,6 +389,8 @@ DR_REGION="us-west-2"
 BACKUP_BUCKET="s3://company-dr-backups"
 CLUSTER_NAME="production-dr"
 TERRAFORM_STATE="s3://company-terraform-state/dr"
+START_TIME=$(date +%s)
+SLACK_WEBHOOK="${SLACK_WEBHOOK:?Set SLACK_WEBHOOK before running this restore script}"
 
 # Log function for audit trail
 log() {
@@ -415,7 +417,6 @@ terraform apply \
 # Capture outputs for subsequent steps
 VPC_ID=$(terraform output -raw vpc_id)
 EKS_CLUSTER=$(terraform output -raw eks_cluster_name)
-RDS_ENDPOINT=$(terraform output -raw rds_endpoint)
 
 log "Infrastructure provisioned: VPC=${VPC_ID}, EKS=${EKS_CLUSTER}"
 
@@ -442,6 +443,21 @@ aws rds restore-db-cluster-from-snapshot \
 # Wait for database to be available
 aws rds wait db-cluster-available \
     --db-cluster-identifier production-dr
+
+log "Creating database instance in restored cluster..."
+aws rds create-db-instance \
+    --db-instance-identifier production-dr-1 \
+    --db-cluster-identifier production-dr \
+    --engine aurora-postgresql \
+    --db-instance-class db.r6g.large
+
+aws rds wait db-instance-available \
+    --db-instance-identifier production-dr-1
+
+RDS_ENDPOINT=$(aws rds describe-db-clusters \
+    --db-cluster-identifier production-dr \
+    --query 'DBClusters[0].Endpoint' \
+    --output text)
 
 log "Database restored successfully"
 
@@ -600,12 +616,14 @@ spec:
 
   # PostgreSQL configuration for replication
   postgresql:
+    synchronous:
+      # CloudNativePG manages synchronous_standby_names from this stanza
+      method: any
+      number: 1
     parameters:
       # Synchronous commit for zero data loss
       # Trade-off: higher latency for writes
       synchronous_commit: "remote_apply"
-      # Number of sync standbys required
-      synchronous_standby_names: "ANY 1 (production-db-2, production-db-3)"
       # WAL settings for replication performance
       max_wal_senders: "10"
       max_replication_slots: "10"
@@ -627,6 +645,11 @@ metadata:
 spec:
   instances: 2
   imageName: ghcr.io/cloudnative-pg/postgresql:16.1
+
+  # Bootstrap the replica from the primary via streaming replication
+  bootstrap:
+    pg_basebackup:
+      source: production-db-primary
 
   # This cluster is a replica of the primary
   replica:
@@ -907,7 +930,7 @@ flowchart LR
 import asyncio
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import List, Optional
 
@@ -990,7 +1013,7 @@ class DRDrillFramework:
         Returns:
             DrillResult with metrics and findings
         """
-        start_time = datetime.utcnow()
+        start_time = datetime.now(timezone.utc)
         issues = []
         runbook_updates = []
 
@@ -1014,7 +1037,7 @@ class DRDrillFramework:
                 issues = await self._full_failover(services, dry_run)
 
             # Measure actual recovery time
-            end_time = datetime.utcnow()
+            end_time = datetime.now(timezone.utc)
             actual_rto = int((end_time - start_time).total_seconds() / 60)
 
             # Check replication lag at time of failover
@@ -1028,7 +1051,7 @@ class DRDrillFramework:
 
         except Exception as e:
             self.logger.error(f"Drill failed with exception: {e}")
-            end_time = datetime.utcnow()
+            end_time = datetime.now(timezone.utc)
             actual_rto = int((end_time - start_time).total_seconds() / 60)
             actual_rpo = -1  # Unknown due to failure
             issues.append(f"Drill failed: {str(e)}")
@@ -1365,7 +1388,7 @@ procedures:
         action: "Promote DR database to primary"
         owner: "database team"
         duration: "10 minutes"
-        command: "kubectl cnpg promote production-db-dr"
+        command: "kubectl patch cluster production-db-dr -n database --type merge -p '{\"spec\":{\"replica\":{\"enabled\":false}}}'"
 
       - step: 4
         action: "Scale up DR region deployments"
