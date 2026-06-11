@@ -66,12 +66,10 @@ The Ruler is configured in the main Mimir configuration file. Here is a minimal 
 ```yaml
 # mimir-config.yaml
 
-# Basic Ruler configuration for Grafana Mimir
+# Basic Ruler configuration for Grafana Mimir.
+# In microservices mode, start Mimir with -target=ruler.
 
 ruler:
-  # Enable the ruler component
-  enabled: true
-
   # How often to evaluate rules
   evaluation_interval: 1m
 
@@ -79,7 +77,7 @@ ruler:
   poll_interval: 1m
 
   # Directory for temporary rule files
-  rule_path: /data/mimir/rules
+  rule_path: /data/mimir/rules-temp
 
   # Alertmanager URL for sending alerts
   alertmanager_url: http://alertmanager:9093
@@ -131,15 +129,15 @@ ruler_storage:
     # AWS region where the bucket is located
     region: us-east-1
 
-    # Endpoint URL (leave empty for AWS, set for S3-compatible storage)
-    # endpoint: http://minio:9000
+    # Endpoint URL for AWS S3 or S3-compatible storage
+    endpoint: s3.us-east-1.amazonaws.com
 
     # Access credentials (prefer IAM roles in production)
     access_key_id: ${AWS_ACCESS_KEY_ID}
     secret_access_key: ${AWS_SECRET_ACCESS_KEY}
 
-    # Use path-style URLs (required for MinIO)
-    # s3_force_path_style: true
+    # Use path-style URLs (required for some S3-compatible stores)
+    # bucket_lookup_type: path
 
     # Server-side encryption
     sse:
@@ -160,9 +158,9 @@ ruler_storage:
     # GCS bucket name
     bucket_name: my-mimir-rules-bucket
 
-    # Path to service account JSON key file
+    # Service account JSON content
     # Use GOOGLE_APPLICATION_CREDENTIALS env var alternatively
-    service_account: /path/to/service-account.json
+    service_account: ${GCS_SERVICE_ACCOUNT_JSON}
 ```
 
 ### Azure Blob Storage
@@ -367,26 +365,13 @@ ruler:
   # How often to refresh Alertmanager endpoints
   alertmanager_refresh_interval: 1m
 
-  # Enable Alertmanager API v2 (recommended)
-  enable_alertmanager_v2: true
-
   # External URL for links in alert notifications
   external_url: https://mimir.example.com
 
-  # External labels added to all alerts
-  external_labels:
-    cluster: production
-    environment: prod
-    region: us-east-1
-
-  # Notification queue settings
-  notification_queue_capacity: 10000
-  notification_timeout: 10s
-
   # For Mimir's built-in Alertmanager (if using)
+  # include the Alertmanager API prefix, which defaults to /alertmanager:
+  # alertmanager_url: http://mimir-alertmanager:8080/alertmanager
   alertmanager_client:
-    # Enable TLS for Alertmanager connections
-    tls_enabled: false
     # Basic auth credentials
     # basic_auth_username: ruler
     # basic_auth_password: ${ALERTMANAGER_PASSWORD}
@@ -399,21 +384,15 @@ When running multiple Ruler instances, Mimir uses a hash ring to distribute rule
 ```yaml
 # Ruler ring configuration for sharding
 ruler:
-  # Enable rule sharding across ruler instances
-  enable_sharding: true
-
-  # Sharding strategy: default or shuffle-sharding
-  sharding_strategy: default
-
   ring:
     # Key-value store for the ring
     kvstore:
-      # Options: consul, etcd, memberlist
+      # Options: consul, etcd, inmemory, memberlist, multi
       store: memberlist
 
       # For Consul backend
       # consul:
-      #   host: consul:8500
+      #   hostname: consul:8500
 
       # For etcd backend
       # etcd:
@@ -422,19 +401,16 @@ ruler:
       #     - etcd-1:2379
       #     - etcd-2:2379
 
-    # How often to send heartbeats
-    heartbeat_period: 5s
-
-    # How long before considering an instance unhealthy
-    heartbeat_timeout: 1m
-
     # Instance identification
-    instance_id: ${HOSTNAME}
-    instance_addr: ${POD_IP}:9095
+    # Mimir 2.11 auto-detects the ruler instance address from private
+    # network interfaces by default.
+    instance_interface_names:
+      - eth0
 
-    # Number of rulers that evaluate each rule group
-    # Higher values provide redundancy but increase resource usage
-    replication_factor: 1
+# Optional per-tenant shuffle sharding for ruler evaluations.
+limits:
+  # 0 disables shuffle sharding and uses all ruler replicas.
+  ruler_tenant_shard_size: 0
 ```
 
 ### Memberlist Configuration for Ruler Ring
@@ -442,9 +418,6 @@ ruler:
 ```yaml
 # Memberlist configuration for ruler ring discovery
 memberlist:
-  # Node name (must be unique)
-  node_name: ${HOSTNAME}
-
   # Bind address for gossip protocol
   bind_addr:
     - 0.0.0.0
@@ -455,12 +428,6 @@ memberlist:
     - mimir-ruler-0.mimir-ruler-headless:7946
     - mimir-ruler-1.mimir-ruler-headless:7946
     - mimir-ruler-2.mimir-ruler-headless:7946
-
-  # Leave timeout when shutting down
-  leave_timeout: 5s
-
-  # Message compression
-  compression_enabled: true
 ```
 
 ## Complete Production Configuration
@@ -481,9 +448,6 @@ server:
 
 # Ruler component configuration
 ruler:
-  # Enable the ruler
-  enabled: true
-
   # Rule evaluation settings
   evaluation_interval: 1m
   poll_interval: 1m
@@ -494,17 +458,9 @@ ruler:
   # Alertmanager configuration
   alertmanager_url: http://alertmanager:9093
   alertmanager_refresh_interval: 1m
-  enable_alertmanager_v2: true
-  alertmanager_client:
-    tls_enabled: false
 
   # External URL for alert links
   external_url: https://mimir.example.com
-
-  # External labels for all alerts
-  external_labels:
-    cluster: production
-    env: prod
 
   # Enable ruler API
   enable_api: true
@@ -513,18 +469,12 @@ ruler:
   ring:
     kvstore:
       store: memberlist
-    heartbeat_period: 5s
-    heartbeat_timeout: 1m
-    instance_addr: ${POD_IP}:9095
 
-  # Enable sharding for distributed evaluation
-  enable_sharding: true
-  sharding_strategy: default
+  # Distributed evaluation is coordinated through the ruler ring
 
   # Query configuration
   query_frontend:
     address: mimir-query-frontend:9095
-  query_stats_enabled: true
 
   # Ruler storage configuration
   tenant_federation:
@@ -536,6 +486,7 @@ ruler_storage:
 
   s3:
     bucket_name: mimir-rules
+    endpoint: s3.us-east-1.amazonaws.com
     region: us-east-1
     access_key_id: ${AWS_ACCESS_KEY_ID}
     secret_access_key: ${AWS_SECRET_ACCESS_KEY}
@@ -556,16 +507,14 @@ limits:
   # Evaluation concurrency
   ruler_evaluation_delay_duration: 1m
 
-  # Remote write limits for recording rules
-  ruler_remote_write_headers: {}
+  # Optional shuffle-sharding shard size per tenant. 0 means all rulers.
+  ruler_tenant_shard_size: 0
 
 # Memberlist configuration
 memberlist:
-  node_name: ${HOSTNAME}
   bind_port: 7946
   join_members:
     - mimir-ruler-headless:7946
-  compression_enabled: true
 ```
 
 ## Managing Rules via API
@@ -581,10 +530,10 @@ curl -H "X-Scope-OrgID: tenant-1" \
 curl -H "X-Scope-OrgID: tenant-1" \
   http://localhost:8080/prometheus/config/v1/rules/my-namespace
 
-# Upload rules to a namespace
+# Upload one rule group to a namespace
 curl -X POST -H "X-Scope-OrgID: tenant-1" \
   -H "Content-Type: application/yaml" \
-  --data-binary @my-rules.yaml \
+  --data-binary @my-rule-group.yaml \
   http://localhost:8080/prometheus/config/v1/rules/my-namespace
 
 # Delete a rule group
@@ -715,7 +664,7 @@ spec:
 3. **Rule sharding not working**
    - Ensure all ruler instances can communicate via memberlist
    - Verify the ring configuration is consistent across instances
-   - Check that `enable_sharding: true` is set
+   - Check that all ruler instances are running with the same `ruler.ring` configuration
 
 4. **High evaluation latency**
    - Reduce the number of rules per group
