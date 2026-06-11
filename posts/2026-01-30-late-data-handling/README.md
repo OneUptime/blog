@@ -124,21 +124,22 @@ The simplest approach to handle late data is to keep windows open for a grace pe
 // and tolerates events arriving up to 10 minutes after the window closes
 
 DataStream<ClickEvent> clicks = env
-    .addSource(kafkaSource)
-    .assignTimestampsAndWatermarks(
+    .fromSource(
+        kafkaSource,
         WatermarkStrategy
             .<ClickEvent>forBoundedOutOfOrderness(Duration.ofSeconds(30))
-            .withTimestampAssigner((event, timestamp) -> event.getTimestamp())
+            .withTimestampAssigner((event, timestamp) -> event.getTimestamp()),
+        "Kafka Source"
     );
 
 clicks
     // Key by user ID to compute per-user aggregates
     .keyBy(click -> click.getUserId())
     // Create 1-hour tumbling windows based on event time
-    .window(TumblingEventTimeWindows.of(Time.hours(1)))
+    .window(TumblingEventTimeWindows.of(Duration.ofHours(1)))
     // Allow events to arrive up to 10 minutes late
     // Window state is kept for this additional period
-    .allowedLateness(Time.minutes(10))
+    .allowedLateness(Duration.ofMinutes(10))
     // Aggregate: count clicks per user per hour
     .aggregate(new ClickCounter())
     // Send results downstream
@@ -165,8 +166,10 @@ clicks
     // The grace period determines how long to wait for late events
     .windowedBy(
         TimeWindows
-            .ofSizeWithNoGrace(Duration.ofHours(1))
-            .grace(Duration.ofMinutes(10))
+            .ofSizeAndGrace(
+                Duration.ofHours(1),
+                Duration.ofMinutes(10)
+            )
     )
     // Count events in each window
     .count(Materialized.as("click-counts"))
@@ -213,9 +216,9 @@ final OutputTag<ClickEvent> lateDataTag =
 // Main processing pipeline with side output for late data
 SingleOutputStreamOperator<ClickAggregate> mainResults = clicks
     .keyBy(click -> click.getUserId())
-    .window(TumblingEventTimeWindows.of(Time.hours(1)))
+    .window(TumblingEventTimeWindows.of(Duration.ofHours(1)))
     // Keep a small grace period for slightly late data
-    .allowedLateness(Time.minutes(1))
+    .allowedLateness(Duration.ofMinutes(1))
     // Route significantly late data to side output
     .sideOutputLateData(lateDataTag)
     .aggregate(new ClickCounter());
@@ -289,7 +292,7 @@ sequenceDiagram
 
 ```java
 // Create a streaming table environment
-// Retraction mode is enabled by default for aggregations
+// Aggregations can produce changelog rows with inserts, updates, and deletes
 StreamTableEnvironment tableEnv = StreamTableEnvironment.create(env);
 
 // Register the click stream as a table with event time
@@ -304,7 +307,7 @@ tableEnv.createTemporaryView("clicks", clicks,
 );
 
 // Query with tumbling window aggregation
-// Results will automatically include retractions when late data arrives
+// Updating query results are represented as changelog rows
 Table hourlyClicks = tableEnv.sqlQuery(
     "SELECT " +
     "  userId, " +
@@ -316,12 +319,12 @@ Table hourlyClicks = tableEnv.sqlQuery(
     "  TUMBLE(clickTime, INTERVAL '1' HOUR)"
 );
 
-// Convert to retract stream
-// Each record is a tuple of (Boolean, Row) where:
-// - true = insert/update (add this value)
-// - false = retraction (remove previous value)
-DataStream<Tuple2<Boolean, Row>> retractStream =
-    tableEnv.toRetractStream(hourlyClicks, Row.class);
+// Convert to a changelog stream
+// Each Row has a RowKind:
+// - INSERT / UPDATE_AFTER = add or update this value
+// - UPDATE_BEFORE / DELETE = retract a previous value
+DataStream<Row> retractStream =
+    tableEnv.toChangelogStream(hourlyClicks);
 
 // Handle retractions in the sink
 retractStream.addSink(new RetractingSink());
@@ -333,7 +336,7 @@ retractStream.addSink(new RetractingSink());
 // A sink that properly handles retraction messages
 // This maintains a key-value store and applies updates/deletes
 
-public class RetractingSink extends RichSinkFunction<Tuple2<Boolean, Row>> {
+public class RetractingSink extends RichSinkFunction<Row> {
 
     // Connection to a database or key-value store that supports updates
     private transient KeyValueStore<String, Long> store;
@@ -345,12 +348,13 @@ public class RetractingSink extends RichSinkFunction<Tuple2<Boolean, Row>> {
     }
 
     @Override
-    public void invoke(Tuple2<Boolean, Row> value, Context context) {
+    public void invoke(Row value, Context context) {
         // Extract the key (userId + windowStart)
-        String key = value.f1.getField(0) + "_" + value.f1.getField(1);
-        Long count = (Long) value.f1.getField(2);
+        String key = value.getField(0) + "_" + value.getField(1);
+        Long count = (Long) value.getField(2);
 
-        if (value.f0) {
+        if (value.getKind() == RowKind.INSERT ||
+                value.getKind() == RowKind.UPDATE_AFTER) {
             // This is an insert or update message
             // Write the new count to the store
             store.put(key, count);
@@ -396,6 +400,9 @@ Here are battle-tested patterns for production systems:
 // Tier 1: Slightly late (< 5 min) - include in window
 // Tier 2: Moderately late (5-60 min) - side output for batch
 // Tier 3: Very late (> 60 min) - log and alert
+// Configure allowedLateness for at least the largest tier you want
+// this window function to see; elements later than that are dropped
+// or emitted through sideOutputLateData before this process method runs.
 
 final OutputTag<ClickEvent> moderatelyLateTag =
     new OutputTag<ClickEvent>("moderately-late"){};
@@ -542,7 +549,7 @@ public class AdaptiveWatermarkGenerator
 // Essential for understanding data quality and tuning parameters
 
 public class LateDataMetricsFunction
-    extends ProcessFunction<Event, Event> {
+    extends ProcessFunction<ClickEvent, ClickEvent> {
 
     // Counters for monitoring
     private transient Counter onTimeEvents;
@@ -568,9 +575,9 @@ public class LateDataMetricsFunction
 
     @Override
     public void processElement(
-            Event event,
+            ClickEvent event,
             Context ctx,
-            Collector<Event> out) {
+            Collector<ClickEvent> out) {
 
         long lateness = ctx.timerService().currentWatermark()
                       - event.getTimestamp();
@@ -621,7 +628,7 @@ public class LateDataHandlingPipeline {
         final OutputTag<ClickEvent> lateDataTag =
             new OutputTag<ClickEvent>("late-data"){};
 
-        // Source: Kafka with exactly-once semantics
+        // Source: Kafka
         KafkaSource<ClickEvent> source = KafkaSource.<ClickEvent>builder()
             .setBootstrapServers("kafka:9092")
             .setTopics("clicks")
@@ -649,9 +656,9 @@ public class LateDataHandlingPipeline {
         SingleOutputStreamOperator<HourlyClickStats> hourlyStats =
             monitoredClicks
                 .keyBy(ClickEvent::getUserId)
-                .window(TumblingEventTimeWindows.of(Time.hours(1)))
+                .window(TumblingEventTimeWindows.of(Duration.ofHours(1)))
                 // Allow 10 minutes for late arrivals
-                .allowedLateness(Time.minutes(10))
+                .allowedLateness(Duration.ofMinutes(10))
                 // Route very late data to side output
                 .sideOutputLateData(lateDataTag)
                 // Aggregate with incremental computation
