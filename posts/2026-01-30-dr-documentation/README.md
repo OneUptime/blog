@@ -122,7 +122,7 @@ Runbooks are the detailed, step-by-step procedures that engineers follow during 
 
 ### Standard Runbook Template
 
-```markdown
+````markdown
 # Runbook: [Procedure Name]
 
 ## Metadata
@@ -154,12 +154,12 @@ Brief description of what this runbook accomplishes and when to use it.
 ```bash
 ## Command to execute
 command --with-flags
-```bash
+```
 
 **Expected Output**:
 ```text
 Success message or expected response
-```bash
+```
 
 **If Error Occurs**:
 - Error A: [Resolution steps]
@@ -180,13 +180,13 @@ Steps to undo changes if something goes wrong.
 - [ ] Update incident ticket
 - [ ] Notify stakeholders
 - [ ] Document any deviations
-```text
+````
 
 ### Example: Database Failover Runbook
 
 Here's a practical example of a database failover runbook:
 
-```markdown
+````markdown
 # Runbook: PostgreSQL Primary-to-Replica Failover
 
 ## Metadata
@@ -224,23 +224,20 @@ pg_isready -h db-primary.internal -p 5432
 ## Check replication lag on replica
 psql -h db-replica-01.internal -U admin -c \
   "SELECT NOW() - pg_last_xact_replay_timestamp() AS replication_lag;"
-```bash
+```
 
 **Expected Output** (confirming primary is down):
 ```text
 db-primary.internal:5432 - no response
-```bash
+```
 
-### Step 2: Stop Replication on Target Replica
+### Step 2: Connect to Target Replica
 **Estimated Time**: 1 minute
 
 ```bash
 ## Connect to the replica to be promoted
 ssh db-replica-01.internal
-
-## Stop the replication process
-sudo -u postgres pg_ctl stop -D /var/lib/postgresql/data -m fast
-```bash
+```
 
 ### Step 3: Promote Replica to Primary
 **Estimated Time**: 2 minutes
@@ -251,14 +248,14 @@ sudo -u postgres pg_ctl promote -D /var/lib/postgresql/data
 
 ## Verify promotion was successful
 psql -U admin -c "SELECT pg_is_in_recovery();"
-```bash
+```
 
 **Expected Output**:
 ```text
  pg_is_in_recovery
 -------------------
  f
-```bash
+```
 
 ### Step 4: Update DNS Records
 **Estimated Time**: 2 minutes
@@ -279,7 +276,7 @@ aws route53 change-resource-record-sets \
       }
     }]
   }'
-```bash
+```
 
 ### Step 5: Verify Application Connectivity
 **Estimated Time**: 2 minutes
@@ -290,7 +287,7 @@ for server in app-01 app-02 app-03; do
   echo "Testing from $server:"
   ssh $server "psql -h db-primary.internal -U app_user -c 'SELECT 1;'"
 done
-```bash
+```
 
 ## Verification
 - [ ] `pg_is_in_recovery()` returns `false` on new primary
@@ -309,7 +306,7 @@ If the original primary comes back online, do NOT allow it to accept writes:
 - [ ] Configure remaining replicas to follow new primary
 - [ ] Review and rebuild failed server
 - [ ] Schedule post-incident review
-```text
+````
 
 ## Contact and Escalation Lists
 
@@ -597,6 +594,7 @@ spec:
     metadata:
       labels:
         app: critical-app
+        dr-tier: "1"
       annotations:
         dr.company.com/rto: "15m"
         dr.company.com/rpo: "0"
@@ -651,7 +649,8 @@ spec:
               echo "Verifying DR recovery..."
 
               # Check all critical pods are running
-              kubectl get pods -l dr-tier=1 -n production | grep -v Running && exit 1
+              non_running_pods="$(kubectl get pods -l dr-tier=1 -n production --field-selector=status.phase!=Running --no-headers)"
+              test -z "$non_running_pods" || { echo "$non_running_pods"; exit 1; }
 
               # Verify database connectivity
               pg_isready -h $DB_HOST -p 5432 || exit 1
