@@ -10,7 +10,7 @@ Description: Build background job processing systems in Go with worker pools, jo
 
 Go is particularly well-suited for background job processing thanks to its lightweight goroutines and built-in concurrency primitives. Unlike other languages where you often need external libraries like Celery or Sidekiq, Go lets you build robust job processing systems using just the standard library.
 
-In this guide, we will build a production-ready background job processor from scratch, covering worker pools, job queues, retry logic, and graceful shutdown handling.
+In this guide, we will build a practical in-memory background job processor from scratch, covering worker pools, job queues, retry logic, and graceful shutdown handling.
 
 ## Architecture Overview
 
@@ -75,13 +75,14 @@ import (
 
 // WorkerPool manages a pool of workers that process jobs
 type WorkerPool struct {
-    numWorkers int
-    jobQueue   chan *Job
-    handlers   map[string]Handler
-    wg         sync.WaitGroup
-    ctx        context.Context
-    cancel     context.CancelFunc
-    mu         sync.RWMutex
+    numWorkers   int
+    jobQueue     chan *Job
+    handlers     map[string]Handler
+    wg           sync.WaitGroup
+    ctx          context.Context
+    cancel       context.CancelFunc
+    mu           sync.RWMutex
+    shuttingDown bool
 }
 
 // NewWorkerPool creates a new worker pool with the specified number of workers
@@ -122,7 +123,11 @@ func (wp *WorkerPool) worker(id int) {
         case <-wp.ctx.Done():
             log.Printf("Worker %d shutting down", id)
             return
-        case job := <-wp.jobQueue:
+        case job, ok := <-wp.jobQueue:
+            if !ok {
+                log.Printf("Worker %d shutting down", id)
+                return
+            }
             wp.processJob(id, job)
         }
     }
@@ -153,7 +158,7 @@ func (wp *WorkerPool) processJob(workerID int, job *Job) {
         job.Error = err.Error()
         job.Attempts++
 
-        if job.Attempts < job.MaxRetry {
+        if job.Attempts <= job.MaxRetry {
             // Schedule retry with exponential backoff
             go wp.scheduleRetry(job)
         } else {
@@ -191,6 +196,13 @@ func (wp *WorkerPool) Submit(job *Job) error {
     }
     job.CreatedAt = time.Now()
 
+    wp.mu.RLock()
+    defer wp.mu.RUnlock()
+
+    if wp.shuttingDown {
+        return fmt.Errorf("worker pool is shutting down")
+    }
+
     select {
     case wp.jobQueue <- job:
         return nil
@@ -202,17 +214,26 @@ func (wp *WorkerPool) Submit(job *Job) error {
 // scheduleRetry requeues a failed job after a delay
 func (wp *WorkerPool) scheduleRetry(job *Job) {
     // Exponential backoff: 1s, 2s, 4s, 8s...
-    delay := time.Duration(1<<job.Attempts) * time.Second
+    delay := time.Duration(1<<(job.Attempts-1)) * time.Second
 
     log.Printf("Scheduling retry for job %s in %v", job.ID, delay)
 
     select {
     case <-time.After(delay):
+        wp.mu.RLock()
+        defer wp.mu.RUnlock()
+
+        if wp.shuttingDown {
+            return
+        }
+
         select {
         case wp.jobQueue <- job:
             log.Printf("Job %s requeued for retry", job.ID)
         case <-wp.ctx.Done():
             return
+        default:
+            log.Printf("Failed to requeue job %s: job queue is full", job.ID)
         }
     case <-wp.ctx.Done():
         return
@@ -234,8 +255,13 @@ Graceful shutdown is critical for production systems. We need to stop accepting 
 func (wp *WorkerPool) Shutdown(timeout time.Duration) error {
     log.Println("Initiating graceful shutdown...")
 
-    // Signal all workers to stop
-    wp.cancel()
+    // Stop accepting new jobs and let workers drain the queue
+    wp.mu.Lock()
+    if !wp.shuttingDown {
+        wp.shuttingDown = true
+        close(wp.jobQueue)
+    }
+    wp.mu.Unlock()
 
     // Wait for workers to finish with timeout
     done := make(chan struct{})
@@ -246,9 +272,11 @@ func (wp *WorkerPool) Shutdown(timeout time.Duration) error {
 
     select {
     case <-done:
+        wp.cancel()
         log.Println("All workers stopped gracefully")
         return nil
     case <-time.After(timeout):
+        wp.cancel()
         return fmt.Errorf("shutdown timed out after %v", timeout)
     }
 }
@@ -270,11 +298,13 @@ import (
     "os/signal"
     "syscall"
     "time"
+
+    "example.com/background-jobs/jobs"
 )
 
 func main() {
     // Create a worker pool with 5 workers and queue size of 100
-    pool := NewWorkerPool(5, 100)
+    pool := jobs.NewWorkerPool(5, 100)
 
     // Register job handlers
     pool.RegisterHandler("email", handleEmailJob)
@@ -302,7 +332,7 @@ func main() {
 }
 
 // handleEmailJob processes email sending jobs
-func handleEmailJob(ctx context.Context, job *Job) error {
+func handleEmailJob(ctx context.Context, job *jobs.Job) error {
     to := job.Payload["to"].(string)
     subject := job.Payload["subject"].(string)
 
@@ -317,7 +347,7 @@ func handleEmailJob(ctx context.Context, job *Job) error {
 }
 
 // handleReportJob generates reports
-func handleReportJob(ctx context.Context, job *Job) error {
+func handleReportJob(ctx context.Context, job *jobs.Job) error {
     reportType := job.Payload["type"].(string)
 
     // Simulate report generation with potential failure
@@ -335,7 +365,7 @@ func handleReportJob(ctx context.Context, job *Job) error {
 }
 
 // handleNotificationJob sends push notifications
-func handleNotificationJob(ctx context.Context, job *Job) error {
+func handleNotificationJob(ctx context.Context, job *jobs.Job) error {
     userID := job.Payload["user_id"].(string)
     message := job.Payload["message"].(string)
 
@@ -348,9 +378,9 @@ func handleNotificationJob(ctx context.Context, job *Job) error {
     }
 }
 
-func submitSampleJobs(pool *WorkerPool) {
+func submitSampleJobs(pool *jobs.WorkerPool) {
     // Submit various jobs
-    jobs := []*Job{
+    sampleJobs := []*jobs.Job{
         {
             Type:     "email",
             Payload:  map[string]interface{}{"to": "user@example.com", "subject": "Welcome!"},
@@ -368,7 +398,7 @@ func submitSampleJobs(pool *WorkerPool) {
         },
     }
 
-    for _, job := range jobs {
+    for _, job := range sampleJobs {
         if err := pool.Submit(job); err != nil {
             log.Printf("Failed to submit job: %v", err)
         }
@@ -397,9 +427,9 @@ type PriorityQueue struct {
 // Len returns the number of items in the queue
 func (pq *PriorityQueue) Len() int { return len(pq.items) }
 
-// Less determines priority ordering (lower number = higher priority)
+// Less determines priority ordering (higher number = higher priority)
 func (pq *PriorityQueue) Less(i, j int) bool {
-    return pq.items[i].Priority < pq.items[j].Priority
+    return pq.items[i].Priority > pq.items[j].Priority
 }
 
 // Swap exchanges two items in the queue
@@ -524,4 +554,4 @@ When building background job systems in Go, keep these guidelines in mind:
 | Priority queue | Processes important jobs first |
 | Metrics | Provides operational visibility |
 
-Go's concurrency primitives make it straightforward to build efficient background job processing systems. The patterns shown here scale well from simple use cases to high-throughput production workloads. Start with the basic worker pool and add features like priority queues and metrics as your needs grow.
+Go's concurrency primitives make it straightforward to build efficient background job processing systems. The patterns shown here work well for simple use cases and can be extended with persistence, observability, and distributed coordination for production workloads. Start with the basic worker pool and add features like priority queues and metrics as your needs grow.
