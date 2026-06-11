@@ -10,7 +10,7 @@ Description: Learn how to use PostgreSQL event triggers for tracking DDL changes
 
 PostgreSQL event triggers are a powerful feature that allows you to capture and respond to Data Definition Language (DDL) statements. Unlike regular triggers that fire on data changes (INSERT, UPDATE, DELETE), event triggers fire on schema changes like CREATE TABLE, ALTER INDEX, or DROP FUNCTION. This makes them invaluable for auditing schema changes, enforcing naming conventions, preventing accidental drops, and maintaining change logs.
 
-In this guide, we will explore the three types of DDL event triggers, build practical examples for schema change tracking, and implement a complete audit system.
+In this guide, we will explore three core DDL event triggers, build practical examples for schema change tracking, and implement a complete audit system. PostgreSQL also provides `table_rewrite` (fired when ALTER TABLE rewrites a table) and, since PostgreSQL 17, `login`. We will not cover those here.
 
 ## Why Track DDL Changes?
 
@@ -59,7 +59,7 @@ flowchart TB
 
 ## Understanding the Three Event Types
 
-PostgreSQL provides three distinct event trigger timing points:
+PostgreSQL provides three core DDL event trigger timing points:
 
 ### Event Trigger Types Overview
 
@@ -141,8 +141,9 @@ CREATE TABLE audit.ddl_history (
     ddl_command TEXT,                        -- The actual SQL command (when available)
 
     -- Context information
-    session_user VARCHAR(255) NOT NULL,      -- User who executed the command
-    current_user VARCHAR(255) NOT NULL,      -- Effective user (may differ with SET ROLE)
+    -- session_user and current_user are reserved keywords in SQL, so we use suffixed names
+    session_user_name VARCHAR(255) NOT NULL, -- User who executed the command
+    current_user_name VARCHAR(255) NOT NULL, -- Effective user (may differ with SET ROLE)
     application_name VARCHAR(255),           -- Application that issued the command
     client_addr INET,                        -- Client IP address
     client_port INTEGER,                     -- Client port
@@ -168,7 +169,7 @@ ON audit.ddl_history(schema_name, object_name);
 
 -- Index on user for auditing specific users
 CREATE INDEX idx_ddl_history_user
-ON audit.ddl_history(session_user);
+ON audit.ddl_history(session_user_name);
 
 -- Index on command type for filtering by operation
 CREATE INDEX idx_ddl_history_command
@@ -275,8 +276,8 @@ BEGIN
     INSERT INTO audit.ddl_history (
         event_type,
         command_tag,
-        session_user,
-        current_user,
+        session_user_name,
+        current_user_name,
         application_name,
         client_addr,
         transaction_id
@@ -362,9 +363,8 @@ BEGIN
                 WHEN 'index' THEN
                     v_ddl_command := pg_get_indexdef(v_obj.objid);
                 WHEN 'trigger' THEN
-                    v_ddl_command := pg_get_triggerdef(
-                        (SELECT oid FROM pg_trigger WHERE tgname = v_obj.object_identity)
-                    );
+                    -- v_obj.objid is already the pg_trigger OID, so pass it directly
+                    v_ddl_command := pg_get_triggerdef(v_obj.objid);
                 ELSE
                     -- For other types, we cannot easily reconstruct the DDL
                     v_ddl_command := NULL;
@@ -383,8 +383,8 @@ BEGIN
             object_name,
             object_identity,
             ddl_command,
-            session_user,
-            current_user,
+            session_user_name,
+            current_user_name,
             application_name,
             client_addr,
             client_port,
@@ -461,14 +461,13 @@ DECLARE
     v_obj RECORD;
     v_history_id BIGINT;
     v_original_identity TEXT := NULL;
-    v_is_first BOOLEAN := TRUE;
 BEGIN
     -- First, create the main audit record for the DROP command
     INSERT INTO audit.ddl_history (
         event_type,
         command_tag,
-        session_user,
-        current_user,
+        session_user_name,
+        current_user_name,
         application_name,
         client_addr,
         client_port,
@@ -486,14 +485,17 @@ BEGIN
     RETURNING id INTO v_history_id;
 
     -- Iterate through all dropped objects
-    -- pg_event_trigger_dropped_objects() returns details about each dropped object
-    FOR v_obj IN SELECT * FROM pg_event_trigger_dropped_objects()
+    -- pg_event_trigger_dropped_objects() returns details about each dropped object.
+    -- The "original" column tells us whether an object was a root drop target
+    -- (true) or a dependent removed via CASCADE (false). Order originals first
+    -- so we can capture the primary drop identity before processing cascades.
+    FOR v_obj IN
+        SELECT * FROM pg_event_trigger_dropped_objects()
+        ORDER BY original DESC, object_identity
     LOOP
-        -- Track the first object as the original drop target
-        -- Subsequent objects are cascade drops
-        IF v_is_first THEN
+        -- Capture the first original drop target as the primary identity
+        IF v_obj.original AND v_original_identity IS NULL THEN
             v_original_identity := v_obj.object_identity;
-            v_is_first := FALSE;
         END IF;
 
         -- Insert record for each dropped object
@@ -513,14 +515,14 @@ BEGIN
             v_obj.schema_name,
             v_obj.object_name,
             v_obj.object_identity,
-            v_obj.object_identity != v_original_identity,  -- Cascade if not the original
+            NOT v_obj.original,  -- Cascade if this was not a root drop target
             v_original_identity,
             v_obj.address_names,
             v_obj.address_args
         );
 
         -- Update the main history record with primary object info
-        IF v_obj.object_identity = v_original_identity THEN
+        IF v_obj.original AND v_obj.object_identity = v_original_identity THEN
             UPDATE audit.ddl_history
             SET
                 object_type = v_obj.object_type,
@@ -537,7 +539,7 @@ BEGIN
                 'history_id', v_history_id,
                 'object_type', v_obj.object_type,
                 'object_identity', v_obj.object_identity,
-                'is_cascade', v_obj.object_identity != v_original_identity,
+                'is_cascade', NOT v_obj.original,
                 'user', session_user,
                 'timestamp', CURRENT_TIMESTAMP
             )::text
@@ -622,7 +624,7 @@ SELECT
     command_tag,
     object_type,
     object_identity,
-    session_user,
+    session_user_name,
     ddl_command
 FROM audit.ddl_history
 WHERE schema_name = 'public'
@@ -744,7 +746,7 @@ AS $$
         COUNT(*) FILTER (WHERE command_tag LIKE 'CREATE%') AS creates,
         COUNT(*) FILTER (WHERE command_tag LIKE 'ALTER%') AS alters,
         COUNT(*) FILTER (WHERE command_tag LIKE 'DROP%') AS drops,
-        ARRAY_AGG(DISTINCT session_user) AS users_involved,
+        ARRAY_AGG(DISTINCT session_user_name) AS users_involved,
         ARRAY_AGG(DISTINCT object_identity) FILTER (WHERE object_identity IS NOT NULL) AS objects_affected
     FROM audit.ddl_history
     WHERE event_timestamp BETWEEN p_start_date AND p_end_date
