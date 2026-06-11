@@ -149,7 +149,7 @@ const samlConfig = {
 
   // Optional: Sign authentication requests
   privateKey: process.env.SAML_SP_PRIVATE_KEY,
-  cert: process.env.SAML_SP_CERTIFICATE,
+  publicCert: process.env.SAML_SP_CERTIFICATE,
 
   // Session and timing
   acceptedClockSkewMs: 5000,
@@ -175,7 +175,7 @@ const samlConfig = require('../config/saml');
 // Initialize SAML strategy
 const samlStrategy = new SamlStrategy(
   samlConfig,
-  // Verify callback - called after successful SAML response
+  // Signon verify callback - called after successful SAML response
   async (profile, done) => {
     try {
       // Extract user attributes from SAML assertion
@@ -189,6 +189,15 @@ const samlStrategy = new SamlStrategy(
 
       // Find or create user in your database
       const dbUser = await findOrCreateUser(user);
+      return done(null, dbUser);
+    } catch (error) {
+      return done(error);
+    }
+  },
+  // Logout verify callback - called when IdP-initiated logout is received
+  async (profile, done) => {
+    try {
+      const dbUser = await findUserByNameId(profile.nameID);
       return done(null, dbUser);
     } catch (error) {
       return done(error);
