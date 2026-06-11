@@ -36,8 +36,6 @@ To assign a profile to a service, use the `profiles` attribute in your service d
 ```yaml
 # docker-compose.yml
 
-version: "3.9"
-
 services:
   # This service starts by default (no profile)
   web:
@@ -79,8 +77,8 @@ docker compose --profile debug up
 # Activate multiple profiles
 docker compose --profile debug --profile monitoring up
 
-# Short form
-docker compose -p debug -p monitoring up
+# Enable all profiles
+docker compose --profile "*" up
 ```
 
 ### Using Environment Variables
@@ -145,8 +143,6 @@ flowchart LR
 ### Handling Dependencies
 
 ```yaml
-version: "3.9"
-
 services:
   # Default service - always starts
   database:
@@ -210,8 +206,6 @@ When you run `docker compose --profile monitoring up`, Docker Compose will:
 A service can belong to multiple profiles, making it available in different contexts.
 
 ```yaml
-version: "3.9"
-
 services:
   web:
     image: nginx:alpine
@@ -278,8 +272,6 @@ Profiles excel at managing environment-specific configurations within a single c
 ### Complete Environment Management Example
 
 ```yaml
-version: "3.9"
-
 services:
   # Core services - always run
   app:
@@ -444,8 +436,6 @@ sequenceDiagram
 You can combine profiles with environment variable interpolation for more flexible configurations.
 
 ```yaml
-version: "3.9"
-
 services:
   app:
     image: myapp:${APP_VERSION:-latest}
@@ -488,8 +478,6 @@ volumes:
 ### Profile Groups for Complex Deployments
 
 ```yaml
-version: "3.9"
-
 services:
   # API Gateway
   gateway:
@@ -581,13 +569,13 @@ services:
 Choose profile names that clearly indicate their purpose.
 
 ```yaml
-profiles:
-  - dev           # Development tools
-  - test          # Testing infrastructure
-  - prod          # Production monitoring
-  - debug         # Debugging utilities
-  - monitoring    # Metrics and dashboards
-  - security      # Security scanning tools
+# Profile names used in this compose file:
+# - dev           # Development tools
+# - test          # Testing infrastructure
+# - prod          # Production monitoring
+# - debug         # Debugging utilities
+# - monitoring    # Metrics and dashboards
+# - security      # Security scanning tools
 ```
 
 ### 3. Document Your Profiles
@@ -626,7 +614,7 @@ all:
 	docker compose --profile dev --profile monitoring up -d
 
 down:
-	docker compose --profile dev --profile test --profile prod down
+	docker compose --profile dev --profile test --profile prod --profile monitoring down
 
 logs:
 	docker compose logs -f
@@ -746,6 +734,6 @@ Start by identifying the different contexts in which you run your services, then
 
 ## Further Reading
 
-- [Docker Compose Profiles Documentation](https://docs.docker.com/compose/profiles/)
-- [Docker Compose File Reference](https://docs.docker.com/compose/compose-file/)
-- [Docker Compose CLI Reference](https://docs.docker.com/compose/reference/)
+- [Docker Compose Profiles Documentation](https://docs.docker.com/compose/how-tos/profiles/)
+- [Docker Compose File Reference](https://docs.docker.com/reference/compose-file/)
+- [Docker Compose CLI Reference](https://docs.docker.com/reference/cli/docker/compose/)
