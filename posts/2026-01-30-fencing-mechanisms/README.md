@@ -23,14 +23,14 @@ flowchart TB
     end
 
     subgraph Split Brain Scenario
-        N3[Node 1] -.-x|Lost Connection|x-.- N4[Node 2]
+        N3[Node 1] -. Lost Connection .- N4[Node 2]
         N3 -->|Write| S2[(Shared Storage)]
         N4 -->|Write| S2
         S2 -->|Data Corruption!| CORRUPT[Corrupted Data]
     end
 
     subgraph With Fencing
-        N5[Node 1] -.-x|Lost Connection|x-.- N6[Node 2]
+        N5[Node 1] -. Lost Connection .- N6[Node 2]
         N5 -->|Fence| STONITH[STONITH Device]
         STONITH -->|Power Off| N6
         N5 -->|Safe Write| S3[(Shared Storage)]
@@ -59,7 +59,7 @@ flowchart LR
 
     IPMI --> |Power Off| Target1[Target Node]
     PDU --> |Cut Power| Target2[Target Node]
-    VM --> |VM Destroy| Target3[Target VM]
+    VM --> |Power Off| Target3[Target VM]
     Cloud --> |Instance Stop| Target4[Target Instance]
 ```
 
@@ -243,13 +243,16 @@ sg_persist -i -r /dev/mapper/mpath0  # Show reservations
 
 Network fencing isolates a node by blocking its network connectivity.
 
-### Firewall-Based Fencing
+### Switch-Port Fencing
 
 ```bash
-# Configure iptables fencing
-pcs stonith create fence-iptables fence_iptables \
-    pcmk_host_list="node1 node2" \
-    action="off"
+# Configure IF-MIB switch-port fencing
+pcs stonith create fence-switch fence_ifmib \
+    pcmk_host_map="node1:101;node2:102" \
+    ipaddr="192.168.1.1" \
+    community="private" \
+    snmp_version="2c" \
+    op monitor interval="60s"
 ```
 
 ### Custom Network Fencing Script
@@ -262,6 +265,12 @@ pcs stonith create fence-iptables fence_iptables \
 ACTION=$1
 TARGET=$2
 SWITCH_IP="192.168.1.1"
+
+case $TARGET in
+    node1) PORT_INDEX=101 ;;
+    node2) PORT_INDEX=102 ;;
+    *) echo "Unknown target: $TARGET" >&2; exit 2 ;;
+esac
 
 case $ACTION in
     off)
@@ -399,8 +408,11 @@ set -e
 
 echo "Testing fencing configuration..."
 
+# Set this to your cluster node names before running.
+nodes=(node1 node2)
+
 # 1. Verify all nodes have fencing configured
-for node in $(pcs node); do
+for node in "${nodes[@]}"; do
     fence_devices=$(pcs stonith level | grep $node | wc -l)
     if [ "$fence_devices" -eq 0 ]; then
         echo "ERROR: No fencing configured for $node"
@@ -409,18 +421,15 @@ for node in $(pcs node); do
 done
 
 # 2. Test fence agent connectivity
-for device in $(pcs stonith | awk '/Stonith/ {print $2}'); do
-    if ! pcs stonith show $device | grep -q "Started"; then
-        echo "ERROR: Fence device $device is not running"
+for device in $(pcs stonith config | awk '/^Resource:/ {print $2}'); do
+    if ! pcs stonith config "$device" >/dev/null; then
+        echo "ERROR: Fence device $device is not configured"
         exit 1
     fi
 done
 
-# 3. Test fence agent operation (status only)
-for device in $(pcs stonith | awk '/Stonith/ {print $2}'); do
-    echo "Testing $device..."
-    pcs stonith fence --off $(pcs stonith show $device | grep pcmk_host_list | awk '{print $NF}') --simulate
-done
+# 3. Verify fencing topology references valid devices and nodes
+pcs stonith level verify
 
 echo "All fencing tests passed!"
 ```
@@ -489,12 +498,12 @@ If automatic fencing fails:
 ### 5. Secure Fencing Credentials
 
 ```bash
-# Use Pacemaker secrets for credentials
+# Use a root-only password script instead of embedding the password
 pcs stonith create fence-node1 fence_ipmilan \
     pcmk_host_list="node1" \
     ipaddr="192.168.1.101" \
     login="admin" \
-    passwd="$(cat /etc/pacemaker/fence_password)" \
+    passwd_script="/usr/local/sbin/fence-node1-password" \
     lanplus="true"
 ```
 
@@ -514,6 +523,9 @@ spec:
     matchLabels:
       app: node-problem-detector
   template:
+    metadata:
+      labels:
+        app: node-problem-detector
     spec:
       containers:
         - name: node-problem-detector
@@ -527,24 +539,27 @@ spec:
 ### Machine Health Check (Cluster API)
 
 ```yaml
-apiVersion: cluster.x-k8s.io/v1beta1
+apiVersion: cluster.x-k8s.io/v1beta2
 kind: MachineHealthCheck
 metadata:
   name: worker-health-check
 spec:
   clusterName: my-cluster
-  maxUnhealthy: 40%
-  nodeStartupTimeout: 10m
   selector:
     matchLabels:
       cluster.x-k8s.io/cluster-name: my-cluster
-  unhealthyConditions:
-    - type: Ready
-      status: "False"
-      timeout: 5m
-    - type: Ready
-      status: Unknown
-      timeout: 5m
+  checks:
+    nodeStartupTimeoutSeconds: 600
+    unhealthyNodeConditions:
+      - type: Ready
+        status: "False"
+        timeoutSeconds: 300
+      - type: Ready
+        status: Unknown
+        timeoutSeconds: 300
+  remediation:
+    triggerIf:
+      unhealthyLessThanOrEqualTo: 40%
 ```
 
 ## Troubleshooting Fencing Issues
