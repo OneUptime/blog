@@ -345,31 +345,17 @@ import ssl
 def create_redis_client():
     """Create a Redis client with TLS and mTLS authentication."""
 
-    # Create SSL context
-    ssl_context = ssl.create_default_context(
-        purpose=ssl.Purpose.SERVER_AUTH,
-        cafile='/etc/redis/tls/ca/ca.crt'
-    )
-
-    # Load client certificate for mTLS
-    ssl_context.load_cert_chain(
-        certfile='/etc/redis/tls/client/app-service.crt',
-        keyfile='/etc/redis/tls/client/app-service.key'
-    )
-
-    # Set minimum TLS version
-    ssl_context.minimum_version = ssl.TLSVersion.TLSv1_2
-
-    # Verify server certificate
-    ssl_context.check_hostname = True
-    ssl_context.verify_mode = ssl.CERT_REQUIRED
-
-    # Create Redis client
+    # Create Redis client using redis-py SSL parameters
     client = redis.Redis(
         host='redis.example.com',
         port=6379,
         ssl=True,
-        ssl_context=ssl_context,
+        ssl_ca_certs='/etc/redis/tls/ca/ca.crt',
+        ssl_certfile='/etc/redis/tls/client/app-service.crt',
+        ssl_keyfile='/etc/redis/tls/client/app-service.key',
+        ssl_cert_reqs='required',
+        ssl_check_hostname=True,
+        ssl_min_version=ssl.TLSVersion.TLSv1_2,
         decode_responses=True
     )
 
