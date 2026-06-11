@@ -33,11 +33,11 @@ sequenceDiagram
     A->>A: Running
 ```
 
-Each init container must complete successfully before the next one starts. If any init container fails, Kubernetes restarts the pod according to the restart policy.
+Each init container must complete successfully before the next one starts. If any init container fails, Kubernetes restarts that init container until it succeeds, unless the pod uses `restartPolicy: Never`, in which case the pod fails.
 
-## Pattern 1: Service Mesh Readiness
+## Pattern 1: Service Mesh Startup Coordination
 
-When running with service meshes like Istio, your application might start before the sidecar proxy is ready. This pattern ensures the mesh is fully initialized.
+When running with service meshes like Istio, your application might start before the sidecar proxy is ready. Do not use a regular init container to wait for the sidecar: init containers finish before app containers and injected sidecar containers start. For Istio, use `holdApplicationUntilProxyStarts` so the injector blocks application startup until the proxy is ready.
 
 ```yaml
 # service-mesh-readiness.yaml
@@ -54,30 +54,9 @@ spec:
     metadata:
       labels:
         app: mesh-aware-app
+      annotations:
+        proxy.istio.io/config: '{ "holdApplicationUntilProxyStarts": true }'
     spec:
-      initContainers:
-        # Wait for Istio sidecar to be ready
-        - name: wait-for-istio
-          image: curlimages/curl:8.5.0
-          command:
-            - sh
-            - -c
-            - |
-              # Istio injects a sidecar that listens on 15021
-              # Wait until the health endpoint responds
-              echo "Waiting for Istio sidecar..."
-              until curl -fsI http://localhost:15021/healthz/ready; do
-                echo "Sidecar not ready, retrying in 2s..."
-                sleep 2
-              done
-              echo "Istio sidecar is ready"
-          resources:
-            requests:
-              cpu: 10m
-              memory: 16Mi
-            limits:
-              cpu: 50m
-              memory: 32Mi
       containers:
         - name: app
           image: myregistry/app:v1.0.0
@@ -114,7 +93,7 @@ spec:
             - |
               # Use PostgreSQL advisory lock to prevent concurrent migrations
               # Lock ID 12345 is arbitrary but must be consistent
-              psql "$DATABASE_URL" <<'EOF'
+              psql -v ON_ERROR_STOP=1 "$DATABASE_URL" <<'EOF'
               SELECT pg_advisory_lock(12345);
 
               -- Check current schema version
@@ -201,13 +180,11 @@ spec:
 
               export VAULT_TOKEN
 
-              # Fetch secrets and write to shared volume
+              # Fetch secrets and write Vault JSON responses to shared volume
               echo "Fetching secrets..."
-              vault kv get -format=json secret/myapp/database | \
-                jq -r '.data.data' > /secrets/database.json
+              vault kv get -format=json secret/myapp/database > /secrets/database.json
 
-              vault kv get -format=json secret/myapp/api-keys | \
-                jq -r '.data.data' > /secrets/api-keys.json
+              vault kv get -format=json secret/myapp/api-keys > /secrets/api-keys.json
 
               # Set restrictive permissions
               chmod 600 /secrets/*.json
@@ -290,7 +267,7 @@ spec:
     spec:
       initContainers:
         - name: render-config
-          image: busybox:1.36
+          image: nginx:1.25-alpine
           command:
             - sh
             - -c
@@ -383,7 +360,7 @@ spec:
                   if [ "$HTTP_CODE" = "200" ]; then
                     # Parse JSON response to verify healthy status
                     STATUS=$(echo "$BODY" | grep -o '"status":"[^"]*"' | cut -d'"' -f4)
-                    if [ "$STATUS" = "healthy" ] || [ "$STATUS" = "ok" ]; then
+                    if [ "$STATUS" = "healthy" ] || [ "$STATUS" = "ok" ] || [ "$STATUS" = "green" ] || [ "$STATUS" = "yellow" ]; then
                       echo "$SERVICE_NAME is healthy"
                       return 0
                     fi
@@ -506,7 +483,7 @@ When init containers fail or get stuck, use these commands to diagnose the probl
 kubectl get pod myapp-xxx -o jsonpath='{range .status.initContainerStatuses[*]}{.name}: {.state}{"\n"}{end}'
 
 # View logs from a specific init container
-kubectl logs myapp-xxx -c wait-for-istio
+kubectl logs myapp-xxx -c run-migrations
 
 # Stream logs while init container is running
 kubectl logs -f myapp-xxx -c fetch-secrets
