@@ -109,7 +109,7 @@ def dot_product_numpy(a: np.ndarray, b: np.ndarray) -> float:
     """
     Calculate dot product using NumPy's optimized implementation.
 
-    NumPy uses BLAS (Basic Linear Algebra Subprograms) under the hood,
+    NumPy uses BLAS (Basic Linear Algebra Subprograms) when possible,
     which provides highly optimized vector operations.
     """
     return np.dot(a, b)
@@ -217,6 +217,7 @@ An important technique is reducing MIPS to nearest neighbor search, allowing use
 
 ```python
 import numpy as np
+from typing import Tuple
 
 def mips_to_nn_transform(vectors: np.ndarray) -> Tuple[np.ndarray, float]:
     """
@@ -339,14 +340,15 @@ flowchart TB
     end
 ```
 
-### C Implementation with AVX
+### C Implementation with AVX/FMA
 
 ```c
 #include <immintrin.h>
+#include <stddef.h>
 
 float dot_product_avx(const float* a, const float* b, size_t n) {
     /*
-     * AVX-optimized dot product using 256-bit vectors.
+     * AVX/FMA-optimized dot product using 256-bit vectors.
      * Processes 8 floats per iteration.
      */
     __m256 sum = _mm256_setzero_ps();
@@ -434,12 +436,12 @@ def optimize_memory_layout(vectors: np.ndarray) -> np.ndarray:
     return vectors
 
 
-def align_vectors(vectors: np.ndarray, alignment: int = 32) -> np.ndarray:
+def pad_vectors_for_simd(vectors: np.ndarray, alignment: int = 32) -> np.ndarray:
     """
-    Align vector memory for optimal SIMD performance.
+    Pad vector dimensions to SIMD-friendly widths.
 
-    AVX requires 32-byte alignment for best performance.
-    AVX-512 requires 64-byte alignment.
+    This does not guarantee the starting memory address is aligned; it
+    ensures each vector length is a multiple of the SIMD register width.
     """
     # Pad dimension to multiple of alignment / sizeof(float)
     d = vectors.shape[-1]
@@ -744,6 +746,7 @@ if __name__ == "__main__":
 ### Semantic Search
 
 ```python
+import numpy as np
 from sentence_transformers import SentenceTransformer
 
 def semantic_search_example():
@@ -799,6 +802,7 @@ flowchart TB
 
 ```python
 import numpy as np
+from typing import List, Tuple
 
 class MatrixFactorizationRecommender:
     """
@@ -837,7 +841,7 @@ class MatrixFactorizationRecommender:
 
 ```python
 import numpy as np
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 class RAGRetriever:
     """
@@ -910,6 +914,8 @@ class RAGRetriever:
 ```
 
 ## Performance Comparison
+
+The exact numbers below are illustrative and hardware-dependent; benchmark on your own CPU, compiler, BLAS library, and vector dimensions before making production decisions.
 
 ```mermaid
 graph TB
