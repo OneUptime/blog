@@ -67,7 +67,7 @@ The flow works as follows:
 
 ### Via the Grafana UI
 
-Navigate to **Alerting** > **Contact points** in the Grafana sidebar. Click **+ Add contact point** to create a new one.
+Navigate to **Alerts & IRM** > **Alerting** > **Notification configuration** > **Contact points** in the Grafana sidebar. Click **+ New contact point** to create a new one.
 
 Every contact point requires:
 - **Name**: A unique identifier for the contact point
@@ -96,7 +96,7 @@ contactPoints:
       - uid: slack-ops
         type: slack
         settings:
-          recipient: "#ops-alerts"
+          recipient: C0123456789
           token: $SLACK_BOT_TOKEN
           mentionChannel: here
 ```
@@ -150,7 +150,7 @@ user = grafana@company.com
 password = $__file{/etc/grafana/smtp-password}
 from_address = grafana@company.com
 from_name = Grafana Alerts
-starttls_policy = MandatoryStartTLS
+startTLS_policy = MandatoryStartTLS
 ```
 
 ---
@@ -169,7 +169,7 @@ contactPoints:
       - uid: slack-main
         type: slack
         settings:
-          recipient: "#alerts-production"
+          recipient: C0123456789
           token: $SLACK_BOT_TOKEN
           username: Grafana Alert Bot
           icon_emoji: ":grafana:"
@@ -222,7 +222,6 @@ receivers:
     type: slack
     settings:
       url: https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX
-      recipient: "#alerts"
 ```
 
 Note: Webhooks have limitations including no user/group mentions and reduced customization options.
@@ -249,12 +248,6 @@ contactPoints:
           component: "{{ .CommonLabels.service }}"
           group: "{{ .CommonLabels.team }}"
           summary: "{{ .CommonAnnotations.summary }}"
-          source: grafana-production
-          client: Grafana
-          clientURL: https://grafana.company.com
-          details:
-            environment: production
-            region: "{{ .CommonLabels.region }}"
 ```
 
 ### Creating a PagerDuty Integration Key
@@ -279,7 +272,7 @@ Map your alert labels to PagerDuty severity levels:
 
 ```yaml
 settings:
-  severity: "{{ .CommonLabels.severity | default \"warning\" }}"
+  severity: '{{ if eq .CommonLabels.severity "critical" }}critical{{ else if eq .CommonLabels.severity "high" }}error{{ else if eq .CommonLabels.severity "low" }}info{{ else }}warning{{ end }}'
 ```
 
 ---
@@ -302,8 +295,7 @@ contactPoints:
           httpMethod: POST
           username: grafana
           password: $WEBHOOK_PASSWORD
-          authorization_scheme: Basic
-          maxAlerts: 10
+          maxAlerts: '10'
 ```
 
 ### Webhook Payload Structure
@@ -416,7 +408,7 @@ contactPoints:
         settings:
           url: https://company.webhook.office.com/webhookb2/xxx/IncomingWebhook/yyy/zzz
           title: "Grafana Alert: {{ .CommonLabels.alertname }}"
-          sectionTitle: Alert Details
+          sectiontitle: Alert Details
           message: |
             **Status:** {{ .Status }}
             **Severity:** {{ .CommonLabels.severity }}
@@ -451,17 +443,12 @@ contactPoints:
         type: opsgenie
         settings:
           apiKey: $OPSGENIE_API_KEY
-          apiUrl: https://api.opsgenie.com
+          apiUrl: https://api.opsgenie.com/v2/alerts
           message: "{{ .CommonLabels.alertname }}"
           description: "{{ .CommonAnnotations.description }}"
           autoClose: true
           overridePriority: true
           sendTagsAs: tags
-          responders:
-            - type: team
-              name: platform-team
-            - type: user
-              username: oncall@company.com
 ```
 
 ---
@@ -511,7 +498,7 @@ contactPoints:
       - uid: slack-templated
         type: slack
         settings:
-          recipient: "#alerts"
+          recipient: C0123456789
           token: $SLACK_BOT_TOKEN
           title: '{{ template "alert.title" . }}'
           text: '{{ template "alert.message" . }}'
@@ -598,23 +585,22 @@ In the Grafana UI, each contact point has a **Test** button that sends a sample 
 
 ### Using the API
 
+In Grafana 13 and later, use the Kubernetes-style receiver test endpoint. Older examples using `/api/alertmanager/grafana/config/api/v1/receivers/test` no longer work in Grafana 13.
+
 ```bash
 curl -X POST \
-  -H "Authorization: Bearer $GRAFANA_API_KEY" \
+  -H "Authorization: Bearer $GRAFANA_SERVICE_ACCOUNT_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "receivers": [{
-      "name": "test-receiver",
-      "grafana_managed_receiver_configs": [{
-        "uid": "test",
-        "name": "test",
-        "type": "slack",
-        "settings": {
-          "recipient": "#test-alerts",
-          "token": "xoxb-xxx"
-        }
-      }]
-    }],
+    "integration": {
+      "uid": "slack-main",
+      "type": "slack",
+      "version": "1",
+      "settings": {
+        "recipient": "C0123456789",
+        "token": "xoxb-xxx"
+      }
+    },
     "alert": {
       "labels": {
         "alertname": "TestAlert",
@@ -625,7 +611,7 @@ curl -X POST \
       }
     }
   }' \
-  https://grafana.company.com/api/alertmanager/grafana/config/api/v1/receivers/test
+  https://grafana.company.com/apis/notifications.alerting.grafana.app/v1beta1/namespaces/default/receivers/slack-main/test
 ```
 
 ---
@@ -650,7 +636,7 @@ contactPoints:
       - uid: critical-slack
         type: slack
         settings:
-          recipient: "#incidents"
+          recipient: C0123456789
           token: $SLACK_TOKEN
           mentionChannel: channel
 
@@ -685,7 +671,7 @@ receivers:
   - uid: slack-main
     type: slack
     settings:
-      recipient: "#alerts"
+      recipient: C0123456789
       token: $SLACK_TOKEN
     disableResolveMessage: false  # Send resolution (default)
 
@@ -796,7 +782,7 @@ kubectl logs -n monitoring grafana-xxx | grep -i alert
 
 1. Ensure labels are being set in alert rules
 2. Check template syntax for correct label references
-3. Use `{{ .Labels | json }}` to debug available labels
+3. Use `{{ .Labels | data.ToJSON }}` to debug available labels
 
 ### Webhook Timeouts
 
@@ -831,11 +817,10 @@ contactPoints:
         settings:
           integrationKey: $PD_PROD_KEY
           severity: critical
-          source: grafana-prod
       - uid: prod-slack
         type: slack
         settings:
-          recipient: "#prod-incidents"
+          recipient: C0123456789
           token: $SLACK_TOKEN
           mentionChannel: channel
           title: '{{ template "custom.title" . }}'
@@ -846,7 +831,7 @@ contactPoints:
       - uid: warn-slack
         type: slack
         settings:
-          recipient: "#prod-alerts"
+          recipient: C0987654321
           token: $SLACK_TOKEN
 
   - orgId: 1
@@ -855,7 +840,7 @@ contactPoints:
       - uid: staging-slack
         type: slack
         settings:
-          recipient: "#staging-alerts"
+          recipient: C1111111111
           token: $SLACK_TOKEN
 
 policies:
