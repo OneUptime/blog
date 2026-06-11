@@ -95,13 +95,6 @@ Create a Maven project with the required dependencies.
             <version>2.15.2</version>
         </dependency>
 
-        <!-- HTTP client for REST API data source -->
-        <dependency>
-            <groupId>org.apache.httpcomponents.client5</groupId>
-            <artifactId>httpclient5</artifactId>
-            <version>5.2.1</version>
-        </dependency>
-
         <!-- Testing -->
         <dependency>
             <groupId>junit</groupId>
@@ -114,6 +107,13 @@ Create a Maven project with the required dependencies.
             <groupId>org.mockito</groupId>
             <artifactId>mockito-core</artifactId>
             <version>5.5.0</version>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers-kafka</artifactId>
+            <version>2.0.5</version>
             <scope>test</scope>
         </dependency>
     </dependencies>
@@ -739,7 +739,7 @@ public class ApiSourceTask extends SourceTask {
 
     /**
      * Create a SourceRecord from API data. The record includes partition
-     * and offset information for exactly-once semantics.
+     * and offset information so Kafka Connect can resume after restarts.
      */
     private SourceRecord createRecord(String endpoint, JsonNode item, long offset) {
         // Source partition identifies where this data came from
@@ -801,7 +801,7 @@ public class ApiSourceTask extends SourceTask {
 
 ## Offset Management Patterns
 
-Proper offset management ensures data is not lost or duplicated. Here are different strategies depending on your data source.
+Proper offset management helps avoid data loss and unnecessary duplicates. Here are different strategies depending on your data source.
 
 ### Timestamp-Based Offsets
 
@@ -934,9 +934,9 @@ public class CompositeOffsetTracker {
 
 Package the connector for deployment to Kafka Connect.
 
-### Create the Connector Manifest
+### Create the Connector Service Provider File
 
-The manifest file tells Kafka Connect about your connector.
+The ServiceLoader provider file tells Kafka Connect about your connector.
 
 ```properties
 # src/main/resources/META-INF/services/org.apache.kafka.connect.source.SourceConnector
@@ -1164,7 +1164,7 @@ public class ApiSourceTaskTest {
 }
 ```
 
-### Integration Tests with Embedded Kafka
+### Integration Tests with Testcontainers Kafka
 
 ```java
 package com.example.connector;
@@ -1174,11 +1174,9 @@ import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.serialization.StringDeserializer;
-import org.apache.kafka.connect.json.JsonDeserializer;
 import org.junit.ClassRule;
 import org.junit.Test;
-import org.testcontainers.containers.KafkaContainer;
-import org.testcontainers.utility.DockerImageName;
+import org.testcontainers.kafka.ConfluentKafkaContainer;
 
 import java.time.Duration;
 import java.util.Collections;
@@ -1192,9 +1190,8 @@ import static org.junit.Assert.*;
 public class ApiSourceConnectorIntegrationTest {
 
     @ClassRule
-    public static KafkaContainer kafka = new KafkaContainer(
-        DockerImageName.parse("confluentinc/cp-kafka:7.4.0")
-    );
+    public static ConfluentKafkaContainer kafka =
+        new ConfluentKafkaContainer("confluentinc/cp-kafka:7.4.0");
 
     @Test
     public void testConnectorProducesRecords() {
@@ -1342,10 +1339,11 @@ public class ConnectorMetrics {
 
 | Issue | Cause | Solution |
 |-------|-------|----------|
-| Connector stuck in UNASSIGNED | Worker doesn't have the plugin | Check plugin.path configuration |
+| Connector class not listed | Worker doesn't have the plugin | Check `plugin.path` configuration |
+| Connector or task stuck in UNASSIGNED | Worker rebalance or unavailable worker | Check worker status and wait for the rebalance to complete |
 | Tasks repeatedly failing | Configuration error or API issues | Check task status and logs |
 | Duplicate records | Offset not committed before failure | Implement idempotent consumers |
-| Missing records | Offset committed before processing | Use source record timestamps |
+| Missing records | Offset advanced past unprocessed data | Only include offsets for records returned from `poll()` and choose conservative offset values |
 | Memory issues | Large batch sizes or memory leaks | Reduce batch size, check for leaks |
 | Slow throughput | Network latency or rate limiting | Increase tasks.max, tune polling |
 
@@ -1361,9 +1359,9 @@ curl http://localhost:8083/connectors/api-source-connector/status | jq
 # View Connect worker logs
 docker logs kafka-connect 2>&1 | grep -i "api-source"
 
-# Check consumer group lag for the connect offsets topic
+# Check the Connect worker group in distributed mode
 kafka-consumer-groups.sh --bootstrap-server localhost:9092 \
-    --describe --group connect-api-source-connector
+    --describe --group connect-cluster
 
 # Verify records in target topic
 kafka-console-consumer.sh --bootstrap-server localhost:9092 \
