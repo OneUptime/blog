@@ -316,7 +316,7 @@ Metaclasses can inject methods or attributes into classes at creation time.
 # injection_metaclass.py
 # Metaclass that adds timestamps to all instances
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 class TimestampMeta(type):
     """Metaclass that adds automatic timestamp tracking"""
@@ -327,8 +327,8 @@ class TimestampMeta(type):
 
         def new_init(self, *args, **kwargs):
             # Add timestamps before calling original init
-            self.created_at = datetime.utcnow()
-            self.updated_at = datetime.utcnow()
+            self.created_at = datetime.now(timezone.utc)
+            self.updated_at = datetime.now(timezone.utc)
 
             # Call original __init__ if it exists
             if original_init:
@@ -336,7 +336,7 @@ class TimestampMeta(type):
 
         def touch(self):
             """Update the updated_at timestamp"""
-            self.updated_at = datetime.utcnow()
+            self.updated_at = datetime.now(timezone.utc)
 
         # Inject the modified __init__ and new method
         namespace['__init__'] = new_init
