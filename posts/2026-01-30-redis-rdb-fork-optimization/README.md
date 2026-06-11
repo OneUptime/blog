@@ -127,13 +127,16 @@ echo "vm.overcommit_memory = 1" | sudo tee -a /etc/sysctl.conf
 sudo sysctl -p
 ```
 
-### Redis Configuration for Overcommit Warning
+### Related Redis Persistence Setting
 
-Add to your `redis.conf`:
+Redis will log a warning at startup if `vm.overcommit_memory` is not set to 1.
+The warning is resolved by configuring the kernel parameter above. A related
+`redis.conf` setting that protects you when a BGSAVE actually fails (for
+example, because fork was refused by the kernel) is:
 
 ```conf
-# Disable warning about overcommit if you have configured it properly
-# Redis will log warnings if vm.overcommit_memory is not set to 1
+# Stop accepting writes if the last background save failed.
+# This prevents silently losing data when persistence is broken.
 stop-writes-on-bgsave-error yes
 ```
 
@@ -342,15 +345,25 @@ Nice=-10
 CPUAffinity=0 1 2 3
 ```
 
-### 4. IO Priority for Child Process
+### 4. OOM Score Adjustment for Child Process
 
-Configure Redis to set IO priority for the child process:
+Configure Redis to bias the Linux OOM killer away from the master process and
+toward the short-lived RDB/AOF child, so memory pressure during a save is less
+likely to take down the primary:
 
 ```conf
 # redis.conf
-# Set IO scheduling class and priority for RDB/AOF child processes
-# Linux only - uses ioprio_set()
-oom-score-adj -500
+# Adjust /proc/<pid>/oom_score_adj for the Redis master, replica, and
+# background (RDB/AOF) child processes. Linux only.
+#
+# Accepted values: no | yes | relative | absolute
+#   no       - do not touch oom_score_adj (default)
+#   relative - values below are added to the server's initial oom_score_adj
+#   absolute - values below are written as-is
+oom-score-adj relative
+
+# Per-role oom_score_adj values: <master> <replica> <bgchild>
+# Higher means more likely to be killed by the OOM killer.
 oom-score-adj-values 0 200 800
 ```
 
