@@ -768,7 +768,7 @@ class OldStack(Generic[T]):
     def push(self, item: T) -> None:
         pass
 
-def old_first[T](items: list[T]) -> T:
+def old_first(items: list[T]) -> T:
     ...
 
 # Python 3.12+ - cleaner syntax
