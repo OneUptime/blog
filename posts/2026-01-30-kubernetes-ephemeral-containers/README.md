@@ -27,7 +27,7 @@ Verify your cluster version supports ephemeral containers:
 ```bash
 # Check Kubernetes version
 
-kubectl version --short
+kubectl version
 
 # Expected output should show v1.25.0 or higher
 # Client Version: v1.28.0
@@ -41,14 +41,14 @@ Ephemeral containers differ from regular containers in several key ways:
 | Feature | Regular Container | Ephemeral Container |
 |---------|------------------|---------------------|
 | Added at pod creation | Yes | No |
-| Resource limits/requests | Supported | Not enforced |
+| Resource limits/requests | Supported | Not supported |
 | Probes (liveness, readiness) | Supported | Not supported |
 | Ports | Supported | Not supported |
 | Lifecycle hooks | Supported | Not supported |
 | Restart policy | Respected | Never restarts |
 | Can be removed | No | No (once added) |
 
-Ephemeral containers share the pod's namespaces (network, PID, IPC) when configured properly, giving you full visibility into the running application.
+Ephemeral containers share the pod's network namespace, and can target another container's process namespace when configured properly, giving you visibility into the running application.
 
 ## Basic Usage with kubectl debug
 
@@ -115,7 +115,7 @@ Once inside the ephemeral container, you can run diagnostic commands:
 # Check network connectivity
 wget -qO- localhost:80
 
-# View environment variables from the target container's perspective
+# View environment variables in the ephemeral container
 env
 
 # Check DNS resolution
@@ -274,16 +274,16 @@ Create a copy of a pod with a different image:
 # Get the pod name
 POD_NAME=$(kubectl get pods -l app=sample-app -o jsonpath='{.items[0].metadata.name}')
 
-# Create a copy with a debug image
+# Create a copy with a different image for the app container
 kubectl debug $POD_NAME -it \
   --copy-to=debug-copy \
-  --image=nginx:alpine \
+  --set-image=app=busybox:latest \
   --container=app \
   --share-processes \
   -- sh
 ```
 
-The `--copy-to` flag creates a new pod named `debug-copy` with the same specification as the original but allows you to override the image and command.
+The `--copy-to` flag creates a new pod named `debug-copy` with the same specification as the original but allows you to override the image with `--set-image` and the command with `--container` plus a command after `--`.
 
 For more control, replace the container command entirely:
 
@@ -533,6 +533,7 @@ kubectl get pod init-app
 kubectl debug init-app -it \
   --copy-to=init-debug \
   --container=app \
+  --keep-init-containers=false \
   --share-processes \
   -- sh
 
