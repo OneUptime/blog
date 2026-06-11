@@ -75,6 +75,8 @@ For broadcasting notifications to many users, you need a connection manager. Thi
 package main
 
 import (
+    "log"
+    "net/http"
     "sync"
 
     "github.com/gorilla/websocket"
@@ -127,7 +129,7 @@ func (h *Hub) Run() {
 
         case message := <-h.broadcast:
             // Send message to all connected clients
-            h.mu.RLock()
+            h.mu.Lock()
             for client := range h.clients {
                 select {
                 case client.send <- message:
@@ -137,7 +139,50 @@ func (h *Hub) Run() {
                     delete(h.clients, client)
                 }
             }
-            h.mu.RUnlock()
+            h.mu.Unlock()
+        }
+    }
+}
+
+func serveWebSocket(hub *Hub, w http.ResponseWriter, r *http.Request) {
+    conn, err := upgrader.Upgrade(w, r, nil)
+    if err != nil {
+        log.Printf("Failed to upgrade connection: %v", err)
+        return
+    }
+
+    client := &Client{
+        conn:   conn,
+        send:   make(chan []byte, 256),
+        userID: r.URL.Query().Get("user_id"),
+    }
+
+    hub.register <- client
+    go client.writePump()
+    client.readPump(hub)
+}
+
+func (c *Client) readPump(hub *Hub) {
+    defer func() {
+        hub.unregister <- c
+        c.conn.Close()
+    }()
+
+    for {
+        if _, _, err := c.conn.ReadMessage(); err != nil {
+            log.Printf("Read error: %v", err)
+            break
+        }
+    }
+}
+
+func (c *Client) writePump() {
+    defer c.conn.Close()
+
+    for message := range c.send {
+        if err := c.conn.WriteMessage(websocket.TextMessage, message); err != nil {
+            log.Printf("Write error: %v", err)
+            break
         }
     }
 }
@@ -167,8 +212,12 @@ func (h *Hub) BroadcastNotification(n Notification) error {
 }
 
 // SendToUser sends a notification to a specific user
-func (h *Hub) SendToUser(userID string, n Notification) {
-    data, _ := json.Marshal(n)
+func (h *Hub) SendToUser(userID string, n Notification) error {
+    data, err := json.Marshal(n)
+    if err != nil {
+        return err
+    }
+
     h.mu.RLock()
     defer h.mu.RUnlock()
 
@@ -181,6 +230,7 @@ func (h *Hub) SendToUser(userID string, n Notification) {
             }
         }
     }
+    return nil
 }
 ```
 
@@ -273,7 +323,9 @@ func (p *PubSubNotifier) Subscribe(ctx context.Context, channel string) {
             continue
         }
         // Broadcast to local WebSocket clients
-        p.hub.BroadcastNotification(n)
+        if err := p.hub.BroadcastNotification(n); err != nil {
+            log.Printf("Failed to broadcast notification: %v", err)
+        }
     }
 }
 ```
@@ -306,7 +358,10 @@ func main() {
             Title:   "New Update",
             Message: "Something happened!",
         }
-        notifier.Publish(r.Context(), "notifications", n)
+        if err := notifier.Publish(r.Context(), "notifications", n); err != nil {
+            http.Error(w, "Failed to publish notification", http.StatusInternalServerError)
+            return
+        }
         w.WriteHeader(http.StatusOK)
     })
 
