@@ -277,6 +277,8 @@ import { trace, context } from '@opentelemetry/api';
 import express, { Request, Response, NextFunction } from 'express';
 
 const register = new Registry();
+// Exemplars are only rendered in OpenMetrics format
+register.setContentType(Registry.OPENMETRICS_CONTENT_TYPE);
 collectDefaultMetrics({ register });
 
 const requestDuration = new Histogram({
@@ -309,16 +311,17 @@ function metricsMiddleware(req: Request, res: Response, next: NextFunction): voi
             exemplarLabels.traceID = spanContext.traceId;
         }
 
-        // Record with exemplar
-        requestDuration.observe(
-            {
+        // Record with exemplar. When enableExemplars is true,
+        // observe() takes a single object: { labels, value, exemplarLabels }
+        requestDuration.observe({
+            labels: {
                 method: req.method,
                 path: req.route?.path || req.path,
                 status: res.statusCode.toString(),
             },
-            durationSeconds,
-            exemplarLabels
-        );
+            value: durationSeconds,
+            exemplarLabels,
+        });
     });
 
     next();
