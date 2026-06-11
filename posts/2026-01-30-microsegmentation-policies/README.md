@@ -243,7 +243,7 @@ spec:
     - from:
         - namespaceSelector:
             matchLabels:
-              name: ingress-nginx
+              kubernetes.io/metadata.name: ingress-nginx
       ports:
         - protocol: TCP
           port: 443
@@ -353,7 +353,7 @@ Isolate workloads across namespaces while allowing specific cross-namespace comm
 ```yaml
 # cross-namespace-policy.yaml
 # Allow the monitoring namespace to scrape metrics from production pods.
-# All other cross-namespace traffic remains blocked.
+# All other inbound cross-namespace traffic remains blocked.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -431,7 +431,6 @@ metadata:
   namespace: production
 spec:
   # Apply to all workloads in the namespace
-  selector: {}
   mtls:
     mode: STRICT
 ```
@@ -639,6 +638,8 @@ spec:
       ports:
         - protocol: UDP
           port: 53
+        - protocol: TCP
+          port: 53
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -663,6 +664,8 @@ spec:
       ports:
         - protocol: UDP
           port: 53
+        - protocol: TCP
+          port: 53
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -686,6 +689,8 @@ spec:
               kubernetes.io/metadata.name: kube-system
       ports:
         - protocol: UDP
+          port: 53
+        - protocol: TCP
           port: 53
 ```
 
@@ -733,6 +738,8 @@ spec:
       ports:
         - protocol: UDP
           port: 53
+        - protocol: TCP
+          port: 53
 ```
 
 ### Pattern 3: Service-Based Microsegmentation
@@ -741,7 +748,7 @@ Define policies based on service identity rather than network location.
 
 ```yaml
 # service-identity-policy.yaml
-# Service-based microsegmentation using Kubernetes service accounts.
+# Service-based microsegmentation using Kubernetes labels.
 # Policies are defined by what service the workload represents.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -784,6 +791,8 @@ spec:
               kubernetes.io/metadata.name: kube-system
       ports:
         - protocol: UDP
+          port: 53
+        - protocol: TCP
           port: 53
 ```
 
