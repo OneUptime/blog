@@ -72,7 +72,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
 import numpy as np
-import hashlib
+import uuid
 
 
 @dataclass
@@ -82,16 +82,12 @@ class MemoryEntry:
     content: str
     embedding: np.ndarray
     memory_type: str  # episodic, semantic, procedural
+    memory_id: str = field(default_factory=lambda: uuid.uuid4().hex[:16])
     timestamp: datetime = field(default_factory=datetime.now)
     importance: float = 0.5
     access_count: int = 0
     last_accessed: Optional[datetime] = None
     metadata: dict = field(default_factory=dict)
-
-    @property
-    def memory_id(self) -> str:
-        """Generate unique ID based on content hash."""
-        return hashlib.sha256(self.content.encode()).hexdigest()[:16]
 
     def decay_importance(self, decay_rate: float = 0.01) -> None:
         """Apply time-based decay to memory importance."""
@@ -196,6 +192,7 @@ Embeddings transform text into dense vectors that capture semantic meaning. The 
 
 ```python
 from abc import ABC, abstractmethod
+from openai import OpenAI
 import tiktoken
 
 
@@ -218,22 +215,22 @@ class OpenAIEmbeddings(EmbeddingProvider):
 
     def __init__(self, model: str = "text-embedding-3-small"):
         self.model = model
+        self.client = OpenAI()
         self.tokenizer = tiktoken.get_encoding("cl100k_base")
-        self.max_tokens = 8191
+        self.max_tokens = 8192
 
     def embed(self, text: str) -> np.ndarray:
         """Generate embedding using OpenAI API."""
         text = self._truncate_text(text)
-        # API call would go here
-        # response = openai.embeddings.create(input=text, model=self.model)
-        # return np.array(response.data[0].embedding)
-        return np.random.randn(1536)  # Placeholder
+        response = self.client.embeddings.create(input=text, model=self.model)
+        return np.array(response.data[0].embedding)
 
     def embed_batch(self, texts: list[str]) -> list[np.ndarray]:
         """Batch embedding generation for efficiency."""
         truncated = [self._truncate_text(t) for t in texts]
-        # Batch API call
-        return [self.embed(t) for t in truncated]
+        response = self.client.embeddings.create(input=truncated, model=self.model)
+        embeddings_by_index = sorted(response.data, key=lambda item: item.index)
+        return [np.array(item.embedding) for item in embeddings_by_index]
 
     def _truncate_text(self, text: str) -> str:
         """Truncate text to fit within token limit."""
@@ -510,6 +507,7 @@ flowchart TB
 
 ```python
 from enum import Enum
+from datetime import timedelta
 from typing import Callable
 
 
