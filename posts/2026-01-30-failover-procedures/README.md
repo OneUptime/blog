@@ -159,7 +159,7 @@ class DNSFailoverManager:
                     # Monitor the endpoint IP directly
                     'IPAddress': endpoint_ip,
                     'Port': endpoint_port,
-                    'Type': 'HTTP',
+                    'Type': 'HTTPS',
                     'ResourcePath': endpoint_path,
 
                     # Health check timing configuration
@@ -280,7 +280,7 @@ if __name__ == "__main__":
 
     # Create health check for primary endpoint
     health_check_id = manager.create_health_check(
-        endpoint_ip="10.0.1.100",
+        endpoint_ip="203.0.113.10",
         endpoint_port=443,
         endpoint_path="/health",
         check_name="api-primary-health"
@@ -289,8 +289,8 @@ if __name__ == "__main__":
     # Configure failover DNS records
     manager.configure_failover_records(
         domain_name="api.example.com",
-        primary_ip="10.0.1.100",
-        secondary_ip="10.0.2.100",
+        primary_ip="203.0.113.10",
+        secondary_ip="203.0.113.20",
         primary_health_check_id=health_check_id,
         ttl=60  # 60 second TTL for faster failover
     )
@@ -306,6 +306,8 @@ When implementing DNS failover, keep these factors in mind:
 | Health Check Interval | 10-30 seconds depending on criticality |
 | Failure Threshold | 2-3 failures to avoid false positives |
 | Check Regions | Use 3+ regions for reliable detection |
+
+Route 53 endpoint health checks are performed by health checkers outside your VPC. Use publicly reachable endpoints for direct HTTP/HTTPS/TCP health checks, or use a CloudWatch-alarm-based health check for private resources.
 
 ## Database Failover Strategies
 
@@ -399,6 +401,13 @@ bootstrap:
     # Maximum lag allowed before replica is considered unhealthy
     maximum_lag_on_failover: 1048576  # 1MB
 
+    # Patroni-managed synchronous replication for minimal data loss.
+    # Strict mode prioritizes durability over write availability when
+    # no synchronous standby is available.
+    synchronous_mode: on
+    synchronous_mode_strict: true
+    synchronous_node_count: 1
+
     # PostgreSQL parameters applied cluster-wide
     postgresql:
       use_pg_rewind: true  # Enable pg_rewind for faster rejoin
@@ -412,10 +421,8 @@ bootstrap:
         max_replication_slots: 10
         wal_keep_size: 1GB
 
-        # Synchronous replication for zero data loss
-        # Set to empty string for async (faster but potential data loss)
+        # Require commits to wait for synchronous standby acknowledgment
         synchronous_commit: "on"
-        synchronous_standby_names: "*"
 
   # Initialization method for new cluster
   initdb:
@@ -599,7 +606,7 @@ class PatroniFailoverManager:
         target_node: Optional[str] = None
     ) -> bool:
         """
-        Initiate a planned failover to a specific node or best replica.
+        Initiate a planned switchover to a specific node or best replica.
 
         Args:
             target_node: Specific node to promote (optional)
@@ -622,14 +629,14 @@ class PatroniFailoverManager:
             target_node = healthy[0]['name']
 
         logger.info(
-            f"Initiating failover from {current_leader} to {target_node}"
+            f"Initiating switchover from {current_leader} to {target_node}"
         )
 
-        # Send failover request to any available node
+        # Send switchover request to any available node
         for node in self.nodes:
             try:
                 response = requests.post(
-                    f"http://{node}/failover",
+                    f"http://{node}/switchover",
                     auth=self.auth,
                     json={
                         'leader': current_leader,
@@ -638,12 +645,12 @@ class PatroniFailoverManager:
                     timeout=self.timeout
                 )
 
-                if response.status_code == 200:
-                    logger.info("Failover initiated successfully")
+                if response.status_code in (200, 202):
+                    logger.info("Switchover initiated successfully")
                     return True
                 else:
                     logger.warning(
-                        f"Failover request returned {response.status_code}: "
+                        f"Switchover request returned {response.status_code}: "
                         f"{response.text}"
                     )
 
@@ -651,7 +658,7 @@ class PatroniFailoverManager:
                 logger.warning(f"Failed to reach {node}: {e}")
                 continue
 
-        logger.error("Failed to initiate failover")
+        logger.error("Failed to initiate switchover")
         return False
 
     def wait_for_failover_completion(
@@ -844,6 +851,11 @@ class FailoverConnectionPool:
 
     def _initialize_pools(self) -> None:
         """Initialize connection pools for primary and replicas."""
+        self.close()
+
+        self._primary_pool = None
+        self._replica_pools = []
+
         # Initialize primary pool
         try:
             self._primary_pool = pool.ThreadedConnectionPool(
@@ -891,7 +903,7 @@ class FailoverConnectionPool:
             # Test if pool is healthy
             try:
                 conn = pool_instance.getconn()
-                pool_instance.putconn(conn)
+                pool_instance.putconn(conn, close=conn.closed != 0)
                 return pool_instance
             except psycopg2.Error:
                 continue
@@ -932,9 +944,19 @@ class FailoverConnectionPool:
 
             yield connection
 
+        except Exception:
+            if connection and connection.closed == 0:
+                connection.rollback()
+            raise
+
         finally:
             if connection and pool_instance:
-                pool_instance.putconn(connection)
+                if connection.closed == 0:
+                    try:
+                        connection.rollback()
+                    except psycopg2.Error:
+                        pass
+                pool_instance.putconn(connection, close=connection.closed != 0)
 
     def execute_with_retry(
         self,
@@ -1036,7 +1058,7 @@ Runbooks are essential for ensuring consistent and reliable failover execution. 
 
 ### DNS Failover Runbook
 
-```markdown
+````markdown
 # DNS Failover Runbook
 
 ## Overview
@@ -1065,7 +1087,7 @@ aws route53 get-health-check-status \
 ## Verify from multiple locations
 curl -I https://api.example.com/health
 curl -I --resolve api.example.com:443:SECONDARY_IP https://api.example.com/health
-```bash
+```
 
 ### Step 2: Confirm Secondary Region Ready (3 minutes)
 ```bash
@@ -1074,7 +1096,7 @@ curl -I https://secondary-region.internal/health
 
 ## Check database replication lag
 psql -h secondary-db.internal -c "SELECT pg_last_wal_replay_lsn();"
-```bash
+```
 
 ### Step 3: Execute Failover (2 minutes)
 ```bash
@@ -1085,7 +1107,7 @@ aws route53 change-resource-record-sets \
 
 ## Verify change propagation
 aws route53 get-change --id CHANGE_ID
-```bash
+```
 
 ### Step 4: Verify Failover Success (5 minutes)
 ```bash
@@ -1097,7 +1119,7 @@ curl https://api.example.com/health
 
 ## Monitor error rates
 ## Check monitoring dashboard for error spikes
-```bash
+```
 
 ## Rollback Procedure
 If failover causes issues, execute the rollback:
@@ -1107,7 +1129,7 @@ If failover causes issues, execute the rollback:
 aws route53 change-resource-record-sets \
     --hosted-zone-id ZONE_ID \
     --change-batch file://rollback-changes.json
-```bash
+```
 
 ## Post-Failover Actions
 1. [ ] Update status page
@@ -1119,11 +1141,11 @@ aws route53 change-resource-record-sets \
 - Primary On-Call: Check PagerDuty
 - Database Team: #db-oncall
 - Platform Team: #platform-oncall
-```text
+````
 
 ### Database Failover Runbook
 
-```markdown
+````markdown
 # Database Failover Runbook
 
 ## Overview
@@ -1155,14 +1177,14 @@ psql -h replica1.internal -c "
         pg_last_wal_replay_lsn(),
         pg_last_xact_replay_timestamp();
 "
-```bash
+```
 
 ### Step 2: Identify Promotion Target (1 minute)
 ```bash
 ## List available replicas with lag
 curl -s http://patroni-node:8008/cluster | \
     jq '.members[] | select(.role=="replica") | {name, lag, state}'
-```bash
+```
 
 ## Automatic Failover
 If Patroni automatic failover is enabled, monitor the promotion:
@@ -1170,17 +1192,17 @@ If Patroni automatic failover is enabled, monitor the promotion:
 ```bash
 ## Watch for leader change
 watch -n 2 'curl -s http://patroni-node:8008/cluster | jq .'
-```bash
+```
 
 ## Manual Failover
 
 ### Step 3: Initiate Failover (1 minute)
 ```bash
-## Trigger planned failover
-curl -s -X POST http://patroni-node:8008/failover \
+## Trigger planned switchover
+curl -s -X POST http://patroni-node:8008/switchover \
     -H "Content-Type: application/json" \
     -d '{"leader": "current-leader", "candidate": "target-replica"}'
-```bash
+```
 
 ### Step 4: Verify Promotion (3 minutes)
 ```bash
@@ -1198,7 +1220,7 @@ psql -h new-leader.internal -c "
     SELECT * FROM failover_test;
     DROP TABLE failover_test;
 "
-```bash
+```
 
 ## Application Reconnection
 
@@ -1209,7 +1231,7 @@ kubectl exec -it app-pod -- psql $DATABASE_URL -c "SELECT 1;"
 
 ## Monitor connection pool stats
 curl -s http://app-service/metrics | grep db_connection
-```bash
+```
 
 ## Rollback Procedure
 Rollback requires careful coordination to avoid data loss.
@@ -1218,9 +1240,9 @@ Rollback requires careful coordination to avoid data loss.
 
 ```bash
 ## Demote current leader (if still accessible)
-curl -s -X POST http://current-leader:8008/failover \
+curl -s -X POST http://current-leader:8008/switchover \
     -d '{"leader": "new-leader", "candidate": "original-leader"}'
-```bash
+```
 
 ## Post-Failover Actions
 1. [ ] Verify all applications reconnected
@@ -1240,8 +1262,8 @@ systemctl restart patroni
 
 ## Monitor rejoin progress
 journalctl -u patroni -f
-```bash
-```text
+```
+````
 
 ## Failover Testing Strategy
 
