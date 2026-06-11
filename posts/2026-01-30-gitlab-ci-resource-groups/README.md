@@ -12,7 +12,7 @@ Resource groups in GitLab CI let you control which jobs can run simultaneously. 
 
 ## What Are Resource Groups?
 
-Resource groups act as mutexes (mutual exclusion locks) for your CI/CD jobs. When a job belongs to a resource group, GitLab ensures that only one job from that group executes at any given time across all pipelines.
+Resource groups act as mutexes (mutual exclusion locks) for your CI/CD jobs. When a job belongs to a resource group, GitLab ensures that only one job from that group executes at any given time across pipelines in the project.
 
 ```mermaid
 flowchart TD
@@ -55,7 +55,7 @@ deploy_production:
     - ./deploy.sh production
 ```
 
-All jobs sharing the same `resource_group` value will run one at a time, even across different pipelines.
+All jobs sharing the same `resource_group` value will run one at a time, even across different pipelines in the project.
 
 ## Practical Example: Multi-Environment Deployment
 
@@ -120,7 +120,7 @@ In this configuration:
 
 ## Process Modes
 
-GitLab offers three process modes that control how jobs in a resource group are queued:
+GitLab offers four process modes that control how jobs in a resource group are queued:
 
 ### 1. Unordered (Default)
 
@@ -129,7 +129,7 @@ Jobs are processed as they become ready, regardless of pipeline creation order.
 ```yaml
 deploy:
   resource_group: production
-  # process_mode: unordered (default)
+  # Default process mode is unordered
 ```
 
 ### 2. Oldest First
@@ -152,12 +152,23 @@ curl --request PUT \
 
 ### 3. Newest First
 
-Jobs from newer pipelines are prioritized, useful when you want the latest code deployed:
+Jobs from newer pipelines are prioritized, useful when you want the latest code deployed. Each job must be idempotent:
 
 ```bash
 curl --request PUT \
   --header "PRIVATE-TOKEN: $GITLAB_TOKEN" \
   --data "process_mode=newest_first" \
+  "https://gitlab.example.com/api/v4/projects/$PROJECT_ID/resource_groups/production"
+```
+
+### 4. Newest Ready First
+
+Jobs that are ready and from newer pipelines are prioritized. This avoids waiting for newer pipelines that are not ready yet, while still favoring newer work. Each job must be idempotent:
+
+```bash
+curl --request PUT \
+  --header "PRIVATE-TOKEN: $GITLAB_TOKEN" \
+  --data "process_mode=newest_ready_first" \
   "https://gitlab.example.com/api/v4/projects/$PROJECT_ID/resource_groups/production"
 ```
 
@@ -182,6 +193,12 @@ flowchart LR
         N2[Pipeline 2] --> NQ
         N3[Pipeline 1] --> NQ
         NQ --> NR[3 then 2 then 1]
+    end
+
+    subgraph NewestReadyFirst[Newest Ready First]
+        R1[Ready Pipeline 3] --> RQ[Queue]
+        R2[Ready Pipeline 2] --> RQ
+        RQ --> RR[Ready newer jobs first]
     end
 ```
 
@@ -303,9 +320,13 @@ deploy:
 
 Resource Groups + Interruptible
 
-Cancel older pending jobs when a new pipeline starts:
+Use resource groups with GitLab's auto-cancel behavior to avoid canceling deployment jobs while allowing safe jobs to be canceled when a new pipeline starts:
 
 ```yaml
+workflow:
+  auto_cancel:
+    on_new_commit: conservative
+
 deploy:
   stage: deploy
   resource_group: production
@@ -450,23 +471,23 @@ deploy_full:
 
 ### Pattern 3: Shared Infrastructure Resources
 
-When multiple projects share infrastructure:
+When multiple jobs in the same project share infrastructure:
 
 ```yaml
-# Project A: API Service
+# API Service
 deploy_api:
   resource_group: shared-kubernetes-cluster
   script:
     - kubectl apply -f k8s/api/
 
-# Project B: Worker Service
+# Worker Service
 deploy_worker:
   resource_group: shared-kubernetes-cluster
   script:
     - kubectl apply -f k8s/worker/
 ```
 
-Note: Resource groups are project-scoped by default. For cross-project resource groups, consider using external locking mechanisms or GitLab Premium features.
+Note: Resource groups are project-scoped. For cross-project coordination, consider using external locking mechanisms or a single orchestrating pipeline that holds a resource group while it triggers downstream deployments.
 
 ## Monitoring Resource Group Usage
 
@@ -480,6 +501,10 @@ curl --header "PRIVATE-TOKEN: $GITLAB_TOKEN" \
 # Get specific resource group details
 curl --header "PRIVATE-TOKEN: $GITLAB_TOKEN" \
   "https://gitlab.example.com/api/v4/projects/$PROJECT_ID/resource_groups/production"
+
+# Get the current job using a resource group
+curl --header "PRIVATE-TOKEN: $GITLAB_TOKEN" \
+  "https://gitlab.example.com/api/v4/projects/$PROJECT_ID/resource_groups/production/current_job"
 
 # List upcoming jobs in a resource group
 curl --header "PRIVATE-TOKEN: $GITLAB_TOKEN" \
@@ -510,23 +535,21 @@ flowchart LR
 
 If jobs remain stuck waiting for a resource group:
 
-1. Check for zombie jobs holding the lock:
+1. Check the current job holding the resource:
+
+```bash
+curl --header "PRIVATE-TOKEN: $GITLAB_TOKEN" \
+  "https://gitlab.example.com/api/v4/projects/$PROJECT_ID/resource_groups/production/current_job"
+```
+
+2. Check upcoming jobs waiting for the resource:
 
 ```bash
 curl --header "PRIVATE-TOKEN: $GITLAB_TOKEN" \
   "https://gitlab.example.com/api/v4/projects/$PROJECT_ID/resource_groups/production/upcoming_jobs"
 ```
 
-2. Cancel stuck pipelines manually
-
-3. If necessary, delete and recreate the resource group:
-
-```bash
-# Delete (releases all locks)
-curl --request DELETE \
-  --header "PRIVATE-TOKEN: $GITLAB_TOKEN" \
-  "https://gitlab.example.com/api/v4/projects/$PROJECT_ID/resource_groups/production"
-```
+3. Cancel stuck pipelines or jobs manually if they should no longer run
 
 ### Job Times Out While Waiting
 
