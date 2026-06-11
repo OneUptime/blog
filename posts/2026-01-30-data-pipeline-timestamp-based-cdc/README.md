@@ -46,7 +46,7 @@ flowchart LR
 The core algorithm is straightforward:
 
 1. Read the last processed timestamp (high watermark) from persistent storage
-2. Query source table for all rows where `updated_at > high_watermark`
+2. Query source table for all rows where `updated_at >= high_watermark`
 3. Process and load the changed rows into the target system
 4. Update the high watermark to the maximum `updated_at` value from the batch
 5. Repeat on schedule
@@ -60,7 +60,7 @@ sequenceDiagram
 
     Pipeline->>Store: Get last watermark
     Store-->>Pipeline: 2026-01-29 10:00:00
-    Pipeline->>Source: SELECT * WHERE updated_at > '2026-01-29 10:00:00'
+    Pipeline->>Source: SELECT * WHERE updated_at >= '2026-01-29 10:00:00'
     Source-->>Pipeline: Changed rows
     Pipeline->>Target: Upsert rows
     Pipeline->>Store: Set watermark = max(updated_at)
@@ -152,6 +152,7 @@ Here is a complete implementation of a timestamp-based CDC extractor:
 # cdc_extractor.py
 
 import logging
+import re
 from datetime import datetime, timezone
 from typing import Optional, Iterator, Dict, Any
 import psycopg2
@@ -187,10 +188,18 @@ class TimestampCDCExtractor:
             batch_size: Number of rows to fetch per batch
         """
         self.connection_string = connection_string
-        self.table_name = table_name
-        self.timestamp_column = timestamp_column
-        self.primary_key = primary_key
+        self.table_name = self._validate_identifier(table_name)
+        self.timestamp_column = self._validate_identifier(timestamp_column)
+        self.primary_key = self._validate_identifier(primary_key)
         self.batch_size = batch_size
+
+    @staticmethod
+    def _validate_identifier(identifier: str) -> str:
+        """Validate SQL identifiers before using them in dynamic queries."""
+        parts = identifier.split(".")
+        if not all(re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", part) for part in parts):
+            raise ValueError(f"Invalid SQL identifier: {identifier}")
+        return identifier
 
     def extract_changes(
         self,
@@ -584,12 +593,27 @@ def create_bigquery_loader(project_id: str, dataset: str, table: str):
     client = bigquery.Client(project=project_id)
     table_ref = f"{project_id}.{dataset}.{table}"
 
+    def serialize_value(value):
+        """Convert Python values to JSON-compatible values for BigQuery."""
+        if isinstance(value, datetime):
+            return value.isoformat()
+        if isinstance(value, dict):
+            return {key: serialize_value(nested) for key, nested in value.items()}
+        if isinstance(value, list):
+            return [serialize_value(item) for item in value]
+        return value
+
     def loader(rows: List[Dict[str, Any]]) -> None:
         """Load rows to BigQuery using streaming insert."""
         if not rows:
             return
 
-        errors = client.insert_rows_json(table_ref, rows)
+        json_rows = [
+            {key: serialize_value(value) for key, value in row.items()}
+            for row in rows
+        ]
+
+        errors = client.insert_rows_json(table_ref, json_rows)
         if errors:
             raise RuntimeError(f"BigQuery insert failed: {errors}")
 
@@ -604,6 +628,7 @@ def create_bigquery_loader(project_id: str, dataset: str, table: str):
 # run_pipeline.py
 import os
 import logging
+from datetime import datetime, timezone
 from cdc_extractor import TimestampCDCExtractor
 from watermark_store import PostgresWatermarkStore
 from cdc_pipeline import CDCPipeline, create_bigquery_loader
@@ -804,6 +829,10 @@ WHERE id = 123;
 
 ```python
 # Transformer that handles soft deletes
+from datetime import datetime, timezone
+from typing import Any, Dict
+
+
 def transform_with_soft_delete(row: Dict[str, Any]) -> Dict[str, Any]:
     """Transform row and mark as deleted if applicable."""
     row["_extracted_at"] = datetime.now(timezone.utc).isoformat()
@@ -823,19 +852,19 @@ Maintain a separate table to track deletions:
 
 ```sql
 -- Tombstone table to track deleted records
-CREATE TABLE customer_tombstones (
+CREATE TABLE customers_tombstones (
     customer_id BIGINT PRIMARY KEY,
     deleted_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
 );
 
 -- Create index for efficient CDC queries
-CREATE INDEX idx_tombstones_deleted_at ON customer_tombstones(deleted_at);
+CREATE INDEX idx_tombstones_deleted_at ON customers_tombstones(deleted_at);
 
 -- Trigger to record deletions
 CREATE OR REPLACE FUNCTION record_customer_deletion()
 RETURNS TRIGGER AS $$
 BEGIN
-    INSERT INTO customer_tombstones (customer_id, deleted_at)
+    INSERT INTO customers_tombstones (customer_id, deleted_at)
     VALUES (OLD.id, NOW());
     RETURN OLD;
 END;
@@ -849,12 +878,23 @@ CREATE TRIGGER customer_delete_trigger
 
 ```python
 # Extractor that includes tombstones
+from datetime import datetime, timezone
+from typing import Optional
+
+import psycopg2
+from psycopg2.extras import RealDictCursor
+
+from cdc_extractor import TimestampCDCExtractor
+
+
 class CDCExtractorWithTombstones(TimestampCDCExtractor):
     """Extractor that also fetches deletion records from tombstone table."""
 
-    def __init__(self, *args, tombstone_table: str = None, **kwargs):
+    def __init__(self, *args, tombstone_table: Optional[str] = None, **kwargs):
         super().__init__(*args, **kwargs)
-        self.tombstone_table = tombstone_table or f"{self.table_name}_tombstones"
+        self.tombstone_table = self._validate_identifier(
+            tombstone_table or f"{self.table_name}_tombstones"
+        )
 
     def extract_changes(self, watermark):
         """Extract both changes and deletions."""
@@ -895,9 +935,8 @@ class CDCExtractorWithTombstones(TimestampCDCExtractor):
 ```python
 # dags/cdc_pipeline_dag.py
 from datetime import datetime, timedelta
-from airflow import DAG
-from airflow.operators.python import PythonOperator
-from airflow.models import Variable
+from airflow.sdk import DAG, Variable
+from airflow.providers.standard.operators.python import PythonOperator
 
 
 # Default arguments for all tasks in this DAG
@@ -960,7 +999,7 @@ with DAG(
     dag_id="cdc_incremental_load",
     default_args=default_args,
     description="Incremental CDC load from source database to BigQuery",
-    schedule_interval="*/15 * * * *",  # Run every 15 minutes
+    schedule="*/15 * * * *",  # Run every 15 minutes
     start_date=datetime(2026, 1, 1),
     catchup=False,  # Do not backfill missed runs
     max_active_runs=1,  # Prevent concurrent runs
@@ -976,8 +1015,7 @@ with DAG(
         PythonOperator(
             task_id=f"cdc_{table}",
             python_callable=run_cdc_pipeline,
-            op_kwargs={"table_name": table},
-            provide_context=True
+            op_kwargs={"table_name": table}
         )
 ```
 
@@ -1145,7 +1183,7 @@ ANALYZE customers;
 ```python
 # parallel_extractor.py
 import concurrent.futures
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Any, Iterator
 import logging
 
