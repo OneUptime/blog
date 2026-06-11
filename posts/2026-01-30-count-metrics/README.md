@@ -179,11 +179,23 @@ class LabeledCounter:
             counter.labels(method="GET", status="200").inc()
         """
         # Validate that all required labels are provided
-        label_values = tuple(kwargs.get(name, "") for name in self._label_names)
+        expected = set(self._label_names)
+        provided = set(kwargs)
+        if expected != provided:
+            missing = expected - provided
+            extra = provided - expected
+            raise ValueError(
+                f"Label mismatch. Missing: {sorted(missing)}, extra: {sorted(extra)}"
+            )
+
+        label_values = tuple(kwargs[name] for name in self._label_names)
         return LabeledCounterChild(self, label_values)
 
     def _inc(self, label_values: Tuple[str, ...], amount: float) -> None:
         """Internal method to increment a specific label combination."""
+        if amount < 0:
+            raise ValueError("Counter increment amount must be non-negative")
+
         with self._lock:
             self._values[label_values] += amount
 
@@ -201,7 +213,7 @@ class LabeledCounterChild:
         self._label_values = label_values
 
     def inc(self, amount: float = 1.0) -> None:
-        """Increment this labeled counter by the specified amount."""
+        """Increment this labeled counter by the specified non-negative amount."""
         self._parent._inc(self._label_values, amount)
 
 
@@ -221,7 +233,7 @@ http_requests.labels(method="POST", endpoint="/api/orders", status_code="500").i
 
 ## Handling Counter Resets
 
-Counter resets occur when a process restarts or when the counter value exceeds its maximum. Monitoring systems like Prometheus handle resets automatically, but understanding how they work is crucial.
+Counter resets occur when a process restarts. If you ingest counters from an external source with a bounded numeric type, a wraparound can also appear as a decrease. Monitoring systems like Prometheus handle decreases correctly in counter-aware query functions, but understanding how they work is crucial.
 
 ```mermaid
 sequenceDiagram
@@ -238,10 +250,10 @@ sequenceDiagram
 
     Note over App: Process restarts!
     App->>Scraper: counter_value = 10
-    Note over Scraper: Detects reset (10 < 150)
-    Scraper->>TSDB: Store (t3, 10) with reset marker
+    Note over Scraper: Scrape observes lower value (10 < 150)
+    Scraper->>TSDB: Store (t3, 10)
 
-    Note over TSDB: rate() handles reset correctly
+    Note over TSDB: rate() and increase() account for the reset at query time
 ```
 
 ### Detecting Resets in Custom Code
@@ -288,9 +300,9 @@ func (c *CounterWithResetDetection) Update(newValue uint64) {
     c.currentValue = newValue
 }
 
-// GetRate calculates the rate of change, handling resets.
+// GetIncrease calculates the increase since the last reading, handling resets.
 // Returns the increase since the last reading, accounting for any reset.
-func (c *CounterWithResetDetection) GetRate() uint64 {
+func (c *CounterWithResetDetection) GetIncrease() uint64 {
     c.mu.RLock()
     defer c.mu.RUnlock()
 
@@ -433,7 +445,7 @@ Prometheus is the industry standard for metrics collection. Here are best practi
 ### 1. Naming Conventions
 
 ```python
-from prometheus_client import Counter, Gauge
+from prometheus_client import Counter
 
 # GOOD: Clear, descriptive names with units and _total suffix for counters
 http_requests_total = Counter(
@@ -503,11 +515,10 @@ api_calls = Counter(
 ### 3. Using Counters Correctly
 
 ```python
-from prometheus_client import Counter, generate_latest, REGISTRY
+from prometheus_client import Counter
 from functools import wraps
-import time
 
-# Define counters at module level (they are singletons)
+# Define counters once at module level so they are registered only once
 REQUEST_COUNT = Counter(
     'myapp_http_requests_total',
     'Total HTTP requests by method, endpoint, and status',
@@ -718,39 +729,51 @@ total_requests_good.inc()  # Prometheus handles resets correctly
 
 ```python
 import unittest
-from unittest.mock import patch
-from prometheus_client import Counter, REGISTRY
+from prometheus_client import Counter, CollectorRegistry
 
 class TestCounterMetrics(unittest.TestCase):
     """Test suite for counter metric implementations."""
 
     def setUp(self):
-        """Reset the registry before each test."""
-        # Create a new counter for testing
-        # In production, use a separate registry for tests
+        """Create an isolated registry before each test."""
+        self.registry = CollectorRegistry()
         self.test_counter = Counter(
             'test_requests_total',
             'Test counter',
             ['status'],
-            registry=REGISTRY
+            registry=self.registry
         )
 
     def test_counter_increment(self):
         """Test that counter increments correctly."""
-        initial_value = self.test_counter.labels(status='200')._value.get()
+        self.test_counter.labels(status='200')
+        initial_value = self.registry.get_sample_value(
+            'test_requests_total',
+            {'status': '200'}
+        )
 
         self.test_counter.labels(status='200').inc()
 
-        new_value = self.test_counter.labels(status='200')._value.get()
+        new_value = self.registry.get_sample_value(
+            'test_requests_total',
+            {'status': '200'}
+        )
         self.assertEqual(new_value, initial_value + 1)
 
     def test_counter_add_custom_amount(self):
         """Test adding a custom amount to the counter."""
-        initial_value = self.test_counter.labels(status='200')._value.get()
+        self.test_counter.labels(status='200')
+        initial_value = self.registry.get_sample_value(
+            'test_requests_total',
+            {'status': '200'}
+        )
 
         self.test_counter.labels(status='200').inc(5)
 
-        new_value = self.test_counter.labels(status='200')._value.get()
+        new_value = self.registry.get_sample_value(
+            'test_requests_total',
+            {'status': '200'}
+        )
         self.assertEqual(new_value, initial_value + 5)
 
     def test_counter_labels_isolation(self):
@@ -758,8 +781,14 @@ class TestCounterMetrics(unittest.TestCase):
         self.test_counter.labels(status='200').inc(10)
         self.test_counter.labels(status='500').inc(2)
 
-        value_200 = self.test_counter.labels(status='200')._value.get()
-        value_500 = self.test_counter.labels(status='500')._value.get()
+        value_200 = self.registry.get_sample_value(
+            'test_requests_total',
+            {'status': '200'}
+        )
+        value_500 = self.registry.get_sample_value(
+            'test_requests_total',
+            {'status': '500'}
+        )
 
         # Values should be independent
         self.assertNotEqual(value_200, value_500)
