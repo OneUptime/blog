@@ -272,7 +272,7 @@ flowchart TD
     A[Update Initiated] --> B{Health Check}
     B -->|Healthy| C[Continue Update]
     B -->|Unhealthy| D{Failure Ratio Exceeded?}
-    D -->|No| E[Retry Task]
+    D -->|No| E[Continue According to Policy]
     D -->|Yes| F{Failure Action?}
     F -->|Rollback| G[Automatic Rollback]
     F -->|Pause| H[Pause Update]
@@ -485,7 +485,7 @@ docker service create \
 
 ## Health Checks
 
-Configure health checks to ensure Swarm only routes traffic to healthy containers:
+Configure health checks so Docker can monitor container health and use that status during service updates:
 
 ```bash
 docker service create \
