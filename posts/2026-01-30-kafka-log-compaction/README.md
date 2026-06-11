@@ -12,7 +12,7 @@ Kafka log compaction is not a one-size-fits-all solution. Different workloads de
 
 ## Understanding Compaction Strategy Options
 
-Before diving into implementation, you need to understand the three fundamental cleanup policies Kafka offers and how they can be combined into effective strategies.
+Before diving into implementation, you need to understand the cleanup policies Kafka offers and how they can be combined into effective strategies.
 
 ```mermaid
 flowchart TB
@@ -37,7 +37,7 @@ flowchart TB
 
 ## Strategy 1: Pure Compaction for State Management
 
-Pure compaction keeps only the latest value for each key indefinitely. This strategy is ideal when you need to maintain current state without any time-based expiration.
+Pure compaction guarantees that at least the latest value for each key is retained, while older values for the same key are eligible for background cleanup. This strategy is ideal when you need to maintain current state without any time-based expiration.
 
 ### When to Use Pure Compaction
 
@@ -61,7 +61,7 @@ public class PureCompactionStrategy {
 
         Map<String, String> configs = new HashMap<>();
 
-        // Enable pure compaction - no deletion
+        // Enable pure compaction - no time/size-based deletion
         configs.put(TopicConfig.CLEANUP_POLICY_CONFIG, "compact");
 
         // Trigger compaction when 30% of the log is dirty
@@ -72,8 +72,8 @@ public class PureCompactionStrategy {
         // Ensures consumers have time to read recent updates
         configs.put(TopicConfig.MIN_COMPACTION_LAG_MS_CONFIG, "3600000"); // 1 hour
 
-        // Maximum time before forcing compaction
-        // Guarantees compaction happens even with low write volume
+        // Maximum time before records become eligible for compaction
+        // Helps low-volume topics become eligible even below the dirty-ratio threshold
         configs.put(TopicConfig.MAX_COMPACTION_LAG_MS_CONFIG, "86400000"); // 24 hours
 
         // Segment configuration for optimal compaction
@@ -103,7 +103,7 @@ public class PureCompactionStrategy {
 
 ### Storage Growth Pattern
 
-With pure compaction, storage grows proportionally to the number of unique keys, not the number of messages.
+With pure compaction, long-term storage usually grows with the number of unique keys plus the uncompacted head of the log, tombstones, and segment overhead, not with every historical update.
 
 ```mermaid
 graph LR
@@ -115,12 +115,12 @@ graph LR
 
     T1 --> T2 --> T3
 
-    Note["Growth = New unique keys only<br/>Updates do not increase storage"]
+    Note["Long-term growth = keys plus uncompacted head<br/>Updates can remain until compaction runs"]
 ```
 
 ## Strategy 2: Compact with Delete for Bounded State
 
-This hybrid strategy combines compaction with time-based deletion. Records are compacted to keep the latest value per key, but eventually deleted after the retention period expires.
+This hybrid strategy combines compaction with time-based deletion. Records are compacted to keep the latest value per key, but inactive segments can also be deleted after the retention period expires.
 
 ### When to Use Compact+Delete
 
@@ -154,7 +154,7 @@ public class CompactDeleteStrategy {
         configs.put(TopicConfig.MIN_CLEANABLE_DIRTY_RATIO_CONFIG, "0.5");
         configs.put(TopicConfig.MIN_COMPACTION_LAG_MS_CONFIG, "0");
 
-        // Segment must be smaller than retention for deletion to work
+        // Segment roll should be smaller than retention for predictable time-based deletion
         long segmentMs = Math.min(retentionMs / 7, 86400000L); // Max 1 day
         configs.put(TopicConfig.SEGMENT_MS_CONFIG, String.valueOf(segmentMs));
 
@@ -207,9 +207,9 @@ sequenceDiagram
     Note over T: Key A no longer exists
 ```
 
-## Strategy 3: Tiered Compaction for High-Throughput Topics
+## Strategy 3: High-Throughput Compaction for Busy Topics
 
-For topics with extremely high write volumes, implement a tiered compaction strategy that balances storage efficiency with compaction overhead.
+For topics with extremely high write volumes, implement a high-throughput compaction strategy that balances storage efficiency with compaction overhead.
 
 ### Configuration for High-Throughput Compaction
 
@@ -218,7 +218,7 @@ import org.apache.kafka.clients.admin.*;
 import org.apache.kafka.common.config.TopicConfig;
 import java.util.*;
 
-public class TieredCompactionStrategy {
+public class HighThroughputCompactionStrategy {
 
     public static void createHighThroughputCompactedTopic(AdminClient admin,
             String topicName) throws Exception {
@@ -299,9 +299,9 @@ public class LowLatencyCompactionStrategy {
         configs.put(TopicConfig.SEGMENT_BYTES_CONFIG, "52428800"); // 50MB
         configs.put(TopicConfig.SEGMENT_MS_CONFIG, "300000"); // 5 minutes
 
-        // No compaction lag - compact as soon as possible
+        // No minimum compaction lag - records can become eligible as soon as possible
         configs.put(TopicConfig.MIN_COMPACTION_LAG_MS_CONFIG, "0");
-        configs.put(TopicConfig.MAX_COMPACTION_LAG_MS_CONFIG, "3600000"); // 1 hour max
+        configs.put(TopicConfig.MAX_COMPACTION_LAG_MS_CONFIG, "3600000"); // 1 hour max eligibility lag
 
         // Short tombstone retention for quick key removal
         configs.put(TopicConfig.DELETE_RETENTION_MS_CONFIG, "3600000"); // 1 hour
@@ -325,8 +325,8 @@ log.cleaner.threads=8
 # Smaller buffers for faster processing
 log.cleaner.dedupe.buffer.size=134217728
 
-# No IO throttling
-log.cleaner.io.max.bytes.per.second=Infinity
+# Effectively no IO throttling; this is Kafka's default maximum double value
+log.cleaner.io.max.bytes.per.second=1.7976931348623157E308
 
 # Minimal backoff
 log.cleaner.backoff.ms=5000
@@ -353,7 +353,7 @@ flowchart TB
     Q3 -->|No| S2
 
     S1 --> Q4{High throughput?}
-    Q4 -->|Yes| T1["Tiered Compaction<br/>High dirty ratio, large segments"]
+    Q4 -->|Yes| T1["High-Throughput Compaction<br/>High dirty ratio, large segments"]
     Q4 -->|No| Q5{Low latency needed?}
 
     Q5 -->|Yes| T2["Low-Latency Compaction<br/>Small segments, aggressive ratio"]
@@ -366,6 +366,7 @@ In production, you typically have multiple topics with different compaction requ
 
 ```java
 import org.apache.kafka.clients.admin.*;
+import org.apache.kafka.common.config.ConfigResource;
 import org.apache.kafka.common.config.TopicConfig;
 import java.util.*;
 
@@ -517,18 +518,18 @@ groups:
           summary: "Kafka compaction lag is high"
           description: "Dirty log ratio exceeds 80% for 30 minutes"
 
-      # Alert when compaction is too slow
+      # Alert when compaction is taking too long
       - alert: CompactionTooSlow
-        expr: rate(kafka_log_log_cleaner_total_cleaned_bytes[1h]) < 1000000
+        expr: kafka_log_log_cleaner_value{name="max-clean-time-secs"} > 600
         for: 1h
         labels:
           severity: warning
         annotations:
-          summary: "Kafka compaction throughput is low"
+          summary: "Kafka compaction cleaning time is high"
 
       # Alert when cleaner threads are stuck
       - alert: CleanerThreadsStuck
-        expr: kafka_log_log_cleaner_uncleanable_partitions_count > 0
+        expr: kafka_log_log_cleaner_manager_value{name="uncleanable-partitions-count"} > 0
         for: 15m
         labels:
           severity: critical
@@ -544,9 +545,7 @@ groups:
 Kafka compaction metrics collector using JMX.
 """
 
-import subprocess
 import json
-import time
 
 def get_compaction_metrics(broker_host, jmx_port):
     """Fetch compaction-related JMX metrics from a Kafka broker."""
@@ -554,7 +553,7 @@ def get_compaction_metrics(broker_host, jmx_port):
     metrics = {
         "max_dirty_percent": None,
         "cleaner_recopy_percent": None,
-        "total_cleaned_bytes": None,
+        "max_compaction_delay_secs": None,
         "max_clean_time_secs": None,
         "uncleanable_partitions": None
     }
@@ -564,12 +563,12 @@ def get_compaction_metrics(broker_host, jmx_port):
          "kafka.log:type=LogCleanerManager,name=max-dirty-percent"),
         ("cleaner_recopy_percent",
          "kafka.log:type=LogCleaner,name=cleaner-recopy-percent"),
-        ("total_cleaned_bytes",
-         "kafka.log:type=LogCleaner,name=total-cleaned-bytes-total"),
+        ("max_compaction_delay_secs",
+         "kafka.log:type=LogCleaner,name=max-compaction-delay-secs"),
         ("max_clean_time_secs",
          "kafka.log:type=LogCleaner,name=max-clean-time-secs"),
         ("uncleanable_partitions",
-         "kafka.log:type=LogCleanerManager,name=uncleanable-partitions-count")
+         "kafka.log:logDirectory=*,type=LogCleanerManager,name=uncleanable-partitions-count")
     ]
 
     for metric_name, mbean in jmx_queries:
@@ -637,10 +636,16 @@ if __name__ == "__main__":
 
 ### Pitfall 1: Null Keys Breaking Compaction
 
-Records without keys cannot be compacted and will accumulate indefinitely.
+Kafka compacted topics require record keys. Records without keys are rejected by the broker, so validate keys before sending to avoid repeated send failures.
 
 ```java
 // Producer validation to prevent null keys on compacted topics
+import org.apache.kafka.clients.producer.KafkaProducer;
+import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.clients.producer.RecordMetadata;
+import java.util.Set;
+import java.util.concurrent.Future;
+
 public class ValidatingProducer<K, V> {
 
     private final KafkaProducer<K, V> producer;
