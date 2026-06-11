@@ -79,7 +79,7 @@ sequenceDiagram
 
 ### Anycast
 
-Anycast advertises the same IP address from multiple locations. Network routing automatically sends packets to the nearest server. This works at the IP layer, making it faster than DNS-based approaches.
+Anycast advertises the same IP address from multiple locations. Network routing automatically sends packets to the nearest available network location. This works at the IP layer and avoids DNS cache and TTL delays for normal routing decisions, although failover still depends on BGP convergence.
 
 ```mermaid
 flowchart LR
@@ -102,7 +102,7 @@ flowchart LR
 
 ### Latency-Based Routing
 
-Latency-based routing measures actual network latency between users and servers, routing to the endpoint with the lowest latency. This handles cases where geographic proximity does not equal network proximity.
+Latency-based routing uses network latency measurements to route users to the endpoint with the lowest observed latency. This handles cases where geographic proximity does not equal network proximity.
 
 ## AWS Route 53 Implementation
 
@@ -115,8 +115,8 @@ Latency-based routing measures actual network latency between users and servers,
 
 # Health check for US East region
 resource "aws_route53_health_check" "us_east" {
-  # IP address of the US East load balancer
-  ip_address        = aws_lb.us_east.dns_name
+  # DNS name of the US East load balancer
+  fqdn              = aws_lb.us_east.dns_name
   port              = 443
   type              = "HTTPS"
   resource_path     = "/health"
@@ -134,7 +134,7 @@ resource "aws_route53_health_check" "us_east" {
 
 # Health check for EU West region
 resource "aws_route53_health_check" "eu_west" {
-  ip_address        = aws_lb.eu_west.dns_name
+  fqdn              = aws_lb.eu_west.dns_name
   port              = 443
   type              = "HTTPS"
   resource_path     = "/health"
@@ -148,7 +148,7 @@ resource "aws_route53_health_check" "eu_west" {
 
 # Health check for AP Northeast region
 resource "aws_route53_health_check" "ap_northeast" {
-  ip_address        = aws_lb.ap_northeast.dns_name
+  fqdn              = aws_lb.ap_northeast.dns_name
   port              = 443
   type              = "HTTPS"
   resource_path     = "/health"
@@ -433,13 +433,12 @@ async function createHealthMonitor() {
       // Allow insecure SSL (not recommended for production)
       allow_insecure: false,
 
-      // Expected response body (optional)
-      expected_body: '{"status":"healthy"}',
+      // Expected response body substring (optional)
+      expected_body: 'healthy',
 
       // Custom headers for health check
       header: {
-        'User-Agent': ['Cloudflare-Health-Check'],
-        'Accept': ['application/json'],
+        'Host': ['api.example.com'],
       },
     }
   );
@@ -517,9 +516,6 @@ async function createOriginPools(monitorId) {
 
         // Associate health monitor
         monitor: monitorId,
-
-        // Notification email for health events
-        notification_email: 'oncall@example.com',
 
         // Minimum number of healthy origins
         minimum_origins: 1,
@@ -711,11 +707,14 @@ async function checkHealth(origin) {
     return cached.healthy;
   }
 
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5000);
+
   try {
     const response = await fetch(`${origin}/health`, {
       method: 'GET',
       headers: { 'User-Agent': 'Cloudflare-Worker-Health-Check' },
-      // Short timeout for health checks
+      signal: controller.signal,
       cf: { cacheTtl: 0 },
     });
 
@@ -726,6 +725,8 @@ async function checkHealth(origin) {
   } catch (error) {
     healthCache.set(cacheKey, { healthy: false, timestamp: Date.now() });
     return false;
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
@@ -768,20 +769,21 @@ async function handleRequest(request) {
   // Build the upstream URL
   const url = new URL(request.url);
   const upstreamUrl = `${origin}${url.pathname}${url.search}`;
+  const headers = new Headers(request.headers);
+
+  // Add custom headers for debugging
+  headers.set('X-Forwarded-Host', url.hostname);
+  headers.set('X-Origin-Region', region);
+  headers.set('X-Client-Colo', request.cf?.colo || 'unknown');
+  headers.set('X-Client-Country', request.cf?.country || 'unknown');
 
   // Clone the request with the new URL
   const upstreamRequest = new Request(upstreamUrl, {
     method: request.method,
-    headers: request.headers,
-    body: request.body,
+    headers,
+    body: request.method === 'GET' || request.method === 'HEAD' ? undefined : request.body,
     redirect: 'follow',
   });
-
-  // Add custom headers for debugging
-  upstreamRequest.headers.set('X-Forwarded-Host', url.hostname);
-  upstreamRequest.headers.set('X-Origin-Region', region);
-  upstreamRequest.headers.set('X-Client-Colo', request.cf?.colo || 'unknown');
-  upstreamRequest.headers.set('X-Client-Country', request.cf?.country || 'unknown');
 
   // Forward the request to the origin
   const response = await fetch(upstreamRequest);
@@ -794,10 +796,11 @@ async function handleRequest(request) {
   return modifiedResponse;
 }
 
-// Event listener
-addEventListener('fetch', (event) => {
-  event.respondWith(handleRequest(event.request));
-});
+export default {
+  async fetch(request) {
+    return handleRequest(request);
+  },
+};
 ```
 
 ## Architecture Patterns
@@ -963,17 +966,48 @@ spec:
 # app/health.py
 # Comprehensive health check endpoints
 
-from fastapi import FastAPI, Response, status
-from datetime import datetime
+from fastapi import FastAPI, status
+from fastapi.responses import JSONResponse
+from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 import asyncio
 import aiohttp
 import asyncpg
 
-app = FastAPI()
-
 # Track application state
 startup_complete = False
 shutting_down = False
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Initialize and clean up application dependencies.
+    """
+    global startup_complete, shutting_down
+
+    app.state.db_pool = await asyncpg.create_pool(
+        'postgresql://user:pass@localhost/db',
+        min_size=5,
+        max_size=20,
+    )
+
+    startup_complete = True
+    shutting_down = False
+
+    try:
+        yield
+    finally:
+        shutting_down = True
+        startup_complete = False
+
+        # Allow time for load balancers to stop sending traffic
+        await asyncio.sleep(10)
+
+        await app.state.db_pool.close()
+
+
+app = FastAPI(lifespan=lifespan)
 
 # Dependencies to check
 DEPENDENCIES = {
@@ -1087,13 +1121,12 @@ async def liveness():
     """
     # Check if application is shutting down
     if shutting_down:
-        return Response(
-            content='{"status": "shutting_down"}',
+        return JSONResponse(
+            content={'status': 'shutting_down'},
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            media_type='application/json',
         )
 
-    return {'status': 'alive', 'timestamp': datetime.utcnow().isoformat()}
+    return {'status': 'alive', 'timestamp': datetime.now(timezone.utc).isoformat()}
 
 
 @app.get('/health/ready')
@@ -1105,10 +1138,9 @@ async def readiness():
     """
     # Check if startup is complete
     if not startup_complete:
-        return Response(
-            content='{"status": "starting"}',
+        return JSONResponse(
+            content={'status': 'starting'},
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            media_type='application/json',
         )
 
     # Check critical dependencies
@@ -1125,17 +1157,16 @@ async def readiness():
 
     response_data = {
         'status': 'ready' if all_critical_healthy else 'not_ready',
-        'timestamp': datetime.utcnow().isoformat(),
+        'timestamp': datetime.now(timezone.utc).isoformat(),
         'checks': checks,
     }
 
     if all_critical_healthy:
         return response_data
     else:
-        return Response(
-            content=str(response_data),
+        return JSONResponse(
+            content=response_data,
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            media_type='application/json',
         )
 
 
@@ -1147,12 +1178,11 @@ async def startup():
     Allows slow-starting containers to initialize.
     """
     if startup_complete:
-        return {'status': 'started', 'timestamp': datetime.utcnow().isoformat()}
+        return {'status': 'started', 'timestamp': datetime.now(timezone.utc).isoformat()}
     else:
-        return Response(
-            content='{"status": "starting"}',
+        return JSONResponse(
+            content={'status': 'starting'},
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            media_type='application/json',
         )
 
 
@@ -1191,7 +1221,7 @@ async def health():
 
     response_data = {
         'status': 'healthy' if overall_healthy else 'unhealthy',
-        'timestamp': datetime.utcnow().isoformat(),
+        'timestamp': datetime.now(timezone.utc).isoformat(),
         'region': 'us-east-1',  # Set from environment
         'version': '1.2.3',  # Application version
         'checks': checks,
@@ -1199,44 +1229,10 @@ async def health():
 
     status_code = status.HTTP_200_OK if overall_healthy else status.HTTP_503_SERVICE_UNAVAILABLE
 
-    return Response(
-        content=str(response_data),
+    return JSONResponse(
+        content=response_data,
         status_code=status_code,
-        media_type='application/json',
     )
-
-
-@app.on_event('startup')
-async def on_startup():
-    """
-    Initialize application dependencies on startup.
-    """
-    global startup_complete
-
-    # Initialize database pool
-    app.state.db_pool = await asyncpg.create_pool(
-        'postgresql://user:pass@localhost/db',
-        min_size=5,
-        max_size=20,
-    )
-
-    # Mark startup as complete
-    startup_complete = True
-
-
-@app.on_event('shutdown')
-async def on_shutdown():
-    """
-    Graceful shutdown handler.
-    """
-    global shutting_down
-    shutting_down = True
-
-    # Allow time for load balancers to stop sending traffic
-    await asyncio.sleep(10)
-
-    # Close database pool
-    await app.state.db_pool.close()
 ```
 
 ## Traffic Management Strategies
