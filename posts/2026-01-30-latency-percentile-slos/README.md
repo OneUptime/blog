@@ -83,21 +83,21 @@ A latency SLO has three components:
 
 1. **The SLI (Service Level Indicator)**: The metric you measure
 2. **The threshold**: The latency target
-3. **The target percentage**: How often you must meet it
+3. **The target percentage**: The percentage of requests that must be faster than the threshold
 
 ### SLO Formula
 
 ```text
-[Percentile] latency of [service/endpoint] will be under [threshold] for [target]% of requests over [time window]
+[Target]% of [service/endpoint] requests will complete under [threshold] over [time window]
 ```
 
 ### Example SLOs
 
 | Service | SLO Definition |
 |---------|----------------|
-| Web API | p95 latency under 200ms for 99% of requests over 28 days |
-| Checkout | p99 latency under 500ms for 99.5% of requests over 28 days |
-| Search | p50 latency under 50ms for 99% of requests over 7 days |
+| Web API | 95% of requests under 200ms over 28 days |
+| Checkout | 99% of requests under 500ms over 28 days |
+| Search | 50% of requests under 50ms over 7 days |
 
 ---
 
@@ -109,18 +109,21 @@ OpenTelemetry provides histogram metrics that let you compute percentiles. Here 
 
 ```javascript
 // Node.js example with OpenTelemetry
-const { MeterProvider } = require('@opentelemetry/sdk-metrics');
+const {
+  MeterProvider,
+  PeriodicExportingMetricReader,
+} = require('@opentelemetry/sdk-metrics');
 const { OTLPMetricExporter } = require('@opentelemetry/exporter-metrics-otlp-http');
 
 // Create a meter provider with OTLP exporter
+const metricReader = new PeriodicExportingMetricReader({
+  exporter: new OTLPMetricExporter({
+    url: 'https://otel.oneuptime.com/v1/metrics',
+  }),
+});
+
 const meterProvider = new MeterProvider({
-  readers: [
-    {
-      exporter: new OTLPMetricExporter({
-        url: 'https://otel.oneuptime.com/v1/metrics',
-      }),
-    },
-  ],
+  readers: [metricReader],
 });
 
 const meter = meterProvider.getMeter('api-service');
@@ -160,8 +163,9 @@ function latencyMiddleware(req, res, next) {
 
 ```python
 from opentelemetry import metrics
-from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics import Histogram, MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+from opentelemetry.sdk.metrics.view import ExplicitBucketHistogramAggregation, View
 from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
 import time
 from functools import wraps
@@ -170,7 +174,18 @@ from functools import wraps
 
 exporter = OTLPMetricExporter(endpoint="https://otel.oneuptime.com/v1/metrics")
 reader = PeriodicExportingMetricReader(exporter, export_interval_millis=60000)
-provider = MeterProvider(metric_readers=[reader])
+provider = MeterProvider(
+    metric_readers=[reader],
+    views=[
+        View(
+            instrument_type=Histogram,
+            instrument_name="http_request_duration_ms",
+            aggregation=ExplicitBucketHistogramAggregation(
+                boundaries=[5, 10, 25, 50, 100, 200, 500, 1000, 2000, 5000],
+            ),
+        )
+    ],
+)
 metrics.set_meter_provider(provider)
 
 meter = metrics.get_meter("api-service")
@@ -233,7 +248,7 @@ Error Budget = (1 - SLO Target) * Total Requests * Time Window
 ### Example Calculation
 
 Given:
-- SLO: p99 latency under 500ms for 99.5% of requests
+- SLO: 99.5% of requests under 500ms
 - Time window: 28 days
 - Average requests per day: 1,000,000
 
@@ -244,7 +259,7 @@ Allowed slow requests = (1 - 0.995) * 1,000,000 * 28
                       = 5,000 requests per day
 ```
 
-You can afford 5,000 requests per day exceeding 500ms at p99 before breaching your SLO.
+You can afford 5,000 requests per day exceeding 500ms before breaching your SLO.
 
 ### Tracking Error Budget Consumption
 
@@ -318,44 +333,65 @@ groups:
   - name: latency-slo-alerts
     rules:
       # Fast burn alert: catches sudden latency spikes
-      # 14.4x burn rate over 1 hour = 2% of 28-day budget in 1 hour
+      # 14.4x burn rate over 1 hour = about 2% of 28-day budget in 1 hour
       - alert: LatencySLOFastBurn
         expr: |
           (
-            histogram_quantile(0.99, sum(rate(http_request_duration_ms_bucket{job="api"}[1h])) by (le))
-            > 500
+            (
+              1 - (
+                sum(rate(http_request_duration_ms_bucket{job="api", le="500"}[1h]))
+                /
+                sum(rate(http_request_duration_ms_count{job="api"}[1h]))
+              )
+            ) / 0.005 > 14.4
           )
           and
           (
-            sum(rate(http_request_duration_ms_count{job="api"}[1h])) > 100
+            (
+              1 - (
+                sum(rate(http_request_duration_ms_bucket{job="api", le="500"}[5m]))
+                /
+                sum(rate(http_request_duration_ms_count{job="api"}[5m]))
+              )
+            ) / 0.005 > 14.4
           )
         for: 2m
         labels:
           severity: critical
         annotations:
-          summary: "High p99 latency consuming error budget rapidly"
-          description: "p99 latency is above 500ms, burning error budget at 14x normal rate"
+          summary: "High latency consuming error budget rapidly"
+          description: "Requests over 500ms are burning error budget at more than 14x the sustainable rate"
           runbook: "https://runbooks.example.com/latency-slo-breach"
 
       # Slow burn alert: catches gradual degradation
-      # 3x burn rate over 6 hours = 1.5% of 28-day budget
+      # 3x burn rate over 6 hours = about 2.7% of 28-day budget
       - alert: LatencySLOSlowBurn
         expr: |
           (
-            histogram_quantile(0.99, sum(rate(http_request_duration_ms_bucket{job="api"}[6h])) by (le))
-            > 500
+            (
+              1 - (
+                sum(rate(http_request_duration_ms_bucket{job="api", le="500"}[6h]))
+                /
+                sum(rate(http_request_duration_ms_count{job="api"}[6h]))
+              )
+            ) / 0.005 > 3
           )
           and
           (
-            histogram_quantile(0.99, sum(rate(http_request_duration_ms_bucket{job="api"}[30m])) by (le))
-            > 500
+            (
+              1 - (
+                sum(rate(http_request_duration_ms_bucket{job="api", le="500"}[30m]))
+                /
+                sum(rate(http_request_duration_ms_count{job="api"}[30m]))
+              )
+            ) / 0.005 > 3
           )
         for: 15m
         labels:
           severity: warning
         annotations:
-          summary: "Sustained elevated p99 latency"
-          description: "p99 latency has been above 500ms for 6+ hours"
+          summary: "Sustained elevated latency"
+          description: "Requests over 500ms are burning error budget at more than 3x the sustainable rate"
 
       # Error budget exhaustion warning
       - alert: LatencyErrorBudgetLow
@@ -379,16 +415,12 @@ groups:
 
 ```mermaid
 flowchart TD
-    A[Latency Metric Collected] --> B[Calculate p99 over Windows]
-    B --> C{1h p99 > threshold?}
-    C -->|Yes| D{Burn rate > 14x?}
-    C -->|No| E{6h p99 > threshold?}
-    D -->|Yes| F[Page On-Call: Critical]
-    D -->|No| E
-    E -->|Yes| G{Burn rate > 3x?}
+    A[Latency Metric Collected] --> B[Calculate slow-request ratio over windows]
+    B --> C{1h and 5m burn rate > 14x?}
+    C -->|Yes| F[Page On-Call: Critical]
+    C -->|No| E{6h and 30m burn rate > 3x?}
+    E -->|Yes| I[Ticket: Warning]
     E -->|No| H[No Alert]
-    G -->|Yes| I[Ticket: Warning]
-    G -->|No| H
     F --> J[Investigate and Mitigate]
     I --> K[Schedule Investigation]
 ```
@@ -404,11 +436,7 @@ Before setting SLOs, measure your current performance:
 ```sql
 -- ClickHouse query to analyze current latency distribution
 SELECT
-    quantile(0.50)(duration_ms) as p50,
-    quantile(0.90)(duration_ms) as p90,
-    quantile(0.95)(duration_ms) as p95,
-    quantile(0.99)(duration_ms) as p99,
-    quantile(0.999)(duration_ms) as p999
+    quantiles(0.50, 0.90, 0.95, 0.99, 0.999)(duration_ms) as percentiles
 FROM http_requests
 WHERE timestamp > now() - INTERVAL 7 DAY
   AND endpoint = '/api/checkout'
@@ -422,25 +450,25 @@ Based on your baseline and user expectations:
 // SLO configuration object
 const latencySLOs = {
   checkout: {
-    percentile: 'p99',
+    targetPercentile: 'p99',
     thresholdMs: 500,
-    target: 0.995,      // 99.5% of requests under threshold
+    target: 0.99,       // 99% of requests under threshold
     windowDays: 28,
-    description: 'Checkout p99 latency under 500ms for 99.5% of requests'
+    description: '99% of checkout requests under 500ms'
   },
   search: {
-    percentile: 'p95',
+    targetPercentile: 'p95',
     thresholdMs: 200,
-    target: 0.99,
+    target: 0.95,
     windowDays: 28,
-    description: 'Search p95 latency under 200ms for 99% of requests'
+    description: '95% of search requests under 200ms'
   },
   homepage: {
-    percentile: 'p50',
+    targetPercentile: 'p50',
     thresholdMs: 100,
-    target: 0.99,
+    target: 0.50,
     windowDays: 7,
-    description: 'Homepage p50 latency under 100ms for 99% of requests'
+    description: '50% of homepage requests under 100ms'
   }
 };
 ```
