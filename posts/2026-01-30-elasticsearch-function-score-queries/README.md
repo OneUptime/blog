@@ -78,7 +78,7 @@ Key parameters explained:
 | Parameter | Purpose | Default |
 |-----------|---------|---------|
 | `query` | The base query that filters and scores documents | `match_all` |
-| `functions` | Array of scoring functions to apply | Required |
+| `functions` | Array of scoring functions to apply; use this for multiple functions or per-function filters | Optional for single-function queries |
 | `boost_mode` | How to combine function score with query score | `multiply` |
 | `score_mode` | How to combine multiple function scores | `multiply` |
 | `max_boost` | Cap on the total boost from functions | No limit |
@@ -177,10 +177,10 @@ Available modifiers control how the field value translates to a score:
 | Modifier | Formula | Use Case |
 |----------|---------|----------|
 | `none` | `factor * value` | Linear relationship |
-| `log` | `log(factor * value)` | Diminishing returns (value must be > 0) |
+| `log` | `log(factor * value)` | Diminishing returns (factor * value must not produce a negative score) |
 | `log1p` | `log(1 + factor * value)` | Diminishing returns, handles zero |
 | `log2p` | `log(2 + factor * value)` | Even gentler curve |
-| `ln` | `ln(factor * value)` | Natural log (value must be > 0) |
+| `ln` | `ln(factor * value)` | Natural log (factor * value must not produce a negative score) |
 | `ln1p` | `ln(1 + factor * value)` | Natural log, handles zero |
 | `ln2p` | `ln(2 + factor * value)` | Natural log, gentler curve |
 | `square` | `(factor * value)^2` | Amplify differences |
@@ -215,7 +215,7 @@ Practical example - boosting articles by view count with diminishing returns:
 }
 ```
 
-The `missing` parameter handles documents where the field doesn't exist. Set it to a sensible default (often 0 or 1) to avoid scoring errors.
+The `missing` parameter handles documents where the field doesn't exist. Set it to a sensible default (often 0 or 1) to avoid scoring errors. For `log`, `ln`, and `sqrt` modifiers, make sure the field value, factor, and missing value cannot produce an illegal operation or a negative score.
 
 ---
 
@@ -246,7 +246,7 @@ All decay functions use the same parameters:
 
 ### Date Decay - Boosting Recent Content
 
-This query boosts articles published recently, with a half-life of 7 days:
+This query boosts articles published recently, with the score dropping to 0.5 after the 1-day offset plus 7-day scale:
 
 ```json
 {
@@ -877,7 +877,7 @@ Filters narrow down documents before scoring. Always filter first, score second:
 Script scoring runs on every matching document. For expensive calculations:
 
 1. Pre-compute scores at index time when possible
-2. Use `min_score` to filter low-scoring documents early
+2. Use `min_score` only when you need to exclude low-scoring documents after scoring
 3. Consider using `rescore` for expensive scoring on top N results
 
 Using rescore for expensive re-ranking:
@@ -894,7 +894,7 @@ Using rescore for expensive re-ranking:
         "function_score": {
           "script_score": {
             "script": {
-              "source": "expensive_calculation_here"
+              "source": "Math.log10((doc['view_count'].size() == 0 ? 0 : doc['view_count'].value) + 2)"
             }
           }
         }
