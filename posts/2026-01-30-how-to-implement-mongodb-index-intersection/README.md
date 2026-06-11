@@ -24,7 +24,7 @@ db.products.createIndex({ category: 1 });
 db.products.find({ status: "active", category: "electronics" });
 ```
 
-That does not mean the optimizer will choose an intersection plan. In current MongoDB documentation, index intersection is described as a feature that exists, but one the planner rarely picks automatically. In many real workloads, you will still see a single `IXSCAN`, a compound index plan, or even a `COLLSCAN` if the available indexes are not selective enough.
+That does not mean the optimizer will choose an intersection plan. MongoDB's documentation has described index intersection as a feature that exists, but one the planner rarely picks automatically. In many real workloads, you will still see a single `IXSCAN`, a compound index plan, or even a `COLLSCAN` if the available indexes are not selective enough.
 
 ## Analyzing Index Intersection with explain()
 
@@ -86,7 +86,7 @@ MongoDB documents two execution strategies for index intersection:
 }
 ```
 
-There is an important practical limitation here: MongoDB's documentation says hash-based index intersection is disabled by default, and sort-based index intersection is disabled in plan selection. That is why many real `explain()` results never show these stages unless you are looking at a forced or very specific plan.
+There is an important practical limitation here: MongoDB's documentation says hash-based index intersection is disabled by default, and sort-based index intersection is disfavored in plan selection. That is why many real `explain()` results never show these stages unless you are looking at a forced or very specific plan.
 
 ## When Index Intersection Is Attractive in Theory
 
@@ -151,7 +151,7 @@ MongoDB's official documentation makes four points that are easy to miss:
 3. The optimizer rarely chooses those plans in practice.
 4. Schema design should favor compound indexes rather than relying on intersection.
 
-For current details, see the MongoDB docs on [index intersection](https://www.mongodb.com/docs/manual/core/index-intersection/) and [explain results](https://www.mongodb.com/docs/manual/reference/explain-results/).
+For background details, see the MongoDB 6.0 docs on [index intersection](https://www.mongodb.com/docs/v6.0/core/index-intersection/) and the current docs on [explain results](https://www.mongodb.com/docs/manual/reference/explain-results/).
 
 ## Best Practices
 
