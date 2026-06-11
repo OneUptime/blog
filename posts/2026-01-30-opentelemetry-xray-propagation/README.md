@@ -335,8 +335,8 @@ exporters:
       x-oneuptime-token: ${ONEUPTIME_TOKEN}
 
   # Debug logging
-  logging:
-    loglevel: debug
+  debug:
+    verbosity: detailed
 
 service:
   pipelines:
@@ -380,27 +380,27 @@ sequenceDiagram
     App-->>AG: Response
 ```
 
-The composite propagator handles injection automatically, but extraction follows a priority order. Configure your propagator list to control which format takes precedence when both headers are present.
+The composite propagator handles injection automatically, but extraction follows a priority order. Each propagator runs in sequence and writes to the same span context key, so the **last** propagator in the list overrides the earlier ones when both headers are present. Configure your propagator list to control which format takes precedence.
 
 ```typescript
-// X-Ray first: prefer X-Ray header when both are present
-const xrayFirstPropagator = new CompositePropagator({
+// Prefer X-Ray header when both are present: put X-Ray LAST so it overrides W3C
+const preferXrayPropagator = new CompositePropagator({
   propagators: [
-    new AWSXRayPropagator(),
     new W3CTraceContextPropagator(),
+    new AWSXRayPropagator(),
   ],
 });
 
-// W3C first: prefer W3C header when both are present
-const w3cFirstPropagator = new CompositePropagator({
+// Prefer W3C header when both are present: put W3C LAST so it overrides X-Ray
+const preferW3cPropagator = new CompositePropagator({
   propagators: [
-    new W3CTraceContextPropagator(),
     new AWSXRayPropagator(),
+    new W3CTraceContextPropagator(),
   ],
 });
 ```
 
-For most AWS-heavy environments, put X-Ray propagator first. For environments migrating away from X-Ray, put W3C first.
+For most AWS-heavy environments, put X-Ray propagator last. For environments migrating away from X-Ray, put W3C last.
 
 ---
 
@@ -624,15 +624,15 @@ app.use((req, res, next) => {
 
 ### Pitfall 4: Propagator order affecting extraction
 
-When both X-Ray and W3C headers are present, the first propagator in the composite list wins during extraction.
+When both X-Ray and W3C headers are present, the propagators run in order and each one overwrites the span context written by the previous propagator. The **last** propagator in the composite list wins during extraction.
 
 ```typescript
 // If a request has both headers with different trace IDs,
-// this configuration will use the X-Ray trace ID
+// this configuration will use the W3C trace ID (W3C runs last and overrides X-Ray)
 const propagator = new CompositePropagator({
   propagators: [
-    new AWSXRayPropagator(),      // Checked first
-    new W3CTraceContextPropagator(), // Checked second
+    new AWSXRayPropagator(),         // Runs first, may be overridden
+    new W3CTraceContextPropagator(), // Runs last, wins on conflict
   ],
 });
 ```
