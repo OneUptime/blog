@@ -97,7 +97,7 @@ GitLab automatically names matrix jobs using the variable values. The naming fol
 job_name: [value1, value2, ...]
 ```
 
-You can customize job names using the `name` keyword at the job level, but the matrix suffix is always appended.
+The base job name comes from the job key in your `.gitlab-ci.yml`, and GitLab appends the matrix values to that name.
 
 The table below shows how different matrix configurations affect job names:
 
@@ -117,8 +117,8 @@ test:
   stage: test
   parallel:
     matrix:
-      - RUNTIME: ["node-18-lts", "node-20-lts", "node-22-current"]
-  image: node:${RUNTIME#node-}  # Strips "node-" prefix for the image tag
+      - NODE_IMAGE: ["node:18", "node:20", "node:22"]
+  image: ${NODE_IMAGE}
   script:
     - npm ci
     - npm test
@@ -170,7 +170,7 @@ This creates 8 jobs: 6 for Node.js (3 versions x 2 package managers) and 2 for D
 
 You can combine `parallel:matrix` with `rules` to conditionally run matrix jobs. This is useful for running the full matrix only on certain branches or events.
 
-The following example runs all matrix combinations on the main branch but only the latest Node.js version on feature branches:
+The following example runs all matrix combinations on the main branch but only the highest Node.js version in this matrix on feature branches:
 
 ```yaml
 # .gitlab-ci.yml
@@ -346,7 +346,7 @@ test:python:
     - pip install -r requirements.txt
     - pip install pytest pytest-cov
   script:
-    - pytest --cov=src tests/
+    - pytest --cov=src --cov-report=xml:coverage.xml tests/
   coverage: '/TOTAL.+ ([0-9]{1,3}%)/'
   artifacts:
     reports:
@@ -379,14 +379,9 @@ test:database:
         DB_IMAGE: ["postgres:14", "postgres:15", "postgres:16"]
       - DATABASE: ["mysql"]
         DB_IMAGE: ["mysql:8.0", "mysql:8.1"]
-      - DATABASE: ["sqlite"]
-        DB_IMAGE: [""]
   services:
     - name: ${DB_IMAGE}
       alias: database
-      # Service only starts if DB_IMAGE is not empty
-      entrypoint: [""]
-      command: [""]
   before_script:
     - npm ci
   script:
@@ -398,11 +393,17 @@ test:database:
         mysql)
           export DATABASE_URL="mysql://root:test_password@database:3306/test_db"
           ;;
-        sqlite)
-          export DATABASE_URL="sqlite:./test.db"
-          ;;
       esac
       npm run test:integration
+
+test:sqlite:
+  stage: test
+  image: node:20
+  before_script:
+    - npm ci
+  script:
+    - export DATABASE_URL="sqlite:./test.db"
+    - npm run test:integration
 ```
 
 ### Cross-Platform Testing
@@ -580,6 +581,9 @@ test:
       - NODE_VERSION: ["18", "20", "22"]
   needs:
     - job: build
+      parallel:
+        matrix:
+          - NODE_VERSION: ['$[[ matrix.NODE_VERSION ]]']
       artifacts: true
   script:
     - npm ci
@@ -595,6 +599,8 @@ report:
   stage: deploy
   image: alpine:latest
   needs:
+    - job: build
+      artifacts: true
     - job: test
       artifacts: true
   script:
@@ -604,12 +610,12 @@ report:
 
 ### Combining Matrix with Parallel
 
-You can combine `parallel:matrix` with the regular `parallel` keyword for even more parallelization:
+You cannot set both numeric `parallel` and `parallel:matrix` on the same job. To split a large test suite for each matrix combination, add a shard variable as another matrix dimension:
 
 ```yaml
 # .gitlab-ci.yml
-# Combine matrix with parallel for splitting large test suites
-# Each matrix combination runs tests in 3 parallel chunks
+# Add a shard dimension for splitting large test suites
+# 3 Node versions x 3 shards = 9 total jobs
 
 test:
   stage: test
@@ -617,23 +623,22 @@ test:
   parallel:
     matrix:
       - NODE_VERSION: ["18", "20", "22"]
+        SHARD: ["0", "1", "2"]
   variables:
-    # Use GitLab's built-in parallelization
-    CI_NODE_TOTAL: 3
-    CI_NODE_INDEX: ${CI_NODE_INDEX}
+    TEST_SHARDS: "3"
   script:
     - npm ci
     # Split tests across parallel jobs
     - |
       TOTAL_TESTS=$(find tests -name "*.test.js" | wc -l)
-      TESTS_PER_NODE=$((TOTAL_TESTS / CI_NODE_TOTAL + 1))
-      START=$((CI_NODE_INDEX * TESTS_PER_NODE))
+      TESTS_PER_SHARD=$((TOTAL_TESTS / TEST_SHARDS + 1))
+      START=$((SHARD * TESTS_PER_SHARD))
 
       find tests -name "*.test.js" | \
         sort | \
         tail -n +$((START + 1)) | \
-        head -n $TESTS_PER_NODE | \
-        xargs npm test --
+        head -n $TESTS_PER_SHARD | \
+        xargs -r npm test --
 ```
 
 ### Retry Configuration for Flaky Matrix Jobs
@@ -704,9 +709,9 @@ Add comments explaining why specific combinations are included or excluded:
 ```yaml
 # .gitlab-ci.yml
 # Matrix configuration for our supported platforms
-# - Node 18: LTS until April 2025
-# - Node 20: LTS until April 2026
-# - Node 22: Current release, testing for future compatibility
+# - Node 18: EOL in April 2025, kept here only if you still support it
+# - Node 20: EOL in April 2026
+# - Node 22: LTS until April 2027
 #
 # We test both npm and yarn as customers use both
 
@@ -732,12 +737,15 @@ Configure your pipeline to fail fast when a matrix job fails:
 
 ```yaml
 # .gitlab-ci.yml
-# Use interruptible to cancel redundant jobs on new pushes
+# Cancel the rest of the pipeline as soon as one job fails
+
+workflow:
+  auto_cancel:
+    on_job_failure: all
 
 test:
   stage: test
   image: node:${NODE_VERSION}
-  interruptible: true
   parallel:
     matrix:
       - NODE_VERSION: ["18", "20", "22"]
@@ -750,7 +758,7 @@ test:
 
 ### Common Issues
 
-**Job names too long**: GitLab has limits on job name length. Use shorter variable values or fewer variables.
+**Job names too long**: GitLab job names must be 255 characters or fewer, and names used with `needs` must be 128 characters or fewer. Use shorter variable values or fewer variables.
 
 ```yaml
 # Instead of long descriptive values
