@@ -276,8 +276,8 @@ public class SemaphoreBulkhead {
 |--------|--------------------|-----------------------|
 | Thread usage | Uses calling thread | Dedicated thread pool |
 | Memory overhead | Lower | Higher |
-| Timeout handling | Must be implemented | Built into Future |
-| Cancellation | Limited | Full support |
+| Timeout handling | Must be implemented | Supported with Future.get(timeout) or a time limiter |
+| Cancellation | Limited | Future-based cancellation support |
 | Resource isolation | Concurrency only | Full execution context |
 | Best for | Fast operations | Slow or blocking calls |
 
@@ -387,10 +387,12 @@ public class DatabaseBulkhead {
 Separate HTTP connection pools for different external services prevent one slow API from blocking requests to others.
 
 ```java
-import org.apache.http.impl.client.CloseableHttpClient;
-import org.apache.http.impl.client.HttpClients;
-import org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
-import org.apache.http.client.config.RequestConfig;
+import org.apache.hc.client5.http.config.ConnectionConfig;
+import org.apache.hc.client5.http.config.RequestConfig;
+import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
+import org.apache.hc.client5.http.impl.classic.HttpClients;
+import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManager;
+import org.apache.hc.core5.util.Timeout;
 
 public class HttpClientBulkhead {
 
@@ -405,7 +407,7 @@ public class HttpClientBulkhead {
             20,    // Max total connections
             10,    // Max connections per route
             5000,  // Connection timeout
-            10000, // Socket timeout
+            10000, // Response timeout
             3000   // Connection request timeout
         );
 
@@ -433,7 +435,7 @@ public class HttpClientBulkhead {
     private CloseableHttpClient createClient(int maxTotal,
                                               int maxPerRoute,
                                               int connectTimeout,
-                                              int socketTimeout,
+                                              int responseTimeout,
                                               int connectionRequestTimeout) {
         // Connection pool configuration
         PoolingHttpClientConnectionManager connectionManager =
@@ -441,11 +443,15 @@ public class HttpClientBulkhead {
         connectionManager.setMaxTotal(maxTotal);
         connectionManager.setDefaultMaxPerRoute(maxPerRoute);
 
+        ConnectionConfig connectionConfig = ConnectionConfig.custom()
+            .setConnectTimeout(Timeout.ofMilliseconds(connectTimeout))
+            .build();
+        connectionManager.setDefaultConnectionConfig(connectionConfig);
+
         // Request timeouts
         RequestConfig requestConfig = RequestConfig.custom()
-            .setConnectTimeout(connectTimeout)
-            .setSocketTimeout(socketTimeout)
-            .setConnectionRequestTimeout(connectionRequestTimeout)
+            .setResponseTimeout(Timeout.ofMilliseconds(responseTimeout))
+            .setConnectionRequestTimeout(Timeout.ofMilliseconds(connectionRequestTimeout))
             .build();
 
         return HttpClients.custom()
@@ -552,7 +558,7 @@ import io.github.resilience4j.bulkhead.ThreadPoolBulkheadConfig;
 import io.github.resilience4j.bulkhead.ThreadPoolBulkheadRegistry;
 
 import java.time.Duration;
-import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 
 public class Resilience4jThreadPoolBulkhead {
 
@@ -596,13 +602,13 @@ public class Resilience4jThreadPoolBulkhead {
                 logger.debug("Payment call finished: {}", event));
     }
 
-    public CompletableFuture<PaymentResult> processPayment(PaymentRequest request) {
+    public CompletionStage<PaymentResult> processPayment(PaymentRequest request) {
         return paymentBulkhead.executeSupplier(() ->
             paymentClient.process(request)
         );
     }
 
-    public CompletableFuture<InventoryStatus> checkInventory(String sku) {
+    public CompletionStage<InventoryStatus> checkInventory(String sku) {
         return inventoryBulkhead.executeSupplier(() ->
             inventoryClient.check(sku)
         );
@@ -687,7 +693,9 @@ Bulkheads and circuit breakers complement each other. The bulkhead limits concur
 
 ```java
 import io.github.resilience4j.bulkhead.Bulkhead;
+import io.github.resilience4j.bulkhead.BulkheadFullException;
 import io.github.resilience4j.bulkhead.BulkheadConfig;
+import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
 import io.github.resilience4j.decorators.Decorators;
@@ -698,8 +706,10 @@ import io.github.resilience4j.timelimiter.TimeLimiterConfig;
 
 import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeoutException;
 import java.util.function.Supplier;
 
 public class LayeredResilience {
@@ -776,16 +786,26 @@ public class LayeredResilience {
         try {
             return executeWithResilience(() ->
                 paymentClient.process(request)
-            ).get();
-        } catch (BulkheadFullException e) {
-            // Bulkhead rejected the call
-            throw new ServiceUnavailableException("Payment service at capacity", e);
-        } catch (CallNotPermittedException e) {
-            // Circuit breaker is open
-            throw new ServiceUnavailableException("Payment service temporarily unavailable", e);
-        } catch (TimeoutException e) {
-            // Time limiter triggered
-            throw new ServiceUnavailableException("Payment service timeout", e);
+            ).join();
+        } catch (CompletionException e) {
+            Throwable cause = e.getCause();
+
+            if (cause instanceof BulkheadFullException) {
+                // Bulkhead rejected the call
+                throw new ServiceUnavailableException("Payment service at capacity", cause);
+            }
+
+            if (cause instanceof CallNotPermittedException) {
+                // Circuit breaker is open
+                throw new ServiceUnavailableException("Payment service temporarily unavailable", cause);
+            }
+
+            if (cause instanceof TimeoutException) {
+                // Time limiter triggered
+                throw new ServiceUnavailableException("Payment service timeout", cause);
+            }
+
+            throw new ServiceUnavailableException("Payment service failed", cause);
         }
     }
 }
