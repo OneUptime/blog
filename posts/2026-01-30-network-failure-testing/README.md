@@ -126,7 +126,7 @@ sudo tc qdisc add dev eth0 root netem loss gemodel 1% 10% 70% 0%
 
 ### Packet Corruption
 
-Test how applications handle corrupted data that passes checksum validation at lower layers:
+Test how your network stack and application behave when packets are corrupted in transit:
 
 ```bash
 # Corrupt 5% of packets (single bit flip)
@@ -180,7 +180,6 @@ tc filter show dev eth0
 INTERFACE=${1:-eth0}
 FAULT_TYPE=${2:-latency}
 DURATION=${3:-60}
-TARGET_IP=${4:-""}
 
 cleanup() {
     echo "Cleaning up tc rules..."
@@ -277,7 +276,7 @@ sudo tc filter add dev eth0 protocol ip parent 1:0 prio 3 u32 \
 # Test application behavior under DNS failures
 
 DURATION=${1:-30}
-MODE=${2:-block}  # block, slow, corrupt
+MODE=${2:-block}  # block, slow
 
 cleanup() {
     echo "Restoring DNS..."
@@ -361,29 +360,49 @@ sudo iptables -A OUTPUT -d 10.0.1.0/24 -j DROP
 ```bash
 #!/bin/bash
 # network-partition.sh
-# Create network partitions between node groups
+# Create network partitions between node groups.
+# Run this script on every node in both partitions.
 
 PARTITION_A=("10.0.0.1" "10.0.0.2")
 PARTITION_B=("10.0.0.3" "10.0.0.4")
 DURATION=${1:-60}
 
+contains() {
+    local needle=$1
+    shift
+    local item
+    for item in "$@"; do
+        if [ "$item" = "$needle" ]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+LOCAL_IP=$(hostname -I | awk '{print $1}')
+
+if contains "$LOCAL_IP" "${PARTITION_A[@]}"; then
+    BLOCKED_NODES=("${PARTITION_B[@]}")
+elif contains "$LOCAL_IP" "${PARTITION_B[@]}"; then
+    BLOCKED_NODES=("${PARTITION_A[@]}")
+else
+    echo "Local IP $LOCAL_IP is not in either partition"
+    exit 1
+fi
+
 create_partition() {
     echo "Creating network partition..."
-    for node_a in "${PARTITION_A[@]}"; do
-        for node_b in "${PARTITION_B[@]}"; do
-            sudo iptables -A INPUT -s $node_b -j DROP
-            sudo iptables -A OUTPUT -d $node_b -j DROP
-        done
+    for node in "${BLOCKED_NODES[@]}"; do
+        sudo iptables -A INPUT -s "$node" -j DROP
+        sudo iptables -A OUTPUT -d "$node" -j DROP
     done
 }
 
 remove_partition() {
     echo "Removing network partition..."
-    for node_a in "${PARTITION_A[@]}"; do
-        for node_b in "${PARTITION_B[@]}"; do
-            sudo iptables -D INPUT -s $node_b -j DROP 2>/dev/null
-            sudo iptables -D OUTPUT -d $node_b -j DROP 2>/dev/null
-        done
+    for node in "${BLOCKED_NODES[@]}"; do
+        sudo iptables -D INPUT -s "$node" -j DROP 2>/dev/null
+        sudo iptables -D OUTPUT -d "$node" -j DROP 2>/dev/null
     done
 }
 
@@ -532,8 +551,10 @@ Litmus is another popular Kubernetes chaos engineering framework with network fa
 ### Installing Litmus
 
 ```bash
-# Install Litmus operator
-kubectl apply -f https://litmuschaos.github.io/litmus/litmus-operator-v2.14.0.yaml
+# Install Litmus ChaosCenter with Helm
+helm repo add litmuschaos https://litmuschaos.github.io/litmus-helm/
+kubectl create ns litmus
+helm install chaos litmuschaos/litmus --namespace=litmus
 
 # Verify installation
 kubectl get pods -n litmus
@@ -668,14 +689,14 @@ log() {
 run_health_check() {
     local endpoint=$1
     local timeout=$2
-    curl -s -o /dev/null -w "%{http_code}" --max-time $timeout $endpoint || echo "000"
+    curl -s -o /dev/null -w "%{http_code}" --max-time "$timeout" "$endpoint" || true
 }
 
 measure_latency() {
     local endpoint=$1
     local samples=$2
     for i in $(seq 1 $samples); do
-        curl -s -o /dev/null -w "%{time_total}\n" $endpoint
+        curl -s -o /dev/null -w "%{time_total}\n" "$endpoint"
         sleep 0.5
     done
 }
@@ -692,9 +713,9 @@ test_latency_resilience() {
         sleep 5
 
         local start=$(date +%s.%N)
-        local response=$(run_health_check $endpoint 30)
+        local response=$(run_health_check "$endpoint" 30)
         local end=$(date +%s.%N)
-        local duration=$(echo "$end - $start" | bc)
+        local duration=$(awk "BEGIN {print $end - $start}")
 
         log "Latency: ${latency}ms, Response: $response, Duration: ${duration}s"
         echo "${latency},$response,$duration" >> "$RESULTS_DIR/latency-test.csv"
@@ -720,9 +741,9 @@ test_packet_loss_resilience() {
         local success=0
         local total=10
         for i in $(seq 1 $total); do
-            local response=$(run_health_check $endpoint 10)
+            local response=$(run_health_check "$endpoint" 10)
             if [ "$response" = "200" ]; then
-                ((success++))
+                ((success+=1))
             fi
             sleep 1
         done
@@ -747,7 +768,7 @@ test_dns_resilience() {
     sudo iptables -A OUTPUT -p udp --dport 53 -j DROP
     sudo iptables -A OUTPUT -p tcp --dport 53 -j DROP
 
-    local response=$(run_health_check $endpoint 30)
+    local response=$(run_health_check "$endpoint" 30)
     log "DNS blocked, Response: $response"
     echo "blocked,$response" >> "$RESULTS_DIR/dns-test.csv"
 
@@ -763,7 +784,7 @@ test_dns_resilience() {
     sudo tc filter add dev eth0 protocol ip parent 1:0 prio 3 u32 \
         match ip dport 53 0xffff flowid 1:3
 
-    local response=$(run_health_check $endpoint 30)
+    local response=$(run_health_check "$endpoint" 30)
     log "DNS slow (3s), Response: $response"
     echo "slow_3s,$response" >> "$RESULTS_DIR/dns-test.csv"
 
@@ -824,9 +845,9 @@ ENDPOINT=${1:-"http://localhost:8080/health"}
 log "Starting network failure test suite"
 log "Target endpoint: $ENDPOINT"
 
-test_latency_resilience $ENDPOINT
-test_packet_loss_resilience $ENDPOINT
-test_dns_resilience $ENDPOINT
+test_latency_resilience "$ENDPOINT"
+test_packet_loss_resilience "$ENDPOINT"
+test_dns_resilience "$ENDPOINT"
 generate_report
 
 log "Test suite complete"
