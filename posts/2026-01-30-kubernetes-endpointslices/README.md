@@ -110,7 +110,7 @@ endpoints:
 
 **Key fields explained:**
 
-- `addressType`: Specifies the type of address (IPv4, IPv6, or FQDN)
+- `addressType`: Specifies the type of address. The EndpointSlice controller and kube-proxy use IPv4 and IPv6; FQDN exists in the API but is deprecated and is not processed by kube-proxy.
 - `ports`: Defines the ports that endpoints expose
 - `endpoints`: Lists the actual endpoint addresses with their conditions and metadata
 
@@ -141,7 +141,7 @@ flowchart LR
 
 | Aspect | Endpoints | EndpointSlices |
 |--------|-----------|----------------|
-| Max endpoints per object | Unlimited (causes issues) | 100 (configurable) |
+| Max endpoints per object | 1000 before truncation | 100 by default (configurable up to 1000) |
 | Update granularity | Full object | Single slice |
 | Network overhead | High | Low |
 | etcd storage efficiency | Poor | Good |
@@ -354,11 +354,13 @@ import (
     "fmt"
     "time"
 
+    corev1 "k8s.io/api/core/v1"
     discoveryv1 "k8s.io/api/discovery/v1"
+    apierrors "k8s.io/apimachinery/pkg/api/errors"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/client-go/kubernetes"
     "k8s.io/client-go/tools/clientcmd"
-    "k8s.io/utils/pointer"
+    "k8s.io/utils/ptr"
 )
 
 const (
@@ -410,6 +412,7 @@ func fetchExternalEndpoints() []ExternalEndpoint {
 
 func reconcileEndpointSlices(clientset *kubernetes.Clientset, endpoints []ExternalEndpoint) error {
     ctx := context.Background()
+    endpointSlicesClient := clientset.DiscoveryV1().EndpointSlices(namespace)
 
     // Calculate required number of slices
     numSlices := (len(endpoints) + maxEndpointsPerSlice - 1) / maxEndpointsPerSlice
@@ -427,16 +430,36 @@ func reconcileEndpointSlices(clientset *kubernetes.Clientset, endpoints []Extern
         endpointSlice := buildEndpointSlice(sliceName, sliceEndpoints)
 
         // Create or update the EndpointSlice
-        _, err := clientset.DiscoveryV1().EndpointSlices(namespace).Create(
-            ctx, endpointSlice, metav1.CreateOptions{},
-        )
-        if err != nil {
-            // Try update if create fails
-            _, err = clientset.DiscoveryV1().EndpointSlices(namespace).Update(
-                ctx, endpointSlice, metav1.UpdateOptions{},
-            )
+        _, err := endpointSlicesClient.Create(ctx, endpointSlice, metav1.CreateOptions{})
+        if apierrors.IsAlreadyExists(err) {
+            existing, getErr := endpointSlicesClient.Get(ctx, sliceName, metav1.GetOptions{})
+            if getErr != nil {
+                return fmt.Errorf("failed to get existing slice %s: %w", sliceName, getErr)
+            }
+
+            endpointSlice.ResourceVersion = existing.ResourceVersion
+            _, err = endpointSlicesClient.Update(ctx, endpointSlice, metav1.UpdateOptions{})
             if err != nil {
-                return fmt.Errorf("failed to create/update slice %s: %w", sliceName, err)
+                return fmt.Errorf("failed to update slice %s: %w", sliceName, err)
+            }
+        } else if err != nil {
+            return fmt.Errorf("failed to create slice %s: %w", sliceName, err)
+        }
+    }
+
+    // Delete old slices if the external registry now needs fewer slices.
+    existingSlices, err := endpointSlicesClient.List(ctx, metav1.ListOptions{
+        LabelSelector: fmt.Sprintf("%s=%s,%s=%s", discoveryv1.LabelServiceName, serviceName, discoveryv1.LabelManagedBy, "custom-controller"),
+    })
+    if err != nil {
+        return fmt.Errorf("failed to list endpoint slices: %w", err)
+    }
+
+    for _, existingSlice := range existingSlices.Items {
+        var index int
+        if _, err := fmt.Sscanf(existingSlice.Name, serviceName+"-%d", &index); err == nil && index >= numSlices {
+            if err := endpointSlicesClient.Delete(ctx, existingSlice.Name, metav1.DeleteOptions{}); err != nil {
+                return fmt.Errorf("failed to delete stale slice %s: %w", existingSlice.Name, err)
             }
         }
     }
@@ -445,7 +468,7 @@ func reconcileEndpointSlices(clientset *kubernetes.Clientset, endpoints []Extern
 }
 
 func buildEndpointSlice(name string, endpoints []ExternalEndpoint) *discoveryv1.EndpointSlice {
-    protocol := "TCP"
+    protocol := corev1.ProtocolTCP
     portName := "http"
 
     var sliceEndpoints []discoveryv1.Endpoint
@@ -453,11 +476,11 @@ func buildEndpointSlice(name string, endpoints []ExternalEndpoint) *discoveryv1.
         sliceEndpoints = append(sliceEndpoints, discoveryv1.Endpoint{
             Addresses: []string{ep.Address},
             Conditions: discoveryv1.EndpointConditions{
-                Ready:       pointer.Bool(ep.Ready),
-                Serving:     pointer.Bool(ep.Ready),
-                Terminating: pointer.Bool(false),
+                Ready:       ptr.To(ep.Ready),
+                Serving:     ptr.To(ep.Ready),
+                Terminating: ptr.To(false),
             },
-            Zone: pointer.String(ep.Zone),
+            Zone: ptr.To(ep.Zone),
         })
     }
 
@@ -466,16 +489,16 @@ func buildEndpointSlice(name string, endpoints []ExternalEndpoint) *discoveryv1.
             Name:      name,
             Namespace: namespace,
             Labels: map[string]string{
-                "kubernetes.io/service-name":               serviceName,
-                "endpointslice.kubernetes.io/managed-by":   "custom-controller",
+                discoveryv1.LabelServiceName: serviceName,
+                discoveryv1.LabelManagedBy:   "custom-controller",
             },
         },
         AddressType: discoveryv1.AddressTypeIPv4,
         Ports: []discoveryv1.EndpointPort{
             {
                 Name:     &portName,
-                Protocol: (*corev1.Protocol)(&protocol),
-                Port:     pointer.Int32(8080),
+                Protocol: ptr.To(protocol),
+                Port:     ptr.To[int32](8080),
             },
         },
         Endpoints: sliceEndpoints,
@@ -544,7 +567,7 @@ Important metrics to track:
 
 | Metric | Description |
 |--------|-------------|
-| `endpoint_slice_controller_syncs_total` | Total syncs by the controller |
+| `endpoint_slice_controller_desired_endpoint_slices` | Number of EndpointSlices expected with ideal allocation |
 | `endpoint_slice_controller_endpoints_added_per_sync` | Endpoints added per sync |
 | `endpoint_slice_controller_endpoints_removed_per_sync` | Endpoints removed per sync |
 | `endpoint_slice_controller_changes` | Number of EndpointSlice changes |
