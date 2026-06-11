@@ -89,7 +89,7 @@ The `PeriodicExportingMetricReader` is the default choice for most applications.
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
 import { PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
-import { Resource } from '@opentelemetry/resources';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from '@opentelemetry/semantic-conventions';
 
 // Create the OTLP exporter for OneUptime
@@ -109,11 +109,11 @@ const metricReader = new PeriodicExportingMetricReader({
 
 // Initialize the SDK
 const sdk = new NodeSDK({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     [ATTR_SERVICE_NAME]: 'order-service',
     [ATTR_SERVICE_VERSION]: '2.1.0',
   }),
-  metricReader: metricReader,
+  metricReaders: [metricReader],
 });
 
 sdk.start();
@@ -188,7 +188,7 @@ const metricReader = new PeriodicExportingMetricReader({
 });
 ```
 
-If the timeout fires, the reader logs an error and drops that batch. The next interval proceeds normally.
+If the timeout fires, the reader reports an error for that export attempt and the next interval proceeds normally.
 
 ### Aggregation Temporality
 
@@ -197,8 +197,8 @@ Metric readers also respect aggregation temporality, which affects how cumulativ
 ```typescript
 import { AggregationTemporality } from '@opentelemetry/sdk-metrics';
 
-// Delta temporality: each export contains only the change since last export
-// Good for: backends that handle delta aggregation (Prometheus pushgateway, some cloud backends)
+// Delta preference: counters and histograms are reported as changes since the last export
+// Good for: backends that handle delta aggregation
 const deltaExporter = new OTLPMetricExporter({
   url: 'https://oneuptime.com/otlp/v1/metrics',
   temporalityPreference: AggregationTemporality.DELTA,
@@ -230,37 +230,25 @@ A metric reader must implement the `MetricReader` interface:
 ```typescript
 import {
   MetricReader,
-  MetricProducer,
-  CollectionResult,
-  InstrumentType,
-  Aggregation,
   AggregationTemporality,
+  PushMetricExporter,
+  ResourceMetrics,
 } from '@opentelemetry/sdk-metrics';
-import { MetricExporter } from '@opentelemetry/sdk-metrics';
+import { ExportResult, ExportResultCode } from '@opentelemetry/core';
 
 export class EventDrivenMetricReader extends MetricReader {
-  private exporter: MetricExporter;
-  private metricProducer: MetricProducer | null = null;
+  private exporter: PushMetricExporter;
 
-  constructor(exporter: MetricExporter) {
-    super();
+  constructor(exporter: PushMetricExporter) {
+    super({
+      aggregationTemporalitySelector: () => AggregationTemporality.CUMULATIVE,
+    });
     this.exporter = exporter;
   }
 
   // Called by the SDK when the reader is registered
   protected onInitialized(): void {
     console.log('EventDrivenMetricReader initialized');
-  }
-
-  // Define how instruments should be aggregated
-  selectAggregation(instrumentType: InstrumentType): Aggregation {
-    // Use default aggregations for each instrument type
-    return Aggregation.Default();
-  }
-
-  // Define temporality preference
-  selectAggregationTemporality(instrumentType: InstrumentType): AggregationTemporality {
-    return AggregationTemporality.CUMULATIVE;
   }
 
   // Manual trigger for export (call this from your application code)
@@ -270,10 +258,16 @@ export class EventDrivenMetricReader extends MetricReader {
       console.error('Collection errors:', result.errors);
     }
 
-    const exportResult = await this.exporter.export(result.resourceMetrics);
-    if (exportResult.code !== 0) {
+    const exportResult = await this.export(result.resourceMetrics);
+    if (exportResult.code !== ExportResultCode.SUCCESS) {
       console.error('Export failed:', exportResult.error);
     }
+  }
+
+  private export(resourceMetrics: ResourceMetrics): Promise<ExportResult> {
+    return new Promise(resolve => {
+      this.exporter.export(resourceMetrics, resolve);
+    });
   }
 
   // Called during SDK shutdown
@@ -328,12 +322,12 @@ Here is a more advanced example that exports only when a threshold is crossed:
 ```typescript
 import {
   MetricReader,
-  InstrumentType,
-  Aggregation,
   AggregationTemporality,
   DataPointType,
+  PushMetricExporter,
+  ResourceMetrics,
 } from '@opentelemetry/sdk-metrics';
-import { MetricExporter } from '@opentelemetry/sdk-metrics';
+import { ExportResult, ExportResultCode } from '@opentelemetry/core';
 
 interface ThresholdConfig {
   metricName: string;
@@ -342,17 +336,19 @@ interface ThresholdConfig {
 }
 
 export class ThresholdMetricReader extends MetricReader {
-  private exporter: MetricExporter;
+  private exporter: PushMetricExporter;
   private thresholds: ThresholdConfig[];
   private checkInterval: NodeJS.Timeout | null = null;
   private checkIntervalMs: number;
 
   constructor(
-    exporter: MetricExporter,
+    exporter: PushMetricExporter,
     thresholds: ThresholdConfig[],
     checkIntervalMs: number = 5000
   ) {
-    super();
+    super({
+      aggregationTemporalitySelector: () => AggregationTemporality.CUMULATIVE,
+    });
     this.exporter = exporter;
     this.thresholds = thresholds;
     this.checkIntervalMs = checkIntervalMs;
@@ -363,33 +359,27 @@ export class ThresholdMetricReader extends MetricReader {
     this.checkInterval = setInterval(() => this.checkThresholds(), this.checkIntervalMs);
   }
 
-  selectAggregation(instrumentType: InstrumentType): Aggregation {
-    return Aggregation.Default();
-  }
-
-  selectAggregationTemporality(instrumentType: InstrumentType): AggregationTemporality {
-    return AggregationTemporality.CUMULATIVE;
-  }
-
   private async checkThresholds(): Promise<void> {
     const result = await this.collect();
 
     let shouldExport = false;
 
     // Check each metric against thresholds
-    for (const resourceMetric of result.resourceMetrics.scopeMetrics) {
-      for (const scopeMetric of resourceMetric.metrics) {
+    for (const scopeMetrics of result.resourceMetrics.scopeMetrics) {
+      for (const scopeMetric of scopeMetrics.metrics) {
         const threshold = this.thresholds.find(t => t.metricName === scopeMetric.descriptor.name);
         if (!threshold) continue;
 
         // Extract the value based on data point type
+        if (
+          scopeMetric.dataPointType !== DataPointType.SUM &&
+          scopeMetric.dataPointType !== DataPointType.GAUGE
+        ) {
+          continue;
+        }
+
         for (const dataPoint of scopeMetric.dataPoints) {
-          let value: number;
-          if (dataPoint.value !== undefined && typeof dataPoint.value === 'number') {
-            value = dataPoint.value;
-          } else {
-            continue;
-          }
+          const value = dataPoint.value;
 
           // Check threshold
           const breached = this.checkThreshold(value, threshold);
@@ -402,7 +392,10 @@ export class ThresholdMetricReader extends MetricReader {
     }
 
     if (shouldExport) {
-      await this.exporter.export(result.resourceMetrics);
+      const exportResult = await this.export(result.resourceMetrics);
+      if (exportResult.code !== ExportResultCode.SUCCESS) {
+        console.error('Export failed:', exportResult.error);
+      }
     }
   }
 
@@ -417,7 +410,7 @@ export class ThresholdMetricReader extends MetricReader {
 
   protected async onForceFlush(): Promise<void> {
     const result = await this.collect();
-    await this.exporter.export(result.resourceMetrics);
+    await this.export(result.resourceMetrics);
   }
 
   protected async onShutdown(): Promise<void> {
@@ -425,6 +418,12 @@ export class ThresholdMetricReader extends MetricReader {
       clearInterval(this.checkInterval);
     }
     await this.exporter.shutdown();
+  }
+
+  private export(resourceMetrics: ResourceMetrics): Promise<ExportResult> {
+    return new Promise(resolve => {
+      this.exporter.export(resourceMetrics, resolve);
+    });
   }
 }
 ```
@@ -506,14 +505,21 @@ The periodic reader logs errors but does not retry by default. For production, w
 
 ```typescript
 import { ExportResult, ExportResultCode } from '@opentelemetry/core';
-import { MetricExporter, ResourceMetrics } from '@opentelemetry/sdk-metrics';
+import {
+  AggregationOption,
+  AggregationTemporality,
+  AggregationType,
+  InstrumentType,
+  PushMetricExporter,
+  ResourceMetrics,
+} from '@opentelemetry/sdk-metrics';
 
-class RetryingMetricExporter implements MetricExporter {
-  private delegate: MetricExporter;
+class RetryingMetricExporter implements PushMetricExporter {
+  private delegate: PushMetricExporter;
   private maxRetries: number;
   private baseDelayMs: number;
 
-  constructor(delegate: MetricExporter, maxRetries = 3, baseDelayMs = 1000) {
+  constructor(delegate: PushMetricExporter, maxRetries = 3, baseDelayMs = 1000) {
     this.delegate = delegate;
     this.maxRetries = maxRetries;
     this.baseDelayMs = baseDelayMs;
@@ -567,8 +573,13 @@ class RetryingMetricExporter implements MetricExporter {
     return this.delegate.shutdown();
   }
 
-  selectAggregationTemporality = this.delegate.selectAggregationTemporality?.bind(this.delegate);
-  selectAggregation = this.delegate.selectAggregation?.bind(this.delegate);
+  selectAggregationTemporality(instrumentType: InstrumentType): AggregationTemporality {
+    return this.delegate.selectAggregationTemporality?.(instrumentType) ?? AggregationTemporality.CUMULATIVE;
+  }
+
+  selectAggregation(instrumentType: InstrumentType): AggregationOption {
+    return this.delegate.selectAggregation?.(instrumentType) ?? { type: AggregationType.DEFAULT };
+  }
 }
 ```
 
@@ -627,13 +638,21 @@ memoryGauge.addCallback((result) => {
 Track how long exports take to identify backend issues:
 
 ```typescript
-import { Histogram } from '@opentelemetry/api';
+import { Histogram, metrics } from '@opentelemetry/api';
+import { ExportResult, ExportResultCode } from '@opentelemetry/core';
+import {
+  AggregationOption,
+  AggregationTemporality,
+  AggregationType,
+  InstrumentType,
+  PushMetricExporter,
+  ResourceMetrics,
+} from '@opentelemetry/sdk-metrics';
 
-class InstrumentedMetricReader extends PeriodicExportingMetricReader {
+class InstrumentedMetricExporter implements PushMetricExporter {
   private exportDuration: Histogram;
 
-  constructor(options: PeriodicExportingMetricReaderOptions) {
-    super(options);
+  constructor(private delegate: PushMetricExporter) {
     const meter = metrics.getMeter('otel-internals');
     this.exportDuration = meter.createHistogram('otel_metric_export_duration_seconds', {
       description: 'Duration of metric export operations',
@@ -641,17 +660,30 @@ class InstrumentedMetricReader extends PeriodicExportingMetricReader {
     });
   }
 
-  protected async doExport(): Promise<void> {
+  export(resourceMetrics: ResourceMetrics, callback: (result: ExportResult) => void): void {
     const start = performance.now();
-    try {
-      await super.doExport();
+    this.delegate.export(resourceMetrics, result => {
       const duration = (performance.now() - start) / 1000;
-      this.exportDuration.record(duration, { status: 'success' });
-    } catch (error) {
-      const duration = (performance.now() - start) / 1000;
-      this.exportDuration.record(duration, { status: 'error' });
-      throw error;
-    }
+      const status = result.code === ExportResultCode.SUCCESS ? 'success' : 'error';
+      this.exportDuration.record(duration, { status });
+      callback(result);
+    });
+  }
+
+  forceFlush(): Promise<void> {
+    return this.delegate.forceFlush();
+  }
+
+  shutdown(): Promise<void> {
+    return this.delegate.shutdown();
+  }
+
+  selectAggregationTemporality(instrumentType: InstrumentType): AggregationTemporality {
+    return this.delegate.selectAggregationTemporality?.(instrumentType) ?? AggregationTemporality.CUMULATIVE;
+  }
+
+  selectAggregation(instrumentType: InstrumentType): AggregationOption {
+    return this.delegate.selectAggregation?.(instrumentType) ?? { type: AggregationType.DEFAULT };
   }
 }
 ```
@@ -661,26 +693,31 @@ class InstrumentedMetricReader extends PeriodicExportingMetricReader {
 For high-throughput systems, consider implementing a buffering reader:
 
 ```typescript
+import { ExportResult } from '@opentelemetry/core';
+import { MetricReader, PushMetricExporter, ResourceMetrics } from '@opentelemetry/sdk-metrics';
+
 class BufferedMetricReader extends MetricReader {
   private buffer: ResourceMetrics[] = [];
   private maxBufferSize: number;
+  private flushIntervalMs: number;
   private flushInterval: NodeJS.Timeout | null = null;
 
   constructor(
-    private exporter: MetricExporter,
+    private exporter: PushMetricExporter,
     maxBufferSize = 100,
     flushIntervalMs = 60000
   ) {
     super();
     this.maxBufferSize = maxBufferSize;
+    this.flushIntervalMs = flushIntervalMs;
   }
 
   protected onInitialized(): void {
-    this.flushInterval = setInterval(() => this.flush(), 60000);
+    this.flushInterval = setInterval(() => this.flush(), this.flushIntervalMs);
   }
 
-  async collect(): Promise<void> {
-    const result = await super.collect();
+  async collectAndBuffer(): Promise<void> {
+    const result = await this.collect();
     this.buffer.push(result.resourceMetrics);
 
     if (this.buffer.length >= this.maxBufferSize) {
@@ -694,11 +731,24 @@ class BufferedMetricReader extends MetricReader {
     const toExport = this.buffer.splice(0, this.buffer.length);
     // Merge and export batched metrics
     for (const metrics of toExport) {
-      await this.exporter.export(metrics);
+      await new Promise<ExportResult>(resolve => {
+        this.exporter.export(metrics, resolve);
+      });
     }
   }
 
-  // ... implement other required methods
+  protected async onForceFlush(): Promise<void> {
+    await this.collectAndBuffer();
+    await this.flush();
+  }
+
+  protected async onShutdown(): Promise<void> {
+    if (this.flushInterval) {
+      clearInterval(this.flushInterval);
+    }
+    await this.flush();
+    await this.exporter.shutdown();
+  }
 }
 ```
 
@@ -709,8 +759,7 @@ class BufferedMetricReader extends MetricReader {
 ### Unit Testing with In-Memory Exporter
 
 ```typescript
-import { InMemoryMetricExporter, MeterProvider, PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
-import { metrics } from '@opentelemetry/api';
+import { AggregationTemporality, InMemoryMetricExporter, MeterProvider, PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
 
 describe('Metric Reader Tests', () => {
   let exporter: InMemoryMetricExporter;
@@ -718,13 +767,12 @@ describe('Metric Reader Tests', () => {
   let provider: MeterProvider;
 
   beforeEach(() => {
-    exporter = new InMemoryMetricExporter();
+    exporter = new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE);
     reader = new PeriodicExportingMetricReader({
       exporter,
       exportIntervalMillis: 100,  // Fast interval for tests
     });
     provider = new MeterProvider({ readers: [reader] });
-    metrics.setGlobalMeterProvider(provider);
   });
 
   afterEach(async () => {
@@ -732,7 +780,7 @@ describe('Metric Reader Tests', () => {
   });
 
   it('should export counter metrics', async () => {
-    const meter = metrics.getMeter('test');
+    const meter = provider.getMeter('test');
     const counter = meter.createCounter('test_counter');
 
     counter.add(5, { label: 'value' });
@@ -750,7 +798,7 @@ describe('Metric Reader Tests', () => {
   });
 
   it('should respect export interval', async () => {
-    const meter = metrics.getMeter('test');
+    const meter = provider.getMeter('test');
     const counter = meter.createCounter('interval_test');
 
     counter.add(1);
@@ -769,17 +817,12 @@ describe('Metric Reader Tests', () => {
 ```typescript
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
+import { PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
+import { metrics } from '@opentelemetry/api';
 import nock from 'nock';
 
 describe('OTLP Integration', () => {
   let sdk: NodeSDK;
-
-  beforeEach(() => {
-    // Mock the OTLP endpoint
-    nock('https://oneuptime.com')
-      .post('/otlp/v1/metrics')
-      .reply(200, {});
-  });
 
   afterEach(async () => {
     await sdk?.shutdown();
@@ -792,12 +835,14 @@ describe('OTLP Integration', () => {
       .reply(200, {});
 
     sdk = new NodeSDK({
-      metricReader: new PeriodicExportingMetricReader({
-        exporter: new OTLPMetricExporter({
-          url: 'https://oneuptime.com/otlp/v1/metrics',
+      metricReaders: [
+        new PeriodicExportingMetricReader({
+          exporter: new OTLPMetricExporter({
+            url: 'https://oneuptime.com/otlp/v1/metrics',
+          }),
+          exportIntervalMillis: 100,
         }),
-        exportIntervalMillis: 100,
-      }),
+      ],
     });
 
     sdk.start();
@@ -831,14 +876,24 @@ Match interval to your alerting and dashboarding needs:
 Prevent cascade failures when the backend is down:
 
 ```typescript
-class CircuitBreakerExporter implements MetricExporter {
+import { ExportResult, ExportResultCode } from '@opentelemetry/core';
+import {
+  AggregationOption,
+  AggregationTemporality,
+  AggregationType,
+  InstrumentType,
+  PushMetricExporter,
+  ResourceMetrics,
+} from '@opentelemetry/sdk-metrics';
+
+class CircuitBreakerExporter implements PushMetricExporter {
   private failures = 0;
   private circuitOpen = false;
   private lastFailure = 0;
   private readonly failureThreshold = 5;
   private readonly resetTimeMs = 60000;
 
-  constructor(private delegate: MetricExporter) {}
+  constructor(private delegate: PushMetricExporter) {}
 
   async export(metrics: ResourceMetrics, callback: (result: ExportResult) => void): Promise<void> {
     if (this.circuitOpen) {
@@ -874,7 +929,21 @@ class CircuitBreakerExporter implements MetricExporter {
     }
   }
 
-  // ... implement other methods
+  forceFlush(): Promise<void> {
+    return this.delegate.forceFlush();
+  }
+
+  shutdown(): Promise<void> {
+    return this.delegate.shutdown();
+  }
+
+  selectAggregationTemporality(instrumentType: InstrumentType): AggregationTemporality {
+    return this.delegate.selectAggregationTemporality?.(instrumentType) ?? AggregationTemporality.CUMULATIVE;
+  }
+
+  selectAggregation(instrumentType: InstrumentType): AggregationOption {
+    return this.delegate.selectAggregation?.(instrumentType) ?? { type: AggregationType.DEFAULT };
+  }
 }
 ```
 
@@ -883,7 +952,9 @@ class CircuitBreakerExporter implements MetricExporter {
 Always include identifying attributes:
 
 ```typescript
-const resource = new Resource({
+import { resourceFromAttributes } from '@opentelemetry/resources';
+
+const resource = resourceFromAttributes({
   [ATTR_SERVICE_NAME]: 'payment-service',
   [ATTR_SERVICE_VERSION]: process.env.APP_VERSION || '1.0.0',
   [ATTR_SERVICE_INSTANCE_ID]: process.env.HOSTNAME || 'local',
