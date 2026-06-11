@@ -20,8 +20,7 @@ The following diagram shows when each hook type executes during a Helmfile sync 
 flowchart TD
     Start[helmfile sync] --> Prepare[prepare hook]
     Prepare --> PreSync[presync hook]
-    PreSync --> HelmDiff[Helm Diff]
-    HelmDiff --> Sync[Helm Upgrade/Install]
+    PreSync --> Sync[Helm Upgrade/Install]
     Sync --> PostSync[postsync hook]
     PostSync --> Cleanup[cleanup hook]
     Cleanup --> End[Complete]
@@ -37,12 +36,13 @@ Helmfile supports several hook types that execute at different lifecycle stages.
 
 | Hook Type | When It Runs |
 |-----------|--------------|
-| `prepare` | Before Helmfile reads release files |
+| `prepare` | After each selected release is loaded, before execution |
+| `preapply` | Before a release is uninstalled, installed, or upgraded as part of `helmfile apply` |
 | `presync` | Before each release is synced |
-| `preapply` | Before helm upgrade/install |
-| `postapply` | After helm upgrade/install |
+| `preuninstall` | Before a release is uninstalled |
+| `postuninstall` | After a release is successfully uninstalled |
 | `postsync` | After each release is synced |
-| `cleanup` | After all releases are processed |
+| `cleanup` | After each release is processed |
 
 ## Basic Hook Configuration
 
@@ -111,7 +111,7 @@ echo "Configuration validation passed"
 
 ## Database Migration Hook
 
-One of the most common use cases for hooks is running database migrations before deploying a new application version. The migration must complete successfully before the new code starts running.
+One of the most common use cases for hooks is running database migrations before deploying a new application version with `helmfile apply`. The migration must complete successfully before the new code starts running.
 
 ```yaml
 releases:
@@ -212,7 +212,7 @@ releases:
     namespace: production
     chart: ./charts/api-gateway
     hooks:
-      - events: ["postapply"]
+      - events: ["postsync"]
         showlogs: true
         command: "/bin/bash"
         args:
@@ -257,14 +257,10 @@ sequenceDiagram
     loop For each release
         Helmfile->>Hook: Execute presync hook
         Hook-->>Helmfile: Success
-        Helmfile->>Hook: Execute preapply hook
-        Hook-->>Helmfile: Success
         Helmfile->>Helm: helm upgrade --install
         Helm->>K8s: Apply manifests
         K8s-->>Helm: Resources created
         Helm-->>Helmfile: Release deployed
-        Helmfile->>Hook: Execute postapply hook
-        Hook-->>Helmfile: Success
         Helmfile->>Hook: Execute postsync hook
         Hook-->>Helmfile: Success
     end
@@ -418,7 +414,7 @@ releases:
 
 ## Global Hooks
 
-Define hooks that run for all releases using Helmfile's global hooks feature.
+Define hooks that run once at the beginning and end of a Helmfile command using Helmfile's global hooks feature.
 
 ```yaml
 hooks:
@@ -469,7 +465,7 @@ Prevent hooks from running indefinitely by adding timeouts.
 
 ```yaml
 hooks:
-  - events: ["postapply"]
+  - events: ["postsync"]
     showlogs: true
     command: "timeout"
     args:
@@ -521,7 +517,7 @@ helmfile --debug sync
 Test hooks independently before running them through Helmfile.
 
 ```bash
-# Set environment variables that Helmfile would set
+# Set environment variables that your hook script expects
 export RELEASE_NAME=myapp
 export NAMESPACE=production
 
