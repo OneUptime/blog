@@ -45,9 +45,9 @@ flowchart TB
 
 | Pattern | RTO | RPO | Cost | Complexity | Best For |
 |---------|-----|-----|------|------------|----------|
-| Active-Active | Near Zero | Zero | 2x+ | High | Global apps, zero downtime |
+| Active-Active | Near Zero | Near Zero | 2x+ | High | Global apps, very low downtime |
 | Active-Passive | Minutes to Hours | Minutes | 1.5x | Medium | DR requirements |
-| Follow-the-Sun | Near Zero | Zero | 2-3x | Very High | 24/7 global operations |
+| Follow-the-Sun | Near Zero | Near Zero | 2-3x | Very High | 24/7 global operations |
 
 ## Region Selection Strategy
 
@@ -207,7 +207,7 @@ spec:
   # Audit requirements
   audit:
     accessLogging: enabled
-    retentionDays: 2555  # 7 years for GDPR
+    retentionDays: 2555  # Example: set based on documented legal/audit requirements
 ```
 
 ```python
@@ -539,66 +539,63 @@ flowchart TB
 ### Pattern 2: Multi-Primary with Conflict Resolution
 
 ```yaml
-# CockroachDB multi-region configuration
-# True multi-primary with automatic conflict resolution
+# CockroachDB operator Helm values for multi-region configuration
+# Serializable transactions with row-level locality for data placement
 
-apiVersion: crdb.cockroachlabs.com/v1alpha1
-kind: CrdbCluster
-metadata:
-  name: cockroachdb
-spec:
-  dataStore:
-    pvc:
-      spec:
-        storageClassName: premium-rwo
-        resources:
-          requests:
-            storage: 500Gi
+cockroachdb:
+  clusterDomain: cluster.gke.gcp-us-east1
+  crdbCluster:
+    dataStore:
+      pvc:
+        spec:
+          storageClassName: premium-rwo
+          resources:
+            requests:
+              storage: 500Gi
 
-  # Define regions and zones
-  regions:
-    - name: us-east1
-      zones:
-        - us-east1-b
-        - us-east1-c
-        - us-east1-d
-    - name: europe-west1
-      zones:
-        - europe-west1-b
-        - europe-west1-c
-        - europe-west1-d
-    - name: asia-southeast1
-      zones:
-        - asia-southeast1-a
-        - asia-southeast1-b
-        - asia-southeast1-c
-
-  # Locality configuration for data placement
-  additionalArgs:
-    - "--locality=region=us-east1,zone=us-east1-b"
+    # Define regions and node counts for the operator-managed cluster
+    regions:
+      - code: us-east1
+        nodes: 3
+        cloudProvider: gcp
+        domain: cluster.gke.gcp-us-east1
+        namespace: cockroachdb
+      - code: europe-west1
+        nodes: 3
+        cloudProvider: gcp
+        domain: cluster.gke.gcp-europe-west1
+        namespace: cockroachdb
+      - code: asia-southeast1
+        nodes: 3
+        cloudProvider: gcp
+        domain: cluster.gke.gcp-asia-southeast1
+        namespace: cockroachdb
 ```
 
 ```sql
 -- CockroachDB table with regional partitioning
 -- Data stays in its home region for compliance
 
+ALTER DATABASE app PRIMARY REGION "us-east1";
+ALTER DATABASE app ADD REGION "europe-west1";
+ALTER DATABASE app ADD REGION "asia-southeast1";
+
 CREATE TABLE users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     email STRING NOT NULL,
     name STRING,
-    region STRING NOT NULL,
+    region crdb_internal_region NOT NULL,
     created_at TIMESTAMP DEFAULT now(),
 
     -- Index for regional queries
     INDEX idx_region (region)
 ) LOCALITY REGIONAL BY ROW AS region;
 
--- Insert automatically routes to correct region
+-- Insert homes the row in the specified region
 INSERT INTO users (email, name, region)
 VALUES ('hans@example.de', 'Hans Mueller', 'europe-west1');
 
--- Queries automatically read from local replica
--- when connected to that region
+-- Queries can use the regional locality column
 SELECT * FROM users WHERE region = 'europe-west1';
 ```
 
@@ -660,7 +657,11 @@ resource "aws_rds_cluster" "secondary_eu" {
 
   # This makes it a secondary/replica cluster
   # It will automatically replicate from the primary
-  depends_on = [aws_rds_cluster.primary]
+  lifecycle {
+    ignore_changes = [replication_source_identifier]
+  }
+
+  depends_on = [aws_rds_cluster_instance.primary]
 }
 
 resource "aws_rds_cluster_instance" "secondary_eu" {
@@ -816,13 +817,14 @@ Handles DNS cutover, database promotion, and scaling.
 
 import boto3
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 
 # Configuration
 PRIMARY_REGION = 'us-east-1'
 SECONDARY_REGION = 'eu-central-1'
 HOSTED_ZONE_ID = 'Z1234567890'
 RECORD_NAME = 'api.example.com'
+SECONDARY_CLUSTER_ARN = 'arn:aws:rds:eu-central-1:123456789012:cluster:app-db-eu-central'
 
 
 class MultiRegionFailover:
@@ -868,7 +870,7 @@ class MultiRegionFailover:
         # Remove from global cluster (promotes to standalone)
         self.rds_secondary.remove_from_global_cluster(
             GlobalClusterIdentifier='global-app-db',
-            DbClusterIdentifier='app-db-eu-central'
+            DbClusterIdentifier=SECONDARY_CLUSTER_ARN
         )
 
         # Wait for promotion to complete
@@ -908,7 +910,7 @@ class MultiRegionFailover:
         self.route53.change_resource_record_sets(
             HostedZoneId=HOSTED_ZONE_ID,
             ChangeBatch={
-                'Comment': f'Failover at {datetime.utcnow().isoformat()}',
+                'Comment': f'Failover at {datetime.now(timezone.utc).isoformat()}',
                 'Changes': [{
                     'Action': 'UPSERT',
                     'ResourceRecordSet': {
@@ -1174,4 +1176,4 @@ flowchart LR
 
 ---
 
-Multi-region architecture is not a luxury reserved for massive enterprises. With the right patterns and automation, any team can build globally available systems. Start with active-passive if you need DR, graduate to active-active when you need zero downtime. The key is to automate everything and test your failover before you need it. The worst time to discover your failover does not work is during an actual outage.
+Multi-region architecture is not a luxury reserved for massive enterprises. With the right patterns and automation, any team can build globally available systems. Start with active-passive if you need DR, graduate to active-active when you need very low downtime. The key is to automate everything and test your failover before you need it. The worst time to discover your failover does not work is during an actual outage.
