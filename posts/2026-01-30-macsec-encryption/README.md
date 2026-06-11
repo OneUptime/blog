@@ -123,7 +123,7 @@ Many security frameworks now recommend or require Layer 2 encryption:
 | OSI Layer | 2 | 3 | 4-7 |
 | Encrypts | Ethernet frames | IP packets | Application data |
 | Scope | Hop-by-hop | End-to-end | End-to-end |
-| Protocol agnostic | Yes | IP only | TCP only |
+| Protocol agnostic | Yes | IP only | Application protocol dependent |
 | Hardware offload | Common | Some | Some |
 | Key management | MKA/802.1X | IKE | PKI/Certificates |
 
@@ -234,9 +234,9 @@ sudo dnf install iproute wpa_supplicant
 
 ### Network Requirements
 
-- All devices in the MACSec path must support it
-- MTU consideration: MACSec adds 32 bytes overhead
-- Time synchronization recommended for replay protection
+- Both endpoints of each MACSec-secured link must support it
+- MTU consideration: MACSec can add up to 32 bytes overhead
+- Time synchronization recommended when using time-based key lifetimes or rollover
 
 ---
 
@@ -251,7 +251,7 @@ This approach uses pre-shared keys without MKA. Useful for testing or simple poi
 ```bash
 # On Host A (192.168.1.10)
 # Create MACSec interface on top of eth0
-sudo ip link add link eth0 macsec0 type macsec sci 1 encrypt on
+sudo ip link add link eth0 macsec0 type macsec port 1 encrypt on
 
 # View the created interface
 ip link show macsec0
@@ -268,9 +268,9 @@ KEY="0123456789abcdef0123456789abcdef"
 sudo ip macsec add macsec0 tx sa 0 pn 1 on key 00 $KEY
 
 # On Host A: Configure receive secure channel and association
-# SCI format: MAC address (12 hex) + port (4 hex)
-sudo ip macsec add macsec0 rx sci 001122334456 port 1
-sudo ip macsec add macsec0 rx sci 001122334456 port 1 sa 0 pn 1 on key 00 $KEY
+# Receive from Host B's MAC address and MACSec port
+sudo ip macsec add macsec0 rx port 1 address 00:11:22:33:44:56
+sudo ip macsec add macsec0 rx port 1 address 00:11:22:33:44:56 sa 0 pn 1 on key 00 $KEY
 ```
 
 #### Step 3: Bring Up the Interface and Assign IP
@@ -283,11 +283,11 @@ sudo ip link set macsec0 up
 sudo ip addr add 10.0.0.1/24 dev macsec0
 ```
 
-#### Step 4: Repeat on Host B with Swapped SCIs
+#### Step 4: Repeat on Host B with Swapped MAC Addresses
 
 ```bash
 # On Host B (192.168.1.20)
-sudo ip link add link eth0 macsec0 type macsec sci 2 encrypt on
+sudo ip link add link eth0 macsec0 type macsec port 1 encrypt on
 
 # Same key as Host A
 KEY="0123456789abcdef0123456789abcdef"
@@ -295,9 +295,9 @@ KEY="0123456789abcdef0123456789abcdef"
 # Transmit SA
 sudo ip macsec add macsec0 tx sa 0 pn 1 on key 00 $KEY
 
-# Receive SA (with Host A's SCI)
-sudo ip macsec add macsec0 rx sci 001122334455 port 1
-sudo ip macsec add macsec0 rx sci 001122334455 port 1 sa 0 pn 1 on key 00 $KEY
+# Receive SA (with Host A's MAC address and MACSec port)
+sudo ip macsec add macsec0 rx port 1 address 00:11:22:33:44:55
+sudo ip macsec add macsec0 rx port 1 address 00:11:22:33:44:55 sa 0 pn 1 on key 00 $KEY
 
 # Bring up and assign IP
 sudo ip link set macsec0 up
@@ -317,16 +317,16 @@ set -e
 # Configuration
 PHYSICAL_IF="${1:-eth0}"
 MACSEC_IF="macsec0"
-LOCAL_SCI="${2}"
-REMOTE_SCI="${3}"
+LOCAL_PORT="${2:-1}"
+REMOTE_PORT="${3:-1}"
 LOCAL_IP="${4}"
 REMOTE_MAC="${5}"
 PSK="${6:-0123456789abcdef0123456789abcdef}"
 
 # Validate inputs
-if [ -z "$LOCAL_SCI" ] || [ -z "$REMOTE_SCI" ] || [ -z "$LOCAL_IP" ]; then
-    echo "Usage: $0 <physical_if> <local_sci> <remote_sci> <local_ip> <remote_mac> [psk]"
-    echo "Example: $0 eth0 1 2 10.0.0.1/24 00:11:22:33:44:56 mykey123..."
+if [ -z "$LOCAL_IP" ] || [ -z "$REMOTE_MAC" ]; then
+    echo "Usage: $0 <physical_if> <local_port> <remote_port> <local_ip> <remote_mac> [psk]"
+    echo "Example: $0 eth0 1 1 10.0.0.1/24 00:11:22:33:44:56 0123456789abcdef0123456789abcdef"
     exit 1
 fi
 
@@ -336,14 +336,14 @@ echo "Setting up MACSec on $PHYSICAL_IF..."
 ip link show $MACSEC_IF &>/dev/null && sudo ip link del $MACSEC_IF
 
 # Create MACSec interface
-sudo ip link add link $PHYSICAL_IF $MACSEC_IF type macsec sci $LOCAL_SCI encrypt on
+sudo ip link add link $PHYSICAL_IF $MACSEC_IF type macsec port $LOCAL_PORT encrypt on
 
 # Configure transmit secure association
 sudo ip macsec add $MACSEC_IF tx sa 0 pn 1 on key 00 $PSK
 
 # Configure receive secure channel and association
-sudo ip macsec add $MACSEC_IF rx sci $REMOTE_MAC port 1
-sudo ip macsec add $MACSEC_IF rx sci $REMOTE_MAC port 1 sa 0 pn 1 on key 00 $PSK
+sudo ip macsec add $MACSEC_IF rx port $REMOTE_PORT address $REMOTE_MAC
+sudo ip macsec add $MACSEC_IF rx port $REMOTE_PORT address $REMOTE_MAC sa 0 pn 1 on key 00 $PSK
 
 # Bring up interface
 sudo ip link set $MACSEC_IF up
@@ -390,6 +390,7 @@ eapol_version=3
 network={
     key_mgmt=IEEE8021X
     eap=TLS
+    eapol_flags=0
 
     # Identity for 802.1X authentication
     identity="host@example.com"
@@ -404,11 +405,8 @@ network={
     macsec_policy=1
 
     # MKA configuration
-    # 0 = MKA not required, 1 = MKA required
+    # macsec_policy=1 enables MACSec in "should secure" mode
     macsec_integ_only=0
-
-    # Cipher suite: 0 = GCM-AES-128, 1 = GCM-AES-256
-    macsec_ciphersuite=0
 
     # Port for MKA
     macsec_port=1
@@ -440,6 +438,7 @@ eapol_version=3
 
 network={
     key_mgmt=NONE
+    eapol_flags=0
 
     # Enable MACSec with PSK
     macsec_policy=1
@@ -447,14 +446,12 @@ network={
     # CAK (Connectivity Association Key) - 32 hex characters for 128-bit
     mka_cak=0123456789abcdef0123456789abcdef
 
-    # CKN (Connectivity Association Key Name) - 1-32 hex characters
+    # CKN (Connectivity Association Key Name) - 2-64 hex characters
     mka_ckn=0011223344556677
 
     # Priority (0-255, lower is higher priority)
     mka_priority=16
 
-    # Cipher suite
-    macsec_ciphersuite=0
     macsec_integ_only=0
 }
 ```
@@ -502,14 +499,11 @@ MACSec on Cisco switches can operate in two modes: switch-to-switch (uplink) and
 #### Switch-to-Switch MACSec
 
 ```text
-! Enable MACSec globally
-macsec network-link
-
 ! Configure MKA policy
 mka policy MACSEC-POLICY
  macsec-cipher-suite gcm-aes-256
  key-server priority 10
- sak-rekey-interval 86400
+ sak-rekey interval 86400
  confidentiality-offset 0
 
 ! Configure key chain for PSK
@@ -545,7 +539,7 @@ radius server ISE-PRIMARY
 mka policy HOST-MACSEC
  macsec-cipher-suite gcm-aes-128
  confidentiality-offset 0
- sak-rekey-interval 3600
+ sak-rekey interval 3600
 
 ! Apply to access port
 interface GigabitEthernet1/0/10
@@ -597,7 +591,7 @@ set security macsec connectivity-association CA-UPLINK pre-shared-key cak "$9$<e
 
 # Apply to interface
 set interfaces xe-0/0/0 unit 0 family ethernet-switching interface-mode trunk
-set interfaces xe-0/0/0 ether-options 802.1ae connectivity-association CA-UPLINK
+set security macsec interfaces xe-0/0/0 connectivity-association CA-UPLINK
 ```
 
 #### MACSec with 802.1X
@@ -612,8 +606,10 @@ set protocols dot1x authenticator interface ge-0/0/10 transmit-period 30
 set protocols dot1x authenticator interface ge-0/0/10 retries 3
 
 # Enable MACSec on the 802.1X port
+set security macsec connectivity-association CA-DYNAMIC
+set security macsec connectivity-association CA-DYNAMIC security-mode dynamic
 set protocols dot1x authenticator interface ge-0/0/10 eapol-block
-set security macsec interfaces ge-0/0/10
+set security macsec interfaces ge-0/0/10 connectivity-association CA-DYNAMIC
 
 # Configure RADIUS server
 set access radius-server 192.168.100.10 secret "<secret>"
@@ -671,14 +667,16 @@ The EtherType 0x88E5 indicates MACSec frames. The payload after the SecTAG shoul
 ### MKA Session Verification
 
 ```bash
-# Check wpa_supplicant status
+# Check wpa_supplicant control status
 sudo wpa_cli -i eth0 status
 
-# Expected output:
-# macsec_enabled=TRUE
-# macsec_protect=TRUE
-# macsec_encrypt=TRUE
-# mka_secured=TRUE
+# Confirm that MKA installed MACSec secure channels and associations
+ip macsec show
+
+# Expected indicators include:
+# protect on
+# encrypt on
+# TXSC and RXSC entries with active SAs
 ```
 
 ### Linux MACSec Statistics
@@ -788,7 +786,7 @@ MACSec encryption adds computational overhead. The impact depends on:
 
 ### MTU Considerations
 
-MACSec adds 32 bytes of overhead:
+MACSec can add up to 32 bytes of overhead, so many deployments reserve 32 bytes when planning MTU:
 
 - 8-16 bytes for SecTAG
 - 16 bytes for ICV (Integrity Check Value)
