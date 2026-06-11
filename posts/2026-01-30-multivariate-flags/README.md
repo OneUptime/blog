@@ -604,7 +604,7 @@ interface VariantMetrics {
   impressions: number;
   conversions: number;
   conversionRate: number;
-  confidence: number;
+  confidence: number | 'baseline';
 }
 
 async function analyzeExperiment(
@@ -627,37 +627,67 @@ async function analyzeExperiment(
 
   const results = await db.query(query, [flagKey, conversionEvent]);
 
+  const control = results.find(row => row.variant_key === 'control');
+
   return results.map(row => ({
     variantKey: row.variant_key,
     impressions: row.impressions,
     conversions: row.conversions,
     conversionRate: row.conversions / row.impressions,
-    confidence: calculateConfidence(row.impressions, row.conversions)
+    confidence: row.variant_key === 'control' || !control
+      ? 'baseline'
+      : calculateConfidence(
+          control.impressions,
+          control.conversions,
+          row.impressions,
+          row.conversions
+        )
   }));
 }
 ```
 
 ### Statistical Significance
 
-Do not declare a winner until you have statistical significance. Here is a simplified chi-squared test:
+Do not declare a winner until you have statistical significance. Here is a simplified two-proportion z-test:
 
 ```typescript
 function calculateConfidence(
-  impressions: number,
-  conversions: number
+  controlImpressions: number,
+  controlConversions: number,
+  variantImpressions: number,
+  variantConversions: number
 ): number {
-  // Simplified confidence calculation
+  // Simplified two-tailed confidence calculation
   // Use a proper statistical library for production
-  const p = conversions / impressions;
-  const standardError = Math.sqrt((p * (1 - p)) / impressions);
-  const zScore = p / standardError;
+  const controlRate = controlConversions / controlImpressions;
+  const variantRate = variantConversions / variantImpressions;
+  const pooledRate =
+    (controlConversions + variantConversions) /
+    (controlImpressions + variantImpressions);
+  const standardError = Math.sqrt(
+    pooledRate *
+      (1 - pooledRate) *
+      (1 / controlImpressions + 1 / variantImpressions)
+  );
 
-  // Convert z-score to confidence percentage
-  // This is a rough approximation
-  if (zScore > 2.58) return 99;
-  if (zScore > 1.96) return 95;
-  if (zScore > 1.64) return 90;
-  return Math.min(zScore * 30, 89);
+  if (standardError === 0) return 0;
+
+  const zScore = Math.abs(variantRate - controlRate) / standardError;
+  const pValue = 2 * (1 - normalCdf(zScore));
+
+  return Math.max(0, Math.min((1 - pValue) * 100, 99.99));
+}
+
+function normalCdf(z: number): number {
+  const t = 1 / (1 + 0.2316419 * Math.abs(z));
+  const d = 0.3989423 * Math.exp(-z * z / 2);
+  const probability =
+    d *
+    t *
+    (0.3193815 +
+      t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274))));
+
+  return z > 0 ? 1 - probability : probability;
 }
 ```
 
@@ -671,10 +701,10 @@ Total Users: 45,231
 | Variant  | Users  | Conversions | Rate   | Confidence |
 |----------|--------|-------------|--------|------------|
 | control  | 22,615 | 1,356       | 6.00%  | baseline   |
-| express  | 11,308 | 791         | 7.00%  | 94%        |
-| guided   | 11,308 | 848         | 7.50%  | 98%        |
+| express  | 11,308 | 791         | 7.00%  | >99%       |
+| guided   | 11,308 | 848         | 7.50%  | >99%       |
 
-Recommendation: "guided" variant shows +25% lift with 98% confidence
+Recommendation: "guided" variant shows +25% lift with >99% confidence
 ```
 
 ## Gradual Variant Rollout
