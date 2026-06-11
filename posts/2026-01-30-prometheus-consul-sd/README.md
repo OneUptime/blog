@@ -215,14 +215,16 @@ Consul SD provides these labels for each discovered target:
 | `__meta_consul_address` | Service instance address |
 | `__meta_consul_dc` | Consul datacenter |
 | `__meta_consul_health` | Service health status |
-| `__meta_consul_metadata_<key>` | Service metadata |
+| `__meta_consul_metadata_<key>` | Node metadata |
 | `__meta_consul_node` | Consul node name |
+| `__meta_consul_partition` | Admin partition the service belongs to |
 | `__meta_consul_service` | Service name |
 | `__meta_consul_service_address` | Service-specific address |
 | `__meta_consul_service_id` | Service ID |
+| `__meta_consul_service_metadata_<key>` | Service metadata |
 | `__meta_consul_service_port` | Service port |
-| `__meta_consul_tagged_address_<key>` | Tagged addresses |
-| `__meta_consul_tags` | Comma-separated tags |
+| `__meta_consul_tagged_address_<key>` | Node tagged addresses |
+| `__meta_consul_tags` | Tag-separator-joined list of tags |
 
 ### Filtering by Tags
 
