@@ -265,6 +265,7 @@ import (
     "context"
     "database/sql"
     "fmt"
+    "sync"
     "time"
 
     "golang.org/x/sync/semaphore"
@@ -283,12 +284,12 @@ func NewDBPool(db *sql.DB, maxConnections int64) *DBPool {
     }
 }
 
-func (p *DBPool) Query(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
+func (p *DBPool) Query(ctx context.Context, query string, args ...interface{}) (*poolRows, error) {
     // Set timeout for acquiring connection
-    ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+    acquireCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
     defer cancel()
 
-    if err := p.sem.Acquire(ctx, 1); err != nil {
+    if err := p.sem.Acquire(acquireCtx, 1); err != nil {
         return nil, fmt.Errorf("connection pool exhausted: %w", err)
     }
 
@@ -305,11 +306,13 @@ func (p *DBPool) Query(ctx context.Context, query string, args ...interface{}) (
 type poolRows struct {
     *sql.Rows
     release func()
+    once    sync.Once
 }
 
 func (r *poolRows) Close() error {
-    r.release()
-    return r.Rows.Close()
+    err := r.Rows.Close()
+    r.once.Do(r.release)
+    return err
 }
 ```
 
