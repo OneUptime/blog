@@ -8,7 +8,7 @@ Description: Learn to implement degenerate dimensions for storing dimension keys
 
 ---
 
-> Degenerate dimensions break the traditional dimensional modeling rule by storing dimension attributes directly in fact tables. When a dimension has no useful attributes beyond its identifier, creating a separate dimension table adds unnecessary complexity. Learn when and how to implement this powerful optimization technique.
+> Degenerate dimensions break the traditional dimensional modeling rule by storing dimension identifiers directly in fact tables. When a dimension has no useful attributes beyond its identifier, creating a separate dimension table adds unnecessary complexity. Learn when and how to implement this powerful optimization technique.
 
 Not every identifier needs its own dimension table. Understanding degenerate dimensions helps you build leaner, more efficient data warehouses.
 
@@ -77,9 +77,9 @@ erDiagram
         varchar segment
     }
 
-    FACT_SALES ||--o{ DIM_DATE : "date_key"
-    FACT_SALES ||--o{ DIM_PRODUCT : "product_key"
-    FACT_SALES ||--o{ DIM_CUSTOMER : "customer_key"
+    DIM_DATE ||--o{ FACT_SALES : "date_key"
+    DIM_PRODUCT ||--o{ FACT_SALES : "product_key"
+    DIM_CUSTOMER ||--o{ FACT_SALES : "customer_key"
 ```
 
 ### Transaction IDs and Reference Numbers
@@ -124,7 +124,7 @@ CREATE TABLE fact_sales (
     total_amount DECIMAL(12,2) NOT NULL,
 
     -- Metadata for tracking data lineage
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME2(0) DEFAULT SYSUTCDATETIME(),
     source_system VARCHAR(50)
 );
 
@@ -177,7 +177,7 @@ CREATE TABLE fact_payment_transactions (
     is_successful BIT NOT NULL,
 
     -- Audit columns
-    processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    processed_at DATETIME2(0) DEFAULT SYSUTCDATETIME()
 );
 
 -- Index each degenerate dimension separately for direct lookups
@@ -246,18 +246,21 @@ BEGIN
             ON dd.full_date = CAST(stg.sale_date AS DATE)
         INNER JOIN dim_product dp
             ON dp.product_code = stg.product_code
-            AND dp.is_current = 1  -- SCD Type 2: get current version
+            AND stg.sale_date >= dp.effective_date
+            AND stg.sale_date < COALESCE(dp.end_date, '9999-12-31')
         INNER JOIN dim_customer dc
             ON dc.customer_id = stg.customer_id
-            AND dc.is_current = 1
+            AND stg.sale_date >= dc.effective_date
+            AND stg.sale_date < COALESCE(dc.end_date, '9999-12-31')
         INNER JOIN dim_store ds
             ON ds.store_code = stg.store_code
 
-        -- Avoid loading duplicates by checking if order already exists
+        -- Avoid loading duplicates by checking if the order/product line already exists
         WHERE NOT EXISTS (
             SELECT 1
             FROM fact_sales fs
             WHERE fs.order_number = stg.order_number
+                AND fs.product_key = dp.product_key
         );
 
         -- Log the number of records loaded
@@ -287,7 +290,7 @@ Use the degenerate dimension as a natural key for duplicate detection:
 
 ```sql
 -- Merge statement for incremental loading with duplicate handling
--- The degenerate dimension (order_number) serves as the business key for matching
+-- The degenerate dimension plus product key serves as the business key for matching
 MERGE INTO fact_sales AS target
 USING (
     SELECT
@@ -302,12 +305,19 @@ USING (
         stg.quantity * stg.unit_price - stg.discount_amount AS total_amount
     FROM staging_sales stg
     INNER JOIN dim_date dd ON dd.full_date = CAST(stg.sale_date AS DATE)
-    INNER JOIN dim_product dp ON dp.product_code = stg.product_code AND dp.is_current = 1
-    INNER JOIN dim_customer dc ON dc.customer_id = stg.customer_id AND dc.is_current = 1
+    INNER JOIN dim_product dp
+        ON dp.product_code = stg.product_code
+        AND stg.sale_date >= dp.effective_date
+        AND stg.sale_date < COALESCE(dp.end_date, '9999-12-31')
+    INNER JOIN dim_customer dc
+        ON dc.customer_id = stg.customer_id
+        AND stg.sale_date >= dc.effective_date
+        AND stg.sale_date < COALESCE(dc.end_date, '9999-12-31')
     INNER JOIN dim_store ds ON ds.store_code = stg.store_code
 ) AS source
--- Match on the degenerate dimension to detect duplicates
+-- Match on the degenerate dimension and the fact grain to detect duplicates
 ON target.order_number = source.order_number
+    AND target.product_key = source.product_key
 
 -- Update existing records if measures have changed
 WHEN MATCHED AND (
@@ -401,13 +411,23 @@ Link related fact tables using shared degenerate dimensions:
 ```sql
 -- Join multiple fact tables using a shared degenerate dimension
 -- This pattern links sales to shipments and payments for a complete view
+;WITH sales_by_order AS (
+    SELECT
+        fs.order_number,
+        fs.date_key,
+        fs.customer_key,
+        SUM(fs.total_amount) AS order_total
+    FROM fact_sales fs
+    WHERE fs.order_number = 'ORD-2026-001234'
+    GROUP BY fs.order_number, fs.date_key, fs.customer_key
+)
 SELECT
-    fs.order_number,
+    sales.order_number,
     dd.full_date AS order_date,
     dc.customer_name,
 
     -- Sales metrics from fact_sales
-    SUM(fs.total_amount) AS order_total,
+    sales.order_total,
 
     -- Shipment metrics from fact_shipments
     ship.shipment_tracking_number,
@@ -419,29 +439,17 @@ SELECT
     pay.payment_date,
     pay.payment_amount
 
-FROM fact_sales fs
-INNER JOIN dim_date dd ON fs.date_key = dd.date_key
-INNER JOIN dim_customer dc ON fs.customer_key = dc.customer_key
+FROM sales_by_order sales
+INNER JOIN dim_date dd ON sales.date_key = dd.date_key
+INNER JOIN dim_customer dc ON sales.customer_key = dc.customer_key
 
 -- Join to shipment facts using the degenerate dimension
 LEFT JOIN fact_shipments ship
-    ON ship.order_number = fs.order_number
+    ON ship.order_number = sales.order_number
 
 -- Join to payment facts using the degenerate dimension
 LEFT JOIN fact_payments pay
-    ON pay.order_number = fs.order_number
-
-WHERE fs.order_number = 'ORD-2026-001234'
-GROUP BY
-    fs.order_number,
-    dd.full_date,
-    dc.customer_name,
-    ship.shipment_tracking_number,
-    ship.shipped_date,
-    ship.delivered_date,
-    pay.payment_reference,
-    pay.payment_date,
-    pay.payment_amount;
+    ON pay.order_number = sales.order_number;
 ```
 
 ---
@@ -521,10 +529,10 @@ CREATE INDEX idx_order_number
 ON fact_orders(order_number);
 
 -- Filtered index for recent data to optimize common queries
--- Most lookups target recent orders so index only last 90 days
+-- Use a fixed cutoff value; filtered index predicates cannot contain subqueries
 CREATE INDEX idx_order_number_recent
 ON fact_orders(order_number)
-WHERE date_key >= (SELECT MAX(date_key) - 90 FROM dim_date);
+WHERE date_key >= 20260101;
 
 -- Covering index for common query patterns
 -- Includes frequently accessed columns to avoid table lookups
@@ -656,6 +664,15 @@ Partition fact tables while maintaining degenerate dimension access:
 ```sql
 -- Create a partitioned fact table
 -- Partition by date for efficient data management and query performance
+-- Create a partition function and scheme for each month
+-- This enables partition pruning for date-filtered queries
+CREATE PARTITION FUNCTION pf_fact_sales_date_key (INT)
+AS RANGE RIGHT FOR VALUES (20260201, 20260301);
+
+CREATE PARTITION SCHEME ps_fact_sales_date_key
+AS PARTITION pf_fact_sales_date_key
+ALL TO ([PRIMARY]);
+
 CREATE TABLE fact_sales_partitioned (
     sale_id BIGINT IDENTITY(1,1),
     order_number VARCHAR(50) NOT NULL,
@@ -665,25 +682,19 @@ CREATE TABLE fact_sales_partitioned (
     quantity INT NOT NULL,
     total_amount DECIMAL(12,2) NOT NULL
 )
-PARTITION BY RANGE (date_key);
+ON ps_fact_sales_date_key(date_key);
 
--- Create partitions for each month
--- This enables partition pruning for date-filtered queries
-CREATE TABLE fact_sales_202601 PARTITION OF fact_sales_partitioned
-    FOR VALUES FROM (20260101) TO (20260201);
+-- Create an aligned partitioned index for the degenerate dimension
+-- Aligned indexes support efficient partition-level operations
+CREATE INDEX idx_sales_order_aligned
+ON fact_sales_partitioned(order_number)
+ON ps_fact_sales_date_key(date_key);
 
-CREATE TABLE fact_sales_202602 PARTITION OF fact_sales_partitioned
-    FOR VALUES FROM (20260201) TO (20260301);
-
--- Create local indexes on each partition for the degenerate dimension
--- Local indexes improve query performance within each partition
-CREATE INDEX idx_sales_202601_order ON fact_sales_202601(order_number);
-CREATE INDEX idx_sales_202602_order ON fact_sales_202602(order_number);
-
--- Create a global index for cross-partition lookups by order number
--- This index spans all partitions for queries that do not filter by date
-CREATE INDEX idx_sales_order_global
-ON fact_sales_partitioned(order_number);
+-- Create a nonaligned index for cross-partition lookups by order number
+-- This can help queries that do not filter by date
+CREATE INDEX idx_sales_order_lookup
+ON fact_sales_partitioned(order_number)
+ON [PRIMARY];
 ```
 
 ### Compression Strategies
@@ -691,13 +702,7 @@ ON fact_sales_partitioned(order_number);
 Optimize storage for high-cardinality degenerate dimensions:
 
 ```sql
--- Enable column compression for degenerate dimensions
--- Dictionary encoding works well for repeated patterns in order numbers
-ALTER TABLE fact_sales
-ALTER COLUMN order_number
-SET DATA TYPE VARCHAR(50) ENCODING DICTIONARY;
-
--- For databases that support it, use page-level compression
+-- Enable page-level compression
 -- This reduces storage without sacrificing query performance
 ALTER TABLE fact_sales
 REBUILD WITH (DATA_COMPRESSION = PAGE);
@@ -719,14 +724,14 @@ GROUP BY object_id;
 Validate degenerate dimension implementation:
 
 ```sql
--- Test 1: Verify no orphaned degenerate dimensions
--- Ensure every order number in fact_sales has corresponding records
+-- Test 1: Verify required degenerate dimension values are populated
 SELECT
     fs.order_number,
     COUNT(*) AS line_count
 FROM fact_sales fs
-GROUP BY fs.order_number
-HAVING COUNT(*) = 0;  -- Should return no rows
+WHERE fs.order_number IS NULL
+    OR LTRIM(RTRIM(fs.order_number)) = ''
+GROUP BY fs.order_number;  -- Should return no rows
 
 -- Test 2: Verify degenerate dimension uniqueness at the grain
 -- Each order should not have duplicate product lines
