@@ -66,7 +66,7 @@ Use dark launches when you need to validate correctness before any user exposure
 
 Start with a simple router that executes both paths and compares results.
 
-The following class wraps both implementations and runs them in parallel. It returns the old result while logging differences.
+The following class wraps both implementations and runs the dark path in the background after the old path succeeds. It returns the old result while logging differences.
 
 ```typescript
 // dark-launch-router.ts
@@ -149,7 +149,7 @@ class DarkLaunchRouter<T> {
 
 ## Using the Dark Launch Router
 
-Here is how you integrate the router into an existing service. The search service runs both the old and new implementations for each request.
+Here is how you integrate the router into an existing service. The search service runs both the old and new implementations for sampled requests.
 
 ```typescript
 // search-service.ts
@@ -186,7 +186,7 @@ class SearchService {
 
 ## Async Processing for Heavy Operations
 
-For operations that are expensive, run the dark path asynchronously using a message queue. This prevents the dark launch from slowing down responses.
+For operations that are expensive, run the dark path asynchronously using a message queue. This keeps the expensive new implementation out of the user request path.
 
 ```mermaid
 sequenceDiagram
@@ -205,13 +205,14 @@ sequenceDiagram
     Worker->>Metrics: Report comparison
 ```
 
-The queue-based approach ensures that even slow new implementations do not affect user latency.
+The queue-based approach keeps slow new implementations from affecting user latency beyond the cost of enqueueing the dark launch job.
 
 ```typescript
 // async-dark-launch.ts
 class AsyncDarkLaunch {
   private queue: JobQueue;
   private config: DarkLaunchConfig;
+  private metrics: MetricsClient;
 
   async execute<T>(
     oldPath: () => Promise<T>,
@@ -221,13 +222,16 @@ class AsyncDarkLaunch {
     // Run old path and capture result
     const oldResult = await oldPath();
 
-    // Enqueue new path for async processing
+    // Enqueue new path for async processing without blocking the response
     if (this.config.enabled && Math.random() <= this.config.sampleRate) {
-      await this.queue.add('dark-launch', {
+      void this.queue.add('dark-launch', {
         jobData: newPathJobData,
         oldResult,
         context,
         enqueuedAt: Date.now()
+      }).catch((error) => {
+        this.metrics.increment('dark_launch.enqueue_error', context);
+        console.error('Failed to enqueue dark launch job', { context, error });
       });
     }
 
@@ -261,7 +265,7 @@ class DarkLaunchWorker {
 
 ## Database Migration Dark Launch
 
-Dark launches shine during database migrations. You can write to both databases and verify consistency without risking data loss.
+Dark launches shine during database migrations. You can write to both databases and verify consistency without changing the user-facing read path.
 
 ```mermaid
 flowchart TB
@@ -282,7 +286,7 @@ class DatabaseDarkLaunch {
   private newDb: Database;
   private metrics: MetricsClient;
 
-  // Write to both databases, return old result
+  // Write to the old database first, then shadow-write the new database
   async write(operation: string, data: Record<string, unknown>): Promise<void> {
     // Primary write to old database
     await this.oldDb.write(operation, data);
@@ -480,6 +484,6 @@ const darkLaunchConfig: ProgressiveConfig = {
 
 ---
 
-Dark launching gives you production confidence without production risk. Start with a basic router, add metrics, and gradually increase coverage. When your match rate hits 99.9% and latency stays flat, you know the new code is ready for real users.
+Dark launching gives you production confidence with less production risk. Start with a basic router, add metrics, and gradually increase coverage. When your match rate hits 99.9% and latency stays flat, you have a strong signal that the new code is ready for real users.
 
 *Want to monitor your dark launches with real-time metrics and alerting? [OneUptime](https://oneuptime.com) provides full observability for your feature rollouts.*
