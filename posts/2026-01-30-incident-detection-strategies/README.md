@@ -278,7 +278,7 @@ Burn rate measures how fast you are consuming your error budget relative to your
 # Calculate SLO burn rates and determine if alerts should fire
 
 from dataclasses import dataclass
-from typing import Optional, List
+from typing import List
 
 @dataclass
 class SLOConfig:
@@ -301,7 +301,7 @@ class BurnRateAlert:
 # Based on Google SRE Workbook recommendations
 BURN_RATE_ALERTS = [
     # Fast burn: catches severe outages quickly
-    # At 14.4x burn rate, budget exhausts in ~2 hours
+    # At 14.4x burn rate, 2% of a 30-day error budget is consumed in 1 hour
     BurnRateAlert(
         short_window_minutes=5,
         long_window_minutes=60,
@@ -309,7 +309,7 @@ BURN_RATE_ALERTS = [
         severity="critical"
     ),
     # Medium burn: catches significant degradation
-    # At 6x burn rate, budget exhausts in ~5 days
+    # At 6x burn rate, 5% of a 30-day error budget is consumed in 6 hours
     BurnRateAlert(
         short_window_minutes=30,
         long_window_minutes=360,
@@ -317,7 +317,7 @@ BURN_RATE_ALERTS = [
         severity="warning"
     ),
     # Slow burn: catches gradual degradation
-    # At 3x burn rate, budget exhausts in ~10 days
+    # At 3x burn rate, 10% of a 30-day error budget is consumed in 24 hours
     BurnRateAlert(
         short_window_minutes=120,
         long_window_minutes=1440,
@@ -895,7 +895,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Callable, Optional, List, Any
 from enum import Enum
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 class CheckStatus(Enum):
@@ -981,7 +981,7 @@ class SyntheticMonitor:
                 name=check.name,
                 status=CheckStatus.SUCCESS,
                 duration_ms=duration_ms,
-                timestamp=datetime.utcnow()
+                timestamp=datetime.now(timezone.utc)
             )
 
             # Reset failure counter on success
@@ -993,7 +993,7 @@ class SyntheticMonitor:
                 name=check.name,
                 status=CheckStatus.TIMEOUT,
                 duration_ms=duration_ms,
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(timezone.utc),
                 error_message=f"Check timed out after {check.timeout_seconds}s"
             )
             check.consecutive_failures += 1
@@ -1004,7 +1004,7 @@ class SyntheticMonitor:
                 name=check.name,
                 status=CheckStatus.ERROR,
                 duration_ms=duration_ms,
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(timezone.utc),
                 error_message=str(e)
             )
             check.consecutive_failures += 1
@@ -1119,7 +1119,7 @@ User reports become more valuable when correlated with your monitoring signals:
 # Correlate user reports with monitoring data to identify incidents
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 from collections import defaultdict
 
@@ -1263,7 +1263,7 @@ class UserReportCorrelator:
 
     def _cleanup_old_data(self) -> None:
         """Remove data older than the lookback window."""
-        cutoff = datetime.utcnow() - self.monitoring_lookback * 2
+        cutoff = datetime.now(timezone.utc) - self.monitoring_lookback * 2
         self.reports = [r for r in self.reports if r.timestamp >= cutoff]
         self.monitoring_signals = [
             s for s in self.monitoring_signals if s.timestamp >= cutoff
@@ -1572,7 +1572,7 @@ flowchart TB
 # Complete detection pipeline orchestration
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Callable, Any
 from enum import Enum
 import asyncio
@@ -1726,7 +1726,7 @@ class DetectionPipeline:
 
     def _cleanup_old_alerts(self) -> None:
         """Remove alerts older than correlation window."""
-        cutoff = datetime.utcnow() - timedelta(hours=1)
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=1)
         self.recent_alerts = [
             a for a in self.recent_alerts
             if a.timestamp >= cutoff
@@ -1752,7 +1752,7 @@ def create_example_pipeline() -> DetectionPipeline:
         # Check error rate threshold
         if data.get("metric") == "error_rate" and data.get("value", 0) > 0.05:
             return ProcessedAlert(
-                id=f"alert-{datetime.utcnow().timestamp()}",
+                id=f"alert-{datetime.now(timezone.utc).timestamp()}",
                 name=f"{data.get('service')}-high-error-rate",
                 severity="critical" if data.get("value", 0) > 0.1 else "warning",
                 service=data.get("service", "unknown"),
