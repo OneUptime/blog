@@ -111,12 +111,13 @@ class FlagMetricsCollector {
     this.flagEvaluations.get(key)!.push(evaluation);
 
     // Emit to telemetry backend
-    this.emit('flag.evaluation', {
+    this.emit('feature_flag.evaluation', {
       ...evaluation,
       attributes: {
-        'flag.key': evaluation.flagKey,
-        'flag.variation': evaluation.variation,
-        'flag.reason': evaluation.reason,
+        'feature_flag.key': evaluation.flagKey,
+        'feature_flag.result.variant': evaluation.variation,
+        'feature_flag.result.reason': evaluation.reason,
+        'feature_flag.context.id': evaluation.userId,
       },
     });
   }
@@ -397,9 +398,11 @@ class CohortAnalyzer {
     const sum = values.reduce((a, b) => a + b, 0);
     const mean = sum / n;
 
-    // Calculate variance
+    // Calculate sample variance for use in statistical tests
     const squaredDiffs = values.map(v => Math.pow(v - mean, 2));
-    const variance = squaredDiffs.reduce((a, b) => a + b, 0) / n;
+    const variance = n > 1
+      ? squaredDiffs.reduce((a, b) => a + b, 0) / (n - 1)
+      : 0;
 
     return {
       metricName,
@@ -542,7 +545,7 @@ class StatisticalAnalyzer {
     const var1 = control.variance;
     const var2 = treatment.variance;
 
-    // Pooled standard error
+    // Welch standard error for unequal variances
     const standardError = Math.sqrt(var1 / n1 + var2 / n2);
 
     // T-statistic
@@ -597,47 +600,96 @@ class StatisticalAnalyzer {
     const v2 = var2 / n2;
     const numerator = Math.pow(v1 + v2, 2);
     const denominator = Math.pow(v1, 2) / (n1 - 1) + Math.pow(v2, 2) / (n2 - 1);
-    return numerator / denominator;
+    return denominator > 0 ? numerator / denominator : Math.max(n1 + n2 - 2, 1);
   }
 
-  // Approximate p-value from t-distribution
+  // Two-tailed p-value from Student's t-distribution
   private tDistributionPValue(t: number, df: number): number {
-    // Using approximation for large df (normal approximation)
-    // For production, use a proper statistics library
-    if (df > 30) {
-      // Normal approximation
-      return 2 * (1 - this.normalCDF(t));
-    }
-    // For smaller df, use t-distribution lookup or numerical integration
-    // Simplified approximation here
     const x = df / (df + t * t);
-    return this.incompleteBeta(df / 2, 0.5, x);
+    return this.regularizedIncompleteBeta(x, df / 2, 0.5);
   }
 
-  private normalCDF(x: number): number {
-    // Standard normal CDF approximation
-    const a1 = 0.254829592;
-    const a2 = -0.284496736;
-    const a3 = 1.421413741;
-    const a4 = -1.453152027;
-    const a5 = 1.061405429;
-    const p = 0.3275911;
+  private regularizedIncompleteBeta(x: number, a: number, b: number): number {
+    if (x <= 0) return 0;
+    if (x >= 1) return 1;
 
-    const sign = x < 0 ? -1 : 1;
-    x = Math.abs(x) / Math.sqrt(2);
+    const bt = Math.exp(
+      this.logGamma(a + b) -
+      this.logGamma(a) -
+      this.logGamma(b) +
+      a * Math.log(x) +
+      b * Math.log(1 - x)
+    );
 
-    const t = 1.0 / (1.0 + p * x);
-    const y = 1.0 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * Math.exp(-x * x);
+    if (x < (a + 1) / (a + b + 2)) {
+      return bt * this.betaContinuedFraction(x, a, b) / a;
+    }
 
-    return 0.5 * (1.0 + sign * y);
+    return 1 - bt * this.betaContinuedFraction(1 - x, b, a) / b;
   }
 
-  private incompleteBeta(a: number, b: number, x: number): number {
-    // Simplified approximation - use a statistics library in production
-    // This is a placeholder that gives reasonable results
-    if (x === 0) return 0;
-    if (x === 1) return 1;
-    return Math.pow(x, a) * Math.pow(1 - x, b) * 10; // Rough approximation
+  private betaContinuedFraction(x: number, a: number, b: number): number {
+    const maxIterations = 100;
+    const epsilon = 3e-7;
+    const fpmin = 1e-30;
+
+    let qab = a + b;
+    let qap = a + 1;
+    let qam = a - 1;
+    let c = 1;
+    let d = 1 - qab * x / qap;
+    if (Math.abs(d) < fpmin) d = fpmin;
+    d = 1 / d;
+    let h = d;
+
+    for (let m = 1; m <= maxIterations; m++) {
+      const m2 = 2 * m;
+      let aa = m * (b - m) * x / ((qam + m2) * (a + m2));
+      d = 1 + aa * d;
+      if (Math.abs(d) < fpmin) d = fpmin;
+      c = 1 + aa / c;
+      if (Math.abs(c) < fpmin) c = fpmin;
+      d = 1 / d;
+      h *= d * c;
+
+      aa = -(a + m) * (qab + m) * x / ((a + m2) * (qap + m2));
+      d = 1 + aa * d;
+      if (Math.abs(d) < fpmin) d = fpmin;
+      c = 1 + aa / c;
+      if (Math.abs(c) < fpmin) c = fpmin;
+      d = 1 / d;
+      const delta = d * c;
+      h *= delta;
+
+      if (Math.abs(delta - 1) < epsilon) break;
+    }
+
+    return h;
+  }
+
+  private logGamma(z: number): number {
+    const coefficients = [
+      676.5203681218851,
+      -1259.1392167224028,
+      771.32342877765313,
+      -176.61502916214059,
+      12.507343278686905,
+      -0.13857109526572012,
+      9.9843695780195716e-6,
+      1.5056327351493116e-7,
+    ];
+
+    if (z < 0.5) {
+      return Math.log(Math.PI) - Math.log(Math.sin(Math.PI * z)) - this.logGamma(1 - z);
+    }
+
+    z -= 1;
+    let x = 0.99999999999980993;
+    for (let i = 0; i < coefficients.length; i++) {
+      x += coefficients[i] / (z + i + 1);
+    }
+    const t = z + coefficients.length - 0.5;
+    return 0.5 * Math.log(2 * Math.PI) + (z + 0.5) * Math.log(t) - t + Math.log(x);
   }
 
   private tCriticalValue(alpha: number, df: number): number {
@@ -658,27 +710,28 @@ class StatisticalAnalyzer {
     return tTable[closestDf] || 1.96;
   }
 
-  private zCriticalValue(alpha: number): number {
-    // Z critical values for common alpha levels
+  private zCriticalValue(upperTailProbability: number): number {
+    // Z critical values for common upper-tail probabilities
     const zTable: Record<number, number> = {
-      0.10: 1.645,
-      0.05: 1.96,
-      0.025: 2.24,
-      0.01: 2.576,
-      0.005: 2.807,
+      0.10: 1.282,
+      0.05: 1.645,
+      0.025: 1.96,
+      0.01: 2.326,
+      0.005: 2.576,
     };
-    return zTable[alpha] || 1.96;
+    return zTable[upperTailProbability] || 1.96;
   }
 
   // Calculate minimum detectable effect
   private calculateMDE(
     n1: number, n2: number,
     sd1: number, sd2: number,
-    alpha: number
+    alpha: number,
+    power: number = this.defaultPower
   ): number {
     const pooledSD = Math.sqrt((sd1 * sd1 + sd2 * sd2) / 2);
     const z_alpha = this.zCriticalValue(alpha / 2);
-    const z_beta = 0.84; // For 80% power
+    const z_beta = power === 0.8 ? 0.84 : 1.28; // 80% or 90% power
 
     return (z_alpha + z_beta) * pooledSD * Math.sqrt(1/n1 + 1/n2);
   }
@@ -702,8 +755,26 @@ class StatisticalAnalyzer {
 const statsAnalyzer = new StatisticalAnalyzer();
 
 const result = statsAnalyzer.calculateSignificance(
-  { metricName: 'conversion_rate', count: 5000, mean: 0.032, variance: 0.001, ...rest },
-  { metricName: 'conversion_rate', count: 4800, mean: 0.038, variance: 0.0012, ...rest }
+  {
+    metricName: 'conversion_rate',
+    count: 10000,
+    sum: 320,
+    mean: 0.032,
+    variance: 0.03098,
+    min: 0,
+    max: 1,
+    percentiles: { p50: 0, p95: 0, p99: 1 },
+  },
+  {
+    metricName: 'conversion_rate',
+    count: 9600,
+    sum: 364.8,
+    mean: 0.038,
+    variance: 0.03656,
+    min: 0,
+    max: 1,
+    percentiles: { p50: 0, p95: 0, p99: 1 },
+  }
 );
 
 // Result:
@@ -713,7 +784,7 @@ const result = statsAnalyzer.calculateSignificance(
 //   differencePercent: 18.75,
 //   pValue: 0.023,
 //   isSignificant: true,
-//   confidenceInterval: { lower: 0.002, upper: 0.010 },
+//   confidenceInterval: { lower: 0.001, upper: 0.011 },
 //   confidenceLevel: 95
 // }
 ```
@@ -964,8 +1035,7 @@ class SegmentAnalyzer {
   analyzeImpactBySegment(
     users: UserProfile[],
     flagStates: Map<string, string>,  // userId -> variation
-    metrics: Map<string, number>,     // userId -> metric value
-    metricName: string
+    metrics: Map<string, number>      // userId -> metric value
   ): SegmentImpact[] {
     const results: SegmentImpact[] = [];
 
@@ -1317,6 +1387,15 @@ class AutoRollbackController {
 }
 
 // Integration with flag management
+interface FlagManagementService {
+  rollback(flagKey: string): Promise<void>;
+}
+
+declare function alertOncall(
+  flagKey: string,
+  decision: RollbackDecision
+): Promise<void>;
+
 async function checkAndRollback(
   flagKey: string,
   performanceAnalyzer: PerformanceAnalyzer,
