@@ -103,7 +103,7 @@ describe('OrderService', () => {
     beforeEach(() => {
         // Create a mock email service
         emailService = {
-            send: jest.fn().mockResolvedValue(true)
+            send: jest.fn<EmailService['send']>().mockResolvedValue(true)
         };
         orderService = new OrderService(emailService);
     });
@@ -302,27 +302,29 @@ import { Pool } from 'pg';
 import { migrate } from './migrations';
 
 class TestDatabase {
-    private pool: Pool;
+    private pool!: Pool;
     private schemaName: string;
 
     constructor() {
         // Each test suite gets a unique schema for isolation
-        this.schemaName = `test_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        this.schemaName = `test_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
     }
 
     async setup(): Promise<Pool> {
         // Connect to test database
         this.pool = new Pool({
             host: process.env.TEST_DB_HOST || 'localhost',
-            port: parseInt(process.env.TEST_DB_PORT || '5432'),
+            port: parseInt(process.env.TEST_DB_PORT || '5432', 10),
             database: process.env.TEST_DB_NAME || 'test_db',
             user: process.env.TEST_DB_USER || 'test_user',
-            password: process.env.TEST_DB_PASSWORD || 'test_pass'
+            password: process.env.TEST_DB_PASSWORD || 'test_pass',
+            onConnect: async (client) => {
+                await client.query(`SET search_path TO ${this.quoteIdentifier(this.schemaName)}`);
+            }
         });
 
         // Create isolated schema
-        await this.pool.query(`CREATE SCHEMA IF NOT EXISTS ${this.schemaName}`);
-        await this.pool.query(`SET search_path TO ${this.schemaName}`);
+        await this.pool.query(`CREATE SCHEMA IF NOT EXISTS ${this.quoteIdentifier(this.schemaName)}`);
 
         // Run migrations
         await migrate(this.pool, this.schemaName);
@@ -332,7 +334,7 @@ class TestDatabase {
 
     async teardown(): Promise<void> {
         // Drop the test schema and all its objects
-        await this.pool.query(`DROP SCHEMA IF EXISTS ${this.schemaName} CASCADE`);
+        await this.pool.query(`DROP SCHEMA IF EXISTS ${this.quoteIdentifier(this.schemaName)} CASCADE`);
         await this.pool.end();
     }
 
@@ -345,9 +347,13 @@ class TestDatabase {
 
         for (const row of result.rows) {
             await this.pool.query(
-                `TRUNCATE TABLE ${this.schemaName}.${row.tablename} CASCADE`
+                `TRUNCATE TABLE ${this.quoteIdentifier(this.schemaName)}.${this.quoteIdentifier(row.tablename)} CASCADE`
             );
         }
+    }
+
+    private quoteIdentifier(identifier: string): string {
+        return `"${identifier.replace(/"/g, '""')}"`;
     }
 }
 ```
@@ -510,6 +516,14 @@ describe('Orders API Integration', () => {
     beforeAll(async () => {
         db = new TestDatabase();
         await db.setup();
+    });
+
+    afterAll(async () => {
+        await db.teardown();
+    });
+
+    beforeEach(async () => {
+        await db.truncateAll();
 
         // Create test user and get auth token
         const response = await request(app)
@@ -521,14 +535,6 @@ describe('Orders API Integration', () => {
             });
 
         authToken = response.body.token;
-    });
-
-    afterAll(async () => {
-        await db.teardown();
-    });
-
-    beforeEach(async () => {
-        await db.truncateAll();
     });
 
     describe('POST /api/orders', () => {
@@ -738,8 +744,6 @@ Manage test infrastructure with Docker Compose:
 
 ```yaml
 # docker-compose.test.yml
-
-version: '3.8'
 
 services:
   test-db:
