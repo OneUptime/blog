@@ -210,10 +210,10 @@ flowchart LR
     end
 
     W1 --> |"Freeze"| Frozen["Frozen Weights"]
-    A1 --> |"Multiply"| BA["B x A"]
+    A1 --> |"Multiply"| BA["A x B"]
     B1 --> |"Multiply"| BA
     BA --> |"Scale by alpha/r"| Scaled["Scaled Update"]
-    Frozen --> |"Add"| Final["W + (alpha/r) x B x A"]
+    Frozen --> |"Add"| Final["W + (alpha/r) x A x B"]
     Scaled --> |"Add"| Final
 
     style W1 fill:#e1f5fe
@@ -332,7 +332,6 @@ from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
     BitsAndBytesConfig,
-    TrainingArguments,
 )
 from peft import (
     LoraConfig,
@@ -340,7 +339,7 @@ from peft import (
     prepare_model_for_kbit_training,
     TaskType,
 )
-from trl import SFTTrainer
+from trl import SFTConfig, SFTTrainer
 
 
 def setup_qlora_training(
@@ -423,7 +422,9 @@ def setup_qlora_training(
     dataset = load_dataset(dataset_name, split="train")
 
     # Step 8: Configure training arguments
-    training_args = TrainingArguments(
+    # SFTConfig extends TrainingArguments and adds SFT-specific options
+    # such as max_length, dataset_text_field, and packing.
+    training_args = SFTConfig(
         output_dir=output_dir,
         num_train_epochs=num_epochs,
         per_device_train_batch_size=batch_size,
@@ -449,17 +450,20 @@ def setup_qlora_training(
         # Performance settings
         max_grad_norm=0.3,
         group_by_length=True,    # Group similar lengths for efficiency
+
+        # SFT-specific settings
+        max_length=max_seq_length,        # Maximum sequence length
+        dataset_text_field="text",        # Adjust based on your dataset
+        packing=True,                     # Pack multiple samples for efficiency
     )
 
     # Step 9: Initialize trainer
+    # In current TRL versions the tokenizer is passed via `processing_class`.
     trainer = SFTTrainer(
         model=model,
         args=training_args,
         train_dataset=dataset,
-        tokenizer=tokenizer,
-        max_seq_length=max_seq_length,
-        dataset_text_field="text",  # Adjust based on your dataset
-        packing=True,  # Pack multiple samples for efficiency
+        processing_class=tokenizer,
     )
 
     # Step 10: Train the model
