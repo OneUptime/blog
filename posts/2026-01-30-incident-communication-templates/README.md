@@ -187,9 +187,8 @@ Status pages are often the first place customers check during an incident. Here 
 # Templates for automated status page updates
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
-from typing import Optional
 
 class IncidentStatus(Enum):
     INVESTIGATING = "investigating"
@@ -217,7 +216,7 @@ class StatusPageUpdate:
 
     def __post_init__(self):
         if self.timestamp is None:
-            self.timestamp = datetime.utcnow()
+            self.timestamp = datetime.now(UTC)
 
 # Template definitions for each incident phase
 TEMPLATES = {
@@ -484,13 +483,6 @@ class IncidentCommunicator {
       P2: ":warning:",
       P3: ":large_yellow_circle:",
       P4: ":information_source:",
-    };
-
-    const statusColor = {
-      investigating: "#ff0000",
-      identified: "#ff9900",
-      monitoring: "#ffff00",
-      resolved: "#00ff00",
     };
 
     return {
