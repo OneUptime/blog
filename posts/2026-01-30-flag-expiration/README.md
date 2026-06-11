@@ -55,7 +55,7 @@ const newCheckoutFlag: FeatureFlag = {
   description: 'Redesigned checkout experience with fewer steps',
   createdAt: new Date('2026-01-30'),
   createdBy: 'engineering@company.com',
-  expirationDate: new Date('2026-03-30'), // 60 days from creation
+  expirationDate: new Date('2026-03-31'), // 60 days from creation
   expirationAction: 'warn',
   owner: 'checkout-team',
   tags: ['checkout', 'ux', 'experiment']
@@ -72,7 +72,7 @@ Different flag types warrant different expiration windows:
 | Experiment | 4-8 weeks | Conclude experiments quickly |
 | Ops Toggle | 1-6 months | Review operational flags quarterly |
 | Permission Toggle | 6-12 months | Annual access review |
-| Kill Switch | No expiration | Keep for emergencies, but review annually |
+| Kill Switch | 12 months | Keep for emergencies, but review annually |
 
 ### Flag Creation Service
 
@@ -437,7 +437,7 @@ class ExpirationEscalationService {
       const daysUntilExpiration = this.getDaysUntil(flag.expirationDate, today);
       const applicableLevel = this.getApplicableEscalationLevel(daysUntilExpiration);
 
-      if (applicableLevel && this.shouldSendNotification(flag, applicableLevel)) {
+      if (applicableLevel && await this.shouldSendNotification(flag, applicableLevel)) {
         await this.executeEscalation(flag, applicableLevel);
         await this.recordNotificationSent(flag, applicableLevel);
       }
@@ -960,7 +960,9 @@ class FlagHygieneDashboard {
 
     return {
       totalActive: flags.length,
-      expiringSoon: flags.filter(f => f.expirationDate <= fourteenDaysFromNow).length,
+      expiringSoon: flags.filter(f =>
+        f.expirationDate >= today && f.expirationDate <= fourteenDaysFromNow
+      ).length,
       stale: flags.filter(f => f.expirationDate < today).length,
       orphaned: 0, // Requires code scanning
       fullyRolledOut: 0 // Requires usage stats
@@ -980,7 +982,9 @@ class FlagHygieneDashboard {
     const lifespans = flags.map(f =>
       (f.expirationDate.getTime() - f.createdAt.getTime()) / (1000 * 60 * 60 * 24)
     );
-    const averageLifespanDays = lifespans.reduce((a, b) => a + b, 0) / lifespans.length;
+    const averageLifespanDays = lifespans.length > 0
+      ? lifespans.reduce((a, b) => a + b, 0) / lifespans.length
+      : 0;
 
     const overdueFlags = flags.filter(f => f.expirationDate < now);
 
