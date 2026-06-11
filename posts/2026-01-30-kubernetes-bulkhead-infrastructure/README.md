@@ -107,14 +107,14 @@ spec:
 
 ### Why Both Requests and Limits Matter
 
-Setting only limits without requests creates problems. The scheduler does not know how much capacity the pod actually needs, leading to overcommitment and resource contention.
+Setting only limits without requests creates problems. If no admission-time default request is applied, Kubernetes copies each limit to the request for that resource. That prevents the scheduler from ignoring the workload, but it can reserve more capacity than the pod actually needs.
 
 | Configuration | Behavior | Risk |
 |---------------|----------|------|
 | Only requests | Resources reserved but no ceiling | Runaway pod can starve neighbors |
-| Only limits | No guaranteed resources | Pod may be evicted under pressure |
+| Only limits | Requests default to limits | Over-reservation and inefficient scheduling |
 | Both set | Guaranteed minimum, capped maximum | Proper isolation |
-| Neither set | Uses node defaults | Complete chaos during load |
+| Neither set | No request or limit unless a LimitRange defaults them | Complete chaos during load |
 
 ## Namespace Quotas: Team-Level Bulkheads
 
@@ -185,27 +185,27 @@ spec:
 sequenceDiagram
     participant Dev as Developer
     participant API as K8s API Server
-    participant Quota as Quota Controller
+    participant Admission as Admission Controllers
     participant Sched as Scheduler
 
     Dev->>API: Create Deployment (no resources)
-    API->>Quota: Check LimitRange
-    Quota->>API: Apply default resources
-    API->>Quota: Check ResourceQuota
+    API->>Admission: Check LimitRange
+    Admission->>API: Apply default resources
+    API->>Admission: Check ResourceQuota
 
     alt Within quota
-        Quota->>API: Approved
+        Admission->>API: Approved
         API->>Sched: Schedule pods
         Sched->>API: Pods running
     else Exceeds quota
-        Quota->>API: Rejected
+        Admission->>API: Rejected
         API->>Dev: Error: exceeded quota
     end
 ```
 
 ## Network Policies: Traffic Bulkheads
 
-Network policies isolate traffic between services. If the fraud detection service is compromised or misbehaving, network policies prevent it from accessing services it should not communicate with.
+Network policies isolate traffic between services when your cluster uses a CNI plugin that enforces NetworkPolicy. If the fraud detection service is compromised or misbehaving, network policies prevent it from accessing services it should not communicate with.
 
 ```yaml
 # network-policy-bulkhead.yaml
@@ -308,7 +308,7 @@ Service meshes provide application-layer bulkheads without code changes. Istio's
 # istio-destination-rule.yaml
 # DestinationRule configures traffic policy for a service.
 # This creates bulkheads through connection limits and circuit breaking.
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: payment-service-bulkhead
@@ -329,11 +329,11 @@ spec:
         # Requests beyond this get 503 errors
         h2UpgradePolicy: UPGRADE
         http1MaxPendingRequests: 50
-        # Maximum requests per connection
+        # Maximum active requests to a destination
         http2MaxRequests: 100
         # Maximum retries across all hosts
         maxRetries: 3
-        # Maximum requests that can be outstanding
+        # Maximum requests per connection
         maxRequestsPerConnection: 10
 
     # Circuit breaker configuration
@@ -343,7 +343,7 @@ spec:
       # Number of consecutive 5xx errors before ejecting
       consecutive5xxErrors: 5
       # Number of consecutive gateway errors
-      consecutiveGatewayErrors: 5
+      consecutiveGatewayErrors: 3
       # Minimum time a host is ejected
       baseEjectionTime: 30s
       # Maximum percentage of hosts that can be ejected
@@ -359,7 +359,7 @@ Different endpoints may need different bulkhead configurations. A payment endpoi
 ```yaml
 # istio-virtual-service.yaml
 # VirtualService enables per-route traffic management.
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: payment-service-routes
@@ -392,7 +392,7 @@ spec:
       attempts: 2
       perTryTimeout: 5s
       retryOn: connect-failure,refused-stream,unavailable
-    # Rate limiting for this route
+    # Retry policy can also be expressed as an Envoy request header
     headers:
       request:
         add:
@@ -730,7 +730,7 @@ spec:
           periodSeconds: 3
 ---
 # Service mesh bulkhead configuration
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: order-service-bulkhead
@@ -870,7 +870,7 @@ spec:
     - alert: NamespaceQuotaNearLimit
       expr: |
         kube_resourcequota{type="used"}
-        / kube_resourcequota{type="hard"} > 0.8
+        / ignoring(type) kube_resourcequota{type="hard"} > 0.8
       for: 10m
       labels:
         severity: warning
