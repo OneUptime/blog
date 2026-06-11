@@ -400,13 +400,15 @@ flowchart LR
 Install the required package.
 
 ```bash
-dotnet add package Microsoft.AspNetCore.SignalR.Protocols.MessagePack
+dotnet package add Microsoft.AspNetCore.SignalR.Protocols.MessagePack
 ```
 
 Configure the server to use MessagePack.
 
 ```csharp
 // Program.cs
+using MessagePack;
+
 builder.Services.AddSignalR()
     .AddMessagePackProtocol(options =>
     {
@@ -435,7 +437,7 @@ Configure the .NET client.
 ```csharp
 // Install Microsoft.AspNetCore.SignalR.Protocols.MessagePack package
 using Microsoft.AspNetCore.SignalR.Client;
-using Microsoft.AspNetCore.SignalR.Protocol;
+using Microsoft.Extensions.DependencyInjection;
 
 var connection = new HubConnectionBuilder()
     .WithUrl("https://myapp.com/hubs/data")
@@ -502,25 +504,21 @@ public class ConnectionStateService : IConnectionStateService
 
 ### Scoped Services in Hubs
 
-Access scoped services using `IServiceScopeFactory`.
+Inject scoped services into the hub constructor or hub methods.
 
 ```csharp
 public class DatabaseHub : Hub
 {
-    private readonly IServiceScopeFactory _scopeFactory;
+    private readonly AppDbContext _dbContext;
 
-    public DatabaseHub(IServiceScopeFactory scopeFactory)
+    public DatabaseHub(AppDbContext dbContext)
     {
-        _scopeFactory = scopeFactory;
+        _dbContext = dbContext;
     }
 
     public async Task<List<Message>> GetMessages(string roomId)
     {
-        // Create a scope for database access
-        using var scope = _scopeFactory.CreateScope();
-        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-
-        return await dbContext.Messages
+        return await _dbContext.Messages
             .Where(m => m.RoomId == roomId)
             .OrderByDescending(m => m.CreatedAt)
             .Take(50)
@@ -728,6 +726,7 @@ public interface IConnectionTracker
 public class InMemoryConnectionTracker : IConnectionTracker
 {
     private readonly ConcurrentDictionary<string, HashSet<string>> _userConnections = new();
+    private readonly ConcurrentDictionary<string, string> _connectionUsers = new();
     private readonly ConcurrentDictionary<string, HashSet<string>> _connectionRooms = new();
     private readonly ConcurrentDictionary<string, HashSet<string>> _roomConnections = new();
     private readonly object _lock = new();
@@ -736,6 +735,8 @@ public class InMemoryConnectionTracker : IConnectionTracker
     {
         lock (_lock)
         {
+            _connectionUsers[connectionId] = userId;
+
             var connections = _userConnections.GetOrAdd(userId, _ => new HashSet<string>());
             connections.Add(connectionId);
         }
@@ -746,6 +747,8 @@ public class InMemoryConnectionTracker : IConnectionTracker
     {
         lock (_lock)
         {
+            _connectionUsers.TryRemove(connectionId, out _);
+
             if (_userConnections.TryGetValue(userId, out var connections))
             {
                 connections.Remove(connectionId);
@@ -763,6 +766,10 @@ public class InMemoryConnectionTracker : IConnectionTracker
                     if (_roomConnections.TryGetValue(roomId, out var roomConns))
                     {
                         roomConns.Remove(connectionId);
+                        if (roomConns.Count == 0)
+                        {
+                            _roomConnections.TryRemove(roomId, out _);
+                        }
                     }
                 }
             }
@@ -790,11 +797,19 @@ public class InMemoryConnectionTracker : IConnectionTracker
             if (_connectionRooms.TryGetValue(connectionId, out var rooms))
             {
                 rooms.Remove(roomId);
+                if (rooms.Count == 0)
+                {
+                    _connectionRooms.TryRemove(connectionId, out _);
+                }
             }
 
             if (_roomConnections.TryGetValue(roomId, out var connections))
             {
                 connections.Remove(connectionId);
+                if (connections.Count == 0)
+                {
+                    _roomConnections.TryRemove(roomId, out _);
+                }
             }
         }
         return Task.CompletedTask;
@@ -802,25 +817,43 @@ public class InMemoryConnectionTracker : IConnectionTracker
 
     public Task<IEnumerable<string>> GetUserRoomsAsync(string connectionId)
     {
-        if (_connectionRooms.TryGetValue(connectionId, out var rooms))
+        lock (_lock)
         {
-            return Task.FromResult<IEnumerable<string>>(rooms.ToList());
+            if (_connectionRooms.TryGetValue(connectionId, out var rooms))
+            {
+                return Task.FromResult<IEnumerable<string>>(rooms.ToList());
+            }
+            return Task.FromResult<IEnumerable<string>>(Array.Empty<string>());
         }
-        return Task.FromResult<IEnumerable<string>>(Array.Empty<string>());
     }
 
     public Task<IEnumerable<string>> GetRoomUsersAsync(string roomId)
     {
-        if (_roomConnections.TryGetValue(roomId, out var connections))
+        lock (_lock)
         {
-            return Task.FromResult<IEnumerable<string>>(connections.ToList());
+            if (_roomConnections.TryGetValue(roomId, out var connections))
+            {
+                var users = connections
+                    .Select(connectionId =>
+                        _connectionUsers.TryGetValue(connectionId, out var userId)
+                            ? userId
+                            : null)
+                    .OfType<string>()
+                    .Distinct()
+                    .ToList();
+
+                return Task.FromResult<IEnumerable<string>>(users);
+            }
+            return Task.FromResult<IEnumerable<string>>(Array.Empty<string>());
         }
-        return Task.FromResult<IEnumerable<string>>(Array.Empty<string>());
     }
 
     public Task<bool> IsUserOnlineAsync(string userId)
     {
-        return Task.FromResult(_userConnections.ContainsKey(userId));
+        lock (_lock)
+        {
+            return Task.FromResult(_userConnections.ContainsKey(userId));
+        }
     }
 }
 ```
