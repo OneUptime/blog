@@ -546,25 +546,26 @@ class GeofenceMonitor {
 
     for (const zoneId of zones) {
       const zoneConfig = await this.redis.hgetall(`zone:${zoneId}`);
-      const zoneLng = parseFloat(zoneConfig.longitude);
-      const zoneLat = parseFloat(zoneConfig.latitude);
       const radiusKm = parseFloat(zoneConfig.radiusKm);
 
-      // Check if entity is within zone radius
-      const distance = await this.redis.geodist(
-        this.entitiesKey,
-        entityId,
-        zoneId, // Temporarily add zone center to calculate
-        'km'
+      // Check if entity falls within this zone's radius by searching the
+      // zones index from the entity's coordinates (GEODIST cannot operate
+      // across different keys, so we query the zones key directly)
+      const matches = await this.redis.geosearch(
+        this.zonesKey,
+        'FROMLONLAT', longitude, latitude,
+        'BYRADIUS', radiusKm, 'km',
+        'WITHDIST'
       );
+      const matched = matches.find(([id]) => id === zoneId);
 
       // Determine current state
       const wasInside = previousState[zoneId] === 'inside';
-      const isInside = distance !== null && parseFloat(distance) <= radiusKm;
+      const isInside = !!matched;
 
       // Detect transitions
       if (isInside && !wasInside) {
-        events.push({ type: 'enter', zoneId, entityId, distance: parseFloat(distance) });
+        events.push({ type: 'enter', zoneId, entityId, distance: parseFloat(matched[1]) });
       } else if (!isInside && wasInside) {
         events.push({ type: 'exit', zoneId, entityId });
       }
