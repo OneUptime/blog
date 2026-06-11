@@ -857,6 +857,8 @@ import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import java.util.Set;
+
 @RestController
 @RequestMapping("/api/users")
 public class UserController {
@@ -1282,6 +1284,8 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.reactive.server.WebTestClient;
 
+import java.util.Map;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
@@ -1404,20 +1408,18 @@ spring:
   data:
     mongodb:
       uri: mongodb://localhost:27017/security_demo
+  # For OAuth2 Resource Server (optional)
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: https://your-auth-server.com
 
 jwt:
   # Use a strong secret in production (at least 256 bits)
   secret: ${JWT_SECRET:your-256-bit-secret-key-here-make-it-long-enough}
   access-token-expiration: 3600000    # 1 hour
   refresh-token-expiration: 604800000 # 7 days
-
-# For OAuth2 Resource Server (optional)
-spring:
-  security:
-    oauth2:
-      resourceserver:
-        jwt:
-          issuer-uri: https://your-auth-server.com
 
 logging:
   level:
