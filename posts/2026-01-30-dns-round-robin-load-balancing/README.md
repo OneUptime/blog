@@ -8,11 +8,11 @@ Description: Learn how DNS round robin distributes traffic across multiple serve
 
 ---
 
-DNS round robin is one of the oldest and simplest load balancing techniques. It requires no special hardware, no dedicated load balancer, and works with any DNS provider. While it has limitations, understanding it is essential for anyone building distributed systems.
+DNS round robin is one of the oldest and simplest load balancing techniques. It requires no special hardware, no dedicated load balancer, and works with any DNS provider that supports multiple address records for the same name. While it has limitations, understanding it is essential for anyone building distributed systems.
 
 ## How DNS Round Robin Works
 
-The concept is straightforward: configure multiple A records for the same domain, each pointing to a different IP address. When a client queries the DNS server, it receives all IP addresses in a rotating order.
+The concept is straightforward: configure multiple A records for the same domain, each pointing to a different IP address. When a client queries DNS, it can receive all IP addresses in an order chosen by the authoritative DNS service or recursive resolver.
 
 ```mermaid
 sequenceDiagram
@@ -32,13 +32,13 @@ sequenceDiagram
     Client2->>S2: Connect to first IP
 ```
 
-Each DNS response rotates the order of IP addresses. Most clients connect to the first IP in the list, naturally distributing traffic across servers.
+Many DNS servers rotate or randomize the order of IP addresses in responses. Many clients connect to the first usable IP in the list, naturally distributing traffic across servers, though client and resolver behavior can vary.
 
 ## Configuring A Records for Round Robin
 
 ### BIND Zone File Configuration
 
-```bash
+```dns
 ; Zone file for example.com
 ; Multiple A records for round robin load balancing
 
@@ -55,6 +55,8 @@ $TTL 60  ; Short TTL for faster failover (60 seconds)
 ; Name servers
 @       IN      NS      ns1.example.com.
 @       IN      NS      ns2.example.com.
+ns1     IN      A       192.0.2.10
+ns2     IN      A       192.0.2.11
 
 ; Round robin A records for api.example.com
 ; DNS server will rotate these in responses
@@ -123,14 +125,14 @@ resource "aws_route53_zone" "main" {
   name = "example.com"
 }
 
-# Single record set with multiple IPs enables round robin
+# Single record set with multiple IPs enables simple DNS distribution
 resource "aws_route53_record" "api_round_robin" {
   zone_id = aws_route53_zone.main.zone_id
   name    = "api.example.com"
   type    = "A"
   ttl     = 60  # Short TTL for faster updates
 
-  # All IPs in a single record set - DNS rotates them automatically
+  # All IPs in a single record set - Route 53 returns them in random order
   records = var.server_ips
 }
 
@@ -152,7 +154,7 @@ flowchart TD
         C -->|Yes| D[Return Cached IPs]
         C -->|No| E[Query Authoritative DNS]
         E --> F[Authoritative DNS Server]
-        F --> G[Return All A Records<br/>Rotated Order]
+        F --> G[Return All A Records<br/>Rotated or Randomized Order]
         G --> H[Cache Response]
         H --> D
     end
@@ -178,7 +180,7 @@ DNS_SERVER="8.8.8.8"  # Use a public DNS for testing
 echo "Testing DNS round robin for $DOMAIN"
 echo "====================================="
 
-# Query multiple times to see rotation
+# Query multiple times to see rotation or randomized ordering
 for i in {1..5}; do
   echo ""
   echo "Query $i:"
@@ -236,7 +238,7 @@ flowchart LR
     style S2 fill:#ff6b6b,stroke:#333,stroke-width:2px
 ```
 
-**DNS does not perform health checks.** If a server goes down, DNS continues returning its IP address. Clients connecting to a failed server will experience errors.
+**Basic DNS round robin does not perform health checks.** If a server goes down, DNS continues returning its IP address. Clients connecting to a failed server will experience errors.
 
 ### Key Limitations
 
@@ -260,7 +262,7 @@ Integrates with AWS Route 53 to update A records based on health.
 import boto3
 import requests
 import time
-from typing import List, Dict
+from typing import List
 
 class DNSHealthChecker:
     def __init__(self, hosted_zone_id: str, domain: str):
@@ -464,7 +466,7 @@ resource "aws_route53_record" "weighted" {
 
 ## GeoDNS for Geographic Distribution
 
-GeoDNS routes users to the nearest server based on their geographic location.
+GeoDNS routes users based on geographic policy and the location that the DNS provider infers from the resolver or client subnet. It does not always mean the nearest or lowest-latency server.
 
 ```mermaid
 flowchart TB
@@ -488,9 +490,9 @@ flowchart TB
     EU --> DNS
     ASIA --> DNS
 
-    DNS -->|US IP Range| US_DC
-    DNS -->|EU IP Range| EU_DC
-    DNS -->|Asia IP Range| ASIA_DC
+    DNS -->|North America| US_DC
+    DNS -->|Europe| EU_DC
+    DNS -->|Asia| ASIA_DC
 ```
 
 ### Route 53 Geolocation Routing
@@ -631,7 +633,7 @@ class RoundRobinClient {
 
   /**
    * Resolve hostname to IP addresses with caching.
-   * Returns IPs in DNS-provided order (rotated by server).
+   * Returns IPs in DNS-provided order.
    */
   async resolveIPs() {
     const now = Date.now();
@@ -695,8 +697,9 @@ class RoundRobinClient {
         path: path,
         method: options.method || 'GET',
         timeout: this.timeout,
+        servername: this.hostname,  // Important: Set SNI for TLS certificate selection
         headers: {
-          'Host': this.hostname,  // Important: Set Host header for virtual hosting
+          'Host': this.hostname,  // Important: Set Host header for HTTP virtual hosting
           ...options.headers
         }
       };
@@ -773,8 +776,8 @@ main();
 | Failover speed | Minutes (TTL) | Milliseconds | Milliseconds | Seconds |
 | Session affinity | No | Yes | Yes | Yes |
 | SSL termination | No | Yes | Yes | Yes |
-| Geographic routing | Yes (GeoDNS) | No | No | Yes |
-| Weighted routing | Yes | Yes | Yes | Yes |
+| Geographic routing | No (use GeoDNS) | No | No | Yes |
+| Weighted routing | No (use weighted DNS) | Yes | Yes | Yes |
 
 ---
 
