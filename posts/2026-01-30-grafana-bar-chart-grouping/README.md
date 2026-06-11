@@ -37,7 +37,7 @@ flowchart LR
 
 The foundation of effective bar chart grouping starts with your query. Your query should return data with clear categorical labels that Grafana can use for grouping.
 
-Here is an example PromQL query that returns HTTP request counts grouped by service and status code:
+Here is an example PromQL query that returns per-second HTTP request rates grouped by service and status code:
 
 ```promql
 sum by (service, status_code) (
@@ -45,7 +45,7 @@ sum by (service, status_code) (
 )
 ```
 
-For SQL-based data sources like PostgreSQL or MySQL, structure your query to return the grouping fields:
+For SQL-based data sources like PostgreSQL, structure your query to return the grouping fields:
 
 ```sql
 SELECT
@@ -82,14 +82,9 @@ The following JSON shows the panel configuration for a grouped bar chart:
       "custom": {
         "axisLabel": "",
         "axisPlacement": "auto",
-        "barAlignment": 0,
-        "drawStyle": "bars",
         "fillOpacity": 80,
         "gradientMode": "none",
-        "stacking": {
-          "mode": "none",
-          "group": "A"
-        }
+        "lineWidth": 1
       }
     }
   },
@@ -243,7 +238,7 @@ After grouping, you may want to reorder or rename fields for clarity.
 
 ## Real-World Example: Service Latency Dashboard
 
-Let us build a complete example showing service latency grouped by region and service tier.
+Let us build a complete example showing service latency grouped by region and service.
 
 ### The Query
 
@@ -272,6 +267,7 @@ Configure the bar chart to display this data effectively:
   "targets": [
     {
       "expr": "histogram_quantile(0.95, sum by (service, region, le) (rate(http_request_duration_seconds_bucket[5m])))",
+      "instant": true,
       "legendFormat": "{{service}} - {{region}}"
     }
   ],
@@ -396,12 +392,11 @@ Use transformations to filter or aggregate data before visualization:
 
 ## Integrating with Alerting
 
-Bar charts can be combined with Grafana alerting to trigger notifications when grouped values exceed thresholds.
+Bar charts can be combined with alerting to trigger notifications when grouped values exceed thresholds.
 
-Create an alert rule that monitors the maximum value across all groups:
+In Prometheus, create an alert rule that monitors the maximum value across all groups:
 
 ```yaml
-apiVersion: 1
 groups:
   - name: service-latency-alerts
     rules:
