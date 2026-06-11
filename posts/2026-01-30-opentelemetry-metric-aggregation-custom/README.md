@@ -156,6 +156,7 @@ import {
   InstrumentDescriptor,
   InstrumentType,
 } from '@opentelemetry/sdk-metrics';
+import { hrTime } from '@opentelemetry/core';
 import { HrTime, Attributes } from '@opentelemetry/api';
 
 // Define the structure of your aggregated data point
@@ -208,7 +209,8 @@ export class CustomAggregator {
   // Called during metric collection
   collect(): Map<string, CustomDataPoint> {
     const results = new Map<string, CustomDataPoint>();
-    const now = process.hrtime() as HrTime;
+    // HrTime in OpenTelemetry is [seconds, nanoseconds] since the Unix epoch
+    const now = hrTime();
 
     for (const [key, acc] of this.accumulators) {
       const attributes = JSON.parse(key);
@@ -1059,8 +1061,11 @@ import {
   PeriodicExportingMetricReader,
   ConsoleMetricExporter,
 } from '@opentelemetry/sdk-metrics';
-import { Resource } from '@opentelemetry/resources';
-import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
+import { resourceFromAttributes } from '@opentelemetry/resources';
+import {
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+} from '@opentelemetry/semantic-conventions';
 import { WeightedAverageAggregator } from './weighted-average-aggregator';
 import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
 
@@ -1068,9 +1073,9 @@ import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
 const latencyAggregator = new WeightedAverageAggregator();
 
 // Setup OpenTelemetry
-const resource = new Resource({
-  [SemanticResourceAttributes.SERVICE_NAME]: 'my-service',
-  [SemanticResourceAttributes.SERVICE_VERSION]: '1.0.0',
+const resource = resourceFromAttributes({
+  [ATTR_SERVICE_NAME]: 'my-service',
+  [ATTR_SERVICE_VERSION]: '1.0.0',
 });
 
 // OTLP exporter for OneUptime
