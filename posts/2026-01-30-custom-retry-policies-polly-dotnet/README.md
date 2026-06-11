@@ -34,8 +34,11 @@ Install the required packages:
 
 ```bash
 dotnet add package Polly
+dotnet add package Polly.Contrib.WaitAndRetry
 dotnet add package Microsoft.Extensions.Http.Polly
 ```
+
+`Microsoft.Extensions.Http.Polly` provides the `AddPolicyHandler` examples shown later, but it is deprecated for new applications. For new `HttpClient` resilience code, prefer `Microsoft.Extensions.Http.Resilience`, which is built on Polly v8.
 
 ## Basic Retry with Custom Exception Handling
 
@@ -84,7 +87,7 @@ flowchart LR
 This implementation adds randomized jitter to exponential backoff delays:
 
 ```csharp
-// Exponential backoff with decorrelated jitter
+// Exponential backoff with simple jitter
 // This prevents synchronized retry storms from multiple clients
 var jitteredBackoff = Policy
     .Handle<HttpRequestException>()
@@ -97,9 +100,8 @@ var jitteredBackoff = Policy
 
             // Add jitter: +/- 25% of the base delay
             var jitter = baseDelay.TotalMilliseconds * 0.25;
-            var random = new Random();
             var actualDelay = baseDelay.TotalMilliseconds +
-                (random.NextDouble() * 2 - 1) * jitter;
+                (Random.Shared.NextDouble() * 2 - 1) * jitter;
 
             return TimeSpan.FromMilliseconds(Math.Max(actualDelay, 100));
         },
@@ -109,40 +111,14 @@ var jitteredBackoff = Policy
         });
 ```
 
-A cleaner approach uses Polly's built-in decorrelated jitter calculation:
+A cleaner approach uses the Polly.Contrib.WaitAndRetry helper for the recommended decorrelated jitter calculation:
 
 ```csharp
-// Using Polly's recommended decorrelated jitter algorithm
-// Based on the "Decorrelated Jitter" formula from AWS architecture blog
-public static class JitterCalculator
-{
-    private static readonly Random Random = new();
+using Polly.Contrib.WaitAndRetry;
 
-    public static IEnumerable<TimeSpan> DecorrelatedJitter(
-        int maxRetries,
-        TimeSpan seedDelay,
-        TimeSpan maxDelay)
-    {
-        var current = seedDelay.TotalMilliseconds;
-
-        for (int i = 0; i < maxRetries; i++)
-        {
-            // Decorrelated jitter formula
-            current = Math.Min(
-                maxDelay.TotalMilliseconds,
-                Random.NextDouble() * (current * 3 - seedDelay.TotalMilliseconds) +
-                    seedDelay.TotalMilliseconds);
-
-            yield return TimeSpan.FromMilliseconds(current);
-        }
-    }
-}
-
-// Using the custom jitter calculator
-var delays = JitterCalculator.DecorrelatedJitter(
-    maxRetries: 5,
-    seedDelay: TimeSpan.FromSeconds(1),
-    maxDelay: TimeSpan.FromSeconds(30));
+var delays = Backoff.DecorrelatedJitterBackoffV2(
+    medianFirstRetryDelay: TimeSpan.FromSeconds(1),
+    retryCount: 5);
 
 var decorrelatedPolicy = Policy
     .Handle<HttpRequestException>()
@@ -151,7 +127,7 @@ var decorrelatedPolicy = Policy
 
 ## Conditional Retry Based on Response Content
 
-Sometimes you need to inspect the response body to decide whether to retry. Rate limiting responses often include retry-after headers.
+Sometimes you need to inspect the response metadata to decide whether to retry. Rate limiting responses often include retry-after headers.
 
 This policy checks HTTP status codes and respects Retry-After headers:
 
@@ -282,7 +258,6 @@ public class RetryOptions
 public class RetryPolicyFactory : IRetryPolicyFactory
 {
     private readonly ILogger<RetryPolicyFactory> _logger;
-    private readonly Random _random = new();
 
     public RetryPolicyFactory(ILogger<RetryPolicyFactory> logger)
     {
@@ -331,6 +306,12 @@ public class RetryPolicyFactory : IRetryPolicyFactory
             return retryAfter;
         }
 
+        if (response?.Headers.RetryAfter?.Date is DateTimeOffset retryAfterDate)
+        {
+            var waitTime = retryAfterDate - DateTimeOffset.UtcNow;
+            return waitTime > TimeSpan.Zero ? waitTime : TimeSpan.FromSeconds(1);
+        }
+
         // Exponential backoff
         var exponentialDelay = options.InitialDelay.TotalMilliseconds * Math.Pow(2, attempt - 1);
 
@@ -338,7 +319,7 @@ public class RetryPolicyFactory : IRetryPolicyFactory
         if (options.UseJitter)
         {
             var jitterRange = exponentialDelay * options.JitterFactor;
-            exponentialDelay += (_random.NextDouble() * 2 - 1) * jitterRange;
+            exponentialDelay += (Random.Shared.NextDouble() * 2 - 1) * jitterRange;
         }
 
         // Clamp to max delay
@@ -460,8 +441,7 @@ var databaseRetryPolicy = Policy
             if (exception is SqlException sqlEx &&
                 sqlEx.Errors.Cast<SqlError>().Any(e => e.Number == 1205))
             {
-                var random = new Random();
-                return TimeSpan.FromMilliseconds(100 + random.Next(0, 100) * attempt);
+                return TimeSpan.FromMilliseconds(100 + Random.Shared.Next(0, 100) * attempt);
             }
 
             // Other errors use exponential backoff
@@ -523,7 +503,7 @@ public class UserRepository
         return Policy
             .Handle<DbUpdateException>(ex =>
                 ex.InnerException is SqlException sqlEx &&
-                SqlTransientErrors.IsTransient(sqlEx.Number))
+                sqlEx.Errors.Cast<SqlError>().Any(e => SqlTransientErrors.IsTransient(e.Number)))
             .Or<SqlException>(ex =>
                 ex.Errors.Cast<SqlError>().Any(e => SqlTransientErrors.IsTransient(e.Number)))
             .WaitAndRetryAsync(
@@ -790,9 +770,6 @@ public class InstrumentedRetryPolicy
 
     public AsyncRetryPolicy CreatePolicy(string serviceName, int maxRetries)
     {
-        var totalAttempts = 0;
-        var startTime = DateTime.UtcNow;
-
         return Policy
             .Handle<Exception>()
             .WaitAndRetryAsync(
@@ -800,12 +777,8 @@ public class InstrumentedRetryPolicy
                 sleepDurationProvider: attempt => TimeSpan.FromSeconds(Math.Pow(2, attempt)),
                 onRetry: (exception, delay, attempt, context) =>
                 {
-                    totalAttempts = attempt;
                     _metrics.RecordRetryAttempt(serviceName, attempt);
-                })
-            .WrapAsync(Policy.NoOpAsync()
-                .WithPolicyKey(serviceName))
-            .AsAsyncPolicy();
+                });
     }
 }
 ```
