@@ -8,7 +8,7 @@ Description: Learn how to set, propagate, and handle gRPC deadlines to build res
 
 ---
 
-Deadlines are one of the most important reliability patterns in gRPC. Unlike traditional timeouts that only apply to a single network hop, gRPC deadlines propagate across service boundaries. This means a deadline set by the initial caller travels through your entire microservice chain, ensuring that no downstream service wastes resources on a request that has already timed out at the caller.
+Deadlines are one of the most important reliability patterns in gRPC. Unlike traditional timeouts that only apply to a single network hop, gRPC deadlines can propagate across service boundaries when the language runtime supports it or when your code forwards the remaining timeout. This means a deadline set by the initial caller can travel through your entire microservice chain, ensuring that no downstream service wastes resources on a request that has already timed out at the caller.
 
 This guide covers practical approaches to setting deadlines, propagating them correctly, and handling DEADLINE_EXCEEDED errors in production systems.
 
@@ -36,7 +36,7 @@ Without deadlines, a slow or unresponsive downstream service can cause cascading
 - **Enabling graceful degradation**: Services can return partial results or fallbacks instead of hanging indefinitely
 - **Propagating timeout context**: Every service in the chain knows how much time remains
 
-The key insight is that deadlines are absolute timestamps, not relative durations. When Service A sets a 5-second deadline and calls Service B, Service B receives the actual deadline time. If Service B then calls Service C, Service C also knows the original deadline. No service ever operates with more time than the original caller intended.
+The key insight is that a deadline represents the point in time by which the RPC should complete, even though gRPC sends a relative timeout on the wire to avoid clock-skew problems. When Service A sets a 5-second deadline and calls Service B, Service B can determine how much time remains. If Service B then calls Service C with the same context or an equivalent remaining timeout, Service C also operates within the original budget. No service should operate with more time than the original caller intended.
 
 ---
 
@@ -66,7 +66,7 @@ Key behaviors:
 
 | Behavior | Description |
 |----------|-------------|
-| Automatic propagation | The deadline context flows through interceptors without manual work |
+| Language-specific propagation | Some implementations, including Go, propagate deadlines automatically when you pass the incoming context to downstream calls; others require explicit timeout forwarding |
 | Cancellation signals | When a deadline expires, cancellation propagates to all in-flight calls |
 | Clock synchronization | gRPC handles clock skew by using relative timeouts on the wire |
 | No extension | A downstream service cannot extend a deadline set by the caller |
@@ -89,12 +89,16 @@ import (
 
     "google.golang.org/grpc"
     "google.golang.org/grpc/codes"
+    "google.golang.org/grpc/credentials/insecure"
     "google.golang.org/grpc/status"
     pb "your/proto/package"
 )
 
 func main() {
-    conn, err := grpc.Dial("localhost:50051", grpc.WithInsecure())
+    conn, err := grpc.NewClient(
+        "localhost:50051",
+        grpc.WithTransportCredentials(insecure.NewCredentials()),
+    )
     if err != nil {
         log.Fatalf("failed to connect: %v", err)
     }
@@ -240,7 +244,8 @@ class YourServiceServicer(service_pb2_grpc.YourServiceServicer):
         # Perform work in stages, checking deadline between stages
         result = self._validate_order(request)
 
-        if context.time_remaining() < 0.05:
+        remaining_after_validation = context.time_remaining()
+        if remaining_after_validation is not None and remaining_after_validation < 0.05:
             context.abort(
                 grpc.StatusCode.DEADLINE_EXCEEDED,
                 "Deadline exceeded during processing"
@@ -257,7 +262,7 @@ class YourServiceServicer(service_pb2_grpc.YourServiceServicer):
 
     def _reserve_inventory(self, request, context):
         # Make downstream call with propagated deadline
-        # The timeout is automatically derived from remaining time
+        # Explicitly derive the downstream timeout from the remaining time
         inventory_stub = self._get_inventory_stub()
 
         # Calculate remaining time for downstream call
@@ -265,10 +270,13 @@ class YourServiceServicer(service_pb2_grpc.YourServiceServicer):
         if remaining and remaining > 0:
             return inventory_stub.Reserve(
                 inventory_pb2.ReserveRequest(items=request.items),
-                timeout=remaining - 0.01  # Small buffer
+                timeout=max(0.001, remaining - 0.01)  # Small buffer
             )
         else:
-            raise grpc.RpcError("No time remaining")
+            context.abort(
+                grpc.StatusCode.DEADLINE_EXCEEDED,
+                "No time remaining"
+            )
 ```
 
 ### Using AsyncIO with Deadlines
@@ -387,6 +395,9 @@ class OrderServiceServicer(order_pb2_grpc.OrderServiceServicer):
 
         # Recalculate remaining time for payment call
         remaining = context.time_remaining()
+        if remaining is None:
+            remaining = 30.0
+
         if remaining and remaining > buffer:
             payment_resp = self.payment_stub.Authorize(
                 payment_pb2.PaymentRequest(amount=request.amount),
@@ -410,9 +421,6 @@ Sometimes you need tighter deadlines for certain operations:
 
 ```go
 func (s *server) ProcessRequest(ctx context.Context, req *pb.Request) (*pb.Response, error) {
-    // Original deadline from context
-    deadline, _ := ctx.Deadline()
-
     // Cache lookup should be fast - use a shorter deadline
     cacheCtx, cacheCancel := context.WithTimeout(ctx, 100*time.Millisecond)
     defer cacheCancel()
@@ -572,7 +580,7 @@ func (s *server) CreateOrder(ctx context.Context, req *pb.CreateOrderRequest) (*
 
 **1. Set deadlines at the edge**
 
-The API gateway or initial entry point should set the deadline. All downstream services inherit and respect it.
+The API gateway or initial entry point should set the deadline. Downstream services should receive and respect the remaining budget.
 
 ```go
 // API Gateway handler
@@ -756,18 +764,18 @@ func (s *server) Process(ctx context.Context, req *pb.Request) (*pb.Response, er
     resp, err := s.doWork(ctx, req)
 
     duration := time.Since(start).Seconds()
-    status := "ok"
+    statusLabel := "ok"
 
     if err != nil {
         if status.Code(err) == codes.DeadlineExceeded {
-            status = "deadline_exceeded"
+            statusLabel = "deadline_exceeded"
             deadlineExceeded.WithLabelValues("order-service", "Process").Inc()
         } else {
-            status = "error"
+            statusLabel = "error"
         }
     }
 
-    requestDuration.WithLabelValues("order-service", "Process", status).Observe(duration)
+    requestDuration.WithLabelValues("order-service", "Process", statusLabel).Observe(duration)
 
     // Track remaining deadline time
     if deadline, ok := ctx.Deadline(); ok {
@@ -882,7 +890,7 @@ groups:
 | Practice | Why It Matters |
 |----------|----------------|
 | Set deadlines at the edge | Ensures consistent timeout behavior across all services |
-| Propagate deadlines automatically | Downstream services know exactly how much time remains |
+| Propagate deadlines consistently | Downstream services know how much time remains |
 | Check remaining time before expensive ops | Avoid wasting resources on requests that will timeout |
 | Handle DEADLINE_EXCEEDED gracefully | Clean up resources and provide useful error messages |
 | Monitor deadline metrics | Detect issues before they cause outages |
