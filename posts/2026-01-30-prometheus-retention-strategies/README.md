@@ -395,15 +395,15 @@ flowchart LR
 Calculate expected storage usage.
 
 ```bash
-# Formula: bytes = series_count * scrape_interval_samples * retention_seconds * bytes_per_sample
+# Formula: bytes = retention_seconds * (series_count / scrape_interval_seconds) * bytes_per_sample
 
 # Example calculation:
 # - 100,000 active time series
-# - 15s scrape interval (4 samples/minute)
+# - 15s scrape interval
 # - 15 days retention (1,296,000 seconds)
 # - ~2 bytes per sample (compressed)
 
-# Storage = 100,000 * (1,296,000 / 15) * 2 = ~17.3 GB
+# Storage = 1,296,000 * (100,000 / 15) * 2 = ~17.3 GB
 
 # Check current series count
 curl -s http://localhost:9090/api/v1/status/tsdb | jq '.data.headStats.numSeries'
