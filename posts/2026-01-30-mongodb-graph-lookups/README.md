@@ -32,10 +32,10 @@ The most common approach is to store references within documents:
 ```javascript
 // Example: Employee document with manager reference
 {
-  "_id": ObjectId("employee1"),
+  "_id": ObjectId("64b64c2f8f1f2a3b4c5d6e01"),
   "name": "Alice",
   "role": "Software Engineer",
-  "reportsTo": ObjectId("manager1")  // Reference to another document
+  "reportsTo": ObjectId("64b64c2f8f1f2a3b4c5d6e02")  // Reference to another document
 }
 ```
 
@@ -61,7 +61,7 @@ The `$graphLookup` stage performs a recursive search on a collection. Here is th
     // The output array field containing the traversed documents
     as: "outputFieldName",
 
-    // Optional: Maximum recursion depth (0 = unlimited)
+    // Optional: Maximum recursion depth (0 = non-recursive)
     maxDepth: number,
 
     // Optional: Field name for depth of each result
@@ -210,6 +210,8 @@ db.employees.aggregate([
 
 **Output:**
 
+`$graphLookup` does not guarantee the order of documents in the output array. The example below is grouped by depth for readability:
+
 ```javascript
 {
   "_id": "vp1",
@@ -281,6 +283,8 @@ db.employees.aggregate([
 ```
 
 **Output:**
+
+`$graphLookup` does not guarantee the order of documents in the output array. The example below is grouped by depth for readability:
 
 ```javascript
 {
@@ -427,6 +431,8 @@ db.users.aggregate([
 ```
 
 **Output:**
+
+`$graphLookup` does not guarantee the order of documents in the output array. The example below is grouped by depth for readability:
 
 ```javascript
 {
@@ -594,12 +600,12 @@ Graphs can contain cycles, where a path eventually returns to a previously visit
 ```javascript
 // Create categories with an intentional cycle
 db.categories.insertMany([
-  { _id: "cat1", name: "Electronics", parent: null },
+  { _id: "cat1", name: "Electronics", parent: "cat5" },
   { _id: "cat2", name: "Computers", parent: "cat1" },
   { _id: "cat3", name: "Laptops", parent: "cat2" },
   { _id: "cat4", name: "Gaming Laptops", parent: "cat3" },
-  // Circular reference: Gaming relates back to Electronics
-  { _id: "cat5", name: "Gaming", parent: "cat4", relatedTo: "cat1" }
+  // Circular reference: Electronics points back to Gaming
+  { _id: "cat5", name: "Gaming", parent: "cat4" }
 ]);
 ```
 
@@ -629,7 +635,8 @@ db.categories.aggregate([
 ]);
 
 // The query completes successfully because MongoDB tracks visited documents
-// Each document appears only once in the results, regardless of cycles
+// Each document appears only once in the results, even if a cycle leads
+// back to a previously visited document
 ```
 
 ### Best Practices for Cycle Handling
@@ -729,10 +736,10 @@ db.employees.aggregate([
 ]);
 ```
 
-### 3. Project Only Needed Fields
+### 3. Project Only Needed Output Fields
 
 ```javascript
-// Reduce memory usage by projecting early
+// Reduce response size by projecting only the fields the client needs
 db.employees.aggregate([
   { $match: { _id: "vp1" } },
   {
@@ -761,7 +768,7 @@ For very large graphs (millions of nodes), consider:
 
 - Breaking queries into smaller, targeted traversals
 - Using `maxDepth` to limit scope
-- Implementing pagination with `$skip` and `$limit`
+- Limiting the number of starting documents with `$match` and `$limit`
 - Caching frequently accessed graph paths
 
 ## Advanced Example: Product Recommendations
@@ -858,7 +865,7 @@ MongoDB's `$graphLookup` provides a powerful way to query graph-like data struct
 2. **Depth Control**: Always consider using `maxDepth` for predictable performance
 3. **Cycle Safety**: MongoDB automatically handles cycles, but use `depthField` to understand paths
 4. **Filtering**: Use `restrictSearchWithMatch` to limit which documents participate in traversal
-5. **Performance**: Index connection fields and project only needed data
+5. **Performance**: Index connection fields, limit traversal depth, and return only needed data
 
 Whether you are modeling organizational hierarchies, social networks, product relationships, or any other connected data, `$graphLookup` offers a flexible and efficient solution within your existing MongoDB infrastructure.
 
