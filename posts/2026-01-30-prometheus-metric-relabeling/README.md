@@ -412,19 +412,22 @@ remote_write:
 
 ### 1. Regex Matching Issues
 
-Prometheus uses RE2 regex syntax. Common gotchas include unescaped dots and missing anchors.
+Prometheus uses RE2 regex syntax, and relabel regexes are **fully anchored on both ends** by default (treated as `^...$`). A common gotcha is forgetting this and writing a prefix pattern that only matches the exact string.
 
 ```yaml
-# Wrong - matches http_requests_total_extra too
+# Wrong - regex is implicitly anchored, so this only matches the exact
+# string 'http_requests' and will not match 'http_requests_total'
 - source_labels: [__name__]
-  regex: 'http_requests_total'
+  regex: 'http_requests'
   action: keep
 
-# Correct - exact match
+# Correct - use .* to allow trailing characters
 - source_labels: [__name__]
-  regex: '^http_requests_total$'
+  regex: 'http_requests.*'
   action: keep
 ```
+
+Another common gotcha: an unescaped `.` matches any character, not a literal dot. Use `\.` when you need a literal period.
 
 ### 2. Order Matters
 
@@ -554,7 +557,7 @@ Relabeling adds CPU overhead. Follow these guidelines for large-scale deployment
 | Use simple regex | Complex patterns consume more CPU |
 | Limit source_labels | Concatenating many labels is expensive |
 | Prefer keep over drop | One keep rule beats multiple drop rules for allowlists |
-| Monitor relabel duration | Check `prometheus_target_scrape_pool_reloads_total` |
+| Monitor scrape duration | Check `scrape_duration_seconds` and `prometheus_target_sync_length_seconds` |
 
 ---
 
