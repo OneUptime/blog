@@ -178,7 +178,7 @@ The following table shows how a 4-replica deployment progresses with different c
 
 ## progressDeadlineSeconds Configuration
 
-The `progressDeadlineSeconds` field specifies how long Kubernetes waits for a deployment to make progress before marking it as failed. Progress means either new pods becoming available or old pods being terminated.
+The `progressDeadlineSeconds` field specifies how long Kubernetes waits for a deployment to make progress before marking it as failed. Progress includes creating a new ReplicaSet, scaling ReplicaSets up or down, or new pods becoming ready or available.
 
 ```yaml
 apiVersion: apps/v1
@@ -302,18 +302,19 @@ kubectl patch pod $POD_NAME -n production --type=json -p='[
 ]' --subresource=status
 ```
 
-### AWS ALB Ingress Controller Example
+### AWS Load Balancer Controller Example
 
-When using AWS ALB Ingress Controller, you can configure readiness gates to wait for target group registration.
+When using AWS Load Balancer Controller, you can configure readiness gates to wait for target group registration. The controller injects readiness gates into new pods when the namespace is labeled and the pods match a Service and target group binding that uses IP targets.
+
+```bash
+kubectl label namespace production elbv2.k8s.aws/pod-readiness-gate-inject=enabled
+```
 
 ```yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: web-application
-  annotations:
-    # Enable ALB readiness gates
-    alb.ingress.kubernetes.io/pod-readiness-gate-inject: enabled
 spec:
   replicas: 3
   strategy:
@@ -391,10 +392,11 @@ kubectl get deployment web-application -n production -o jsonpath='{.spec.templat
 Track why each deployment was made by adding change cause annotations.
 
 ```bash
-# Deploy with change cause annotation
-kubectl apply -f deployment.yaml
+# Update the change cause before the rollout that should record it
 kubectl annotate deployment/web-application -n production \
-  kubernetes.io/change-cause="Update to v1.3.0 - performance improvements"
+  kubernetes.io/change-cause="Update to v1.3.0 - performance improvements" \
+  --overwrite
+kubectl apply -f deployment.yaml
 
 # Or include in the deployment manifest
 ```
@@ -473,11 +475,11 @@ kubectl get events -n production --field-selector involvedObject.name=web-applic
 kubectl get events -n production --watch
 ```
 
-### Common Deployment Events
+### Common Deployment Events and Conditions
 
-The following table describes events you will see during rolling updates.
+The following table describes events and deployment condition reasons you will see during rolling updates.
 
-| Event Reason | Description |
+| Reason | Description |
 |-------------|-------------|
 | ScalingReplicaSet | Deployment is scaling a ReplicaSet up or down |
 | ProgressDeadlineExceeded | Deployment failed to progress within deadline |
@@ -570,7 +572,7 @@ spec:
         version: v2.1.0
       annotations:
         prometheus.io/scrape: "true"
-        prometheus.io/port: "8080"
+        prometheus.io/port: "9090"
         prometheus.io/path: "/metrics"
     spec:
       # Spread pods across availability zones
