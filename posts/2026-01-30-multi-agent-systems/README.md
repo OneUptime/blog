@@ -153,7 +153,7 @@ class BaseAgent(ABC):
         self,
         name: str,
         system_prompt: str,
-        model: str = "gpt-4",
+        model: str = "gpt-5.4",
         tools: Optional[List[Dict]] = None,
         temperature: float = 0.7
     ):
@@ -863,7 +863,7 @@ class ParallelExecutor:
         Returns:
             List of results in the same order as inputs
         """
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
 
         # Create futures for all agent tasks
         futures = [
@@ -899,7 +899,7 @@ Have multiple agents debate a topic to explore different perspectives and arrive
 
 ```python
 # patterns/debate.py
-from typing import List, Dict
+from typing import Any, List, Dict
 from agents.base import BaseAgent
 
 class DebateAgent(BaseAgent):
@@ -945,7 +945,7 @@ class DebateModerator:
         ]
         self.transcript: List[Dict] = []
 
-    def run_debate(self) -> Dict[str, any]:
+    def run_debate(self) -> Dict[str, Any]:
         """
         Execute the full debate and return results.
         """
@@ -1251,6 +1251,12 @@ class DataProcessingAgent(BaseAgent):
 Agents will fail. Plan for it by implementing retries, fallbacks, and graceful degradation.
 
 ```python
+import logging
+import time
+from openai import BadRequestError, RateLimitError
+
+logger = logging.getLogger(__name__)
+
 def safe_agent_call(agent, task, fallback_response="Unable to process"):
     """Wrap agent calls with proper error handling."""
     try:
@@ -1258,10 +1264,13 @@ def safe_agent_call(agent, task, fallback_response="Unable to process"):
     except RateLimitError:
         time.sleep(60)
         return agent.run(task)  # Retry once
-    except ContextLengthError:
-        # Summarize context and retry
-        summarized_task = summarize(task)
-        return agent.run(summarized_task)
+    except BadRequestError as e:
+        if getattr(e, "code", None) == "context_length_exceeded":
+            # Summarize context and retry
+            summarized_task = summarize(task)
+            return agent.run(summarized_task)
+        logger.error(f"Agent {agent.name} failed: {e}")
+        return fallback_response
     except Exception as e:
         logger.error(f"Agent {agent.name} failed: {e}")
         return fallback_response
@@ -1272,6 +1281,7 @@ def safe_agent_call(agent, task, fallback_response="Unable to process"):
 Comprehensive logging helps debug complex multi-agent interactions.
 
 ```python
+from typing import Dict
 import logging
 from datetime import datetime
 
@@ -1309,6 +1319,7 @@ Unit test each agent independently before testing the integrated system.
 
 ```python
 import pytest
+from agents.researcher import ResearchAgent
 from unittest.mock import Mock, patch
 
 class TestResearchAgent:
@@ -1325,7 +1336,9 @@ class TestResearchAgent:
         ]
 
         # The agent should use the tool
-        result = agent.run("Research quantum computing basics")
+        result = agent.execute_tool("web_search", {
+            "query": "quantum computing basics"
+        })
 
         assert agent.search_tool.search.called
 
@@ -1336,8 +1349,10 @@ class TestResearchAgent:
         agent.search_tool.search.return_value = []
 
         # Should not raise an error
-        result = agent.run("Research obscure topic")
-        assert result is not None
+        result = agent.execute_tool("web_search", {
+            "query": "Research obscure topic"
+        })
+        assert result == []
 ```
 
 ### 5. Manage Context Windows Wisely
