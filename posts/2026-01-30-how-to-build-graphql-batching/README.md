@@ -126,7 +126,7 @@ npm install @apollo/client graphql
 Configure the Apollo Client with batch link. The batchMax option limits how many operations to include in one batch, and batchInterval sets the collection window in milliseconds.
 
 ```typescript
-import { ApolloClient, InMemoryCache, ApolloLink } from '@apollo/client';
+import { ApolloClient, InMemoryCache } from '@apollo/client';
 import { BatchHttpLink } from '@apollo/client/link/batch-http';
 
 // Create a batch link that groups operations
@@ -199,9 +199,7 @@ function UserProfile({ userId }: { userId: string }) {
 For simpler setups or Node.js scripts, you can manually batch requests using `graphql-request`:
 
 ```typescript
-import { GraphQLClient, gql } from 'graphql-request';
-
-const client = new GraphQLClient('https://api.example.com/graphql');
+import { gql } from 'graphql-request';
 
 // Define multiple operations to batch
 const userQuery = gql`
@@ -245,7 +243,7 @@ async function fetchUserWithPosts(userId: string) {
 
 ### Express with Apollo Server
 
-Apollo Server 4 supports batching by default. You just need to ensure your server handles array payloads correctly.
+Apollo Server 4 supports batching when you explicitly enable batched HTTP requests. You also need to ensure your server handles array payloads correctly.
 
 Install dependencies:
 
@@ -253,7 +251,7 @@ Install dependencies:
 npm install @apollo/server express graphql cors
 ```
 
-Set up a basic server that accepts batched requests. Apollo Server automatically detects array payloads and processes each operation.
+Set up a basic server that accepts batched requests. After batching is enabled, Apollo Server detects array payloads and processes each operation.
 
 ```typescript
 import express from 'express';
@@ -325,12 +323,13 @@ async function startServer() {
   const server = new ApolloServer({
     typeDefs,
     resolvers,
+    allowBatchedHttpRequests: true,
   });
 
   await server.start();
 
   // Apply middleware with CORS and JSON parsing
-  // Apollo Server handles batched requests automatically
+  // Apollo Server handles batched requests after allowBatchedHttpRequests is enabled
   app.use(
     '/graphql',
     cors(),
@@ -356,8 +355,7 @@ import { ApolloServer } from '@apollo/server';
 const server = new ApolloServer({
   typeDefs,
   resolvers,
-  // Limit the number of operations in a single batch
-  // This prevents denial-of-service through oversized batches
+  // Enable batched HTTP requests so array payloads are accepted
   allowBatchedHttpRequests: true,
 });
 ```
@@ -417,7 +415,7 @@ interface BatchTransportOptions {
 
 export class BatchTransport {
   private queue: QueuedOperation[] = [];
-  private timer: NodeJS.Timeout | null = null;
+  private timer: ReturnType<typeof setTimeout> | null = null;
   private options: BatchTransportOptions;
 
   constructor(options: BatchTransportOptions) {
@@ -559,8 +557,6 @@ Server-side error handling should isolate failures to individual operations:
 // Error handling middleware for batched operations
 // Each operation gets its own try-catch so one failure doesn't affect others
 
-import { GraphQLError } from 'graphql';
-
 interface BatchResult {
   data?: unknown;
   errors?: Array<{ message: string; extensions?: unknown }>;
@@ -639,15 +635,21 @@ async function executeBatchedQueries<T extends unknown[]>(
 // Usage with typed results
 interface User { id: string; name: string; }
 interface Post { id: string; title: string; }
+interface UserResult { user: User | null; }
+interface PostsResult { posts: Post[]; }
 
-const [user, posts] = await executeBatchedQueries<[User | null, Post[] | null]>([
+const [userResult, postsResult] = await executeBatchedQueries<[UserResult | null, PostsResult | null]>([
   { query: 'query { user(id: "1") { id name } }' },
   { query: 'query { posts(userId: "1") { id title } }' },
 ]);
 
 // Handle potentially null results from failed operations
-if (user) {
-  console.log(`Welcome, ${user.name}`);
+if (userResult?.user) {
+  console.log(`Welcome, ${userResult.user.name}`);
+}
+
+if (postsResult) {
+  console.log(`Loaded ${postsResult.posts.length} posts`);
 }
 ```
 
@@ -661,7 +663,7 @@ When batching is enabled, traditional per-request rate limiting becomes less eff
 // Rate limiter that counts operations, not just requests
 // This prevents abuse through large batches
 
-import { Request, Response, NextFunction } from 'express';
+import express, { Request, Response, NextFunction } from 'express';
 
 interface RateLimitState {
   operationCount: number;
@@ -723,6 +725,7 @@ export function operationRateLimit(options: RateLimitOptions) {
 // Apply to GraphQL endpoint
 app.use(
   '/graphql',
+  express.json(),
   operationRateLimit({
     windowMs: 60 * 1000,     // 1 minute window
     maxOperations: 100,      // 100 operations per minute
@@ -742,7 +745,8 @@ Track batching metrics to understand usage patterns and identify issues.
 // Metrics collection for batched GraphQL operations
 // Track batch sizes, processing times, and error rates
 
-import { Counter, Histogram, Gauge } from 'prom-client';
+import { Request, Response, NextFunction } from 'express';
+import { Counter, Histogram } from 'prom-client';
 
 // Track total operations processed
 const operationsTotal = new Counter({
@@ -764,12 +768,6 @@ const operationDuration = new Histogram({
   help: 'GraphQL operation execution time',
   labelNames: ['operation_name'],
   buckets: [0.01, 0.05, 0.1, 0.5, 1, 5],
-});
-
-// Track current batch queue depth
-const queueDepth = new Gauge({
-  name: 'graphql_batch_queue_depth',
-  help: 'Current number of operations waiting in batch queue',
 });
 
 // Middleware to collect metrics
@@ -828,14 +826,14 @@ Set appropriate timeouts that account for the total batch processing time:
 // Server timeout configuration for batched requests
 // Larger batches need more time to process
 
-import { ApolloServer } from '@apollo/server';
 import express from 'express';
 
 const app = express();
 
 // Set request timeout based on expected batch processing time
 // 30 seconds allows for batches with slow operations
-app.use('/graphql', (req, res, next) => {
+// Place this after express.json() so req.body is available
+app.use('/graphql', express.json(), (req, res, next) => {
   // Base timeout + additional time per operation in batch
   const operationCount = Array.isArray(req.body) ? req.body.length : 1;
   const timeoutMs = 5000 + (operationCount * 2000); // 5s base + 2s per operation
@@ -907,11 +905,11 @@ Large batches can consume significant memory. Implement streaming for very large
 // Streaming batch responses to reduce memory pressure
 // Useful for batches with large result sets
 
-import { Readable } from 'stream';
+import { Response } from 'express';
 
 async function streamBatchResponse(
   operations: Array<{ query: string; variables: unknown }>,
-  res: express.Response,
+  res: Response,
   executeOperation: (op: { query: string; variables: unknown }) => Promise<unknown>
 ) {
   res.setHeader('Content-Type', 'application/json');
@@ -1020,12 +1018,13 @@ async function main() {
     resolvers,
     // Enable introspection for development
     introspection: true,
+    allowBatchedHttpRequests: true,
   });
 
   await server.start();
 
   // Batch size limit middleware
-  app.use('/graphql', express.json(), (req, res, next) => {
+  app.use('/graphql', cors(), express.json(), (req, res, next) => {
     if (Array.isArray(req.body) && req.body.length > 10) {
       return res.status(400).json({
         errors: [{ message: 'Batch size exceeds maximum of 10 operations' }],
@@ -1075,7 +1074,7 @@ GraphQL batching reduces network overhead by combining multiple operations into 
 | Aspect | Recommendation |
 |--------|----------------|
 | Client | Use Apollo BatchHttpLink or implement custom transport |
-| Server | Apollo Server supports batching by default |
+| Server | Enable batched HTTP requests explicitly in Apollo Server |
 | Limits | Enforce max batch size and total complexity |
 | Errors | Handle per-operation errors independently |
 | Rate Limiting | Count operations, not requests |
