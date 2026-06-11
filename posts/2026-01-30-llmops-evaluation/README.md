@@ -66,9 +66,10 @@ Golden sets contain human-verified examples with expected outputs. These are you
 # Golden test sets with human-verified expected outputs
 
 from dataclasses import dataclass
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 import json
 import hashlib
+from pathlib import Path
 
 @dataclass
 class GoldenExample:
@@ -120,6 +121,7 @@ class GoldenTestSet:
 
     def save(self, filepath: str) -> None:
         """Persist test set to JSON file."""
+        Path(filepath).parent.mkdir(parents=True, exist_ok=True)
         data = {
             "name": self.name,
             "version": self.version,
@@ -251,11 +253,11 @@ Difficulty distribution:
 - Medium ({int(difficulty_distribution['medium']*100)}%): Moderate complexity
 - Hard ({int(difficulty_distribution['hard']*100)}%): Edge cases, ambiguous inputs
 
-Return as a JSON array. Ensure diversity across categories and difficulty levels.
+Return as a JSON object with an "examples" array. Ensure diversity across categories and difficulty levels.
 """
 
     response = client.chat.completions.create(
-        model="gpt-4",
+        model="gpt-4o-mini",
         messages=[
             {
                 "role": "system",
@@ -310,11 +312,11 @@ For each example provide:
 4. failure_mode: What could go wrong if not handled properly
 
 Focus on realistic attacks that could occur in production.
-Return as a JSON array.
+Return as a JSON object with an "examples" array.
 """
 
     response = client.chat.completions.create(
-        model="gpt-4",
+        model="gpt-4o-mini",
         messages=[
             {
                 "role": "system",
@@ -767,7 +769,7 @@ class LLMJudge:
 
     def __init__(
         self,
-        model: str = "gpt-4",
+        model: str = "gpt-4o-mini",
         temperature: float = 0.1
     ):
         self.model = model
@@ -982,7 +984,7 @@ Include a "reasoning" field explaining your choices.
 
 
 # Example usage
-judge = LLMJudge(model="gpt-4")
+judge = LLMJudge(model="gpt-4o-mini")
 
 input_text = "Explain how photosynthesis works in simple terms."
 output_text = """
@@ -1019,10 +1021,7 @@ from ragas.metrics import (
     faithfulness,
     answer_relevancy,
     context_precision,
-    context_recall,
-    context_utilization,
-    answer_similarity,
-    answer_correctness
+    context_recall
 )
 from datasets import Dataset
 from typing import List, Dict
@@ -1052,10 +1051,7 @@ class RAGEvaluator:
             "faithfulness": faithfulness,
             "answer_relevancy": answer_relevancy,
             "context_precision": context_precision,
-            "context_recall": context_recall,
-            "context_utilization": context_utilization,
-            "answer_similarity": answer_similarity,
-            "answer_correctness": answer_correctness
+            "context_recall": context_recall
         }
 
         if metrics is None:
@@ -1215,12 +1211,10 @@ LangSmith provides production-grade evaluation infrastructure:
 # langsmith_eval.py
 # Production evaluation with LangSmith
 
-from langsmith import Client
-from langsmith.evaluation import evaluate, LangChainStringEvaluator
-from langsmith.schemas import Run, Example
+from langsmith import Client, evaluate
 from langchain_openai import ChatOpenAI
 from typing import List, Dict, Callable
-import os
+import json
 
 # Initialize LangSmith client
 client = Client()
@@ -1241,7 +1235,7 @@ def create_dataset(
     Returns:
         Dataset ID
     """
-    # Create or get existing dataset
+    # Create dataset
     dataset = client.create_dataset(
         dataset_name=name,
         description=description
@@ -1251,7 +1245,7 @@ def create_dataset(
     for example in examples:
         client.create_example(
             inputs=example["input"],
-            outputs=example.get("output"),
+            outputs={"output": example.get("output")},
             dataset_id=dataset.id,
             metadata=example.get("metadata", {})
         )
@@ -1259,23 +1253,27 @@ def create_dataset(
     return dataset.id
 
 
-def custom_evaluator(run: Run, example: Example) -> Dict:
+def custom_evaluator(
+    inputs: Dict,
+    outputs: Dict,
+    reference_outputs: Dict
+) -> Dict:
     """
     Custom evaluator function for LangSmith.
 
     Args:
-        run: The LLM run to evaluate
-        example: The reference example
+        inputs: The dataset inputs
+        outputs: The target function outputs
+        reference_outputs: The reference outputs from the dataset
 
     Returns:
         Dict with 'score' and optional 'reasoning'
     """
-    prediction = run.outputs.get("output", "")
-    reference = example.outputs.get("output", "")
+    prediction = outputs.get("output", "")
 
     # Implement custom evaluation logic
     # Example: Check for required keywords
-    required_keywords = example.inputs.get("required_keywords", [])
+    required_keywords = (reference_outputs or {}).get("required_keywords", [])
 
     found = sum(
         1 for kw in required_keywords
@@ -1293,7 +1291,7 @@ def custom_evaluator(run: Run, example: Example) -> Dict:
 
 def llm_judge_evaluator(
     criteria: str,
-    model: str = "gpt-4"
+    model: str = "gpt-4o-mini"
 ) -> Callable:
     """
     Create an LLM-based evaluator for LangSmith.
@@ -1307,10 +1305,14 @@ def llm_judge_evaluator(
     """
     judge_llm = ChatOpenAI(model=model, temperature=0)
 
-    def evaluator(run: Run, example: Example) -> Dict:
-        prediction = run.outputs.get("output", "")
-        input_text = example.inputs.get("input", "")
-        reference = example.outputs.get("output", "")
+    def evaluator(
+        inputs: Dict,
+        outputs: Dict,
+        reference_outputs: Dict
+    ) -> Dict:
+        prediction = outputs.get("output", "")
+        input_text = inputs.get("text", "")
+        reference = (reference_outputs or {}).get("output", "")
 
         eval_prompt = f"""Evaluate the following response on {criteria}.
 
@@ -1361,7 +1363,7 @@ def run_evaluation(
         experiment_prefix=experiment_prefix,
         # Optional: Add metadata
         metadata={
-            "model": "gpt-4",
+            "models": ["gpt-4o-mini"],
             "temperature": 0.7,
             "version": "1.0.0"
         }
@@ -1378,7 +1380,7 @@ def summarization_chain(inputs: Dict) -> Dict:
     from langchain_openai import ChatOpenAI
     from langchain_core.prompts import ChatPromptTemplate
 
-    llm = ChatOpenAI(model="gpt-4", temperature=0.3)
+    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.3)
 
     prompt = ChatPromptTemplate.from_messages([
         ("system", "You are a helpful assistant that creates concise summaries."),
@@ -1417,10 +1419,6 @@ dataset_id = create_dataset(
 
 # 3. Define evaluators
 evaluators = [
-    # Built-in evaluators
-    LangChainStringEvaluator("embedding_distance"),
-    LangChainStringEvaluator("string_distance"),
-
     # Custom evaluators
     custom_evaluator,
     llm_judge_evaluator("conciseness"),
@@ -1432,10 +1430,10 @@ results = run_evaluation(
     dataset_name="summarization-eval-v1",
     target_function=summarization_chain,
     evaluators=evaluators,
-    experiment_prefix="summarization-gpt4"
+    experiment_prefix="summarization-gpt4o-mini"
 )
 
-print(f"Evaluation complete. View results at: {results.experiment_url}")
+print("Evaluation complete. View results in LangSmith experiments.")
 ```
 
 ## Evaluation Pipeline Architecture
@@ -1763,7 +1761,7 @@ async def run_ci_evaluation():
     # Define the LLM function to evaluate
     def summarize(text: str) -> str:
         response = client.chat.completions.create(
-            model="gpt-4",
+            model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": "Summarize concisely."},
                 {"role": "user", "content": text}
@@ -1775,7 +1773,7 @@ async def run_ci_evaluation():
     # Configure evaluation
     config = EvaluationConfig(
         name="summarization-pr-check",
-        model="gpt-4",
+        model="gpt-4o-mini",
         test_sets=["test_sets/summarization_golden.json"],
         metrics=["rouge_l", "bleu", "length_ratio"],
         judge_criteria=["coherence", "accuracy"],
@@ -1790,7 +1788,7 @@ async def run_ci_evaluation():
 
     # Initialize components
     metrics_engine = MetricsEngine()
-    llm_judge = LLMJudge(model="gpt-4")
+    llm_judge = LLMJudge(model="gpt-4o-mini")
 
     # Run evaluation
     pipeline = EvaluationPipeline(
@@ -2030,7 +2028,7 @@ monitor = EvaluationMonitor()
 # After running evaluation
 current_snapshot = EvaluationSnapshot(
     timestamp=datetime.now(),
-    model_version="gpt-4-0125",
+    model_version="gpt-4o-mini-2024-07-18",
     prompt_version="v2.3",
     metrics={
         "rouge_l": 0.45,
