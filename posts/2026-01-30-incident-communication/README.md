@@ -113,7 +113,7 @@ ensuring customers receive timely information about service health.
 """
 
 import requests
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
 from dataclasses import dataclass
@@ -139,7 +139,7 @@ class IncidentSeverity(Enum):
     SEV1 = "critical"      # Complete service outage
     SEV2 = "major"         # Significant feature unavailable
     SEV3 = "minor"         # Degraded performance
-    SEV4 = "informational" # Minimal customer impact
+    SEV4 = "none"          # Minimal customer impact
 
 
 @dataclass
@@ -248,7 +248,7 @@ class StatusPageClient:
 
         # Build component status updates
         # Each affected component gets marked appropriately
-        component_ids = {
+        component_statuses = {
             comp_id: self._severity_to_component_status(severity).value
             for comp_id in affected_components
         }
@@ -259,7 +259,8 @@ class StatusPageClient:
                 "status": "investigating",
                 "impact_override": severity.value,
                 "body": message,
-                "component_ids": component_ids,
+                "component_ids": affected_components,
+                "components": component_statuses,
                 "deliver_notifications": notify_subscribers
             }
         }
@@ -408,7 +409,7 @@ consistent incident response procedures.
 """
 
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from dataclasses import dataclass, field
 from slack_sdk import WebClient
@@ -428,7 +429,7 @@ class IncidentContext:
     description: str
     affected_services: list[str]
     declared_by: str
-    declared_at: datetime = field(default_factory=datetime.utcnow)
+    declared_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     @property
     def channel_name(self) -> str:
@@ -874,7 +875,7 @@ based on severity, time, affected services, and customer impact.
 """
 
 import os
-from datetime import datetime, time
+from datetime import datetime, time, timezone
 from enum import Enum
 from typing import Optional
 from dataclasses import dataclass
@@ -1293,7 +1294,7 @@ if __name__ == "__main__":
         ),
         affected_services=["Payment Gateway", "Checkout"],
         is_customer_facing=True,
-        timestamp=datetime.utcnow()
+        timestamp=datetime.now(timezone.utc)
     )
 
     results = router.route_notification(notification)
