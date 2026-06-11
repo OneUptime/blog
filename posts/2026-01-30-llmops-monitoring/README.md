@@ -119,20 +119,14 @@ This example shows how to trace OpenAI calls with automatic
 token counting and latency measurement.
 """
 
-import os
-from langfuse import Langfuse
-from langfuse.decorators import observe, langfuse_context
-from openai import OpenAI
+from langfuse import get_client, observe, propagate_attributes
+from langfuse.openai import OpenAI
 
 # Initialize Langfuse client
-# These environment variables should be set in your deployment
-langfuse = Langfuse(
-    public_key=os.environ.get("LANGFUSE_PUBLIC_KEY"),
-    secret_key=os.environ.get("LANGFUSE_SECRET_KEY"),
-    host=os.environ.get("LANGFUSE_HOST", "https://cloud.langfuse.com")
-)
+# Set LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, and LANGFUSE_HOST in deployment
+langfuse = get_client()
 
-# Initialize OpenAI client
+# Initialize OpenAI client using Langfuse's OpenAI integration
 openai_client = OpenAI()
 
 
@@ -154,45 +148,34 @@ def generate_response(user_message: str, session_id: str) -> str:
     Returns:
         The model's response text
     """
-    # Set session context for grouping related traces
-    langfuse_context.update_current_trace(
+    # Set trace context for grouping related traces
+    with propagate_attributes(
         session_id=session_id,
         user_id="user_123",  # Replace with actual user ID
         metadata={
             "environment": "production",
             "model_version": "gpt-4-turbo"
         }
-    )
-
-    # Make the API call - Langfuse tracks this automatically
-    response = openai_client.chat.completions.create(
-        model="gpt-4-turbo",
-        messages=[
-            {
-                "role": "system",
-                "content": "You are a helpful assistant. Be concise."
-            },
-            {
-                "role": "user",
-                "content": user_message
-            }
-        ],
-        temperature=0.7,
-        max_tokens=500
-    )
+    ):
+        # Make the API call - Langfuse tracks this automatically
+        response = openai_client.chat.completions.create(
+            model="gpt-4-turbo",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a helpful assistant. Be concise."
+                },
+                {
+                    "role": "user",
+                    "content": user_message
+                }
+            ],
+            temperature=0.7,
+            max_completion_tokens=500
+        )
 
     # Extract the response text
     assistant_message = response.choices[0].message.content
-
-    # Log token usage as a custom event
-    langfuse_context.update_current_observation(
-        usage={
-            "input": response.usage.prompt_tokens,
-            "output": response.usage.completion_tokens,
-            "total": response.usage.total_tokens
-        },
-        model=response.model
-    )
 
     return assistant_message
 
@@ -230,13 +213,6 @@ def retrieve_documents(query: str) -> list:
     The observation tracks retrieval latency and results.
     """
     # Simulate vector search - replace with actual implementation
-    # Track the number of documents retrieved
-    langfuse_context.update_current_observation(
-        metadata={
-            "query_length": len(query),
-            "retrieval_method": "cosine_similarity"
-        }
-    )
 
     return [
         {"content": "Document 1 content", "score": 0.92},
@@ -289,51 +265,47 @@ This enables tracking response quality over time
 and identifying problematic patterns.
 """
 
-from langfuse import Langfuse
-from langfuse.decorators import observe, langfuse_context
+from langfuse import get_client, observe
 
-langfuse = Langfuse()
+langfuse = get_client()
 
 
 @observe()
-def generate_and_score(user_message: str) -> dict:
+def generate_and_score(user_message: str, session_id: str) -> dict:
     """
     Generate a response and automatically score its quality.
 
     Returns both the response and quality metrics.
     """
     # Generate the response
-    response = generate_response(user_message)
-
-    # Get the current trace ID for scoring
-    trace_id = langfuse_context.get_current_trace_id()
+    response = generate_response(user_message, session_id=session_id)
 
     # Score the response on multiple dimensions
     # These scores can be computed inline or async
 
     # Relevance score (0-1): How well does response match the query
     relevance = compute_relevance_score(user_message, response)
-    langfuse.score(
-        trace_id=trace_id,
+    langfuse.score_current_trace(
         name="relevance",
         value=relevance,
+        data_type="NUMERIC",
         comment="Semantic similarity between query and response"
     )
 
     # Conciseness score (0-1): Is the response appropriately sized
     conciseness = compute_conciseness_score(response)
-    langfuse.score(
-        trace_id=trace_id,
+    langfuse.score_current_trace(
         name="conciseness",
-        value=conciseness
+        value=conciseness,
+        data_type="NUMERIC"
     )
 
     # Safety score (0-1): Does response contain harmful content
     safety = compute_safety_score(response)
-    langfuse.score(
-        trace_id=trace_id,
+    langfuse.score_current_trace(
         name="safety",
-        value=safety
+        value=safety,
+        data_type="NUMERIC"
     )
 
     return {
@@ -551,7 +523,7 @@ def generate_with_prompt_version(
     Returns:
         Tuple of (response_text, request_id)
     """
-    response = client.chat.completions.create(
+    raw_response = client.chat.completions.with_raw_response.create(
         model="gpt-4-turbo",
         messages=[
             {"role": "system", "content": "You are a helpful assistant."},
@@ -564,14 +536,15 @@ def generate_with_prompt_version(
             "Helicone-Property-Experiment": "prompt_optimization_q1"
         }
     )
+    response = raw_response.parse()
 
     # Get the request ID from response headers for feedback
-    request_id = response._response.headers.get("helicone-id")
+    request_id = raw_response.headers.get("helicone-id")
 
     return response.choices[0].message.content, request_id
 
 
-def submit_feedback(request_id: str, rating: int, feedback_text: str = None):
+def submit_feedback(request_id: str, rating: bool, feedback_text: str = None):
     """
     Submit user feedback for a specific request.
 
@@ -582,7 +555,7 @@ def submit_feedback(request_id: str, rating: int, feedback_text: str = None):
 
     Args:
         request_id: The Helicone request ID
-        rating: User rating (1-5)
+        rating: User rating, where True is positive and False is negative
         feedback_text: Optional text feedback
     """
     url = "https://api.helicone.ai/v1/feedback"
@@ -645,7 +618,7 @@ if __name__ == "__main__":
     print(f"\nRequest ID for feedback: {req_id}")
 
     # Later, when user provides feedback:
-    # submit_feedback(req_id, rating=5, feedback_text="Very helpful!")
+    # submit_feedback(req_id, rating=True, feedback_text="Very helpful!")
 ```
 
 ---
@@ -669,29 +642,25 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
 from opentelemetry.trace import Status, StatusCode
 from openai import OpenAI
 
 # Configure trace provider
+# For OneUptime, set OTEL_EXPORTER_OTLP_ENDPOINT=https://oneuptime.com/otlp
+# and OTEL_EXPORTER_OTLP_HEADERS=x-oneuptime-token=YOUR_TOKEN in deployment.
 trace_provider = TracerProvider()
 trace_provider.add_span_processor(
     BatchSpanProcessor(
-        OTLPSpanExporter(
-            endpoint="https://otlp.oneuptime.com:4317",
-            headers={"x-oneuptime-token": "YOUR_TOKEN"}
-        )
+        OTLPSpanExporter()
     )
 )
 trace.set_tracer_provider(trace_provider)
 
 # Configure metrics provider
 metric_reader = PeriodicExportingMetricReader(
-    OTLPMetricExporter(
-        endpoint="https://otlp.oneuptime.com:4317",
-        headers={"x-oneuptime-token": "YOUR_TOKEN"}
-    ),
+    OTLPMetricExporter(),
     export_interval_millis=60000  # Export every 60 seconds
 )
 meter_provider = MeterProvider(metric_readers=[metric_reader])
@@ -726,8 +695,9 @@ llm_cost_counter = meter.create_counter(
     unit="USD"
 )
 
-# Token pricing (per 1K tokens)
-PRICING = {
+# Example token pricing in USD per 1K tokens.
+# Replace these values with the current prices for your provider and models.
+EXAMPLE_PRICING = {
     "gpt-4-turbo": {"input": 0.01, "output": 0.03},
     "gpt-4o": {"input": 0.005, "output": 0.015},
     "gpt-3.5-turbo": {"input": 0.0005, "output": 0.0015}
@@ -736,7 +706,7 @@ PRICING = {
 
 def calculate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
     """Calculate the cost of an LLM request based on token usage."""
-    prices = PRICING.get(model, PRICING["gpt-4-turbo"])
+    prices = EXAMPLE_PRICING.get(model, EXAMPLE_PRICING["gpt-4-turbo"])
     input_cost = (input_tokens / 1000) * prices["input"]
     output_cost = (output_tokens / 1000) * prices["output"]
     return input_cost + output_cost
@@ -1232,7 +1202,7 @@ def evaluate_response(
                 "content": eval_prompt
             }
         ],
-        temperature=0,  # Deterministic evaluation
+        temperature=0,  # More consistent evaluation
         response_format={"type": "json_object"}
     )
 
