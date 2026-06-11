@@ -16,7 +16,7 @@ In this guide, we will explore DNS TTL concepts, tradeoffs between low and high 
 
 ## Understanding DNS TTL and Caching Behavior
 
-TTL is a value in seconds that tells DNS resolvers how long to cache a DNS record before querying the authoritative nameserver again. When a client requests a domain name resolution, the response includes the TTL value, and the resolver stores this mapping until the TTL expires.
+TTL is a value in seconds that tells DNS resolvers the maximum amount of time to cache a DNS record before querying again. When a client requests a domain name resolution, the response includes the TTL value, and the resolver stores this mapping until the TTL expires or the resolver's own cache policy evicts it earlier.
 
 ### How DNS Caching Works
 
@@ -96,7 +96,7 @@ Choosing between low and high TTL values involves balancing several factors. Her
 | Factor | Low TTL (30-300s) | High TTL (3600s+) |
 |--------|-------------------|-------------------|
 | DNS Query Load | Higher | Lower |
-| Propagation Speed | Fast | Slow |
+| Cache Refresh Speed | Fast | Slow |
 | Failover Time | Quick | Delayed |
 | Resolver Caching | Less effective | More effective |
 | Cost (if using paid DNS) | Higher | Lower |
@@ -136,7 +136,7 @@ High TTL values (3600 seconds or more) are appropriate when:
 - **Stable infrastructure**: IPs rarely change
 - **Reducing DNS costs**: Minimizing query volume
 - **Improving performance**: Maximizing cache hits
-- **Static content CDNs**: Endpoints that never change
+- **Static content CDNs**: Endpoints that rarely change
 
 ```bash
 # Example: Setting a high TTL for a stable service
@@ -144,8 +144,8 @@ High TTL values (3600 seconds or more) are appropriate when:
 
 dig +nocmd +noall +answer example.com A
 
-# Output example:
-# example.com.    3600    IN    A    93.184.216.34
+# Output format:
+# example.com.    300    IN    A    192.0.2.10
 ```
 
 ## TTL Strategies for Failover
@@ -170,9 +170,7 @@ flowchart TD
 ### Implementing Health-Based DNS Failover
 
 ```python
-import dns.resolver
 import requests
-from typing import Optional
 
 class DNSFailoverManager:
     def __init__(self, primary_ip: str, secondary_ip: str, health_endpoint: str):
@@ -226,7 +224,6 @@ print(f"Active IP: {active_ip}, TTL: {ttl}s")
 Before planned maintenance or anticipated failovers, reduce TTL ahead of time:
 
 ```python
-import time
 from datetime import datetime, timedelta
 
 class PlannedFailover:
@@ -271,7 +268,7 @@ Negative caching stores the fact that a domain does not exist (NXDOMAIN) or that
 
 ### Understanding Negative TTL
 
-The negative TTL is defined in the SOA (Start of Authority) record as the minimum TTL field:
+The negative TTL is derived from the SOA (Start of Authority) record in the negative response. Per RFC 2308, the effective TTL for the cached negative answer is the lower of the SOA record's TTL and the SOA MINIMUM field:
 
 ```bash
 # Query the SOA record to see negative TTL
@@ -291,7 +288,6 @@ dig +nocmd +noall +answer example.com SOA
 
 ```python
 import dns.resolver
-import dns.exception
 from typing import Optional
 import time
 
@@ -318,7 +314,7 @@ class NegativeCacheHandler:
         try:
             answers = dns.resolver.resolve(domain, 'A')
             return str(answers[0])
-        except dns.resolver.NXDOMAIN as e:
+        except dns.resolver.NXDOMAIN:
             # Domain does not exist, cache the negative result
             # Try to get TTL from SOA record
             negative_ttl = self._get_negative_ttl(domain)
@@ -330,14 +326,15 @@ class NegativeCacheHandler:
             return None
         except dns.resolver.NoAnswer:
             # Record type does not exist for this domain
+            negative_ttl = self._get_negative_ttl(domain)
             self.negative_cache[domain] = {
-                'expires_at': time.time() + self.default_negative_ttl,
+                'expires_at': time.time() + negative_ttl,
                 'reason': 'NoAnswer'
             }
             return None
 
     def _get_negative_ttl(self, domain: str) -> int:
-        """Extract negative TTL from SOA record."""
+        """Extract effective negative TTL from the SOA record."""
         try:
             # Get the parent zone SOA
             parts = domain.split('.')
@@ -345,8 +342,8 @@ class NegativeCacheHandler:
                 zone = '.'.join(parts[i:])
                 try:
                     soa = dns.resolver.resolve(zone, 'SOA')
-                    # The minimum field is the negative TTL
-                    return soa[0].minimum
+                    # RFC 2308 uses the lower of the SOA RR TTL and MINIMUM field.
+                    return min(soa.rrset.ttl, soa[0].minimum)
                 except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer):
                     continue
         except Exception:
@@ -387,10 +384,10 @@ class NXDOMAINValidator:
             return False
         return True
 
-# Common ISP hijack IPs (examples)
+# Example configured hijack IPs
 validator = NXDOMAINValidator([
-    '67.215.65.132',   # Example hijack IP
-    '93.184.216.34',   # Example hijack IP
+    '192.0.2.10',      # Example hijack IP
+    '198.51.100.10',   # Example hijack IP
 ])
 ```
 
@@ -444,7 +441,6 @@ environments:
 ```python
 import psutil
 from dataclasses import dataclass
-from typing import Callable
 
 @dataclass
 class DynamicTTLConfig:
@@ -460,7 +456,7 @@ class DynamicTTLManager:
     def calculate_ttl(self) -> int:
         """
         Calculate TTL based on current server load.
-        Higher load = lower TTL (easier to shift traffic away)
+        Higher load = lower TTL (easier to shift traffic away if DNS answers change)
         Lower load = higher TTL (stable caching)
         """
         cpu_load = psutil.cpu_percent() / 100
@@ -501,7 +497,7 @@ logger = logging.getLogger(__name__)
 class TTLMonitor:
     def __init__(self, domains: list[str], expected_ttls: dict[str, int]):
         """
-        Monitor DNS TTL values and alert on unexpected changes.
+        Monitor DNS TTL values and alert on unexpected increases.
 
         Args:
             domains: List of domains to monitor
@@ -509,7 +505,6 @@ class TTLMonitor:
         """
         self.domains = domains
         self.expected_ttls = expected_ttls
-        self.ttl_tolerance = 0.1  # 10% tolerance
 
     def check_ttl(self, domain: str) -> dict:
         """Check current TTL for a domain."""
@@ -518,10 +513,9 @@ class TTLMonitor:
             current_ttl = answers.rrset.ttl
             expected_ttl = self.expected_ttls.get(domain, 300)
 
-            # Calculate if TTL is within expected range
-            min_expected = expected_ttl * (1 - self.ttl_tolerance)
-            max_expected = expected_ttl * (1 + self.ttl_tolerance)
-            is_normal = min_expected <= current_ttl <= max_expected
+            # Recursive resolvers return the remaining TTL, so values below
+            # the configured TTL are normal while values above it are not.
+            is_normal = 0 < current_ttl <= expected_ttl
 
             return {
                 'domain': domain,
@@ -547,7 +541,7 @@ class TTLMonitor:
 
             if not result.get('is_normal', True):
                 logger.warning(
-                    f"TTL anomaly detected for {domain}: "
+                    f"TTL above expected value for {domain}: "
                     f"current={result.get('current_ttl')}, "
                     f"expected={result.get('expected_ttl')}"
                 )
