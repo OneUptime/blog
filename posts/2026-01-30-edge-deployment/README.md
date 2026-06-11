@@ -64,7 +64,7 @@ First, implement a device registration service that edge nodes use to announce t
 # fleet_manager.py
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Dict, List, Optional
 import hashlib
 import json
@@ -96,8 +96,8 @@ class FleetManager:
             location=registration_payload["location"],
             capabilities=registration_payload.get("capabilities", []),
             labels=registration_payload.get("labels", {}),
-            registered_at=datetime.utcnow(),
-            last_heartbeat=datetime.utcnow(),
+            registered_at=datetime.now(UTC),
+            last_heartbeat=datetime.now(UTC),
             current_version=registration_payload.get("version", "unknown"),
             status="registered"
         )
@@ -132,7 +132,7 @@ class FleetManager:
         """Update device heartbeat and health status."""
         if device_id in self.devices:
             device = self.devices[device_id]
-            device.last_heartbeat = datetime.utcnow()
+            device.last_heartbeat = datetime.now(UTC)
             device.status = health_data.get("status", "healthy")
             device.current_version = health_data.get("version", device.current_version)
 ```
@@ -147,8 +147,10 @@ Each edge device runs an agent that communicates with the control plane.
 # edge_agent.py
 import asyncio
 import aiohttp
+import os
 import subprocess
 import json
+import shutil
 from pathlib import Path
 from typing import Optional
 
@@ -244,6 +246,29 @@ class EdgeAgent:
             "disk_percent": self._get_disk_usage()
         }
 
+    def _get_cpu_usage(self) -> float:
+        """Estimate CPU utilization from the 1-minute load average."""
+        load_1m, _, _ = os.getloadavg()
+        cpu_count = os.cpu_count() or 1
+        return min(100.0, (load_1m / cpu_count) * 100)
+
+    def _get_memory_usage(self) -> float:
+        """Calculate memory utilization from /proc/meminfo."""
+        meminfo = {}
+        with open("/proc/meminfo") as f:
+            for line in f:
+                key, value = line.split(":", 1)
+                meminfo[key] = int(value.split()[0])
+
+        total = meminfo["MemTotal"]
+        available = meminfo.get("MemAvailable", 0)
+        return ((total - available) / total) * 100
+
+    def _get_disk_usage(self) -> float:
+        """Calculate disk utilization for the root filesystem."""
+        usage = shutil.disk_usage("/")
+        return (usage.used / usage.total) * 100
+
     async def watch_deployments(self, device_id: str):
         """Watch for new deployment instructions."""
         async with aiohttp.ClientSession() as session:
@@ -258,6 +283,10 @@ class EdgeAgent:
                         self.current_deployment = deployment
 
                 await asyncio.sleep(10)  # Poll every 10 seconds
+
+    async def apply_deployment(self, deployment: dict) -> None:
+        """Apply deployment instructions received from the control plane."""
+        self.current_deployment = deployment
 ```
 
 ## Deployment Strategies for Edge
@@ -293,7 +322,7 @@ Here is the implementation for a rolling update strategy:
 ```python
 # deployment_strategies.py
 from dataclasses import dataclass
-from typing import List, Optional, Callable
+from typing import Any, List, Optional, Callable
 from enum import Enum
 import asyncio
 
@@ -316,6 +345,7 @@ class DeploymentConfig:
     batch_size_percent: int = 20
     health_check_timeout: int = 300
     rollback_on_failure: bool = True
+    canary_config: Optional[Any] = None
 
 class RollingUpdateStrategy:
     def __init__(self, fleet_manager, deployment_executor):
@@ -426,6 +456,8 @@ flowchart LR
 from dataclasses import dataclass
 from typing import List, Dict
 import asyncio
+import math
+from deployment_strategies import DeploymentConfig, DeploymentStatus
 
 @dataclass
 class CanaryConfig:
@@ -445,10 +477,11 @@ class CanaryDeploymentStrategy:
     async def execute(self, config: DeploymentConfig) -> DeploymentStatus:
         """Execute a canary deployment with automatic promotion."""
         all_devices = self.fleet_manager.get_devices_by_selector(config.target_selector)
+        canary_config = config.canary_config or CanaryConfig()
 
-        canary_percent = config.canary_config.initial_percent
+        canary_percent = canary_config.initial_percent
 
-        while canary_percent <= config.canary_config.max_percent:
+        while canary_percent <= canary_config.max_percent:
             # Calculate canary size
             canary_count = max(1, len(all_devices) * canary_percent // 100)
             canary_devices = all_devices[:canary_count]
@@ -461,7 +494,7 @@ class CanaryDeploymentStrategy:
             # Evaluate canary health
             is_healthy = await self._evaluate_canary(
                 canary_devices,
-                config.canary_config.evaluation_period
+                canary_config
             )
 
             if not is_healthy:
@@ -470,24 +503,34 @@ class CanaryDeploymentStrategy:
                 return DeploymentStatus.ROLLED_BACK
 
             print(f"Canary at {canary_percent}% passed evaluation")
-            canary_percent += config.canary_config.increment_percent
+            canary_percent += canary_config.increment_percent
 
         return DeploymentStatus.COMPLETED
 
-    async def _evaluate_canary(self, devices: list, duration: int) -> bool:
+    async def _deploy_to_devices(self, devices: list, config: DeploymentConfig) -> None:
+        """Deploy the canary version to selected devices."""
+        tasks = [self.executor.deploy_to_device(device, config) for device in devices]
+        await asyncio.gather(*tasks)
+
+    async def _rollback_canary(self, devices: list) -> None:
+        """Rollback canary devices to the previous version."""
+        tasks = [self.executor.rollback_device(device) for device in devices]
+        await asyncio.gather(*tasks)
+
+    async def _evaluate_canary(self, devices: list, canary_config: CanaryConfig) -> bool:
         """Evaluate canary health over a period of time."""
         start_time = asyncio.get_event_loop().time()
 
-        while asyncio.get_event_loop().time() - start_time < duration:
+        while asyncio.get_event_loop().time() - start_time < canary_config.evaluation_period:
             metrics = await self._collect_canary_metrics(devices)
 
             # Check error rate
-            if metrics["error_rate"] > self.config.error_rate_threshold:
+            if metrics["error_rate"] > canary_config.error_rate_threshold:
                 print(f"Error rate {metrics['error_rate']:.2%} exceeds threshold")
                 return False
 
             # Check success rate
-            if metrics["success_rate"] < self.config.success_threshold:
+            if metrics["success_rate"] < canary_config.success_threshold:
                 print(f"Success rate {metrics['success_rate']:.2%} below threshold")
                 return False
 
@@ -513,7 +556,7 @@ class CanaryDeploymentStrategy:
             latencies.extend(device_metrics["latencies"])
 
         latencies.sort()
-        p99_index = int(len(latencies) * 0.99)
+        p99_index = min(len(latencies) - 1, max(0, math.ceil(len(latencies) * 0.99) - 1))
 
         return {
             "error_rate": total_errors / max(total_requests, 1),
@@ -548,7 +591,7 @@ class ContainerSpec:
     health_check: Optional[dict] = None
 
 class EdgeContainerRuntime:
-    """Manages containers on edge devices using Docker or containerd."""
+    """Manages containers on edge devices using a Docker-compatible CLI."""
 
     def __init__(self, runtime: str = "docker"):
         self.runtime = runtime
@@ -576,6 +619,20 @@ class EdgeContainerRuntime:
             text=True
         )
         return result.returncode == 0
+
+    def _configure_registry_auth(self, registry_auth: dict) -> None:
+        """Configure registry authentication before pulling private images."""
+        username = registry_auth["username"]
+        password = registry_auth["password"]
+        registry = registry_auth.get("registry", "")
+        result = subprocess.run(
+            [self.runtime, "login", registry, "--username", username, "--password-stdin"],
+            input=password,
+            capture_output=True,
+            text=True
+        )
+        if result.returncode != 0:
+            raise RuntimeError(f"Registry login failed: {result.stderr}")
 
     def deploy_container(self, spec: ContainerSpec) -> str:
         """Deploy a container based on specification."""
@@ -644,11 +701,12 @@ class EdgeContainerRuntime:
 
         inspect_data = json.loads(result.stdout)[0]
         state = inspect_data["State"]
+        health_status = state.get("Health", {}).get("Status")
 
         return {
-            "status": "healthy" if state["Running"] else "stopped",
+            "status": health_status if state["Running"] and health_status else ("healthy" if state["Running"] else "stopped"),
             "running": state["Running"],
-            "health": state.get("Health", {}).get("Status", "unknown"),
+            "health": health_status or "unknown",
             "started_at": state["StartedAt"],
             "exit_code": state.get("ExitCode", 0)
         }
@@ -746,10 +804,12 @@ stateDiagram-v2
 ```python
 # rollback_manager.py
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import List, Optional, Dict
 import json
 from pathlib import Path
+from container_runtime import EdgeContainerRuntime, ContainerSpec
+from deployment_strategies import DeploymentConfig
 
 @dataclass
 class DeploymentSnapshot:
@@ -816,7 +876,7 @@ class RollbackManager:
         """Record a successful deployment for potential rollback."""
         snapshot = DeploymentSnapshot(
             version=deployment.version,
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(UTC),
             artifact_url=deployment.artifact_url,
             config_hash=self._hash_config(deployment),
             container_spec=container_spec
@@ -894,9 +954,10 @@ Continuous monitoring ensures early detection of issues across your edge fleet.
 # health_monitor.py
 from dataclasses import dataclass
 from typing import Dict, List, Callable, Optional
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 import asyncio
 import aiohttp
+from fleet_manager import EdgeDevice
 
 @dataclass
 class HealthCheckConfig:
@@ -971,14 +1032,14 @@ class HealthMonitor:
             self.health_status[device_id] = DeviceHealthStatus(
                 device_id=device_id,
                 status="unknown",
-                last_check=datetime.utcnow(),
+                last_check=datetime.now(UTC),
                 consecutive_failures=0,
                 consecutive_successes=0,
                 metrics={}
             )
 
         status = self.health_status[device_id]
-        status.last_check = datetime.utcnow()
+        status.last_check = datetime.now(UTC)
 
         if result["success"]:
             status.consecutive_successes += 1
@@ -1011,7 +1072,7 @@ class HealthMonitor:
             "hostname": device.hostname,
             "location": device.location,
             "status": status.status,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "consecutive_failures": status.consecutive_failures
         }
 
@@ -1043,8 +1104,9 @@ class HealthMonitor:
 # metrics_collector.py
 from dataclasses import dataclass
 from typing import Dict, List
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 import asyncio
+import math
 
 @dataclass
 class MetricPoint:
@@ -1070,7 +1132,7 @@ class MetricsCollector:
             self.metrics[name] = []
 
         point = MetricPoint(
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(UTC),
             value=value,
             labels=labels or {}
         )
@@ -1080,7 +1142,7 @@ class MetricsCollector:
 
     def _cleanup_old_metrics(self, name: str) -> None:
         """Remove metrics older than retention period."""
-        cutoff = datetime.utcnow() - self.retention
+        cutoff = datetime.now(UTC) - self.retention
         self.metrics[name] = [
             p for p in self.metrics[name]
             if p.timestamp > cutoff
@@ -1091,7 +1153,7 @@ class MetricsCollector:
         if name not in self.metrics:
             return {}
 
-        cutoff = datetime.utcnow() - timedelta(minutes=duration_minutes)
+        cutoff = datetime.now(UTC) - timedelta(minutes=duration_minutes)
         recent_points = [
             p for p in self.metrics[name]
             if p.timestamp > cutoff
@@ -1102,6 +1164,8 @@ class MetricsCollector:
 
         values = [p.value for p in recent_points]
         values.sort()
+        p95_index = min(len(values) - 1, max(0, math.ceil(len(values) * 0.95) - 1))
+        p99_index = min(len(values) - 1, max(0, math.ceil(len(values) * 0.99) - 1))
 
         return {
             "count": len(values),
@@ -1109,8 +1173,8 @@ class MetricsCollector:
             "max": max(values),
             "avg": sum(values) / len(values),
             "p50": values[len(values) // 2],
-            "p95": values[int(len(values) * 0.95)],
-            "p99": values[int(len(values) * 0.99)]
+            "p95": values[p95_index],
+            "p99": values[p99_index]
         }
 
     def get_deployment_metrics(self, deployment_id: str) -> dict:
@@ -1129,6 +1193,23 @@ class MetricsCollector:
                 f"deployment.{deployment_id}.throughput"
             )
         }
+
+    async def get_device_metrics(self, device_id: str) -> dict:
+        """Get request, error, and latency metrics for a device."""
+        request_points = self.metrics.get(f"device.{device_id}.requests", [])
+        error_points = self.metrics.get(f"device.{device_id}.errors", [])
+        latency_points = self.metrics.get(f"device.{device_id}.latency", [])
+
+        return {
+            "request_count": sum(p.value for p in request_points),
+            "error_count": sum(p.value for p in error_points),
+            "latencies": [p.value for p in latency_points]
+        }
+
+    async def get_baseline_p99(self) -> float:
+        """Get the current fleet-wide baseline p99 latency."""
+        summary = self.get_metric_summary("baseline.latency")
+        return summary.get("p99", 0)
 ```
 
 ## Putting It All Together
@@ -1152,6 +1233,14 @@ async def deploy_to_edge_fleet():
     rollback_manager = RollbackManager()
     health_monitor = HealthMonitor()
     metrics = MetricsCollector()
+
+    # Register devices that match the deployment selector
+    fleet_manager.register_device({
+        "hostname": "edge-node-1",
+        "location": "us-west",
+        "labels": {"environment": "production", "region": "us-west"},
+        "version": "1.0.0"
+    })
 
     # Define deployment configuration
     deployment_config = DeploymentConfig(
