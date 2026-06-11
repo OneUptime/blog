@@ -30,7 +30,6 @@ Here's how to create a transport with custom settings:
 package main
 
 import (
-    "crypto/tls"
     "net"
     "net/http"
     "time"
@@ -53,7 +52,7 @@ func NewCustomTransport() *http.Transport {
         ResponseHeaderTimeout: 10 * time.Second, // Time to wait for response headers
         ExpectContinueTimeout: 1 * time.Second,  // Time to wait for 100-continue
 
-        // Enable HTTP/2 (disabled by setting to true)
+        // Attempt HTTP/2 even with a custom DialContext
         ForceAttemptHTTP2: true,
     }
 }
@@ -106,9 +105,6 @@ func NewSecureTransport() *http.Transport {
     tlsConfig := &tls.Config{
         MinVersion: tls.VersionTLS12,
         MaxVersion: tls.VersionTLS13,
-
-        // Prefer server cipher suites
-        PreferServerCipherSuites: true,
 
         // Custom cipher suites (optional)
         CipherSuites: []uint16{
