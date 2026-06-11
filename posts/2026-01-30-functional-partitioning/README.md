@@ -57,7 +57,7 @@ Each partition maps to a bounded context from your domain model. The `Order` ser
 
 **2. No Cross-Database Joins**
 
-Once you split, `JOIN orders.items ON inventory.products` is gone. Data retrieval across domains happens via service-to-service calls or event-driven synchronization. This is the trade-off: you lose SQL convenience for operational independence.
+Once you split, a query that joins `orders`, `order_items`, and `products` is gone. Data retrieval across domains happens via service-to-service calls or event-driven synchronization. This is the trade-off: you lose SQL convenience for operational independence.
 
 **3. Embrace Eventual Consistency**
 
@@ -134,13 +134,13 @@ app.listen(8080);
 
 ### Step 4: Migrate Data
 
-Copy data from the monolith to the new service's database. Run dual writes temporarily to keep both in sync, then cut over reads.
+Copy data from the monolith to the new service's database. Run dual writes temporarily with idempotent retries and reconciliation, then cut over reads.
 
 ```typescript
 // order-service/sync.ts
 import { MonolithDB, OrderDB } from "./db";
 
-// Dual-write during migration period
+// Dual-write during migration period; make both writes idempotent in production
 export async function createOrder(orderData: OrderInput) {
   // Write to new database first
   const order = await OrderDB.orders.create(orderData);
@@ -193,31 +193,37 @@ export async function getOrderWithUser(
 
 ### Step 6: Implement Event-Driven Communication
 
-For operations that span domains, publish events instead of making synchronous calls. The following example uses a message queue to notify Inventory when an order is placed.
+For operations that span domains, publish events instead of making synchronous calls. In production, write the event to an outbox in the same local transaction as the order, then have a relay publish it to the message queue. This avoids losing the event if the process crashes after saving the order.
 
 ```typescript
 // order-service/events.ts
-import { MessageQueue } from "./queue";
+import { OrderDB } from "./db";
 
 export async function placeOrder(orderData: OrderInput) {
-  // Create order in local database
-  const order = await OrderDB.orders.create(orderData);
+  // Create order and outbox event in one local database transaction
+  const order = await OrderDB.transaction(async (tx) => {
+    const createdOrder = await tx.orders.create(orderData);
 
-  // Publish event for other services
-  await MessageQueue.publish("order.placed", {
-    orderId: order.id,
-    items: order.items.map((item) => ({
-      productId: item.productId,
-      quantity: item.quantity,
-    })),
-    timestamp: new Date().toISOString(),
+    await tx.outbox.create({
+      topic: "order.placed",
+      payload: {
+        orderId: createdOrder.id,
+        items: createdOrder.items.map((item) => ({
+          productId: item.productId,
+          quantity: item.quantity,
+        })),
+        timestamp: new Date().toISOString(),
+      },
+    });
+
+    return createdOrder;
   });
 
   return order;
 }
 ```
 
-The Inventory service subscribes and updates stock levels.
+The outbox relay publishes the message, and the Inventory service subscribes and updates stock levels.
 
 ```typescript
 // inventory-service/handlers.ts
