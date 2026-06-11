@@ -17,14 +17,14 @@ Before diving into configurations, let's understand how debugging works at a hig
 ```mermaid
 flowchart TD
     A[IDE/Editor] -->|Debug Adapter Protocol| B[Debug Adapter]
-    B -->|Language Protocol| C[Runtime/Debugger]
+    B -->|Debugger-specific protocol| C[Runtime/Debugger]
     C -->|Instrumentation| D[Application Code]
     D -->|Breakpoint Hit| C
     C -->|State Information| B
     B -->|Variables/Stack| A
 ```
 
-The Debug Adapter Protocol (DAP) standardizes communication between editors and debuggers, allowing VS Code, JetBrains, and other IDEs to work with various language debuggers through a common interface.
+The Debug Adapter Protocol (DAP) standardizes communication between editors and debuggers, allowing VS Code and other DAP-capable tools to work with various language debuggers through a common interface.
 
 ## Setting Up launch.json
 
@@ -327,10 +327,10 @@ On the remote server, start your application with the inspect flag:
 ```bash
 # Start Node.js with remote debugging enabled
 
-node --inspect=0.0.0.0:9229 server.js
+node --inspect=127.0.0.1:9229 server.js
 
 # For breaking on first line
-node --inspect-brk=0.0.0.0:9229 server.js
+node --inspect-brk=127.0.0.1:9229 server.js
 ```
 
 Create an SSH tunnel for secure access:
@@ -428,8 +428,6 @@ flowchart TD
 
 ```yaml
 # docker-compose.debug.yml
-version: '3.8'
-
 services:
   api:
     build:
@@ -541,7 +539,13 @@ metadata:
   name: api-server-debug
 spec:
   replicas: 1  # Single replica for debugging
+  selector:
+    matchLabels:
+      app: api-server-debug
   template:
+    metadata:
+      labels:
+        app: api-server-debug
     spec:
       containers:
         - name: api
@@ -637,7 +641,7 @@ Use input variables for flexible debugging:
 
 Combine with tasks.json for build steps:
 
-```json
+```jsonc
 // .vscode/tasks.json
 {
   "version": "2.0.0",
@@ -675,8 +679,7 @@ Reference in launch.json:
   "type": "node",
   "request": "launch",
   "program": "${workspaceFolder}/dist/index.js",
-  "preLaunchTask": "Prepare Debug",
-  "postDebugTask": "Cleanup"
+  "preLaunchTask": "Prepare Debug"
 }
 ```
 
@@ -717,7 +720,7 @@ flowchart TD
 
 ### Breakpoints Not Hitting
 
-```json
+```jsonc
 {
   "name": "Debug with Source Maps",
   "type": "node",
@@ -738,7 +741,7 @@ flowchart TD
 Check these common issues:
 
 1. Firewall blocking the debug port
-2. Application binding to 127.0.0.1 instead of 0.0.0.0
+2. Debug server binding to the wrong interface for your connection method
 3. SSH tunnel not established
 4. Container port not exposed
 
