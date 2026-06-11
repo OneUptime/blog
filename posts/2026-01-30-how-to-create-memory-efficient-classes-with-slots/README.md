@@ -62,7 +62,7 @@ print(f"Regular class: {sys.getsizeof(regular) + sys.getsizeof(regular.__dict__)
 print(f"Slotted class: {sys.getsizeof(slotted)} bytes")
 ```
 
-In practice, slotted classes typically use 40-50% less memory per instance. For applications creating millions of objects, this translates to gigabytes of saved memory.
+In practice, slotted classes can use significantly less memory per instance, though the exact savings depend on the Python version, platform, and class layout. For applications creating millions of objects, this can translate to substantial memory savings.
 
 ## When to Use Slots
 
@@ -121,7 +121,7 @@ Important: If a parent class doesn't use `__slots__`, the child class will still
 
 ## Slots and Weakrefs
 
-By default, slotted classes don't support weak references. To enable them, include `__weakref__` in your slots.
+Classes that define `__slots__` don't support weak references unless `__weakref__` is included in the slots or provided by a parent class. To enable them, include `__weakref__` in your slots.
 
 ```python
 import weakref
@@ -155,7 +155,7 @@ point = Coordinate(1.0, 2.0, 3.0)
 print(point)  # Coordinate(x=1.0, y=2.0, z=3.0)
 ```
 
-This combines the memory efficiency of `__slots__` with dataclass features like automatic `__init__`, `__repr__`, and comparison methods.
+This combines the memory efficiency of `__slots__` with dataclass features like automatic `__init__`, `__repr__`, and equality methods.
 
 ## Conclusion
 
