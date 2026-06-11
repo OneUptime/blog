@@ -55,16 +55,17 @@ Prometheus extracts several metadata labels from each discovered instance:
 | `__meta_gce_instance_name` | Instance name |
 | `__meta_gce_instance_id` | Unique instance ID |
 | `__meta_gce_project` | GCP project ID |
-| `__meta_gce_zone` | Zone (e.g., us-central1-a) |
-| `__meta_gce_network` | Network name |
-| `__meta_gce_subnetwork` | Subnetwork name |
+| `__meta_gce_zone` | Zone URL (e.g., `https://www.googleapis.com/compute/v1/projects/PROJECT/zones/us-central1-a`) |
+| `__meta_gce_network` | Network URL |
+| `__meta_gce_subnetwork` | Subnetwork URL |
 | `__meta_gce_private_ip` | Internal IP address |
 | `__meta_gce_public_ip` | External IP (if assigned) |
-| `__meta_gce_tags` | Comma-separated network tags |
+| `__meta_gce_tags` | Network tags wrapped with the configured separator (default `,`) at both ends |
 | `__meta_gce_metadata_<key>` | Custom instance metadata |
 | `__meta_gce_label_<key>` | Instance labels |
 | `__meta_gce_machine_type` | Machine type URL |
 | `__meta_gce_instance_status` | Instance status (RUNNING, STOPPED, etc.) |
+| `__meta_gce_interface_ipv4_<name>` | IPv4 address of the named network interface |
 
 These labels enable powerful filtering and relabeling to target exactly the instances you need.
 
@@ -130,20 +131,29 @@ scrape_configs:
         port: 9100
 ```
 
-### Discovering All Zones in a Project
+### Discovering Across All Zones in a Project
 
-For automatic discovery across all zones, omit the `zone` parameter and use `zones` with a regex pattern, or iterate zones programmatically. A common approach is to use a wildcard zone configuration:
+The `zone` parameter is **required** in `gce_sd_configs` — Prometheus rejects the configuration if it is missing. To cover multiple zones you must enumerate them, one `gce_sd_configs` entry per zone:
 
 ```yaml
 scrape_configs:
   - job_name: 'gce-instances-all-zones'
     gce_sd_configs:
       - project: my-gcp-project
+        zone: us-central1-a
         port: 9100
-        # When zone is omitted, Prometheus discovers instances in all zones
+      - project: my-gcp-project
+        zone: us-central1-b
+        port: 9100
+      - project: my-gcp-project
+        zone: us-central1-c
+        port: 9100
+      - project: my-gcp-project
+        zone: us-central1-f
+        port: 9100
 ```
 
-Note: Omitting the zone parameter causes Prometheus to query all zones, which increases API calls. Consider rate limiting implications for large deployments.
+Note: Each additional zone adds an independent refresh against the GCE API. For large deployments, consider using the `filter` parameter (which is passed to the GCE API's `instances.list` `filter` argument) to reduce the number of returned instances, and tune `refresh_interval` if you are approaching API quotas.
 
 ## Authentication Methods
 
@@ -302,12 +312,20 @@ relabel_configs:
 
 ### Extracting Region from Zone
 
+The `__meta_gce_zone` value is the full GCE zone URL (e.g., `https://www.googleapis.com/compute/v1/projects/my-project/zones/us-central1-a`), and Prometheus relabel regexes are fully anchored. The pattern must therefore match the entire URL:
+
 ```yaml
 relabel_configs:
-  # Extract region (us-central1) from zone (us-central1-a)
+  # Extract region (us-central1) from the full zone URL
   - source_labels: [__meta_gce_zone]
-    regex: '([a-z]+-[a-z0-9]+)-[a-z]'
+    regex: '.*/zones/([a-z]+-[a-z0-9]+)-[a-z]'
     target_label: region
+    replacement: '${1}'
+
+  # Replace the zone label with just the short zone name (e.g., us-central1-a)
+  - source_labels: [__meta_gce_zone]
+    regex: '.*/zones/(.+)'
+    target_label: zone
     replacement: '${1}'
 ```
 
@@ -341,6 +359,10 @@ scrape_configs:
   - job_name: 'node-exporter'
     gce_sd_configs:
       - project: my-gcp-project
+        zone: us-central1-a
+        port: 9100
+      - project: my-gcp-project
+        zone: us-central1-b
         port: 9100
 
     relabel_configs:
@@ -358,13 +380,15 @@ scrape_configs:
       - source_labels: [__meta_gce_instance_name]
         target_label: instance
 
-      # Set zone
+      # Set zone (short name, parsed from the zone URL)
       - source_labels: [__meta_gce_zone]
+        regex: '.*/zones/(.+)'
         target_label: zone
+        replacement: '${1}'
 
-      # Extract region
+      # Extract region from the zone URL
       - source_labels: [__meta_gce_zone]
-        regex: '([a-z]+-[a-z0-9]+)-[a-z]'
+        regex: '.*/zones/([a-z]+-[a-z0-9]+)-[a-z]'
         target_label: region
         replacement: '${1}'
 
@@ -380,6 +404,10 @@ scrape_configs:
   - job_name: 'app-metrics'
     gce_sd_configs:
       - project: my-gcp-project
+        zone: us-central1-a
+        port: 8080
+      - project: my-gcp-project
+        zone: us-central1-b
         port: 8080
 
     metrics_path: /actuator/prometheus
@@ -403,7 +431,11 @@ scrape_configs:
   - job_name: 'database-exporters'
     gce_sd_configs:
       - project: my-gcp-project
+        zone: us-central1-a
         port: 9187  # PostgreSQL exporter port
+      - project: my-gcp-project
+        zone: us-central1-b
+        port: 9187
 
     relabel_configs:
       - source_labels: [__meta_gce_instance_status]
