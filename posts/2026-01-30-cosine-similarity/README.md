@@ -627,4 +627,4 @@ Cosine similarity is a fundamental metric for vector search that measures the an
 4. **Handle edge cases** like zero vectors, NaN values, and dimension mismatches
 5. **Choose wisely** between similarity and distance based on your application needs
 
-By implementing these optimizations, you can build vector search systems that scale to millions of vectors while maintaining sub-millisecond query times. Whether you are building a semantic search engine, recommendation system, or similarity matching service, cosine similarity provides a robust foundation for measuring vector relationships.
+By implementing these optimizations, you can build vector search systems that scale to large collections while maintaining low-latency query times; million-vector workloads typically require appropriate hardware, indexing strategies, or approximate nearest neighbor search for consistently sub-millisecond queries. Whether you are building a semantic search engine, recommendation system, or similarity matching service, cosine similarity provides a robust foundation for measuring vector relationships.
