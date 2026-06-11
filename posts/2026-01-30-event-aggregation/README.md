@@ -136,7 +136,7 @@ This TypeScript implementation shows a basic tumbling window aggregator. It buff
 
 ```typescript
 // Define the structure for incoming events
-interface Event {
+interface AggregationEvent {
   timestamp: number;      // Unix timestamp in milliseconds
   dimensions: {           // Grouping keys for the aggregate
     [key: string]: string;
@@ -194,7 +194,7 @@ class TumblingWindowAggregator {
   }
 
   // Process an incoming event
-  add(event: Event): void {
+  add(event: AggregationEvent): void {
     const windowKey = this.getWindowKey(event.timestamp);
     const dimKey = this.getDimensionKey(event.dimensions);
 
@@ -272,7 +272,7 @@ const aggregator = new TumblingWindowAggregator(
 );
 
 // Simulate incoming events
-const events: Event[] = [
+const events: AggregationEvent[] = [
   { timestamp: Date.now(), dimensions: { region: 'us-east', service: 'api' }, value: 145 },
   { timestamp: Date.now(), dimensions: { region: 'us-west', service: 'api' }, value: 203 },
   { timestamp: Date.now(), dimensions: { region: 'us-east', service: 'api' }, value: 98 },
@@ -288,7 +288,7 @@ setInterval(() => aggregator.tick(Date.now()), 5000);
 
 ## Implementation: Redis-Based Distributed Aggregator
 
-For high-throughput systems, use Redis to aggregate across multiple application instances. This approach handles millions of events per second while maintaining exactly-once semantics.
+For high-throughput systems, use Redis to aggregate across multiple application instances. This approach supports high-throughput counters with atomic per-event updates. Exactly-once processing still requires idempotency or deduplication in your ingestion path.
 
 ```typescript
 import Redis from 'ioredis';
@@ -317,14 +317,34 @@ class RedisAggregator {
   async add(timestamp: number, dimensions: { [key: string]: string }, value: number): Promise<void> {
     const windowStart = Math.floor(timestamp / this.windowSizeMs) * this.windowSizeMs;
     const key = this.buildKey(windowStart, dimensions);
+    const ttlSeconds = Math.ceil(this.windowSizeMs / 1000) * 2;
 
-    // Use pipeline for atomic multi-field update
-    const pipeline = this.redis.pipeline();
-    pipeline.hincrby(key, 'count', 1);
-    pipeline.hincrbyfloat(key, 'sum', value);
-    // Track min/max using sorted sets or Lua scripts for atomicity
-    pipeline.expire(key, Math.ceil(this.windowSizeMs / 1000) * 2);
-    await pipeline.exec();
+    await this.redis.eval(
+      `
+      local key = KEYS[1]
+      local value = tonumber(ARGV[1])
+      local ttl = tonumber(ARGV[2])
+
+      redis.call('HINCRBY', key, 'count', 1)
+      redis.call('HINCRBYFLOAT', key, 'sum', value)
+
+      local currentMin = redis.call('HGET', key, 'min')
+      if currentMin == false or value < tonumber(currentMin) then
+        redis.call('HSET', key, 'min', value)
+      end
+
+      local currentMax = redis.call('HGET', key, 'max')
+      if currentMax == false or value > tonumber(currentMax) then
+        redis.call('HSET', key, 'max', value)
+      end
+
+      redis.call('EXPIRE', key, ttl)
+      `,
+      1,
+      key,
+      value,
+      ttlSeconds
+    );
   }
 
   // Retrieve aggregate for a completed window
