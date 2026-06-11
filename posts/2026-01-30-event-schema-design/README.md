@@ -597,7 +597,7 @@ Here is a complete event example combining envelope, metadata, and payload:
   "source": "order-service",
   "correlation_id": "req-abc-123",
   "schema_version": "1.2.0",
-  "trace_id": "4f3ae9d1c044abcd",
+  "trace_id": "4f3ae9d1c044abcd4f3ae9d1c044abcd",
   "payload": {
     "order_id": "ord-12345",
     "customer": {
