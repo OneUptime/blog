@@ -82,8 +82,9 @@ Here is a battle-tested configuration that balances alert sensitivity with noise
 
 | Severity | Long Window | Short Window | Burn Rate | Time to Exhaust Budget |
 |----------|-------------|--------------|-----------|------------------------|
-| Page (critical) | 1 hour | 5 minutes | 14.4x | 5 days |
-| Page (high) | 6 hours | 30 minutes | 6x | 12.5 days |
+| Page (critical) | 1 hour | 5 minutes | 14.4x | 2.1 days |
+| Page (high) | 6 hours | 30 minutes | 6x | 5 days |
+| Ticket | 24 hours | 2 hours | 3x | 10 days |
 | Ticket | 3 days | 6 hours | 1x | 30 days |
 
 The short window acts as a confirmation that the issue is ongoing, not a momentary blip.
@@ -131,6 +132,20 @@ groups:
           /
           sum(rate(http_requests_total[6h])) by (service)
 
+      # 2-hour error rate window (for ticket-level short-window confirmation)
+      - record: slo:error_rate:2h
+        expr: |
+          sum(rate(http_requests_total{status=~"5.."}[2h])) by (service)
+          /
+          sum(rate(http_requests_total[2h])) by (service)
+
+      # 24-hour error rate window (for ticket-level burn detection)
+      - record: slo:error_rate:24h
+        expr: |
+          sum(rate(http_requests_total{status=~"5.."}[24h])) by (service)
+          /
+          sum(rate(http_requests_total[24h])) by (service)
+
       # Burn rate calculations based on 99.9% SLO target
       # Formula: error_rate / (1 - slo_target) = error_rate / 0.001
       - record: slo:burn_rate:5m
@@ -144,6 +159,12 @@ groups:
 
       - record: slo:burn_rate:6h
         expr: slo:error_rate:6h / 0.001
+
+      - record: slo:burn_rate:2h
+        expr: slo:error_rate:2h / 0.001
+
+      - record: slo:burn_rate:24h
+        expr: slo:error_rate:24h / 0.001
 ```
 
 Now define the alert rules that combine windows:
@@ -157,7 +178,7 @@ groups:
     rules:
       # Critical: Fast burn detected - page immediately
       # Triggers when both 1h and 5m windows show 14.4x burn rate
-      # At this rate, monthly error budget exhausts in ~5 days
+      # At this rate, monthly error budget exhausts in ~2.1 days
       - alert: SLOFastBurnHigh
         expr: |
           slo:burn_rate:1h > 14.4
@@ -170,14 +191,14 @@ groups:
           summary: "High error burn rate detected for {{ $labels.service }}"
           description: |
             Service {{ $labels.service }} is burning error budget at {{ printf "%.1f" $value }}x the sustainable rate.
-            At this rate, the monthly error budget will be exhausted in approximately 5 days.
-            1h burn rate: {{ with printf "slo:burn_rate:1h{service='%s'}" .Labels.service | query }}{{ . | first | value | printf "%.1f" }}{{ end }}x
-            5m burn rate: {{ with printf "slo:burn_rate:5m{service='%s'}" .Labels.service | query }}{{ . | first | value | printf "%.1f" }}{{ end }}x
+            At this rate, the monthly error budget will be exhausted in approximately 2.1 days.
+            1h burn rate: {{ with printf "slo:burn_rate:1h{service=\"%s\"}" $labels.service | query }}{{ . | first | value | printf "%.1f" }}{{ end }}x
+            5m burn rate: {{ with printf "slo:burn_rate:5m{service=\"%s\"}" $labels.service | query }}{{ . | first | value | printf "%.1f" }}{{ end }}x
           runbook_url: "https://wiki.example.com/runbooks/slo-fast-burn"
 
       # High: Moderate burn detected - page during business hours
       # Triggers when both 6h and 30m windows show 6x burn rate
-      # At this rate, monthly error budget exhausts in ~12.5 days
+      # At this rate, monthly error budget exhausts in ~5 days
       - alert: SLOSlowBurnHigh
         expr: |
           slo:burn_rate:6h > 6
@@ -191,18 +212,18 @@ groups:
           description: |
             Service {{ $labels.service }} is burning error budget at {{ printf "%.1f" $value }}x the sustainable rate.
             This indicates a persistent but not critical degradation.
-            6h burn rate: {{ with printf "slo:burn_rate:6h{service='%s'}" .Labels.service | query }}{{ . | first | value | printf "%.1f" }}{{ end }}x
-            30m burn rate: {{ with printf "slo:burn_rate:30m{service='%s'}" .Labels.service | query }}{{ . | first | value | printf "%.1f" }}{{ end }}x
+            6h burn rate: {{ with printf "slo:burn_rate:6h{service=\"%s\"}" $labels.service | query }}{{ . | first | value | printf "%.1f" }}{{ end }}x
+            30m burn rate: {{ with printf "slo:burn_rate:30m{service=\"%s\"}" $labels.service | query }}{{ . | first | value | printf "%.1f" }}{{ end }}x
           runbook_url: "https://wiki.example.com/runbooks/slo-slow-burn"
 
       # Warning: Low burn detected - create ticket for investigation
-      # Triggers when 6h window shows 3x burn rate
+      # Triggers when both 24h and 2h windows show 3x burn rate
       # Indicates gradual degradation that needs attention but not urgently
       - alert: SLOBurnWarning
         expr: |
-          slo:burn_rate:6h > 3
+          slo:burn_rate:24h > 3
           and
-          slo:burn_rate:1h > 3
+          slo:burn_rate:2h > 3
         for: 15m
         labels:
           severity: warning
@@ -210,7 +231,7 @@ groups:
           summary: "Elevated error rate trending for {{ $labels.service }}"
           description: |
             Service {{ $labels.service }} showing sustained elevated error rates.
-            Current 6h burn rate: {{ printf "%.1f" $value }}x
+            Current burn rate: {{ printf "%.1f" $value }}x
             Consider investigating before this becomes critical.
           runbook_url: "https://wiki.example.com/runbooks/slo-warning"
 ```
@@ -219,11 +240,11 @@ groups:
 
 For teams using OpenTelemetry, you can configure similar multi-window alerts using the OpenTelemetry Collector and OneUptime.
 
-First, set up the collector to compute aggregated metrics:
+First, set up the collector to derive request metrics from traces and forward them to OneUptime:
 
 ```yaml
 # otel-collector-config.yaml
-# OpenTelemetry Collector configuration for multi-window metric aggregation
+# OpenTelemetry Collector configuration for deriving request metrics from traces
 
 receivers:
   otlp:
@@ -238,18 +259,6 @@ processors:
     send_batch_size: 512
     timeout: 5s
 
-  # Compute derived metrics for different time windows
-  # This enables multi-window alerting downstream
-  metricstransform:
-    transforms:
-      # Add service-level labels for aggregation
-      - include: http.server.request.duration
-        action: update
-        operations:
-          - action: add_label
-            new_label: slo_service
-            new_value: "{{service.name}}"
-
 connectors:
   # Span metrics connector to derive request metrics from traces
   spanmetrics:
@@ -258,12 +267,13 @@ connectors:
         buckets: [5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 2.5s, 5s, 10s]
     dimensions:
       - name: http.status_code
-      - name: service.name
 
 exporters:
-  otlphttp:
+  otlp_http:
     endpoint: "https://oneuptime.com/otlp"
+    encoding: json
     headers:
+      "Content-Type": "application/json"
       "x-oneuptime-token": "${ONEUPTIME_TOKEN}"
 
 service:
@@ -271,11 +281,11 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlphttp]
+      exporters: [spanmetrics, otlp_http]
     metrics:
       receivers: [otlp, spanmetrics]
-      processors: [batch, metricstransform]
-      exporters: [otlphttp]
+      processors: [batch]
+      exporters: [otlp_http]
 ```
 
 ## Building a Multi-Window Alert Evaluator
@@ -326,7 +336,7 @@ const STANDARD_ALERT_CONFIGS: AlertConfig[] = [
     name: 'gradual-warning',
     severity: 'warning',
     longWindow: { name: '24h', durationSeconds: 86400, burnRateThreshold: 3 },
-    shortWindow: { name: '6h', durationSeconds: 21600, burnRateThreshold: 3 },
+    shortWindow: { name: '2h', durationSeconds: 7200, burnRateThreshold: 3 },
     sloTarget: 0.999
   }
 ];
@@ -489,7 +499,7 @@ describe('MultiWindowAlertEvaluator', () => {
   ): MetricDataPoint[] {
     const points: MetricDataPoint[] = [];
     const now = Date.now();
-    const requestsPerInterval = 100;
+    const requestsPerInterval = 1000;
 
     for (let i = durationSeconds; i > 0; i -= intervalSeconds) {
       const successCount = Math.round(requestsPerInterval * (1 - errorRate));
@@ -535,12 +545,12 @@ describe('MultiWindowAlertEvaluator', () => {
 
   test('should fire warning on gradual degradation', () => {
     // Generate 24 hours of slightly elevated errors
-    const degradedData = generateDataPoints(86400, 300, 0.003);  // 0.3% error rate
+    const degradedData = generateDataPoints(86400, 300, 0.004);  // 0.4% error rate
     degradedData.forEach(p => evaluator.addDataPoint(p));
 
     const alerts = evaluator.evaluate();
 
-    // 0.3% error rate with 99.9% SLO = 3x burn rate
+    // 0.4% error rate with 99.9% SLO = 4x burn rate
     // Should trigger warning but not critical
     const warningAlerts = alerts.filter(a => a.severity === 'warning');
     expect(warningAlerts).toHaveLength(1);
