@@ -99,24 +99,29 @@ class KeyHierarchy:
         self.kek_cache = {}
         self.dek_cache = {}
 
-    def derive_kek(self, master_key_id: str, environment: str) -> bytes:
+    def derive_kek(
+        self,
+        master_key_id: str,
+        environment: str,
+        kek_id: str
+    ) -> bytes:
         """
-        Derive a Key Encryption Key for a specific environment.
-        Uses HKDF for deterministic derivation from master key.
+        Derive a Key Encryption Key for a specific environment and key version.
+        Uses HKDF for deterministic derivation from HSM-protected master key material.
         """
-        cache_key = f"{master_key_id}:{environment}"
+        cache_key = f"{master_key_id}:{environment}:{kek_id}"
         if cache_key in self.kek_cache:
             return self.kek_cache[cache_key]
 
-        # In production: self.hsm_client.get_master_key(master_key_id)
-        # For demonstration, using a derived key
+        # In production, do this derivation inside the HSM or KMS so the
+        # master key is never exported to application memory.
         master_key = self._get_master_key(master_key_id)
 
         hkdf = HKDF(
             algorithm=hashes.SHA256(),
             length=32,
-            salt=environment.encode(),
-            info=b"kek-derivation",
+            salt=f"{environment}:{kek_id}".encode(),
+            info=b"backup-kek-derivation",
         )
         kek = hkdf.derive(master_key)
         self.kek_cache[cache_key] = kek
@@ -171,6 +176,7 @@ class BackupEncryptor:
         data: bytes,
         master_key_id: str,
         environment: str,
+        kek_id: str,
         backup_id: str
     ) -> dict:
         """
@@ -178,7 +184,7 @@ class BackupEncryptor:
         Returns encrypted data and wrapped DEK.
         """
         # Get KEK for this environment
-        kek = self.key_hierarchy.derive_kek(master_key_id, environment)
+        kek = self.key_hierarchy.derive_kek(master_key_id, environment, kek_id)
 
         # Generate fresh DEK for this backup
         dek = self.key_hierarchy.generate_dek()
@@ -195,6 +201,7 @@ class BackupEncryptor:
             "backup_id": backup_id,
             "environment": environment,
             "master_key_id": master_key_id,
+            "kek_id": kek_id,
             "ciphertext": base64.b64encode(ciphertext).decode(),
             "nonce": base64.b64encode(nonce).decode(),
             "wrapped_dek": wrapped_dek,
@@ -206,7 +213,8 @@ class BackupEncryptor:
         # Retrieve KEK
         kek = self.key_hierarchy.derive_kek(
             encrypted_backup["master_key_id"],
-            encrypted_backup["environment"]
+            encrypted_backup["environment"],
+            encrypted_backup["kek_id"]
         )
 
         # Unwrap the DEK
@@ -262,7 +270,7 @@ flowchart LR
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from enum import Enum
-from typing import List
+from typing import List, Optional
 import uuid
 
 class KeyState(Enum):
@@ -325,7 +333,11 @@ class KeyRotationManager:
         """
         # Generate new KEK
         new_kek_id = f"kek-{environment}-{uuid.uuid4().hex[:8]}"
-        new_kek = self.key_hierarchy.derive_kek(master_key_id, environment)
+        new_kek = self.key_hierarchy.derive_kek(
+            master_key_id,
+            environment,
+            new_kek_id
+        )
 
         # Get old KEK for re-wrapping
         old_kek_metadata = self.key_store.get_metadata(old_kek_id)
@@ -416,8 +428,12 @@ class KeyRotationManager:
 
     def _retrieve_kek(self, kek_id: str) -> bytes:
         """Retrieve KEK from secure storage."""
-        # Implementation depends on your key storage backend
-        pass
+        metadata = self.key_store.get_metadata(kek_id)
+        return self.key_hierarchy.derive_kek(
+            metadata.parent_key_id,
+            metadata.environment,
+            metadata.key_id
+        )
 
     def _emergency_master_rotation(self, metadata: KeyMetadata, incident_id: str) -> dict:
         """Handle emergency master key rotation."""
@@ -487,6 +503,7 @@ flowchart TB
 ```python
 from abc import ABC, abstractmethod
 from typing import Optional
+import base64
 import hashlib
 
 class HSMClient(ABC):
@@ -777,6 +794,7 @@ flowchart TB
 from typing import List, Tuple
 import secrets
 import hashlib
+from datetime import datetime, timezone
 
 class ShamirSecretSharing:
     """
@@ -1029,7 +1047,13 @@ flowchart TB
 
 ```python
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from enum import Enum
+from typing import List, Optional
+import os
+import uuid
+
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 class RecoveryType(Enum):
     HSM_FAILURE = "hsm_failure"
@@ -1344,9 +1368,9 @@ Different compliance frameworks have specific requirements for encryption key ma
 | Requirement | PCI DSS | HIPAA | SOC 2 | GDPR |
 |-------------|---------|-------|-------|------|
 | Key separation by environment | Required | Recommended | Required | Recommended |
-| HSM for master keys | Required | Recommended | Varies | Recommended |
-| Key rotation | Annual minimum | Risk-based | Annual review | Risk-based |
-| Key escrow | Required | Required | Recommended | Required |
+| Secure key storage/HSM | Required (HSM/SCD or equivalent) | Recommended | Varies | Recommended |
+| Key rotation | Defined cryptoperiod | Risk-based | Annual review | Risk-based |
+| Key recovery/availability | Risk-based | Contingency-based | Recommended | Risk-based |
 | Audit logging | All operations | All access | All changes | All processing |
 | Access controls | Dual control | Role-based | Least privilege | Purpose limitation |
 | Key destruction | Cryptographic erase | Documented | Verifiable | Demonstrated |
@@ -1355,8 +1379,12 @@ Different compliance frameworks have specific requirements for encryption key ma
 
 ```python
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from enum import Enum
 import json
+import hashlib
+import uuid
+from typing import List
 
 class AuditEventType(Enum):
     KEY_GENERATED = "key_generated"
@@ -1458,16 +1486,16 @@ class ComplianceAuditLogger:
         """Map event types to compliance framework controls."""
         tag_mapping = {
             AuditEventType.KEY_GENERATED: [
-                "pci_dss:3.5.2", "soc2:CC6.1", "hipaa:164.312(a)(2)(iv)"
+                "pci_dss:3.6.1", "soc2:CC6.1", "hipaa:164.312(a)(2)(iv)"
             ],
             AuditEventType.KEY_ACCESSED: [
-                "pci_dss:3.5.3", "soc2:CC6.1", "gdpr:art32"
+                "pci_dss:3.6.1", "soc2:CC6.1", "gdpr:art32"
             ],
             AuditEventType.KEY_ROTATED: [
-                "pci_dss:3.6.4", "soc2:CC6.1", "hipaa:164.312(a)(2)(iv)"
+                "pci_dss:3.6.1", "soc2:CC6.1", "hipaa:164.312(a)(2)(iv)"
             ],
             AuditEventType.KEY_DESTROYED: [
-                "pci_dss:3.6.5", "soc2:CC6.5", "gdpr:art17"
+                "pci_dss:3.6.1", "soc2:CC6.5", "gdpr:art17"
             ],
             AuditEventType.DECRYPTION_PERFORMED: [
                 "pci_dss:3.5.1", "hipaa:164.312(a)(1)", "gdpr:art32"
