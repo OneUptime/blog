@@ -24,11 +24,11 @@ Payment options for both types:
 
 | Payment Option | Discount Level | Cash Flow Impact |
 |---|---|---|
-| All Upfront | Highest (up to 72%) | Large upfront payment |
-| Partial Upfront | Medium (up to 66%) | Some upfront, monthly payments |
-| No Upfront | Lowest (up to 36%) | Monthly payments only |
+| All Upfront | Highest (up to ~72% for 3-year Standard) | Large upfront payment |
+| Partial Upfront | A few percentage points below All Upfront | Some upfront, monthly payments |
+| No Upfront | A few percentage points below Partial Upfront | Monthly payments only |
 
-The three-year term provides larger discounts than one-year, but locks you in for longer.
+The three-year term provides larger discounts than one-year, but locks you in for longer. The difference between payment options within the same term is typically only a few percentage points; the bigger lever is term length (one-year vs three-year).
 
 ## How Savings Plans Work
 
@@ -120,14 +120,15 @@ Here is how to pull the data you need:
 
 # to determine a safe Savings Plan commitment level
 import boto3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 ce = boto3.client('ce')
 
 def get_daily_compute_cost(days: int = 90) -> list[float]:
     """Fetch daily EC2 compute costs for the given period."""
-    end = datetime.utcnow().strftime('%Y-%m-%d')
-    start = (datetime.utcnow() - timedelta(days=days)).strftime('%Y-%m-%d')
+    now = datetime.now(timezone.utc)
+    end = now.strftime('%Y-%m-%d')
+    start = (now - timedelta(days=days)).strftime('%Y-%m-%d')
 
     response = ce.get_cost_and_usage(
         TimePeriod={'Start': start, 'End': end},
