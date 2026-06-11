@@ -198,9 +198,15 @@ Create separate networks for different application tiers:
 
 ```bash
 # Create isolated networks for each tier
-docker network create frontend-tier
-docker network create backend-tier
-docker network create database-tier
+docker network create \
+  --opt com.docker.network.bridge.name=br-frontend \
+  frontend-tier
+docker network create \
+  --opt com.docker.network.bridge.name=br-backend \
+  backend-tier
+docker network create \
+  --opt com.docker.network.bridge.name=br-database \
+  database-tier
 
 # Frontend can only talk to backend
 # Backend can talk to frontend and database
@@ -264,7 +270,7 @@ For advanced isolation, configure iptables rules on the Docker host:
 # View Docker-managed iptables rules
 sudo iptables -L DOCKER-USER -n -v
 
-# Add a rule to block traffic between specific networks
+# Add a rule to block traffic between specific bridge interfaces
 # (Run on the Docker host, not inside a container)
 sudo iptables -I DOCKER-USER -i br-frontend -o br-database -j DROP
 sudo iptables -I DOCKER-USER -i br-database -o br-frontend -j DROP
@@ -340,8 +346,6 @@ By default, Compose creates a network for your project:
 # Services are automatically connected to the default network
 # and can reach each other by service name
 
-version: "3.9"
-
 services:
   web:
     image: nginx:alpine
@@ -382,8 +386,6 @@ Define custom networks with specific configurations:
 ```yaml
 # docker-compose.yml
 # Multi-tier application with network isolation
-
-version: "3.9"
 
 services:
   # Frontend service - public facing
@@ -464,8 +466,6 @@ Connect to networks created outside of Compose:
 # docker-compose.yml
 # Connect to pre-existing external networks
 
-version: "3.9"
-
 services:
   monitoring:
     image: prom/prometheus:latest
@@ -496,8 +496,6 @@ Assign service aliases for flexible naming:
 ```yaml
 # docker-compose.yml
 # Service with multiple network aliases
-
-version: "3.9"
 
 services:
   database:
@@ -767,8 +765,6 @@ Here is a complete example demonstrating a production-like microservices setup:
 ```yaml
 # docker-compose.yml
 # Production microservices architecture with proper network isolation
-
-version: "3.9"
 
 services:
   # Public-facing load balancer
