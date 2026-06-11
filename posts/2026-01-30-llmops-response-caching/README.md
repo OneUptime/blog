@@ -8,14 +8,14 @@ Description: Learn to create response caching for reducing LLM costs and latency
 
 ---
 
-LLM API calls are expensive and slow. A single GPT-4 request can cost $0.03-0.12 and take 2-10 seconds. When users ask similar questions repeatedly, you pay for the same computation over and over. Response caching solves this by storing LLM outputs and returning cached results for semantically similar queries.
+LLM API calls can be expensive and slow because they are billed by token usage and often involve network latency plus model inference time. When users ask similar questions repeatedly, you pay for the same computation over and over. Response caching solves this by storing LLM outputs and returning cached results for semantically similar queries.
 
 ## Why Cache LLM Responses?
 
 | Benefit | Impact |
 |---------|--------|
 | Cost reduction | 40-80% savings on repeat queries |
-| Latency improvement | Sub-millisecond vs 2-10 seconds |
+| Latency improvement | Milliseconds vs seconds for many requests |
 | Rate limit mitigation | Fewer API calls to provider |
 | Reliability | Cached responses work during outages |
 | Consistency | Same input produces same output |
@@ -82,7 +82,7 @@ class ExactMatchCacheKey:
         """
         # Build a canonical representation of all inputs
         key_components = {
-            'prompt': prompt.strip().lower(),  # Normalize whitespace and case
+            'prompt': prompt,
             'model': model,
             'temperature': temperature,
             'system_prompt': system_prompt or '',
@@ -227,8 +227,7 @@ class NormalizedCacheKey:
 queries = [
     "What is the capital of France?",
     "what is the capital of france",
-    "  What   is  the   capital  of  France?  ",
-    "What's the capital of France?"
+    "  What   is  the   capital  of  France?  "
 ]
 
 for query in queries:
@@ -282,7 +281,7 @@ class SemanticCacheKey:
             Embedding vector as numpy array
         """
         # Check embedding cache first
-        text_hash = hashlib.md5(text.encode()).hexdigest()
+        text_hash = hashlib.sha256(text.encode()).hexdigest()
         if text_hash in self.embedding_cache:
             return self.embedding_cache[text_hash]
 
@@ -313,8 +312,9 @@ class SemanticCacheKey:
         # )
         # return np.array(response.data[0].embedding)
 
-        # Placeholder: return random embedding for demonstration
-        np.random.seed(hash(text) % 2**32)
+        # Placeholder: return stable pseudo-random embedding for demonstration
+        seed = int(hashlib.sha256(text.encode()).hexdigest()[:8], 16)
+        np.random.seed(seed)
         return np.random.randn(1536)
 
     def cosine_similarity(
@@ -330,7 +330,7 @@ class SemanticCacheKey:
             embedding2: Second embedding vector
 
         Returns:
-            Cosine similarity score (0 to 1)
+            Cosine similarity score (-1 to 1)
         """
         # Normalize vectors
         norm1 = np.linalg.norm(embedding1)
@@ -566,6 +566,7 @@ class RedisLLMCache:
         port: int = 6379,
         db: int = 0,
         password: Optional[str] = None,
+        connection_pool: Optional[redis.ConnectionPool] = None,
         prefix: str = "llm_cache",
         default_ttl: int = 3600
     ):
@@ -577,16 +578,23 @@ class RedisLLMCache:
             port: Redis port
             db: Redis database number
             password: Redis password (if required)
+            connection_pool: Optional Redis connection pool
             prefix: Key prefix for namespacing
             default_ttl: Default TTL in seconds
         """
-        self.redis = redis.Redis(
-            host=host,
-            port=port,
-            db=db,
-            password=password,
-            decode_responses=False  # Handle binary data
-        )
+        if connection_pool:
+            self.redis = redis.Redis(
+                connection_pool=connection_pool,
+                decode_responses=False  # Handle binary data
+            )
+        else:
+            self.redis = redis.Redis(
+                host=host,
+                port=port,
+                db=db,
+                password=password,
+                decode_responses=False  # Handle binary data
+            )
         self.prefix = prefix
         self.default_ttl = default_ttl
 
@@ -645,7 +653,7 @@ class RedisLLMCache:
             data = pickle.dumps(value)
 
             if ttl > 0:
-                self.redis.setex(redis_key, ttl, data)
+                self.redis.set(redis_key, data, ex=ttl)
             else:
                 self.redis.set(redis_key, data)
 
@@ -668,6 +676,14 @@ class RedisLLMCache:
         """Get remaining TTL for a key in seconds."""
         redis_key = self._make_key(key)
         return self.redis.ttl(redis_key)
+
+    def clear(self) -> int:
+        """Delete all cache entries for this prefix."""
+        count = 0
+        for redis_key in self.redis.scan_iter(f"{self.prefix}:*"):
+            self.redis.delete(redis_key)
+            count += 1
+        return count
 
     def increment_counter(self, key: str, field: str = "hits") -> int:
         """
@@ -717,7 +733,7 @@ pool = ConnectionPool(
 
 ## Complete LLM Caching System
 
-Here is a production-ready caching wrapper for LLM calls:
+Here is a practical caching wrapper for LLM calls:
 
 ```python
 import time
@@ -790,6 +806,9 @@ class LLMCache:
 
         # For semantic caching
         self.embeddings_store: List[tuple] = []
+        self.semantic_cache = SemanticCacheKey(
+            similarity_threshold=self.config.similarity_threshold
+        )
 
         logger.info(
             f"LLM Cache initialized with strategy: {self.config.strategy.value}"
@@ -935,15 +954,11 @@ class LLMCache:
         if not self.embeddings_store:
             return None
 
-        semantic_cache = SemanticCacheKey(
-            similarity_threshold=self.config.similarity_threshold
-        )
-        return semantic_cache.find_similar(prompt, self.embeddings_store)
+        return self.semantic_cache.find_similar(prompt, self.embeddings_store)
 
     def _store_embedding(self, cache_key: str, prompt: str) -> None:
         """Store embedding for semantic lookup."""
-        semantic_cache = SemanticCacheKey()
-        embedding = semantic_cache.get_embedding(prompt)
+        embedding = self.semantic_cache.get_embedding(prompt)
 
         # Remove old embedding for same key if exists
         self.embeddings_store = [
@@ -1202,7 +1217,8 @@ flowchart TD
 
 ```python
 import re
-from typing import List, Set
+import pickle
+from typing import Any, List, Set
 from datetime import datetime
 
 class CacheInvalidator:
@@ -1231,7 +1247,35 @@ class CacheInvalidator:
         Returns:
             Number of entries invalidated
         """
-        count = self._invalidate_pattern(f"*model:{model}*")
+        count = 0
+
+        if hasattr(self.cache, 'cache'):  # LRUCache
+            keys_to_delete = []
+
+            for key, (entry, _) in self.cache.cache.items():
+                if getattr(entry, 'model', None) == model:
+                    keys_to_delete.append(key)
+
+            for key in keys_to_delete:
+                self.cache.delete(key)
+                count += 1
+
+        elif hasattr(self.cache, 'redis'):  # RedisLLMCache
+            prefix = getattr(self.cache, 'prefix', '')
+
+            for key in self.cache.redis.scan_iter(f"{prefix}:*"):
+                data = self.cache.redis.get(key)
+                if data is None:
+                    continue
+
+                try:
+                    entry = pickle.loads(data)
+                except Exception:
+                    continue
+
+                if getattr(entry, 'model', None) == model:
+                    self.cache.redis.delete(key)
+                    count += 1
 
         self._log_invalidation(
             reason="model_update",
@@ -1279,8 +1323,9 @@ class CacheInvalidator:
 
     def invalidate_by_keywords(self, keywords: List[str]) -> int:
         """
-        Invalidate entries containing specific keywords.
-        Use when underlying data changes.
+        Placeholder for keyword-based invalidation.
+        To implement this, store searchable prompts or metadata with each entry,
+        or maintain a separate search index.
 
         Args:
             keywords: List of keywords to match
@@ -1288,7 +1333,9 @@ class CacheInvalidator:
         Returns:
             Number of entries invalidated
         """
-        # This is expensive - consider using search index
+        # This requires indexed prompts or metadata. The basic CacheEntry above
+        # only stores the response and metadata, so there is no reliable keyword
+        # source to scan by default.
         count = 0
 
         self._log_invalidation(
@@ -1502,6 +1549,8 @@ Here is a complete integration with OpenAI:
 ```python
 from openai import OpenAI
 import os
+import json
+import time
 
 # Initialize components
 cache_backend = LRUCache(max_size=10000, default_ttl=3600)
