@@ -91,7 +91,7 @@ Node affinity expands on nodeSelector with expressive operators and soft prefere
 
 ### Required Node Affinity
 
-This configuration requires nodes in specific zones AND prefers nodes with SSD storage.
+This configuration requires nodes in specific zones AND excludes small instance types.
 
 ```yaml
 apiVersion: apps/v1
@@ -141,7 +141,7 @@ spec:
 | In | Label value in list | Zone selection |
 | NotIn | Label value not in list | Exclude specific node types |
 | Exists | Label key exists (any value) | Match any GPU node |
-| DoesNotExist | Label key does not exist | Exclude tainted node classes |
+| DoesNotExist | Label key does not exist | Exclude labeled node classes |
 | Gt | Label value greater than (numeric) | Nodes with more than N cores |
 | Lt | Label value less than (numeric) | Avoid high-memory nodes |
 
@@ -422,7 +422,7 @@ Taints repel pods from nodes. Tolerations allow specific pods to schedule on tai
 |--------|----------|
 | NoSchedule | Pods without toleration cannot schedule on the node |
 | PreferNoSchedule | Scheduler avoids the node but can use it if necessary |
-| NoExecute | Evicts existing pods and prevents new scheduling |
+| NoExecute | Evicts running pods that do not tolerate the taint and prevents new scheduling without a matching toleration |
 
 ### Adding Taints to Nodes
 
@@ -602,11 +602,11 @@ spec:
 
 | Parameter | Description |
 |-----------|-------------|
-| maxSkew | Maximum difference in pod count between topology domains |
+| maxSkew | Maximum allowed skew between a topology domain and the global minimum |
 | topologyKey | Node label that defines topology domains |
 | whenUnsatisfiable | DoNotSchedule (hard) or ScheduleAnyway (soft) |
 | labelSelector | Which pods count toward the spread calculation |
-| minDomains | Minimum number of domains required (Kubernetes 1.25+) |
+| minDomains | Minimum number of eligible domains required; stable in Kubernetes 1.30, beta and enabled by default since 1.28 |
 
 ### Multiple Topology Constraints
 
@@ -686,7 +686,7 @@ spec:
           labelSelector:
             matchLabels:
               app: prod-service
-          # Only count pods on matching nodes (Kubernetes 1.27+)
+          # Limit spread calculations to pods from the same Deployment revision (beta since Kubernetes 1.27)
           matchLabelKeys:
             - pod-template-hash
       containers:
@@ -731,7 +731,7 @@ globalDefault: true
 preemptionPolicy: PreemptLowerPriority
 description: "Standard workloads"
 ---
-# Low priority for batch jobs (can be preempted)
+# Low priority for batch jobs (cannot preempt other pods)
 apiVersion: scheduling.k8s.io/v1
 kind: PriorityClass
 metadata:
@@ -739,7 +739,7 @@ metadata:
 value: 1000
 globalDefault: false
 preemptionPolicy: Never
-description: "Batch jobs that can wait or be preempted"
+description: "Batch jobs that can wait and should not preempt other pods"
 ```
 
 ### Using PriorityClasses
@@ -779,7 +779,7 @@ metadata:
 spec:
   template:
     spec:
-      # Low priority - can be preempted by higher priority pods
+      # Low priority - cannot preempt other pods, and can be preempted by higher priority pods
       priorityClassName: batch-priority
       restartPolicy: OnFailure
       containers:
