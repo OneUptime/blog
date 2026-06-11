@@ -134,7 +134,13 @@ metadata:
   name: api-server
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app: api-server
   template:
+    metadata:
+      labels:
+        app: api-server
     spec:
       containers:
         - name: api
@@ -210,10 +216,11 @@ clusters:
     lb_policy: ROUND_ROBIN
 
     # Slow start configuration
-    slow_start_config:
-      slow_start_window: 60s       # Ramp-up duration
-      aggression:
-        default_value: 1.0         # Linear ramp (higher = more aggressive)
+    round_robin_lb_config:
+      slow_start_config:
+        slow_start_window: 60s     # Ramp-up duration
+        aggression:
+          default_value: 1.0       # Linear ramp (higher = more aggressive)
 
     health_checks:
       - timeout: 3s
@@ -239,6 +246,8 @@ clusters:
                     port_value: 8080
 ```
 
+For Envoy, `healthy_threshold` applies when an unhealthy host is recovering. During initial host startup, Envoy can mark a host healthy after a single successful health check.
+
 ### Custom Slow Start with Weights
 
 For load balancers without native slow start, implement it using dynamic weight adjustment.
@@ -247,7 +256,7 @@ For load balancers without native slow start, implement it using dynamic weight 
 # slow_start_controller.py
 
 import time
-import requests
+import socket
 from dataclasses import dataclass
 from typing import Dict
 
@@ -260,8 +269,8 @@ class ServerState:
     ramp_duration: float
 
 class SlowStartController:
-    def __init__(self, haproxy_stats_url: str, ramp_duration: float = 60.0):
-        self.haproxy_url = haproxy_stats_url
+    def __init__(self, haproxy_runtime_socket: str, ramp_duration: float = 60.0):
+        self.haproxy_runtime_socket = haproxy_runtime_socket
         self.ramp_duration = ramp_duration
         self.servers: Dict[str, ServerState] = {}
 
@@ -303,10 +312,15 @@ class SlowStartController:
     def set_server_weight(self, server_name: str, weight: int):
         """Update server weight via HAProxy Runtime API."""
         command = f"set server backend/{server_name} weight {weight}"
-        requests.post(
-            f"{self.haproxy_url}/runtime",
-            data={"command": command}
-        )
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
+            sock.connect(self.haproxy_runtime_socket)
+            sock.sendall(f"{command}\n".encode("utf-8"))
+            sock.shutdown(socket.SHUT_WR)
+            response = sock.recv(4096).decode("utf-8")
+
+        if response.strip():
+            raise RuntimeError(response.strip())
+
         print(f"Set {server_name} weight to {weight}")
 
     def run(self, check_interval: float = 1.0):
@@ -421,12 +435,16 @@ app.get('/health/ready', (req, res) => {
 
 // Startup
 async function start() {
+    await new Promise((resolve) => {
+        app.listen(8080, () => {
+            console.log('Server listening on port 8080');
+            resolve();
+        });
+    });
+
     await warmUp();
     isHealthy = true;
-
-    app.listen(8080, () => {
-        console.log('Server ready on port 8080');
-    });
+    console.log('Server ready on port 8080');
 }
 
 start();
@@ -442,7 +460,13 @@ kind: Deployment
 metadata:
   name: api-server
 spec:
+  selector:
+    matchLabels:
+      app: api-server
   template:
+    metadata:
+      labels:
+        app: api-server
     spec:
       containers:
         - name: api
@@ -528,10 +552,11 @@ static_resources:
             max_retries: 3
 
       # Slow start: Gradual traffic return
-      slow_start_config:
-        slow_start_window: 60s
-        aggression:
-          default_value: 1.0
+      round_robin_lb_config:
+        slow_start_config:
+          slow_start_window: 60s
+          aggression:
+            default_value: 1.0
 
       # Outlier detection: Remove unhealthy hosts
       outlier_detection:
@@ -551,7 +576,7 @@ static_resources:
             path: /health/ready
             expected_statuses:
               - start: 200
-                end: 299
+                end: 300
 
       load_assignment:
         cluster_name: api_cluster
@@ -726,9 +751,9 @@ Track recovery behavior to tune your configuration.
 # Recovery events per service
 increase(health_check_recovery_total{service="api"}[1h])
 
-# Average recovery duration (warm-up + threshold)
+# 95th percentile recovery duration (warm-up + threshold)
 histogram_quantile(0.95,
-    rate(recovery_duration_seconds_bucket{service="api"}[5m])
+    sum by (le, service) (rate(recovery_duration_seconds_bucket{service="api"}[5m]))
 )
 
 # Traffic ramp progress
@@ -754,7 +779,7 @@ groups:
           description: "More than 10 recoveries in the past hour indicates instability"
 
       - alert: SlowRecovery
-        expr: histogram_quantile(0.95, rate(recovery_duration_seconds_bucket[5m])) > 120
+        expr: histogram_quantile(0.95, sum by (le, service) (rate(recovery_duration_seconds_bucket[5m]))) > 120
         for: 5m
         labels:
           severity: warning
