@@ -414,19 +414,21 @@ Look for `prometheus_tsdb_compactions_failed_total`.
 
 **Resolution:**
 
-If Prometheus cannot start, you may need to remove corrupted segments:
+Prometheus automatically attempts to repair a corrupted WAL on startup by truncating from the corruption point and continuing. This is logged at startup and increments `prometheus_tsdb_wal_corruptions_total`. Some data in the affected segment may be lost.
+
+If automatic repair fails and Prometheus still cannot start, you may need to manually remove corrupted segments as a last resort:
 
 ```bash
 # CAUTION: This will lose data in the affected segments
 cd /var/lib/prometheus/data/wal
-# Identify the corrupted segment from logs
+# Identify the corrupted segment from the Prometheus logs
 rm 00000005  # Replace with actual corrupted segment
 ```
 
-Better approach - use the WAL repair tool (Prometheus 2.31+):
+You can also use `promtool tsdb analyze` to inspect TSDB block state before deciding on manual intervention:
 
 ```bash
-promtool tsdb repair /var/lib/prometheus/data
+promtool tsdb analyze /var/lib/prometheus/data
 ```
 
 ### 8.4 Remote Write Falling Behind
@@ -523,7 +525,7 @@ The Prometheus WAL is the foundation of data durability and remote write reliabi
 | Storage | Use SSD or NVMe for production workloads |
 | Remote Write | Tune `queue_config` based on throughput and latency |
 | Monitoring | Alert on corruption, write failures, and truncation stalls |
-| Recovery | Use `promtool tsdb repair` for corruption, never delete WAL blindly |
+| Recovery | Let Prometheus auto-repair WAL corruption on startup; never delete WAL blindly |
 
 A well-configured WAL ensures that your metrics survive crashes, reach remote storage reliably, and do not consume unbounded disk space. Invest time in understanding these mechanics, and your Prometheus deployment will reward you with consistent, durable observability data.
 
