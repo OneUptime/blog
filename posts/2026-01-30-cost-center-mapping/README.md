@@ -81,7 +81,7 @@ graph TD
 
 ## Implementing a tagging strategy
 
-Tags are the foundation of cost allocation. Every resource needs tags that answer: who owns this, what product does it support, and what environment does it run in?
+Tags are the foundation of cost allocation. On Google Cloud, use labels for billing allocation and Resource Manager tags for supported governance policies. Every resource needs metadata that answers: who owns this, what product does it support, and what environment does it run in?
 
 ### Required tags for every resource
 
@@ -99,7 +99,7 @@ owner: "jane.smith@company.com"
 
 ### Tag naming conventions
 
-Stick to a consistent format across all cloud providers:
+Stick to a consistent format across all cloud providers, using the equivalent tag or label mechanism for each provider:
 
 | Tag Key | Format | Examples |
 |---------|--------|----------|
@@ -116,15 +116,16 @@ Tags only work if they're applied consistently. Enforce compliance through:
 **Infrastructure as Code validation**
 
 ```hcl
-# Terraform example: require tags on all AWS resources
-variable "required_tags" {
+# Terraform example: require tags on an AWS EC2 instance
+variable "resource_tags" {
   type = map(string)
-  default = {
-    cost-center = ""
-    product     = ""
-    team        = ""
-    environment = ""
-    owner       = ""
+
+  validation {
+    condition = alltrue([
+      for tag in ["cost-center", "product", "team", "environment", "owner"] :
+      trimspace(lookup(var.resource_tags, tag, "")) != ""
+    ])
+    error_message = "resource_tags must include non-empty cost-center, product, team, environment, and owner values."
   }
 }
 
@@ -132,20 +133,15 @@ resource "aws_instance" "example" {
   ami           = "ami-12345678"
   instance_type = "t3.medium"
 
-  tags = merge(var.required_tags, {
-    cost-center = "engineering-platform"
-    product     = "api-gateway"
-    team        = "gateway-team"
-    environment = "production"
-    owner       = "jane.smith@company.com"
-    Name        = "api-gateway-prod-01"
+  tags = merge(var.resource_tags, {
+    Name = "api-gateway-prod-01"
   })
 }
 ```
 
 **Cloud provider policies**
 
-AWS Organizations Service Control Policies, Azure Policy, and GCP Organization Policies can block resource creation without required tags.
+AWS Organizations Service Control Policies, Azure Policy, and Google Cloud custom Organization Policies can block resource creation without required tags or labels where the resource type and policy mechanism support it.
 
 **CI/CD pipeline checks**
 
@@ -155,11 +151,25 @@ Add a step to your deployment pipeline that fails if resources lack required tag
 #!/bin/bash
 # Check for required tags in Terraform plan
 
+set -euo pipefail
+
 REQUIRED_TAGS=("cost-center" "product" "team" "environment" "owner")
 
+terraform show -json terraform.plan > terraform.plan.json
+
 for tag in "${REQUIRED_TAGS[@]}"; do
-  if ! grep -q "\"$tag\"" terraform.plan.json; then
-    echo "ERROR: Missing required tag: $tag"
+  missing_resources=$(jq -r --arg tag "$tag" '
+    .resource_changes[]
+    | select(.mode == "managed")
+    | select(.change.actions | index("create") or index("update"))
+    | select(.change.after.tags? != null)
+    | select((.change.after.tags[$tag] // "") == "")
+    | .address
+  ' terraform.plan.json)
+
+  if [ -n "$missing_resources" ]; then
+    echo "ERROR: Missing required tag '$tag' on:"
+    echo "$missing_resources"
     exit 1
   fi
 done
