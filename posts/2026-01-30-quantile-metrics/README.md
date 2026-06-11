@@ -403,7 +403,8 @@ requestDuration := prometheus.NewHistogram(prometheus.HistogramOpts{
     // Maximum number of buckets (prevents memory explosion)
     NativeHistogramMaxBucketNumber: 100,
 
-    // Minimum value to track (prevents tiny bucket creation)
+    // Minimum time between automatic histogram resets when bucket count
+    // exceeds the limit (throttles resets to avoid losing too much data)
     NativeHistogramMinResetDuration: time.Hour,
 })
 ```
@@ -486,13 +487,13 @@ Here is a complete example combining histograms for aggregatable metrics with pr
 package main
 
 import (
-    "context"
     "log"
     "math/rand"
     "net/http"
     "time"
 
     "github.com/prometheus/client_golang/prometheus"
+    "github.com/prometheus/client_golang/prometheus/collectors"
     "github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
@@ -600,8 +601,8 @@ func main() {
     reg := prometheus.NewRegistry()
 
     // Add Go runtime metrics
-    reg.MustRegister(prometheus.NewGoCollector())
-    reg.MustRegister(prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}))
+    reg.MustRegister(collectors.NewGoCollector())
+    reg.MustRegister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
 
     // Create our application metrics
     metrics := NewMetricsCollector(reg)
@@ -659,11 +660,13 @@ sum(rate(http_request_duration_seconds_count[5m]))
 * 100
 
 # Apdex score (satisfied < 100ms, tolerating < 500ms)
+# Apdex = (satisfied + tolerating/2) / total
 (
     sum(rate(http_request_duration_seconds_bucket{le="0.1"}[5m]))
-    + sum(rate(http_request_duration_seconds_bucket{le="0.5"}[5m]))
-      - sum(rate(http_request_duration_seconds_bucket{le="0.1"}[5m]))
-    * 0.5
+    + (
+        sum(rate(http_request_duration_seconds_bucket{le="0.5"}[5m]))
+        - sum(rate(http_request_duration_seconds_bucket{le="0.1"}[5m]))
+      ) * 0.5
 )
 /
 sum(rate(http_request_duration_seconds_count[5m]))
