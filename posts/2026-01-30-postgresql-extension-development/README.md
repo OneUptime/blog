@@ -53,7 +53,6 @@ relocatable = true
 requires = 'plpgsql'
 superuser = false
 trusted = true
-schema = public
 ```
 
 Here is what each parameter means:
@@ -67,7 +66,7 @@ Here is what each parameter means:
 | `requires` | Dependencies on other extensions |
 | `superuser` | Whether superuser privileges are required |
 | `trusted` | Whether non-superusers can install (PostgreSQL 13+) |
-| `schema` | Default schema for extension objects |
+| `schema` | Forces a specific schema for extension objects (only valid when `relocatable = false`) |
 
 For SQL-only extensions, omit the `module_pathname` line.
 
@@ -819,6 +818,7 @@ Create `src/email_type.c`:
 #include "fmgr.h"
 #include "libpq/pqformat.h"
 #include "utils/builtins.h"
+#include "common/hashfn.h"
 
 #include <string.h>
 #include <ctype.h>
