@@ -105,7 +105,7 @@ Delta Lake provides powerful MERGE capabilities that work at scale. Here is how 
 ```python
 from delta.tables import DeltaTable
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, current_timestamp, lit
+from pyspark.sql.functions import col, current_timestamp
 
 # Initialize Spark session with Delta Lake support
 
@@ -191,7 +191,7 @@ USING (
                 ORDER BY event_timestamp DESC
             ) AS rn
         FROM cdc_events
-        WHERE event_timestamp > @last_processed_timestamp
+        WHERE event_timestamp > :last_processed_timestamp
     ) ranked
     WHERE rn = 1
 ) AS source
@@ -227,7 +227,8 @@ WHEN NOT MATCHED AND source.operation = 'I' THEN
 ```python
 from delta.tables import DeltaTable
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, row_number, current_timestamp
+from pyspark.sql.functions import col, from_json, row_number
+from pyspark.sql.types import StringType, StructField, StructType, TimestampType
 from pyspark.sql.window import Window
 
 def process_cdc_merge(spark, target_path, cdc_df):
@@ -291,8 +292,21 @@ cdc_events = spark.readStream \
     .option("subscribe", "customer_cdc") \
     .load()
 
+cdc_schema = StructType([
+    StructField("customer_id", StringType()),
+    StructField("operation", StringType()),
+    StructField("event_timestamp", TimestampType()),
+    StructField("name", StringType()),
+    StructField("email", StringType()),
+    StructField("address", StringType())
+])
+
+parsed_cdc_events = cdc_events.select(
+    from_json(col("value").cast("string"), cdc_schema).alias("data")
+).select("data.*")
+
 # Process each micro-batch with the CDC merge
-cdc_events.writeStream \
+parsed_cdc_events.writeStream \
     .foreachBatch(lambda df, epoch: process_cdc_merge(spark, "/data/customers", df)) \
     .start()
 ```
