@@ -418,6 +418,10 @@ class DependencyResolver {
     this.nodes.set(node.key, node);
   }
 
+  getNode(key: string): DependencyNode | undefined {
+    return this.nodes.get(key);
+  }
+
   // Topological sort to determine evaluation order
   getEvaluationOrder(): string[] {
     const visited = new Set<string>();
@@ -538,7 +542,7 @@ class ImpactAnalyzer {
   analyzeDisable(flagKey: string): ImpactReport {
     const affected = this.resolver.findAffectedFlags(flagKey);
     const directDependents = affected.filter((key) => {
-      const node = this.resolver['nodes'].get(key);
+      const node = this.resolver.getNode(key);
       return node?.dependencies.includes(flagKey);
     });
 
@@ -645,13 +649,23 @@ export const FLAG_REGISTRY = {
 
 ```typescript
 class FlagChangeValidator {
-  validateChange(flagKey: string, newState: boolean, analyzer: ImpactAnalyzer): {
+  validateChange(flagKey: string, newState: boolean, analyzer: ImpactAnalyzer, resolver: DependencyResolver): {
     allowed: boolean;
     reason?: string;
     requiresApproval?: boolean;
   } {
     if (newState === true) {
       // Enabling a flag - check dependencies are met
+      const node = resolver.getNode(flagKey);
+      const resolved = resolver.resolveAll();
+
+      if (node && node.dependencies.some((dep) => resolved.get(dep) !== true)) {
+        return {
+          allowed: false,
+          reason: 'Required dependencies are not enabled.',
+        };
+      }
+
       return { allowed: true };
     }
 
