@@ -87,11 +87,10 @@ class MethodRouter {
   route(req, res) {
     const method = req.method.toUpperCase();
     const path = req.path;
-    const key = `${method}:${path}`;
 
-    const handler = this.routes.get(key);
+    const match = this.findRoute(method, path);
 
-    if (!handler) {
+    if (!match) {
       // Check if path exists with different method
       const allowedMethods = this.getAllowedMethods(path);
 
@@ -106,19 +105,66 @@ class MethodRouter {
       return res.status(404).json({ error: 'Not Found' });
     }
 
-    return handler(req, res);
+    req.params = match.params;
+    return match.handler(req, res);
   }
 
   // Get all methods registered for a path
   getAllowedMethods(path) {
     const methods = [];
     for (const key of this.routes.keys()) {
-      const [method, routePath] = key.split(':');
-      if (routePath === path) {
+      const { method, path: routePath } = this.parseRouteKey(key);
+      if (this.matchPath(routePath, path) !== null) {
         methods.push(method);
       }
     }
     return methods;
+  }
+
+  findRoute(method, path) {
+    for (const [key, handler] of this.routes) {
+      const route = this.parseRouteKey(key);
+      if (route.method !== method) continue;
+
+      const params = this.matchPath(route.path, path);
+      if (params !== null) {
+        return { handler, params };
+      }
+    }
+
+    return null;
+  }
+
+  parseRouteKey(key) {
+    const separatorIndex = key.indexOf(':');
+    return {
+      method: key.slice(0, separatorIndex),
+      path: key.slice(separatorIndex + 1),
+    };
+  }
+
+  matchPath(pattern, path) {
+    const patternParts = pattern.split('/');
+    const pathParts = path.split('/');
+
+    if (patternParts.length !== pathParts.length) {
+      return null;
+    }
+
+    const params = {};
+
+    for (let i = 0; i < patternParts.length; i++) {
+      const patternPart = patternParts[i];
+      const pathPart = pathParts[i];
+
+      if (patternPart.startsWith(':')) {
+        params[patternPart.slice(1)] = pathPart;
+      } else if (patternPart !== pathPart) {
+        return null;
+      }
+    }
+
+    return params;
   }
 }
 
@@ -321,11 +367,26 @@ class ReadWriteRouter {
     try {
       for (const mw of middlewareChain) {
         await new Promise((resolve, reject) => {
-          mw(req, res, (err) => {
+          let completed = false;
+          const done = (err) => {
+            completed = true;
             if (err) reject(err);
             else resolve();
-          });
+          };
+
+          const result = mw(req, res, done);
+          if (result?.then) {
+            result.then(() => {
+              if (res.headersSent && !completed) resolve();
+            }).catch(reject);
+          } else if (res.headersSent && !completed) {
+            resolve();
+          }
         });
+
+        if (res.headersSent) {
+          return;
+        }
       }
 
       // Route to handler
@@ -479,8 +540,34 @@ class CORSRouter {
       return res.status(405).json({ error: 'Method not allowed' });
     }
 
+    // Check if requested headers are allowed
+    if (requestedHeaders) {
+      const allowedHeaders = this.options.allowedHeaders.map((header) =>
+        header.toLowerCase()
+      );
+      const headers = requestedHeaders
+        .split(',')
+        .map((header) => header.trim().toLowerCase());
+
+      const disallowedHeaders = headers.filter((header) =>
+        !allowedHeaders.includes(header)
+      );
+
+      if (disallowedHeaders.length > 0) {
+        return res.status(400).json({
+          error: 'Headers not allowed',
+          disallowedHeaders,
+        });
+      }
+    }
+
     // Set CORS headers
-    res.setHeader('Access-Control-Allow-Origin', origin || '*');
+    const allowOrigin = origin &&
+      (this.options.credentials || !this.options.allowedOrigins.includes('*'))
+        ? origin
+        : '*';
+    res.setHeader('Access-Control-Allow-Origin', allowOrigin);
+    res.setHeader('Vary', 'Origin');
     res.setHeader('Access-Control-Allow-Methods', allowedMethods.join(', '));
     res.setHeader('Access-Control-Allow-Headers', this.options.allowedHeaders.join(', '));
     res.setHeader('Access-Control-Expose-Headers', this.options.exposedHeaders.join(', '));
@@ -504,9 +591,9 @@ class CORSRouter {
   getAllowedMethodsForPath(path) {
     const methods = [];
     for (const key of this.routes.keys()) {
-      const [method, routePath] = key.split(':');
-      if (routePath === path && method !== 'OPTIONS') {
-        methods.push(method);
+      const route = this.parseRouteKey(key);
+      if (this.matchPath(route.path, path) !== null && route.method !== 'OPTIONS') {
+        methods.push(route.method);
       }
     }
     // Always include OPTIONS
@@ -520,7 +607,12 @@ class CORSRouter {
       const origin = req.headers.origin;
 
       if (origin && this.isOriginAllowed(origin)) {
-        res.setHeader('Access-Control-Allow-Origin', origin);
+        const allowOrigin =
+          this.options.credentials || !this.options.allowedOrigins.includes('*')
+            ? origin
+            : '*';
+        res.setHeader('Access-Control-Allow-Origin', allowOrigin);
+        res.setHeader('Vary', 'Origin');
 
         if (this.options.credentials) {
           res.setHeader('Access-Control-Allow-Credentials', 'true');
@@ -540,14 +632,60 @@ class CORSRouter {
   }
 
   route(req, res, next) {
-    const key = `${req.method.toUpperCase()}:${req.path}`;
-    const handler = this.routes.get(key);
+    const match = this.findRoute(req.method.toUpperCase(), req.path);
 
-    if (handler) {
-      return handler(req, res, next);
+    if (match) {
+      req.params = match.params;
+      return match.handler(req, res, next);
     }
 
     res.status(404).json({ error: 'Not Found' });
+  }
+
+  findRoute(method, path) {
+    for (const [key, handler] of this.routes) {
+      const route = this.parseRouteKey(key);
+      if (route.method !== method) continue;
+
+      const params = this.matchPath(route.path, path);
+      if (params !== null) {
+        return { handler, params };
+      }
+    }
+
+    return null;
+  }
+
+  parseRouteKey(key) {
+    const separatorIndex = key.indexOf(':');
+    return {
+      method: key.slice(0, separatorIndex),
+      path: key.slice(separatorIndex + 1),
+    };
+  }
+
+  matchPath(pattern, path) {
+    const patternParts = pattern.split('/');
+    const pathParts = path.split('/');
+
+    if (patternParts.length !== pathParts.length) {
+      return null;
+    }
+
+    const params = {};
+
+    for (let i = 0; i < patternParts.length; i++) {
+      const patternPart = patternParts[i];
+      const pathPart = pathParts[i];
+
+      if (patternPart.startsWith(':')) {
+        params[patternPart.slice(1)] = pathPart;
+      } else if (patternPart !== pathPart) {
+        return null;
+      }
+    }
+
+    return params;
   }
 }
 
@@ -564,6 +702,7 @@ corsRouter.addRoute('DELETE', '/api/users/:id', deleteUser);
 
 // Express integration
 app.use(corsRouter.corsMiddleware());
+app.use((req, res, next) => corsRouter.route(req, res, next));
 ```
 
 ## Method Override Handling
@@ -633,11 +772,11 @@ class MethodOverrideRouter {
   }
 
   route(req, res, next) {
-    const key = `${req.method}:${req.path}`;
-    const handler = this.routes.get(key);
+    const match = this.findRoute(req.method, req.path);
 
-    if (handler) {
-      return handler(req, res, next);
+    if (match) {
+      req.params = match.params;
+      return match.handler(req, res, next);
     }
 
     // Check if method was overridden and suggest correct usage
@@ -650,6 +789,52 @@ class MethodOverrideRouter {
 
     res.status(404).json({ error: 'Not Found' });
   }
+
+  findRoute(method, path) {
+    for (const [key, handler] of this.routes) {
+      const route = this.parseRouteKey(key);
+      if (route.method !== method) continue;
+
+      const params = this.matchPath(route.path, path);
+      if (params !== null) {
+        return { handler, params };
+      }
+    }
+
+    return null;
+  }
+
+  parseRouteKey(key) {
+    const separatorIndex = key.indexOf(':');
+    return {
+      method: key.slice(0, separatorIndex),
+      path: key.slice(separatorIndex + 1),
+    };
+  }
+
+  matchPath(pattern, path) {
+    const patternParts = pattern.split('/');
+    const pathParts = path.split('/');
+
+    if (patternParts.length !== pathParts.length) {
+      return null;
+    }
+
+    const params = {};
+
+    for (let i = 0; i < patternParts.length; i++) {
+      const patternPart = patternParts[i];
+      const pathPart = pathParts[i];
+
+      if (patternPart.startsWith(':')) {
+        params[patternPart.slice(1)] = pathPart;
+      } else if (patternPart !== pathPart) {
+        return null;
+      }
+    }
+
+    return params;
+  }
 }
 
 // Usage
@@ -660,6 +845,8 @@ app.use(overrideRouter.methodOverrideMiddleware());
 // Register routes
 overrideRouter.addRoute('PUT', '/api/users/:id', updateUser);
 overrideRouter.addRoute('DELETE', '/api/users/:id', deleteUser);
+
+app.use((req, res, next) => overrideRouter.route(req, res, next));
 
 // Client can now use:
 // POST /api/users/123?_method=DELETE
@@ -764,7 +951,7 @@ class MultiMethodEndpoint {
     return router;
   }
 
-  routeHandler(req, res, next) {
+  async routeHandler(req, res, next) {
     const method = req.method.toUpperCase();
     const handler = this.handlers.get(method);
 
@@ -777,7 +964,29 @@ class MultiMethodEndpoint {
       });
     }
 
-    return handler(req, res, next);
+    try {
+      await handler(req, res, next);
+
+      for (const mw of this.afterHandlers) {
+        await new Promise((resolve, reject) => {
+          let completed = false;
+          const done = (err) => {
+            completed = true;
+            if (err) reject(err);
+            else resolve();
+          };
+
+          const result = mw(req, res, done);
+          if (result?.then) {
+            result.then(resolve).catch(reject);
+          } else if (res.headersSent && !completed) {
+            resolve();
+          }
+        });
+      }
+    } catch (error) {
+      next(error);
+    }
   }
 
   // Get info about this endpoint
@@ -834,7 +1043,6 @@ class APIGateway {
       HEAD: [],
     };
     this.options = {
-      enableCORS: true,
       enableMethodOverride: true,
       defaultTimeout: 30000,
       ...options,
@@ -920,7 +1128,7 @@ class APIGateway {
       // Build middleware chain
       const chain = [
         ...this.globalMiddleware,
-        ...this.methodMiddleware[method],
+        ...(this.methodMiddleware[method] || []),
         ...(route.options.middleware || []),
       ];
 
@@ -933,7 +1141,7 @@ class APIGateway {
 
       // Execute handler with timeout
       const result = await this.executeWithTimeout(
-        route.handler(req, res),
+        () => route.handler(req, res),
         route.options.timeout
       );
 
@@ -978,8 +1186,7 @@ class APIGateway {
     for (const [key, route] of this.routes) {
       if (!key.startsWith(`${method}:`)) continue;
 
-      const routePath = key.split(':')[1];
-      const params = this.matchPath(routePath, path);
+      const params = this.matchPath(route.path, path);
 
       if (params !== null) {
         return { route, params };
@@ -1027,13 +1234,14 @@ class APIGateway {
     await next();
   }
 
-  executeWithTimeout(promise, timeout) {
+  executeWithTimeout(operation, timeout) {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         reject(new Error('Request timeout'));
       }, timeout);
 
-      Promise.resolve(promise)
+      Promise.resolve()
+        .then(operation)
         .then((result) => {
           clearTimeout(timer);
           resolve(result);
@@ -1048,11 +1256,10 @@ class APIGateway {
   handleNotFound(req, res, path) {
     // Check if path exists with different method
     const methods = [];
-    for (const key of this.routes.keys()) {
-      const [method, routePath] = key.split(':');
-      const params = this.matchPath(routePath, path);
+    for (const route of this.routes.values()) {
+      const params = this.matchPath(route.path, path);
       if (params !== null) {
-        methods.push(method);
+        methods.push(route.method);
       }
     }
 
@@ -1078,6 +1285,10 @@ class APIGateway {
       error: error.message,
       duration: Date.now() - startTime,
     });
+
+    if (res.headersSent) {
+      return;
+    }
 
     if (error.message === 'Request timeout') {
       return res.status(504).json({
@@ -1109,8 +1320,8 @@ class APIGateway {
   generateOpenAPISpec() {
     const paths = {};
 
-    for (const [key, route] of this.routes) {
-      const [method, path] = key.split(':');
+    for (const route of this.routes.values()) {
+      const { method, path } = route;
       const openAPIPath = path.replace(/:(\w+)/g, '{$1}');
 
       if (!paths[openAPIPath]) {
@@ -1160,7 +1371,6 @@ class APIGateway {
 
 // Usage
 const gateway = new APIGateway({
-  enableCORS: true,
   defaultTimeout: 30000,
 });
 
