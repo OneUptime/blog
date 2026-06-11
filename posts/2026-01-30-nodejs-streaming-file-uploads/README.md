@@ -99,44 +99,17 @@ function handleUpload(req, res) {
     });
 
     let uploadedFile = null;
-    let savePath = null;
+    let uploadError = null;
+    let pendingWrites = 0;
+    let parsingDone = false;
 
-    // 'file' event fires for each file in the form data
-    busboy.on('file', (fieldname, file, info) => {
-        const { filename, encoding, mimeType } = info;
+    const maybeRespond = () => {
+        if (!parsingDone || pendingWrites > 0 || res.headersSent) return;
 
-        // Generate unique filename to prevent collisions
-        const uniqueName = `${Date.now()}-${filename}`;
-        savePath = path.join(__dirname, '../uploads', uniqueName);
+        if (uploadError) {
+            return res.status(500).json({ error: 'Upload failed' });
+        }
 
-        console.log(`Starting upload: ${filename} (${mimeType})`);
-
-        // Create write stream to disk
-        const writeStream = fs.createWriteStream(savePath);
-
-        // Pipe the incoming file stream directly to disk
-        // Data flows: client -> busboy -> writeStream -> disk
-        file.pipe(writeStream);
-
-        // Track upload completion for this file
-        file.on('end', () => {
-            uploadedFile = {
-                originalName: filename,
-                savedAs: uniqueName,
-                mimeType: mimeType
-            };
-        });
-
-        // Handle file-level errors
-        file.on('error', (err) => {
-            console.error('File stream error:', err);
-            writeStream.destroy();
-            fs.unlink(savePath, () => {});  // Clean up partial file
-        });
-    });
-
-    // 'finish' fires when all parts have been processed
-    busboy.on('finish', () => {
         if (uploadedFile) {
             res.json({
                 success: true,
@@ -145,6 +118,66 @@ function handleUpload(req, res) {
         } else {
             res.status(400).json({ error: 'No file uploaded' });
         }
+    };
+
+    // 'file' event fires for each file in the form data
+    busboy.on('file', (fieldname, file, info) => {
+        const { filename, encoding, mimeType } = info;
+
+        // Generate unique filename to prevent collisions
+        const uniqueName = `${Date.now()}-${filename}`;
+        const savePath = path.join(__dirname, '../uploads', uniqueName);
+
+        console.log(`Starting upload: ${filename} (${mimeType})`);
+
+        // Create write stream to disk
+        const writeStream = fs.createWriteStream(savePath);
+        pendingWrites++;
+        let writeDone = false;
+
+        const finishWrite = () => {
+            if (writeDone) return;
+            writeDone = true;
+            pendingWrites--;
+            maybeRespond();
+        };
+
+        // Pipe the incoming file stream directly to disk
+        // Data flows: client -> busboy -> writeStream -> disk
+        file.pipe(writeStream);
+
+        // Track upload completion after the file has been written to disk
+        writeStream.on('finish', () => {
+            uploadedFile = {
+                originalName: filename,
+                savedAs: uniqueName,
+                mimeType: mimeType
+            };
+            finishWrite();
+        });
+
+        writeStream.on('error', (err) => {
+            uploadError = err;
+            file.unpipe(writeStream);
+            file.resume();
+            fs.unlink(savePath, () => {});  // Clean up partial file
+            finishWrite();
+        });
+
+        // Handle file-level errors
+        file.on('error', (err) => {
+            console.error('File stream error:', err);
+            uploadError = err;
+            writeStream.destroy();
+            fs.unlink(savePath, () => {});  // Clean up partial file
+            finishWrite();
+        });
+    });
+
+    // 'close' fires when all parts have been processed
+    busboy.on('close', () => {
+        parsingDone = true;
+        maybeRespond();
     });
 
     // Handle parsing errors
@@ -250,7 +283,7 @@ async function streamToS3(req, res) {
         uploadPromise = upload.done();
     });
 
-    busboy.on('finish', async () => {
+    busboy.on('close', async () => {
         if (!uploadPromise) {
             return res.status(400).json({ error: 'No file provided' });
         }
@@ -291,6 +324,7 @@ const path = require('path');
 function uploadWithProgress(req, res) {
     // Get total content length from headers
     const contentLength = parseInt(req.headers['content-length'], 10);
+    const hasContentLength = Number.isFinite(contentLength) && contentLength > 0;
 
     const busboy = Busboy({ headers: req.headers });
 
@@ -307,10 +341,12 @@ function uploadWithProgress(req, res) {
             bytesReceived += chunk.length;
 
             // Calculate progress percentage
-            const progress = Math.round((bytesReceived / contentLength) * 100);
+            const progress = hasContentLength
+                ? Math.round((bytesReceived / contentLength) * 100)
+                : null;
 
             // Throttle progress logging to avoid spam
-            if (progress - lastProgressUpdate >= 5) {
+            if (progress !== null && progress - lastProgressUpdate >= 5) {
                 console.log(`Upload progress: ${progress}% (${bytesReceived}/${contentLength} bytes)`);
                 lastProgressUpdate = progress;
             }
@@ -319,7 +355,7 @@ function uploadWithProgress(req, res) {
         file.pipe(writeStream);
     });
 
-    busboy.on('finish', () => {
+    busboy.on('close', () => {
         res.json({
             success: true,
             totalBytes: bytesReceived
@@ -387,6 +423,7 @@ function progressStream(req, res) {
 function uploadWithSSE(req, res) {
     const uploadId = req.headers['x-upload-id'];
     const contentLength = parseInt(req.headers['content-length'], 10);
+    const hasContentLength = Number.isFinite(contentLength) && contentLength > 0;
     const emitter = uploadProgress.get(uploadId);
 
     const busboy = Busboy({ headers: req.headers });
@@ -405,7 +442,9 @@ function uploadWithSSE(req, res) {
                 emitter.emit('progress', {
                     bytesReceived,
                     totalBytes: contentLength,
-                    percent: Math.round((bytesReceived / contentLength) * 100)
+                    percent: hasContentLength
+                        ? Math.round((bytesReceived / contentLength) * 100)
+                        : null
                 });
             }
         });
@@ -422,7 +461,7 @@ function uploadWithSSE(req, res) {
         });
     });
 
-    busboy.on('finish', () => {
+    busboy.on('close', () => {
         res.json({ success: true, uploadId });
     });
 
@@ -575,14 +614,20 @@ class FileValidator extends Transform {
 function validatedUpload(req, res) {
     const busboy = Busboy({
         headers: req.headers,
-        limits: { fileSize: MAX_FILE_SIZE }
+        limits: {
+            fileSize: MAX_FILE_SIZE,
+            files: 1
+        }
     });
+
+    let hasError = false;
 
     busboy.on('file', (fieldname, file, info) => {
         const { filename, mimeType } = info;
 
         // Check MIME type before processing
         if (!ALLOWED_TYPES.includes(mimeType)) {
+            hasError = true;
             file.resume();  // Drain the stream
             return res.status(400).json({
                 error: `File type ${mimeType} not allowed`
@@ -598,28 +643,52 @@ function validatedUpload(req, res) {
 
         // Handle validation errors
         validator.on('error', (err) => {
+            hasError = true;
             file.unpipe(validator);
             file.resume();
-            res.status(400).json({ error: err.message });
+            writeStream.destroy();
+            if (!res.headersSent) {
+                res.status(400).json({ error: err.message });
+            }
         });
 
         const savePath = `./uploads/${Date.now()}-${filename}`;
         const writeStream = require('fs').createWriteStream(savePath);
 
+        file.on('limit', () => {
+            hasError = true;
+            writeStream.destroy();
+            if (!res.headersSent) {
+                res.status(413).json({ error: 'File too large' });
+            }
+        });
+
+        writeStream.on('error', (err) => {
+            hasError = true;
+            if (!res.headersSent) {
+                res.status(500).json({ error: 'Failed to save file' });
+            }
+        });
+
         // Chain: file -> validator -> disk
         file.pipe(validator).pipe(writeStream);
 
         writeStream.on('finish', () => {
-            res.json({
-                success: true,
-                filename: filename,
-                size: validator.bytesReceived
-            });
+            if (!hasError && !res.headersSent) {
+                res.json({
+                    success: true,
+                    filename: filename,
+                    size: validator.bytesReceived
+                });
+            }
         });
     });
 
     busboy.on('filesLimit', () => {
-        res.status(400).json({ error: 'Too many files' });
+        hasError = true;
+        if (!res.headersSent) {
+            res.status(400).json({ error: 'Too many files' });
+        }
     });
 
     req.pipe(busboy);
@@ -715,6 +784,23 @@ function createUploadHandler(options = {}) {
         const cleanupFiles = [];
         let hasError = false;
         let fileCount = 0;
+        let pendingWrites = 0;
+        let parsingDone = false;
+
+        const maybeFinish = () => {
+            if (!parsingDone || pendingWrites > 0 || hasError) return;
+
+            if (fileCount === 0) {
+                return res.status(400).json({
+                    error: 'No file provided',
+                    code: 'NO_FILE'
+                });
+            }
+
+            // Success - remove from cleanup list
+            cleanupFiles.length = 0;
+            next();
+        };
 
         // Helper to clean up partial uploads
         const cleanup = () => {
@@ -759,10 +845,12 @@ function createUploadHandler(options = {}) {
             cleanupFiles.push(savePath);
 
             const writeStream = fs.createWriteStream(savePath);
+            pendingWrites++;
 
             // Handle write errors
             writeStream.on('error', (err) => {
                 hasError = true;
+                pendingWrites = Math.max(0, pendingWrites - 1);
                 file.unpipe(writeStream);
                 file.resume();
                 cleanup();
@@ -802,6 +890,8 @@ function createUploadHandler(options = {}) {
                         size: writeStream.bytesWritten
                     });
                 }
+                pendingWrites--;
+                maybeFinish();
             });
         });
 
@@ -817,19 +907,9 @@ function createUploadHandler(options = {}) {
             }
         });
 
-        busboy.on('finish', () => {
-            if (hasError) return;
-
-            if (fileCount === 0) {
-                return res.status(400).json({
-                    error: 'No file provided',
-                    code: 'NO_FILE'
-                });
-            }
-
-            // Success - remove from cleanup list
-            cleanupFiles.length = 0;
-            next();
+        busboy.on('close', () => {
+            parsingDone = true;
+            maybeFinish();
         });
 
         req.pipe(busboy);
@@ -906,16 +986,27 @@ class StreamStorage {
         });
 
         // Allow custom stream processing
+        let outputStream = passThrough;
         if (this.onStream) {
-            this.onStream(passThrough, file, req);
+            outputStream = this.onStream(passThrough, file, req) || passThrough;
         }
 
-        passThrough.pipe(writeStream);
+        let finished = false;
+        const done = (err, info) => {
+            if (finished) return;
+            finished = true;
+            callback(err, info);
+        };
+
+        outputStream.pipe(writeStream);
         file.stream.pipe(passThrough);
 
-        writeStream.on('error', callback);
+        file.stream.on('error', done);
+        passThrough.on('error', done);
+        outputStream.on('error', done);
+        writeStream.on('error', done);
         writeStream.on('finish', () => {
-            callback(null, {
+            done(null, {
                 path: filepath,
                 filename: filename,
                 size: bytesWritten
@@ -955,9 +1046,10 @@ const upload = multer({
                 blockedPatterns: ['malicious-pattern']
             });
 
-            stream.pipe(scanner);
+            stream.on('error', (err) => scanner.destroy(err));
 
             req.scanner = scanner;  // Store for later access
+            return stream.pipe(scanner);
         }
     }),
     limits: {
@@ -1046,6 +1138,7 @@ class ValidationStream extends Transform {
 // Main upload endpoint
 app.post('/api/upload', (req, res) => {
     const contentLength = parseInt(req.headers['content-length'], 10);
+    const hasContentLength = Number.isFinite(contentLength) && contentLength > 0;
 
     const busboy = Busboy({
         headers: req.headers,
@@ -1058,6 +1151,23 @@ app.post('/api/upload', (req, res) => {
     const results = [];
     const errors = [];
     let fileIndex = 0;
+    let pendingWrites = 0;
+    let parsingDone = false;
+
+    const sendResponse = () => {
+        if (!parsingDone || pendingWrites > 0 || res.headersSent) return;
+
+        const response = {
+            success: errors.length === 0,
+            uploaded: results,
+            errors: errors.length > 0 ? errors : undefined
+        };
+
+        const statusCode = errors.length === 0 ? 200 :
+                          results.length > 0 ? 207 : 400;
+
+        res.status(statusCode).json(response);
+    };
 
     busboy.on('file', (fieldname, file, info) => {
         const { filename, mimeType } = info;
@@ -1087,12 +1197,25 @@ app.post('/api/upload', (req, res) => {
         });
 
         const writeStream = fs.createWriteStream(savePath);
+        pendingWrites++;
+        let writeDone = false;
+
+        const finishWrite = () => {
+            if (writeDone) return;
+            writeDone = true;
+            pendingWrites--;
+            sendResponse();
+        };
 
         // Track progress
         let lastProgress = 0;
+        let fileBytesReceived = 0;
         file.on('data', (chunk) => {
-            const progress = Math.round((validator.bytesReceived / contentLength) * 100);
-            if (progress - lastProgress >= 10) {
+            fileBytesReceived += chunk.length;
+            const progress = hasContentLength
+                ? Math.round((fileBytesReceived / contentLength) * 100)
+                : null;
+            if (progress !== null && progress - lastProgress >= 10) {
                 console.log(`File ${currentIndex}: ${progress}% uploaded`);
                 lastProgress = progress;
             }
@@ -1106,8 +1229,10 @@ app.post('/api/upload', (req, res) => {
                 error: err.message
             });
             file.unpipe(validator);
+            file.resume();
             writeStream.destroy();
             fs.unlink(savePath, () => {});
+            finishWrite();
         });
 
         // Handle write errors
@@ -1117,6 +1242,7 @@ app.post('/api/upload', (req, res) => {
                 filename: filename,
                 error: 'Failed to save file'
             });
+            finishWrite();
         });
 
         // Handle successful write
@@ -1131,6 +1257,7 @@ app.post('/api/upload', (req, res) => {
                     hash: validator.fileHash
                 });
             }
+            finishWrite();
         });
 
         // Connect the pipeline
@@ -1145,23 +1272,13 @@ app.post('/api/upload', (req, res) => {
             });
             writeStream.destroy();
             fs.unlink(savePath, () => {});
+            finishWrite();
         });
     });
 
-    busboy.on('finish', () => {
-        // Wait a tick for all writeStreams to finish
-        setImmediate(() => {
-            const response = {
-                success: errors.length === 0,
-                uploaded: results,
-                errors: errors.length > 0 ? errors : undefined
-            };
-
-            const statusCode = errors.length === 0 ? 200 :
-                              results.length > 0 ? 207 : 400;
-
-            res.status(statusCode).json(response);
-        });
+    busboy.on('close', () => {
+        parsingDone = true;
+        sendResponse();
     });
 
     busboy.on('error', (err) => {
@@ -1241,7 +1358,7 @@ app.listen(PORT, () => {
 });
 ```
 
-## Performance Benchmarks
+## Performance Characteristics
 
 Here are typical performance characteristics when streaming vs buffering:
 
@@ -1249,7 +1366,7 @@ Here are typical performance characteristics when streaming vs buffering:
 |--------|-----------------|------------------|
 | Memory per 100MB file | ~100MB | ~1MB |
 | Time to start processing | After full upload | Immediate |
-| Concurrent 100MB uploads (1GB RAM) | ~8 | ~900+ |
+| Concurrent 100MB uploads (1GB RAM) | Limited by available heap | Many more, bounded by file descriptors, network, and storage throughput |
 | Disk I/O pattern | Burst write | Continuous write |
 | Network timeout risk | Higher | Lower |
 
