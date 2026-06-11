@@ -596,7 +596,7 @@ With 2 connections at 25 channels each = 50 total capacity
 
 ### Publisher Confirms with Pooled Channels
 
-For reliable publishing, use confirm channels:
+For reliable publishing, use confirm channels. To support this pattern, modify the pool to call `connection.createConfirmChannel()` instead of `connection.createChannel()` and type `PooledChannel.channel` as `ConfirmChannel`. The publish callback form is only available on `ConfirmChannel`:
 
 ```typescript
 async function publishWithConfirm(
@@ -608,11 +608,11 @@ async function publishWithConfirm(
     const pooledChannel = await pool.acquire();
 
     try {
-        // Enable confirms on this channel
-        await pooledChannel.channel.confirmSelect();
+        // Assumes the pool was modified to create ConfirmChannels.
+        const confirmChannel = pooledChannel.channel as ConfirmChannel;
 
         return new Promise((resolve, reject) => {
-            pooledChannel.channel.publish(
+            confirmChannel.publish(
                 exchange,
                 routingKey,
                 message,
