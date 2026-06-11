@@ -14,7 +14,7 @@ Testing Terraform providers is essential for ensuring your infrastructure code b
 
 Terraform providers use the `terraform-plugin-testing` module for acceptance tests. These tests create real infrastructure resources, validate their state, and clean up afterward. The framework provides utilities for writing comprehensive tests that verify provider behavior.
 
-To get started, install the testing module:
+To get started, import the testing module:
 
 ```go
 import (
@@ -150,13 +150,11 @@ func TestUnitResourceCreate(t *testing.T) {
 
 ## Parallel Testing
 
-Enable parallel test execution for faster CI runs by adding `t.Parallel()`:
+Enable parallel test execution for faster CI runs by using `resource.ParallelTest`:
 
 ```go
 func TestAccResourceExample_parallel(t *testing.T) {
-    t.Parallel()
-
-    resource.Test(t, resource.TestCase{
+    resource.ParallelTest(t, resource.TestCase{
         ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
         Steps: []resource.TestStep{
             {
@@ -187,7 +185,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.21'
+          go-version-file: 'go.mod'
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
 
       - name: Run Acceptance Tests
         env:
