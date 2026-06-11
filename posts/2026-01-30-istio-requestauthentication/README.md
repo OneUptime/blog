@@ -48,7 +48,7 @@ metadata:
   name: jwt-auth
   namespace: production
 spec:
-  # Apply to all workloads in the namespace
+  # Apply to workloads with this label in the namespace
   selector:
     matchLabels:
       app: api-gateway
@@ -93,7 +93,7 @@ spec:
         - "your-mobile-client-id.apps.googleusercontent.com"
 ```
 
-If `audiences` is not specified, the audience claim is not validated. Always specify audiences in production to prevent token confusion attacks.
+If `audiences` is not specified, Istio accepts the Kubernetes service name as an allowed audience. Always specify audiences in production to prevent token confusion attacks.
 
 ### JWKS URI for Public Key Retrieval
 
@@ -101,7 +101,7 @@ Istio fetches public keys from the JWKS URI to validate JWT signatures. The keys
 
 ```yaml
 # requestauthentication-jwks.yaml
-# Configuration with JWKS caching options
+# Configuration with an explicit JWKS URI
 apiVersion: security.istio.io/v1
 kind: RequestAuthentication
 metadata:
@@ -146,7 +146,7 @@ spec:
   jwtRules:
     - issuer: "https://auth.example.com"
       jwksUri: "https://auth.example.com/.well-known/jwks.json"
-      # Look for JWT in these locations (checked in order)
+      # Look for JWT in these locations
       fromHeaders:
         # Standard Authorization header
         - name: Authorization
@@ -157,6 +157,8 @@ spec:
         # Query parameter for WebSocket connections
         - "access_token"
 ```
+
+Avoid sending multiple JWTs in different locations on the same request. Istio does not support multiple tokens in one request, and the resulting authenticated principal is undefined.
 
 ## Multiple JWT Providers Configuration
 
@@ -260,9 +262,9 @@ spec:
         # Extract 'email' claim and add as X-User-Email header
         - header: "X-User-Email"
           claim: "email"
-        # Extract custom 'roles' claim
-        - header: "X-User-Roles"
-          claim: "roles"
+        # Extract custom 'role' claim
+        - header: "X-User-Role"
+          claim: "role"
 ```
 
 Your backend service can now access user information without parsing the JWT:
@@ -277,12 +279,12 @@ app = FastAPI()
 async def get_profile(
     x_user_id: str = Header(...),
     x_user_email: str = Header(...),
-    x_user_roles: str = Header(default="")
+    x_user_role: str = Header(default="")
 ):
     return {
         "user_id": x_user_id,
         "email": x_user_email,
-        "roles": x_user_roles.split(",") if x_user_roles else []
+        "role": x_user_role
     }
 ```
 
@@ -311,7 +313,7 @@ spec:
         - "api-service"
       forwardOriginalToken: true
 ---
-# Step 2: Require valid JWT for all requests
+# Step 2: Require valid JWT for API requests
 apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
@@ -418,13 +420,13 @@ Use a tool like jwt.io or this script to generate test tokens:
 
 ```bash
 # Install jwt-cli
-npm install -g jwt-cli
+cargo install jwt-cli
 
 # Generate a test JWT (for testing only, use proper signing in production)
-jwt sign \
-  --algorithm RS256 \
-  --secret @private-key.pem \
-  '{"iss":"https://auth.example.com","sub":"user123","aud":"api-service","exp":1735689600}'
+jwt encode \
+  --alg=RS256 \
+  --secret=@private-key.pem \
+  '{"iss":"https://auth.example.com","sub":"user123","aud":"api-service","exp":1893456000}'
 ```
 
 ### Test Requests
@@ -540,8 +542,9 @@ spec:
 | 401 with valid token | JWKS fetch failed | Check network connectivity to JWKS endpoint |
 | 401 with "Jwt issuer is not configured" | Issuer mismatch | Ensure `issuer` exactly matches `iss` claim |
 | 401 with "Jwt audience is not allowed" | Audience mismatch | Add correct audience to `audiences` list |
-| Token not validated | No AuthorizationPolicy | Add AuthorizationPolicy to require JWT |
-| Claims not forwarded | Missing config | Set `forwardOriginalToken: true` |
+| Missing token is accepted | No AuthorizationPolicy | Add AuthorizationPolicy to require JWT |
+| Original token not forwarded | Missing config | Set `forwardOriginalToken: true` |
+| Claim headers not added | Missing or unsupported claim-to-header config | Set `outputClaimToHeaders` for string, integer, or boolean claims |
 
 ---
 
