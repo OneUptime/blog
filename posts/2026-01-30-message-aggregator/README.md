@@ -166,7 +166,7 @@ function extractCorrelationId(message: unknown): string {
   // Check nested headers (common in message queue systems)
   if (msg.headers && typeof msg.headers === 'object') {
     const headers = msg.headers as Record<string, unknown>;
-    if (headers.correlationId) {
+    if (typeof headers.correlationId === 'string') {
       return headers.correlationId as string;
     }
   }
@@ -201,7 +201,7 @@ export {
 
 ### Best Practices for Correlation IDs
 
-1. **Use UUIDs or ULIDs** for generated IDs (sortable, unique, no collisions)
+1. **Use UUIDs or ULIDs** for generated IDs; choose ULIDs when sortable IDs matter
 2. **Propagate consistently** across all services in the flow
 3. **Include in logs** for debugging aggregation issues
 4. **Validate early** to reject messages without valid correlation
@@ -589,6 +589,7 @@ class TimeoutHandler extends EventEmitter {
    */
   private handleTimeout(correlationId: string, onTimeout: () => void): void {
     this.timers.delete(correlationId);
+    this.startTimes.delete(correlationId);
 
     // Emit event for monitoring/logging
     this.emit('timeout', correlationId);
@@ -914,6 +915,7 @@ flowchart TB
 // redis-message-store.ts
 
 import { Redis } from 'ioredis';
+import { randomUUID } from 'crypto';
 import { AggregationState } from './completion-strategies';
 
 /**
@@ -941,10 +943,12 @@ interface RedisStoreConfig {
 class RedisMessageStore<T> {
   private readonly config: RedisStoreConfig;
   private readonly redis: Redis;
+  private readonly lockTokens: Map<string, string>;
 
   constructor(config: RedisStoreConfig) {
     this.config = config;
     this.redis = config.redis;
+    this.lockTokens = new Map();
   }
 
   /**
@@ -1029,7 +1033,20 @@ class RedisMessageStore<T> {
    */
   async getActiveCorrelationIds(): Promise<string[]> {
     const pattern = `${this.config.keyPrefix}:state:*`;
-    const keys = await this.redis.keys(pattern);
+    const keys: string[] = [];
+
+    const stream = this.redis.scanStream({
+      match: pattern,
+      count: 100
+    });
+
+    await new Promise<void>((resolve, reject) => {
+      stream.on('data', (resultKeys: string[]) => {
+        keys.push(...resultKeys);
+      });
+      stream.on('end', resolve);
+      stream.on('error', reject);
+    });
 
     return keys.map(key => {
       const parts = key.split(':');
@@ -1046,14 +1063,21 @@ class RedisMessageStore<T> {
     ttlMs: number
   ): Promise<boolean> {
     const lockKey = `${this.config.keyPrefix}:lock:${correlationId}`;
+    const lockToken = randomUUID();
     const result = await this.redis.set(
       lockKey,
-      '1',
+      lockToken,
       'PX',
       ttlMs,
       'NX'
     );
-    return result === 'OK';
+
+    if (result === 'OK') {
+      this.lockTokens.set(correlationId, lockToken);
+      return true;
+    }
+
+    return false;
   }
 
   /**
@@ -1061,7 +1085,23 @@ class RedisMessageStore<T> {
    */
   async releaseLock(correlationId: string): Promise<void> {
     const lockKey = `${this.config.keyPrefix}:lock:${correlationId}`;
-    await this.redis.del(lockKey);
+    const lockToken = this.lockTokens.get(correlationId);
+
+    if (!lockToken) {
+      return;
+    }
+
+    await this.redis.eval(
+      `if redis.call("get", KEYS[1]) == ARGV[1] then
+         return redis.call("del", KEYS[1])
+       else
+         return 0
+       end`,
+      1,
+      lockKey,
+      lockToken
+    );
+    this.lockTokens.delete(correlationId);
   }
 
   private getStateKey(correlationId: string): string {
