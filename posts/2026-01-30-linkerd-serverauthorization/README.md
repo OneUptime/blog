@@ -8,11 +8,11 @@ Description: Learn how to implement service-to-service access control in Linkerd
 
 ---
 
-Linkerd provides built-in authorization policies that let you control which services can communicate with each other. ServerAuthorization is the core resource for defining these access control rules. Unlike Network Policies that operate at Layer 3/4, Linkerd authorization works at Layer 7 and uses cryptographic identities from mTLS certificates.
+Linkerd provides built-in authorization policies that let you control which services can communicate with each other. ServerAuthorization is an earlier policy resource for defining access control rules for Server resources. Unlike Network Policies that rely on IPs and ports, Linkerd authorization can use cryptographic identities from mTLS certificates.
 
 ## Understanding Linkerd Authorization
 
-Linkerd authorization builds on two key concepts: Servers (what you protect) and ServerAuthorizations (who can access it).
+Linkerd ServerAuthorization builds on two key concepts: Servers (what you protect) and ServerAuthorizations (who can access it).
 
 ```mermaid
 flowchart TB
@@ -127,6 +127,8 @@ spec:
 
 ServerAuthorization defines who can access a Server. It connects client identities to server resources.
 
+Linkerd 2.12 introduced AuthorizationPolicy as a more flexible alternative that can target Servers as well as HTTPRoute and GRPCRoute resources. ServerAuthorization is still useful for Server-level policy, but new policy designs should consider AuthorizationPolicy.
+
 ### Full Specification
 
 ```yaml
@@ -139,23 +141,32 @@ spec:
   # Required: Reference to the Server resource
   server:
     name: <server-name>
-  # Required: Define allowed clients
+  # Required: Define allowed clients using exactly one of these options
   client:
-    # Option 1: Allow specific ServiceAccounts
     meshTLS:
       serviceAccounts:
         - name: <service-account-name>
           namespace: <namespace>
-    # Option 2: Allow by identity string
-    meshTLS:
-      identities:
-        - "*.production.serviceaccount.identity.linkerd.cluster.local"
-    # Option 3: Allow unauthenticated traffic (use sparingly)
-    unauthenticated: true
-    # Option 4: Allow all authenticated mesh traffic
-    meshTLS:
-      identities:
-        - "*"
+```
+
+Alternative client selectors:
+
+```yaml
+# Allow by identity string
+client:
+  meshTLS:
+    identities:
+      - "*.production.serviceaccount.identity.linkerd.cluster.local"
+
+# Allow unauthenticated traffic (use sparingly)
+client:
+  unauthenticated: true
+
+# Allow all authenticated mesh traffic
+client:
+  meshTLS:
+    identities:
+      - "*"
 ```
 
 ## Client Identity Selectors
@@ -211,7 +222,7 @@ spec:
 
 ### Select by Identity Pattern
 
-Use wildcards for flexible matching:
+Use wildcard prefixes for namespace or domain-level matching:
 
 ```yaml
 # authz-identity-pattern.yaml
@@ -219,7 +230,7 @@ Use wildcards for flexible matching:
 apiVersion: policy.linkerd.io/v1beta2
 kind: ServerAuthorization
 metadata:
-  name: allow-frontend-services
+  name: allow-namespace-services
   namespace: production
 spec:
   server:
@@ -227,8 +238,8 @@ spec:
   client:
     meshTLS:
       identities:
-        # Match any service account starting with "frontend-"
-        - "frontend-*.production.serviceaccount.identity.linkerd.cluster.local"
+        # Match all services in the production namespace
+        - "*.production.serviceaccount.identity.linkerd.cluster.local"
         # Match all services in staging namespace
         - "*.staging.serviceaccount.identity.linkerd.cluster.local"
 ```
@@ -248,15 +259,13 @@ sequenceDiagram
     Client->>ClientProxy: HTTP Request
     ClientProxy->>ClientProxy: Add mTLS Identity
     ClientProxy->>ServerProxy: Encrypted Request
-    ServerProxy->>Policy: Check Authorization
-    Policy->>Policy: Match Server Resource
-    Policy->>Policy: Evaluate ServerAuthorization
+    Policy-->>ServerProxy: Provide policy updates
+    ServerProxy->>ServerProxy: Match Server resource
+    ServerProxy->>ServerProxy: Evaluate ServerAuthorization
     alt Authorized
-        Policy-->>ServerProxy: Allow
         ServerProxy->>Server: Forward Request
         Server-->>Client: Response (200 OK)
-    else Denied
-        Policy-->>ServerProxy: Deny
+    else Denied HTTP traffic
         ServerProxy-->>Client: 403 Forbidden
     end
 ```
@@ -396,8 +405,8 @@ Implement zero-trust by denying all traffic by default:
 
 ```yaml
 # default-policy.yaml
-# First, set the default policy to deny in the namespace
-# This is done via annotation on the namespace
+# First, set the default policy to deny for newly created pods in the namespace
+# Restart existing pods after adding this annotation
 ---
 apiVersion: v1
 kind: Namespace
@@ -471,15 +480,15 @@ kubectl describe serverauthorization allow-checkout-to-payments -n production
 # Deploy a test pod with a specific service account
 kubectl run test-client \
   --image=curlimages/curl \
-  --serviceaccount=checkout-sa \
   --namespace=production \
+  --overrides='{"apiVersion":"v1","spec":{"serviceAccountName":"checkout-sa"}}' \
   --command -- sleep infinity
 
 # Test the connection
 kubectl exec -n production test-client -- \
   curl -v http://payments-service:8080/health
 
-# Expected: 200 OK if authorized, 403 Forbidden if denied
+# Expected for HTTP traffic: 200 OK if authorized, 403 Forbidden if denied
 ```
 
 ### Check Linkerd Proxy Logs
@@ -511,7 +520,7 @@ kubectl exec -n production deploy/checkout -c linkerd-proxy -- \
 
 ### 1. Start with Audit Mode
 
-Before enforcing deny-by-default, use audit mode to understand traffic patterns:
+Before enforcing deny-by-default, use audit mode to understand traffic patterns on Linkerd versions that support it:
 
 ```yaml
 apiVersion: v1
