@@ -370,7 +370,7 @@ The lfu-log-factor controls how quickly the counter saturates:
 | Factor | Hits to reach max counter (255) |
 |--------|--------------------------------|
 | 0 | 255 |
-| 1 | ~510 |
+| 1 | ~100 thousand |
 | 10 | ~1 million |
 | 100 | ~10 million |
 
@@ -385,7 +385,7 @@ lfu-decay-time 10
 # Decay counters every minute (faster decay, responds quicker to changes)
 lfu-decay-time 1
 
-# No decay (counter only increases)
+# Special value: decay the counter every time it is scanned (aggressive decay)
 lfu-decay-time 0
 ```
 
