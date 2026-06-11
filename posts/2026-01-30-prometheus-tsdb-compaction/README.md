@@ -76,7 +76,7 @@ flowchart LR
 The compactor scans the data directory and finds blocks that can be merged. Blocks are candidates if:
 
 - They are adjacent in time (no gaps).
-- Their combined size stays within the maximum block duration (default 31 days, configurable).
+- Their combined size stays within the maximum block duration (by default, 10% of the retention time, capped at 31 days).
 - They are not currently being queried or written.
 
 Here is a simplified function to find compaction candidates:
@@ -531,24 +531,20 @@ func (c *Compactor) compactBlocks(blocks []Block) error {
 
 Here are key parameters to tune:
 
-**Block duration:** Longer blocks mean fewer files but slower compactions. Start with the default 2h for level 0.
+**Block duration:** Longer blocks mean fewer files but slower compactions. Start with the default 2h for level 0. These are passed as command-line flags to Prometheus, not in `prometheus.yml`:
 
-```yaml
-# prometheus.yml
-
-storage:
-  tsdb:
-    min-block-duration: 2h
-    max-block-duration: 31d
+```text
+prometheus \
+  --storage.tsdb.min-block-duration=2h \
+  --storage.tsdb.max-block-duration=31d
 ```
 
 **Retention:** Compaction interacts with retention. Old blocks are deleted before compaction if they exceed retention.
 
-```yaml
-storage:
-  tsdb:
-    retention.time: 15d
-    retention.size: 50GB
+```text
+prometheus \
+  --storage.tsdb.retention.time=15d \
+  --storage.tsdb.retention.size=50GB
 ```
 
 **Compaction concurrency:** Prometheus compacts one plan at a time by default. For high-cardinality workloads, this can become a bottleneck.
