@@ -96,8 +96,8 @@ import { Pool } from 'pg';
 
 interface IdempotencyRecord {
   key: string;
-  response: any;
-  createdAt: Date;
+  response: any | null;
+  status: 'processing' | 'completed';
 }
 
 export class IdempotencyService {
@@ -106,19 +106,39 @@ export class IdempotencyService {
   // Check if this operation was already processed
   async getExistingResult(key: string): Promise<IdempotencyRecord | null> {
     const result = await this.db.query(
-      'SELECT key, response, created_at FROM idempotency_keys WHERE key = $1',
+      'SELECT key, response, status FROM idempotency_keys WHERE key = $1',
       [key]
     );
     return result.rows[0] || null;
   }
 
+  // Reserve the key before executing the operation
+  async reserveKey(key: string): Promise<boolean> {
+    const result = await this.db.query(
+      `INSERT INTO idempotency_keys (key, status, created_at)
+       VALUES ($1, 'processing', NOW())
+       ON CONFLICT (key) DO NOTHING
+       RETURNING key`,
+      [key]
+    );
+    return result.rowCount === 1;
+  }
+
   // Store the result of a successful operation
-  async storeResult(key: string, response: any): Promise<void> {
+  async completeResult(key: string, response: any): Promise<void> {
     await this.db.query(
-      `INSERT INTO idempotency_keys (key, response, created_at)
-       VALUES ($1, $2, NOW())
-       ON CONFLICT (key) DO NOTHING`,
+      `UPDATE idempotency_keys
+       SET response = $2, status = 'completed', completed_at = NOW()
+       WHERE key = $1`,
       [key, JSON.stringify(response)]
+    );
+  }
+
+  // Release the reservation if the operation fails
+  async deleteKey(key: string): Promise<void> {
+    await this.db.query(
+      'DELETE FROM idempotency_keys WHERE key = $1 AND status = $2',
+      [key, 'processing']
     );
   }
 
@@ -130,17 +150,36 @@ export class IdempotencyService {
     // Check for existing result first
     const existing = await this.getExistingResult(key);
     if (existing) {
+      if (existing.status === 'processing') {
+        throw new Error(`Request is already being processed for key: ${key}`);
+      }
+
       console.log(`Returning cached result for key: ${key}`);
-      return JSON.parse(existing.response);
+      return existing.response as T;
     }
 
-    // Execute the operation
-    const result = await operation();
+    // Reserve first so concurrent retries cannot execute the operation twice
+    const reserved = await this.reserveKey(key);
+    if (!reserved) {
+      const duplicate = await this.getExistingResult(key);
+      if (duplicate?.status === 'completed') {
+        return duplicate.response as T;
+      }
+      throw new Error(`Request is already being processed for key: ${key}`);
+    }
 
-    // Store the result for future duplicate requests
-    await this.storeResult(key, result);
+    try {
+      // Execute the operation
+      const result = await operation();
 
-    return result;
+      // Store the result for future duplicate requests
+      await this.completeResult(key, result);
+
+      return result;
+    } catch (error) {
+      await this.deleteKey(key);
+      throw error;
+    }
   }
 }
 ```
@@ -151,8 +190,10 @@ The database schema for storing idempotency keys requires a unique constraint an
 -- Schema for idempotency keys
 CREATE TABLE idempotency_keys (
     key VARCHAR(255) PRIMARY KEY,
-    response JSONB NOT NULL,
-    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    response JSONB,
+    status VARCHAR(20) NOT NULL CHECK (status IN ('processing', 'completed')),
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    completed_at TIMESTAMP
 );
 
 -- Index for cleanup of old keys
@@ -166,7 +207,9 @@ DELETE FROM idempotency_keys WHERE created_at < NOW() - INTERVAL '24 hours';
 
 ## 4. The Outbox Pattern
 
-The outbox pattern solves the dual-write problem - when you need to update a database AND publish an event atomically. Instead of publishing directly, you write the event to an outbox table in the same transaction as your business data.
+The outbox pattern solves the dual-write problem - when you need to update a database AND record that an event must be published atomically. Instead of publishing directly, you write the event to an outbox table in the same transaction as your business data.
+
+The outbox relay can still publish the same event more than once if it crashes after sending to the broker but before marking the row as published. Treat outbox delivery as at-least-once and make consumers idempotent.
 
 The following diagram shows the outbox pattern flow.
 
@@ -188,6 +231,7 @@ The following code implements a complete outbox pattern with a publisher that po
 // outbox-pattern.ts
 import { Pool, PoolClient } from 'pg';
 import { Kafka, Producer } from 'kafkajs';
+import { randomUUID } from 'node:crypto';
 
 interface OutboxMessage {
   id: string;
@@ -202,6 +246,10 @@ export class OutboxService {
 
   constructor(private db: Pool, kafka: Kafka) {
     this.producer = kafka.producer();
+  }
+
+  async initialize(): Promise<void> {
+    await this.producer.connect();
   }
 
   // Write business data and event in a single transaction
@@ -221,7 +269,7 @@ export class OutboxService {
       `INSERT INTO outbox (id, aggregate_type, aggregate_id, event_type, payload, created_at)
        VALUES ($1, $2, $3, $4, $5, NOW())`,
       [
-        crypto.randomUUID(),
+        randomUUID(),
         'Order',
         orderId,
         'OrderStatusChanged',
@@ -308,10 +356,11 @@ export class KafkaTransactionProcessor {
   private consumer: Consumer;
 
   constructor(private kafka: Kafka) {
-    // Configure producer with idempotence and transactions enabled
+    // Configure producer with idempotence and transactions enabled.
+    // In production, use a stable transactionalId per processor instance or input partition.
     this.producer = kafka.producer({
       idempotent: true,
-      transactionalId: 'order-processor-tx',
+      transactionalId: 'order-processor-tx-instance-1',
       maxInFlightRequests: 1
     });
 
@@ -373,6 +422,7 @@ export class KafkaTransactionProcessor {
 
   async startProcessing(): Promise<void> {
     await this.consumer.run({
+      autoCommit: false,
       eachMessage: async (payload) => {
         await this.processWithTransaction(payload, async (data) => {
           // Your business logic here
@@ -527,7 +577,7 @@ Key implementation guidelines:
 
 ## Summary
 
-Exactly-once delivery in distributed systems requires a layered approach. At the producer level, use idempotency keys and the outbox pattern to prevent duplicate publishes. At the broker level, leverage Kafka transactions for atomic writes. At the consumer level, implement deduplication and idempotent handlers.
+Exactly-once delivery in distributed systems requires a layered approach. At the producer level, use idempotency keys and the outbox pattern to make publishing recoverable. At the broker level, leverage Kafka transactions for atomic writes. At the consumer level, implement deduplication and idempotent handlers.
 
 The goal is not to prevent duplicates entirely - that is impossible in a distributed system. The goal is to make your system behave correctly regardless of how many times a message is delivered.
 
