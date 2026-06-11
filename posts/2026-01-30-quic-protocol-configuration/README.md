@@ -297,10 +297,11 @@ use std::fs;
 use std::path::Path;
 
 fn configure_zero_rtt(config: &mut Config) -> Result<(), Box<dyn std::error::Error>> {
-    // Enable early data (0-RTT)
-    // The parameter specifies the maximum early data size in bytes
+    // Enable early data (0-RTT) on the QUIC configuration.
+    // The maximum early data size is advertised by the server via
+    // the TLS NewSessionTicket; quiche does not expose a separate
+    // setter on Config for it.
     config.enable_early_data();
-    config.set_initial_max_early_data(16384);  // 16KB of early data
 
     Ok(())
 }
@@ -335,14 +336,7 @@ fn connect_with_zero_rtt(
 ) -> Result<Connection, Box<dyn std::error::Error>> {
     let ticket_path = format!("/tmp/quic_sessions/{}.ticket", server_name);
 
-    // Load the stored session ticket if available
-    if Path::new(&ticket_path).exists() {
-        let ticket = fs::read(&ticket_path)?;
-        config.set_ticket(&ticket)?;
-        println!("Loaded session ticket for 0-RTT");
-    }
-
-    // Create connection with the session ticket
+    // Create the connection first.
     let scid = generate_connection_id();
     let mut conn = quiche::connect(
         Some(server_name),
@@ -352,8 +346,17 @@ fn connect_with_zero_rtt(
         config,
     )?;
 
-    // Attempt to send early data (0-RTT)
-    if conn.is_early_data_ready() {
+    // Load the stored session ticket and apply it to the connection.
+    // In quiche, the resumption ticket is set on the Connection, not the Config.
+    if Path::new(&ticket_path).exists() {
+        let ticket = fs::read(&ticket_path)?;
+        conn.set_session(&ticket)?;
+        println!("Loaded session ticket for 0-RTT");
+    }
+
+    // Attempt to send early data (0-RTT). is_in_early_data() reports
+    // whether the connection is currently in the early-data phase.
+    if conn.is_in_early_data() {
         // Get a stream for early data
         let stream_id = 0;  // First client-initiated bidirectional stream
 
@@ -394,18 +397,19 @@ fn is_safe_for_zero_rtt(request: &HttpRequest) -> bool {
     }
 }
 
-// Server-side 0-RTT replay protection
+// Server-side 0-RTT replay protection.
+// Replay defense for 0-RTT must be implemented at the application layer
+// (for example, by hashing the request and rejecting recently-seen hashes,
+// or by using a single-use token embedded in the early data).
 fn handle_early_data(
     conn: &mut Connection,
+    request_id: &[u8],
     anti_replay: &mut AntiReplayCache
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // Check if this is early data (0-RTT)
-    if conn.is_early_data_accepted() {
-        // Extract a unique identifier from the early data
-        let client_random = conn.client_random();
-
-        // Check for replay
-        if anti_replay.check_and_insert(client_random) {
+    // Check if the connection is currently processing 0-RTT data.
+    if conn.is_in_early_data() {
+        // Check for replay using an application-supplied identifier.
+        if anti_replay.check_and_insert(request_id) {
             // This is a replay, reject the request
             return Err("0-RTT replay detected".into());
         }
@@ -478,25 +482,28 @@ impl ConnectionIdManager {
         &mut self,
         conn: &mut Connection
     ) -> Result<(), Box<dyn std::error::Error>> {
-        // Calculate how many new CIDs to issue
-        let current_cids = conn.active_cids();
-        let needed = self.cid_pool_size.saturating_sub(current_cids);
+        // Determine how many additional source CIDs the peer is willing
+        // to accept. scids_left() returns the number of source CIDs we
+        // can still issue before hitting the peer's active_connection_id_limit.
+        let needed = conn.scids_left();
 
         for _ in 0..needed {
             // Generate a new unique connection ID
             let new_cid = self.generate_cid();
 
-            // Create a stateless reset token for this CID
-            // This allows the server to terminate connections
-            // without maintaining state
+            // Create a stateless reset token for this CID.
+            // This allows a peer that receives a packet for an unknown
+            // connection to terminate it without maintaining state.
             let reset_token = self.generate_reset_token(&new_cid);
 
-            // Issue the new CID to the peer
-            conn.new_connection_id(&new_cid, reset_token, false)?;
+            // Issue the new CID to the peer. new_scid takes a u128
+            // reset token and a bool indicating whether the peer should
+            // retire previous CIDs if needed.
+            conn.new_scid(&new_cid, reset_token, false)?;
 
             // Store the CID mapping
             self.active_cids.insert(
-                new_cid.to_vec(),
+                new_cid.as_ref().to_vec(),
                 ConnectionState::Active
             );
 
@@ -517,29 +524,32 @@ impl ConnectionIdManager {
             return Err("Invalid migration path".into());
         }
 
-        // Probe the new path before migrating
-        conn.probe_path(new_path.clone(), local_addr)?;
+        // Probe the new path before migrating. The signature is
+        // probe_path(local, peer): the local address comes first.
+        conn.probe_path(local_addr, *new_path)?;
 
         println!("Initiated path probe to {}", new_path);
 
         Ok(())
     }
 
-    // Retire old connection IDs after migration
+    // Retire an old destination connection ID after migration.
+    // quiche identifies CIDs to retire by their sequence number.
     fn retire_connection_id(
         &mut self,
         conn: &mut Connection,
-        cid: &[u8]
+        dcid_seq: u64,
+        cid_bytes: &[u8],
     ) -> Result<(), Box<dyn std::error::Error>> {
-        // Request the peer to stop using this CID
-        conn.retire_connection_id(cid)?;
+        // Request the peer to stop using this CID by sequence number.
+        conn.retire_dcid(dcid_seq)?;
 
         // Mark as retired in our tracking
-        if let Some(state) = self.active_cids.get_mut(cid) {
+        if let Some(state) = self.active_cids.get_mut(cid_bytes) {
             *state = ConnectionState::Retired;
         }
 
-        println!("Retired connection ID: {:?}", cid);
+        println!("Retired connection ID with seq {}", dcid_seq);
 
         Ok(())
     }
@@ -550,11 +560,13 @@ impl ConnectionIdManager {
         ConnectionId::from_vec(id.to_vec())
     }
 
-    fn generate_reset_token(&self, cid: &ConnectionId) -> [u8; 16] {
-        // In production, use HMAC with a secret key
-        let mut token = [0u8; 16];
-        // Derive token from CID using a secret
-        token
+    fn generate_reset_token(&self, cid: &ConnectionId) -> u128 {
+        // In production, derive this via HMAC over the CID using a
+        // long-lived secret key. quiche expects the reset token as
+        // a u128 (16 bytes packed into a 128-bit integer).
+        let mut bytes = [0u8; 16];
+        // Derive token bytes from CID using a secret
+        u128::from_be_bytes(bytes)
     }
 }
 
@@ -566,62 +578,58 @@ enum ConnectionState {
 
 ### Path Validation
 
-When a connection migrates to a new network path, QUIC performs path validation to prevent address spoofing:
+When a connection migrates to a new network path, QUIC performs path
+validation to prevent address spoofing. quiche performs the PATH_CHALLENGE /
+PATH_RESPONSE exchange internally; applications start validation by calling
+`probe_path` and then poll for path events to learn the outcome.
 
 ```rust
-// Path validation implementation
+// Path validation driven through quiche's public API
 struct PathValidator {
-    pending_challenges: HashMap<SocketAddr, Vec<u8>>,
+    pending: HashMap<SocketAddr, u64>,  // peer addr -> probe sequence number
 }
 
 impl PathValidator {
     fn new() -> Self {
         PathValidator {
-            pending_challenges: HashMap::new(),
+            pending: HashMap::new(),
         }
     }
 
-    // Initiate path validation for a new address
+    // Initiate path validation for a new address. quiche generates and
+    // sends the PATH_CHALLENGE frame internally as a result of probe_path.
     fn start_validation(
         &mut self,
         conn: &mut Connection,
-        new_path: SocketAddr
+        local: SocketAddr,
+        new_path: SocketAddr,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        // Generate a random challenge
-        let mut challenge = [0u8; 8];
-        rand::thread_rng().fill(&mut challenge);
+        // probe_path returns a u64 identifying the probe.
+        let probe_seq = conn.probe_path(local, new_path)?;
+        self.pending.insert(new_path, probe_seq);
 
-        // Send PATH_CHALLENGE frame
-        conn.send_path_challenge(&challenge, new_path)?;
-
-        // Store the challenge for verification
-        self.pending_challenges.insert(new_path, challenge.to_vec());
-
-        println!("Sent PATH_CHALLENGE to {}", new_path);
+        println!("Initiated path probe to {}", new_path);
 
         Ok(())
     }
 
-    // Process PATH_RESPONSE from peer
-    fn handle_response(
-        &mut self,
-        conn: &mut Connection,
-        path: SocketAddr,
-        response: &[u8]
-    ) -> Result<bool, Box<dyn std::error::Error>> {
-        // Check if we have a pending challenge for this path
-        if let Some(challenge) = self.pending_challenges.get(&path) {
-            if challenge == response {
-                // Path is validated, safe to migrate
-                println!("Path {} validated successfully", path);
-                self.pending_challenges.remove(&path);
-                return Ok(true);
+    // Drain quiche path events to learn whether a probe validated.
+    // PathEvent::Validated / FailedValidation are emitted once the
+    // PATH_RESPONSE arrives (or the path times out).
+    fn poll_path_events(&mut self, conn: &mut Connection) {
+        while let Some(event) = conn.path_event_next() {
+            match event {
+                quiche::PathEvent::Validated(local, peer) => {
+                    println!("Path {} -> {} validated", local, peer);
+                    self.pending.remove(&peer);
+                }
+                quiche::PathEvent::FailedValidation(local, peer) => {
+                    println!("Path {} -> {} failed validation", local, peer);
+                    self.pending.remove(&peer);
+                }
+                _ => {}
             }
         }
-
-        // Invalid response
-        println!("Path validation failed for {}", path);
-        Ok(false)
     }
 }
 ```
@@ -676,20 +684,25 @@ impl QuicServer {
         config.set_initial_max_streams_bidi(100);
         config.set_initial_max_streams_uni(100);
 
-        // Congestion control algorithm
-        config.set_cc_algorithm(quiche::CongestionControlAlgorithm::BBR);
+        // Congestion control algorithm. quiche exposes Reno, CUBIC, and
+        // a BBR2 implementation via the Bbr2Gcongestion variant.
+        config.set_cc_algorithm(quiche::CongestionControlAlgorithm::Bbr2Gcongestion);
 
-        // Enable connection migration
-        config.enable_migration(true);
+        // Permit peer-initiated connection migration.
+        // set_disable_active_migration(false) keeps migration enabled,
+        // which is also the default. Pass true to forbid migration.
+        config.set_disable_active_migration(false);
 
         // Enable 0-RTT early data
         config.enable_early_data();
 
-        // Anti-amplification limit (3x before address validation)
-        config.set_initial_max_data(10_000_000);
+        // QUIC's 3x anti-amplification limit is enforced by the protocol
+        // itself before the client's address is validated; no explicit
+        // configuration is required for it.
 
-        // Enable DATAGRAM extension for unreliable data
-        config.enable_dgram(true, 1000, 1000);
+        // Enable DATAGRAM extension for unreliable data. The queue lengths
+        // are usize, not u64.
+        config.enable_dgram(true, 1000usize, 1000usize);
 
         println!("QUIC server configured on {}", bind_addr);
 
@@ -798,32 +811,37 @@ QUIC implements sophisticated congestion control to optimize throughput while av
 fn configure_congestion_control(
     config: &mut Config
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // Available algorithms:
-    // - Reno: Classic TCP Reno algorithm
-    // - CUBIC: Default for most operating systems
-    // - BBR: Google's Bottleneck Bandwidth and RTT algorithm
+    // Available algorithms in quiche:
+    // - Reno:              Classic TCP Reno
+    // - CUBIC:             Default; the algorithm used by most TCP stacks
+    // - Bbr2Gcongestion:   BBR v2, Google's bandwidth-and-RTT based algorithm
 
-    // BBR is recommended for most use cases
-    // It achieves higher throughput with lower latency
-    config.set_cc_algorithm(quiche::CongestionControlAlgorithm::BBR);
+    // BBR2 is a good fit for high-bandwidth, lossy paths.
+    config.set_cc_algorithm(quiche::CongestionControlAlgorithm::Bbr2Gcongestion);
 
     Ok(())
 }
 
-// Monitor congestion control state
+// Monitor congestion control state. Connection-wide counters live on
+// the Stats struct, while per-path values like the congestion window,
+// bytes in flight, smoothed RTT and RTT variance live on PathStats and
+// are read by iterating conn.path_stats().
 fn log_congestion_stats(conn: &Connection) {
     let stats = conn.stats();
 
-    println!("Congestion Control Statistics:");
-    println!("  Congestion window: {} bytes", stats.cwnd);
-    println!("  Bytes in flight: {} bytes", stats.bytes_in_flight);
-    println!("  Smoothed RTT: {:?}", stats.rtt);
-    println!("  RTT variance: {:?}", stats.rttvar);
+    println!("Connection-level statistics:");
     println!("  Packets sent: {}", stats.sent);
     println!("  Packets received: {}", stats.recv);
     println!("  Packets lost: {}", stats.lost);
     println!("  Bytes sent: {}", stats.sent_bytes);
     println!("  Bytes received: {}", stats.recv_bytes);
+
+    for path in conn.path_stats() {
+        println!("Path {} -> {}:", path.local_addr, path.peer_addr);
+        println!("  Congestion window: {} bytes", path.cwnd);
+        println!("  Smoothed RTT: {:?}", path.rtt);
+        println!("  RTT variance: {:?}", path.rttvar);
+    }
 }
 ```
 
@@ -857,8 +875,8 @@ fn configure_flow_control(
             config.set_initial_max_data(50_000_000);  // 50 MB connection limit
             config.set_initial_max_stream_data_uni(10_000_000);
             config.set_initial_max_streams_uni(10);
-            // Enable datagrams for unreliable delivery
-            config.enable_dgram(true, 1200, 1000);
+            // Enable datagrams for unreliable delivery (queue lengths are usize)
+            config.enable_dgram(true, 1200usize, 1000usize);
         }
 
         _ => {
@@ -960,8 +978,11 @@ impl Http3Client {
 
         loop {
             match h3_conn.poll(&mut self.quic_conn) {
-                Ok((stream_id, h3::Event::Headers { list, has_body })) => {
-                    println!("Response headers on stream {}:", stream_id);
+                Ok((stream_id, h3::Event::Headers { list, more_frames })) => {
+                    println!(
+                        "Response headers on stream {} (more_frames={}):",
+                        stream_id, more_frames
+                    );
                     for header in list {
                         println!(
                             "  {}: {}",
@@ -1035,16 +1056,18 @@ fn enable_debug_logging() {
     // This creates JSON logs compatible with qvis visualization
 }
 
-// Export metrics for monitoring
+// Export metrics for monitoring.
+// rtt, rttvar and cwnd are per-path values exposed via path_stats(),
+// while sent/recv/lost counters live on the connection-wide Stats.
 fn export_metrics(conn: &Connection) -> serde_json::Value {
     let stats = conn.stats();
+    let primary = conn.path_stats().next();
 
     serde_json::json!({
         "connection_id": format!("{:?}", conn.destination_id()),
         "state": if conn.is_established() { "established" } else { "connecting" },
-        "rtt_ms": stats.rtt.as_millis(),
-        "cwnd_bytes": stats.cwnd,
-        "bytes_in_flight": stats.bytes_in_flight,
+        "rtt_ms": primary.as_ref().map(|p| p.rtt.as_millis()),
+        "cwnd_bytes": primary.as_ref().map(|p| p.cwnd),
         "packets_sent": stats.sent,
         "packets_received": stats.recv,
         "packets_lost": stats.lost,
