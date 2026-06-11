@@ -225,6 +225,8 @@ VACUUM;
 
 ```sql
 -- Monitor vacuum progress in real-time
+-- Note: Column names changed in PostgreSQL 17. For PG 16 and earlier,
+-- use max_dead_tuples and num_dead_tuples instead.
 SELECT
     p.pid,
     p.datname,
@@ -235,8 +237,9 @@ SELECT
     p.heap_blks_vacuumed,
     round(100.0 * p.heap_blks_vacuumed / NULLIF(p.heap_blks_total, 0), 2) AS pct_complete,
     p.index_vacuum_count,
-    p.max_dead_tuples,
-    p.num_dead_tuples
+    p.max_dead_tuple_bytes,
+    p.dead_tuple_bytes,
+    p.num_dead_item_ids
 FROM pg_stat_progress_vacuum p;
 ```
 
@@ -291,8 +294,8 @@ autovacuum_analyze_scale_factor = 0.05  # Reduced from default 0.1
 
 # Cost-based vacuum delay settings
 # Lower delay = more aggressive vacuuming
-autovacuum_vacuum_cost_delay = 2ms  # Reduced from default 20ms
-autovacuum_vacuum_cost_limit = 1000  # Increased from default 200
+autovacuum_vacuum_cost_delay = 2ms  # Default in PostgreSQL 12+ (was 20ms in older versions)
+autovacuum_vacuum_cost_limit = 1000  # Increased from default 200 (inherited from vacuum_cost_limit)
 
 # Memory for vacuum operations
 maintenance_work_mem = 1GB  # Adjust based on available RAM
@@ -511,7 +514,7 @@ ORDER BY xact_start;
 -- Set statement timeout to prevent runaway queries
 ALTER DATABASE your_database SET statement_timeout = '30min';
 
--- Set idle transaction timeout (PostgreSQL 14+)
+-- Set idle transaction timeout (available since PostgreSQL 9.6)
 ALTER DATABASE your_database SET idle_in_transaction_session_timeout = '10min';
 ```
 
