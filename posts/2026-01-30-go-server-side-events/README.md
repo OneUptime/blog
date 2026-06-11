@@ -47,10 +47,9 @@ import (
 
 // sseHandler sends a timestamp every second to connected clients
 func sseHandler(w http.ResponseWriter, r *http.Request) {
-    // Required headers for SSE
+    // SSE response headers
     w.Header().Set("Content-Type", "text/event-stream")
     w.Header().Set("Cache-Control", "no-cache")
-    w.Header().Set("Connection", "keep-alive")
 
     // Allow cross-origin requests if needed
     w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -90,7 +89,7 @@ func main() {
 }
 ```
 
-The `http.Flusher` interface is critical here. Go's HTTP server buffers responses by default. Calling `Flush()` after each event ensures the data reaches the client immediately.
+The `http.Flusher` interface is critical here. Go's HTTP server can buffer responses. Calling `Flush()` after each event sends buffered data to the client, although reverse proxies may still buffer unless they are configured for streaming.
 
 ## Sending Structured Events
 
@@ -228,8 +227,9 @@ func (b *EventBroker) run() {
         case client := <-b.register:
             b.mu.Lock()
             b.clients[client] = struct{}{}
+            total := len(b.clients)
             b.mu.Unlock()
-            log.Printf("Client registered. Total: %d", len(b.clients))
+            log.Printf("Client registered. Total: %d", total)
 
         case client := <-b.unregister:
             b.mu.Lock()
@@ -237,8 +237,9 @@ func (b *EventBroker) run() {
                 delete(b.clients, client)
                 close(client)
             }
+            total := len(b.clients)
             b.mu.Unlock()
-            log.Printf("Client unregistered. Total: %d", len(b.clients))
+            log.Printf("Client unregistered. Total: %d", total)
 
         case msg := <-b.broadcast:
             b.mu.RLock()
@@ -278,7 +279,6 @@ func (b *EventBroker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
     // Set SSE headers
     w.Header().Set("Content-Type", "text/event-stream")
     w.Header().Set("Cache-Control", "no-cache")
-    w.Header().Set("Connection", "keep-alive")
     w.Header().Set("Access-Control-Allow-Origin", "*")
 
     // Disable proxy buffering
@@ -304,8 +304,13 @@ func (b *EventBroker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
         select {
         case <-r.Context().Done():
             return
-        case msg := <-clientChan:
-            w.Write(msg)
+        case msg, ok := <-clientChan:
+            if !ok {
+                return
+            }
+            if _, err := w.Write(msg); err != nil {
+                return
+            }
             flusher.Flush()
         }
     }
@@ -422,7 +427,7 @@ func (b *EventBroker) Shutdown() {
 
 SSE fits well when you need:
 - Server-to-client streaming over HTTP
-- Automatic reconnection with event replay
+- Automatic reconnection, with event replay if you store events and honor `Last-Event-ID`
 - Simple protocol without extra libraries
 - Text-based data (JSON works great)
 
