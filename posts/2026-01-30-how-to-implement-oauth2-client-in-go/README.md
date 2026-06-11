@@ -45,6 +45,8 @@ package main
 
 import (
     "context"
+    "crypto/rand"
+    "encoding/base64"
     "encoding/json"
     "fmt"
     "log"
@@ -93,10 +95,6 @@ var (
         RedirectURL:  "http://localhost:8080/callback",
     }
 
-    // State parameter prevents CSRF attacks
-    // In production, generate a random string per request
-    oauthStateString = "random-state-string"
-
     tokenStore = &TokenStore{filePath: "token.json"}
 )
 
@@ -119,19 +117,49 @@ func handleHome(w http.ResponseWriter, r *http.Request) {
     fmt.Fprint(w, html)
 }
 
+func generateState() (string, error) {
+    b := make([]byte, 32)
+    if _, err := rand.Read(b); err != nil {
+        return "", err
+    }
+    return base64.RawURLEncoding.EncodeToString(b), nil
+}
+
 func handleLogin(w http.ResponseWriter, r *http.Request) {
+    state, err := generateState()
+    if err != nil {
+        http.Error(w, "Failed to generate state", http.StatusInternalServerError)
+        return
+    }
+
+    http.SetCookie(w, &http.Cookie{
+        Name:     "oauth_state",
+        Value:    state,
+        Path:     "/callback",
+        MaxAge:   300,
+        HttpOnly: true,
+        SameSite: http.SameSiteLaxMode,
+    })
+
     // Generate the authorization URL
-    url := oauthConfig.AuthCodeURL(oauthStateString)
+    url := oauthConfig.AuthCodeURL(state)
     http.Redirect(w, r, url, http.StatusTemporaryRedirect)
 }
 
 func handleCallback(w http.ResponseWriter, r *http.Request) {
     // Verify state parameter to prevent CSRF
     state := r.FormValue("state")
-    if state != oauthStateString {
+    stateCookie, err := r.Cookie("oauth_state")
+    if err != nil || state != stateCookie.Value {
         http.Error(w, "Invalid state parameter", http.StatusBadRequest)
         return
     }
+    http.SetCookie(w, &http.Cookie{
+        Name:   "oauth_state",
+        Value:  "",
+        Path:   "/callback",
+        MaxAge: -1,
+    })
 
     // Extract the authorization code
     code := r.FormValue("code")
@@ -163,7 +191,7 @@ func handleUser(w http.ResponseWriter, r *http.Request) {
         return
     }
 
-    // Create an HTTP client with automatic token refresh
+    // Create an HTTP client that attaches the access token
     client := oauthConfig.Client(context.Background(), token)
 
     // Fetch user information from GitHub API
@@ -188,12 +216,14 @@ func handleUser(w http.ResponseWriter, r *http.Request) {
 
 ## Token Refresh Handling
 
-The OAuth2 package automatically handles token refresh when you use `oauthConfig.Client()`. This method returns an HTTP client that:
+The OAuth2 package automatically handles token refresh when the provider has issued a refresh token and you use `oauthConfig.Client()`. This method returns an HTTP client that:
 
 1. Attaches the access token to every request
 2. Checks if the token is expired before making requests
-3. Uses the refresh token to obtain a new access token when needed
+3. Uses the refresh token to obtain a new access token when needed, if one is available
 4. Updates the token in memory after refresh
+
+GitHub OAuth Apps usually return long-lived access tokens without refresh tokens. GitHub App user access tokens can be configured to expire and include refresh tokens, but that is a separate GitHub App flow.
 
 For persistent token refresh, you need to save the updated token after each request:
 
