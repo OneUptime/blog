@@ -49,7 +49,8 @@ func limitedUploadHandler(w http.ResponseWriter, r *http.Request) {
     r.Body = http.MaxBytesReader(w, r.Body, maxUploadSize)
 
     if err := r.ParseMultipartForm(maxUploadSize); err != nil {
-        if err.Error() == "http: request body too large" {
+        var maxBytesErr *http.MaxBytesError
+        if errors.As(err, &maxBytesErr) {
             http.Error(w, "File exceeds 50MB limit", http.StatusRequestEntityTooLarge)
             return
         }
@@ -67,16 +68,18 @@ Never trust the client-provided content type. Always validate the actual file co
 func validateMIMEType(file multipart.File, allowedTypes []string) (string, error) {
     // Read the first 512 bytes for detection
     buffer := make([]byte, 512)
-    _, err := file.Read(buffer)
-    if err != nil {
+    n, err := file.Read(buffer)
+    if err != nil && err != io.EOF {
         return "", err
     }
 
     // Reset file pointer
-    file.Seek(0, 0)
+    if _, err := file.Seek(0, io.SeekStart); err != nil {
+        return "", err
+    }
 
     // Detect content type
-    contentType := http.DetectContentType(buffer)
+    contentType := http.DetectContentType(buffer[:n])
 
     for _, allowed := range allowedTypes {
         if contentType == allowed {
@@ -99,7 +102,9 @@ For memory-efficient handling of large files, stream directly to disk without lo
 ```go
 func streamToDisk(file multipart.File, filename string) error {
     uploadDir := "./uploads"
-    os.MkdirAll(uploadDir, 0755)
+    if err := os.MkdirAll(uploadDir, 0755); err != nil {
+        return err
+    }
 
     // Generate safe filename
     safeName := filepath.Base(filename)
@@ -123,21 +128,29 @@ For production systems, storing files in cloud storage like S3 provides durabili
 
 ```go
 import (
-    "github.com/aws/aws-sdk-go/aws"
-    "github.com/aws/aws-sdk-go/aws/session"
-    "github.com/aws/aws-sdk-go/service/s3/s3manager"
+    "context"
+
+    "github.com/aws/aws-sdk-go-v2/aws"
+    "github.com/aws/aws-sdk-go-v2/config"
+    "github.com/aws/aws-sdk-go-v2/feature/s3/manager"
+    "github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
 func uploadToS3(file multipart.File, filename, bucket string) (string, error) {
-    sess := session.Must(session.NewSession(&aws.Config{
-        Region: aws.String("us-east-1"),
-    }))
+    ctx := context.TODO()
 
-    uploader := s3manager.NewUploader(sess)
+    cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion("us-east-1"))
+    if err != nil {
+        return "", err
+    }
 
-    key := fmt.Sprintf("uploads/%d_%s", time.Now().UnixNano(), filename)
+    client := s3.NewFromConfig(cfg)
+    uploader := manager.NewUploader(client)
 
-    result, err := uploader.Upload(&s3manager.UploadInput{
+    safeName := filepath.Base(filename)
+    key := fmt.Sprintf("uploads/%d_%s", time.Now().UnixNano(), safeName)
+
+    result, err := uploader.Upload(ctx, &s3.PutObjectInput{
         Bucket: aws.String(bucket),
         Key:    aws.String(key),
         Body:   file,
@@ -182,6 +195,12 @@ progressReader := &ProgressReader{
         fmt.Printf("\rUploading: %.2f%%", percentage)
     },
 }
+
+_, err := uploader.Upload(ctx, &s3.PutObjectInput{
+    Bucket: aws.String(bucket),
+    Key:    aws.String(key),
+    Body:   progressReader,
+})
 ```
 
 ## Complete Upload Service
