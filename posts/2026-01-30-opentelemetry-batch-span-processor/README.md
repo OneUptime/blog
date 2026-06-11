@@ -69,7 +69,7 @@ The Batch Span Processor collects spans in a buffer and exports them in batches.
 
 ## 3. How the Batch Span Processor Works
 
-The Batch Span Processor uses a queue-based architecture with a background export thread. Understanding this flow helps you configure it correctly.
+The Batch Span Processor uses a queue-based architecture with an asynchronous export timer. Understanding this flow helps you configure it correctly.
 
 ```mermaid
 flowchart TB
@@ -77,7 +77,7 @@ flowchart TB
         A[Span Ends] --> B[Add to Queue]
     end
 
-    subgraph Background Thread
+    subgraph Background Export Timer
         C[Queue] --> D{Batch Ready?}
         D -->|Max batch size reached| E[Export Batch]
         D -->|Schedule delay elapsed| E
@@ -90,7 +90,7 @@ flowchart TB
     G --> H[Backend]
 ```
 
-The processor maintains an internal queue where spans are added as they complete. A background thread monitors this queue and triggers exports when either the maximum batch size is reached or the scheduled delay timer fires, whichever comes first.
+The processor maintains an internal queue where spans are added as they complete. An asynchronous export timer triggers exports when either the maximum batch size is reached or the scheduled delay timer fires, whichever comes first.
 
 ---
 
@@ -116,8 +116,12 @@ Create the telemetry configuration file.
 import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node';
 import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
-import { Resource } from '@opentelemetry/resources';
-import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
+import { resourceFromAttributes } from '@opentelemetry/resources';
+import {
+  ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+} from '@opentelemetry/semantic-conventions';
 
 // Create the OTLP exporter
 const exporter = new OTLPTraceExporter({
@@ -132,15 +136,13 @@ const batchProcessor = new BatchSpanProcessor(exporter);
 
 // Create the tracer provider with resource attributes
 const provider = new NodeTracerProvider({
-  resource: new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: 'my-service',
-    [SemanticResourceAttributes.SERVICE_VERSION]: '1.0.0',
-    [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: process.env.NODE_ENV || 'development',
+  resource: resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: 'my-service',
+    [ATTR_SERVICE_VERSION]: '1.0.0',
+    [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: process.env.NODE_ENV || 'development',
   }),
+  spanProcessors: [batchProcessor],
 });
-
-// Add the processor to the provider
-provider.addSpanProcessor(batchProcessor);
 
 // Register the provider globally
 provider.register();
@@ -210,7 +212,8 @@ import {
   SpanProcessor,
   ReadableSpan,
   Span,
-  BatchSpanProcessor
+  BatchSpanProcessor,
+  SpanExporter
 } from '@opentelemetry/sdk-trace-base';
 import { Context } from '@opentelemetry/api';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
@@ -220,7 +223,7 @@ class FilteringBatchProcessor implements SpanProcessor {
   private filter: (span: ReadableSpan) => boolean;
 
   constructor(
-    exporter: OTLPTraceExporter,
+    exporter: SpanExporter,
     filter: (span: ReadableSpan) => boolean
   ) {
     this.batchProcessor = new BatchSpanProcessor(exporter);
@@ -300,8 +303,6 @@ import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node';
 import { BatchSpanProcessor, ConsoleSpanExporter } from '@opentelemetry/sdk-trace-base';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 
-const provider = new NodeTracerProvider();
-
 // Primary exporter to OneUptime
 const oneuptimeExporter = new OTLPTraceExporter({
   url: 'https://oneuptime.com/otlp/v1/traces',
@@ -312,15 +313,18 @@ const oneuptimeExporter = new OTLPTraceExporter({
 const consoleExporter = new ConsoleSpanExporter();
 
 // Add both processors
-provider.addSpanProcessor(new BatchSpanProcessor(oneuptimeExporter, {
-  maxExportBatchSize: 512,
-  scheduledDelayMillis: 5000,
-}));
-
-provider.addSpanProcessor(new BatchSpanProcessor(consoleExporter, {
-  maxExportBatchSize: 100,
-  scheduledDelayMillis: 1000,
-}));
+const provider = new NodeTracerProvider({
+  spanProcessors: [
+    new BatchSpanProcessor(oneuptimeExporter, {
+      maxExportBatchSize: 512,
+      scheduledDelayMillis: 5000,
+    }),
+    new BatchSpanProcessor(consoleExporter, {
+      maxExportBatchSize: 100,
+      scheduledDelayMillis: 1000,
+    }),
+  ],
+});
 
 provider.register();
 ```
@@ -353,7 +357,7 @@ import { diag, DiagConsoleLogger, DiagLogLevel } from '@opentelemetry/api';
 // Enable diagnostic logging to capture export errors
 diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.WARN);
 
-// Create exporter with retry configuration
+// Create exporter with timeout configuration
 const exporter = new OTLPTraceExporter({
   url: 'https://oneuptime.com/otlp/v1/traces',
   headers: { 'x-oneuptime-token': process.env.ONEUPTIME_TOKEN || '' },
@@ -361,21 +365,21 @@ const exporter = new OTLPTraceExporter({
   timeoutMillis: 10000,
 });
 
-const provider = new NodeTracerProvider();
-
 const batchProcessor = new BatchSpanProcessor(exporter, {
   maxExportBatchSize: 512,
   scheduledDelayMillis: 5000,
-  // Give exports enough time to complete with retries
+  // Give exports enough time to complete
   exportTimeoutMillis: 30000,
   // Large queue to buffer during temporary outages
   maxQueueSize: 4096,
 });
 
-provider.addSpanProcessor(batchProcessor);
+const provider = new NodeTracerProvider({
+  spanProcessors: [batchProcessor],
+});
 provider.register();
 
-// Periodic health check for the exporter
+// Periodic flush check for the processor and exporter
 setInterval(async () => {
   try {
     await batchProcessor.forceFlush();
@@ -527,8 +531,13 @@ Here is a production-ready configuration combining all the best practices.
 import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node';
 import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
-import { Resource } from '@opentelemetry/resources';
-import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
+import { resourceFromAttributes } from '@opentelemetry/resources';
+import {
+  ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
+  ATTR_SERVICE_INSTANCE_ID,
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+} from '@opentelemetry/semantic-conventions';
 import { diag, DiagConsoleLogger, DiagLogLevel } from '@opentelemetry/api';
 
 // Enable diagnostics in non-production for debugging
@@ -537,11 +546,11 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 // Resource attributes for service identification
-const resource = new Resource({
-  [SemanticResourceAttributes.SERVICE_NAME]: process.env.OTEL_SERVICE_NAME || 'unknown-service',
-  [SemanticResourceAttributes.SERVICE_VERSION]: process.env.SERVICE_VERSION || '0.0.0',
-  [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: process.env.NODE_ENV || 'development',
-  [SemanticResourceAttributes.SERVICE_INSTANCE_ID]: process.env.HOSTNAME || 'unknown',
+const resource = resourceFromAttributes({
+  [ATTR_SERVICE_NAME]: process.env.OTEL_SERVICE_NAME || 'unknown-service',
+  [ATTR_SERVICE_VERSION]: process.env.SERVICE_VERSION || '0.0.0',
+  [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: process.env.NODE_ENV || 'development',
+  [ATTR_SERVICE_INSTANCE_ID]: process.env.HOSTNAME || 'unknown',
 });
 
 // Create the exporter
@@ -553,9 +562,6 @@ const exporter = new OTLPTraceExporter({
   timeoutMillis: 10000,
 });
 
-// Create provider with resource
-const provider = new NodeTracerProvider({ resource });
-
 // Configure batch processor based on environment
 const batchProcessor = new BatchSpanProcessor(exporter, {
   maxExportBatchSize: parseInt(process.env.OTEL_BSP_MAX_EXPORT_BATCH_SIZE || '512'),
@@ -564,7 +570,11 @@ const batchProcessor = new BatchSpanProcessor(exporter, {
   exportTimeoutMillis: parseInt(process.env.OTEL_BSP_EXPORT_TIMEOUT || '30000'),
 });
 
-provider.addSpanProcessor(batchProcessor);
+// Create provider with resource and span processor
+const provider = new NodeTracerProvider({
+  resource,
+  spanProcessors: [batchProcessor],
+});
 provider.register();
 
 // Graceful shutdown handling
