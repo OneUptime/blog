@@ -48,6 +48,9 @@ async def get_current():
     loop = asyncio.get_running_loop()
     print(f"Running loop: {loop}")
 
+async def some_coroutine():
+    return "done"
+
 # Create a new loop explicitly
 def create_new_loop():
     loop = asyncio.new_event_loop()
@@ -120,7 +123,7 @@ async def main():
 asyncio.run(main())
 ```
 
-This pattern keeps your event loop responsive while handling blocking I/O-bound or legacy synchronous code. For CPU-bound Python work, prefer a `ProcessPoolExecutor` or `InterpreterPoolExecutor` instead of a thread pool.
+This pattern keeps your event loop responsive while handling blocking I/O or legacy synchronous code. For CPU-bound Python work, prefer a `ProcessPoolExecutor` or `InterpreterPoolExecutor` instead of a thread pool.
 
 ## Integrating with Threading
 
