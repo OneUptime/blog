@@ -52,9 +52,9 @@ Every span in a trace has a start time and end time. The difference is the span 
 | Metric | Definition | Use Case |
 |--------|------------|----------|
 | Span Duration | End time minus start time | Total time for one operation |
-| Self Time | Duration minus child span durations | Time spent in this span only (not waiting on children) |
+| Self Time | Duration minus time covered by child spans | Time spent in this span only (not waiting on children) |
 | Wait Time | Gaps between child spans | Time spent waiting, queuing, or in overhead |
-| Critical Path Time | Sum of spans on the longest path | Minimum possible request latency |
+| Critical Path Time | Wall-clock time on the longest dependent path | Minimum possible request latency |
 
 ### Self Time vs Total Duration
 
@@ -115,7 +115,7 @@ function calculateDuration(span: Span): number {
 
 /**
  * Build a tree structure from flat span array and calculate self time.
- * Self time = total duration - sum of direct children durations.
+ * Self time = total duration - time covered by direct children.
  * This helps identify where time is actually spent vs waiting on dependencies.
  */
 function analyzeSpanTree(spans: Span[]): SpanAnalysis[] {
@@ -138,11 +138,40 @@ function analyzeSpanTree(spans: Span[]): SpanAnalysis[] {
     const duration = calculateDuration(span);
     const children = (childrenMap.get(span.spanId) || []).map(analyze);
 
-    // Sum up all direct children durations
-    const childTime = children.reduce((sum, child) => sum + child.duration, 0);
+    // Merge overlapping child intervals before subtracting them.
+    const childIntervals = children
+      .map(child => ({
+        start: Math.max(child.span.startTime, span.startTime),
+        end: Math.min(child.span.endTime, span.endTime),
+      }))
+      .filter(interval => interval.end > interval.start)
+      .sort((a, b) => a.start - b.start);
+
+    let childTime = 0;
+    let currentStart: number | null = null;
+    let currentEnd: number | null = null;
+
+    for (const interval of childIntervals) {
+      if (currentStart === null || currentEnd === null) {
+        currentStart = interval.start;
+        currentEnd = interval.end;
+        continue;
+      }
+
+      if (interval.start <= currentEnd) {
+        currentEnd = Math.max(currentEnd, interval.end);
+      } else {
+        childTime += currentEnd - currentStart;
+        currentStart = interval.start;
+        currentEnd = interval.end;
+      }
+    }
+
+    if (currentStart !== null && currentEnd !== null) {
+      childTime += currentEnd - currentStart;
+    }
 
     // Self time is what remains after accounting for children
-    // Note: Can be negative if children overlap (parallel execution)
     const selfTime = duration - childTime;
 
     return {
@@ -306,23 +335,11 @@ interface CriticalPathResult {
 /**
  * Find the critical path in a trace.
  * The critical path is the longest chain of dependent spans.
- * Uses dynamic programming approach: for each span, compute the
- * longest path from trace start to span end.
+ * This simplified version reports the root span's wall-clock duration and
+ * the longest nested branch, then uses exclusive time for the breakdown so
+ * nested parent duration is not counted twice.
  */
 function findCriticalPath(spans: SpanWithTiming[]): CriticalPathResult {
-  // Sort spans by end time to process in order
-  const sorted = [...spans].sort((a, b) => a.endTime - b.endTime);
-
-  // Map to store longest path ending at each span
-  const longestPathTo = new Map<string, {
-    duration: number;
-    path: SpanWithTiming[];
-  }>();
-
-  // Build parent lookup for quick access
-  const spanById = new Map<string, SpanWithTiming>();
-  spans.forEach(s => spanById.set(s.spanId, s));
-
   // Build children lookup
   const childrenOf = new Map<string, SpanWithTiming[]>();
   spans.forEach(s => {
@@ -340,66 +357,64 @@ function findCriticalPath(spans: SpanWithTiming[]): CriticalPathResult {
     return { spans: [], totalDuration: 0, breakdown: new Map() };
   }
 
-  // Initialize root
-  const rootDuration = root.endTime - root.startTime;
-  longestPathTo.set(root.spanId, {
-    duration: rootDuration,
-    path: [root],
-  });
+  function spanDuration(span: SpanWithTiming): number {
+    return span.endTime - span.startTime;
+  }
 
-  // Process each span in end-time order
-  for (const span of sorted) {
-    if (span.spanId === root.spanId) continue;
+  function coveredByChildren(span: SpanWithTiming): number {
+    const intervals = (childrenOf.get(span.spanId) || [])
+      .map(child => ({
+        start: Math.max(child.startTime, span.startTime),
+        end: Math.min(child.endTime, span.endTime),
+      }))
+      .filter(interval => interval.end > interval.start)
+      .sort((a, b) => a.start - b.start);
 
-    const parent = span.parentSpanId ? spanById.get(span.parentSpanId) : null;
-    if (!parent) continue;
+    let covered = 0;
+    let currentStart: number | null = null;
+    let currentEnd: number | null = null;
 
-    const parentPath = longestPathTo.get(parent.spanId);
-    if (!parentPath) continue;
-
-    // Get siblings that end before this span starts (dependencies)
-    const siblings = childrenOf.get(parent.spanId) || [];
-    const precedingSiblings = siblings.filter(
-      s => s.spanId !== span.spanId && s.endTime <= span.startTime
-    );
-
-    // Find the longest path among preceding siblings
-    let bestPreceding = parentPath;
-    for (const sib of precedingSiblings) {
-      const sibPath = longestPathTo.get(sib.spanId);
-      if (sibPath && sibPath.duration > bestPreceding.duration) {
-        bestPreceding = sibPath;
+    for (const interval of intervals) {
+      if (currentStart === null || currentEnd === null) {
+        currentStart = interval.start;
+        currentEnd = interval.end;
+      } else if (interval.start <= currentEnd) {
+        currentEnd = Math.max(currentEnd, interval.end);
+      } else {
+        covered += currentEnd - currentStart;
+        currentStart = interval.start;
+        currentEnd = interval.end;
       }
     }
 
-    // This span's contribution to the path
-    const spanDuration = span.endTime - span.startTime;
-
-    longestPathTo.set(span.spanId, {
-      duration: bestPreceding.duration + spanDuration,
-      path: [...bestPreceding.path, span],
-    });
+    return currentStart !== null && currentEnd !== null
+      ? covered + (currentEnd - currentStart)
+      : covered;
   }
 
-  // Find the span with the longest path (should be a leaf or the root)
-  let maxPath = { duration: 0, path: [] as SpanWithTiming[] };
-  for (const [, pathInfo] of longestPathTo) {
-    if (pathInfo.duration > maxPath.duration) {
-      maxPath = pathInfo;
-    }
+  function longestNestedBranch(span: SpanWithTiming): SpanWithTiming[] {
+    const children = childrenOf.get(span.spanId) || [];
+    if (children.length === 0) return [span];
+
+    const longestChild = children
+      .map(longestNestedBranch)
+      .sort((a, b) => spanDuration(b[b.length - 1]) - spanDuration(a[a.length - 1]))[0];
+
+    return [span, ...longestChild];
   }
 
   // Calculate breakdown by service
+  const path = longestNestedBranch(root);
   const breakdown = new Map<string, number>();
-  for (const span of maxPath.path) {
-    const duration = span.endTime - span.startTime;
+  for (const span of path) {
+    const duration = spanDuration(span) - coveredByChildren(span);
     const current = breakdown.get(span.service) || 0;
     breakdown.set(span.service, current + duration);
   }
 
   return {
-    spans: maxPath.path,
-    totalDuration: maxPath.duration,
+    spans: path,
+    totalDuration: spanDuration(root),
     breakdown,
   };
 }
@@ -650,17 +665,28 @@ function categorizeSpan(span: TraceSpan & { attributes?: Record<string, any> }):
     return 'queue';
   }
 
-  // Check for HTTP operations
-  if (attrs['http.method']) {
+  // Check for HTTP operations. OpenTelemetry's stable HTTP conventions use
+  // http.request.method; older data may still use http.method.
+  const httpMethod = attrs['http.request.method'] || attrs['http.method'];
+  const spanKind = (attrs['span.kind'] || '').toString().toLowerCase();
+
+  if (httpMethod) {
     // Inbound if it's a server span, outbound if client
-    if (attrs['http.route'] || name.startsWith('http.server')) {
+    if (spanKind === 'server' || attrs['http.route'] || name.startsWith('http.server')) {
       return 'http-inbound';
     }
+
+    const targetHost = attrs['server.address'] || attrs['http.host'];
+    if (spanKind === 'client' && targetHost && !targetHost.includes('.internal')) {
+      return 'external-api';
+    }
+
     return 'http-outbound';
   }
 
   // Check for external API calls (non-internal hosts)
-  if (attrs['http.host'] && !attrs['http.host'].includes('.internal')) {
+  const targetHost = attrs['server.address'] || attrs['http.host'];
+  if (targetHost && !targetHost.includes('.internal')) {
     return 'external-api';
   }
 
@@ -955,7 +981,7 @@ interface AnalysisResult {
   anomaliesDetected: LatencyAnomaly[];
   serviceBreakdown: ServiceLatencyStats[];
   criticalPathInsights: CriticalPathResult[];
-  degradationAlerts: { operation: string; ratio: number }[];
+  degradationAlerts: { operation: string; currentAvg: number; baselineAvg: number; ratio: number }[];
 }
 
 /**
@@ -1039,7 +1065,14 @@ class LatencyAnalysisPipeline {
       // Only analyze slow traces in detail
       const rootSpan = spans.find(s => !s.parentSpanId);
       if (rootSpan && (rootSpan.endTime - rootSpan.startTime) > this.config.slowTraceThresholdMs) {
-        criticalPaths.push(findCriticalPath(spans));
+        criticalPaths.push(findCriticalPath(spans.map(span => ({
+          spanId: span.spanId,
+          parentSpanId: span.parentSpanId,
+          name: span.operationName,
+          startTime: span.startTime,
+          endTime: span.endTime,
+          service: span.serviceName,
+        }))));
       }
     }
 
@@ -1150,8 +1183,12 @@ Here is a complete example showing how to instrument an application for latency 
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
-import { Resource } from '@opentelemetry/resources';
-import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
+import { resourceFromAttributes } from '@opentelemetry/resources';
+import {
+  ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+} from '@opentelemetry/semantic-conventions';
 import {
   ParentBasedSampler,
   TraceIdRatioBasedSampler
@@ -1175,10 +1212,10 @@ const sampler = new ParentBasedSampler({
 
 // Initialize the SDK
 export const sdk = new NodeSDK({
-  resource: new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: 'order-service',
-    [SemanticResourceAttributes.SERVICE_VERSION]: process.env.APP_VERSION || '1.0.0',
-    [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: process.env.NODE_ENV || 'development',
+  resource: resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: 'order-service',
+    [ATTR_SERVICE_VERSION]: process.env.APP_VERSION || '1.0.0',
+    [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: process.env.NODE_ENV || 'development',
   }),
   traceExporter,
   sampler,
@@ -1186,16 +1223,16 @@ export const sdk = new NodeSDK({
     getNodeAutoInstrumentations({
       // Customize instrumentation for better latency analysis
       '@opentelemetry/instrumentation-http': {
-        // Include request/response size for correlation with latency
-        requestHook: (span, request) => {
-          span.setAttribute('http.request.size',
-            request.headers?.['content-length'] || 0
-          );
-        },
-        responseHook: (span, response) => {
-          span.setAttribute('http.response.size',
-            response.headers?.['content-length'] || 0
-          );
+        // Capture content-length headers for correlation with latency
+        headersToSpanAttributes: {
+          client: {
+            requestHeaders: ['content-length'],
+            responseHeaders: ['content-length'],
+          },
+          server: {
+            requestHeaders: ['content-length'],
+            responseHeaders: ['content-length'],
+          },
         },
       },
       '@opentelemetry/instrumentation-pg': {
@@ -1222,7 +1259,7 @@ process.on('SIGTERM', async () => {
 // latency-attributes.ts
 // Add custom attributes to spans for deeper latency analysis
 
-import { trace, context, SpanStatusCode, Span } from '@opentelemetry/api';
+import { trace, SpanStatusCode, Span } from '@opentelemetry/api';
 
 const tracer = trace.getTracer('order-service', '1.0.0');
 
