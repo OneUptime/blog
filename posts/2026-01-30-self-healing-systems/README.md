@@ -52,7 +52,7 @@ Every service should expose endpoints that verify actual functionality, not just
 from flask import Flask, jsonify
 import redis
 import psycopg2
-from datetime import datetime
+from datetime import datetime, timezone
 
 app = Flask(__name__)
 
@@ -87,7 +87,7 @@ def liveness():
     """Liveness probe: Is the process running and responsive?"""
     return jsonify({
         "status": "ok",
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.now(timezone.utc).isoformat()
     }), 200
 
 @app.route('/readyz')
@@ -107,7 +107,7 @@ def readiness():
     return jsonify({
         "status": "ready" if all_healthy else "not_ready",
         "checks": checks,
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.now(timezone.utc).isoformat()
     }), status_code
 ```
 
