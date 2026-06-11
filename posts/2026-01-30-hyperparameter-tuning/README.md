@@ -403,7 +403,6 @@ for key, value in study.best_trial.params.items():
 # This significantly speeds up hyperparameter search
 
 import optuna
-from optuna.integration import PyTorchLightningPruningCallback
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -636,7 +635,7 @@ def train_model(config):
 
     # Report metrics to Ray Tune
     # This allows the scheduler to make decisions about the trial
-    tune.report(accuracy=mean_accuracy)
+    tune.report({"accuracy": mean_accuracy})
 
 # Define the search space
 search_space = {
@@ -694,9 +693,8 @@ print(f"Best accuracy: {best_result.last_result['accuracy']:.4f}")
 # Includes checkpointing and early stopping
 
 from ray import tune
+from ray.tune import Checkpoint
 from ray.tune.schedulers import PopulationBasedTraining
-from ray.air import session
-from ray.air.checkpoint import Checkpoint
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -782,7 +780,7 @@ def train_pytorch_model(config):
             }, checkpoint_path)
 
             # Report metrics to Ray Tune
-            session.report(
+            tune.report(
                 {'loss': val_loss, 'accuracy': accuracy},
                 checkpoint=Checkpoint.from_directory(temp_checkpoint_dir)
             )
