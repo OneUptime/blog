@@ -87,11 +87,10 @@ The first line of defense is validating that incoming data matches the expected 
 # Validates incoming data records against a strict schema
 # before they enter the data pipeline
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
-import json
 
 
 class TransactionRecord(BaseModel):
@@ -99,6 +98,9 @@ class TransactionRecord(BaseModel):
     Schema for incoming transaction records.
     All fields are validated on instantiation.
     """
+
+    # Reject any fields not defined in the schema
+    model_config = ConfigDict(extra="forbid")
 
     # Required fields with constraints
     transaction_id: str = Field(
@@ -143,22 +145,23 @@ class TransactionRecord(BaseModel):
     )
 
     # Custom validator: currency must be uppercase
-    @validator("currency")
+    @field_validator("currency")
+    @classmethod
     def currency_must_be_uppercase(cls, v):
         if v != v.upper():
             raise ValueError("Currency code must be uppercase")
         return v
 
     # Custom validator: timestamp cannot be in the future
-    @validator("timestamp")
+    @field_validator("timestamp")
+    @classmethod
     def timestamp_not_future(cls, v):
-        if v > datetime.utcnow():
+        if v.tzinfo is None:
+            v = v.replace(tzinfo=timezone.utc)
+
+        if v > datetime.now(timezone.utc):
             raise ValueError("Transaction timestamp cannot be in the future")
         return v
-
-    class Config:
-        # Reject any fields not defined in the schema
-        extra = "forbid"
 
 
 def validate_record(raw_data: dict) -> tuple[bool, Optional[TransactionRecord], Optional[str]]:
@@ -243,7 +246,7 @@ Records that fail schema validation should not be dropped silently. Route them t
 # Routes failed records to a DLQ for later investigation
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from dataclasses import dataclass, asdict
 from typing import Any
 import boto3  # For AWS SQS example
@@ -293,7 +296,7 @@ class DeadLetterQueue:
             error_message=error,
             error_type=type(error).__name__ if isinstance(error, Exception) else "ValidationError",
             pipeline_stage=pipeline_stage,
-            timestamp=datetime.utcnow().isoformat(),
+            timestamp=datetime.now(timezone.utc).isoformat(),
             source_system=source_system
         )
 
@@ -360,8 +363,8 @@ Great Expectations is a Python library for defining, running, and documenting da
 # Install Great Expectations
 pip install great_expectations
 
-# Initialize a new project
-great_expectations init
+# Verify the installation
+python -c "import great_expectations as gx; print(gx.__version__)"
 ```
 
 ### Defining an Expectation Suite
@@ -371,116 +374,91 @@ great_expectations init
 # Defines quality expectations for transaction data
 
 import great_expectations as gx
-from great_expectations.core.expectation_configuration import ExpectationConfiguration
+import great_expectations.expectations as gxe
 
 
-def create_transaction_suite(context: gx.DataContext) -> str:
+def create_transaction_suite(context) -> gx.core.expectation_suite.ExpectationSuite:
     """
     Creates an expectation suite for transaction data.
 
-    Returns the suite name.
+    Returns the suite.
     """
     suite_name = "transaction_quality_suite"
 
-    # Create or get existing suite
-    suite = context.add_or_update_expectation_suite(
-        expectation_suite_name=suite_name
+    # Create or replace the suite
+    try:
+        context.suites.delete(name=suite_name)
+    except gx.exceptions.DataContextError:
+        pass
+
+    suite = context.suites.add(
+        gx.core.expectation_suite.ExpectationSuite(name=suite_name)
     )
 
     # Define expectations
     expectations = [
         # Primary key uniqueness
-        ExpectationConfiguration(
-            expectation_type="expect_column_values_to_be_unique",
-            kwargs={
-                "column": "transaction_id"
-            },
+        gxe.ExpectColumnValuesToBeUnique(
+            column="transaction_id",
             meta={
                 "notes": "Transaction IDs must be unique across all records"
             }
         ),
 
         # No null values in critical columns
-        ExpectationConfiguration(
-            expectation_type="expect_column_values_to_not_be_null",
-            kwargs={
-                "column": "transaction_id"
-            }
+        gxe.ExpectColumnValuesToNotBeNull(
+            column="transaction_id"
         ),
-        ExpectationConfiguration(
-            expectation_type="expect_column_values_to_not_be_null",
-            kwargs={
-                "column": "customer_id"
-            }
+        gxe.ExpectColumnValuesToNotBeNull(
+            column="customer_id"
         ),
-        ExpectationConfiguration(
-            expectation_type="expect_column_values_to_not_be_null",
-            kwargs={
-                "column": "amount"
-            }
+        gxe.ExpectColumnValuesToNotBeNull(
+            column="amount"
         ),
 
         # Amount must be positive (unless refund)
-        ExpectationConfiguration(
-            expectation_type="expect_column_values_to_be_between",
-            kwargs={
-                "column": "amount",
-                "min_value": 0.01,
-                "max_value": 1000000,  # Business limit
-                "mostly": 0.99  # Allow 1% exceptions for edge cases
-            },
+        gxe.ExpectColumnValuesToBeBetween(
+            column="amount",
+            min_value=0.01,
+            max_value=1000000,  # Business limit
+            mostly=0.99,  # Allow 1% exceptions for edge cases
             meta={
                 "notes": "Normal transactions should be between $0.01 and $1M"
             }
         ),
 
         # Currency must be valid ISO code
-        ExpectationConfiguration(
-            expectation_type="expect_column_values_to_be_in_set",
-            kwargs={
-                "column": "currency",
-                "value_set": ["USD", "EUR", "GBP", "JPY", "CAD", "AUD", "CHF"]
-            }
+        gxe.ExpectColumnValuesToBeInSet(
+            column="currency",
+            value_set=["USD", "EUR", "GBP", "JPY", "CAD", "AUD", "CHF"]
         ),
 
         # Timestamp must be within reasonable range
-        ExpectationConfiguration(
-            expectation_type="expect_column_values_to_be_between",
-            kwargs={
-                "column": "timestamp",
-                "min_value": "2020-01-01",
-                "max_value": "2030-12-31",
-                "parse_strings_as_datetimes": True
-            }
+        gxe.ExpectColumnValuesToBeBetween(
+            column="timestamp",
+            min_value="2020-01-01",
+            max_value="2030-12-31",
+            parse_strings_as_datetimes=True
         ),
 
         # Table-level: row count should be reasonable
-        ExpectationConfiguration(
-            expectation_type="expect_table_row_count_to_be_between",
-            kwargs={
-                "min_value": 1,
-                "max_value": 10000000
-            }
+        gxe.ExpectTableRowCountToBeBetween(
+            min_value=1,
+            max_value=10000000
         ),
 
         # Completeness: certain columns should have high fill rates
-        ExpectationConfiguration(
-            expectation_type="expect_column_values_to_not_be_null",
-            kwargs={
-                "column": "merchant_category",
-                "mostly": 0.95  # Allow 5% nulls
-            }
+        gxe.ExpectColumnValuesToNotBeNull(
+            column="merchant_category",
+            mostly=0.95  # Allow 5% nulls
         ),
 
-        # Referential integrity check (custom)
-        ExpectationConfiguration(
-            expectation_type="expect_column_pair_values_A_to_be_greater_than_B",
-            kwargs={
-                "column_A": "updated_at",
-                "column_B": "created_at",
-                "or_equal": True,
-                "mostly": 1.0
-            },
+        # Cross-field timestamp check
+        gxe.ExpectColumnPairValuesAToBeGreaterThanB(
+            column_A="updated_at",
+            column_B="created_at",
+            or_equal=True,
+            mostly=1.0,
             meta={
                 "notes": "Updated timestamp must be >= created timestamp"
             }
@@ -489,17 +467,14 @@ def create_transaction_suite(context: gx.DataContext) -> str:
 
     # Add all expectations to the suite
     for expectation in expectations:
-        suite.add_expectation(expectation_configuration=expectation)
+        suite.add_expectation(expectation)
 
-    # Save the suite
-    context.update_expectation_suite(expectation_suite=suite)
-
-    return suite_name
+    return suite
 
 
 def run_validation(
     context: gx.DataContext,
-    suite_name: str,
+    suite: gx.core.expectation_suite.ExpectationSuite,
     dataframe
 ) -> dict:
     """
@@ -507,25 +482,32 @@ def run_validation(
 
     Returns validation results.
     """
-    # Create a batch from the DataFrame
-    datasource = context.sources.add_or_update_pandas(name="pandas_source")
-    data_asset = datasource.add_dataframe_asset(name="transaction_data")
+    # Create a batch definition for the DataFrame
+    data_source = context.data_sources.add_pandas("pandas_source")
+    data_asset = data_source.add_dataframe_asset(name="transaction_data")
+    batch_definition = data_asset.add_batch_definition_whole_dataframe(
+        "transaction_batch"
+    )
 
-    batch_request = data_asset.build_batch_request(dataframe=dataframe)
+    # Tie the batch definition to the expectation suite
+    validation_definition = context.validation_definitions.add(
+        gx.core.validation_definition.ValidationDefinition(
+            name="transaction_validation",
+            data=batch_definition,
+            suite=suite
+        )
+    )
 
     # Create a checkpoint for running validations
-    checkpoint = context.add_or_update_checkpoint(
-        name="transaction_checkpoint",
-        validations=[
-            {
-                "batch_request": batch_request,
-                "expectation_suite_name": suite_name
-            }
-        ]
+    checkpoint = context.checkpoints.add(
+        gx.checkpoint.checkpoint.Checkpoint(
+            name="transaction_checkpoint",
+            validation_definitions=[validation_definition]
+        )
     )
 
     # Run validation
-    result = checkpoint.run()
+    result = checkpoint.run(batch_parameters={"dataframe": dataframe})
 
     return result
 
@@ -550,8 +532,8 @@ if __name__ == "__main__":
     context = gx.get_context()
 
     # Create suite and run validation
-    suite_name = create_transaction_suite(context)
-    results = run_validation(context, suite_name, df)
+    suite = create_transaction_suite(context)
+    results = run_validation(context, suite, df)
 
     # Check if validation passed
     if results.success:
@@ -618,9 +600,9 @@ def validate_data(**context):
     context["ti"].xcom_push(
         key="validation_stats",
         value={
-            "evaluated_expectations": result.statistics.get("evaluated_expectations", 0),
-            "successful_expectations": result.statistics.get("successful_expectations", 0),
-            "unsuccessful_expectations": result.statistics.get("unsuccessful_expectations", 0)
+            "evaluated_validations": result.statistics.get("evaluated_validations", 0),
+            "successful_validations": result.statistics.get("successful_validations", 0),
+            "unsuccessful_validations": result.statistics.get("unsuccessful_validations", 0)
         }
     )
 
@@ -649,7 +631,7 @@ def handle_validation_failure(**context):
 
     # Send alert (integrate with OneUptime, PagerDuty, etc.)
     send_validation_alert(
-        message=f"Data validation failed: {stats['unsuccessful_expectations']} expectations failed",
+        message=f"Data validation failed: {stats['unsuccessful_validations']} validations failed",
         severity="warning"
     )
 
@@ -673,7 +655,7 @@ with DAG(
     dag_id="transaction_pipeline_with_validation",
     default_args=default_args,
     description="Transaction ETL pipeline with data quality gates",
-    schedule_interval="@hourly",
+    schedule="@hourly",
     start_date=datetime(2026, 1, 1),
     catchup=False,
     tags=["transactions", "data-quality"]
@@ -792,10 +774,11 @@ models:
     description: "Daily aggregated transaction facts"
 
     tests:
-      # Custom test: ensure amounts sum correctly
+      # Custom test: compare daily aggregates to an expected result set
       - dbt_utils.equality:
-          compare_model: ref('stg_transactions')
+          compare_model: ref('expected_daily_transactions')
           compare_columns:
+            - date_key
             - total_amount
 
     columns:
@@ -931,7 +914,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install dbt-snowflake dbt-utils
+          pip install dbt-snowflake
 
       - name: Install dbt packages
         run: |
@@ -941,7 +924,7 @@ jobs:
         run: |
           cd dbt
           # Build models and run tests together
-          dbt build --select state:modified+ --fail-fast
+          dbt build --fail-fast
 
       - name: Generate test report
         if: always()
@@ -992,7 +975,7 @@ flowchart LR
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Optional, Callable
+from typing import Any, Optional
 
 
 class RuleSeverity(Enum):
@@ -1388,19 +1371,26 @@ def process_validation_results(
     """
     Process validation results and send appropriate alerts.
     """
-    for result in results.get("results", []):
+    validation_results = results.get("validation_results", results.get("results", []))
+
+    for result in validation_results:
         if not result.get("success", True):
+            expectation_config = result.get("expectation_config", {})
+            expectation_kwargs = expectation_config.get("kwargs", {})
+            expectation_meta = expectation_config.get("meta", {})
+            result_meta = result.get("meta", {})
+
             # Extract failure details
             alert = ValidationAlert(
-                rule_id=result.get("meta", {}).get("rule_id", "unknown"),
-                rule_name=result.get("expectation_config", {}).get("expectation_type", "unknown"),
-                severity=result.get("meta", {}).get("severity", "error"),
-                table=result.get("meta", {}).get("table", "unknown"),
-                column=result.get("expectation_config", {}).get("kwargs", {}).get("column"),
+                rule_id=expectation_meta.get("rule_id", result_meta.get("rule_id", "unknown")),
+                rule_name=expectation_config.get("type", expectation_config.get("expectation_type", "unknown")),
+                severity=expectation_meta.get("severity", result_meta.get("severity", "error")),
+                table=expectation_meta.get("table", result_meta.get("table", "unknown")),
+                column=expectation_kwargs.get("column"),
                 failure_count=result.get("result", {}).get("unexpected_count", 0),
                 total_count=result.get("result", {}).get("element_count", 0),
                 sample_failures=result.get("result", {}).get("partial_unexpected_list", []),
-                run_timestamp=results.get("meta", {}).get("run_id", {}).get("run_time", ""),
+                run_timestamp=results.get("run_id", {}).get("run_time", ""),
                 pipeline_name=pipeline_name
             )
 
@@ -1441,7 +1431,7 @@ flowchart TB
 # Collects and exposes validation metrics
 
 from prometheus_client import Counter, Gauge, Histogram, Summary
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 # Validation run metrics
@@ -1520,8 +1510,12 @@ class ValidationMetricsCollector:
         ).observe(duration_seconds)
 
         # Rule-level metrics
-        for result in results.get("results", []):
-            rule_id = result.get("meta", {}).get("rule_id", "unknown")
+        validation_results = results.get("validation_results", results.get("results", []))
+
+        for result in validation_results:
+            expectation_meta = result.get("expectation_config", {}).get("meta", {})
+            result_meta = result.get("meta", {})
+            rule_id = expectation_meta.get("rule_id", result_meta.get("rule_id", "unknown"))
             rule_success = result.get("success", True)
 
             EXPECTATION_RESULTS.labels(
@@ -1545,7 +1539,10 @@ class ValidationMetricsCollector:
 
     def record_data_freshness(self, table: str, latest_timestamp: datetime):
         """Record data freshness metric."""
-        age_seconds = (datetime.utcnow() - latest_timestamp).total_seconds()
+        if latest_timestamp.tzinfo is None:
+            latest_timestamp = latest_timestamp.replace(tzinfo=timezone.utc)
+
+        age_seconds = (datetime.now(timezone.utc) - latest_timestamp).total_seconds()
         DATA_FRESHNESS_SECONDS.labels(table=table).set(age_seconds)
 
     def record_record_count(self, table: str, count: int):
