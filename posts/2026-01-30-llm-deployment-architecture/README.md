@@ -32,7 +32,7 @@ flowchart TB
 
     subgraph Storage
         ModelRegistry[Model Registry]
-        Cache[KV Cache / Redis]
+        Cache[Prefix / Response Cache]
         Monitoring[Metrics / Logs]
     end
 
@@ -129,12 +129,12 @@ docker run --gpus all \
 
 | Feature | vLLM | TGI | TensorRT-LLM |
 |---------|------|-----|--------------|
-| PagedAttention | Yes | Yes | Yes |
+| Paged KV Cache | Yes | Yes | Yes |
 | Continuous Batching | Yes | Yes | Yes |
 | Tensor Parallelism | Yes | Yes | Yes |
 | Quantization | AWQ, GPTQ, FP8 | GPTQ, bitsandbytes | FP8, INT8, INT4 |
 | Streaming | Yes | Yes | Yes |
-| OpenAI Compatible API | Yes | Yes | No |
+| OpenAI Compatible API | Yes | Yes | Yes |
 | Best For | Throughput | Ease of Use | Latency |
 
 ## GPU Allocation Strategies
@@ -484,7 +484,7 @@ spec:
 
       containers:
         - name: tgi
-          image: ghcr.io/huggingface/text-generation-inference:2.4.0
+          image: ghcr.io/huggingface/text-generation-inference:3.3.5
 
           resources:
             requests:
@@ -666,7 +666,7 @@ spec:
     - type: prometheus
       metadata:
         serverAddress: http://prometheus.monitoring:9090
-        metricName: vllm_pending_requests
+        metricName: vllm_num_requests_waiting
         query: |
           sum(vllm_num_requests_waiting{namespace="llm-inference"})
         threshold: "50"
@@ -675,8 +675,9 @@ spec:
     - type: rabbitmq
       metadata:
         host: amqp://rabbitmq.messaging:5672
+        mode: QueueLength
         queueName: llm-requests
-        queueLength: "100"
+        value: "100"
 
   advanced:
     horizontalPodAutoscalerConfig:
@@ -937,26 +938,26 @@ responses = [
 ]
 ```
 
-### KV Cache Management
+### Response Cache Management
 
 ```yaml
-# redis-kv-cache.yaml
-# Redis deployment for distributed KV caching
+# redis-response-cache.yaml
+# Redis deployment for application-level response caching
 
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: llm-kv-cache
+  name: llm-response-cache
   namespace: llm-inference
 spec:
   replicas: 3
   selector:
     matchLabels:
-      app: llm-kv-cache
+      app: llm-response-cache
   template:
     metadata:
       labels:
-        app: llm-kv-cache
+        app: llm-response-cache
     spec:
       containers:
         - name: redis
@@ -1197,7 +1198,7 @@ if __name__ == "__main__":
         "type": "timeseries",
         "targets": [
           {
-            "expr": "histogram_quantile(0.99, rate(llm_request_latency_seconds_bucket[5m]))",
+            "expr": "histogram_quantile(0.99, sum by (le) (rate(llm_request_latency_seconds_bucket[5m])))",
             "legendFormat": "p99"
           }
         ]
@@ -1283,45 +1284,58 @@ docker run --gpus all \
 ### Spot Instance Configuration (AWS)
 
 ```yaml
-# karpenter-provisioner.yaml
+# karpenter-nodepool.yaml
 # Use spot instances for LLM inference with fallback
 
-apiVersion: karpenter.sh/v1alpha5
-kind: Provisioner
+apiVersion: karpenter.sh/v1
+kind: NodePool
 metadata:
   name: llm-inference-spot
 spec:
-  requirements:
-    - key: karpenter.sh/capacity-type
-      operator: In
-      values: ["spot", "on-demand"]
-    - key: node.kubernetes.io/instance-type
-      operator: In
-      values:
-        - p4d.24xlarge   # 8x A100 40GB
-        - p4de.24xlarge  # 8x A100 80GB
-        - p5.48xlarge    # 8x H100 80GB
-    - key: kubernetes.io/arch
-      operator: In
-      values: ["amd64"]
+  template:
+    spec:
+      nodeClassRef:
+        group: karpenter.k8s.aws
+        kind: EC2NodeClass
+        name: llm-inference
+      requirements:
+        - key: karpenter.sh/capacity-type
+          operator: In
+          values: ["spot", "on-demand"]
+        - key: node.kubernetes.io/instance-type
+          operator: In
+          values:
+            - p4d.24xlarge   # 8x A100 40GB
+            - p4de.24xlarge  # 8x A100 80GB
+            - p5.48xlarge    # 8x H100 80GB
+        - key: kubernetes.io/arch
+          operator: In
+          values: ["amd64"]
 
-  # Prefer spot instances, fall back to on-demand
-  providerRef:
-    name: default
-
-  # Consolidation settings
-  consolidation:
-    enabled: true
-
-  # Disruption budget
   disruption:
+    consolidationPolicy: WhenEmptyOrUnderutilized
     consolidateAfter: 30s
     budgets:
       - nodes: "20%"
 
   limits:
-    resources:
-      nvidia.com/gpu: 64
+    nvidia.com/gpu: 64
+
+---
+apiVersion: karpenter.k8s.aws/v1
+kind: EC2NodeClass
+metadata:
+  name: llm-inference
+spec:
+  role: "KarpenterNodeRole-${CLUSTER_NAME}"
+  amiSelectorTerms:
+    - alias: al2023@latest
+  subnetSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: "${CLUSTER_NAME}"
+  securityGroupSelectorTerms:
+    - tags:
+        karpenter.sh/discovery: "${CLUSTER_NAME}"
 ```
 
 ## Best Practices Summary
@@ -1338,8 +1352,8 @@ spec:
 
 3. **Implement Prefix Caching**
    - Cache system prompts
-   - Reuse KV cache for common prefixes
-   - Use Redis for distributed caching
+   - Reuse in-engine KV cache for common prefixes
+   - Use Redis for application-level response caching
 
 4. **Scale Intelligently**
    - Use custom metrics for HPA
