@@ -55,7 +55,7 @@ flowchart TD
 
 The simplest approach samples logs differently based on severity level. Errors and warnings are too valuable to lose, while debug and info logs can be sampled heavily.
 
-This configuration demonstrates level-based sampling in an OpenTelemetry Collector. The filter processor drops debug logs entirely unless explicitly enabled, while the probabilistic sampler reduces info log volume.
+This configuration demonstrates level-based sampling in an OpenTelemetry Collector. The filter processor drops debug logs in normal production pipelines, while the probabilistic sampler reduces info log volume.
 
 ```yaml
 # otel-collector-config.yaml
@@ -63,24 +63,29 @@ This configuration demonstrates level-based sampling in an OpenTelemetry Collect
 processors:
   # Filter out debug logs in production
   filter/logs:
-    logs:
-      # Drop debug logs unless DEBUG_MODE is enabled
-      exclude:
-        match_type: strict
-        severity_texts:
-          - DEBUG
-          - TRACE
+    error_mode: ignore
+    log_conditions:
+      - 'log.severity_text == "DEBUG" or log.severity_text == "TRACE"'
+
+  # Mark warnings and errors so the sampler keeps them
+  transform/priority:
+    error_mode: ignore
+    log_statements:
+      - context: log
+        statements:
+          - set(log.attributes["sampling.priority"], 100) where log.severity_number >= SEVERITY_NUMBER_WARN
 
   # Probabilistic sampling for remaining logs
   probabilistic_sampler:
     hash_seed: 42
     sampling_percentage: 10  # Keep 10% of info logs
+    sampling_priority: sampling.priority
 
 service:
   pipelines:
     logs:
       receivers: [otlp]
-      processors: [filter/logs, probabilistic_sampler]
+      processors: [filter/logs, transform/priority, probabilistic_sampler]
       exporters: [otlphttp]
 ```
 
@@ -94,7 +99,7 @@ The following TypeScript implementation shows a sampler that makes decisions bas
 
 ```typescript
 // content-sampler.ts
-import crypto from 'crypto';
+import { createHash } from 'node:crypto';
 
 interface LogRecord {
   level: string;
@@ -146,7 +151,7 @@ export function shouldSampleLog(log: LogRecord): boolean {
   // Use trace ID for consistent sampling within a trace
   // This ensures all logs from the same request are kept or dropped together
   const hashInput = log.traceId || `${log.message}-${Date.now()}`;
-  const hash = crypto.createHash('md5').update(hashInput).digest();
+  const hash = createHash('md5').update(hashInput).digest();
   const hashValue = hash.readUInt32BE(0) / 0xffffffff;
 
   return hashValue < rule.rate;
@@ -159,7 +164,7 @@ export function shouldSampleLog(log: LogRecord): boolean {
 
 When a system generates thousands of identical logs per second (think retry storms or cascading failures), you want to capture the pattern without storing every instance. Rate limiting caps logs per time window.
 
-This implementation uses a sliding window to track log counts by message pattern. Once a pattern exceeds its limit, additional logs are dropped until the window resets.
+This implementation uses a fixed time window to track log counts by message pattern. Once a pattern exceeds its limit, additional logs are dropped until the window resets.
 
 ```typescript
 // rate-limiter.ts
@@ -214,7 +219,7 @@ class LogRateLimiter {
   }
 }
 
-// Usage with OpenTelemetry log processor
+// Usage in your log processing path
 const rateLimiter = new LogRateLimiter(60000, 50);  // 50 per minute per pattern
 
 export function processLog(log: LogRecord): LogRecord | null {
@@ -323,19 +328,15 @@ class AdaptiveSampler {
 
 ---
 
-## Strategy 5: Head and Tail Sampling Combined
+## Strategy 5: Tail Sampling for Trace-Correlated Logs
 
-Head sampling makes decisions at log creation time. Tail sampling waits until a request completes to decide. Combining both gives you efficiency with the ability to keep interesting traces.
+Tail sampling waits until a request completes to decide whether to keep its trace. This is useful for trace telemetry that you correlate with logs, because it lets you keep traces for errors, slow requests, and critical endpoints.
 
-The OpenTelemetry Collector configuration below demonstrates a combined approach. The head sampler reduces initial volume, while the tail sampler ensures errors and slow requests are captured.
+The OpenTelemetry Collector configuration below demonstrates tail sampling for traces. It keeps errors, slow requests, and critical endpoints, then applies a probabilistic fallback.
 
 ```yaml
-# Combined head and tail sampling
+# Tail sampling for trace-correlated logs
 processors:
-  # Head sampling: quick probabilistic decision
-  probabilistic_sampler:
-    sampling_percentage: 20
-
   # Tail sampling: keep interesting complete traces
   tail_sampling:
     decision_wait: 10s
@@ -365,9 +366,9 @@ processors:
 
 service:
   pipelines:
-    logs:
+    traces:
       receivers: [otlp]
-      processors: [probabilistic_sampler, tail_sampling]
+      processors: [tail_sampling]
       exporters: [otlphttp]
 ```
 
@@ -393,7 +394,9 @@ Track these metrics to ensure your sampling strategy works:
 
 ```typescript
 // sampling-metrics.ts
-import { Counter, Gauge } from '@opentelemetry/api-metrics';
+import { metrics } from '@opentelemetry/api';
+
+const meter = metrics.getMeter('log-sampler', '1.0.0');
 
 const logsReceived = meter.createCounter('logs.received.total', {
   description: 'Total logs received before sampling'
