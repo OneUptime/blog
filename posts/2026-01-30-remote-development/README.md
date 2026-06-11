@@ -481,8 +481,7 @@ class WorkspaceServer {
         '--accept-server-license-terms',
         '--host', '127.0.0.1',
         '--port', '0', // Let OS assign port
-        '--connection-token', session.id,
-        '--without-connection-token', // Use session ID for auth instead
+        '--connection-token', session.id, // Use session ID as the connection token
       ], {
         env: {
           ...process.env,
