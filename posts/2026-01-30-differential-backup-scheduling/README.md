@@ -109,7 +109,7 @@ flowchart TB
 
 ### Implementation: Differential Backup Script
 
-Here's a production-ready differential backup implementation in Bash:
+Here's a practical differential backup implementation in Bash. This file-level example captures new and modified files; if you need exact point-in-time restores that also remove deleted files, persist and replay a deletion manifest during restore.
 
 ```bash
 #!/bin/bash
@@ -172,6 +172,7 @@ full_backup() {
 
     # Record timestamp
     date +%s > "$TIMESTAMP_FILE"
+    echo "$backup_path.tar.gz" > "$BACKUP_DEST/.last_full_backup_path"
 
     # Create snapshot for differential comparison
     find "$BACKUP_SOURCE" -type f -printf '%T@ %p\n' > "$BACKUP_DEST/.snapshot"
@@ -195,6 +196,7 @@ differential_backup() {
 
     if [[ $file_count -eq 0 ]]; then
         log "No changes detected since last full backup"
+        rm -f /tmp/changed_files.txt
         return 0
     fi
 
@@ -209,6 +211,7 @@ differential_backup() {
     cat > "$backup_path.meta" << EOF
 type=differential
 base_full=$last_full
+base_full_backup=$(cat "$BACKUP_DEST/.last_full_backup_path")
 timestamp=$(date +%s)
 files_count=$file_count
 EOF
@@ -234,11 +237,30 @@ main() {
 
     log "=== Backup job started ==="
 
-    if needs_full_backup; then
-        full_backup
-    else
-        differential_backup
-    fi
+    case "${1:-auto}" in
+        full)
+            full_backup
+            ;;
+        differential)
+            if [[ ! -f "$TIMESTAMP_FILE" ]]; then
+                log "No full backup found; running full backup instead"
+                full_backup
+            else
+                differential_backup
+            fi
+            ;;
+        auto)
+            if needs_full_backup; then
+                full_backup
+            else
+                differential_backup
+            fi
+            ;;
+        *)
+            log "ERROR: Usage: $0 [auto|full|differential]"
+            exit 1
+            ;;
+    esac
 
     cleanup_old_backups
 
@@ -314,8 +336,8 @@ class DifferentialBackupManager:
             ''')
 
     def _get_file_hash(self, filepath: Path) -> str:
-        """Calculate MD5 hash of a file."""
-        hasher = hashlib.md5()
+        """Calculate SHA-256 hash of a file."""
+        hasher = hashlib.sha256()
         with open(filepath, 'rb') as f:
             for chunk in iter(lambda: f.read(8192), b''):
                 hasher.update(chunk)
@@ -513,7 +535,7 @@ class DifferentialBackupManager:
 
             # Extract full backup
             with tarfile.open(full_path, 'r:gz') as tar:
-                tar.extractall(target_path)
+                tar.extractall(target_path, filter='data')
 
             # Find and apply differential backup
             if point_in_time:
@@ -533,7 +555,7 @@ class DifferentialBackupManager:
             if diff_backup:
                 logger.info(f"Applying differential backup: {diff_backup[0]}")
                 with tarfile.open(diff_backup[0], 'r:gz') as tar:
-                    tar.extractall(target_path)
+                    tar.extractall(target_path, filter='data')
 
         logger.info(f"Restore completed to: {target_path}")
 
@@ -677,6 +699,14 @@ flowchart LR
 ### Storage Tiering Strategy
 
 ```python
+import logging
+from datetime import datetime, timedelta
+from pathlib import Path
+
+import boto3
+
+logger = logging.getLogger(__name__)
+
 class BackupStorageManager:
     """Manage backup storage with tiering."""
 
@@ -804,28 +834,35 @@ log() {
 
 find_backups() {
     local pit=$1
+    FULL_BACKUP=""
+    DIFF_BACKUP=""
 
     if [[ "$pit" == "latest" ]]; then
         # Find most recent full backup
-        FULL_BACKUP=$(ls -t "$BACKUP_DIR"/full_*.tar.gz 2>/dev/null | head -1)
-
-        # Find most recent differential based on that full
-        local full_timestamp=$(basename "$FULL_BACKUP" | sed 's/full_\(.*\)\.tar\.gz/\1/')
-        DIFF_BACKUP=$(ls -t "$BACKUP_DIR"/diff_*.tar.gz 2>/dev/null | head -1)
+        FULL_BACKUP=$(find "$BACKUP_DIR" -maxdepth 1 -name 'full_*.tar.gz' \
+            -printf '%T@ %p\n' | sort -rn | awk 'NR==1 {print $2}')
     else
         # Find full backup before point in time
-        FULL_BACKUP=$(ls -t "$BACKUP_DIR"/full_*.tar.gz | while read f; do
+        FULL_BACKUP=$(find "$BACKUP_DIR" -maxdepth 1 -name 'full_*.tar.gz' \
+            -printf '%f %p\n' | sort -r | while read -r name f; do
             ts=$(basename "$f" | sed 's/full_\(.*\)\.tar\.gz/\1/')
             if [[ "$ts" < "$pit" ]] || [[ "$ts" == "$pit" ]]; then
                 echo "$f"
                 break
             fi
         done)
+    fi
 
-        # Find differential before point in time
-        DIFF_BACKUP=$(ls -t "$BACKUP_DIR"/diff_*.tar.gz | while read f; do
-            ts=$(basename "$f" | sed 's/diff_\(.*\)\.tar\.gz/\1/')
-            if [[ "$ts" < "$pit" ]] || [[ "$ts" == "$pit" ]]; then
+    if [[ -n "$FULL_BACKUP" ]]; then
+        # Find the latest differential that is based on the selected full backup
+        DIFF_BACKUP=$(find "$BACKUP_DIR" -maxdepth 1 -name 'diff_*.meta' \
+            -printf '%f %p\n' | sort -r | while read -r name meta; do
+            ts=$(basename "$meta" | sed 's/diff_\(.*\)\.meta/\1/')
+            base=$(awk -F= '$1 == "base_full_backup" {print $2}' "$meta")
+            if [[ "$base" == "$FULL_BACKUP" ]] && \
+               { [[ "$pit" == "latest" ]] || [[ "$ts" < "$pit" ]] || [[ "$ts" == "$pit" ]]; }; then
+                f="${meta%.meta}.tar.gz"
+                [[ -f "$f" ]] || continue
                 echo "$f"
                 break
             fi
@@ -848,8 +885,8 @@ restore() {
     log "Differential backup: ${DIFF_BACKUP:-none}"
 
     # Clear and prepare target
-    rm -rf "$RESTORE_TARGET"/*
     mkdir -p "$RESTORE_TARGET"
+    find "$RESTORE_TARGET" -mindepth 1 -exec rm -rf -- {} +
 
     # Restore full backup
     log "Extracting full backup..."
@@ -914,6 +951,9 @@ flowchart TB
 ### Intelligent Backup Decision Engine
 
 ```python
+import sqlite3
+from datetime import datetime
+
 class BackupDecisionEngine:
     """Intelligent backup type selection."""
 
@@ -923,7 +963,7 @@ class BackupDecisionEngine:
         self.diff_threshold_percent = config.get('diff_threshold_percent', 50)
         self.db_path = config.get('db_path')
 
-    def decide_backup_type(self) -> str:
+    def decide_backup_type(self):
         """Determine optimal backup type."""
         reasons = []
 
@@ -963,11 +1003,29 @@ class BackupDecisionEngine:
     def _get_last_full_backup(self):
         """Get last full backup details."""
         with sqlite3.connect(self.db_path) as conn:
-            return conn.execute('''
+            row = conn.execute('''
                 SELECT id, timestamp, size_bytes FROM backups
                 WHERE backup_type = 'full'
                 ORDER BY timestamp DESC LIMIT 1
             ''').fetchone()
+
+            if row:
+                return row[0], datetime.fromisoformat(row[1]), row[2]
+
+            return None
+
+    def _get_full_timestamp(self, full_backup_id: int) -> datetime:
+        """Get the timestamp for a full backup."""
+        with sqlite3.connect(self.db_path) as conn:
+            row = conn.execute('''
+                SELECT timestamp FROM backups
+                WHERE id = ? AND backup_type = 'full'
+            ''', (full_backup_id,)).fetchone()
+
+            if not row:
+                raise ValueError(f"Full backup {full_backup_id} not found")
+
+            return datetime.fromisoformat(row[0])
 
     def _estimate_differential_size(self, full_backup_id: int) -> int:
         """Estimate size of upcoming differential backup."""
@@ -995,6 +1053,15 @@ Never trust a backup until you have verified it.
 ### Backup Verification System
 
 ```python
+import hashlib
+import logging
+import tarfile
+import tempfile
+from datetime import datetime
+from pathlib import Path
+
+logger = logging.getLogger(__name__)
+
 class BackupVerifier:
     """Verify backup integrity and recoverability."""
 
@@ -1070,7 +1137,7 @@ class BackupVerifier:
                 with tempfile.TemporaryDirectory() as tmpdir:
                     for member in members:
                         if member.isfile():
-                            tar.extract(member, tmpdir)
+                            tar.extract(member, tmpdir, filter='data')
             return True
         except Exception as e:
             logger.error(f"Extraction test failed: {e}")
@@ -1078,7 +1145,7 @@ class BackupVerifier:
 
     def _calculate_checksum(self, filepath: str) -> str:
         """Calculate file checksum."""
-        hasher = hashlib.md5()
+        hasher = hashlib.sha256()
         with open(filepath, 'rb') as f:
             for chunk in iter(lambda: f.read(8192), b''):
                 hasher.update(chunk)
@@ -1113,8 +1180,8 @@ groups:
 
       - alert: DifferentialBackupTooLarge
         expr: |
-          backup_size_bytes{type="differential"} /
-          backup_size_bytes{type="full"} > 0.5
+          scalar(max(backup_size_bytes{type="differential"})) /
+          scalar(max(backup_size_bytes{type="full"})) > 0.5
         for: 5m
         labels:
           severity: warning
