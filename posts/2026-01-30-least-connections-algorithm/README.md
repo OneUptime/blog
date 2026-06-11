@@ -46,7 +46,7 @@ Let us start with a simple implementation in Python that demonstrates the core c
 
 # Represents a backend server with connection tracking
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from threading import Lock
 
 @dataclass
@@ -64,11 +64,7 @@ class Server:
     port: int
     connections: int = 0
     healthy: bool = True
-    _lock: Lock = None
-
-    def __post_init__(self):
-        # Initialize the lock for thread-safe connection counting
-        self._lock = Lock()
+    _lock: Lock = field(default_factory=Lock, init=False, repr=False)
 
     def increment_connections(self):
         """
@@ -175,13 +171,16 @@ class LeastConnectionsLoadBalancer:
         Returns:
             The result of the request_handler
         """
-        server = self.get_server()
+        # Select and increment while holding the load-balancer lock so
+        # concurrent requests cannot all choose the same stale minimum.
+        with self._lock:
+            healthy_servers = [s for s in self.servers if s.healthy]
 
-        if server is None:
-            raise Exception("No healthy servers available")
+            if not healthy_servers:
+                raise Exception("No healthy servers available")
 
-        # Increment connection count before processing
-        server.increment_connections()
+            server = min(healthy_servers, key=lambda s: s.connections)
+            server.increment_connections()
 
         try:
             # Process the request
@@ -281,7 +280,7 @@ sequenceDiagram
 
 from typing import Dict
 from threading import Lock
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 import time
 
@@ -436,7 +435,7 @@ flowchart LR
 # weighted_load_balancer.py
 # Weighted Least Connections Implementation
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List, Optional
 from threading import Lock
 
@@ -460,10 +459,9 @@ class WeightedServer:
     weight: int = 1  # Default weight of 1
     connections: int = 0
     healthy: bool = True
-    _lock: Lock = None
+    _lock: Lock = field(default_factory=Lock, init=False, repr=False)
 
     def __post_init__(self):
-        self._lock = Lock()
         # Ensure weight is at least 1 to avoid division by zero
         if self.weight < 1:
             self.weight = 1
@@ -531,12 +529,16 @@ class WeightedLeastConnectionsLoadBalancer:
 
     def handle_request(self, request_handler):
         """Route a request using weighted least connections."""
-        server = self.get_server()
+        # Select and increment while holding the load-balancer lock so
+        # concurrent requests cannot all choose the same stale minimum.
+        with self._lock:
+            healthy_servers = [s for s in self.servers if s.healthy]
 
-        if server is None:
-            raise Exception("No healthy servers available")
+            if not healthy_servers:
+                raise Exception("No healthy servers available")
 
-        server.increment_connections()
+            server = min(healthy_servers, key=lambda s: s.score)
+            server.increment_connections()
 
         try:
             return request_handler(server)
@@ -714,13 +716,8 @@ server {
         proxy_pass http://backend_with_health;
 
         # Active health checks (NGINX Plus feature)
-        health_check interval=5s fails=3 passes=2;
-    }
-
-    # Health check endpoint
-    location /health {
-        # Check if backend is responding with valid JSON
-        health_check uri=/api/health match=json_health;
+        # Check if each backend responds with valid JSON
+        health_check interval=5s fails=3 passes=2 uri=/api/health match=json_health;
     }
 }
 
@@ -886,10 +883,10 @@ frontend http_front
     stick-table type ip size 100k expire 30s store conn_cur,conn_rate(10s)
 
     # Track the source IP
-    tcp-request content track-sc0 src
+    tcp-request connection track-sc0 src
 
     # Reject if too many connections from single IP
-    tcp-request content reject if { sc0_conn_cur gt 100 }
+    tcp-request connection reject if { sc0_conn_cur gt 100 }
 
     default_backend api_backend
 
