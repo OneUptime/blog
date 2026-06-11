@@ -22,7 +22,7 @@ Mutation testing is a technique that introduces small, deliberate changes (mutat
 - **Mutation Operator**: A rule that defines how to create a specific type of mutation
 - **Killed Mutant**: A mutation detected by at least one failing test
 - **Survived Mutant**: A mutation that no test detected
-- **Mutation Score**: The percentage of killed mutants out of all generated mutants
+- **Mutation Score**: The percentage of detected mutants out of all valid, non-equivalent mutants
 
 ## Mutation Testing Workflow
 
@@ -207,7 +207,7 @@ npm install --save-dev @stryker-mutator/jest-runner
 npx stryker run
 
 # Run with specific configuration
-npx stryker run --configFile stryker.config.json
+npx stryker run stryker.config.json
 ```
 
 ## Tool Configuration: PIT (Pitest)
@@ -220,7 +220,7 @@ PIT is the standard mutation testing tool for Java projects.
 <plugin>
     <groupId>org.pitest</groupId>
     <artifactId>pitest-maven</artifactId>
-    <version>1.15.0</version>
+    <version>1.25.4</version>
     <configuration>
         <!-- Target classes to mutate -->
         <targetClasses>
@@ -241,7 +241,11 @@ PIT is the standard mutation testing tool for Java projects.
             <mutator>MATH</mutator>
             <mutator>NEGATE_CONDITIONALS</mutator>
             <mutator>VOID_METHOD_CALLS</mutator>
-            <mutator>RETURN_VALS</mutator>
+            <mutator>EMPTY_RETURNS</mutator>
+            <mutator>FALSE_RETURNS</mutator>
+            <mutator>TRUE_RETURNS</mutator>
+            <mutator>NULL_RETURNS</mutator>
+            <mutator>PRIMITIVE_RETURNS</mutator>
         </mutators>
 
         <!-- Thresholds -->
@@ -259,10 +263,10 @@ PIT is the standard mutation testing tool for Java projects.
 
 ```bash
 # Run mutation testing with Maven
-mvn org.pitest:pitest-maven:mutationCoverage
+mvn test-compile org.pitest:pitest-maven:mutationCoverage
 
 # Generate HTML report
-mvn org.pitest:pitest-maven:mutationCoverage -DoutputFormats=HTML
+mvn test-compile org.pitest:pitest-maven:mutationCoverage -DoutputFormats=HTML
 ```
 
 ## Interpreting Mutation Scores
@@ -270,7 +274,7 @@ mvn org.pitest:pitest-maven:mutationCoverage -DoutputFormats=HTML
 The mutation score is calculated as:
 
 ```text
-Mutation Score = (Killed Mutants / Total Mutants) x 100%
+Mutation Score = (Detected Mutants / Valid Mutants) x 100%
 ```
 
 ### Score Guidelines
@@ -476,15 +480,6 @@ jobs:
 
       - name: Run mutation testing
         run: npx stryker run
-
-      - name: Check mutation score
-        run: |
-          # Parse mutation score from report
-          SCORE=$(cat reports/mutation/mutation.json | jq '.mutationScore')
-          if (( $(echo "$SCORE < 70" | bc -l) )); then
-            echo "Mutation score $SCORE% is below threshold of 70%"
-            exit 1
-          fi
 ```
 
 ### Strategy 3: Focused Mutation Testing
