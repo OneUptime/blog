@@ -14,7 +14,7 @@ Linkerd HTTPRoute is a powerful resource that enables fine-grained control over 
 
 ## Understanding HTTPRoute Resource Specification
 
-The HTTPRoute resource follows the Gateway API specification and integrates seamlessly with Linkerd's service mesh capabilities. Here is the basic structure:
+The HTTPRoute resource follows the Gateway API specification and integrates seamlessly with Linkerd's service mesh capabilities. The examples below use Linkerd's `policy.linkerd.io` HTTPRoute API; current Linkerd versions also support the canonical Gateway API `gateway.networking.k8s.io` HTTPRoute resource for many use cases. Here is the basic structure:
 
 ```yaml
 # HTTPRoute basic structure
@@ -26,7 +26,7 @@ metadata:
   name: my-http-route
   namespace: default
 spec:
-  # parentRefs defines which gateway or service this route attaches to
+  # parentRefs defines which service this route attaches to for outbound routing
   parentRefs:
     - name: my-service
       kind: Service
@@ -45,7 +45,7 @@ spec:
 
 ### Key Components
 
-1. **parentRefs**: Specifies the parent resource (Service or Gateway) that this route attaches to
+1. **parentRefs**: Specifies the parent resource that this route attaches to. In Linkerd, Service parentRefs are used for outbound request routing, while Server parentRefs are used for inbound per-route authorization policy.
 2. **rules**: Contains matching conditions and backend references
 3. **matches**: Defines criteria for request matching
 4. **backendRefs**: Specifies target services for matched requests
@@ -194,13 +194,13 @@ spec:
 
 ## Route Selection Flow
 
-The following diagram illustrates how Linkerd processes HTTPRoute rules to select the appropriate backend:
+The following diagram illustrates how Linkerd processes HTTPRoute rules to select the appropriate backend. Gateway API match precedence is applied when multiple routes or rules could match; a catch-all rule with no `matches` is typically placed last as a fallback.
 
 ```mermaid
 flowchart TD
     A[Incoming HTTP Request] --> B{HTTPRoute Attached?}
     B -->|No| C[Default Service Routing]
-    B -->|Yes| D[Evaluate Rules in Order]
+    B -->|Yes| D[Evaluate Matching Rules]
 
     D --> E{Rule 1: Path Match?}
     E -->|No| F{Rule 2: Header Match?}
@@ -213,7 +213,7 @@ flowchart TD
     F -->|Yes| J[Select Backend from Rule 2]
 
     I -->|Yes| K[Select Default Backend]
-    I -->|No| L[Return 404 Not Found]
+    I -->|No| L[Use default Service routing]
 
     H --> M{Multiple Backends?}
     J --> M
@@ -230,6 +230,8 @@ flowchart TD
 ## Backend References and Weight Distribution
 
 Weight distribution enables traffic splitting across multiple backends, essential for canary deployments and blue-green releases.
+
+If a ServiceProfile exists for the same parent Service, Linkerd uses the ServiceProfile configuration instead of overlapping outbound HTTPRoute configuration. Remove or migrate the ServiceProfile before relying on HTTPRoute for that Service.
 
 ### Basic Weight Distribution
 
@@ -291,44 +293,9 @@ spec:
           weight: 30
 ```
 
-### Traffic Mirroring with Weights
-
-```yaml
-# Traffic mirroring for testing new service versions
-apiVersion: policy.linkerd.io/v1beta3
-kind: HTTPRoute
-metadata:
-  name: traffic-mirror-config
-  namespace: staging
-spec:
-  parentRefs:
-    - name: order-service
-      kind: Service
-      group: core
-      port: 80
-  rules:
-    - matches:
-        - path:
-            type: PathPrefix
-            value: /orders
-      backendRefs:
-        # Primary backend handles all real traffic
-        - name: order-service-primary
-          port: 8080
-          weight: 100
-      filters:
-        # Mirror 10% of traffic to shadow service for testing
-        - type: RequestMirror
-          requestMirror:
-            backendRef:
-              name: order-service-shadow
-              port: 8080
-            percent: 10
-```
-
 ## Request and Response Header Modification
 
-HTTPRoute allows you to modify headers on requests and responses, enabling tracing, authentication injection, and debugging.
+HTTPRoute allows you to modify headers on requests and responses, enabling static metadata injection, deprecation notices, and debugging. Header modifier values are configured literally; Linkerd does not expand template values such as request IDs or latency measurements in these filters.
 
 ### Request Header Modification
 
@@ -356,8 +323,6 @@ spec:
           requestHeaderModifier:
             # Add new headers to the request
             add:
-              - name: X-Request-ID
-                value: "${request.id}"
               - name: X-Forwarded-Service
                 value: api-gateway
               - name: X-Environment
@@ -453,7 +418,7 @@ spec:
               - name: X-Authenticated
                 value: "true"
               - name: X-Request-Start
-                value: "${timestamp}"
+                value: edge-proxy
             remove:
               - Cookie
               - X-Forwarded-For
@@ -461,8 +426,8 @@ spec:
         - type: ResponseHeaderModifier
           responseHeaderModifier:
             add:
-              - name: X-Response-Time
-                value: "${latency_ms}ms"
+              - name: X-Response-Processed-By
+                value: linkerd-proxy
             set:
               - name: X-Served-By
                 value: api-v2-cluster
@@ -597,10 +562,10 @@ flowchart LR
 
     subgraph Kubernetes Cluster
         subgraph Linkerd Mesh
-            Ingress[Ingress Controller]
+            ClientProxy[Meshed Client or Ingress Proxy]
 
-            subgraph HTTPRoute Processing
-                HR[HTTPRoute Resource]
+            subgraph Outbound Route Processing
+                HR[Service-attached HTTPRoute]
                 PM[Path Matcher]
                 HM[Header Matcher]
                 WD[Weight Distributor]
@@ -621,8 +586,8 @@ flowchart LR
         end
     end
 
-    Client --> Ingress
-    Ingress --> HR
+    Client --> ClientProxy
+    ClientProxy --> HR
     HR --> PM
     PM --> HM
     HM --> WD
@@ -648,17 +613,14 @@ kubectl get httproutes -n production
 # Describe HTTPRoute for detailed status
 kubectl describe httproute production-api-routes -n production
 
-# Verify Linkerd proxy recognizes the route
-linkerd viz routes deploy/api-gateway -n production
-
 # Check route metrics
 linkerd viz stat httproute/production-api-routes -n production
 
+# Check service-level traffic affected by the route
+linkerd viz stat svc/api-gateway-service -n production
+
 # Test route matching with curl
 curl -H "X-Canary: true" https://api.example.com/api/v2/users
-
-# View effective routes for a service
-linkerd viz routes svc/api-gateway-service -n production
 ```
 
 ## Conclusion
