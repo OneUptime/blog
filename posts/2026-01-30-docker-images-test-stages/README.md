@@ -47,7 +47,7 @@ The key insight is that Docker stops building when any stage fails. By placing t
 
 # Stage 1: Install dependencies
 
-FROM node:20-alpine AS deps
+FROM node:24-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
@@ -64,17 +64,19 @@ FROM build AS test
 RUN npm run test
 
 # Stage 4: Production image (only built if tests pass)
-FROM node:20-alpine AS production
+FROM node:24-alpine AS production
 WORKDIR /app
 
 # Create non-root user for security
-RUN addgroup --system --gid 1001 nodejs && \
-    adduser --system --uid 1001 nodejs
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S -u 1001 -G nodejs nodejs
 
-# Copy only production artifacts
+# Copy application artifacts
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY package.json ./
+# This COPY forces the test stage to complete before production is built
+COPY --from=test /app/package.json /tmp/test-passed
 
 USER nodejs
 EXPOSE 3000
@@ -88,7 +90,7 @@ Different test types have different requirements. Unit tests need only the build
 ```dockerfile
 # syntax=docker/dockerfile:1
 
-FROM node:20-alpine AS base
+FROM node:24-alpine AS base
 WORKDIR /app
 
 # Dependencies stage
@@ -121,15 +123,21 @@ ENV NODE_ENV=test
 # Integration tests take longer but catch more issues
 RUN npm run test:integration
 
+# Gate stage - depends on both test stages
+FROM node:24-alpine AS test-gate
+COPY --from=unit-test /app/package.json /tmp/unit-passed
+COPY --from=integration-test /app/package.json /tmp/integration-passed
+
 # Production image - only reached if all tests pass
 FROM base AS production
 ENV NODE_ENV=production
 
-RUN addgroup --system --gid 1001 nodejs && \
-    adduser --system --uid 1001 nodejs
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S -u 1001 -G nodejs nodejs
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
+COPY --from=test-gate /tmp/unit-passed /tmp/.test-gate
 
 USER nodejs
 CMD ["node", "dist/index.js"]
@@ -142,7 +150,7 @@ Generating coverage reports during the build lets you extract them as artifacts.
 ```dockerfile
 # syntax=docker/dockerfile:1
 
-FROM node:20-alpine AS deps
+FROM node:24-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
@@ -159,18 +167,20 @@ ENV NODE_ENV=test
 # Jest outputs to /app/coverage by default
 RUN npm run test -- --coverage --coverageDirectory=/app/coverage
 
-# The coverage reports now exist at /app/coverage
-# Extract them with: docker build --target test-coverage --output type=local,dest=./coverage .
+# Export only the coverage reports as the build output
+FROM scratch AS coverage-export
+COPY --from=test-coverage /app/coverage /coverage
 
 # Production stage
-FROM node:20-alpine AS production
+FROM node:24-alpine AS production
 WORKDIR /app
 
-RUN addgroup --system --gid 1001 nodejs && \
-    adduser --system --uid 1001 nodejs
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S -u 1001 -G nodejs nodejs
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
+COPY --from=test-coverage /app/package.json /tmp/test-passed
 
 USER nodejs
 CMD ["node", "dist/index.js"]
@@ -179,9 +189,9 @@ CMD ["node", "dist/index.js"]
 Extract coverage reports using the output flag:
 
 ```bash
-# Build only the test-coverage stage and export results to local filesystem
+# Build only the coverage export stage and export results to local filesystem
 # This runs tests and copies the coverage directory to your host machine
-docker build --target test-coverage --output type=local,dest=./coverage-report .
+docker build --target coverage-export --output type=local,dest=./coverage-report .
 
 # View the HTML coverage report
 open coverage-report/coverage/lcov-report/index.html
@@ -197,7 +207,7 @@ Sometimes you want to skip tests for quick iteration during development. Build a
 # Build argument to control test execution (default: run tests)
 ARG RUN_TESTS=true
 
-FROM node:20-alpine AS deps
+FROM node:24-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
@@ -210,17 +220,17 @@ RUN npm run build
 FROM build AS test
 ARG RUN_TESTS
 # This conditional runs tests only if RUN_TESTS is "true"
-# The ":" command is a no-op that always succeeds
 RUN if [ "$RUN_TESTS" = "true" ]; then npm run test; else echo "Tests skipped"; fi
 
-FROM node:20-alpine AS production
+FROM node:24-alpine AS production
 WORKDIR /app
 
-RUN addgroup --system --gid 1001 nodejs && \
-    adduser --system --uid 1001 nodejs
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S -u 1001 -G nodejs nodejs
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
+COPY --from=test /app/package.json /tmp/test-passed
 
 USER nodejs
 CMD ["node", "dist/index.js"]
@@ -309,17 +319,29 @@ on:
 jobs:
   test-and-build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
       # Check out the repository
       - uses: actions/checkout@v4
 
       # Set up Docker buildx for advanced build features
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
+
+      # Log in to GitHub Container Registry before pushing
+      - name: Log in to GHCR
+        if: github.event_name == 'push'
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       # Run the test stage explicitly
       # This builds up through the test stage but stops there
       - name: Run tests in Docker
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           target: test  # Build only up to the test stage
@@ -331,7 +353,7 @@ jobs:
       # Only build production image if tests passed
       # This step only runs if the previous step succeeded
       - name: Build production image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           target: production
@@ -348,7 +370,7 @@ Large test suites benefit from parallelization. This pattern runs different test
 ```dockerfile
 # syntax=docker/dockerfile:1
 
-FROM node:20-alpine AS deps
+FROM node:24-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
@@ -372,24 +394,25 @@ FROM build AS unit-test
 RUN npm run test:unit
 
 # End-to-end tests
-FROM build AS e2e-test
-RUN npx playwright install --with-deps chromium
+FROM mcr.microsoft.com/playwright:v1.60.0-noble AS e2e-test
+WORKDIR /app
+COPY --from=build /app ./
 RUN npm run test:e2e
 
 # Gate stage - depends on all test stages
 # This stage copies from each test stage, forcing them all to complete
-FROM node:20-alpine AS gate
+FROM node:24-alpine AS gate
 COPY --from=lint /app/package.json /tmp/lint-passed
 COPY --from=typecheck /app/package.json /tmp/typecheck-passed
 COPY --from=unit-test /app/package.json /tmp/unit-passed
 COPY --from=e2e-test /app/package.json /tmp/e2e-passed
 
 # Production image - only built if gate stage succeeds
-FROM node:20-alpine AS production
+FROM node:24-alpine AS production
 WORKDIR /app
 
-RUN addgroup --system --gid 1001 nodejs && \
-    adduser --system --uid 1001 nodejs
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S -u 1001 -G nodejs nodejs
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
@@ -459,6 +482,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY --chown=appuser:appuser app ./app
+COPY --from=test /app/requirements.txt /tmp/test-passed
 
 USER appuser
 CMD ["python", "-m", "app.main"]
@@ -471,7 +495,7 @@ Go applications can compile tests into the build and run them before producing t
 ```dockerfile
 # syntax=docker/dockerfile:1
 
-FROM golang:1.22-alpine AS build
+FROM golang:1.26 AS build
 WORKDIR /src
 
 # Download dependencies (cached if go.mod unchanged)
@@ -489,7 +513,7 @@ RUN go test -v -race ./...
 
 # Build the production binary
 # Only reached if tests pass
-FROM build AS compile
+FROM test AS compile
 # CGO_ENABLED=0 creates a static binary
 # -ldflags="-s -w" strips debug info for smaller binary
 RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /app ./cmd/server
