@@ -38,7 +38,7 @@ Kubernetes provides a native resource called `Lease` specifically designed for d
 |---------|-------|-----------|
 | Purpose-built | Yes | No (repurposed) |
 | API overhead | Lower | Higher |
-| Garbage collection | Built-in | Manual |
+| Object cleanup | Standard Kubernetes lifecycle | Standard Kubernetes lifecycle |
 | Semantic clarity | Clear | Confusing |
 | RBAC scoping | Narrow | Broad |
 
@@ -74,8 +74,9 @@ Let's build a complete leader election example. First, initialize a Go module:
 mkdir leader-election-demo
 cd leader-election-demo
 go mod init leader-election-demo
-go get k8s.io/client-go@latest
-go get k8s.io/apimachinery@latest
+go get k8s.io/client-go@v0.36.1
+go get k8s.io/apimachinery@v0.36.1
+go get k8s.io/klog/v2@v2.140.0
 ```
 
 Your `go.mod` should include these dependencies:
@@ -83,11 +84,12 @@ Your `go.mod` should include these dependencies:
 ```go
 module leader-election-demo
 
-go 1.21
+go 1.26.0
 
 require (
-    k8s.io/apimachinery v0.29.0
-    k8s.io/client-go v0.29.0
+    k8s.io/apimachinery v0.36.1
+    k8s.io/client-go v0.36.1
+    k8s.io/klog/v2 v2.140.0
 )
 ```
 
@@ -217,7 +219,7 @@ func runLeaderElection(
     }
 
     // Start the leader election loop
-    // This function blocks until the context is cancelled
+    // This function blocks until the context is cancelled or leadership is lost
     leaderelection.RunOrDie(ctx, leaderConfig)
 }
 ```
@@ -265,12 +267,11 @@ func onStartedLeading(ctx context.Context) {
     }
 }
 
-// onStoppedLeading is called when this instance loses leadership
-// This is useful for cleanup that must happen after OnStartedLeading returns
+// onStoppedLeading is called when this instance loses leadership or exits
+// This is useful for cleanup, but it can be called even if leadership was never acquired
 func onStoppedLeading() {
     klog.Info("Lost leadership, performing cleanup")
     // Perform any necessary cleanup
-    // Note: OnStartedLeading has already returned at this point
 }
 
 // onNewLeader is called when a new leader is elected
@@ -310,7 +311,6 @@ import (
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/client-go/kubernetes"
     "k8s.io/client-go/rest"
-    "k8s.io/client-go/tools/clientcmd"
     "k8s.io/client-go/tools/leaderelection"
     "k8s.io/client-go/tools/leaderelection/resourcelock"
     "k8s.io/klog/v2"
@@ -597,6 +597,9 @@ func (wm *WorkerManager) Start(parentCtx context.Context) {
 // Stop gracefully shuts down all workers
 func (wm *WorkerManager) Stop() {
     klog.Info("Stopping all workers...")
+    if wm.cancel == nil {
+        return
+    }
     wm.cancel()
 
     // Wait for all workers to finish with a timeout
@@ -738,9 +741,10 @@ func main() {
     go func() {
         sig := <-sigCh
         klog.Infof("Received signal %v, initiating shutdown", sig)
+        workerManager.Stop()
         cancel()
 
-        // Give the leader election loop time to release the lease
+        // Give the health server time to stop accepting requests
         shutdownCtx, shutdownCancel := context.WithTimeout(
             context.Background(), 10*time.Second)
         defer shutdownCancel()
@@ -784,7 +788,6 @@ import (
     "testing"
     "time"
 
-    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/client-go/kubernetes/fake"
 )
 
@@ -886,7 +889,7 @@ for i in {1..10}; do
 
     # Kill the leader pod
     echo "Killing leader pod..."
-    kubectl delete pod $LEADER -n $NAMESPACE --grace-period=0
+    kubectl delete pod $LEADER -n $NAMESPACE --grace-period=0 --force
 
     # Wait for new leader
     sleep 5
@@ -975,7 +978,7 @@ func (ile *InstrumentedLeaderElector) onStoppedLeading() {
 
 ### Clock Skew
 
-Kubernetes nodes with significant clock differences can cause unexpected leader transitions. Ensure NTP is configured on all nodes:
+The `client-go` leader election implementation is tolerant of arbitrary clock skew, but not arbitrary clock skew rate. Keep node clocks synchronized and tune `LeaseDuration` and `RenewDeadline` for your cluster:
 
 ```yaml
 # Use a DaemonSet to verify time sync
@@ -1000,7 +1003,7 @@ spec:
 
 ### Split Brain Prevention
 
-The lease-based approach prevents split brain by design, but network partitions can still cause issues. Add fencing to your workload:
+The lease-based approach coordinates leadership, but it does not provide fencing by itself. Network partitions or slow shutdown paths can still cause issues. Add fencing to your workload:
 
 ```go
 // FencedWorker only performs work if it can verify leadership
@@ -1019,8 +1022,16 @@ func (fw *FencedWorker) VerifyLeadership(ctx context.Context) (bool, error) {
         return false, err
     }
 
-    return lease.Spec.HolderIdentity != nil &&
-        *lease.Spec.HolderIdentity == fw.identity, nil
+    if lease.Spec.HolderIdentity == nil ||
+        *lease.Spec.HolderIdentity != fw.identity ||
+        lease.Spec.RenewTime == nil ||
+        lease.Spec.LeaseDurationSeconds == nil {
+        return false, nil
+    }
+
+    expiresAt := lease.Spec.RenewTime.Time.Add(
+        time.Duration(*lease.Spec.LeaseDurationSeconds) * time.Second)
+    return time.Now().Before(expiresAt), nil
 }
 
 // PerformCriticalOperation verifies leadership before and after the operation
