@@ -12,14 +12,16 @@ Description: Configure Linkerd ServiceProfiles for route-based metrics, retries,
 
 Linkerd provides fine-grained traffic management through ServiceProfiles. A ServiceProfile is a custom Kubernetes resource that defines routes for a service, enabling per-route metrics, retries, timeouts, and request classification. Without ServiceProfiles, Linkerd treats all requests to a service the same way. With them, you gain visibility and control at the individual endpoint level.
 
+As of Linkerd 2.16, ServiceProfiles have been superseded by Gateway API resources for per-route metrics, retries, and timeouts. ServiceProfiles are still supported for backwards compatibility, but they do not receive new feature development. This guide is most useful for clusters that already use ServiceProfiles or are running Linkerd versions where ServiceProfiles are the primary mechanism for these features.
+
 This guide walks through creating ServiceProfiles from scratch, configuring advanced traffic policies, and generating profiles automatically from OpenAPI specifications.
 
 ## Prerequisites
 
 Before starting, ensure you have:
 
-- A Kubernetes cluster (v1.21 or later)
-- Linkerd installed and running (v2.14 or later)
+- A supported Kubernetes cluster (Linkerd 2.14 supports Kubernetes v1.21 through v1.28; newer Linkerd versions have their own support matrix)
+- Linkerd installed and running (v2.14 or later; use Gateway API resources instead of new ServiceProfiles on Linkerd 2.16 and later unless you need backwards compatibility)
 - kubectl configured to communicate with your cluster
 - A sample application deployed and meshed with Linkerd
 
@@ -77,7 +79,7 @@ The ServiceProfile name must match the fully qualified domain name (FQDN) of the
 
 Let's create a ServiceProfile for a sample REST API service. This example assumes you have a user service with standard CRUD endpoints.
 
-First, deploy a sample application if you don't have one:
+First, deploy your application if you don't have one already. The manifest below is a template for a user service; replace `example/user-service:v1` with the image for your application:
 
 ```yaml
 # sample-app.yaml
@@ -210,7 +212,7 @@ Route conditions determine which requests match a route. Linkerd evaluates condi
 
 ### Path Regex Patterns
 
-The `pathRegex` field accepts Go regular expressions. Here are common patterns:
+The `pathRegex` field accepts regular expressions. Linkerd anchors unanchored ServiceProfile path regexes at the beginning and end of the path, so `/api/users` matches `/api/users`, not `/api/users/123`. Here are common patterns:
 
 | Pattern | Description | Example Matches |
 |---------|-------------|-----------------|
@@ -349,16 +351,15 @@ The retry budget prevents retry storms during widespread failures:
 Linkerd retries requests that:
 
 - Have `isRetryable: true` on their route
-- Failed due to connection errors (connection refused, reset, timeout)
-- Received a 5xx response (when using response classes)
+- Failed due to connection errors or received a response classified as a failure
 - Have not exhausted the retry budget
 
 Requests are NOT retried when:
 
 - The route has `isRetryable: false`
-- The request body was already streamed (non-bufferable)
+- The request body is too large to buffer for retry
 - The retry budget is exhausted
-- The response was a client error (4xx)
+- The response was not classified as a failure
 
 ## Setting Timeouts
 
@@ -418,9 +419,9 @@ When a timeout occurs:
 
 Timeouts interact with retries:
 
-- Each retry attempt has its own timeout
-- Total request time can exceed the timeout if retries occur
-- Set timeouts considering the combined effect with retries
+- The ServiceProfile route timeout covers the overall request, including retries
+- If the route timeout is reached, Linkerd cancels the request and returns a 504
+- Set timeouts considering the combined effect of backend latency and retry behavior
 
 ## Request Classification with Response Classes
 
@@ -533,7 +534,8 @@ Generate a ServiceProfile from an OpenAPI spec file:
 linkerd profile --open-api openapi.yaml user-service -n demo > user-service-profile.yaml
 
 # Generate from a URL
-linkerd profile --open-api https://api.example.com/openapi.json user-service -n demo > user-service-profile.yaml
+curl -sSL https://api.example.com/openapi.json \
+  | linkerd profile --open-api - user-service -n demo > user-service-profile.yaml
 ```
 
 ### Example OpenAPI Specification
@@ -665,12 +667,42 @@ syntax = "proto3";
 
 package user;
 
+import "google/protobuf/empty.proto";
+
 service UserService {
   rpc GetUser(GetUserRequest) returns (User);
   rpc ListUsers(ListUsersRequest) returns (ListUsersResponse);
   rpc CreateUser(CreateUserRequest) returns (User);
   rpc UpdateUser(UpdateUserRequest) returns (User);
-  rpc DeleteUser(DeleteUserRequest) returns (Empty);
+  rpc DeleteUser(DeleteUserRequest) returns (google.protobuf.Empty);
+}
+
+message GetUserRequest {
+  string id = 1;
+}
+
+message ListUsersRequest {}
+
+message ListUsersResponse {
+  repeated User users = 1;
+}
+
+message CreateUserRequest {
+  string name = 1;
+}
+
+message UpdateUserRequest {
+  string id = 1;
+  string name = 2;
+}
+
+message DeleteUserRequest {
+  string id = 1;
+}
+
+message User {
+  string id = 1;
+  string name = 2;
 }
 ```
 
@@ -723,20 +755,15 @@ Query per-route metrics directly in Prometheus:
 
 ```promql
 # Success rate by route
-sum(rate(route_response_total{direction="outbound",dst_service="user-service",classification="success"}[5m])) by (route)
+sum(rate(route_response_total{dst="user-service.demo.svc.cluster.local",classification="success"}[5m])) by (rt_route)
 /
-sum(rate(route_response_total{direction="outbound",dst_service="user-service"}[5m])) by (route)
+sum(rate(route_response_total{dst="user-service.demo.svc.cluster.local"}[5m])) by (rt_route)
 
 # Latency P99 by route
-histogram_quantile(0.99, sum(rate(route_response_latency_ms_bucket{direction="outbound",dst_service="user-service"}[5m])) by (le, route))
+histogram_quantile(0.99, sum(rate(route_response_latency_ms_bucket{dst="user-service.demo.svc.cluster.local"}[5m])) by (le, rt_route))
 
 # Request rate by route
-sum(rate(route_request_total{direction="outbound",dst_service="user-service"}[5m])) by (route)
-
-# Retry rate by route
-sum(rate(route_retry_total{direction="outbound",dst_service="user-service"}[5m])) by (route)
-/
-sum(rate(route_request_total{direction="outbound",dst_service="user-service"}[5m])) by (route)
+sum(rate(route_request_total{dst="user-service.demo.svc.cluster.local"}[5m])) by (rt_route)
 ```
 
 ## Complete Example: E-Commerce ServiceProfiles
@@ -777,14 +804,6 @@ spec:
               max: 599
           isFailure: true
 
-    # Single product details
-    - name: GET /api/products/{id}
-      condition:
-        method: GET
-        pathRegex: /api/products/[^/]+
-      isRetryable: true
-      timeout: 3s
-
     # Product search
     - name: GET /api/products/search
       condition:
@@ -792,6 +811,14 @@ spec:
         pathRegex: /api/products/search
       isRetryable: true
       timeout: 10s
+
+    # Single product details
+    - name: GET /api/products/{id}
+      condition:
+        method: GET
+        pathRegex: /api/products/[^/]+
+      isRetryable: true
+      timeout: 3s
 
     # Admin: Create product
     - name: POST /api/products
@@ -983,7 +1010,7 @@ If requests timeout unexpectedly:
 
 1. Check the timeout value is appropriate for the endpoint
 2. Consider network latency and backend processing time
-3. Remember that retries each have their own timeout
+3. Remember that ServiceProfile route timeouts include retries
 
 ```bash
 # View latency percentiles to set appropriate timeouts
