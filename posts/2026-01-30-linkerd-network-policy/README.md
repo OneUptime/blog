@@ -59,7 +59,7 @@ flowchart TB
 
 Ensure you have the following installed:
 
-- Kubernetes cluster (v1.21+)
+- Kubernetes cluster supported by your Linkerd version (for example, Linkerd 2.19 supports Kubernetes v1.22+)
 - Linkerd CLI and control plane installed
 - A CNI plugin that supports NetworkPolicy (Calico, Cilium, or Weave)
 - kubectl configured to access your cluster
@@ -75,40 +75,21 @@ kubectl get pods -n kube-system | grep -E "calico|cilium|weave"
 
 ## Installing the Linkerd Policy Controller
 
-The Linkerd policy controller enables fine-grained authorization policies for meshed workloads.
+The Linkerd policy controller is installed with the Linkerd control plane and enables fine-grained authorization policies for meshed workloads. Configure the cluster-wide default inbound policy during install, or override it later with the `config.linkerd.io/default-inbound-policy` annotation.
 
-```yaml
-# linkerd-policy-controller-config.yaml
-# This ConfigMap configures the policy controller behavior
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: linkerd-policy-controller
-  namespace: linkerd
-data:
-  # Default policy when no explicit policy exists
-  # Options: all-unauthenticated, all-authenticated, cluster-unauthenticated,
-  # cluster-authenticated, deny
-  default-policy: "all-authenticated"
-
-  # Log level for debugging policy decisions
-  log-level: "info"
-
-  # Enable workload discovery for policy targets
-  workload-discovery: "true"
-```
-
-Install or upgrade Linkerd with the policy controller enabled:
+Install or upgrade Linkerd with a default inbound policy:
 
 ```bash
-# Install Linkerd with policy controller
+# Install Linkerd CRDs first
+linkerd install --crds | kubectl apply -f -
+
+# Install Linkerd with a default inbound policy
 linkerd install \
-  --set policyController.defaultAllowPolicy=all-authenticated \
-  --set policyController.logLevel=info \
+  --default-inbound-policy=all-authenticated \
   | kubectl apply -f -
 
-# Verify the policy controller is running
-kubectl get pods -n linkerd -l app=policy-controller
+# Verify the destination deployment, which includes policy support, is running
+kubectl get deploy/linkerd-destination -n linkerd
 ```
 
 ## Namespace-Level Policies
@@ -155,7 +136,7 @@ spec:
     - to:
         - namespaceSelector:
             matchLabels:
-              linkerd.io/control-plane-ns: linkerd
+              kubernetes.io/metadata.name: linkerd
       ports:
         # Destination service for service discovery
         - protocol: TCP
@@ -168,7 +149,9 @@ spec:
           port: 8090
     # Allow DNS resolution (required for service discovery)
     - to:
-        - namespaceSelector: {}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
           podSelector:
             matchLabels:
               k8s-app: kube-dns
@@ -206,7 +189,7 @@ spec:
     - from:
         - namespaceSelector:
             matchLabels:
-              name: ingress-nginx
+              kubernetes.io/metadata.name: ingress-nginx
           podSelector:
             matchLabels:
               app.kubernetes.io/name: ingress-nginx
@@ -221,9 +204,9 @@ spec:
             matchLabels:
               app: backend
       ports:
-        # Linkerd proxy outbound port
+        # Linkerd proxy inbound port on the destination pod
         - protocol: TCP
-          port: 4140
+          port: 4143
 ```
 
 ### Backend Service Policy
@@ -260,7 +243,7 @@ spec:
               app: database
       ports:
         - protocol: TCP
-          port: 4140
+          port: 4143
     # Allow traffic to external APIs if needed
     - to:
         - ipBlock:
@@ -308,14 +291,14 @@ spec:
 
 ## Linkerd Server Authorization
 
-Linkerd provides additional L7 authorization through Server and ServerAuthorization resources.
+Linkerd provides additional L7 authorization through Server and AuthorizationPolicy resources. ServerAuthorization is also available for server-level authorization, but AuthorizationPolicy is the preferred resource for new policies because it can target both Servers and HTTPRoutes.
 
 ### Server Resource Definition
 
 ```yaml
 # backend-server.yaml
 # Defines the backend server and its ports for Linkerd policy
-apiVersion: policy.linkerd.io/v1beta2
+apiVersion: policy.linkerd.io/v1beta1
 kind: Server
 metadata:
   name: backend-http
@@ -336,7 +319,7 @@ spec:
 ```yaml
 # backend-server-authorization.yaml
 # Defines who can access the backend server
-apiVersion: policy.linkerd.io/v1beta2
+apiVersion: policy.linkerd.io/v1beta1
 kind: ServerAuthorization
 metadata:
   name: backend-authz
@@ -362,7 +345,7 @@ For more granular control, use HTTPRoute resources to define path-based policies
 ```yaml
 # backend-http-routes.yaml
 # Define HTTP routes for fine-grained authorization
-apiVersion: policy.linkerd.io/v1beta2
+apiVersion: policy.linkerd.io/v1beta1
 kind: HTTPRoute
 metadata:
   name: backend-routes
@@ -395,7 +378,7 @@ spec:
       filters: []
 ---
 # Authorization for specific routes
-apiVersion: policy.linkerd.io/v1beta2
+apiVersion: policy.linkerd.io/v1alpha1
 kind: AuthorizationPolicy
 metadata:
   name: backend-api-authz
@@ -412,7 +395,7 @@ spec:
       group: policy.linkerd.io
 ---
 # MeshTLS authentication requirement
-apiVersion: policy.linkerd.io/v1beta2
+apiVersion: policy.linkerd.io/v1alpha1
 kind: MeshTLSAuthentication
 metadata:
   name: frontend-mtls
@@ -432,7 +415,7 @@ sequenceDiagram
     participant Client
     participant NP as NetworkPolicy
     participant FEP as Frontend Proxy
-    participant PC as Policy Controller
+    participant Policy as Cached Policy
     participant BEP as Backend Proxy
     participant BE as Backend App
 
@@ -440,21 +423,21 @@ sequenceDiagram
     NP->>NP: Check L3/L4 Rules
     alt NetworkPolicy Allows
         NP->>FEP: Forward Request
-        FEP->>FEP: Terminate TLS
-        FEP->>PC: Check Authorization
-        PC->>PC: Validate mTLS Identity
-        PC->>PC: Check ServerAuthorization
+        FEP->>FEP: Apply inbound policy
+        FEP->>Policy: Check Authorization
+        Policy->>Policy: Validate mTLS Identity
+        Policy->>Policy: Check AuthorizationPolicy
         alt Authorization Granted
-            PC->>FEP: Allow
+            Policy->>FEP: Allow
             FEP->>BEP: mTLS Request
-            BEP->>PC: Check Authorization
-            PC->>BEP: Allow
+            BEP->>Policy: Check Authorization
+            Policy->>BEP: Allow
             BEP->>BE: Forward Request
             BE->>BEP: Response
             BEP->>FEP: mTLS Response
             FEP->>Client: Response
         else Authorization Denied
-            PC->>FEP: Deny (403)
+            Policy->>FEP: Deny (403)
             FEP->>Client: 403 Forbidden
         end
     else NetworkPolicy Denies
@@ -589,14 +572,14 @@ spec:
 ### Check Policy Status
 
 ```bash
-# View active policies for a namespace
-linkerd policy list -n production
+# View authorization resources and stats for a workload
+linkerd viz authz deploy/backend -n production
 
-# Check if a specific pod can communicate with another
-linkerd diagnostics policy backend-5d4f6b7c8d-xyz12 -n production
+# Inspect policy state for a specific pod
+linkerd diagnostics policy pod/backend-5d4f6b7c8d-xyz12 -n production
 
-# View authorization events
-kubectl logs -n linkerd -l app=policy-controller -f
+# View policy controller logs
+kubectl logs -n linkerd deploy/linkerd-destination -c policy -f
 ```
 
 ### Debug Denied Requests
@@ -664,7 +647,7 @@ By following this guide, you have learned how to:
 - Configure the Linkerd policy controller
 - Create namespace-level default deny policies
 - Define pod-level ingress and egress rules
-- Implement Linkerd Server and ServerAuthorization resources
+- Implement Linkerd Server, ServerAuthorization, and AuthorizationPolicy resources
 - Use HTTPRoute for path-based authorization
 - Monitor and debug policy enforcement
 
