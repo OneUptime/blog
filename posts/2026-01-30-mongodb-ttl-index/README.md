@@ -26,7 +26,7 @@ flowchart TD
     D --> E{Document Age > expireAfterSeconds?}
     E -->|No| D
     E -->|Yes| F[Document Deleted]
-    F --> G[Space Reclaimed]
+    F --> G[Storage Reused Over Time]
 ```
 
 ## Creating Your First TTL Index
@@ -96,7 +96,7 @@ sequenceDiagram
 ### Key Expiration Characteristics
 
 1. **Deletion delay**: Documents may persist up to 60 seconds past their expiration time
-2. **Background process**: Deletions happen asynchronously and do not block other operations
+2. **Background process**: TTL deletions run separately from application code, but they are normal delete operations and consume server resources
 3. **Replica sets**: TTL deletions only occur on the primary and replicate to secondaries
 4. **Load-dependent**: Under heavy load, deletion may be delayed further
 
@@ -263,15 +263,16 @@ function monitorTTLPerformance() {
 
   const deletedInPeriod = finalStats.deletedDocuments - initialStats.deletedDocuments;
   const passesInPeriod = finalStats.passes - initialStats.passes;
+  const avgPerPass = passesInPeriod === 0 ? 0 : deletedInPeriod / passesInPeriod;
 
   print(`Documents deleted in last 60s: ${deletedInPeriod}`);
   print(`TTL passes: ${passesInPeriod}`);
-  print(`Avg deletions per pass: ${deletedInPeriod / passesInPeriod}`);
+  print(`Avg deletions per pass: ${avgPerPass}`);
 
   return {
     deletedDocuments: deletedInPeriod,
     passes: passesInPeriod,
-    avgPerPass: deletedInPeriod / passesInPeriod
+    avgPerPass: avgPerPass
   };
 }
 ```
@@ -469,24 +470,34 @@ flowchart TD
 ```javascript
 // For very high volume - supplement TTL with manual batch deletes
 async function batchDeleteExpired(collectionName, dateField, maxAge, batchSize) {
+  const collection = db.collection(collectionName);
   const cutoffDate = new Date();
   cutoffDate.setSeconds(cutoffDate.getSeconds() - maxAge);
 
   let totalDeleted = 0;
-  let result;
+  let ids;
 
   do {
-    result = await db[collectionName].deleteMany(
-      { [dateField]: { $lt: cutoffDate } },
-      { limit: batchSize }
-    );
+    ids = await collection
+      .find({ [dateField]: { $lt: cutoffDate } }, { projection: { _id: 1 } })
+      .limit(batchSize)
+      .map(doc => doc._id)
+      .toArray();
+
+    if (ids.length === 0) {
+      break;
+    }
+
+    const result = await collection.deleteMany({
+      _id: { $in: ids }
+    });
 
     totalDeleted += result.deletedCount;
 
     // Small delay to reduce load
     await new Promise(resolve => setTimeout(resolve, 100));
 
-  } while (result.deletedCount === batchSize);
+  } while (ids.length === batchSize);
 
   return totalDeleted;
 }
