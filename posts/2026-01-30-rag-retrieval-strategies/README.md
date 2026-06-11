@@ -353,7 +353,7 @@ class DenseRetriever:
     where similar meanings are close together.
     """
 
-    def __init__(self, model_name: str = "all-MiniLM-L6-v2"):
+    def __init__(self, model_name: str = "all-MiniLM-L6-v2", model=None):
         """
         Initialize with a sentence transformer model.
 
@@ -361,8 +361,11 @@ class DenseRetriever:
         - all-MiniLM-L6-v2: Fast, good quality (384 dimensions)
         - all-mpnet-base-v2: Higher quality (768 dimensions)
         - multi-qa-mpnet-base-dot-v1: Optimized for QA retrieval
+
+        Pass a pre-loaded SentenceTransformer via `model` to reuse
+        an existing instance instead of loading by name.
         """
-        self.model = SentenceTransformer(model_name)
+        self.model = model if model is not None else SentenceTransformer(model_name)
         self.documents: List[Document] = []
         self.embeddings: np.ndarray = None
 
@@ -927,10 +930,9 @@ def create_pipeline():
     dense_retriever = DenseRetriever(model=bi_encoder)
     bm25_retriever = BM25Retriever()
 
-    # Create hybrid initial retrieval
-    hybrid_retriever = HybridRetriever(
-        retrievers=[dense_retriever, bm25_retriever],
-        weights=[0.6, 0.4]
+    # Create hybrid initial retrieval using the ensemble defined in section 7
+    hybrid_retriever = EnsembleRetriever(
+        retrievers=[(dense_retriever, 0.6), (bm25_retriever, 0.4)]
     )
 
     # Build pipeline
