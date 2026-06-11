@@ -88,6 +88,7 @@ export interface BaseEvent {
   aggregateType: string;    // Type of entity (Order, Payment, etc.)
   timestamp: string;        // ISO 8601 timestamp
   version: number;          // Event schema version for evolution
+  sequence: number;         // Aggregate sequence for ordering and read freshness
   correlationId: string;    // Links related events across services
   causationId: string;      // ID of the event that caused this one
   metadata: EventMetadata;
@@ -98,6 +99,12 @@ export interface EventMetadata {
   tenantId?: string;
   source: string;           // Service that produced the event
   traceId?: string;         // Distributed tracing ID
+}
+
+export interface Address {
+  street: string;
+  city: string;
+  country: string;
 }
 
 // shared/events/order-events.ts
@@ -150,7 +157,6 @@ The command service handles write operations and publishes events. Each command 
 import { Injectable } from '@nestjs/common';
 import { v4 as uuidv4 } from 'uuid';
 import { OrderRepository } from '../../repositories/order.repository';
-import { EventPublisher } from '../../events/event-publisher';
 import { CreateOrderCommand } from '../create-order.command';
 import { Order, OrderStatus } from '../../domain/order.entity';
 
@@ -158,7 +164,6 @@ import { Order, OrderStatus } from '../../domain/order.entity';
 export class CreateOrderHandler {
   constructor(
     private readonly orderRepository: OrderRepository,
-    private readonly eventPublisher: EventPublisher,
   ) {}
 
   // Handle the create order command
@@ -195,6 +200,7 @@ export class CreateOrderHandler {
       aggregateType: 'Order',
       timestamp: new Date().toISOString(),
       version: 1,
+      sequence: 1,
       correlationId: command.correlationId,
       causationId: command.causationId || eventId,
       metadata: {
@@ -259,7 +265,7 @@ export class OrderRepository {
     }
   }
 
-  // Find orders with optimistic locking for updates
+  // Find orders with pessimistic locking for updates
   async findByIdForUpdate(
     queryRunner: QueryRunner,
     orderId: string
@@ -294,7 +300,7 @@ export class OutboxRelayWorker {
     private readonly kafkaProducer: KafkaProducer,
   ) {}
 
-  // Run every 100ms to minimize event publishing latency
+  // Run every second to keep event publishing latency low
   // Uses SELECT FOR UPDATE SKIP LOCKED for concurrent workers
   @Cron(CronExpression.EVERY_SECOND)
   async processOutbox(): Promise<void> {
@@ -315,7 +321,8 @@ export class OutboxRelayWorker {
         .where('outbox.published = :published', { published: false })
         .orderBy('outbox.createdAt', 'ASC')
         .limit(100)
-        .setLock('pessimistic_write_or_fail')
+        .setLock('pessimistic_write')
+        .setOnLocked('skip_locked')
         .getMany();
 
       for (const event of events) {
@@ -333,6 +340,7 @@ export class OutboxRelayWorker {
                 aggregateType: event.aggregateType,
                 timestamp: event.timestamp,
                 version: event.version,
+                sequence: event.sequence,
                 correlationId: event.correlationId,
                 causationId: event.causationId,
                 metadata: event.metadata,
@@ -489,6 +497,7 @@ import { Projection } from './projection.interface';
 import { OrderSummaryDocument } from '../schemas/order-summary.schema';
 import { OrderEvent } from '@shared/events/order-events';
 import { PaymentEvent } from '@shared/events/payment-events';
+import { ShipmentEvent } from '@shared/events/shipment-events';
 
 @Injectable()
 export class OrderSummaryProjection implements Projection {
@@ -509,7 +518,7 @@ export class OrderSummaryProjection implements Projection {
   ) {}
 
   // Route events to specific handlers based on event type
-  async apply(event: OrderEvent | PaymentEvent): Promise<void> {
+  async apply(event: OrderEvent | PaymentEvent | ShipmentEvent): Promise<void> {
     switch (event.eventType) {
       case 'OrderCreated':
         await this.onOrderCreated(event);
@@ -549,6 +558,7 @@ export class OrderSummaryProjection implements Projection {
       paymentStatus: 'pending',
       createdAt: new Date(event.timestamp),
       updatedAt: new Date(event.timestamp),
+      version: event.sequence,
       lastEventId: event.eventId,
       lastEventTimestamp: event.timestamp,
     });
@@ -568,6 +578,7 @@ export class OrderSummaryProjection implements Projection {
           confirmedAt: event.payload.confirmedAt,
           estimatedDelivery: event.payload.estimatedDelivery,
           updatedAt: new Date(event.timestamp),
+          version: event.sequence,
           lastEventId: event.eventId,
           lastEventTimestamp: event.timestamp,
         },
@@ -588,6 +599,7 @@ export class OrderSummaryProjection implements Projection {
           cancelledBy: event.payload.cancelledBy,
           refundInitiated: event.payload.refundInitiated,
           updatedAt: new Date(event.timestamp),
+          version: event.sequence,
           lastEventId: event.eventId,
           lastEventTimestamp: event.timestamp,
         },
@@ -605,6 +617,7 @@ export class OrderSummaryProjection implements Projection {
           paymentId: event.aggregateId,
           paidAt: event.payload.completedAt,
           updatedAt: new Date(event.timestamp),
+          version: event.sequence,
           lastEventId: event.eventId,
           lastEventTimestamp: event.timestamp,
         },
@@ -613,7 +626,9 @@ export class OrderSummaryProjection implements Projection {
   }
 
   // Mark order as delivered
-  private async onShipmentDelivered(event: any): Promise<void> {
+  private async onShipmentDelivered(event: ShipmentEvent): Promise<void> {
+    if (event.eventType !== 'ShipmentDelivered') return;
+
     await this.orderSummaryModel.updateOne(
       { orderId: event.payload.orderId },
       {
@@ -621,6 +636,7 @@ export class OrderSummaryProjection implements Projection {
           status: 'delivered',
           deliveredAt: event.payload.deliveredAt,
           updatedAt: new Date(event.timestamp),
+          version: event.sequence,
           lastEventId: event.eventId,
           lastEventTimestamp: event.timestamp,
         },
@@ -671,6 +687,7 @@ export class GetOrderSummaryHandler {
       totalAmount: doc.totalAmount,
       currency: doc.currency,
       paymentStatus: doc.paymentStatus,
+      version: doc.version,
       createdAt: doc.createdAt.toISOString(),
       updatedAt: doc.updatedAt.toISOString(),
     };
@@ -809,15 +826,13 @@ export class OrderController {
 
 ```typescript
 // query-service/src/controllers/order-query.controller.ts
-import { Controller, Get, Param, Query, HttpException, HttpStatus } from '@nestjs/common';
+import { BadRequestException, Controller, Get, Param, Query, HttpException, HttpStatus, NotFoundException } from '@nestjs/common';
 import { GetOrderSummaryHandler } from '../queries/handlers/get-order-summary.handler';
-import { EventVersionService } from '../services/event-version.service';
 
 @Controller('orders')
 export class OrderQueryController {
   constructor(
     private readonly getOrderSummaryHandler: GetOrderSummaryHandler,
-    private readonly eventVersionService: EventVersionService,
   ) {}
 
   // Support conditional fetching based on expected version
@@ -825,18 +840,34 @@ export class OrderQueryController {
   @Get(':orderId')
   async getOrder(
     @Param('orderId') orderId: string,
-    @Query('minVersion') minVersion?: number,
-    @Query('timeout') timeout?: number,
+    @Query('minVersion') minVersion?: string,
+    @Query('timeout') timeout?: string,
   ) {
-    const maxWait = Math.min(timeout || 5000, 30000);
+    const expectedVersion = minVersion !== undefined ? Number(minVersion) : undefined;
+    const requestedTimeout = timeout ? Number(timeout) : 5000;
+
+    if (
+      (expectedVersion !== undefined && Number.isNaN(expectedVersion)) ||
+      Number.isNaN(requestedTimeout)
+    ) {
+      throw new BadRequestException('minVersion and timeout must be numbers');
+    }
+
+    const maxWait = Math.min(requestedTimeout, 30000);
     const startTime = Date.now();
 
     // Poll until version is available or timeout
     while (Date.now() - startTime < maxWait) {
-      const order = await this.getOrderSummaryHandler.execute({ orderId });
+      try {
+        const order = await this.getOrderSummaryHandler.execute({ orderId });
 
-      if (!minVersion || order.version >= minVersion) {
-        return order;
+        if (!expectedVersion || order.version >= expectedVersion) {
+          return order;
+        }
+      } catch (error) {
+        if (!(error instanceof NotFoundException)) {
+          throw error;
+        }
       }
 
       // Wait 100ms before retrying
@@ -846,13 +877,13 @@ export class OrderQueryController {
     // Return stale data with warning header if timeout exceeded
     const order = await this.getOrderSummaryHandler.execute({ orderId });
 
-    if (minVersion && order.version < minVersion) {
+    if (expectedVersion && order.version < expectedVersion) {
       throw new HttpException(
         {
           statusCode: HttpStatus.CONFLICT,
           message: 'Read model not yet updated',
           currentVersion: order.version,
-          requestedVersion: minVersion,
+          requestedVersion: expectedVersion,
         },
         HttpStatus.CONFLICT
       );
@@ -919,28 +950,31 @@ export const gatewayConfig = {
 ```typescript
 // shared/health/cqrs-health.service.ts
 import { Injectable, Logger } from '@nestjs/common';
-import { HealthIndicator, HealthIndicatorResult } from '@nestjs/terminus';
+import { HealthIndicatorResult, HealthIndicatorService } from '@nestjs/terminus';
 import { KafkaConsumer } from '../messaging/kafka-consumer';
 
 @Injectable()
-export class CQRSHealthIndicator extends HealthIndicator {
+export class CQRSHealthIndicator {
   private readonly logger = new Logger(CQRSHealthIndicator.name);
 
   constructor(
     private readonly kafkaConsumer: KafkaConsumer,
-  ) {
-    super();
-  }
+    private readonly healthIndicatorService: HealthIndicatorService,
+  ) {}
 
   // Check if event processing is healthy
   // Monitors consumer lag and processing rate
   async checkEventProcessing(): Promise<HealthIndicatorResult> {
     const lag = await this.kafkaConsumer.getConsumerLag();
     const isHealthy = lag < 10000;  // Threshold: 10k messages
+    const indicator = this.healthIndicatorService.check('event-processing');
 
-    return this.getStatus('event-processing', isHealthy, {
+    return isHealthy ? indicator.up({
       consumerLag: lag,
-      status: isHealthy ? 'healthy' : 'degraded',
+      status: 'healthy',
+    }) : indicator.down({
+      consumerLag: lag,
+      status: 'degraded',
     });
   }
 
@@ -951,11 +985,16 @@ export class CQRSHealthIndicator extends HealthIndicator {
     const now = new Date();
     const lagMs = now.getTime() - latestEventTimestamp.getTime();
     const isHealthy = lagMs < 30000;  // 30 second threshold
+    const indicator = this.healthIndicatorService.check('read-model-freshness');
 
-    return this.getStatus('read-model-freshness', isHealthy, {
+    return isHealthy ? indicator.up({
       lagMs,
       latestEvent: latestEventTimestamp.toISOString(),
-      status: isHealthy ? 'healthy' : 'stale',
+      status: 'healthy',
+    }) : indicator.down({
+      lagMs,
+      latestEvent: latestEventTimestamp.toISOString(),
+      status: 'stale',
     });
   }
 }
@@ -1253,16 +1292,18 @@ describe('Order CQRS Flow', () => {
   beforeAll(async () => {
     // Start containers in parallel
     [kafkaContainer, mongoContainer, postgresContainer] = await Promise.all([
-      new KafkaContainer().start(),
-      new MongoDBContainer().start(),
-      new PostgreSqlContainer().start(),
+      new KafkaContainer('confluentinc/cp-kafka:7.5.0').start(),
+      new MongoDBContainer('mongo:7.0').start(),
+      new PostgreSqlContainer('postgres:16-alpine').start(),
     ]);
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     })
       .overrideProvider('KAFKA_CONFIG')
-      .useValue({ brokers: [kafkaContainer.getBootstrapServers()] })
+      .useValue({
+        brokers: [`${kafkaContainer.getHost()}:${kafkaContainer.getMappedPort(9093)}`],
+      })
       .overrideProvider('MONGODB_URL')
       .useValue(mongoContainer.getConnectionString())
       .overrideProvider('POSTGRES_URL')
@@ -1369,12 +1410,12 @@ describe('Order CQRS Flow', () => {
 Implementing CQRS in microservices provides significant benefits for systems with different read and write patterns. The key principles to follow are:
 
 - **Separate write and read paths**: Each can scale and optimize independently
-- **Use events for synchronization**: Events are the source of truth between services
+- **Use events for synchronization**: Events communicate authoritative state changes between services
 - **Handle eventual consistency**: Design your APIs to communicate async updates gracefully
 - **Implement idempotency everywhere**: Events will be delivered multiple times
 - **Monitor the lag**: Track how far behind your read models are from writes
 
-The outbox pattern combined with event sourcing creates a reliable foundation for distributed CQRS systems that can handle failures gracefully.
+The outbox pattern combined with event-driven projections creates a reliable foundation for distributed CQRS systems that can handle failures gracefully.
 
 ---
 
