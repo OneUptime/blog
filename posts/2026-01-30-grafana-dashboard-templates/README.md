@@ -8,7 +8,7 @@ Description: Learn to implement Grafana dashboard templates with JSON model, var
 
 ---
 
-Building dashboards in Grafana can become repetitive when you need similar visualizations across multiple environments, teams, or services. Dashboard templates solve this problem by creating reusable, parameterized dashboards that adapt to different contexts. In this guide, we will explore how to build effective Grafana dashboard templates using the JSON model, variables, repeat panels, and template functions.
+Building dashboards in Grafana can become repetitive when you need similar visualizations across multiple environments, teams, or services. Dashboard templates solve this problem by creating reusable, parameterized dashboards that adapt to different contexts. In this guide, we will explore how to build effective Grafana dashboard templates using the Classic JSON model, variables, repeat panels, and variable format options.
 
 ## Understanding Grafana Dashboard Architecture
 
@@ -37,11 +37,11 @@ graph TD
     E --> E2[Dashboard Annotations]
 ```
 
-Every Grafana dashboard is stored as a JSON document. This JSON model contains all the configuration needed to render the dashboard, making it perfect for version control and templating.
+Grafana dashboards are represented as JSON objects. Grafana's Classic JSON model contains the configuration needed to render the dashboard, making it useful for version control and templating.
 
 ## The JSON Model Foundation
 
-The JSON model is the backbone of any Grafana dashboard. Here is the basic structure:
+The Classic JSON model is the backbone of many existing Grafana dashboard exports. Here is the basic structure:
 
 ```json
 {
@@ -70,7 +70,7 @@ The JSON model is the backbone of any Grafana dashboard. Here is the basic struc
 Key fields to understand:
 
 - **uid**: A unique identifier for the dashboard. Keep this consistent across deployments for linking purposes.
-- **schemaVersion**: Grafana's internal version for the dashboard format. Use the latest version your Grafana installation supports.
+- **schemaVersion**: Grafana's internal version for the Classic dashboard format. Grafana updates this when it saves a dashboard.
 - **templating**: Where all your variables are defined.
 - **panels**: Array containing all visualization panels.
 
@@ -80,7 +80,7 @@ Variables are the core feature that makes dashboards reusable. They allow users 
 
 ### Query Variable
 
-Query variables populate their options from a data source query:
+Query variables populate their options from a data source query. In the Grafana UI for Prometheus, use the **Label values** query type and set the label and metric fields. Classic dashboard JSON exports can represent that variable query with `label_values(<metric>, <label>)`:
 
 ```json
 {
@@ -370,9 +370,9 @@ For more complex layouts, you can repeat entire rows:
 }
 ```
 
-## Template Functions and Advanced Formatting
+## Variable Format Options and Advanced Formatting
 
-Grafana provides several built-in functions for variable formatting.
+Grafana provides several built-in format options for variable interpolation.
 
 ### Variable Format Options
 
@@ -813,12 +813,13 @@ Include version information in the UID or tags:
 To export a dashboard as a template:
 
 1. Open the dashboard in Grafana
-2. Click the share icon
-3. Select "Export"
-4. Toggle "Export for sharing externally"
-5. Save the JSON
+2. Click the Export icon in the toolbar
+3. Select "Export as code"
+4. In Advanced options, choose the Classic model if you need a Classic JSON export
+5. Toggle "Share dashboard with another instance" to remove instance-specific details
+6. Download the file or copy the JSON
 
-When exporting for sharing, Grafana replaces data source UIDs with variables, making the template portable:
+When exporting for sharing with another instance, Grafana can replace instance-specific data source references with inputs, making the template portable:
 
 ```json
 {
@@ -848,7 +849,7 @@ Key takeaways:
 - The JSON model is the foundation - understand its structure
 - Variables enable dynamic filtering and multi-tenancy
 - Repeat panels and rows reduce duplication
-- Template functions provide formatting flexibility
+- Variable format options provide interpolation flexibility
 - Provisioning enables GitOps workflows for dashboard management
 
 Start with simple templates and gradually add complexity as your needs grow. With well-designed templates, you can ensure consistent monitoring practices while reducing the effort required to create and maintain dashboards.
