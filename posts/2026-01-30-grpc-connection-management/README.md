@@ -25,7 +25,7 @@ stateDiagram-v2
     READY --> IDLE: No activity (idle timeout)
     READY --> TRANSIENT_FAILURE: Connection lost
     TRANSIENT_FAILURE --> CONNECTING: Backoff complete
-    TRANSIENT_FAILURE --> SHUTDOWN: Max retries exceeded
+    TRANSIENT_FAILURE --> SHUTDOWN: Channel closed
     IDLE --> SHUTDOWN: Channel closed
     READY --> SHUTDOWN: Channel closed
     SHUTDOWN --> [*]
@@ -71,7 +71,7 @@ const channel = new grpc.Channel(
     // Maximum backoff time between reconnection attempts
     'grpc.max_reconnect_backoff_ms': 30000,
     // Enable keepalive pings (see keepalive section)
-    'grpc.keepalive_time_ms': 30000,
+    'grpc.keepalive_time_ms': 60000,
   }
 );
 
@@ -97,32 +97,39 @@ import (
     "time"
 
     "google.golang.org/grpc"
+    "google.golang.org/grpc/connectivity"
     "google.golang.org/grpc/credentials"
     "google.golang.org/grpc/keepalive"
 )
 
 func main() {
     // Create connection with dial options
-    // grpc.Dial returns a ClientConn which manages the underlying connections
-    conn, err := grpc.Dial(
+    // grpc.NewClient returns a ClientConn which manages the underlying connections
+    conn, err := grpc.NewClient(
         "api.example.com:443",
         // Use TLS for production
         grpc.WithTransportCredentials(credentials.NewTLS(nil)),
-        // Block until connection is established (useful for startup)
-        grpc.WithBlock(),
-        // Set connection timeout
-        grpc.WithTimeout(10*time.Second),
         // Configure keepalive (see keepalive section)
         grpc.WithKeepaliveParams(keepalive.ClientParameters{
-            Time:                30 * time.Second,
+            Time:                60 * time.Second,
             Timeout:             10 * time.Second,
             PermitWithoutStream: true,
         }),
     )
     if err != nil {
-        log.Fatalf("Failed to connect: %v", err)
+        log.Fatalf("Failed to create client: %v", err)
     }
     defer conn.Close()
+
+    // Start connecting and wait for the channel to become ready during startup.
+    ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+    defer cancel()
+    conn.Connect()
+    for state := conn.GetState(); state != connectivity.Ready; state = conn.GetState() {
+        if !conn.WaitForStateChange(ctx, state) {
+            log.Fatalf("Failed to connect: %v", ctx.Err())
+        }
+    }
 
     // Create a client using the connection
     client := pb.NewMyServiceClient(conn)
@@ -149,7 +156,7 @@ channel = grpc.secure_channel(
         ('grpc.max_send_message_length', 50 * 1024 * 1024),
         ('grpc.max_receive_message_length', 50 * 1024 * 1024),
         # Keepalive settings
-        ('grpc.keepalive_time_ms', 30000),
+        ('grpc.keepalive_time_ms', 60000),
         ('grpc.keepalive_timeout_ms', 10000),
         ('grpc.keepalive_permit_without_calls', True),
         # Reconnection settings
@@ -330,7 +337,7 @@ const pool = new GrpcConnectionPool({
   credentials: grpc.credentials.createSsl(),
   poolSize: 5,
   channelOptions: {
-    'grpc.keepalive_time_ms': 30000,
+    'grpc.keepalive_time_ms': 60000,
     'grpc.keepalive_timeout_ms': 10000,
   },
 });
@@ -343,7 +350,15 @@ async function makeRequest(data) {
     const client = new MyServiceClient(pool.target, pool.credentials, {
       channelOverride: channel,
     });
-    const response = await client.myMethod(data);
+    const response = await new Promise((resolve, reject) => {
+      client.myMethod(data, (err, response) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+        resolve(response);
+      });
+    });
     return response;
   } finally {
     // Always release the channel
@@ -393,10 +408,10 @@ func NewPool(target string, size int, opts ...grpc.DialOption) (*Pool, error) {
         conns:       make([]*poolConn, size),
     }
 
-    // Initialize all connections upfront
-    // This ensures connections are ready when needed
+    // Initialize all ClientConns upfront
+    // They will connect lazily when RPCs start, or when Connect is called
     for i := 0; i < size; i++ {
-        conn, err := grpc.Dial(target, opts...)
+        conn, err := grpc.NewClient(target, opts...)
         if err != nil {
             // Clean up already created connections
             p.Close()
@@ -562,9 +577,9 @@ const client = new MyServiceClient(
   'api.example.com:443',
   grpc.credentials.createSsl(),
   {
-    // Time between keepalive pings (30 seconds)
+    // Time between keepalive pings (60 seconds)
     // Lower values detect failures faster but increase overhead
-    'grpc.keepalive_time_ms': 30000,
+    'grpc.keepalive_time_ms': 60000,
 
     // Time to wait for ping acknowledgment (10 seconds)
     // If no response within this time, connection is considered dead
@@ -574,12 +589,8 @@ const client = new MyServiceClient(
     // Essential for detecting dead connections during idle periods
     'grpc.keepalive_permit_without_calls': 1,
 
-    // Minimum time between pings (important for server compatibility)
-    // Some servers reject connections that ping too frequently
-    'grpc.http2.min_time_between_pings_ms': 10000,
-
-    // Maximum number of pings without data before connection is closed
-    'grpc.http2.max_pings_without_data': 0, // 0 = unlimited
+    // Coordinate keepalive intervals with the server configuration.
+    // Servers can reject clients that ping too frequently.
   }
 );
 ```
@@ -596,7 +607,7 @@ import (
 clientParams := keepalive.ClientParameters{
     // Time between keepalive pings
     // After this duration of inactivity, send a ping
-    Time: 30 * time.Second,
+    Time: 60 * time.Second,
 
     // Time to wait for ping acknowledgment
     // Connection closed if no response within this duration
@@ -607,7 +618,7 @@ clientParams := keepalive.ClientParameters{
     PermitWithoutStream: true,
 }
 
-conn, err := grpc.Dial(
+conn, err := grpc.NewClient(
     "api.example.com:443",
     grpc.WithKeepaliveParams(clientParams),
     grpc.WithTransportCredentials(credentials.NewTLS(nil)),
@@ -636,7 +647,7 @@ serverParams := keepalive.ServerParameters{
 enforcementPolicy := keepalive.EnforcementPolicy{
     // Minimum time between client pings
     // Reject connections that ping more frequently
-    MinTime: 10 * time.Second,
+    MinTime: 60 * time.Second,
 
     // Allow pings without active streams
     PermitWithoutStream: true,
@@ -656,7 +667,7 @@ import grpc
 # Channel options for keepalive
 options = [
     # Time between keepalive pings (milliseconds)
-    ('grpc.keepalive_time_ms', 30000),
+    ('grpc.keepalive_time_ms', 60000),
 
     # Time to wait for ping acknowledgment (milliseconds)
     ('grpc.keepalive_timeout_ms', 10000),
@@ -664,8 +675,6 @@ options = [
     # Send pings even without active calls
     ('grpc.keepalive_permit_without_calls', True),
 
-    # Minimum time between pings
-    ('grpc.http2.min_time_between_pings_ms', 10000),
 ]
 
 channel = grpc.secure_channel(
@@ -758,16 +767,16 @@ const k8sClient = new MyServiceClient(
 ```go
 import (
     "google.golang.org/grpc"
-    "google.golang.org/grpc/balancer/roundrobin"
+    _ "google.golang.org/grpc/balancer/roundrobin" // Register round_robin balancer
     _ "google.golang.org/grpc/resolver/dns" // Import DNS resolver
 )
 
 // Use dns:/// scheme for DNS-based discovery
-conn, err := grpc.Dial(
+conn, err := grpc.NewClient(
     "dns:///my-service.example.com:443",
     grpc.WithTransportCredentials(credentials.NewTLS(nil)),
     // Enable round-robin load balancing
-    grpc.WithDefaultServiceConfig(`{"loadBalancingPolicy":"round_robin"}`),
+    grpc.WithDefaultServiceConfig(`{"loadBalancingConfig":[{"round_robin":{}}]}`),
 )
 ```
 
@@ -883,10 +892,10 @@ func init() {
 
 // Usage
 func main() {
-    conn, err := grpc.Dial(
+    conn, err := grpc.NewClient(
         "consul:///my-service",
         grpc.WithTransportCredentials(insecure.NewCredentials()),
-        grpc.WithDefaultServiceConfig(`{"loadBalancingPolicy":"round_robin"}`),
+        grpc.WithDefaultServiceConfig(`{"loadBalancingConfig":[{"round_robin":{}}]}`),
     )
     if err != nil {
         log.Fatal(err)
@@ -1077,7 +1086,7 @@ import "google.golang.org/grpc"
 
 // Service config with retry policy
 serviceConfig := `{
-    "loadBalancingPolicy": "round_robin",
+    "loadBalancingConfig": [{"round_robin": {}}],
     "methodConfig": [{
         "name": [{"service": "mypackage.MyService"}],
         "timeout": "30s",
@@ -1091,7 +1100,7 @@ serviceConfig := `{
     }]
 }`
 
-conn, err := grpc.Dial(
+conn, err := grpc.NewClient(
     "api.example.com:443",
     grpc.WithTransportCredentials(credentials.NewTLS(nil)),
     grpc.WithDefaultServiceConfig(serviceConfig),
@@ -1203,7 +1212,7 @@ process.on('SIGINT', async () => {
 |--------|----------------|
 | **Channel reuse** | Create one channel per target, reuse for all RPCs |
 | **Connection pooling** | Use for high throughput or to work around HTTP/2 limits |
-| **Keepalive** | Enable with 30s ping interval, 10s timeout |
+| **Keepalive** | Enable with 60s or server-approved ping interval, 10s timeout |
 | **Load balancing** | Use round_robin with DNS or service discovery |
 | **Retries** | Configure automatic retries for UNAVAILABLE status |
 | **Health monitoring** | Track connection state, alert on TRANSIENT_FAILURE |
