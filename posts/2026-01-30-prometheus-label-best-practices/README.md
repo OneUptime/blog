@@ -355,6 +355,8 @@ Here is a complete example implementing these best practices in a Go service:
 package metrics
 
 import (
+    "fmt"
+
     "github.com/prometheus/client_golang/prometheus"
     "github.com/prometheus/client_golang/prometheus/promauto"
 )
