@@ -16,7 +16,7 @@ GraphQL uses SDL to define types and their relationships. Before diving into adv
 
 ### Basic Type Definitions
 
-Every GraphQL schema starts with object types. These represent the data your API exposes.
+Most GraphQL schemas define object types. These represent the data your API exposes.
 
 ```graphql
 # Basic object type representing a user in your system
@@ -555,8 +555,9 @@ const postsResolver = async (_, args, context) => {
 
   query = query.orderBy(fieldMap[sortField], sortDirection);
 
-  // Get total count before pagination
-  const totalCount = await query.clone().count();
+  // Get total count before pagination. Knex-style clients return count rows.
+  const [{ count }] = await query.clone().count({ count: '*' });
+  const totalCount = Number(count);
 
   // Apply pagination
   const allItems = await query;
@@ -896,18 +897,37 @@ Directives add metadata and modify schema behavior.
 
 ### Built-in Directives
 
+GraphQL provides a few built-in directives. `@deprecated` is a schema directive used in type definitions, while `@skip` and `@include` are query-level directives used by clients to conditionally fetch fields.
+
 ```graphql
 type Post {
   id: ID!
   title: String!
 
-  # Skip deprecated field in new clients
+  # Mark a field as deprecated in the schema
   legacySlug: String @deprecated(reason: "Use 'slug' instead")
 
   slug: String!
+}
+```
 
-  # Include based on condition
-  secretField: String @skip(if: $skipSecret)
+`@skip` and `@include` are applied in queries, not in type definitions:
+
+```graphql
+query GetPost($id: ID!, $includeContent: Boolean!, $skipComments: Boolean!) {
+  post(id: $id) {
+    id
+    title
+    content @include(if: $includeContent)
+    comments @skip(if: $skipComments) {
+      edges {
+        node {
+          id
+          content
+        }
+      }
+    }
+  }
 }
 ```
 
