@@ -69,7 +69,7 @@ Expected response showing version info:
 
 Index Lifecycle Management (ILM) policies define how backing indices transition through phases and when rollover occurs. Start by creating a policy that handles hot, warm, and delete phases.
 
-The following policy keeps data in the hot phase for 7 days or until it reaches 50GB, then moves it to warm storage, and finally deletes it after 30 days:
+The following policy rolls over the write index after 7 days or when its largest primary shard reaches 50GB, then moves the rolled-over backing index to warm storage 7 days after rollover, and finally deletes it 30 days after rollover:
 
 ```json
 PUT _ilm/policy/logs-policy
@@ -248,7 +248,7 @@ PUT _component_template/logs-settings
 |---------|-------|---------|
 | `number_of_shards` | 2 | Parallelism for writes and searches |
 | `number_of_replicas` | 1 | Fault tolerance, one copy per shard |
-| `lifecycle.name` | logs-policy | Links to ILM policy for automatic management |
+| `index.lifecycle.name` | logs-policy | Links to ILM policy for automatic management |
 | `codec` | best_compression | Reduces storage at cost of CPU |
 | `refresh_interval` | 5s | Balance between near-real-time and performance |
 | `translog.durability` | async | Faster writes, slight durability tradeoff |
@@ -457,6 +457,7 @@ def generate_log_documents(count):
             }
 
         yield {
+            "_op_type": "create",
             "_index": "logs-application",
             "_source": doc
         }
@@ -798,11 +799,12 @@ POST logs-application/_delete_by_query
 
 ### Update Single Document
 
-To update a specific document, you need to know which backing index contains it. First, find the document:
+To update a specific document, you need to know which backing index contains it, along with the document's sequence number and primary term. First, find the document:
 
 ```json
 GET logs-application/_search
 {
+  "seq_no_primary_term": true,
   "query": {
     "term": {
       "trace_id": "specific-trace-id"
@@ -811,15 +813,17 @@ GET logs-application/_search
 }
 ```
 
-Then update using the backing index name and document ID from the search result:
+Then update using the backing index name, document ID, sequence number, and primary term from the search result:
 
 ```json
-POST .ds-logs-application-2026.01.30-000001/_update/document_id
+PUT .ds-logs-application-2026.01.30-000001/_doc/document_id?if_seq_no=0&if_primary_term=1
 {
-  "doc": {
-    "labels": {
-      "processed": true
-    }
+  "@timestamp": "2026-01-30T10:15:30.123Z",
+  "message": "User authentication successful",
+  "log_level": "INFO",
+  "service": "auth-service",
+  "labels": {
+    "processed": true
   }
 }
 ```
@@ -892,28 +896,21 @@ GET _cat/shards/.ds-logs-application-*?v&h=index,shard,prirep,state,docs,store,n
 
 ## Step 10: Advanced Configurations
 
-### Custom Timestamp Field
+### Timestamp Field
 
-Use a different field as the timestamp by specifying it in the index template:
+Elasticsearch data streams use `@timestamp` as the timestamp field. If your source events use a different field such as `event_time`, copy or rename it to `@timestamp` before indexing, for example with an ingest pipeline:
 
 ```json
-PUT _index_template/logs-custom-timestamp
+PUT _ingest/pipeline/copy-event-time
 {
-  "index_patterns": ["custom-logs-*"],
-  "data_stream": {
-    "timestamp_field": {
-      "name": "event_time"
-    }
-  },
-  "template": {
-    "mappings": {
-      "properties": {
-        "event_time": {
-          "type": "date"
-        }
+  "processors": [
+    {
+      "set": {
+        "field": "@timestamp",
+        "copy_from": "event_time"
       }
     }
-  }
+  ]
 }
 ```
 
@@ -979,8 +976,7 @@ PUT _ilm/policy/logs-tiered-policy
             "require": {
               "data": "cold"
             }
-          },
-          "freeze": {}
+          }
         }
       },
       "frozen": {
