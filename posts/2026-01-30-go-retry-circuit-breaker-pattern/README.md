@@ -31,7 +31,6 @@ Start with a simple retry mechanism that attempts an operation multiple times be
 package retry
 
 import (
-    "errors"
     "time"
 )
 
@@ -451,9 +450,15 @@ const (
 
 var (
     ErrCircuitOpen    = errors.New("circuit breaker is open")
-    ErrMaxRetries     = errors.New("max retries exceeded")
     ErrRequestTimeout = errors.New("request timeout")
 )
+
+// Logger interface for structured logging
+type Logger interface {
+    Info(msg string, fields map[string]interface{})
+    Warn(msg string, fields map[string]interface{})
+    Error(msg string, fields map[string]interface{})
+}
 
 // Resilient combines retry and circuit breaker patterns
 type Resilient struct {
@@ -464,6 +469,7 @@ type Resilient struct {
     lastFailure   time.Time
     halfOpenCalls int
     mu            sync.Mutex
+    logger        Logger
 
     // Metrics
     totalRequests    int64
@@ -700,16 +706,18 @@ import (
     "io"
     "net/http"
     "time"
+
+    "your/module/resilience"
 )
 
 // Client wraps http.Client with resilience patterns
 type Client struct {
     httpClient *http.Client
-    resilient  *Resilient
+    resilient  *resilience.Resilient
 }
 
 // NewClient creates a resilient HTTP client
-func NewClient(config Config) *Client {
+func NewClient(config resilience.Config) *Client {
     return &Client{
         httpClient: &http.Client{
             Timeout: config.RequestTimeout,
@@ -719,7 +727,7 @@ func NewClient(config Config) *Client {
                 IdleConnTimeout:     90 * time.Second,
             },
         },
-        resilient: New(config),
+        resilient: resilience.New(config),
     }
 }
 
@@ -743,18 +751,18 @@ func (c *Client) Get(ctx context.Context, url string) (*Response, error) {
         resp, err := c.httpClient.Do(req)
         if err != nil {
             // Network errors are retryable
-            return RetryableError{Err: err}
+            return resilience.RetryableError{Err: err}
         }
         defer resp.Body.Close()
 
         body, err := io.ReadAll(resp.Body)
         if err != nil {
-            return RetryableError{Err: err}
+            return resilience.RetryableError{Err: err}
         }
 
         // 5xx errors are retryable
         if resp.StatusCode >= 500 {
-            return RetryableError{
+            return resilience.RetryableError{
                 Err: fmt.Errorf("server error: %d", resp.StatusCode),
             }
         }
@@ -792,6 +800,9 @@ import (
     "encoding/json"
     "log"
     "time"
+
+    "your/module/httpclient"
+    "your/module/resilience"
 )
 
 type User struct {
@@ -947,21 +958,16 @@ func TestCircuitBreakerRecovers(t *testing.T) {
 Production systems need visibility into circuit breaker behavior. Add structured logging and metrics export:
 
 ```go
-// Logger interface for structured logging
-type Logger interface {
-    Info(msg string, fields map[string]interface{})
-    Warn(msg string, fields map[string]interface{})
-    Error(msg string, fields map[string]interface{})
-}
-
 // WithLogger adds logging to the resilient executor
 func (r *Resilient) WithLogger(logger Logger) *Resilient {
     r.logger = logger
     return r
 }
 
-// Log state transitions
+// Replace the existing toOpen method to log state transitions
 func (r *Resilient) toOpen() {
+    failures := r.failures
+
     r.state = StateOpen
     r.failures = 0
     r.successes = 0
@@ -970,7 +976,7 @@ func (r *Resilient) toOpen() {
     if r.logger != nil {
         r.logger.Warn("circuit breaker opened", map[string]interface{}{
             "previous_state": "closed",
-            "failures":       r.failures,
+            "failures":       failures,
         })
     }
 }
