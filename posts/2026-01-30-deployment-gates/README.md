@@ -73,6 +73,10 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+  security-events: write
+
 jobs:
   # Gate 1: Build and run unit tests
   test:
@@ -87,7 +91,7 @@ jobs:
       - name: Check coverage threshold
         run: |
           COVERAGE=$(npm run coverage:report --silent | grep "All files" | awk '{print $4}' | tr -d '%')
-          if [ "$COVERAGE" -lt 80 ]; then
+          if awk -v coverage="$COVERAGE" 'BEGIN { exit !(coverage < 80) }'; then
             echo "Coverage $COVERAGE% is below 80% threshold"
             exit 1
           fi
@@ -103,8 +107,13 @@ jobs:
         run: npm audit --audit-level=high
 
       # Static Application Security Testing (SAST)
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: javascript-typescript
+
       - name: Run SAST scan
-        uses: github/codeql-action/analyze@v3
+        uses: github/codeql-action/analyze@v4
 
   # Gate 3: Deploy to staging and verify health
   staging:
@@ -223,7 +232,7 @@ deploy-production:
 
 ## Implementing Gates in Azure DevOps
 
-Azure DevOps provides rich gate functionality through release pipelines. Gates can query external services and wait for conditions to be met.
+Azure DevOps provides rich gate functionality through classic release pipelines and approvals/checks for YAML pipelines. Checks can query external services and wait for conditions to be met.
 
 ```yaml
 # azure-pipelines.yml
@@ -264,7 +273,7 @@ stages:
     dependsOn: Staging
     jobs:
       - deployment: DeployProduction
-        # Environment with approval gates configured in Azure DevOps
+        # Environment with approvals and checks configured in Azure DevOps
         environment: production
         strategy:
           runOnce:
@@ -273,11 +282,11 @@ stages:
                 - script: ./deploy.sh production
 ```
 
-Configure gates in the Azure DevOps environment settings. Common gate types include:
+Configure approvals and checks in the Azure DevOps environment settings. Common checks include:
 
 - **Invoke REST API**: Check external services (monitoring, incident management)
 - **Query Azure Monitor alerts**: Block if active alerts exist
-- **Query work items**: Require linked work items
+- **Business Hours**: Restrict deployments to approved windows
 - **Approvals**: Require sign-off from specified users or groups
 
 ## Building Custom Gates
@@ -292,7 +301,7 @@ Sometimes built-in gates are not enough. Custom gates let you enforce domain-spe
 set -e
 
 # Query your incident management system API
-INCIDENT_COUNT=$(curl -s -H "Authorization: Bearer $INCIDENT_API_TOKEN" \
+INCIDENT_COUNT=$(curl -sf -H "Authorization: Bearer $INCIDENT_API_TOKEN" \
   "https://incidents.example.com/api/v1/incidents?status=open&severity=P1,P2" \
   | jq '.total')
 
@@ -313,7 +322,7 @@ You can also implement gates that check deployment windows, ensuring releases on
 # scripts/deployment_window_gate.py
 # Only allow deployments during approved windows
 
-from datetime import datetime
+from datetime import datetime, timezone
 import sys
 
 # Define allowed deployment windows (UTC)
@@ -323,7 +332,7 @@ ALLOWED_WINDOWS = [
 ]
 
 def is_deployment_allowed():
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     day_name = now.strftime("%A")
     hour = now.hour
 
