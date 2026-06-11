@@ -94,7 +94,7 @@ flowchart TB
         direction TB
         Check{"Gap between<br/>Session 1 end (5s)<br/>and Event C (12s)?"}
         Check2{"Gap between<br/>Event C (12s)<br/>and Session 2 start (20s)?"}
-        Result["Sessions remain separate<br/>(gaps: 7s and 8s both < 10s gap threshold)"]
+        Result["Sessions merge into one<br/>(gaps: 7s and 8s both < 10s gap threshold)"]
     end
 
     Before --> LateEvent --> After
@@ -160,10 +160,11 @@ Apache Flink provides built-in support for session windows. Here is a complete e
 ### Basic Session Window Example
 
 ```java
+import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.windowing.assigners.EventTimeSessionWindows;
-import org.apache.flink.streaming.api.windowing.time.Time;
+import java.time.Duration;
 
 public class UserSessionAnalytics {
 
@@ -173,15 +174,12 @@ public class UserSessionAnalytics {
         StreamExecutionEnvironment env =
             StreamExecutionEnvironment.getExecutionEnvironment();
 
-        // Configure event time processing
-        // Event time uses timestamps embedded in the events themselves
-        env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime);
-
         // Create a stream of user activity events
         // In production, this would come from Kafka, Kinesis, etc.
         DataStream<UserActivity> activityStream = env
             .addSource(new UserActivitySource())
             // Assign timestamps and watermarks for event time processing
+            // (event time is the default; the WatermarkStrategy below enables it)
             .assignTimestampsAndWatermarks(
                 WatermarkStrategy
                     .<UserActivity>forBoundedOutOfOrderness(Duration.ofSeconds(5))
@@ -193,7 +191,7 @@ public class UserSessionAnalytics {
             // Group events by user ID so each user has their own sessions
             .keyBy(UserActivity::getUserId)
             // Apply session window with 30-minute inactivity gap
-            .window(EventTimeSessionWindows.withGap(Time.minutes(30)))
+            .window(EventTimeSessionWindows.withGap(Duration.ofMinutes(30)))
             // Aggregate events within each session
             .aggregate(new SessionAggregator());
 
@@ -434,9 +432,9 @@ sequenceDiagram
 ```java
 DataStream<SessionSummary> sessionSummaries = activityStream
     .keyBy(UserActivity::getUserId)
-    .window(EventTimeSessionWindows.withGap(Time.minutes(30)))
+    .window(EventTimeSessionWindows.withGap(Duration.ofMinutes(30)))
     // Allow events up to 1 hour late to still be processed
-    .allowedLateness(Time.hours(1))
+    .allowedLateness(Duration.ofHours(1))
     // Send very late events to a side output for separate handling
     .sideOutputLateData(lateDataTag)
     .aggregate(new SessionAggregator());
@@ -464,16 +462,16 @@ public class DynamicSessionGap
     public long extract(UserActivity activity) {
         // Premium users get longer session gaps (they might take longer breaks)
         if (isPremiumUser(activity.getUserId())) {
-            return Time.hours(1).toMilliseconds();
+            return Duration.ofHours(1).toMillis();
         }
 
         // Mobile users typically have shorter sessions
         if ("mobile".equals(activity.getDeviceType())) {
-            return Time.minutes(15).toMilliseconds();
+            return Duration.ofMinutes(15).toMillis();
         }
 
         // Default session gap for regular web users
-        return Time.minutes(30).toMilliseconds();
+        return Duration.ofMinutes(30).toMillis();
     }
 
     private boolean isPremiumUser(String userId) {
@@ -498,7 +496,6 @@ Here is a full example that tracks user sessions on an e-commerce website.
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.windowing.assigners.EventTimeSessionWindows;
-import org.apache.flink.streaming.api.windowing.time.Time;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import java.time.Duration;
 
@@ -545,9 +542,9 @@ public class EcommerceSessionAnalytics {
             // Key by user ID so each user has independent sessions
             .keyBy(UserActivity::getUserId)
             // 30-minute session gap (standard for web analytics)
-            .window(EventTimeSessionWindows.withGap(Time.minutes(30)))
+            .window(EventTimeSessionWindows.withGap(Duration.ofMinutes(30)))
             // Allow late data up to 2 hours (handles delayed mobile events)
-            .allowedLateness(Time.hours(2))
+            .allowedLateness(Duration.ofHours(2))
             // Capture very late events for debugging
             .sideOutputLateData(LATE_DATA_TAG)
             // Custom trigger: also fire on first purchase in session
