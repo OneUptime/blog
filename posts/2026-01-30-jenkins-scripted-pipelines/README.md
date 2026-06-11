@@ -6,9 +6,9 @@ Tags: Jenkins, CI/CD, Groovy, Pipeline
 
 Description: A comprehensive guide to mastering Jenkins Scripted Pipelines.
 
-> Jenkins Scripted Pipelines give you the full power of Groovy to define complex build logic that declarative syntax simply cannot express.
+> Jenkins Scripted Pipelines give you Groovy-based control flow to define complex build logic that declarative syntax may not express cleanly.
 
-Jenkins Pipelines come in two flavors: Declarative and Scripted. While Declarative pipelines offer a simpler, opinionated syntax, Scripted Pipelines provide the flexibility and power of a full programming language. When your CI/CD requirements grow beyond simple builds, Scripted Pipelines become essential.
+Jenkins Pipelines come in two flavors: Declarative and Scripted. While Declarative pipelines offer a simpler, opinionated syntax, Scripted Pipelines provide the flexibility and power of a Groovy-based DSL. When your CI/CD requirements grow beyond simple builds, Scripted Pipelines become essential.
 
 This guide covers everything you need to know to build production-ready Jenkins Scripted Pipelines, from basic syntax to advanced patterns like shared libraries and parallel execution.
 
@@ -23,18 +23,18 @@ flowchart TD
     B --> D[Structured syntax]
     B --> E[Limited flexibility]
     B --> F[Easier to read]
-    C --> G[Full Groovy power]
+    C --> G[Groovy-based flow]
     C --> H[Maximum flexibility]
     C --> I[Programmatic control]
 ```
 
 **Declarative Pipelines** use a predefined structure with specific sections like `pipeline`, `stages`, and `steps`. They are easier to learn but constrain what you can do.
 
-**Scripted Pipelines** use Groovy code directly, wrapped in a `node` block. They offer complete programmatic control over your build process.
+**Scripted Pipelines** use a Groovy-based syntax, commonly centered on one or more `node` blocks. They offer extensive programmatic control over your build process.
 
 ## Your First Scripted Pipeline
 
-A Scripted Pipeline starts with a `node` block that allocates an executor on a Jenkins agent. Here is a minimal example:
+A typical Scripted Pipeline starts with a `node` block that allocates an executor on a Jenkins agent. Here is a minimal example:
 
 ```groovy
 // Basic Scripted Pipeline structure
@@ -112,7 +112,7 @@ Understanding how a Scripted Pipeline executes helps you structure your code eff
 
 ```mermaid
 sequenceDiagram
-    participant J as Jenkins Master
+    participant J as Jenkins Controller
     participant A as Agent
     participant W as Workspace
 
@@ -125,7 +125,7 @@ sequenceDiagram
     J->>J: Update build status
 ```
 
-The Jenkins master orchestrates the build, but actual execution happens on agents. This distributed architecture lets you scale builds across many machines.
+The Jenkins controller orchestrates the build, but actual execution happens on agents. This distributed architecture lets you scale builds across many machines.
 
 ## Working with Environment Variables
 
@@ -285,7 +285,7 @@ Each parallel branch gets its own workspace on its respective agent, allowing tr
 
 ## Dynamic Pipeline Generation
 
-Since Scripted Pipelines are Groovy code, you can generate pipeline structure dynamically:
+Since Scripted Pipelines support Groovy control flow, you can generate pipeline structure dynamically:
 
 ```groovy
 // Define environments to deploy to
@@ -298,14 +298,14 @@ node {
     }
 
     // Dynamically create deployment stages
-    environments.each { env ->
-        stage("Deploy to ${env}") {
+    for (targetEnv in environments) {
+        stage("Deploy to ${targetEnv}") {
             // Add approval for production
-            if (env == 'production') {
+            if (targetEnv == 'production') {
                 input message: "Deploy to production?", ok: "Deploy"
             }
 
-            sh "./deploy.sh ${env}"
+            sh "./deploy.sh ${targetEnv}"
         }
     }
 }
@@ -321,8 +321,8 @@ def osPlatforms = ['linux', 'macos']
 
 // Generate all combinations
 def combinations = []
-nodeVersions.each { nodeVer ->
-    osPlatforms.each { os ->
+for (nodeVer in nodeVersions) {
+    for (os in osPlatforms) {
         combinations.add([node: nodeVer, os: os])
     }
 }
@@ -330,12 +330,14 @@ nodeVersions.each { nodeVer ->
 stage('Matrix Tests') {
     def parallelStages = [:]
 
-    combinations.each { combo ->
-        def stageName = "Node ${combo.node} on ${combo.os}"
+    for (combo in combinations) {
+        def nodeVersion = combo.node
+        def os = combo.os
+        def stageName = "Node ${nodeVersion} on ${os}"
         parallelStages[stageName] = {
-            node(combo.os) {
+            node(os) {
                 checkout scm
-                sh "nvm use ${combo.node}"
+                sh "nvm use ${nodeVersion}"
                 sh 'npm install'
                 sh 'npm test'
             }
@@ -568,7 +570,7 @@ def call(Map config = [:]) {
 
 ### Using the Shared Library
 
-Configure the library in Jenkins (Manage Jenkins > Configure System > Global Pipeline Libraries), then use it in your Jenkinsfile:
+Configure the library in Jenkins (Manage Jenkins > System > Global Pipeline Libraries), then use it in your Jenkinsfile:
 
 ```groovy
 // Load the shared library
@@ -742,7 +744,7 @@ node {
                     sh 'npm run typecheck'
                 },
                 'Security Audit': {
-                    sh 'npm audit --production'
+                    sh 'npm audit --omit=dev'
                 }
             )
         }
@@ -1016,7 +1018,7 @@ Or convert entirely to Scripted for maximum control.
 
 ## Conclusion
 
-Jenkins Scripted Pipelines provide the power and flexibility to handle complex CI/CD requirements that Declarative syntax cannot express. Key takeaways:
+Jenkins Scripted Pipelines provide the power and flexibility to handle complex CI/CD requirements that Declarative syntax cannot express cleanly. Key takeaways:
 
 - **Node blocks** allocate executors and create workspaces
 - **Stage blocks** organize pipelines visually
@@ -1025,6 +1027,6 @@ Jenkins Scripted Pipelines provide the power and flexibility to handle complex C
 - **Shared Libraries** let you reuse pipeline code across projects
 - **Dynamic generation** creates pipelines programmatically
 
-Start with simple pipelines and add complexity as needed. The full power of Groovy is available when you need it, but keep pipelines as simple as possible for maintainability.
+Start with simple pipelines and add complexity as needed. Groovy-based control flow is available when you need it, but keep pipelines as simple as possible for maintainability.
 
 With Scripted Pipelines, your CI/CD logic is code. Treat it with the same care you give your application code: version it, review it, test it, and refactor it when needed.
