@@ -186,7 +186,7 @@ class TemporalCorrelator {
 
     // Create a new correlation group
     const newGroup: CorrelatedGroup = {
-      id: `grp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      id: `grp_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`,
       events: [event],
       startTime: event.timestamp,
       endTime: event.timestamp,
@@ -342,7 +342,7 @@ class SpatialCorrelator {
       group.impactScore = this.calculateImpactScore(group.affectedNodes);
     } else {
       group = {
-        id: `spatial_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        id: `spatial_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`,
         rootNode,
         events: [event],
         affectedNodes: new Set([event.nodeId]),
@@ -492,6 +492,20 @@ class CausalCorrelator {
     return matches;
   }
 
+  // Find the chain that already contains an event
+  private findChainForEvent(eventId: string): CausalChain | null {
+    for (const chain of this.chains.values()) {
+      if (
+        chain.rootCause.id === eventId ||
+        chain.effects.some((effect) => effect.event.id === eventId)
+      ) {
+        return chain;
+      }
+    }
+
+    return null;
+  }
+
   // Add event and attempt causal correlation
   public addEvent(event: CausalEvent): CausalChain | null {
     const now = new Date();
@@ -501,11 +515,11 @@ class CausalCorrelator {
       (e) => now.getTime() - e.timestamp.getTime() < this.retentionMs
     );
 
-    // Add to recent events
-    this.recentEvents.push(event);
-
-    // Find potential causes
+    // Find potential causes before adding this event, so it cannot match itself
     const causes = this.findCauses(event);
+
+    // Add to recent events for future correlations
+    this.recentEvents.push(event);
 
     if (causes.length === 0) {
       // This might be a root cause, create new chain
@@ -525,7 +539,7 @@ class CausalCorrelator {
     );
 
     // Find or create chain for the cause
-    let chain = this.chains.get(bestMatch.cause.id);
+    let chain = this.findChainForEvent(bestMatch.cause.id);
 
     if (!chain) {
       chain = {
@@ -763,7 +777,7 @@ class UnifiedCorrelator {
 
     if (!incident) {
       incident = {
-        id: `incident_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        id: `incident_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`,
         events: [],
         temporalGroupId: temporalGroup?.id || null,
         spatialGroupId: spatialGroup.id,
