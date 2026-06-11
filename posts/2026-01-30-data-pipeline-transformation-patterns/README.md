@@ -212,7 +212,7 @@ The gold layer contains business-ready models organized as dimensional tables (f
             "data_type": "date",
             "granularity": "month"
         },
-        cluster_by=['customer_key', 'product_key']
+        cluster_by=['customer_key']
     )
 }}
 
@@ -228,14 +228,11 @@ customers AS (
     SELECT * FROM {{ ref('dim_customers') }}
 ),
 
-products AS (
-    SELECT * FROM {{ ref('dim_products') }}
-),
-
 -- Calculate order-level metrics
 order_metrics AS (
     SELECT
         o.order_id,
+        o.customer_id,
         o.order_date,
         o.order_status,
         o.shipping_method,
@@ -275,7 +272,7 @@ order_metrics AS (
     FROM orders o
     LEFT JOIN order_items oi ON o.order_id = oi.order_id
     LEFT JOIN customers c ON o.customer_id = c.customer_id
-    GROUP BY 1, 2, 3, 4, 5, c.first_order_date
+    GROUP BY 1, 2, 3, 4, 5, 6, c.first_order_date
 )
 
 SELECT
@@ -309,10 +306,11 @@ Track historical changes to dimension attributes over time.
 
 WITH source AS (
     SELECT * FROM {{ ref('stg_customers') }}
-),
+)
 
 {% if is_incremental() %}
 -- Get current active records from the existing dimension
+,
 current_records AS (
     SELECT * FROM {{ this }}
     WHERE is_current = TRUE
@@ -408,7 +406,7 @@ snapshots:
       unique_key: order_id
       updated_at: updated_at
       # Invalidate records that change
-      invalidate_hard_deletes: true
+      hard_deletes: invalidate
 ```
 
 ```sql
@@ -423,7 +421,7 @@ snapshots:
         unique_key='order_id',
         strategy='timestamp',
         updated_at='updated_at',
-        invalidate_hard_deletes=true
+        hard_deletes='invalidate'
     )
 }}
 
@@ -455,6 +453,10 @@ Flatten nested structures and pre-join tables for query performance.
         partition_by={"field": "order_date", "data_type": "date"}
     )
 }}
+
+WITH order_items AS (
+    SELECT * FROM {{ ref('stg_order_items') }}
+)
 
 SELECT
     -- Order facts
@@ -499,8 +501,9 @@ SELECT
     g.timezone
 
 FROM {{ ref('fct_orders') }} f
+LEFT JOIN order_items oi ON f.order_id = oi.order_id
 LEFT JOIN {{ ref('dim_customers') }} c ON f.customer_key = c.customer_key
-LEFT JOIN {{ ref('dim_products') }} p ON f.product_key = p.product_key
+LEFT JOIN {{ ref('dim_products') }} p ON oi.product_id = p.product_id
 LEFT JOIN {{ ref('dim_date') }} d ON f.order_date = d.date_day
 LEFT JOIN {{ ref('dim_geography') }} g ON c.geography_key = g.geography_key
 ```
@@ -550,7 +553,7 @@ def clean_and_standardize(
     Args:
         df: Input DataFrame
         string_columns: Columns to trim and lowercase
-        date_columns: Dict mapping column names to date formats
+        date_columns: Dict mapping column names to timestamp formats
 
     Returns:
         Cleaned DataFrame with standardized values
@@ -564,11 +567,11 @@ def clean_and_standardize(
             F.lower(F.trim(F.col(col)))
         )
 
-    # Parse date columns with specified formats
+    # Parse timestamp columns with specified formats
     for col, fmt in date_columns.items():
         result = result.withColumn(
             col,
-            F.to_date(F.col(col), fmt)
+            F.to_timestamp(F.col(col), fmt)
         )
 
     return result
@@ -771,7 +774,11 @@ def apply_scd_type2(
             F.col(f"cur.{key_col}").isNull() | has_changed
         )
         .select(
-            *[F.col(f"upd.{c}") for c in updates.columns],
+            *[
+                F.col(f"upd.{c}").alias(c)
+                for c in current_dim.columns
+                if c not in ["valid_from", "valid_to", "is_current"]
+            ],
             F.current_timestamp().alias("valid_from"),
             F.lit(None).cast("timestamp").alias("valid_to"),
             F.lit(True).alias("is_current")
@@ -781,14 +788,19 @@ def apply_scd_type2(
     # Unchanged current records
     unchanged = (
         joined
-        .filter(~has_changed | F.col(f"cur.{key_col}").isNull())
+        .filter(F.col(f"cur.{key_col}").isNotNull() & ~has_changed)
         .select(*[F.col(f"cur.{c}") for c in current_dim.columns])
     )
 
     # Historical records (not current)
     historical = current_dim.filter(F.col("is_current") == False)
 
-    return historical.union(unchanged).union(records_to_close).union(new_records)
+    return (
+        historical
+        .unionByName(unchanged)
+        .unionByName(records_to_close)
+        .unionByName(new_records)
+    )
 
 
 # Example usage demonstrating the transformation pipeline
@@ -911,87 +923,92 @@ models:
     description: "Order fact table with calculated metrics"
 
     # Model-level tests
-    tests:
-      # Ensure row count is reasonable (not empty, not duplicated)
-      - dbt_utils.expression_is_true:
-          expression: "count(*) > 0"
-
+    data_tests:
       # Ensure no future dates
       - dbt_utils.expression_is_true:
-          expression: "max(order_date) <= current_date()"
+          arguments:
+            expression: "order_date <= current_date()"
 
     columns:
       - name: order_key
         description: "Surrogate key for the order"
-        tests:
+        data_tests:
           - unique
           - not_null
+          - dbt_utils.at_least_one
 
       - name: order_id
         description: "Natural key from source system"
-        tests:
+        data_tests:
           - unique
           - not_null
 
       - name: customer_key
         description: "Foreign key to dim_customers"
-        tests:
+        data_tests:
           - not_null
           - relationships:
-              to: ref('dim_customers')
-              field: customer_key
+              arguments:
+                to: ref('dim_customers')
+                field: customer_key
 
       - name: order_status
         description: "Current status of the order"
-        tests:
+        data_tests:
           - not_null
           - accepted_values:
-              values: ['pending', 'confirmed', 'shipped', 'delivered', 'cancelled', 'refunded']
+              arguments:
+                values: ['pending', 'confirmed', 'shipped', 'delivered', 'cancelled', 'refunded']
 
       - name: net_revenue
         description: "Order revenue after discounts"
-        tests:
+        data_tests:
           - not_null
           - dbt_utils.expression_is_true:
-              expression: ">= 0"
+              arguments:
+                expression: ">= 0"
               config:
                 severity: error
 
       - name: order_date
         description: "Date the order was placed"
-        tests:
+        data_tests:
           - not_null
           # Ensure reasonable date range
           - dbt_utils.accepted_range:
-              min_value: "'2020-01-01'"
-              max_value: "current_date()"
+              arguments:
+                min_value: "'2020-01-01'"
+                max_value: "current_date()"
 
   - name: dim_customers
     description: "Customer dimension with current attributes"
 
     columns:
       - name: customer_key
-        tests:
+        data_tests:
           - unique
           - not_null
 
       - name: email
-        tests:
+        data_tests:
           - unique
           - not_null
           # Validate email format
           - dbt_utils.expression_is_true:
-              expression: "regexp_contains(email, r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$')"
+              arguments:
+                expression: "regexp_contains(email, r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$')"
 
       - name: segment
-        tests:
+        data_tests:
           - accepted_values:
-              values: ['enterprise', 'mid_market', 'smb', 'consumer']
+              arguments:
+                values: ['enterprise', 'mid_market', 'smb', 'consumer']
 
       - name: lifetime_value
-        tests:
+        data_tests:
           - dbt_utils.expression_is_true:
-              expression: ">= 0"
+              arguments:
+                expression: ">= 0"
 ```
 
 ### Custom Data Quality Tests
@@ -1051,10 +1068,11 @@ WITH orphaned_orders AS (
     SELECT
         f.order_key,
         f.order_id,
-        f.product_key,
+        oi.product_id,
         'missing_product' AS issue
     FROM {{ ref('fct_orders') }} f
-    LEFT JOIN {{ ref('dim_products') }} p ON f.product_key = p.product_key
+    LEFT JOIN {{ ref('stg_order_items') }} oi ON f.order_id = oi.order_id
+    LEFT JOIN {{ ref('dim_products') }} p ON oi.product_id = p.product_id
     WHERE p.product_key IS NULL
 )
 
@@ -1070,7 +1088,6 @@ For more sophisticated data quality checks, integrate Great Expectations with yo
 # Define comprehensive data quality expectations for the gold layer
 
 import great_expectations as gx
-from great_expectations.core.expectation_configuration import ExpectationConfiguration
 
 
 def create_order_expectations_suite():
@@ -1080,86 +1097,67 @@ def create_order_expectations_suite():
     """
     context = gx.get_context()
 
-    suite = context.add_expectation_suite(
-        expectation_suite_name="fct_orders_suite"
+    suite = context.suites.add(
+        gx.ExpectationSuite(name="fct_orders_suite")
     )
 
     # Expect table to have data
     suite.add_expectation(
-        ExpectationConfiguration(
-            expectation_type="expect_table_row_count_to_be_between",
-            kwargs={
-                "min_value": 1000,  # Minimum expected orders
-                "max_value": 10000000  # Sanity check upper bound
-            }
+        gx.expectations.ExpectTableRowCountToBeBetween(
+            min_value=1000,  # Minimum expected orders
+            max_value=10000000  # Sanity check upper bound
         )
     )
 
     # Expect no duplicate order keys
     suite.add_expectation(
-        ExpectationConfiguration(
-            expectation_type="expect_column_values_to_be_unique",
-            kwargs={"column": "order_key"}
+        gx.expectations.ExpectColumnValuesToBeUnique(
+            column="order_key"
         )
     )
 
     # Expect order dates within valid range
     suite.add_expectation(
-        ExpectationConfiguration(
-            expectation_type="expect_column_values_to_be_between",
-            kwargs={
-                "column": "order_date",
-                "min_value": "2020-01-01",
-                "max_value": "2026-12-31",
-                "parse_strings_as_datetimes": True
-            }
+        gx.expectations.ExpectColumnValuesToBeBetween(
+            column="order_date",
+            min_value="2020-01-01",
+            max_value="2026-12-31",
+            parse_strings_as_datetimes=True
         )
     )
 
     # Expect revenue to be positive
     suite.add_expectation(
-        ExpectationConfiguration(
-            expectation_type="expect_column_values_to_be_between",
-            kwargs={
-                "column": "net_revenue",
-                "min_value": 0,
-                "max_value": 1000000  # Flag unusually large orders
-            }
+        gx.expectations.ExpectColumnValuesToBeBetween(
+            column="net_revenue",
+            min_value=0,
+            max_value=1000000  # Flag unusually large orders
         )
     )
 
     # Expect order status distribution to be reasonable
     suite.add_expectation(
-        ExpectationConfiguration(
-            expectation_type="expect_column_distinct_values_to_be_in_set",
-            kwargs={
-                "column": "order_status",
-                "value_set": ["pending", "confirmed", "shipped", "delivered", "cancelled", "refunded"]
-            }
+        gx.expectations.ExpectColumnDistinctValuesToBeInSet(
+            column="order_status",
+            value_set=["pending", "confirmed", "shipped", "delivered", "cancelled", "refunded"]
         )
     )
 
     # Expect customer key to never be null
     suite.add_expectation(
-        ExpectationConfiguration(
-            expectation_type="expect_column_values_to_not_be_null",
-            kwargs={"column": "customer_key"}
+        gx.expectations.ExpectColumnValuesToNotBeNull(
+            column="customer_key"
         )
     )
 
-    # Expect reasonable percentage of high-value orders (business logic check)
+    # Expect high-value order flag to contain only boolean values
     suite.add_expectation(
-        ExpectationConfiguration(
-            expectation_type="expect_column_proportion_of_unique_values_to_be_between",
-            kwargs={
-                "column": "is_high_value_order",
-                "min_value": 0.05,  # At least 5% high value
-                "max_value": 0.50   # No more than 50% high value
-            }
+        gx.expectations.ExpectColumnDistinctValuesToBeInSet(
+            column="is_high_value_order",
+            value_set=[True, False]
         )
     )
 
-    context.save_expectation_suite(suite)
     return suite
 ```
 
@@ -1239,7 +1237,7 @@ with DAG(
     dag_id="data_transformation_pipeline",
     default_args=default_args,
     description="Daily data transformation pipeline: Bronze -> Silver -> Gold",
-    schedule_interval="0 6 * * *",  # Run at 6 AM UTC daily
+    schedule="0 6 * * *",  # Run at 6 AM UTC daily
     start_date=datetime(2026, 1, 1),
     catchup=False,
     tags=["transformation", "dbt", "spark"],
@@ -1310,7 +1308,7 @@ with DAG(
     # Task: Run Great Expectations validation
     run_great_expectations = PythonOperator(
         task_id="run_great_expectations",
-        python_callable=lambda: __import__("great_expectations_suite").run_validation(),
+        python_callable=lambda: __import__("great_expectations_suite").create_order_expectations_suite(),
     )
 
     # Task: Send success notification
