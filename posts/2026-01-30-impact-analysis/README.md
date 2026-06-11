@@ -84,7 +84,7 @@ interface UserImpactMetrics {
 interface ServiceUserMetrics {
   serviceName: string;
   activeUsersPerMinute: number;
-  errorRate: number;
+  errorRate: number;        // Fraction from 0 to 1
   latencyP99Ms: number;
 }
 
@@ -122,6 +122,15 @@ class UserImpactCalculator {
       // No baseline data, estimate from current
       return {
         totalActiveUsers: currentMetrics.activeUsersPerMinute,
+        affectedUsers: 0,
+        impactPercentage: 0,
+        impactSeverity: 'none',
+      };
+    }
+
+    if (baseline.activeUsersPerMinute === 0) {
+      return {
+        totalActiveUsers: 0,
         affectedUsers: 0,
         impactPercentage: 0,
         impactSeverity: 'none',
@@ -317,7 +326,7 @@ const impact = revenueCalculator.calculateRevenueLoss(
   0.7,   // Degraded impact weight
   45     // 45 minutes duration
 );
-// Result: ~$393.75 estimated loss (30000/60 * 2.5 * 0.25 * 0.7 * 45)
+// Result: ~$9,843.75 estimated loss (30000/60 * 2.5 * 0.25 * 0.7 * 45)
 ```
 
 ### Revenue Impact Dashboard Query
@@ -422,7 +431,8 @@ class SLOTracker {
 
       statuses.push({
         slo,
-        currentValue: ((totalBudget - consumedAfter) / totalBudget) * 100,
+        currentValue:
+          slo.target + (remaining / totalBudget) * (100 - slo.target),
         remainingBudget: remaining,
         budgetConsumedPercent: (consumedAfter / totalBudget) * 100,
         projectedBreach: remaining === 0 ? new Date() : null,
@@ -507,8 +517,8 @@ function calculateBurnRate(
   const timeToExhaustion = remainingBudget / currentDowntimeRate * 60;
 
   let alertLevel: BurnRateAlert['alertLevel'] = 'info';
-  if (burnMultiplier > 14.4) alertLevel = 'critical';  // 14.4x = budget gone in 1 hour
-  else if (burnMultiplier > 6) alertLevel = 'warning'; // 6x = budget gone in 6 hours
+  if (burnMultiplier > 14.4) alertLevel = 'critical';  // Fast-burn page threshold
+  else if (burnMultiplier > 6) alertLevel = 'warning'; // Significant budget burn
 
   return {
     sloName: `Availability ${targetAvailability}%`,
@@ -682,8 +692,56 @@ graph.addService({
   owningTeam: 'commerce',
 });
 
+graph.addService({
+  name: 'user-service',
+  tier: 'high',
+  dependencies: ['database'],
+  dependents: ['api-gateway'],
+  owningTeam: 'identity',
+});
+
+graph.addService({
+  name: 'inventory-service',
+  tier: 'medium',
+  dependencies: ['database'],
+  dependents: ['search-service'],
+  owningTeam: 'catalog',
+});
+
+graph.addService({
+  name: 'checkout-flow',
+  tier: 'critical',
+  dependencies: ['order-service'],
+  dependents: ['partner-api'],
+  owningTeam: 'commerce',
+});
+
+graph.addService({
+  name: 'api-gateway',
+  tier: 'critical',
+  dependencies: ['user-service', 'order-service'],
+  dependents: [],
+  owningTeam: 'platform',
+});
+
+graph.addService({
+  name: 'search-service',
+  tier: 'medium',
+  dependencies: ['inventory-service'],
+  dependents: [],
+  owningTeam: 'catalog',
+});
+
+graph.addService({
+  name: 'partner-api',
+  tier: 'high',
+  dependencies: ['checkout-flow'],
+  dependents: [],
+  owningTeam: 'partnerships',
+});
+
 const blastRadius = graph.calculateBlastRadius('database');
-// Result: { totalServices: 7, criticalServices: 2, teamsAffected: Set(3), maxDepth: 3 }
+// Result: { totalServices: 8, criticalServices: 4, teamsAffected: Set(5), maxDepth: 3 }
 ```
 
 ---
@@ -800,12 +858,15 @@ class CustomerSegmentAnalyzer {
     limit: number = 10
   ): Customer[] {
     const affectedCustomers: Customer[] = [];
+    const seenCustomerIds = new Set<string>();
 
     for (const service of affectedServices) {
       const customerIds = this.serviceToCustomers.get(service);
       if (!customerIds) continue;
 
       for (const customerId of customerIds) {
+        if (seenCustomerIds.has(customerId)) continue;
+        seenCustomerIds.add(customerId);
         const customer = this.customers.get(customerId);
         if (customer) affectedCustomers.push(customer);
       }
@@ -892,7 +953,8 @@ Accurate duration tracking enables precise impact calculations and SLO measureme
 ```mermaid
 stateDiagram-v2
     [*] --> Detected: Alert fires
-    Detected --> Investigating: Team acknowledges
+    Detected --> Acknowledged: Team acknowledges
+    Acknowledged --> Investigating: Triage begins
     Investigating --> Mitigating: Root cause found
     Mitigating --> Monitoring: Fix applied
     Monitoring --> Resolved: Stable for N minutes
@@ -934,6 +996,10 @@ class IncidentDurationTracker {
   private impactPeriods: Array<{ start: Date; end?: Date }> = [];
 
   constructor(private incidentId: string) {}
+
+  getIncidentId(): string {
+    return this.incidentId;
+  }
 
   recordTransition(
     fromState: IncidentState,
@@ -1284,10 +1350,10 @@ const result = calculator.calculate({
 
 // Result:
 // {
-//   score: 62.3,
-//   severity: 'SEV2',
-//   breakdown: { userImpact: 9, revenueImpact: 11, sloImpact: 8, ... },
-//   recommendations: ['Revenue loss $450/min - consider rollback', ...]
+//   score: 37.7,
+//   severity: 'SEV4',
+//   breakdown: { userImpact: 9, revenueImpact: 11, sloImpact: 9, ... },
+//   recommendations: ['12 enterprise customers affected - notify account managers']
 // }
 ```
 
@@ -1313,11 +1379,11 @@ interface DashboardData {
 }
 
 class ImpactDashboard {
-  private userCalculator: UserImpactCalculator;
-  private revenueCalculator: RevenueImpactCalculator;
-  private sloTracker: SLOTracker;
-  private serviceGraph: ServiceDependencyGraph;
-  private customerAnalyzer: CustomerSegmentAnalyzer;
+  private userCalculator!: UserImpactCalculator;
+  private revenueCalculator!: RevenueImpactCalculator;
+  private sloTracker!: SLOTracker;
+  private serviceGraph!: ServiceDependencyGraph;
+  private customerAnalyzer!: CustomerSegmentAnalyzer;
   private durationTracker: IncidentDurationTracker;
   private scoreCalculator: ImpactScoreCalculator;
 
@@ -1372,7 +1438,7 @@ class ImpactDashboard {
     });
 
     return {
-      incidentId: this.durationTracker['incidentId'],
+      incidentId: this.durationTracker.getIncidentId(),
       status: 'investigating',
       impactScore,
       userImpact,
