@@ -156,8 +156,9 @@ class ResilientChangeStream {
     constructor(collection, pipeline, options = {}) {
         this.collection = collection;
         this.pipeline = pipeline;
-        this.options = options;
-        this.tokenFile = options.tokenFile || './resume-token.json';
+        const { tokenFile, ...watchOptions } = options;
+        this.options = watchOptions;
+        this.tokenFile = tokenFile || './resume-token.json';
     }
 
     async start(handler) {
@@ -184,8 +185,9 @@ class ResilientChangeStream {
             }
         });
 
-        this.stream.on('error', (error) => {
+        this.stream.on('error', async (error) => {
             console.error('Stream error, will restart:', error.message);
+            await this.close();
             setTimeout(() => this.start(handler), 5000);
         });
     }
@@ -203,9 +205,9 @@ class ResilientChangeStream {
         await fs.writeFile(this.tokenFile, JSON.stringify(token));
     }
 
-    close() {
+    async close() {
         if (this.stream) {
-            this.stream.close();
+            await this.stream.close();
         }
     }
 }
@@ -219,15 +221,13 @@ const pipeline = [
     {
         $match: {
             'operationType': 'insert',
-            'fullDocument.eventType': {
+            'fullDocument.metadata.eventType': {
                 $in: ['page_view', 'purchase', 'signup']
             }
         }
     },
     {
         $project: {
-            'fullDocument.eventType': 1,
-            'fullDocument.userId': 1,
             'fullDocument.timestamp': 1,
             'fullDocument.metadata': 1
         }
@@ -313,7 +313,7 @@ async function recordEventsBatch(db, events) {
     }));
 
     await db.collection('events_ts').insertMany(documents, {
-        ordered: false // Continue on duplicate key errors
+        ordered: false // Continue after individual write errors where possible
     });
 }
 ```
@@ -661,6 +661,9 @@ async function getTumblingWindowMetrics(db, eventType, windowMinutes, hours) {
             }
         },
         {
+            $sort: { value: 1 }
+        },
+        {
             $group: {
                 _id: {
                     $dateTrunc: {
@@ -682,7 +685,17 @@ async function getTumblingWindowMetrics(db, eventType, windowMinutes, hours) {
                 p95: {
                     $arrayElemAt: [
                         '$values',
-                        { $floor: { $multiply: [0.95, { $size: '$values' }] } }
+                        {
+                            $max: [
+                                0,
+                                {
+                                    $subtract: [
+                                        { $ceil: { $multiply: [0.95, { $size: '$values' }] } },
+                                        1
+                                    ]
+                                }
+                            ]
+                        }
                     ]
                 }
             }
@@ -763,7 +776,9 @@ class RealTimeDashboardServer {
 
     async watchCollection(collectionName, handler) {
         const collection = this.db.collection(collectionName);
-        const changeStream = collection.watch();
+        const changeStream = collection.watch([], {
+            fullDocument: 'updateLookup'
+        });
 
         changeStream.on('change', handler);
         this.changeStreams.set(collectionName, changeStream);
@@ -868,7 +883,7 @@ server.start().then(() => console.log('WebSocket server running on 8080'));
 import React, { useState, useEffect, useRef } from 'react';
 
 function LiveDashboard() {
-    const [metrics, setMetrics] = useState([]);
+    const [metrics, setMetrics] = useState({});
     const [connected, setConnected] = useState(false);
     const wsRef = useRef(null);
 
@@ -1077,7 +1092,7 @@ class BatchProcessor {
         });
 
         // Accumulate metric updates
-        const key = `${event.type}:minute:${this.getMinuteBucket()}`;
+        const key = JSON.stringify([event.type, 'minute', this.getMinuteBucket()]);
         const existing = this.metricUpdates.get(key) || { count: 0, total: 0 };
         this.metricUpdates.set(key, {
             count: existing.count + 1,
@@ -1118,7 +1133,7 @@ class BatchProcessor {
             if (metrics.size > 0) {
                 const bulkOps = [];
                 for (const [key, data] of metrics) {
-                    const [type, granularity, bucket] = key.split(':');
+                    const [type, granularity, bucket] = JSON.parse(key);
                     bulkOps.push({
                         updateOne: {
                             filter: {
@@ -1139,6 +1154,13 @@ class BatchProcessor {
             console.error('Batch flush error:', error);
             // Re-queue failed items for retry
             this.eventBuffer.unshift(...events);
+            for (const [key, data] of metrics) {
+                const existing = this.metricUpdates.get(key) || { count: 0, total: 0 };
+                this.metricUpdates.set(key, {
+                    count: existing.count + data.count,
+                    total: existing.total + data.total
+                });
+            }
         }
     }
 
@@ -1401,7 +1423,7 @@ class RealTimeAnalyticsSystem {
         );
 
         // Start WebSocket server
-        this.wsServer = new RealTimeDashboardServer(this.wsPort, this.db);
+        this.wsServer = new RealTimeDashboardServer(this.wsPort, this.mongoUri);
         await this.wsServer.start();
 
         console.log(`Analytics system started on port ${this.wsPort}`);
@@ -1451,7 +1473,15 @@ class RealTimeAnalyticsSystem {
             await this.updateMetrics(event);
 
             // Broadcast to WebSocket clients
-            this.wsServer.broadcastEvent(event);
+            this.wsServer.broadcast(`events:${event.metadata.eventType}`, {
+                type: 'event',
+                channel: `events:${event.metadata.eventType}`,
+                data: {
+                    timestamp: event.timestamp,
+                    value: event.value,
+                    metadata: event.metadata
+                }
+            });
         });
 
         this.changeStream.on('error', (error) => {
@@ -1524,7 +1554,7 @@ process.on('SIGTERM', async () => {
 
 | Component | Purpose | Key Benefit |
 |-----------|---------|-------------|
-| Change Streams | Capture database changes | No polling, guaranteed delivery |
+| Change Streams | Capture database changes | No polling, resumable delivery |
 | Time-Series Collections | Optimized storage | Automatic bucketing, compression |
 | Pre-Aggregation | Compute metrics ahead | Fast dashboard reads |
 | Time Windows | Organize data intervals | Consistent comparisons |
