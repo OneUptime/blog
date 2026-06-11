@@ -74,6 +74,10 @@ Ingesters hold recent samples in memory before flushing to object storage. The h
 
 # Ingester ring configuration for sharded distribution
 
+memberlist:
+  join_members:
+    - mimir-gossip-ring.mimir.svc.cluster.local:7946
+
 ingester:
   ring:
     # Number of virtual tokens per ingester
@@ -94,9 +98,6 @@ ingester:
     # Key-value store for ring state
     kvstore:
       store: memberlist
-      memberlist:
-        join_members:
-          - mimir-gossip-ring.mimir.svc.cluster.local:7946
 
   # Instance-specific configuration
   instance_limits:
@@ -117,7 +118,7 @@ Zone awareness ensures replicas land in different availability zones. This preve
 ingester:
   ring:
     zone_awareness_enabled: true
-    # Require replicas in different zones before acknowledging writes
+    # Optionally exclude zones from the ring during zone maintenance
     excluded_zones: ""
 
   # Set via environment variable or command line per instance
@@ -171,17 +172,15 @@ Compactors merge small blocks into larger ones and handle retention. Without sha
 # mimir-config.yaml
 # Compactor sharding distributes tenants across compactor instances
 
-compactor:
-  # Enable sharding to distribute compaction work
-  sharding_enabled: true
+memberlist:
+  join_members:
+    - mimir-gossip-ring.mimir.svc.cluster.local:7946
 
+compactor:
   # Ring configuration for compactor coordination
-  ring:
+  sharding_ring:
     kvstore:
       store: memberlist
-      memberlist:
-        join_members:
-          - mimir-gossip-ring.mimir.svc.cluster.local:7946
 
     # Wait time before compactor claims ownership after startup
     wait_stability_min_duration: 1m
@@ -193,9 +192,10 @@ compactor:
   # Number of parallel compaction operations per compactor
   compaction_concurrency: 4
 
+limits:
   # Tenant-level sharding assigns each tenant to specific compactors
   # This prevents multiple compactors from competing for the same tenant
-  tenant_shard_size: 2
+  compactor_tenant_shard_size: 2
 ```
 
 ### Compactor Shard Distribution
@@ -223,7 +223,7 @@ flowchart LR
     T4 --> C1 & C2
 
     subgraph Legend
-        L1["tenant_shard_size: 2"]
+        L1["compactor_tenant_shard_size: 2"]
         L2["Each tenant assigned to 2 compactors"]
     end
 ```
@@ -235,14 +235,15 @@ compactor:
   # Enable cleanup of deleted blocks
   deletion_delay: 12h
 
-  # Retention enforcement
-  retention_enabled: true
-
   # Cleanup interval for partial uploads and failed compactions
   cleanup_interval: 15m
 
-  # Maximum number of blocks to compact in one operation
+  # Maximum time for starting compactions for a single tenant in one cycle
   max_compaction_time: 1h
+
+limits:
+  # Retention enforcement
+  compactor_blocks_retention_period: 30d
 ```
 
 ## Store-Gateway Sharding
@@ -255,10 +256,11 @@ Store-gateways lazy-load block indexes and chunks from object storage. Sharding 
 # mimir-config.yaml
 # Store-gateway sharding for distributed block access
 
-store_gateway:
-  # Enable sharding across store-gateway instances
-  sharding_enabled: true
+memberlist:
+  join_members:
+    - mimir-gossip-ring.mimir.svc.cluster.local:7946
 
+store_gateway:
   # Replication ensures blocks are available during node failures
   sharding_ring:
     replication_factor: 3
@@ -268,9 +270,6 @@ store_gateway:
 
     kvstore:
       store: memberlist
-      memberlist:
-        join_members:
-          - mimir-gossip-ring.mimir.svc.cluster.local:7946
 
     # Zone awareness for store-gateways
     zone_awareness_enabled: true
@@ -294,8 +293,9 @@ blocks_storage:
 
   bucket_store:
     # Index header caching reduces object storage reads
-    index_header_lazy_loading_enabled: true
-    index_header_lazy_loading_idle_timeout: 1h
+    index_header:
+      lazy_loading_enabled: true
+      lazy_loading_idle_timeout: 1h
 
     # Sync interval for discovering new blocks
     sync_interval: 15m
@@ -496,8 +496,7 @@ ingester:
 
 # Compactor sharding
 compactor:
-  sharding_enabled: true
-  ring:
+  sharding_ring:
     kvstore:
       store: memberlist
     wait_stability_min_duration: 1m
@@ -505,7 +504,6 @@ compactor:
 
 # Store-gateway sharding
 store_gateway:
-  sharding_enabled: true
   sharding_ring:
     replication_factor: 3
     num_tokens: 512
@@ -517,9 +515,6 @@ store_gateway:
 query_frontend:
   # Split queries by time interval for parallel execution
   split_queries_by_interval: 24h
-
-  # Maximum parallelism per query
-  max_outstanding_requests_per_tenant: 100
 
 # Query-scheduler for query distribution
 query_scheduler:
