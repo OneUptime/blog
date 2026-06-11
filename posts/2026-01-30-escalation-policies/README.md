@@ -98,7 +98,7 @@ flowchart TD
 # Manages time-based escalation logic for incidents
 
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime
 from dataclasses import dataclass
 from enum import Enum
 from typing import Optional, Callable
@@ -167,20 +167,19 @@ class EscalationManager:
 
     async def _escalation_loop(self, incident: Incident) -> None:
         """Loop through escalation levels until acknowledged."""
-        for rule in self.rules:
+        for current_rule, next_rule in zip(self.rules, self.rules[1:]):
             if incident.acknowledged_at:
                 # Incident was acknowledged, stop escalating
-                print(f"Incident {incident.id} acknowledged at {rule.level.name}")
+                print(f"Incident {incident.id} acknowledged at {incident.current_level.name}")
                 return
 
-            if rule.timeout_minutes > 0:
-                # Wait for the timeout period
-                await asyncio.sleep(rule.timeout_minutes * 60)
+            # Wait for the current level's timeout period
+            await asyncio.sleep(current_rule.timeout_minutes * 60)
 
             if not incident.acknowledged_at:
                 # Still not acknowledged, escalate to next level
-                incident.current_level = rule.level
-                await self._notify_level(incident, rule)
+                incident.current_level = next_rule.level
+                await self._notify_level(incident, next_rule)
 
         # Reached final level without acknowledgment
         print(f"Incident {incident.id} reached final escalation level")
@@ -438,6 +437,13 @@ class MultiTeamCoordinator:
                 lead_user="db-lead@company.com",
                 slack_channel="#db-incidents"
             ),
+            Team.NETWORK: TeamEscalationPolicy(
+                team=Team.NETWORK,
+                primary_schedule="network-primary",
+                secondary_schedule="network-secondary",
+                lead_user="network-lead@company.com",
+                slack_channel="#network-incidents"
+            ),
         }
 
         # Define service ownership mapping
@@ -560,7 +566,7 @@ flowchart TD
 # Handles manual overrides and bypasses in the escalation process
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
 
@@ -580,11 +586,11 @@ class OverrideRequest:
     reason: str
     target_user: Optional[str] = None
     target_level: Optional[int] = None
-    timestamp: datetime = None
+    timestamp: Optional[datetime] = None
 
     def __post_init__(self):
         if self.timestamp is None:
-            self.timestamp = datetime.utcnow()
+            self.timestamp = datetime.now(timezone.utc)
 
 class EscalationOverrideManager:
     """Manages override and bypass procedures."""
