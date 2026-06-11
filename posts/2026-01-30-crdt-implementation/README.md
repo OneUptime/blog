@@ -42,13 +42,13 @@ When Node A adds 3 and Node B adds 2 to the same initial value, the final merged
 
 ### Mathematical Foundation
 
-For a CRDT to work correctly, the merge operation must satisfy three properties:
+For a state-based CRDT to work correctly, the merge operation must satisfy three properties:
 
 1. **Commutativity**: `merge(a, b) = merge(b, a)`
 2. **Associativity**: `merge(merge(a, b), c) = merge(a, merge(b, c))`
 3. **Idempotency**: `merge(a, a) = a`
 
-These properties guarantee that no matter what order updates arrive, or how many times the same update is applied, all replicas converge to the same state.
+These properties guarantee that no matter what order updates arrive, or how many times the same update is applied, all replicas converge to the same state. Operation-based CRDTs instead require delivered operations to commute, and they require the delivery layer to avoid losing or duplicating operations.
 
 ## Implementing a G-Counter (Grow-only Counter)
 
@@ -126,7 +126,15 @@ class GCounter {
 
   // Import state from network transfer
   setState(state: Record<string, number>): void {
-    this.state.counts = new Map(Object.entries(state));
+    this.state = { counts: new Map(Object.entries(state)) };
+  }
+
+  // Merge serialized state from network transfer
+  mergeState(state: Record<string, number>): void {
+    for (const [nodeId, count] of Object.entries(state)) {
+      const current = this.state.counts.get(nodeId) || 0;
+      this.state.counts.set(nodeId, Math.max(current, count));
+    }
   }
 }
 ```
@@ -225,6 +233,16 @@ class PNCounter {
       negative: this.negative.getState(),
     };
   }
+
+  setState(state: { positive: Record<string, number>; negative: Record<string, number> }): void {
+    this.positive.setState(state.positive);
+    this.negative.setState(state.negative);
+  }
+
+  mergeState(state: { positive: Record<string, number>; negative: Record<string, number> }): void {
+    this.positive.mergeState(state.positive);
+    this.negative.mergeState(state.negative);
+  }
 }
 ```
 
@@ -277,7 +295,7 @@ class LWWRegister<T> {
 
   // Write a new value with current timestamp
   write(value: T, timestamp?: number): void {
-    const ts = timestamp || Date.now();
+    const ts = timestamp ?? Date.now();
     // Only update if new timestamp is greater
     // Use node ID as tiebreaker for equal timestamps
     if (this.shouldUpdate(ts, this.nodeId)) {
@@ -312,6 +330,16 @@ class LWWRegister<T> {
 
   getState(): LWWRegisterState<T> {
     return { ...this.state };
+  }
+
+  setState(state: LWWRegisterState<T>): void {
+    this.state = { ...state };
+  }
+
+  mergeState(state: LWWRegisterState<T>): void {
+    if (this.shouldUpdate(state.timestamp, state.nodeId)) {
+      this.state = { ...state };
+    }
   }
 }
 ```
@@ -537,7 +565,7 @@ setB.merge(setA);
 setA.add('item');      // A adds again
 setB.remove('item');   // B removes
 
-// After merge: "item" exists because A's add happened after B saw the state
+// After merge: "item" exists because B removed only tags it had observed
 setA.merge(setB);
 setB.merge(setA);
 
@@ -570,7 +598,7 @@ class LWWMap<K, V> {
   }
 
   set(key: K, value: V, timestamp?: number): void {
-    const ts = timestamp || Date.now();
+    const ts = timestamp ?? Date.now();
     const existing = this.entries.get(key);
 
     if (!existing || this.isNewer(ts, this.nodeId, existing)) {
@@ -592,7 +620,7 @@ class LWWMap<K, V> {
   }
 
   delete(key: K, timestamp?: number): void {
-    const ts = timestamp || Date.now();
+    const ts = timestamp ?? Date.now();
     const existing = this.entries.get(key);
 
     if (!existing || this.isNewer(ts, this.nodeId, existing)) {
@@ -681,7 +709,7 @@ flowchart TB
 
 ### Sync Protocol Implementation
 
-This sync layer uses a simple push-based gossip protocol with version vectors for efficient state transfer.
+This sync layer uses a simple push-based gossip protocol with version vectors to avoid re-merging stale state.
 
 ```typescript
 // sync-layer.ts
@@ -696,8 +724,7 @@ interface SyncMessage {
 
 interface CRDTInstance {
   getState(): unknown;
-  setState(state: unknown): void;
-  merge(other: CRDTInstance): void;
+  mergeState(state: unknown): void;
 }
 
 class SyncLayer {
@@ -773,10 +800,7 @@ class SyncLayer {
 
     // Check if we need this update using vector clock comparison
     if (this.isNewerState(vectorClock, localVectorClock)) {
-      // Create temporary CRDT to merge
-      const tempCrdt = Object.create(Object.getPrototypeOf(localCrdt));
-      tempCrdt.setState(state);
-      localCrdt.merge(tempCrdt);
+      localCrdt.mergeState(state);
 
       // Update vector clock
       this.mergeVectorClocks(localVectorClock, vectorClock);
@@ -818,7 +842,7 @@ class SyncLayer {
 
 ### Collaborative Text Editing
 
-CRDTs power real-time collaborative editors. Here is a simplified sequence CRDT for text.
+CRDTs power real-time collaborative editors. Here is a toy sequence CRDT for text that demonstrates deterministic merging.
 
 ```typescript
 // sequence-crdt.ts
@@ -828,7 +852,7 @@ interface SequenceElement {
   id: string;
   value: string;
   deleted: boolean;
-  // Position is determined by comparing IDs
+  // This toy example orders elements by comparing IDs
 }
 
 class SequenceCRDT {
@@ -842,22 +866,19 @@ class SequenceCRDT {
     this.counter = 0;
   }
 
-  // Generate a unique ID between two positions
-  private generateId(before: string | null, after: string | null): string {
+  // Generate a unique sortable ID
+  private generateId(): string {
     this.counter++;
     const timestamp = Date.now();
 
-    // Simplified: in production, use fractional indexing
-    // like Yjs or Automerge algorithms
+    // Simplified: in production, use position identifiers
+    // such as the algorithms used by Yjs or Automerge
     return `${timestamp}-${this.counter}-${this.nodeId}`;
   }
 
   insert(index: number, char: string): void {
-    const before = index > 0 ? this.elements[index - 1]?.id : null;
-    const after = this.elements[index]?.id || null;
-
     const newElement: SequenceElement = {
-      id: this.generateId(before, after),
+      id: this.generateId(),
       value: char,
       deleted: false,
     };
@@ -1016,9 +1037,8 @@ class DeltaGCounter {
 
     this.state.set(this.nodeId, newValue);
 
-    // Track delta for this increment
-    const deltaCurrent = this.delta.get(this.nodeId) || 0;
-    this.delta.set(this.nodeId, deltaCurrent + amount);
+    // Track the latest state component for this node
+    this.delta.set(this.nodeId, newValue);
   }
 
   value(): number {
