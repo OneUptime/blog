@@ -124,7 +124,7 @@ The implementation aligns each event to its window boundary using integer divisi
 // TumblingWindow class manages fixed-size, non-overlapping windows
 // Events are assigned to exactly one window based on their timestamp
 
-interface Event {
+interface StreamEvent {
   timestamp: number;  // Unix timestamp in milliseconds
   data: any;
 }
@@ -132,16 +132,16 @@ interface Event {
 interface WindowResult<T> {
   windowStart: number;
   windowEnd: number;
-  events: Event[];
+  events: StreamEvent[];
   result: T;
 }
 
 class TumblingWindow<T> {
-  private windowSizeMs: number;
-  private windows: Map<number, Event[]> = new Map();
-  private aggregator: (events: Event[]) => T;
+  protected windowSizeMs: number;
+  private windows: Map<number, StreamEvent[]> = new Map();
+  private aggregator: (events: StreamEvent[]) => T;
 
-  constructor(windowSizeMs: number, aggregator: (events: Event[]) => T) {
+  constructor(windowSizeMs: number, aggregator: (events: StreamEvent[]) => T) {
     // Store the window duration for boundary calculations
     this.windowSizeMs = windowSizeMs;
     // Aggregator function computes the final result when window closes
@@ -150,12 +150,12 @@ class TumblingWindow<T> {
 
   // Calculate which window an event belongs to using floor division
   // This ensures all events within the same interval map to the same key
-  private getWindowKey(timestamp: number): number {
+  protected getWindowKey(timestamp: number): number {
     return Math.floor(timestamp / this.windowSizeMs) * this.windowSizeMs;
   }
 
   // Add an event to its corresponding window bucket
-  add(event: Event): void {
+  add(event: StreamEvent): void {
     const key = this.getWindowKey(event.timestamp);
 
     if (!this.windows.has(key)) {
@@ -233,13 +233,14 @@ The sliding window implementation tracks which windows each event contributes to
 class SlidingWindow<T> {
   private windowSizeMs: number;
   private slideSizeMs: number;
-  private events: Event[] = [];
-  private aggregator: (events: Event[]) => T;
+  private events: StreamEvent[] = [];
+  private nextWindowStart: number | undefined;
+  private aggregator: (events: StreamEvent[]) => T;
 
   constructor(
     windowSizeMs: number,
     slideSizeMs: number,
-    aggregator: (events: Event[]) => T
+    aggregator: (events: StreamEvent[]) => T
   ) {
     // Window size determines how far back each window looks
     this.windowSizeMs = windowSizeMs;
@@ -248,7 +249,7 @@ class SlidingWindow<T> {
     this.aggregator = aggregator;
   }
 
-  add(event: Event): void {
+  add(event: StreamEvent): void {
     this.events.push(event);
     // Keep events sorted for efficient range queries
     this.events.sort((a, b) => a.timestamp - b.timestamp);
@@ -260,13 +261,16 @@ class SlidingWindow<T> {
 
     if (this.events.length === 0) return results;
 
-    // Find the earliest window that contains our oldest event
+    // Find the earliest aligned window that can contain our oldest event
     const minTime = this.events[0].timestamp;
-    const firstWindowStart = Math.floor(minTime / this.slideSizeMs) * this.slideSizeMs;
+    const firstWindowStart = this.nextWindowStart ??
+      (Math.floor((minTime - this.windowSizeMs) / this.slideSizeMs) + 1) *
+        this.slideSizeMs;
 
     // Iterate through all window start times up to the watermark
+    let windowStart = firstWindowStart;
     for (
-      let windowStart = firstWindowStart;
+      ;
       windowStart + this.windowSizeMs <= watermark;
       windowStart += this.slideSizeMs
     ) {
@@ -286,6 +290,8 @@ class SlidingWindow<T> {
         });
       }
     }
+
+    this.nextWindowStart = windowStart;
 
     // Prune old events that cannot contribute to future windows
     const cutoff = watermark - this.windowSizeMs;
@@ -336,20 +342,20 @@ Session windows require tracking per-key state and merging overlapping sessions.
 
 interface Session {
   key: string;
-  events: Event[];
+  events: StreamEvent[];
   lastEventTime: number;
 }
 
 class SessionWindow<T> {
   private gapTimeoutMs: number;
-  private sessions: Map<string, Session> = new Map();
-  private aggregator: (events: Event[]) => T;
-  private keyExtractor: (event: Event) => string;
+  private sessions: Map<string, Session[]> = new Map();
+  private aggregator: (events: StreamEvent[]) => T;
+  private keyExtractor: (event: StreamEvent) => string;
 
   constructor(
     gapTimeoutMs: number,
-    keyExtractor: (event: Event) => string,
-    aggregator: (events: Event[]) => T
+    keyExtractor: (event: StreamEvent) => string,
+    aggregator: (events: StreamEvent[]) => T
   ) {
     // Gap timeout determines when a session is considered complete
     this.gapTimeoutMs = gapTimeoutMs;
@@ -358,56 +364,67 @@ class SessionWindow<T> {
     this.aggregator = aggregator;
   }
 
-  add(event: Event): void {
+  add(event: StreamEvent): void {
     const key = this.keyExtractor(event);
-    const existing = this.sessions.get(key);
+    const eventSession: Session = {
+      key,
+      events: [event],
+      lastEventTime: event.timestamp
+    };
 
-    if (existing) {
-      // Check if this event extends the current session or starts a new one
-      const gap = event.timestamp - existing.lastEventTime;
+    const sessions = [...(this.sessions.get(key) ?? []), eventSession]
+      .sort((a, b) => a.events[0].timestamp - b.events[0].timestamp);
 
-      if (gap <= this.gapTimeoutMs) {
-        // Extend existing session
-        existing.events.push(event);
-        existing.lastEventTime = event.timestamp;
+    const merged: Session[] = [];
+
+    for (const session of sessions) {
+      const current = merged[merged.length - 1];
+
+      if (
+        current &&
+        session.events[0].timestamp - current.lastEventTime <= this.gapTimeoutMs
+      ) {
+        // Late events can bridge two sessions, so merge when the gap allows it
+        current.events.push(...session.events);
+        current.events.sort((a, b) => a.timestamp - b.timestamp);
+        current.lastEventTime = Math.max(current.lastEventTime, session.lastEventTime);
       } else {
-        // Gap exceeded - this will be handled in closeWindows
-        // For now, start tracking the new session
-        this.sessions.set(key, {
-          key,
-          events: [event],
-          lastEventTime: event.timestamp
-        });
+        merged.push(session);
       }
-    } else {
-      // First event for this key - create new session
-      this.sessions.set(key, {
-        key,
-        events: [event],
-        lastEventTime: event.timestamp
-      });
     }
+
+    this.sessions.set(key, merged);
   }
 
   // Close sessions that have been inactive longer than the gap timeout
   closeWindows(watermark: number): WindowResult<T>[] {
     const results: WindowResult<T>[] = [];
 
-    for (const [key, session] of this.sessions.entries()) {
-      const timeSinceLastEvent = watermark - session.lastEventTime;
+    for (const [key, sessions] of this.sessions.entries()) {
+      const openSessions: Session[] = [];
 
-      // Session is complete if no activity within gap timeout
-      if (timeSinceLastEvent >= this.gapTimeoutMs) {
-        const windowStart = session.events[0].timestamp;
-        const windowEnd = session.lastEventTime;
+      for (const session of sessions) {
+        const timeSinceLastEvent = watermark - session.lastEventTime;
 
-        results.push({
-          windowStart,
-          windowEnd,
-          events: session.events,
-          result: this.aggregator(session.events)
-        });
+        // Session is complete if no activity within gap timeout
+        if (timeSinceLastEvent >= this.gapTimeoutMs) {
+          const windowStart = session.events[0].timestamp;
+          const windowEnd = session.lastEventTime;
 
+          results.push({
+            windowStart,
+            windowEnd,
+            events: session.events,
+            result: this.aggregator(session.events)
+          });
+        } else {
+          openSessions.push(session);
+        }
+      }
+
+      if (openSessions.length > 0) {
+        this.sessions.set(key, openSessions);
+      } else {
         this.sessions.delete(key);
       }
     }
@@ -446,17 +463,16 @@ The following code demonstrates the side output pattern.
 // This preserves data while keeping main pipeline efficient
 
 interface LateEventHandler {
-  onLateEvent: (event: Event, windowEnd: number) => void;
+  onLateEvent: (event: StreamEvent, windowEnd: number) => void;
 }
 
 class WindowWithLateHandling<T> extends TumblingWindow<T> {
   private allowedLateness: number;
   private lateHandler: LateEventHandler;
-  private closedWindows: Map<number, number> = new Map();  // windowStart -> closeTime
 
   constructor(
     windowSizeMs: number,
-    aggregator: (events: Event[]) => T,
+    aggregator: (events: StreamEvent[]) => T,
     allowedLateness: number,
     lateHandler: LateEventHandler
   ) {
@@ -466,7 +482,7 @@ class WindowWithLateHandling<T> extends TumblingWindow<T> {
     this.lateHandler = lateHandler;
   }
 
-  addWithLateHandling(event: Event, watermark: number): boolean {
+  addWithLateHandling(event: StreamEvent, watermark: number): boolean {
     const windowEnd = this.getWindowKey(event.timestamp) + this.windowSizeMs;
 
     // Check if event is late (its window has already closed)
@@ -540,7 +556,7 @@ class WatermarkGenerator {
 const watermarkGen = new WatermarkGenerator(5000);  // 5 second tolerance
 const window = new TumblingWindow<number>(60000, events => events.length);
 
-function processEvent(event: Event) {
+function processEvent(event: StreamEvent) {
   watermarkGen.observe(event.timestamp);
   window.add(event);
 
@@ -580,7 +596,7 @@ class StreamProcessor<T> {
   }
 
   // Process a single event through the pipeline
-  process(event: Event): void {
+  process(event: StreamEvent): void {
     // 1. Update watermark tracking
     this.watermarkGen.observe(event.timestamp);
 
