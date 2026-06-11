@@ -359,7 +359,7 @@ Compute percentiles and extended stats:
 }
 ```
 
-### Scripted Metrics
+### Pipeline Metrics
 
 Calculate custom metrics with Painless scripts:
 
@@ -414,7 +414,7 @@ PUT _transform/production-errors
       "bool": {
         "must": [
           { "term": { "environment": "production" } },
-          { "range": { "log_level": { "gte": "ERROR" } } }
+          { "terms": { "log_level": ["ERROR", "FATAL"] } }
         ],
         "must_not": [
           { "term": { "service.name": "health-check" } }
@@ -475,7 +475,7 @@ PUT production-error-summary
 
 ### Index Lifecycle Management
 
-Apply ILM policies to manage destination index retention:
+Create an ILM policy to manage destination index retention, then attach it through an index template or index settings:
 
 ```json
 PUT _ilm/policy/transform-rollover
@@ -717,26 +717,26 @@ curl -X GET "localhost:9200/api-metrics-summary/_search?pretty" -H 'Content-Type
 
 ## Updating a Transform
 
-Transforms cannot be modified while running. To update:
+Use the update transform API for supported configuration changes:
 
-1. Stop the transform
-2. Delete and recreate with new configuration
-3. The new transform resumes from where it left off (if checkpoints are compatible)
+1. Send the changes with `_update`
+2. Updated properties other than `description` take effect at the next checkpoint
+3. Monitor `_stats` to confirm the transform continues processing
 
 ```json
-POST _transform/api-metrics-summary/_stop
-
-DELETE _transform/api-metrics-summary
-
-PUT _transform/api-metrics-summary
+POST _transform/api-metrics-summary/_update
 {
-  // Updated configuration
+  "frequency": "1m",
+  "sync": {
+    "time": {
+      "field": "@timestamp",
+      "delay": "2m"
+    }
+  }
 }
-
-POST _transform/api-metrics-summary/_start
 ```
 
-For breaking changes (like new group-by fields), you may need to delete the destination index and reprocess from scratch.
+For unsupported or breaking changes (like new group-by fields), stop and delete the transform, recreate it, and reprocess from scratch. You may also need to delete or replace the destination index.
 
 ---
 
