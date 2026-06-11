@@ -193,10 +193,12 @@ CREATE TABLE fact_sales_transaction (
     store_key              INT NOT NULL REFERENCES dim_store(store_key),
     promotion_key          INT REFERENCES dim_promotion(promotion_key),
 
-    -- Measures: All additive across all dimensions
+    -- Measures: amounts and quantities are additive across all dimensions;
+    -- unit_price is non-additive and should not be summed
     quantity               DECIMAL(10,2) NOT NULL,
     unit_price             DECIMAL(10,2) NOT NULL,
     extended_amount        DECIMAL(12,2) NOT NULL,
+    cost_amount            DECIMAL(12,2) NOT NULL,
     discount_amount        DECIMAL(10,2) DEFAULT 0,
     tax_amount             DECIMAL(10,2) DEFAULT 0,
     net_amount             DECIMAL(12,2) NOT NULL,
@@ -337,12 +339,13 @@ BEGIN
     LEFT JOIN (
         -- Calculate average daily usage over last 30 days
         SELECT
-            product_key,
-            warehouse_key,
+            s.product_key,
+            s.warehouse_key,
             AVG(quantity_sold) as avg_daily_usage
-        FROM fact_sales_daily_summary
-        WHERE date_key >= v_date_key - 30
-        GROUP BY product_key, warehouse_key
+        FROM fact_sales_daily_summary s
+        JOIN dim_date d ON s.date_key = d.date_key
+        WHERE d.full_date >= p_snapshot_date - 30
+        GROUP BY s.product_key, s.warehouse_key
     ) usage ON p.product_key = usage.product_key
            AND w.warehouse_key = usage.warehouse_key
     WHERE inv.snapshot_date = p_snapshot_date;
@@ -459,24 +462,22 @@ LANGUAGE plpgsql
 AS $$
 DECLARE
     v_date_key INT;
-    v_order_date_key INT;
 BEGIN
     -- Get the date key for the milestone date
     SELECT date_key INTO v_date_key
     FROM dim_date
     WHERE full_date = p_milestone_date;
 
-    -- Get the original order date key for lag calculations
-    SELECT order_date_key INTO v_order_date_key
-    FROM fact_order_fulfillment
-    WHERE order_id = p_order_id;
-
     -- Update the appropriate milestone based on the stage
     CASE p_milestone
         WHEN 'PAYMENT' THEN
             UPDATE fact_order_fulfillment
             SET payment_date_key = v_date_key,
-                days_order_to_payment = v_date_key - order_date_key,
+                days_order_to_payment = p_milestone_date - (
+                    SELECT d.full_date
+                    FROM dim_date d
+                    WHERE d.date_key = fact_order_fulfillment.order_date_key
+                ),
                 order_status = 'PAID',
                 updated_at = CURRENT_TIMESTAMP
             WHERE order_id = p_order_id;
@@ -484,7 +485,11 @@ BEGIN
         WHEN 'PICKING' THEN
             UPDATE fact_order_fulfillment
             SET picking_date_key = v_date_key,
-                days_payment_to_pick = v_date_key - payment_date_key,
+                days_payment_to_pick = p_milestone_date - (
+                    SELECT d.full_date
+                    FROM dim_date d
+                    WHERE d.date_key = fact_order_fulfillment.payment_date_key
+                ),
                 order_status = 'PICKING',
                 updated_at = CURRENT_TIMESTAMP
             WHERE order_id = p_order_id;
@@ -492,7 +497,11 @@ BEGIN
         WHEN 'PACKING' THEN
             UPDATE fact_order_fulfillment
             SET packing_date_key = v_date_key,
-                days_pick_to_pack = v_date_key - picking_date_key,
+                days_pick_to_pack = p_milestone_date - (
+                    SELECT d.full_date
+                    FROM dim_date d
+                    WHERE d.date_key = fact_order_fulfillment.picking_date_key
+                ),
                 order_status = 'PACKING',
                 updated_at = CURRENT_TIMESTAMP
             WHERE order_id = p_order_id;
@@ -500,7 +509,11 @@ BEGIN
         WHEN 'SHIPPED' THEN
             UPDATE fact_order_fulfillment
             SET ship_date_key = v_date_key,
-                days_pack_to_ship = v_date_key - packing_date_key,
+                days_pack_to_ship = p_milestone_date - (
+                    SELECT d.full_date
+                    FROM dim_date d
+                    WHERE d.date_key = fact_order_fulfillment.packing_date_key
+                ),
                 order_status = 'SHIPPED',
                 updated_at = CURRENT_TIMESTAMP
             WHERE order_id = p_order_id;
@@ -508,10 +521,22 @@ BEGIN
         WHEN 'DELIVERED' THEN
             UPDATE fact_order_fulfillment
             SET delivery_date_key = v_date_key,
-                days_ship_to_delivery = v_date_key - ship_date_key,
-                days_order_to_delivery = v_date_key - order_date_key,
+                days_ship_to_delivery = p_milestone_date - (
+                    SELECT d.full_date
+                    FROM dim_date d
+                    WHERE d.date_key = fact_order_fulfillment.ship_date_key
+                ),
+                days_order_to_delivery = p_milestone_date - (
+                    SELECT d.full_date
+                    FROM dim_date d
+                    WHERE d.date_key = fact_order_fulfillment.order_date_key
+                ),
                 order_status = 'DELIVERED',
-                is_on_time = (v_date_key <= promised_delivery_date_key),
+                is_on_time = p_milestone_date <= (
+                    SELECT d.full_date
+                    FROM dim_date d
+                    WHERE d.date_key = fact_order_fulfillment.promised_delivery_date_key
+                ),
                 updated_at = CURRENT_TIMESTAMP
             WHERE order_id = p_order_id;
     END CASE;
@@ -1007,15 +1032,13 @@ LANGUAGE plpgsql
 AS $$
 DECLARE
     v_date_key INT;
-    v_month_start_key INT;
-    v_year_start_key INT;
+    v_month_start_date DATE;
+    v_year_start_date DATE;
 BEGIN
     -- Get date keys
     SELECT date_key INTO v_date_key FROM dim_date WHERE full_date = p_date;
-    SELECT date_key INTO v_month_start_key FROM dim_date
-    WHERE full_date = DATE_TRUNC('month', p_date);
-    SELECT date_key INTO v_year_start_key FROM dim_date
-    WHERE full_date = DATE_TRUNC('year', p_date);
+    v_month_start_date := DATE_TRUNC('month', p_date)::DATE;
+    v_year_start_date := DATE_TRUNC('year', p_date)::DATE;
 
     -- Insert or update daily snapshot
     INSERT INTO fact_daily_sales_snapshot (
@@ -1066,7 +1089,8 @@ BEGIN
             SUM(total_quantity) AS total_qty,
             SUM(total_net_amount) AS total_net
         FROM fact_daily_sales_snapshot
-        WHERE snapshot_date_key BETWEEN v_month_start_key AND v_date_key
+        JOIN dim_date d ON fact_daily_sales_snapshot.snapshot_date_key = d.date_key
+        WHERE d.full_date BETWEEN v_month_start_date AND p_date
         GROUP BY product_key
     ) mtd
     WHERE snap.snapshot_date_key = v_date_key
@@ -1082,7 +1106,8 @@ BEGIN
             SUM(total_quantity) AS total_qty,
             SUM(total_net_amount) AS total_net
         FROM fact_daily_sales_snapshot
-        WHERE snapshot_date_key BETWEEN v_year_start_key AND v_date_key
+        JOIN dim_date d ON fact_daily_sales_snapshot.snapshot_date_key = d.date_key
+        WHERE d.full_date BETWEEN v_year_start_date AND p_date
         GROUP BY product_key
     ) ytd
     WHERE snap.snapshot_date_key = v_date_key
