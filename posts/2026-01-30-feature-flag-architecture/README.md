@@ -62,15 +62,13 @@ type Operator =
   | 'greater_than'
   | 'less_than'
   | 'in_list'
-  | 'not_in_list'
-  | 'semver_greater'
-  | 'semver_less';
+  | 'not_in_list';
 
 // A single condition in a targeting rule
 interface Condition {
   attribute: string;      // e.g., "user.plan", "device.os"
   operator: Operator;
-  value: string | number | string[];
+  value: string | number | boolean | string[] | number[] | boolean[];
 }
 
 // Targeting rule with multiple conditions (AND logic)
@@ -244,13 +242,25 @@ class FlagEvaluator:
         elif op == "not_equals":
             return attr_value != target
         elif op == "contains":
-            return target in str(attr_value)
+            return str(target) in str(attr_value)
+        elif op == "starts_with":
+            return str(attr_value).startswith(str(target))
+        elif op == "ends_with":
+            return str(attr_value).endswith(str(target))
         elif op == "in_list":
             return attr_value in target
+        elif op == "not_in_list":
+            return attr_value not in target
         elif op == "greater_than":
-            return float(attr_value) > float(target)
+            try:
+                return float(attr_value) > float(target)
+            except (TypeError, ValueError):
+                return False
         elif op == "less_than":
-            return float(attr_value) < float(target)
+            try:
+                return float(attr_value) < float(target)
+            except (TypeError, ValueError):
+                return False
 
         return False
 
@@ -321,7 +331,7 @@ Instead of duplicating targeting conditions across flags, define reusable segmen
 ```python
 # segments.py - Reusable user segments
 
-from typing import Dict, List, Any
+from typing import Any, Dict, List, Optional
 from dataclasses import dataclass
 
 @dataclass
@@ -380,6 +390,69 @@ class SegmentEvaluator:
                 return False
         return True
 
+    def _evaluate_condition(
+        self,
+        condition: Dict,
+        context: 'EvaluationContext'
+    ) -> bool:
+        """Evaluate a single condition against context."""
+
+        attr_value = self._get_attribute(condition["attribute"], context)
+
+        if attr_value is None:
+            return False
+
+        op = condition["operator"]
+        target = condition["value"]
+
+        if op == "equals":
+            return attr_value == target
+        elif op == "not_equals":
+            return attr_value != target
+        elif op == "contains":
+            return str(target) in str(attr_value)
+        elif op == "starts_with":
+            return str(attr_value).startswith(str(target))
+        elif op == "ends_with":
+            return str(attr_value).endswith(str(target))
+        elif op == "in_list":
+            return attr_value in target
+        elif op == "not_in_list":
+            return attr_value not in target
+        elif op == "greater_than":
+            try:
+                return float(attr_value) > float(target)
+            except (TypeError, ValueError):
+                return False
+        elif op == "less_than":
+            try:
+                return float(attr_value) < float(target)
+            except (TypeError, ValueError):
+                return False
+
+        return False
+
+    def _get_attribute(
+        self,
+        path: str,
+        context: 'EvaluationContext'
+    ) -> Optional[Any]:
+        """Get nested attribute using dot notation."""
+
+        if path == "user_id":
+            return context.user_id
+
+        parts = path.split(".")
+        value = context.attributes
+
+        for part in parts:
+            if isinstance(value, dict) and part in value:
+                value = value[part]
+            else:
+                return None
+
+        return value
+
 # Example segment definitions
 
 beta_testers = Segment(
@@ -418,7 +491,7 @@ enterprise_users = Segment(
 Your SDK should minimize latency, handle failures gracefully, and provide a clean API.
 
 ```typescript
-// feature-flag-sdk.ts - Client SDK implementation
+// feature-flag-sdk.tsx - Client SDK implementation
 
 interface FlagValue {
   variation: string;
@@ -454,7 +527,9 @@ class FeatureFlagSDK {
       // Start background polling
       if (this.config.pollingInterval) {
         setInterval(
-          () => this.fetchFlags(),
+          () => this.fetchFlags().catch(error => {
+            console.error('Failed to refresh feature flags:', error);
+          }),
           this.config.pollingInterval
         );
       }
@@ -463,6 +538,7 @@ class FeatureFlagSDK {
       // Use defaults if initial fetch fails
       this.applyDefaults();
       this.ready = true;
+      this.notifyListeners();
     }
   }
 
@@ -647,6 +723,7 @@ jobs:
           fetch-depth: 0
 
       - name: Analyze flag changes
+        id: impact
         run: |
           # Get changed flag files
           CHANGED=$(git diff --name-only origin/main...HEAD -- 'flags/')
@@ -657,9 +734,11 @@ jobs:
 
             # Generate impact report
             node scripts/analyze-flag-impact.js $CHANGED
+            echo "has_report=true" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Comment on PR
+        if: steps.impact.outputs.has_report == 'true'
         uses: actions/github-script@v7
         with:
           script: |
