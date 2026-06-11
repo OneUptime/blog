@@ -44,7 +44,7 @@ sequenceDiagram
     Server->>Client: QUIC Handshake + HTTP Response
 ```
 
-The difference is significant. HTTP/2 needs multiple round trips before sending data. HTTP/3 with 0-RTT can send the request in the first packet.
+The difference is significant. A fresh HTTP/2 over TCP+TLS connection typically needs multiple round trips before sending data. HTTP/3 with 0-RTT can send a replay-safe request in the first flight on a resumed connection.
 
 ---
 
@@ -52,7 +52,7 @@ The difference is significant. HTTP/2 needs multiple round trips before sending 
 
 Before configuring HTTP/3, you need:
 
-1. **Valid TLS certificates** (HTTP/3 requires TLS 1.3)
+1. **Valid TLS certificates** (HTTP/3 uses QUIC, which requires TLS 1.3)
 2. **UDP port 443 open** in your firewall
 3. **Server software that supports QUIC**
 
@@ -74,7 +74,7 @@ sudo iptables -L -n | grep 443
 
 ## Nginx Configuration
 
-Nginx added experimental HTTP/3 support in version 1.25.0. You need nginx compiled with the `--with-http_v3_module` flag.
+Nginx added experimental HTTP/3 support in version 1.25.0. You need nginx compiled with the `--with-http_v3_module` flag. Some packages include the module; always check the build you are running.
 
 ### Check Your Nginx Build
 
@@ -102,13 +102,15 @@ server {
     ssl_certificate_key /etc/letsencrypt/live/example.com/privkey.pem;
 
     # QUIC-specific settings
+    # 0-RTT requires a compatible TLS library. With OpenSSL, use nginx 1.29.1+
+    # and OpenSSL 3.5.1+; otherwise use BoringSSL, LibreSSL, or QuicTLS.
     ssl_early_data on;
     quic_retry on;
 
     # Alt-Svc header tells browsers HTTP/3 is available
     add_header Alt-Svc 'h3=":443"; ma=86400';
 
-    # Recommended: Add QUIC transport parameters
+    # Optional Linux optimization: enable Generic Segmentation Offload
     quic_gso on;
 
     location / {
@@ -165,7 +167,7 @@ server {
 
     http2 on;
     http3 on;
-    http3_hq on;  # Enable HTTP/3 over QUIC (hq) for testing
+    http3_hq off;  # hq is only for HTTP/0.9 QUIC interoperability tests
 
     server_name example.com www.example.com;
 
@@ -179,6 +181,7 @@ server {
     ssl_session_tickets off;
 
     # 0-RTT (be aware of replay attacks for non-idempotent requests)
+    # With nginx built against OpenSSL, this requires OpenSSL 3.5.1+
     ssl_early_data on;
 
     # QUIC settings
@@ -250,9 +253,7 @@ That's it. Caddy automatically:
 {
     # Global options
     servers {
-        protocol {
-            experimental_http3
-        }
+        protocols h1 h2 h3
     }
 }
 
@@ -378,8 +379,6 @@ func main() {
     mux := http.NewServeMux()
 
     mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-        // Add Alt-Svc header for HTTP/2 fallback connections
-        w.Header().Set("Alt-Svc", `h3=":443"; ma=86400`)
         w.Write([]byte("Hello from HTTP/3!"))
     })
 
@@ -391,7 +390,7 @@ func main() {
     server := &http3.Server{
         Addr:      ":443",
         Handler:   mux,
-        TLSConfig: tlsConfig,
+        TLSConfig: http3.ConfigureTLSConfig(tlsConfig),
     }
 
     log.Println("Starting HTTP/3 server on :443")
@@ -431,25 +430,29 @@ func main() {
     certFile := "cert.pem"
     keyFile := "key.pem"
 
-    // TLS config shared between HTTP/2 and HTTP/3
-    tlsConfig := &tls.Config{
+    // TLS config for HTTP/1.1 and HTTP/2 over TCP
+    tcpTLSConfig := &tls.Config{
         MinVersion: tls.VersionTLS13,
-        NextProtos: []string{"h3", "h2", "http/1.1"},
+        NextProtos: []string{"h2", "http/1.1"},
     }
 
-    // HTTP/3 server
+    // TLS config for HTTP/3 over QUIC
+    quicTLSConfig := http3.ConfigureTLSConfig(&tls.Config{
+        MinVersion: tls.VersionTLS13,
+    })
+
     h3Server := &http3.Server{
         Addr:      ":443",
         Handler:   mux,
-        TLSConfig: tlsConfig,
+        TLSConfig: quicTLSConfig,
     }
 
-    // HTTP/2 server with Alt-Svc header middleware
+    // HTTP/1.1 and HTTP/2 server with Alt-Svc header middleware
     h2Handler := addAltSvcHeader(mux)
     h2Server := &http.Server{
         Addr:      ":443",
         Handler:   h2Handler,
-        TLSConfig: tlsConfig,
+        TLSConfig: tcpTLSConfig,
     }
 
     // HTTP redirect server
@@ -631,8 +634,8 @@ add_header Alt-Svc 'h3=":443"; ma=86400';
 # With persistence (browser should remember even after restart)
 add_header Alt-Svc 'h3=":443"; ma=86400; persist=1';
 
-# Multiple protocols
-add_header Alt-Svc 'h3=":443"; ma=86400, h3-29=":443"; ma=86400';
+# Multiple alternatives
+add_header Alt-Svc 'h3=":443"; ma=86400, h2=":443"; ma=86400';
 
 # Different port for HTTP/3
 add_header Alt-Svc 'h3=":8443"; ma=86400';
@@ -677,8 +680,10 @@ curl --http3 -I https://example.com
 # If your curl doesn't support --http3, check version
 curl --version | grep HTTP3
 
-# Install curl with HTTP/3 on Ubuntu
-sudo apt install curl-http3
+# Install curl, then verify that your packaged libcurl includes HTTP/3.
+# If HTTP3 is missing, use a curl package or build that was compiled with HTTP/3 support.
+sudo apt install curl
+curl --version | grep HTTP3
 ```
 
 ### Using Browser DevTools
@@ -696,8 +701,8 @@ sudo apt install curl-http3
 ### Testing with OpenSSL
 
 ```bash
-# Check QUIC support (requires OpenSSL 3.0+)
-openssl s_client -connect example.com:443 -alpn h3
+# Check QUIC ALPN support (requires OpenSSL with QUIC client support)
+openssl s_client -quic -connect example.com:443 -alpn h3
 ```
 
 ### Verify Alt-Svc Header
@@ -736,8 +741,7 @@ openssl s_client -connect example.com:443 -tls1_3
 ```
 
 **Browser not upgrading to HTTP/3**
-- Clear browser cache and Alt-Svc cache
-- Chrome: `chrome://net-internals/#alt-svc`
+- Clear browser site data and restart the browser to discard cached Alt-Svc entries
 - Check that Alt-Svc header is present in HTTP/2 responses
 
 ### Debug Logging
@@ -770,17 +774,29 @@ import "github.com/quic-go/quic-go/logging"
 0-RTT (early data) can be replayed by attackers. Only use it for idempotent requests:
 
 ```nginx
-# Check if request used early data
+# Reject early data on non-idempotent routes
+location /api/write/ {
+    if ($ssl_early_data) {
+        return 425;
+    }
+
+    proxy_pass http://backend:8080;
+}
+```
+
+If you cannot confidently separate replay-safe routes, reject all early data:
+
+```nginx
 if ($ssl_early_data) {
-    # Reject non-idempotent requests
     return 425;
 }
 ```
 
 ```go
-// In Go, check for early data
-if r.TLS != nil && r.TLS.DidResume {
-    // Handle with care
+// In quic-go, only send 0-RTT requests from clients when the method is safe.
+req, err := http.NewRequest(http3.MethodGet0RTT, "https://example.com/", nil)
+if err != nil {
+    // Handle error
 }
 ```
 
