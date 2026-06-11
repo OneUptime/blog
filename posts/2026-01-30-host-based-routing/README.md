@@ -216,10 +216,12 @@ class HostRouter {
     for (const { suffix, handler } of this.wildcardRoutes) {
       if (hostname.endsWith(suffix) && hostname.length > suffix.length) {
         const subdomain = hostname.slice(0, -suffix.length);
-        return {
-          handler,
-          params: { subdomain }
-        };
+        if (!subdomain.includes('.')) {
+          return {
+            handler,
+            params: { subdomain }
+          };
+        }
       }
     }
 
@@ -292,7 +294,10 @@ class PriorityHostRouter {
     if (pattern.startsWith('*.')) {
       const suffix = pattern.slice(1);
       if (hostname.endsWith(suffix) && hostname.length > suffix.length) {
-        return { subdomain: hostname.slice(0, -suffix.length) };
+        const subdomain = hostname.slice(0, -suffix.length);
+        if (!subdomain.includes('.')) {
+          return { subdomain };
+        }
       }
     } else if (hostname === pattern) {
       return {};
@@ -359,7 +364,7 @@ function extractTenant(baseDomain) {
     }
 
     // Check if host matches base domain pattern
-    if (!host.endsWith(baseDomain)) {
+    if (!host.endsWith(`.${baseDomain}`)) {
       return res.status(400).json({
         error: 'Invalid domain',
         expected: `*.${baseDomain}`
@@ -871,7 +876,7 @@ flowchart TB
     end
 
     subgraph RateLimiter["Rate Limiter"]
-        RL[Token Bucket]
+        RL[Sliding Window]
         Redis[(Redis)]
     end
 
@@ -920,7 +925,8 @@ class HostBasedRateLimiter {
     for (const [pattern, limits] of this.hostLimits) {
       if (pattern.startsWith('*.')) {
         const suffix = pattern.slice(1);
-        if (hostname.endsWith(suffix)) {
+        const subdomain = hostname.slice(0, -suffix.length);
+        if (hostname.endsWith(suffix) && subdomain && !subdomain.includes('.')) {
           return limits;
         }
       }
@@ -978,12 +984,6 @@ class HostBasedRateLimiter {
     // Count current entries
     pipeline.zcard(key);
 
-    // Add current request
-    pipeline.zadd(key, now, `${now}-${Math.random()}`);
-
-    // Set expiry
-    pipeline.expire(key, limits.window);
-
     const results = await pipeline.exec();
     const currentCount = results[1][1];
 
@@ -1000,6 +1000,12 @@ class HostBasedRateLimiter {
         retryAfter: Math.max(1, retryAfter)
       };
     }
+
+    await this.redis
+      .multi()
+      .zadd(key, now, `${now}-${Math.random()}`)
+      .expire(key, limits.window)
+      .exec();
 
     return {
       allowed: true,
@@ -1135,7 +1141,7 @@ http {
     # Wildcard tenant hosts
     server {
         listen 80;
-        server_name ~^(?<tenant>.+)\.tenant\.example\.com$;
+        server_name ~^(?<tenant>[^.]+)\.tenant\.example\.com$;
 
         limit_req zone=tenant_limit burst=100 nodelay;
 
@@ -1171,8 +1177,7 @@ metadata:
   name: multi-tenant-ingress
   annotations:
     nginx.ingress.kubernetes.io/proxy-body-size: "10m"
-    nginx.ingress.kubernetes.io/rate-limit: "100"
-    nginx.ingress.kubernetes.io/rate-limit-window: "1m"
+    nginx.ingress.kubernetes.io/limit-rpm: "100"
 spec:
   ingressClassName: nginx
   rules:
@@ -1242,14 +1247,14 @@ http:
         - app-ratelimit
 
     tenant-router:
-      rule: "HostRegexp(`{tenant:[a-z0-9-]+}.tenant.example.com`)"
+      rule: "HostRegexp(`^[a-z0-9-]+\\.tenant\\.example\\.com$`)"
       service: tenant-service
       middlewares:
         - tenant-headers
         - tenant-ratelimit
 
     custom-domain-router:
-      rule: "HostRegexp(`{domain:.+}`)"
+      rule: "HostRegexp(`^.+$`)"
       priority: 1
       service: tenant-service
       middlewares:
@@ -1320,7 +1325,8 @@ function validateHost(host, allowedPatterns) {
   return allowedPatterns.some(pattern => {
     if (pattern.startsWith('*.')) {
       const suffix = pattern.slice(1);
-      return hostname.endsWith(suffix);
+      const subdomain = hostname.slice(0, -suffix.length);
+      return hostname.endsWith(suffix) && subdomain && !subdomain.includes('.');
     }
     return hostname === pattern;
   });
