@@ -83,8 +83,6 @@ project/
 Start with a base `docker-compose.yml` that defines your services:
 
 ```yaml
-version: '3.8'
-
 services:
   api:
     build:
@@ -190,7 +188,7 @@ The key to a productive local development experience is having your code changes
 ```mermaid
 graph LR
     subgraph "Volume Types"
-        BV[Bind Volumes<br/>Host Path Mapping]
+        BV[Bind Mounts<br/>Host Path Mapping]
         NV[Named Volumes<br/>Docker Managed]
         AV[Anonymous Volumes<br/>Temporary]
     end
@@ -205,8 +203,6 @@ graph LR
 Create a `docker-compose.override.yml` for development-specific volume mounts:
 
 ```yaml
-version: '3.8'
-
 services:
   api:
     volumes:
@@ -425,10 +421,14 @@ EXPOSE 5678
 CMD ["python", "-m", "debugpy", "--listen", "0.0.0.0:5678", "--wait-for-client", "main.py"]
 ```
 
-Add the debug port to `docker-compose.override.yml`:
+Add the debug ports to `docker-compose.override.yml`:
 
 ```yaml
 services:
+  api:
+    ports:
+      - "9229:9229"
+
   worker:
     ports:
       - "5678:5678"
@@ -533,8 +533,6 @@ AWS_SECRET_ACCESS_KEY=
 Reference environment variables in your compose file:
 
 ```yaml
-version: '3.8'
-
 services:
   api:
     build:
@@ -551,7 +549,8 @@ services:
       - ENABLE_SWAGGER=${ENABLE_SWAGGER:-false}
     env_file:
       - .env
-      - .env.local  # Optional local overrides
+      - path: .env.local  # Optional local overrides
+        required: false
 
   db:
     image: postgres:15-alpine
@@ -620,14 +619,12 @@ graph TD
 Define comprehensive health checks for each service:
 
 ```yaml
-version: '3.8'
-
 services:
   api:
     build:
       context: ./services/api
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -943,14 +940,9 @@ Set resource limits to prevent containers from consuming too many resources:
 ```yaml
 services:
   api:
-    deploy:
-      resources:
-        limits:
-          cpus: '1'
-          memory: 1G
-        reservations:
-          cpus: '0.5'
-          memory: 512M
+    cpus: 1.0
+    mem_limit: 1g
+    mem_reservation: 512m
 ```
 
 ## Troubleshooting Common Issues
