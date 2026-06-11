@@ -24,7 +24,6 @@ k6 provides several executors that control how virtual users (VUs) are spawned a
 | `ramping-arrival-rate` | Spike testing | Request rate over stages | Capacity planning |
 | `per-vu-iterations` | Functional load testing | Fixed iterations per VU | Data processing jobs |
 | `shared-iterations` | Quick smoke tests | Total iterations shared | CI/CD pipelines |
-| `externally-controlled` | Manual testing | External control | Debugging |
 
 ## Constant VUs: Steady State Testing
 
@@ -420,6 +419,11 @@ export const options = {
       'p(95)<500',   // 95th percentile under 500ms
       'p(99)<1000',  // 99th percentile under 1 second
       'max<3000',    // No request over 3 seconds
+      {
+        threshold: 'p(99)<2000',
+        abortOnFail: true,
+        delayAbortEval: '30s',
+      },
     ],
 
     // Error rate threshold
@@ -439,16 +443,9 @@ export const options = {
       'rate>45',     // At least 45 requests per second
     ],
 
-    // Threshold with abort condition
+    // Threshold objects can add abort behavior
     // abortOnFail stops the test immediately if threshold fails
     // delayAbortEval waits before checking (allow warm-up)
-    http_req_duration: [
-      {
-        threshold: 'p(99)<2000',
-        abortOnFail: true,
-        delayAbortEval: '30s',
-      },
-    ],
 
     // Endpoint-specific thresholds using URL tags
     'http_req_duration{url:https://api.example.com/health}': ['p(99)<50'],
@@ -758,7 +755,7 @@ function randomPhoneNumber() {
 
 function randomCreditCard() {
   // Generate valid Luhn checksum test card
-  const prefix = '4111111111111'; // Visa test prefix
+  const prefix = '411111111111'; // Visa test prefix
   const partial = prefix + randomIntBetween(100, 999).toString();
   const checksum = luhnChecksum(partial);
   return partial + checksum;
@@ -767,7 +764,7 @@ function randomCreditCard() {
 function luhnChecksum(partial) {
   let sum = 0;
   for (let i = 0; i < partial.length; i++) {
-    let digit = parseInt(partial[partial.length - 1 - i]);
+    let digit = parseInt(partial[partial.length - 1 - i], 10);
     if (i % 2 === 0) {
       digit *= 2;
       if (digit > 9) digit -= 9;
@@ -1127,7 +1124,7 @@ k6 run --out json=results.json script.js
 k6 run --out influxdb=http://localhost:8086/k6 script.js
 
 # Cloud execution for distributed load
-k6 cloud script.js
+k6 cloud run script.js
 ```
 
 ## Summary
