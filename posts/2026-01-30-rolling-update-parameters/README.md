@@ -161,7 +161,7 @@ spec:
           failureThreshold: 3
 ```
 
-Resource Constrained Configuration
+### Resource Constrained Configuration
 
 When cluster resources are limited, minimize the surge to avoid resource pressure during updates.
 
