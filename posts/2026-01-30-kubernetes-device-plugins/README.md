@@ -53,7 +53,7 @@ The Device Plugin framework operates through a gRPC-based communication channel 
 
 ## The Device Plugin Interface
 
-The device plugin API is defined as a gRPC service. Here is the complete interface that every device plugin must implement:
+The device plugin API is defined as a gRPC service. Here is the core interface that every device plugin must implement:
 
 ```protobuf
 // deviceplugin.proto
@@ -262,6 +262,7 @@ import (
     "sync"
     "time"
 
+    "github.com/example/custom-device-plugin/pkg/discovery"
     "google.golang.org/grpc"
     "google.golang.org/grpc/credentials/insecure"
     pluginapi "k8s.io/kubelet/pkg/apis/deviceplugin/v1beta1"
@@ -297,7 +298,7 @@ type PluginServer struct {
 
 // DeviceDiscoverer interface for device discovery
 type DeviceDiscoverer interface {
-    Discover() ([]Device, error)
+    Discover() ([]discovery.Device, error)
 }
 
 // NewPluginServer creates a new device plugin server
@@ -306,7 +307,7 @@ func NewPluginServer(discoverer DeviceDiscoverer) *PluginServer {
         resourceName: ResourceName,
         socketPath:   filepath.Join(DevicePluginPath, SocketName),
         devices:      make(map[string]*pluginapi.Device),
-        health:       make(chan *pluginapi.Device),
+        health:       make(chan *pluginapi.Device, 1),
         stop:         make(chan struct{}),
         discoverer:   discoverer,
     }
@@ -366,15 +367,12 @@ func (s *PluginServer) Stop() {
 
 // registerWithKubelet registers the plugin with the kubelet
 func (s *PluginServer) registerWithKubelet() error {
-    conn, err := grpc.Dial(
-        KubeletSocket,
+    conn, err := grpc.NewClient(
+        "unix://"+KubeletSocket,
         grpc.WithTransportCredentials(insecure.NewCredentials()),
-        grpc.WithContextDialer(func(ctx context.Context, addr string) (net.Conn, error) {
-            return net.DialTimeout("unix", addr, 5*time.Second)
-        }),
     )
     if err != nil {
-        return fmt.Errorf("failed to connect to kubelet: %w", err)
+        return fmt.Errorf("failed to create kubelet client: %w", err)
     }
     defer conn.Close()
 
@@ -390,7 +388,10 @@ func (s *PluginServer) registerWithKubelet() error {
         },
     }
 
-    _, err = client.Register(context.Background(), req)
+    ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+    defer cancel()
+
+    _, err = client.Register(ctx, req)
     if err != nil {
         return fmt.Errorf("failed to register with kubelet: %w", err)
     }
@@ -414,15 +415,7 @@ func (s *PluginServer) waitForServer(ctx context.Context) error {
         case <-ctx.Done():
             return ctx.Err()
         default:
-            conn, err := grpc.DialContext(
-                ctx,
-                s.socketPath,
-                grpc.WithTransportCredentials(insecure.NewCredentials()),
-                grpc.WithBlock(),
-                grpc.WithContextDialer(func(ctx context.Context, addr string) (net.Conn, error) {
-                    return net.DialTimeout("unix", addr, time.Second)
-                }),
-            )
+            conn, err := net.DialTimeout("unix", s.socketPath, time.Second)
             if err == nil {
                 conn.Close()
                 return nil
@@ -620,6 +613,7 @@ func (s *PluginServer) GetPreferredAllocation(
         // Implement topology-aware allocation
         preferred := s.selectPreferredDevices(
             containerReq.AvailableDeviceIDs,
+            containerReq.MustIncludeDeviceIDs,
             int(containerReq.AllocationSize),
         )
 
@@ -634,13 +628,27 @@ func (s *PluginServer) GetPreferredAllocation(
 }
 
 // selectPreferredDevices selects devices based on topology
-func (s *PluginServer) selectPreferredDevices(available []string, count int) []string {
+func (s *PluginServer) selectPreferredDevices(available []string, mustInclude []string, count int) []string {
     s.devicesMux.RLock()
     defer s.devicesMux.RUnlock()
+
+    selected := make(map[string]bool)
+    preferred := make([]string, 0, count)
+
+    for _, id := range mustInclude {
+        if len(preferred) >= count {
+            return preferred
+        }
+        preferred = append(preferred, id)
+        selected[id] = true
+    }
 
     // Group devices by NUMA node
     numaGroups := make(map[int64][]string)
     for _, id := range available {
+        if selected[id] {
+            continue
+        }
         if device, ok := s.devices[id]; ok {
             if device.Topology != nil && len(device.Topology.Nodes) > 0 {
                 numaID := device.Topology.Nodes[0].ID
@@ -651,17 +659,23 @@ func (s *PluginServer) selectPreferredDevices(available []string, count int) []s
 
     // Prefer devices from the same NUMA node
     for _, devices := range numaGroups {
-        if len(devices) >= count {
-            return devices[:count]
+        if len(preferred)+len(devices) >= count {
+            return append(preferred, devices[:count-len(preferred)]...)
         }
     }
 
     // Fall back to any available devices
-    if len(available) >= count {
-        return available[:count]
+    for _, id := range available {
+        if selected[id] {
+            continue
+        }
+        preferred = append(preferred, id)
+        if len(preferred) >= count {
+            return preferred
+        }
     }
 
-    return available
+    return preferred
 }
 
 // PreStartContainer is called before container start
@@ -768,7 +782,7 @@ func (s *PluginServer) checkAllDevices() {
             case s.health <- updatedDevice:
                 fmt.Printf("Device %s health changed to %s\n", id, expectedHealth)
             default:
-                // Channel full, will be caught in next cycle
+                // Watch loop is busy, will be caught in next cycle
             }
         }
     }
@@ -890,6 +904,7 @@ spec:
       labels:
         app: custom-device-plugin
     spec:
+      serviceAccountName: custom-device-plugin
       priorityClassName: system-node-critical
       tolerations:
         - key: CriticalAddonsOnly
@@ -1053,20 +1068,21 @@ import (
     "context"
     "testing"
 
+    "github.com/example/custom-device-plugin/pkg/discovery"
     pluginapi "k8s.io/kubelet/pkg/apis/deviceplugin/v1beta1"
 )
 
 type mockDiscoverer struct {
-    devices []Device
+    devices []discovery.Device
 }
 
-func (m *mockDiscoverer) Discover() ([]Device, error) {
+func (m *mockDiscoverer) Discover() ([]discovery.Device, error) {
     return m.devices, nil
 }
 
 func TestAllocate(t *testing.T) {
     discoverer := &mockDiscoverer{
-        devices: []Device{
+        devices: []discovery.Device{
             {ID: "device-0", Path: "/dev/device-0", Healthy: true},
             {ID: "device-1", Path: "/dev/device-1", Healthy: true},
         },
@@ -1102,7 +1118,7 @@ func TestAllocate(t *testing.T) {
 
 func TestAllocateUnhealthyDevice(t *testing.T) {
     discoverer := &mockDiscoverer{
-        devices: []Device{
+        devices: []discovery.Device{
             {ID: "device-0", Path: "/dev/device-0", Healthy: false},
         },
     }
@@ -1193,22 +1209,18 @@ func (s *PluginServer) getTopologyForDevice(deviceID string) *pluginapi.Topology
 
 ### Device Sharing
 
-For devices that support sharing (like time-sliced GPUs), you can advertise more devices than physical hardware.
+Kubernetes does not share a single advertised device between containers. For devices that support vendor-managed sharing (like time-sliced GPUs), you can expose each share as a distinct logical device.
 
 ```go
-func (s *PluginServer) createVirtualDevices(physical Device, replicas int) []*pluginapi.Device {
+func (s *PluginServer) createVirtualDevices(physical *pluginapi.Device, replicas int) []*pluginapi.Device {
     var devices []*pluginapi.Device
 
     for i := 0; i < replicas; i++ {
         virtualID := fmt.Sprintf("%s-virt-%d", physical.ID, i)
-        health := pluginapi.Healthy
-        if !physical.Healthy {
-            health = pluginapi.Unhealthy
-        }
 
         devices = append(devices, &pluginapi.Device{
             ID:       virtualID,
-            Health:   health,
+            Health:   physical.Health,
             Topology: physical.Topology,
         })
     }
@@ -1227,7 +1239,7 @@ func (s *PluginServer) createVirtualDevices(physical Device, replicas int) []*pl
 
 4. **Idempotent Allocation**: Ensure the Allocate method can be called multiple times for the same device without issues.
 
-5. **Resource Cleanup**: Implement proper cleanup when containers using devices are terminated.
+5. **Resource Cleanup**: The device plugin API does not provide a deallocation callback, so design allocation artifacts so kubelet and the container runtime can clean them up when containers terminate.
 
 6. **Version Compatibility**: Test your plugin against multiple Kubernetes versions since the device plugin API may have subtle changes.
 
