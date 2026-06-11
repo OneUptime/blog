@@ -415,23 +415,24 @@ pub struct TransferableBuffer {
 impl TransferableBuffer {
     /// Transfers ownership of the buffer to C code
     ///
-    /// Returns a pointer and length. The C code becomes responsible
-    /// for calling our free function.
-    pub fn into_raw_parts(self) -> (*mut u8, usize) {
+    /// Returns a pointer, length, and capacity. The C code becomes responsible
+    /// for calling our free function with all three values so the allocation
+    /// can be reconstructed and freed correctly.
+    pub fn into_raw_parts(self) -> (*mut u8, usize, usize) {
+        // ManuallyDrop prevents the inner Vec from being dropped when `me`
+        // goes out of scope, so the C code now owns the allocation.
         let mut me = ManuallyDrop::new(self);
         let ptr = me.data.as_mut_ptr();
         let len = me.data.len();
+        let cap = me.data.capacity();
 
-        // Prevent Vec from being dropped
-        // The C code now owns this memory
-        std::mem::forget(std::mem::take(&mut me.data));
-
-        (ptr, len)
+        (ptr, len, cap)
     }
 
     /// Reconstructs a buffer from raw parts
     ///
-    /// Safety: ptr must have come from into_raw_parts and not been freed
+    /// Safety: ptr, len, and cap must have come from a matching call to
+    /// into_raw_parts on this type, and the buffer must not have been freed.
     pub unsafe fn from_raw_parts(ptr: *mut u8, len: usize, cap: usize) -> Self {
         TransferableBuffer {
             data: Vec::from_raw_parts(ptr, len, cap),
