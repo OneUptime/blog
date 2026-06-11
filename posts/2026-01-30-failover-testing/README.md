@@ -159,8 +159,8 @@ preflight_checks() {
     fi
 
     # Check replica lag
-    LAG=$(psql -h postgres-primary.example.com -t -c \
-        "SELECT EXTRACT(EPOCH FROM (now() - pg_last_xact_replay_timestamp()))::int;")
+    LAG=$(psql -h postgres-replica.example.com -At -c \
+        "SELECT COALESCE(EXTRACT(EPOCH FROM (now() - pg_last_xact_replay_timestamp()))::int, 0);")
 
     if [ "$LAG" -gt 10 ]; then
         log "ERROR: Replica lag is ${LAG}s (threshold: 10s). Aborting test."
@@ -405,6 +405,7 @@ spec:
 
     - name: inject-failure
       templateType: PodChaos
+      deadline: 30s
       podChaos:
         action: pod-kill
         mode: one
@@ -414,7 +415,6 @@ spec:
           labelSelectors:
             role: primary
             app: postgresql
-        duration: "30s"
 
     - name: verify-failover
       templateType: Task
@@ -493,12 +493,12 @@ spec:
             type: "httpProbe"
             mode: "Continuous"
             runProperties:
-              probeTimeout: 5
+              probeTimeout: 5s
               retry: 3
-              interval: 2
-              probePollingInterval: 1
+              interval: 2s
+              probePollingInterval: 1s
             httpProbe/inputs:
-              url: "http://postgres-service.database.svc:5432/health"
+              url: "http://api.database.svc.cluster.local/health"
               insecureSkipVerify: false
               method:
                 get:
@@ -510,14 +510,13 @@ spec:
 
 ```python
 # gremlin_failover_test.py
-import gremlin
-from gremlin import attacks, scenarios
 import time
 import requests
 
 class FailoverTest:
-    def __init__(self, api_key):
-        self.client = gremlin.Client(api_key=api_key)
+    def __init__(self, api_token, team_id):
+        self.api_token = api_token
+        self.team_id = team_id
         self.health_endpoint = "https://api.example.com/health"
         self.metrics = {
             "failover_time": 0,
@@ -538,17 +537,35 @@ class FailoverTest:
 
     def run_failover_attack(self):
         """Execute the failover attack using Gremlin."""
-        attack = attacks.StateAttack(
-            target_type="container",
-            target_tags={"app": "postgresql", "role": "primary"},
-            command="shutdown",
-            args={"delay": 0, "reboot": False}
-        )
+        attack = {
+            "command": {"type": "shutdown"},
+            "target": {
+                "type": "Random",
+                "containers": {
+                    "multiSelectLabels": {
+                        "app": ["postgresql"],
+                        "role": ["primary"]
+                    }
+                },
+                "exact": 1
+            }
+        }
 
         print("Triggering failover attack...")
         start_time = time.time()
 
-        attack_result = self.client.attacks.create(attack)
+        response = requests.post(
+            "https://api.gremlin.com/v1/attacks/new",
+            params={"teamId": self.team_id},
+            headers={
+                "Authorization": self.api_token,
+                "Content-Type": "application/json"
+            },
+            json=attack,
+            timeout=10
+        )
+        response.raise_for_status()
+        attack_result = response.json()
 
         # Monitor until failover completes
         while True:
@@ -602,7 +619,10 @@ class FailoverTest:
         }
 
 if __name__ == "__main__":
-    test = FailoverTest(api_key="your-gremlin-api-key")
+    test = FailoverTest(
+        api_token="Key your-gremlin-api-key",
+        team_id="your-gremlin-team-id"
+    )
     results = test.run()
     print(f"Test results: {results}")
 ```
@@ -887,7 +907,7 @@ spec:
         # Connection pool impact
         - record: failover:connection_pool:available
           expr: |
-            sum(pgbouncer_pools_sv_active) by (cluster)
+            sum(pgbouncer_pools_sv_idle) by (cluster)
             /
             sum(pgbouncer_pools_sv_active + pgbouncer_pools_sv_idle) by (cluster)
 ```
@@ -1119,7 +1139,7 @@ spec:
         errorRate: 0.5
         manualInterventions: 0
 
-    - testId: "failover-20261215-030000"
+    - testId: "failover-20251215-030000"
       date: "2025-12-15"
       result: "FAIL"
       metrics:
