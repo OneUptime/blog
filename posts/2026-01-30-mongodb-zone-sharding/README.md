@@ -39,7 +39,7 @@ flowchart TB
 
 Before implementing zone sharding, ensure you have:
 
-- A MongoDB sharded cluster with at least 3 shards
+- A MongoDB sharded cluster with enough shards for your zone layout
 - A sharded collection with an appropriate shard key
 - Administrative access to the cluster
 - MongoDB Shell (mongosh) installed
@@ -182,10 +182,7 @@ The MongoDB balancer will automatically migrate chunks to their designated zones
 ```javascript
 // Check balancer status
 sh.getBalancerState()
-
-// View current balancer operations
-use config
-db.locks.find({ _id: "balancer" }).pretty()
+sh.isBalancerRunning()
 
 // Check chunk distribution
 sh.status()
@@ -426,9 +423,21 @@ flowchart TB
 
 ```javascript
 // Create a script to monitor zone compliance
+function getExpectedZone(minKey) {
+  const zonesByRegion = {
+    US: "US-EAST",
+    EU: "EU-WEST",
+    APAC: "APAC"
+  }
+
+  return zonesByRegion[minKey.region]
+}
+
 function checkZoneCompliance() {
-  const chunks = db.getSiblingDB("config").chunks.find({ ns: "myDatabase.customers" })
-  const shards = db.getSiblingDB("config").shards.find().toArray()
+  const config = db.getSiblingDB("config")
+  const collection = config.collections.findOne({ _id: "myDatabase.customers" })
+  const chunks = config.chunks.find({ uuid: collection.uuid })
+  const shards = config.shards.find().toArray()
 
   const shardZones = {}
   shards.forEach(s => {
@@ -438,6 +447,9 @@ function checkZoneCompliance() {
   let violations = 0
   chunks.forEach(chunk => {
     const chunkZone = getExpectedZone(chunk.min)
+    if (!chunkZone) {
+      return
+    }
     const shardHasZone = shardZones[chunk.shard].includes(chunkZone)
     if (!shardHasZone) {
       print(`Violation: Chunk ${chunk._id} should be in zone ${chunkZone}`)
@@ -460,12 +472,27 @@ function rotateTimeZones() {
   const currentMonth = new Date(now.getFullYear(), now.getMonth(), 1)
   const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1)
   const threeMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 3, 1)
+  const fourMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 4, 1)
+  const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1)
+
+  // Remove exact old ranges that would overlap with the new monthly ranges
+  sh.removeRangeFromZone(
+    "analytics.events",
+    { timestamp: lastMonth, eventId: MinKey },
+    { timestamp: currentMonth, eventId: MaxKey }
+  )
+
+  sh.removeRangeFromZone(
+    "analytics.events",
+    { timestamp: fourMonthsAgo, eventId: MinKey },
+    { timestamp: lastMonth, eventId: MaxKey }
+  )
 
   // Update HOT zone to current month
   sh.updateZoneKeyRange(
     "analytics.events",
     { timestamp: currentMonth, eventId: MinKey },
-    { timestamp: new Date(now.getFullYear(), now.getMonth() + 1, 1), eventId: MaxKey },
+    { timestamp: nextMonth, eventId: MaxKey },
     "HOT"
   )
 
@@ -475,6 +502,14 @@ function rotateTimeZones() {
     { timestamp: threeMonthsAgo, eventId: MinKey },
     { timestamp: currentMonth, eventId: MaxKey },
     "WARM"
+  )
+
+  // Move data older than the warm window to COLD
+  sh.updateZoneKeyRange(
+    "analytics.events",
+    { timestamp: fourMonthsAgo, eventId: MinKey },
+    { timestamp: threeMonthsAgo, eventId: MaxKey },
+    "COLD"
   )
 
   print("Zone rotation complete")
