@@ -236,8 +236,8 @@ resources:
     cpu: 1000m
     memory: 1Gi
 
-podDisruptionBudget:
-  enabled: true
+pdb:
+  create: true
   minAvailable: 2
 ```
 
@@ -329,12 +329,10 @@ Sometimes a values file might not exist for every environment. Use missingFileHa
 
 ```yaml
 # helmfile.yaml
-helmDefaults:
-  missingFileHandler: Warn  # Options: Error, Warn, Debug
-
 releases:
   - name: nginx
     chart: bitnami/nginx
+    missingFileHandler: Warn  # Options: Error, Warn, Info, Debug
     values:
       - values/base.yaml
       - values/{{ .Environment.Name }}.yaml
@@ -350,8 +348,8 @@ releases:
     values:
       - values/base.yaml
       - values/{{ .Environment.Name }}.yaml
-      {{ if eq .Environment.Name "production" }}
-      - values/production-ha.yaml
+      {{ if isFile (printf "values/%s-ha.yaml" .Environment.Name) }}
+      - values/{{ .Environment.Name }}-ha.yaml
       {{ end }}
 ```
 
@@ -376,10 +374,9 @@ releases:
     chart: ./charts/app
     values:
       - values/base.yaml
-      - |
-        cluster: {{ .Values.cluster }}
-        region: {{ .Values.region }}
-        fullDomain: {{ .Values.cluster }}.{{ .Values.region }}.example.com
+      - cluster: {{ .Values.cluster | quote }}
+        region: {{ .Values.region | quote }}
+        fullDomain: "{{ .Values.cluster }}.{{ .Values.region }}.example.com"
 ```
 
 ## Secrets Management
@@ -398,7 +395,7 @@ releases:
       - secrets/{{ .Environment.Name }}.yaml
 ```
 
-Secrets files are decrypted at runtime using helm-secrets or SOPS.
+Secrets files are decrypted at runtime using the helm-secrets plugin, commonly with SOPS.
 
 ```yaml
 # secrets/production.yaml (encrypted with SOPS)
@@ -436,7 +433,7 @@ helmfiles:
       - environments/{{ .Environment.Name }}.yaml
 ```
 
-Each subhelmfile inherits the environment context.
+Each subhelmfile runs with the selected environment name. Pass any state values it needs through the `values` entries.
 
 ```yaml
 # helmfile.d/infrastructure.yaml
@@ -485,7 +482,6 @@ helmDefaults:
   wait: true
   timeout: 300
   createNamespace: true
-  missingFileHandler: Warn
 
 releases:
   - name: ingress
