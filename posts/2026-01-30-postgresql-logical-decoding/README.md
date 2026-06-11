@@ -54,6 +54,8 @@ max_wal_senders = 10
 
 # Keep WAL segments for logical replication
 # Adjust based on your consumer lag tolerance
+# Note: wal_keep_size requires PostgreSQL 13+
+# For PostgreSQL 10-12, use wal_keep_segments = 64 (in 16MB units)
 wal_keep_size = 1GB
 ```
 
@@ -176,7 +178,7 @@ For JSON output, install the wal2json extension:
 sudo apt-get install postgresql-14-wal2json
 
 # On CentOS/RHEL
-sudo yum install wal2json14
+sudo yum install wal2json_14
 
 # On macOS with Homebrew
 brew install wal2json
@@ -507,7 +509,6 @@ curl -X POST http://localhost:8083/connectors \
             "database.user": "postgres",
             "database.password": "postgres",
             "database.dbname": "mydb",
-            "database.server.name": "myserver",
             "topic.prefix": "myserver",
             "table.include.list": "public.users,public.orders",
             "plugin.name": "pgoutput",
@@ -776,8 +777,10 @@ GRANT SELECT ON ALL TABLES IN SCHEMA public TO replication_user;
 ```ini
 # postgresql.conf
 
-# Reserve connections for replication
-reserved_connections = 5
+# Reserve connections for superusers (includes replication users by default)
+# Note: reserved_connections (added in PostgreSQL 16) reserves slots
+# for roles granted pg_use_reserved_connections
+superuser_reserved_connections = 5
 
 # Limit connections per user
 # Set in pg_hba.conf or use connection pooling
