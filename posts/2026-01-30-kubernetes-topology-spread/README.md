@@ -61,8 +61,8 @@ spec:
 | maxSkew | Yes | Maximum allowed difference in pod count between any two topology domains |
 | topologyKey | Yes | Node label key that defines topology domains |
 | whenUnsatisfiable | Yes | Action when constraint cannot be satisfied: DoNotSchedule or ScheduleAnyway |
-| labelSelector | Yes | Selector to identify which pods to count when calculating spread |
-| minDomains | No | Minimum number of domains to consider (Kubernetes 1.25+) |
+| labelSelector | No | Selector to identify which pods to count when calculating spread |
+| minDomains | No | Minimum number of domains to consider (stable in Kubernetes 1.30) |
 | matchLabelKeys | No | Pod label keys to include in the selector automatically (Kubernetes 1.27+) |
 | nodeAffinityPolicy | No | How to treat node affinity when calculating spread (Kubernetes 1.26+) |
 | nodeTaintsPolicy | No | How to treat node taints when calculating spread (Kubernetes 1.26+) |
@@ -327,11 +327,11 @@ Use `ScheduleAnyway` when:
 
 ## The minDomains Field
 
-The `minDomains` field, available since Kubernetes 1.25, specifies the minimum number of eligible domains required before the scheduler enforces spread constraints.
+The `minDomains` field was introduced as an alpha feature in Kubernetes 1.24, was enabled by default starting in Kubernetes 1.28, and became stable in Kubernetes 1.30. It specifies the minimum number of eligible domains used when calculating skew.
 
 ### Problem minDomains Solves
 
-Without minDomains, a cluster with only one zone would allow all pods to land in that zone, since there is no skew when only one domain exists. When a second zone comes online, pods are already concentrated.
+Without minDomains, a cluster with only one zone would allow all pods to land in that zone, since there is no skew when only one domain exists. When a second zone comes online, pods are already concentrated. With minDomains, if the number of eligible domains is lower than the configured value, the scheduler treats the global minimum as 0 and stops scheduling additional pods once doing so would exceed maxSkew.
 
 ```yaml
 apiVersion: apps/v1
@@ -350,8 +350,8 @@ spec:
         app: api-gateway
     spec:
       topologySpreadConstraints:
-        # Require at least 3 zones before scheduling
-        # If fewer zones exist, pods remain pending
+        # Account for at least 3 zones when calculating skew
+        # If fewer zones exist, pods beyond maxSkew per zone remain pending
         # This prevents concentration during cluster scaling
         - maxSkew: 1
           topologyKey: topology.kubernetes.io/zone
@@ -372,8 +372,8 @@ spec:
 | Available Zones | minDomains | Replicas | Behavior |
 |-----------------|------------|----------|----------|
 | 3 | 3 | 6 | Schedule 2 per zone |
-| 2 | 3 | 6 | Pods pending (fewer than minDomains zones) |
-| 1 | 3 | 6 | Pods pending |
+| 2 | 3 | 6 | Schedule at most 1 per zone; remaining pods pending |
+| 1 | 3 | 6 | Schedule at most 1 pod; remaining pods pending |
 | 3 | 2 | 6 | Schedule 2 per zone |
 | 2 | 2 | 6 | Schedule 3 per zone |
 
@@ -870,7 +870,7 @@ spec:
 
 ## Cluster-Level Default Constraints
 
-Kubernetes 1.24 introduced the ability to set default topology spread constraints at the cluster level. This ensures all pods get basic spreading without requiring explicit configuration.
+Kubernetes 1.24 made the built-in default topology spread constraints stable. You can also set default topology spread constraints at the cluster level so eligible pods get basic spreading without requiring explicit configuration.
 
 ### Configuring Default Constraints
 
@@ -900,8 +900,8 @@ profiles:
 
 | Value | Behavior |
 |-------|----------|
-| List | Apply default constraints to pods without any topology spread constraints |
-| System | Apply system default constraints based on common labels (app, deployment name) |
+| List | Use the constraints defined in `defaultConstraints` |
+| System | Use Kubernetes-defined constraints that spread pods among nodes and zones |
 
 ## Troubleshooting Common Issues
 
