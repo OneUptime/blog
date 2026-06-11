@@ -39,7 +39,7 @@ There are several reasons to use the adapter pattern instead of changing your ap
 1. **Legacy applications** - You cannot modify closed-source or legacy code
 2. **Separation of concerns** - Keep observability logic separate from business logic
 3. **Reusability** - Use the same adapter across multiple applications
-4. **Independent scaling** - Update adapters without redeploying applications
+4. **Independent updates** - Update adapters without rebuilding application images
 5. **Technology flexibility** - Switch monitoring backends without touching application code
 
 ## Log Format Transformation
@@ -104,6 +104,14 @@ spec:
               value: "json"
             - name: APP_NAME
               value: "legacy-app"
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
           resources:
             requests:
               memory: "64Mi"
@@ -126,8 +134,7 @@ import os
 import re
 import json
 import time
-import sys
-from datetime import datetime
+from datetime import datetime, timezone
 
 # Apache combined log format regex pattern
 APACHE_LOG_PATTERN = re.compile(
@@ -177,6 +184,9 @@ def tail_file(filepath, poll_interval=0.1):
             if line:
                 yield line
             else:
+                # Handle copytruncate-style log rotation.
+                if f.tell() > os.path.getsize(filepath):
+                    f.seek(0)
                 time.sleep(poll_interval)
 
 def main():
@@ -220,7 +230,7 @@ def main():
                 'namespace': namespace,
                 'type': 'raw',
                 'message': line.strip(),
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }
 
         print(json.dumps(output), flush=True)
@@ -382,7 +392,7 @@ spec:
       labels:
         app: redis
       annotations:
-        # Prometheus will discover this pod via these annotations
+        # Prometheus configurations that honor pod annotations can discover this target
         prometheus.io/scrape: "true"
         prometheus.io/port: "9121"
         prometheus.io/path: "/metrics"
@@ -422,7 +432,7 @@ spec:
               name: metrics
           env:
             - name: REDIS_ADDR
-              value: "localhost:6379"
+              value: "redis://localhost:6379"
           resources:
             requests:
               memory: "32Mi"
@@ -432,7 +442,7 @@ spec:
               cpu: "50m"
           livenessProbe:
             httpGet:
-              path: /health
+              path: /metrics
               port: metrics
             initialDelaySeconds: 10
             periodSeconds: 10
@@ -704,7 +714,7 @@ kind: Deployment
 metadata:
   name: persistent-logs-app
 spec:
-  replicas: 1  # Must be 1 with ReadWriteOnce
+  replicas: 1  # Use one replica unless you use RWX storage or per-replica PVCs
   selector:
     matchLabels:
       app: persistent-logs-app
@@ -752,7 +762,7 @@ spec:
 |----------|----------|------|------|
 | EmptyDir | Ephemeral logs | Fast, simple | Lost on pod restart |
 | EmptyDir (Memory) | High-throughput logs | Very fast | Uses RAM, limited size |
-| PVC | Persistent logs | Survives restarts | Slower, single pod (RWO) |
+| PVC | Persistent logs | Survives restarts | Slower, limited multi-pod access depending on access mode |
 | HostPath | Debug/testing | Direct node access | Not portable |
 
 ## Database Exporter Adapters
@@ -876,9 +886,9 @@ spec:
                 secretKeyRef:
                   name: mysql-secret
                   key: exporter-password
-            - name: DATA_SOURCE_NAME
-              value: "exporter:$(MYSQLD_EXPORTER_PASSWORD)@(localhost:3306)/"
           args:
+            - "--mysqld.address=localhost:3306"
+            - "--mysqld.username=exporter"
             - "--collect.info_schema.tables"
             - "--collect.info_schema.innodb_metrics"
             - "--collect.global_status"
@@ -925,16 +935,18 @@ spec:
 
 ```yaml
 # servicemonitor-generic.yaml
-# Generic ServiceMonitor for any app with Prometheus annotations
+# Generic ServiceMonitor for services labeled for Prometheus scraping
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: annotated-services
+  name: labeled-services
 spec:
   selector:
     matchExpressions:
       - key: prometheus.io/scrape
-        operator: Exists
+        operator: In
+        values:
+          - "true"
   endpoints:
     - port: metrics
       interval: 30s
@@ -1028,7 +1040,7 @@ spec:
 
 ## Network Policies for Adapter Pods
 
-Secure your adapter pods by limiting network access. Adapters should only communicate with their main container and the monitoring system.
+Secure your adapter pods by limiting network access. NetworkPolicies apply at the pod level; containers in the same pod can still communicate over localhost.
 
 ```yaml
 # network-policy-adapter.yaml
@@ -1065,14 +1077,16 @@ spec:
       ports:
         - protocol: UDP
           port: 53
-    # Allow communication within the pod (localhost)
+        - protocol: TCP
+          port: 53
+    # Allow pod-to-pod communication with other selected application pods if needed
     - to:
         - podSelector:
             matchLabels:
               app: app-with-exporter
 ```
 
-Resource Limits for Adapters
+## Resource Limits for Adapters
 
 Adapters should use minimal resources. Here are guidelines for sizing adapter containers.
 
@@ -1095,8 +1109,7 @@ containers:
       limits:
         memory: "128Mi"
         cpu: "100m"
-    # Prevent adapter from being OOMKilled before main app
-    # by setting a lower priority
+    # Run the adapter with a hardened security context
     securityContext:
       allowPrivilegeEscalation: false
       readOnlyRootFilesystem: true
