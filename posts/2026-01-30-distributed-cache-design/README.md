@@ -17,7 +17,7 @@ This guide walks through the core concepts, architecture patterns, and implement
 Single-node caches hit limits quickly. When your application grows, you need a cache that can:
 
 - Scale beyond a single server's memory
-- Survive node failures without data loss
+- Survive node failures without losing all cached data
 - Serve requests from multiple regions with low latency
 - Handle millions of concurrent connections
 
@@ -151,7 +151,7 @@ Distributed caches replicate data across multiple nodes for fault tolerance. The
 
 | Replication Type | Consistency | Latency | Use Case |
 |------------------|-------------|---------|----------|
-| Synchronous | Strong | Higher | Financial data, sessions |
+| Synchronous | Stronger durability | Higher | Sessions, critical cached data |
 | Asynchronous | Eventual | Lower | Product catalogs, content |
 
 This cache client writes to a primary node and replicates asynchronously to backup nodes.
@@ -159,7 +159,7 @@ This cache client writes to a primary node and replicates asynchronously to back
 ```python
 import asyncio
 from typing import Any, List
-import aioredis
+import redis.asyncio as redis
 
 class ReplicatedCacheClient:
     def __init__(self, primary: str, replicas: List[str]):
@@ -170,10 +170,10 @@ class ReplicatedCacheClient:
 
     async def connect(self):
         # Primary handles all writes
-        self.primary_conn = await aioredis.from_url(self.primary)
+        self.primary_conn = await redis.from_url(self.primary)
         # Replicas handle read scaling
         self.replica_conns = [
-            await aioredis.from_url(r) for r in self.replicas
+            await redis.from_url(r) for r in self.replicas
         ]
 
     async def set(self, key: str, value: Any, ttl: int = 3600) -> bool:
@@ -198,7 +198,7 @@ class ReplicatedCacheClient:
         if self.replica_conns:
             conn = random.choice(self.replica_conns)
             result = await conn.get(key)
-            if result:
+            if result is not None:
                 return result
 
         # Fall back to primary if replicas miss
@@ -227,19 +227,19 @@ Here is a pub/sub based invalidation system using Redis.
 
 ```python
 import json
-import aioredis
-from typing import Callable, Dict
+import redis.asyncio as redis
+from typing import Any, Dict
 
 class CacheInvalidator:
     def __init__(self, redis_url: str, channel: str = "cache:invalidate"):
         self.redis_url = redis_url
         self.channel = channel
-        self.local_cache: Dict[str, any] = {}
+        self.local_cache: Dict[str, Any] = {}
         self.conn = None
         self.pubsub = None
 
     async def connect(self):
-        self.conn = await aioredis.from_url(self.redis_url)
+        self.conn = await redis.from_url(self.redis_url)
         self.pubsub = self.conn.pubsub()
         await self.pubsub.subscribe(self.channel)
 
@@ -268,7 +268,7 @@ When a cache node fails, the system must detect the failure and redistribute tra
 ```python
 import asyncio
 from typing import Dict, Optional
-import aioredis
+import redis.asyncio as redis
 
 class HealthyNodePool:
     def __init__(self, nodes: Dict[str, str], check_interval: int = 5):
@@ -276,24 +276,28 @@ class HealthyNodePool:
         self.nodes = nodes
         self.healthy_nodes: set = set()
         self.check_interval = check_interval
-        self.connections: Dict[str, aioredis.Redis] = {}
+        self.connections: Dict[str, redis.Redis] = {}
 
     async def start_health_checks(self):
         while True:
             for name, url in self.nodes.items():
                 try:
-                    conn = await aioredis.from_url(url, socket_timeout=2)
+                    conn = self.connections.get(name)
+                    if conn is None:
+                        conn = await redis.from_url(url, socket_timeout=2)
                     await conn.ping()
                     self.healthy_nodes.add(name)
                     self.connections[name] = conn
                 except Exception:
                     # Mark node as unhealthy on any failure
                     self.healthy_nodes.discard(name)
-                    self.connections.pop(name, None)
+                    conn = self.connections.pop(name, None)
+                    if conn is not None:
+                        await conn.aclose()
 
             await asyncio.sleep(self.check_interval)
 
-    def get_healthy_connection(self, preferred: str) -> Optional[aioredis.Redis]:
+    def get_healthy_connection(self, preferred: str) -> Optional[redis.Redis]:
         # Return preferred node if healthy
         if preferred in self.healthy_nodes:
             return self.connections[preferred]
