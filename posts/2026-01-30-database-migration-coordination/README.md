@@ -69,9 +69,15 @@ CREATE TABLE migration_locks (
 -- Index for fast lock lookups
 CREATE INDEX idx_migration_locks_name ON migration_locks(lock_name);
 CREATE INDEX idx_migration_locks_expires ON migration_locks(expires_at);
+
+CREATE TABLE schema_migrations (
+    version VARCHAR(255) PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 ```
 
-The lock acquisition function uses advisory locks to handle race conditions at the database level.
+The lock acquisition function uses the unique constraint on `lock_name` to handle race conditions at the database level.
 
 ```sql
 -- Acquire migration lock with timeout
@@ -114,8 +120,6 @@ This Node.js implementation shows the core migration runner logic.
 ```typescript
 // migration-runner.ts
 import { Pool } from "pg";
-import * as fs from "fs";
-import * as path from "path";
 
 interface Migration {
   version: string;
@@ -182,7 +186,7 @@ class MigrationRunner {
     }
   }
 
-  private async executeMigration(migration: Migration): Promise<void> {
+  async executeMigration(migration: Migration): Promise<void> {
     const client = await this.pool.connect();
 
     try {
@@ -229,31 +233,44 @@ This function processes large tables in chunks without blocking other operations
 
 ```typescript
 // chunked-migration.ts
+import { Pool } from "pg";
+
 interface ChunkedMigrationConfig {
   batchSize: number;
   sleepBetweenBatches: number;
   progressKey: string;
 }
 
+interface BatchResult {
+  processedCount: number;
+  lastProcessedId: number;
+  done: boolean;
+}
+
+declare function getProgress(pool: Pool, progressKey: string): Promise<number>;
+declare function saveProgress(pool: Pool, progressKey: string, lastProcessedId: number): Promise<void>;
+declare function sleep(milliseconds: number): Promise<void>;
+
 async function runChunkedMigration(
   pool: Pool,
   config: ChunkedMigrationConfig,
-  processBatch: (lastId: number) => Promise<number>
+  processBatch: (lastId: number, batchSize: number) => Promise<BatchResult>
 ): Promise<void> {
   // Get last processed ID from progress table
   let lastId = await getProgress(pool, config.progressKey);
 
   while (true) {
     // Process one batch
-    const processedCount = await processBatch(lastId);
+    const result = await processBatch(lastId, config.batchSize);
 
-    if (processedCount === 0) {
+    if (result.done) {
       console.log("Migration complete");
       break;
     }
 
     // Save progress so we can resume if interrupted
-    lastId = await saveProgress(pool, config.progressKey, lastId + config.batchSize);
+    await saveProgress(pool, config.progressKey, result.lastProcessedId);
+    lastId = result.lastProcessedId;
 
     // Brief pause to reduce database load
     await sleep(config.sleepBetweenBatches);
@@ -265,19 +282,40 @@ async function backfillUserStatus(pool: Pool): Promise<void> {
   await runChunkedMigration(
     pool,
     { batchSize: 10000, sleepBetweenBatches: 100, progressKey: "backfill_user_status" },
-    async (lastId) => {
+    async (lastId, batchSize) => {
       const result = await pool.query(`
-        UPDATE users
-        SET status = CASE
-          WHEN last_login > NOW() - INTERVAL '30 days' THEN 'active'
-          ELSE 'inactive'
-        END
-        WHERE id > $1 AND id <= $1 + 10000
-        AND status IS NULL
-        RETURNING id
-      `, [lastId]);
+        WITH batch AS (
+          SELECT id
+          FROM users
+          WHERE id > $1
+          AND status IS NULL
+          ORDER BY id
+          LIMIT $2
+        ),
+        updated AS (
+          UPDATE users
+          SET status = CASE
+            WHEN last_login > NOW() - INTERVAL '30 days' THEN 'active'
+            ELSE 'inactive'
+          END
+          FROM batch
+          WHERE users.id = batch.id
+          RETURNING users.id
+        )
+        SELECT
+          COUNT(*)::int AS processed_count,
+          COALESCE(MAX(id), $1) AS last_processed_id
+        FROM updated
+      `, [lastId, batchSize]);
 
-      return result.rowCount || 0;
+      const row = result.rows[0];
+      const processedCount = Number(row.processed_count);
+
+      return {
+        processedCount,
+        lastProcessedId: Number(row.last_processed_id),
+        done: processedCount === 0,
+      };
     }
   );
 }
@@ -379,7 +417,7 @@ The safest approach is keeping old data around until you are confident the migra
 -- Step 2: Wait for verification period
 -- Step 3: Archive the data
 CREATE TABLE archived_user_fields AS
-SELECT id, deprecated_field, archived_at
+SELECT id, deprecated_field, NOW() AS archived_at
 FROM users
 WHERE deprecated_field IS NOT NULL;
 
