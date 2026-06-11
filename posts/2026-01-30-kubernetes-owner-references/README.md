@@ -57,7 +57,7 @@ ownerReferences:
 | `name` | Name of the owner resource |
 | `uid` | Unique identifier of the owner resource |
 | `controller` | Indicates if this is the managing controller |
-| `blockOwnerDeletion` | Prevents owner deletion until dependent is removed |
+| `blockOwnerDeletion` | During foreground deletion, blocks owner deletion until this dependent is removed |
 
 ## Creating Owner References Programmatically
 
@@ -76,7 +76,7 @@ metadata:
       kind: Deployment
       name: my-deployment
       uid: ""  # Must be set to actual UID
-      controller: true
+      controller: false
       blockOwnerDeletion: true
 data:
   config.yaml: |
@@ -135,7 +135,7 @@ func main() {
         Kind:               "Deployment",
         Name:               deployment.Name,
         UID:                deployment.UID,
-        Controller:         boolPtr(true),
+        Controller:         boolPtr(false),
         BlockOwnerDeletion: boolPtr(true),
     }
 
@@ -191,7 +191,7 @@ owner_reference = client.V1OwnerReference(
     kind="Deployment",
     name=deployment.metadata.name,
     uid=deployment.metadata.uid,
-    controller=True,
+    controller=False,
     block_owner_deletion=True
 )
 
@@ -268,7 +268,7 @@ clientset.AppsV1().Deployments("default").Delete(
 
 ### 2. Foreground Deletion
 
-The owner enters a "deletion in progress" state. The garbage collector deletes all dependents first, then deletes the owner.
+The owner enters a "deletion in progress" state. The garbage collector deletes dependents it knows about first, then deletes the owner after blocking dependents are gone.
 
 ```bash
 kubectl delete deployment my-deployment --cascade=foreground
@@ -315,7 +315,7 @@ clientset.AppsV1().Deployments("default").Delete(
 
 ## The blockOwnerDeletion Field
 
-The `blockOwnerDeletion` field controls whether a dependent resource blocks the deletion of its owner during foreground deletion.
+The `blockOwnerDeletion` field controls whether a dependent resource blocks the final removal of its owner during foreground deletion. Only dependents with `blockOwnerDeletion: true` block owner deletion, and only while the owner has the `foregroundDeletion` finalizer. When setting this field manually, the caller needs delete permission on the owner resource.
 
 ```mermaid
 sequenceDiagram
@@ -335,12 +335,12 @@ sequenceDiagram
         GC->>Owner: Remove finalizer
         Owner-->>API: Deleted
     else blockOwnerDeletion: false
-        GC->>Owner: Remove finalizer immediately
+        GC->>Owner: Remove finalizer without waiting for this dependent
         Owner-->>API: Deleted
-        GC->>Dependent: Delete in background
+        GC->>Dependent: Delete dependent
     end
 
-    API-->>User: Deletion complete
+    API-->>User: Deletion request accepted
 ```
 
 ### Example: Non-blocking Dependent
@@ -352,18 +352,20 @@ ownerReferences:
     name: my-deployment
     uid: d9607e19-f88f-11e6-a518-42010a800195
     controller: true
-    blockOwnerDeletion: false  # Owner can be deleted before this resource
+    blockOwnerDeletion: false  # Foreground deletion does not wait for this resource
 ```
 
 ## Practical Example: Custom Resource with Dependents
 
-Here is a complete example of a custom controller that creates resources with proper owner references:
+Here is an example of a custom controller that creates resources with proper owner references:
 
 ```go
 package controller
 
 import (
     "context"
+
+    myappv1 "example.com/myapp/api/v1"
 
     appsv1 "k8s.io/api/apps/v1"
     corev1 "k8s.io/api/core/v1"
@@ -383,65 +385,64 @@ func (r *MyAppReconciler) Reconcile(ctx context.Context,
     req ctrl.Request) (ctrl.Result, error) {
 
     // Fetch the MyApp instance
-    myApp := &MyAppv1.MyApp{}
+    myApp := &myappv1.MyApp{}
     if err := r.Get(ctx, req.NamespacedName, myApp); err != nil {
         return ctrl.Result{}, client.IgnoreNotFound(err)
     }
 
-    // Create a ConfigMap for the application
+    // Create or update a ConfigMap for the application
     configMap := &corev1.ConfigMap{
         ObjectMeta: metav1.ObjectMeta{
             Name:      myApp.Name + "-config",
             Namespace: myApp.Namespace,
         },
-        Data: map[string]string{
+    }
+
+    _, err := controllerutil.CreateOrUpdate(ctx, r.Client, configMap, func() error {
+        configMap.Data = map[string]string{
             "app.conf": "setting=value",
-        },
-    }
+        }
 
-    // Set owner reference using controller-runtime helper
-    if err := controllerutil.SetControllerReference(
-        myApp, configMap, r.Scheme); err != nil {
+        // Set owner reference using controller-runtime helper
+        return controllerutil.SetControllerReference(
+            myApp, configMap, r.Scheme)
+    })
+    if err != nil {
         return ctrl.Result{}, err
     }
 
-    // Create or update the ConfigMap
-    if err := r.Create(ctx, configMap); err != nil {
-        return ctrl.Result{}, err
-    }
-
-    // Create a Deployment for the application
+    // Create or update a Deployment for the application
     deployment := &appsv1.Deployment{
         ObjectMeta: metav1.ObjectMeta{
             Name:      myApp.Name,
             Namespace: myApp.Namespace,
         },
-        Spec: appsv1.DeploymentSpec{
-            Replicas: int32Ptr(1),
-            Selector: &metav1.LabelSelector{
+    }
+
+    _, err = controllerutil.CreateOrUpdate(ctx, r.Client, deployment, func() error {
+        if deployment.ObjectMeta.CreationTimestamp.IsZero() {
+            deployment.Spec.Selector = &metav1.LabelSelector{
                 MatchLabels: map[string]string{"app": myApp.Name},
+            }
+        }
+        deployment.Spec.Replicas = int32Ptr(1)
+        deployment.Spec.Template = corev1.PodTemplateSpec{
+            ObjectMeta: metav1.ObjectMeta{
+                Labels: map[string]string{"app": myApp.Name},
             },
-            Template: corev1.PodTemplateSpec{
-                ObjectMeta: metav1.ObjectMeta{
-                    Labels: map[string]string{"app": myApp.Name},
-                },
-                Spec: corev1.PodSpec{
-                    Containers: []corev1.Container{{
-                        Name:  "app",
-                        Image: myApp.Spec.Image,
-                    }},
-                },
+            Spec: corev1.PodSpec{
+                Containers: []corev1.Container{{
+                    Name:  "app",
+                    Image: myApp.Spec.Image,
+                }},
             },
-        },
-    }
+        }
 
-    // Set owner reference
-    if err := controllerutil.SetControllerReference(
-        myApp, deployment, r.Scheme); err != nil {
-        return ctrl.Result{}, err
-    }
-
-    if err := r.Create(ctx, deployment); err != nil {
+        // Set owner reference
+        return controllerutil.SetControllerReference(
+            myApp, deployment, r.Scheme)
+    })
+    if err != nil {
         return ctrl.Result{}, err
     }
 
@@ -508,7 +509,7 @@ controllerutil.SetControllerReference(owner, dependent, scheme)
 
 ### 2. Use blockOwnerDeletion Appropriately
 
-Set `blockOwnerDeletion: true` for critical resources that must be deleted before the owner:
+Set `blockOwnerDeletion: true` for critical resources that foreground deletion must wait for before removing the owner:
 
 ```yaml
 ownerReferences:
@@ -517,12 +518,12 @@ ownerReferences:
     name: critical-deployment
     uid: xyz789
     controller: true
-    blockOwnerDeletion: true  # Ensures cleanup order
+    blockOwnerDeletion: true  # Foreground deletion waits for this dependent
 ```
 
 ### 3. Handle Cross-Namespace Dependencies
 
-Owner references only work within the same namespace. For cross-namespace dependencies, use finalizers instead:
+Namespaced dependents can reference owners in the same namespace or cluster-scoped owners. Cluster-scoped dependents can only reference cluster-scoped owners. For unsupported cross-namespace dependencies, use finalizers instead:
 
 ```go
 // Add finalizer to owner
