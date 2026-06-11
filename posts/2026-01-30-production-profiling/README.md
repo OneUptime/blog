@@ -180,7 +180,7 @@ func configureProfiling() {
     runtime.SetCPUProfileRate(100)
 
     // Memory profile sampling rate
-    // Sample 1 in every N allocations
+    // Sample on average one allocation per N bytes allocated
     // Higher value = less overhead but less precision
     runtime.MemProfileRate = 524288  // Sample every 512KB allocated
 }
