@@ -16,7 +16,7 @@ This guide covers everything from basic gauge setup to advanced configurations t
 
 ## What are Gauge Panels?
 
-Gauge panels display a single numeric value within a defined range. They visually represent how close a metric is to its limits, making them ideal for capacity monitoring and threshold-based alerting.
+Gauge panels display a single numeric value within a defined or calculated range. They visually represent how close a metric is to its limits, making them ideal for capacity monitoring and threshold-based status indicators.
 
 ```mermaid
 flowchart LR
@@ -67,7 +67,7 @@ Add a query that returns a single value. Prometheus queries that aggregate to a 
 This query returns the average CPU usage across all instances:
 
 ```promql
-avg(100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100))
+100 * (1 - avg(rate(node_cpu_seconds_total{mode="idle"}[5m])))
 ```
 
 ### Step 3: Set the Value Range
@@ -84,35 +84,35 @@ unit: percent
 
 ---
 
-## Understanding Gauge Display Modes
+## Understanding Gauge Display Options
 
-Grafana offers several gauge display modes. Each serves different visualization needs.
+Grafana offers several gauge display options. Each serves different visualization needs.
 
 ```mermaid
 flowchart TB
-    subgraph Modes["Gauge Display Modes"]
+    subgraph Modes["Gauge Display Options"]
         direction LR
-        G1[Standard Gauge]
-        G2[Basic Gauge]
-        G3[Gradient Gauge]
+        G1[Circle Style]
+        G2[Arc Style]
+        G3[Gradient Effect]
     end
 
-    G1 --> D1["Full arc with needle"]
-    G2 --> D2["Simple arc fill"]
-    G3 --> D3["Color gradient arc"]
+    G1 --> D1["Fills clockwise around a circle"]
+    G2 --> D2["Fills left to right around an arc"]
+    G3 --> D3["Applies gradient coloring"]
 ```
 
-### Standard Gauge
+### Circle Style
 
-Shows the full arc with a needle pointer. Best for dashboard displays where visual impact matters.
+Fills clockwise around a circle, starting from the 12 o'clock position. Best for dashboard displays where visual impact matters.
 
-### Basic Gauge
+### Arc Style
 
-Displays a simpler filled arc. Uses less visual space and works well in dense dashboards.
+Fills from left to right around an arc. Uses less visual space and works well in dense dashboards.
 
-### Gradient Gauge
+### Gradient Effect
 
-Colors the arc with a gradient based on thresholds. Provides immediate visual feedback on metric health.
+Colors the gauge with a gradient. Provides immediate visual feedback on metric health.
 
 ---
 
@@ -224,7 +224,7 @@ Here is a complete gauge panel configuration:
   },
   "targets": [
     {
-      "expr": "avg(100 - (avg by (instance) (rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100))",
+      "expr": "100 * (1 - avg(rate(node_cpu_seconds_total{mode=\"idle\"}[5m])))",
       "refId": "A"
     }
   ],
@@ -376,7 +376,7 @@ Return multiple metrics in a single query.
 
 ```promql
 # CPU usage by instance
-avg by (instance) (100 - (rate(node_cpu_seconds_total{mode="idle"}[5m]) * 100))
+100 * (1 - avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])))
 ```
 
 ### Configure Field Overrides
@@ -414,7 +414,7 @@ Track service availability against SLA targets.
 
 ```promql
 # Calculate uptime percentage
-(1 - (sum(increase(probe_success_total{result="failure"}[30d])) / sum(increase(probe_success_total[30d])))) * 100
+avg_over_time(probe_success[30d]) * 100
 ```
 
 Configure with SLA thresholds:
@@ -460,7 +460,7 @@ Display API response latency.
 
 ```promql
 # P95 response time in milliseconds
-histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) * 1000
+histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket[5m]))) * 1000
 ```
 
 ```yaml
@@ -489,8 +489,8 @@ Control how gauges display in the panel.
 flowchart TB
     subgraph Orientation["Orientation Options"]
         direction LR
-        H["Horizontal<br/>Side by side"]
-        V["Vertical<br/>Stacked"]
+        H["Horizontal<br/>Top to bottom"]
+        V["Vertical<br/>Left to right"]
         A["Auto<br/>Based on panel size"]
     end
 ```
@@ -608,7 +608,7 @@ Both display single values, but serve different purposes.
 
 | Feature | Gauge | Stat |
 |---------|-------|------|
-| Visual representation | Arc/needle | Number only |
+| Visual representation | Circle or arc | Number only |
 | Range context | Shows position in range | No range display |
 | Space efficiency | Requires more space | Compact |
 | At-a-glance status | Excellent | Good |
@@ -652,7 +652,7 @@ Here is a complete gauge configuration for a server health monitoring dashboard.
       "gridPos": { "x": 0, "y": 0, "w": 8, "h": 8 },
       "targets": [
         {
-          "expr": "avg(100 - (rate(node_cpu_seconds_total{mode=\"idle\",instance=~\"$instance\"}[5m]) * 100))",
+          "expr": "100 * (1 - avg(rate(node_cpu_seconds_total{mode=\"idle\",instance=~\"$instance\"}[5m])))",
           "refId": "A"
         }
       ],
