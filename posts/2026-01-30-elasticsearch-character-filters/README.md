@@ -83,8 +83,7 @@ The response shows clean tokens without HTML artifacts:
   "tokens": [
     { "token": "welcome", "start_offset": 3, "end_offset": 10 },
     { "token": "to", "start_offset": 11, "end_offset": 13 },
-    { "token": "elasticsearch", "start_offset": 22, "end_offset": 35 },
-    { "token": "end_offset": 49, "end_offset": 50 }
+    { "token": "elasticsearch", "start_offset": 22, "end_offset": 35 }
   ]
 }
 ```
@@ -197,16 +196,12 @@ Result:
 ```json
 {
   "tokens": [
-    { "token": "c", "start_offset": 0, "end_offset": 1 },
-    { "token": "plus", "start_offset": 1, "end_offset": 2 },
-    { "token": "plus", "start_offset": 2, "end_offset": 3 },
+    { "token": "cplusplusplus", "start_offset": 0, "end_offset": 3 },
     { "token": "and", "start_offset": 4, "end_offset": 5 },
-    { "token": "c", "start_offset": 6, "end_offset": 7 },
-    { "token": "hashtag", "start_offset": 7, "end_offset": 8 },
+    { "token": "chashtag", "start_offset": 6, "end_offset": 8 },
     { "token": "programming", "start_offset": 9, "end_offset": 20 },
     { "token": "at", "start_offset": 21, "end_offset": 22 },
-    { "token": "50", "start_offset": 23, "end_offset": 25 },
-    { "token": "percent", "start_offset": 25, "end_offset": 26 },
+    { "token": "50percent", "start_offset": 23, "end_offset": 26 },
     { "token": "off", "start_offset": 27, "end_offset": 30 }
   ]
 }
@@ -217,24 +212,18 @@ Result:
 For large mapping sets, store them in a file. Create a file at `config/analysis/char_mappings.txt`:
 
 ```text
-# Ligature expansion
-
-\uFB00 => ff
-\uFB01 => fi
-\uFB02 => fl
-\uFB03 => ffi
-\uFB04 => ffl
-
-# Typographic quotes to standard quotes
-\u2018 => '
-\u2019 => '
-\u201C => "
-\u201D => "
-
-# Common fractions
-\u00BD => 1/2
-\u00BC => 1/4
-\u00BE => 3/4
+ﬀ => ff
+ﬁ => fi
+ﬂ => fl
+ﬃ => ffi
+ﬄ => ffl
+‘ => '
+’ => '
+“ => "
+” => "
+½ => 1/2
+¼ => 1/4
+¾ => 3/4
 ```
 
 Reference the file in your index settings:
@@ -400,7 +389,7 @@ POST /contacts/_analyze
 }
 ```
 
-All three produce the same token: `5551234567`
+The first two produce the same token: `5551234567`. The third includes the country code and produces `15551234567`.
 
 ### Using Capture Groups
 
@@ -841,7 +830,7 @@ PUT /multilingual
 
 ## Performance Considerations
 
-Character filters run on every document during indexing and on every query during search. Keep these points in mind:
+Character filters run on every document during indexing and on analyzed full-text queries that use the analyzer at search time. Keep these points in mind:
 
 | Factor | Impact | Recommendation |
 |--------|--------|----------------|
@@ -853,7 +842,7 @@ Character filters run on every document during indexing and on every query durin
 ### Optimization Tips
 
 1. **Order filters by elimination**: Put filters that remove the most content first
-2. **Use specific patterns**: `[0-9]` is faster than `\d` in some regex engines
+2. **Use specific patterns**: Prefer narrow character classes such as `[0-9]` when you only need ASCII digits
 3. **Avoid overlapping replacements**: Ensure mappings do not conflict
 4. **Test with realistic data**: Performance varies based on actual content
 
