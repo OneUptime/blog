@@ -81,6 +81,8 @@ class WaitForGraph:
         self.lock_holders: Dict[str, str] = {}
         # Maps resource -> list of transactions waiting
         self.wait_queues: Dict[str, List[str]] = defaultdict(list)
+        # Maps waiting transaction -> resource it is waiting for
+        self.waiting_for_resource: Dict[str, str] = {}
 
     def acquire_lock(self, txn_id: str, resource: str) -> bool:
         """
@@ -99,15 +101,18 @@ class WaitForGraph:
 
         # Must wait for the current holder
         self.edges[txn_id].add(holder)
-        self.wait_queues[resource].append(txn_id)
+        if txn_id not in self.wait_queues[resource]:
+            self.wait_queues[resource].append(txn_id)
+        self.waiting_for_resource[txn_id] = resource
         return False
 
-    def release_lock(self, txn_id: str, resource: str):
+    def release_lock(self, txn_id: str, resource: str) -> Optional[str]:
         """
         Release a lock and update wait relationships.
+        Returns the transaction ID granted the lock next, if any.
         """
         if self.lock_holders.get(resource) != txn_id:
-            return
+            return None
 
         del self.lock_holders[resource]
 
@@ -117,6 +122,12 @@ class WaitForGraph:
             self.lock_holders[resource] = next_txn
             # Remove wait edge
             self.edges[next_txn].discard(txn_id)
+            if not self.edges[next_txn]:
+                self.edges.pop(next_txn, None)
+            self.waiting_for_resource.pop(next_txn, None)
+            return next_txn
+
+        return None
 ```
 
 ---
@@ -126,7 +137,7 @@ class WaitForGraph:
 Cycle detection uses depth-first search. When we encounter a node already in our current path, we have found a cycle. This implementation returns the transactions involved in the deadlock.
 
 ```python
-def detect_deadlock(self) -> Optional[List[str]]:
+def detect_deadlock(graph: WaitForGraph) -> Optional[List[str]]:
     """
     Detect deadlock by finding cycles in the Wait-For Graph.
     Returns list of transaction IDs in the cycle, or None.
@@ -140,7 +151,7 @@ def detect_deadlock(self) -> Optional[List[str]]:
         rec_stack.add(node)
         path.append(node)
 
-        for neighbor in self.edges.get(node, []):
+        for neighbor in graph.edges.get(node, []):
             if neighbor not in visited:
                 result = dfs(neighbor)
                 if result:
@@ -155,7 +166,7 @@ def detect_deadlock(self) -> Optional[List[str]]:
         return None
 
     # Check all nodes as potential cycle starts
-    for node in list(self.edges.keys()):
+    for node in list(graph.edges.keys()):
         if node not in visited:
             cycle = dfs(node)
             if cycle:
@@ -173,7 +184,8 @@ Here is a complete deadlock detector that runs periodically and handles detectio
 ```python
 import time
 import threading
-from datetime import datetime, timedelta
+from datetime import datetime
+from typing import Dict
 
 class DeadlockDetector:
     """
@@ -204,8 +216,9 @@ class DeadlockDetector:
         Release a lock and clean up wait tracking.
         """
         with self._lock:
-            self.graph.release_lock(txn_id, resource)
-            self.wait_start_times.pop(txn_id, None)
+            granted_txn = self.graph.release_lock(txn_id, resource)
+            if granted_txn:
+                self.wait_start_times.pop(granted_txn, None)
 
     def check_for_deadlocks(self) -> dict:
         """
@@ -219,7 +232,7 @@ class DeadlockDetector:
             }
 
             # Graph-based cycle detection
-            cycle = self.graph.detect_deadlock()
+            cycle = detect_deadlock(self.graph)
             if cycle:
                 result["cycle_deadlock"] = {
                     "transactions": cycle,
@@ -311,22 +324,37 @@ SELECT
     blocking.pid AS blocking_pid,
     blocking.usename AS blocking_user,
     blocked.query AS blocked_query
-FROM pg_catalog.pg_locks blocked_locks
-JOIN pg_catalog.pg_stat_activity blocked
-    ON blocked.pid = blocked_locks.pid
-JOIN pg_catalog.pg_locks blocking_locks
-    ON blocking_locks.locktype = blocked_locks.locktype
-    AND blocking_locks.relation = blocked_locks.relation
-    AND blocking_locks.pid != blocked_locks.pid
+FROM pg_catalog.pg_stat_activity blocked
+JOIN LATERAL unnest(pg_catalog.pg_blocking_pids(blocked.pid)) AS blockers(pid)
+    ON true
 JOIN pg_catalog.pg_stat_activity blocking
-    ON blocking.pid = blocking_locks.pid
-WHERE NOT blocked_locks.granted;
+    ON blocking.pid = blockers.pid;
 ```
 
-MySQL and MariaDB expose lock waits through the information schema.
+MySQL 8 exposes lock waits through Performance Schema.
 
 ```sql
--- Find lock waits in MySQL/MariaDB
+-- Find lock waits in MySQL 8
+SELECT
+    w.REQUESTING_ENGINE_TRANSACTION_ID AS waiting_trx_id,
+    waiting_thread.PROCESSLIST_ID AS waiting_thread,
+    waiting_trx.trx_query AS waiting_query,
+    w.BLOCKING_ENGINE_TRANSACTION_ID AS blocking_trx_id,
+    blocking_thread.PROCESSLIST_ID AS blocking_thread,
+    blocking_thread.PROCESSLIST_INFO AS blocking_query
+FROM performance_schema.data_lock_waits w
+LEFT JOIN information_schema.innodb_trx waiting_trx
+    ON waiting_trx.trx_id = w.REQUESTING_ENGINE_TRANSACTION_ID
+LEFT JOIN performance_schema.threads waiting_thread
+    ON waiting_thread.THREAD_ID = w.REQUESTING_THREAD_ID
+LEFT JOIN performance_schema.threads blocking_thread
+    ON blocking_thread.THREAD_ID = w.BLOCKING_THREAD_ID;
+```
+
+MariaDB exposes similar lock waits through the information schema.
+
+```sql
+-- Find lock waits in MariaDB
 SELECT
     r.trx_id AS waiting_trx_id,
     r.trx_mysql_thread_id AS waiting_thread,
