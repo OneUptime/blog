@@ -17,7 +17,7 @@ Before diving into configuration, let us understand how the distributor fits int
 ```mermaid
 flowchart TD
     subgraph Clients
-        P1[Promtail]
+        P1[Grafana Alloy]
         P2[Fluentd]
         P3[Logstash]
         P4[OpenTelemetry Collector]
@@ -69,18 +69,18 @@ Here is a foundational distributor configuration:
 # Basic distributor configuration for log ingestion
 
 distributor:
-  # Ring configuration for discovering ingesters
+  # Distributor ring for tracking distributor replicas
+  # Required for global ingestion rate limiting
   ring:
-    # Key-value store for the hash ring
+    # Key-value store for the distributor ring
     kvstore:
       # Store type: consul, etcd, inmemory, or memberlist
       store: memberlist
 
-    # Heartbeat timeout before marking an ingester as unhealthy
+    # Heartbeat timeout before marking a distributor as unhealthy
     heartbeat_timeout: 1m
 
-  # Maximum number of write requests per distributor
-  # Set to 0 for unlimited
+  # Maximum number of concurrent requests to ingester stream rate APIs
   rate_store:
     max_request_parallelism: 200
 
@@ -99,13 +99,19 @@ server:
 
 ## Ring Configuration for Ingester Discovery
 
-The ring is crucial for the distributor to discover and communicate with ingesters. Here are different ring backend configurations:
+The ingester ring is crucial for the distributor to discover and communicate with ingesters. The distributor also has its own ring for tracking healthy distributor replicas when using global ingestion rate limits. Here are different ring backend configurations:
 
 ### Memberlist Configuration (Recommended for Kubernetes)
 
 ```yaml
 # memberlist-ring-config.yaml
 # Memberlist provides gossip-based service discovery
+
+ingester:
+  lifecycler:
+    ring:
+      kvstore:
+        store: memberlist
 
 distributor:
   ring:
@@ -132,8 +138,8 @@ memberlist:
   # Timeout for establishing connections
   stream_timeout: 10s
 
-  # Number of retries for failed messages
-  retransmit_multiplier: 4
+  # Multiplication factor for retransmitting gossip messages
+  retransmit_factor: 4
 
   # Interval between gossip messages
   gossip_interval: 1s
@@ -154,27 +160,28 @@ memberlist:
 # consul-ring-config.yaml
 # Consul provides strong consistency for the hash ring
 
-distributor:
-  ring:
-    kvstore:
-      store: consul
+ingester:
+  lifecycler:
+    ring:
+      kvstore:
+        store: consul
 
-      consul:
-        # Consul server address
-        host: consul.service.consul:8500
+        consul:
+          # Consul server address
+          host: consul.service.consul:8500
 
-        # ACL token for authentication
-        acl_token: ${CONSUL_ACL_TOKEN}
+          # ACL token for authentication
+          acl_token: ${CONSUL_ACL_TOKEN}
 
-        # HTTP client timeout
-        http_client_timeout: 20s
+          # HTTP client timeout
+          http_client_timeout: 20s
 
-        # Consistency mode: default, consistent, or stale
-        consistent_reads: true
+          # Enable strongly consistent reads from Consul
+          consistent_reads: true
 
-        # Watch rate limit
-        watch_rate_limit: 1
-        watch_burst_size: 1
+          # Watch rate limit
+          watch_rate_limit: 1
+          watch_burst_size: 1
 ```
 
 ### etcd Backend Configuration
@@ -183,29 +190,30 @@ distributor:
 # etcd-ring-config.yaml
 # etcd provides distributed key-value storage for the ring
 
-distributor:
-  ring:
-    kvstore:
-      store: etcd
+ingester:
+  lifecycler:
+    ring:
+      kvstore:
+        store: etcd
 
-      etcd:
-        # etcd endpoints
-        endpoints:
-          - etcd-0.etcd.loki.svc.cluster.local:2379
-          - etcd-1.etcd.loki.svc.cluster.local:2379
-          - etcd-2.etcd.loki.svc.cluster.local:2379
+        etcd:
+          # etcd endpoints
+          endpoints:
+            - etcd-0.etcd.loki.svc.cluster.local:2379
+            - etcd-1.etcd.loki.svc.cluster.local:2379
+            - etcd-2.etcd.loki.svc.cluster.local:2379
 
-        # Dial timeout
-        dial_timeout: 10s
+          # Dial timeout
+          dial_timeout: 10s
 
-        # Maximum retries
-        max_retries: 10
+          # Maximum retries
+          max_retries: 10
 
-        # TLS configuration
-        tls_enabled: true
-        tls_cert_path: /etc/loki/certs/etcd-client.crt
-        tls_key_path: /etc/loki/certs/etcd-client.key
-        tls_ca_path: /etc/loki/certs/etcd-ca.crt
+          # TLS configuration
+          tls_enabled: true
+          tls_cert_path: /etc/loki/certs/etcd-client.crt
+          tls_key_path: /etc/loki/certs/etcd-client.key
+          tls_ca_path: /etc/loki/certs/etcd-ca.crt
 ```
 
 ## Replication Factor Settings
@@ -235,10 +243,8 @@ distributor:
 
 # Limits configuration for replication behavior
 limits_config:
-  # Maximum number of replicas that can fail during writes
-  # With RF=3, max_global_streams_per_user allows 1 failure
-  # Formula: replication_factor - max_failures >= quorum
-  # Quorum = floor(replication_factor / 2) + 1
+  # Quorum determines how many replica writes must succeed
+  # Formula: quorum = floor(replication_factor / 2) + 1
 
   # For RF=3: quorum = 2, so 1 failure is tolerable
   # For RF=5: quorum = 3, so 2 failures are tolerable
@@ -310,7 +316,7 @@ limits_config:
   # Maximum length of a label value
   max_label_value_length: 2048
 
-  # Maximum number of entries per push request
+  # Maximum number of log entries returned per query
   max_entries_limit_per_query: 5000
 
   # Maximum size of a single log line in bytes
@@ -332,12 +338,14 @@ distributor:
   # Maximum recv message size
   max_recv_msg_size: 104857600  # 100MB
 
-  # Rate store refresh interval for global limits
+  # Maximum concurrent requests to ingester stream rate APIs
   rate_store:
     max_request_parallelism: 200
 
-  # Health check for ingesters
-  health_check_ingesters: true
+ingester_client:
+  pool_config:
+    # Health check ingester clients during periodic cleanup
+    health_check_ingesters: true
 ```
 
 ## Per-Tenant Overrides
@@ -492,9 +500,10 @@ ingester_client:
     backoff_on_ratelimits: true
 
     # Retry configuration
-    max_retries: 5
+    backoff_config:
+      max_retries: 5
 
-    # Timeout for individual requests
+    # Rate limit burst for gRPC client requests
     rate_limit_burst: 0
 ```
 
@@ -528,7 +537,7 @@ spec:
     spec:
       containers:
         - name: distributor
-          image: grafana/loki:2.9.0
+          image: grafana/loki:3.7.2
           args:
             - -config.file=/etc/loki/config.yaml
             - -target=distributor
@@ -723,7 +732,8 @@ ingester_client:
     client_cleanup_period: 15s
   grpc_client_config:
     max_send_msg_size: 104857600
-    max_retries: 5
+    backoff_config:
+      max_retries: 5
 ```
 
 ## Troubleshooting Common Issues
