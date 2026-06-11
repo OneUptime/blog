@@ -8,7 +8,7 @@ Description: Learn how to design histogram buckets for effective latency and dis
 
 ---
 
-You're staring at a dashboard that says your p99 latency is 500ms. But something feels wrong. Users are complaining about requests taking 2-3 seconds. You dig deeper and realize your histogram buckets top out at 1 second. Every request slower than that gets lumped into the same bucket, making your percentile calculations wildly inaccurate.
+You're staring at a dashboard that says your p99 latency is 500ms. But something feels wrong. Users are complaining about requests taking 2-3 seconds. You dig deeper and realize your histogram buckets top out at 1 second. Every request slower than that gets lumped into the same `+Inf` bucket, making your high-percentile calculations wildly inaccurate when the percentile falls above your highest finite bucket.
 
 This is the silent killer of observability: **poorly designed histogram buckets**.
 
@@ -95,7 +95,7 @@ from prometheus_client import Histogram
 http_latency = Histogram(
     'http_request_duration_seconds',
     'HTTP request latency',
-    buckets=[0.1 * i for i in range(1, 11)] + [float('inf')]
+    buckets=[0.1 * i for i in range(1, 11)]
 )
 ```
 
@@ -134,7 +134,6 @@ Exponential buckets multiply each boundary by a constant factor.
 **Prometheus Python client:**
 ```python
 from prometheus_client import Histogram
-import math
 
 def exponential_buckets(start, factor, count):
     return [start * (factor ** i) for i in range(count)]
@@ -142,7 +141,7 @@ def exponential_buckets(start, factor, count):
 http_latency = Histogram(
     'http_request_duration_seconds',
     'HTTP request latency',
-    buckets=exponential_buckets(0.001, 2, 15) + [float('inf')]
+    buckets=exponential_buckets(0.001, 2, 15)
 )
 ```
 
@@ -255,19 +254,19 @@ graph LR
 
 ## Memory and Cardinality Trade-offs
 
-Every bucket is a separate time series. More buckets = more memory and storage.
+Every classic histogram bucket is a separate time series, and each histogram also has `_sum` and `_count` series. More buckets = more memory and storage.
 
 ### The Cardinality Formula
 
 ```text
-Total time series = buckets * label_combinations
+Total time series = (finite_buckets + 1 + 2) * label_combinations
 ```
 
 **Example calculation:**
 ```text
-- Histogram with 20 buckets
+- Histogram with 20 finite buckets (+Inf is added automatically)
 - Labels: method (5 values), endpoint (50 values), status (5 values)
-- Total: 20 * 5 * 50 * 5 = 25,000 time series per histogram
+- Total: (20 + 1 + 2) * 5 * 50 * 5 = 28,750 time series per histogram
 ```
 
 ### Cardinality Budget Guidelines
@@ -298,17 +297,15 @@ graph TD
 
 1. **Drop unused buckets:**
 ```yaml
-# In OpenTelemetry Collector
-processors:
-  filter:
-    metrics:
-      exclude:
-        match_type: regexp
-        metric_names:
-          - ".*_bucket"
-        resource_attributes:
-          - key: le
-            value: "0.001|0.002"  # Drop very small buckets if unused
+# In a Prometheus scrape config or OpenTelemetry Collector prometheus receiver
+scrape_configs:
+  - job_name: 'myapp'
+    static_configs:
+      - targets: ['localhost:8080']
+    metric_relabel_configs:
+      - source_labels: [__name__, le]
+        regex: 'http_request_duration_seconds_bucket;(0.001|0.002)'
+        action: drop  # Drop very small buckets if unused
 ```
 
 2. **Use views to re-bucket:**
@@ -340,7 +337,7 @@ http_latency = Histogram(
 
 ## Native Histograms vs Classic Histograms
 
-Prometheus 2.40+ introduced **native histograms** (also called sparse histograms), which solve many bucket design problems.
+Prometheus 2.40 introduced **native histograms** (also called sparse histograms) as an experimental feature, and Prometheus 3.8 made them stable. They solve many bucket design problems.
 
 ### Classic Histograms
 
@@ -383,13 +380,13 @@ graph TD
 |---------|------------------|------------------|
 | Bucket boundaries | Fixed at instrumentation | Dynamic, exponential |
 | Cardinality | O(buckets * labels) | O(labels) |
-| Precision | Depends on bucket design | Consistent (~1-2% error) |
-| Query compatibility | Full PromQL support | Requires Prometheus 2.40+ |
+| Precision | Depends on bucket design | Depends on configured resolution |
+| Query compatibility | Full PromQL support | Requires Prometheus 2.40+; stable in Prometheus 3.8+ |
 | Storage efficiency | Lower | Higher |
 
 ### When to Use Native Histograms
 
-- Prometheus 2.40+ available
+- Prometheus 2.40+ available, with native histogram scraping enabled
 - Cardinality is a concern
 - You don't want to predict value distributions upfront
 - You need consistent precision across all percentiles
@@ -401,6 +398,7 @@ graph TD
 # prometheus.yml
 global:
   scrape_interval: 15s
+  scrape_native_histograms: true
 
 scrape_configs:
   - job_name: 'myapp'
@@ -411,6 +409,7 @@ scrape_configs:
       - PrometheusProto
       - OpenMetricsText1.0.0
       - OpenMetricsText0.0.1
+      - PrometheusText1.0.0
       - PrometheusText0.0.4
 ```
 
@@ -424,7 +423,7 @@ import (
 var httpDuration = promauto.NewHistogram(prometheus.HistogramOpts{
     Name:                        "http_request_duration_seconds",
     Help:                        "HTTP request duration",
-    NativeHistogramBucketFactor: 1.1,  // ~10% bucket width
+    NativeHistogramBucketFactor: 1.1,  // Each bucket is at most 10% wider than the previous one
 })
 ```
 
@@ -611,6 +610,14 @@ OneUptime provides native support for Prometheus histograms through its OTLP ing
 
 ```yaml
 # OpenTelemetry Collector config for OneUptime
+receivers:
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: 'myapp'
+          static_configs:
+            - targets: ['localhost:8080']
+
 exporters:
   otlp:
     endpoint: "https://otlp.oneuptime.com:4317"
