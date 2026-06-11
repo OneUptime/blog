@@ -229,7 +229,7 @@ sequenceDiagram
 
 ```javascript
 // Server-side: Generate registration options
-const { generateRegistrationOptions, verifyRegistrationResponse } = require('@simplewebauthn/server');
+import { generateRegistrationOptions, verifyRegistrationResponse } from '@simplewebauthn/server';
 
 const rpName = 'YourApp';
 const rpID = 'yourapp.com';
@@ -242,13 +242,13 @@ async function getRegistrationOptions(user) {
   const options = await generateRegistrationOptions({
     rpName,
     rpID,
-    userID: user.id,
+    // userID must be a Uint8Array (string values are no longer supported)
+    userID: new TextEncoder().encode(user.id),
     userName: user.email,
     userDisplayName: user.name || user.email,
     attestationType: 'none', // 'direct' for hardware attestation
     excludeCredentials: existingCredentials.map(cred => ({
       id: cred.credentialId,
-      type: 'public-key',
       transports: cred.transports
     })),
     authenticatorSelection: {
@@ -295,15 +295,15 @@ async function verifyRegistration(user, response) {
     throw new Error('Registration verification failed');
   }
 
-  const { credentialPublicKey, credentialID, counter } = verification.registrationInfo;
+  const { credential } = verification.registrationInfo;
 
   // Store credential
   await db.credentials.create({
     userId: user.id,
-    credentialId: Buffer.from(credentialID),
-    publicKey: Buffer.from(credentialPublicKey),
-    counter,
-    transports: response.response.transports
+    credentialId: credential.id, // base64url-encoded string
+    publicKey: Buffer.from(credential.publicKey),
+    counter: credential.counter,
+    transports: credential.transports || response.response.transports
   });
 
   // Clean up challenge
@@ -317,7 +317,7 @@ async function verifyRegistration(user, response) {
 
 ```javascript
 // Server-side: Generate authentication options
-const { generateAuthenticationOptions, verifyAuthenticationResponse } = require('@simplewebauthn/server');
+import { generateAuthenticationOptions, verifyAuthenticationResponse } from '@simplewebauthn/server';
 
 async function getAuthenticationOptions(email) {
   const user = await db.users.findOne({ email });
@@ -331,7 +331,6 @@ async function getAuthenticationOptions(email) {
     rpID,
     allowCredentials: credentials.map(cred => ({
       id: cred.credentialId,
-      type: 'public-key',
       transports: cred.transports
     })),
     userVerification: 'preferred'
@@ -354,9 +353,9 @@ async function getAuthenticationOptions(email) {
 ```javascript
 // Server-side: Verify authentication response
 async function verifyAuthentication(response) {
-  // Find credential by ID
+  // Find credential by ID (stored as base64url string)
   const credential = await db.credentials.findOne({
-    credentialId: Buffer.from(response.id, 'base64url')
+    credentialId: response.id
   });
 
   if (!credential) {
@@ -379,10 +378,11 @@ async function verifyAuthentication(response) {
     expectedChallenge: challengeRecord.challenge,
     expectedOrigin: origin,
     expectedRPID: rpID,
-    authenticator: {
-      credentialPublicKey: credential.publicKey,
-      credentialID: credential.credentialId,
-      counter: credential.counter
+    credential: {
+      id: credential.credentialId,
+      publicKey: credential.publicKey,
+      counter: credential.counter,
+      transports: credential.transports
     }
   });
 
@@ -548,14 +548,13 @@ async function getPasskeyRegistrationOptions(user) {
   const options = await generateRegistrationOptions({
     rpName,
     rpID,
-    userID: user.id,
+    userID: new TextEncoder().encode(user.id),
     userName: user.email,
     userDisplayName: user.name || user.email,
     attestationType: 'none',
     authenticatorSelection: {
-      // Passkeys require resident keys
+      // Passkeys require resident (discoverable) keys
       residentKey: 'required',
-      requireResidentKey: true,
       userVerification: 'required',
       // Allow both platform and roaming authenticators
       // Omit authenticatorAttachment to allow both
@@ -605,9 +604,10 @@ async function verifyPasskeyAuthentication(response) {
   }
 
   // Find credential by user ID and credential ID
+  // userHandle is base64url-encoded bytes of the original userID (a UTF-8 string)
   const credential = await db.credentials.findOne({
-    userId: Buffer.from(userId, 'base64url').toString(),
-    credentialId: Buffer.from(response.id, 'base64url')
+    userId: new TextDecoder().decode(Buffer.from(userId, 'base64url')),
+    credentialId: response.id
   });
 
   if (!credential) {
@@ -800,9 +800,9 @@ CREATE TABLE users (
 CREATE TABLE credentials (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-  credential_id BYTEA UNIQUE NOT NULL,
+  credential_id TEXT UNIQUE NOT NULL, -- base64url-encoded credential ID
   public_key BYTEA NOT NULL,
-  counter INTEGER DEFAULT 0,
+  counter BIGINT DEFAULT 0,
   transports TEXT[],
   authenticator_type VARCHAR(50), -- 'platform', 'cross-platform', 'passkey'
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
