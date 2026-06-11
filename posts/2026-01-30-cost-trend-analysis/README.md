@@ -140,18 +140,18 @@ for date, value in forecasts:
 Output:
 ```text
 Trend Direction: increasing
-Daily Growth: $22.42/day
-Monthly Growth: $672.73/month
-R-squared: 0.9521
+Daily Growth: $23.76/day
+Monthly Growth: $712.73/month
+R-squared: 0.9159
 
 7-Day Forecast:
-  2024-01-11: $1466.18
-  2024-01-12: $1488.61
-  2024-01-13: $1511.03
-  2024-01-14: $1533.45
-  2024-01-15: $1555.88
-  2024-01-16: $1578.30
-  2024-01-17: $1600.73
+  2024-01-11: $1416.69
+  2024-01-12: $1440.45
+  2024-01-13: $1464.21
+  2024-01-14: $1487.97
+  2024-01-15: $1511.73
+  2024-01-16: $1535.49
+  2024-01-17: $1559.25
 ```
 
 ### Exponential Trend Detection
@@ -1142,7 +1142,7 @@ class PercentageChangeDetector:
 # Example: Multi-method anomaly detection
 print("=== Cost Anomaly Detection Demo ===\n")
 
-# Simulate 30 days of costs with anomalies on days 15 and 25
+# Simulate 30 days of costs with injected anomalies on days 15 and 25
 np.random.seed(42)
 base_costs = 1000 + np.random.normal(0, 50, 30)
 base_costs[14] = 1500  # Spike anomaly
@@ -1345,7 +1345,7 @@ all_costs = np.concatenate([normal_costs, anomalies])
 np.random.shuffle(all_costs)
 
 # Train and detect
-detector = SimplifiedIsolationForest(n_trees=50, sample_size=64, contamination=0.05)
+detector = SimplifiedIsolationForest(n_trees=50, sample_size=64, contamination=4/94)
 detector.fit(all_costs)
 
 detected = detector.detect_anomalies(all_costs)
@@ -1653,7 +1653,7 @@ class ServiceComparison:
                 "service": name,
                 "total_cost": data["total"],
                 metric: metric_value,
-                "efficiency_score": round(data["total"] / metric_value, 4) if metric_value else 0
+                "efficiency_score": round(metric_value, 4)
             })
 
         return sorted(rankings, key=lambda x: x["efficiency_score"])
