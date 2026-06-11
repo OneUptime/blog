@@ -331,7 +331,7 @@ deploy-app:
 
 ## Optional Dependencies
 
-Sometimes a job should run even if a dependency fails or is skipped:
+Sometimes a job should run even if a dependency might not be added to the pipeline:
 
 ```yaml
 build-app:
@@ -341,7 +341,7 @@ build-app:
   rules:
     - if: $CI_COMMIT_BRANCH == "main"
 
-# Runs even if build-app was skipped (on non-main branches)
+# Runs even if build-app is not added to the pipeline (on non-main branches)
 lint-code:
   stage: test
   needs:
@@ -379,17 +379,13 @@ test:
     - job: build
       parallel:
         matrix:
-          - SERVICE: $SERVICE
+          - SERVICE: ['$[[ matrix.SERVICE ]]']
   script:
     - docker run $REGISTRY/$SERVICE:$CI_COMMIT_SHA npm test
 
 deploy:
   stage: deploy
-  needs:
-    - job: test
-      parallel:
-        matrix:
-          - SERVICE: [auth, gateway, user, notification]
+  needs: [test]
   script:
     - ./deploy-all.sh
 ```
@@ -443,29 +439,34 @@ flowchart LR
 
 ### 4. Set Resource Limits
 
-Limit concurrent jobs to avoid overwhelming shared runners:
+Use resource groups when jobs that touch the same shared resource must not run at the same time:
 
 ```yaml
-# In project settings or .gitlab-ci.yml
-variables:
-  # Limit concurrent jobs
-  CI_PARALLEL_JOBS: 10
+deploy-production:
+  stage: deploy
+  resource_group: production
+  script:
+    - ./deploy.sh
 ```
 
 ## Debugging DAG Pipelines
 
 ### Visualize the Graph
 
-GitLab shows your DAG in the pipeline view. Click "Needs" tab to see job dependencies as a graph.
+GitLab can visualize your `.gitlab-ci.yml` in the pipeline editor. Open **Build > Pipeline editor**, then select the **Visualize** tab to see stages, jobs, and `needs` relationships.
 
 ### Check Job Dependencies
 
-Use the API to inspect job relationships:
+Use the CI Lint API to validate the configuration and catch dependency errors before committing:
 
 ```bash
-curl --header "PRIVATE-TOKEN: $GITLAB_TOKEN" \
-  "https://gitlab.com/api/v4/projects/$PROJECT_ID/pipelines/$PIPELINE_ID/jobs" | \
-  jq '.[] | {name: .name, needs: .needs}'
+jq --null-input --arg yaml "$(<.gitlab-ci.yml)" \
+  '.content = $yaml | .dry_run = true | .include_jobs = true' | \
+  curl --header "PRIVATE-TOKEN: $GITLAB_TOKEN" \
+    --header "Content-Type: application/json" \
+    --data @- \
+    "https://gitlab.com/api/v4/projects/$PROJECT_ID/ci/lint" | \
+  jq '{valid, errors, warnings}'
 ```
 
 ### Common Errors
@@ -496,7 +497,6 @@ Here's a complete pipeline for a monorepo with multiple packages:
 
 ```yaml
 stages:
-  - setup
   - build
   - test
   - publish
@@ -504,30 +504,12 @@ stages:
 variables:
   NODE_VERSION: "20"
 
-# Detect which packages changed
-detect-changes:
-  stage: setup
-  script:
-    - |
-      if git diff --name-only $CI_MERGE_REQUEST_DIFF_BASE_SHA HEAD | grep -q "^packages/core/"; then
-        echo "CORE_CHANGED=true" >> changes.env
-      fi
-      if git diff --name-only $CI_MERGE_REQUEST_DIFF_BASE_SHA HEAD | grep -q "^packages/ui/"; then
-        echo "UI_CHANGED=true" >> changes.env
-      fi
-      if git diff --name-only $CI_MERGE_REQUEST_DIFF_BASE_SHA HEAD | grep -q "^packages/api/"; then
-        echo "API_CHANGED=true" >> changes.env
-      fi
-  artifacts:
-    reports:
-      dotenv: changes.env
-
 # Build only changed packages
 build-core:
   stage: build
-  needs: [detect-changes]
   rules:
-    - if: $CORE_CHANGED == "true"
+    - changes:
+        - packages/core/**/*
   script:
     - cd packages/core && npm ci && npm run build
   artifacts:
@@ -537,11 +519,11 @@ build-core:
 build-ui:
   stage: build
   needs:
-    - detect-changes
     - job: build-core
       optional: true
   rules:
-    - if: $UI_CHANGED == "true"
+    - changes:
+        - packages/ui/**/*
   script:
     - cd packages/ui && npm ci && npm run build
   artifacts:
@@ -551,11 +533,11 @@ build-ui:
 build-api:
   stage: build
   needs:
-    - detect-changes
     - job: build-core
       optional: true
   rules:
-    - if: $API_CHANGED == "true"
+    - changes:
+        - packages/api/**/*
   script:
     - cd packages/api && npm ci && npm run build
   artifacts:
@@ -569,7 +551,8 @@ test-core:
     - job: build-core
       optional: true
   rules:
-    - if: $CORE_CHANGED == "true"
+    - changes:
+        - packages/core/**/*
   script:
     - cd packages/core && npm test
 
@@ -579,7 +562,8 @@ test-ui:
     - job: build-ui
       optional: true
   rules:
-    - if: $UI_CHANGED == "true"
+    - changes:
+        - packages/ui/**/*
   script:
     - cd packages/ui && npm test
 
@@ -589,7 +573,8 @@ test-api:
     - job: build-api
       optional: true
   rules:
-    - if: $API_CHANGED == "true"
+    - changes:
+        - packages/api/**/*
   script:
     - cd packages/api && npm test
 
