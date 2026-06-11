@@ -67,9 +67,8 @@ Let us start by creating a class that handles embedding generation. We will use 
 # This module handles the conversion of text queries into vector embeddings.
 # Embeddings are numerical representations that capture semantic meaning.
 
-import openai
 from typing import List
-import numpy as np
+from openai import OpenAI
 
 class EmbeddingService:
     """
@@ -81,7 +80,7 @@ class EmbeddingService:
 
     def __init__(self, api_key: str, model: str = "text-embedding-3-small"):
         # Initialize the OpenAI client with your API key
-        self.client = openai.OpenAI(api_key=api_key)
+        self.client = OpenAI(api_key=api_key)
 
         # The embedding model to use. Options include:
         # - text-embedding-3-small: Faster, cheaper, 1536 dimensions
@@ -367,7 +366,7 @@ class VectorStore:
         self.index = faiss.IndexFlatIP(dimension)
 
         # Store metadata separately since FAISS only handles vectors
-        self.entries: List[CacheEntry] = []
+        self.entries: List[Optional[CacheEntry]] = []
 
         # Map from cache_id to index position for quick lookup
         self.id_to_index: dict[str, int] = {}
@@ -426,7 +425,8 @@ class VectorStore:
             # FAISS may return -1 for indices when fewer results exist
             if idx >= 0 and score >= threshold:
                 entry = self.entries[idx]
-                results.append((entry, float(score)))
+                if entry is not None:
+                    results.append((entry, float(score)))
 
         return results
 
@@ -434,8 +434,8 @@ class VectorStore:
         """
         Remove an entry from the vector store by its cache_id.
 
-        Note: FAISS IndexFlatIP does not support direct removal.
-        This method marks the entry as removed and rebuilds periodically.
+        Note: This example marks the entry as removed and rebuilds
+        periodically so metadata indexes stay aligned with FAISS results.
 
         Args:
             cache_id: The ID of the cache entry to remove
@@ -760,7 +760,7 @@ def call_llm(query: str) -> str:
     This function will be called on cache misses.
     """
     response = openai_client.chat.completions.create(
-        model="gpt-4",
+        model="gpt-5.4-mini",
         messages=[
             {"role": "system", "content": "You are a helpful assistant."},
             {"role": "user", "content": query}
@@ -1196,13 +1196,13 @@ Here is how to calculate the cost savings from semantic caching:
 graph LR
     subgraph "Without Cache"
         A1[1000 Queries] --> B1[1000 LLM Calls]
-        B1 --> C1["Cost: $20<br/>(at $0.02/call)"]
+        B1 --> C1["Cost: $7.50<br/>(at $0.0075/query)"]
     end
 
     subgraph "With 60% Hit Rate"
         A2[1000 Queries] --> B2[400 LLM Calls]
         A2 --> C2[600 Cache Hits]
-        B2 --> D2["Cost: $8 + $1 embeddings<br/>= $9 total"]
+        B2 --> D2["Cost: about $3.00 total<br/>(LLM calls + embeddings)"]
     end
 ```
 
@@ -1210,10 +1210,12 @@ graph LR
 # cost_calculator.py
 # Calculate cost savings from semantic caching.
 
+from dataclasses import dataclass
+
 @dataclass
 class CostConfig:
     """Pricing configuration for API calls."""
-    llm_cost_per_1k_tokens: float = 0.03  # GPT-4 input pricing
+    llm_cost_per_1k_tokens: float = 0.03  # Example blended LLM pricing
     embedding_cost_per_1k_tokens: float = 0.0001  # text-embedding-3-small
     avg_query_tokens: int = 50
     avg_response_tokens: int = 200
@@ -1278,19 +1280,21 @@ When deploying semantic caching to production, keep these factors in mind:
 
 ```python
 # redis_vector_store.py
-# Production-ready vector store using Redis for persistence.
+# Redis-backed vector store using hashes for persistence.
 
 import redis
 import json
 import numpy as np
+from datetime import datetime
 from typing import List, Tuple, Optional
 
 class RedisVectorStore:
     """
-    A Redis-backed vector store for production deployments.
+    A Redis-backed vector store for persistent deployments.
 
     Uses Redis for persistence and enables horizontal scaling
-    across multiple application instances.
+    across multiple application instances. For large-scale vector
+    search, use Redis vector search indexes rather than scanning keys.
     """
 
     def __init__(
