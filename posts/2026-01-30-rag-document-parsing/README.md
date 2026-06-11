@@ -126,8 +126,8 @@ def parse_pdf_basic(pdf_path: str) -> list:
     # Split documents into smaller chunks for better retrieval
     # SentenceSplitter respects sentence boundaries
     splitter = SentenceSplitter(
-        chunk_size=1024,      # Maximum characters per chunk
-        chunk_overlap=200,     # Overlap between chunks for context
+        chunk_size=1024,      # Maximum tokens per chunk
+        chunk_overlap=200,     # Token overlap between chunks for context
         paragraph_separator="\n\n"  # How to identify paragraphs
     )
 
@@ -419,8 +419,6 @@ def parse_pdf_high_resolution(pdf_path: str) -> list:
         strategy="hi_res",
         # Detect tables and extract as structured data
         infer_table_structure=True,
-        # Include coordinates for each element
-        include_metadata=True,
         # OCR for scanned pages
         languages=["eng"],
     )
@@ -480,11 +478,12 @@ def create_semantic_chunks(elements: list, max_characters: int = 1500) -> list:
 
     result = []
     for chunk in chunks:
+        # Original constituent elements are exposed via chunk.metadata.orig_elements
+        orig_elements = getattr(chunk.metadata, "orig_elements", None) or []
         result.append({
             "text": str(chunk),
             "metadata": {
-                "element_types": [type(e).__name__ for e in chunk.elements]
-                    if hasattr(chunk, 'elements') else [],
+                "element_types": [type(e).__name__ for e in orig_elements],
             }
         })
 
