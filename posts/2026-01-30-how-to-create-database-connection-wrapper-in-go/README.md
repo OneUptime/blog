@@ -44,6 +44,7 @@ func NewConnection(cfg Config) (*sql.DB, error) {
     db.SetConnMaxIdleTime(cfg.ConnMaxIdleTime)
 
     if err := db.Ping(); err != nil {
+        db.Close()
         return nil, err
     }
 
@@ -85,6 +86,19 @@ type Wrapper struct {
     logger Logger
 }
 
+func NewWrapper(cfg Config, logger Logger) (*Wrapper, error) {
+    db, err := NewConnection(cfg)
+    if err != nil {
+        return nil, err
+    }
+
+    return &Wrapper{db: db, logger: logger}, nil
+}
+
+func (w *Wrapper) Close() error {
+    return w.db.Close()
+}
+
 func (w *Wrapper) WithTransaction(ctx context.Context, fn func(tx Tx) error) error {
     tx, err := w.db.BeginTx(ctx, nil)
     if err != nil {
@@ -98,7 +112,7 @@ func (w *Wrapper) WithTransaction(ctx context.Context, fn func(tx Tx) error) err
         }
     }()
 
-    if err := fn(&txWrapper{tx: tx, logger: w.logger}); err != nil {
+    if err := fn(tx); err != nil {
         if rbErr := tx.Rollback(); rbErr != nil {
             return fmt.Errorf("rollback failed: %v (original: %w)", rbErr, err)
         }
@@ -165,7 +179,7 @@ For metrics, integrate with Prometheus or your preferred monitoring system to tr
 
 ## Implementing Retry Logic
 
-Transient failures require retry logic with exponential backoff. This handles temporary network issues and connection resets.
+Transient failures can benefit from retry logic with exponential backoff. Use retries only for idempotent operations or operations that are safe to repeat, because a failed `ExecContext` call may still have reached the database.
 
 ```go
 func (w *Wrapper) ExecWithRetry(ctx context.Context, query string, args ...any) (sql.Result, error) {
