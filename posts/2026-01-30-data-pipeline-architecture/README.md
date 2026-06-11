@@ -124,7 +124,7 @@ This Python example demonstrates a simple ETL job that extracts user data from a
 
 # A minimal but production-aware ETL pattern
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass
 from typing import Iterator, List
 
@@ -199,7 +199,7 @@ def transform_events(events: List[UserEvent]) -> List[dict]:
             # Flatten nested properties for easier querying
             'device_type': event.properties.get('device', 'unknown'),
             'country': event.properties.get('geo', {}).get('country', 'unknown'),
-            'processed_at': datetime.utcnow().isoformat()
+            'processed_at': datetime.now(timezone.utc).isoformat()
         }
         transformed.append(record)
 
@@ -284,10 +284,10 @@ This streaming processor example uses Kafka for message transport. The key insig
 
 ```python
 # streaming_processor.py
-# Kafka-based streaming processor with exactly-once semantics
+# Kafka-based streaming processor with idempotent producer writes
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from dataclasses import dataclass
 from kafka import KafkaConsumer, KafkaProducer
@@ -333,7 +333,7 @@ class StreamProcessor:
         self.producer = KafkaProducer(
             bootstrap_servers=bootstrap_servers,
             acks='all',  # Wait for all replicas
-            enable_idempotence=True,  # Exactly-once producer semantics
+            enable_idempotence=True,  # Deduplicate retried producer sends
             value_serializer=lambda v: json.dumps(v).encode('utf-8')
         )
 
@@ -374,7 +374,7 @@ class StreamProcessor:
             event_type=raw_event['event_type'],
             timestamp=datetime.fromisoformat(raw_event['timestamp']),
             enrichments=enrichments,
-            processing_timestamp=datetime.utcnow()
+            processing_timestamp=datetime.now(timezone.utc)
         )
 
     def run(self):
@@ -522,7 +522,7 @@ final AS (
         -- Derived fields
         u.country AS user_country,
         u.customer_segment,
-        DATEDIFF('day', u.signup_date, o.order_date) AS days_since_signup,
+        DATE_DIFF(o.order_date, u.signup_date, DAY) AS days_since_signup,
 
         -- Is this user's first order?
         ROW_NUMBER() OVER (
@@ -540,7 +540,7 @@ final AS (
 SELECT * FROM final
 ```
 
-The schema file defines tests that run after each dbt run, catching data quality issues before they reach consumers:
+The schema file defines tests that run with `dbt test` or `dbt build`, catching data quality issues before they reach consumers:
 
 ```yaml
 # models/marts/orders/schema.yml
@@ -555,30 +555,33 @@ models:
     columns:
       - name: order_id
         description: "Primary key"
-        tests:
+        data_tests:
           - unique
           - not_null
 
       - name: user_id
         description: "Foreign key to dim_users"
-        tests:
+        data_tests:
           - not_null
           - relationships:
-              to: ref('dim_users')
-              field: user_id
+              arguments:
+                to: ref('dim_users')
+                field: user_id
 
       - name: total_amount
         description: "Order total in local currency"
-        tests:
+        data_tests:
           - not_null
           - dbt_utils.expression_is_true:
-              expression: ">= 0"
+              arguments:
+                expression: ">= 0"
 
       - name: status
         description: "Order status"
-        tests:
+        data_tests:
           - accepted_values:
-              values: ['pending', 'confirmed', 'shipped', 'delivered', 'cancelled']
+              arguments:
+                values: ['pending', 'confirmed', 'shipped', 'delivered', 'cancelled']
 ```
 
 ---
@@ -618,7 +621,7 @@ This validator class implements a layered validation approach. Schema validation
 # data_validator.py
 # Layered data validation framework
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Any, Callable
 import statistics
 
@@ -771,7 +774,10 @@ class DataValidator:
             )
 
         newest = max(timestamps)
-        age = datetime.utcnow() - newest
+        if newest.tzinfo is None:
+            newest = newest.replace(tzinfo=timezone.utc)
+
+        age = datetime.now(timezone.utc) - newest
 
         passed = age <= max_age
         return ValidationResult(
@@ -843,9 +849,12 @@ This instrumentation module shows how to add OpenTelemetry tracing and metrics t
 # pipeline_observability.py
 # OpenTelemetry instrumentation for data pipelines
 from opentelemetry import trace, metrics
+from opentelemetry.metrics import CallbackOptions, Observation
 from opentelemetry.trace import Status, StatusCode
 from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 import time
@@ -855,10 +864,14 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Initialize OpenTelemetry
-trace.set_tracer_provider(TracerProvider())
+# Initialize OpenTelemetry exporters
+trace_provider = TracerProvider()
+trace_provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
+trace.set_tracer_provider(trace_provider)
 tracer = trace.get_tracer("data-pipeline")
 
+metric_reader = PeriodicExportingMetricReader(OTLPMetricExporter())
+metrics.set_meter_provider(MeterProvider(metric_readers=[metric_reader]))
 meter = metrics.get_meter("data-pipeline")
 
 # Define pipeline metrics
@@ -880,8 +893,16 @@ validation_failures = meter.create_counter(
     unit="records"
 )
 
+def get_current_queue_lag() -> int:
+    """Read current consumer lag from your broker or queue client."""
+    return 0
+
+def observe_queue_lag(options: CallbackOptions):
+    yield Observation(get_current_queue_lag())
+
 queue_lag = meter.create_observable_gauge(
     "pipeline.queue.lag",
+    callbacks=[observe_queue_lag],
     description="Current lag behind source"
 )
 
@@ -1033,7 +1054,7 @@ import random
 import logging
 from typing import Callable, Any, Optional
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 
 logger = logging.getLogger(__name__)
@@ -1075,7 +1096,7 @@ class DeadLetterQueue:
             'error_message': str(error),
             'failed_stage': stage,
             'attempt_count': attempt_count,
-            'failed_at': datetime.utcnow().isoformat(),
+            'failed_at': datetime.now(timezone.utc).isoformat(),
             'pipeline_run_id': self._get_current_run_id()
         }
 
@@ -1094,7 +1115,7 @@ class DeadLetterQueue:
 
     def _get_current_run_id(self) -> str:
         # In production, get from context/environment
-        return "run_" + datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        return "run_" + datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
 
 def classify_error(error: Exception) -> ErrorCategory:
     """
@@ -1247,9 +1268,12 @@ This partitioned processor example shows how to scale horizontally by partitioni
 # scaling.py
 # Horizontal scaling patterns for data pipelines
 import hashlib
+import logging
 from typing import List, Dict, Any
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 import multiprocessing
+
+logger = logging.getLogger(__name__)
 
 def partition_key(record: dict, key_field: str, num_partitions: int) -> int:
     """
@@ -1378,7 +1402,7 @@ This test module demonstrates how to test pipeline components in isolation using
 # test_pipeline.py
 # Testing strategies for data pipelines
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import Mock, patch
 
 # Unit test for transformation logic
@@ -1387,15 +1411,15 @@ class TestTransformations:
 
     def test_transform_user_event_basic(self):
         """Test basic event transformation"""
-        raw_event = {
-            'user_id': 'user_123',
-            'event_type': 'page_view',
-            'timestamp': '2024-01-15T10:30:00',
-            'properties': {
+        raw_event = UserEvent(
+            user_id='user_123',
+            event_type='page_view',
+            timestamp=datetime.fromisoformat('2024-01-15T10:30:00'),
+            properties={
                 'device': 'mobile',
                 'geo': {'country': 'US'}
             }
-        }
+        )
 
         result = transform_events([raw_event])[0]
 
@@ -1407,12 +1431,12 @@ class TestTransformations:
 
     def test_transform_handles_missing_properties(self):
         """Test graceful handling of missing nested fields"""
-        raw_event = {
-            'user_id': 'user_456',
-            'event_type': 'click',
-            'timestamp': '2024-01-15T10:30:00',
-            'properties': {}  # Empty properties
-        }
+        raw_event = UserEvent(
+            user_id='user_456',
+            event_type='click',
+            timestamp=datetime.fromisoformat('2024-01-15T10:30:00'),
+            properties={}  # Empty properties
+        )
 
         result = transform_events([raw_event])[0]
 
@@ -1453,8 +1477,8 @@ class TestPipelineIntegration:
         # Execute pipeline stages
         extracted = list(extract_events(
             source_db,
-            datetime.utcnow() - timedelta(hours=1),
-            datetime.utcnow() + timedelta(hours=1)
+            datetime.now(timezone.utc) - timedelta(hours=1),
+            datetime.now(timezone.utc) + timedelta(hours=1)
         ))
 
         transformed = transform_events(extracted[0])
@@ -1505,7 +1529,7 @@ class TestDataQuality:
     def test_freshness_validation_catches_stale_data(self):
         """Freshness check should fail for old data"""
         records = [
-            {'timestamp': (datetime.utcnow() - timedelta(hours=5)).isoformat()}
+            {'timestamp': (datetime.now(timezone.utc) - timedelta(hours=5)).isoformat()}
         ]
 
         validator = DataValidator({}, [])
@@ -1528,7 +1552,7 @@ class TestPipelinePerformance:
             {
                 'user_id': f'user_{i}',
                 'event_type': 'page_view',
-                'timestamp': datetime.utcnow().isoformat(),
+                'timestamp': datetime.now(timezone.utc).isoformat(),
                 'properties': {'device': 'mobile'}
             }
             for i in range(10000)
