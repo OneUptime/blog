@@ -76,7 +76,8 @@ archive_mode = on
 -- %p = path to WAL file, %f = filename only
 archive_command = 'cp %p /var/lib/postgresql/wal_archive/%f'
 
--- Timeout for archive_command execution (in seconds)
+-- Force a WAL segment switch after this many seconds
+-- Ensures recent WAL is archived even on low-traffic databases
 archive_timeout = 300
 ```
 
