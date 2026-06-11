@@ -18,7 +18,7 @@ Token filters operate on the output of tokenizers, modifying, adding, or removin
 
 Elasticsearch provides numerous built-in token filters. Here are some commonly used ones:
 
-```json
+```http
 PUT /my_index
 {
   "settings": {
@@ -41,7 +41,7 @@ This analyzer applies three filters: `lowercase` converts all tokens to lowercas
 
 You can customize built-in filters with specific parameters. Here is an example configuring a stop filter with custom words:
 
-```json
+```http
 PUT /my_index
 {
   "settings": {
@@ -67,9 +67,9 @@ PUT /my_index
 
 ## Implementing Synonym Filters
 
-Synonym filters expand or replace tokens with equivalent terms, improving recall. There are two approaches: inline synonyms and synonym files.
+Synonym filters expand or replace tokens with equivalent terms, improving recall. Common approaches include inline synonyms, managed synonym sets, and synonym files.
 
-```json
+```http
 PUT /my_index
 {
   "settings": {
@@ -105,11 +105,21 @@ For larger synonym sets, use an external file:
 }
 ```
 
+In current Elasticsearch versions, you can also reference synonym sets managed through the Synonyms API:
+
+```json
+"my_synonym_filter": {
+  "type": "synonym",
+  "synonyms_set": "my-synonym-set",
+  "updateable": true
+}
+```
+
 ## Stemming Filters
 
 Stemming reduces words to their root form, improving search matching. Elasticsearch offers multiple stemmer options:
 
-```json
+```http
 PUT /my_index
 {
   "settings": {
@@ -144,10 +154,11 @@ PUT /my_index
 
 Edge n-gram filters are useful for autocomplete functionality, generating prefixes of tokens:
 
-```json
+```http
 PUT /my_index
 {
   "settings": {
+    "index.max_ngram_diff": 13,
     "analysis": {
       "filter": {
         "autocomplete_filter": {
@@ -174,7 +185,7 @@ This configuration generates tokens like "el", "ela", "elas", "elast" for "elast
 
 Phonetic filters match words that sound similar, useful for handling misspellings and name variations. You need the analysis-phonetic plugin:
 
-```json
+```http
 PUT /my_index
 {
   "settings": {
@@ -204,7 +215,7 @@ Available encoders include `metaphone`, `double_metaphone`, `soundex`, and `beid
 
 The power of token filters comes from combining them strategically. Here is a comprehensive analyzer for English text:
 
-```json
+```http
 PUT /my_index
 {
   "settings": {
@@ -244,7 +255,7 @@ PUT /my_index
 
 Always test your analyzers using the Analyze API:
 
-```bash
+```http
 POST /my_index/_analyze
 {
   "analyzer": "enhanced_english",
