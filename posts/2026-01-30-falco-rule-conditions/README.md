@@ -144,7 +144,6 @@ Falco provides hundreds of fields extracted from system calls. These fields let 
   desc: Detect connections to IRC which may indicate C2 communication
   condition: >
     evt.type = connect
-    and evt.dir = <                         # Outgoing connection
     and fd.sip != 127.0.0.1                 # Not localhost
     and fd.sport in (6666, 6667, 6668, 6669, 6697)  # IRC ports
     and container.id != host
@@ -203,7 +202,6 @@ Macros let you define reusable condition fragments. Use them to avoid repetition
 - macro: spawned_process
   condition: >
     evt.type in (execve, execveat)
-    and evt.dir = <
 
 # Macro for file open events with read intent
 - macro: open_read
@@ -221,8 +219,10 @@ Macros let you define reusable condition fragments. Use them to avoid repetition
 - macro: outbound_conn
   condition: >
     evt.type = connect
-    and evt.dir = <
-    and fd.typechar = 4
+    and fd.typechar in (4, 6)
+    and fd.ip != "0.0.0.0"
+    and fd.net != "127.0.0.0/8"
+    and (evt.rawres >= 0 or evt.res = EINPROGRESS)
 ```
 
 ### Using Macros in Rules
@@ -334,24 +334,23 @@ You can extend existing lists without modifying the original:
 
 # Append additional shells in your custom rules file
 - list: shell_binaries
-  append: true
   items: [fish, elvish, ion, xonsh]
+  override:
+    items: append
 ```
 
 ## Rule Evaluation Flow
 
-Understanding how Falco evaluates rules helps you write efficient conditions.
+Understanding how Falco loads and evaluates rules helps you write efficient conditions. Macros and lists are resolved when rules are loaded, then Falco evaluates the resulting condition against matching events.
 
 ```mermaid
 flowchart TD
     A[Kernel Event] --> B[Falco Engine]
-    B --> C{Event Type Filter}
-    C -->|Matches| D[Evaluate Macros]
+    B --> C{Loaded Rules}
+    C -->|Event type matches| D[Evaluate Condition]
     C -->|No Match| E[Skip Rule]
-    D --> F{Check Lists}
-    F --> G{Evaluate Condition}
-    G -->|True| H[Format Output]
-    G -->|False| E
+    D -->|True| H[Format Output]
+    D -->|False| E
     H --> I[Apply Priority]
     I --> J[Send Alert]
 
@@ -365,7 +364,7 @@ flowchart TD
 ### Performance Tips
 
 1. **Put the most selective filter first**: Start with event type checks
-2. **Use macros for common patterns**: Reduces parsing overhead
+2. **Use macros for common patterns**: Keeps shared conditions consistent and readable
 3. **Avoid expensive operations**: Regex and glob matching cost more than equality checks
 
 ```yaml
@@ -422,7 +421,6 @@ flowchart TD
     - /etc/gshadow
     - /etc/security/opasswd
     - /root/.aws/credentials
-    - /home/*/.aws/credentials
 
 - rule: Credential File Access
   desc: Process reading credential files
@@ -430,6 +428,7 @@ flowchart TD
     open_read
     and (
       fd.name in (credential_files)
+      or fd.name glob /home/*/.aws/credentials
       or fd.name glob /home/*/.ssh/id_*
       or fd.name glob /root/.ssh/id_*
     )
@@ -451,14 +450,17 @@ flowchart TD
 - macro: container_started
   condition: >
     evt.type = container
-    and evt.dir = <
 
 - rule: New Executable in Container
   desc: Executable file created or modified in running container
   condition: >
     open_write
     and container.id != host
-    and fd.name endswith .so or fd.name glob /usr/bin/* or fd.name glob /usr/sbin/*
+    and (
+      fd.name endswith .so
+      or fd.name glob /usr/bin/*
+      or fd.name glob /usr/sbin/*
+    )
     and not proc.name in (apt, dpkg, yum, rpm)
   output: >
     Executable modified in container
@@ -508,7 +510,7 @@ falco --validate /etc/falco/rules.d/custom_rules.yaml
 falco -r /etc/falco/rules.d/custom_rules.yaml --dry-run
 
 # Test against a capture file
-falco -r custom_rules.yaml -e test_events.scap
+falco -r custom_rules.yaml -o engine.kind=replay -o replay.capture_file=test_events.scap
 
 # Run in verbose mode to see rule matching
 falco -r custom_rules.yaml -v
