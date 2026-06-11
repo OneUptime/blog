@@ -145,7 +145,13 @@ kind: Deployment
 metadata:
   name: mesh-ready-app
 spec:
+  selector:
+    matchLabels:
+      app: mesh-ready-app
   template:
+    metadata:
+      labels:
+        app: mesh-ready-app
     spec:
       terminationGracePeriodSeconds: 30
       containers:
@@ -179,22 +185,23 @@ spec:
 
 ### Istio-Specific Probe Configuration
 
-Istio can intercept probe traffic. For apps that need probes to bypass the sidecar:
+Istio can rewrite HTTP, TCP, and gRPC probes so kubelet sends the probe request to the sidecar agent, which then probes the application:
 
 ```yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: mesh-ready-app
-  annotations:
-    # Use dedicated probe port that bypasses Envoy
-    sidecar.istio.io/rewriteAppHTTPProbers: "true"
 spec:
   template:
+    metadata:
+      annotations:
+        # Must be set on the pod template; ignored on Deployment metadata
+        sidecar.istio.io/rewriteAppHTTPProbers: "true"
     spec:
       containers:
         - name: app
-          # Probes are automatically rewritten to go through Envoy
+          # Probes are automatically rewritten to the Istio sidecar agent
           livenessProbe:
             httpGet:
               path: /healthz
@@ -239,9 +246,7 @@ sequenceDiagram
 - `traceparent` - Trace context
 - `tracestate` - Vendor-specific trace data
 
-**Routing headers:**
-- `x-envoy-retry-on` - Retry conditions
-- `x-envoy-max-retries` - Max retry count
+Avoid blindly propagating Envoy retry control headers such as `x-envoy-retry-on` and `x-envoy-max-retries`; those should be controlled by your mesh policy or trusted clients.
 
 ### Express Middleware for Header Propagation
 
@@ -332,8 +337,8 @@ app.get('/api/orders/:id', async (req, res) => {
   try {
     // Headers are automatically propagated to downstream services
     const [user, inventory] = await Promise.all([
-      http.get(`http://user-service/users/${req.params.userId}`),
-      http.get(`http://inventory-service/stock/${req.params.productId}`),
+      http.get(`http://user-service/users/${req.query.userId}`),
+      http.get(`http://inventory-service/stock/${req.query.productId}`),
     ]);
 
     res.json({
@@ -398,7 +403,7 @@ def get_order(order_id):
 
 ## Graceful Shutdown for Mesh Compatibility
 
-When a pod terminates, the mesh sidecar needs time to drain connections. Poor shutdown handling causes dropped requests.
+When a pod terminates, Kubernetes marks it as terminating, runs any `preStop` hook before sending `SIGTERM`, and the mesh sidecar needs time to drain connections. Poor shutdown handling causes dropped requests.
 
 ```mermaid
 sequenceDiagram
@@ -407,6 +412,9 @@ sequenceDiagram
     participant Sidecar as Mesh Sidecar
     participant LB as Load Balancer
 
+    K8s->>App: Start termination
+    K8s->>Sidecar: Start termination
+    K8s->>App: Run preStop hook if configured
     K8s->>App: SIGTERM
     K8s->>Sidecar: SIGTERM
     App->>App: Mark not ready
@@ -491,9 +499,14 @@ class GracefulShutdown {
   }
 
   closeServer() {
-    return new Promise((resolve) => {
-      this.server.close(resolve);
-    });
+    return Promise.race([
+      new Promise((resolve) => {
+        this.server.close(resolve);
+      }),
+      this.sleep(this.shutdownTimeout).then(() => {
+        console.warn('[Shutdown] Server close timed out');
+      }),
+    ]);
   }
 
   sleep(ms) {
@@ -511,7 +524,7 @@ module.exports = GracefulShutdown;
 
 ### PreStop Hook Configuration
 
-Add a preStop hook to give the mesh sidecar time to update:
+Add a preStop hook when you need extra time for endpoint updates and external load balancers before the application receives `SIGTERM`:
 
 ```yaml
 apiVersion: apps/v1
@@ -633,20 +646,24 @@ Service meshes can automatically retry failed requests. Your app must be designe
 
 ```javascript
 // idempotency.js
-const crypto = require('crypto');
-
 class IdempotencyStore {
   constructor(redis) {
     this.redis = redis;
     this.ttl = 86400;  // 24 hours
+    this.lockTtl = 30; // seconds
   }
 
   generateKey(requestId, operation) {
     return `idempotency:${operation}:${requestId}`;
   }
 
+  generateLockKey(requestId, operation) {
+    return `idempotency-lock:${operation}:${requestId}`;
+  }
+
   async checkOrSet(requestId, operation, handler) {
     const key = this.generateKey(requestId, operation);
+    const lockKey = this.generateLockKey(requestId, operation);
 
     // Try to get existing result
     const existing = await this.redis.get(key);
@@ -654,13 +671,32 @@ class IdempotencyStore {
       return { cached: true, result: JSON.parse(existing) };
     }
 
-    // Execute operation
-    const result = await handler();
+    // Prevent concurrent retries from executing the same operation
+    const lockAcquired = await this.redis.set(lockKey, '1', {
+      NX: true,
+      EX: this.lockTtl,
+    });
+    if (!lockAcquired) {
+      throw new Error('Duplicate request is already in progress');
+    }
 
-    // Store result for future identical requests
-    await this.redis.setex(key, this.ttl, JSON.stringify(result));
+    try {
+      // Check again after acquiring the lock
+      const cached = await this.redis.get(key);
+      if (cached) {
+        return { cached: true, result: JSON.parse(cached) };
+      }
 
-    return { cached: false, result };
+      // Execute operation
+      const result = await handler();
+
+      // Store result for future identical requests
+      await this.redis.setEx(key, this.ttl, JSON.stringify(result));
+
+      return { cached: false, result };
+    } finally {
+      await this.redis.del(lockKey);
+    }
   }
 }
 
@@ -668,24 +704,30 @@ class IdempotencyStore {
 const idempotency = new IdempotencyStore(redis);
 
 app.post('/api/orders', async (req, res) => {
-  // Use x-request-id from mesh for idempotency
-  const requestId = req.get('x-request-id') || crypto.randomUUID();
-
-  const { cached, result } = await idempotency.checkOrSet(
-    requestId,
-    'create-order',
-    async () => {
-      // This will only execute once per request ID
-      const order = await createOrder(req.body);
-      return { orderId: order.id, status: 'created' };
-    }
-  );
-
-  if (cached) {
-    res.set('x-idempotent-replay', 'true');
+  const requestId = req.get('x-idempotency-key');
+  if (!requestId) {
+    return res.status(400).json({ error: 'x-idempotency-key required' });
   }
 
-  res.status(201).json(result);
+  try {
+    const { cached, result } = await idempotency.checkOrSet(
+      requestId,
+      'create-order',
+      async () => {
+        // This will only execute once per idempotency key
+        const order = await createOrder(req.body);
+        return { orderId: order.id, status: 'created' };
+      }
+    );
+
+    if (cached) {
+      res.set('x-idempotent-replay', 'true');
+    }
+
+    res.status(cached ? 200 : 201).json(result);
+  } catch (err) {
+    res.status(409).json({ error: err.message });
+  }
 });
 ```
 
@@ -892,7 +934,10 @@ async function shutdown(signal) {
   await new Promise((r) => setTimeout(r, config.drainDelay));
 
   console.log('[Shutdown] Closing server');
-  await new Promise((r) => server.close(r));
+  await Promise.race([
+    new Promise((r) => server.close(r)),
+    new Promise((r) => setTimeout(r, config.shutdownTimeout)),
+  ]);
 
   for (const { name, handler } of state.cleanupHandlers) {
     try {
@@ -957,11 +1002,12 @@ spec:
       labels:
         app: mesh-ready-app
       annotations:
+        # Choose the annotations for the mesh you run; do not inject both meshes
         # Istio
         sidecar.istio.io/inject: "true"
         sidecar.istio.io/rewriteAppHTTPProbers: "true"
         # Linkerd
-        linkerd.io/inject: enabled
+        # linkerd.io/inject: enabled
     spec:
       terminationGracePeriodSeconds: 30
       containers:
