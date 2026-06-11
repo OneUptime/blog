@@ -76,13 +76,19 @@ Raw data lands here first before transformation. This preserves the original dat
 The following SQL creates staging tables that mirror source schemas while tracking when each record was ingested.
 
 ```sql
+CREATE SCHEMA IF NOT EXISTS staging;
+
 -- Staging table for raw order data
 -- Preserves original structure with metadata columns for lineage
 CREATE TABLE staging.orders_raw (
     -- Original columns from source
     order_id VARCHAR(50),
     customer_id VARCHAR(50),
+    product_id VARCHAR(50),
     order_date TIMESTAMP,
+    quantity INT,
+    unit_price DECIMAL(10,2),
+    discount_percent DECIMAL(5,2),
     total_amount DECIMAL(10,2),
     status VARCHAR(20),
     raw_payload JSONB,
@@ -134,10 +140,10 @@ The most common pattern. A central fact table connects to dimension tables throu
 
 ```mermaid
 erDiagram
-    FACT_SALES ||--o{ DIM_DATE : has
-    FACT_SALES ||--o{ DIM_PRODUCT : has
-    FACT_SALES ||--o{ DIM_CUSTOMER : has
-    FACT_SALES ||--o{ DIM_STORE : has
+    DIM_DATE ||--o{ FACT_SALES : has
+    DIM_PRODUCT ||--o{ FACT_SALES : has
+    DIM_CUSTOMER ||--o{ FACT_SALES : has
+    DIM_STORE ||--o{ FACT_SALES : has
 
     FACT_SALES {
         bigint sale_id PK
@@ -252,7 +258,9 @@ CREATE TABLE fact_sales (
     discount_amount DECIMAL(10,2),
     revenue DECIMAL(12,2),
     cost DECIMAL(12,2),
-    profit DECIMAL(12,2)
+    profit DECIMAL(12,2),
+    source_order_id VARCHAR(50),
+    loaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Indexes for common query patterns
@@ -267,9 +275,9 @@ Dimensions are normalized into sub-dimensions. Saves storage but requires more j
 
 ```mermaid
 erDiagram
-    FACT_SALES ||--o{ DIM_PRODUCT : has
-    DIM_PRODUCT ||--o{ DIM_CATEGORY : belongs_to
-    DIM_CATEGORY ||--o{ DIM_DEPARTMENT : belongs_to
+    DIM_PRODUCT ||--o{ FACT_SALES : has
+    DIM_CATEGORY ||--o{ DIM_PRODUCT : contains
+    DIM_DEPARTMENT ||--o{ DIM_CATEGORY : contains
 
     FACT_SALES {
         bigint sale_id PK
@@ -354,7 +362,7 @@ erDiagram
 
 ### Step 1: Extract Data
 
-This Python script extracts data from a PostgreSQL source database, handling connection pooling and batch processing for large tables.
+This Python script extracts data from a PostgreSQL source database, handling connection management and batch processing for large tables.
 
 ```python
 # extract.py
@@ -362,8 +370,7 @@ This Python script extracts data from a PostgreSQL source database, handling con
 # Extracts data from source systems with incremental loading support
 
 import psycopg2
-from datetime import datetime, timedelta
-import json
+from datetime import datetime
 import logging
 
 logging.basicConfig(level=logging.INFO)
@@ -423,9 +430,10 @@ class DataExtractor:
             f"Extracting {table_name} from {last_watermark} to {current_time}"
         )
 
-        cursor = self.connection.cursor()
+        cursor = self.connection.cursor(name="extract_cursor")
+        cursor.itersize = batch_size
 
-        # Use server-side cursor for large result sets
+        # Use a named server-side cursor for large result sets
         cursor.execute(f"""
             SELECT * FROM {table_name}
             WHERE {timestamp_column} > %s
@@ -486,9 +494,8 @@ Transformations clean, standardize, and enrich raw data. This step applies busin
 # transform.py
 # Data transformation logic for the warehouse
 
-from typing import List, Dict, Any
+from typing import List
 from datetime import datetime
-import hashlib
 
 
 class DataTransformer:
@@ -645,7 +652,8 @@ The load step writes transformed data to the warehouse, handling upserts and mai
 
 import psycopg2
 from psycopg2.extras import execute_values
-from typing import List, Dict
+from typing import List
+from datetime import date
 import logging
 
 logger = logging.getLogger(__name__)
@@ -686,7 +694,8 @@ class DataLoader:
         columns = [
             'date_key', 'customer_key', 'product_key',
             'quantity', 'unit_price', 'discount_amount',
-            'revenue', 'cost', 'profit'
+            'revenue', 'cost', 'profit',
+            'source_order_id', 'loaded_at'
         ]
 
         insert_sql = f"""
@@ -722,6 +731,7 @@ class DataLoader:
         """
         Upsert records into a dimension table.
         Updates existing records, inserts new ones.
+        The key_column must have a PRIMARY KEY or UNIQUE constraint.
         """
         if not records:
             return 0
@@ -788,12 +798,12 @@ class DataLoader:
                     """, (record[business_key],))
 
                     # Insert new version
-                    record['effective_date'] = 'CURRENT_DATE'
+                    record['effective_date'] = date.today()
                     record['is_current'] = True
                     self._insert_record(cursor, table_name, record)
             else:
                 # New record
-                record['effective_date'] = 'CURRENT_DATE'
+                record['effective_date'] = date.today()
                 record['is_current'] = True
                 self._insert_record(cursor, table_name, record)
 
@@ -818,11 +828,12 @@ Use a workflow orchestrator like Apache Airflow to schedule and monitor your ETL
 # dags/etl_pipeline.py
 # Airflow DAG for the data warehouse ETL pipeline
 
-from airflow import DAG
-from airflow.operators.python import PythonOperator
-from airflow.operators.dummy import DummyOperator
-from airflow.utils.dates import days_ago
 from datetime import timedelta
+import pendulum
+
+from airflow.sdk import DAG
+from airflow.providers.standard.operators.empty import EmptyOperator
+from airflow.providers.standard.operators.python import PythonOperator
 
 # Default arguments for all tasks
 default_args = {
@@ -839,11 +850,16 @@ dag = DAG(
     'data_warehouse_etl',
     default_args=default_args,
     description='ETL pipeline for the data warehouse',
-    schedule_interval='0 2 * * *',  # Run daily at 2 AM
-    start_date=days_ago(1),
+    schedule='0 2 * * *',  # Run daily at 2 AM UTC
+    start_date=pendulum.datetime(2026, 1, 1, tz="UTC"),
     catchup=False,
     tags=['etl', 'warehouse'],
 )
+
+
+def load_dimension_lookups():
+    """Load surrogate key lookup dictionaries from dimension tables."""
+    return {'customer': {}, 'product': {}}
 
 
 def extract_orders(**context):
@@ -929,15 +945,14 @@ def update_aggregates(**context):
     """)
 
     # Refresh materialized views
-    cursor.execute("REFRESH MATERIALIZED VIEW CONCURRENTLY mv_sales_by_category")
-    cursor.execute("REFRESH MATERIALIZED VIEW CONCURRENTLY mv_customer_metrics")
+    cursor.execute("REFRESH MATERIALIZED VIEW CONCURRENTLY mv_customer_ltv")
 
     loader.connection.commit()
 
 
 # Define task dependencies
-start = DummyOperator(task_id='start', dag=dag)
-end = DummyOperator(task_id='end', dag=dag)
+start = EmptyOperator(task_id='start', dag=dag)
+end = EmptyOperator(task_id='end', dag=dag)
 
 extract_task = PythonOperator(
     task_id='extract_orders',
@@ -1059,6 +1074,7 @@ WHERE c.is_current = TRUE
 GROUP BY c.customer_key, c.customer_id, c.customer_name, c.segment;
 
 -- Index for fast lookups
+CREATE UNIQUE INDEX idx_mv_customer_ltv_customer_key ON mv_customer_ltv(customer_key);
 CREATE INDEX idx_mv_customer_ltv_segment ON mv_customer_ltv(segment);
 
 -- Refresh schedule (run after ETL completes)
