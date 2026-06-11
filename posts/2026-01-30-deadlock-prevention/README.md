@@ -360,12 +360,12 @@ def process_order_good(conn, order_id):
         conn.commit()
 ```
 
-### Use Row-Level Locking Instead of Table-Level
+### Use Row-Level Locking and Batch Large Updates
 
-Most modern databases use row-level locking by default, but some operations can escalate to table locks.
+Most modern databases use row-level locking for ordinary row updates, but large updates can still hold many locks and increase contention.
 
 ```sql
--- This might escalate to table lock if updating many rows
+-- This may lock many rows and increase contention
 UPDATE inventory SET quantity = 0 WHERE quantity < 0;
 
 -- Better: Process in smaller batches
@@ -391,11 +391,8 @@ SELECT
     blocking.pid AS blocking_pid,
     blocking.query AS blocking_query
 FROM pg_stat_activity blocked
-JOIN pg_locks blocked_locks ON blocked.pid = blocked_locks.pid
-JOIN pg_locks blocking_locks ON blocked_locks.relation = blocking_locks.relation
-    AND blocked_locks.pid != blocking_locks.pid
-JOIN pg_stat_activity blocking ON blocking_locks.pid = blocking.pid
-WHERE NOT blocked_locks.granted;
+JOIN LATERAL unnest(pg_blocking_pids(blocked.pid)) AS blocking_pid ON true
+JOIN pg_stat_activity blocking ON blocking.pid = blocking_pid;
 ```
 
 ```sql
@@ -403,8 +400,10 @@ WHERE NOT blocked_locks.granted;
 -- log_lock_waits = on
 -- deadlock_timeout = 1s
 
--- Query the logs for deadlock events
-SELECT * FROM pg_stat_database_conflicts WHERE datname = 'your_database';
+-- Check the cumulative deadlock count for a database
+SELECT datname, deadlocks
+FROM pg_stat_database
+WHERE datname = 'your_database';
 ```
 
 ### Application-Level Monitoring
@@ -466,7 +465,7 @@ flowchart TD
 4. Avoid external calls or heavy computation while holding locks
 5. Consider optimistic locking for read-heavy, low-contention scenarios
 6. Monitor deadlock occurrences and alert on spikes
-7. Use row-level locking and avoid operations that escalate to table locks
+7. Use row-level locking and avoid operations that lock too many rows at once
 8. Implement retry logic with exponential backoff for transient failures
 9. Test concurrent scenarios under realistic load conditions
 
