@@ -167,7 +167,7 @@ spec:
           env:
             # Connect to Redis on localhost (same Pod)
             - name: REDIS_ADDR
-              value: "localhost:6379"
+              value: "redis://localhost:6379"
           resources:
             limits:
               memory: "64Mi"
@@ -254,6 +254,7 @@ data:
                           "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
       clusters:
         - name: local_app
+          connect_timeout: 0.25s
           type: STATIC
           lb_policy: ROUND_ROBIN
           load_assignment:
@@ -295,6 +296,8 @@ spec:
       labels:
         app: config-app
     spec:
+      securityContext:
+        fsGroup: 65533
       containers:
         # Main application reads config from shared volume
         - name: app
@@ -416,13 +419,13 @@ spec:
       targetPort: 4180
 ```
 
-## Native Sidecar Containers in Kubernetes 1.28+
+## Native Sidecar Containers in Kubernetes 1.29+
 
-Kubernetes 1.28 introduced native sidecar support using the `restartPolicy: Always` field in init containers. This ensures sidecars start before and stop after the main container.
+Kubernetes 1.28 introduced native sidecar support as an alpha feature. In Kubernetes 1.29 and later, clusters with the `SidecarContainers` feature gate enabled support native sidecars using the `restartPolicy: Always` field in init containers. This ensures sidecars start before and stop after the main container.
 
 ```yaml
 # native-sidecar.yaml
-# Using Kubernetes native sidecar containers (1.28+)
+# Using Kubernetes native sidecar containers (1.29+)
 apiVersion: v1
 kind: Pod
 metadata:
