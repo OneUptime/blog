@@ -433,19 +433,41 @@ EOF
 }
 
 # Point-in-time restore test
+# PITR in PostgreSQL is a physical recovery: restore a base backup (from
+# pg_basebackup) and replay archived WAL up to recovery_target_time.
+# pg_restore (logical) cannot do PITR.
 pitr_restore_test() {
     local target_time=$1
+    local data_dir="/var/lib/postgresql/pitr_test"
+    local base_backup="/backups/base"
+    local wal_archive="/backups/wal"
 
     log "Testing point-in-time restore to: $target_time"
 
-    # Restore to specific point in time
-    pg_restore \
-        --host=localhost \
-        --port=5433 \
-        --username=restore_test \
-        --dbname=pitr_restore_db \
-        --target-time="$target_time" \
-        /tmp/backup.dump
+    # Reset the test data directory
+    pg_ctl -D "$data_dir" stop -m immediate 2>/dev/null || true
+    rm -rf "$data_dir"
+    mkdir -p "$data_dir"
+    chmod 700 "$data_dir"
+
+    # Restore the base backup
+    tar -xf "$base_backup/base.tar" -C "$data_dir"
+
+    # Configure recovery target (PostgreSQL 12+)
+    cat >> "$data_dir/postgresql.auto.conf" <<EOF
+restore_command = 'cp $wal_archive/%f %p'
+recovery_target_time = '$target_time'
+recovery_target_action = 'promote'
+EOF
+    touch "$data_dir/recovery.signal"
+
+    # Start the cluster to perform recovery and then promote
+    pg_ctl -D "$data_dir" -l "$data_dir/recovery.log" start
+
+    # Wait for recovery to complete and the cluster to become available
+    until pg_isready -h localhost -p 5433; do
+        sleep 2
+    done
 
     # Verify no data after target time exists
     local future_records=$(psql -h localhost -p 5433 -U restore_test -d pitr_restore_db \
@@ -1418,8 +1440,9 @@ flowchart LR
 # report_generator.py
 
 import json
+import os
 import jinja2
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any, List
 import boto3
 from weasyprint import HTML
@@ -1427,7 +1450,7 @@ from weasyprint import HTML
 class RestoreTestReporter:
     def __init__(self, test_results: Dict[str, Any]):
         self.results = test_results
-        self.timestamp = datetime.utcnow()
+        self.timestamp = datetime.now(timezone.utc)
 
     def generate_json_report(self, output_path: str):
         """Generate JSON report for programmatic consumption."""
