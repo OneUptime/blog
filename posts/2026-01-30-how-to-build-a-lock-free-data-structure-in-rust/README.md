@@ -17,6 +17,8 @@ Rust provides atomic types in the `std::sync::atomic` module. These types suppor
 ```rust
 use std::sync::atomic::{AtomicPtr, AtomicUsize, Ordering};
 
+struct Node;
+
 // Common atomic types
 let counter: AtomicUsize = AtomicUsize::new(0);
 let ptr: AtomicPtr<Node> = AtomicPtr::new(std::ptr::null_mut());
@@ -33,7 +35,12 @@ Memory ordering determines how atomic operations synchronize memory across threa
 - **SeqCst**: Strongest ordering with a total global order
 
 ```rust
-// Reading with Acquire ensures we see all writes before the Release store
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+let atomic_var = AtomicUsize::new(0);
+let new_value = 1;
+
+// Reading with Acquire ensures we see writes before the matching Release store
 let value = atomic_var.load(Ordering::Acquire);
 
 // Writing with Release ensures all previous writes are visible
@@ -93,19 +100,20 @@ impl<T> Node<T> {
 Let's implement a complete lock-free stack using Treiber's algorithm with crossbeam-epoch for safe memory management:
 
 ```rust
-use crossbeam_epoch::{self as epoch, Atomic, Owned, Shared};
+use crossbeam_epoch::{self as epoch, Atomic, Owned};
+use std::mem::ManuallyDrop;
 use std::sync::atomic::Ordering;
 
-pub struct LockFreeStack<T> {
+pub struct LockFreeStack<T: Send> {
     head: Atomic<Node<T>>,
 }
 
-struct Node<T> {
-    data: T,
+struct Node<T: Send> {
+    data: ManuallyDrop<T>,
     next: Atomic<Node<T>>,
 }
 
-impl<T> LockFreeStack<T> {
+impl<T: Send> LockFreeStack<T> {
     pub fn new() -> Self {
         LockFreeStack {
             head: Atomic::null(),
@@ -114,7 +122,7 @@ impl<T> LockFreeStack<T> {
 
     pub fn push(&self, data: T) {
         let mut node = Owned::new(Node {
-            data,
+            data: ManuallyDrop::new(data),
             next: Atomic::null(),
         });
 
@@ -159,11 +167,28 @@ impl<T> LockFreeStack<T> {
                         .is_ok()
                     {
                         unsafe {
+                            let data = ManuallyDrop::into_inner(std::ptr::read(&h.data));
                             guard.defer_destroy(head);
-                            return Some(std::ptr::read(&h.data));
+                            return Some(data);
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+impl<T: Send> Drop for LockFreeStack<T> {
+    fn drop(&mut self) {
+        unsafe {
+            let mut node = self.head.load(Ordering::Relaxed, epoch::unprotected());
+
+            while let Some(n) = node.as_ref() {
+                let next = n.next.load(Ordering::Relaxed, epoch::unprotected());
+                let mut owned = node.into_owned();
+                ManuallyDrop::drop(&mut owned.data);
+                drop(owned);
+                node = next;
             }
         }
     }
