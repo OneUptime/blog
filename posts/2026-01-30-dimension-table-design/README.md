@@ -10,7 +10,7 @@ Description: Learn how to design dimension tables for descriptive context in ana
 
 Dimension tables are the backbone of any dimensional data warehouse. They provide the descriptive context that transforms raw transactional data into meaningful business insights. While fact tables capture the "what happened" and "how much," dimension tables answer the crucial questions of "who," "what," "where," "when," and "why."
 
-This guide walks through the core concepts of dimension table design, covering surrogate key strategies, conformed dimensions, junk dimensions, degenerate dimensions, and role-playing dimensions with practical SQL examples you can adapt for production.
+This guide walks through the core concepts of dimension table design, covering surrogate key strategies, conformed dimensions, junk dimensions, degenerate dimensions, and role-playing dimensions with practical SQL Server/T-SQL examples you can adapt for production.
 
 ---
 
@@ -158,14 +158,14 @@ CREATE INDEX idx_customer_natural_key ON dim_customer(customer_id);
 -- Create a sequence for generating surrogate keys
 -- Sequences provide more control and work across multiple tables
 CREATE SEQUENCE seq_customer_sk
+    AS INT
     START WITH 1
     INCREMENT BY 1
-    NO MAXVALUE
     CACHE 1000;  -- Cache 1000 values for performance
 
 -- Use sequence in table definition
 CREATE TABLE dim_customer (
-    customer_sk INT PRIMARY KEY DEFAULT NEXTVAL('seq_customer_sk'),
+    customer_sk INT PRIMARY KEY DEFAULT (NEXT VALUE FOR seq_customer_sk),
     customer_id VARCHAR(50) NOT NULL UNIQUE,
     -- ... other columns
 );
@@ -173,7 +173,7 @@ CREATE TABLE dim_customer (
 -- Manual key generation during ETL (when you need the value beforehand)
 INSERT INTO dim_customer (customer_sk, customer_id, first_name, last_name)
 SELECT
-    NEXTVAL('seq_customer_sk'),
+    NEXT VALUE FOR seq_customer_sk,
     src.customer_id,
     src.first_name,
     src.last_name
@@ -187,23 +187,23 @@ WHERE NOT EXISTS (
 **Approach 3: Hash-based keys (for distributed/parallel loading)**
 
 ```sql
--- Hash-based surrogate keys work well for parallel ETL processes
+-- Hash-based keys can work well for parallel ETL processes
 -- They are deterministic: same input always produces same key
+-- Use collision checks before relying on a hash as a primary key
 CREATE TABLE dim_customer (
-    -- Use MD5 or SHA hash of natural key as surrogate
-    -- Converted to BIGINT for join performance
-    customer_sk BIGINT PRIMARY KEY,
+    -- Use a SHA-256 hash of the natural key as the key
+    customer_sk BINARY(32) PRIMARY KEY,
     customer_id VARCHAR(50) NOT NULL UNIQUE,
     first_name VARCHAR(100),
     last_name VARCHAR(100)
 );
 
 -- Generate hash-based surrogate key during ETL
--- ABS() ensures positive values, modulo prevents overflow
+-- SHA2_256 returns a 32-byte binary hash value
 INSERT INTO dim_customer (customer_sk, customer_id, first_name, last_name)
 SELECT
     -- Create deterministic hash from natural key
-    ABS(HASHBYTES('MD5', customer_id) % 9223372036854775807) AS customer_sk,
+    HASHBYTES('SHA2_256', CONVERT(VARBINARY(4000), customer_id)) AS customer_sk,
     customer_id,
     first_name,
     last_name
@@ -323,16 +323,15 @@ CREATE TABLE dim_date (
     fiscal_year INT,
 
     -- Useful flags for filtering
-    is_weekend BOOLEAN,
-    is_holiday BOOLEAN,
+    is_weekend BIT,
+    is_holiday BIT,
     holiday_name VARCHAR(100),
-    is_business_day BOOLEAN
+    is_business_day BIT
 );
 
 -- Populate date dimension for 20 years (adjust range as needed)
 -- This is typically done once during initial warehouse setup
-INSERT INTO dim_date
-WITH date_series AS (
+;WITH date_series AS (
     SELECT
         DATEADD(DAY, seq.n, '2020-01-01') AS full_date
     FROM (
@@ -342,6 +341,7 @@ WITH date_series AS (
     ) seq
     WHERE DATEADD(DAY, seq.n, '2020-01-01') <= '2039-12-31'
 )
+INSERT INTO dim_date
 SELECT
     -- Surrogate key format: YYYYMMDD (easy to read and debug)
     CAST(FORMAT(full_date, 'yyyyMMdd') AS INT) AS date_sk,
@@ -387,7 +387,7 @@ CREATE TABLE dim_product (
     product_sk INT PRIMARY KEY,
     product_id VARCHAR(50) NOT NULL,
     product_name VARCHAR(200),
-    product_description TEXT,
+    product_description VARCHAR(MAX),
 
     -- Category hierarchy (denormalized)
     category_id VARCHAR(50),
@@ -408,7 +408,7 @@ CREATE TABLE dim_product (
     unit_price DECIMAL(10,2),
 
     -- Status
-    is_active BOOLEAN,
+    is_active BIT,
     launch_date DATE,
     discontinue_date DATE
 );
@@ -517,16 +517,16 @@ CREATE TABLE dim_order_junk (
     order_junk_sk INT PRIMARY KEY,
 
     -- Order type flags
-    is_gift_order BOOLEAN NOT NULL,
-    is_rush_order BOOLEAN NOT NULL,
-    is_online_order BOOLEAN NOT NULL,
+    is_gift_order BIT NOT NULL,
+    is_rush_order BIT NOT NULL,
+    is_online_order BIT NOT NULL,
 
     -- Categorical attributes with limited values
     payment_type VARCHAR(20) NOT NULL,      -- 'Credit', 'Debit', 'Cash'
     shipping_type VARCHAR(30) NOT NULL,     -- 'Standard', 'Express', 'Overnight', 'Pickup'
 
     -- Concatenated key for lookups during ETL
-    junk_key VARCHAR(100) GENERATED ALWAYS AS (
+    junk_key AS (
         CONCAT(
             CAST(is_gift_order AS VARCHAR), '|',
             CAST(is_rush_order AS VARCHAR), '|',
@@ -534,7 +534,7 @@ CREATE TABLE dim_order_junk (
             payment_type, '|',
             shipping_type
         )
-    ) STORED
+    ) PERSISTED
 );
 
 -- Create unique index on the concatenated key for fast lookups
@@ -542,6 +542,14 @@ CREATE UNIQUE INDEX idx_order_junk_key ON dim_order_junk(junk_key);
 
 -- Pre-populate all possible combinations
 -- This ensures referential integrity during fact loading
+-- Define all possible values for each attribute
+;WITH gift_flag AS (SELECT * FROM (VALUES (0), (1)) AS t(is_gift)),
+rush_flag AS (SELECT * FROM (VALUES (0), (1)) AS t(is_rush)),
+online_flag AS (SELECT * FROM (VALUES (0), (1)) AS t(is_online)),
+payment AS (SELECT * FROM (VALUES ('Credit'), ('Debit'), ('Cash')) AS t(payment_type)),
+shipping AS (SELECT * FROM (VALUES ('Standard'), ('Express'), ('Overnight'), ('Pickup')) AS t(shipping_type))
+
+-- Generate Cartesian product of all combinations
 INSERT INTO dim_order_junk (
     order_junk_sk,
     is_gift_order,
@@ -550,20 +558,11 @@ INSERT INTO dim_order_junk (
     payment_type,
     shipping_type
 )
-WITH
--- Define all possible values for each attribute
-gift_flag AS (SELECT * FROM (VALUES (0), (1)) AS t(is_gift)),
-rush_flag AS (SELECT * FROM (VALUES (0), (1)) AS t(is_rush)),
-online_flag AS (SELECT * FROM (VALUES (0), (1)) AS t(is_online)),
-payment AS (SELECT * FROM (VALUES ('Credit'), ('Debit'), ('Cash')) AS t(payment_type)),
-shipping AS (SELECT * FROM (VALUES ('Standard'), ('Express'), ('Overnight'), ('Pickup')) AS t(shipping_type))
-
--- Generate Cartesian product of all combinations
 SELECT
     ROW_NUMBER() OVER (ORDER BY is_gift, is_rush, is_online, payment_type, shipping_type) AS order_junk_sk,
-    CAST(is_gift AS BOOLEAN),
-    CAST(is_rush AS BOOLEAN),
-    CAST(is_online AS BOOLEAN),
+    CAST(is_gift AS BIT),
+    CAST(is_rush AS BIT),
+    CAST(is_online AS BIT),
     payment_type,
     shipping_type
 FROM gift_flag
@@ -764,8 +763,8 @@ CREATE TABLE dim_date (
     quarter_number INT,
     calendar_year INT,
     fiscal_year INT,
-    is_weekend BOOLEAN,
-    is_holiday BOOLEAN
+    is_weekend BIT,
+    is_holiday BIT
 );
 
 -- Fact table with multiple date roles
@@ -826,7 +825,7 @@ FROM dim_date;
 -- Query using table aliases to join the same dimension multiple times
 -- This is the fundamental pattern for role-playing dimensions
 SELECT
-    c.customer_name,
+    CONCAT(c.first_name, ' ', c.last_name) AS customer_name,
 
     -- Order date attributes
     order_d.full_date AS order_date,
@@ -954,7 +953,7 @@ CREATE TABLE dim_customer_scd2 (
     -- SCD Type 2 metadata columns
     effective_date DATE NOT NULL,           -- When this version became active
     expiration_date DATE NOT NULL,          -- When this version expired (9999-12-31 if current)
-    is_current BOOLEAN NOT NULL DEFAULT 1,  -- Flag for easy filtering
+    is_current BIT NOT NULL DEFAULT 1,      -- Flag for easy filtering
 
     -- Row version for debugging
     version_number INT NOT NULL DEFAULT 1,
@@ -1035,7 +1034,8 @@ BEGIN
     LEFT JOIN dim_customer_scd2 prev
         ON stg.customer_id = prev.customer_id
        AND prev.expiration_date = DATEADD(DAY, -1, @today)  -- Just expired
-    WHERE NOT EXISTS (
+    WHERE prev.customer_id IS NOT NULL
+      AND NOT EXISTS (
         -- Not already current in dimension
         SELECT 1 FROM dim_customer_scd2 dim
         WHERE dim.customer_id = stg.customer_id
@@ -1156,7 +1156,7 @@ CREATE TABLE dim_product (
 
     -- Product level (leaf)
     product_name VARCHAR(200),
-    product_description TEXT,
+    product_description VARCHAR(MAX),
 
     -- Subcategory level
     subcategory_id VARCHAR(50),
@@ -1171,9 +1171,9 @@ CREATE TABLE dim_product (
     department_name VARCHAR(100),
 
     -- Hierarchy path for easy breadcrumb display
-    hierarchy_path VARCHAR(500) GENERATED ALWAYS AS (
+    hierarchy_path AS (
         CONCAT(department_name, ' > ', category_name, ' > ', subcategory_name, ' > ', product_name)
-    ) STORED,
+    ) PERSISTED,
 
     -- Level indicator for ragged hierarchies
     hierarchy_level INT DEFAULT 4  -- 1=Dept, 2=Cat, 3=Subcat, 4=Product
@@ -1277,8 +1277,8 @@ CREATE TABLE dim_date (
     calendar_year INT,
     fiscal_quarter INT,
     fiscal_year INT,
-    is_weekend BOOLEAN,
-    is_holiday BOOLEAN,
+    is_weekend BIT,
+    is_holiday BIT,
     holiday_name VARCHAR(100)
 );
 
@@ -1293,7 +1293,7 @@ CREATE TABLE dim_customer (
     customer_id VARCHAR(50) NOT NULL,
     first_name VARCHAR(100),
     last_name VARCHAR(100),
-    full_name VARCHAR(200) GENERATED ALWAYS AS (CONCAT(first_name, ' ', last_name)) STORED,
+    full_name AS (CONCAT(first_name, ' ', last_name)) PERSISTED,
     email VARCHAR(255),
     phone VARCHAR(20),
     street_address VARCHAR(255),
@@ -1305,7 +1305,7 @@ CREATE TABLE dim_customer (
     loyalty_tier VARCHAR(20),
     effective_date DATE NOT NULL,
     expiration_date DATE NOT NULL,
-    is_current BOOLEAN NOT NULL DEFAULT 1,
+    is_current BIT NOT NULL DEFAULT 1,
     version_number INT NOT NULL DEFAULT 1,
     source_system VARCHAR(50),
     created_date DATETIME DEFAULT GETDATE()
@@ -1326,7 +1326,7 @@ CREATE TABLE dim_product (
     product_sk INT IDENTITY(1,1) PRIMARY KEY,
     product_id VARCHAR(50) NOT NULL UNIQUE,
     product_name VARCHAR(200),
-    product_description TEXT,
+    product_description VARCHAR(MAX),
     sku VARCHAR(50),
     upc VARCHAR(20),
     brand VARCHAR(100),
@@ -1339,7 +1339,7 @@ CREATE TABLE dim_product (
     unit_cost DECIMAL(10,2),
     unit_price DECIMAL(10,2),
     weight_kg DECIMAL(10,2),
-    is_active BOOLEAN DEFAULT 1,
+    is_active BIT DEFAULT 1,
     launch_date DATE,
     discontinue_date DATE,
     created_date DATETIME DEFAULT GETDATE()
@@ -1358,14 +1358,14 @@ CREATE TABLE dim_promotion (
     promotion_sk INT IDENTITY(1,1) PRIMARY KEY,
     promotion_id VARCHAR(50) NOT NULL UNIQUE,
     promotion_name VARCHAR(200),
-    promotion_description TEXT,
+    promotion_description VARCHAR(MAX),
     promotion_type VARCHAR(50),
     discount_type VARCHAR(20),
     discount_value DECIMAL(10,2),
     discount_percent DECIMAL(5,2),
     start_date DATE,
     end_date DATE,
-    is_active BOOLEAN DEFAULT 1,
+    is_active BIT DEFAULT 1,
     min_order_amount DECIMAL(10,2),
     max_discount_amount DECIMAL(10,2),
     created_date DATETIME DEFAULT GETDATE()
@@ -1382,10 +1382,10 @@ SET IDENTITY_INSERT dim_promotion OFF;
 -- -----------------------------------------------------------------
 CREATE TABLE dim_order_junk (
     order_junk_sk INT PRIMARY KEY,
-    is_gift_order BOOLEAN NOT NULL,
-    is_rush_order BOOLEAN NOT NULL,
-    is_online_order BOOLEAN NOT NULL,
-    is_first_order BOOLEAN NOT NULL,
+    is_gift_order BIT NOT NULL,
+    is_rush_order BIT NOT NULL,
+    is_online_order BIT NOT NULL,
+    is_first_order BIT NOT NULL,
     payment_type VARCHAR(20) NOT NULL,
     shipping_type VARCHAR(30) NOT NULL,
     junk_key VARCHAR(100)
