@@ -92,13 +92,15 @@ There are two primary methods to implement role-playing dimensions:
 
 Creating views provides a cleaner abstraction and makes queries more readable.
 
+The SQL examples below use MySQL syntax.
+
 #### Step 1: Create the Base Date Dimension Table
 
 ```sql
 -- Create the base date dimension table
 -- This is the single physical table that will be reused
 CREATE TABLE dim_date (
-    date_key INT PRIMARY KEY,           -- Surrogate key (YYYYMMDD format)
+    date_key INT PRIMARY KEY,           -- Date key (YYYYMMDD format)
     full_date DATE NOT NULL,            -- Actual date value
     year INT NOT NULL,                  -- Calendar year
     quarter INT NOT NULL,               -- Calendar quarter (1-4)
@@ -273,12 +275,12 @@ ORDER BY
 -- Analyze sales performance comparing order dates vs ship dates
 -- Useful for understanding order-to-ship patterns
 SELECT
-    od.month_name AS order_month,
-    od.year AS order_year,
-    sd.month_name AS ship_month,
+    od.order_month_name AS order_month,
+    od.order_year,
+    sd.ship_month_name AS ship_month,
     COUNT(DISTINCT f.sales_key) AS order_count,
     SUM(f.total_amount) AS total_revenue,
-    AVG(DATEDIFF(sd.full_date, od.full_date)) AS avg_days_to_ship
+    AVG(DATEDIFF(sd.ship_date, od.order_date)) AS avg_days_to_ship
 FROM fact_sales f
 INNER JOIN dim_order_date od
     ON f.order_date_key = od.order_date_key
@@ -287,9 +289,10 @@ INNER JOIN dim_ship_date sd
 WHERE
     od.order_year = 2024
 GROUP BY
-    od.month_name,
-    od.year,
-    sd.month_name
+    od.order_month_name,
+    od.order_year,
+    od.order_month,
+    sd.ship_month_name
 ORDER BY
     od.order_year,
     od.order_month;
@@ -319,7 +322,8 @@ WHERE
     AND od.order_year = 2024
 GROUP BY
     dd.delivery_is_weekend,
-    dd.delivery_day_name
+    dd.delivery_day_name,
+    dd.delivery_day_of_week
 ORDER BY
     delivery_type,
     dd.delivery_day_of_week;
@@ -495,7 +499,7 @@ END //
 
 DELIMITER ;
 
--- Execute to populate 10 years of dates
+-- Execute to populate dates from 2020 through 2030
 CALL populate_date_dimension('2020-01-01', '2030-12-31');
 ```
 
