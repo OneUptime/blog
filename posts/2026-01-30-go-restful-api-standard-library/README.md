@@ -150,23 +150,23 @@ func (s *MemoryStore) Delete(id string) error {
 }
 ```
 
-## HTTP Handlers with Manual Routing
+## HTTP Handlers with Standard Library Routing
 
-The standard library does not have a built-in router with path parameters, but Go 1.22 introduced pattern matching in `http.ServeMux`. Here is how to handle CRUD operations.
+Before Go 1.22, the standard library did not have a built-in router with path parameters. Go 1.22 introduced pattern matching in `http.ServeMux`, including method matching and path wildcards. Here is how to handle CRUD operations.
 
 ```go
 // handlers/books.go
 package handlers
 
 import (
+    "crypto/rand"
+    "encoding/hex"
     "encoding/json"
     "net/http"
     "time"
 
     "bookapi/models"
     "bookapi/store"
-
-    "github.com/google/uuid"
 )
 
 // BookHandler manages HTTP requests for book resources.
@@ -189,6 +189,15 @@ func writeJSON(w http.ResponseWriter, status int, data interface{}) {
 // writeError sends an error response in a consistent format.
 func writeError(w http.ResponseWriter, status int, message string) {
     writeJSON(w, status, map[string]string{"error": message})
+}
+
+// newID generates a random 128-bit hexadecimal ID.
+func newID() (string, error) {
+    b := make([]byte, 16)
+    if _, err := rand.Read(b); err != nil {
+        return "", err
+    }
+    return hex.EncodeToString(b), nil
 }
 
 // List handles GET /books - returns all books.
@@ -234,8 +243,14 @@ func (h *BookHandler) Create(w http.ResponseWriter, r *http.Request) {
         return
     }
 
+    id, err := newID()
+    if err != nil {
+        writeError(w, http.StatusInternalServerError, "could not generate book ID")
+        return
+    }
+
     book := models.Book{
-        ID:        uuid.New().String(),
+        ID:        id,
         Title:     req.Title,
         Author:    req.Author,
         ISBN:      req.ISBN,
