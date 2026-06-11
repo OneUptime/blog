@@ -39,7 +39,7 @@ We will use Python with some popular libraries. Start by installing the dependen
 ```bash
 # Install required packages
 
-pip install openai chromadb langchain tiktoken pypdf
+pip install openai chromadb langchain-community langchain-text-splitters tiktoken pypdf
 ```
 
 Now let's create the basic project structure.
@@ -81,8 +81,8 @@ The first step is breaking documents into manageable pieces. Chunks that are too
 # document_processor.py - Handle document loading and chunking
 
 from typing import List
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.document_loaders import PyPDFLoader, TextLoader
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_community.document_loaders import PyPDFLoader, TextLoader
 from dataclasses import dataclass
 
 @dataclass
