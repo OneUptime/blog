@@ -317,7 +317,7 @@ spec:
         package k8sallowedrepos
 
         violation[{"msg": msg}] {
-          container := input.review.object.spec.containers[_]
+          container := containers[_]
           image := container.image
           not image_allowed(image)
           msg := sprintf(
@@ -327,13 +327,29 @@ spec:
         }
 
         violation[{"msg": msg}] {
-          container := input.review.object.spec.initContainers[_]
+          container := init_containers[_]
           image := container.image
           not image_allowed(image)
           msg := sprintf(
             "Init container %v uses image %v from disallowed registry",
             [container.name, image]
           )
+        }
+
+        containers[container] {
+          container := input.review.object.spec.containers[_]
+        }
+
+        containers[container] {
+          container := input.review.object.spec.template.spec.containers[_]
+        }
+
+        init_containers[container] {
+          container := input.review.object.spec.initContainers[_]
+        }
+
+        init_containers[container] {
+          container := input.review.object.spec.template.spec.initContainers[_]
         }
 
         # Check if image starts with any allowed prefix
@@ -402,6 +418,7 @@ spec:
 ### Require Pod Disruption Budget
 
 Ensures deployments have associated PodDisruptionBudgets.
+This policy requires PodDisruptionBudget objects to be synced into Gatekeeper's `data.inventory`.
 
 ```yaml
 apiVersion: templates.gatekeeper.sh/v1
@@ -425,7 +442,7 @@ spec:
               description: "Minimum replicas that require a PDB"
   targets:
     - target: admission.k8s.gatekeeper.sh
-      # Use data.inventory to access cluster resources
+      # Use data.inventory after syncing PodDisruptionBudget resources
       libs:
         - |
           package lib.helpers
@@ -548,7 +565,7 @@ Gator is the CLI tool for testing ConstraintTemplates before deployment.
 brew install gator
 
 # Linux
-curl -L https://github.com/open-policy-agent/gatekeeper/releases/download/v3.14.0/gator-v3.14.0-linux-amd64.tar.gz | tar xz
+curl -L https://github.com/open-policy-agent/gatekeeper/releases/download/v3.22.2/gator-v3.22.2-linux-amd64.tar.gz | tar xz
 sudo mv gator /usr/local/bin/
 
 # Verify installation
@@ -559,7 +576,7 @@ gator version
 
 ```yaml
 # tests/require-labels-test.yaml
-apiVersion: gator.gatekeeper.sh/v1alpha1
+apiVersion: test.gatekeeper.sh/v1alpha1
 kind: Suite
 metadata:
   name: require-labels-test
@@ -631,19 +648,19 @@ spec:
 
 ```bash
 # Run all tests in directory
-gator verify tests/
+gator verify tests/...
 
 # Run specific test suite
 gator verify tests/require-labels-test.yaml
 
 # Verbose output
-gator verify tests/ --verbose
+gator verify tests/... --verbose
 
 # Test a single template and constraint against an object
 gator test \
-  --template templates/k8srequiredlabels.yaml \
-  --constraint constraints/require-team-label.yaml \
-  deployment.yaml
+  --filename templates/k8srequiredlabels.yaml \
+  --filename constraints/require-team-label.yaml \
+  --filename deployment.yaml
 ```
 
 ### Gator in CI Pipeline
@@ -665,17 +682,17 @@ jobs:
 
       - name: Install gator
         run: |
-          curl -L https://github.com/open-policy-agent/gatekeeper/releases/download/v3.14.0/gator-v3.14.0-linux-amd64.tar.gz | tar xz
+          curl -L https://github.com/open-policy-agent/gatekeeper/releases/download/v3.22.2/gator-v3.22.2-linux-amd64.tar.gz | tar xz
           sudo mv gator /usr/local/bin/
 
       - name: Run policy tests
-        run: gator verify policies/tests/
+        run: gator verify policies/tests/...
 
       - name: Validate template syntax
         run: |
           for template in policies/templates/*.yaml; do
             echo "Validating $template"
-            gator verify --template "$template"
+            gator test --filename "$template" --filename policies/constraints/
           done
 ```
 
