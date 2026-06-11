@@ -276,6 +276,14 @@ class ExperienceSummarizer:
             # Not enough experiences to cluster meaningfully
             return self._create_single_summary(experiences)
 
+        if any(not exp.embedding for exp in experiences):
+            # Clustering requires a non-empty embedding for every experience
+            return self._create_single_summary(experiences)
+
+        if len({len(exp.embedding) for exp in experiences}) != 1:
+            # KMeans requires embeddings with a consistent dimensionality
+            return self._create_single_summary(experiences)
+
         # Extract embeddings for clustering
         embeddings = np.array([exp.embedding for exp in experiences])
 
@@ -479,17 +487,23 @@ class PatternExtractor:
 
         # Count action sequences
         sequence_counts: Dict[Tuple[str, ...], int] = defaultdict(int)
+        sequence_session_counts: Dict[Tuple[str, ...], int] = defaultdict(int)
 
         for session_experiences in sessions.values():
             # Sort by timestamp
             sorted_exp = sorted(session_experiences, key=lambda x: x.timestamp)
             actions = [exp.action for exp in sorted_exp]
+            session_sequences: Set[Tuple[str, ...]] = set()
 
             # Extract subsequences of length 2-4
             for length in range(2, min(5, len(actions) + 1)):
                 for i in range(len(actions) - length + 1):
                     seq = tuple(actions[i:i + length])
                     sequence_counts[seq] += 1
+                    session_sequences.add(seq)
+
+            for seq in session_sequences:
+                sequence_session_counts[seq] += 1
 
         # Filter by minimum support
         patterns = []
@@ -498,7 +512,7 @@ class PatternExtractor:
                 patterns.append(Pattern(
                     pattern_type="sequence",
                     description=f"Action sequence: {' -> '.join(seq)}",
-                    confidence=count / len(sessions),
+                    confidence=sequence_session_counts[seq] / len(sessions),
                     support=count,
                     elements=list(seq)
                 ))
@@ -839,10 +853,10 @@ class KnowledgeTransfer:
     ):
         """Merge new knowledge into existing."""
         # Update confidence with weighted average
-        total_weight = existing.usage_count + 1
+        existing_weight = max(existing.usage_count, 1)
         existing.confidence = (
-            existing.confidence * existing.usage_count + new.confidence
-        ) / (total_weight + 1)
+            existing.confidence * existing_weight + new.confidence
+        ) / (existing_weight + 1)
 
         # Add source patterns
         existing.source_patterns.extend(new.source_patterns)
@@ -1087,8 +1101,9 @@ class MemoryPruner:
                 knowledge = semantic_memory.knowledge.get(result.knowledge_id)
                 if knowledge and archive_callback:
                     archive_callback(knowledge)
-                del semantic_memory.knowledge[result.knowledge_id]
-                stats["archived"] += 1
+                if result.knowledge_id in semantic_memory.knowledge:
+                    del semantic_memory.knowledge[result.knowledge_id]
+                    stats["archived"] += 1
 
             elif result.action == PruningAction.DELETE:
                 if result.knowledge_id in semantic_memory.knowledge:
