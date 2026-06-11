@@ -238,6 +238,7 @@ import asyncio
 import json
 from aiohttp import web
 import aiohttp
+from datetime import datetime
 
 class WebSocketLogServer:
     def __init__(self):
@@ -516,6 +517,7 @@ class LogAggregator:
             r'request[_-]?id[=:\s]+([a-zA-Z0-9-]+)',
             r'correlation[_-]?id[=:\s]+([a-zA-Z0-9-]+)',
             r'trace[_-]?id[=:\s]+([a-zA-Z0-9-]+)',
+            r'\[([a-zA-Z0-9-]+)\]',
             r'\[([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})\]',
         ]
         self.compiled_patterns = [re.compile(p, re.IGNORECASE) for p in self.patterns]
@@ -614,7 +616,7 @@ A polished terminal experience makes log streaming pleasant to use. Here is a te
 import sys
 import threading
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional
 
 class TerminalLogViewer:
     """
@@ -828,11 +830,10 @@ flowchart TB
 ```
 
 ```python
-import subprocess
 import threading
 import signal
 import sys
-from typing import List, Dict, Optional
+from typing import Any, List, Dict, Optional
 import docker
 from datetime import datetime
 import yaml
@@ -847,6 +848,7 @@ class ComposeLogStreamer:
         self.client = docker.from_env()
         self.project_name = self._get_project_name()
         self.viewer = TerminalLogViewer()
+        self.filter_chain = FilterChain()
         self.threads: Dict[str, threading.Thread] = {}
         self.running = True
 
@@ -855,9 +857,20 @@ class ComposeLogStreamer:
         signal.signal(signal.SIGTERM, self._signal_handler)
 
     def _get_project_name(self) -> str:
-        """Get the Compose project name from the directory."""
         import os
-        return os.path.basename(os.getcwd()).lower().replace(' ', '')
+        if os.environ.get('COMPOSE_PROJECT_NAME'):
+            return os.environ['COMPOSE_PROJECT_NAME']
+
+        try:
+            with open(self.compose_file, 'r') as f:
+                compose_config = yaml.safe_load(f) or {}
+            if compose_config.get('name'):
+                return compose_config['name']
+        except Exception:
+            pass
+
+        compose_dir = os.path.dirname(os.path.abspath(self.compose_file)) or os.getcwd()
+        return os.path.basename(compose_dir).lower().replace(' ', '')
 
     def _signal_handler(self, signum, frame):
         """Handle shutdown signals gracefully."""
@@ -875,7 +888,7 @@ class ComposeLogStreamer:
             print(f"Error reading compose file: {e}")
             return []
 
-    def get_running_containers(self, services: List[str] = None) -> Dict[str, any]:
+    def get_running_containers(self, services: List[str] = None) -> Dict[str, Any]:
         """Get running containers for the Compose project."""
         containers = {}
 
@@ -934,7 +947,8 @@ class ComposeLogStreamer:
                     timestamp=timestamp or datetime.now()
                 )
 
-                self.viewer.display(entry)
+                if self.filter_chain.matches(entry):
+                    self.viewer.display(entry)
 
         except Exception as e:
             if self.running:
@@ -944,14 +958,14 @@ class ComposeLogStreamer:
         """Detect log level from message content."""
         message_upper = message.upper()
 
-        if 'ERROR' in message_upper or 'EXCEPTION' in message_upper:
+        if 'FATAL' in message_upper or 'CRITICAL' in message_upper:
+            return 'fatal'
+        elif 'ERROR' in message_upper or 'EXCEPTION' in message_upper:
             return 'error'
         elif 'WARN' in message_upper:
             return 'warn'
         elif 'DEBUG' in message_upper:
             return 'debug'
-        elif 'FATAL' in message_upper or 'CRITICAL' in message_upper:
-            return 'fatal'
         else:
             return 'info'
 
@@ -967,7 +981,7 @@ class ComposeLogStreamer:
 
         if not containers:
             print("No running containers found. Start your services with:")
-            print(f"  docker-compose -f {self.compose_file} up -d")
+            print(f"  docker compose -f {self.compose_file} up -d")
             return
 
         # Start a thread for each container
@@ -1103,9 +1117,9 @@ class HighPerformanceStreamer:
 
 ## Putting It All Together
 
-Here is a complete CLI tool that combines all the concepts.
+Here is a CLI entry point that combines all the concepts.
 
-```bash
+```python
 #!/usr/bin/env python3
 """
 devlogs - Development log streaming tool
@@ -1125,6 +1139,9 @@ Options:
 
 import sys
 import argparse
+import os
+import threading
+from datetime import datetime
 
 def main():
     parser = argparse.ArgumentParser(
@@ -1155,24 +1172,39 @@ def main():
     if args.command == 'stream':
         streamer = ComposeLogStreamer(args.file)
         if args.level != 'debug' or args.pattern:
-            streamer.viewer.filter_chain = FilterChain()
-            streamer.viewer.filter_chain.add_filter(LogFilter.by_level(args.level))
+            streamer.filter_chain = FilterChain()
+            streamer.filter_chain.add_filter(LogFilter.by_level(args.level))
             if args.pattern:
-                streamer.viewer.filter_chain.add_filter(LogFilter.by_pattern(args.pattern))
+                streamer.filter_chain.add_filter(LogFilter.by_pattern(args.pattern))
         streamer.start(args.services)
 
     elif args.command == 'tail':
+        watched_files = {os.path.abspath(path) for path in args.files}
+        viewer = TerminalLogViewer()
+        filter_chain = FilterChain().add_filter(LogFilter.by_level(args.level))
+
         def on_log(filepath, line):
-            viewer = TerminalLogViewer()
+            if os.path.abspath(filepath) not in watched_files:
+                return
+
             entry = LogEntry(
                 source=os.path.basename(filepath),
                 level='info',
                 message=line,
                 timestamp=datetime.now()
             )
-            viewer.display(entry)
+            if filter_chain.matches(entry):
+                viewer.display(entry)
 
-        stream_logs(args.files[0] if len(args.files) == 1 else '.', on_log)
+        directories = {os.path.dirname(path) or '.' for path in watched_files}
+        threads = [
+            threading.Thread(target=stream_logs, args=(directory, on_log))
+            for directory in directories
+        ]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
 
     elif args.command == 'request':
         # This would need persistent storage in a real implementation
