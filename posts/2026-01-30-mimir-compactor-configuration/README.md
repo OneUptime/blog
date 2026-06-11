@@ -67,11 +67,12 @@ compactor:
   # How often to run compaction cycles
   compaction_interval: 1h
 
-  # Number of tenants to compact in parallel
+  # Number of concurrent compactions in this compactor instance
   compaction_concurrency: 4
 
-  # Maximum number of blocks to compact in a single job
-  max_compaction_range: 0  # 0 means unlimited
+  # Maximum time to start new compactions for a single tenant in one cycle
+  # 0 disables the per-tenant time limit
+  max_compaction_time: 1h
 
   # Block ranges for compaction (time ranges in hours)
   # These define how blocks are grouped for compaction
@@ -91,21 +92,19 @@ The split and merge strategy is recommended for large-scale deployments:
 
 ```yaml
 compactor:
-  # Enable split and merge compaction for horizontal scaling
-  compaction_mode: split-and-merge
-
-  # Number of shards for split compaction
-  # Higher values allow more parallelism but increase overhead
-  split_and_merge_shards: 4
-
-  # Number of split groups for organizing blocks
-  split_groups: 4
-
   # Maximum opening blocks per tenant during compaction
   max_opening_blocks_concurrency: 4
 
   # Symbols flushers for parallel symbol table writing
   symbols_flushers_concurrency: 4
+
+limits:
+  # Enable the split stage by setting a shard count above 0
+  # Higher values allow more parallelism but increase overhead
+  compactor_split_and_merge_shards: 4
+
+  # Number of split groups for organizing blocks
+  compactor_split_groups: 4
 ```
 
 ### Time-Based Grouping Strategy
@@ -121,12 +120,11 @@ compactor:
     - 12h   # Level 2: First compaction (12 hours)
     - 24h   # Level 3: Second compaction (24 hours)
 
-  # Minimum age before a block is eligible for compaction
-  # Prevents compacting blocks that are still being written
-  consistency_delay: 30m
+  # Wait before compacting first-level blocks uploaded by ingesters
+  # Prevents compacting before all ingesters have uploaded their blocks
+  first_level_compaction_wait_period: 30m
 
-  # Skip blocks newer than this duration
-  # Useful to avoid compacting recently uploaded blocks
+  # Concurrent block downloads/uploads during compaction
   block_sync_concurrency: 20
 ```
 
@@ -165,15 +163,7 @@ flowchart LR
 Properly configuring retention ensures old data is cleaned up while maintaining compliance requirements.
 
 ```yaml
-# Retention configuration for the compactor
 compactor:
-  # Enable retention enforcement
-  retention_enabled: true
-
-  # Default retention period for all tenants
-  # Blocks older than this will be marked for deletion
-  retention_period: 365d  # Keep data for 1 year
-
   # Delay before actually deleting marked blocks
   # Provides a safety window for recovery
   deletion_delay: 12h
@@ -185,18 +175,22 @@ compactor:
   # Prevents overwhelming object storage
   cleanup_concurrency: 20
 
-# Per-tenant retention overrides
+# Default retention configuration for all tenants
 limits:
-  # Default limits for all tenants
-  default_limits:
-    compactor_blocks_retention_period: 365d
+  # Delete blocks containing samples older than this period.
+  # 0 disables retention.
+  compactor_blocks_retention_period: 365d  # Keep data for 1 year
 
-  # Tenant-specific overrides
-  tenant_limits:
-    tenant_premium:
-      compactor_blocks_retention_period: 730d  # 2 years
-    tenant_basic:
-      compactor_blocks_retention_period: 90d   # 90 days
+```
+
+Runtime configuration file example for per-tenant overrides:
+
+```yaml
+overrides:
+  tenant_premium:
+    compactor_blocks_retention_period: 730d  # 2 years
+  tenant_basic:
+    compactor_blocks_retention_period: 90d   # 90 days
 ```
 
 ### Deletion Flow
@@ -226,10 +220,9 @@ Fine-tune scheduling and concurrency settings for your workload:
 compactor:
   # Main compaction settings
   compaction_interval: 1h          # How often to check for compaction work
-  compaction_concurrency: 4         # Parallel compaction jobs per compactor
+  compaction_concurrency: 4         # Concurrent compactions per compactor
 
-  # Tenant sharding for multi-compactor deployments
-  sharding_enabled: true
+  # Hash ring for multi-compactor deployments
   sharding_ring:
     kvstore:
       store: memberlist            # Use memberlist for ring coordination
@@ -239,24 +232,23 @@ compactor:
     wait_stability_max_duration: 5m
 
   # Resource limits for compaction
-  compaction_jobs_concurrent: 1     # Jobs per tenant at a time
+  max_compaction_time: 1h           # Max time to start compactions for one tenant per cycle
 
   # Block download and upload settings
   block_sync_concurrency: 20        # Concurrent block syncs from storage
   meta_sync_concurrency: 20         # Concurrent metadata syncs
 
-  # Memory and disk usage controls
-  max_compaction_bytes: 42949672960 # 40GB max compaction size
+  # Job ordering
+  compaction_jobs_order: smallest-range-oldest-blocks-first
 ```
 
 ### Multi-Instance Compactor Setup
 
-For high availability, run multiple compactor instances with sharding:
+For multi-instance deployments, run compactors with a shared hash ring:
 
 ```yaml
 # Compactor instance configuration for HA deployment
 compactor:
-  sharding_enabled: true
   sharding_ring:
     instance_id: "compactor-1"      # Unique ID per instance
     instance_addr: "10.0.0.1"       # Instance IP address
@@ -266,9 +258,6 @@ compactor:
       store: consul                  # Use Consul for ring storage
       consul:
         host: "consul.service:8500"
-
-    # Ring replication settings
-    replication_factor: 1           # Compactor does not replicate
 
     # Heartbeat settings
     heartbeat_period: 15s
@@ -298,11 +287,6 @@ compactor:
   # Data directory for temporary files
   data_dir: /data/compactor
 
-  # Compaction strategy
-  compaction_mode: split-and-merge
-  split_and_merge_shards: 4
-  split_groups: 4
-
   # Block ranges (compaction levels)
   block_ranges:
     - 2h
@@ -311,28 +295,21 @@ compactor:
 
   # Timing and scheduling
   compaction_interval: 1h
-  consistency_delay: 30m
+  first_level_compaction_wait_period: 30m
 
   # Concurrency settings
   compaction_concurrency: 4
-  compaction_jobs_concurrent: 1
   block_sync_concurrency: 20
   meta_sync_concurrency: 20
   symbols_flushers_concurrency: 4
   max_opening_blocks_concurrency: 4
 
-  # Resource limits
-  max_compaction_bytes: 42949672960  # 40GB
-
-  # Retention settings
-  retention_enabled: true
-  retention_period: 365d
+  # Retention and cleanup settings
   deletion_delay: 12h
   cleanup_interval: 15m
   cleanup_concurrency: 20
 
   # Sharding for HA
-  sharding_enabled: true
   sharding_ring:
     kvstore:
       store: memberlist
@@ -340,6 +317,9 @@ compactor:
     heartbeat_timeout: 1m
     wait_stability_min_duration: 1m
     wait_stability_max_duration: 5m
+
+  # Job ordering
+  compaction_jobs_order: smallest-range-oldest-blocks-first
 
 # Object storage backend
 blocks_storage:
@@ -372,16 +352,19 @@ blocks_storage:
 
 # Tenant limits
 limits:
-  default_limits:
-    compactor_blocks_retention_period: 365d
-    compactor_split_and_merge_shards: 0      # Use global default
-    compactor_split_groups: 0                 # Use global default
+  compactor_blocks_retention_period: 365d
+  compactor_split_and_merge_shards: 4
+  compactor_split_groups: 4
 
-  tenant_limits:
-    high_volume_tenant:
-      compactor_blocks_retention_period: 730d
-      compactor_split_and_merge_shards: 8    # More shards for large tenant
-      compactor_split_groups: 8
+runtime_config:
+  file: /etc/mimir/runtime.yaml
+
+# Example /etc/mimir/runtime.yaml content for per-tenant overrides:
+# overrides:
+#   high_volume_tenant:
+#     compactor_blocks_retention_period: 730d
+#     compactor_split_and_merge_shards: 8    # More shards for large tenant
+#     compactor_split_groups: 8
 
 # Memberlist configuration for ring
 memberlist:
@@ -437,10 +420,10 @@ groups:
 
 1. **Start with conservative settings**: Begin with lower concurrency values and increase based on available resources
 2. **Monitor disk usage**: The compactor needs local disk space for temporary files during compaction
-3. **Use split-and-merge for scale**: Enable split-and-merge compaction for deployments with many tenants or high cardinality
+3. **Use split-and-merge for scale**: Configure split-and-merge shards for deployments with large tenants
 4. **Set appropriate retention**: Balance storage costs with data retention requirements
 5. **Configure deletion delay**: Keep a safety buffer (12-24 hours) before permanently deleting blocks
-6. **Enable sharding for HA**: Run multiple compactor instances with sharding enabled for high availability
+6. **Configure the compactor ring**: Run multiple compactor instances with a shared hash ring for horizontal scaling
 7. **Monitor compaction lag**: Track the age of uncompacted blocks to ensure compaction keeps up with ingestion
 
 ## Conclusion
@@ -449,9 +432,9 @@ The Mimir Compactor is essential for maintaining a healthy and efficient time se
 
 Key takeaways:
 - Configure block ranges to match your query patterns
-- Enable retention and set appropriate periods per tenant
+- Set appropriate retention periods per tenant
 - Use split-and-merge compaction for large-scale deployments
 - Monitor compactor health with Prometheus metrics
-- Run multiple instances with sharding for high availability
+- Run multiple instances with a shared hash ring for horizontal scaling
 
 For more information, refer to the official [Grafana Mimir documentation](https://grafana.com/docs/mimir/latest/).
