@@ -52,13 +52,13 @@ Each stage offers different tradeoffs between compression ratio, latency, and CP
 
 ## Strategy 1: Field-Based Deduplication
 
-Structured logs repeat the same field names in every entry. Instead of storing `{"timestamp": "2026-01-30T10:00:00Z", "level": "INFO", "service": "api"}` for every log line, you can store field names once and reference them by index.
+Structured logs repeat the same field names and many of the same values in every entry. Instead of storing `{"timestamp": "2026-01-30T10:00:00Z", "level": "INFO", "service": "api"}` for every log line, you can store repeated field/value pairs once and reference them by index.
 
 Here is a simple implementation using a field dictionary.
 
 ```typescript
 // log-compressor.ts
-// Store field names in a dictionary and reference by index
+// Store repeated field/value pairs in a dictionary and reference by index
 
 interface CompressedLog {
   d: string[];      // Dictionary of unique values
@@ -191,7 +191,7 @@ class TemplateExtractor {
   private instances: Array<{templateId: number; variables: string[]}> = [];
 
   // Pattern to identify variable parts (numbers, IPs, UUIDs, etc.)
-  private variablePattern = /\b(\d+\.?\d*|\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}|[a-f0-9-]{36})\b/gi;
+  private variablePattern = /\b([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}|\d{1,3}(?:\.\d{1,3}){3}|\d+(?:\.\d+)?)\b/gi;
 
   // Add a log message and extract its template
   addMessage(message: string): void {
@@ -264,7 +264,13 @@ flowchart TB
     end
 
     R1 --> C1
+    R1 --> C2
+    R1 --> C3
+    R2 --> C1
     R2 --> C2
+    R2 --> C3
+    R3 --> C1
+    R3 --> C2
     R3 --> C3
 ```
 
@@ -363,6 +369,7 @@ Here is how to apply zstd compression to your processed logs in Node.js.
 // Apply zstd compression to log blocks
 
 import { compress, decompress } from '@mongodb-js/zstd';
+import { Buffer } from 'node:buffer';
 
 interface CompressedBlock {
   algorithm: string;
