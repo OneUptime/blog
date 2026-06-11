@@ -118,10 +118,11 @@ Build the container image reference from components.
 Supports registry, repository, tag, and digest.
 */}}
 {{- define "common.image" -}}
-{{- $registry := .Values.image.registry | default "" -}}
-{{- $repository := required "image.repository is required" .Values.image.repository -}}
-{{- $tag := .Values.image.tag | default .Chart.AppVersion -}}
-{{- $digest := .Values.image.digest | default "" -}}
+{{- $image := .Values.image | default dict -}}
+{{- $registry := $image.registry | default "" -}}
+{{- $repository := required "image.repository is required" $image.repository -}}
+{{- $tag := $image.tag | default .Chart.AppVersion -}}
+{{- $digest := $image.digest | default "" -}}
 {{- if $digest -}}
 {{- if $registry -}}
 {{- printf "%s/%s@%s" $registry $repository $digest -}}
@@ -140,14 +141,14 @@ Supports registry, repository, tag, and digest.
 
 ## Dynamic Resource Generation
 
-One advanced pattern is generating resources based on a list in values. This works great for applications that need multiple ConfigMaps or Secrets.
+One advanced pattern is generating resources based on a map in values. This works great for applications that need multiple ConfigMaps or Secrets.
 
 ```yaml
 # common-library/templates/_configmaps.tpl
 
 {{/*
-Generate multiple ConfigMaps from a list.
-Each item in the list becomes a separate ConfigMap.
+Generate multiple ConfigMaps from a map.
+Each item in the map becomes a separate ConfigMap.
 Usage: {{ include "common.configmaps" . }}
 */}}
 {{- define "common.configmaps" -}}
@@ -207,6 +208,12 @@ Generate a Deployment with full configuration options.
 Supports sidecars, init containers, and volume mounts.
 */}}
 {{- define "common.deployment" -}}
+{{- $autoscaling := .Values.autoscaling | default dict -}}
+{{- $image := .Values.image | default dict -}}
+{{- $serviceAccount := .Values.serviceAccount | default dict -}}
+{{- $probes := .Values.probes | default dict -}}
+{{- $liveness := $probes.liveness | default dict -}}
+{{- $readiness := $probes.readiness | default dict -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -214,7 +221,7 @@ metadata:
   labels:
     {{- include "common.labels" . | nindent 4 }}
 spec:
-  {{- if not .Values.autoscaling.enabled }}
+  {{- if not ($autoscaling.enabled | default false) }}
   replicas: {{ .Values.replicaCount | default 1 }}
   {{- end }}
   selector:
@@ -226,8 +233,8 @@ spec:
       labels:
         {{- include "common.labels" . | nindent 8 }}
       annotations:
-        # Force rollout when ConfigMap changes
-        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        # Force rollout when generated ConfigMaps change
+        checksum/config: {{ include "common.configmaps" . | sha256sum }}
         {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -236,9 +243,9 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      serviceAccountName: {{ .Values.serviceAccount.name | default (include "common.fullname" .) }}
+      serviceAccountName: {{ $serviceAccount.name | default (include "common.fullname" .) }}
       securityContext:
-        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+        {{- toYaml (.Values.podSecurityContext | default dict) | nindent 8 }}
       {{- with .Values.initContainers }}
       initContainers:
         {{- toYaml . | nindent 8 }}
@@ -246,35 +253,35 @@ spec:
       containers:
         - name: {{ .Chart.Name }}
           image: {{ include "common.image" . | quote }}
-          imagePullPolicy: {{ .Values.image.pullPolicy | default "IfNotPresent" }}
+          imagePullPolicy: {{ $image.pullPolicy | default "IfNotPresent" }}
           securityContext:
-            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+            {{- toYaml (.Values.containerSecurityContext | default dict) | nindent 12 }}
           ports:
             - name: http
               containerPort: {{ .Values.containerPort | default 8080 }}
               protocol: TCP
-          {{- if .Values.probes.liveness.enabled }}
+          {{- if ($liveness.enabled | default false) }}
           livenessProbe:
             httpGet:
-              path: {{ .Values.probes.liveness.path | default "/health" }}
+              path: {{ $liveness.path | default "/health" }}
               port: http
-            initialDelaySeconds: {{ .Values.probes.liveness.initialDelaySeconds | default 10 }}
-            periodSeconds: {{ .Values.probes.liveness.periodSeconds | default 10 }}
-            timeoutSeconds: {{ .Values.probes.liveness.timeoutSeconds | default 5 }}
-            failureThreshold: {{ .Values.probes.liveness.failureThreshold | default 3 }}
+            initialDelaySeconds: {{ $liveness.initialDelaySeconds | default 10 }}
+            periodSeconds: {{ $liveness.periodSeconds | default 10 }}
+            timeoutSeconds: {{ $liveness.timeoutSeconds | default 5 }}
+            failureThreshold: {{ $liveness.failureThreshold | default 3 }}
           {{- end }}
-          {{- if .Values.probes.readiness.enabled }}
+          {{- if ($readiness.enabled | default false) }}
           readinessProbe:
             httpGet:
-              path: {{ .Values.probes.readiness.path | default "/ready" }}
+              path: {{ $readiness.path | default "/ready" }}
               port: http
-            initialDelaySeconds: {{ .Values.probes.readiness.initialDelaySeconds | default 5 }}
-            periodSeconds: {{ .Values.probes.readiness.periodSeconds | default 5 }}
-            timeoutSeconds: {{ .Values.probes.readiness.timeoutSeconds | default 3 }}
-            failureThreshold: {{ .Values.probes.readiness.failureThreshold | default 3 }}
+            initialDelaySeconds: {{ $readiness.initialDelaySeconds | default 5 }}
+            periodSeconds: {{ $readiness.periodSeconds | default 5 }}
+            timeoutSeconds: {{ $readiness.timeoutSeconds | default 3 }}
+            failureThreshold: {{ $readiness.failureThreshold | default 3 }}
           {{- end }}
           resources:
-            {{- toYaml .Values.resources | nindent 12 }}
+            {{- toYaml (.Values.resources | default dict) | nindent 12 }}
           {{- with .Values.env }}
           env:
             {{- toYaml . | nindent 12 }}
@@ -353,7 +360,7 @@ helm dependency update
 helm template test-release . --debug
 
 # Validate against Kubernetes schemas
-helm template test-release . | kubectl apply --dry-run=client -f -
+helm template test-release . | kubectl apply --dry-run=server -f -
 ```
 
 ## Versioning Strategy
