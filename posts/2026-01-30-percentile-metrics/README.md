@@ -8,7 +8,7 @@ Description: Learn how to implement percentile metrics (p50, p90, p99) for laten
 
 ---
 
-When your API averages 50ms response time, everything looks fine. But averages lie. Half your users might be experiencing 500ms+ latency, and you would never know. Percentile metrics expose the truth that averages hide.
+When your API averages 50ms response time, everything looks fine. But averages lie. A significant slice of your users might be experiencing 500ms+ latency, and you would never know. Percentile metrics expose the truth that averages hide.
 
 This guide shows you how to implement percentile metrics from scratch, integrate them with Prometheus histograms, and use them to build meaningful SLOs.
 
@@ -129,7 +129,7 @@ from typing import Optional
 @dataclass
 class HistogramBucket:
     """A single histogram bucket with upper bound and count."""
-    upper_bound: float  # Upper limit of this bucket (exclusive)
+    upper_bound: float  # Upper limit of this bucket (inclusive)
     count: int          # Number of observations in this bucket
 
 
@@ -723,13 +723,13 @@ def handle_api_request(endpoint: str, method: str) -> dict:
     # Calculate duration
     duration = time.time() - start_time
 
-    # Record to histogram with attributes
+    # Record to histogram with attributes (HTTP semantic conventions)
     request_latency.record(
         duration,
         attributes={
-            "http.method": method,
+            "http.request.method": method,
             "http.route": endpoint,
-            "http.status_code": 200,
+            "http.response.status_code": 200,
         }
     )
 
@@ -830,14 +830,17 @@ histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{service="
 sum(rate(http_request_duration_seconds_bucket{service="api"}[$__rate_interval])) by (le)
 
 # Panel 4: Apdex score (user satisfaction metric)
-# Satisfied: < 100ms, Tolerating: 100-400ms, Frustrated: > 400ms
+# Satisfied: <= 100ms, Tolerating: 100-400ms, Frustrated: > 400ms
+# Apdex = (Satisfied + Tolerating / 2) / Total
 (
   sum(rate(http_request_duration_seconds_bucket{le="0.1"}[5m]))
   +
-  sum(rate(http_request_duration_seconds_bucket{le="0.4"}[5m]))
-  -
-  sum(rate(http_request_duration_seconds_bucket{le="0.1"}[5m]))
-) / 2
+  (
+    sum(rate(http_request_duration_seconds_bucket{le="0.4"}[5m]))
+    -
+    sum(rate(http_request_duration_seconds_bucket{le="0.1"}[5m]))
+  ) / 2
+)
 /
 sum(rate(http_request_duration_seconds_count[5m]))
 ```
