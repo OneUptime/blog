@@ -12,7 +12,7 @@ Rust's derive macros are one of the most powerful metaprogramming features in th
 
 ## Understanding proc_macro Basics
 
-Procedural macros in Rust operate on the abstract syntax tree (AST) of your code. Unlike declarative macros (`macro_rules!`), procedural macros are written as separate Rust functions that manipulate `TokenStream` values.
+Procedural macros in Rust operate on token streams representing Rust syntax. Unlike declarative macros (`macro_rules!`), procedural macros are written as separate Rust functions that manipulate `TokenStream` values, and crates like `syn` can parse those tokens into an abstract syntax tree (AST).
 
 To create a derive macro, you need a separate crate with `proc-macro = true` in your `Cargo.toml`:
 
@@ -26,7 +26,7 @@ quote = "1.0"
 proc-macro2 = "1.0"
 ```
 
-The `proc_macro` crate provides the foundational `TokenStream` type, which represents a sequence of tokens that the Rust compiler understands. Your derive macro takes a `TokenStream` as input (the annotated struct or enum) and returns a `TokenStream` as output (the generated implementation).
+The `proc_macro` crate provides the foundational `TokenStream` type, which represents a sequence of tokens that the Rust compiler understands. Your derive macro takes a `TokenStream` as input (the annotated struct, enum, or union) and returns a `TokenStream` as output (the generated implementation).
 
 ## Parsing with syn
 
@@ -41,14 +41,14 @@ pub fn my_trait_derive(input: TokenStream) -> TokenStream {
     let ast = parse_macro_input!(input as DeriveInput);
 
     // ast.ident gives us the struct/enum name
-    // ast.data gives us the fields/variants
+    // ast.data gives us the fields/variants/union fields
     // ast.generics gives us any generic parameters
 
     // ... generate implementation
 }
 ```
 
-The `DeriveInput` struct contains all the information about the annotated item, including its name, visibility, attributes, generics, and data (struct fields or enum variants).
+The `DeriveInput` struct contains all the information about the annotated item, including its name, visibility, attributes, generics, and data (struct fields, enum variants, or union fields).
 
 ## Code Generation with quote
 
@@ -71,7 +71,7 @@ fn impl_my_trait(ast: &DeriveInput) -> proc_macro2::TokenStream {
 }
 ```
 
-The `#name` syntax interpolates the variable into the generated code. You can also use `#(...)* ` for iteration over collections.
+The `#name` syntax interpolates the variable into the generated code. You can also use `#(...)*` for iteration over collections.
 
 ## Complete Example: Implementing a Describe Trait
 
