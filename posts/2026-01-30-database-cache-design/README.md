@@ -57,7 +57,7 @@ The cache key must uniquely identify the query. This typically combines the SQL 
 ```python
 import hashlib
 import json
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 import redis
 
 class QueryResultCache:
@@ -80,33 +80,28 @@ class QueryResultCache:
             return json.loads(cached)
         return None
 
-    def set(self, sql: str, params: tuple, results: List[Dict], ttl: int = None) -> None:
+    def set(self, sql: str, params: tuple, results: List[Dict], ttl: Optional[int] = None) -> None:
         cache_key = self._generate_cache_key(sql, params)
         ttl = ttl or self.default_ttl
 
         # Serialize and store with expiration
-        self.redis.setex(cache_key, ttl, json.dumps(results))
+        self.redis.set(cache_key, json.dumps(results), ex=ttl)
 
-    def invalidate_by_table(self, table_name: str) -> int:
-        # Find and delete all cached queries for a table
-        # This requires tracking which queries touch which tables
-        pattern = f"query_cache:table:{table_name}:*"
-        keys = self.redis.keys(pattern)
-        if keys:
-            return self.redis.delete(*keys)
-        return 0
+    def delete_key(self, cache_key: str) -> int:
+        # Delete a known cache key tracked by the invalidation layer
+        return self.redis.delete(cache_key)
 ```
 
 ## Prepared Statement Caching
 
-Prepared statements separate query parsing from execution. The database parses the SQL once, creates an execution plan, and reuses that plan for subsequent executions with different parameters.
+Prepared statements separate query parsing from execution. PostgreSQL parses, analyzes, and rewrites the SQL once, then executes it later with supplied parameters. Depending on the query and parameter values, PostgreSQL can use either custom plans or reusable generic plans.
 
-Caching prepared statements avoids repeated parsing overhead. Most database drivers handle this automatically, but you can control the cache size and behavior.
+Caching prepared statements avoids repeated parsing overhead. Some database drivers and ORMs handle this automatically, while others require explicit prepared statements or driver-specific settings.
 
 ```mermaid
 flowchart LR
     subgraph First Execution
-        SQL1[SELECT * FROM users WHERE id = ?] --> Parse1[Parse SQL]
+        SQL1[SELECT * FROM users WHERE id = $1] --> Parse1[Parse SQL]
         Parse1 --> Plan1[Generate Plan]
         Plan1 --> Exec1[Execute with id=1]
     end
@@ -117,12 +112,12 @@ flowchart LR
     end
 ```
 
-Here is a prepared statement cache implementation that works with connection pools.
+Here is a prepared statement cache implementation that works with connection pools. The SQL passed to this cache uses PostgreSQL prepared-statement placeholders such as `$1` and `$2`.
 
 ```python
 import psycopg2
 from psycopg2 import pool
-from typing import Any, Dict, List
+from typing import Dict, List, Optional
 import threading
 
 class PreparedStatementCache:
@@ -133,7 +128,7 @@ class PreparedStatementCache:
         self._lock = threading.Lock()
         self._stmt_counter = 0
 
-    def _get_statement_name(self, conn_id: int, sql: str) -> str:
+    def _get_statement_name(self, conn_id: int, sql: str) -> Optional[str]:
         # Check if this SQL is already prepared on this connection
         with self._lock:
             if conn_id not in self._prepared:
@@ -192,7 +187,7 @@ Cache invalidation determines when cached query results become stale. The right 
 TTL-based invalidation works well for data that changes infrequently. Write-through ensures cache stays current but adds latency to writes. Event-driven invalidation reacts to database triggers or change data capture streams.
 
 ```python
-from typing import Callable, Set
+from typing import Dict, List, Set
 import threading
 
 class TableTrackingCache:
@@ -230,7 +225,7 @@ class TableTrackingCache:
                     keys_to_remove.append(cache_key)
 
             for key in keys_to_remove:
-                self.cache.redis.delete(key)
+                self.cache.delete_key(key)
                 del self._query_tables[key]
                 invalidated += 1
 
@@ -263,7 +258,8 @@ The solution uses a lock to ensure only one request fetches from the database wh
 
 ```python
 import time
-from typing import Callable, Any
+import uuid
+from typing import Callable, Dict, List
 
 class StampedeProtectedCache:
     def __init__(self, cache: QueryResultCache, lock_timeout: int = 10):
@@ -285,11 +281,12 @@ class StampedeProtectedCache:
         # Cache miss - acquire lock before fetching
         cache_key = self.cache._generate_cache_key(sql, params)
         lock_key = f"lock:{cache_key}"
+        lock_value = str(uuid.uuid4())
 
         # Try to acquire the lock
         acquired = self.cache.redis.set(
             lock_key,
-            "1",
+            lock_value,
             nx=True,  # Only set if not exists
             ex=self.lock_timeout
         )
@@ -301,7 +298,19 @@ class StampedeProtectedCache:
                 self.cache.set(sql, params, result, ttl)
                 return result
             finally:
-                self.cache.redis.delete(lock_key)
+                # Delete the lock only if this request still owns it
+                self.cache.redis.eval(
+                    """
+                    if redis.call("get", KEYS[1]) == ARGV[1] then
+                        return redis.call("del", KEYS[1])
+                    else
+                        return 0
+                    end
+                    """,
+                    1,
+                    lock_key,
+                    lock_value
+                )
         else:
             # Another request is fetching - wait and retry
             for _ in range(self.lock_timeout * 10):
@@ -316,16 +325,16 @@ class StampedeProtectedCache:
 
 ## Cache Warming
 
-Cold caches hurt performance after deployments or restarts. Cache warming preloads frequently accessed queries before traffic arrives.
+Cold caches hurt performance after deployments or restarts. Cache warming preloads frequently accessed queries before traffic arrives. When warming in parallel, use a connection pool so each worker checks out its own connection.
 
 ```python
 from typing import List, Tuple
 import concurrent.futures
 
 class CacheWarmer:
-    def __init__(self, cache: QueryResultCache, db_connection):
+    def __init__(self, cache: QueryResultCache, db_pool):
         self.cache = cache
-        self.db = db_connection
+        self.db_pool = db_pool
 
     def warm(self, queries: List[Tuple[str, tuple, int]]) -> int:
         # queries: list of (sql, params, ttl) tuples
@@ -345,8 +354,9 @@ class CacheWarmer:
         return warmed
 
     def _warm_query(self, sql: str, params: tuple, ttl: int) -> bool:
+        conn = self.db_pool.getconn()
         try:
-            cursor = self.db.cursor()
+            cursor = conn.cursor()
             cursor.execute(sql, params)
             columns = [desc[0] for desc in cursor.description]
             rows = cursor.fetchall()
@@ -356,6 +366,8 @@ class CacheWarmer:
             return True
         except Exception:
             return False
+        finally:
+            self.db_pool.putconn(conn)
 ```
 
 ## Monitoring Cache Effectiveness
