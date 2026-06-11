@@ -255,11 +255,11 @@ scrape_configs:
         regex: true
 
       # Use custom port if specified
-      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
+      - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
         action: replace
         target_label: __address__
-        regex: (.+)
-        replacement: ${1}
+        regex: ([^:]+)(?::\d+)?;(\d+)
+        replacement: $1:$2
 
       # Use custom path if specified
       - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
@@ -836,21 +836,24 @@ curl -s http://localhost:9090/api/v1/targets | jq '.data.activeTargets[] | {job:
 ### Check Service Discovery
 
 ```bash
-# Via Prometheus API
-curl -s http://localhost:9090/api/v1/targets/metadata | jq .
+# List active and dropped targets, including discovered labels and post-relabel labels
+curl -s 'http://localhost:9090/api/v1/targets' | jq .
 
 # List discovered labels before relabeling
 curl -s 'http://localhost:9090/api/v1/targets?state=active' | jq '.data.activeTargets[0].discoveredLabels'
+
+# Inspect dropped targets to see why a target was filtered out
+curl -s 'http://localhost:9090/api/v1/targets?state=dropped' | jq '.data.droppedTargets[0]'
 ```
 
 ### Validate Relabel Config
 
 ```bash
-# Use promtool
+# Validate the overall config file
 promtool check config prometheus.yml
 
-# Test relabeling
-promtool test rules test.yml
+# Inspect what a job's service discovery returns (including relabeling effects)
+promtool check service-discovery prometheus.yml <job_name>
 ```
 
 ---
