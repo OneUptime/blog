@@ -58,7 +58,7 @@ If you find yourself wanting to calculate rates from a gauge, you probably want 
 
 ## Basic Gauge Implementation in Node.js
 
-The OpenTelemetry SDK provides gauge instruments through its metrics API. Here is a basic setup for tracking active connections.
+The OpenTelemetry SDK provides gauge instruments through its metrics API. Here is a basic setup for tracking connection pool utilization.
 
 ```typescript
 // metrics/gauges.ts
@@ -67,19 +67,20 @@ import { metrics } from '@opentelemetry/api';
 // Create a meter for your service
 const meter = metrics.getMeter('connection-service', '1.0.0');
 
-// Create an observable gauge for active connections
+// Create an observable gauge for connection pool utilization
 // Observable gauges are read when metrics are collected
-const activeConnectionsGauge = meter.createObservableGauge('connections.active', {
-  description: 'Number of currently active connections',
-  unit: '1',
+const poolUtilizationGauge = meter.createObservableGauge('connections.pool.utilization', {
+  description: 'Current connection pool utilization percentage',
+  unit: '%',
 });
 
 // Track the current connection count
 let connectionCount = 0;
+const maxConnections = 100;
 
 // Register a callback that reports the current value
-activeConnectionsGauge.addCallback((result) => {
-  result.observe(connectionCount, {
+poolUtilizationGauge.addCallback((result) => {
+  result.observe((connectionCount / maxConnections) * 100, {
     'service.type': 'database',
   });
 });
@@ -94,7 +95,7 @@ export function connectionClosed(): void {
 }
 ```
 
-The observable gauge pattern works well when you want to report values only during metric collection. For metrics that need immediate updates, use the synchronous gauge approach.
+The observable gauge pattern works well when you want to report values only during metric collection. For additive counts such as raw active connection totals, OpenTelemetry's UpDownCounter or ObservableUpDownCounter is often the better instrument. For non-additive values that need immediate updates, use the synchronous gauge approach.
 
 ---
 
@@ -131,7 +132,7 @@ Each gauge reports its current value at collection intervals. The time series da
 
 ## Implementing Gauges in Python with OpenTelemetry
 
-Python applications follow a similar pattern. This example demonstrates tracking memory usage and queue depth.
+Python applications follow a similar pattern. This example demonstrates tracking memory utilization and queue saturation.
 
 ```python
 # metrics/gauges.py
@@ -157,36 +158,37 @@ meter = metrics.get_meter("queue-service", "1.0.0")
 
 # Shared queue for demonstration
 message_queue = deque()
+max_queue_size = 1000
 
 # Create observable gauges with callbacks
-def get_memory_usage(options):
-    """Report current memory usage in bytes"""
-    memory = psutil.Process().memory_info()
+def get_memory_utilization(options):
+    """Report current process memory utilization percentage"""
+    memory_percent = psutil.Process().memory_percent()
     yield metrics.Observation(
-        value=memory.rss,
-        attributes={"memory.type": "rss"}
+        value=memory_percent,
+        attributes={"memory.type": "process"}
     )
 
-def get_queue_depth(options):
-    """Report current queue depth"""
+def get_queue_saturation(options):
+    """Report current queue saturation percentage"""
     yield metrics.Observation(
-        value=len(message_queue),
+        value=(len(message_queue) / max_queue_size) * 100,
         attributes={"queue.name": "messages"}
     )
 
 # Register the gauges
 memory_gauge = meter.create_observable_gauge(
-    name="process.memory.usage",
-    description="Current memory usage of the process",
-    unit="By",
-    callbacks=[get_memory_usage]
+    name="process.memory.utilization",
+    description="Current process memory utilization percentage",
+    unit="%",
+    callbacks=[get_memory_utilization]
 )
 
 queue_gauge = meter.create_observable_gauge(
-    name="queue.depth",
-    description="Number of messages waiting in queue",
-    unit="1",
-    callbacks=[get_queue_depth]
+    name="queue.saturation",
+    description="Current queue saturation percentage",
+    unit="%",
+    callbacks=[get_queue_saturation]
 )
 ```
 
@@ -285,16 +287,16 @@ diskUsage.addCallback((result) => {
 Use labels to create multiple gauge series from one instrument.
 
 ```typescript
-// Track memory across multiple cache regions
-const cacheSize = meter.createObservableGauge('cache.size', {
-  description: 'Items in cache by region',
-  unit: '1',
+// Track cache utilization across multiple regions
+const cacheUtilization = meter.createObservableGauge('cache.utilization', {
+  description: 'Cache utilization percentage by region',
+  unit: '%',
 });
 
-cacheSize.addCallback((result) => {
+cacheUtilization.addCallback((result) => {
   // Report each cache region separately
   for (const [region, cache] of cacheRegions.entries()) {
-    result.observe(cache.size(), {
+    result.observe((cache.size() / cache.capacity()) * 100, {
       'cache.region': region,
       'cache.type': cache.type,
     });
@@ -347,7 +349,7 @@ Several common mistakes lead to misleading gauge data.
 
 **Incorrect units:** Document and use consistent units. Mixing bytes and kilobytes causes confusion.
 
-**Aggregating gauges incorrectly:** Summing gauges across instances rarely makes sense. If each instance reports memory usage, the sum is meaningless. Average or max usually provides better insight.
+**Aggregating gauges incorrectly:** Summing non-additive gauges across instances rarely makes sense. For values like utilization percentages or temperatures, average or max usually provides better insight. For additive current values, such as total memory used across a fleet, a sum can be meaningful.
 
 **Using gauges for rates:** If you need requests per second, use a counter and let your query system calculate the rate. Gauges for rates require constant recalculation and can miss spikes between samples.
 
