@@ -75,8 +75,23 @@ class FragmentCache {
     }
 
     // Generate a deterministic cache key from fragment name and parameters
+    stableStringify(value) {
+        if (Array.isArray(value)) {
+            return `[${value.map(item => this.stableStringify(item)).join(',')}]`;
+        }
+
+        if (value && typeof value === 'object') {
+            const entries = Object.keys(value)
+                .sort()
+                .map(key => `${JSON.stringify(key)}:${this.stableStringify(value[key])}`);
+            return `{${entries.join(',')}}`;
+        }
+
+        return JSON.stringify(value);
+    }
+
     generateKey(fragmentName, params = {}) {
-        const sortedParams = JSON.stringify(params, Object.keys(params).sort());
+        const sortedParams = this.stableStringify(params);
         const hash = crypto.createHash('md5').update(sortedParams).digest('hex');
         return `fragment:${fragmentName}:${hash}`;
     }
@@ -87,7 +102,7 @@ class FragmentCache {
 
         // Try cache first
         const cached = await this.redis.get(key);
-        if (cached) {
+        if (cached !== null) {
             return { html: cached, fromCache: true };
         }
 
@@ -95,7 +110,7 @@ class FragmentCache {
         const html = await renderFn(params);
 
         // Store with expiration
-        await this.redis.setex(key, ttl, html);
+        await this.redis.set(key, html, 'EX', ttl);
 
         return { html, fromCache: false };
     }
@@ -108,10 +123,24 @@ class FragmentCache {
 
     // Invalidate all fragments matching a pattern
     async invalidatePattern(pattern) {
-        const keys = await this.redis.keys(`fragment:${pattern}:*`);
-        if (keys.length > 0) {
-            await this.redis.del(...keys);
-        }
+        const stream = this.redis.scanStream({
+            match: `fragment:${pattern}:*`,
+            count: 100
+        });
+
+        await new Promise((resolve, reject) => {
+            stream.on('data', keys => {
+                stream.pause();
+                const uniqueKeys = [...new Set(keys)];
+                const deleteKeys = uniqueKeys.length > 0
+                    ? this.redis.del(...uniqueKeys)
+                    : Promise.resolve();
+
+                deleteKeys.then(() => stream.resume(), reject);
+            });
+            stream.on('error', reject);
+            stream.on('end', resolve);
+        });
     }
 }
 
@@ -152,7 +181,7 @@ const productFragment = await cache.getOrRender(
 
 ## Fragment Assembly Patterns
 
-Once you have cached fragments, you need to assemble them into complete pages. There are two primary patterns: server-side assembly and client-side assembly.
+Once you have cached fragments, you need to assemble them into complete pages. There are two primary patterns: server-side assembly and edge-side assembly.
 
 ### Server-Side Assembly
 
@@ -196,7 +225,7 @@ app.get('/products/:id', async (req, res) => {
 });
 ```
 
-### Client-Side Assembly with Edge-Side Includes (ESI)
+### Edge-Side Assembly with Edge-Side Includes (ESI)
 
 For CDN-level caching, Edge-Side Includes let you define fragment boundaries in HTML. The CDN assembles fragments at the edge, reducing origin load.
 
@@ -208,17 +237,19 @@ For CDN-level caching, Edge-Side Includes let you define fragment boundaries in 
     <title>Product Details</title>
 </head>
 <body>
-    <esi:include src="/fragments/header" ttl="3600" />
+    <esi:include src="/fragments/header" />
 
     <main>
-        <esi:include src="/fragments/product/12345" ttl="300" />
-        <esi:include src="/fragments/related/12345" ttl="600" />
+        <esi:include src="/fragments/product/12345" />
+        <esi:include src="/fragments/related/12345" />
     </main>
 
-    <esi:include src="/fragments/footer" ttl="3600" />
+    <esi:include src="/fragments/footer" />
 </body>
 </html>
 ```
+
+Set fragment TTLs through the fragment responses' HTTP cache headers or your CDN/cache configuration. Some ESI processors support non-standard include attributes for caching, but plain `src` includes are the portable baseline.
 
 The flow with ESI looks like this:
 
@@ -262,7 +293,7 @@ async function onProductUpdate(productId) {
     await Promise.all([
         cache.invalidate('product-detail', { productId }),
         cache.invalidate('product-card', { productId }),
-        cache.invalidatePattern(`related-products:*`) // Invalidate all related sections
+        cache.invalidatePattern('related-products') // Invalidate all related sections
     ]);
 }
 
@@ -311,12 +342,13 @@ Integrate these metrics with your observability stack. Tools like OneUptime can 
 async getOrRenderWithLock(fragmentName, params, renderFn, ttl) {
     const key = this.generateKey(fragmentName, params);
     const lockKey = `lock:${key}`;
+    const lockToken = crypto.randomUUID();
 
     const cached = await this.redis.get(key);
-    if (cached) return { html: cached, fromCache: true };
+    if (cached !== null) return { html: cached, fromCache: true };
 
     // Try to acquire lock
-    const acquired = await this.redis.set(lockKey, '1', 'NX', 'EX', 5);
+    const acquired = await this.redis.set(lockKey, lockToken, 'NX', 'EX', 5);
 
     if (!acquired) {
         // Another process is rendering, wait and retry
@@ -324,11 +356,23 @@ async getOrRenderWithLock(fragmentName, params, renderFn, ttl) {
         return this.getOrRenderWithLock(fragmentName, params, renderFn, ttl);
     }
 
-    const html = await renderFn(params);
-    await this.redis.setex(key, ttl, html);
-    await this.redis.del(lockKey);
+    try {
+        const html = await renderFn(params);
+        await this.redis.set(key, html, 'EX', ttl);
 
-    return { html, fromCache: false };
+        return { html, fromCache: false };
+    } finally {
+        await this.redis.eval(
+            `if redis.call("get", KEYS[1]) == ARGV[1] then
+                return redis.call("del", KEYS[1])
+            else
+                return 0
+            end`,
+            1,
+            lockKey,
+            lockToken
+        );
+    }
 }
 ```
 
