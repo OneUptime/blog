@@ -25,7 +25,7 @@ brew install kyverno
 ### Using Go
 
 ```bash
-# Install using Go (requires Go 1.21+)
+# Install using Go (requires Go 1.26+ for Kyverno v1.18.x)
 go install github.com/kyverno/kyverno/cmd/cli/kubectl-kyverno@latest
 ```
 
@@ -39,11 +39,12 @@ kubectl krew install kyverno
 ### Download Pre-built Binaries
 
 ```bash
-# Download the latest release for Linux
-curl -LO https://github.com/kyverno/kyverno/releases/latest/download/kyverno-cli_linux_amd64.tar.gz
+# Download a release for Linux x86_64
+KYVERNO_VERSION=v1.18.1
+curl -LO "https://github.com/kyverno/kyverno/releases/download/${KYVERNO_VERSION}/kyverno-cli_${KYVERNO_VERSION#v}_linux_x86_64.tar.gz"
 
 # Extract the binary
-tar -xvf kyverno-cli_linux_amd64.tar.gz
+tar -xvf "kyverno-cli_${KYVERNO_VERSION#v}_linux_x86_64.tar.gz"
 
 # Move to a directory in your PATH
 sudo mv kyverno /usr/local/bin/
@@ -67,7 +68,6 @@ The Kyverno CLI provides several commands for policy management and testing:
 |---------|-------------|
 | `apply` | Apply policies to resources and check results |
 | `test` | Run policy tests against test manifests |
-| `validate` | Validate policy syntax and structure |
 | `jp` | Evaluate JMESPath expressions |
 | `version` | Display version information |
 
@@ -120,8 +120,6 @@ kind: ClusterPolicy
 metadata:
   name: require-labels
 spec:
-  # validationFailureAction can be 'Enforce' or 'Audit'
-  validationFailureAction: Enforce
   # Apply policy to Pod resources
   rules:
     - name: check-required-labels
@@ -131,6 +129,8 @@ spec:
               kinds:
                 - Pod
       validate:
+        # failureAction can be 'Enforce' or 'Audit'
+        failureAction: Enforce
         message: "The labels 'app' and 'env' are required."
         pattern:
           metadata:
@@ -187,14 +187,14 @@ spec:
 kyverno apply require-labels.yaml --resource valid-pod.yaml
 
 # Expected output:
-# Applying 1 policy rule(s) to 1 resource(s)...
+# Applying 3 policy rule(s) to 1 resource(s)...
 # pass: 1, fail: 0, warn: 0, error: 0, skip: 0
 
 # Test invalid pod (should fail)
 kyverno apply require-labels.yaml --resource invalid-pod.yaml
 
 # Expected output:
-# Applying 1 policy rule(s) to 1 resource(s)...
+# Applying 3 policy rule(s) to 1 resource(s)...
 # pass: 0, fail: 1, warn: 0, error: 0, skip: 0
 ```
 
@@ -207,9 +207,10 @@ The `kyverno test` command provides a structured way to define and run policy te
 Create a test manifest file named `kyverno-test.yaml`:
 
 ```yaml
-# kyverno-test.yaml
-# This file defines the test cases for our policies
-name: require-labels-test
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: require-labels-test
 policies:
   # Reference to policy files
   - require-labels.yaml
@@ -221,13 +222,15 @@ results:
   # Define expected results for each test case
   - policy: require-labels
     rule: check-required-labels
-    resource: valid-pod
+    resources:
+      - valid-pod
     kind: Pod
     # Expected result: pass
     result: pass
   - policy: require-labels
     rule: check-required-labels
-    resource: invalid-pod
+    resources:
+      - invalid-pod
     kind: Pod
     # Expected result: fail
     result: fail
@@ -245,14 +248,11 @@ kyverno test . --detailed-results
 # Run tests from a specific directory
 kyverno test ./tests/
 
+# Run tests from a custom test manifest filename
+kyverno test . --file-name mutation-test.yaml
+
 # Expected output for successful tests:
-# Test Results:
-# require-labels-test
-#   require-labels
-#     check-required-labels
-#       valid-pod: Pass
-#       invalid-pod: Pass
-# Test Summary: 2 tests passed
+# Test Summary: 2 tests passed and 0 tests failed
 ```
 
 ## Advanced Testing Scenarios
@@ -322,9 +322,10 @@ spec:
 Create mutation test manifest `mutation-test.yaml`:
 
 ```yaml
-# mutation-test.yaml
-# Test manifest for mutation policy
-name: mutation-test
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: mutation-test
 policies:
   - add-default-labels.yaml
 resources:
@@ -332,10 +333,11 @@ resources:
 results:
   - policy: add-default-labels
     rule: add-team-label
-    resource: pod-without-team
+    resources:
+      - pod-without-team
     kind: Pod
-    # The patchedResource shows expected state after mutation
-    patchedResource: pod-with-team.yaml
+    # The patchedResources field shows expected state after mutation
+    patchedResources: pod-with-team.yaml
     result: pass
 ```
 
@@ -375,9 +377,10 @@ spec:
 Create `test-with-variables.yaml`:
 
 ```yaml
-# test-with-variables.yaml
-# Test manifest using variable substitution
-name: variable-test
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: variable-test
 policies:
   - generate-configmap.yaml
 resources:
@@ -386,9 +389,25 @@ variables: values.yaml
 results:
   - policy: generate-configmap
     rule: generate-default-config
-    resource: test-namespace
+    resources:
+      - test-namespace
+    generatedResource: generated-configmap.yaml
     kind: Namespace
     result: pass
+```
+
+Create `generated-configmap.yaml` for the expected generated resource:
+
+```yaml
+# generated-configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: default-config
+  namespace: test-namespace
+data:
+  log-level: "info"
+  environment: "development"
 ```
 
 Create `values.yaml` for variables:
@@ -396,6 +415,8 @@ Create `values.yaml` for variables:
 ```yaml
 # values.yaml
 # Define variables for testing
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Values
 policies:
   - name: generate-configmap
     rules:
@@ -440,11 +461,8 @@ jobs:
       # Install Kyverno CLI
       - name: Install Kyverno CLI
         uses: kyverno/action-install-cli@v0.2.0
-
-      # Validate policy syntax
-      - name: Validate policies
-        run: |
-          kyverno validate ./policies/
+        with:
+          release: 'v1.18.1'
 
       # Run policy tests
       - name: Run Kyverno tests
@@ -454,7 +472,7 @@ jobs:
       # Apply policies to sample resources
       - name: Test policy application
         run: |
-          kyverno apply ./policies/ --resource ./sample-resources/ --output json > results.json
+          kyverno apply ./policies/ --resource ./sample-resources/ --policy-report --output-format json > results.json || true
 
           # Check for failures
           FAILURES=$(cat results.json | jq '.results[] | select(.result == "fail")' | wc -l)
@@ -473,30 +491,19 @@ Create `.gitlab-ci.yml`:
 # .gitlab-ci.yml
 # GitLab CI pipeline for Kyverno policy testing
 stages:
-  - validate
   - test
 
 variables:
-  KYVERNO_VERSION: "1.12.0"
+  KYVERNO_VERSION: "1.18.1"
 
 # Install Kyverno CLI
 .install-kyverno: &install-kyverno
   before_script:
-    - curl -LO "https://github.com/kyverno/kyverno/releases/download/v${KYVERNO_VERSION}/kyverno-cli_linux_amd64.tar.gz"
-    - tar -xvf kyverno-cli_linux_amd64.tar.gz
+    - apk add --no-cache curl
+    - curl -LO "https://github.com/kyverno/kyverno/releases/download/v${KYVERNO_VERSION}/kyverno-cli_v${KYVERNO_VERSION}_linux_x86_64.tar.gz"
+    - tar -xvf kyverno-cli_v${KYVERNO_VERSION}_linux_x86_64.tar.gz
     - mv kyverno /usr/local/bin/
     - kyverno version
-
-# Validate policy syntax
-validate-policies:
-  stage: validate
-  image: alpine:latest
-  <<: *install-kyverno
-  script:
-    - kyverno validate ./policies/
-  only:
-    changes:
-      - policies/**/*
 
 # Run policy tests
 test-policies:
@@ -504,7 +511,7 @@ test-policies:
   image: alpine:latest
   <<: *install-kyverno
   script:
-    - kyverno test ./tests/ --detailed-results
+    - kyverno test ./tests/ --output-format junit > test-results.xml
   artifacts:
     reports:
       junit: test-results.xml
@@ -526,23 +533,17 @@ pipeline {
     agent any
 
     environment {
-        KYVERNO_VERSION = '1.12.0'
+        KYVERNO_VERSION = '1.18.1'
     }
 
     stages {
         stage('Install Kyverno CLI') {
             steps {
                 sh '''
-                    curl -LO "https://github.com/kyverno/kyverno/releases/download/v${KYVERNO_VERSION}/kyverno-cli_linux_amd64.tar.gz"
-                    tar -xvf kyverno-cli_linux_amd64.tar.gz
+                    curl -LO "https://github.com/kyverno/kyverno/releases/download/v${KYVERNO_VERSION}/kyverno-cli_v${KYVERNO_VERSION}_linux_x86_64.tar.gz"
+                    tar -xvf kyverno-cli_v${KYVERNO_VERSION}_linux_x86_64.tar.gz
                     chmod +x kyverno
                 '''
-            }
-        }
-
-        stage('Validate Policies') {
-            steps {
-                sh './kyverno validate ./policies/'
             }
         }
 
@@ -581,12 +582,9 @@ pipeline {
 flowchart LR
     A[Code Push] --> B[CI Pipeline Triggered]
     B --> C[Install Kyverno CLI]
-    C --> D[Validate Policy Syntax]
-    D --> E{Syntax Valid?}
-    E -->|No| F[Fail Build]
-    E -->|Yes| G[Run Policy Tests]
+    C --> G[Run Policy Tests]
     G --> H{Tests Pass?}
-    H -->|No| F
+    H -->|No| F[Fail Build]
     H -->|Yes| I[Apply to Sample Resources]
     I --> J{Resources Compliant?}
     J -->|No| F
@@ -626,11 +624,13 @@ project/
 results:
   - policy: require-labels
     rule: check-required-labels
-    resource: pod-with-all-labels-should-pass
+    resources:
+      - pod-with-all-labels-should-pass
     result: pass
   - policy: require-labels
     rule: check-required-labels
-    resource: pod-missing-env-label-should-fail
+    resources:
+      - pod-missing-env-label-should-fail
     result: fail
 ```
 
