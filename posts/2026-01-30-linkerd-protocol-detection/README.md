@@ -26,12 +26,8 @@ flowchart TD
     B --> C{Check Protocol Signature}
     C -->|HTTP/1.x Pattern| D[HTTP/1.x Handler]
     C -->|HTTP/2 Preface| E[HTTP/2 Handler]
-    C -->|TLS ClientHello| F[TLS Termination]
+    C -->|Application TLS| G[Opaque TCP Handler]
     C -->|No Match / Timeout| G[Opaque TCP Handler]
-    F --> H{Peek After TLS}
-    H -->|HTTP/1.x| D
-    H -->|HTTP/2| E
-    H -->|No Match| G
     D --> I[Apply HTTP Features]
     E --> J[Apply HTTP/2 Features]
     G --> K[TCP Proxy Only]
@@ -49,69 +45,70 @@ Linkerd looks for specific byte patterns to identify protocols:
 | HTTP/1.x | Starts with HTTP method (GET, POST, PUT, DELETE, etc.) |
 | HTTP/2 | Starts with connection preface `PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n` |
 | gRPC | HTTP/2 with `content-type: application/grpc` header |
-| TLS | Starts with TLS ClientHello byte sequence |
+| Application TLS | Treated as opaque TCP unless TLS is terminated before Linkerd sees the traffic |
 | TCP | Fallback when no pattern matches |
 
 ## Configuring Protocol Detection
 
 ### Default Timeout Configuration
 
-Linkerd waits for a configurable amount of time to receive enough bytes for protocol detection. If the timeout expires before detection completes, the connection is treated as opaque TCP.
+Linkerd waits up to 10 seconds to receive enough bytes from the client for protocol detection. If the timeout expires before detection completes, the connection is treated as opaque TCP.
 
 ```yaml
-# linkerd-config ConfigMap
+# service.yaml
 
 apiVersion: v1
-kind: ConfigMap
+kind: Service
 metadata:
-  name: linkerd-config
-  namespace: linkerd
-data:
-  # Protocol detection timeout in milliseconds
-  # Default is 10 seconds (10000ms)
-  protocolDetectTimeout: "10000ms"
+  name: api-server
+spec:
+  selector:
+    app: api-server
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8080
+    # Declare HTTP/1 and skip automatic protocol detection
+    appProtocol: http
 ```
 
-### Setting Detection Timeout via Helm
+### Setting Default Opaque Ports via Helm
 
-When installing Linkerd with Helm, you can configure the detection timeout:
+When installing Linkerd with Helm, you can configure the default opaque ports:
 
 ```bash
-# Install Linkerd with custom protocol detection timeout
+# Install Linkerd with custom default opaque ports
 helm install linkerd-control-plane linkerd/linkerd-control-plane \
   --namespace linkerd \
-  --set proxy.protocolDetectTimeout=10s
+  --set proxy.opaquePorts="25,587,3306,4444,5432,6379,9300,11211,27017"
 ```
 
-### Per-Pod Configuration
+### Per-Service Configuration
 
-You can override the detection timeout for specific pods using annotations:
+You can declare the protocol for specific Service ports using `appProtocol`:
 
 ```yaml
-# deployment.yaml
-apiVersion: apps/v1
-kind: Deployment
+# service.yaml
+apiVersion: v1
+kind: Service
 metadata:
-  name: my-service
+  name: grpc-backend
 spec:
-  template:
-    metadata:
-      annotations:
-        # Override protocol detection timeout for this pod
-        config.linkerd.io/protocol-detect-timeout: "5s"
-    spec:
-      containers:
-      - name: my-service
-        image: my-service:latest
-        ports:
-        - containerPort: 8080
+  selector:
+    app: grpc-backend
+  ports:
+  - name: grpc
+    port: 50051
+    targetPort: 50051
+    # Declare cleartext HTTP/2 and skip automatic protocol detection
+    appProtocol: kubernetes.io/h2c
 ```
 
 ## Marking Ports as Opaque
 
 For services that use protocols that cannot be detected (like MySQL, Redis, or custom binary protocols), you should mark the ports as opaque to skip protocol detection entirely.
 
-### Using Annotations
+### Using appProtocol
 
 ```yaml
 # service.yaml
@@ -119,45 +116,40 @@ apiVersion: v1
 kind: Service
 metadata:
   name: mysql-service
-  annotations:
-    # Skip protocol detection for port 3306
-    config.linkerd.io/opaque-ports: "3306"
 spec:
   selector:
     app: mysql
   ports:
   - port: 3306
     targetPort: 3306
+    # Skip protocol detection for port 3306
+    appProtocol: linkerd.io/opaque
 ```
 
 ### Multiple Opaque Ports
 
 ```yaml
-# deployment.yaml
-apiVersion: apps/v1
-kind: Deployment
+# service.yaml
+apiVersion: v1
+kind: Service
 metadata:
   name: database-cluster
 spec:
-  template:
-    metadata:
-      annotations:
-        # Multiple ports can be specified as comma-separated values
-        config.linkerd.io/opaque-ports: "3306,6379,27017"
-    spec:
-      containers:
-      - name: mysql
-        image: mysql:8.0
-        ports:
-        - containerPort: 3306
-      - name: redis
-        image: redis:7.0
-        ports:
-        - containerPort: 6379
-      - name: mongo
-        image: mongo:6.0
-        ports:
-        - containerPort: 27017
+  selector:
+    app: database-cluster
+  ports:
+  - name: mysql
+    port: 3306
+    targetPort: 3306
+    appProtocol: linkerd.io/opaque
+  - name: redis
+    port: 6379
+    targetPort: 6379
+    appProtocol: linkerd.io/opaque
+  - name: mongo
+    port: 27017
+    targetPort: 27017
+    appProtocol: linkerd.io/opaque
 ```
 
 ## Server-First Protocols
@@ -178,9 +170,6 @@ apiVersion: v1
 kind: Service
 metadata:
   name: smtp-service
-  annotations:
-    # Mark SMTP port as opaque (server-first protocol)
-    config.linkerd.io/opaque-ports: "25,587"
 spec:
   selector:
     app: smtp-server
@@ -188,9 +177,12 @@ spec:
   - name: smtp
     port: 25
     targetPort: 25
+    # Mark SMTP as opaque (server-first protocol)
+    appProtocol: linkerd.io/opaque
   - name: submission
     port: 587
     targetPort: 587
+    appProtocol: linkerd.io/opaque
 ```
 
 ## Protocol Detection in Practice
@@ -289,6 +281,7 @@ spec:
   - name: grpc
     port: 50051
     targetPort: 50051
+    appProtocol: kubernetes.io/h2c
 ```
 
 ### Example: Mixed Protocol Service
@@ -309,10 +302,6 @@ spec:
     metadata:
       labels:
         app: data-service
-      annotations:
-        # Mark the Redis port as opaque
-        # HTTP port 8080 will be auto-detected
-        config.linkerd.io/opaque-ports: "6379"
     spec:
       containers:
       - name: data-service
@@ -324,6 +313,24 @@ spec:
         # Redis sidecar - marked as opaque
         - containerPort: 6379
           name: redis
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: data-service
+  namespace: default
+spec:
+  selector:
+    app: data-service
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8080
+    appProtocol: http
+  - name: redis
+    port: 6379
+    targetPort: 6379
+    appProtocol: linkerd.io/opaque
 ```
 
 ## Troubleshooting Protocol Detection
@@ -350,12 +357,12 @@ linkerd viz tap deploy/api-server --to deploy/backend-service
 Symptoms: Slow initial connection, requests fail intermittently.
 
 ```bash
-# Check the current detection timeout
-kubectl get configmap linkerd-config -n linkerd -o yaml | grep protocolDetect
+# Check for protocol detection timeouts
+kubectl logs -n default deploy/my-service -c linkerd-proxy | grep -i "protocol detection timed out"
 
-# Solution: Increase the timeout or mark the port as opaque
-kubectl annotate deployment my-service \
-  config.linkerd.io/protocol-detect-timeout=15s
+# Solution: declare the protocol, or mark the port as opaque
+kubectl patch service my-service --type='json' \
+  -p='[{"op":"add","path":"/spec/ports/0/appProtocol","value":"linkerd.io/opaque"}]'
 ```
 
 #### Issue 2: HTTP Traffic Treated as TCP
@@ -378,13 +385,12 @@ apiVersion: v1
 kind: Service
 metadata:
   name: my-service
-  annotations:
-    # Force HTTP/2 detection if needed
-    config.linkerd.io/proxy-protocol: "HTTP/2"
 spec:
   ports:
   - port: 80
     targetPort: 8080
+    # Declare cleartext HTTP/2 if needed
+    appProtocol: kubernetes.io/h2c
 ```
 
 #### Issue 3: Server-First Protocol Hanging
@@ -397,8 +403,8 @@ kubectl exec -it deploy/my-service -c linkerd-proxy -- \
   /bin/sh -c "netstat -an | grep ESTABLISHED"
 
 # Solution: Mark the port as opaque
-kubectl annotate service mysql-service \
-  config.linkerd.io/opaque-ports="3306"
+kubectl patch service mysql-service --type='json' \
+  -p='[{"op":"add","path":"/spec/ports/0/appProtocol","value":"linkerd.io/opaque"}]'
 ```
 
 ### Protocol Detection Debugging Script
@@ -413,8 +419,8 @@ DEPLOYMENT=${2:-my-service}
 
 echo "=== Checking Protocol Detection for $DEPLOYMENT in $NAMESPACE ==="
 
-# Get current annotations
-echo -e "\n--- Current Annotations ---"
+# Get current pod-template annotations
+echo -e "\n--- Current Pod Template Annotations ---"
 kubectl get deployment $DEPLOYMENT -n $NAMESPACE -o jsonpath='{.spec.template.metadata.annotations}' | jq .
 
 # Check proxy logs for protocol info
@@ -451,24 +457,27 @@ curl -s 'http://localhost:9090/api/v1/query?query=tcp_open_total' | jq '.data.re
 
 ## Best Practices
 
-### 1. Use Named Ports
+### 1. Use Named Ports and appProtocol
 
-Named ports help Linkerd and operators understand the expected protocol:
+Named ports help operators understand the expected protocol, and `appProtocol` lets Linkerd skip automatic detection when the protocol is known:
 
 ```yaml
-# Good: Named ports
+# Good: Named ports with appProtocol
 ports:
 - name: http
   port: 80
   targetPort: 8080
+  appProtocol: http
 - name: grpc
   port: 50051
   targetPort: 50051
+  appProtocol: kubernetes.io/h2c
 - name: mysql
   port: 3306
   targetPort: 3306
+  appProtocol: linkerd.io/opaque
 
-# Avoid: Unnamed ports
+# Avoid: Unnamed ports without appProtocol
 ports:
 - port: 80
   targetPort: 8080
@@ -476,25 +485,31 @@ ports:
 
 ### 2. Pre-Configure Known Opaque Ports
 
-Add opaque port annotations proactively for known non-HTTP services:
+Declare known non-HTTP services as opaque proactively:
 
 ```yaml
-# Configure at the namespace level for consistency
+# Configure at the Service level for consistency
 apiVersion: v1
-kind: Namespace
+kind: Service
 metadata:
-  name: databases
-  annotations:
-    config.linkerd.io/opaque-ports: "3306,5432,6379,27017,9042"
+  name: postgres
+spec:
+  selector:
+    app: postgres
+  ports:
+  - name: postgres
+    port: 5432
+    targetPort: 5432
+    appProtocol: linkerd.io/opaque
 ```
 
-### 3. Monitor Detection Latency
+### 3. Monitor Detection Timeouts
 
-Keep an eye on protocol detection adding latency to your services:
+Keep an eye on protocol detection timeouts in proxy logs:
 
 ```bash
-# Check p99 latency for protocol detection
-linkerd viz stat deploy --all-namespaces -o wide | awk '{print $1, $2, $7}'
+# Check for protocol detection timeout messages
+kubectl logs -n default deploy/my-service -c linkerd-proxy | grep -i "protocol detection timed out"
 ```
 
 ### 4. Document Protocol Requirements
@@ -510,13 +525,11 @@ metadata:
   labels:
     protocol-type: server-first
     requires-opaque: "true"
-  annotations:
-    config.linkerd.io/opaque-ports: "1234"
-    description: "Legacy binary protocol, server sends greeting first"
 spec:
   ports:
   - port: 1234
     targetPort: 1234
+    appProtocol: linkerd.io/opaque
 ```
 
 ## Conclusion
@@ -526,8 +539,8 @@ Linkerd's automatic protocol detection simplifies service mesh adoption by elimi
 Key takeaways:
 - HTTP, HTTP/2, and gRPC are automatically detected
 - Server-first protocols and binary protocols should be marked as opaque
-- Use the detection timeout configuration for slow-starting services
-- Monitor protocol detection with Linkerd's built-in tools
+- Use `appProtocol` declarations to skip detection when the protocol is known
+- Monitor protocol detection timeouts with Linkerd's built-in tools
 - Document any special protocol requirements for your services
 
 By following these practices, you can leverage Linkerd's protocol detection to get rich observability and traffic management features with minimal configuration overhead.
