@@ -63,7 +63,7 @@ Fixed-size chunking is the simplest approach. You split text into chunks of a pr
 ### LangChain Implementation
 
 ```python
-from langchain.text_splitter import CharacterTextSplitter
+from langchain_text_splitters import CharacterTextSplitter
 
 # Create a fixed-size text splitter
 
@@ -103,7 +103,7 @@ for i, chunk in enumerate(chunks):
 For more precise control, especially when working with LLMs that have token limits, use token-based splitting:
 
 ```python
-from langchain.text_splitter import TokenTextSplitter
+from langchain_text_splitters import TokenTextSplitter
 
 # Create a token-based splitter
 # This ensures chunks fit within model token limits
@@ -115,10 +115,12 @@ token_splitter = TokenTextSplitter(
 # Split document into token-based chunks
 token_chunks = token_splitter.split_text(document_text)
 
-# Each chunk is guaranteed to be under the token limit
+# Each chunk is under the configured token chunk size
 for i, chunk in enumerate(token_chunks):
     print(f"Token Chunk {i + 1}: {chunk[:100]}...")
 ```
+
+For languages where one character can span multiple tokens, use `RecursiveCharacterTextSplitter.from_tiktoken_encoder()` or `CharacterTextSplitter.from_tiktoken_encoder()` to keep chunks as valid Unicode strings.
 
 ---
 
@@ -149,7 +151,7 @@ from langchain_openai import OpenAIEmbeddings
 
 # Initialize the embedding model for semantic comparison
 # The embeddings are used to measure semantic similarity between sentences
-embeddings = OpenAIEmbeddings()
+embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
 
 # Create a semantic chunker
 # breakpoint_threshold_type: How to determine chunk boundaries
@@ -297,7 +299,7 @@ flowchart TD
 ### LangChain Recursive Text Splitter
 
 ```python
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 # Create a recursive text splitter
 # The separators are tried in order; earlier separators are preferred
@@ -362,8 +364,8 @@ for i, chunk in enumerate(recursive_chunks):
 For production systems, you often need to track chunk metadata:
 
 ```python
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.schema import Document
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_core.documents import Document
 
 # Create splitter with document handling
 recursive_splitter = RecursiveCharacterTextSplitter(
@@ -430,8 +432,10 @@ flowchart TD
 ### 1. Optimize Chunk Size for Your Embedding Model
 
 ```python
-# Different embedding models have different optimal input lengths
-# Here are recommended chunk sizes for common models
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+# Embedding models have maximum input lengths, but retrieval chunk size is
+# workload-specific. These are starting points to tune for your documents.
 
 CHUNK_SIZE_RECOMMENDATIONS = {
     "text-embedding-ada-002": 500,      # OpenAI
@@ -467,7 +471,7 @@ def create_optimal_splitter(embedding_model: str) -> RecursiveCharacterTextSplit
 ### 2. Handle Different Document Types
 
 ```python
-from langchain.text_splitter import (
+from langchain_text_splitters import (
     RecursiveCharacterTextSplitter,
     MarkdownTextSplitter,
     Language
@@ -498,9 +502,16 @@ def get_splitter_for_document_type(doc_type: str):
             chunk_overlap=100
         ),
 
-        # JavaScript and TypeScript
+        # JavaScript
         "js": RecursiveCharacterTextSplitter.from_language(
             language=Language.JS,
+            chunk_size=1000,
+            chunk_overlap=100
+        ),
+
+        # TypeScript
+        "ts": RecursiveCharacterTextSplitter.from_language(
+            language=Language.TS,
             chunk_size=1000,
             chunk_overlap=100
         ),
@@ -529,7 +540,7 @@ markdown_splitter = get_splitter_for_document_type("md")
 ### 3. Add Contextual Information to Chunks
 
 ```python
-from langchain.schema import Document
+from langchain_core.documents import Document
 from typing import List
 
 def add_context_to_chunks(
@@ -586,8 +597,8 @@ def add_context_to_chunks(
 Here is a complete example that combines all the concepts:
 
 ```python
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.schema import Document
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_core.documents import Document
 from langchain_openai import OpenAIEmbeddings
 from typing import List, Dict, Any
 import hashlib
