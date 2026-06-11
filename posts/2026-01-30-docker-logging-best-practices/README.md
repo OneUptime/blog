@@ -30,12 +30,12 @@ The following table summarizes the most commonly used logging drivers and their 
 |--------|-------------------|---------------|---------------------|----------|
 | json-file | Local JSON files | Configurable | Yes | Development, small deployments |
 | local | Local binary files | Configurable | Yes | Single-host production |
-| syslog | Syslog server | Depends on server | No | Unix/Linux environments |
+| syslog | Syslog server | Depends on server | Yes, through Docker's local cache unless disabled | Unix/Linux environments |
 | journald | systemd journal | Depends on journal | Yes | systemd-based hosts |
-| fluentd | Fluentd collector | Depends on backend | No | Centralized logging |
-| gelf | Graylog server | Depends on server | No | Graylog deployments |
-| awslogs | CloudWatch Logs | Configurable | No | AWS environments |
-| splunk | Splunk server | Depends on server | No | Splunk deployments |
+| fluentd | Fluentd collector | Depends on backend | Yes, through Docker's local cache unless disabled | Centralized logging |
+| gelf | Graylog server | Depends on server | Yes, through Docker's local cache unless disabled | Graylog deployments |
+| awslogs | CloudWatch Logs | Configurable | Yes, through Docker's local cache unless disabled | AWS environments |
+| splunk | Splunk server | Depends on server | Yes, through Docker's local cache unless disabled | Splunk deployments |
 | none | Discarded | N/A | No | Performance-critical, logs handled internally |
 
 ## Configuring the json-file Driver
@@ -136,8 +136,7 @@ This configuration uses the local driver with automatic compression:
   "log-driver": "local",
   "log-opts": {
     "max-size": "50m",
-    "max-file": "5",
-    "compress": "true"
+    "max-file": "5"
   }
 }
 ```
@@ -262,8 +261,9 @@ Create a Fluentd configuration file at `fluentd/fluent.conf`:
 # Add timestamp and host information
 <filter docker.**>
   @type record_transformer
+  enable_ruby true
   <record>
-    hostname "#{Socket.gethostname}"
+    hostname ${Socket.gethostname}
     received_at ${time}
   </record>
 </filter>
@@ -273,7 +273,6 @@ Create a Fluentd configuration file at `fluentd/fluent.conf`:
   @type elasticsearch
   host elasticsearch
   port 9200
-  index_name api-logs
   logstash_format true
   logstash_prefix api
   flush_interval 5s
@@ -292,7 +291,6 @@ Create a Fluentd configuration file at `fluentd/fluent.conf`:
   @type elasticsearch
   host elasticsearch
   port 9200
-  index_name web-logs
   logstash_format true
   logstash_prefix web
   flush_interval 5s
@@ -310,7 +308,6 @@ Create a Fluentd configuration file at `fluentd/fluent.conf`:
   @type elasticsearch
   host elasticsearch
   port 9200
-  index_name default-logs
   logstash_format true
   logstash_prefix default
   flush_interval 10s
@@ -512,6 +509,7 @@ class JSONFormatter(logging.Formatter):
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),
+            "service": getattr(record, "service", None),
             "module": record.module,
             "function": record.funcName,
             "line": record.lineno
@@ -527,27 +525,29 @@ class JSONFormatter(logging.Formatter):
 
         return json.dumps(log_record)
 
+class ServiceContextFilter(logging.Filter):
+    """Add service context without conflicting with per-call extra fields."""
+
+    def __init__(self, service_name):
+        super().__init__()
+        self.service_name = service_name
+
+    def filter(self, record):
+        record.service = self.service_name
+        return True
+
 def setup_logging(service_name, log_level=logging.INFO):
     """Configure structured JSON logging for the application."""
 
     # Create handler for stdout
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(JSONFormatter())
+    handler.addFilter(ServiceContextFilter(service_name))
 
     # Configure root logger
     root_logger = logging.getLogger()
     root_logger.setLevel(log_level)
     root_logger.addHandler(handler)
-
-    # Add service context to all logs
-    old_factory = logging.getLogRecordFactory()
-
-    def record_factory(*args, **kwargs):
-        record = old_factory(*args, **kwargs)
-        record.extra_fields = {"service": service_name}
-        return record
-
-    logging.setLogRecordFactory(record_factory)
 
     return root_logger
 
@@ -570,6 +570,7 @@ if __name__ == "__main__":
 Pino is a high-performance JSON logger for Node.js:
 
 ```javascript
+const crypto = require('node:crypto');
 const pino = require('pino');
 
 // Create the logger with production settings
@@ -599,6 +600,10 @@ function createRequestLogger(requestId, userId) {
     requestId,
     userId,
   });
+}
+
+function generateRequestId() {
+  return crypto.randomUUID();
 }
 
 // Express middleware for request logging
@@ -641,6 +646,8 @@ Zap provides structured, leveled logging in Go:
 package main
 
 import (
+    "crypto/rand"
+    "encoding/hex"
     "net/http"
     "os"
     "time"
@@ -719,6 +726,14 @@ type responseWriter struct {
 func (rw *responseWriter) WriteHeader(code int) {
     rw.statusCode = code
     rw.ResponseWriter.WriteHeader(code)
+}
+
+func generateRequestID() string {
+    b := make([]byte, 16)
+    if _, err := rand.Read(b); err != nil {
+        return time.Now().UTC().Format("20060102150405.000000000")
+    }
+    return hex.EncodeToString(b)
 }
 
 func main() {
@@ -831,14 +846,12 @@ A complete example for a production microservices deployment:
 ```yaml
 version: "3.8"
 
-x-fluentd-logging: &fluentd-logging
-  driver: fluentd
-  options:
-    fluentd-address: "${FLUENTD_HOST:-fluentd}:24224"
-    fluentd-async: "true"
-    fluentd-retry-wait: "1s"
-    fluentd-max-retries: "30"
-    fluentd-buffer-limit: "8388608"
+x-fluentd-options: &fluentd-options
+  fluentd-address: "${FLUENTD_HOST:-localhost}:24224"
+  fluentd-async: "true"
+  fluentd-retry-wait: "1s"
+  fluentd-max-retries: "30"
+  fluentd-buffer-limit: "8388608"
 
 services:
   nginx:
@@ -849,9 +862,9 @@ services:
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
     logging:
-      <<: *fluentd-logging
+      driver: fluentd
       options:
-        <<: *fluentd-logging
+        <<: *fluentd-options
         tag: "docker.nginx.{{.Name}}"
     labels:
       service: nginx
@@ -870,9 +883,9 @@ services:
       - LOG_FORMAT=json
       - SERVICE_NAME=api
     logging:
-      <<: *fluentd-logging
+      driver: fluentd
       options:
-        <<: *fluentd-logging
+        <<: *fluentd-options
         tag: "docker.api.{{.Name}}"
         labels: "service,tier,version"
     labels:
@@ -899,9 +912,9 @@ services:
       - LOG_FORMAT=json
       - SERVICE_NAME=worker
     logging:
-      <<: *fluentd-logging
+      driver: fluentd
       options:
-        <<: *fluentd-logging
+        <<: *fluentd-options
         tag: "docker.worker.{{.Name}}"
         labels: "service,tier,version"
     labels:
@@ -920,9 +933,9 @@ services:
     image: redis:7-alpine
     command: redis-server --loglevel notice
     logging:
-      <<: *fluentd-logging
+      driver: fluentd
       options:
-        <<: *fluentd-logging
+        <<: *fluentd-options
         tag: "docker.redis.{{.Name}}"
     labels:
       service: redis
@@ -949,9 +962,9 @@ services:
       - "-c"
       - "log_line_prefix=%t [%p]: [%l-1] user=%u,db=%d,app=%a,client=%h "
     logging:
-      <<: *fluentd-logging
+      driver: fluentd
       options:
-        <<: *fluentd-logging
+        <<: *fluentd-options
         tag: "docker.postgres.{{.Name}}"
     labels:
       service: postgres
@@ -994,7 +1007,7 @@ for container_dir in "$LOG_DIR"/*/; do
 
         if [ -n "$container_name" ]; then
             # Calculate total log size
-            total_size=$(du -sh "$container_dir"*-json.log* 2>/dev/null | tail -1 | cut -f1)
+            total_size=$(du -ch "$container_dir"*-json.log* 2>/dev/null | tail -1 | cut -f1)
             file_count=$(ls -1 "$container_dir"*-json.log* 2>/dev/null | wc -l)
 
             if [ -n "$total_size" ]; then
@@ -1063,17 +1076,17 @@ fi
 
 ### Fluentd Connection Failures
 
-When containers cannot connect to Fluentd, logs may be lost. Use async mode and retries:
+When containers cannot connect to Fluentd, logs may be lost. Use async mode, retries, and non-blocking delivery to reduce startup failures and limit the impact of short collector outages:
 
 ```yaml
 logging:
   driver: fluentd
   options:
-    fluentd-address: fluentd:24224
+    fluentd-address: localhost:24224
     fluentd-async: "true"
     fluentd-retry-wait: "1s"
     fluentd-max-retries: "30"
-    fluentd-buffer-limit: "16777216"  # 16MB buffer
+    fluentd-buffer-limit: "16777216"  # Number of events buffered in memory
     mode: non-blocking
     max-buffer-size: "4m"
 ```
@@ -1103,8 +1116,8 @@ Debug checklist:
 # Check if container is using correct logging driver
 docker inspect <container> --format '{{.HostConfig.LogConfig.Type}}'
 
-# Check Fluentd connectivity
-docker run --rm appropriate/curl curl -v telnet://fluentd:24224
+# Check Fluentd connectivity from the host running the Docker daemon
+curl -v telnet://localhost:24224
 
 # View Fluentd logs for errors
 docker logs fluentd --tail 100
@@ -1112,7 +1125,7 @@ docker logs fluentd --tail 100
 # Test log generation
 docker run --rm \
   --log-driver fluentd \
-  --log-opt fluentd-address=fluentd:24224 \
+  --log-opt fluentd-address=localhost:24224 \
   --log-opt tag=test \
   alpine echo "Test log message"
 ```
@@ -1131,6 +1144,6 @@ Implementing Docker logging best practices requires attention to several key are
 
 5. **Monitor log storage**: Implement monitoring for log disk usage and have procedures ready for emergency log truncation.
 
-6. **Plan for failure**: When using centralized logging, configure async mode and retries to prevent log loss during collector outages.
+6. **Plan for failure**: When using centralized logging, configure async mode, retries, and buffering to reduce log loss during collector outages.
 
 These practices will help you maintain observable, debuggable containerized applications without the common pitfalls of disk exhaustion and lost logs.
