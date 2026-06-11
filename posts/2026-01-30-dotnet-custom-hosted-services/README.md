@@ -234,32 +234,44 @@ public class GracefulShutdownService : BackgroundService
             _logger.LogInformation("Shutdown signal received, beginning graceful shutdown");
         });
 
-        while (!stoppingToken.IsCancellationRequested)
+        try
         {
-            await ProcessNextItemAsync(stoppingToken);
-            await Task.Delay(1000, stoppingToken);
+            while (!stoppingToken.IsCancellationRequested)
+            {
+                await ProcessNextItemAsync(stoppingToken);
+                await Task.Delay(1000, stoppingToken);
+            }
         }
-
-        // Perform final cleanup after the loop exits
-        await FlushPendingItemsAsync();
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            // Expected during shutdown
+        }
+        finally
+        {
+            // Perform final cleanup after the loop exits
+            await FlushPendingItemsAsync();
+        }
     }
 
     private async Task ProcessNextItemAsync(CancellationToken cancellationToken)
     {
+        var shouldFlush = false;
+
         await _lock.WaitAsync(cancellationToken);
         try
         {
             // Simulate adding work items
             _pendingItems.Add($"Item-{Guid.NewGuid():N}");
-
-            if (_pendingItems.Count >= 10)
-            {
-                await FlushPendingItemsAsync();
-            }
+            shouldFlush = _pendingItems.Count >= 10;
         }
         finally
         {
             _lock.Release();
+        }
+
+        if (shouldFlush)
+        {
+            await FlushPendingItemsAsync();
         }
     }
 
@@ -656,32 +668,41 @@ public class MonitoredBackgroundService : BackgroundService, IHealthCheck
     {
         _isRunning = true;
 
-        while (!stoppingToken.IsCancellationRequested)
+        try
         {
-            try
+            while (!stoppingToken.IsCancellationRequested)
             {
-                await DoWorkAsync(stoppingToken);
+                try
+                {
+                    await DoWorkAsync(stoppingToken);
 
-                // Update health status on success
-                _lastSuccessfulRun = DateTime.UtcNow;
-                _isHealthy = true;
-                _lastError = string.Empty;
-            }
-            catch (OperationCanceledException)
-            {
-                // Expected during shutdown
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Background service error");
-                _isHealthy = false;
-                _lastError = ex.Message;
-            }
+                    // Update health status on success
+                    _lastSuccessfulRun = DateTime.UtcNow;
+                    _isHealthy = true;
+                    _lastError = string.Empty;
+                }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                {
+                    // Expected during shutdown
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Background service error");
+                    _isHealthy = false;
+                    _lastError = ex.Message;
+                }
 
-            await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
+                await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
+            }
         }
-
-        _isRunning = false;
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            // Expected during shutdown
+        }
+        finally
+        {
+            _isRunning = false;
+        }
     }
 
     private async Task DoWorkAsync(CancellationToken cancellationToken)
@@ -727,17 +748,16 @@ Register the health check and service together.
 ```csharp
 var builder = WebApplication.CreateBuilder(args);
 
-// Create a single instance to use as both hosted service and health check
-var monitoredService = new MonitoredBackgroundService(
-    builder.Services.BuildServiceProvider()
-        .GetRequiredService<ILogger<MonitoredBackgroundService>>());
+// Register one instance to use as both hosted service and health check
+builder.Services.AddSingleton<MonitoredBackgroundService>();
 
 // Register as hosted service
-builder.Services.AddSingleton<IHostedService>(monitoredService);
+builder.Services.AddSingleton<IHostedService>(sp =>
+    sp.GetRequiredService<MonitoredBackgroundService>());
 
 // Register the same instance as a health check
 builder.Services.AddHealthChecks()
-    .AddCheck("background-service", monitoredService);
+    .AddCheck<MonitoredBackgroundService>("background-service");
 
 var app = builder.Build();
 
@@ -827,6 +847,7 @@ For complex scheduling, use cron expressions with the Cronos library.
 
 ```csharp
 using Cronos;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
@@ -950,7 +971,7 @@ public class ResilientBackgroundService : BackgroundService
 
         // Configure retry policy with exponential backoff
         _retryPolicy = Policy
-            .Handle<Exception>()
+            .Handle<Exception>(ex => ex is not OperationCanceledException)
             .WaitAndRetryAsync(
                 retryCount: 5,
                 sleepDurationProvider: attempt =>
@@ -972,10 +993,9 @@ public class ResilientBackgroundService : BackgroundService
         {
             try
             {
-                await _retryPolicy.ExecuteAsync(async () =>
-                {
-                    await ProcessWorkAsync(stoppingToken);
-                });
+                await _retryPolicy.ExecuteAsync(
+                    cancellationToken => ProcessWorkAsync(cancellationToken),
+                    stoppingToken);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
