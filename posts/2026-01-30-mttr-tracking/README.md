@@ -8,7 +8,7 @@ Description: Learn to implement MTTR tracking with incident lifecycle measuremen
 
 ---
 
-Mean Time to Recovery (MTTR) is one of the four key DORA metrics that distinguish high-performing engineering teams from the rest. While many teams track MTTR at a surface level, few implement comprehensive tracking that actually drives improvement. In this guide, we will build a complete MTTR tracking system from scratch, covering measurement phases, data collection, calculation variants, visualization, and strategies for continuous improvement.
+Mean Time to Recovery (MTTR) is closely related to DORA's recovery metrics for high-performing engineering teams. DORA's current model identifies five software delivery performance metrics and frames recovery as Failed Deployment Recovery Time, while the earlier Four Keys model used Time to Restore Service. While many teams track MTTR at a surface level, few implement comprehensive tracking that actually drives improvement. In this guide, we will build a complete MTTR tracking system from scratch, covering measurement phases, data collection, calculation variants, visualization, and strategies for continuous improvement.
 
 ## What MTTR Actually Measures
 
@@ -510,6 +510,8 @@ class IncidentCollector:
             "low": IncidentSeverity.SEV3
         }
 
+        timestamp_value = event.get("occurred_at") or incident_data.get("created_at")
+
         return {
             "external_id": incident_data.get("id"),
             "title": incident_data.get("title"),
@@ -518,9 +520,9 @@ class IncidentCollector:
             "severity": urgency_map.get(incident_data.get("urgency"), IncidentSeverity.SEV3),
             "service": incident_data.get("service", {}).get("name", ""),
             "timestamp": datetime.fromisoformat(
-                incident_data.get("created_at", "").replace("Z", "+00:00")
+                timestamp_value.replace("Z", "+00:00")
             ),
-            "actor": event.get("agent", {}).get("name")
+            "actor": (event.get("agent") or {}).get("name")
         }
 
     def _normalize_opsgenie(self, payload: dict) -> dict:
@@ -542,14 +544,34 @@ class IncidentCollector:
             "Close": "resolved"
         }
 
+        details = alert.get("details", {})
+        tags = alert.get("tags", [])
+        service = details.get("service", "")
+        if not service:
+            service = next(
+                (
+                    tag.split(":", 1)[1]
+                    for tag in tags
+                    if isinstance(tag, str) and tag.startswith("service:")
+                ),
+                ""
+            )
+
+        timestamp_ms = alert.get("createdAt", 0)
+        if payload.get("action") != "Create":
+            timestamp_ms = alert.get("updatedAt", timestamp_ms)
+
+        if timestamp_ms and timestamp_ms > 10_000_000_000_000:
+            timestamp_ms = timestamp_ms / 1_000_000
+
         return {
             "external_id": alert.get("alertId"),
             "title": alert.get("message"),
             "description": alert.get("description", ""),
             "status": action_map.get(payload.get("action"), "detected"),
             "severity": priority_map.get(alert.get("priority"), IncidentSeverity.SEV3),
-            "service": alert.get("tags", {}).get("service", ""),
-            "timestamp": datetime.fromtimestamp(alert.get("createdAt", 0) / 1000),
+            "service": service,
+            "timestamp": datetime.fromtimestamp(timestamp_ms / 1000),
             "actor": payload.get("source", {}).get("name")
         }
 
@@ -571,6 +593,7 @@ class IncidentCollector:
         }
 
         status = "resolved" if alert.get("status") == "resolved" else "detected"
+        timestamp_field = "endsAt" if status == "resolved" else "startsAt"
 
         return {
             "external_id": alert.get("fingerprint"),
@@ -580,7 +603,7 @@ class IncidentCollector:
             "severity": severity_map.get(labels.get("severity"), IncidentSeverity.SEV3),
             "service": labels.get("service", labels.get("job", "")),
             "timestamp": datetime.fromisoformat(
-                alert.get("startsAt", "").replace("Z", "+00:00")
+                alert.get(timestamp_field, "").replace("Z", "+00:00")
             ),
             "actor": "alertmanager"
         }
@@ -663,9 +686,9 @@ flowchart LR
         G["MTTA: Mean Time to Acknowledge
         Detected - Acknowledged"]
         H["MTTI: Mean Time to Investigate
-        Acknowledged - Root Cause Found"]
+        Acknowledged - Service Restored"]
         I["MTTM: Mean Time to Mitigate
-        Root Cause Found - Service Restored"]
+        Service Restored - Resolved"]
         J["MTTR: Mean Time to Recover
         Detected - Fully Resolved"]
     end
