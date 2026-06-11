@@ -46,7 +46,7 @@ The key point: dashboards sit at the end of the pipeline. Get your log collectio
 
 ## Structuring Logs for Dashboards
 
-Dashboards work best with structured logs. Unstructured text requires parsing and regex. Structured JSON gives you queryable fields out of the box.
+Dashboards work best with structured logs. Unstructured text requires parsing and regex. Structured JSON gives collectors and query tools fields they can parse into queryable attributes.
 
 Here is the difference between unstructured and structured approaches.
 
@@ -63,9 +63,13 @@ Structured logging separates data into discrete fields.
 
 ```javascript
 // Structured logging - dashboard-ready
-const logger = require('pino')();
+const logger = require('pino')({
+  formatters: {
+    level: (label) => ({ level: label })
+  }
+});
 
-// Each field becomes a queryable dimension in your dashboard
+// Each field can become a queryable dimension in your dashboard
 logger.info({
   event: 'user_login',
   user_email: 'john@example.com',
@@ -119,11 +123,11 @@ Track error logs as a percentage of total logs. This normalizes for traffic patt
 
 The following query calculates error rate in a Loki/LogQL style.
 
-```promql
+```logql
 # Calculate error percentage over 5 minute windows
 
 # Count of error-level logs divided by total logs
-sum(count_over_time({job="myapp"} | level="error" [5m]))
+sum(count_over_time({job="myapp"} | json | level="error" [5m]))
 /
 sum(count_over_time({job="myapp"} [5m]))
 * 100
@@ -188,7 +192,7 @@ Add a time series panel with this query.
 ```logql
 # Count all logs per minute, grouped by level
 sum by (level) (
-  count_over_time({job="myapp"}[1m])
+  count_over_time({job="myapp"} | json [1m])
 )
 ```
 
@@ -198,7 +202,7 @@ The Logs panel type shows actual log content. Use it for drilling down after spo
 
 ```logql
 # Show error logs from the payment service
-{service="payment"} | level="error" | json | line_format "{{.timestamp}} {{.message}}"
+{service="payment"} | json | level="error" | line_format "{{.time}} {{.event}}"
 ```
 
 ### Step 4: Create Variables for Filtering
@@ -297,7 +301,7 @@ Here is a complete dashboard configuration for an e-commerce application.
       "gridPos": { "x": 12, "y": 0, "w": 6, "h": 4 },
       "targets": [
         {
-          "expr": "sum(count_over_time({job=\"ecommerce\"} | level=\"error\" [5m])) / sum(count_over_time({job=\"ecommerce\"}[5m])) * 100"
+          "expr": "sum(count_over_time({job=\"ecommerce\"} | json | level=\"error\" [5m])) / sum(count_over_time({job=\"ecommerce\"}[5m])) * 100"
         }
       ],
       "fieldConfig": {
@@ -318,7 +322,7 @@ Here is a complete dashboard configuration for an e-commerce application.
       "gridPos": { "x": 0, "y": 8, "w": 24, "h": 10 },
       "targets": [
         {
-          "expr": "{job=\"ecommerce\"} | level=\"error\" | json"
+          "expr": "{job=\"ecommerce\"} | json | level=\"error\""
         }
       ]
     }
@@ -334,16 +338,17 @@ Dashboards become powerful when connected to alerts. Configure alerts based on l
 
 ```yaml
 # Alert rule for error spike detection
-apiVersion: 1
 groups:
   - name: log-alerts
     rules:
       - alert: HighErrorRate
         expr: |
-          sum(count_over_time({job="myapp"} | level="error" [5m]))
-          /
-          sum(count_over_time({job="myapp"} [5m]))
-          > 0.05
+          (
+            sum(count_over_time({job="myapp"} | json | level="error" [5m]))
+            /
+            sum(count_over_time({job="myapp"} [5m]))
+          ) * 100
+          > 5
         for: 2m
         labels:
           severity: warning
@@ -366,9 +371,9 @@ Log dashboards can become slow with high data volumes. Apply these optimizations
 
 **Limit Result Sets**: Cap the number of log lines returned to panels. Users rarely need more than 1000 lines.
 
-```logql
-# Limit log results to prevent slow queries
-{job="myapp"} | json | limit 500
+```bash
+# Limit logcli results to prevent slow queries
+logcli query --limit=500 '{job="myapp"} | json'
 ```
 
 **Use Log Sampling**: For high-volume services, sample logs before storage. Keep 100% of errors, sample info/debug at 10%.
