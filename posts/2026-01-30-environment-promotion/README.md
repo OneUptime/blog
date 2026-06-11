@@ -161,6 +161,9 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     outputs:
       image_tag: ${{ steps.meta.outputs.version }}
     steps:
@@ -169,13 +172,20 @@ jobs:
       # Generate a unique tag based on commit SHA
       - name: Docker meta
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.IMAGE_NAME }}
           tags: type=sha,prefix=
 
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Build and push
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
@@ -264,34 +274,40 @@ metadata:
   name: myapp
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
     - list:
         elements:
           - env: dev
             branch: main
-            autoSync: true
+            autoSync: "true"
           - env: staging
             branch: release/staging
-            autoSync: true
+            autoSync: "true"
           - env: production
             branch: release/production
-            autoSync: false  # Manual sync for production
+            autoSync: "false"  # Manual sync for production
   template:
     metadata:
-      name: 'myapp-{{ env }}'
+      name: 'myapp-{{ .env }}'
     spec:
       project: default
       source:
         repoURL: https://github.com/myorg/myapp.git
-        targetRevision: '{{ branch }}'
-        path: 'overlays/{{ env }}'
+        targetRevision: '{{ .branch }}'
+        path: 'overlays/{{ .env }}'
       destination:
         server: https://kubernetes.default.svc
-        namespace: '{{ env }}'
+        namespace: '{{ .env }}'
+  templatePatch: |
+    {{- if eq .autoSync "true" }}
+    spec:
       syncPolicy:
         automated:
-          prune: '{{ autoSync }}'
-          selfHeal: '{{ autoSync }}'
+          prune: true
+          selfHeal: true
+    {{- end }}
 ```
 
 To promote a change, create a pull request that updates the image tag in the target environment:
@@ -375,7 +391,7 @@ For secrets, use External Secrets Operator or Sealed Secrets to keep credentials
 
 ```yaml
 # overlays/production/external-secret.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: myapp-secrets
@@ -439,7 +455,7 @@ metadata:
   annotations:
     prometheus.io/scrape: "true"
     app.kubernetes.io/version: "v1.2.3"
-    deployment.kubernetes.io/revision: "1"
+    kubernetes.io/change-cause: "Promoted myapp v1.2.3 to production"
 ```
 
 Query your monitoring system for deployment events:
