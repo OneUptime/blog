@@ -50,7 +50,7 @@ dotnet add package Grpc.AspNetCore
 
 All gRPC interceptors in .NET inherit from the `Interceptor` base class. This class provides virtual methods for each RPC type that you can override.
 
-The following code shows the main methods available in the Interceptor class that you can override to handle different RPC patterns.
+The following code shows a simplified view of the main methods available in the Interceptor class that you can override to handle different RPC patterns.
 
 ```csharp
 // The Interceptor base class provides these virtual methods
@@ -60,27 +60,31 @@ public class Interceptor
     public virtual Task<TResponse> UnaryServerHandler<TRequest, TResponse>(
         TRequest request,
         ServerCallContext context,
-        UnaryServerMethod<TRequest, TResponse> continuation);
+        UnaryServerMethod<TRequest, TResponse> continuation) =>
+        continuation(request, context);
 
     // Server streaming (single request, stream of responses)
     public virtual Task ServerStreamingServerHandler<TRequest, TResponse>(
         TRequest request,
         IServerStreamWriter<TResponse> responseStream,
         ServerCallContext context,
-        ServerStreamingServerMethod<TRequest, TResponse> continuation);
+        ServerStreamingServerMethod<TRequest, TResponse> continuation) =>
+        continuation(request, responseStream, context);
 
     // Client streaming (stream of requests, single response)
     public virtual Task<TResponse> ClientStreamingServerHandler<TRequest, TResponse>(
         IAsyncStreamReader<TRequest> requestStream,
         ServerCallContext context,
-        ClientStreamingServerMethod<TRequest, TResponse> continuation);
+        ClientStreamingServerMethod<TRequest, TResponse> continuation) =>
+        continuation(requestStream, context);
 
     // Bidirectional streaming
     public virtual Task DuplexStreamingServerHandler<TRequest, TResponse>(
         IAsyncStreamReader<TRequest> requestStream,
         IServerStreamWriter<TResponse> responseStream,
         ServerCallContext context,
-        DuplexStreamingServerMethod<TRequest, TResponse> continuation);
+        DuplexStreamingServerMethod<TRequest, TResponse> continuation) =>
+        continuation(requestStream, responseStream, context);
 }
 ```
 
@@ -537,6 +541,12 @@ public class MetricsInterceptor : Interceptor
             RecordMetrics(tags, ex.StatusCode.ToString(), stopwatch.ElapsedMilliseconds);
             throw;
         }
+        catch
+        {
+            stopwatch.Stop();
+            RecordMetrics(tags, "INTERNAL", stopwatch.ElapsedMilliseconds);
+            throw;
+        }
         finally
         {
             _activeRequests.Add(-1, tags);
@@ -804,7 +814,7 @@ public class CreateProductRequestValidator : AbstractValidator<CreateProductRequ
 
 Client interceptors are useful for adding authentication headers, logging outgoing calls, or implementing retry logic.
 
-The following interceptor automatically attaches JWT tokens to outgoing requests and handles token refresh when tokens expire.
+The following interceptor automatically attaches JWT tokens to outgoing requests.
 
 ```csharp
 // Interceptors/ClientAuthInterceptor.cs
@@ -999,18 +1009,18 @@ public class ClientLoggingInterceptor : Interceptor
 
 ## Registering Interceptors
 
-Once you have created your interceptors, you need to register them with the gRPC server or client. The order of registration matters because interceptors execute in order.
+Once you have created your interceptors, you need to register them with the gRPC server or client. On the server, interceptors execute in the order they are added. When chaining the client-side `Intercept` extension method, interceptors are invoked in reverse order of the chained calls.
 
 ### Server-Side Registration
 
-The following code shows how to register interceptors on the server. Interceptors execute in the order they are added, so put recovery and metrics first, then logging, then authentication.
+The following code shows how to register interceptors on the server. Interceptors execute in the order they are added, so put error handling and metrics first, then logging, then authentication.
 
 ```csharp
 // Program.cs
 var builder = WebApplication.CreateBuilder(args);
 
-// Register interceptor dependencies
-builder.Services.AddSingleton<IMeterFactory, MeterFactory>();
+// Register metrics services if they are not already registered by your host
+builder.Services.AddMetrics();
 
 // Add gRPC with interceptors
 builder.Services.AddGrpc(options =>
@@ -1019,7 +1029,7 @@ builder.Services.AddGrpc(options =>
     options.EnableDetailedErrors = builder.Environment.IsDevelopment();
 
     // Add interceptors in order of execution
-    // Recovery should be first to catch panics from other interceptors
+    // Error handling should be first to catch exceptions from other interceptors
     options.Interceptors.Add<ErrorHandlingInterceptor>();
 
     // Metrics should be early to capture all requests
@@ -1055,11 +1065,15 @@ For clients, you can register interceptors when creating the channel or when cre
 var channel = GrpcChannel.ForAddress("https://localhost:5001");
 
 // Create interceptors
-var authInterceptor = new ClientAuthInterceptor(tokenProvider, logger);
-var loggingInterceptor = new ClientLoggingInterceptor(logger);
+var authInterceptor = new ClientAuthInterceptor(
+    tokenProvider,
+    loggerFactory.CreateLogger<ClientAuthInterceptor>());
+var loggingInterceptor = new ClientLoggingInterceptor(
+    loggerFactory.CreateLogger<ClientLoggingInterceptor>());
 
-// Apply interceptors to the channel
-var invoker = channel.Intercept(loggingInterceptor).Intercept(authInterceptor);
+// Apply interceptors to the channel.
+// Chained Intercept calls execute in reverse order, so logging runs first here.
+var invoker = channel.Intercept(authInterceptor).Intercept(loggingInterceptor);
 
 // Create the client with intercepted invoker
 var client = new ProductCatalog.ProductCatalogClient(invoker);
@@ -1118,10 +1132,17 @@ using Grpc.Core;
 using Grpc.Core.Testing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.IdentityModel.Tokens;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using System.Text;
 using Xunit;
 
 public class AuthenticationInterceptorTests
 {
+    private const string SecretKey = "your-256-bit-secret-key-here-for-testing";
+    private const string Issuer = "test-issuer";
+    private const string Audience = "test-audience";
     private readonly AuthenticationInterceptor _interceptor;
 
     public AuthenticationInterceptorTests()
@@ -1129,9 +1150,9 @@ public class AuthenticationInterceptorTests
         var config = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["Jwt:SecretKey"] = "your-256-bit-secret-key-here-for-testing",
-                ["Jwt:Issuer"] = "test-issuer",
-                ["Jwt:Audience"] = "test-audience"
+                ["Jwt:SecretKey"] = SecretKey,
+                ["Jwt:Issuer"] = Issuer,
+                ["Jwt:Audience"] = Audience
             })
             .Build();
 
@@ -1232,9 +1253,17 @@ public class AuthenticationInterceptorTests
 
     private string GenerateValidToken()
     {
-        // Generate a valid JWT for testing
-        // Implementation depends on your token generation logic
-        return "valid-jwt-token";
+        var signingKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(SecretKey));
+        var credentials = new SigningCredentials(signingKey, SecurityAlgorithms.HmacSha256);
+
+        var token = new JwtSecurityToken(
+            issuer: Issuer,
+            audience: Audience,
+            claims: new[] { new Claim(ClaimTypes.NameIdentifier, "user-123") },
+            expires: DateTime.UtcNow.AddMinutes(30),
+            signingCredentials: credentials);
+
+        return new JwtSecurityTokenHandler().WriteToken(token);
     }
 }
 ```
@@ -1253,7 +1282,7 @@ flowchart TD
 
     B --> B1[One concern per interceptor]
     C --> C1[Override all four handler methods]
-    D --> D1[Recovery first, then metrics, logging, auth]
+    D --> D1[Error handling first, then metrics, logging, auth]
     E --> E1[Use async/await throughout]
     F --> F1[Mock ServerCallContext for testing]
 ```
