@@ -12,7 +12,7 @@ Docker layer caching is one of the most effective ways to speed up your containe
 
 ## How Docker Layers Work
 
-Docker images are built from a series of read-only layers. Each instruction in a Dockerfile creates a new layer. When you rebuild an image, Docker checks if any layer has changed. If a layer remains unchanged, Docker reuses the cached version instead of rebuilding it.
+Docker images are built from a series of read-only layers. Instructions that change the filesystem, such as `RUN`, `COPY`, and `ADD`, create new layers, while other instructions update image metadata and still participate in cache checks. When you rebuild an image, Docker checks if any layer has changed. If a layer remains unchanged, Docker reuses the cached version instead of rebuilding it.
 
 The key insight is that **when a layer changes, all subsequent layers must be rebuilt**. This cascading invalidation is why instruction order matters significantly.
 
@@ -76,7 +76,7 @@ RUN npm run build
 FROM node:20-alpine AS production
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 COPY --from=builder /app/dist ./dist
 CMD ["node", "dist/index.js"]
 ```
@@ -131,10 +131,10 @@ CI/CD environments present unique challenges because each build typically starts
 
 ```yaml
 - name: Set up Docker Buildx
-  uses: docker/setup-buildx-action@v3
+  uses: docker/setup-buildx-action@v4
 
 - name: Build and push
-  uses: docker/build-push-action@v5
+  uses: docker/build-push-action@v7
   with:
     context: .
     push: true
@@ -148,12 +148,15 @@ CI/CD environments present unique challenges because each build typically starts
 ```yaml
 build:
   script:
+    - docker pull $CI_REGISTRY_IMAGE:latest || true
     - docker build
         --cache-from $CI_REGISTRY_IMAGE:latest
         --tag $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
+        --tag $CI_REGISTRY_IMAGE:latest
         --build-arg BUILDKIT_INLINE_CACHE=1
         .
     - docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
+    - docker push $CI_REGISTRY_IMAGE:latest
 ```
 
 ### Registry-Based Caching
@@ -161,10 +164,11 @@ build:
 Use your container registry as a cache source:
 
 ```bash
-docker build \
-  --cache-from myregistry.io/myapp:cache \
+docker buildx build \
+  --cache-from type=registry,ref=myregistry.io/myapp:cache \
   --cache-to type=registry,ref=myregistry.io/myapp:cache,mode=max \
-  -t myapp:latest .
+  -t myregistry.io/myapp:latest \
+  --push .
 ```
 
 ## Best Practices Summary
