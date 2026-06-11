@@ -72,7 +72,7 @@ The best way to measure user impact is through your observability stack. Set up 
 - Successful transaction rates for critical flows
 - Geographic distribution of failures
 
-If you use OpenTelemetry, these metrics flow naturally from your traces and can be visualized in OneUptime.
+If you use OpenTelemetry, you can collect traces and metrics as separate telemetry signals, then visualize and correlate them in OneUptime.
 
 ## Dimension 2: Business Impact
 
@@ -163,7 +163,7 @@ Combine the three dimensions into a single impact score. Here is a simple formul
 Overall Impact = max(User Impact, Business Impact) + (Scope / 2)
 ```
 
-This weights user and business impact equally while using scope as a multiplier for situations where problems are spreading.
+This weights user and business impact equally while using scope as an adjustment for situations where problems are spreading.
 
 ```mermaid
 flowchart TD
