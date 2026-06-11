@@ -74,6 +74,8 @@ Track high watermarks to detect gaps in sequential data.
 # Track sequence numbers to detect missing events
 # Gaps in sequence indicate dropped or delayed messages
 
+from datetime import datetime
+
 class WatermarkTracker:
     def __init__(self, storage):
         self.storage = storage
@@ -91,8 +93,8 @@ class WatermarkTracker:
             }
             self.gaps.append(gap)
 
-        # Update expected sequence for next event
-        self.expected_sequence = sequence_number + 1
+        # Update expected sequence for next event without moving backward
+        self.expected_sequence = max(self.expected_sequence, sequence_number + 1)
         self.storage.save(event_data)
 
     def calculate_coverage(self, window_start, window_end):
@@ -122,6 +124,15 @@ For large datasets, validate a statistical sample rather than the full set.
 import random
 
 def sample_coverage_check(source_ids, destination_lookup, sample_size=1000):
+    source_ids = list(source_ids)
+    if not source_ids:
+        return {
+            "coverage_percentage": 100.0,
+            "sample_size": 0,
+            "missing_count": 0,
+            "missing_examples": []
+        }
+
     # Take a random sample of source IDs
     sample = random.sample(source_ids, min(sample_size, len(source_ids)))
 
@@ -213,6 +224,8 @@ Index coverage measures what percentage of your source data exists in the search
 # Index coverage SLO implementation
 # Ensures all products are searchable within expected time
 
+from datetime import datetime, timedelta
+
 class IndexCoverageSLO:
     def __init__(self, target=99.5, max_lag_minutes=15):
         self.target = target  # 99.5% of items should be indexed
@@ -288,7 +301,7 @@ class SearchCoverageSLO:
                     "name": product.name
                 })
 
-        coverage = (findable_count / len(products)) * 100
+        coverage = (findable_count / len(products)) * 100 if products else 100.0
 
         return {
             "search_coverage_sli": coverage,
@@ -309,6 +322,8 @@ Just like availability SLOs, coverage SLOs should have error budgets. An error b
 ```python
 # Coverage error budget calculation
 # Tracks how much incompleteness you can afford
+
+from datetime import datetime, timedelta
 
 class CoverageErrorBudget:
     def __init__(self, slo_target=99.5, window_days=30):
@@ -339,8 +354,8 @@ class CoverageErrorBudget:
         # Error budget is the gap between target and 100%
         total_budget = 100 - self.slo_target  # e.g., 0.5% for 99.5% target
 
-        # Consumed budget is the gap between actual and target
-        consumed = max(0, self.slo_target - avg_coverage)
+        # Consumed budget is the actual incompleteness over the window
+        consumed = max(0, 100 - avg_coverage)
 
         # Remaining budget
         remaining = total_budget - consumed
@@ -364,6 +379,8 @@ Monitor how fast you are consuming your coverage error budget.
 ```python
 # Burn rate alerting for coverage SLOs
 # Detects when coverage is degrading faster than acceptable
+
+from datetime import datetime, timedelta
 
 class CoverageBurnRateMonitor:
     def __init__(self, error_budget, alert_thresholds=None):
@@ -486,7 +503,7 @@ class ProductIndexCoverageSLO:
         self.metrics.gauge("coverage.indexed_items", indexed)
         self.metrics.gauge("coverage.gap", expected - indexed)
         self.metrics.gauge("coverage.error_budget_remaining",
-                          budget_status["remaining_percent"])
+                          budget_status["budget_health"])
 
         # Step 8: Log results
         self.logger.info(
