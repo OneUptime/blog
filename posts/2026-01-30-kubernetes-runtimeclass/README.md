@@ -341,10 +341,10 @@ Kubernetes schedules this pod as if it needs:
 - CPU: 100m (container) + 50m (overhead) = 150m
 - Memory: 128Mi (container) + 64Mi (overhead) = 192Mi
 
-Check the actual allocation:
+Check the admitted overhead value:
 
 ```bash
-kubectl get pod overhead-example -o jsonpath='{.status.containerStatuses[0].resources}'
+kubectl get pod overhead-example -o jsonpath='{.spec.overhead}'
 ```
 
 ## Complete RuntimeClass Examples
@@ -466,7 +466,7 @@ runtime_root = "/run/runsc"
 
 [crio.runtime.runtimes.kata-qemu]
 runtime_path = "/usr/bin/kata-runtime"
-runtime_type = "oci"
+runtime_type = "vm"
 runtime_root = "/run/kata"
 privileged_without_host_devices = true
 ```
@@ -501,7 +501,6 @@ kind: ClusterPolicy
 metadata:
   name: require-runtimeclass
 spec:
-  validationFailureAction: Enforce
   rules:
     - name: require-gvisor-for-untrusted
       match:
@@ -512,6 +511,7 @@ spec:
               namespaces:
                 - untrusted-workloads
       validate:
+        failureAction: Enforce
         message: "Pods in untrusted-workloads namespace must use gvisor RuntimeClass"
         pattern:
           spec:
@@ -622,8 +622,8 @@ sudo runsc --version
 # Test Kata
 kata-runtime --version
 
-# Run a test container with specific runtime
-sudo crictl run --runtime=runsc pod-config.json container-config.json
+# Run a test pod sandbox with specific runtime
+sudo crictl runp --runtime=runsc pod-config.json
 ```
 
 ## Real-World Architecture
