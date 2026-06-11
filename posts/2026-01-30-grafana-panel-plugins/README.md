@@ -130,7 +130,7 @@ cd my-custom-panel
 # Install dependencies
 npm install
 
-# Start development server with hot reload
+# Build and watch plugin files during development
 npm run dev
 ```
 
@@ -215,10 +215,6 @@ export const SimplePanel: React.FC<Props> = ({
   data,
   width,
   height,
-  fieldConfig,
-  timeRange,
-  onChangeTimeRange,
-  replaceVariables,
 }) => {
   // Get theme-aware styles
   const styles = useStyles2(getStyles);
@@ -287,7 +283,7 @@ Data frames are Grafana's standard data structure. Understanding them is essenti
 ```tsx
 // src/components/DataFrameExample.tsx
 import React from 'react';
-import { PanelProps, DataFrame, Field, FieldType } from '@grafana/data';
+import { PanelProps, DataFrame, FieldType } from '@grafana/data';
 import { SimpleOptions } from '../types';
 
 interface Props extends PanelProps<SimpleOptions> {}
@@ -314,14 +310,13 @@ const FrameDisplay: React.FC<{ frame: DataFrame }> = ({ frame }) => {
   }
 
   // Access values from fields
-  const timestamps = timeField.values;
-  const values = valueField.values;
+  const values = valueField.values as number[];
 
   // Calculate statistics
-  const sum = values.toArray().reduce((a: number, b: number) => a + b, 0);
+  const sum = values.reduce((a: number, b: number) => a + b, 0);
   const avg = sum / values.length;
-  const max = Math.max(...values.toArray());
-  const min = Math.min(...values.toArray());
+  const max = Math.max(...values);
+  const min = Math.min(...values);
 
   return (
     <div>
@@ -355,7 +350,7 @@ const cpuField = frame.fields.find((f) => f.name === 'cpu_usage');
 const numericFields = frame.fields.filter((f) => f.type === FieldType.number);
 
 // Get field values as array
-const values = cpuField?.values.toArray() || [];
+const values = cpuField?.values ?? [];
 
 // Access display processor for formatted values
 const displayValue = cpuField?.display?.(values[0]);
@@ -388,6 +383,9 @@ export interface SimpleOptions {
 
   // Select options
   colorScheme: 'default' | 'warm' | 'cool' | 'monochrome';
+  alignment: 'left' | 'center' | 'right';
+  backgroundColor: string;
+  animationDuration: number;
 
   // Complex options
   thresholds: ThresholdConfig[];
@@ -408,6 +406,9 @@ export const defaults: SimpleOptions = {
   showLegend: true,
   animate: false,
   colorScheme: 'default',
+  alignment: 'center',
+  backgroundColor: 'transparent',
+  animationDuration: 500,
   thresholds: [
     { value: 0, color: 'green', label: 'OK' },
     { value: 70, color: 'yellow', label: 'Warning' },
@@ -545,11 +546,16 @@ Enable standard field configuration options:
 
 ```tsx
 // src/module.ts
-import { PanelPlugin, FieldConfigProperty } from '@grafana/data';
+import { PanelPlugin, FieldConfigProperty, ThresholdsMode } from '@grafana/data';
 import { SimpleOptions } from './types';
 import { SimplePanel } from './components/SimplePanel';
 
-export const plugin = new PanelPlugin<SimpleOptions>(SimplePanel)
+interface CustomFieldConfig {
+  showSparkline: boolean;
+  sparklineHeight: number;
+}
+
+export const plugin = new PanelPlugin<SimpleOptions, CustomFieldConfig>(SimplePanel)
   // Enable standard field configuration options
   .useFieldConfig({
     // Specify which standard options to include
@@ -567,7 +573,7 @@ export const plugin = new PanelPlugin<SimpleOptions>(SimplePanel)
       },
       [FieldConfigProperty.Thresholds]: {
         defaultValue: {
-          mode: 'absolute',
+          mode: ThresholdsMode.Absolute,
           steps: [
             { value: -Infinity, color: 'green' },
             { value: 70, color: 'yellow' },
@@ -610,6 +616,7 @@ Using field configuration in your component:
 // src/components/SimplePanel.tsx
 import React from 'react';
 import { PanelProps, getFieldDisplayValues, FieldDisplay } from '@grafana/data';
+import { useTheme2 } from '@grafana/ui';
 import { SimpleOptions } from '../types';
 
 interface Props extends PanelProps<SimpleOptions> {}
@@ -619,10 +626,11 @@ export const SimplePanel: React.FC<Props> = ({
   width,
   height,
   fieldConfig,
-  options,
   replaceVariables,
   timeZone,
 }) => {
+  const theme = useTheme2();
+
   // Get display values with all field config applied
   const fieldDisplayValues: FieldDisplay[] = getFieldDisplayValues({
     fieldConfig,
@@ -632,7 +640,7 @@ export const SimplePanel: React.FC<Props> = ({
       values: false,
     },
     replaceVariables,
-    theme: useTheme2(),
+    theme,
     data: data.series,
     timeZone,
   });
@@ -641,7 +649,7 @@ export const SimplePanel: React.FC<Props> = ({
     <div style={{ width, height }}>
       {fieldDisplayValues.map((display, index) => {
         // display.display contains formatted value with color
-        const { text, numeric, color, suffix, prefix } = display.display;
+        const { text, color, suffix, prefix } = display.display;
 
         return (
           <div
@@ -679,19 +687,12 @@ import { SimpleOptions } from '../types';
 
 interface Props extends PanelProps<SimpleOptions> {}
 
-export const ThemedPanel: React.FC<Props> = ({ data, width, height, options }) => {
+export const ThemedPanel: React.FC<Props> = ({ width, height, options }) => {
   // Access the current theme
   const theme = useTheme2();
 
   // Get theme-aware styles
   const styles = useStyles2(getStyles);
-
-  // Use theme colors directly when needed
-  const chartColors = [
-    theme.visualization.getColorByName('green'),
-    theme.visualization.getColorByName('yellow'),
-    theme.visualization.getColorByName('red'),
-  ];
 
   return (
     <div className={styles.wrapper} style={{ width, height }}>
@@ -814,7 +815,7 @@ Run the development environment:
 npm run dev
 
 # Start Grafana in another terminal
-docker-compose up
+docker compose up
 
 # Access Grafana at http://localhost:3000
 # Default credentials: admin/admin
@@ -866,7 +867,16 @@ describe('SimplePanel', () => {
     height: 300,
     options: {
       title: 'Test Panel',
+      subtitle: '',
+      decimals: 2,
+      threshold: 80,
       showLegend: true,
+      animate: false,
+      colorScheme: 'default',
+      alignment: 'center',
+      backgroundColor: 'transparent',
+      animationDuration: 500,
+      thresholds: [],
     },
     fieldConfig: { defaults: {}, overrides: [] },
     transparent: false,
@@ -959,7 +969,7 @@ Grafana requires plugins to be signed for production use. There are three signat
 
 | Level | Use Case | Verification |
 |-------|----------|--------------|
-| Private | Internal/enterprise use | Self-signed |
+| Private | Internal/enterprise use | Signed for specified root URLs |
 | Community | Public distribution | Grafana approval |
 | Commercial | Paid plugins | Grafana partnership |
 
@@ -969,8 +979,9 @@ For private signing:
 # Install the signing tool
 npm install --save-dev @grafana/sign-plugin
 
-# Create a Grafana Cloud account and get an API key
+# Create a Grafana Cloud account and get an Access Policy token
 # https://grafana.com/auth/sign-in
+export GRAFANA_ACCESS_POLICY_TOKEN=<YOUR_ACCESS_POLICY_TOKEN>
 
 # Sign your plugin
 npx @grafana/sign-plugin --rootUrls https://your-grafana-instance.com
@@ -978,13 +989,11 @@ npx @grafana/sign-plugin --rootUrls https://your-grafana-instance.com
 # This adds MANIFEST.txt to your dist folder
 ```
 
-Configure your grafana.ini to accept the signature:
+Configure your grafana.ini so the server root URL matches the URL used when signing:
 
 ```ini
-[plugins]
-# For private signatures, specify your root URL
-plugin_admin_enabled = true
-plugin_catalog_url = https://grafana.com/grafana/plugins/
+[server]
+root_url = https://your-grafana-instance.com
 ```
 
 For unsigned plugins in development, allow loading:
@@ -1048,7 +1057,7 @@ export const defaults: GaugeOptions = {
 
 ```tsx
 // src/module.ts
-import { PanelPlugin, FieldConfigProperty } from '@grafana/data';
+import { PanelPlugin, FieldConfigProperty, ThresholdsMode } from '@grafana/data';
 import { GaugeOptions, defaults } from './types';
 import { GaugePanel } from './components/GaugePanel';
 
@@ -1061,7 +1070,7 @@ export const plugin = new PanelPlugin<GaugeOptions>(GaugePanel)
       [FieldConfigProperty.Max]: { defaultValue: 100 },
       [FieldConfigProperty.Thresholds]: {
         defaultValue: {
-          mode: 'absolute',
+          mode: ThresholdsMode.Absolute,
           steps: [
             { value: -Infinity, color: 'green' },
             { value: 70, color: 'yellow' },
@@ -1113,7 +1122,6 @@ import {
   GrafanaTheme2,
   getFieldDisplayValues,
   FieldDisplay,
-  ThresholdsMode,
 } from '@grafana/data';
 import { useStyles2, useTheme2 } from '@grafana/ui';
 import { css } from '@emotion/css';
@@ -1150,7 +1158,8 @@ export const GaugePanel: React.FC<Props> = ({
   }, [data.series, fieldConfig, replaceVariables, theme, timeZone]);
 
   // Get the first display value
-  const display = displayValues[0]?.display;
+  const fieldDisplay = displayValues[0];
+  const display = fieldDisplay?.display;
   if (!display) {
     return (
       <div className={styles.container} style={{ width, height }}>
@@ -1160,9 +1169,9 @@ export const GaugePanel: React.FC<Props> = ({
   }
 
   // Get field config values
-  const min = fieldConfig.defaults.min ?? 0;
-  const max = fieldConfig.defaults.max ?? 100;
-  const thresholds = fieldConfig.defaults.thresholds;
+  const min = fieldDisplay.field.min ?? 0;
+  const max = fieldDisplay.field.max ?? 100;
+  const thresholds = fieldDisplay.field.thresholds;
 
   // Calculate gauge parameters
   const value = display.numeric;
