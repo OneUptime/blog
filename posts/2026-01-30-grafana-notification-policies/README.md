@@ -33,30 +33,26 @@ Before creating notification policies, ensure you have contact points configured
 
 ### Step 1: Access the Notification Policies Page
 
-Navigate to **Alerting > Notification policies** in the Grafana sidebar. You will see the default root policy that handles all alerts.
+Navigate to **Alerts & IRM > Alerting > Notification configuration > Notification policies** in the Grafana sidebar. You will see the default root policy that handles all alerts.
 
 ### Step 2: Add a New Policy
 
-Click **+ New nested policy** under the root policy. Configure the following fields:
+Click **+ New child policy** under the root policy. Configure the following fields:
 
 ```yaml
 # Example Policy Configuration
 
-matching_labels:
-  - label: team
-    operator: "="
-    value: platform
+matchers:
+  - team = platform
 
-contact_point: platform-team-slack
-
+receiver: platform-team-slack
 group_by:
   - alertname
   - instance
 
-timing:
-  group_wait: 30s
-  group_interval: 5m
-  repeat_interval: 4h
+group_wait: 30s
+group_interval: 5m
+repeat_interval: 4h
 ```
 
 ## Label Matchers
@@ -132,7 +128,10 @@ group_by:
   - service
   - env
 
-# Special value: group all alerts together
+# Single group for all alerts
+group_by: []
+
+# Special value: disable grouping and send each alert separately
 group_by:
   - "..."
 ```
@@ -241,16 +240,15 @@ graph TD
 
 ```yaml
 # Policy that continues to next sibling
-critical_alerts_policy:
-  matchers:
-    - severity = critical
-  contact_point: pagerduty-oncall
-  continue: true  # Continue to next sibling policy
+routes:
+  - matchers:
+      - severity = critical
+    receiver: pagerduty-oncall
+    continue: true  # Continue to next sibling policy
 
-team_routing_policy:
-  matchers:
-    - team = platform
-  contact_point: platform-slack
+  - matchers:
+      - team = platform
+    receiver: platform-slack
 ```
 
 This configuration sends critical alerts to PagerDuty AND to the team-specific Slack channel.
@@ -260,59 +258,66 @@ This configuration sends critical alerts to PagerDuty AND to the team-specific S
 Mute timings suppress notifications during specified time windows without affecting alert evaluation.
 
 ```yaml
-# Define a mute timing for maintenance windows
-mute_timing:
-  name: weekly-maintenance
-  time_intervals:
-    - times:
-        - start_time: "02:00"
-          end_time: "04:00"
-      weekdays:
-        - sunday
+apiVersion: 1
 
-# Apply to a policy
-database_policy:
-  matchers:
-    - team = database
-  contact_point: dba-pagerduty
-  mute_time_intervals:
-    - weekly-maintenance
+# Define a mute timing for maintenance windows
+muteTimes:
+  - orgId: 1
+    name: weekly-maintenance
+    time_intervals:
+      - times:
+          - start_time: "02:00"
+            end_time: "04:00"
+        weekdays:
+          - sunday
+
+# Apply it to a notification policy
+policies:
+  - orgId: 1
+    receiver: default-email
+    routes:
+      - receiver: dba-pagerduty
+        matchers:
+          - team = database
+        mute_time_intervals:
+          - weekly-maintenance
 ```
 
 ### Override Example: Environment-Specific Routing
 
 ```yaml
 # Root policy with default behavior
-root:
-  contact_point: default-email
-  group_by:
-    - alertname
-  timing:
+apiVersion: 1
+policies:
+  - orgId: 1
+    receiver: default-email
+    group_by:
+      - alertname
     group_wait: 30s
     group_interval: 5m
     repeat_interval: 4h
 
-  # Production overrides - faster, more aggressive
-  nested_policies:
-    - matchers:
-        - env = production
-      contact_point: ops-pagerduty
-      group_wait: 10s          # Override: faster
-      group_interval: 1m       # Override: more frequent
-      # repeat_interval inherits 4h from parent
+    routes:
+      # Production overrides - faster, more aggressive
+      - matchers:
+          - env = production
+        receiver: ops-pagerduty
+        group_wait: 10s        # Override: faster
+        group_interval: 1m     # Override: more frequent
+        # repeat_interval inherits 4h from parent
 
-      nested_policies:
-        - matchers:
-            - severity = critical
-          contact_point: executive-sms
-          continue: true       # Also notify ops-pagerduty
+        routes:
+          - matchers:
+              - severity = critical
+            group_wait: 5s     # Override: even faster
+            # receiver inherits ops-pagerduty from parent
 
-    # Staging - relaxed timing
-    - matchers:
-        - env = staging
-      contact_point: dev-slack
-      group_wait: 5m           # Override: slower
-      repeat_interval: 24h     # Override: less frequent
+      # Staging - relaxed timing
+      - matchers:
+          - env = staging
+        receiver: dev-slack
+        group_wait: 5m         # Override: slower
+        repeat_interval: 24h   # Override: less frequent
 ```
 
 ## Complete Policy Tree Example
@@ -451,17 +456,15 @@ labels:
   env: production
   instance: server-1
 
-# Expected result: matches platform-pagerduty policy
+# Expected result: matches pagerduty-oncall and platform-pagerduty policies
 ```
 
 ### Alert Rule for Testing
 
-Create a test alert rule that fires immediately:
+Create a test alert rule that fires immediately by using Grafana's TestData data source or an expression query that always evaluates true. Add labels that match the policy you want to test:
 
 ```yaml
-# Test alert rule
 name: Test Alert - Delete After Testing
-condition: 1 == 1  # Always true
 labels:
   team: platform
   env: production
