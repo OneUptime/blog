@@ -163,8 +163,6 @@ Output shows the mount configuration:
 For reproducible setups, define NFS volumes in your `docker-compose.yml`:
 
 ```yaml
-version: "3.8"
-
 services:
   app:
     image: nginx:alpine
@@ -177,7 +175,7 @@ services:
     image: python:3.11-slim
     volumes:
       - shared-data:/data
-    command: python -c "while True: pass"
+    command: ["python", "-c", "while True: pass"]
 
 volumes:
   shared-data:
@@ -229,7 +227,6 @@ flowchart TD
     subgraph Performance["Performance Options"]
         P1["rsize/wsize - Read/write block size"]
         P2["async - Buffer writes"]
-        P3["noatime - Skip access time updates"]
     end
     subgraph Reliability["Reliability Options"]
         R1["soft/hard - Timeout behavior"]
@@ -245,14 +242,13 @@ flowchart TD
 | Option | Default | Recommendation | Purpose |
 | --- | --- | --- | --- |
 | `nfsvers=4.1` | varies | Use 4.1 or 4.2 | NFS protocol version - v4+ has better security and performance |
-| `soft` | hard | soft for most apps | Return error on timeout instead of hanging forever |
-| `hard` | - | For databases | Retry indefinitely - prevents data corruption but can hang |
+| `soft` | hard | only when responsiveness matters more than data integrity | Return error on timeout instead of hanging forever |
+| `hard` | - | For critical writes and databases | Retry indefinitely - safer for data integrity but can hang |
 | `timeo=300` | 600 | 300 (30 sec) | Timeout in deciseconds before retry or error |
 | `retrans=3` | 3 | 3-5 | Number of retries before giving up (soft) or waiting (hard) |
 | `rsize=65536` | negotiated | 65536-1048576 | Read buffer size in bytes |
 | `wsize=65536` | negotiated | 65536-1048576 | Write buffer size in bytes |
 | `proto=tcp` | tcp | tcp | Transport protocol - tcp is more reliable than udp |
-| `noatime` | atime | noatime | Skip updating access times - reduces NFS traffic |
 | `nolock` | lock | omit usually | Disable file locking - only if app handles it internally |
 
 ### Soft vs Hard Mounts
@@ -362,8 +358,6 @@ This is convenient but reduces security. Root in the container becomes root on t
 In Docker Compose, use an init container to set permissions:
 
 ```yaml
-version: "3.8"
-
 services:
   init-permissions:
     image: alpine
@@ -386,9 +380,11 @@ volumes:
     driver: local
     driver_opts:
       type: nfs
-      o: addr=192.168.1.100,rw,nfsvers=4.1,no_root_squash
+      o: addr=192.168.1.100,rw,nfsvers=4.1
       device: ":/exports/shared"
 ```
+
+This pattern requires server-side export settings that allow the init container's root user to change ownership, such as `no_root_squash` in `/etc/exports`.
 
 ## Multi-Host Deployment Example
 
@@ -412,8 +408,6 @@ sudo exportfs -ra
 
 ```yaml
 # docker-compose.yml - deploy on each Docker host
-version: "3.8"
-
 services:
   webapp:
     image: mywebapp:latest
@@ -439,7 +433,7 @@ volumes:
     driver: local
     driver_opts:
       type: nfs
-      o: addr=192.168.1.100,rw,nfsvers=4.1,soft,timeo=150,noatime
+      o: addr=192.168.1.100,rw,nfsvers=4.1,soft,timeo=150
       device: ":/exports/webapp/cache"
 
   logs:
@@ -452,7 +446,7 @@ volumes:
 
 Notice different mount options for different purposes:
 - **uploads**: Standard options for user-uploaded files
-- **cache**: `noatime` reduces overhead for frequently accessed cache files
+- **cache**: A shorter timeout helps fail faster if cached data is non-critical
 - **logs**: `async` improves write performance for append-only log files
 
 ## Troubleshooting
@@ -516,7 +510,7 @@ docker volume rm shared-data
 docker volume create ... # recreate with same options
 
 # Or restart containers to force remount
-docker-compose down && docker-compose up -d
+docker compose down && docker compose up -d
 ```
 
 ### Problem: Slow Performance
@@ -540,14 +534,13 @@ ping 192.168.1.100
 docker volume create \
   --driver local \
   --opt type=nfs \
-  --opt o=addr=192.168.1.100,rw,nfsvers=4.1,rsize=1048576,wsize=1048576,noatime,async \
+  --opt o=addr=192.168.1.100,rw,nfsvers=4.1,rsize=1048576,wsize=1048576,async \
   --opt device=:/exports/shared \
   fast-data
 ```
 
 - Use `async` for write-heavy workloads (with data loss risk)
 - Increase `rsize` and `wsize` for large file operations
-- Use `noatime` to reduce metadata updates
 - Ensure gigabit or better network between hosts and NFS server
 
 ### Problem: Container Hangs on Shutdown
@@ -556,10 +549,10 @@ docker volume create \
 
 **Cause:** Hard NFS mount waiting for unreachable server.
 
-**Solution:** Use `soft` mounts or add `intr` option (allows interrupt):
+**Solution:** Use `soft` mounts for workloads that can tolerate I/O errors, shorten `timeo`/`retrans`, or restore the NFS server before stopping the container:
 
 ```bash
---opt o=addr=192.168.1.100,rw,nfsvers=4.1,soft,timeo=100,intr
+--opt o=addr=192.168.1.100,rw,nfsvers=4.1,soft,timeo=100,retrans=2
 ```
 
 ## Monitoring NFS Volumes
@@ -590,7 +583,7 @@ Docker volumes with NFS backends provide shared storage across containers and ho
 
 1. **Set up NFS server** with appropriate exports and permissions
 2. **Create Docker volumes** using the local driver with NFS options
-3. **Choose mount options** based on your reliability vs performance needs - `soft` for most apps, `hard` for databases
+3. **Choose mount options** based on your reliability vs performance needs - `soft` when responsiveness matters more than data integrity, `hard` for databases
 4. **Handle permissions** by matching UIDs or using squash options
 5. **Monitor and troubleshoot** using standard NFS tools
 
