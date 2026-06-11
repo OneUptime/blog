@@ -8,11 +8,11 @@ Description: A complete guide to building and managing OpenEBS cStor pools in Ku
 
 ---
 
-cStor is the production-grade storage engine in OpenEBS that provides replicated block storage with ZFS-like features. Unlike simple local volumes, cStor pools aggregate block devices across your Kubernetes nodes into resilient storage pools that can survive disk and node failures. This guide walks you through building cStor pools from scratch, configuring them for your workload requirements, and operating them in production.
+cStor is a legacy OpenEBS storage engine that provides replicated block storage with ZFS-like features. Unlike simple local volumes, cStor pools aggregate block devices across your Kubernetes nodes into resilient storage pools that can survive disk and node failures. This guide walks you through building cStor pools from scratch, configuring them for your workload requirements, and operating them in production on OpenEBS 3.x deployments.
 
 ## What is cStor?
 
-cStor (Container Storage for OpenEBS) is a storage engine that creates pools from block devices and carves out thin-provisioned volumes with synchronous replication. It is built on a customized version of OpenZFS, giving you features like:
+cStor (Container Storage for OpenEBS) is a storage engine that creates pools from block devices and carves out thin-provisioned volumes with synchronous replication. It is built with ZFS-like copy-on-write behavior, giving you features like:
 
 - Synchronous data replication across nodes
 - Copy-on-write snapshots and clones
@@ -117,10 +117,7 @@ helm repo update
 helm install openebs openebs/openebs \
     --namespace openebs \
     --create-namespace \
-    --set cstor.enabled=true \
-    --set ndm.enabled=true \
-    --set localprovisioner.enabled=false \
-    --set mayastor.enabled=false
+    --set cstor.enabled=true
 
 # Wait for all pods to be ready
 kubectl -n openebs wait --for=condition=Ready pods --all --timeout=300s
@@ -291,39 +288,9 @@ flowchart LR
     end
 ```
 
-### RAIDZ Configuration for Capacity Efficiency
+### CSPC RAID Configuration Options
 
-RAIDZ provides parity-based redundancy with better capacity efficiency:
-
-```yaml
-# cspc-raidz.yaml
-apiVersion: cstor.openebs.io/v1
-kind: CStorPoolCluster
-metadata:
-  name: cstor-pool-raidz
-  namespace: openebs
-spec:
-  pools:
-    - nodeSelector:
-        kubernetes.io/hostname: "worker-01"
-      dataRaidGroups:
-        - blockDevices:
-            - blockDeviceName: "blockdevice-aaa111"
-            - blockDeviceName: "blockdevice-bbb222"
-            - blockDeviceName: "blockdevice-ccc333"
-      poolConfig:
-        dataRaidGroupType: "raidz"  # Single parity, tolerates 1 disk failure
-
-    - nodeSelector:
-        kubernetes.io/hostname: "worker-02"
-      dataRaidGroups:
-        - blockDevices:
-            - blockDeviceName: "blockdevice-ddd444"
-            - blockDeviceName: "blockdevice-eee555"
-            - blockDeviceName: "blockdevice-fff666"
-      poolConfig:
-        dataRaidGroupType: "raidz"
-```
+CSPC-based cStor pools support `stripe` and `mirror` as `dataRaidGroupType` values. RAIDZ and RAIDZ2 appeared in older, deprecated StoragePoolClaim-based cStor examples, but they are not valid choices for the CSPC examples used in this guide.
 
 RAID configuration comparison:
 
@@ -331,8 +298,6 @@ RAID configuration comparison:
 |--------------|---------------|-----------------|---------------------|
 | stripe | 1 | 100% | 0 disks |
 | mirror | 2 | 50% | n-1 disks |
-| raidz | 3 | (n-1)/n | 1 disk |
-| raidz2 | 4 | (n-2)/n | 2 disks |
 
 ## Creating Storage Classes
 
@@ -640,7 +605,7 @@ kubectl get blockdevices -n openebs | grep Unclaimed
 kubectl edit cspc cstor-pool-stripe -n openebs
 ```
 
-Add a new device to an existing pool instance:
+Add a new device to an existing striped pool instance. For mirrored pools, add a complete new mirror raid group rather than a single device:
 
 ```yaml
 # In the pool spec, add additional blockDevices
@@ -694,36 +659,17 @@ spec:
 
 ### Prometheus Metrics
 
-cStor exports metrics for monitoring. Create a ServiceMonitor:
-
-```yaml
-# servicemonitor-cstor.yaml
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: cstor-pool-metrics
-  namespace: openebs
-spec:
-  selector:
-    matchLabels:
-      app: cstor-pool
-  namespaceSelector:
-    matchNames:
-      - openebs
-  endpoints:
-    - port: exporter
-      interval: 30s
-```
+For CSI-provisioned cStor volumes, use the Kubernetes kubelet volume statistics exposed to Prometheus:
 
 Key metrics to track:
 
 | Metric | Description | Alert Threshold |
 |--------|-------------|-----------------|
-| `openebs_pool_status` | Pool health status | != 1 (not online) |
-| `openebs_pool_used_capacity_percent` | Pool capacity utilization | > 80% |
-| `openebs_volume_replica_status` | Replica health | != 1 (not healthy) |
-| `openebs_pool_read_latency` | Read latency | > 10ms |
-| `openebs_pool_write_latency` | Write latency | > 20ms |
+| `kubelet_volume_stats_available_bytes` | Available bytes for a PVC volume | < 10% free |
+| `kubelet_volume_stats_capacity_bytes` | Capacity bytes for a PVC volume | Capacity trend |
+| `kubelet_volume_stats_used_bytes` | Used bytes for a PVC volume | > 80% used |
+| `kubelet_volume_stats_inodes_free` | Free inodes for a PVC volume | Low inode headroom |
+| `kubelet_volume_stats_inodes_used` | Used inodes for a PVC volume | Inode trend |
 
 ### Alerting Rules
 
@@ -738,29 +684,21 @@ spec:
   groups:
     - name: cstor.rules
       rules:
-        - alert: CStorPoolDegraded
-          expr: openebs_pool_status != 1
+        - alert: CStorVolumeFreeSpaceCritical
+          expr: 100 * kubelet_volume_stats_available_bytes / kubelet_volume_stats_capacity_bytes < 10
           for: 5m
           labels:
             severity: critical
           annotations:
-            summary: "cStor pool {{ $labels.pool_name }} is degraded"
+            summary: "cStor PVC {{ $labels.persistentvolumeclaim }} has less than 10% free space"
 
-        - alert: CStorPoolCapacityHigh
-          expr: openebs_pool_used_capacity_percent > 80
+        - alert: CStorVolumeCapacityHigh
+          expr: 100 * kubelet_volume_stats_used_bytes / kubelet_volume_stats_capacity_bytes > 80
           for: 10m
           labels:
             severity: warning
           annotations:
-            summary: "cStor pool {{ $labels.pool_name }} is over 80% full"
-
-        - alert: CStorVolumeReplicaDegraded
-          expr: openebs_volume_replica_status != 1
-          for: 5m
-          labels:
-            severity: critical
-          annotations:
-            summary: "cStor volume replica {{ $labels.volume_name }} is unhealthy"
+            summary: "cStor PVC {{ $labels.persistentvolumeclaim }} is over 80% used"
 ```
 
 ## Troubleshooting Common Issues
@@ -814,7 +752,7 @@ kubectl describe cvr <replica-name> -n openebs
 
 1. **Separate pools for different workload tiers**: Create dedicated pools for high-IOPS workloads versus bulk storage.
 
-2. **Use mirror for databases**: Mirror provides better rebuild times than RAIDZ for latency-sensitive workloads.
+2. **Use mirror for databases**: Mirror provides local disk redundancy for latency-sensitive workloads.
 
 3. **Match replica count to pool instances**: If you have 3 pool instances, use 3 replicas for maximum redundancy.
 
@@ -885,4 +823,4 @@ Building cStor pools requires careful planning around disk selection, RAID confi
 5. **Monitor pool health** and set up alerts for degraded states
 6. **Plan for maintenance** including disk replacement and pool expansion
 
-cStor provides enterprise-grade storage features without the complexity of external storage arrays. Match your RAID configuration to your workload: stripe for maximum performance, mirror for databases, and RAIDZ for bulk storage. Monitor your pools continuously and test your recovery procedures before you need them.
+cStor provides enterprise-grade storage features without the complexity of external storage arrays. Match your RAID configuration to your workload: stripe for maximum usable capacity and mirror for local disk redundancy. Monitor your pools continuously and test your recovery procedures before you need them.
