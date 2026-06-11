@@ -105,7 +105,7 @@ fi
 
 # Check 4: Database replication status
 echo "[4/8] Checking database replication..."
-REPLICATION_LAG=$(psql -h primary-db -U admin -d postgres -t -c "SELECT EXTRACT(EPOCH FROM (now() - pg_last_xact_replay_timestamp()))::int;")
+REPLICATION_LAG=$(psql -h primary-db -U admin -d postgres -At -c "SELECT COALESCE(EXTRACT(EPOCH FROM (now() - pg_last_xact_replay_timestamp()))::int, 0);")
 if [ "$REPLICATION_LAG" -lt 60 ]; then
     echo "  REPLICATION: Healthy (${REPLICATION_LAG}s lag)"
 else
@@ -213,13 +213,14 @@ cat << 'EOF' > /tmp/replication-setup.sql
 ALTER SYSTEM SET wal_level = replica;
 ALTER SYSTEM SET max_wal_senders = 5;
 ALTER SYSTEM SET max_replication_slots = 5;
-SELECT pg_reload_conf();
-
--- Create replication slot for primary site
-SELECT pg_create_physical_replication_slot('primary_failback_slot');
 EOF
 
 psql -h dr-database.example.com -U postgres -f /tmp/replication-setup.sql
+ssh dr-database.example.com "systemctl restart postgresql"
+
+# Create replication slot for primary site
+psql -h dr-database.example.com -U postgres \
+    -c "SELECT pg_create_physical_replication_slot('primary_failback_slot');"
 
 # On Primary site - set up as replica
 ssh primary-server << 'REMOTE'
@@ -235,14 +236,7 @@ ssh primary-server << 'REMOTE'
         -U replicator \
         -P -R -S primary_failback_slot
 
-    # Configure as standby
-    cat >> /var/lib/postgresql/data/postgresql.conf << 'CONF'
-primary_conninfo = 'host=dr-database.example.com port=5432 user=replicator password=secret'
-primary_slot_name = 'primary_failback_slot'
-CONF
-
-    # Create standby signal file
-    touch /var/lib/postgresql/data/standby.signal
+    # -R writes standby.signal and stores the connection settings.
 
     # Start PostgreSQL
     systemctl start postgresql
@@ -260,9 +254,11 @@ echo "Reverse replication configured. Primary is now syncing from DR."
 import psycopg2
 import time
 import sys
+import argparse
 
-def check_replication_status(dr_host, primary_host):
+def check_replication_status(dr_host, primary_host, timeout=None):
     """Monitor replication lag during failback preparation."""
+    start_time = time.monotonic()
 
     dr_conn = psycopg2.connect(
         host=dr_host,
@@ -290,7 +286,7 @@ def check_replication_status(dr_host, primary_host):
             primary_lsn = cur.fetchone()[0]
 
             cur.execute("""
-                SELECT EXTRACT(EPOCH FROM (now() - pg_last_xact_replay_timestamp()))::int
+                SELECT COALESCE(EXTRACT(EPOCH FROM (now() - pg_last_xact_replay_timestamp()))::int, 0)
                 AS lag_seconds;
             """)
             lag_seconds = cur.fetchone()[0]
@@ -308,13 +304,26 @@ def check_replication_status(dr_host, primary_host):
             print("\n*** REPLICATION CAUGHT UP - READY FOR FAILBACK ***")
             return True
 
+        if timeout and time.monotonic() - start_time > timeout:
+            print("\n*** TIMEOUT WAITING FOR REPLICATION TO CATCH UP ***")
+            return False
+
         time.sleep(5)
 
 if __name__ == "__main__":
-    check_replication_status(
-        dr_host="dr-database.example.com",
-        primary_host="primary-database.example.com"
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--dr-host", default="dr-database.example.com")
+    parser.add_argument("--primary-host", default="primary-database.example.com")
+    parser.add_argument("--wait-for-sync", action="store_true")
+    parser.add_argument("--timeout", type=int)
+    args = parser.parse_args()
+
+    success = check_replication_status(
+        dr_host=args.dr_host,
+        primary_host=args.primary_host,
+        timeout=args.timeout
     )
+    sys.exit(0 if success else 1)
 ```
 
 ### Application Data Sync
@@ -353,8 +362,8 @@ spec:
               # Sync application state
               echo "Syncing application cache..."
               redis-cli -h dr-redis BGSAVE
-              scp dr-redis:/var/lib/redis/dump.rdb /tmp/
-              redis-cli -h primary-redis DEBUG RELOAD /tmp/dump.rdb
+              scp dr-redis:/var/lib/redis/dump.rdb primary-redis:/var/lib/redis/dump.rdb
+              ssh primary-redis "redis-cli DEBUG RELOAD NOSAVE"
 
               # Sync search indices
               echo "Syncing Elasticsearch indices..."
@@ -426,9 +435,8 @@ echo "PHASE 2: Freeze Changes"
 echo "-----------------------"
 notify "Freezing deployments on DR cluster" "INFO"
 
-# Disable deployments on DR
-kubectl --context=$DR_CLUSTER annotate deployment --all \
-    deployment.kubernetes.io/paused=true -n production
+# Disable deployment rollouts on DR
+kubectl --context=$DR_CLUSTER rollout pause deployment --all -n production
 
 # Disable CI/CD pipelines
 curl -X POST "https://ci.example.com/api/v1/pause" \
@@ -839,6 +847,11 @@ check_error_rate() {
     return 0
 }
 
+if [ "${1:-}" = "rollback" ]; then
+    shift_traffic 0
+    exit 0
+fi
+
 # Start traffic shifting
 for weight in "${WEIGHTS[@]}"; do
     shift_traffic $weight
@@ -872,7 +885,7 @@ echo "=========================================="
 
 ```yaml
 # istio-traffic-shift.yaml
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-failback
@@ -899,7 +912,7 @@ spec:
             subset: primary
           weight: 10
 ---
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: api-destinations
@@ -979,7 +992,7 @@ class TrafficController:
 
         # Update Istio VirtualService
         manifest = f'''
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-failback
@@ -1101,9 +1114,9 @@ runbook:
     - step: 3
       name: "Freeze Changes"
       commands:
-        - "kubectl annotate deployment --all deployment.kubernetes.io/paused=true -n production --context=dr-cluster"
-      expected_output: "All deployments annotated"
-      rollback: "kubectl annotate deployment --all deployment.kubernetes.io/paused- -n production"
+        - "kubectl rollout pause deployment --all -n production --context=dr-cluster"
+      expected_output: "All deployment rollouts paused"
+      rollback: "kubectl rollout resume deployment --all -n production --context=dr-cluster"
 
     - step: 4
       name: "Verify Replication Sync"
@@ -1153,7 +1166,7 @@ runbook:
     - step: 10
       name: "Cleanup"
       commands:
-        - "kubectl annotate deployment --all deployment.kubernetes.io/paused- -n production --context=dr-cluster"
+        - "kubectl rollout resume deployment --all -n production --context=dr-cluster"
         - "Configure DR as standby"
       manual: true
 
