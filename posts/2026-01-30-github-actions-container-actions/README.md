@@ -43,7 +43,7 @@ flowchart LR
 
 ## Anatomy of a Container Action
 
-A container action requires three files:
+A container action typically includes these files:
 
 ```text
 my-action/
@@ -300,6 +300,11 @@ if [ -z "${INPUT_IMAGE:-}" ]; then
     exit 1
 fi
 
+INPUT_SEVERITY="${INPUT_SEVERITY:-HIGH,CRITICAL}"
+INPUT_FAIL_ON="${INPUT_FAIL_ON:-CRITICAL}"
+INPUT_IGNORE_UNFIXED="${INPUT_IGNORE_UNFIXED:-false}"
+INPUT_OUTPUT_FORMAT="${INPUT_OUTPUT_FORMAT:-table}"
+
 log_info "Scanning image: $INPUT_IMAGE"
 log_info "Severity filter: $INPUT_SEVERITY"
 log_info "Fail on: $INPUT_FAIL_ON"
@@ -319,15 +324,15 @@ if [ "$INPUT_IGNORE_UNFIXED" = "true" ]; then
     TRIVY_CMD="$TRIVY_CMD --ignore-unfixed"
 fi
 
-# Run the scan (do not fail on vulnerabilities yet)
+# Run the scan without failing automatically on vulnerabilities
 log_info "Running security scan..."
 set +e
 $TRIVY_CMD "$INPUT_IMAGE"
 SCAN_EXIT_CODE=$?
 set -e
 
-# Handle scan failures (not vulnerability findings)
-if [ $SCAN_EXIT_CODE -ne 0 ] && [ $SCAN_EXIT_CODE -ne 1 ]; then
+# Handle scan failures
+if [ $SCAN_EXIT_CODE -ne 0 ]; then
     log_error "Trivy scan failed with exit code $SCAN_EXIT_CODE"
     exit $SCAN_EXIT_CODE
 fi
@@ -463,6 +468,9 @@ on:
 jobs:
   scan:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
     steps:
       # Check out the repository containing the action
       - uses: actions/checkout@v4
@@ -618,6 +626,11 @@ For faster startup, use a pre-built image instead of building from Dockerfile.
 name: 'Fast Container Action'
 description: 'Uses pre-built image for faster startup'
 
+inputs:
+  config:
+    description: 'Configuration value passed to the container'
+    required: true
+
 runs:
   using: 'docker'
   # Reference a public registry image
@@ -725,6 +738,7 @@ description: 'Runs multiple security scans'
 
 inputs:
   image:
+    description: 'Container image to scan'
     required: true
 
 runs:
