@@ -514,6 +514,7 @@ For set operations, the LWW-Element-Set is a powerful extension:
 
 ```typescript
 interface ElementState<T> {
+  value: T;
   addTimestamp: number;
   removeTimestamp: number;
 }
@@ -531,8 +532,13 @@ class LWWElementSet<T> {
     const existing = this.elements.get(key);
 
     if (!existing) {
-      this.elements.set(key, { addTimestamp: timestamp, removeTimestamp: 0 });
+      this.elements.set(key, {
+        value,
+        addTimestamp: timestamp,
+        removeTimestamp: 0
+      });
     } else if (timestamp > existing.addTimestamp) {
+      existing.value = value;
       existing.addTimestamp = timestamp;
     }
   }
@@ -542,7 +548,11 @@ class LWWElementSet<T> {
     const existing = this.elements.get(key);
 
     if (!existing) {
-      this.elements.set(key, { addTimestamp: 0, removeTimestamp: timestamp });
+      this.elements.set(key, {
+        value,
+        addTimestamp: 0,
+        removeTimestamp: timestamp
+      });
     } else if (timestamp > existing.removeTimestamp) {
       existing.removeTimestamp = timestamp;
     }
@@ -554,16 +564,16 @@ class LWWElementSet<T> {
 
     if (!state) return false;
 
-    // Element exists if add timestamp > remove timestamp
+    // Element exists if add timestamp is newer than remove timestamp
     // Bias towards add on equal timestamps
     return state.addTimestamp >= state.removeTimestamp;
   }
 
   values(): T[] {
     const result: T[] = [];
-    for (const [key, state] of this.elements) {
+    for (const state of this.elements.values()) {
       if (state.addTimestamp >= state.removeTimestamp) {
-        result.push(JSON.parse(key));
+        result.push(state.value);
       }
     }
     return result;
@@ -576,6 +586,9 @@ class LWWElementSet<T> {
       if (!existing) {
         this.elements.set(key, { ...otherState });
       } else {
+        if (otherState.addTimestamp > existing.addTimestamp) {
+          existing.value = otherState.value;
+        }
         existing.addTimestamp = Math.max(
           existing.addTimestamp,
           otherState.addTimestamp
@@ -743,35 +756,43 @@ interface ProductionLWWConfig {
   persistenceAdapter: PersistenceAdapter;
 }
 
+interface ProductionLWWValue<T> {
+  value: T;
+  timestamp: bigint;
+  nodeId: string;
+}
+
 interface PersistenceAdapter {
-  save(key: string, value: LWWValue<unknown>): Promise<void>;
-  load(key: string): Promise<LWWValue<unknown> | null>;
+  save(key: string, value: ProductionLWWValue<unknown>): Promise<void>;
+  load(key: string): Promise<ProductionLWWValue<unknown> | null>;
 }
 
 class ProductionLWW<T> {
   private config: ProductionLWWConfig;
   private clock: HybridLogicalClock;
-  private data: Map<string, LWWValue<T>> = new Map();
+  private lamportClock: LamportClock;
+  private data: Map<string, ProductionLWWValue<T>> = new Map();
 
   constructor(config: ProductionLWWConfig) {
     this.config = config;
     this.clock = new HybridLogicalClock();
+    this.lamportClock = new LamportClock();
   }
 
   async write(key: string, value: T): Promise<boolean> {
     const timestamp = this.getTimestamp();
     const existing = this.data.get(key);
 
-    if (!existing || this.isNewer(timestamp, existing.timestamp)) {
+    if (!existing || this.isNewer(timestamp, this.config.nodeId, existing)) {
       if (existing && this.config.logConflicts) {
         console.log(`Conflict resolved: ${key}`, {
           old: existing,
-          new: { value, timestamp }
+          new: { value, timestamp, nodeId: this.config.nodeId }
         });
         this.config.conflictCallback?.(existing.value, value);
       }
 
-      const newValue = { value, timestamp };
+      const newValue = { value, timestamp, nodeId: this.config.nodeId };
       this.data.set(key, newValue);
       await this.config.persistenceAdapter.save(key, newValue);
       return true;
@@ -780,26 +801,27 @@ class ProductionLWW<T> {
     return false;
   }
 
-  private getTimestamp(): number {
+  private getTimestamp(): bigint {
     switch (this.config.clockType) {
       case "wall":
-        return Date.now();
+        return BigInt(Date.now());
       case "hlc":
         const hlc = this.clock.now();
-        return hlc.pt * 1000000 + hlc.lc; // Combine into single number
+        return BigInt(hlc.pt) * 1000000n + BigInt(hlc.lc);
       case "lamport":
-        // Would need separate Lamport clock
-        return Date.now();
+        return BigInt(this.lamportClock.tick());
     }
   }
 
-  private isNewer(incoming: number, existing: number): boolean {
-    if (incoming > existing) return true;
-    if (incoming === existing) {
-      // Tiebreaker: use node ID
-      return this.config.nodeId > ""; // Simplified
+  private isNewer(
+    incomingTimestamp: bigint,
+    incomingNodeId: string,
+    existing: ProductionLWWValue<T>
+  ): boolean {
+    if (incomingTimestamp !== existing.timestamp) {
+      return incomingTimestamp > existing.timestamp;
     }
-    return false;
+    return incomingNodeId > existing.nodeId;
   }
 }
 ```
