@@ -89,7 +89,7 @@ The logger API accepts log entries from application code and places them in a ri
 
 Let us build a log buffer from scratch. We start with a simple ring buffer that holds log entries in memory.
 
-This implementation uses a fixed-size array as a circular buffer. The `head` index tracks where new entries go, while `tail` tracks where we read from. When the buffer fills up, new entries overwrite the oldest ones.
+This implementation uses a fixed-size array as a circular buffer. The `head` index tracks where new entries go, while `tail` tracks where we read from. When the buffer fills up, the configured overflow policy determines whether to drop the oldest entry, drop the newest entry, or force an immediate flush attempt.
 
 ```typescript
 // log-buffer.ts - A ring buffer implementation for log entries
@@ -109,14 +109,14 @@ interface BufferConfig {
 }
 
 export class LogBuffer {
-  private buffer: LogEntry[];
-  private head: number = 0;      // Write position
-  private tail: number = 0;      // Read position
-  private count: number = 0;     // Current entry count
-  private config: BufferConfig;
+  protected buffer: LogEntry[];
+  protected head: number = 0;      // Write position
+  protected tail: number = 0;      // Read position
+  protected count: number = 0;     // Current entry count
+  protected config: BufferConfig;
   private flushTimer: NodeJS.Timeout | null = null;
-  private flushCallback: (entries: LogEntry[]) => Promise<void>;
-  private isFlushing: boolean = false;
+  protected flushCallback: (entries: LogEntry[]) => Promise<void>;
+  protected isFlushing: boolean = false;
 
   constructor(
     config: BufferConfig,
@@ -156,22 +156,24 @@ export class LogBuffer {
         this.buffer[this.head] = entry;
         this.head = (this.head + 1) % this.config.maxSize;
         this.tail = (this.tail + 1) % this.config.maxSize;
+        this.onDrop();
         return true;
 
       case 'drop-newest':
         // Discard the new entry
+        this.onDrop();
         return false;
 
       case 'block':
-        // In real implementation, this would use a condition variable
+        // In a real implementation, this should be modeled as an async wait
         // For simplicity, we trigger an immediate flush and retry
-        this.flushSync();
+        this.flushImmediately();
         return this.enqueue(entry);
     }
   }
 
   // Drain all entries from the buffer
-  private drain(): LogEntry[] {
+  protected drain(): LogEntry[] {
     const entries: LogEntry[] = [];
 
     while (this.count > 0) {
@@ -200,19 +202,23 @@ export class LogBuffer {
         this.enqueue(entry);
       }
       console.error('Flush failed, re-enqueued entries:', error);
+      throw error;
     } finally {
       this.isFlushing = false;
     }
   }
 
-  // Synchronous flush for shutdown scenarios
-  private flushSync(): void {
+  // Immediate flush attempt for overflow scenarios
+  protected flushImmediately(): void {
     if (this.count === 0) return;
 
     const entries = this.drain();
-    // In production, use synchronous write here
+    // Fire and forget because enqueue is synchronous
     this.flushCallback(entries).catch(console.error);
   }
+
+  // Hook for subclasses to track dropped entries
+  protected onDrop(): void {}
 
   // Start the periodic flush timer
   private startFlushTimer(): void {
@@ -227,6 +233,15 @@ export class LogBuffer {
       clearInterval(this.flushTimer);
     }
     await this.flush();
+  }
+
+  // Expose metrics for monitoring
+  getMetrics(): Record<string, number> {
+    return {
+      bufferSize: this.count,
+      bufferCapacity: this.config.maxSize,
+      bufferUtilization: this.count / this.config.maxSize,
+    };
   }
 }
 ```
@@ -348,6 +363,7 @@ export class BackpressureBuffer extends LogBuffer {
   // Expose metrics for monitoring
   getMetrics(): Record<string, number> {
     return {
+      ...super.getMetrics(),
       droppedCount: this.droppedCount,
       consecutiveFailures: this.consecutiveFailures,
       currentBackoffMs: this.currentBackoffMs,
@@ -362,7 +378,7 @@ export class BackpressureBuffer extends LogBuffer {
 
 Efficient batch processing is critical for throughput. The batch processor should balance latency (how quickly logs reach the destination) against efficiency (how many logs per write operation).
 
-This batch processor supports multiple flushing triggers: time-based intervals, size thresholds, and manual triggers. It also handles partial failures by tracking which entries succeeded.
+This batch processor supports multiple flushing triggers: time-based intervals, size thresholds, and manual triggers.
 
 ```typescript
 // batch-processor.ts - Configurable batch processing for logs
@@ -454,7 +470,7 @@ export class BatchProcessor {
 
 ## Putting It All Together
 
-Here is a complete logging system that combines buffering, backpressure handling, and batch processing. This implementation provides a clean API for application code while handling all the complexity internally.
+Here is a complete logging system that combines buffering, backpressure handling, and batch processing. This implementation provides a clean API for application code while handling buffering, retries, and batching internally.
 
 ```typescript
 // buffered-logger.ts - Production-ready buffered logging system
@@ -563,6 +579,11 @@ export class BufferedLogger {
     await this.buffer.shutdown();
     await this.batchProcessor.flush();
   }
+
+  // Expose metrics for monitoring
+  getMetrics(): Record<string, number> {
+    return this.buffer.getMetrics();
+  }
 }
 ```
 
@@ -583,7 +604,7 @@ function exposeMetrics(logger: BufferedLogger): void {
   const metrics = logger.getMetrics();
 
   // Register with your metrics system
-  gauge('log_buffer_dropped_total', metrics.droppedCount);
+  counter('log_buffer_dropped_total', metrics.droppedCount);
   gauge('log_buffer_backoff_ms', metrics.currentBackoffMs);
   gauge('log_buffer_consecutive_failures', metrics.consecutiveFailures);
 }
