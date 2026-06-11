@@ -49,15 +49,11 @@ flowchart TB
 
 ### Prerequisites
 
-You need Node.js 18+, Go 1.21+ (for backend plugins), and Docker for testing. Install the Grafana plugin toolkit to scaffold your project.
+You need Node.js 20+, Go and Mage (for backend plugins), Docker for testing, and Grafana 12.3+ for the current scaffolded baseline. Use the Grafana `create-plugin` tool to scaffold your project.
 
 ```bash
-# Install the create-plugin tool globally
-
-npm install -g @grafana/create-plugin
-
-# Verify the installation
-npx @grafana/create-plugin --version
+# Verify Node.js before scaffolding
+node --version
 ```
 
 ### Scaffold the App Plugin
@@ -70,15 +66,15 @@ npx @grafana/create-plugin@latest
 
 # When prompted, select:
 # - Plugin type: app
-# - Plugin name: my-monitoring-app
-# - Organization: your-org
+# - Plugin name: monitoring
+# - Organization: yourorg
 # - Include backend: yes (if you need server-side logic)
 ```
 
 After scaffolding, your project structure looks like this:
 
 ```text
-my-monitoring-app/
+yourorg-monitoring-app/
 ├── src/
 │   ├── components/        # React components
 │   ├── pages/            # Page components
@@ -97,23 +93,26 @@ The scaffolded project includes everything needed to start building immediately.
 
 ```bash
 # Navigate to your plugin directory
-cd my-monitoring-app
+cd yourorg-monitoring-app
 
 # Install frontend dependencies
 npm install
 
-# Start the development server with hot reload
+# Build the frontend in watch mode
 npm run dev
 ```
 
-In a separate terminal, start Grafana with your plugin mounted:
+In separate terminals, build the backend and start Grafana with your plugin mounted:
 
 ```bash
+# Build the Linux backend binary used by the Grafana Docker container
+mage -v build:linux
+
 # Start Grafana with Docker Compose
-docker-compose up -d
+docker compose up -d
 
 # View logs to verify plugin loaded
-docker-compose logs -f grafana
+docker compose logs -f grafana
 ```
 
 ## Configuring Your App Plugin
@@ -127,7 +126,9 @@ The plugin.json file defines your plugin's identity, capabilities, and navigatio
   "$schema": "https://raw.githubusercontent.com/grafana/grafana/main/docs/sources/developers/plugins/plugin.schema.json",
   "type": "app",
   "name": "My Monitoring App",
-  "id": "your-org-my-monitoring-app",
+  "id": "yourorg-monitoring-app",
+  "backend": true,
+  "executable": "gpx_monitoring",
   "info": {
     "keywords": ["monitoring", "observability", "alerts"],
     "description": "A comprehensive monitoring solution for your infrastructure",
@@ -146,7 +147,7 @@ The plugin.json file defines your plugin's identity, capabilities, and navigatio
     {
       "type": "page",
       "name": "Dashboard",
-      "path": "/a/your-org-my-monitoring-app/dashboard",
+      "path": "/a/yourorg-monitoring-app/dashboard",
       "role": "Viewer",
       "addToNav": true,
       "defaultNav": true
@@ -154,20 +155,20 @@ The plugin.json file defines your plugin's identity, capabilities, and navigatio
     {
       "type": "page",
       "name": "Alerts",
-      "path": "/a/your-org-my-monitoring-app/alerts",
+      "path": "/a/yourorg-monitoring-app/alerts",
       "role": "Viewer",
       "addToNav": true
     },
     {
       "type": "page",
       "name": "Settings",
-      "path": "/a/your-org-my-monitoring-app/settings",
+      "path": "/a/yourorg-monitoring-app/settings",
       "role": "Admin",
       "addToNav": true
     }
   ],
   "dependencies": {
-    "grafanaDependency": ">=10.0.0",
+    "grafanaDependency": ">=12.3.0",
     "plugins": []
   }
 }
@@ -207,11 +208,11 @@ The module.ts file is where you register your plugin with Grafana. This connects
 // src/module.ts
 import { AppPlugin } from '@grafana/data';
 import { App } from './components/App';
-import { AppConfig } from './components/AppConfig';
+import { AppConfig, type PluginSettings } from './components/AppConfig';
 
 // Export the plugin instance
 // Grafana calls this to initialize your plugin
-export const plugin = new AppPlugin<{}>()
+export const plugin = new AppPlugin<PluginSettings>()
   // Set the root component that renders your app
   .setRootPage(App)
   // Set the configuration component shown in plugin settings
@@ -238,7 +239,7 @@ import { Alerts } from '../pages/Alerts';
 import { Settings } from '../pages/Settings';
 
 // AppRootProps provides access to plugin metadata and Grafana services
-export function App(props: AppRootProps) {
+export function App(_props: AppRootProps) {
   return (
     <Routes>
       {/* Each route corresponds to a path in plugin.json includes */}
@@ -355,7 +356,7 @@ export function Dashboard() {
         // Use Grafana's backend service for API calls
         // This handles authentication automatically
         const response = await getBackendSrv().get(
-          '/api/plugins/your-org-my-monitoring-app/resources/services'
+          '/api/plugins/yourorg-monitoring-app/resources/services'
         );
         setServices(response.services);
       } catch (err) {
@@ -397,7 +398,7 @@ export function Dashboard() {
       <h2>Service Status</h2>
       <div className={styles.grid}>
         {services.map((service) => (
-          <Card key={service.name} className={styles.card}>
+          <Card key={service.name} className={styles.card} data-testid="service-card">
             <Card.Heading>
               <div className={styles.statusIndicator}>
                 {getStatusIcon(service.status)}
@@ -426,7 +427,7 @@ The configuration page allows users to set up your plugin. This integrates with 
 
 ```typescript
 // src/components/AppConfig.tsx
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { css } from '@emotion/css';
 import {
   Button,
@@ -442,15 +443,10 @@ import { PluginConfigPageProps, AppPluginMeta, GrafanaTheme2 } from '@grafana/da
 import { getBackendSrv } from '@grafana/runtime';
 
 // Define the structure of your plugin's settings
-interface PluginSettings {
+export interface PluginSettings {
   apiEndpoint?: string;
   refreshInterval?: number;
   enableNotifications?: boolean;
-}
-
-// Secure settings are stored encrypted and never sent to the frontend
-interface SecureSettings {
-  apiKey?: string;
 }
 
 const getStyles = (theme: GrafanaTheme2) => ({
@@ -789,12 +785,12 @@ import (
     "github.com/grafana/grafana-plugin-sdk-go/backend/app"
     "github.com/grafana/grafana-plugin-sdk-go/backend/log"
 
-    "github.com/your-org/my-monitoring-app/pkg/plugin"
+    "github.com/yourorg/monitoring/pkg/plugin"
 )
 
 func main() {
     // Start listening for requests from Grafana
-    if err := app.Manage("your-org-my-monitoring-app", plugin.NewApp, app.ManageOpts{}); err != nil {
+    if err := app.Manage("yourorg-monitoring-app", plugin.NewApp, app.ManageOpts{}); err != nil {
         log.DefaultLogger.Error("Failed to start plugin", "error", err.Error())
         os.Exit(1)
     }
@@ -877,7 +873,7 @@ test.describe('Monitoring App', () => {
 
   test('displays dashboard with service cards', async ({ page }) => {
     // Navigate to the plugin
-    await page.goto('/a/your-org-my-monitoring-app/dashboard');
+    await page.goto('/a/yourorg-monitoring-app/dashboard');
 
     // Wait for services to load
     await expect(page.locator('text=Service Status')).toBeVisible();
@@ -887,7 +883,7 @@ test.describe('Monitoring App', () => {
   });
 
   test('configuration page saves settings', async ({ page }) => {
-    await page.goto('/plugins/your-org-my-monitoring-app');
+    await page.goto('/plugins/yourorg-monitoring-app');
     await page.click('text=Configuration');
 
     // Fill in settings
@@ -915,27 +911,28 @@ mage -v build:linux
 mage -v build:darwin
 mage -v build:windows
 
-# Create distribution archive
-npm run sign  # Signs the plugin for Grafana Cloud
+# Sign the plugin after building
+npm run sign
 ```
 
 ### Plugin Signing
 
-Grafana requires plugins to be signed for production use. You have two options:
+Grafana requires plugins to be signed for production use. Common signing types include:
 
 | Signing Type | Use Case | Distribution |
 |--------------|----------|--------------|
 | Private | Internal use only | Self-hosted Grafana |
 | Community | Public distribution | Grafana Plugin Catalog |
+| Commercial | Commercial public distribution | Grafana Plugin Catalog |
 
-For private signing, generate a key and sign locally:
+For private signing, create a Grafana Cloud access policy token with the `plugins:write` scope and sign locally:
 
 ```bash
-# Generate a private key
-export GRAFANA_API_KEY="your-grafana-cloud-api-key"
+# Export your access policy token
+export GRAFANA_ACCESS_POLICY_TOKEN="your-access-policy-token"
 
 # Sign the plugin
-npx @grafana/sign-plugin@latest --rootUrls https://your-grafana.com
+npm run sign -- --rootUrls https://your-grafana.com
 ```
 
 ### Deployment Architecture
@@ -974,7 +971,7 @@ For self-hosted Grafana, copy the built plugin to the plugins directory:
 
 ```bash
 # Copy plugin to Grafana plugins directory
-cp -r dist/ /var/lib/grafana/plugins/your-org-my-monitoring-app
+cp -r dist/ /var/lib/grafana/plugins/yourorg-monitoring-app
 
 # Restart Grafana to load the plugin
 sudo systemctl restart grafana-server
@@ -1066,7 +1063,7 @@ export class PluginErrorBoundary extends Component<Props, State> {
 1. Never expose API keys in frontend code
 2. Use Grafana's secure settings for sensitive data
 3. Validate all user input on the backend
-4. Implement proper CORS headers for backend endpoints
+4. Use Grafana resource routes instead of exposing unauthenticated cross-origin endpoints
 5. Use Grafana's authentication context for authorization
 
 ---
