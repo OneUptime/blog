@@ -149,6 +149,7 @@ Different databases provide different mechanisms for bulk loading. Here are the 
 # COPY is the fastest way to load data into PostgreSQL
 
 import psycopg2
+from psycopg2 import sql
 from io import StringIO
 import csv
 from typing import List, Dict, Any
@@ -186,10 +187,12 @@ def bulk_load_postgres(
 
     for row in data:
         # Build row values in column order
-        # Handle NULL values by writing empty string
+        # Handle NULL values by writing PostgreSQL's NULL marker
         values = []
         for col in columns:
             val = row.get(col)
+            if val is None and col == 'load_batch_id':
+                val = batch_id
             if val is None:
                 values.append('\\N')  # PostgreSQL NULL representation
             else:
@@ -204,13 +207,14 @@ def bulk_load_postgres(
         with conn.cursor() as cur:
             # Use COPY FROM STDIN for best performance
             # This streams data directly to the server
-            cur.copy_from(
-                file=buffer,
-                table=table_name,
-                columns=columns,
-                sep='\t',
-                null='\\N'
+            copy_sql = sql.SQL("""
+                COPY {} ({})
+                FROM STDIN WITH (FORMAT CSV, DELIMITER E'\t', NULL '\\N')
+            """).format(
+                sql.Identifier(table_name),
+                sql.SQL(', ').join(sql.Identifier(col) for col in columns)
             )
+            cur.copy_expert(copy_sql, buffer)
         conn.commit()
         return len(data)
     except Exception as e:
@@ -392,8 +396,8 @@ async function bulkInsertOrders(orders: OrderRow[]): Promise<number> {
         { name: 'order_date', cast: 'timestamp' }
     ], { table: 'staging_orders' });
 
-    // Process in batches to avoid query size limits
-    // PostgreSQL has a parameter limit of ~32767
+    // Process in batches to avoid very large SQL statements
+    // and excessive memory use while formatting the query
     const BATCH_SIZE = 5000;
     let totalInserted = 0;
 
@@ -627,10 +631,10 @@ flowchart LR
 # Data validation layer for bulk loading
 # Validates data before it reaches the database
 
-from typing import List, Dict, Any, Tuple, Optional
+from typing import List, Dict, Any, Tuple, Callable
 from dataclasses import dataclass, field
 from datetime import datetime
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 import re
 
 @dataclass
@@ -823,7 +827,7 @@ flowchart TB
 
 import time
 import logging
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple, Callable
 from dataclasses import dataclass
 from enum import Enum
 
@@ -1218,11 +1222,13 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime
+from io import StringIO
 from typing import List, Dict, Any, Iterator, Optional
 from uuid import uuid4
+import csv
 import requests
 import psycopg2
-from psycopg2.extras import execute_values
+from psycopg2 import sql
 
 # Configure logging
 logging.basicConfig(
@@ -1331,7 +1337,9 @@ class StagingLoader:
         try:
             with conn.cursor() as cur:
                 # Truncate to start fresh
-                cur.execute(f'TRUNCATE TABLE {table_name}')
+                cur.execute(
+                    sql.SQL('TRUNCATE TABLE {}').format(sql.Identifier(table_name))
+                )
             conn.commit()
         finally:
             conn.close()
@@ -1350,18 +1358,30 @@ class StagingLoader:
         conn = psycopg2.connect(self.connection_string)
         try:
             with conn.cursor() as cur:
-                # Build values list for execute_values
-                values = []
+                # Build an in-memory tab-delimited CSV stream for COPY
+                buffer = StringIO()
+                writer = csv.writer(buffer, delimiter='\t', quoting=csv.QUOTE_MINIMAL)
+
                 for row in data:
-                    row_values = tuple(row.get(col) for col in columns)
-                    values.append(row_values)
+                    values = []
+                    for col in columns:
+                        val = row.get(col)
+                        if val is None and col == 'load_batch_id':
+                            val = batch_id
+                        values.append('\\N' if val is None else str(val))
+                    writer.writerow(values)
 
-                # Use execute_values for bulk insert
-                # This is faster than individual inserts but slower than COPY
-                columns_str = ', '.join(columns)
-                insert_sql = f'INSERT INTO {table_name} ({columns_str}) VALUES %s'
+                buffer.seek(0)
 
-                execute_values(cur, insert_sql, values, page_size=1000)
+                copy_sql = sql.SQL("""
+                    COPY {} ({})
+                    FROM STDIN WITH (FORMAT CSV, DELIMITER E'\t', NULL '\\N')
+                """).format(
+                    sql.Identifier(table_name),
+                    sql.SQL(', ').join(sql.Identifier(col) for col in columns)
+                )
+
+                cur.copy_expert(copy_sql, buffer)
 
             conn.commit()
             return len(data)
@@ -1400,27 +1420,39 @@ class ProductionMerger:
             with conn.cursor() as cur:
                 # Build the UPSERT statement
                 all_columns = key_columns + update_columns
-                columns_str = ', '.join(all_columns)
-                key_str = ', '.join(key_columns)
+                columns_sql = sql.SQL(', ').join(sql.Identifier(col) for col in all_columns)
+                key_sql = sql.SQL(', ').join(sql.Identifier(col) for col in key_columns)
 
                 # Build the UPDATE SET clause
-                update_set = ', '.join(
-                    f'{col} = EXCLUDED.{col}'
+                update_set = sql.SQL(', ').join(
+                    sql.SQL('{} = EXCLUDED.{}').format(
+                        sql.Identifier(col),
+                        sql.Identifier(col)
+                    )
                     for col in update_columns
                 )
 
-                merge_sql = f'''
-                    INSERT INTO {production_table} ({columns_str})
-                    SELECT {columns_str} FROM {staging_table}
-                    ON CONFLICT ({key_str})
-                    DO UPDATE SET {update_set}, updated_at = NOW()
-                '''
+                merge_sql = sql.SQL("""
+                    INSERT INTO {} ({})
+                    SELECT {} FROM {}
+                    ON CONFLICT ({})
+                    DO UPDATE SET {}, updated_at = NOW()
+                """).format(
+                    sql.Identifier(production_table),
+                    columns_sql,
+                    columns_sql,
+                    sql.Identifier(staging_table),
+                    key_sql,
+                    update_set
+                )
 
                 cur.execute(merge_sql)
                 rows_affected = cur.rowcount
 
                 # Clean up staging
-                cur.execute(f'TRUNCATE TABLE {staging_table}')
+                cur.execute(
+                    sql.SQL('TRUNCATE TABLE {}').format(sql.Identifier(staging_table))
+                )
 
             conn.commit()
             return rows_affected
@@ -1477,8 +1509,9 @@ class BulkLoadPipeline:
                 # Collect results
                 for future in as_completed(futures):
                     try:
-                        loaded, errors = future.result()
+                        loaded, errors, validated = future.result()
                         self.metrics.rows_loaded += loaded
+                        self.metrics.rows_validated += validated
                         self.metrics.validation_errors += errors
                     except Exception as e:
                         logger.error(f'Batch processing failed: {e}')
@@ -1525,7 +1558,7 @@ class BulkLoadPipeline:
             batch_id=batch_id
         )
 
-        return loaded, len(result.invalid_rows)
+        return loaded, len(result.invalid_rows), len(result.valid_rows)
 
 
 def main():
