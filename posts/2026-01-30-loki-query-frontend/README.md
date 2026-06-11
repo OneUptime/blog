@@ -20,11 +20,11 @@ The Query Frontend is an optional but highly recommended component in Loki's mic
 
 - **Query Splitting:** Breaks large time-range queries into smaller sub-queries
 - **Parallelization:** Runs sub-queries concurrently across multiple queriers
-- **Result Caching:** Stores query results to avoid redundant computation
-- **Query Deduplication:** Prevents duplicate queries from consuming resources
+- **Result Caching:** Stores supported query results (and negative cache entries for log queries) to avoid redundant computation
+- **Retries:** Retries failed downstream requests when appropriate
 - **Queue Management:** Controls query scheduling and fairness
 
-Without the Query Frontend, a single query spanning 7 days hits one querier and waits. With it, that query becomes 168 hourly queries running in parallel, returning results dramatically faster.
+Without the Query Frontend, a single query spanning 7 days hits one querier and waits. With it, that query can become 168 hourly queries, with sub-queries scheduled up to the configured parallelism limit, returning results dramatically faster.
 
 ---
 
@@ -121,7 +121,7 @@ server:
   http_server_write_timeout: 5m
 
 # Query Frontend specific settings
-query_frontend:
+frontend:
   # Maximum number of outstanding requests per tenant
   max_outstanding_per_tenant: 2048
 
@@ -131,7 +131,7 @@ query_frontend:
   # Log queries that take longer than this threshold
   log_queries_longer_than: 10s
 
-# Frontend worker configuration
+# Querier-side frontend worker configuration
 frontend_worker:
   # Address of the query frontend (used by queriers)
   frontend_address: "query-frontend:9095"
@@ -149,12 +149,6 @@ query_range:
   # Enable result caching
   cache_results: true
 
-  # Split queries by this interval
-  split_queries_by_interval: 1h
-
-  # Maximum number of sub-queries that can run in parallel
-  max_parallel: 16
-
   # Align queries to the split interval for better cache hits
   align_queries_with_step: true
 
@@ -171,8 +165,14 @@ limits_config:
   # Maximum query length
   max_query_length: 30d
 
-  # Maximum number of queries per user
-  max_queriers_per_user: 0  # 0 means unlimited
+  # Split queries by this interval
+  split_queries_by_interval: 1h
+
+  # Maximum number of sub-queries that can run in parallel
+  max_query_parallelism: 16
+
+  # Maximum number of queriers per tenant
+  max_queriers_per_tenant: 0  # 0 means unlimited
 
   # Query timeout
   query_timeout: 5m
@@ -185,7 +185,7 @@ limits_config:
 
 ## Query Splitting and Parallelization
 
-Query splitting is the core optimization strategy. When a query arrives, the frontend examines its time range and divides it into chunks based on `split_queries_by_interval`.
+Query splitting is the core optimization strategy. When a query arrives, the frontend examines its time range and divides it into chunks based on `limits_config.split_queries_by_interval`.
 
 ### How Splitting Works
 
@@ -228,27 +228,29 @@ For high-throughput environments with many small queries:
 
 ```yaml
 query_range:
+  # Align to interval boundaries
+  align_queries_with_step: true
+
+limits_config:
   # Smaller split interval means more parallelism
   split_queries_by_interval: 15m
 
   # Higher parallelism for more concurrent sub-queries
-  max_parallel: 32
-
-  # Align to interval boundaries
-  align_queries_with_step: true
+  max_query_parallelism: 32
 ```
 
 For environments with fewer but larger queries:
 
 ```yaml
 query_range:
+  align_queries_with_step: true
+
+limits_config:
   # Larger interval reduces overhead
   split_queries_by_interval: 2h
 
   # Moderate parallelism
-  max_parallel: 8
-
-  align_queries_with_step: true
+  max_query_parallelism: 8
 ```
 
 ---
@@ -272,7 +274,7 @@ query_scheduler:
   # Maximum number of outstanding requests per tenant
   max_outstanding_requests_per_tenant: 2048
 
-  # Use DNS for querier discovery
+  # How long to wait before forgetting a disconnected querier
   querier_forget_delay: 2m
 
   # gRPC server settings
@@ -280,8 +282,8 @@ query_scheduler:
     max_recv_msg_size: 104857600
     max_send_msg_size: 104857600
 
-# When using separate scheduler, configure frontend to connect
-query_frontend:
+# In the frontend config, point the frontend to the scheduler
+frontend:
   # Point to scheduler instead of direct querier connection
   scheduler_address: "query-scheduler:9095"
 
@@ -360,43 +362,34 @@ query_scheduler:
 
 limits_config:
   # Maximum queriers a single tenant can use (0 = unlimited)
-  max_queriers_per_user: 4
+  max_queriers_per_tenant: 4
 
-  # Priority-based queue settings
-  # Lower number = higher priority
-  query_priority:
-    enabled: true
-    default_priority: 50
-
-  # Per-tenant queue limits
-  max_outstanding_requests_per_tenant: 512
+  # Maximum number of sub-queries scheduled in parallel by the frontend
+  max_query_parallelism: 16
 ```
 
-### Queue Priority Configuration
+### Per-Tenant Queue Configuration
 
-For multi-tenant environments, you can set different priorities:
+For multi-tenant environments, you can set different limits:
 
 ```yaml
 # runtime-config.yaml (loaded dynamically)
 
 overrides:
-  # High-priority tenant (production dashboards)
+  # Production dashboards tenant
   tenant-prod:
-    max_queriers_per_user: 8
-    max_outstanding_requests_per_tenant: 2048
-    query_priority: 10  # Higher priority (lower number)
+    max_queriers_per_tenant: 8
+    max_query_parallelism: 64
 
   # Standard tenant
   tenant-dev:
-    max_queriers_per_user: 2
-    max_outstanding_requests_per_tenant: 256
-    query_priority: 100  # Lower priority
+    max_queriers_per_tenant: 2
+    max_query_parallelism: 16
 
   # Batch jobs tenant
   tenant-batch:
-    max_queriers_per_user: 1
-    max_outstanding_requests_per_tenant: 64
-    query_priority: 200  # Lowest priority
+    max_queriers_per_tenant: 1
+    max_query_parallelism: 4
 ```
 
 ---
@@ -450,13 +443,13 @@ query_range:
 
 1. **Align queries to intervals**: Set `align_queries_with_step: true` so queries hit cache boundaries
 2. **Use consistent time ranges**: Dashboard queries should use standard intervals (1h, 6h, 24h)
-3. **Monitor cache hit rates**: Track `loki_query_frontend_cache_hits_total` and `loki_query_frontend_cache_misses_total`
+3. **Monitor cache hit rates**: Track `loki_cache_hits` and `loki_cache_fetched_keys` for the frontend cache, and `loki_query_frontend_log_result_cache_hit_total` / `loki_query_frontend_log_result_cache_miss_total` for log-query negative caching.
 
 ---
 
 ## Complete Kubernetes Deployment
 
-Here is a complete Kubernetes deployment for the Query Frontend:
+Here is a Kubernetes deployment fragment for the Query Frontend. Merge the ConfigMap settings into your existing Loki configuration, which should already define storage, schema, and the query scheduler/querier deployments.
 
 ```yaml
 # query-frontend-deployment.yaml
@@ -477,7 +470,7 @@ spec:
     spec:
       containers:
         - name: query-frontend
-          image: grafana/loki:2.9.0
+          image: grafana/loki:3.7.2
           args:
             - -config.file=/etc/loki/config.yaml
             - -target=query-frontend
@@ -547,7 +540,7 @@ data:
       http_server_read_timeout: 5m
       http_server_write_timeout: 5m
 
-    query_frontend:
+    frontend:
       max_outstanding_per_tenant: 2048
       compress_responses: true
       log_queries_longer_than: 10s
@@ -555,8 +548,6 @@ data:
 
     query_range:
       cache_results: true
-      split_queries_by_interval: 1h
-      max_parallel: 16
       align_queries_with_step: true
       results_cache:
         cache:
@@ -566,6 +557,8 @@ data:
 
     limits_config:
       max_query_length: 30d
+      split_queries_by_interval: 1h
+      max_query_parallelism: 16
       query_timeout: 5m
       max_entries_limit_per_query: 10000
 ```
@@ -585,7 +578,7 @@ groups:
       - alert: LokiQueryFrontendHighQueueTime
         expr: |
           histogram_quantile(0.99,
-            sum(rate(loki_query_frontend_queue_duration_seconds_bucket[5m])) by (le)
+            sum(rate(cortex_query_scheduler_queue_duration_seconds_bucket[5m])) by (le)
           ) > 30
         for: 5m
         labels:
@@ -597,9 +590,8 @@ groups:
       # Alert on low cache hit rate
       - alert: LokiQueryFrontendLowCacheHitRate
         expr: |
-          sum(rate(loki_query_frontend_cache_hits_total[5m])) /
-          (sum(rate(loki_query_frontend_cache_hits_total[5m])) +
-           sum(rate(loki_query_frontend_cache_misses_total[5m]))) < 0.5
+          sum(rate(loki_cache_hits{name=~"frontend.*"}[5m])) /
+          sum(rate(loki_cache_fetched_keys{name=~"frontend.*"}[5m])) < 0.5
         for: 15m
         labels:
           severity: warning
@@ -609,8 +601,8 @@ groups:
       # Alert on query failures
       - alert: LokiQueryFrontendHighFailureRate
         expr: |
-          sum(rate(loki_query_frontend_queries_total{status="failed"}[5m])) /
-          sum(rate(loki_query_frontend_queries_total[5m])) > 0.05
+          sum(rate(loki_request_duration_seconds_count{route=~"loki_api_v1_query.*",status_code=~"5.."}[5m])) /
+          sum(rate(loki_request_duration_seconds_count{route=~"loki_api_v1_query.*"}[5m])) > 0.05
         for: 5m
         labels:
           severity: critical
@@ -622,10 +614,10 @@ groups:
 
 | Metric | Description | Target |
 |--------|-------------|--------|
-| `loki_query_frontend_queue_duration_seconds` | Time queries spend in queue | p99 < 10s |
-| `loki_query_frontend_cache_hits_total` | Number of cache hits | > 50% hit rate |
-| `loki_query_frontend_queries_total` | Total queries processed | Monitor for trends |
-| `loki_query_frontend_retries_total` | Query retries | Should be low |
+| `cortex_query_scheduler_queue_duration_seconds` | Time queries spend in the scheduler queue | p99 < 10s |
+| `loki_cache_hits` | Number of frontend cache hits | > 50% hit rate |
+| `loki_request_duration_seconds_count` | Query API requests processed | Monitor for trends |
+| `cortex_query_frontend_retries` | Query frontend retries | Should be low |
 
 ---
 
@@ -633,9 +625,9 @@ groups:
 
 1. **Right-size split intervals**: Start with 1 hour and adjust based on your query patterns. Smaller intervals mean more parallelism but higher overhead.
 
-2. **Scale queriers based on queue depth**: If `loki_query_scheduler_queue_length` consistently grows, add more queriers.
+2. **Scale queriers based on queue pressure**: If `cortex_query_scheduler_inflight_requests` or `cortex_query_scheduler_queue_duration_seconds` consistently grows, add more queriers.
 
-3. **Use query sharding for very large queries**: Enable `query_frontend.shard_queries` for additional parallelism within each sub-query.
+3. **Use query sharding for very large queries**: Keep `query_range.parallelise_shardable_queries` enabled for supported storage engines, and tune `limits_config.tsdb_max_query_parallelism` when you use TSDB.
 
 4. **Set appropriate timeouts**: Balance between allowing large queries and preventing resource exhaustion.
 
@@ -661,7 +653,7 @@ groups:
 - Check for runaway queries from specific tenants
 
 **Issue: Memory pressure on frontend**
-- Reduce `max_parallel` to limit concurrent sub-queries
+- Reduce `max_query_parallelism` to limit concurrent sub-queries
 - Use external cache (Memcached/Redis) instead of embedded
 - Increase memory limits or add more frontend replicas
 
