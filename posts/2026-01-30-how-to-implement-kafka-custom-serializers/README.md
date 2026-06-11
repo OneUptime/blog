@@ -80,6 +80,9 @@ public class JsonSchemaSerializer<T> implements Serializer<T> {
 
     @Override
     public byte[] serialize(String topic, T data) {
+        if (data == null) {
+            return null;
+        }
         try {
             JsonNode node = mapper.valueToTree(data);
             Set<ValidationMessage> errors = schema.validate(node);
@@ -110,9 +113,12 @@ public class AvroSerializer<T extends SpecificRecordBase> implements Serializer<
 
     @Override
     public byte[] serialize(String topic, T record) {
+        if (record == null) {
+            return null;
+        }
         try {
             Schema schema = record.getSchema();
-            int schemaId = schemaRegistry.register(topic + "-value", schema);
+            int schemaId = schemaRegistry.register(topic + "-value", new AvroSchema(schema));
 
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             out.write(0); // Magic byte
@@ -158,6 +164,9 @@ public class ProtobufDeserializer<T extends Message> implements Deserializer<T> 
 
     @Override
     public T deserialize(String topic, byte[] data) {
+        if (data == null) {
+            return null;
+        }
         try {
             return parser.parseFrom(data);
         } catch (InvalidProtocolBufferException e) {
@@ -174,6 +183,9 @@ When schemas evolve, your deserializer must handle both old and new formats. Imp
 ```java
 @Override
 public User deserialize(String topic, byte[] data) {
+    if (data == null || data.length == 0) {
+        return null;
+    }
     int version = data[0]; // First byte indicates version
     byte[] payload = Arrays.copyOfRange(data, 1, data.length);
 
@@ -198,7 +210,7 @@ public byte[] serialize(String topic, User user) {
         log.error("Serialization failed for topic {}: {}", topic, e.getMessage());
         // Option 1: Throw to halt processing
         throw new SerializationException("Failed to serialize", e);
-        // Option 2: Return null to skip message (use with caution)
+        // Option 2: Return null to send a null payload/tombstone (use with caution)
         // return null;
     }
 }
