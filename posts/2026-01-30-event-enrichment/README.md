@@ -219,7 +219,7 @@ Next, implement the individual enrichment methods with cache-aside pattern.
     // Cache miss - fetch from database
     const result = await this.db.query<UserContext>(
       `SELECT tier, region,
-              EXTRACT(DAY FROM NOW() - created_at) as account_age_days,
+              FLOOR(EXTRACT(EPOCH FROM (NOW() - created_at)) / 86400)::int as account_age_days,
               lifetime_value
        FROM users WHERE id = $1`,
       [userId]
@@ -232,7 +232,7 @@ Next, implement the individual enrichment methods with cache-aside pattern.
     const userContext = result.rows[0];
 
     // Store in cache for future requests
-    await this.redis.setex(cacheKey, this.USER_CACHE_TTL, JSON.stringify(userContext));
+    await this.redis.set(cacheKey, JSON.stringify(userContext), 'EX', this.USER_CACHE_TTL);
 
     return userContext;
   }
@@ -247,7 +247,7 @@ Next, implement the individual enrichment methods with cache-aside pattern.
     }
 
     // Call external GeoIP service
-    const response = await fetch(`${this.geoipEndpoint}/lookup?ip=${ipAddress}`);
+    const response = await fetch(`${this.geoipEndpoint}/lookup?ip=${encodeURIComponent(ipAddress)}`);
     if (!response.ok) {
       return undefined;
     }
@@ -259,7 +259,7 @@ Next, implement the individual enrichment methods with cache-aside pattern.
       is_vpn: data.is_anonymous
     };
 
-    await this.redis.setex(cacheKey, this.GEO_CACHE_TTL, JSON.stringify(geoContext));
+    await this.redis.set(cacheKey, JSON.stringify(geoContext), 'EX', this.GEO_CACHE_TTL);
 
     return geoContext;
   }
@@ -284,7 +284,7 @@ Next, implement the individual enrichment methods with cache-aside pattern.
     }
 
     const productContext = result.rows[0];
-    await this.redis.setex(cacheKey, this.PRODUCT_CACHE_TTL, JSON.stringify(productContext));
+    await this.redis.set(cacheKey, JSON.stringify(productContext), 'EX', this.PRODUCT_CACHE_TTL);
 
     return productContext;
   }
@@ -326,7 +326,7 @@ export class EnrichmentStreamProcessor {
     await this.producer.connect();
     await this.consumer.subscribe({ topic: this.inputTopic });
 
-    // Process messages with concurrency control
+    // Process messages as they arrive
     await this.consumer.run({
       eachMessage: async (payload: EachMessagePayload) => {
         const { message } = payload;
@@ -362,6 +362,12 @@ For observability pipelines, the OpenTelemetry Collector provides built-in proce
 ```yaml
 # otel-collector-config.yaml - Enrichment processors for telemetry
 
+receivers:
+  otlp:
+    protocols:
+      grpc:
+      http:
+
 processors:
   # Add static resource attributes to all telemetry
   resource:
@@ -373,29 +379,30 @@ processors:
         value: payments
         action: upsert
 
-  # Enrich spans with computed attributes
-  attributes:
-    actions:
-      # Add region based on service name pattern
-      - key: cloud.region
-        value: us-west-2
-        action: insert
-      # Copy user tier from resource to span for easier querying
-      - key: user.tier
-        from_attribute: resource.user.tier
-        action: insert
+  batch:
 
   # Transform processor for conditional enrichment
   transform:
+    error_mode: ignore
     trace_statements:
       - context: span
         statements:
+          # Add a static region if the span does not already have one
+          - set(attributes["cloud.region"], "us-west-2")
+            where attributes["cloud.region"] == nil
+          # Copy user tier from resource to span for easier querying
+          - set(attributes["user.tier"], resource.attributes["user.tier"])
+            where resource.attributes["user.tier"] != nil
           # Mark high-value transactions
           - set(attributes["transaction.priority"], "high")
             where attributes["payment.amount"] > 10000
           # Add latency classification
           - set(attributes["latency.class"], "slow")
-            where duration > 500000000
+            where (end_time_unix_nano - start_time_unix_nano) > 500000000
+
+exporters:
+  otlp:
+    endpoint: otel-gateway.example.com:4317
 
 service:
   pipelines:
