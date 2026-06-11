@@ -126,6 +126,10 @@ async function getServiceToken() {
     body: params.toString(),
   });
 
+  if (!response.ok) {
+    throw new Error(`Token request failed: ${response.status}`);
+  }
+
   const { access_token, expires_in } = await response.json();
 
   // Cache this token until it expires minus a buffer
@@ -209,7 +213,8 @@ async function exchangeTokenForDownstream(incomingToken, targetAudience) {
 // Middleware that exchanges tokens before calling downstream services
 async function callServiceB(req, data) {
   // Extract the user's token from the incoming request
-  const userToken = req.headers.authorization?.replace('Bearer ', '');
+  const authHeader = req.headers.authorization || '';
+  const userToken = authHeader.startsWith('Bearer ') ? authHeader.slice('Bearer '.length) : '';
 
   if (!userToken) {
     throw new Error('No authorization token provided');
@@ -252,6 +257,7 @@ function requireScopes(...requiredScopes) {
     const hasAllScopes = requiredScopes.every(scope => tokenScopes.includes(scope));
 
     if (!hasAllScopes) {
+      res.set('WWW-Authenticate', `Bearer error="insufficient_scope", scope="${requiredScopes.join(' ')}"`);
       return res.status(403).json({
         error: 'insufficient_scope',
         required: requiredScopes,
