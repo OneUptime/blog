@@ -333,7 +333,7 @@ rules:
 
 ## Service Account Token Projection
 
-Kubernetes 1.20+ uses bound service account tokens by default. These tokens are time-limited, audience-bound, and more secure than legacy tokens.
+Kubernetes 1.22+ uses bound service account tokens by default. These tokens are time-limited, audience-bound, and more secure than legacy tokens.
 
 ### Default Token Mount
 
@@ -680,7 +680,7 @@ rules:
   # Read own configmaps
   - apiGroups: [""]
     resources: ["configmaps"]
-    verbs: ["get", "list", "watch"]
+    verbs: ["get"]
     resourceNames: ["webapp-config", "webapp-features"]
   # Read own secrets
   - apiGroups: [""]
@@ -808,7 +808,9 @@ cat /var/run/secrets/kubernetes.io/serviceaccount/token
 # Decode the JWT payload (requires jq)
 cat /var/run/secrets/kubernetes.io/serviceaccount/token | \
   cut -d. -f2 | \
-  base64 -d 2>/dev/null | \
+  tr '_-' '/+' | \
+  awk '{ while (length($0) % 4) $0 = $0 "="; print }' | \
+  base64 -d | \
   jq .
 
 # Test API access from inside pod
