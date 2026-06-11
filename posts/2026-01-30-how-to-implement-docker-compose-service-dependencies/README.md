@@ -15,7 +15,6 @@ When building multi-container applications with Docker Compose, managing service
 The `depends_on` directive is the simplest way to define service dependencies in Docker Compose. It ensures that dependent services start in the correct order.
 
 ```yaml
-version: "3.8"
 services:
   web:
     image: my-web-app
@@ -36,14 +35,13 @@ In this example, Docker Compose will start `db` and `redis` before starting `web
 
 Starting a container is not the same as the service being ready to accept connections. A PostgreSQL container might take several seconds to initialize its database before accepting queries. If your application tries to connect immediately after the container starts, it will fail.
 
-Docker Compose v3 introduced conditions with health checks to address this problem, providing true readiness verification rather than simple startup ordering.
+The current Compose Specification supports conditions with health checks to address this problem, providing true readiness verification rather than simple startup ordering.
 
 ## Using condition: service_healthy
 
 The `service_healthy` condition ensures a dependent service only starts after the dependency passes its health check.
 
 ```yaml
-version: "3.8"
 services:
   web:
     image: my-web-app
@@ -96,7 +94,7 @@ services:
       start_period: 30s
 
   elasticsearch:
-    image: elasticsearch:8.10.0
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.10.0
     environment:
       - discovery.type=single-node
       - xpack.security.enabled=false
@@ -116,7 +114,7 @@ For more complex scenarios, wait-for scripts provide additional flexibility. The
 services:
   web:
     build: ./web
-    command: ["./wait-for-it.sh", "db:5432", "--", "python", "app.py"]
+    command: ["./wait-for-it.sh", "db", "5432", "--", "python", "app.py"]
     depends_on:
       - db
 
