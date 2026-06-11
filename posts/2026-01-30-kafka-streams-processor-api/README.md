@@ -83,7 +83,7 @@ public class OrderValidationProcessor implements Processor<String, Order, String
     public void process(Record<String, Order> record) {
         Order order = record.value();
 
-        if (order == null || order.getItems().isEmpty()) {
+        if (order == null || order.getItems() == null || order.getItems().isEmpty()) {
             // Skip invalid records
             return;
         }
@@ -415,8 +415,8 @@ flowchart LR
     end
 ```
 
-- **STREAM_TIME**: Advances based on record timestamps. Punctuator fires when stream time passes the scheduled interval.
-- **WALL_CLOCK_TIME**: Advances based on system clock. Fires at regular intervals even with no records.
+- **STREAM_TIME**: Advances based on record timestamps. Punctuator fires when stream time passes the scheduled interval, so it only advances when records arrive.
+- **WALL_CLOCK_TIME**: Advances based on system clock. Fires on a best-effort basis at regular intervals, even with no records.
 
 ### Registering Punctuators
 
@@ -484,10 +484,10 @@ public class TimeoutProcessor implements Processor<String, Event, String, Alert>
 ### Periodic Flush Pattern
 
 ```java
-public class BatchingProcessor implements Processor<String, Record, String, Batch> {
+public class BatchingProcessor implements Processor<String, Event, String, Batch> {
 
     private ProcessorContext<String, Batch> context;
-    private final List<Record> buffer = new ArrayList<>();
+    private final List<Event> buffer = new ArrayList<>();
     private static final int BATCH_SIZE = 100;
     private static final Duration FLUSH_INTERVAL = Duration.ofSeconds(30);
 
@@ -514,7 +514,7 @@ public class BatchingProcessor implements Processor<String, Record, String, Batc
     }
 
     @Override
-    public void process(Record<String, Record> record) {
+    public void process(Record<String, Event> record) {
         buffer.add(record.value());
 
         // Flush if batch size reached
@@ -666,6 +666,10 @@ public class InventoryTrackerProcessor
     public void process(Record<String, InventoryUpdate> record) {
         InventoryUpdate update = record.value();
 
+        if (update == null) {
+            return;
+        }
+
         // Update inventory state
         inventoryStore.put(update.productId(), update.availableQuantity());
 
@@ -743,7 +747,7 @@ public class OrderReservationProcessor
                     new OrderResult(order.orderId(), OrderStatus.CONFIRMED, null, timestamp),
                     timestamp
                 ),
-                "confirmed-orders"
+                "confirmed-sink"
             );
         } else {
             // Store for retry or reject
@@ -755,7 +759,7 @@ public class OrderReservationProcessor
                     new OrderResult(order.orderId(), OrderStatus.PENDING, rejectReason, timestamp),
                     timestamp
                 ),
-                "rejected-orders"
+                "rejected-sink"
             );
         }
     }
@@ -922,14 +926,14 @@ KStream<String, Order> validOrders = orders
     .filter((key, order) -> order != null && !order.items().isEmpty());
 
 // Switch to Processor API for complex logic
-validOrders.process(
+KStream<String, Order> processedOrders = validOrders.process(
     () -> new ComplexProcessingProcessor(),
     Named.as("complex-processor"),
     "state-store-1", "state-store-2"
 );
 
 // Back to DSL
-validOrders
+processedOrders
     .mapValues(order -> new OrderSummary(order))
     .to("order-summaries");
 ```
