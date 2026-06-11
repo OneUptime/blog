@@ -104,7 +104,7 @@ For more aggressive optimization, combine pruning with knowledge distillation:
 import torch
 import torch.nn as nn
 import torch.nn.utils.prune as prune
-from typing import Iterator, Tuple
+from typing import Tuple
 
 def prune_model(
     model: nn.Module,
@@ -222,7 +222,6 @@ flowchart LR
 ```python
 import tensorrt as trt
 import numpy as np
-from typing import Optional
 
 class TensorRTEngine:
     """
@@ -245,32 +244,15 @@ class TensorRTEngine:
 
         self.context = self.engine.create_execution_context()
 
-        # Allocate buffers
-        self.inputs: list = []
-        self.outputs: list = []
-        self.bindings: list = []
+        self.input_names = []
+        self.output_names = []
 
-        self._allocate_buffers()
-
-    def _allocate_buffers(self) -> None:
-        """Allocate GPU memory for inputs and outputs."""
-        import pycuda.driver as cuda
-
-        for binding in self.engine:
-            shape = self.engine.get_binding_shape(binding)
-            size = trt.volume(shape)
-            dtype = trt.nptype(self.engine.get_binding_dtype(binding))
-
-            # Allocate host and device buffers
-            host_mem = cuda.pagelocked_empty(size, dtype)
-            device_mem = cuda.mem_alloc(host_mem.nbytes)
-
-            self.bindings.append(int(device_mem))
-
-            if self.engine.binding_is_input(binding):
-                self.inputs.append({'host': host_mem, 'device': device_mem})
+        for i in range(self.engine.num_io_tensors):
+            name = self.engine.get_tensor_name(i)
+            if self.engine.get_tensor_mode(name) == trt.TensorIOMode.INPUT:
+                self.input_names.append(name)
             else:
-                self.outputs.append({'host': host_mem, 'device': device_mem})
+                self.output_names.append(name)
 
     def infer(self, input_data: np.ndarray) -> np.ndarray:
         """
@@ -284,24 +266,44 @@ class TensorRTEngine:
         """
         import pycuda.driver as cuda
 
-        # Copy input to device
-        np.copyto(self.inputs[0]['host'], input_data.ravel())
-        cuda.memcpy_htod(self.inputs[0]['device'], self.inputs[0]['host'])
+        input_name = self.input_names[0]
+        output_name = self.output_names[0]
 
-        # Execute inference
-        self.context.execute_v2(self.bindings)
+        input_dtype = trt.nptype(self.engine.get_tensor_dtype(input_name))
+        host_input = np.ascontiguousarray(input_data, dtype=input_dtype)
+        self.context.set_input_shape(input_name, host_input.shape)
+
+        output_shape = tuple(self.context.get_tensor_shape(output_name))
+        output_dtype = trt.nptype(self.engine.get_tensor_dtype(output_name))
+        host_output = cuda.pagelocked_empty(
+            trt.volume(output_shape),
+            dtype=output_dtype
+        )
+
+        device_input = cuda.mem_alloc(host_input.nbytes)
+        device_output = cuda.mem_alloc(host_output.nbytes)
+        stream = cuda.Stream()
+
+        self.context.set_tensor_address(input_name, int(device_input))
+        self.context.set_tensor_address(output_name, int(device_output))
+
+        # Copy input to device and execute inference
+        cuda.memcpy_htod_async(device_input, host_input, stream)
+        self.context.execute_async_v3(stream.handle)
 
         # Copy output from device
-        cuda.memcpy_dtoh(self.outputs[0]['host'], self.outputs[0]['device'])
+        cuda.memcpy_dtoh_async(host_output, device_output, stream)
+        stream.synchronize()
 
-        return self.outputs[0]['host'].copy()
+        return host_output.reshape(output_shape).copy()
 
 
 def build_tensorrt_engine(
     onnx_path: str,
     engine_path: str,
     fp16_mode: bool = True,
-    max_batch_size: int = 8
+    max_batch_size: int = 8,
+    input_shape: tuple[int, ...] = (1, 3, 224, 224)
 ) -> None:
     """
     Build TensorRT engine from ONNX model.
@@ -311,6 +313,7 @@ def build_tensorrt_engine(
         engine_path: Path to save TensorRT engine
         fp16_mode: Enable FP16 precision
         max_batch_size: Maximum batch size for dynamic batching
+        input_shape: Representative input shape for optimization profiles
     """
     logger = trt.Logger(trt.Logger.WARNING)
     builder = trt.Builder(logger)
@@ -328,16 +331,29 @@ def build_tensorrt_engine(
 
     # Configure builder
     config = builder.create_builder_config()
-    config.max_workspace_size = 1 << 30  # 1GB workspace
+    config.set_memory_pool_limit(
+        trt.MemoryPoolType.WORKSPACE,
+        1 << 30  # 1GB workspace
+    )
 
     if fp16_mode:
         config.set_flag(trt.BuilderFlag.FP16)
 
+    input_tensor = network.get_input(0)
+    if any(dim < 0 for dim in input_tensor.shape):
+        profile = builder.create_optimization_profile()
+        min_shape = (1, *input_shape[1:])
+        max_shape = (max_batch_size, *input_shape[1:])
+        profile.set_shape(input_tensor.name, min_shape, input_shape, max_shape)
+        config.add_optimization_profile(profile)
+
     # Build and serialize engine
-    engine = builder.build_engine(network, config)
+    serialized_engine = builder.build_serialized_network(network, config)
+    if serialized_engine is None:
+        raise RuntimeError("Failed to build TensorRT engine")
 
     with open(engine_path, 'wb') as f:
-        f.write(engine.serialize())
+        f.write(serialized_engine)
 
     print(f"TensorRT engine saved to {engine_path}")
 ```
@@ -513,6 +529,7 @@ class AdaptiveBatcher(Generic[T, R]):
         self.queue: deque[InferenceRequest[T]] = deque()
         self.lock = asyncio.Lock()
         self.processing = False
+        self.timer_task: asyncio.Task | None = None
 
         # Metrics for adaptive sizing
         self.recent_latencies: deque[float] = deque(maxlen=100)
@@ -542,9 +559,19 @@ class AdaptiveBatcher(Generic[T, R]):
 
             # Start processing if conditions met
             if self._should_process():
+                if self.timer_task is not None:
+                    self.timer_task.cancel()
+                    self.timer_task = None
                 asyncio.create_task(self._process_batch())
+            elif self.timer_task is None or self.timer_task.done():
+                self.timer_task = asyncio.create_task(self._process_after_delay())
 
         return await future
+
+    async def _process_after_delay(self) -> None:
+        """Process queued requests after the maximum wait time."""
+        await asyncio.sleep(self.max_wait_ms / 1000)
+        asyncio.create_task(self._process_batch())
 
     def _should_process(self) -> bool:
         """Determine if batch should be processed now."""
@@ -612,10 +639,15 @@ class AdaptiveBatcher(Generic[T, R]):
         finally:
             async with self.lock:
                 self.processing = False
+                self.timer_task = None
 
                 # Check if more processing needed
                 if self._should_process():
                     asyncio.create_task(self._process_batch())
+                elif self.queue:
+                    self.timer_task = asyncio.create_task(
+                        self._process_after_delay()
+                    )
 
     def _adaptive_batch_size(self) -> int:
         """Calculate adaptive batch size based on recent latencies."""
@@ -682,7 +714,7 @@ flowchart TB
 ```python
 import gc
 import numpy as np
-from typing import Optional, Any
+from typing import Optional, Any, Callable
 from dataclasses import dataclass
 import threading
 import weakref
@@ -802,7 +834,7 @@ class MemoryManagedInference:
 
     def __init__(
         self,
-        model_loader: callable,
+        model_loader: Callable[[], Any],
         config: MemoryConfig
     ):
         """
@@ -826,7 +858,7 @@ class MemoryManagedInference:
         # Start garbage collection thread
         self._start_gc_thread()
 
-    def _load_model(self, model_loader: callable) -> None:
+    def _load_model(self, model_loader: Callable[[], Any]) -> None:
         """Load model with memory checks."""
         import psutil
 
@@ -1169,6 +1201,8 @@ Here is a complete example that brings together all the components:
 
 ```python
 import asyncio
+import json
+import time
 import numpy as np
 from typing import Any
 from dataclasses import dataclass
