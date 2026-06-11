@@ -142,7 +142,7 @@ PUT /metrics-sorted
 
 ## Early Query Termination
 
-The primary benefit of index sorting is early query termination. When your query sort matches the index sort, Elasticsearch can stop searching after finding enough documents.
+The primary benefit of index sorting is early query termination. When your query sort matches the index sort and you do not need an exact hit count, Elasticsearch can stop collecting after the requested number of matching documents per segment.
 
 ```mermaid
 sequenceDiagram
@@ -154,11 +154,11 @@ sequenceDiagram
 
     Client->>Elasticsearch: Search with sort=timestamp desc, size=10
     Elasticsearch->>Segment1: Scan sorted documents
-    Segment1-->>Elasticsearch: Return top 10 candidates
-    Note over Elasticsearch: Early termination possible
-    Elasticsearch->>Segment2: Quick check for better matches
-    Segment2-->>Elasticsearch: No better matches found
-    Note over Elasticsearch: Skip remaining segments
+    Segment1-->>Elasticsearch: Return first 10 matches
+    Note over Segment1: Early terminate this segment
+    Elasticsearch->>Segment2: Scan sorted documents
+    Segment2-->>Elasticsearch: Return first 10 matches
+    Note over Segment2: Early terminate this segment
     Elasticsearch-->>Client: Return 10 results
 ```
 
@@ -192,28 +192,28 @@ GET /logs-sorted/_search
 
 ## Conjunction Optimization
 
-Index sorting enables conjunction optimization for queries that combine multiple conditions. When documents are sorted, Elasticsearch can efficiently skip entire blocks of documents that cannot match.
+Index sorting can also help conjunctions (queries that combine multiple conditions with AND logic). This works best when the index is sorted first by low-cardinality fields that are frequently used for filtering, because documents with the same filter values are grouped together and Lucene can skip ranges of document IDs that cannot match.
 
 ```mermaid
 flowchart LR
-    subgraph "Sorted Index by Timestamp DESC"
-        A[Doc 1: Jan 30]
-        B[Doc 2: Jan 29]
-        C[Doc 3: Jan 28]
-        D[Doc 4: Jan 27]
-        E[Doc 5: Jan 26]
-        F[Doc 6: Jan 25]
+    subgraph "Sorted Index by service ASC, level ASC"
+        A[Doc 1: api-gateway error]
+        B[Doc 2: api-gateway error]
+        C[Doc 3: api-gateway info]
+        D[Doc 4: billing error]
+        E[Doc 5: billing info]
+        F[Doc 6: worker info]
     end
 
-    subgraph "Query: timestamp >= Jan 27"
-        G[Scan Docs 1-4]
-        H[Skip Docs 5-6]
+    subgraph "Query: service=api-gateway AND level=error"
+        G[Scan Docs 1-2]
+        H[Skip Non-Matching Groups]
     end
 
     A --> G
     B --> G
-    C --> G
-    D --> G
+    C --> H
+    D --> H
     E --> H
     F --> H
 
@@ -223,8 +223,10 @@ flowchart LR
 
 ### Optimized Conjunction Query
 
+For an index sorted by `service`, `level`, and then `timestamp`, a conjunction query can group the most selective low-cardinality filters first:
+
 ```json
-GET /logs-sorted/_search
+GET /logs-conjunction-sorted/_search
 {
   "size": 100,
   "query": {
@@ -243,6 +245,8 @@ GET /logs-sorted/_search
     }
   },
   "sort": [
+    { "service": "asc" },
+    { "level": "asc" },
     { "timestamp": "desc" }
   ]
 }
@@ -311,7 +315,7 @@ Typical performance improvements:
 |----------|----------|--------|-------------|
 | Top 10 recent logs | 150ms | 15ms | 10x faster |
 | Top 100 with filter | 300ms | 45ms | 6.7x faster |
-| Aggregation (no sort match) | 200ms | 210ms | No improvement |
+| Aggregation without a selective sorted filter | 200ms | 210ms | No early-termination benefit |
 
 ## Use Cases
 
@@ -432,7 +436,7 @@ flowchart TB
 
 ### When Index Sorting May Not Help
 
-1. **Aggregation queries** - Sorting does not improve aggregation performance
+1. **Aggregation queries** - Aggregations still collect all matching documents, so they do not get the same early-termination benefit
 2. **Different sort orders** - Queries with different sort fields see no benefit
 3. **Full result sets** - When you need all matching documents
 4. **Frequent updates** - Sorted indices have slightly higher indexing overhead
@@ -445,7 +449,7 @@ Not all field types support index sorting:
 // Supported field types
 {
   "keyword": "supported",
-  "numeric types": "supported (long, integer, short, byte, double, float)",
+  "numeric types": "supported",
   "date": "supported",
   "boolean": "supported"
 }
@@ -453,8 +457,8 @@ Not all field types support index sorting:
 // Not supported
 {
   "text": "not supported (use keyword instead)",
-  "nested": "not supported",
-  "object": "not supported"
+  "nested fields": "not supported as sort fields",
+  "object fields": "not supported as sort fields"
 }
 ```
 
@@ -481,16 +485,16 @@ graph TD
 
 ### 1. Analyze Query Patterns First
 
-Before implementing index sorting, analyze your most common queries:
+Before implementing index sorting, analyze your most common queries. If you log search requests separately, aggregate those logs to identify the most frequent sort fields:
 
 ```json
-GET /your-index/_search
+GET /search-logs/_search
 {
   "size": 0,
   "aggs": {
-    "common_sorts": {
+    "common_sort_fields": {
       "terms": {
-        "field": "_score",
+        "field": "sort_field.keyword",
         "size": 10
       }
     }
