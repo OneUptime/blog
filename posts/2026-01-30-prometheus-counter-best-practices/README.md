@@ -599,7 +599,6 @@ package main
 import (
     "log"
     "net/http"
-    "time"
 
     "github.com/prometheus/client_golang/prometheus"
     "github.com/prometheus/client_golang/prometheus/promauto"
