@@ -96,15 +96,11 @@ public class LoggingEndpointFilter : IEndpointFilter
 
 You can apply filters in several ways depending on your needs.
 
-Register the filter with the DI container and apply it to individual endpoints using `AddEndpointFilter<T>`.
+Apply filters that implement `IEndpointFilter` to individual endpoints using `AddEndpointFilter<T>`. Constructor dependencies for the filter are provided by DI, but the filter type itself does not need to be registered as a service.
 
 ```csharp
 // Program.cs
 var builder = WebApplication.CreateBuilder(args);
-
-// Register filters with DI
-builder.Services.AddScoped<LoggingEndpointFilter>();
-builder.Services.AddScoped<ValidationFilter>();
 
 var app = builder.Build();
 
@@ -396,9 +392,9 @@ app.MapPost("/api/emails/send", async (SendEmailRequest request, EmailService se
 
 ## Response Transformation Filter
 
-Transform responses to provide consistent API output formats. This filter wraps successful responses in a standard envelope.
+Transform responses to provide consistent API output formats. This filter wraps successful responses returned as plain objects in a standard envelope.
 
-The filter wraps handler results in a consistent response format with metadata like timestamps and request IDs.
+The filter wraps non-`IResult` handler results in a consistent response format with metadata like timestamps and request IDs.
 
 ```csharp
 // Filters/ResponseWrapperFilter.cs
@@ -411,9 +407,9 @@ public class ResponseWrapperFilter : IEndpointFilter
         var result = await next(context);
 
         // Skip wrapping for certain result types
-        if (result is IResult httpResult)
+        if (result is IResult)
         {
-            // Don't wrap error results or file results
+            // Don't wrap explicit HTTP results such as Ok, NotFound, or file results
             return result;
         }
 
@@ -582,11 +578,8 @@ Register filters on a route group to apply them to all endpoints within that gro
 // Program.cs
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddScoped<ApiKeyAuthFilter>();
-builder.Services.AddScoped<RateLimitFilter>();
-builder.Services.AddScoped<LoggingEndpointFilter>();
-builder.Services.AddScoped<ValidationFilter>();
-builder.Services.AddScoped<ExceptionHandlingFilter>();
+// Required by RateLimitFilter
+builder.Services.AddDistributedMemoryCache();
 
 var app = builder.Build();
 
@@ -712,7 +705,9 @@ public static class FilterExtensions
         return builder.AddEndpointFilterFactory((context, next) =>
         {
             var cache = context.ApplicationServices.GetRequiredService<IMemoryCache>();
-            var logger = context.ApplicationServices.GetRequiredService<ILogger<CachingFilter>>();
+            var logger = context.ApplicationServices
+                .GetRequiredService<ILoggerFactory>()
+                .CreateLogger("CachingFilter");
 
             return async (invocationContext) =>
             {
@@ -814,13 +809,6 @@ builder.Services.AddStackExchangeRedisCache(options =>
 });
 
 builder.Services.AddMemoryCache();
-
-// Register filters
-builder.Services.AddScoped<ExceptionHandlingFilter>();
-builder.Services.AddScoped<LoggingEndpointFilter>();
-builder.Services.AddScoped<ApiKeyAuthFilter>();
-builder.Services.AddScoped<RateLimitFilter>();
-builder.Services.AddScoped<ValidationFilter>();
 
 // Register services
 builder.Services.AddScoped<ProductService>();
