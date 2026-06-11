@@ -10,7 +10,7 @@ Description: Learn how DNS prefetching reduces page load latency by resolving do
 
 Every millisecond counts in web performance. When a user clicks a link, their browser must first resolve the domain name to an IP address before it can establish a connection. This DNS lookup typically takes 20 to 120 milliseconds, but can exceed 200ms on slower networks or for domains with poor DNS infrastructure.
 
-DNS prefetching eliminates this latency by resolving domain names in advance, before the user actually needs them.
+DNS prefetching can hide this latency by resolving domain names in advance, before the user actually needs them, if the browser honors the hint and the cached result is still valid.
 
 ---
 
@@ -167,7 +167,7 @@ flowchart LR
         A1[DNS lookup only]
         B1[DNS + TCP + TLS]
         C1[Download resource]
-        D1[Download + parse]
+        D1[High-priority download]
     end
 
     A -.-> A1
@@ -259,8 +259,8 @@ gantt
 
 On a typical connection:
 - **Without hints**: 280ms total (80ms DNS + 40ms TCP + 60ms TLS + 100ms request)
-- **With dns-prefetch**: 200ms total (DNS already resolved)
-- **With preconnect**: 100ms total (connection already established)
+- **With dns-prefetch**: 200ms total (if DNS was already resolved)
+- **With preconnect**: 100ms total (if the connection is still open)
 
 ---
 
@@ -443,7 +443,9 @@ const observer = new PerformanceObserver((list) => {
 
 observer.observe({ entryTypes: ['resource'] });
 
-// A DNS time of 0ms indicates the lookup was prefetched or cached
+// A DNS time of 0ms can indicate the lookup was prefetched or cached.
+// For cross-origin resources, detailed timing fields are 0 unless
+// the resource sends a Timing-Allow-Origin header.
 ```
 
 In Chrome DevTools:
@@ -463,4 +465,4 @@ DNS prefetching is a low-cost optimization that can meaningfully reduce perceive
 - Consider mobile users and respect data saver preferences
 - Measure impact with Performance API and browser dev tools
 
-The best part about DNS prefetching is its simplicity. A few lines of HTML can save your users hundreds of milliseconds on every page load. In the world of web performance, that is a significant win for minimal effort.
+The best part about DNS prefetching is its simplicity. A few lines of HTML can save your users hundreds of milliseconds on first requests to external domains. In the world of web performance, that is a significant win for minimal effort.
