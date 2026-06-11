@@ -27,8 +27,8 @@ flowchart TB
     subgraph Consumers["Consumers (Storage Tables)"]
         EC[events_waits_current]
         EH[events_waits_history]
-        ES[events_statements_summary]
-        MS[memory_summary_by_thread]
+        ES[events_statements_summary_by_digest]
+        MS[memory_summary_by_thread_by_event_name]
     end
 
     subgraph Analysis["Analysis Output"]
@@ -93,10 +93,11 @@ WHERE NAME LIKE 'wait/io/%'
 Consumers are the destination tables where instrumented data is stored:
 
 ```sql
--- Enable statement and wait consumers
+-- Enable statement, wait, and stage consumers
 UPDATE performance_schema.setup_consumers
 SET ENABLED = 'YES'
 WHERE NAME LIKE 'events_statements%'
+   OR NAME = 'statements_digest'
    OR NAME LIKE 'events_waits%'
    OR NAME LIKE 'events_stages%';
 
@@ -246,15 +247,15 @@ LIMIT 15;
 -- File I/O statistics by file type
 SELECT
     SUBSTRING_INDEX(EVENT_NAME, '/', -1) AS io_type,
-    COUNT_STAR AS operations,
-    ROUND(SUM_TIMER_WAIT / 1000000000000, 4) AS total_time_sec,
-    ROUND(SUM_NUMBER_OF_BYTES_READ / 1024 / 1024, 2) AS read_mb,
-    ROUND(SUM_NUMBER_OF_BYTES_WRITE / 1024 / 1024, 2) AS write_mb
-FROM performance_schema.events_waits_summary_global_by_event_name
+    SUM(COUNT_STAR) AS operations,
+    ROUND(SUM(SUM_TIMER_WAIT) / 1000000000000, 4) AS total_time_sec,
+    ROUND(SUM(SUM_NUMBER_OF_BYTES_READ) / 1024 / 1024, 2) AS read_mb,
+    ROUND(SUM(SUM_NUMBER_OF_BYTES_WRITE) / 1024 / 1024, 2) AS write_mb
+FROM performance_schema.file_summary_by_event_name
 WHERE EVENT_NAME LIKE 'wait/io/file/%'
   AND COUNT_STAR > 0
 GROUP BY SUBSTRING_INDEX(EVENT_NAME, '/', -1)
-ORDER BY SUM_TIMER_WAIT DESC;
+ORDER BY SUM(SUM_TIMER_WAIT) DESC;
 ```
 
 ### Table Lock Analysis
