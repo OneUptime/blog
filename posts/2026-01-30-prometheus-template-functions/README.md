@@ -167,12 +167,12 @@ groups:
 
 ### Handling Missing Labels
 
-When a label might not exist, use the `or` function to provide defaults.
+When a label might not exist, use the `or` function to provide defaults. Prometheus templates do not ship with a `default` function, so use Go's built-in `or` (which returns the first non-empty argument) or an explicit conditional.
 
 ```yaml
 annotations:
   # Provide default if label is missing
-  environment: "{{ $labels.env | default \"unknown\" }}"
+  environment: "{{ or $labels.env \"unknown\" }}"
 
   # Check if label exists before using
   team: "{{ if $labels.team }}{{ $labels.team }}{{ else }}unassigned{{ end }}"
@@ -203,8 +203,8 @@ annotations:
   # Fixed decimal places
   cpu: "CPU usage: {{ printf \"%.2f\" $value }}%"
 
-  # Percentage from ratio
-  error_rate: "Error rate: {{ printf \"%.1f\" (mul $value 100) }}%"
+  # Percentage from ratio (humanizePercentage multiplies by 100 and adds a % suffix)
+  error_rate: "Error rate: {{ $value | humanizePercentage }}"
 
   # Scientific notation for large numbers
   events: "{{ printf \"%.2e\" $value }} events processed"
@@ -229,7 +229,7 @@ annotations:
 
   # Duration formatting
   uptime: "Service uptime: {{ $value | humanizeDuration }}"
-  # Output: "2d 5h 30m" for 191400 seconds
+  # Output: "2d 5h 10m 0s" for 191400 seconds
 ```
 
 ### Time Formatting
@@ -238,8 +238,11 @@ Format timestamps for human readability.
 
 ```yaml
 annotations:
-  # Current time
-  fired_at: "Alert fired at {{ now | date \"2006-01-02 15:04:05 MST\" }}"
+  # Format the current time (now returns a Unix timestamp; humanizeTimestamp renders it)
+  fired_at: "Alert fired at {{ now | humanizeTimestamp }}"
+
+  # Format a Unix timestamp value from a metric
+  last_restart: "Service last restarted at {{ $value | humanizeTimestamp }}"
 
   # Relative time
   since: "Issue started {{ humanizeDuration $value }} ago"
@@ -259,11 +262,11 @@ Control what appears in your alerts based on conditions.
 annotations:
   summary: |
     {{ if gt $value 0.9 }}
-    CRITICAL: {{ $labels.service }} error rate is {{ printf "%.1f" (mul $value 100) }}%
+    CRITICAL: {{ $labels.service }} error rate is {{ $value | humanizePercentage }}
     {{ else if gt $value 0.5 }}
-    WARNING: {{ $labels.service }} error rate elevated at {{ printf "%.1f" (mul $value 100) }}%
+    WARNING: {{ $labels.service }} error rate elevated at {{ $value | humanizePercentage }}
     {{ else }}
-    INFO: {{ $labels.service }} error rate is {{ printf "%.1f" (mul $value 100) }}%
+    INFO: {{ $labels.service }} error rate is {{ $value | humanizePercentage }}
     {{ end }}
 ```
 
@@ -408,11 +411,12 @@ annotations:
     from=now-1h&
     to=now
 
-  # Link to logs
+  # Link to logs (relative time params are widely supported and avoid extra formatting)
   logs_link: |
     https://oneuptime.com/logs?
     query=service%3D{{ $labels.service }}%20AND%20level%3Derror&
-    from={{ now | date "2006-01-02T15:04:05Z" }}
+    from=now-1h&
+    to=now
 
   # Link to runbook
   runbook_url: "https://runbooks.example.com/alerts/{{ $labels.alertname | toLower | reReplaceAll \" \" \"-\" }}"
@@ -520,9 +524,9 @@ A comprehensive Slack template for Alertmanager.
 {{ define "__alert_severity_prefix" -}}
 {{ if ne .Status "firing" -}}
 :white_check_mark:
-{{- else if eq .Labels.severity "critical" -}}
+{{- else if eq .CommonLabels.severity "critical" -}}
 :rotating_light:
-{{- else if eq .Labels.severity "warning" -}}
+{{- else if eq .CommonLabels.severity "warning" -}}
 :warning:
 {{- else -}}
 :information_source:
@@ -684,14 +688,14 @@ Always account for missing labels and zero values.
 ```yaml
 annotations:
   summary: |
-    {{ $labels.alertname }} on {{ $labels.instance | default "unknown instance" }}
+    {{ $labels.alertname }} on {{ or $labels.instance "unknown instance" }}
   description: |
     {{ if $value }}
     Current value: {{ printf "%.2f" $value }}
     {{ else }}
     Value unavailable
     {{ end }}
-    Service: {{ $labels.service | default "unspecified" }}
+    Service: {{ or $labels.service "unspecified" }}
 ```
 
 ### Version Control Your Templates
