@@ -57,10 +57,10 @@ openssl rsa -in private.pem -pubout -out public.pem
 
 ### Key Generation with AWS KMS
 
-AWS KMS generates keys inside FIPS 140-2 validated HSMs. You never see the raw key material for customer master keys (CMKs).
+AWS KMS generates keys inside FIPS-validated HSMs. You never see the raw key material for AWS KMS keys.
 
 ```bash
-# Create a symmetric CMK for envelope encryption
+# Create a symmetric KMS key for envelope encryption
 aws kms create-key \
   --description "Application encryption key" \
   --key-usage ENCRYPT_DECRYPT \
@@ -120,7 +120,7 @@ Benefits of envelope encryption:
 
 - **Performance**: Encrypt large datasets with fast symmetric keys while keeping the master key secure.
 - **Rotation simplicity**: Rotate the KEK without re-encrypting all data. Just re-encrypt the DEKs.
-- **Reduced KMS calls**: Generate DEKs locally; only call KMS to wrap/unwrap them.
+- **Reduced KMS calls**: Encrypt data locally with DEKs; only call KMS to generate or unwrap the encrypted data keys.
 
 ### Envelope Encryption with AWS KMS
 
@@ -136,7 +136,8 @@ def encrypt_data(plaintext: bytes) -> dict:
     # Generate a data key from KMS
     response = kms.generate_data_key(
         KeyId=KEY_ID,
-        KeySpec='AES_256'
+        KeySpec='AES_256',
+        EncryptionContext={'service': 'payments'}
     )
 
     # Use the plaintext key to encrypt data locally
@@ -156,7 +157,8 @@ def encrypt_data(plaintext: bytes) -> dict:
 def decrypt_data(encrypted_key: str, encrypted_data: str) -> bytes:
     # Decrypt the data key using KMS
     response = kms.decrypt(
-        CiphertextBlob=base64.b64decode(encrypted_key)
+        CiphertextBlob=base64.b64decode(encrypted_key),
+        EncryptionContext={'service': 'payments'}
     )
 
     plaintext_key = response['Plaintext']
@@ -171,8 +173,8 @@ def decrypt_data(encrypted_key: str, encrypted_data: str) -> bytes:
 Vault handles envelope encryption through its transit engine with the `datakey` endpoint.
 
 ```bash
-# Generate a wrapped data key
-vault write transit/datakey/wrapped/payments-key
+# Generate a data key
+vault write transit/datakey/plaintext/payments-key
 
 # Response includes:
 # - ciphertext: the encrypted DEK (store this)
@@ -208,7 +210,7 @@ flowchart LR
 
 ### Automatic Rotation with AWS KMS
 
-AWS KMS supports automatic annual rotation for symmetric CMKs.
+AWS KMS supports automatic rotation for symmetric KMS keys with AWS KMS key material.
 
 ```bash
 # Enable automatic rotation (rotates every 365 days)
@@ -283,11 +285,11 @@ When keys are compromised or retired, act fast.
 
 ```bash
 # Disable the key (reversible)
-aws kms disable-key --key-id alias/compromised-key
+aws kms disable-key --key-id <key-id>
 
 # Schedule deletion (7-30 day waiting period)
 aws kms schedule-key-deletion \
-  --key-id alias/compromised-key \
+  --key-id <key-id> \
   --pending-window-in-days 7
 
 # Cancel deletion if needed
@@ -297,16 +299,15 @@ aws kms cancel-key-deletion --key-id <key-id>
 ### Destroying Keys in HashiCorp Vault
 
 ```bash
-# Delete specific key versions
+# Allow deletion and delete the entire key
 vault write transit/keys/payments-key/config \
   deletion_allowed=true
 
 vault delete transit/keys/payments-key
 
-# Or disable the key without deletion
-vault write transit/keys/payments-key/config \
-  exportable=false \
-  allow_plaintext_backup=false
+# Or permanently trim old key versions after raising minimum versions
+vault write transit/keys/payments-key/trim \
+  min_available_version=5
 ```
 
 ---
@@ -373,7 +374,7 @@ path "transit/decrypt/payments-key" {
   capabilities = ["update"]
 }
 
-path "transit/datakey/wrapped/payments-key" {
+path "transit/datakey/plaintext/payments-key" {
   capabilities = ["update"]
 }
 
@@ -409,20 +410,17 @@ aws cloudtrail lookup-events \
   --end-time 2026-01-30T00:00:00Z
 ```
 
-Create CloudWatch alarms for suspicious activity:
+Create EventBridge rules for suspicious activity:
 
 ```bash
 # Alert on key deletion attempts
-aws cloudwatch put-metric-alarm \
-  --alarm-name kms-deletion-attempts \
-  --metric-name ScheduleKeyDeletion \
-  --namespace AWS/KMS \
-  --statistic Sum \
-  --period 300 \
-  --threshold 1 \
-  --comparison-operator GreaterThanOrEqualToThreshold \
-  --evaluation-periods 1 \
-  --alarm-actions arn:aws:sns:us-east-1:123456789012:security-alerts
+aws events put-rule \
+  --name kms-deletion-attempts \
+  --event-pattern '{"source":["aws.kms"],"detail-type":["AWS API Call via CloudTrail"],"detail":{"eventSource":["kms.amazonaws.com"],"eventName":["ScheduleKeyDeletion"]}}'
+
+aws events put-targets \
+  --rule kms-deletion-attempts \
+  --targets "Id"="security-alerts","Arn"="arn:aws:sns:us-east-1:123456789012:security-alerts"
 ```
 
 ### Vault Audit Logging
