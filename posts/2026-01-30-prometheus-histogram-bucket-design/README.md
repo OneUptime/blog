@@ -275,12 +275,13 @@ Each histogram bucket creates a separate time series. With labels, this multipli
 **Cardinality Calculation**
 
 ```text
-Total time series = (buckets + 2) * label_combinations
+Total time series = (buckets + 3) * label_combinations
+(buckets + 1 for the implicit +Inf bucket + _sum + _count)
 
 Example:
-- 10 buckets + _sum + _count = 12 series per combination
+- 10 explicit buckets + +Inf + _sum + _count = 13 series per combination
 - Labels: endpoint (20 values) * instance (5 values) * method (4 values)
-- Total: 12 * 20 * 5 * 4 = 4,800 time series
+- Total: 13 * 20 * 5 * 4 = 5,200 time series
 ```
 
 **Strategies to Control Cardinality**
@@ -343,10 +344,13 @@ scrape_configs:
     static_configs:
       - targets: ['localhost:8080']
     # Enable native histogram scraping
+    # PrometheusProto must come first - it is the only protocol that carries
+    # native histograms over the scrape wire
     scrape_protocols:
       - PrometheusProto
       - OpenMetricsText1.0.0
       - OpenMetricsText0.0.1
+      - PrometheusText1.0.0
       - PrometheusText0.0.4
 ```
 
@@ -363,8 +367,8 @@ nativeHistogram := prometheus.NewHistogram(prometheus.HistogramOpts{
     NativeHistogramBucketFactor: 1.1,
     // Maximum number of buckets (for memory control)
     NativeHistogramMaxBucketNumber: 100,
-    // Reset buckets after this many observations
-    // Helps adapt to changing distributions
+    // Minimum wall-clock time between full bucket resets
+    // (resets are triggered when the max bucket cap is exceeded)
     NativeHistogramMinResetDuration: 1 * time.Hour,
 })
 ```
@@ -724,12 +728,12 @@ sum(rate(http_request_duration_seconds_count[5m]))
 
 ```promql
 # Apdex with satisfied=0.5s, tolerating=2s
+# Apdex = (satisfied + tolerating/2) / total
+# Because buckets are cumulative, this simplifies to (le_T + le_4T) / (2 * count)
 (
   sum(rate(http_request_duration_seconds_bucket{le="0.5"}[5m]))
   +
   sum(rate(http_request_duration_seconds_bucket{le="2"}[5m]))
-  -
-  sum(rate(http_request_duration_seconds_bucket{le="0.5"}[5m]))
 ) / 2
 /
 sum(rate(http_request_duration_seconds_count[5m]))
