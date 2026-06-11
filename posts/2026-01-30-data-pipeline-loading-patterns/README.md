@@ -113,7 +113,7 @@ Suitable for logs, metrics, and immutable event streams.
 
 import pandas as pd
 from sqlalchemy import create_engine, text
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 import logging
 
@@ -164,7 +164,7 @@ class AppendLoader:
         # Add load metadata for data lineage tracking
         if add_metadata:
             df = df.copy()
-            df["_loaded_at"] = datetime.utcnow()
+            df["_loaded_at"] = datetime.now(timezone.utc)
             df["_load_id"] = self._generate_load_id()
 
         total_rows = len(df)
@@ -194,7 +194,7 @@ class AppendLoader:
             "rows_loaded": rows_loaded,
             "table": table_name,
             "status": "success",
-            "load_timestamp": datetime.utcnow().isoformat()
+            "load_timestamp": datetime.now(timezone.utc).isoformat()
         }
 
     def _generate_load_id(self) -> str:
@@ -270,7 +270,7 @@ Best for small tables, reference data, and full refresh scenarios.
 import pandas as pd
 from sqlalchemy import create_engine, text
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 
 logger = logging.getLogger(__name__)
@@ -310,7 +310,6 @@ class OverwriteLoader:
         df: pd.DataFrame,
         table_name: str,
         backup: bool = False,
-        preserve_schema: bool = True
     ) -> dict:
         """
         Overwrite target table with new data.
@@ -319,12 +318,10 @@ class OverwriteLoader:
             df: DataFrame containing complete dataset
             table_name: Target table name
             backup: Create backup table before overwrite
-            preserve_schema: Keep existing table schema
-
         Returns:
             Dictionary with load statistics
         """
-        start_time = datetime.utcnow()
+        start_time = datetime.now(timezone.utc)
 
         with self._transaction() as conn:
             # Optionally backup existing data
@@ -366,7 +363,7 @@ class OverwriteLoader:
             "table": table_name,
             "backup_created": backup,
             "status": "success",
-            "duration_seconds": (datetime.utcnow() - start_time).total_seconds()
+            "duration_seconds": (datetime.now(timezone.utc) - start_time).total_seconds()
         }
 
 
@@ -403,7 +400,7 @@ class SafeOverwriteLoader:
             ))
 
         # Step 2: Load data into staging table
-        df["_loaded_at"] = datetime.utcnow()
+        df["_loaded_at"] = datetime.now(timezone.utc)
         df.to_sql(
             name=staging_table,
             con=self.engine,
@@ -504,7 +501,7 @@ Handles both new records and updates to existing records.
 
 import pandas as pd
 from sqlalchemy import create_engine, text
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
 import logging
 
@@ -549,12 +546,14 @@ class UpsertLoader:
 
         # Add metadata columns
         df = df.copy()
-        df["_updated_at"] = datetime.utcnow()
+        df["_updated_at"] = datetime.now(timezone.utc)
 
         # Determine columns to update on conflict
         all_columns = list(df.columns)
         if update_columns is None:
             update_columns = [c for c in all_columns if c not in key_columns]
+        elif "_updated_at" not in update_columns:
+            update_columns = [*update_columns, "_updated_at"]
 
         # Build column lists for SQL
         columns_str = ", ".join(all_columns)
@@ -566,13 +565,18 @@ class UpsertLoader:
             f"{col} = EXCLUDED.{col}"
             for col in update_columns
         ])
+        conflict_action = (
+            f"DO UPDATE SET {update_set}"
+            if update_set
+            else "DO NOTHING"
+        )
 
         # PostgreSQL upsert SQL using ON CONFLICT
         upsert_sql = f"""
             INSERT INTO {table_name} ({columns_str})
             VALUES ({placeholders})
             ON CONFLICT ({key_str})
-            DO UPDATE SET {update_set}
+            {conflict_action}
         """
 
         # Execute upsert for each row
@@ -603,7 +607,7 @@ class UpsertLoader:
     ) -> dict:
         """
         Generic merge using staging table pattern.
-        Works with any SQL database.
+        Works with PostgreSQL and databases that support UPDATE ... FROM.
 
         Steps:
         1. Load data to staging table
@@ -612,7 +616,7 @@ class UpsertLoader:
         4. Clean up staging table
         """
         staging_table = f"{table_name}_staging"
-        start_time = datetime.utcnow()
+        start_time = datetime.now(timezone.utc)
 
         # Add metadata
         df = df.copy()
@@ -649,10 +653,10 @@ class UpsertLoader:
 
             # Step 3: Insert new records
             insert_sql = f"""
-                INSERT INTO {table_name}
-                SELECT s.*
+                INSERT INTO {table_name} ({", ".join(df.columns)})
+                SELECT {", ".join(f"s.{col}" for col in df.columns)}
                 FROM {staging_table} s
-                LEFT JOIN {table_name} t ON {key_match.replace('t.', table_name + '.').replace('s.', staging_table + '.')}
+                LEFT JOIN {table_name} t ON {key_match}
                 WHERE t.{key_columns[0]} IS NULL
             """
             result = conn.execute(text(insert_sql))
@@ -695,7 +699,7 @@ class SlowlyChangingDimensionLoader:
         1. Close the current record (set end_date, is_current=False)
         2. Insert new record with updated values (is_current=True)
         """
-        current_time = datetime.utcnow()
+        current_time = datetime.now(timezone.utc)
 
         # Prepare source data
         df = df.copy()
@@ -727,7 +731,7 @@ class SlowlyChangingDimensionLoader:
                 if current_record:
                     # Check if tracked columns changed
                     changed = any(
-                        current_record[col] != source_row[col]
+                        current_record._mapping[col] != source_row[col]
                         for col in tracked_columns
                     )
 
@@ -853,7 +857,7 @@ Processes only changes since the last successful load.
 
 import pandas as pd
 from sqlalchemy import create_engine, text
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 from typing import Optional, Tuple
 import json
 import logging
@@ -930,17 +934,17 @@ class DeltaLoader:
         # Get last watermark or use epoch for initial load
         last_watermark = self.get_watermark(pipeline_name)
         if last_watermark is None:
-            last_watermark = datetime(1970, 1, 1)
+            last_watermark = datetime(1970, 1, 1, tzinfo=timezone.utc)
             logger.info(f"No watermark found for {pipeline_name}, starting initial load")
 
         # Add watermark filter to source query
-        # Expects query with {watermark} placeholder
-        filtered_query = source_query.format(watermark=last_watermark.isoformat())
+        # Expects query with a :watermark bind parameter
+        filtered_query = text(source_query)
 
         logger.info(f"Extracting changes since {last_watermark}")
 
         # Extract changed records
-        df = pd.read_sql(filtered_query, self.engine)
+        df = pd.read_sql(filtered_query, self.engine, params={"watermark": last_watermark})
 
         if df.empty:
             logger.info("No changes detected")
@@ -994,20 +998,17 @@ class CDCLoader:
         if changes_df.empty:
             return {"status": "no_changes"}
 
-        # Group changes by operation
-        inserts = changes_df[changes_df[operation_column] == "I"]
-        updates = changes_df[changes_df[operation_column] == "U"]
-        deletes = changes_df[changes_df[operation_column] == "D"]
-
         stats = {"inserted": 0, "updated": 0, "deleted": 0}
 
         with self.engine.begin() as conn:
-            # Process deletes first to handle re-inserts correctly
-            if not deletes.empty:
-                for _, row in deletes.iterrows():
-                    key_conditions = " AND ".join([
-                        f"{col} = :{col}" for col in key_columns
-                    ])
+            # Apply changes in source order so update/delete/reinsert sequences stay consistent
+            for _, row in changes_df.iterrows():
+                operation = row[operation_column]
+                key_conditions = " AND ".join([
+                    f"{col} = :{col}" for col in key_columns
+                ])
+
+                if operation == "D":
                     delete_sql = f"DELETE FROM {target_table} WHERE {key_conditions}"
                     conn.execute(
                         text(delete_sql),
@@ -1015,30 +1016,26 @@ class CDCLoader:
                     )
                     stats["deleted"] += 1
 
-            # Process updates
-            if not updates.empty:
-                data_columns = [c for c in updates.columns if c not in [operation_column] + key_columns]
-
-                for _, row in updates.iterrows():
-                    key_conditions = " AND ".join([f"{col} = :{col}" for col in key_columns])
+                elif operation == "U":
+                    data_columns = [
+                        c for c in changes_df.columns
+                        if c not in [operation_column] + key_columns
+                    ]
                     set_clause = ", ".join([f"{col} = :{col}" for col in data_columns])
-
                     update_sql = f"UPDATE {target_table} SET {set_clause} WHERE {key_conditions}"
                     conn.execute(text(update_sql), dict(row.drop(operation_column)))
                     stats["updated"] += 1
 
-            # Process inserts
-            if not inserts.empty:
-                insert_df = inserts.drop(columns=[operation_column])
-                insert_df["_loaded_at"] = datetime.utcnow()
-
-                insert_df.to_sql(
-                    target_table,
-                    conn,
-                    if_exists="append",
-                    index=False
-                )
-                stats["inserted"] = len(insert_df)
+                elif operation == "I":
+                    insert_df = pd.DataFrame([row.drop(operation_column)])
+                    insert_df["_loaded_at"] = datetime.now(timezone.utc)
+                    insert_df.to_sql(
+                        target_table,
+                        conn,
+                        if_exists="append",
+                        index=False
+                    )
+                    stats["inserted"] += 1
 
         logger.info(f"CDC applied: {stats}")
 
@@ -1094,11 +1091,11 @@ if __name__ == "__main__":
     # Delta loading with timestamp-based tracking
     delta_loader = DeltaLoader("postgresql://user:pass@localhost:5432/warehouse")
 
-    # Source query with watermark placeholder
+    # Source query with watermark bind parameter
     source_query = """
         SELECT order_id, customer_id, total_amount, status, updated_at
         FROM source_orders
-        WHERE updated_at > '{watermark}'
+        WHERE updated_at > :watermark
         ORDER BY updated_at
     """
 
@@ -1163,7 +1160,7 @@ Replaces entire partitions atomically.
 
 import pandas as pd
 from sqlalchemy import create_engine, text
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Union
 import logging
 
@@ -1175,7 +1172,7 @@ class PartitionLoader:
     Loads data using partition replacement strategy.
 
     Features:
-    - Atomic partition replacement
+    - Transactional partition replacement for database tables
     - Supports date-based and custom partition schemes
     - Works with PostgreSQL partitioned tables and data lakes
     - Preserves data outside target partitions
@@ -1211,7 +1208,7 @@ class PartitionLoader:
         if not invalid_rows.empty:
             raise ValueError(f"Data contains rows outside partition date {partition_date}")
 
-        df["_loaded_at"] = datetime.utcnow()
+        df["_loaded_at"] = datetime.now(timezone.utc)
 
         with self.engine.begin() as conn:
             # Delete existing partition data
@@ -1224,13 +1221,13 @@ class PartitionLoader:
 
             logger.info(f"Deleted {rows_deleted} existing rows from partition {partition_date}")
 
-        # Insert new partition data
-        df.to_sql(
-            table_name,
-            self.engine,
-            if_exists="append",
-            index=False
-        )
+            # Insert new partition data in the same transaction as the delete
+            df.to_sql(
+                table_name,
+                conn,
+                if_exists="append",
+                index=False
+            )
 
         logger.info(f"Inserted {len(df)} rows into partition {partition_date}")
 
@@ -1255,7 +1252,7 @@ class PartitionLoader:
         Useful for replacing entire weeks or months of data.
         """
         df = df.copy()
-        df["_loaded_at"] = datetime.utcnow()
+        df["_loaded_at"] = datetime.now(timezone.utc)
 
         with self.engine.begin() as conn:
             # Delete range
@@ -1270,8 +1267,8 @@ class PartitionLoader:
             )
             rows_deleted = result.rowcount
 
-        # Insert new data
-        df.to_sql(table_name, self.engine, if_exists="append", index=False)
+            # Insert new data in the same transaction as the delete
+            df.to_sql(table_name, conn, if_exists="append", index=False)
 
         return {
             "partition_start": start_value.isoformat(),
@@ -1285,7 +1282,7 @@ class PartitionLoader:
 class DataLakePartitionLoader:
     """
     Partition loader for data lake storage (Parquet/Delta Lake).
-    Manages file-based partitions with atomic replacement.
+    Manages file-based partitions with best-effort local filesystem replacement.
     """
 
     def __init__(self, base_path: str):
@@ -1321,9 +1318,9 @@ class DataLakePartitionLoader:
 
         # Add metadata
         df = df.copy()
-        df["_loaded_at"] = datetime.utcnow().isoformat()
+        df["_loaded_at"] = datetime.now(timezone.utc).isoformat()
 
-        # Create staging directory for atomic write
+        # Create staging directory before replacement
         staging_path = partition_path.parent / f".{partition_path.name}_staging"
 
         try:
@@ -1338,7 +1335,7 @@ class DataLakePartitionLoader:
                 compression="snappy"
             )
 
-            # Atomic swap: remove old partition, rename staging
+            # Best-effort swap on a local filesystem; object stores need a transactional table format
             if partition_path.exists():
                 shutil.rmtree(partition_path)
 
@@ -1370,7 +1367,7 @@ class DataLakePartitionLoader:
         Replace partition in Delta Lake format.
         Delta Lake provides ACID transactions for data lake operations.
         """
-        from deltalake import DeltaTable, write_deltalake
+        from deltalake import write_deltalake
 
         # Build partition filter expression
         partition_filter = " AND ".join([
@@ -1384,9 +1381,9 @@ class DataLakePartitionLoader:
             if col not in df.columns:
                 df[col] = val
 
-        df["_loaded_at"] = datetime.utcnow().isoformat()
+        df["_loaded_at"] = datetime.now(timezone.utc).isoformat()
 
-        # Write with replaceWhere for atomic partition replacement
+        # Write with a predicate for atomic partition replacement
         write_deltalake(
             table_path,
             df,
@@ -1460,7 +1457,7 @@ Performance utilities for optimizing data loading.
 
 import pandas as pd
 from sqlalchemy import create_engine
-from datetime import datetime
+from datetime import datetime, timezone
 import time
 import logging
 
@@ -1499,6 +1496,9 @@ class OptimizedLoader:
         Smaller batches = less memory but more round trips
         """
         # Estimate row size in bytes
+        if df.empty:
+            return 0
+
         sample_size = min(1000, len(df))
         sample = df.head(sample_size)
         row_size_bytes = sample.memory_usage(deep=True).sum() / sample_size
@@ -1544,17 +1544,18 @@ class OptimizedLoader:
 
                 # Convert DataFrame to CSV in memory
                 buffer = io.StringIO()
-                batch.to_csv(buffer, index=False, header=False, sep="\t", na_rep="\\N")
+                batch.to_csv(buffer, index=False, header=False, na_rep="")
                 buffer.seek(0)
 
-                # Use COPY for fast loading
+                # Use COPY CSV for fast loading
                 columns = list(df.columns)
-                cursor.copy_from(
+                copy_sql = sql.SQL("COPY {} ({}) FROM STDIN WITH (FORMAT CSV)").format(
+                    sql.Identifier(table_name),
+                    sql.SQL(", ").join(sql.Identifier(col) for col in columns)
+                )
+                cursor.copy_expert(
+                    copy_sql,
                     buffer,
-                    table_name,
-                    sep="\t",
-                    null="\\N",
-                    columns=columns
                 )
 
                 rows_loaded += len(batch)
@@ -1679,7 +1680,7 @@ class StreamingLoader:
             raise ValueError(f"Unsupported format: {file_format}")
 
         for chunk in reader:
-            chunk["_loaded_at"] = datetime.utcnow()
+            chunk["_loaded_at"] = datetime.now(timezone.utc)
 
             chunk.to_sql(
                 table_name,
@@ -1718,7 +1719,7 @@ Ensures data consistency even when failures occur.
 
 import pandas as pd
 from sqlalchemy import create_engine, text
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Callable
 import logging
 import json
@@ -1781,7 +1782,7 @@ class TransactionalLoader:
             try:
                 attempt += 1
 
-                df["_loaded_at"] = datetime.utcnow()
+                df["_loaded_at"] = datetime.now(timezone.utc)
                 df.to_sql(table_name, self.engine, if_exists="append", index=False)
 
                 logger.info(f"Load succeeded on attempt {attempt}")
@@ -1860,7 +1861,7 @@ class TransactionalLoader:
             for record_id, record_data in records:
                 try:
                     df = pd.DataFrame([json.loads(record_data)])
-                    df["_loaded_at"] = datetime.utcnow()
+                    df["_loaded_at"] = datetime.now(timezone.utc)
                     df["_retry_loaded"] = True
 
                     df.to_sql(target_table, conn, if_exists="append", index=False)
@@ -1951,7 +1952,7 @@ class CheckpointedLoader:
                 batch = df.iloc[start_row:end_row]
 
                 batch = batch.copy()
-                batch["_loaded_at"] = datetime.utcnow()
+                batch["_loaded_at"] = datetime.now(timezone.utc)
                 batch["_load_id"] = load_id
                 batch["_batch_index"] = batch_index
 
