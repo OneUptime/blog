@@ -10,7 +10,7 @@ Description: Implement prompt caching strategies for LLM applications to reduce 
 
 > Every time you send the same prompt to an LLM, you pay twice: once in latency and once in API costs. Prompt caching solves both problems by storing and reusing responses intelligently. This guide walks through practical implementations that can cut your LLM costs by 50-90% while dramatically improving response times.
 
-The economics of LLM APIs make caching essential for production applications. A single GPT-4 request can cost $0.03-0.06 for input tokens alone. When you have thousands of users asking similar questions, those costs add up fast. More importantly, cached responses return in milliseconds instead of seconds.
+The economics of LLM APIs make caching essential for production applications. Current frontier models are priced per million input tokens, so repeated long prompts can become expensive quickly. When you have thousands of users asking similar questions, those costs add up fast. More importantly, cached responses return in milliseconds instead of seconds.
 
 ---
 
@@ -100,9 +100,9 @@ class ExactMatchCache:
             "response": response
         }
         # Use provided TTL or fall back to default
-        self.redis.setex(cache_key, ttl or self.default_ttl, json.dumps(data))
+        self.redis.set(cache_key, json.dumps(data), ex=ttl or self.default_ttl)
 
-    def query(self, prompt: str, model: str = "gpt-4") -> str:
+    def query(self, prompt: str, model: str = "gpt-4o") -> str:
         """
         Query with automatic caching.
         Checks cache first, calls API on miss, then stores result.
@@ -146,6 +146,7 @@ Exact match caching misses opportunities when users phrase the same question dif
 # semantic_cache.py
 # Semantic prompt cache using embeddings for similarity matching
 import numpy as np
+import hashlib
 import json
 import redis
 from typing import Optional, Tuple
@@ -191,7 +192,12 @@ class SemanticCache:
         b = np.array(vec2)
         return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
 
-    def _find_similar(self, embedding: list) -> Optional[Tuple[str, float]]:
+    def _hash_prompt(self, prompt: str, model: str) -> str:
+        """Create a stable cache key for a prompt and model."""
+        content = f"{model}:{prompt}"
+        return hashlib.sha256(content.encode()).hexdigest()
+
+    def _find_similar(self, embedding: list, model: str) -> Optional[Tuple[str, float]]:
         """
         Search cache for semantically similar prompts.
         Returns the cached response and similarity score if found.
@@ -204,6 +210,9 @@ class SemanticCache:
 
         for key in cached_keys:
             cached_data = json.loads(self.redis.get(key))
+            if cached_data["model"] != model:
+                continue
+
             cached_embedding = cached_data["embedding"]
 
             similarity = self._cosine_similarity(embedding, cached_embedding)
@@ -217,7 +226,7 @@ class SemanticCache:
             return best_match, best_similarity
         return None
 
-    def query(self, prompt: str, model: str = "gpt-4") -> dict:
+    def query(self, prompt: str, model: str = "gpt-4o") -> dict:
         """
         Query with semantic caching.
         Returns response along with cache status and similarity score.
@@ -226,7 +235,7 @@ class SemanticCache:
         embedding = self._get_embedding(prompt)
 
         # Search for semantically similar cached prompts
-        similar = self._find_similar(embedding)
+        similar = self._find_similar(embedding, model)
 
         if similar:
             response, similarity = similar
@@ -245,15 +254,16 @@ class SemanticCache:
         result = llm_response.choices[0].message.content
 
         # Store prompt embedding and response for future matches
-        cache_key = f"{self.embedding_key}:{hash(prompt)}"
-        self.redis.setex(
+        cache_key = f"{self.embedding_key}:{self._hash_prompt(prompt, model)}"
+        self.redis.set(
             cache_key,
-            86400,  # 24 hour TTL
             json.dumps({
                 "prompt": prompt,
+                "model": model,
                 "embedding": embedding,
                 "response": result
-            })
+            }),
+            ex=86400  # 24 hour TTL
         )
 
         return {
@@ -284,15 +294,14 @@ For production applications with millions of cached prompts, linear search throu
 # vector_cache.py
 # Production-grade semantic cache using pgvector for fast similarity search
 import psycopg2
+import hashlib
 from pgvector.psycopg2 import register_vector
 from openai import OpenAI
-from typing import Optional
-import numpy as np
 
 class VectorCache:
     """
     High-performance semantic cache using PostgreSQL with pgvector.
-    Scales to millions of cached prompts with sub-millisecond lookups.
+    Scales to millions of cached prompts with indexed similarity lookups.
     """
 
     def __init__(self, database_url: str, similarity_threshold: float = 0.92):
@@ -300,11 +309,9 @@ class VectorCache:
         self.client = OpenAI()
         self.similarity_threshold = similarity_threshold
 
-        # Register pgvector extension
-        register_vector(self.conn)
-
         # Create table if it doesn't exist
         self._init_schema()
+        register_vector(self.conn)
 
     def _init_schema(self):
         """
@@ -348,7 +355,12 @@ class VectorCache:
         )
         return response.data[0].embedding
 
-    def query(self, prompt: str, model: str = "gpt-4") -> dict:
+    def _hash_prompt(self, prompt: str, model: str) -> str:
+        """Create a stable cache key for a prompt and model."""
+        content = f"{model}:{prompt}"
+        return hashlib.sha256(content.encode()).hexdigest()
+
+    def query(self, prompt: str, model: str = "gpt-4o") -> dict:
         """
         Query with vector similarity search.
         Uses pgvector's native cosine distance operator for fast matching.
@@ -402,7 +414,7 @@ class VectorCache:
                 INSERT INTO prompt_cache (prompt, prompt_hash, embedding, response, model)
                 VALUES (%s, %s, %s::vector, %s, %s)
                 ON CONFLICT (prompt_hash) DO NOTHING
-            """, (prompt, hash(prompt), embedding, result, model))
+            """, (prompt, self._hash_prompt(prompt, model), embedding, result, model))
             self.conn.commit()
 
         return {
@@ -422,7 +434,6 @@ Many LLM applications use lengthy system prompts that remain constant across req
 # prefix_cache.py
 # Optimize repeated system prompts with prefix caching
 from anthropic import Anthropic
-from typing import Optional
 import hashlib
 
 class PrefixCache:
@@ -433,8 +444,6 @@ class PrefixCache:
 
     def __init__(self):
         self.client = Anthropic()
-        # Store mapping of system prompt hashes to cache tokens
-        self.prefix_cache = {}
 
     def _hash_content(self, content: str) -> str:
         """Generate hash for system prompt identification."""
@@ -444,7 +453,7 @@ class PrefixCache:
         self,
         system_prompt: str,
         user_message: str,
-        model: str = "claude-sonnet-4-20250514"
+        model: str = "claude-sonnet-4-6"
     ) -> str:
         """
         Query with prefix caching enabled.
@@ -596,10 +605,10 @@ class SmartCache:
 
 
 # Example: Invalidate when model changes
-cache = SmartCache(version="gpt-4-0125")
+cache = SmartCache(version="gpt-4o-2024-05-13")
 
 # Later, when upgrading to a new model version
-cache.bump_version("gpt-4-0513")
+cache.bump_version("gpt-4o-2024-08-06")
 # All old cached responses will be invalidated on next access
 ```
 
