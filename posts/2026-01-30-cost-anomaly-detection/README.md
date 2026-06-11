@@ -166,7 +166,7 @@ class ZScoreDetector:
 
         # Avoid division by zero for constant costs
         if std == 0:
-            std = mean * 0.01  # Use 1% of mean as minimum std
+            std = max(abs(mean) * 0.01, 0.01)  # Use a small minimum std
 
         # Calculate Z-score
         z_score = (current.amount - mean) / std
@@ -558,7 +558,7 @@ class IsolationForestDetector:
         - date: The date of the observation
         - cost: The cost amount
         - is_anomaly: Boolean flag
-        - anomaly_score: Score from -1 (anomaly) to 1 (normal)
+        - anomaly_score: Raw anomaly score from Isolation Forest; lower = more anomalous
         """
         if not self.is_fitted:
             raise ValueError("Model must be fitted before prediction")
@@ -658,7 +658,7 @@ if __name__ == "__main__":
 
 ### Prophet for Seasonal Decomposition
 
-Facebook's Prophet excels at capturing multiple seasonality patterns. While primarily a forecasting tool, we can use it to build confidence intervals for anomaly detection:
+Facebook's Prophet excels at capturing multiple seasonality patterns. While primarily a forecasting tool, we can use it to build prediction intervals for anomaly detection:
 
 ```python
 # prophet_detector.py
@@ -698,7 +698,7 @@ class ProphetAnomalyDetector:
         Initialize the detector.
 
         Args:
-            interval_width: Confidence interval width (0.95 = 95%)
+            interval_width: Prediction interval width (0.95 = 95%)
             changepoint_prior_scale: Flexibility of trend changes
                                      (lower = smoother trend)
             seasonality_mode: 'additive' or 'multiplicative'
@@ -1163,7 +1163,7 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     - anomalyId: Unique identifier
     - anomalyStartDate: When the anomaly began
     - anomalyEndDate: When it ended (if resolved)
-    - dimensionValue: Which service/account is affected
+    - dimensionalValue/dimensionValue: Which service/account is affected
     - rootCauses: Potential causes identified by AWS
     - impact: Total and daily impact amounts
     """
@@ -1175,10 +1175,15 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     for record in event.get('Records', []):
         sns_message = record.get('Sns', {}).get('Message', '{}')
         anomaly = json.loads(sns_message)
+        if 'detail' in anomaly:
+            anomaly = anomaly['detail']
 
         # Extract key information
         anomaly_id = anomaly.get('anomalyId', 'Unknown')
-        service = anomaly.get('dimensionValue', 'Unknown Service')
+        service = anomaly.get(
+            'dimensionalValue',
+            anomaly.get('dimensionValue', 'Unknown Service')
+        )
         impact = anomaly.get('impact', {})
         total_impact = impact.get('totalImpact', 0)
 
@@ -1191,7 +1196,11 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             service=service,
             total_impact=total_impact,
             root_causes=root_cause_summary,
-            start_date=anomaly.get('anomalyStartDate', 'Unknown')
+            start_date=anomaly.get('anomalyStartDate', 'Unknown'),
+            details_link=anomaly.get(
+                'anomalyDetailsLink',
+                'https://console.aws.amazon.com/cost-management/home#/anomaly-detection/detected-anomalies'
+            )
         )
 
         # Send to Slack
@@ -1233,7 +1242,8 @@ def format_slack_message(
     service: str,
     total_impact: float,
     root_causes: str,
-    start_date: str
+    start_date: str,
+    details_link: str
 ) -> Dict:
     """Create a formatted Slack message block."""
 
@@ -1297,7 +1307,7 @@ def format_slack_message(
                                     "type": "plain_text",
                                     "text": "View in AWS Console"
                                 },
-                                "url": f"https://console.aws.amazon.com/cost-management/home#/anomaly-detection/monitors/{anomaly_id}"
+                                "url": details_link
                             }
                         ]
                     }
@@ -1459,7 +1469,7 @@ Here is a production-ready implementation that combines multiple detection metho
 # Production ensemble detector combining multiple methods
 # Uses voting to reduce false positives
 
-from typing import List, Dict, Optional, Tuple
+from typing import Any, List, Dict, Optional, Tuple
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum
@@ -1469,7 +1479,6 @@ import numpy as np
 class DetectorType(Enum):
     ZSCORE = "zscore"
     MOVING_AVERAGE = "moving_average"
-    ISOLATION_FOREST = "isolation_forest"
 
 
 @dataclass
@@ -1482,7 +1491,7 @@ class EnsembleResult:
     confidence: float  # 0-1, based on detector agreement
     detector_votes: Dict[str, bool]
     severity: str  # 'low', 'medium', 'high', 'critical'
-    details: Dict[str, any]
+    details: Dict[str, Any]
 
 
 class EnsembleAnomalyDetector:
@@ -1494,16 +1503,14 @@ class EnsembleAnomalyDetector:
     sensitivity to real anomalies.
 
     Voting thresholds:
-    - 1/3 agree: Low confidence anomaly
-    - 2/3 agree: Medium confidence anomaly
-    - 3/3 agree: High confidence anomaly
+    - 1/2 agree: Low confidence anomaly
+    - 2/2 agree: High confidence anomaly
     """
 
     def __init__(
         self,
         zscore_threshold: float = 2.5,
         ma_band_multiplier: float = 2.0,
-        if_contamination: float = 0.05,
         min_votes_for_anomaly: int = 2
     ):
         """
@@ -1512,12 +1519,10 @@ class EnsembleAnomalyDetector:
         Args:
             zscore_threshold: Z-score threshold for statistical detector
             ma_band_multiplier: Band multiplier for moving average
-            if_contamination: Expected anomaly rate for isolation forest
             min_votes_for_anomaly: Minimum detectors that must agree
         """
         self.zscore_threshold = zscore_threshold
         self.ma_band_multiplier = ma_band_multiplier
-        self.if_contamination = if_contamination
         self.min_votes = min_votes_for_anomaly
 
         # Historical data storage per service
@@ -1541,7 +1546,7 @@ class EnsembleAnomalyDetector:
         std = np.std(costs)
 
         if std == 0:
-            std = mean * 0.01
+            std = max(abs(mean) * 0.01, 0.01)
 
         z_score = (current_cost - mean) / std
         is_anomaly = abs(z_score) > self.zscore_threshold
