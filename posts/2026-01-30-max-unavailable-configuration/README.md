@@ -253,7 +253,7 @@ spec:
 
 ## Combining Max Unavailable with Pod Disruption Budgets
 
-For additional protection during both voluntary and involuntary disruptions, combine your deployment strategy with a Pod Disruption Budget. The PDB ensures a minimum number of pods remain available even during cluster maintenance.
+For additional protection during voluntary disruptions such as node drains, combine your deployment strategy with a Pod Disruption Budget. The PDB limits how many matching pods can be evicted at once when cluster operations use the Kubernetes eviction API.
 
 ```yaml
 # Pod Disruption Budget for additional availability guarantees
@@ -309,15 +309,15 @@ flowchart TD
 
     subgraph Cluster["Cluster Operations"]
         RU[Rolling Updates]
-        NM[Node Maintenance]
-        AS[Autoscaling]
+        NM[Node Drains]
+        AS[Cluster Scale Down]
     end
 
     Deployment --> RU
     PDB --> NM
     PDB --> AS
 
-    RU --> AV[Guaranteed Availability]
+    RU --> AV[Availability Controls]
     NM --> AV
     AS --> AV
 ```
@@ -350,9 +350,9 @@ kubectl get deployment web-application -o wide
 
 ## Conclusion
 
-The max unavailable configuration gives you precise control over how Kubernetes handles rolling updates. Start with conservative values for production workloads and adjust based on your observations. Remember that max unavailable works alongside max surge and pod disruption budgets to provide comprehensive availability management.
+The max unavailable configuration gives you precise control over how Kubernetes handles rolling updates. Start with conservative values for production workloads and adjust based on your observations. Remember that max unavailable works alongside max surge and pod disruption budgets to provide comprehensive availability management for rollouts and voluntary evictions.
 
-For critical services, pair low max unavailable values with proper health checks and pod anti-affinity rules. This combination ensures your applications remain available even during updates and cluster maintenance events.
+For critical services, pair low max unavailable values with proper health checks and pod anti-affinity rules. This combination helps your applications remain available during updates and eviction-based cluster maintenance events.
 
 **Related Reading:**
 
