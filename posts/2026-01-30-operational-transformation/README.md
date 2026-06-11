@@ -263,9 +263,39 @@ function transformDeleteDelete(
 }
 ```
 
+### Transform Delete vs Insert
+
+When a delete is applied before an insert, the insert may need to shift:
+
+```typescript
+function transformDeleteInsert(
+  deleteOp: DeleteOperation,
+  insertOp: InsertOperation
+): InsertOperation {
+  // Insert is before the delete range: no change
+  if (insertOp.position <= deleteOp.position) {
+    return insertOp;
+  }
+
+  // Insert is after the delete range: shift insert left
+  if (insertOp.position >= deleteOp.position + deleteOp.length) {
+    return {
+      ...insertOp,
+      position: insertOp.position - deleteOp.length
+    };
+  }
+
+  // Insert is within the delete range: place insert at delete start
+  return {
+    ...insertOp,
+    position: deleteOp.position
+  };
+}
+```
+
 ### The Complete Transform Function
 
-Bringing it all together:
+Bringing it all together. Note that `transform(a, b)` returns `b` transformed so it can be applied after `a`:
 
 ```typescript
 type AnyOperation = InsertOperation | DeleteOperation;
@@ -283,9 +313,7 @@ function transform(
   }
 
   if (op1.type === 'delete' && op2.type === 'insert') {
-    // Symmetric transformation
-    const transformed = transformInsertDelete(op2, op1);
-    return transformed;
+    return transformDeleteInsert(op1, op2);
   }
 
   if (op1.type === 'delete' && op2.type === 'delete') {
