@@ -788,7 +788,7 @@ validate_data() {
     info "Running data integrity checks..."
     local checksum=$(PGPASSWORD="${PGPASSWORD:-}" psql -h "$DB_HOST" -p "$DB_PORT" \
         -U "$DB_USER" -d "$DB_NAME" -t -c \
-        "SELECT md5(string_agg(id::text, '')) FROM users ORDER BY id LIMIT 1000;")
+        "SELECT md5(string_agg(id::text, '' ORDER BY id)) FROM (SELECT id FROM users ORDER BY id LIMIT 1000) sub;")
     checksum=$(echo "$checksum" | tr -d ' ')
     info "Users table checksum (first 1000): $checksum"
     results+=("users_checksum:$checksum")
