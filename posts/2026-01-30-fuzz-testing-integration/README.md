@@ -107,6 +107,8 @@ Your fuzz target should read input and pass it to the function under test. AFL f
 #include "parser.h"
 
 int main(int argc, char *argv[]) {
+    if (argc < 2) return 1;
+
     // Read input from file (AFL provides input via file argument)
     FILE *f = fopen(argv[1], "rb");
     if (!f) return 1;
@@ -114,6 +116,10 @@ int main(int argc, char *argv[]) {
     // Get file size
     fseek(f, 0, SEEK_END);
     long size = ftell(f);
+    if (size < 0) {
+        fclose(f);
+        return 1;
+    }
     fseek(f, 0, SEEK_SET);
 
     // Allocate buffer and read input
@@ -206,6 +212,7 @@ libFuzzer targets implement `LLVMFuzzerTestOneInput`:
 #include <stdint.h>
 #include <stddef.h>
 #include <string.h>
+#include <stdlib.h>
 #include "json_parser.h"
 
 // This function is called repeatedly by libFuzzer
@@ -266,11 +273,16 @@ mkdir -p corpus
 
 # Run with additional options
 ./fuzz_json corpus/ \
-    -max_len=10000 \          # Maximum input length
-    -timeout=5 \              # Per-input timeout in seconds
-    -jobs=4 \                 # Number of parallel jobs
-    -workers=4 \              # Number of worker processes
-    -dict=json.dict           # Dictionary of tokens to use
+    -max_len=10000 \
+    -timeout=5 \
+    -jobs=4 \
+    -workers=4 \
+    -dict=json.dict
+
+# -max_len: maximum input length
+# -timeout: per-input timeout in seconds
+# -jobs/-workers: parallel jobs and worker processes
+# -dict: dictionary of tokens to use
 ```
 
 ### Creating a Dictionary
@@ -385,7 +397,7 @@ email_result_t validate_email(const char *email, size_t len) {
 
     // Check for valid characters in local part
     for (size_t i = 0; i < local_len; i++) {
-        char c = email[i];
+        unsigned char c = (unsigned char)email[i];
         if (!isalnum(c) && c != '.' && c != '_' && c != '-' && c != '+') {
             return EMAIL_INVALID_CHAR;
         }
@@ -567,8 +579,8 @@ Running Rust fuzz tests:
 # Run the fuzz target
 cargo +nightly fuzz run parse_input
 
-# Run with additional sanitizers
-cargo +nightly fuzz run parse_input -- -sanitizer=address
+# Run with MemorySanitizer instead of the default AddressSanitizer
+cargo +nightly fuzz run --sanitizer memory parse_input
 
 # Run for a specific duration
 cargo +nightly fuzz run parse_input -- -max_total_time=300
@@ -632,10 +644,16 @@ jobs:
         run: |
           mkdir -p corpus/json
           # Run for specified duration (default 5 minutes)
-          timeout ${{ github.event.inputs.duration || 300 }} \
+          set +e
+          timeout ${{ github.event.inputs.duration || 300 }}s \
             ./fuzz_json corpus/json/ \
-            -max_total_time=${{ github.event.inputs.duration || 300 }} \
-            || true  # Don't fail on timeout
+            -max_total_time=${{ github.event.inputs.duration || 300 }}
+          status=$?
+          set -e
+          # Don't fail on timeout, but do fail on crashes and sanitizer findings
+          if [ "$status" -ne 0 ] && [ "$status" -ne 124 ]; then
+            exit "$status"
+          fi
 
       - name: Upload crashes
         if: always()
@@ -704,7 +722,7 @@ FROM gcr.io/oss-fuzz-base/base-builder
 
 RUN apt-get update && apt-get install -y make cmake
 
-COPY . $SRC/your-project
+RUN git clone https://github.com/your-org/your-project.git $SRC/your-project
 WORKDIR $SRC/your-project
 
 COPY build.sh $SRC/
