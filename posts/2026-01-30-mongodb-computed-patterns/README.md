@@ -97,6 +97,11 @@ class OrderService {
 
   async removeItemFromOrder(orderId, productId) {
     const order = await this.orders.findOne({ _id: new ObjectId(orderId) });
+
+    if (!order) {
+      throw new Error('Order not found');
+    }
+
     const item = order.items.find(i => i.productId.equals(new ObjectId(productId)));
 
     if (!item) {
@@ -135,7 +140,7 @@ class AsyncComputationService {
   async startWatching() {
     const changeStream = this.reviews.watch([
       { $match: { operationType: { $in: ['insert', 'update', 'delete'] } } }
-    ]);
+    ], { fullDocumentBeforeChange: 'whenAvailable' });
 
     changeStream.on('change', async (change) => {
       try {
@@ -162,8 +167,8 @@ class AsyncComputationService {
         productId = review?.productId;
         break;
       case 'delete':
-        // For deletes, we need to store productId in the change stream pipeline
-        // or use a pre-delete hook
+        // For deletes, enable collection pre-images and request fullDocumentBeforeChange,
+        // or store productId before deletion with an application-level hook
         productId = change.fullDocumentBeforeChange?.productId;
         break;
     }
@@ -286,7 +291,7 @@ class BatchComputationService {
           averageOrderValue: { $avg: '$totalAmount' },
           firstOrderDate: { $min: '$createdAt' },
           lastOrderDate: { $max: '$createdAt' },
-          productsPurchased: { $addToSet: '$items.productId' }
+          productsPurchased: { $push: '$items.productId' }
         }
       },
       {
@@ -297,7 +302,15 @@ class BatchComputationService {
           averageOrderValue: { $round: ['$averageOrderValue', 2] },
           firstOrderDate: 1,
           lastOrderDate: 1,
-          uniqueProductCount: { $size: '$productsPurchased' },
+          uniqueProductCount: {
+            $size: {
+              $reduce: {
+                input: '$productsPurchased',
+                initialValue: [],
+                in: { $setUnion: ['$$value', '$$this'] }
+              }
+            }
+          },
           daysSinceFirstOrder: {
             $dateDiff: {
               startDate: '$firstOrderDate',
@@ -464,14 +477,15 @@ Handle computation in your application code when data changes.
 ```javascript
 // Example: Application-level trigger pattern
 class InventoryService {
-  constructor(db) {
+  constructor(db, client) {
+    this.client = client;
     this.inventory = db.collection('inventory');
     this.products = db.collection('products');
     this.warehouses = db.collection('warehouses');
   }
 
   async updateStock(productId, warehouseId, quantityChange, reason) {
-    const session = this.inventory.client.startSession();
+    const session = this.client.startSession();
 
     try {
       await session.withTransaction(async () => {
@@ -567,7 +581,7 @@ class ChangeStreamTrigger {
           ]
         }
       }
-    ]);
+    ], { fullDocumentBeforeChange: 'whenAvailable' });
 
     postsStream.on('change', async (change) => {
       const authorId = change.operationType === 'insert'
@@ -586,7 +600,7 @@ class ChangeStreamTrigger {
           operationType: { $in: ['insert', 'delete'] }
         }
       }
-    ]);
+    ], { fullDocumentBeforeChange: 'whenAvailable' });
 
     commentsStream.on('change', async (change) => {
       const postId = change.operationType === 'insert'
@@ -781,14 +795,15 @@ Incremental updates modify computed values based on the change rather than recom
 ```javascript
 // Example: Efficient counter increments
 class IncrementalCounterService {
-  constructor(db) {
+  constructor(db, client) {
+    this.client = client;
     this.posts = db.collection('posts');
     this.users = db.collection('users');
     this.likes = db.collection('likes');
   }
 
   async likePost(postId, userId) {
-    const session = this.posts.client.startSession();
+    const session = this.client.startSession();
 
     try {
       await session.withTransaction(async () => {
@@ -825,7 +840,7 @@ class IncrementalCounterService {
   }
 
   async unlikePost(postId, userId) {
-    const session = this.posts.client.startSession();
+    const session = this.client.startSession();
 
     try {
       await session.withTransaction(async () => {
@@ -861,13 +876,14 @@ class IncrementalCounterService {
 ```javascript
 // Example: Maintaining running averages incrementally
 class IncrementalAverageService {
-  constructor(db) {
+  constructor(db, client) {
+    this.client = client;
     this.products = db.collection('products');
     this.reviews = db.collection('reviews');
   }
 
   async addReview(productId, rating, comment, userId) {
-    const session = this.products.client.startSession();
+    const session = this.client.startSession();
 
     try {
       await session.withTransaction(async () => {
@@ -918,7 +934,7 @@ class IncrementalAverageService {
   }
 
   async updateReview(reviewId, newRating) {
-    const session = this.products.client.startSession();
+    const session = this.client.startSession();
 
     try {
       await session.withTransaction(async () => {
@@ -984,7 +1000,7 @@ class IncrementalAverageService {
   }
 
   async deleteReview(reviewId) {
-    const session = this.products.client.startSession();
+    const session = this.client.startSession();
 
     try {
       await session.withTransaction(async () => {
@@ -1149,13 +1165,14 @@ Maintaining consistency between source data and computed values is critical. Her
 ```javascript
 // Example: Ensuring strong consistency with multi-document transactions
 class StrongConsistencyService {
-  constructor(db) {
+  constructor(db, client) {
+    this.client = client;
     this.accounts = db.collection('accounts');
     this.transactions = db.collection('transactions');
   }
 
   async transfer(fromAccountId, toAccountId, amount) {
-    const session = this.accounts.client.startSession();
+    const session = this.client.startSession();
 
     try {
       const result = await session.withTransaction(async () => {
@@ -1417,7 +1434,7 @@ Here is an example of a well-designed schema for computed patterns:
 
 ```javascript
 // Example: E-commerce product with computed fields
-{
+const product = {
   _id: ObjectId("..."),
 
   // Core product data
@@ -1471,7 +1488,7 @@ Here is an example of a well-designed schema for computed patterns:
   // Timestamps
   createdAt: ISODate("2025-01-15T00:00:00Z"),
   updatedAt: ISODate("2026-01-30T10:30:00Z")
-}
+};
 ```
 
 ## Indexing for Computed Fields
