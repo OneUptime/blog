@@ -46,7 +46,7 @@ Longhorn creates incremental backups by capturing block-level changes. Each back
 
 ## Configuring Backup Targets
 
-Longhorn supports two primary backup target types: S3-compatible object storage and NFS. Let us configure both.
+Longhorn supports several backup target types, including S3-compatible object storage and NFS. Let us configure both.
 
 ### Option 1: S3 Compatible Storage (AWS, MinIO, etc.)
 
@@ -80,24 +80,21 @@ Apply the secret to your cluster.
 kubectl apply -f s3-backup-secret.yaml
 ```
 
-Now configure Longhorn to use S3 as the backup target. You can do this via the Longhorn UI or by editing the Longhorn settings directly.
+Now configure Longhorn to use S3 as the default backup target. You can do this via the Longhorn UI or by applying the Longhorn default resource ConfigMap.
 
 ```yaml
 # longhorn-s3-backup-settings.yaml
 # Configure Longhorn to use S3 as the backup target
-apiVersion: longhorn.io/v1beta2
-kind: Setting
+apiVersion: v1
+kind: ConfigMap
 metadata:
-  name: backup-target
+  name: longhorn-default-resource
   namespace: longhorn-system
-value: "s3://your-bucket-name@us-west-2/"
----
-apiVersion: longhorn.io/v1beta2
-kind: Setting
-metadata:
-  name: backup-target-credential-secret
-  namespace: longhorn-system
-value: "longhorn-backup-target-secret"
+data:
+  default-resource.yaml: |
+    "backup-target": "s3://your-bucket-name@us-west-2/"
+    "backup-target-credential-secret": "longhorn-backup-target-secret"
+    "backupstore-poll-interval": "180"
 ```
 
 Apply the backup target configuration.
@@ -114,21 +111,18 @@ For NFS-based backups, ensure your NFS server is accessible from all Kubernetes 
 ```yaml
 # longhorn-nfs-backup-settings.yaml
 # Configure Longhorn to use NFS as the backup target
-apiVersion: longhorn.io/v1beta2
-kind: Setting
+apiVersion: v1
+kind: ConfigMap
 metadata:
-  name: backup-target
+  name: longhorn-default-resource
   namespace: longhorn-system
-# NFS URL format: nfs://server-ip:/exported/path
-value: "nfs://192.168.1.100:/backup/longhorn"
----
-# NFS typically does not require credentials
-apiVersion: longhorn.io/v1beta2
-kind: Setting
-metadata:
-  name: backup-target-credential-secret
-  namespace: longhorn-system
-value: ""
+data:
+  default-resource.yaml: |
+    # NFS URL format: nfs://server-ip:/exported/path
+    "backup-target": "nfs://192.168.1.100:/backup/longhorn"
+    # NFS typically does not require credentials
+    "backup-target-credential-secret": ""
+    "backupstore-poll-interval": "180"
 ```
 
 Apply the NFS backup target configuration.
@@ -154,10 +148,14 @@ metadata:
   name: pvc-database-backup-20260130
   namespace: longhorn-system
   labels:
+    # This label tells Longhorn which volume owns the snapshot
+    backup-volume: pvc-abc123-def456-ghi789
     # Labels help organize and filter backups
     app: database
     backup-type: manual
 spec:
+  # Use incremental backup mode unless you need to force a full backup
+  backupMode: incremental
   # Name of the snapshot to backup (create snapshot first)
   snapshotName: database-snapshot-20260130
   # Labels to attach to the backup in the backup target
@@ -179,6 +177,8 @@ metadata:
 spec:
   # The Longhorn volume name (not the PVC name)
   volume: pvc-abc123-def456-ghi789
+  # Request Longhorn to create a new snapshot for this volume
+  createSnapshot: true
   labels:
     snapshot-type: pre-backup
 ```
@@ -189,9 +189,11 @@ Create the snapshot and backup.
 # First create the snapshot
 kubectl apply -f create-snapshot.yaml
 
-# Wait for snapshot to complete
-kubectl wait --for=condition=ready snapshot/database-snapshot-20260130 \
-  -n longhorn-system --timeout=300s
+# Wait for snapshot to be ready
+until [ "$(kubectl get snapshot database-snapshot-20260130 \
+  -n longhorn-system -o jsonpath='{.status.readyToUse}')" = "true" ]; do
+  sleep 5
+done
 
 # Then create the backup
 kubectl apply -f manual-backup.yaml
@@ -212,7 +214,7 @@ metadata:
 spec:
   # Cron schedule: run at 2:00 AM every day
   cron: "0 2 * * *"
-  # Task type: backup (alternatives: snapshot, snapshot-cleanup, backup-cleanup)
+  # Task type: backup (alternatives: backup-force-create, snapshot, snapshot-force-create, snapshot-cleanup, snapshot-delete, filesystem-trim)
   task: backup
   # Keep the last 7 backups
   retain: 7
@@ -245,6 +247,8 @@ metadata:
   name: database-pvc
   namespace: production
   labels:
+    # This label tells Longhorn to sync recurring job labels from the PVC to the Longhorn volume
+    recurring-job.longhorn.io/source: enabled
     # This label enables the daily-backup recurring job for this volume
     recurring-job.longhorn.io/daily-backup: enabled
     recurring-job-group.longhorn.io/default: enabled
@@ -303,7 +307,7 @@ kubectl describe backup pvc-database-backup-20260130 -n longhorn-system
 kubectl get recurringjobs -n longhorn-system
 
 # Check backup target connectivity
-kubectl get settings backup-target -n longhorn-system -o yaml
+kubectl get backuptarget default -n longhorn-system -o yaml
 ```
 
 ## Restore from Backup
@@ -321,16 +325,15 @@ metadata:
   name: restored-database-volume
   namespace: longhorn-system
 spec:
-  # Size must match or exceed the original volume size
+  # Size must be the exact original volume size in bytes
   size: "53687091200"  # 50Gi in bytes
   # Number of replicas for the restored volume
   numberOfReplicas: 3
   # Specify the backup URL to restore from
   fromBackup: "s3://your-bucket-name@us-west-2/?backup=backup-abc123&volume=pvc-original-volume"
-  # Access mode for the volume
-  accessMode: rwo
-  # Data locality setting
-  dataLocality: best-effort
+  # Frontend and data engine for the restored volume
+  frontend: blockdev
+  dataEngine: v1
 ```
 
 Get the backup URL from the backup resource.
@@ -348,8 +351,10 @@ Create the restored volume.
 kubectl apply -f restore-volume.yaml
 
 # Wait for restoration to complete
-kubectl wait --for=condition=ready volume/restored-database-volume \
-  -n longhorn-system --timeout=600s
+until [ "$(kubectl get volume restored-database-volume \
+  -n longhorn-system -o jsonpath='{.status.restoreRequired}')" = "false" ]; do
+  sleep 10
+done
 ```
 
 Now create a PV and PVC to use the restored volume.
@@ -366,6 +371,7 @@ spec:
     storage: 50Gi
   accessModes:
     - ReadWriteOnce
+  volumeMode: Filesystem
   persistentVolumeReclaimPolicy: Retain
   storageClassName: longhorn
   csi:
@@ -373,9 +379,6 @@ spec:
     fsType: ext4
     # Use the restored volume name
     volumeHandle: restored-database-volume
-    volumeAttributes:
-      numberOfReplicas: "3"
-      staleReplicaTimeout: "2880"
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -435,7 +438,7 @@ kubectl apply -f s3-backup-secret.yaml
 kubectl apply -f longhorn-s3-backup-settings.yaml
 
 # Verify backup target connectivity
-kubectl get settings backup-target -n longhorn-system
+kubectl get backuptarget default -n longhorn-system
 ```
 
 ### List Available Backups from Backup Target
@@ -448,8 +451,7 @@ kubectl get backupvolumes -n longhorn-system
 kubectl describe backupvolume pvc-original-volume -n longhorn-system
 
 # List all backups for a specific volume
-kubectl get backups -n longhorn-system \
-  -l longhornvolume=pvc-original-volume
+kubectl get backups -n longhorn-system -o wide | grep pvc-original-volume
 ```
 
 ### Automated DR Restore Script
@@ -486,17 +488,17 @@ spec:
   size: "${VOLUME_SIZE}"
   numberOfReplicas: ${REPLICAS}
   fromBackup: "${BACKUP_URL}"
-  accessMode: rwo
-  dataLocality: best-effort
+  frontend: blockdev
+  dataEngine: v1
 EOF
 
 echo "Waiting for volume restoration to complete..."
 
-# Wait for the volume to be ready
-kubectl wait --for=condition=ready \
-  "volume/${NEW_VOLUME_NAME}" \
-  -n "${NAMESPACE}" \
-  --timeout=1800s
+# Wait for the volume restore to finish
+until [ "$(kubectl get "volume/${NEW_VOLUME_NAME}" \
+  -n "${NAMESPACE}" -o jsonpath='{.status.restoreRequired}')" = "false" ]; do
+  sleep 10
+done
 
 echo "Volume restoration complete!"
 
@@ -550,6 +552,9 @@ spec:
               BACKUP_URL=$(kubectl get backups -n longhorn-system \
                 --sort-by=.metadata.creationTimestamp \
                 -o jsonpath='{.items[-1].status.url}')
+              VOLUME_SIZE=$(kubectl get backups -n longhorn-system \
+                --sort-by=.metadata.creationTimestamp \
+                -o jsonpath='{.items[-1].status.volumeSize}')
 
               echo "Verifying backup: ${BACKUP_URL}"
 
@@ -561,9 +566,11 @@ spec:
                 name: backup-verify-test
                 namespace: longhorn-system
               spec:
-                size: "10737418240"
+                size: "${VOLUME_SIZE}"
                 numberOfReplicas: 1
                 fromBackup: "${BACKUP_URL}"
+                frontend: blockdev
+                dataEngine: v1
               EOF
 
               # Wait and verify
@@ -578,27 +585,27 @@ spec:
 
 ### 2. Implement Backup Retention Policies
 
-Configure cleanup jobs to manage storage costs.
+Configure retention on recurring backup jobs to manage storage costs.
 
 ```yaml
-# backup-cleanup-job.yaml
-# Automatically clean up old backups
+# backup-retention-job.yaml
+# Automatically retain only the most recent backups created by this job
 apiVersion: longhorn.io/v1beta2
 kind: RecurringJob
 metadata:
-  name: weekly-backup-cleanup
+  name: weekly-backup-retention
   namespace: longhorn-system
 spec:
-  # Run cleanup every Sunday at 4 AM
+  # Run backup every Sunday at 4 AM
   cron: "0 4 * * 0"
-  task: backup-cleanup
-  # Keep backups for 30 days
+  task: backup
+  # Keep the last 30 backups created by this job
   retain: 30
   groups:
     - default
   concurrency: 1
   labels:
-    job-type: cleanup
+    job-type: retention
 ```
 
 ### 3. Monitor Backup Health
@@ -619,23 +626,13 @@ spec:
     rules:
     - alert: LonghornBackupFailed
       # Alert when backup state is Error
-      expr: longhorn_backup_state{state="Error"} > 0
+      expr: longhorn_backup_state == 4
       for: 5m
       labels:
         severity: critical
       annotations:
         summary: "Longhorn backup failed"
         description: "Backup {{ $labels.backup }} for volume {{ $labels.volume }} has failed"
-
-    - alert: LonghornBackupTargetUnavailable
-      # Alert when backup target is not available
-      expr: longhorn_backup_target_available == 0
-      for: 10m
-      labels:
-        severity: warning
-      annotations:
-        summary: "Longhorn backup target unavailable"
-        description: "The configured backup target is not accessible"
 ```
 
 ## Troubleshooting Common Issues
@@ -644,7 +641,7 @@ spec:
 
 ```bash
 # Check backup target settings
-kubectl get settings -n longhorn-system | grep backup
+kubectl get backuptargets -n longhorn-system
 
 # Verify secret exists and has correct data
 kubectl get secret longhorn-backup-target-secret -n longhorn-system -o yaml
@@ -662,8 +659,8 @@ kubectl get backups -n longhorn-system -o wide
 # Get detailed backup information
 kubectl describe backup <backup-name> -n longhorn-system
 
-# Check for network issues or storage quota limits
-kubectl logs -n longhorn-system deployment/longhorn-driver-deployer
+# Check Longhorn manager logs for network issues or storage quota limits
+kubectl logs -n longhorn-system -l app=longhorn-manager --tail=100 | grep -i backup
 ```
 
 ### Restore Taking Too Long
