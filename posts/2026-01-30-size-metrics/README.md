@@ -149,10 +149,13 @@ Set up the metrics SDK with a Prometheus exporter:
 // metrics-setup.ts
 // Configures OpenTelemetry metrics with Prometheus exporter for size metrics
 
-import { MeterProvider, PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
+import { MeterProvider } from '@opentelemetry/sdk-metrics';
 import { PrometheusExporter } from '@opentelemetry/exporter-prometheus';
 import { Resource } from '@opentelemetry/resources';
-import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
+import {
+    ATTR_SERVICE_NAME,
+    ATTR_SERVICE_VERSION,
+} from '@opentelemetry/semantic-conventions';
 
 // Create Prometheus exporter that exposes /metrics endpoint
 const prometheusExporter = new PrometheusExporter({
@@ -161,15 +164,14 @@ const prometheusExporter = new PrometheusExporter({
 });
 
 // Configure the meter provider with service metadata
+// Register the Prometheus reader via the constructor's readers option
 const meterProvider = new MeterProvider({
     resource: new Resource({
-        [SemanticResourceAttributes.SERVICE_NAME]: 'my-service',
-        [SemanticResourceAttributes.SERVICE_VERSION]: '1.0.0',
+        [ATTR_SERVICE_NAME]: 'my-service',
+        [ATTR_SERVICE_VERSION]: '1.0.0',
     }),
+    readers: [prometheusExporter],
 });
-
-// Add the Prometheus reader to export metrics
-meterProvider.addMetricReader(prometheusExporter);
 
 // Export the meter for use in other modules
 export const meter = meterProvider.getMeter('size-metrics', '1.0.0');
@@ -872,11 +874,12 @@ groups:
           summary: "Disk {{ $labels.mountpoint }} predicted to fill within 24 hours"
 
       # Alert when queue is growing without being consumed
+      # queue_size_bytes is a gauge, so use delta/deriv instead of increase/rate
       - alert: QueueBacklog
         expr: |
-          increase(queue_size_bytes[1h]) > 104857600
+          delta(queue_size_bytes[1h]) > 104857600
           and
-          rate(queue_size_bytes[5m]) > 0
+          deriv(queue_size_bytes[5m]) > 0
         for: 15m
         labels:
           severity: warning
@@ -941,8 +944,8 @@ Here are useful PromQL queries for size metrics:
 # Current disk usage percentage
 disk_usage_bytes{state="used"} / disk_usage_bytes{state="total"} * 100
 
-# Memory usage trend over 24 hours
-rate(process_memory_bytes{type="heap_used"}[24h])
+# Memory usage trend over 24 hours (process_memory_bytes is a gauge)
+deriv(process_memory_bytes{type="heap_used"}[24h])
 
 # 95th percentile request body size
 histogram_quantile(0.95, rate(http_request_body_size_bytes_bucket[5m]))
