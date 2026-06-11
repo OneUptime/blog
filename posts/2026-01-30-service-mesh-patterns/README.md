@@ -541,7 +541,7 @@ spec:
         perTryTimeout: 5s
         # Retry on server errors and connection failures
         retryOn: 5xx,reset,connect-failure,refused-stream
-        # Add jitter to prevent thundering herd
+        # Allow retries to be sent to endpoints in other localities
         retryRemoteLocalities: true
       timeout: 20s
 
@@ -595,7 +595,7 @@ spec:
       isRetryable: true
       timeout: 10s
 
-    # POST requests get limited retries
+    # POST requests are not idempotent - disable retries
     - name: POST /api/v1/orders
       condition:
         method: POST
@@ -606,7 +606,7 @@ spec:
               min: 500
               max: 599
           isFailure: true
-      # Only retry if the response indicates it's safe
+      # POST is not safe to retry automatically - mark as not retryable
       isRetryable: false
       timeout: 30s
   retryBudget:
