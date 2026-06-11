@@ -46,21 +46,12 @@ Perfect use cases for State Timeline panels include:
 
 Start by creating a new panel and selecting "State timeline" from the visualization dropdown. The key requirement is that your data must represent discrete states, not continuous metrics.
 
-Here is a basic PromQL query that converts a numeric gauge into states:
+Here is a basic PromQL query that returns numeric state codes:
 
 ```promql
-# Convert response time to state categories
+# 1 = healthy, 0 = down. Map these values in Grafana.
 
-label_replace(
-  label_replace(
-    label_replace(
-      up{job="api-gateway"},
-      "state", "down", "up", "0"
-    ),
-    "state", "healthy", "up", "1"
-  ),
-  "state", "unknown", "up", ""
-)
+up{job="api-gateway"}
 ```
 
 For a cleaner approach, use recording rules to pre-compute states. Add this to your Prometheus rules file:
@@ -72,20 +63,7 @@ groups:
     rules:
       - record: service:state
         expr: |
-          label_replace(
-            vector(1) and on() up{job="api-gateway"} == 1,
-            "state", "healthy", "", ""
-          )
-          or
-          label_replace(
-            vector(1) and on() up{job="api-gateway"} == 0,
-            "state", "down", "", ""
-          )
-          or
-          label_replace(
-            vector(1) and on() absent(up{job="api-gateway"}),
-            "state", "unknown", "", ""
-          )
+          up{job="api-gateway"}
 ```
 
 ## Data Format Requirements
@@ -141,14 +119,14 @@ The configuration in JSON format looks like this:
     {
       "type": "value",
       "options": {
-        "2": { "text": "Degraded", "color": "yellow" }
+        "2": { "text": "Degraded", "color": "yellow" },
+        "3": { "text": "Maintenance", "color": "blue" }
       }
     },
     {
-      "type": "range",
+      "type": "special",
       "options": {
-        "from": 3,
-        "to": 100,
+        "match": "null",
         "result": { "text": "Unknown", "color": "gray" }
       }
     }
@@ -191,28 +169,18 @@ Create a query that pulls health status for all services. Using Prometheus:
 
 ```promql
 # Service health states based on probe success rate
-sum by (service) (
-  label_replace(
-    rate(probe_success{job="blackbox"}[5m]) > 0.95,
-    "state", "healthy", "", ""
-  )
+(
+  (avg by (service) (avg_over_time(probe_success{job="blackbox"}[5m])) > bool 0.95) * 2
 )
-or
-sum by (service) (
-  label_replace(
-    rate(probe_success{job="blackbox"}[5m]) > 0.5
-    and rate(probe_success{job="blackbox"}[5m]) <= 0.95,
-    "state", "degraded", "", ""
-  )
-)
-or
-sum by (service) (
-  label_replace(
-    rate(probe_success{job="blackbox"}[5m]) <= 0.5,
-    "state", "down", "", ""
-  )
++
+(
+  (avg by (service) (avg_over_time(probe_success{job="blackbox"}[5m])) > bool 0.5)
+  *
+  (avg by (service) (avg_over_time(probe_success{job="blackbox"}[5m])) <= bool 0.95)
 )
 ```
+
+Map the resulting values as 2 = healthy, 1 = degraded, and 0 = down.
 
 ## Advanced: Using Transformations
 
@@ -224,7 +192,7 @@ flowchart TD
     Q2[Query B: DB Health] --> T1
     Q3[Query C: Cache Health] --> T1
     T1 --> T2[Transform: Organize Fields]
-    T2 --> T3[Transform: Convert to Labels]
+    T2 --> T3[Transform: Convert Field Type]
     T3 --> P[State Timeline Panel]
 ```
 
@@ -399,8 +367,8 @@ The complete panel JSON you can import:
   "datasource": "Prometheus",
   "targets": [
     {
-      "expr": "max by (deployment) (kube_deployment_status_condition{condition=\"Available\", status=\"true\"}) * 3 or max by (deployment) (kube_deployment_status_condition{condition=\"Progressing\", status=\"true\"}) * 2 or max by (deployment) (kube_deployment_status_condition{condition=\"Available\", status=\"false\"}) * 1",
-      "legendFormat": "{{deployment}}"
+      "expr": "max by (deployment, namespace) (kube_deployment_status_condition{condition=\"Available\", status=\"true\"}) * 3 or max by (deployment, namespace) (kube_deployment_status_condition{condition=\"Progressing\", status=\"true\"}) * 2 or max by (deployment, namespace) (kube_deployment_status_condition{condition=\"Available\", status=\"false\"}) * 1",
+      "legendFormat": "{{namespace}}/{{deployment}}"
     }
   ],
   "fieldConfig": {
