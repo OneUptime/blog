@@ -116,7 +116,7 @@ Create `src/rabbitmq_random_exchange.app.src`:
   ]},
   {mod, {rabbit_exchange_type_random, []}},
   {env, []},
-  {broker_version_requirements, ["3.12.0", "3.13.0", "4.0.0"]}
+  {broker_version_requirements, ["3.12.0"]}
  ]}.
 ```
 
@@ -148,7 +148,7 @@ Create `src/rabbit_exchange_type_random.erl`:
     validate/1,
     validate_binding/2,
     create/2,
-    delete/3,
+    delete/2,
     policy_changed/2,
     add_binding/3,
     remove_bindings/3,
@@ -230,12 +230,12 @@ validate_binding(_Exchange, _Binding) ->
 
 %% Called when the exchange is created.
 %% Use this for any initialization logic.
-create(_Tx, _Exchange) ->
+create(_Serial, _Exchange) ->
     ok.
 
 %% Called when the exchange is deleted.
 %% Clean up any resources allocated in create/2.
-delete(_Tx, _Exchange, _Bindings) ->
+delete(_Serial, _Exchange) ->
     ok.
 
 %% Called when a policy attached to this exchange changes.
@@ -245,12 +245,12 @@ policy_changed(_Exchange1, _Exchange2) ->
 
 %% Called when a new binding is added to this exchange.
 %% You might maintain internal routing tables here.
-add_binding(_Tx, _Exchange, _Binding) ->
+add_binding(_Serial, _Exchange, _Binding) ->
     ok.
 
 %% Called when bindings are removed from this exchange.
 %% Clean up any state related to removed bindings.
-remove_bindings(_Tx, _Exchange, _Bindings) ->
+remove_bindings(_Serial, _Exchange, _Bindings) ->
     ok.
 
 %% Validate that redeclaration arguments match original declaration.
@@ -463,7 +463,7 @@ Let us build a more sophisticated exchange that routes based on message content.
     validate/1,
     validate_binding/2,
     create/2,
-    delete/3,
+    delete/2,
     policy_changed/2,
     add_binding/3,
     remove_bindings/3,
@@ -562,19 +562,19 @@ validate(#exchange{arguments = Args}) ->
 validate_binding(_Exchange, _Binding) ->
     ok.
 
-create(_Tx, _Exchange) ->
+create(_Serial, _Exchange) ->
     ok.
 
-delete(_Tx, _Exchange, _Bindings) ->
+delete(_Serial, _Exchange) ->
     ok.
 
 policy_changed(_Exchange1, _Exchange2) ->
     ok.
 
-add_binding(_Tx, _Exchange, _Binding) ->
+add_binding(_Serial, _Exchange, _Binding) ->
     ok.
 
-remove_bindings(_Tx, _Exchange, _Bindings) ->
+remove_bindings(_Serial, _Exchange, _Bindings) ->
     ok.
 
 assert_args_equivalence(Exchange, Args) ->
