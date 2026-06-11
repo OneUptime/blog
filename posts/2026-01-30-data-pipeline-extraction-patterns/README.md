@@ -179,7 +179,7 @@ class FullExtractor:
 
 ```python
 # chunked_extractor.py
-# Memory-efficient extraction for very large tables
+# Range-based extraction for very large tables
 
 from typing import Iterator, Dict, Any, List
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -675,7 +675,7 @@ class CDCConsumer:
 
     Features:
     - Ordered processing within partitions
-    - Exactly-once semantics with offset tracking
+    - At-least-once delivery with offset tracking
     - Dead letter queue for failed events
     - Schema evolution handling
     """
@@ -1217,6 +1217,42 @@ class RestAPIConnector(BaseConnector):
         if self._session:
             self._session.close()
             self._session = None
+
+    def test_connection(self) -> bool:
+        """Test API connectivity."""
+        try:
+            if self._session is None:
+                self.connect()
+            self._make_request('')
+            return True
+        except requests.RequestException as e:
+            logger.error(f"Connection test failed: {e}")
+            return False
+
+    def discover_schema(self) -> List[TableSchema]:
+        """
+        Generic REST APIs usually require endpoint-specific schemas.
+        Override this method for APIs that expose schema metadata.
+        """
+        return []
+
+    def fetch_page(
+        self,
+        table: str,
+        offset: int,
+        limit: int,
+        order_by: str = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Fetch a page from an API endpoint.
+
+        The table parameter maps to an endpoint path for REST sources.
+        """
+        response = self._make_request(table, {
+            'offset': offset,
+            'limit': limit
+        })
+        return response.get('data', [])
 
     def _rate_limit_wait(self) -> None:
         """Enforce rate limiting between requests."""
@@ -1932,7 +1968,7 @@ class CheckpointManager:
         self.checkpoint_interval = checkpoint_interval
         self._checkpoints: Dict[str, ExtractionCheckpoint] = {}
         self._records_since_checkpoint: Dict[str, int] = {}
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
 
         # Load existing checkpoints
         self._load_checkpoints()
@@ -2079,7 +2115,7 @@ Catching data quality issues early prevents downstream problems.
 # validation.py
 # Data validation during extraction
 
-from typing import Dict, Any, List, Optional, Callable
+from typing import Dict, Any, List, Optional, Callable, Iterator
 from dataclasses import dataclass
 from enum import Enum
 import re
@@ -2300,7 +2336,7 @@ Comprehensive monitoring helps identify issues before they become critical.
 # monitoring.py
 # Extraction monitoring and metrics
 
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from collections import defaultdict
@@ -2518,7 +2554,8 @@ Here is a complete example that combines all patterns into a production-ready ex
 # pipeline.py
 # Complete extraction pipeline combining all patterns
 
-from typing import Iterator, Dict, Any
+from typing import Iterator, Dict, Any, Optional
+from datetime import datetime
 import logging
 
 logger = logging.getLogger(__name__)
