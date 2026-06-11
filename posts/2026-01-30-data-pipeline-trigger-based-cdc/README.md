@@ -206,16 +206,19 @@ DECLARE
     v_old_data JSONB;
     v_new_data JSONB;
     v_changed_columns TEXT[];
+    v_order_id BIGINT;
 BEGIN
     -- Determine operation type and set appropriate data
     IF TG_OP = 'INSERT' THEN
         -- INSERT: no old data, capture new row
+        v_order_id := NEW.id;
         v_old_data := NULL;
         v_new_data := to_jsonb(NEW);
         v_changed_columns := NULL;
 
     ELSIF TG_OP = 'UPDATE' THEN
         -- UPDATE: capture both states and identify changed columns
+        v_order_id := NEW.id;
         v_old_data := to_jsonb(OLD);
         v_new_data := to_jsonb(NEW);
 
@@ -239,6 +242,7 @@ BEGIN
 
     ELSIF TG_OP = 'DELETE' THEN
         -- DELETE: capture old data, no new data
+        v_order_id := OLD.id;
         v_old_data := to_jsonb(OLD);
         v_new_data := NULL;
         v_changed_columns := NULL;
@@ -253,7 +257,7 @@ BEGIN
         changed_columns
     ) VALUES (
         TG_OP,
-        COALESCE(NEW.id, OLD.id),
+        v_order_id,
         v_old_data,
         v_new_data,
         v_changed_columns
@@ -269,7 +273,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Attach trigger to source table
--- AFTER trigger ensures we capture the final committed state
+-- AFTER trigger captures the row after the source statement has applied its changes
 CREATE TRIGGER trg_orders_capture_changes
     AFTER INSERT OR UPDATE OR DELETE ON orders
     FOR EACH ROW
@@ -278,11 +282,11 @@ CREATE TRIGGER trg_orders_capture_changes
 
 ### Key Design Points
 
-**AFTER vs BEFORE triggers**: Use AFTER triggers for CDC. The change has already been validated and will be committed. BEFORE triggers can see changes that later fail constraint checks.
+**AFTER vs BEFORE triggers**: Use AFTER triggers for CDC. The row change has already passed the source statement's checks, and the change record is written in the same transaction. BEFORE triggers can see values before the row operation is complete.
 
 **FOR EACH ROW**: CDC requires row-level triggers to capture individual changes. Statement-level triggers only fire once per statement regardless of affected rows.
 
-**Return value**: AFTER triggers must return NEW (or OLD for DELETE) to allow the operation to complete. Returning NULL would cancel the operation.
+**Return value**: PostgreSQL ignores the return value of row-level AFTER triggers. Returning NEW (or OLD for DELETE) is a common convention, but returning NULL would not cancel the operation for an AFTER trigger. For row-level BEFORE triggers, returning NULL skips the row operation.
 
 **Skip no-op updates**: ORMs sometimes issue UPDATE statements that do not actually change values. Detecting and skipping these reduces noise in the change table.
 
@@ -411,7 +415,24 @@ RETURNS TRIGGER AS $$
 DECLARE
     v_batch_id UUID;
     v_is_batch BOOLEAN;
+    v_order_id BIGINT;
+    v_old_data JSONB;
+    v_new_data JSONB;
 BEGIN
+    IF TG_OP = 'DELETE' THEN
+        v_order_id := OLD.id;
+        v_old_data := to_jsonb(OLD);
+        v_new_data := NULL;
+    ELSIF TG_OP = 'UPDATE' THEN
+        v_order_id := NEW.id;
+        v_old_data := to_jsonb(OLD);
+        v_new_data := to_jsonb(NEW);
+    ELSE
+        v_order_id := NEW.id;
+        v_old_data := NULL;
+        v_new_data := to_jsonb(NEW);
+    END IF;
+
     -- Check if this is part of a batch operation
     -- Application sets this before bulk operations
     v_batch_id := current_setting('app.batch_id', true)::UUID;
@@ -426,7 +447,7 @@ BEGIN
             new_data
         ) VALUES (
             TG_OP,
-            COALESCE(NEW.id, OLD.id),
+            v_order_id,
             jsonb_build_object(
                 'batch_id', v_batch_id,
                 'batch_mode', true
@@ -441,9 +462,9 @@ BEGIN
             new_data
         ) VALUES (
             TG_OP,
-            COALESCE(NEW.id, OLD.id),
-            CASE WHEN TG_OP IN ('UPDATE', 'DELETE') THEN to_jsonb(OLD) END,
-            CASE WHEN TG_OP IN ('INSERT', 'UPDATE') THEN to_jsonb(NEW) END
+            v_order_id,
+            v_old_data,
+            v_new_data
         );
     END IF;
 
@@ -525,7 +546,7 @@ from datetime import datetime
 class CDCConsumer:
     """
     Polls the change table and processes changes in order.
-    Implements checkpointing for exactly-once semantics.
+    Implements database checkpointing for at-least-once processing.
     """
 
     def __init__(self, dsn, batch_size=100):
@@ -713,17 +734,25 @@ Trigger-based CDC adds overhead to every write operation. Here is how to minimiz
 -- GOOD: Minimal trigger that defers work
 CREATE OR REPLACE FUNCTION capture_order_changes_fast()
 RETURNS TRIGGER AS $$
+DECLARE
+    v_order_id BIGINT;
+    v_row_data JSONB;
 BEGIN
+    IF TG_OP = 'DELETE' THEN
+        v_order_id := OLD.id;
+        v_row_data := to_jsonb(OLD);
+    ELSE
+        v_order_id := NEW.id;
+        v_row_data := to_jsonb(NEW);
+    END IF;
+
     -- Minimal processing in trigger
     -- No complex logic, no external calls, no large computations
     INSERT INTO order_changes (operation, order_id, new_data)
     VALUES (
         TG_OP,
-        COALESCE(NEW.id, OLD.id),
-        CASE
-            WHEN TG_OP = 'DELETE' THEN to_jsonb(OLD)
-            ELSE to_jsonb(NEW)
-        END
+        v_order_id,
+        v_row_data
     );
 
     RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
@@ -1006,13 +1035,14 @@ COMMIT;
 -- If orders.description is 100KB, each change record is huge
 
 -- CORRECT: Selective column capture
+-- Attach this function to INSERT OR UPDATE triggers, or add DELETE handling separately.
 CREATE OR REPLACE FUNCTION capture_order_changes_selective()
 RETURNS TRIGGER AS $$
 BEGIN
     INSERT INTO order_changes (operation, order_id, new_data)
     VALUES (
         TG_OP,
-        COALESCE(NEW.id, OLD.id),
+        NEW.id,
         -- Only capture the columns downstream systems need
         jsonb_build_object(
             'id', NEW.id,
@@ -1065,6 +1095,18 @@ CREATE TABLE order_changes (
 -- Create initial partitions (automate with pg_partman in production)
 CREATE TABLE order_changes_default PARTITION OF order_changes DEFAULT;
 
+-- Dead letter table for changes that cannot be processed automatically
+CREATE TABLE order_changes_dead_letter (
+    dead_letter_id BIGSERIAL PRIMARY KEY,
+    original_change_id BIGINT NOT NULL,
+    operation VARCHAR(10) NOT NULL,
+    order_id BIGINT NOT NULL,
+    old_data JSONB,
+    new_data JSONB,
+    error_message TEXT NOT NULL,
+    failed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 -- Indexes
 CREATE INDEX idx_order_changes_unprocessed
     ON order_changes (change_id)
@@ -1087,6 +1129,7 @@ DECLARE
     v_tracked_columns TEXT[] := ARRAY[
         'status', 'total_amount', 'shipping_address', 'customer_id'
     ];
+    v_order_id BIGINT;
 BEGIN
     -- Prevent recursion
     IF pg_trigger_depth() > 1 THEN
@@ -1096,6 +1139,7 @@ BEGIN
     -- Build change record based on operation
     CASE TG_OP
         WHEN 'INSERT' THEN
+            v_order_id := NEW.id;
             v_new_data := jsonb_build_object(
                 'id', NEW.id,
                 'customer_id', NEW.customer_id,
@@ -1106,6 +1150,7 @@ BEGIN
             );
 
         WHEN 'UPDATE' THEN
+            v_order_id := NEW.id;
             -- Identify which tracked columns changed
             SELECT ARRAY_AGG(col)
             INTO v_changed_columns
@@ -1135,6 +1180,7 @@ BEGIN
             );
 
         WHEN 'DELETE' THEN
+            v_order_id := OLD.id;
             v_old_data := jsonb_build_object(
                 'id', OLD.id,
                 'customer_id', OLD.customer_id,
@@ -1152,7 +1198,7 @@ BEGIN
         changed_columns
     ) VALUES (
         TG_OP,
-        COALESCE(NEW.id, OLD.id),
+        v_order_id,
         v_old_data,
         v_new_data,
         v_changed_columns
@@ -1166,9 +1212,9 @@ BEGIN
     END IF;
 
 EXCEPTION WHEN OTHERS THEN
-    -- Log error but do not block the original operation
+    -- Fail the source transaction so CDC changes are not silently lost
     RAISE WARNING 'CDC trigger error: %', SQLERRM;
-    IF TG_OP = 'DELETE' THEN RETURN OLD; ELSE RETURN NEW; END IF;
+    RAISE;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -1188,9 +1234,9 @@ Production CDC Consumer for Order Changes
 
 Features:
 - Concurrent processing with multiple workers
-- Exactly-once semantics via database transactions
+- At-least-once processing with database checkpointing
 - Graceful shutdown handling
-- Comprehensive error handling and retry logic
+- Comprehensive error handling
 - Metrics emission for monitoring
 """
 
@@ -1199,9 +1245,8 @@ import psycopg2.pool
 import json
 import time
 import signal
-import threading
 from datetime import datetime
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Optional
 from dataclasses import dataclass
 from contextlib import contextmanager
 
@@ -1232,14 +1277,12 @@ class CDCConsumer:
         dsn: str,
         consumer_id: str,
         batch_size: int = 100,
-        poll_interval: float = 1.0,
-        max_retries: int = 3
+        poll_interval: float = 1.0
     ):
         self.dsn = dsn
         self.consumer_id = consumer_id
         self.batch_size = batch_size
         self.poll_interval = poll_interval
-        self.max_retries = max_retries
         self.running = False
         self.pool = None
 
@@ -1408,7 +1451,7 @@ class CDCConsumer:
                             self.processed_count += 1
                         else:
                             self.error_count += 1
-                            # Send to dead letter after max retries
+                            # Send to dead letter for manual review
                             self._send_to_dead_letter(
                                 conn,
                                 change,
