@@ -276,10 +276,6 @@ flamebearer profile.cpuprofile
 # Using speedscope (web-based viewer)
 npm install -g speedscope
 speedscope profile.cpuprofile
-
-# Using flamegraph.pl with conversion
-npm install -g cpuprofilify
-cpuprofilify profile.cpuprofile | flamegraph.pl > profile.svg
 ```
 
 ## Capturing Profiles in Python
@@ -361,7 +357,7 @@ pip install flameprof
 flameprof profile.pstats > profile.svg
 
 # Generate with options
-flameprof --width 1200 --title "API Handler" profile.pstats > profile.svg
+flameprof --width 1200 --row-height 24 profile.pstats > profile.svg
 ```
 
 ## Capturing Profiles in Go
@@ -656,8 +652,9 @@ Memory flame graphs show allocation sites instead of CPU usage. The width repres
 Different tools capture memory profiles:
 
 ```bash
-# Linux perf with malloc tracing
-perf record -e malloc:* -g -p 12345 -- sleep 30
+# Linux perf with malloc tracing (requires uprobe registration first)
+sudo perf probe -x /lib/x86_64-linux-gnu/libc.so.6 malloc
+sudo perf record -e probe_libc:malloc -g -p 12345 -- sleep 30
 perf script | ./stackcollapse-perf.pl | ./flamegraph.pl --color=mem > alloc.svg
 
 # async-profiler for JVM
@@ -666,7 +663,8 @@ perf script | ./stackcollapse-perf.pl | ./flamegraph.pl --color=mem > alloc.svg
 # py-spy does not capture memory; use memray instead
 pip install memray
 memray run script.py
-memray flamegraph memray-script.bin -o memory.html
+# Produces a file like memray-script.<pid>.bin
+memray flamegraph memray-script.<pid>.bin -o memory.html
 
 # Go heap profile
 go tool pprof -http=:8080 http://localhost:6060/debug/pprof/heap
