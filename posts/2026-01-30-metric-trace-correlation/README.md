@@ -146,7 +146,8 @@ npm install @opentelemetry/api \
             @opentelemetry/sdk-metrics \
             @opentelemetry/exporter-prometheus \
             @opentelemetry/auto-instrumentations-node \
-            @opentelemetry/exporter-otlp-http
+            @opentelemetry/exporter-trace-otlp-http \
+            @opentelemetry/exporter-metrics-otlp-http
 ```
 
 ### Configure the SDK with Exemplar Support
@@ -165,8 +166,12 @@ import {
   View,
   InstrumentType
 } from '@opentelemetry/sdk-metrics';
-import { Resource } from '@opentelemetry/resources';
-import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
+import { resourceFromAttributes } from '@opentelemetry/resources';
+import {
+  ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION
+} from '@opentelemetry/semantic-conventions';
 
 // Configure the OTLP exporters to send data to your observability backend
 const traceExporter = new OTLPTraceExporter({
@@ -211,10 +216,10 @@ const metricReader = new PeriodicExportingMetricReader({
 
 // Initialize the SDK with both tracing and metrics
 export const sdk = new NodeSDK({
-  resource: new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: 'order-service',
-    [SemanticResourceAttributes.SERVICE_VERSION]: '1.0.0',
-    [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: process.env.NODE_ENV || 'development'
+  resource: resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: 'order-service',
+    [ATTR_SERVICE_VERSION]: '1.0.0',
+    [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: process.env.NODE_ENV || 'development'
   }),
   traceExporter,
   metricReader,
@@ -238,6 +243,8 @@ export async function shutdownTelemetry(): Promise<void> {
 ### Recording Metrics with Exemplars
 
 OpenTelemetry automatically attaches trace context as exemplars when you record metrics within an active span:
+
+> Note: Exemplar collection and export support varies by OpenTelemetry language SDK and exporter. For JavaScript, verify your installed `@opentelemetry/sdk-metrics` and exporter versions and confirm that exemplars appear in the exported OTLP payload before relying on them in production.
 
 ```typescript
 // metrics.ts
@@ -395,6 +402,8 @@ function simulateExternalCall(minMs: number, maxMs: number): Promise<void> {
 
 Prometheus 2.26+ supports exemplars in its native format. Here is how to configure the OpenTelemetry Prometheus exporter:
 
+> Note: The OpenTelemetry JavaScript `PrometheusExporter` exposes metrics for Prometheus to scrape, but current releases do not serialize exemplars in the scrape response. To send exemplars from a JavaScript service to Prometheus-compatible storage, prefer OTLP metrics through an OpenTelemetry Collector or a backend/exporter path that explicitly supports exemplars.
+
 ### Prometheus Exporter Configuration
 
 ```typescript
@@ -403,11 +412,12 @@ Prometheus 2.26+ supports exemplars in its native format. Here is how to configu
 
 import { PrometheusExporter } from '@opentelemetry/exporter-prometheus';
 import { MeterProvider } from '@opentelemetry/sdk-metrics';
-import { Resource } from '@opentelemetry/resources';
-import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
+import { resourceFromAttributes } from '@opentelemetry/resources';
+import { ATTR_SERVICE_NAME } from '@opentelemetry/semantic-conventions';
 
 // Create Prometheus exporter
-// Exemplars are included automatically when trace context is present
+// This exposes metrics for Prometheus to scrape. Use an OTLP/Collector path
+// for exemplars unless your exporter explicitly supports exemplar output.
 const prometheusExporter = new PrometheusExporter({
   port: 9464,           // Metrics endpoint port
   endpoint: '/metrics', // Metrics path
@@ -416,15 +426,14 @@ const prometheusExporter = new PrometheusExporter({
 
 // Configure the meter provider
 const meterProvider = new MeterProvider({
-  resource: new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: 'order-service'
+  resource: resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: 'order-service'
   }),
   readers: [prometheusExporter]
 });
 
-// The exporter automatically formats exemplars in Prometheus exposition format
-// Example output:
-// http_request_duration_seconds_bucket{le="0.5",method="POST",route="/orders"} 1027 # {trace_id="abc123"} 0.482 1706620800.123
+// Example metric output:
+// http_request_duration_seconds_bucket{le="0.5",method="POST",route="/orders"} 1027
 ```
 
 ### Prometheus Scrape Configuration
@@ -438,7 +447,8 @@ global:
   scrape_interval: 15s
   evaluation_interval: 15s
 
-# Enable exemplar storage (required for Prometheus 2.26+)
+# Size exemplar storage. Prometheus must also be started with:
+# --enable-feature=exemplar-storage
 storage:
   exemplars:
     max_exemplars: 100000  # Adjust based on your trace volume
@@ -446,9 +456,6 @@ storage:
 scrape_configs:
   - job_name: 'order-service'
     scrape_interval: 10s
-    # Enable exemplar scraping
-    enable_features:
-      - exemplar-storage
     static_configs:
       - targets: ['order-service:9464']
     # Scrape exemplars from OpenMetrics format
