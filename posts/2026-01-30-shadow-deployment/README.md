@@ -494,6 +494,7 @@ Configure the shadow to skip writes:
 ```python
 # shadow_mode.py
 import os
+import uuid
 
 SHADOW_MODE = os.getenv('SHADOW_MODE', 'false').lower() == 'true'
 
@@ -714,9 +715,9 @@ spec:
         values: ["shadow"]
 ```
 
-### 4. Set Timeouts for Shadow Requests
+### 4. Set Timeouts on the Primary Route
 
-Prevent slow shadow responses from consuming resources:
+Istio dispatches mirrored requests as fire-and-forget: the shadow response is discarded and does not block the primary, so the HTTPRoute `timeout` applies to the primary destination only. Still set a sensible timeout on the route so the primary path stays bounded even when the shadow cluster is degraded:
 
 ```yaml
 # shadow-timeout.yaml
@@ -737,6 +738,8 @@ spec:
         value: 100.0
       timeout: 5s
 ```
+
+To bound the shadow's own resource use, set request timeouts and connection limits on the shadow service itself (for example, via a `DestinationRule` with `connectionPool` settings on `api-shadow`).
 
 ### 5. Use Sampling for High-Traffic Services
 
