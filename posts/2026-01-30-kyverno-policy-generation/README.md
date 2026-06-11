@@ -66,7 +66,10 @@ helm repo update
 helm install kyverno kyverno/kyverno \
   --namespace kyverno \
   --create-namespace \
-  --set replicaCount=3
+  --set admissionController.replicas=3 \
+  --set backgroundController.replicas=3 \
+  --set cleanupController.replicas=3 \
+  --set reportsController.replicas=3
 
 # Verify installation
 kubectl get pods -n kyverno
@@ -75,6 +78,8 @@ kubectl get pods -n kyverno
 ## Generate Rule Basics
 
 A generate rule has these components:
+
+Note: the following examples use legacy `ClusterPolicy` generate rules. These remain functional in current Kyverno releases, but Kyverno v1.17 and later deprecate `ClusterPolicy` in favor of CEL-based `GeneratingPolicy` for new policies.
 
 ```yaml
 apiVersion: kyverno.io/v1
@@ -178,7 +183,7 @@ spec:
           data:
             TEAM: "{{request.object.metadata.labels.team}}"
             ENVIRONMENT: "{{request.object.metadata.labels.environment}}"
-            COST_CENTER: "{{request.object.metadata.labels.cost-center}}"
+            COST_CENTER: "{{request.object.metadata.labels.\"cost-center\"}}"
 ```
 
 Create a namespace with required labels:
@@ -672,6 +677,9 @@ spec:
               selector:
                 matchLabels:
                   pdb-enabled: "true"
+                matchExpressions:
+                  - key: app
+                    operator: Exists
       generate:
         synchronize: true
         apiVersion: policy/v1
@@ -728,6 +736,9 @@ spec:
               selector:
                 matchLabels:
                   prometheus-scrape: "true"
+                matchExpressions:
+                  - key: app
+                    operator: Exists
       generate:
         synchronize: true
         apiVersion: monitoring.coreos.com/v1
@@ -803,7 +814,7 @@ spec:
                 - Namespace
       preconditions:
         all:
-          - key: "{{request.object.metadata.annotations.\"allow-ingress-from\"}}"
+          - key: "{{request.object.metadata.annotations.\"allow-ingress-from\" || ''}}"
             operator: NotEquals
             value: ""
       generate:
