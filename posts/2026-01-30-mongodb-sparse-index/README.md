@@ -92,11 +92,11 @@ db.contacts.insertMany([
 // Create sparse index
 db.contacts.createIndex({ phone: 1 }, { sparse: true });
 
-// This query uses the sparse index and finds Alice and Bob
+// This query finds Alice (phone exists and is not null)
 db.contacts.find({ phone: { $ne: null } }).explain("executionStats");
 
-// This query finds Bob (phone exists but is null)
-db.contacts.find({ phone: null });
+// This query finds Bob (phone exists and is null)
+db.contacts.find({ phone: { $type: 10 } });
 ```
 
 ```mermaid
@@ -258,10 +258,10 @@ db.users.createIndex(
   { sparse: true }
 );
 
-// Partial index - indexes only docs where email exists AND is not null
+// Partial index - indexes only docs where email is a string
 db.users.createIndex(
   { email: 1 },
-  { partialFilterExpression: { email: { $exists: true, $ne: null } } }
+  { partialFilterExpression: { email: { $type: "string" } } }
 );
 
 // Partial index - indexes only active users with email
@@ -290,9 +290,9 @@ flowchart TD
         S1 -->|No| S3
     end
 
-    subgraph Partial["Partial Index Decision<br/>(email exists AND not null)"]
+    subgraph Partial["Partial Index Decision<br/>(email is a string)"]
         P1{{"email field exists?"}}
-        P2{{"email != null?"}}
+        P2{{"email is string?"}}
         P3["Include in index"]
         P4["Exclude from index"]
         P1 -->|Yes| P2
@@ -330,7 +330,7 @@ db.orders.createIndex(
   { orderNumber: 1 },
   {
     unique: true,
-    partialFilterExpression: { deletedAt: { $exists: false } }
+    partialFilterExpression: { deletedAt: null }
   }
 );
 
@@ -351,16 +351,16 @@ In multi-tenant applications, some tenants might have custom fields that others 
 ```javascript
 // Tenant A uses 'customerId' field
 // Tenant B uses 'clientCode' field
-// Create sparse indexes for both
+// Use partial indexes so tenantId does not cause every document to be indexed
 
 db.records.createIndex(
   { tenantId: 1, customerId: 1 },
-  { sparse: true }
+  { partialFilterExpression: { customerId: { $exists: true } } }
 );
 
 db.records.createIndex(
   { tenantId: 1, clientCode: 1 },
-  { sparse: true }
+  { partialFilterExpression: { clientCode: { $exists: true } } }
 );
 ```
 
@@ -402,11 +402,14 @@ graph LR
 
 ### Index Build Time
 
-Sparse indexes are faster to build because they process fewer documents.
+Sparse indexes still scan the collection during index builds, but they write fewer index entries when many documents lack the indexed field, which can reduce build cost.
 
 ```javascript
 // Monitor index build progress
-db.currentOp({ "command.createIndexes": { $exists: true } });
+db.getSiblingDB("admin").aggregate([
+  { $currentOp: { allUsers: true, idleConnections: false } },
+  { $match: { "command.createIndexes": { $exists: true } } }
+]);
 ```
 
 ## Best Practices
