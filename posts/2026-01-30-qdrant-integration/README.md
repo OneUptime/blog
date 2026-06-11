@@ -340,12 +340,12 @@ export async function search(
 
   // Search the collection
   // with_payload: true returns the stored metadata
-  // with_vectors: false saves bandwidth if you don't need the vectors
+  // with_vector: false saves bandwidth if you don't need the vectors
   const results = await qdrant.search('documents', {
     vector: queryVector,
     limit,
     with_payload: true,
-    with_vectors: false,
+    with_vector: false,
   });
 
   // Transform results into a cleaner format
@@ -870,7 +870,7 @@ export async function getCollectionInfo() {
 
   return {
     pointsCount: info.points_count,
-    vectorsCount: info.vectors_count,
+    indexedVectorsCount: info.indexed_vectors_count,
     status: info.status,
     config: info.config,
   };
@@ -1071,7 +1071,7 @@ export async function processAllPoints(
       limit,
       offset,
       with_payload: true,
-      with_vectors: false,
+      with_vector: false,
     });
 
     // Process each point in the batch
@@ -1139,7 +1139,7 @@ async function createDistributedCollection() {
 // Check cluster health
 async function getClusterInfo() {
   try {
-    const clusterInfo = await qdrant.api('cluster').clusterStatus();
+    const clusterInfo = await qdrant.api().clusterStatus();
     return clusterInfo;
   } catch (error) {
     // Cluster API not available in single-node mode
