@@ -91,7 +91,7 @@ Finding the critical path in a trace requires understanding span relationships a
 
 Convert spans into a directed acyclic graph (DAG) where:
 - Nodes are spans
-- Edges represent parent-child or sequential dependencies
+- Edges represent blocking dependencies, such as sequential work under the same parent span
 - Edge weights are span durations
 
 ### Step 2: Calculate Earliest Start Times
@@ -141,7 +141,7 @@ function findCriticalPath(spans):
 
 ## 4. Implementation in TypeScript
 
-Here is a complete implementation you can use with OpenTelemetry trace data.
+Here is a practical implementation you can use with OpenTelemetry trace data. It treats spans that contain child spans as timing envelopes, and identifies the critical path across leaf operation spans by inferring sequential dependencies from sibling spans that do not overlap.
 
 First, define the types for our span data structure:
 
@@ -168,13 +168,15 @@ interface AnalyzedSpan extends Span {
   slack: number;
   isCritical: boolean;
   children: string[];
+  dependencies: string[];
+  dependents: string[];
 }
 
 interface CriticalPathResult {
   criticalPath: AnalyzedSpan[];
   totalDuration: number;
   criticalPathDuration: number;
-  parallelEfficiency: number;  // ratio of critical path to sum of all spans
+  parallelEfficiency: number;  // ratio of critical path duration to operation work
 }
 ```
 
@@ -195,6 +197,9 @@ class CriticalPathAnalyzer {
     // Build parent-child relationships
     this.buildRelationships();
 
+    // Infer blocking dependencies between sequential sibling spans
+    this.buildDependencies();
+
     // Forward pass: calculate earliest times
     this.calculateEarliestTimes();
 
@@ -209,6 +214,7 @@ class CriticalPathAnalyzer {
 
   private initializeSpans(rawSpans: Span[]): void {
     this.spans.clear();
+    this.rootSpanId = null;
 
     for (const span of rawSpans) {
       const analyzed: AnalyzedSpan = {
@@ -220,6 +226,8 @@ class CriticalPathAnalyzer {
         slack: 0,
         isCritical: false,
         children: [],
+        dependencies: [],
+        dependents: [],
       };
 
       this.spans.set(span.spanId, analyzed);
@@ -242,90 +250,98 @@ class CriticalPathAnalyzer {
     }
   }
 
+  private buildDependencies(): void {
+    const spansByParent = new Map<string, AnalyzedSpan[]>();
+
+    for (const span of this.getOperationSpans()) {
+      const parentKey = span.parentSpanId || '__root__';
+      if (!spansByParent.has(parentKey)) {
+        spansByParent.set(parentKey, []);
+      }
+      spansByParent.get(parentKey)!.push(span);
+    }
+
+    for (const siblings of spansByParent.values()) {
+      siblings.sort((a, b) => a.startTime - b.startTime || a.endTime - b.endTime);
+
+      for (const span of siblings) {
+        const previous = siblings
+          .filter(candidate => candidate.endTime <= span.startTime)
+          .sort((a, b) => b.endTime - a.endTime)[0];
+
+        if (previous) {
+          span.dependencies.push(previous.spanId);
+          previous.dependents.push(span.spanId);
+        }
+      }
+    }
+  }
+
   private calculateEarliestTimes(): void {
     // Use actual start times from trace data
     // This handles the real parallelism captured in the trace
-    for (const span of this.spans.values()) {
+    for (const span of this.getOperationSpans()) {
       span.earliestStart = span.startTime;
       span.earliestEnd = span.endTime;
     }
   }
 
   private calculateLatestTimes(): void {
-    // Find the overall end time
-    let maxEndTime = 0;
-    for (const span of this.spans.values()) {
-      maxEndTime = Math.max(maxEndTime, span.earliestEnd);
+    const operationSpans = this.getOperationSpans();
+    if (operationSpans.length === 0) {
+      return;
     }
 
-    // Process spans in reverse order (leaves first)
-    const processed = new Set<string>();
-    const queue: string[] = [];
+    const maxEndTime = Math.max(...operationSpans.map(span => span.earliestEnd));
 
-    // Start with leaf spans (no children)
-    for (const span of this.spans.values()) {
-      if (span.children.length === 0) {
-        queue.push(span.spanId);
-      }
-    }
+    const sorted = [...operationSpans].sort((a, b) => b.endTime - a.endTime);
 
-    while (queue.length > 0) {
-      const spanId = queue.shift()!;
-      const span = this.spans.get(spanId)!;
-
-      if (processed.has(spanId)) continue;
-
-      // Check if all children are processed
-      const allChildrenProcessed = span.children.every(
-        childId => processed.has(childId)
-      );
-
-      if (!allChildrenProcessed) {
-        queue.push(spanId);
-        continue;
-      }
-
-      // Calculate latest end time
-      if (span.children.length === 0) {
-        // Leaf span: latest end is the trace end time
+    for (const span of sorted) {
+      if (span.dependents.length === 0) {
+        // Terminal operation: latest end is the last operation end time
         span.latestEnd = maxEndTime;
       } else {
-        // Non-leaf: latest end is minimum of children's latest starts
+        // Earlier operation: latest end is minimum of dependents' latest starts
         span.latestEnd = Math.min(
-          ...span.children.map(childId => {
-            const child = this.spans.get(childId)!;
-            return child.latestStart;
+          ...span.dependents.map(dependentId => {
+            const dependent = this.spans.get(dependentId)!;
+            return dependent.latestStart;
           })
         );
       }
 
       span.latestStart = span.latestEnd - span.duration;
-      processed.add(spanId);
-
-      // Add parent to queue
-      if (span.parentSpanId && !processed.has(span.parentSpanId)) {
-        queue.push(span.parentSpanId);
-      }
     }
   }
 
   private calculateSlack(): void {
-    for (const span of this.spans.values()) {
+    for (const span of this.getOperationSpans()) {
       span.slack = span.latestStart - span.earliestStart;
       span.isCritical = Math.abs(span.slack) < 1; // 1ms tolerance
     }
   }
 
   private buildResult(): CriticalPathResult {
-    const criticalPath = Array.from(this.spans.values())
+    const operationSpans = this.getOperationSpans();
+    if (operationSpans.length === 0) {
+      return {
+        criticalPath: [],
+        totalDuration: 0,
+        criticalPathDuration: 0,
+        parallelEfficiency: 0,
+      };
+    }
+
+    const criticalPath = operationSpans
       .filter(span => span.isCritical)
       .sort((a, b) => a.earliestStart - b.earliestStart);
 
     const totalDuration = this.rootSpanId
       ? this.spans.get(this.rootSpanId)!.duration
-      : 0;
+      : Math.max(...operationSpans.map(span => span.endTime)) -
+        Math.min(...operationSpans.map(span => span.startTime));
 
-    const sumOfAllDurations = Array.from(this.spans.values())
+    const sumOfOperationDurations = operationSpans
       .reduce((sum, span) => sum + span.duration, 0);
 
     const criticalPathDuration = criticalPath
@@ -335,8 +351,13 @@ class CriticalPathAnalyzer {
       criticalPath,
       totalDuration,
       criticalPathDuration,
-      parallelEfficiency: totalDuration / sumOfAllDurations,
+      parallelEfficiency: criticalPathDuration / sumOfOperationDurations,
     };
+  }
+
+  private getOperationSpans(): AnalyzedSpan[] {
+    return Array.from(this.spans.values())
+      .filter(span => span.children.length === 0);
   }
 }
 
@@ -353,7 +374,7 @@ A flame graph or Gantt chart with critical path highlighting makes analysis much
 // visualization.ts
 // Generate Mermaid diagrams for critical path visualization
 
-function generateMermaidGantt(result: CriticalPathResult, allSpans: AnalyzedSpan[]): string {
+function generateMermaidGantt(allSpans: AnalyzedSpan[]): string {
   const lines: string[] = [
     'gantt',
     '    title Request Critical Path Analysis',
@@ -509,14 +530,13 @@ Output:
 
 ```text
 Critical Path:
-  POST /checkout (350ms) - api-gateway
   validateCart (20ms) - order-service
   checkInventory (100ms) - inventory-service
   processPayment (175ms) - payment-service
   sendConfirmation (40ms) - notification-service
 Total Duration: 350ms
 Critical Path Duration: 335ms
-Parallel Efficiency: 98.6%
+Parallel Efficiency: 94.4%
 ```
 
 Notice that `getUserProfile` is not on the critical path. It runs in parallel with `checkInventory` and finishes before inventory check completes. Optimizing user profile lookup would not reduce checkout latency.
@@ -551,13 +571,11 @@ Here, Backend B is the slowest and determines the critical path. Backends A and 
 
 To use critical path analysis with OpenTelemetry traces, you need to extract spans from your tracing backend and convert them to the format our analyzer expects.
 
-Here is an example that fetches traces from an OTLP-compatible backend:
+OTLP defines how telemetry is exported to collectors and backends; it does not define a standard query API for fetching a trace by ID. The fetch step below assumes your backend exposes a JSON trace lookup API and returns flattened span objects with their resource attributes attached.
 
 ```typescript
 // otel-integration.ts
 // Convert OpenTelemetry spans to our analysis format
-
-import { SpanStatusCode } from '@opentelemetry/api';
 
 interface OTelSpan {
   traceId: string;
@@ -567,7 +585,15 @@ interface OTelSpan {
   startTimeUnixNano: string;
   endTimeUnixNano: string;
   status?: { code: number };
-  attributes?: Array<{ key: string; value: { stringValue?: string; intValue?: string } }>;
+  attributes?: Array<{
+    key: string;
+    value: {
+      stringValue?: string;
+      intValue?: string;
+      doubleValue?: number;
+      boolValue?: boolean;
+    };
+  }>;
   resource?: {
     attributes?: Array<{ key: string; value: { stringValue?: string } }>;
   };
@@ -585,10 +611,14 @@ function convertOTelSpan(otelSpan: OTelSpan): Span {
   // Convert attributes to simple key-value pairs
   const attributes: Record<string, string | number | boolean> = {};
   for (const attr of otelSpan.attributes || []) {
-    if (attr.value.stringValue) {
+    if (attr.value.stringValue !== undefined) {
       attributes[attr.key] = attr.value.stringValue;
-    } else if (attr.value.intValue) {
+    } else if (attr.value.intValue !== undefined) {
       attributes[attr.key] = parseInt(attr.value.intValue, 10);
+    } else if (attr.value.doubleValue !== undefined) {
+      attributes[attr.key] = attr.value.doubleValue;
+    } else if (attr.value.boolValue !== undefined) {
+      attributes[attr.key] = attr.value.boolValue;
     }
   }
 
@@ -604,9 +634,9 @@ function convertOTelSpan(otelSpan: OTelSpan): Span {
   };
 }
 
-async function analyzeTrace(traceId: string, otlpEndpoint: string): Promise<CriticalPathResult> {
-  // Fetch trace from your OTLP backend
-  const response = await fetch(`${otlpEndpoint}/api/traces/${traceId}`);
+async function analyzeTrace(traceId: string, traceApiEndpoint: string): Promise<CriticalPathResult> {
+  // Fetch trace from your backend's trace query API
+  const response = await fetch(`${traceApiEndpoint}/api/traces/${traceId}`);
   const traceData = await response.json();
 
   // Convert OTel spans to our format
@@ -673,7 +703,7 @@ function aggregateCriticalSpans(
 
   for (const result of results) {
     for (const span of result.criticalPath) {
-      const key = `${span.serviceName}:${span.name}`;
+      const key = JSON.stringify([span.serviceName, span.name]);
       const current = frequency.get(key) || { count: 0, totalDuration: 0 };
       frequency.set(key, {
         count: current.count + 1,
@@ -706,7 +736,7 @@ function rankOptimizationCandidates(
   const candidates: OptimizationCandidate[] = [];
 
   for (const [key, data] of frequency) {
-    const [serviceName, spanName] = key.split(':');
+    const [serviceName, spanName] = JSON.parse(key) as [string, string];
     const avgDuration = data.totalDuration / data.count;
 
     candidates.push({
@@ -753,7 +783,7 @@ A critical path dashboard helps teams continuously monitor and optimize their sy
 
 **Slack Distribution**: How much slack non-critical spans have. Low slack means they are close to becoming critical.
 
-**Parallel Efficiency**: Ratio of critical path duration to sum of all span durations. Higher means more parallelization.
+**Parallel Efficiency**: Ratio of critical path duration to the sum of operation span durations. Lower values indicate more parallel work; values near 1 indicate mostly serial work.
 
 ### Example Dashboard Queries
 
