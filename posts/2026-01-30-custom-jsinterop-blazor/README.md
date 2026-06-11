@@ -298,7 +298,8 @@ Register the service in Program.cs and use it in components.
 // File: Program.cs
 
 // Register the clipboard service as scoped
-// Scoped services have one instance per user session in Blazor
+// In Blazor Server, scoped services are scoped to the user's circuit.
+// In Blazor WebAssembly, scoped services behave like singletons.
 builder.Services.AddScoped<IClipboardService, ClipboardService>();
 ```
 
@@ -684,6 +685,7 @@ let dotNetReference = null;
 let isTracking = false;
 let lastScrollY = 0;
 let throttleTimeout = null;
+let scrollHandler = null;
 
 // Initialize the scroll tracker with a DotNet object reference
 // The reference allows JavaScript to call methods on the C# object
@@ -698,7 +700,7 @@ export function initialize(dotNetRef, options) {
 
     // Add scroll event listener with throttling
     // Throttling prevents performance issues from rapid scroll events
-    window.addEventListener('scroll', () => {
+    scrollHandler = () => {
         if (throttleTimeout) {
             return;
         }
@@ -707,7 +709,9 @@ export function initialize(dotNetRef, options) {
             throttleTimeout = null;
             handleScroll();
         }, throttleMs);
-    });
+    };
+
+    window.addEventListener('scroll', scrollHandler);
 
     isTracking = true;
 }
@@ -740,6 +744,11 @@ function handleScroll() {
 
 // Stop tracking and clean up
 export function dispose() {
+    if (scrollHandler) {
+        window.removeEventListener('scroll', scrollHandler);
+        scrollHandler = null;
+    }
+
     dotNetReference = null;
     isTracking = false;
     lastScrollY = 0;
@@ -861,6 +870,7 @@ Follow these patterns to ensure proper cleanup.
 ```csharp
 // File: Components/ResourceManagedComponent.razor
 @implements IAsyncDisposable
+@inject IJSRuntime JS
 
 @code {
     // Track all disposable resources
