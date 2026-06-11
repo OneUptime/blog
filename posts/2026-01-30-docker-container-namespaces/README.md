@@ -260,8 +260,6 @@ docker run -d \
 # docker-compose.yml
 # Demonstrates various mount namespace configurations
 
-version: '3.8'
-
 services:
   web:
     image: nginx:latest
@@ -331,8 +329,10 @@ EOF
 # Restart Docker daemon
 sudo systemctl restart docker
 
-# Verify user namespace is enabled
-docker info | grep -i "user namespace"
+# Verify Docker created the default remapping user and subordinate ID ranges
+id dockremap
+grep dockremap /etc/subuid
+grep dockremap /etc/subgid
 ```
 
 #### Running Containers with Specific User
@@ -378,7 +378,7 @@ RUN mkdir -p /app/data && \
 USER appuser
 
 # Application runs as non-root inside the container
-EXPOSE 8080
+EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
 ```
 
@@ -510,8 +510,6 @@ EOF
 
 ```yaml
 # docker-compose.yml with network segmentation
-
-version: '3.8'
 
 services:
   frontend:
