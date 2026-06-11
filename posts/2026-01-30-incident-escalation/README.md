@@ -251,6 +251,17 @@ severity_escalation:
 Severity can change during an incident. Build automation to handle re-escalation:
 
 ```typescript
+const severityRank: Record<SeverityLevel, number> = {
+  [SeverityLevel.SEV1]: 4,
+  [SeverityLevel.SEV2]: 3,
+  [SeverityLevel.SEV3]: 2,
+  [SeverityLevel.SEV4]: 1
+};
+
+function isMoreSevere(newSeverity: SeverityLevel, oldSeverity: SeverityLevel): boolean {
+  return severityRank[newSeverity] > severityRank[oldSeverity];
+}
+
 async function handleSeverityChange(
   incident: Incident,
   newSeverity: SeverityLevel,
@@ -265,7 +276,7 @@ async function handleSeverityChange(
     timestamp: new Date()
   });
 
-  if (newSeverity > oldSeverity) {
+  if (isMoreSevere(newSeverity, oldSeverity)) {
     // Escalating - notify additional stakeholders
     const escalationPolicy = getEscalationPolicy(newSeverity);
     await notifyTargets(escalationPolicy.initialResponse);
