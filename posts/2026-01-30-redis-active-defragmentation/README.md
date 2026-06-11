@@ -103,7 +103,7 @@ activedefrag yes
 active-defrag-ignore-bytes 100mb
 active-defrag-threshold-lower 10
 
-# Stop defrag when fragmentation drops below 5%
+# Use maximum CPU effort once fragmentation reaches 100%
 active-defrag-threshold-upper 100
 
 # CPU effort: percentage of CPU time (1-25 recommended)
@@ -133,7 +133,7 @@ redis-cli CONFIG SET active-defrag-cycle-max 25
 |-----------|---------|---------|
 | `active-defrag-ignore-bytes` | 100mb | Minimum fragmented bytes before defrag starts |
 | `active-defrag-threshold-lower` | 10 | Start defrag when ratio exceeds this % |
-| `active-defrag-threshold-upper` | 100 | Stop defrag when ratio drops below this % |
+| `active-defrag-threshold-upper` | 100 | Fragmentation % at which maximum CPU effort is used |
 
 The defragmenter activates only when BOTH conditions are met:
 
