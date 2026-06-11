@@ -89,8 +89,7 @@ sonar.projectVersion=1.0
 sonar.sources=src
 sonar.tests=tests
 
-# Language-specific settings
-sonar.language=js
+# Source encoding - SonarQube auto-detects languages
 sonar.sourceEncoding=UTF-8
 
 # Exclusions - files to skip during analysis
@@ -162,15 +161,12 @@ Semgrep is a fast, open-source SAST tool that uses pattern matching. It excels a
 
 ### Basic Semgrep Configuration
 
+Pre-built rule packs like `p/security-audit`, `p/secrets`, and `p/owasp-top-ten` are loaded through `--config` flags on the CLI (shown in the next section), not from inside a config file. The `.semgrep.yml` file holds custom rules:
+
 ```yaml
 # .semgrep.yml
-# Semgrep configuration file
+# Semgrep configuration file - custom rules only
 rules:
-  # Use pre-built security rule packs
-  - p/security-audit
-  - p/secrets
-  - p/owasp-top-ten
-
   # Custom rule: Detect hardcoded API keys
   - id: hardcoded-api-key
     patterns:
@@ -225,7 +221,7 @@ jobs:
   semgrep:
     runs-on: ubuntu-latest
     container:
-      image: returntocorp/semgrep
+      image: semgrep/semgrep
 
     steps:
       - name: Checkout code
@@ -244,7 +240,7 @@ jobs:
 
       # Upload results to GitHub Security tab
       - name: Upload SARIF file
-        uses: github/codeql-action/upload-sarif@v2
+        uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: semgrep.sarif
         if: always()
@@ -254,7 +250,7 @@ jobs:
 
 ### Creating Custom SonarQube Rules
 
-SonarQube uses XPath-based rules for custom patterns. Here is an example for Java:
+SonarQube custom rules for Java are typically implemented as a plugin against the Java AST (using `org.sonar.plugins.java.api`); XPath-based rules are an option for XML and a few other languages. Each rule is declared in a `rules.xml` metadata file. Here is an example descriptor:
 
 ```xml
 <!-- custom-rules.xml -->
@@ -527,17 +523,22 @@ conditions:
 
 ### Semgrep Exit Codes Configuration
 
-```yaml
-# .semgrep/settings.yml
-# Configure how Semgrep affects pipeline status
-severity_threshold: error  # Only fail on ERROR severity
+Semgrep does not use a project settings file for failure thresholds. Instead, control pipeline behavior through the `--severity` CLI flag and per-rule `severity:` metadata in your rules file. Findings at the selected severity (and above) trigger a non-zero exit code.
 
-# Per-rule failure configuration
+```yaml
+# .semgrep.yml - control which findings block the pipeline via severity
 rules:
   - id: sql-injection-risk
-    fail_open: false  # Must pass to continue pipeline
+    severity: ERROR  # Blocking - pipeline fails on this finding
+    # ...
   - id: debug-logging
-    fail_open: true   # Warn but do not block
+    severity: INFO   # Non-blocking when run with --severity ERROR
+    # ...
+```
+
+```bash
+# Only ERROR-severity findings cause a non-zero exit code
+semgrep ci --severity ERROR --config=p/security-audit --config=.semgrep.yml
 ```
 
 ## Pre-commit Integration
@@ -548,7 +549,7 @@ Catch issues before they enter version control:
 # .pre-commit-config.yaml
 repos:
   # Semgrep pre-commit hook
-  - repo: https://github.com/returntocorp/semgrep
+  - repo: https://github.com/semgrep/semgrep
     rev: v1.52.0
     hooks:
       - id: semgrep
@@ -619,12 +620,13 @@ jobs:
 
       # Run both scanners in parallel
       - name: Semgrep Scan
-        uses: returntocorp/semgrep-action@v1
-        with:
-          config: >-
-            p/security-audit
-            p/secrets
-            .semgrep.yml
+        run: |
+          docker run --rm -v "$PWD:/src" semgrep/semgrep semgrep ci \
+            --config=p/security-audit \
+            --config=p/secrets \
+            --config=.semgrep.yml
+        env:
+          SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
 
       - name: SonarQube Scan
         uses: SonarSource/sonarqube-scan-action@master
