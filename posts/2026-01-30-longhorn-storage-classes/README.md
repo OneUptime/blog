@@ -8,7 +8,7 @@ Description: A practical guide to configuring Longhorn StorageClasses for replic
 
 ---
 
-Longhorn gives you replicated block storage without the operational burden of running a full Ceph cluster. But the real power comes from its StorageClass parameters. You can control replication factors, pin volumes to specific nodes or disk types, set data locality policies, and wire up recurring backup jobs. This guide walks through every parameter and shows you how to build StorageClasses that match your workloads.
+Longhorn gives you replicated block storage without the operational burden of running a full Ceph cluster. But the real power comes from its StorageClass parameters. You can control replication factors, target volumes to specific Longhorn node or disk tags, set data locality policies, and wire up recurring backup jobs. This guide walks through key parameters and shows you how to build StorageClasses that match your workloads.
 
 ## How Longhorn Provisions Volumes
 
@@ -25,9 +25,9 @@ flowchart TD
     F --> G
     G -->|Yes| H[Filter Eligible Disks]
     G -->|No| I[Use All Disks]
-    H --> J[Create Engine Pod]
+    H --> J[Create Engine Instance]
     I --> J
-    J --> K[Create Replica Pods]
+    J --> K[Create Replica Instances]
     K --> L[Replica Placement]
     L --> M{Data Locality?}
     M -->|best-effort| N[Try to Place Replica on Same Node as Workload]
@@ -67,7 +67,7 @@ parameters:
   staleReplicaTimeout: "30"
 
   # Enable/disable revision counter for replica consistency
-  revisionCounterDisabled: "false"
+  disableRevisionCounter: "false"
 
   # Filesystem type: ext4 or xfs
   fsType: "ext4"
@@ -77,7 +77,7 @@ parameters:
 
 - **numberOfReplicas**: Controls how many copies of your data exist. Use 3 for production, 2 for development, 1 for ephemeral workloads.
 - **staleReplicaTimeout**: Time in minutes before a disconnected replica is marked stale and rebuilt.
-- **revisionCounterDisabled**: When true, improves write performance but reduces consistency guarantees during failures.
+- **disableRevisionCounter**: When true, improves write performance but changes how Longhorn selects the replica used for recovery during failures.
 - **fsType**: The filesystem format. Use ext4 for general workloads, xfs for large files or high throughput.
 
 ## Replication Settings
@@ -101,15 +101,18 @@ parameters:
   # Options: disabled, least-effort, best-effort
   replicaAutoBalance: "best-effort"
 
-  # Minimum number of healthy replicas before writes are blocked
-  # Prevents data loss during degraded states
-  replicaSoftAntiAffinity: "true"
+  # Options: ignored, enabled, disabled
+  # Disable node-level soft anti-affinity to avoid placing replicas
+  # on the same node when enough nodes are available
+  replicaSoftAntiAffinity: "disabled"
 
-  # Allow scheduling replicas on the same node (not recommended for HA)
-  replicaDiskSoftAntiAffinity: "true"
+  # Disable disk-level soft anti-affinity to avoid placing replicas
+  # on the same disk when enough disks are available
+  replicaDiskSoftAntiAffinity: "disabled"
 
-  # Zone-aware replica placement (requires node labels)
-  replicaZoneSoftAntiAffinity: "true"
+  # Disable zone-level soft anti-affinity to avoid placing replicas
+  # in the same zone when enough zones are available
+  replicaZoneSoftAntiAffinity: "disabled"
 ```
 
 ### Replica Auto-Balance Modes
@@ -195,7 +198,7 @@ parameters:
 
 ## Node Selector
 
-Node selectors restrict which nodes can host volume replicas. Use labels to target specific hardware or node groups.
+Node selectors restrict which nodes can host volume replicas. Use Longhorn node tags to target specific hardware or node groups.
 
 ```yaml
 # StorageClass that targets nodes with SSD storage
@@ -208,31 +211,30 @@ allowVolumeExpansion: true
 parameters:
   numberOfReplicas: "3"
 
-  # Only schedule replicas on nodes with this label
-  # Nodes must have: kubectl label node <node> storage-type=ssd
-  nodeSelector: "storage-type:ssd"
+  # Only schedule replicas on nodes with this Longhorn node tag
+  nodeSelector: "ssd"
 ```
 
-### Multiple Node Labels
+### Multiple Node Tags
 
 ```yaml
-# Target nodes in a specific zone with NVMe storage
+# Target nodes with multiple Longhorn node tags
 parameters:
-  # Multiple labels separated by semicolons
-  nodeSelector: "storage-type:nvme;topology.kubernetes.io/zone:us-east-1a"
+  # Multiple tags separated by commas
+  nodeSelector: "nvme,us-east-1a"
 ```
 
-### Setting Up Node Labels
+### Setting Up Node Tags
 
 ```bash
-# Label nodes for storage tiering
-kubectl label node worker-01 storage-type=ssd
-kubectl label node worker-02 storage-type=ssd
-kubectl label node worker-03 storage-type=hdd
-kubectl label node worker-04 storage-type=hdd
+# Add Longhorn node tags for storage tiering
+kubectl -n longhorn-system patch nodes.longhorn.io worker-01 --type=merge -p '{"spec":{"tags":["ssd"]}}'
+kubectl -n longhorn-system patch nodes.longhorn.io worker-02 --type=merge -p '{"spec":{"tags":["ssd"]}}'
+kubectl -n longhorn-system patch nodes.longhorn.io worker-03 --type=merge -p '{"spec":{"tags":["hdd"]}}'
+kubectl -n longhorn-system patch nodes.longhorn.io worker-04 --type=merge -p '{"spec":{"tags":["hdd"]}}'
 
-# Verify labels
-kubectl get nodes --show-labels | grep storage-type
+# Verify tags
+kubectl -n longhorn-system get nodes.longhorn.io -o custom-columns=NAME:.metadata.name,TAGS:.spec.tags
 ```
 
 ## Disk Selector
@@ -264,10 +266,10 @@ kubectl -n longhorn-system patch nodes.longhorn.io worker-01 --type=merge -p '
 {
   "spec": {
     "disks": {
-      "/dev/nvme0n1": {
+      "<nvme-disk-name>": {
         "tags": ["nvme", "fast"]
       },
-      "/dev/sda": {
+      "<hdd-disk-name>": {
         "tags": ["hdd", "bulk"]
       }
     }
@@ -289,7 +291,7 @@ parameters:
   numberOfReplicas: "3"
 
   # Target database-ready nodes
-  nodeSelector: "workload-type:database"
+  nodeSelector: "database"
 
   # Use only NVMe disks on those nodes
   diskSelector: "nvme"
@@ -371,7 +373,7 @@ allowVolumeExpansion: true
 parameters:
   numberOfReplicas: "3"
 
-  # Attach recurring jobs by name (comma-separated)
+  # Attach recurring jobs by name using JSON format
   recurringJobSelector: '[
     {
       "name": "hourly-snapshot",
@@ -453,9 +455,9 @@ volumeBindingMode: WaitForFirstConsumer  # Bind after pod is scheduled
 parameters:
   numberOfReplicas: "2"  # Reduced for lower write latency
   staleReplicaTimeout: "15"
-  revisionCounterDisabled: "true"  # Improved write performance
+  disableRevisionCounter: "true"  # Improved write performance
   dataLocality: "best-effort"
-  nodeSelector: "storage-tier:performance"
+  nodeSelector: "performance"
   diskSelector: "nvme"
   fsType: "xfs"
 ```
@@ -477,7 +479,7 @@ parameters:
   staleReplicaTimeout: "60"
   replicaAutoBalance: "least-effort"
   dataLocality: "disabled"
-  nodeSelector: "storage-tier:archive"
+  nodeSelector: "archive"
   diskSelector: "hdd"
   fsType: "ext4"
   recurringJobSelector: '[{"name":"weekly-backup","isGroup":false}]'
@@ -500,11 +502,11 @@ parameters:
   staleReplicaTimeout: "30"
   replicaAutoBalance: "best-effort"
 
-  # Enable zone-aware placement
-  replicaZoneSoftAntiAffinity: "true"
+  # Avoid placing replicas in the same zone when enough zones are available
+  replicaZoneSoftAntiAffinity: "disabled"
 
-  # Ensure replicas spread across nodes
-  replicaSoftAntiAffinity: "true"
+  # Avoid placing replicas on the same node when enough nodes are available
+  replicaSoftAntiAffinity: "disabled"
 
   dataLocality: "disabled"  # Let replicas spread across zones
   fsType: "ext4"
@@ -571,13 +573,13 @@ spec:
 | numberOfReplicas | 3 | Number of data copies |
 | staleReplicaTimeout | 30 | Minutes before stale replica rebuild |
 | dataLocality | disabled | Replica placement strategy |
-| replicaAutoBalance | disabled | Automatic replica redistribution |
-| replicaSoftAntiAffinity | true | Allow replicas on same node if needed |
-| replicaZoneSoftAntiAffinity | true | Spread replicas across zones |
-| nodeSelector | (none) | Node label filter |
+| replicaAutoBalance | ignored | Automatic replica redistribution |
+| replicaSoftAntiAffinity | ignored | Node-level replica anti-affinity mode |
+| replicaZoneSoftAntiAffinity | ignored | Zone-level replica anti-affinity mode |
+| nodeSelector | (none) | Longhorn node tag filter |
 | diskSelector | (none) | Disk tag filter |
 | fsType | ext4 | Filesystem type |
-| revisionCounterDisabled | false | Disable consistency counter |
+| disableRevisionCounter | true | Disable revision counter |
 | recurringJobSelector | (none) | Attached recurring jobs |
 
 ---
