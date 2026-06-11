@@ -8,7 +8,7 @@ Description: Learn to implement Grafana provisioning automation with YAML config
 
 ---
 
-Manual Grafana configuration does not scale. Every time you click through the UI to add a datasource or import a dashboard, you create configuration drift. Provisioning solves this by defining everything as code - datasources, dashboards, alert rules, and notification channels all live in version-controlled YAML files.
+Manual Grafana configuration does not scale. Every time you click through the UI to add a datasource or import a dashboard, you create configuration drift. Provisioning solves this by defining everything as code - datasources, dashboards, alert rules, and contact points all live in version-controlled YAML files.
 
 ## How Provisioning Works
 
@@ -37,7 +37,7 @@ flowchart LR
     Prov --> GAR
 ```
 
-When Grafana starts, it reads YAML configuration files from the provisioning directory and applies them automatically. Changes to these files trigger updates without manual intervention.
+When Grafana starts, it reads YAML configuration files from the provisioning directory and applies them automatically. Dashboard file changes are detected according to the dashboard provider's `updateIntervalSeconds` setting. Other provisioning changes are applied after restarting Grafana or calling the Admin API reload endpoint for that provisioning type.
 
 ## Directory Structure
 
@@ -62,7 +62,7 @@ Grafana expects provisioning files in a specific structure. The default location
     └── plugins.yaml
 ```
 
-Each subdirectory handles a specific configuration type. Grafana watches these directories and reloads configurations when files change.
+Each subdirectory handles a specific configuration type. Dashboard providers can watch or poll dashboard files for changes; datasources, plugins, and alerting resources are reloaded at startup or when you explicitly call the Admin API reload endpoint.
 
 ## Provisioning Datasources
 
@@ -80,6 +80,7 @@ apiVersion: 1
 # List of datasources to provision
 datasources:
   - name: Prometheus
+    uid: prometheus
     type: prometheus
     access: proxy
     url: http://prometheus:9090
@@ -102,7 +103,7 @@ The `editable: false` setting is important for GitOps - it prevents manual chang
 ```yaml
 apiVersion: 1
 
-# Delete datasources not defined in this file
+# Delete explicitly listed datasources before adding or updating the configured ones
 deleteDatasources:
   - name: Old-Prometheus
     orgId: 1
@@ -110,6 +111,7 @@ deleteDatasources:
 datasources:
   # Prometheus for metrics
   - name: Prometheus
+    uid: prometheus
     type: prometheus
     access: proxy
     url: http://prometheus:9090
@@ -120,6 +122,7 @@ datasources:
 
   # Loki for logs
   - name: Loki
+    uid: loki
     type: loki
     access: proxy
     url: http://loki:3100
@@ -746,7 +749,7 @@ echo "Deploying to $ENVIRONMENT at $GRAFANA_URL"
 echo "Deploying datasources..."
 for file in base/datasources/*.yaml; do
   if [ -f "$file" ]; then
-    # Use Grafana Provisioning API or copy files
+    # Use the data source HTTP API, or copy files to provisioning/datasources and reload provisioning
     echo "Processing $file"
   fi
 done
@@ -772,12 +775,11 @@ done
 
 # Deploy alert rules
 echo "Deploying alert rules..."
-if [ -f "base/alerting/alert-rules.yaml" ]; then
-  curl -s -X POST \
-    -H "Authorization: Bearer $GRAFANA_TOKEN" \
-    -H "Content-Type: application/yaml" \
-    --data-binary @base/alerting/alert-rules.yaml \
-    "$GRAFANA_URL/api/v1/provisioning/alert-rules"
+if [ -d "base/alerting" ]; then
+  # File provisioning YAML cannot be posted directly to /api/v1/provisioning/alert-rules.
+  # Copy these files to Grafana's provisioning/alerting directory, then restart Grafana
+  # or call POST /api/admin/provisioning/alerting/reload with Basic authentication.
+  echo "Copy base/alerting/*.yaml to /etc/grafana/provisioning/alerting/ and reload provisioning."
 fi
 
 echo "Deployment complete"
@@ -834,6 +836,17 @@ data:
       "title": "Node Metrics",
       "panels": []
     }
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-alerting
+  namespace: monitoring
+data:
+  alert-rules.yaml: |
+    apiVersion: 1
+    groups: []
 ```
 
 ### Grafana Deployment with Provisioning Volumes
@@ -856,7 +869,7 @@ spec:
     spec:
       containers:
         - name: grafana
-          image: grafana/grafana:10.2.0
+          image: grafana/grafana:13.0.2
           ports:
             - containerPort: 3000
           env:
@@ -908,74 +921,74 @@ The Grafana Helm chart has built-in support for provisioning:
 
 ```yaml
 # values.yaml
-grafana:
-  adminPassword: ${GRAFANA_ADMIN_PASSWORD}
+datasources:
+  datasources.yaml:
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        uid: prometheus
+        type: prometheus
+        url: http://prometheus-server:9090
+        access: proxy
+        isDefault: true
 
-  datasources:
-    datasources.yaml:
-      apiVersion: 1
-      datasources:
-        - name: Prometheus
-          type: prometheus
-          url: http://prometheus-server:9090
-          access: proxy
-          isDefault: true
+      - name: Loki
+        uid: loki
+        type: loki
+        url: http://loki:3100
+        access: proxy
 
-        - name: Loki
-          type: loki
-          url: http://loki:3100
-          access: proxy
+dashboardProviders:
+  dashboardproviders.yaml:
+    apiVersion: 1
+    providers:
+      - name: default
+        orgId: 1
+        folder: ''
+        type: file
+        disableDeletion: false
+        allowUiUpdates: false
+        options:
+          path: /var/lib/grafana/dashboards/default
 
-  dashboardProviders:
-    dashboardproviders.yaml:
-      apiVersion: 1
-      providers:
-        - name: default
-          orgId: 1
-          folder: ''
-          type: file
-          disableDeletion: false
-          editable: false
-          options:
-            path: /var/lib/grafana/dashboards/default
+dashboardsConfigMaps:
+  default: grafana-dashboards
 
-  dashboardsConfigMaps:
-    default: grafana-dashboards
+alerting:
+  contactpoints.yaml:
+    apiVersion: 1
+    contactPoints:
+      - orgId: 1
+        name: slack
+        receivers:
+          - uid: slack
+            type: slack
+            settings:
+              recipient: "#alerts"
+              token: $SLACK_TOKEN
 
-  alerting:
-    contactpoints.yaml:
-      apiVersion: 1
-      contactPoints:
-        - orgId: 1
-          name: slack
-          receivers:
-            - uid: slack
-              type: slack
-              settings:
-                recipient: "#alerts"
-                token: $SLACK_TOKEN
-
-    rules.yaml:
-      apiVersion: 1
-      groups:
-        - orgId: 1
-          name: default
-          folder: Infrastructure
-          interval: 1m
-          rules: []
+  rules.yaml:
+    apiVersion: 1
+    groups:
+      - orgId: 1
+        name: default
+        folder: Infrastructure
+        interval: 1m
+        rules: []
 ```
 
 Install with Helm:
 
 ```bash
-helm repo add grafana https://grafana.github.io/helm-charts
+helm repo add grafana-community https://grafana-community.github.io/helm-charts
 helm repo update
 
-helm upgrade --install grafana grafana/grafana \
+helm upgrade --install grafana grafana-community/grafana \
   --namespace monitoring \
   --create-namespace \
   -f values.yaml \
-  --set adminPassword="${GRAFANA_ADMIN_PASSWORD}"
+  --set adminPassword="${GRAFANA_ADMIN_PASSWORD}" \
+  --set env.SLACK_TOKEN="${SLACK_TOKEN}"
 ```
 
 ## Best Practices
