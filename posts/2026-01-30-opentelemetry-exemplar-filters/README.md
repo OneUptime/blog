@@ -97,13 +97,12 @@ Exemplar filters are invoked during metric recording. They receive context about
 The filter receives:
 
 - The current OpenTelemetry context (which contains the active span)
-- The recorded value
-- The metric attributes
+- The recorded value and metric attributes in SDKs whose filter interface exposes them
 
 The filter returns:
 
-- `true`: Attach an exemplar with trace context
-- `false`: Skip exemplar for this measurement
+- `true`: Make the measurement eligible for the exemplar reservoir
+- `false`: Skip exemplar sampling for this measurement
 
 The decision flow can be visualized as follows.
 
@@ -116,24 +115,23 @@ flowchart TD
     E -->|No| D
     E -->|Yes| F{Run ExemplarFilter}
     F -->|false| D
-    F -->|true| G[Create exemplar with trace_id + span_id]
-    G --> H[Attach to metric data point]
+    F -->|true| G[Offer measurement to exemplar reservoir]
+    G --> H[Export stored exemplar with trace_id + span_id]
 ```
 
 ---
 
 ## 4. Built-in Exemplar Filters
 
-OpenTelemetry provides several built-in exemplar filters.
+OpenTelemetry defines several built-in exemplar filters. SDKs commonly expose them through code, environment configuration, or both.
 
 ### AlwaysOnExemplarFilter
 
-Attaches exemplars to every sampled measurement.
+Makes every measurement eligible to become an exemplar. The exemplar reservoir still decides whether to store it.
 
-```typescript
-import { ExemplarFilter, AlwaysOnExemplarFilter } from '@opentelemetry/sdk-metrics';
-
-const filter: ExemplarFilter = new AlwaysOnExemplarFilter();
+SDK environment configuration, where supported:
+```bash
+export OTEL_METRICS_EXEMPLAR_FILTER=always_on
 ```
 
 Use case: Development environments, low-traffic services, debugging sessions.
@@ -142,10 +140,9 @@ Use case: Development environments, low-traffic services, debugging sessions.
 
 Never attaches exemplars.
 
-```typescript
-import { AlwaysOffExemplarFilter } from '@opentelemetry/sdk-metrics';
-
-const filter = new AlwaysOffExemplarFilter();
+SDK environment configuration, where supported:
+```bash
+export OTEL_METRICS_EXEMPLAR_FILTER=always_off
 ```
 
 Use case: High-volume services where exemplar overhead is unacceptable, or when your backend does not support exemplars.
@@ -154,10 +151,9 @@ Use case: High-volume services where exemplar overhead is unacceptable, or when 
 
 Only attaches exemplars when the span is sampled for tracing.
 
-```typescript
-import { TraceBasedExemplarFilter } from '@opentelemetry/sdk-metrics';
-
-const filter = new TraceBasedExemplarFilter();
+SDK environment configuration, where supported:
+```bash
+export OTEL_METRICS_EXEMPLAR_FILTER=trace_based
 ```
 
 Use case: Production environments. Aligns exemplar sampling with trace sampling decisions.
@@ -168,104 +164,74 @@ Use case: Production environments. Aligns exemplar sampling with trace sampling 
 
 Custom filters let you implement business logic for exemplar selection. Here is an example that selects exemplars based on value thresholds and specific attributes.
 
-First, define the filter class that implements the ExemplarFilter interface.
+First, define the filter class that implements the Python SDK's ExemplarFilter interface.
 
-```typescript
-import {
-  ExemplarFilter,
-  Context,
-} from '@opentelemetry/sdk-metrics';
-import { trace, isSpanContextValid } from '@opentelemetry/api';
+```python
+from opentelemetry.context import Context
+from opentelemetry.sdk.metrics import ExemplarFilter
+from opentelemetry.trace import INVALID_SPAN_CONTEXT, get_current_span
+import random
 
-/**
- * Custom exemplar filter that captures exemplars for:
- * 1. High latency measurements (above threshold)
- * 2. Error status codes
- * 3. Specific high-value routes
- */
-export class SmartExemplarFilter implements ExemplarFilter {
-  private readonly latencyThresholdMs: number;
-  private readonly highValueRoutes: Set<string>;
 
-  constructor(options: {
-    latencyThresholdMs?: number;
-    highValueRoutes?: string[];
-  } = {}) {
-    this.latencyThresholdMs = options.latencyThresholdMs ?? 500;
-    this.highValueRoutes = new Set(options.highValueRoutes ?? [
-      '/api/checkout',
-      '/api/payment',
-      '/api/order'
-    ]);
-  }
+class SmartExemplarFilter(ExemplarFilter):
+    """Custom exemplar filter that captures exemplars for important measurements."""
 
-  shouldSample(
-    value: number,
-    timestamp: number,
-    attributes: Record<string, unknown>,
-    context: Context
-  ): boolean {
-    // First check: is there a valid, sampled span?
-    const spanContext = trace.getSpanContext(context);
-    if (!spanContext || !isSpanContextValid(spanContext)) {
-      return false;
-    }
+    def __init__(self, latency_threshold_ms: float = 500, high_value_routes: list[str] | None = None):
+        self.latency_threshold_ms = latency_threshold_ms
+        self.high_value_routes = set(high_value_routes or [
+            "/api/checkout",
+            "/api/payment",
+            "/api/order",
+        ])
 
-    // Only sample if the trace itself is sampled
-    if (!(spanContext.traceFlags & 0x01)) {
-      return false;
-    }
+    def should_sample(self, value: int | float, time_unix_nano: int, attributes: dict | None, context: Context) -> bool:
+        attributes = attributes or {}
+        span_context = get_current_span(context).get_span_context()
 
-    // High latency values always get exemplars
-    if (value > this.latencyThresholdMs) {
-      return true;
-    }
+        if span_context == INVALID_SPAN_CONTEXT:
+            return False
 
-    // Error responses always get exemplars
-    const statusCode = attributes['http.status_code'];
-    if (typeof statusCode === 'number' && statusCode >= 400) {
-      return true;
-    }
+        if not span_context.trace_flags.sampled:
+            return False
 
-    // High-value routes always get exemplars
-    const route = attributes['http.route'];
-    if (typeof route === 'string' && this.highValueRoutes.has(route)) {
-      return true;
-    }
+        if value > self.latency_threshold_ms:
+            return True
 
-    // Probabilistic sampling for everything else (10%)
-    return Math.random() < 0.1;
-  }
-}
+        status_code = attributes.get("http.status_code", 0)
+        if isinstance(status_code, int) and status_code >= 400:
+            return True
+
+        route = attributes.get("http.route", "")
+        if route in self.high_value_routes:
+            return True
+
+        return random.random() < 0.1
 ```
 
 Now wire the custom filter into the MeterProvider.
 
-```typescript
-import { MeterProvider, PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
-import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
-import { SmartExemplarFilter } from './smart-exemplar-filter';
+```python
+from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 
-const metricExporter = new OTLPMetricExporter({
-  url: process.env.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT || 'https://oneuptime.com/otlp/v1/metrics',
-  headers: {
-    'x-oneuptime-token': process.env.ONEUPTIME_TOKEN || ''
-  }
-});
+metric_exporter = OTLPMetricExporter(
+    endpoint="https://oneuptime.com/otlp/v1/metrics",
+    headers={"x-oneuptime-token": "YOUR_TOKEN"},
+)
 
-const meterProvider = new MeterProvider({
-  readers: [
-    new PeriodicExportingMetricReader({
-      exporter: metricExporter,
-      exportIntervalMillis: 15000
-    })
-  ],
-  // Apply the custom exemplar filter
-  exemplarFilter: new SmartExemplarFilter({
-    latencyThresholdMs: 500,
-    highValueRoutes: ['/api/checkout', '/api/payment', '/api/order']
-  })
-});
+reader = PeriodicExportingMetricReader(
+    metric_exporter,
+    export_interval_millis=15000,
+)
+
+meter_provider = MeterProvider(
+    metric_readers=[reader],
+    exemplar_filter=SmartExemplarFilter(
+        latency_threshold_ms=500,
+        high_value_routes=["/api/checkout", "/api/payment", "/api/order"],
+    ),
+)
 ```
 
 ---
@@ -274,7 +240,7 @@ const meterProvider = new MeterProvider({
 
 ### Node.js / TypeScript
 
-The full SDK setup with exemplar filtering.
+The full SDK setup with metrics and traces exported to the same backend. In current OpenTelemetry JavaScript SDK releases, `MeterProviderOptions` does not expose a stable custom exemplar filter option; use the SDK's built-in exemplar behavior for your version and keep trace context active when recording metrics.
 
 ```typescript
 import { NodeSDK } from '@opentelemetry/sdk-node';
@@ -282,11 +248,10 @@ import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentation
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
 import { PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
-import { Resource } from '@opentelemetry/resources';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from '@opentelemetry/semantic-conventions';
-import { SmartExemplarFilter } from './smart-exemplar-filter';
 
-const resource = new Resource({
+const resource = resourceFromAttributes({
   [ATTR_SERVICE_NAME]: 'checkout-service',
   [ATTR_SERVICE_VERSION]: '2.1.0'
 });
@@ -297,13 +262,15 @@ const sdk = new NodeSDK({
     url: 'https://oneuptime.com/otlp/v1/traces',
     headers: { 'x-oneuptime-token': process.env.ONEUPTIME_TOKEN || '' }
   }),
-  metricReader: new PeriodicExportingMetricReader({
-    exporter: new OTLPMetricExporter({
-      url: 'https://oneuptime.com/otlp/v1/metrics',
-      headers: { 'x-oneuptime-token': process.env.ONEUPTIME_TOKEN || '' }
-    }),
-    exportIntervalMillis: 15000
-  }),
+  metricReaders: [
+    new PeriodicExportingMetricReader({
+      exporter: new OTLPMetricExporter({
+        url: 'https://oneuptime.com/otlp/v1/metrics',
+        headers: { 'x-oneuptime-token': process.env.ONEUPTIME_TOKEN || '' }
+      }),
+      exportIntervalMillis: 15000
+    })
+  ],
   instrumentations: [getNodeAutoInstrumentations()]
 });
 
@@ -318,10 +285,9 @@ Python implementation of a custom exemplar filter.
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
-from opentelemetry.sdk.metrics._internal.exemplar import ExemplarFilter
+from opentelemetry.sdk.metrics import ExemplarFilter
 from opentelemetry.trace import get_current_span, INVALID_SPAN_CONTEXT
 from opentelemetry.context import Context
-from typing import Sequence
 import random
 
 
@@ -331,7 +297,7 @@ class SmartExemplarFilter(ExemplarFilter):
     def __init__(
         self,
         latency_threshold_ms: float = 500,
-        high_value_routes: list[str] = None
+        high_value_routes: list[str] | None = None
     ):
         self.latency_threshold_ms = latency_threshold_ms
         self.high_value_routes = set(high_value_routes or [
@@ -344,11 +310,13 @@ class SmartExemplarFilter(ExemplarFilter):
         self,
         value: float,
         time_unix_nano: int,
-        attributes: dict,
+        attributes: dict | None,
         context: Context
     ) -> bool:
+        attributes = attributes or {}
+
         # Check for valid sampled span
-        span = get_current_span()
+        span = get_current_span(context)
         span_context = span.get_span_context()
 
         if span_context == INVALID_SPAN_CONTEXT:
@@ -398,71 +366,35 @@ provider = MeterProvider(
 
 ### Go
 
-Go implementation using the OpenTelemetry Go SDK.
+Go implementation using the OpenTelemetry Go SDK. In Go, an exemplar filter receives the measurement context only, so value and attribute based decisions belong in SDKs whose filter interface exposes those fields.
 
 ```go
 package main
 
 import (
     "context"
-    "math/rand"
 
     "go.opentelemetry.io/otel/sdk/metric"
-    "go.opentelemetry.io/otel/sdk/metric/metricdata"
+    "go.opentelemetry.io/otel/sdk/metric/exemplar"
     "go.opentelemetry.io/otel/trace"
 )
 
-// SmartExemplarFilter implements metric.ExemplarFilter
-type SmartExemplarFilter struct {
-    LatencyThresholdMs float64
-    HighValueRoutes    map[string]bool
-}
-
-func NewSmartExemplarFilter(thresholdMs float64, routes []string) *SmartExemplarFilter {
-    routeSet := make(map[string]bool)
-    for _, r := range routes {
-        routeSet[r] = true
-    }
-    return &SmartExemplarFilter{
-        LatencyThresholdMs: thresholdMs,
-        HighValueRoutes:    routeSet,
-    }
-}
-
-func (f *SmartExemplarFilter) ShouldSample(
-    ctx context.Context,
-    value float64,
-    attrs []attribute.KeyValue,
-) bool {
-    // Check for valid sampled span
+func sampledTraceFilter(ctx context.Context) bool {
     spanCtx := trace.SpanContextFromContext(ctx)
-    if !spanCtx.IsValid() || !spanCtx.IsSampled() {
-        return false
-    }
+    return spanCtx.IsValid() && spanCtx.IsSampled()
+}
 
-    // High latency
-    if value > f.LatencyThresholdMs {
-        return true
-    }
+func main() {
+    provider := metric.NewMeterProvider(
+        // TraceBasedFilter is the default, but setting it explicitly makes the
+        // exemplar behavior clear.
+        metric.WithExemplarFilter(exemplar.TraceBasedFilter),
+    )
+    defer provider.Shutdown(context.Background())
 
-    // Check attributes
-    for _, attr := range attrs {
-        // Errors
-        if attr.Key == "http.status_code" {
-            if code := attr.Value.AsInt64(); code >= 400 {
-                return true
-            }
-        }
-        // High-value routes
-        if attr.Key == "http.route" {
-            if f.HighValueRoutes[attr.Value.AsString()] {
-                return true
-            }
-        }
-    }
-
-    // 10% probabilistic
-    return rand.Float64() < 0.1
+    _ = metric.NewMeterProvider(
+        metric.WithExemplarFilter(sampledTraceFilter),
+    )
 }
 ```
 
@@ -521,21 +453,8 @@ Important: Ensure both metrics and traces pipelines export to the same backend s
 
 If your trace sampler drops a trace, the exemplar becomes useless since there is no trace to link to.
 
-```typescript
-// Good: Use TraceBasedExemplarFilter as a base
-class MyFilter implements ExemplarFilter {
-  shouldSample(value: number, ts: number, attrs: Record<string, unknown>, ctx: Context): boolean {
-    const spanCtx = trace.getSpanContext(ctx);
-
-    // Always require a sampled trace first
-    if (!spanCtx || !(spanCtx.traceFlags & 0x01)) {
-      return false;
-    }
-
-    // Then apply additional business logic
-    return value > 500 || attrs['http.status_code'] >= 400;
-  }
-}
+```bash
+export OTEL_METRICS_EXEMPLAR_FILTER=trace_based
 ```
 
 ### Keep Filtered Attributes Minimal
@@ -636,9 +555,8 @@ import express from 'express';
 import { trace, context, SpanStatusCode } from '@opentelemetry/api';
 import { MeterProvider, PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
 import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
-import { SmartExemplarFilter } from './smart-exemplar-filter';
 
-// Setup meter provider with custom exemplar filter
+// Setup meter provider for metrics export
 const meterProvider = new MeterProvider({
   readers: [
     new PeriodicExportingMetricReader({
@@ -648,11 +566,7 @@ const meterProvider = new MeterProvider({
       }),
       exportIntervalMillis: 15000
     })
-  ],
-  exemplarFilter: new SmartExemplarFilter({
-    latencyThresholdMs: 500,
-    highValueRoutes: ['/api/checkout', '/api/payment']
-  })
+  ]
 });
 
 const meter = meterProvider.getMeter('checkout-service');
@@ -671,7 +585,6 @@ const app = express();
 
 app.post('/api/checkout', async (req, res) => {
   const startTime = Date.now();
-  const tracer = trace.getTracer('checkout');
 
   // The auto-instrumentation creates a span, or create manually
   const span = trace.getSpan(context.active());
@@ -682,7 +595,8 @@ app.post('/api/checkout', async (req, res) => {
 
     res.json({ status: 'success' });
   } catch (error) {
-    span?.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
+    const message = error instanceof Error ? error.message : String(error);
+    span?.setStatus({ code: SpanStatusCode.ERROR, message });
     res.status(500).json({ error: 'Checkout failed' });
   } finally {
     const duration = Date.now() - startTime;
@@ -694,8 +608,7 @@ app.post('/api/checkout', async (req, res) => {
       'http.status_code': statusCode
     };
 
-    // Record metrics - exemplar filter decides if trace context attaches
-    // High latency or errors will have exemplars due to SmartExemplarFilter
+    // Record metrics while the request span is active so exemplars can include trace context.
     requestDuration.record(duration, attributes);
     requestCount.add(1, attributes);
 
@@ -733,7 +646,7 @@ sequenceDiagram
     Service->>Service: Start span (trace sampled)
     Service->>Service: Process request (847ms)
     Service->>Filter: Record metric (847ms)
-    Filter->>Filter: value > 500ms? Yes
+    Filter->>Filter: sampled trace? Yes
     Filter->>Service: shouldSample = true
     Service->>Collector: Metric + Exemplar (trace_id)
     Service->>Collector: Trace spans
@@ -752,10 +665,10 @@ sequenceDiagram
 |---------|---------|
 | Exemplar | Links a metric data point to a specific trace |
 | ExemplarFilter | Decides which measurements get exemplars attached |
-| AlwaysOnExemplarFilter | Attach exemplars to all sampled measurements |
+| AlwaysOnExemplarFilter | Make all measurements eligible for exemplars |
 | AlwaysOffExemplarFilter | Never attach exemplars |
 | TraceBasedExemplarFilter | Only attach when trace is sampled (default) |
-| Custom filter | Business logic for high-value measurements |
+| Custom filter | Business logic for high-value measurements in SDKs with a public custom filter hook |
 
 Exemplar filters give you control over the metrics-to-traces bridge. Use them to ensure that when something goes wrong, you can jump directly from the metric anomaly to the trace that explains it.
 
