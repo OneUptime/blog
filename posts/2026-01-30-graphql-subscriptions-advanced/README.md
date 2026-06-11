@@ -35,7 +35,7 @@ sequenceDiagram
 Install dependencies for Apollo Server with subscriptions:
 
 ```bash
-npm install @apollo/server graphql-ws ws graphql-subscriptions
+npm install @apollo/server @as-integrations/express5 express graphql-ws ws graphql-subscriptions @graphql-tools/schema
 ```
 
 ### Schema Definition
@@ -45,10 +45,16 @@ Define subscriptions in your schema alongside queries and mutations:
 ```graphql
 type Order {
   id: ID!
+  userId: ID!
   status: OrderStatus!
   total: Float!
   items: [OrderItem!]!
   updatedAt: String!
+}
+
+type OrderItem {
+  name: String!
+  quantity: Int!
 }
 
 enum OrderStatus {
@@ -74,6 +80,16 @@ type Mutation {
   updateOrderStatus(orderId: ID!, status: OrderStatus!): Order!
   createOrder(input: CreateOrderInput!): Order!
 }
+
+input CreateOrderInput {
+  userId: ID!
+  items: [OrderItemInput!]!
+}
+
+input OrderItemInput {
+  name: String!
+  quantity: Int!
+}
 ```
 
 ### Server Setup with WebSocket Transport
@@ -83,11 +99,11 @@ Set up both HTTP and WebSocket servers:
 ```typescript
 // server.ts
 import { ApolloServer } from '@apollo/server';
-import { expressMiddleware } from '@apollo/server/express4';
+import { expressMiddleware } from '@as-integrations/express5';
 import { createServer } from 'http';
 import express from 'express';
 import { WebSocketServer } from 'ws';
-import { useServer } from 'graphql-ws/lib/use/ws';
+import { useServer } from 'graphql-ws/use/ws';
 import { makeExecutableSchema } from '@graphql-tools/schema';
 import { PubSub } from 'graphql-subscriptions';
 
@@ -118,13 +134,13 @@ const resolvers = {
   },
   Subscription: {
     orderUpdated: {
-      subscribe: (_, { orderId }) => pubsub.asyncIterator(`ORDER_UPDATED_${orderId}`),
+      subscribe: (_, { orderId }) => pubsub.asyncIterableIterator(`ORDER_UPDATED_${orderId}`),
     },
     orderStatusChanged: {
-      subscribe: (_, { userId }) => pubsub.asyncIterator(`ORDER_STATUS_${userId}`),
+      subscribe: (_, { userId }) => pubsub.asyncIterableIterator(`ORDER_STATUS_${userId}`),
     },
     newOrder: {
-      subscribe: () => pubsub.asyncIterator('NEW_ORDER'),
+      subscribe: () => pubsub.asyncIterableIterator('NEW_ORDER'),
     },
   },
 };
@@ -397,6 +413,12 @@ type InventoryAlert {
   severity: AlertSeverity!
   timestamp: String!
 }
+
+type Product {
+  id: ID!
+  name: String!
+  category: String!
+}
 ```
 
 ## Authentication and Authorization
@@ -492,7 +514,8 @@ export const subscriptionResolvers = {
 
 ```typescript
 // server.ts
-import { useServer } from 'graphql-ws/lib/use/ws';
+import { randomUUID } from 'crypto';
+import { useServer } from 'graphql-ws/use/ws';
 
 const serverCleanup = useServer(
   {
@@ -504,12 +527,15 @@ const serverCleanup = useServer(
       return {
         user,
         pubsub,
-        // Track connection for cleanup
-        connectionId: ctx.extra?.socket?.id,
+        // Track connection for cleanup (assigned in onConnect)
+        connectionId: (ctx.extra as any).connectionId,
       };
     },
     onConnect: async (ctx) => {
       const token = ctx.connectionParams?.authorization as string;
+
+      // Assign a per-connection id we can reference later
+      (ctx.extra as any).connectionId = randomUUID();
 
       if (!token) {
         // Allow anonymous connections for public subscriptions
@@ -534,11 +560,11 @@ const serverCleanup = useServer(
         console.log(`User ${user.id} disconnected`);
       }
     },
-    onSubscribe: (ctx, msg) => {
+    onSubscribe: (ctx, id, payload) => {
       // Log subscription operations
-      console.log(`Subscription: ${msg.payload.operationName}`);
+      console.log(`Subscription: ${payload.operationName || id}`);
     },
-    onError: (ctx, msg, errors) => {
+    onError: (ctx, id, payload, errors) => {
       console.error('Subscription error:', errors);
     },
   },
@@ -1039,15 +1065,15 @@ const serverCleanup = useServer(
         subscriptionMetrics.connectionDuration.observe(duration);
       }
     },
-    onSubscribe: (ctx, msg) => {
-      const operation = msg.payload.operationName || 'unknown';
+    onSubscribe: (ctx, id, payload) => {
+      const operation = payload.operationName || 'unknown';
       subscriptionMetrics.subscriptionsActive.inc({ operation });
     },
-    onComplete: (ctx, msg) => {
-      const operation = msg.payload.operationName || 'unknown';
+    onComplete: (ctx, id, payload) => {
+      const operation = payload.operationName || 'unknown';
       subscriptionMetrics.subscriptionsActive.dec({ operation });
     },
-    onError: (ctx, msg, errors) => {
+    onError: (ctx, id, payload, errors) => {
       for (const error of errors) {
         subscriptionMetrics.errors.inc({ type: error.name });
       }
