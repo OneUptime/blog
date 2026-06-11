@@ -139,9 +139,11 @@ feature-flags/
             "required": ["name", "enabled"]
           }
         }
-      }
+      },
+      "required": ["flags"]
     }
-  }
+  },
+  "required": ["apiVersion", "kind", "metadata", "spec"]
 }
 ```
 
@@ -198,6 +200,7 @@ interface FlagConfig {
   enabled: boolean;
   percentage?: number;
   rules?: FlagRule[];
+  schemaVersion?: number;
   metadata?: Record<string, unknown>;
 }
 
@@ -224,6 +227,7 @@ export class FlagVersionService {
       commitSha?: string;
       commitMessage?: string;
       changeReason?: string;
+      metadata?: Record<string, unknown>;
     } = {}
   ): Promise<FlagVersion> {
     // Get the latest version number
@@ -256,6 +260,7 @@ export class FlagVersionService {
       changeReason: options.changeReason,
       source: options.commitSha ? 'git' : 'api',
       metadata: {
+        ...options.metadata,
         version: newVersionNumber,
         commitSha: options.commitSha,
       },
@@ -356,7 +361,16 @@ sequenceDiagram
 
 ```typescript
 // controllers/flag.controller.ts
-import { Controller, Post, Param, Query, Body, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Param,
+  Query,
+  Body,
+  UseGuards,
+  NotFoundException,
+  ParseIntPipe,
+} from '@nestjs/common';
 import { FlagService } from '../services/flag.service';
 import { FlagVersionService } from '../services/flag-version.service';
 import { AuthGuard } from '../guards/auth.guard';
@@ -380,7 +394,7 @@ export class FlagController {
   @Roles('admin', 'flag-manager')
   async rollbackFlag(
     @Param('id') flagId: string,
-    @Query('version') targetVersion: number,
+    @Query('version', ParseIntPipe) targetVersion: number,
     @Body() dto: RollbackDto,
     @CurrentUser() user: User,
   ) {
@@ -557,6 +571,10 @@ export class RollbackService {
         targetVersion
       );
 
+      if (!targetVersionData) {
+        throw new BadRequestException(`Version ${targetVersion} does not exist`);
+      }
+
       // Update the flag
       await tx.update('flags', {
         config: targetVersionData.config,
@@ -593,7 +611,10 @@ export class RollbackService {
 
 ```typescript
 // services/diff.service.ts
+import { Injectable } from '@nestjs/common';
 import { diff as deepDiff } from 'deep-diff';
+import { createTwoFilesPatch } from 'diff';
+import * as yaml from 'js-yaml';
 
 interface DiffResult {
   kind: 'N' | 'D' | 'E' | 'A';  // New, Deleted, Edited, Array
@@ -652,7 +673,11 @@ export class DiffService {
       case 'A':
         return {
           field: `${path}[${diff.index}]`,
-          type: diff.item?.kind === 'N' ? 'added' : 'removed',
+          type: diff.item?.kind === 'N'
+            ? 'added'
+            : diff.item?.kind === 'D'
+              ? 'removed'
+              : 'changed',
           oldValue: diff.item?.lhs,
           newValue: diff.item?.rhs,
           description: `Array ${path} modified at index ${diff.index}`,
@@ -668,13 +693,17 @@ export class DiffService {
   }
 
   generateDiffHtml(oldConfig: unknown, newConfig: unknown): string {
-    const diffs = this.computeDiff(oldConfig, newConfig);
+    const unifiedDiff = this.generateUnifiedDiff(oldConfig, newConfig);
 
+    // Convert to HTML with syntax highlighting
+    return this.diffToHtml(unifiedDiff);
+  }
+
+  generateUnifiedDiff(oldConfig: unknown, newConfig: unknown): string {
     const oldYaml = yaml.dump(oldConfig);
     const newYaml = yaml.dump(newConfig);
 
-    // Generate unified diff
-    const unifiedDiff = createTwoFilesPatch(
+    return createTwoFilesPatch(
       'old',
       'new',
       oldYaml,
@@ -682,9 +711,6 @@ export class DiffService {
       'Previous Version',
       'New Version'
     );
-
-    // Convert to HTML with syntax highlighting
-    return this.diffToHtml(unifiedDiff);
   }
 
   private diffToHtml(unifiedDiff: string): string {
@@ -715,13 +741,22 @@ export class DiffService {
 
 ```typescript
 // controllers/diff.controller.ts
+import {
+  Controller,
+  Get,
+  Param,
+  Query,
+  NotFoundException,
+  ParseIntPipe,
+} from '@nestjs/common';
+
 @Controller('flags/:id/diff')
 export class DiffController {
   @Get()
   async getDiff(
     @Param('id') flagId: string,
-    @Query('from') fromVersion: number,
-    @Query('to') toVersion: number,
+    @Query('from', ParseIntPipe) fromVersion: number,
+    @Query('to', ParseIntPipe) toVersion: number,
     @Query('format') format: 'json' | 'html' | 'unified' = 'json',
   ) {
     const [fromConfig, toConfig] = await Promise.all([
@@ -787,7 +822,13 @@ stateDiagram-v2
 
 ```typescript
 // entities/flag-change-request.entity.ts
-import { Entity, Column, ManyToOne, CreateDateColumn } from 'typeorm';
+import {
+  Entity,
+  Column,
+  ManyToOne,
+  PrimaryGeneratedColumn,
+  CreateDateColumn,
+} from 'typeorm';
 
 export enum ChangeRequestStatus {
   DRAFT = 'draft',
@@ -863,9 +904,18 @@ export class FlagChangeRequest {
 
 ```typescript
 // services/approval-workflow.service.ts
-import { Injectable, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  ForbiddenException,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import {
+  ChangeRequestStatus,
+  FlagChangeRequest,
+} from '../entities/flag-change-request.entity';
 
 @Injectable()
 export class ApprovalWorkflowService {
@@ -874,6 +924,7 @@ export class ApprovalWorkflowService {
     private changeRequestRepo: Repository<FlagChangeRequest>,
     private notificationService: NotificationService,
     private flagService: FlagService,
+    private userService: UserService,
   ) {}
 
   async createChangeRequest(
@@ -1006,6 +1057,10 @@ export class ApprovalWorkflowService {
       where: { id: changeRequestId },
     });
 
+    if (!changeRequest) {
+      throw new NotFoundException('Change request not found');
+    }
+
     if (changeRequest.status !== ChangeRequestStatus.APPROVED) {
       throw new BadRequestException('Change request must be approved before deployment');
     }
@@ -1081,7 +1136,7 @@ jobs:
       - name: Check for Breaking Changes
         run: |
           # Get changed files
-          CHANGED=$(git diff --name-only origin/main...HEAD | grep "feature-flags/")
+          CHANGED=$(git diff --name-only origin/main...HEAD | grep "feature-flags/" || true)
 
           for file in $CHANGED; do
             echo "Checking $file for breaking changes..."
@@ -1127,11 +1182,11 @@ jobs:
 
             const approved = reviews.data.some(
               r => r.state === 'APPROVED' &&
-                   ['admin', 'flag-admin'].includes(r.author_association)
+                   ['OWNER', 'MEMBER', 'COLLABORATOR'].includes(r.author_association)
             );
 
             if (!approved) {
-              core.setFailed('Production flag changes require approval from an admin');
+              core.setFailed('Production flag changes require approval from an owner, member, or collaborator');
             }
 ```
 
@@ -1144,6 +1199,20 @@ import * as yaml from 'js-yaml';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import simpleGit, { SimpleGit } from 'simple-git';
+
+interface SyncResult {
+  created: string[];
+  updated: string[];
+  deleted: string[];
+  unchanged: string[];
+  errors: Array<{ file: string; error: string }>;
+}
+
+interface FlagFileConfig {
+  spec: {
+    flags: FlagConfig[];
+  };
+}
 
 @Injectable()
 export class GitSyncService {
@@ -1190,6 +1259,7 @@ export class GitSyncService {
       const files = await fs.readdir(flagsDir);
 
       const yamlFiles = files.filter(f => f.endsWith('.yaml') || f.endsWith('.yml'));
+      const gitFlagNames = new Set<string>();
 
       for (const file of yamlFiles) {
         try {
@@ -1200,6 +1270,8 @@ export class GitSyncService {
           const config = yaml.load(content) as FlagFileConfig;
 
           for (const flag of config.spec.flags) {
+            gitFlagNames.add(flag.name);
+
             const syncResult = await this.syncFlag(
               flag,
               environment,
@@ -1215,21 +1287,13 @@ export class GitSyncService {
         } catch (error) {
           result.errors.push({
             file,
-            error: error.message,
+            error: error instanceof Error ? error.message : String(error),
           });
         }
       }
 
       // Handle deleted flags
       const existingFlags = await this.flagService.getFlagsByEnvironment(environment);
-      const gitFlagNames = new Set(
-        yamlFiles.flatMap(f => {
-          const content = yaml.load(
-            fs.readFileSync(path.join(flagsDir, f), 'utf-8')
-          ) as FlagFileConfig;
-          return content.spec.flags.map(f => f.name);
-        })
-      );
 
       for (const flag of existingFlags) {
         if (!gitFlagNames.has(flag.name) && flag.source === 'git') {
