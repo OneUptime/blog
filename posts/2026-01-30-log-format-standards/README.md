@@ -55,10 +55,10 @@ Here is a baseline schema that covers most use cases.
   "trace_id": "abc123def456",
   "span_id": "789xyz",
   "attributes": {
-    "user_id": "user_12345",
-    "payment_id": "pay_67890",
-    "amount_cents": 9999,
-    "error_code": "CARD_DECLINED"
+    "user.id": "user_12345",
+    "payment.id": "pay_67890",
+    "payment.amount_cents": 9999,
+    "error.type": "CARD_DECLINED"
   }
 }
 ```
@@ -157,14 +157,14 @@ Consistent naming prevents the "same data, different names" problem. Adopt these
 const goodAttributeNames = {
   "user.id": "user_12345",           // User identifier
   "user.email": "user@example.com",  // User email (be careful with PII)
-  "http.method": "POST",             // HTTP request method
-  "http.status_code": 200,           // HTTP response status
-  "http.url": "/api/v1/payments",    // Request path
-  "db.system": "postgresql",         // Database type
-  "db.operation": "SELECT",          // Query operation
+  "http.request.method": "POST",     // HTTP request method
+  "http.response.status_code": 200,  // HTTP response status
+  "url.path": "/api/v1/payments",    // Request path
+  "db.system.name": "postgresql",    // Database type
+  "db.operation.name": "SELECT",     // Query operation
   "db.duration_ms": 45,              // Query execution time
-  "error.type": "ValidationError",   // Error class name
-  "error.message": "Invalid input",  // Error description
+  "exception.type": "ValidationError",    // Error class name
+  "exception.message": "Invalid input",   // Error description
 };
 
 // Avoid these anti-patterns
@@ -220,9 +220,8 @@ Theory becomes practice through code. Here is a TypeScript logger that enforces 
 
 import { createLogger, format, transports } from "winston";
 
-interface LogAttributes {
-  [key: string]: string | number | boolean | null;
-}
+type LogAttributeValue = string | number | boolean | null;
+type LogAttributes = Record<string, LogAttributeValue>;
 
 interface StandardLogEntry {
   timestamp: string;
@@ -241,18 +240,36 @@ const SERVICE_NAME = process.env.SERVICE_NAME || "unknown-service";
 const SERVICE_VERSION = process.env.SERVICE_VERSION || "0.0.0";
 const ENVIRONMENT = process.env.NODE_ENV || "development";
 
+function isLogAttributes(value: unknown): value is LogAttributes {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return false;
+  }
+
+  return Object.values(value).every(
+    (attribute) =>
+      typeof attribute === "string" ||
+      typeof attribute === "number" ||
+      typeof attribute === "boolean" ||
+      attribute === null
+  );
+}
+
 // Custom format that structures every log entry consistently
 const standardFormat = format.printf((info) => {
+  const traceId = typeof info.trace_id === "string" ? info.trace_id : undefined;
+  const spanId = typeof info.span_id === "string" ? info.span_id : undefined;
+  const attributes = isLogAttributes(info.attributes) ? info.attributes : {};
+
   const entry: StandardLogEntry = {
     timestamp: new Date().toISOString(),
     level: info.level.toUpperCase(),
     service: SERVICE_NAME,
     version: SERVICE_VERSION,
     environment: ENVIRONMENT,
-    message: info.message,
-    trace_id: info.trace_id,
-    span_id: info.span_id,
-    attributes: info.attributes || {},
+    message: String(info.message),
+    trace_id: traceId,
+    span_id: spanId,
+    attributes,
   };
 
   return JSON.stringify(entry);
@@ -279,9 +296,9 @@ export function logError(
     message,
     attributes: {
       ...attributes,
-      "error.type": error.name,
-      "error.message": error.message,
-      "error.stack": error.stack,
+      "exception.type": error.name,
+      "exception.message": error.message,
+      ...(error.stack ? { "exception.stacktrace": error.stack } : {}),
     },
   });
 }
@@ -302,7 +319,7 @@ interface ValidationResult {
 
 const REQUIRED_FIELDS = ["timestamp", "level", "service", "message"];
 const VALID_LEVELS = ["DEBUG", "INFO", "WARN", "ERROR", "FATAL"];
-const ISO_8601_REGEX = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.\d{3}Z$/;
+const ISO_8601_REGEX = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 
 export function validateLogEntry(entry: unknown): ValidationResult {
   const errors: string[] = [];
@@ -378,22 +395,25 @@ When updating existing services, wrap the old logger with a compliant interface.
 import { logger as legacyLogger } from "./old-logger";
 import { logInfo, logError } from "./standard-logger";
 
+type LegacyLogLevel = "debug" | "info" | "warn" | "error" | "fatal";
+type LegacyLogger = Record<LegacyLogLevel, (message: string, data?: Record<string, unknown>) => void>;
+
 // Deprecation wrapper that logs in both formats during transition
 export function migratedLog(
-  level: string,
+  level: LegacyLogLevel,
   message: string,
   data: Record<string, unknown> = {}
 ) {
   // Log to new standard format
-  if (level === "error") {
-    logError(message, data.error as Error, data as Record<string, string | number | boolean | null>);
+  if (level === "error" && data.error instanceof Error) {
+    logError(message, data.error, data as Record<string, string | number | boolean | null>);
   } else {
     logInfo(message, data as Record<string, string | number | boolean | null>);
   }
 
   // Also log to legacy format during transition period
   // Remove this after full migration
-  legacyLogger[level](message, data);
+  (legacyLogger as LegacyLogger)[level](message, data);
 }
 ```
 
