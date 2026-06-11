@@ -36,7 +36,7 @@ flowchart TD
 
 ## Error Tolerance Configuration
 
-Kafka Connect provides three error tolerance modes that determine how the framework handles failures:
+Kafka Connect provides two error tolerance modes that determine how the framework handles failures:
 
 ### Error Tolerance Modes
 
@@ -59,11 +59,11 @@ Kafka Connect provides three error tolerance modes that determine how the framew
 }
 ```
 
-The `errors.tolerance` setting is your first line of defense. Setting it to `all` prevents a single bad record from stopping your entire pipeline.
+The `errors.tolerance` setting is your first line of defense. Setting it to `all` skips problematic records that fail in supported record processing stages, such as converters and Single Message Transformations (SMTs), instead of failing the task immediately.
 
 ## Dead Letter Queue (DLQ) Configuration
 
-A Dead Letter Queue captures failed records for later analysis and reprocessing. This is essential for production deployments where you cannot afford to lose data.
+A Dead Letter Queue captures failed sink records for later analysis and reprocessing. This is essential for production deployments where you cannot afford to lose data.
 
 ```mermaid
 flowchart LR
@@ -88,7 +88,6 @@ flowchart LR
     D -->|Success| E
     D -->|Failure| F
     C -->|Failure| F
-    B -->|Failure| F
 ```
 
 ### Basic DLQ Configuration
@@ -100,7 +99,7 @@ flowchart LR
     "connector.class": "io.confluent.connect.elasticsearch.ElasticsearchSinkConnector",
     "topics": "application-logs",
     "connection.url": "http://elasticsearch:9200",
-    "type.name": "_doc",
+    "key.ignore": true,
 
     "errors.tolerance": "all",
     "errors.deadletterqueue.topic.name": "dlq-application-logs",
@@ -234,100 +233,70 @@ sequenceDiagram
 
 The retry mechanism uses exponential backoff, starting from a small delay and increasing up to `errors.retry.delay.max.ms`.
 
-## Custom Error Reporters
+## Connector-Integrated Error Reporting
 
-For advanced monitoring and alerting, you can implement custom error reporters that integrate with your observability stack.
+For sink connectors that you develop yourself, Kafka Connect provides an `ErrantRecordReporter` that lets a `SinkTask` report individual failed records to the configured DLQ.
 
-### Error Reporter Interface
+### ErrantRecordReporter Example
 
 ```java
 package com.example.kafka.connect;
 
 import org.apache.kafka.connect.errors.ConnectException;
-import org.apache.kafka.connect.runtime.errors.ErrorReporter;
+import org.apache.kafka.connect.sink.ErrantRecordReporter;
 import org.apache.kafka.connect.sink.SinkRecord;
-import io.micrometer.core.instrument.Counter;
-import io.micrometer.core.instrument.MeterRegistry;
-import io.micrometer.prometheus.PrometheusConfig;
-import io.micrometer.prometheus.PrometheusMeterRegistry;
+import org.apache.kafka.connect.sink.SinkTask;
 
+import java.util.Collection;
 import java.util.Map;
 
-public class PrometheusErrorReporter implements ErrorReporter {
+public class ReportingSinkTask extends SinkTask {
 
-    private Counter errorCounter;
-    private Counter dlqCounter;
-    private MeterRegistry registry;
-    private String connectorName;
+    private ErrantRecordReporter reporter;
 
     @Override
-    public void configure(Map<String, ?> configs) {
-        this.connectorName = (String) configs.get("name");
-        this.registry = new PrometheusMeterRegistry(PrometheusConfig.DEFAULT);
-
-        this.errorCounter = Counter.builder("kafka_connect_errors_total")
-            .tag("connector", connectorName)
-            .description("Total number of errors encountered")
-            .register(registry);
-
-        this.dlqCounter = Counter.builder("kafka_connect_dlq_records_total")
-            .tag("connector", connectorName)
-            .description("Total records sent to DLQ")
-            .register(registry);
-    }
-
-    @Override
-    public void report(SinkRecord record, Throwable error) {
-        errorCounter.increment();
-
-        // Log structured error information
-        System.err.println(String.format(
-            "Error processing record - Topic: %s, Partition: %d, Offset: %d, Error: %s",
-            record.topic(),
-            record.kafkaPartition(),
-            record.kafkaOffset(),
-            error.getMessage()
-        ));
-
-        // Send alert for critical errors
-        if (isCriticalError(error)) {
-            sendAlert(record, error);
+    public void start(Map<String, String> props) {
+        try {
+            this.reporter = context.errantRecordReporter();
+        } catch (NoSuchMethodError | NoClassDefFoundError e) {
+            this.reporter = null;
         }
     }
 
     @Override
-    public void reportDLQ(SinkRecord record, Throwable error) {
-        dlqCounter.increment();
-
-        // Track DLQ metrics for monitoring dashboards
-        System.out.println(String.format(
-            "Record sent to DLQ - Topic: %s, Partition: %d, Offset: %d",
-            record.topic(),
-            record.kafkaPartition(),
-            record.kafkaOffset()
-        ));
+    public void put(Collection<SinkRecord> records) {
+        for (SinkRecord record : records) {
+            try {
+                writeToExternalSystem(record);
+            } catch (Exception e) {
+                if (reporter != null) {
+                    reporter.report(record, e);
+                } else {
+                    throw new ConnectException("Failed to process record", e);
+                }
+            }
+        }
     }
 
-    private boolean isCriticalError(Throwable error) {
-        return error instanceof ConnectException ||
-               error.getMessage().contains("authentication") ||
-               error.getMessage().contains("authorization");
-    }
-
-    private void sendAlert(SinkRecord record, Throwable error) {
-        // Integrate with PagerDuty, Slack, or other alerting systems
+    private void writeToExternalSystem(SinkRecord record) {
+        // Implement sink write logic here
     }
 
     @Override
     public void close() {
         // Cleanup resources
     }
+
+    @Override
+    public String version() {
+        return "1.0.0";
+    }
 }
 ```
 
-### Registering the Custom Reporter
+### Enabling DLQ Reporting
 
-Add your error reporter to the connector configuration:
+The reporter writes to the connector's DLQ when the standard DLQ settings are enabled:
 
 ```json
 {
@@ -336,7 +305,7 @@ Add your error reporter to the connector configuration:
     "connector.class": "com.example.MySinkConnector",
     "errors.tolerance": "all",
     "errors.deadletterqueue.topic.name": "dlq-topic",
-    "errors.reporters": "com.example.kafka.connect.PrometheusErrorReporter"
+    "errors.deadletterqueue.context.headers.enable": true
   }
 }
 ```
@@ -388,7 +357,7 @@ Effective monitoring is crucial for maintaining healthy pipelines. Here are key 
 flowchart TD
     subgraph Metrics Collection
         A[Kafka Connect JMX] --> B[Prometheus]
-        C[Custom Error Reporter] --> B
+        C[Connect REST Status Exporter] --> B
         D[DLQ Consumer Lag] --> B
     end
 
@@ -412,26 +381,24 @@ Monitor these JMX metrics exposed by Kafka Connect:
 
 | Metric | Description |
 |--------|-------------|
-| `kafka.connect:type=connector-task-metrics,connector=*,task=*` | Task-level metrics |
+| `kafka.connect:type=task-error-metrics,connector=*,task=*` | Task error metrics |
 | `total-record-errors` | Total records that resulted in errors |
 | `total-record-failures` | Records that failed after all retries |
 | `total-records-skipped` | Records skipped due to errors |
 | `deadletterqueue-produce-requests` | Number of DLQ produce requests |
 | `deadletterqueue-produce-failures` | Failed DLQ produce attempts |
+| `kafka.connect:type=connector-task-metrics,connector=*,task=*` | Task-level status and throughput metrics |
 
 ### Prometheus Scrape Configuration
 
 ```yaml
 scrape_configs:
-  - job_name: 'kafka-connect'
-    static_configs:
-      - targets: ['connect-1:8083', 'connect-2:8083', 'connect-3:8083']
-    metrics_path: /metrics
-
   - job_name: 'kafka-connect-jmx'
     static_configs:
       - targets: ['connect-1:9999', 'connect-2:9999', 'connect-3:9999']
 ```
+
+Kafka Connect does not expose Prometheus metrics on the REST API port by default. The scrape targets above assume you run a Prometheus JMX exporter or another metrics agent on port `9999`. The exact metric names in Prometheus depend on your exporter rules.
 
 ### Alerting Rules Example
 
@@ -441,7 +408,7 @@ groups:
     rules:
       - alert: KafkaConnectHighErrorRate
         expr: |
-          rate(kafka_connect_connector_task_metrics_total_record_errors[5m]) > 10
+          rate(kafka_connect_task_error_metrics_total_record_errors[5m]) > 10
         for: 5m
         labels:
           severity: warning
@@ -451,7 +418,7 @@ groups:
 
       - alert: KafkaConnectDLQGrowing
         expr: |
-          rate(kafka_consumer_records_lag_max{topic=~"dlq-.*"}[10m]) > 0
+          increase(kafka_connect_task_error_metrics_deadletterqueue_produce_requests[10m]) > 0
         for: 15m
         labels:
           severity: critical
@@ -461,7 +428,7 @@ groups:
 
       - alert: KafkaConnectorFailed
         expr: |
-          kafka_connect_connector_status == 0
+          kafka_connect_connector_task_metrics_status{status="failed"} == 1
         for: 1m
         labels:
           severity: critical
@@ -571,6 +538,7 @@ public class DLQReprocessor {
                 }
             }
 
+            producer.flush();
             consumer.commitSync();
         }
     }
@@ -606,7 +574,7 @@ public class DLQReprocessor {
 
 ## Best Practices Summary
 
-1. **Always enable error tolerance in production** - Set `errors.tolerance=all` to prevent single bad records from stopping your pipeline.
+1. **Enable error tolerance when skipping bad records is acceptable** - Set `errors.tolerance=all` with a DLQ to prevent supported record-level errors from stopping your pipeline.
 
 2. **Configure DLQ with context headers** - Enable `errors.deadletterqueue.context.headers.enable` to capture debugging information.
 
