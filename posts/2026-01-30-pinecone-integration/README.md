@@ -73,7 +73,7 @@ npm install @pinecone-database/pinecone
 For Python projects:
 
 ```bash
-pip install pinecone-client
+pip install pinecone
 ```
 
 ### Initialize the Client
