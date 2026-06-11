@@ -76,11 +76,9 @@ Start by categorizing your events and assigning retention periods based on busin
 | Audit logs | 1 year | 3 years | 7 years | Never |
 | Debug events | 24 hours | None | None | 24 hours |
 
-The policy configuration should be stored separately from application code so operations teams can adjust retention without deployments.
+The policy configuration should be stored separately from application code so operations teams can adjust retention without deployments. For example, `retention-policies.json`:
 
-```javascript
-// retention-policies.json
-// Define retention periods for each event type
+```json
 {
   "policies": [
     {
@@ -134,8 +132,8 @@ class PurgeEngine {
     return policies.policies.find(policy => {
       // Convert glob pattern to regex
       const pattern = policy.eventType
-        .replace('.', '\\.')
-        .replace('*', '.*');
+        .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+        .replace(/\\\*/g, '.*');
       return new RegExp(`^${pattern}$`).test(eventType);
     });
   }
@@ -253,7 +251,7 @@ class PurgeEngine {
 
 ## Database-Level Purging with Partitioning
 
-For high-volume systems, application-level deletion is too slow. Time-based partitioning allows you to drop entire partitions instantly rather than deleting rows one by one.
+For high-volume systems, application-level deletion is too slow. Time-based partitioning allows you to drop entire partitions much faster than deleting rows one by one.
 
 The following diagram illustrates how partitioned tables enable efficient purging.
 
@@ -299,10 +297,11 @@ CREATE INDEX idx_events_type ON events (event_type);
 The purge process for partitioned tables becomes straightforward.
 
 ```sql
--- Archive partition data to S3 before dropping
-COPY events_2025_01 TO 's3://archive/events/2025-01/' FORMAT PARQUET;
+-- Export partition data before uploading it to S3
+COPY events_2025_01 TO '/var/lib/postgresql/archive/events_2025_01.csv'
+    WITH (FORMAT csv, HEADER true);
 
--- Drop entire partition instantly
+-- Drop entire partition quickly
 DROP TABLE events_2025_01;
 
 -- Create future partitions automatically
@@ -390,13 +389,23 @@ async function handleDeletionRequest(userId, requestId) {
   // Find all events containing user data
   const eventIds = await db.findEventsByUserId(userId);
 
-  // Execute deletion across all storage tiers
+  // Execute deletion across queryable storage tiers
   await Promise.all([
     db.deleteEvents({ userId }),
     archiveStorage.deleteByUser('warm', userId),
-    archiveStorage.deleteByUser('cold', userId),
-    kafkaAdmin.deleteRecords('user-events', userId)
+    archiveStorage.deleteByUser('cold', userId)
   ]);
+
+  // Notify asynchronous processors that derived data for this user must be erased
+  await kafkaProducer.send({
+    topic: 'user-erasure-requests',
+    messages: [
+      {
+        key: userId,
+        value: JSON.stringify({ userId, requestId })
+      }
+    ]
+  });
 
   // Record completion
   await auditLog.record({
