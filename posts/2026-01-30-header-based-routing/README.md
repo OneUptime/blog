@@ -79,7 +79,7 @@ spec:
   entryPoints:
     - web
   routes:
-    - match: Host(`api.example.com`) && HeadersRegexp(`X-API-Version`, `^v[2-9].*`)
+    - match: Host(`api.example.com`) && HeaderRegexp(`X-API-Version`, `^v[2-9].*`)
       kind: Rule
       services:
         - name: api-v2
@@ -102,8 +102,7 @@ spec:
   http:
     - match:
         - headers:
-            X-Debug-Mode:
-              exact: "*"  # Any value
+            x-debug-mode: {}  # Any value
       route:
         - destination:
             host: api-debug
@@ -118,17 +117,26 @@ Combine multiple header checks for complex routing logic.
 
 ```yaml
 # Kong Ingress
-apiVersion: configuration.konghq.com/v1
-kind: KongIngress
+apiVersion: networking.k8s.io/v1
+kind: Ingress
 metadata:
   name: multi-header-route
-route:
-  headers:
-    X-Tenant-ID:
-      - "enterprise"
-    X-Region:
-      - "us-east"
-      - "us-west"
+  annotations:
+    konghq.com/headers.x-tenant-id: "enterprise"
+    konghq.com/headers.x-region: "us-east,us-west"
+spec:
+  ingressClassName: kong
+  rules:
+    - host: api.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: enterprise-api
+                port:
+                  number: 8080
 ```
 
 ## Version Header Routing
@@ -174,7 +182,7 @@ spec:
     # Route v3-beta requests to beta service
     - match:
         - headers:
-            X-API-Version:
+            x-api-version:
               prefix: "v3"
       route:
         - destination:
@@ -186,7 +194,7 @@ spec:
     # Route v2 requests
     - match:
         - headers:
-            X-API-Version:
+            x-api-version:
               exact: "v2"
       route:
         - destination:
@@ -281,6 +289,11 @@ function handleUsersV2(req, res) {
   });
 }
 
+// Latest handler - explicit fallback for valid newer versions
+function handleUsersLatest(req, res) {
+  return handleUsersV2(req, res);
+}
+
 module.exports = router;
 ```
 
@@ -327,22 +340,12 @@ config:
     headers:
       - "X-Routed-Tenant:$(headers.x-tenant-id)"
 ---
-apiVersion: configuration.konghq.com/v1
-kind: KongIngress
-metadata:
-  name: tenant-a-route
-route:
-  headers:
-    X-Tenant-ID:
-      - "tenant-a"
-      - "tenant-alpha"  # Alias support
----
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: tenant-a-ingress
   annotations:
-    konghq.com/override: tenant-a-route
+    konghq.com/headers.x-tenant-id: "tenant-a,tenant-alpha"  # Alias support
     konghq.com/plugins: tenant-router
 spec:
   ingressClassName: kong
@@ -500,7 +503,7 @@ spec:
     # New checkout experience
     - match:
         - headers:
-            X-Feature-Flags:
+            x-feature-flags:
               regex: ".*new-checkout.*"
       route:
         - destination:
@@ -514,9 +517,9 @@ spec:
     # Beta features for internal testing
     - match:
         - headers:
-            X-Feature-Flags:
+            x-feature-flags:
               regex: ".*beta.*"
-            X-Internal-User:
+            x-internal-user:
               exact: "true"
       route:
         - destination:
@@ -526,7 +529,7 @@ spec:
     # Canary deployment - 10% of traffic with feature flag
     - match:
         - headers:
-            X-Enable-Canary:
+            x-enable-canary:
               exact: "true"
       route:
         - destination:
@@ -706,9 +709,6 @@ spec:
     customRequestHeaders:
       X-Gateway: "traefik"
       X-Forwarded-Proto: "https"
-
-    # Remove headers from requests
-    customRequestHeaders:
       X-Internal-Token: ""  # Empty string removes header
 
     # Response header modifications
@@ -767,11 +767,11 @@ config:
       - "Authorization:X-Original-Auth"
   add:
     headers:
-      - "X-Gateway-Time:$(now)"
-      - "X-Request-ID:$(uuid)"
+      - "X-Gateway:kong"
+      - "X-Original-Host:$(headers.host)"
   append:
     headers:
-      - "X-Forwarded-For:$(client_ip)"
+      - "X-Routed-By:kong"
 ---
 apiVersion: configuration.konghq.com/v1
 kind: KongPlugin
@@ -785,7 +785,7 @@ config:
       - "X-Debug-Info"
   add:
     headers:
-      - "X-Response-Time:$(latency)"
+      - "X-Response-Transformed:true"
       - "X-Served-By:kong-gateway"
 ```
 
@@ -891,22 +891,18 @@ route_config:
           request_headers_to_add:
             # Add default headers if not present
             - header:
-                key: "X-Request-ID"
-                value: "%REQ(X-REQUEST-ID)%"
-              append: false
-            - header:
                 key: "X-API-Version"
                 value: "v1"
-              append: false  # Only add if not present
+              append_action: ADD_IF_ABSENT
             - header:
                 key: "X-Gateway-Timestamp"
                 value: "%START_TIME(%s)%"
-              append: false
+              append_action: ADD_IF_ABSENT
           response_headers_to_add:
             - header:
                 key: "X-Response-Time"
                 value: "%RESP(X-ENVOY-UPSTREAM-SERVICE-TIME)%ms"
-              append: false
+              append_action: OVERWRITE_IF_EXISTS_OR_ADD
 ```
 
 ## Complete Example: Multi-Tenant API Gateway
@@ -939,7 +935,7 @@ spec:
     # Premium tenant routing
     - match:
         - headers:
-            X-Tenant-ID:
+            x-tenant-id:
               exact: "premium-corp"
       route:
         - destination:
@@ -958,9 +954,9 @@ spec:
     # Beta features for opted-in users
     - match:
         - headers:
-            X-Feature-Flags:
+            x-feature-flags:
               regex: ".*beta.*"
-            X-API-Version:
+            x-api-version:
               prefix: "v3"
       route:
         - destination:
@@ -974,7 +970,7 @@ spec:
     # API v2 routing
     - match:
         - headers:
-            X-API-Version:
+            x-api-version:
               exact: "v2"
       route:
         - destination:
@@ -984,7 +980,7 @@ spec:
     # Canary deployment (10% traffic)
     - match:
         - headers:
-            X-Enable-Canary:
+            x-enable-canary:
               exact: "true"
       route:
         - destination:
