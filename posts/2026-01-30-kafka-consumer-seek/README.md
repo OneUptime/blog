@@ -42,7 +42,7 @@ flowchart LR
     LEO -.-> O5
 ```
 
-- **Committed Offset**: The last offset that has been persisted (survives consumer restarts)
+- **Committed Offset**: The next offset that has been persisted for recovery (survives consumer restarts)
 - **Current Position**: Where the consumer is currently reading from
 - **Log End Offset**: The offset of the next message to be written
 
@@ -268,7 +268,7 @@ public class TimestampSeekExample {
 **Important Considerations:**
 - `offsetsForTimes()` returns the earliest offset whose timestamp is >= the target timestamp
 - If no message exists at or after the timestamp, null is returned
-- Timestamp indexing must be enabled on the broker (default since Kafka 0.10.1)
+- Timestamp lookup requires brokers that support `offsetsForTimes()` (Kafka 0.10.1 or later) and messages with timestamps; older message formats return null for that partition
 
 ## Handling Partition Assignment with ConsumerRebalanceListener
 
@@ -478,19 +478,20 @@ public class TimeWindowReplayStrategy {
                 }
             }
 
+            // Consume within the time window
+            Set<TopicPartition> completedPartitions = new HashSet<>();
+
             // Seek to start positions
             for (TopicPartition partition : partitions) {
                 OffsetAndTimestamp startOt = startOffsets.get(partition);
                 if (startOt != null) {
                     consumer.seek(partition, startOt.offset());
                 } else {
-                    // No messages at or after start time - pause this partition
+                    // No messages at or after start time - this partition has no records in the window
+                    completedPartitions.add(partition);
                     consumer.pause(Collections.singleton(partition));
                 }
             }
-
-            // Consume within the time window
-            Set<TopicPartition> completedPartitions = new HashSet<>();
 
             while (completedPartitions.size() < partitions.size()) {
                 ConsumerRecords<String, String> records =
