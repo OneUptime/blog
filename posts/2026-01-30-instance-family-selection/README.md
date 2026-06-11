@@ -17,11 +17,11 @@ Major cloud providers organize compute into families based on resource ratios an
 | Family | Use Case | vCPU:Memory Ratio | Notable Features |
 | --- | --- | --- | --- |
 | **M (General Purpose)** | Balanced workloads, web servers, small databases | 1:4 | Baseline for most applications |
-| **C (Compute Optimized)** | CPU-bound tasks, batch processing, gaming servers | 1:2 | Higher clock speeds, more vCPUs per dollar |
+| **C (Compute Optimized)** | CPU-bound tasks, batch processing, gaming servers | 1:2 | More compute capacity per dollar |
 | **R (Memory Optimized)** | In-memory caches, large databases, analytics | 1:8 | Large RAM capacity, suited for Redis/Memcached |
 | **T (Burstable)** | Development, low-traffic sites, microservices | Variable | CPU credits, cost-effective for idle workloads |
-| **I/D (Storage Optimized)** | Data warehouses, distributed filesystems | 1:4 | Local NVMe SSDs, high IOPS |
-| **P/G/Inf (Accelerated)** | Machine learning, video encoding, HPC | Varies | GPUs, Inferentia, Trainium chips |
+| **I/D (Storage Optimized)** | Data warehouses, distributed filesystems | Varies | Local NVMe SSDs or HDDs, high I/O throughput |
+| **P/G/Inf/Trn (Accelerated)** | Machine learning, video encoding, HPC | Varies | GPUs, Inferentia, Trainium chips |
 
 Understanding these ratios helps you match instances to your application's resource consumption patterns.
 
@@ -105,25 +105,30 @@ General purpose instances are the safe default. Choose them when:
 - Your application's resource profile changes frequently
 
 ```yaml
-# Kubernetes node pool configuration for general purpose workloads
-apiVersion: karpenter.sh/v1alpha5
-kind: Provisioner
+# Karpenter NodePool configuration for general purpose workloads
+apiVersion: karpenter.sh/v1
+kind: NodePool
 metadata:
   name: general-purpose
 spec:
-  requirements:
-    - key: node.kubernetes.io/instance-type
-      operator: In
-      values:
-        - m6i.large
-        - m6i.xlarge
-        - m6i.2xlarge
-        - m7i.large
-        - m7i.xlarge
+  template:
+    spec:
+      nodeClassRef:
+        group: karpenter.k8s.aws
+        kind: EC2NodeClass
+        name: default
+      requirements:
+        - key: node.kubernetes.io/instance-type
+          operator: In
+          values:
+            - m6i.large
+            - m6i.xlarge
+            - m6i.2xlarge
+            - m7i.large
+            - m7i.xlarge
   limits:
-    resources:
-      cpu: 1000
-      memory: 2000Gi
+    cpu: 1000
+    memory: 2000Gi
 ```
 
 ### When to Use Specialized Instances
@@ -138,28 +143,34 @@ Specialized instances deliver better price-performance for specific workload pat
 - Game servers
 
 ```yaml
-# Karpenter provisioner for compute-intensive batch jobs
-apiVersion: karpenter.sh/v1alpha5
-kind: Provisioner
+# Karpenter NodePool for compute-intensive batch jobs
+apiVersion: karpenter.sh/v1
+kind: NodePool
 metadata:
   name: compute-optimized
 spec:
-  requirements:
-    - key: node.kubernetes.io/instance-type
-      operator: In
-      values:
-        - c6i.xlarge
-        - c6i.2xlarge
-        - c7i.xlarge
-        - c7i.2xlarge
-    - key: kubernetes.io/arch
-      operator: In
-      values:
-        - amd64
-  taints:
-    - key: workload-type
-      value: compute-intensive
-      effect: NoSchedule
+  template:
+    spec:
+      nodeClassRef:
+        group: karpenter.k8s.aws
+        kind: EC2NodeClass
+        name: default
+      requirements:
+        - key: node.kubernetes.io/instance-type
+          operator: In
+          values:
+            - c6i.xlarge
+            - c6i.2xlarge
+            - c7i.xlarge
+            - c7i.2xlarge
+        - key: kubernetes.io/arch
+          operator: In
+          values:
+            - amd64
+      taints:
+        - key: workload-type
+          value: compute-intensive
+          effect: NoSchedule
 ```
 
 **Memory Optimized (R-family):**
@@ -175,10 +186,14 @@ kind: StatefulSet
 metadata:
   name: redis-cluster
 spec:
+  serviceName: redis
   selector:
     matchLabels:
       app: redis
   template:
+    metadata:
+      labels:
+        app: redis
     spec:
       nodeSelector:
         node.kubernetes.io/instance-type: r6i.2xlarge
@@ -196,7 +211,7 @@ spec:
 
 ## Graviton/ARM Consideration
 
-AWS Graviton (ARM-based) processors offer 20-40% better price-performance compared to equivalent x86 instances for many workloads. Similar ARM options exist on other clouds (Azure Ampere, GCP Tau T2A).
+AWS Graviton (64-bit Arm-based) processors offer up to 40% better price-performance compared to equivalent x86 instances for many workloads. Similar Arm options exist on other clouds (Azure Ampere, GCP Tau T2A).
 
 ### Compatibility Checklist
 
@@ -218,8 +233,9 @@ RUN npm run build
 
 FROM --platform=$TARGETPLATFORM node:20-alpine
 WORKDIR /app
+COPY package*.json ./
+RUN npm ci --omit=dev
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/node_modules ./node_modules
 CMD ["node", "dist/server.js"]
 ```
 
@@ -258,7 +274,7 @@ Here is a typical cost comparison for a web application workload:
 | --- | --- | --- | --- | --- | --- |
 | m6i.xlarge (x86) | 4 | 16 GB | $0.192 | ~$140 | Baseline |
 | m6g.xlarge (Graviton) | 4 | 16 GB | $0.154 | ~$112 | +10-20% |
-| m7g.xlarge (Graviton3) | 4 | 16 GB | $0.163 | ~$119 | +25-30% |
+| m7g.xlarge (Graviton3) | 4 | 16 GB | $0.1632 | ~$119 | +25% vs M6g |
 
 For a fleet of 50 instances, switching from m6i to m7g saves approximately $1,000/month while improving performance.
 
@@ -394,23 +410,31 @@ Once you have identified optimal instance families, plan a safe migration path.
 Start with a small percentage of traffic and gradually increase:
 
 ```yaml
-# Karpenter provisioner with mixed instance types during migration
-apiVersion: karpenter.sh/v1alpha5
-kind: Provisioner
+# Karpenter NodePool for canary workloads during migration
+apiVersion: karpenter.sh/v1
+kind: NodePool
 metadata:
   name: migration-canary
 spec:
-  requirements:
-    - key: node.kubernetes.io/instance-type
-      operator: In
-      values:
-        # Current instances (80% weight via priority)
-        - m6i.xlarge
-        - m6i.2xlarge
-        # Target instances (20% weight)
-        - m7g.xlarge
-        - m7g.2xlarge
-  weight: 10  # Adjust to control canary percentage
+  template:
+    metadata:
+      labels:
+        migration-stage: canary
+    spec:
+      nodeClassRef:
+        group: karpenter.k8s.aws
+        kind: EC2NodeClass
+        name: default
+      requirements:
+        - key: node.kubernetes.io/instance-type
+          operator: In
+          values:
+            - m7g.xlarge
+            - m7g.2xlarge
+        - key: kubernetes.io/arch
+          operator: In
+          values:
+            - arm64
 ```
 
 ### Strategy 2: Blue-Green Node Pools
@@ -459,29 +483,34 @@ eksctl delete nodegroup \
 Let Karpenter automatically select optimal instances:
 
 ```yaml
-apiVersion: karpenter.sh/v1alpha5
-kind: Provisioner
+apiVersion: karpenter.sh/v1
+kind: NodePool
 metadata:
   name: default
 spec:
-  requirements:
-    # Allow multiple families for optimization
-    - key: karpenter.k8s.aws/instance-family
-      operator: In
-      values: ["m6i", "m6g", "m7i", "m7g", "c6i", "c6g", "r6i", "r6g"]
-    # Prefer Graviton for cost savings
-    - key: kubernetes.io/arch
-      operator: In
-      values: ["arm64", "amd64"]
-    # Exclude small instances for production
-    - key: karpenter.k8s.aws/instance-size
-      operator: NotIn
-      values: ["nano", "micro", "small"]
+  template:
+    spec:
+      nodeClassRef:
+        group: karpenter.k8s.aws
+        kind: EC2NodeClass
+        name: default
+      requirements:
+        # Allow multiple families for optimization
+        - key: karpenter.k8s.aws/instance-family
+          operator: In
+          values: ["m6i", "m6g", "m7i", "m7g", "c6i", "c6g", "r6i", "r6g"]
+        # Allow Graviton and x86 capacity
+        - key: kubernetes.io/arch
+          operator: In
+          values: ["arm64", "amd64"]
+        # Exclude small instances for production
+        - key: karpenter.k8s.aws/instance-size
+          operator: NotIn
+          values: ["nano", "micro", "small"]
   # Consolidation removes underutilized nodes
-  consolidation:
-    enabled: true
-  # Time-to-live for empty nodes
-  ttlSecondsAfterEmpty: 60
+  disruption:
+    consolidationPolicy: WhenEmptyOrUnderutilized
+    consolidateAfter: 60s
 ```
 
 ### Migration Monitoring Dashboard
