@@ -130,7 +130,7 @@ class FeatureTransformer(ABC):
 
 Normalization scales numerical features to a standard range. This prevents features with large values from dominating models that use distance metrics or gradient descent.
 
-The StandardScaler transformer computes mean and standard deviation from training data, then applies z-score normalization. We add a small epsilon to avoid division by zero for constant features.
+The StandardScaler transformer computes mean and standard deviation from training data, then applies z-score normalization. We replace zero standard deviations with 1.0 to avoid division by zero for constant features.
 
 ```python
 class StandardScaler(FeatureTransformer):
@@ -215,6 +215,8 @@ class OneHotEncoder(FeatureTransformer):
             input_columns=columns,
             output_columns=[],  # Set during fit
         )
+        if handle_unknown not in {"ignore", "error"}:
+            raise ValueError("handle_unknown must be 'ignore' or 'error'")
         self.max_categories = max_categories
         self.handle_unknown = handle_unknown
 
@@ -247,6 +249,13 @@ class OneHotEncoder(FeatureTransformer):
 
         for col in self.input_columns:
             categories = self.params["categories"][col]
+
+            unknown_values = ~df[col].isin(categories)
+            if self.handle_unknown == "error" and unknown_values.any():
+                unknown = df.loc[unknown_values, col].unique()
+                raise ValueError(
+                    f"Column '{col}' contains unknown categories: {unknown}"
+                )
 
             for cat in categories:
                 output_col = f"{col}_{cat}"
@@ -329,10 +338,10 @@ class DatetimeFeatures(FeatureTransformer):
             result[f"{col}_hour"] = dt.dt.hour
 
         if "day_of_week" in self.features:
-            result[f"{col}_day_of_week"] = dt.dt.dayofweek
+            result[f"{col}_day_of_week"] = dt.dt.day_of_week
 
         if "is_weekend" in self.features:
-            result[f"{col}_is_weekend"] = (dt.dt.dayofweek >= 5).astype(int)
+            result[f"{col}_is_weekend"] = (dt.dt.day_of_week >= 5).astype(int)
 
         # Cyclical encoding: map time to unit circle
         # This preserves proximity (hour 23 is close to hour 0)
@@ -354,7 +363,7 @@ The FeaturePipeline class manages transformer execution order, tracks fitted sta
 ```python
 import json
 import hashlib
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
 import pandas as pd
 
@@ -374,7 +383,7 @@ class FeaturePipeline:
         self.name = name
         self.transformers = transformers
         self.is_fitted = False
-        self.created_at = datetime.utcnow().isoformat()
+        self.created_at = datetime.now(timezone.utc).isoformat()
         self.version = self._compute_version()
 
     def _compute_version(self) -> str:
@@ -639,7 +648,7 @@ This example creates a complete pipeline for e-commerce data with user behavior 
 ```python
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 
 # Sample e-commerce data
@@ -658,7 +667,7 @@ def generate_sample_data(n_rows: int = 1000) -> pd.DataFrame:
         "price": np.random.uniform(10, 500, n_rows),
         "quantity": np.random.randint(1, 5, n_rows),
         "timestamp": [
-            datetime.now() - timedelta(days=np.random.randint(0, 30))
+            datetime.now(timezone.utc) - timedelta(days=np.random.randint(0, 30))
             for _ in range(n_rows)
         ],
         "device_type": np.random.choice(["mobile", "desktop", "tablet"], n_rows),
@@ -758,13 +767,13 @@ flowchart TB
     G --> D
 ```
 
-The FeatureStore class provides a simple interface for storing and retrieving features with versioning and point-in-time correctness for historical training data.
+The FeatureStore class provides a simple interface for storing and retrieving features with versioning metadata and an as-of timestamp lookup for historical feature values.
 
 ```python
 from typing import Dict, List, Any, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 import pandas as pd
-import json
+import os
 
 
 class FeatureStore:
@@ -778,6 +787,7 @@ class FeatureStore:
     def __init__(self, storage_path: str):
         self.storage_path = storage_path
         self.feature_groups: Dict[str, Dict[str, Any]] = {}
+        os.makedirs(storage_path, exist_ok=True)
 
     def register_feature_group(
         self,
@@ -798,7 +808,7 @@ class FeatureStore:
             "feature_columns": feature_columns,
             "timestamp_column": timestamp_column,
             "description": description,
-            "created_at": datetime.utcnow().isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
         }
         print(f"Registered feature group: {name}")
 
@@ -826,6 +836,8 @@ class FeatureStore:
         if missing:
             raise ValueError(f"Missing required columns: {missing}")
 
+        rows_to_write = len(df)
+
         # In production, write to a proper storage system
         # Here we simulate with parquet files
         path = f"{self.storage_path}/{feature_group}.parquet"
@@ -838,7 +850,7 @@ class FeatureStore:
                 pass
 
         df.to_parquet(path, index=False)
-        print(f"Ingested {len(df)} rows to {feature_group}")
+        print(f"Ingested {rows_to_write} rows to {feature_group}")
 
     def get_features(
         self,
@@ -863,7 +875,7 @@ class FeatureStore:
         # Load feature data
         feature_df = pd.read_parquet(path)
 
-        # Filter by timestamp if specified (point-in-time correctness)
+        # Filter by timestamp if specified
         if as_of_timestamp:
             ts_col = config["timestamp_column"]
             feature_df = feature_df[
@@ -913,7 +925,7 @@ def feature_store_example():
         "total_purchases": [10, 25, 5, 100, 42],
         "avg_order_value": [50.0, 75.0, 30.0, 120.0, 85.0],
         "days_since_last_order": [2, 7, 30, 1, 14],
-        "computed_at": [datetime.now()] * 5,
+        "computed_at": [datetime.now(timezone.utc)] * 5,
     })
 
     store.ingest("user_features", user_features)
@@ -943,7 +955,7 @@ The FeatureMonitor class tracks pipeline health metrics and can integrate with m
 ```python
 from dataclasses import dataclass, field
 from typing import Dict, List, Any
-from datetime import datetime
+from datetime import datetime, timezone
 import pandas as pd
 import numpy as np
 
@@ -957,7 +969,7 @@ class FeatureMetrics:
     std: float
     min_val: float
     max_val: float
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class FeatureMonitor:
@@ -998,7 +1010,7 @@ class FeatureMonitor:
         # Store in history
         self.metrics_history.append({
             "stage": stage,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "metrics": {k: v.__dict__ for k, v in metrics.items()},
         })
 
