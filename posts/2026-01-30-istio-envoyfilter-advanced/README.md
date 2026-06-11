@@ -64,6 +64,7 @@ metadata:
   name: api-version-transformer
   namespace: production
 spec:
+  priority: 0
   workloadSelector:
     labels:
       app: api-gateway
@@ -83,48 +84,49 @@ spec:
           name: envoy.filters.http.lua
           typed_config:
             "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-            inlineCode: |
-              -- Field mappings between v1 and v2 API formats
-              local field_transforms = {
-                ["user_name"] = "username",
-                ["email_address"] = "email",
-                ["phone_number"] = "phone"
-              }
+            defaultSourceCode:
+              inlineString: |
+                -- Field mappings between v1 and v2 API formats
+                local field_transforms = {
+                  ["user_name"] = "username",
+                  ["email_address"] = "email",
+                  ["phone_number"] = "phone"
+                }
 
-              function envoy_on_request(request_handle)
-                local headers = request_handle:headers()
-                local api_version = headers:get("x-api-version") or "v2"
-                local path = headers:get(":path")
+                function envoy_on_request(request_handle)
+                  local headers = request_handle:headers()
+                  local api_version = headers:get("x-api-version") or "v2"
+                  local path = headers:get(":path")
 
-                -- Store original version for response transformation
-                request_handle:streamInfo():dynamicMetadata():set(
-                  "api_transform", "client_version", api_version
-                )
-
-                -- Transform v1 paths to v2 equivalents
-                if api_version == "v1" then
-                  local new_path = string.gsub(path, "/api/v1/", "/api/v2/")
-                  headers:replace(":path", new_path)
-
-                  request_handle:logInfo(
-                    "Transformed path: " .. path .. " to " .. new_path
+                  -- Store original version for response transformation
+                  request_handle:streamInfo():dynamicMetadata():set(
+                    "api_transform", "client_version", api_version
                   )
-                end
-              end
 
-              function envoy_on_response(response_handle)
-                local metadata = response_handle:streamInfo():dynamicMetadata()
-                local transform_data = metadata:get("api_transform")
+                  -- Transform v1 paths to v2 equivalents
+                  if api_version == "v1" then
+                    local new_path = string.gsub(path, "/api/v1/", "/api/v2/")
+                    headers:replace(":path", new_path)
 
-                if transform_data and transform_data["client_version"] == "v1" then
-                  -- Add deprecation notice for v1 clients
-                  response_handle:headers():add(
-                    "x-api-deprecation",
-                    "v1 API deprecated, migrate to v2 by 2026-06-01"
-                  )
-                  response_handle:headers():add("sunset", "2026-06-01")
+                    request_handle:logInfo(
+                      "Transformed path: " .. path .. " to " .. new_path
+                    )
+                  end
                 end
-              end
+
+                function envoy_on_response(response_handle)
+                  local metadata = response_handle:streamInfo():dynamicMetadata()
+                  local transform_data = metadata:get("api_transform")
+
+                  if transform_data and transform_data["client_version"] == "v1" then
+                    -- Add deprecation notice for v1 clients
+                    response_handle:headers():add(
+                      "x-api-deprecation",
+                      "v1 API deprecated, migrate to v2 by 2026-06-01"
+                    )
+                    response_handle:headers():add("sunset", "2026-06-01")
+                  end
+                end
 ```
 
 ## Dynamic Rate Limiting with Client Context
@@ -140,6 +142,7 @@ metadata:
   name: tiered-rate-limiter
   namespace: production
 spec:
+  priority: 0
   workloadSelector:
     labels:
       app: api-service
@@ -159,75 +162,91 @@ spec:
           name: envoy.filters.http.lua
           typed_config:
             "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-            inlineCode: |
-              -- Rate limits per subscription tier (requests per minute)
-              local tier_limits = {
-                ["enterprise"] = 10000,
-                ["business"] = 1000,
-                ["starter"] = 100,
-                ["free"] = 20
-              }
+            defaultSourceCode:
+              inlineString: |
+                -- Rate limits per subscription tier (requests per minute)
+                local tier_limits = {
+                  ["enterprise"] = 10000,
+                  ["business"] = 1000,
+                  ["starter"] = 100,
+                  ["free"] = 20
+                }
 
-              -- In-memory tracking per client
-              -- Production systems should use Redis for distributed state
-              local client_requests = {}
-              local window_start = os.time()
+                -- In-memory tracking per client
+                -- Production systems should use Redis for distributed state
+                local client_requests = {}
+                local window_start = os.time()
 
-              function get_client_tier(headers)
-                -- Extract tier from custom header or JWT claim
-                local tier = headers:get("x-subscription-tier")
-                if tier and tier_limits[tier] then
-                  return tier
-                end
-                return "free"
-              end
-
-              function check_rate_limit(client_id, tier)
-                local current_time = os.time()
-                local limit = tier_limits[tier]
-
-                -- Reset window every minute
-                if current_time - window_start >= 60 then
-                  client_requests = {}
-                  window_start = current_time
+                function get_client_tier(headers)
+                  -- Extract tier from custom header or JWT claim
+                  local tier = headers:get("x-subscription-tier")
+                  if tier and tier_limits[tier] then
+                    return tier
+                  end
+                  return "free"
                 end
 
-                local count = client_requests[client_id] or 0
+                function check_rate_limit(client_id, tier)
+                  local current_time = os.time()
+                  local limit = tier_limits[tier]
 
-                if count >= limit then
-                  return false, limit, 0
+                  -- Reset window every minute
+                  if current_time - window_start >= 60 then
+                    client_requests = {}
+                    window_start = current_time
+                  end
+
+                  local count = client_requests[client_id] or 0
+
+                  if count >= limit then
+                    return false, limit, 0
+                  end
+
+                  client_requests[client_id] = count + 1
+                  return true, limit, limit - count - 1
                 end
 
-                client_requests[client_id] = count + 1
-                return true, limit, limit - count - 1
-              end
+                function envoy_on_request(request_handle)
+                  local headers = request_handle:headers()
+                  local client_id = headers:get("x-client-id") or
+                                    headers:get("x-forwarded-for") or
+                                    "anonymous"
+                  local tier = get_client_tier(headers)
 
-              function envoy_on_request(request_handle)
-                local headers = request_handle:headers()
-                local client_id = headers:get("x-client-id") or
-                                  headers:get("x-forwarded-for") or
-                                  "anonymous"
-                local tier = get_client_tier(headers)
+                  local allowed, limit, remaining = check_rate_limit(client_id, tier)
 
-                local allowed, limit, remaining = check_rate_limit(client_id, tier)
-
-                -- Add rate limit headers for client visibility
-                headers:add("x-ratelimit-limit", tostring(limit))
-                headers:add("x-ratelimit-remaining", tostring(remaining))
-                headers:add("x-ratelimit-tier", tier)
-
-                if not allowed then
-                  request_handle:respond(
-                    {
-                      [":status"] = "429",
-                      ["retry-after"] = tostring(60 - (os.time() - window_start)),
-                      ["x-ratelimit-limit"] = tostring(limit),
-                      ["x-ratelimit-remaining"] = "0"
-                    },
-                    '{"error":"rate_limit_exceeded","tier":"' .. tier .. '"}'
+                  -- Store rate limit data for response headers
+                  request_handle:streamInfo():dynamicMetadata():set(
+                    "rate_limit", "limit", limit
                   )
+                  request_handle:streamInfo():dynamicMetadata():set(
+                    "rate_limit", "remaining", remaining
+                  )
+                  request_handle:streamInfo():dynamicMetadata():set(
+                    "rate_limit", "tier", tier
+                  )
+
+                  if not allowed then
+                    request_handle:respond(
+                      {
+                        [":status"] = "429",
+                        ["retry-after"] = tostring(60 - (os.time() - window_start)),
+                        ["x-ratelimit-limit"] = tostring(limit),
+                        ["x-ratelimit-remaining"] = "0"
+                      },
+                      '{"error":"rate_limit_exceeded","tier":"' .. tier .. '"}'
+                    )
+                  end
                 end
-              end
+
+                function envoy_on_response(response_handle)
+                  local rate_limit = response_handle:streamInfo():dynamicMetadata():get("rate_limit")
+                  if rate_limit then
+                    response_handle:headers():add("x-ratelimit-limit", tostring(rate_limit["limit"]))
+                    response_handle:headers():add("x-ratelimit-remaining", tostring(rate_limit["remaining"]))
+                    response_handle:headers():add("x-ratelimit-tier", tostring(rate_limit["tier"]))
+                  end
+                end
 ```
 
 ## Request Body Inspection for Content-Based Routing
@@ -243,6 +262,7 @@ metadata:
   name: content-based-router
   namespace: production
 spec:
+  priority: 0
   workloadSelector:
     labels:
       app: graphql-gateway
@@ -262,50 +282,51 @@ spec:
           name: envoy.filters.http.lua
           typed_config:
             "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-            inlineCode: |
-              -- Extract operation name from GraphQL query
-              function extract_operation(body)
-                -- Simple pattern matching for operationName
-                local op = string.match(body, '"operationName"%s*:%s*"([^"]+)"')
-                return op
-              end
-
-              -- Map operations to backend services
-              local operation_routes = {
-                ["GetUser"] = "user-service",
-                ["GetOrders"] = "order-service",
-                ["CreatePayment"] = "payment-service"
-              }
-
-              function envoy_on_request(request_handle)
-                local headers = request_handle:headers()
-                local content_type = headers:get("content-type") or ""
-
-                -- Only process JSON requests
-                if not string.find(content_type, "application/json") then
-                  return
+            defaultSourceCode:
+              inlineString: |
+                -- Extract operation name from GraphQL query
+                function extract_operation(body)
+                  -- Simple pattern matching for operationName
+                  local op = string.match(body, '"operationName"%s*:%s*"([^"]+)"')
+                  return op
                 end
 
-                -- Buffer and read request body
-                local body_buffer = request_handle:body()
-                if body_buffer == nil then
-                  return
-                end
+                -- Map operations to backend services
+                local operation_routes = {
+                  ["GetUser"] = "user-service",
+                  ["GetOrders"] = "order-service",
+                  ["CreatePayment"] = "payment-service"
+                }
 
-                local body = body_buffer:getBytes(0, body_buffer:length())
-                local operation = extract_operation(body)
+                function envoy_on_request(request_handle)
+                  local headers = request_handle:headers()
+                  local content_type = headers:get("content-type") or ""
 
-                if operation then
-                  local target = operation_routes[operation]
-                  if target then
-                    -- Set routing header for upstream selection
-                    headers:add("x-route-to", target)
-                    request_handle:logInfo(
-                      "Routing operation " .. operation .. " to " .. target
-                    )
+                  -- Only process JSON requests
+                  if not string.find(content_type, "application/json") then
+                    return
+                  end
+
+                  -- Buffer and read request body
+                  local body_buffer = request_handle:body()
+                  if body_buffer == nil then
+                    return
+                  end
+
+                  local body = body_buffer:getBytes(0, body_buffer:length())
+                  local operation = extract_operation(body)
+
+                  if operation then
+                    local target = operation_routes[operation]
+                    if target then
+                      -- Set routing header for upstream selection by VirtualService
+                      headers:add("x-route-to", target)
+                      request_handle:logInfo(
+                        "Routing operation " .. operation .. " to " .. target
+                      )
+                    end
                   end
                 end
-              end
 ```
 
 ## Implementing Custom Authentication
@@ -321,6 +342,7 @@ metadata:
   name: hmac-auth-validator
   namespace: production
 spec:
+  priority: 0
   workloadSelector:
     labels:
       app: secure-api
@@ -340,64 +362,65 @@ spec:
           name: envoy.filters.http.lua
           typed_config:
             "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-            inlineCode: |
-              -- Paths that skip authentication
-              local public_paths = {
-                ["/health"] = true,
-                ["/ready"] = true,
-                ["/metrics"] = true
-              }
+            defaultSourceCode:
+              inlineString: |
+                -- Paths that skip authentication
+                local public_paths = {
+                  ["/health"] = true,
+                  ["/ready"] = true,
+                  ["/metrics"] = true
+                }
 
-              function envoy_on_request(request_handle)
-                local headers = request_handle:headers()
-                local path = headers:get(":path")
+                function envoy_on_request(request_handle)
+                  local headers = request_handle:headers()
+                  local path = headers:get(":path")
 
-                -- Skip auth for public endpoints
-                if public_paths[path] then
-                  return
+                  -- Skip auth for public endpoints
+                  if public_paths[path] then
+                    return
+                  end
+
+                  -- Required auth headers
+                  local signature = headers:get("x-signature")
+                  local timestamp = headers:get("x-timestamp")
+                  local client_id = headers:get("x-client-id")
+
+                  -- Validate all required headers present
+                  if not signature or not timestamp or not client_id then
+                    request_handle:respond(
+                      {[":status"] = "401"},
+                      '{"error":"missing_auth_headers"}'
+                    )
+                    return
+                  end
+
+                  -- Check timestamp is within acceptable window (5 minutes)
+                  local request_time = tonumber(timestamp)
+                  local current_time = os.time()
+                  if not request_time or
+                     math.abs(current_time - request_time) > 300 then
+                    request_handle:respond(
+                      {[":status"] = "401"},
+                      '{"error":"timestamp_expired"}'
+                    )
+                    return
+                  end
+
+                  -- In production, validate signature against stored secrets
+                  -- This example shows the pattern without actual crypto
+                  local expected_prefix = client_id:sub(1, 8)
+                  if signature:sub(1, 8) ~= expected_prefix then
+                    request_handle:respond(
+                      {[":status"] = "403"},
+                      '{"error":"invalid_signature"}'
+                    )
+                    return
+                  end
+
+                  -- Auth passed, add identity headers for downstream
+                  headers:add("x-authenticated-client", client_id)
+                  headers:add("x-auth-timestamp", timestamp)
                 end
-
-                -- Required auth headers
-                local signature = headers:get("x-signature")
-                local timestamp = headers:get("x-timestamp")
-                local client_id = headers:get("x-client-id")
-
-                -- Validate all required headers present
-                if not signature or not timestamp or not client_id then
-                  request_handle:respond(
-                    {[":status"] = "401"},
-                    '{"error":"missing_auth_headers"}'
-                  )
-                  return
-                end
-
-                -- Check timestamp is within acceptable window (5 minutes)
-                local request_time = tonumber(timestamp)
-                local current_time = os.time()
-                if not request_time or
-                   math.abs(current_time - request_time) > 300 then
-                  request_handle:respond(
-                    {[":status"] = "401"},
-                    '{"error":"timestamp_expired"}'
-                  )
-                  return
-                end
-
-                -- In production, validate signature against stored secrets
-                -- This example shows the pattern without actual crypto
-                local expected_prefix = client_id:sub(1, 8)
-                if signature:sub(1, 8) ~= expected_prefix then
-                  request_handle:respond(
-                    {[":status"] = "403"},
-                    '{"error":"invalid_signature"}'
-                  )
-                  return
-                end
-
-                -- Auth passed, add identity headers for downstream
-                headers:add("x-authenticated-client", client_id)
-                headers:add("x-auth-timestamp", timestamp)
-              end
 ```
 
 ## Advanced Filter Chain Ordering
@@ -449,27 +472,28 @@ spec:
           name: envoy.filters.http.lua
           typed_config:
             "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-            inlineCode: |
-              function envoy_on_request(request_handle)
-                -- Store start time for latency calculation
-                local start = os.clock() * 1000
-                request_handle:streamInfo():dynamicMetadata():set(
-                  "timing", "start_ms", start
-                )
-              end
-
-              function envoy_on_response(response_handle)
-                local metadata = response_handle:streamInfo():dynamicMetadata()
-                local timing = metadata:get("timing")
-
-                if timing and timing["start_ms"] then
-                  local duration = (os.clock() * 1000) - timing["start_ms"]
-                  response_handle:headers():add(
-                    "x-processing-time-ms",
-                    string.format("%.2f", duration)
+            defaultSourceCode:
+              inlineString: |
+                function envoy_on_request(request_handle)
+                  -- Store start time for latency calculation
+                  local start = os.clock() * 1000
+                  request_handle:streamInfo():dynamicMetadata():set(
+                    "timing", "start_ms", start
                   )
                 end
-              end
+
+                function envoy_on_response(response_handle)
+                  local metadata = response_handle:streamInfo():dynamicMetadata()
+                  local timing = metadata:get("timing")
+
+                  if timing and timing["start_ms"] then
+                    local duration = (os.clock() * 1000) - timing["start_ms"]
+                    response_handle:headers():add(
+                      "x-processing-time-ms",
+                      string.format("%.2f", duration)
+                    )
+                  end
+                end
 ```
 
 ## Debugging EnvoyFilter Issues
