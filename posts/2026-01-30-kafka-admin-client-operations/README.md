@@ -8,7 +8,7 @@ Description: Learn to build production-ready Kafka admin operations for topic ma
 
 ---
 
-Managing Kafka clusters programmatically is essential when you move beyond manual CLI commands. Whether you are building deployment automation, a self-service platform, or an observability tool, the Kafka AdminClient API gives you full control over cluster operations. This guide covers everything from basic topic management to advanced quota configurations with production-ready Java code.
+Managing Kafka clusters programmatically is essential when you move beyond manual CLI commands. Whether you are building deployment automation, a self-service platform, or an observability tool, the Kafka AdminClient API gives you programmatic administrative control over cluster operations. This guide covers everything from basic topic management to advanced quota configurations with production-ready Java code.
 
 ## Why Use the AdminClient API
 
@@ -30,18 +30,16 @@ flowchart LR
     C --> D[Broker 1]
     C --> E[Broker 2]
     C --> F[Broker 3]
-    B --> G[ZooKeeper/KRaft]
 
     subgraph Cluster
         C
         D
         E
         F
-        G
     end
 ```
 
-The AdminClient communicates with the Kafka controller for metadata operations and directly with brokers for certain queries. In KRaft mode (ZooKeeper-less), all coordination happens through the controller quorum.
+The AdminClient communicates with brokers using Kafka's protocol. Some operations, such as topic creation, are routed to the controller, while metadata queries can be served by any broker. In KRaft mode (ZooKeeper-less), cluster metadata coordination happens through the controller quorum.
 
 ## Setting Up the AdminClient
 
@@ -59,10 +57,9 @@ First, add the Kafka clients dependency to your project. Here we use Maven, but 
 Create a reusable AdminClient wrapper class that handles configuration and connection lifecycle properly.
 
 ```java
-import org.apache.kafka.clients.admin.AdminClient;
+import org.apache.kafka.clients.admin.Admin;
 import org.apache.kafka.clients.admin.AdminClientConfig;
 import java.util.Properties;
-import java.time.Duration;
 
 public class KafkaAdminClientFactory {
 
@@ -74,10 +71,10 @@ public class KafkaAdminClientFactory {
         // Required: comma-separated list of broker addresses
         baseConfig.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
 
-        // Connection timeout for initial broker connection
+        // Maximum time to wait for a request response
         baseConfig.put(AdminClientConfig.REQUEST_TIMEOUT_MS_CONFIG, 30000);
 
-        // Time to wait for API responses
+        // Default timeout for Admin operations without an explicit timeout
         baseConfig.put(AdminClientConfig.DEFAULT_API_TIMEOUT_MS_CONFIG, 60000);
 
         // Client identifier for logging and monitoring
@@ -96,17 +93,17 @@ public class KafkaAdminClientFactory {
         return this;
     }
 
-    // Create a new AdminClient instance
-    // Remember: AdminClient must be closed when done
-    public AdminClient create() {
-        return AdminClient.create(baseConfig);
+    // Create a new Admin client instance
+    // Remember: Admin clients must be closed when done
+    public Admin create() {
+        return Admin.create(baseConfig);
     }
 }
 ```
 
 ## Topic Management Operations
 
-Topics are the core abstraction in Kafka. The AdminClient provides complete CRUD operations for topics.
+Topics are the core abstraction in Kafka. The Admin API provides complete CRUD operations for topics.
 
 ### Creating Topics
 
@@ -120,9 +117,9 @@ import java.util.concurrent.ExecutionException;
 
 public class TopicManager {
 
-    private final AdminClient adminClient;
+    private final Admin adminClient;
 
-    public TopicManager(AdminClient adminClient) {
+    public TopicManager(Admin adminClient) {
         this.adminClient = adminClient;
     }
 
@@ -159,10 +156,10 @@ public class TopicManager {
         // Use LZ4 compression for better throughput
         configs.put(TopicConfig.COMPRESSION_TYPE_CONFIG, "lz4");
 
-        // Require all replicas to acknowledge writes
+        // Require at least two in-sync replicas when producers use acks=all
         configs.put(TopicConfig.MIN_IN_SYNC_REPLICAS_CONFIG, "2");
 
-        // Clean up old segments aggressively
+        // Roll log segments every 6 hours
         configs.put(TopicConfig.SEGMENT_MS_CONFIG, String.valueOf(6 * 60 * 60 * 1000L));
 
         createTopic(topicName, partitions, (short) 3, configs);
@@ -292,12 +289,14 @@ Query consumer group metadata to understand application health and partition ass
 import org.apache.kafka.clients.admin.*;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.common.TopicPartition;
+import java.util.*;
+import java.util.concurrent.ExecutionException;
 
 public class ConsumerGroupManager {
 
-    private final AdminClient adminClient;
+    private final Admin adminClient;
 
-    public ConsumerGroupManager(AdminClient adminClient) {
+    public ConsumerGroupManager(Admin adminClient) {
         this.adminClient = adminClient;
     }
 
@@ -401,8 +400,6 @@ public void printLagSummary(String groupId)
 Sometimes you need to reset offsets to replay messages or skip problematic records.
 
 ```java
-import org.apache.kafka.clients.consumer.OffsetResetStrategy;
-
 // Reset offsets for a consumer group (group must be inactive)
 public void resetOffsetsToEarliest(String groupId, String topicName)
         throws ExecutionException, InterruptedException {
@@ -468,18 +465,23 @@ public void resetOffsetsToTimestamp(String groupId, String topicName, long times
 
 ## Cluster and Broker Operations
 
-Query and modify broker configurations for cluster-wide tuning.
+Query broker configurations and modify dynamically alterable broker configurations for cluster-wide tuning.
 
 ### Describing the Cluster
 
 Get cluster metadata including broker information and controller status.
 
 ```java
+import org.apache.kafka.clients.admin.*;
+import org.apache.kafka.common.Node;
+import java.util.Collection;
+import java.util.concurrent.ExecutionException;
+
 public class ClusterManager {
 
-    private final AdminClient adminClient;
+    private final Admin adminClient;
 
-    public ClusterManager(AdminClient adminClient) {
+    public ClusterManager(Admin adminClient) {
         this.adminClient = adminClient;
     }
 
@@ -516,7 +518,7 @@ public class ClusterManager {
 
 ### Broker Configuration Management
 
-Read and modify broker configurations dynamically without restarts.
+Read broker configurations and update settings that Kafka marks as dynamically alterable.
 
 ```java
 // Get current broker configuration
@@ -542,7 +544,7 @@ public Map<String, String> getBrokerConfig(int brokerId)
     return configMap;
 }
 
-// Update broker configuration dynamically
+// Update dynamically alterable broker configuration
 public void updateBrokerConfig(int brokerId, Map<String, String> newConfigs)
         throws ExecutionException, InterruptedException {
 
@@ -570,14 +572,17 @@ public void updateBrokerConfig(int brokerId, Map<String, String> newConfigs)
 Access Control Lists secure your Kafka cluster by defining who can do what.
 
 ```java
+import org.apache.kafka.clients.admin.Admin;
 import org.apache.kafka.common.acl.*;
 import org.apache.kafka.common.resource.*;
+import java.util.*;
+import java.util.concurrent.ExecutionException;
 
 public class AclManager {
 
-    private final AdminClient adminClient;
+    private final Admin adminClient;
 
-    public AclManager(AdminClient adminClient) {
+    public AclManager(Admin adminClient) {
         this.adminClient = adminClient;
     }
 
@@ -653,13 +658,16 @@ public class AclManager {
 Quotas prevent runaway clients from overwhelming the cluster.
 
 ```java
+import org.apache.kafka.clients.admin.Admin;
 import org.apache.kafka.common.quota.*;
+import java.util.*;
+import java.util.concurrent.ExecutionException;
 
 public class QuotaManager {
 
-    private final AdminClient adminClient;
+    private final Admin adminClient;
 
-    public QuotaManager(AdminClient adminClient) {
+    public QuotaManager(Admin adminClient) {
         this.adminClient = adminClient;
     }
 
@@ -697,7 +705,7 @@ public class QuotaManager {
         System.out.println("Consumer quota set for " + clientId);
     }
 
-    // Set request rate quota (requests per second)
+    // Set request quota as a percentage of broker request handling capacity
     public void setRequestQuota(String user, double requestPercentage)
             throws ExecutionException, InterruptedException {
 
@@ -735,29 +743,33 @@ Here is a complete service class that combines all operations with proper error 
 
 ```java
 import org.apache.kafka.clients.admin.*;
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.errors.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import java.io.Closeable;
+import java.time.Duration;
+import java.util.*;
+import java.util.concurrent.ExecutionException;
 
 public class KafkaAdminService implements Closeable {
 
     private static final Logger logger = LoggerFactory.getLogger(KafkaAdminService.class);
 
-    private final AdminClient adminClient;
+    private final Admin adminClient;
     private final TopicManager topicManager;
     private final ConsumerGroupManager consumerGroupManager;
     private final ClusterManager clusterManager;
 
     public KafkaAdminService(String bootstrapServers) {
-        // Create AdminClient with production settings
+        // Create Admin client with production settings
         Properties config = new Properties();
         config.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
         config.put(AdminClientConfig.REQUEST_TIMEOUT_MS_CONFIG, 30000);
         config.put(AdminClientConfig.DEFAULT_API_TIMEOUT_MS_CONFIG, 60000);
         config.put(AdminClientConfig.RETRIES_CONFIG, 3);
 
-        this.adminClient = AdminClient.create(config);
+        this.adminClient = Admin.create(config);
         this.topicManager = new TopicManager(adminClient);
         this.consumerGroupManager = new ConsumerGroupManager(adminClient);
         this.clusterManager = new ClusterManager(adminClient);
@@ -778,9 +790,13 @@ public class KafkaAdminService implements Closeable {
             logger.info("Created topic {}", topicName);
             return true;
 
-        } catch (TopicExistsException e) {
-            logger.info("Topic {} was created concurrently", topicName);
-            return false;
+        } catch (ExecutionException e) {
+            if (e.getCause() instanceof TopicExistsException) {
+                logger.info("Topic {} was created concurrently", topicName);
+                return false;
+            }
+            logger.error("Failed to create topic {}", topicName, e);
+            throw new RuntimeException("Topic creation failed", e);
         } catch (Exception e) {
             logger.error("Failed to create topic {}", topicName, e);
             throw new RuntimeException("Topic creation failed", e);
@@ -844,7 +860,7 @@ public class KafkaAdminService implements Closeable {
     public void close() {
         if (adminClient != null) {
             adminClient.close(Duration.ofSeconds(30));
-            logger.info("AdminClient closed");
+            logger.info("Admin client closed");
         }
     }
 
@@ -923,4 +939,4 @@ Different Kafka operations fail for different reasons. Handle them appropriately
 | **Manage ACLs** | `createAcls()` / `deleteAcls()` | Requires authorizer enabled |
 | **Set Quotas** | `alterClientQuotas()` | Protect cluster from abuse |
 
-The Kafka AdminClient API gives you programmatic control over your entire cluster. Use it to build self-service platforms, automated deployment pipelines, or monitoring tools. Always close your AdminClient instances properly, handle exceptions gracefully, and test operations in staging before running them in production.
+The Kafka AdminClient API gives you programmatic administrative control over your cluster. Use it to build self-service platforms, automated deployment pipelines, or monitoring tools. Always close your Admin client instances properly, handle exceptions gracefully, and test operations in staging before running them in production.
