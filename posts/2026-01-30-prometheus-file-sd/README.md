@@ -265,10 +265,10 @@ scrape_configs:
         regex: "(.+):\\d+"
         replacement: "${1}"
 
-      # Add datacenter prefix to job name
-      - source_labels: [region, __name__]
-        separator: "-"
+      # Add region prefix to job name
+      - source_labels: [region]
         target_label: job
+        replacement: "${1}-api"
 ```
 
 ## Target Generation Scripts
@@ -694,8 +694,8 @@ groups:
         annotations:
           summary: "Target {{ $labels.instance }} is down"
 
-      - alert: FileSDNoTargets
-        expr: prometheus_sd_file_read_errors_total > 0
+      - alert: FileSDReadErrors
+        expr: rate(prometheus_sd_file_read_errors_total[5m]) > 0
         for: 1m
         labels:
           severity: critical
@@ -745,8 +745,8 @@ python3 -c "import yaml; yaml.safe_load(open('/etc/prometheus/targets/myfile.yam
 # Check Prometheus target status
 curl -s localhost:9090/api/v1/targets | jq '.data.activeTargets[] | {instance, health, labels}'
 
-# View File SD discovered targets
-curl -s localhost:9090/api/v1/targets/metadata | jq .
+# View discovered targets (including File SD), with both pre- and post-relabel labels
+curl -s localhost:9090/api/v1/targets | jq '.data.activeTargets[] | {discoveredLabels, labels, scrapePool}'
 
 # Check for scrape errors
 curl -s localhost:9090/api/v1/targets | jq '.data.activeTargets[] | select(.health != "up")'
