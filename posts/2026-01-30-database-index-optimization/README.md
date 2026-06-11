@@ -8,7 +8,7 @@ Description: Optimize database indexes by analyzing query patterns, removing unu
 
 ---
 
-Database indexes are the backbone of query performance. A well-indexed database returns results in milliseconds. A poorly indexed one grinds to a halt under load. This guide walks through the practical steps of index optimization, from identifying slow queries to designing covering indexes that eliminate table lookups entirely.
+Database indexes are the backbone of query performance. A well-indexed database returns results in milliseconds. A poorly indexed one grinds to a halt under load. This guide walks through the practical steps of index optimization, from identifying slow queries to designing covering indexes that can avoid many table lookups.
 
 ## 1. Finding Slow Queries Before Users Complain
 
@@ -26,10 +26,10 @@ ALTER SYSTEM SET log_min_duration_statement = 100;
 SELECT pg_reload_conf();
 ```
 
-For deeper analysis, the `pg_stat_statements` extension provides cumulative statistics across all queries. This reveals patterns that individual slow query logs miss.
+For deeper analysis, the `pg_stat_statements` extension provides cumulative statistics across all queries. It must be loaded through `shared_preload_libraries` before it can track statements. This reveals patterns that individual slow query logs miss.
 
 ```sql
--- Enable the extension (requires superuser)
+-- Enable the extension in the current database after it is preloaded
 CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
 
 -- Find the top 10 queries by total execution time
@@ -241,17 +241,17 @@ AND idx_scan = 0
 ORDER BY pg_relation_size(indexrelid) DESC;
 ```
 
-For production systems, disable the index before dropping. This allows quick recovery if something breaks.
+PostgreSQL does not have an invisible-index feature for ordinary index removal testing. For production systems, rely on representative usage statistics, review dependencies, and keep a rollback script ready.
 
 ```sql
--- PostgreSQL 14+: Mark index as invalid (queries will not use it)
--- This is safer than immediate DROP
-UPDATE pg_index
-SET indisvalid = false
-WHERE indexrelid = 'idx_orders_legacy'::regclass;
+-- Check whether constraints depend on the index before dropping it
+SELECT
+    conname,
+    contype
+FROM pg_constraint
+WHERE conindid = 'idx_orders_legacy'::regclass;
 
--- Monitor for issues over a few days
--- If everything is fine, drop the index
+-- Drop the index without blocking concurrent reads and writes
 DROP INDEX CONCURRENTLY idx_orders_legacy;
 ```
 
@@ -273,7 +273,7 @@ ALTER TABLE orders ALTER INDEX idx_orders_legacy VISIBLE;
 
 ## 5. Designing Covering Indexes
 
-A covering index contains all columns needed to satisfy a query. The database reads the answer directly from the index without touching the table. This eliminates random I/O and dramatically speeds up reads.
+A covering index contains all columns needed to satisfy a query. The database can often read the answer directly from the index without touching the table. In PostgreSQL, this requires an index-only scan and depends on visibility map state; in MySQL, EXPLAIN reports this as "Using index".
 
 ### Anatomy of a Covering Index
 
@@ -317,7 +317,7 @@ CREATE INDEX idx_orders_covering ON orders (
 ) INCLUDE (order_id, total_amount);
 ```
 
-This keeps the index smaller while still covering the query. The INCLUDE columns are payload, not part of the B-tree structure.
+This keeps the upper levels of the index smaller while still covering the query. The INCLUDE columns are payload columns stored in leaf tuples, not part of the searchable B-tree key.
 
 ### MySQL: Covering Index Verification
 
@@ -386,7 +386,7 @@ Follow these guidelines when ordering columns.
 | 3 | ORDER BY columns | Avoids additional sorting step |
 | 4 | SELECT columns | Enables covering index optimization |
 
-Range conditions stop the index from being used for subsequent columns. Place them last among the filter columns.
+Range conditions often limit how effectively subsequent columns can be used for index filtering. Place them last among the filter columns unless your execution plan shows a better order for a specific query pattern.
 
 ```sql
 -- Good: equality first, range last
@@ -396,11 +396,11 @@ CREATE INDEX idx_orders_good ON orders (
     order_date        -- Range: WHERE order_date > '2025-01-01'
 );
 
--- Bad: range column blocks customer_id filtering
+-- Bad: range column can limit customer_id filtering
 CREATE INDEX idx_orders_bad ON orders (
     status,
     order_date,       -- Range condition here
-    customer_id       -- This column is now useless for filtering
+    customer_id       -- This column may be less useful for filtering
 );
 ```
 
@@ -410,20 +410,18 @@ Indexes degrade over time. Updates and deletes leave dead space. Regular mainten
 
 ### PostgreSQL: Index Bloat Detection
 
-PostgreSQL indexes accumulate bloat as rows are updated and deleted. Check bloat levels with this query.
+PostgreSQL indexes can accumulate bloat as rows are updated and deleted. Start by finding large indexes that are worth a closer bloat check.
 
 ```sql
--- Estimate index bloat percentage
+-- Find large indexes that may be worth checking for bloat
 WITH index_stats AS (
     SELECT
-        nspname AS schema_name,
-        relname AS table_name,
-        indexrelname AS index_name,
+        s.schemaname AS schema_name,
+        s.relname AS table_name,
+        s.indexrelname AS index_name,
         pg_relation_size(indexrelid) AS index_size,
-        idx_scan AS index_scans
-    FROM pg_stat_user_indexes
-    JOIN pg_class ON pg_class.oid = indexrelid
-    JOIN pg_namespace ON pg_namespace.oid = pg_class.relnamespace
+        s.idx_scan AS index_scans
+    FROM pg_stat_user_indexes s
 )
 SELECT
     schema_name,
@@ -449,19 +447,19 @@ SELECT
 FROM pgstatindex('idx_orders_customer_id');
 ```
 
-Leaf density below 70% or fragmentation above 20% indicates the index needs rebuilding.
+Low leaf density or high fragmentation can indicate the index needs rebuilding, especially when the index is large and query performance has degraded.
 
 ### Rebuilding Indexes
 
 Rebuild bloated indexes using REINDEX or CREATE INDEX CONCURRENTLY.
 
 ```sql
--- PostgreSQL: Rebuild index without locking reads
+-- PostgreSQL: Rebuild index without blocking normal writes
 REINDEX INDEX CONCURRENTLY idx_orders_customer_id;
 
 -- Alternative: Create new index, drop old one
 CREATE INDEX CONCURRENTLY idx_orders_customer_id_new ON orders (customer_id);
-DROP INDEX idx_orders_customer_id;
+DROP INDEX CONCURRENTLY idx_orders_customer_id;
 ALTER INDEX idx_orders_customer_id_new RENAME TO idx_orders_customer_id;
 ```
 
@@ -479,7 +477,7 @@ OPTIMIZE TABLE orders;
 
 ## 8. Balancing Read and Write Performance
 
-Every index speeds up reads but slows down writes. Finding the right balance depends on your workload.
+Every additional index can speed up matching reads but slows down writes. Finding the right balance depends on your workload.
 
 ### Measuring Write Impact
 
@@ -518,16 +516,23 @@ Partial indexes index only rows matching a condition. They reduce index size and
 CREATE INDEX idx_orders_active ON orders (customer_id, order_date)
 WHERE status = 'active';
 
--- This index is smaller and only updated for active orders
+-- This index is smaller and only includes active orders
 -- Queries filtering on status = 'active' get the same benefit
 ```
 
 ```sql
--- MySQL: No native partial indexes, but filtered with generated columns
+-- MySQL: No native partial indexes; use a generated column only when
+-- queries can filter on the generated value explicitly
 ALTER TABLE orders ADD COLUMN is_active TINYINT
     GENERATED ALWAYS AS (CASE WHEN status = 'active' THEN 1 ELSE NULL END);
 
 CREATE INDEX idx_orders_active ON orders (is_active, customer_id, order_date);
+
+-- Query through the generated column to use the index
+SELECT *
+FROM orders
+WHERE is_active = 1
+AND customer_id = 100;
 ```
 
 ## 9. Monitoring Index Performance Over Time
@@ -639,7 +644,7 @@ LIMIT 10;
 
 ### Step 4: Deploy and Monitor
 
-Deploy indexes to production during low-traffic periods. Use CONCURRENTLY to avoid locks.
+Deploy indexes to production during low-traffic periods. Use CONCURRENTLY to avoid blocking normal writes.
 
 ```sql
 -- Create index without blocking writes
