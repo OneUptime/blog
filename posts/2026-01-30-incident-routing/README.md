@@ -68,7 +68,7 @@ interface Service {
   tier: 'critical' | 'high' | 'medium' | 'low';
   primaryTeam: Team;
   secondaryTeam?: Team;
-  escalationPolicy: EscalationPolicy;
+  escalationPolicy: string;
   tags: string[];
   oncallSchedule: Schedule;
 }
@@ -164,9 +164,11 @@ teams:
 ```typescript
 class ServiceCatalog {
   private services: Map<string, Service> = new Map();
+  private teams: Map<string, Team> = new Map();
   private tagIndex: Map<string, Set<string>> = new Map();
 
   constructor(config: ServiceCatalogConfig) {
+    this.loadTeams(config);
     this.loadServices(config);
     this.buildTagIndex();
   }
@@ -188,6 +190,11 @@ class ServiceCatalog {
   getOwnerTeam(serviceId: string): Team | undefined {
     const service = this.services.get(serviceId);
     return service?.primaryTeam;
+  }
+
+  // Find team by exact ID
+  getTeamById(teamId: string): Team | undefined {
+    return this.teams.get(teamId);
   }
 
   // Find service from alert metadata
@@ -357,9 +364,10 @@ class RoutingEngine {
     }
 
     // Apply fallback if no teams assigned
-    if (decision.teams.length === 0) {
-      decision.teams.push(this.getFallbackTeam(incident));
-      decision.usedFallback = true;
+    const fallbackTeam = this.getFallbackTeam(incident);
+    if (decision.teams.length === 0 && fallbackTeam) {
+      decision.teams.push(fallbackTeam);
+      decision.fallbackUsed = true;
     }
 
     return decision;
@@ -461,7 +469,7 @@ class RoutingEngine {
     return day >= 1 && day <= 5 && hour >= 9 && hour < 18;
   }
 
-  private getFallbackTeam(incident: Incident): Team {
+  private getFallbackTeam(incident: Incident): Team | undefined {
     // Return platform/SRE team as fallback
     return this.serviceCatalog.getTeamById('platform-sre');
   }
@@ -1024,7 +1032,7 @@ class FallbackRouter {
     } catch (error) {
       return {
         success: false,
-        reason: error.message,
+        reason: error instanceof Error ? error.message : String(error),
         duration: Date.now() - startTime,
       };
     }
@@ -1189,7 +1197,7 @@ interface EscalationLevel {
 }
 
 interface EscalationTarget {
-  type: 'user' | 'team' | 'schedule' | 'manager';
+  type: 'user' | 'team' | 'schedule' | 'manager' | 'channel';
   target: string;
   notificationMethod: 'page' | 'sms' | 'email' | 'slack';
 }
@@ -1521,7 +1529,7 @@ class IncidentRouter {
       if (decision.teams.length === 0 && decision.responders.length === 0) {
         trace.steps.push({ name: 'fallback-routing', startTime: Date.now() });
         const fallbackResult = await this.fallbackRouter.findAvailableRoute(
-          service?.escalationPolicy || 'standard-fallback',
+          incident.severity === 'critical' ? 'critical-fallback' : 'standard-fallback',
           incident
         );
         decision.fallbackUsed = true;
@@ -1550,7 +1558,7 @@ class IncidentRouter {
     } catch (error) {
       return {
         success: false,
-        error: error.message,
+        error: error instanceof Error ? error.message : String(error),
         trace,
         duration: Date.now() - startTime,
       };
