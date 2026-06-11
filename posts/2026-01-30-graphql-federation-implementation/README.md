@@ -29,8 +29,8 @@ graph TB
     Gateway --> Products
     Gateway --> Reviews
 
-    Users -.->|extends| Reviews
-    Products -.->|extends| Reviews
+    Reviews -.->|extends| Users
+    Reviews -.->|extends| Products
 ```
 
 The gateway receives queries from clients and intelligently routes them to the appropriate subgraphs. The magic happens when subgraphs reference entities from other subgraphs - Federation handles the data fetching and stitching automatically.
@@ -40,7 +40,7 @@ The gateway receives queries from clients and intelligently routes them to the a
 Let's start with a Users subgraph. First, install the required dependencies:
 
 ```bash
-npm install @apollo/subgraph @apollo/server graphql
+npm install @apollo/subgraph @apollo/server graphql graphql-tag
 ```
 
 Now create the Users subgraph schema and resolver.
@@ -114,7 +114,7 @@ import gql from 'graphql-tag';
 // This subgraph extends User from the users subgraph
 // It adds a reviews field without owning the User entity
 const typeDefs = gql`
-  extend schema @link(url: "https://specs.apollo.dev/federation/v2.0", import: ["@key", "@external"])
+  extend schema @link(url: "https://specs.apollo.dev/federation/v2.0", import: ["@key"])
 
   type Query {
     reviews: [Review!]!
@@ -122,14 +122,13 @@ const typeDefs = gql`
   }
 
   # Extend the User type defined in another subgraph
-  # We only need to declare the fields we reference (id) as @external
   type User @key(fields: "id") {
-    id: ID! @external
+    id: ID!
     reviews: [Review!]!
   }
 
   type Product @key(fields: "id") {
-    id: ID! @external
+    id: ID!
     reviews: [Review!]!
   }
 
@@ -177,9 +176,65 @@ startStandaloneServer(server, { listen: { port: 4002 } }).then(({ url }) => {
 });
 ```
 
+Now create the Products subgraph that owns the Product entity referenced by reviews.
+
+```typescript
+// products-subgraph/index.ts
+import { ApolloServer } from '@apollo/server';
+import { startStandaloneServer } from '@apollo/server/standalone';
+import { buildSubgraphSchema } from '@apollo/subgraph';
+import gql from 'graphql-tag';
+
+const typeDefs = gql`
+  extend schema @link(url: "https://specs.apollo.dev/federation/v2.0", import: ["@key"])
+
+  type Query {
+    products: [Product!]!
+    product(id: ID!): Product
+  }
+
+  type Product @key(fields: "id") {
+    id: ID!
+    name: String!
+    price: Int!
+  }
+`;
+
+const products = [
+  { id: 'p1', name: 'Mechanical Keyboard', price: 129 },
+  { id: 'p2', name: 'USB-C Monitor', price: 399 },
+];
+
+const resolvers = {
+  Query: {
+    products: () => products,
+    product: (_: unknown, { id }: { id: string }) => products.find(p => p.id === id),
+  },
+  Product: {
+    __resolveReference: (reference: { id: string }) => {
+      return products.find(p => p.id === reference.id);
+    },
+  },
+};
+
+const server = new ApolloServer({
+  schema: buildSubgraphSchema({ typeDefs, resolvers }),
+});
+
+startStandaloneServer(server, { listen: { port: 4003 } }).then(({ url }) => {
+  console.log(`Products subgraph running at ${url}`);
+});
+```
+
 ## Composing the Gateway
 
 The gateway pulls everything together. It fetches schemas from all subgraphs and creates a unified supergraph.
+
+Install the gateway dependencies in your gateway project.
+
+```bash
+npm install @apollo/gateway @apollo/server graphql
+```
 
 ```typescript
 // gateway/index.ts
@@ -192,9 +247,9 @@ import { ApolloGateway, IntrospectAndCompose } from '@apollo/gateway';
 const gateway = new ApolloGateway({
   supergraphSdl: new IntrospectAndCompose({
     subgraphs: [
-      { name: 'users', url: 'http://localhost:4001/graphql' },
-      { name: 'reviews', url: 'http://localhost:4002/graphql' },
-      { name: 'products', url: 'http://localhost:4003/graphql' },
+      { name: 'users', url: 'http://localhost:4001' },
+      { name: 'reviews', url: 'http://localhost:4002' },
+      { name: 'products', url: 'http://localhost:4003' },
     ],
   }),
 });
@@ -231,7 +286,7 @@ The gateway optimizes these requests, batching where possible and parallelizing 
 
 ## Production Considerations
 
-For production deployments, you should use managed federation with Apollo Studio or generate a static supergraph schema using Rover CLI.
+For production deployments, you should use managed federation with GraphOS and Apollo Router, or generate a static supergraph schema using Rover CLI.
 
 ```bash
 # Install Rover CLI
@@ -266,11 +321,17 @@ subgraphs:
 
 When your subgraphs handle thousands of requests, you need to optimize entity resolution. The DataLoader pattern helps batch and cache entity lookups.
 
+Install DataLoader in the subgraph that performs the batched lookups.
+
+```bash
+npm install dataloader
+```
+
 ```typescript
 // Optimized __resolveReference with DataLoader
 import DataLoader from 'dataloader';
 
-// Create a batching loader for user lookups
+// Create this loader per request in production so the memoization cache is request-scoped
 const userLoader = new DataLoader(async (ids: readonly string[]) => {
   // Batch fetch all users in a single database query
   const users = await db.users.findMany({ where: { id: { in: [...ids] } } });
