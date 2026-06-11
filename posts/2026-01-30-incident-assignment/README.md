@@ -161,6 +161,8 @@ export class OnCallResolver {
     timezone: string,
     atTime: Date
   ): Omit<OnCallResolution, 'scheduleId' | 'isOverride'> | null {
+    if (layer.participants.length === 0) return null;
+
     // Check time restrictions
     if (!this.isWithinRestrictions(layer.restrictions, atTime, timezone)) {
       return null;
@@ -174,6 +176,8 @@ export class OnCallResolver {
     // Calculate which rotation we're in
     const rotationLengthHours = this.getRotationLength(layer.rotationType);
     const hoursSinceStart = localTime.diff(rotationStart, 'hours').hours;
+    if (hoursSinceStart < 0) return null;
+
     const rotationIndex = Math.floor(hoursSinceStart / rotationLengthHours);
 
     // Determine participant for this rotation
@@ -219,16 +223,31 @@ export class OnCallResolver {
     const localTime = DateTime.fromJSDate(atTime).setZone(timezone);
 
     return restrictions.some(restriction => {
+      let matchesDay = true;
+
       if (restriction.type === 'weekday') {
-        return localTime.weekday >= 1 && localTime.weekday <= 5;
-      }
-      if (restriction.type === 'weekend') {
-        return localTime.weekday === 6 || localTime.weekday === 7;
-      }
-      if (restriction.daysOfWeek) {
+        matchesDay = localTime.weekday >= 1 && localTime.weekday <= 5;
+      } else if (restriction.type === 'weekend') {
+        matchesDay = localTime.weekday === 6 || localTime.weekday === 7;
+      } else if (restriction.daysOfWeek) {
         const jsWeekday = localTime.weekday % 7; // Convert to JS format
-        return restriction.daysOfWeek.includes(jsWeekday);
+        matchesDay = restriction.daysOfWeek.includes(jsWeekday);
       }
+
+      if (!matchesDay) return false;
+
+      if (restriction.startTime && restriction.endTime) {
+        const currentTime = localTime.toFormat('HH:mm');
+        if (restriction.startTime <= restriction.endTime) {
+          return currentTime >= restriction.startTime &&
+            currentTime < restriction.endTime;
+        }
+
+        // Overnight restriction, e.g., 22:00 to 06:00
+        return currentTime >= restriction.startTime ||
+          currentTime < restriction.endTime;
+      }
+
       return true;
     });
   }
@@ -299,21 +318,24 @@ export class RoundRobinAssigner {
     }
 
     // Get next available responder
-    const assignee = await this.findNextAvailable(state);
+    const assignment = await this.findNextAvailable(state);
 
     // Update position atomically
     await this.stateRepository.updatePosition(
       teamId,
-      (state.currentPosition + 1) % state.participantOrder.length
+      assignment.nextPosition
     );
 
-    return assignee;
+    return assignment.userId;
   }
 
   private async findNextAvailable(
     state: RoundRobinState
-  ): Promise<string> {
+  ): Promise<{ userId: string; nextPosition: number }> {
     const { participantOrder, currentPosition } = state;
+    if (participantOrder.length === 0) {
+      throw new Error('No participants configured for round-robin assignment');
+    }
 
     // Try each participant starting from current position
     for (let i = 0; i < participantOrder.length; i++) {
@@ -324,12 +346,18 @@ export class RoundRobinAssigner {
 
       // Skip unavailable users
       if (user.status === 'available') {
-        return userId;
+        return {
+          userId,
+          nextPosition: (index + 1) % participantOrder.length
+        };
       }
     }
 
     // Fallback to current position if no one is available
-    return participantOrder[currentPosition];
+    return {
+      userId: participantOrder[currentPosition],
+      nextPosition: (currentPosition + 1) % participantOrder.length
+    };
   }
 
   // Allow manual reordering
@@ -341,6 +369,7 @@ export class RoundRobinAssigner {
   async skipNext(teamId: string, reason: string): Promise<void> {
     const state = await this.stateRepository.findByTeam(teamId);
     if (!state) return;
+    if (state.participantOrder.length === 0) return;
 
     const newPosition =
       (state.currentPosition + 1) % state.participantOrder.length;
@@ -558,6 +587,8 @@ interface UserSkills {
 
 interface IncidentContext {
   id: string;
+  teamId: string;
+  scheduleId: string;
   title: string;
   tags: string[];
   affectedService: string;
@@ -1141,7 +1172,7 @@ interface AssignmentResult {
 export class AssignmentEngine {
   constructor(
     private config: AssignmentConfig,
-    private onCallResolver: OnCallResolver,
+    public readonly onCallResolver: OnCallResolver,
     private roundRobinAssigner: RoundRobinAssigner,
     private loadBalancedAssigner: LoadBalancedAssigner,
     private skillBasedAssigner: SkillBasedAssigner,
@@ -1196,12 +1227,16 @@ export class AssignmentEngine {
         const onCall = await this.onCallResolver.getCurrentOnCall(
           incident.scheduleId
         );
+        if (!onCall) {
+          throw new Error(`No on-call responder found for ${incident.scheduleId}`);
+        }
+
         return {
-          userId: onCall!.userId,
+          userId: onCall.userId,
           strategy,
           metadata: {
             scheduleId: incident.scheduleId,
-            isOverride: onCall!.isOverride
+            isOverride: onCall.isOverride
           }
         };
       }
