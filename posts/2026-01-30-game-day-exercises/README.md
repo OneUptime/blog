@@ -113,7 +113,6 @@ The following Python script demonstrates how to implement automated abort criter
 
 import time
 from dataclasses import dataclass
-from typing import Callable
 
 @dataclass
 class AbortCriteria:
@@ -178,6 +177,12 @@ class GameDayMonitor:
         affected = self.metrics.get_affected_user_count()
         if affected > self.criteria.max_affected_users:
             self._trigger_abort(f"Affected users ({affected}) exceeds threshold")
+            return True
+
+        # Check revenue impact
+        revenue_impact = self.metrics.get_revenue_impact_per_minute()
+        if revenue_impact > self.criteria.max_revenue_impact_per_min:
+            self._trigger_abort(f"Revenue impact ${revenue_impact}/min exceeds threshold")
             return True
 
         return False
@@ -401,11 +406,13 @@ echo "Capturing game day metrics at ${TIMESTAMP}"
 
 # Capture current error rates from your monitoring system
 # Replace with your actual metrics endpoint
-curl -s "http://metrics.internal/api/v1/query?query=rate(http_requests_total{status=~'5..'}[5m])" \
+curl -sG --data-urlencode "query=rate(http_requests_total{status=~\"5..\"}[5m])" \
+    "http://metrics.internal/api/v1/query" \
     > "${OUTPUT_DIR}/error_rate.json"
 
 # Capture latency percentiles
-curl -s "http://metrics.internal/api/v1/query?query=histogram_quantile(0.99,rate(http_request_duration_seconds_bucket[5m]))" \
+curl -sG --data-urlencode "query=histogram_quantile(0.99,rate(http_request_duration_seconds_bucket[5m]))" \
+    "http://metrics.internal/api/v1/query" \
     > "${OUTPUT_DIR}/latency_p99.json"
 
 # Capture current pod status in Kubernetes
@@ -469,35 +476,36 @@ This Kubernetes manifest demonstrates how to use Chaos Mesh to automatically inj
 ```yaml
 # chaos-mesh-pod-failure.yaml
 # Defines a scheduled chaos experiment using Chaos Mesh
-# This will terminate random pods in the target namespace
+# This will make one matching pod unavailable during the scheduled window
 
 apiVersion: chaos-mesh.org/v1alpha1
-kind: PodChaos
+kind: Schedule
 metadata:
   name: gameday-pod-failure
   namespace: chaos-testing
 spec:
-  # Action type: pod-failure terminates pods
-  action: pod-failure
-
-  # How the experiment operates
-  mode: one  # Affect one random pod matching selector
-
-  # Target selection
-  selector:
-    namespaces:
-      - production
-    labelSelectors:
-      app: api-server
-      gameday-eligible: "true"
-
-  # Duration of the chaos effect
-  duration: "60s"
-
-  # Schedule for automatic execution (optional)
   # Runs every Wednesday at 2 PM
-  scheduler:
-    cron: "0 14 * * 3"
+  schedule: "0 14 * * 3"
+  historyLimit: 2
+  concurrencyPolicy: "Forbid"
+  type: "PodChaos"
+  podChaos:
+    # Action type: pod-failure makes the pod unavailable for the duration
+    action: pod-failure
+
+    # How the experiment operates
+    mode: one  # Affect one random pod matching selector
+
+    # Target selection
+    selector:
+      namespaces:
+        - production
+      labelSelectors:
+        app: api-server
+        gameday-eligible: "true"
+
+    # Duration of the chaos effect
+    duration: "60s"
 ```
 
 ### Litmus Chaos Example
@@ -514,11 +522,15 @@ metadata:
   name: gameday-db-chaos
   namespace: litmus
 spec:
+  engineState: "active"
+  annotationCheck: "false"
   # Application under test
   appinfo:
     appns: database
     applabel: "app=postgres"
     appkind: statefulset
+
+  chaosServiceAccount: pod-delete-sa
 
   # Do not delete resources after experiment
   jobCleanUpPolicy: retain
@@ -529,11 +541,6 @@ spec:
       spec:
         components:
           env:
-            # Target container
-            - name: TARGET_CONTAINER
-              value: postgres
-
-            # Number of pods to target
             - name: TOTAL_CHAOS_DURATION
               value: "60"
 
