@@ -205,14 +205,15 @@ GET /my-application-logs/_search
 
 ### Wildcard Queries
 
-You can use wildcard queries on flattened field values:
+Direct `wildcard` queries are not listed among the supported flattened field query types. If you need wildcard-style matching, use a supported query type such as `query_string`:
 
 ```json
 GET /my-application-logs/_search
 {
   "query": {
-    "wildcard": {
-      "labels.service": "payment-*"
+    "query_string": {
+      "default_field": "labels.service",
+      "query": "payment-*"
     }
   }
 }
@@ -220,7 +221,7 @@ GET /my-application-logs/_search
 
 ### Prefix Queries
 
-Prefix queries work efficiently on flattened fields:
+Prefix queries are supported on flattened fields:
 
 ```json
 GET /my-application-logs/_search
@@ -277,27 +278,27 @@ flowchart TD
         A[Term Queries]
         B[Terms Queries]
         C[Prefix Queries]
-        D[Wildcard Queries]
-        E[Fuzzy Queries]
+        D[Range Queries as Keywords]
+        E[Match Queries]
         F[Exists Queries]
     end
 
     subgraph Not Supported
-        G[Range Queries on Values]
+        G[Numeric or Date Range Semantics]
         H[Full-text Search]
         I[Numeric Operations]
-        J[Aggregations on Sub-fields]
-        K[Sorting by Sub-field Values]
+        J[Typed Aggregations]
+        K[Typed Sorting]
         L[Highlighting]
     end
 ```
 
 ### Key Limitations
 
-1. **No Range Queries on Values**: Since all values are indexed as keywords, you cannot perform numeric or date range queries.
+1. **No Numeric or Date Range Semantics**: Range queries are supported, but all values are indexed as keywords. That means range comparisons are lexicographic, not numeric or date-aware.
 
 ```json
-// This will NOT work as expected
+// This will NOT perform a numeric comparison
 GET /my-application-logs/_search
 {
   "query": {
@@ -313,7 +314,7 @@ GET /my-application-logs/_search
 
 2. **No Full-text Analysis**: Values are not analyzed, so full-text search capabilities like stemming, synonyms, or relevance scoring based on term frequency are unavailable.
 
-3. **Limited Aggregations**: You can aggregate on the entire flattened field but not on specific sub-fields.
+3. **Limited Aggregations**: You can perform simple keyword-style aggregations, including on a concrete path, but values are still treated as keywords rather than typed numbers or dates.
 
 ```json
 // This works - aggregating on all leaf values
@@ -343,7 +344,7 @@ GET /my-application-logs/_search
 }
 ```
 
-4. **No Sorting by Nested Values**: You cannot sort results by values within the flattened field.
+4. **Keyword-style Sorting Only**: Sorting on flattened fields uses keyword values and compares them lexicographically. If you need numeric, date, or other typed sorting for a frequently used attribute, map it as a dedicated typed field.
 
 5. **Case Sensitivity**: All queries are case-sensitive since values are stored as-is without analysis.
 
@@ -541,7 +542,7 @@ Key takeaways:
 - Flattened fields index entire JSON objects as single fields
 - All leaf values are stored as keywords, enabling exact match queries
 - Query specific paths using dot notation (e.g., `labels.environment`)
-- Limitations include no range queries, no full-text search, and limited aggregations
+- Limitations include no typed range semantics, no full-text search, and limited aggregations
 - Best suited for truly dynamic data that does not require numeric operations
 
 By understanding when and how to use flattened fields, you can build more resilient Elasticsearch schemas that gracefully handle dynamic data while maintaining performance and stability.
