@@ -77,6 +77,7 @@ class HealthChecker {
       const req = http.get(target.url, { timeout: this.timeout }, (res) => {
         const latency = Date.now() - startTime;
         const healthy = res.statusCode >= 200 && res.statusCode < 300;
+        res.resume();
         resolve({ healthy, latency, statusCode: res.statusCode });
       });
 
@@ -133,8 +134,8 @@ class HealthChecker {
 
 // Usage
 const checker = new HealthChecker([
-  { id: 'primary-db', url: 'http://db-primary:5432/health' },
-  { id: 'secondary-db', url: 'http://db-secondary:5432/health' }
+  { id: 'primary-api', url: 'http://api-primary:8080/health' },
+  { id: 'secondary-api', url: 'http://api-secondary:8080/health' }
 ], {
   interval: 5000,
   timeout: 3000,
@@ -187,7 +188,7 @@ Deep health checks that verify the application can actually serve requests, not 
 
 ```python
 from flask import Flask, jsonify
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 import psycopg2
 import redis
 
@@ -265,7 +266,7 @@ def health_endpoint():
     status_code = 200 if healthy else 503
     return jsonify({
         'status': 'healthy' if healthy else 'unhealthy',
-        'timestamp': datetime.utcnow().isoformat(),
+        'timestamp': datetime.now(timezone.utc).isoformat(),
         'checks': results
     }), status_code
 
@@ -459,7 +460,7 @@ livenessProbe:
 Use multiple independent checkers. Only failover when a majority agree the target is down.
 
 ```python
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError
 from dataclasses import dataclass
 from typing import List, Callable
 import time
@@ -484,30 +485,45 @@ class QuorumHealthChecker:
     def check(self, target: str, timeout: float = 10.0) -> tuple[bool, List[CheckResult]]:
         results = []
 
-        with ThreadPoolExecutor(max_workers=len(self.checkers)) as executor:
+        executor = ThreadPoolExecutor(max_workers=len(self.checkers))
+        try:
             futures = {
                 executor.submit(checker, target): f"checker_{i}"
                 for i, checker in enumerate(self.checkers)
             }
 
-            for future in as_completed(futures, timeout=timeout):
-                checker_id = futures[future]
-                try:
-                    result = future.result()
-                    results.append(CheckResult(
-                        checker_id=checker_id,
-                        target=target,
-                        healthy=result['healthy'],
-                        latency_ms=result['latency_ms']
-                    ))
-                except Exception as e:
-                    results.append(CheckResult(
-                        checker_id=checker_id,
-                        target=target,
-                        healthy=False,
-                        latency_ms=0,
-                        error=str(e)
-                    ))
+            try:
+                for future in as_completed(futures, timeout=timeout):
+                    checker_id = futures[future]
+                    try:
+                        result = future.result()
+                        results.append(CheckResult(
+                            checker_id=checker_id,
+                            target=target,
+                            healthy=result['healthy'],
+                            latency_ms=result['latency_ms']
+                        ))
+                    except Exception as e:
+                        results.append(CheckResult(
+                            checker_id=checker_id,
+                            target=target,
+                            healthy=False,
+                            latency_ms=0,
+                            error=str(e)
+                        ))
+            except TimeoutError:
+                for future, checker_id in futures.items():
+                    if not future.done():
+                        future.cancel()
+                        results.append(CheckResult(
+                            checker_id=checker_id,
+                            target=target,
+                            healthy=False,
+                            latency_ms=0,
+                            error="check timed out"
+                        ))
+        finally:
+            executor.shutdown(wait=False, cancel_futures=True)
 
         healthy_count = sum(1 for r in results if r.healthy)
         is_healthy = healthy_count >= self.quorum_size
@@ -769,6 +785,17 @@ type CheckResult struct {
     Timestamp time.Time     `json:"timestamp"`
 }
 
+type RedisClient interface {
+    Ping() (string, error)
+}
+
+func errorString(err error) string {
+    if err == nil {
+        return ""
+    }
+    return err.Error()
+}
+
 // Layer 1: Infrastructure (handled by Kubernetes/load balancer)
 
 // Layer 2: Process liveness
@@ -838,6 +865,18 @@ func (h *LayeredHealthCheck) DeepHealthHandler(w http.ResponseWriter, r *http.Re
 
     w.WriteHeader(http.StatusOK)
     json.NewEncoder(w).Encode(results)
+}
+
+func (h *LayeredHealthCheck) getQueueDepth() int {
+    return 0
+}
+
+func (h *LayeredHealthCheck) getErrorRate() float64 {
+    return 0
+}
+
+func (h *LayeredHealthCheck) getP99Latency() time.Duration {
+    return 0
 }
 
 func (h *LayeredHealthCheck) checkDatabase() CheckResult {
@@ -938,7 +977,7 @@ flowchart TB
 import asyncio
 import aiohttp
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 from enum import Enum
 from typing import List, Dict, Callable, Optional
 import logging
@@ -1009,7 +1048,8 @@ class FailoverDetector:
         """Perform a single health check from one checker."""
         try:
             timeout = aiohttp.ClientTimeout(
-                connect=self.config.connect_timeout,
+                sock_connect=self.config.connect_timeout,
+                sock_read=self.config.read_timeout,
                 total=self.config.connect_timeout + self.config.read_timeout
             )
             async with session.get(
@@ -1087,7 +1127,7 @@ class FailoverDetector:
                 logger.info(f"Target {target_id} has RECOVERED")
                 self.on_recovery(target_id)
 
-        state.last_check = datetime.utcnow()
+        state.last_check = datetime.now(timezone.utc)
 
         if old_state != state.state:
             logger.info(f"Target {target_id} transitioned: {old_state} -> {state.state}")
