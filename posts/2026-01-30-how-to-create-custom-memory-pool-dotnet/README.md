@@ -8,7 +8,7 @@ Description: Learn how to build production-ready custom memory pools in .NET to 
 
 ---
 
-Garbage collection in .NET handles most memory management automatically, but this convenience comes with a cost. Every allocation eventually triggers a collection, and in high-throughput systems processing thousands of requests per second, GC pauses become a real bottleneck. Custom memory pools let you recycle allocations, keeping objects out of the garbage collector's reach entirely.
+Garbage collection in .NET handles most memory management automatically, but this convenience comes with a cost. Every allocation eventually contributes to memory pressure, and in high-throughput systems processing thousands of requests per second, GC pauses can become a real bottleneck. Custom memory pools let you recycle allocations, keeping objects reachable for reuse instead of making them eligible for collection after every operation.
 
 This guide walks through building memory pools from scratch, then shows how to leverage .NET's built-in pooling infrastructure for production systems.
 
@@ -35,7 +35,7 @@ graph TD
     style I fill:#51cf66
 ```
 
-Memory pools break this cycle by reusing objects. Instead of allocating and discarding, you rent from the pool and return when finished. The same memory gets used over and over without ever touching the garbage collector.
+Memory pools break this cycle by reusing objects. Instead of allocating and discarding, you rent from the pool and return when finished. The same memory gets used over and over without creating a fresh allocation each time.
 
 ## Building a Basic Object Pool
 
@@ -44,9 +44,10 @@ Let us start with a simple thread-safe object pool. This implementation uses a C
 ```csharp
 using System;
 using System.Collections.Concurrent;
+using System.Threading;
 
 // Generic object pool that can hold any reference type.
-// Uses ConcurrentBag for lock-free thread safety on rent/return operations.
+// Uses ConcurrentBag for thread-safe rent/return operations.
 public class ObjectPool<T> where T : class
 {
     private readonly ConcurrentBag<T> _pool;
@@ -68,7 +69,7 @@ public class ObjectPool<T> where T : class
     }
 
     // Retrieves an object from the pool or creates a new one if the pool is empty.
-    // This operation is thread-safe and lock-free in most cases.
+    // This operation is thread-safe.
     public T Rent()
     {
         if (_pool.TryTake(out T? item))
@@ -90,12 +91,7 @@ public class ObjectPool<T> where T : class
         // Reset the object state before returning to pool
         _resetAction?.Invoke(item);
 
-        // Only add back to pool if under capacity
-        if (_currentCount < _maxPoolSize)
-        {
-            _pool.Add(item);
-            Interlocked.Increment(ref _currentCount);
-        }
+        TryAdd(item);
         // Otherwise let GC handle it
     }
 
@@ -105,9 +101,24 @@ public class ObjectPool<T> where T : class
     {
         for (int i = 0; i < Math.Min(count, _maxPoolSize); i++)
         {
-            _pool.Add(_objectFactory());
-            Interlocked.Increment(ref _currentCount);
+            if (!TryAdd(_objectFactory()))
+            {
+                break;
+            }
         }
+    }
+
+    private bool TryAdd(T item)
+    {
+        int newCount = Interlocked.Increment(ref _currentCount);
+        if (newCount <= _maxPoolSize)
+        {
+            _pool.Add(item);
+            return true;
+        }
+
+        Interlocked.Decrement(ref _currentCount);
+        return false;
     }
 }
 ```
@@ -115,6 +126,12 @@ public class ObjectPool<T> where T : class
 Here is how you would use this pool for a request processing scenario.
 
 ```csharp
+using System;
+using System.Collections.Generic;
+using System.Text;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Http;
+
 // Example: Pooling request context objects that are expensive to create
 public class RequestContext
 {
@@ -132,28 +149,35 @@ public class RequestContext
     }
 }
 
-// Create pool with factory and reset action
-var contextPool = new ObjectPool<RequestContext>(
-    objectFactory: () => new RequestContext(),
-    resetAction: ctx => ctx.Clear(),
-    maxPoolSize: 200
-);
-
-// Warm the pool at startup
-contextPool.Warm(50);
-
-// Usage in request handler
-public async Task HandleRequest(HttpContext http)
+public class RequestHandler
 {
-    var context = contextPool.Rent();
-    try
+    // Create pool with factory and reset action
+    private readonly ObjectPool<RequestContext> _contextPool = new(
+        objectFactory: () => new RequestContext(),
+        resetAction: ctx => ctx.Clear(),
+        maxPoolSize: 200
+    );
+
+    public RequestHandler()
     {
-        context.StartTime = DateTime.UtcNow;
-        // Process request using context...
+        // Warm the pool at startup
+        _contextPool.Warm(50);
     }
-    finally
+
+    // Usage in request handler
+    public async Task HandleRequest(HttpContext http)
     {
-        contextPool.Return(context);
+        var context = _contextPool.Rent();
+        try
+        {
+            context.StartTime = DateTime.UtcNow;
+            // Process request using context...
+            await Task.CompletedTask;
+        }
+        finally
+        {
+            _contextPool.Return(context);
+        }
     }
 }
 ```
@@ -163,7 +187,10 @@ public async Task HandleRequest(HttpContext http)
 For byte arrays and other primitive arrays, .NET provides `ArrayPool<T>` out of the box. This is the recommended approach for buffer pooling in production systems.
 
 ```csharp
+using System;
 using System.Buffers;
+using System.IO;
+using System.Threading.Tasks;
 
 // ArrayPool.Shared is a singleton pool suitable for most scenarios.
 // It manages arrays of various sizes using bucketing internally.
@@ -180,19 +207,25 @@ public class FileProcessor
     public async Task<byte[]> ReadFileAsync(string path)
     {
         var fileInfo = new FileInfo(path);
+        if (fileInfo.Length > int.MaxValue)
+        {
+            throw new IOException("File is too large for this example.");
+        }
+
+        int length = (int)fileInfo.Length;
 
         // Rent a buffer at least as large as the file.
         // The returned buffer may be larger than requested due to bucketing.
-        byte[] buffer = _bufferPool.Rent((int)fileInfo.Length);
+        byte[] buffer = _bufferPool.Rent(length);
 
         try
         {
             using var stream = File.OpenRead(path);
-            int bytesRead = await stream.ReadAsync(buffer, 0, (int)fileInfo.Length);
+            await stream.ReadExactlyAsync(buffer.AsMemory(0, length));
 
-            // Important: Only use bytesRead bytes, not buffer.Length
-            byte[] result = new byte[bytesRead];
-            Buffer.BlockCopy(buffer, 0, result, 0, bytesRead);
+            // Important: Only use length bytes, not buffer.Length
+            byte[] result = new byte[length];
+            Buffer.BlockCopy(buffer, 0, result, 0, length);
             return result;
         }
         finally
@@ -207,6 +240,8 @@ public class FileProcessor
 For high-performance scenarios where you need more control, create a custom ArrayPool.
 
 ```csharp
+using System.Buffers;
+
 // Custom ArrayPool with specific bucket sizes for your workload.
 // This avoids wasting memory when you know your common allocation sizes.
 public static class CustomArrayPools
@@ -233,7 +268,10 @@ public static class CustomArrayPools
 `MemoryPool<T>` provides a more modern API that returns `IMemoryOwner<T>`, making it easier to track ownership and ensure proper disposal.
 
 ```csharp
+using System;
 using System.Buffers;
+using System.IO;
+using System.Threading.Tasks;
 
 // MemoryPool returns IMemoryOwner which implements IDisposable.
 // This makes it natural to use with using statements.
@@ -252,16 +290,17 @@ public class MessageProcessor
         using IMemoryOwner<byte> owner = _memoryPool.Rent(length);
         Memory<byte> buffer = owner.Memory.Slice(0, length);
 
-        await source.ReadAsync(buffer);
+        await source.ReadExactlyAsync(buffer);
 
         // Process the data in buffer
-        ProcessData(buffer.Span);
+        ProcessData(buffer);
 
         // Memory is returned to pool when owner is disposed
     }
 
-    private void ProcessData(ReadOnlySpan<byte> data)
+    private void ProcessData(ReadOnlyMemory<byte> data)
     {
+        ReadOnlySpan<byte> span = data.Span;
         // Process without any allocations using Span
     }
 }
@@ -269,7 +308,7 @@ public class MessageProcessor
 
 ## Building a High-Performance Memory Pool
 
-For systems requiring maximum performance, here is a more sophisticated pool implementation with metrics, automatic sizing, and memory pressure handling.
+For systems requiring more control, here is a more sophisticated pool implementation with metrics and manual trimming.
 
 ```mermaid
 graph LR
@@ -277,9 +316,7 @@ graph LR
         A[Request Thread] --> B[Rent]
         B --> C{Pool Empty?}
         C -->|No| D[Return Pooled Object]
-        C -->|Yes| E{Under Limit?}
-        E -->|Yes| F[Create New Object]
-        E -->|No| G[Wait or Throw]
+        C -->|Yes| F[Create New Object]
 
         H[Return] --> I{Pool Full?}
         I -->|No| J[Add to Pool]
@@ -300,7 +337,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Threading;
 
-// High-performance pool with diagnostics, automatic growth, and GC pressure handling.
+// High-performance pool with diagnostics and manual trimming.
 // Suitable for production systems requiring detailed metrics.
 public sealed class HighPerformancePool<T> : IDisposable where T : class
 {
@@ -333,7 +370,7 @@ public sealed class HighPerformancePool<T> : IDisposable where T : class
         _pool = new ConcurrentQueue<T>();
 
         // Pre-populate pool
-        for (int i = 0; i < _initialSize; i++)
+        for (int i = 0; i < Math.Min(_initialSize, _maxSize); i++)
         {
             _pool.Enqueue(_factory());
             Interlocked.Increment(ref _pooledCount);
@@ -359,7 +396,7 @@ public sealed class HighPerformancePool<T> : IDisposable where T : class
         return (double)(total - misses) / total;
     }
 
-    // Rent an object from the pool. Thread-safe and lock-free.
+    // Rent an object from the pool. Thread-safe.
     public T Rent()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -377,7 +414,7 @@ public sealed class HighPerformancePool<T> : IDisposable where T : class
         return _factory();
     }
 
-    // Try to rent with a timeout. Useful for bounded resource scenarios.
+    // Try to rent with a timeout. Useful when you only want to reuse pooled instances.
     public bool TryRent(out T? item, TimeSpan timeout)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -422,17 +459,25 @@ public sealed class HighPerformancePool<T> : IDisposable where T : class
         }
 
         // Check if pool has room
-        if (_pooledCount < _maxSize)
-        {
-            _pool.Enqueue(item);
-            Interlocked.Increment(ref _pooledCount);
-        }
-        else
+        if (!TryAdd(item))
         {
             // Pool is full, discard object
             Interlocked.Increment(ref _discardCount);
             _destroy?.Invoke(item);
         }
+    }
+
+    private bool TryAdd(T item)
+    {
+        int newCount = Interlocked.Increment(ref _pooledCount);
+        if (newCount <= _maxSize)
+        {
+            _pool.Enqueue(item);
+            return true;
+        }
+
+        Interlocked.Decrement(ref _pooledCount);
+        return false;
     }
 
     // Trim pool to reduce memory under low usage
@@ -452,6 +497,7 @@ public sealed class HighPerformancePool<T> : IDisposable where T : class
 
         while (_pool.TryDequeue(out T? item))
         {
+            Interlocked.Decrement(ref _pooledCount);
             _destroy?.Invoke(item);
         }
     }
@@ -504,7 +550,7 @@ public class PooledDatabaseReader
         );
     }
 
-    public async Task<string> ReadLargeTextColumnAsync(DbDataReader reader, int columnIndex)
+    public Task<string> ReadLargeTextColumnAsync(DbDataReader reader, int columnIndex)
     {
         // Rent a StringBuilder from pool
         StringBuilder sb = _stringBuilderPool.Rent();
@@ -522,7 +568,7 @@ public class PooledDatabaseReader
                 dataIndex += charsRead;
             }
 
-            return sb.ToString();
+            return Task.FromResult(sb.ToString());
         }
         finally
         {
@@ -531,10 +577,14 @@ public class PooledDatabaseReader
         }
     }
 
-    public async Task<byte[]> ReadBinaryColumnAsync(DbDataReader reader, int columnIndex)
+    public Task<byte[]> ReadBinaryColumnAsync(DbDataReader reader, int columnIndex)
     {
         // Get the actual data length
         long length = reader.GetBytes(columnIndex, 0, null, 0, 0);
+        if (length > int.MaxValue)
+        {
+            throw new InvalidOperationException("Column is too large for this example.");
+        }
 
         // Rent buffer from pool
         byte[] buffer = _bytePool.Rent((int)length);
@@ -544,9 +594,9 @@ public class PooledDatabaseReader
             long bytesRead = reader.GetBytes(columnIndex, 0, buffer, 0, (int)length);
 
             // Copy to right-sized array for return
-            byte[] result = new byte[bytesRead];
+            byte[] result = new byte[(int)bytesRead];
             Buffer.BlockCopy(buffer, 0, result, 0, (int)bytesRead);
-            return result;
+            return Task.FromResult(result);
         }
         finally
         {
@@ -558,7 +608,7 @@ public class PooledDatabaseReader
 
 ## RecyclableMemoryStream for Large Buffers
 
-Microsoft's `RecyclableMemoryStream` library is excellent for scenarios involving large MemoryStream usage. It eliminates Large Object Heap (LOH) allocations that can cause Gen 2 collections.
+Microsoft's `RecyclableMemoryStream` library is excellent for scenarios involving large MemoryStream usage. It reduces repeated Large Object Heap (LOH) allocations that can cause Gen 2 collections.
 
 ```csharp
 using Microsoft.IO;
@@ -584,7 +634,7 @@ public static class StreamManager
     );
 }
 
-// JSON serialization without LOH allocations
+// JSON serialization with pooled intermediate buffers
 public class PooledJsonSerializer
 {
     public async Task<byte[]> SerializeAsync<T>(T value)
@@ -604,7 +654,7 @@ public class PooledJsonSerializer
         return await JsonSerializer.DeserializeAsync<T>(stream);
     }
 
-    // Zero-copy serialization directly to output stream
+    // Buffered serialization directly to the output stream
     public async Task SerializeToStreamAsync<T>(T value, Stream output)
     {
         using RecyclableMemoryStream buffer = StreamManager.Instance.GetStream("json-buffer");
