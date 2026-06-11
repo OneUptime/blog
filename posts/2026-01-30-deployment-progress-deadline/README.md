@@ -124,7 +124,7 @@ status:
     - type: Progressing
       status: "False"
       reason: ProgressDeadlineExceeded
-      message: "Deployment does not have minimum availability"
+      message: "ReplicaSet \"api-server-abc123\" has timed out progressing"
 ```
 
 ## Automatic Rollback with CI/CD
@@ -210,6 +210,7 @@ spec:
           expr: |
             kube_deployment_status_condition{
               condition="Progressing",
+              reason="ProgressDeadlineExceeded",
               status="false"
             } == 1
           for: 1m
@@ -222,10 +223,8 @@ spec:
         # Warning when deployment is taking longer than expected
         - alert: DeploymentRolloutSlow
           expr: |
-            time() - kube_deployment_status_observed_generation{} > 300
-            and
-            kube_deployment_spec_replicas != kube_deployment_status_ready_replicas
-          for: 2m
+            kube_deployment_spec_replicas != kube_deployment_status_replicas_ready
+          for: 5m
           labels:
             severity: warning
           annotations:
@@ -259,8 +258,10 @@ Wrong image tags or registry authentication issues prevent pods from starting. A
 # Check for image pull errors
 kubectl describe pod -l app=api-server -n production | grep -A3 "Warning"
 
-# Verify image exists and is pullable
-kubectl run test-pull --image=ghcr.io/example/api:v2.1.0 --dry-run=server
+# Verify image exists and is pullable with a temporary pod
+kubectl run test-pull --image=ghcr.io/example/api:v2.1.0 -n production
+kubectl wait --for=condition=Ready pod/test-pull -n production --timeout=60s
+kubectl delete pod test-pull -n production
 ```
 
 Resource Constraints
