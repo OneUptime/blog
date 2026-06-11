@@ -8,7 +8,7 @@ Description: Learn how to create and configure Cross-Origin Resource Sharing (CO
 
 ---
 
-Cross-Origin Resource Sharing (CORS) is a security mechanism that controls which domains can access your API. When a browser makes a request to a different origin (domain, protocol, or port), the browser enforces CORS policies to protect users from malicious websites.
+Cross-Origin Resource Sharing (CORS) is a browser security mechanism that controls which origins can read your API responses from frontend JavaScript. When a browser makes a request to a different origin (domain, protocol, or port), the browser enforces CORS policies to protect users from malicious websites.
 
 Getting CORS wrong leads to either blocked legitimate requests or security vulnerabilities. This guide covers how to configure CORS properly for production APIs.
 
@@ -32,7 +32,7 @@ sequenceDiagram
     API Server->>Browser: Response with CORS headers
 ```
 
-Simple requests (GET, POST with standard content types) go directly to the server. Complex requests (PUT, DELETE, or requests with custom headers) trigger a preflight OPTIONS request first.
+Simple requests (such as GET, HEAD, or POST with CORS-safelisted headers and content types) go directly to the server. Non-simple requests (PUT, DELETE, POST with JSON, or requests with custom headers) trigger a preflight OPTIONS request first.
 
 ## Basic CORS Configuration in Node.js
 
@@ -63,7 +63,7 @@ app.listen(3000);
 
 ## Production CORS Configuration
 
-For production APIs, you need explicit control over which origins can access your API and what they can do.
+For production APIs, you need explicit control over which browser origins can read responses and which methods and headers browsers may use.
 
 This configuration allows specific origins, methods, and headers while supporting credentials like cookies and authorization headers.
 
@@ -295,9 +295,9 @@ function isOriginAllowed(origin) {
     return true;
   }
 
-  // Allow all subdomains of example.com
+  // Allow subdomains of example.com
   // This pattern matches: https://app.example.com, https://api.example.com, etc.
-  const subdomainPattern = /^https:\/\/([a-z0-9-]+\.)?example\.com$/;
+  const subdomainPattern = /^https:\/\/([a-z0-9-]+\.)+example\.com$/;
   if (subdomainPattern.test(origin)) {
     return true;
   }
@@ -374,14 +374,11 @@ const corsOptions = {
     }
   },
 
-  // Required for cookies and Authorization header
+  // Required for cross-origin cookies
   credentials: true,
 
   // Ensure Authorization header is allowed
-  allowedHeaders: ['Content-Type', 'Authorization'],
-
-  // Expose authentication-related headers
-  exposedHeaders: ['Set-Cookie']
+  allowedHeaders: ['Content-Type', 'Authorization']
 };
 
 app.use(cors(corsOptions));
@@ -402,8 +399,8 @@ app.post('/api/auth/login', async (req, res) => {
   // Set HTTP-only cookie for authentication
   res.cookie('session', generateSessionToken(user), {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'none', // Required for cross-origin cookies
+    secure: true, // Required when sameSite is 'none'
+    sameSite: 'none', // Required when cookies must be sent in a cross-site context
     maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
   });
 
@@ -723,7 +720,7 @@ app.listen(3000);
 
 ## Summary
 
-CORS configuration protects your API while enabling legitimate cross-origin access. Key points to remember:
+CORS configuration controls which browser origins can read API responses while enabling legitimate cross-origin access. Key points to remember:
 
 1. Always use an allowlist of specific origins in production
 2. Enable credentials only when needed for authentication
