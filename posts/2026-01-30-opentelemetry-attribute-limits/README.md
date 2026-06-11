@@ -47,9 +47,9 @@ Create a limits configuration object and pass it to your tracer provider:
 
 ```typescript
 import { NodeSDK } from '@opentelemetry/sdk-node';
-import { Resource } from '@opentelemetry/resources';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
-import { SpanLimits } from '@opentelemetry/sdk-trace-base';
+import type { SpanLimits } from '@opentelemetry/sdk-trace-base';
 
 // Define your attribute limits
 const spanLimits: SpanLimits = {
@@ -73,7 +73,7 @@ const spanLimits: SpanLimits = {
 };
 
 const sdk = new NodeSDK({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     'service.name': 'payment-service',
     'service.version': '1.0.0',
   }),
@@ -102,10 +102,10 @@ from opentelemetry.sdk.resources import Resource
 
 span_limits = SpanLimits(
     # Maximum attributes per span
-    max_attributes=128,
+    max_span_attributes=128,
 
     # Maximum length of string attribute values
-    max_attribute_length=1024,
+    max_span_attribute_length=1024,
 
     # Maximum events per span
     max_events=128,
@@ -143,7 +143,7 @@ print("OpenTelemetry initialized with attribute limits")
 
 ### Go
 
-Go uses a builder pattern for creating span limits:
+Go uses a `SpanLimits` struct for creating span limits:
 
 ```go
 package main
@@ -213,6 +213,7 @@ Java provides a fluent builder for span limits:
 package com.example.telemetry;
 
 import io.opentelemetry.api.OpenTelemetry;
+import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.exporter.otlp.trace.OtlpGrpcSpanExporter;
 import io.opentelemetry.sdk.OpenTelemetrySdk;
@@ -220,7 +221,6 @@ import io.opentelemetry.sdk.resources.Resource;
 import io.opentelemetry.sdk.trace.SdkTracerProvider;
 import io.opentelemetry.sdk.trace.SpanLimits;
 import io.opentelemetry.sdk.trace.export.BatchSpanProcessor;
-import io.opentelemetry.semconv.resource.attributes.ResourceAttributes;
 
 public class TelemetryConfig {
 
@@ -249,8 +249,8 @@ public class TelemetryConfig {
         // Create the tracer provider with limits
         SdkTracerProvider tracerProvider = SdkTracerProvider.builder()
             .setResource(Resource.create(Attributes.of(
-                ResourceAttributes.SERVICE_NAME, "payment-service",
-                ResourceAttributes.SERVICE_VERSION, "1.0.0"
+                AttributeKey.stringKey("service.name"), "payment-service",
+                AttributeKey.stringKey("service.version"), "1.0.0"
             )))
             .setSpanLimits(spanLimits)
             .addSpanProcessor(BatchSpanProcessor.builder(exporter).build())
@@ -404,7 +404,7 @@ Sometimes you need more sophisticated limit enforcement than the SDK provides. H
 ### Custom Attribute Validator
 
 ```typescript
-import { Span, SpanStatusCode } from '@opentelemetry/api';
+import { Span } from '@opentelemetry/api';
 
 interface AttributePolicy {
   maxLength: number;
@@ -518,7 +518,7 @@ import {
   ReadableSpan,
   Span,
 } from '@opentelemetry/sdk-trace-base';
-import { Context } from '@opentelemetry/api';
+import { Attributes, Context } from '@opentelemetry/api';
 
 interface ProcessorLimits {
   maxAttributeCount: number;
@@ -549,41 +549,42 @@ class LimitEnforcingSpanProcessor implements SpanProcessor {
 
   private enforceLimit(span: ReadableSpan): ReadableSpan {
     const attributes = span.attributes;
-    const attributeKeys = Object.keys(attributes);
+    const sortedKeys = this.sortByPriority(Object.keys(attributes));
+    const keysToKeep = sortedKeys.slice(0, this.limits.maxAttributeCount);
+    const keysToRemove = sortedKeys.slice(this.limits.maxAttributeCount);
 
-    // Check if we need to drop attributes
-    if (attributeKeys.length > this.limits.maxAttributeCount) {
-      const sortedKeys = this.sortByPriority(attributeKeys);
-      const keysToKeep = sortedKeys.slice(0, this.limits.maxAttributeCount);
-      const keysToRemove = sortedKeys.slice(this.limits.maxAttributeCount);
+    this.droppedAttributes += keysToRemove.length;
 
-      this.droppedAttributes += keysToRemove.length;
+    const newAttributes: Attributes = {};
+    let modified = keysToRemove.length > 0;
 
-      // Create a new attributes object with only the kept keys
-      const newAttributes: Record<string, unknown> = {};
-      for (const key of keysToKeep) {
-        let value = attributes[key];
+    for (const key of keysToKeep) {
+      let value = attributes[key];
 
-        // Truncate string values
-        if (
-          typeof value === 'string' &&
-          value.length > this.limits.maxAttributeValueLength
-        ) {
-          value = value.substring(0, this.limits.maxAttributeValueLength);
-          this.truncatedValues++;
-        }
-
-        newAttributes[key] = value;
+      // Truncate string values
+      if (
+        typeof value === 'string' &&
+        value.length > this.limits.maxAttributeValueLength
+      ) {
+        value = value.substring(0, this.limits.maxAttributeValueLength);
+        this.truncatedValues++;
+        modified = true;
       }
 
-      // Add metadata about dropped attributes
-      newAttributes['otel.dropped_attributes_count'] = keysToRemove.length;
-
-      // Return a modified span (implementation depends on your needs)
-      return this.createModifiedSpan(span, newAttributes);
+      newAttributes[key] = value;
     }
 
-    return span;
+    if (keysToRemove.length > 0) {
+      newAttributes['otel.dropped_attributes_count'] = keysToRemove.length;
+    }
+
+    if (span.events.length > this.limits.maxEventCount) {
+      modified = true;
+    }
+
+    return modified
+      ? this.createModifiedSpan(span, newAttributes)
+      : span;
   }
 
   private sortByPriority(keys: string[]): string[] {
@@ -596,13 +597,14 @@ class LimitEnforcingSpanProcessor implements SpanProcessor {
 
   private createModifiedSpan(
     original: ReadableSpan,
-    newAttributes: Record<string, unknown>
+    newAttributes: Attributes
   ): ReadableSpan {
     // Create a proxy or modified copy of the span
     // Implementation varies based on your requirements
     return {
       ...original,
-      attributes: newAttributes as ReadableSpan['attributes'],
+      attributes: newAttributes,
+      events: original.events.slice(-this.limits.maxEventCount),
     } as ReadableSpan;
   }
 
@@ -630,27 +632,28 @@ processors:
       - context: span
         statements:
           # Truncate all string attributes to 1024 characters
-          - truncate_all(attributes, 1024)
+          - truncate_all(span.attributes, 1024)
 
           # Remove attributes with empty values
-          - delete_key(attributes, "") where attributes[""] != nil
+          - delete_key(span.attributes, "") where span.attributes[""] != nil
 
           # Hash high-cardinality values
-          - set(attributes["user.id.hash"], SHA256(attributes["user.id"]))
-            where attributes["user.id"] != nil
-          - delete_key(attributes, "user.id")
+          - set(span.attributes["user.id.hash"], SHA256(span.attributes["user.id"]))
+            where IsString(span.attributes["user.id"])
+          - delete_key(span.attributes, "user.id")
 
       - context: spanevent
         statements:
           # More restrictive limits for events
-          - truncate_all(attributes, 512)
+          - truncate_all(spanevent.attributes, 512)
 
     log_statements:
       - context: log
         statements:
           # Limit log body size
-          - truncate_all(body, 4096)
-          - truncate_all(attributes, 1024)
+          - set(log.body, Substring(log.body, 0, 4096))
+            where IsString(log.body) and Len(log.body) > 4096
+          - truncate_all(log.attributes, 1024)
 ```
 
 ### Filter Processor for Dropping Oversized Data
@@ -658,22 +661,25 @@ processors:
 ```yaml
 processors:
   filter:
-    traces:
-      span:
-        # Drop spans with too many attributes
-        - 'len(attributes) > 500'
+    error_mode: ignore
+    trace_conditions:
+      - context: span
+        conditions:
+          # Drop spans with too many attributes
+          - 'Len(span.attributes) > 500'
 
-        # Drop spans with suspiciously large attribute values
-        - 'len(attributes["http.request.body"]) > 10000'
+          # Drop spans with suspiciously large attribute values
+          - 'IsString(span.attributes["http.request.body"]) and Len(span.attributes["http.request.body"]) > 10000'
 
-        # Drop health check spans
-        - 'attributes["http.route"] == "/health"'
-        - 'attributes["http.route"] == "/ready"'
+          # Drop health check spans
+          - 'span.attributes["http.route"] == "/health"'
+          - 'span.attributes["http.route"] == "/ready"'
 
-    logs:
-      log_record:
-        # Drop debug logs in production
-        - 'severity_number < 9 and resource.attributes["deployment.environment"] == "production"'
+    log_conditions:
+      - context: log
+        conditions:
+          # Drop debug logs in production
+          - 'log.severity_number < SEVERITY_NUMBER_INFO and resource.attributes["deployment.environment"] == "production"'
 ```
 
 ### Memory Limiter for Protection
@@ -689,10 +695,6 @@ processors:
 
     # Start dropping data when within this amount of the limit
     spike_limit_mib: 512
-
-    # Percentage of limit to target
-    limit_percentage: 80
-    spike_limit_percentage: 25
 ```
 
 ### Complete Collector Pipeline
@@ -718,13 +720,15 @@ processors:
     trace_statements:
       - context: span
         statements:
-          - truncate_all(attributes, 1024)
+          - truncate_all(span.attributes, 1024)
 
   # Third: filter unwanted data
   filter:
-    traces:
-      span:
-        - 'attributes["http.route"] == "/health"'
+    error_mode: ignore
+    trace_conditions:
+      - context: span
+        conditions:
+          - 'span.attributes["http.route"] == "/health"'
 
   # Fourth: remove sensitive attributes
   attributes:
@@ -878,7 +882,7 @@ data:
 Track when limits are being hit to identify instrumentation issues:
 
 ```typescript
-import { metrics, Counter, Histogram } from '@opentelemetry/api';
+import { metrics, Counter, Histogram, Span } from '@opentelemetry/api';
 
 class LimitMonitor {
   private meter = metrics.getMeter('otel-limits-monitor');
