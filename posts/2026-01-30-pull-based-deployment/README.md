@@ -168,7 +168,7 @@ namespace: production
 resources:
   - ../../base
 patches:
-  - replica-patch.yaml
+  - path: replica-patch.yaml
 images:
   - name: registry.example.com/myapp
     newTag: v1.4.2
