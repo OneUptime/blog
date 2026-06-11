@@ -28,7 +28,7 @@ Before optimizing, you need to understand how queries flow through Loki. The rea
 
 **Ingester**: Holds recent log data in memory before flushing to storage. Queriers hit ingesters for the "hot" data window.
 
-**Store Gateway** (optional): Provides efficient access to historical data by maintaining an index of chunks in object storage.
+**Index Gateway** (optional): Provides efficient access to historical data by serving index queries without each querier constantly interacting with object storage.
 
 **Index**: Maps label combinations to chunk references. This is where queries start their search.
 
@@ -48,7 +48,7 @@ flowchart TD
     F --> G
     G --> H{Data Source}
     H --> I[Ingester<br/>Recent Data]
-    H --> J[Store Gateway<br/>Historical Data]
+    H --> J[Index Gateway<br/>Historical Data]
     I --> K[In-Memory Chunks]
     J --> L[Index Lookup]
     L --> M[Chunk Store<br/>S3 / GCS / MinIO]
@@ -122,12 +122,7 @@ The `split_queries_by_interval` setting controls how queries are divided. Smalle
 
 # Query frontend configuration for optimal splitting
 
-query_frontend:
-  # Split queries into 15-minute intervals
-  # Smaller intervals = more parallelism but more overhead
-  # Larger intervals = less parallelism but lower coordination cost
-  split_queries_by_interval: 15m
-
+frontend:
   # Maximum number of subqueries to run in parallel
   # Set based on your querier pool size
   max_outstanding_per_tenant: 2048
@@ -136,20 +131,26 @@ query_frontend:
   # Reduces network bandwidth at cost of CPU
   compress_responses: true
 
-  # Queue queries when queriers are busy
-  # Prevents overload during traffic spikes
-  max_queriers_per_tenant: 0  # 0 = no limit
+limits_config:
+  # Split queries into 15-minute intervals
+  # Smaller intervals = more parallelism but more overhead
+  # Larger intervals = less parallelism but lower coordination cost
+  split_queries_by_interval: 15m
+
+  # Limit queriers per tenant when queriers connect through
+  # the query frontend or query scheduler
+  max_queriers_per_tenant: 0
+
+  # Timeout for individual queries
+  query_timeout: 5m
 
 # Querier concurrency settings
 querier:
   # Maximum concurrent queries per querier instance
   max_concurrent: 20
 
-  # Timeout for individual queries
-  query_timeout: 5m
-
-  # Number of parallel workers for chunk fetching
   engine:
+    # Maximum lookback for instant log queries
     max_look_back_period: 0s
 ```
 
@@ -160,17 +161,17 @@ The optimal split interval depends on your data volume and cluster size:
 ```yaml
 # High-volume clusters (> 1TB/day ingestion)
 # Use smaller splits for maximum parallelism
-query_frontend:
+limits_config:
   split_queries_by_interval: 5m
 
 # Medium-volume clusters (100GB - 1TB/day)
 # Balance parallelism with overhead
-query_frontend:
+limits_config:
   split_queries_by_interval: 15m
 
 # Low-volume clusters (< 100GB/day)
 # Larger splits reduce coordination overhead
-query_frontend:
+limits_config:
   split_queries_by_interval: 30m
 ```
 
@@ -180,11 +181,7 @@ For streams with high label cardinality, enable query sharding to parallelize wi
 
 ```yaml
 # Enable query sharding for high-cardinality workloads
-query_frontend:
-  # Number of shards to split each subquery into
-  # Higher values = more parallelism for high-cardinality queries
-  max_query_parallelism: 32
-
+query_range:
   # Shard queries based on label hash
   parallelise_shardable_queries: true
 
@@ -193,8 +190,8 @@ limits_config:
   # Maximum number of shards per query
   max_query_parallelism: 32
 
-  # Enable sharding for metric queries
-  query_sharding_target_bytes_per_shard: 100MB
+  # Target maximum bytes assigned to a single TSDB query shard
+  tsdb_max_bytes_per_shard: 100MB
 ```
 
 ---
@@ -234,16 +231,16 @@ flowchart LR
 
 ### Results Cache Configuration
 
-The results cache stores complete query responses. This provides the fastest path for repeated queries.
+The results cache stores cacheable query sub-results, metadata query results, and negative cache entries for log queries. This provides the fastest path for repeated queries that can be served from cached splits.
 
 ```yaml
 # Results cache using Memcached
-query_frontend:
+query_range:
+  # Enable query result caching
+  cache_results: true
+
   results_cache:
     cache:
-      # Enable results caching
-      enable_fifocache: false
-
       # Memcached backend for distributed caching
       memcached_client:
         # Memcached server addresses
@@ -261,29 +258,25 @@ query_frontend:
         # Enable consistent hashing for better distribution
         consistent_hash: true
 
-    # Cache query results for 24 hours
-    # Adjust based on how frequently your data changes
-    default_validity: 24h
-
-    # Only cache results for queries longer than 1 hour
-    # Short queries are fast enough without caching
-    cache_results: true
+      # Cache query results for 24 hours
+      # Adjust based on how frequently your data changes
+      default_validity: 24h
 ```
 
 ### Index Cache Configuration
 
-The index cache stores label-to-chunk mappings. This dramatically speeds up the initial query planning phase.
+For legacy BoltDB Shipper indexes, the index cache stores label-to-chunk mappings. This dramatically speeds up the initial query planning phase. For TSDB indexes, Loki uses the local `tsdb_shipper` cache on disk instead, so a separate index lookup cache is not required.
 
 ```yaml
 # Storage configuration with index caching
 storage_config:
-  # Index cache configuration
+  # Index cache validity for active index entries
   index_cache_validity: 5m
 
-  # BoltDB shipper for index storage
-  boltdb_shipper:
+  # TSDB shipper cache for current Loki deployments
+  tsdb_shipper:
     # Directory for local index cache
-    cache_location: /loki/boltdb-cache
+    cache_location: /loki/tsdb-cache
 
     # Cache TTL for index entries
     cache_ttl: 24h
@@ -291,7 +284,13 @@ storage_config:
     # Resync index files at this interval
     resync_interval: 5m
 
-  # Index queries cache (separate from chunk cache)
+  # For legacy BoltDB Shipper indexes, use boltdb_shipper
+  # and an index queries cache.
+  boltdb_shipper:
+    cache_location: /loki/boltdb-cache
+    cache_ttl: 24h
+    resync_interval: 5m
+
   index_queries_cache_config:
     memcached:
       batch_size: 256
@@ -304,7 +303,7 @@ storage_config:
 
 ### Chunks Cache Configuration
 
-The chunks cache stores decompressed log data. This is the largest cache and provides the most benefit for repeated access to the same time ranges.
+The chunks cache stores chunk data by chunk reference before Loki falls back to object storage. This is the largest cache and provides the most benefit for repeated access to the same time ranges.
 
 ```yaml
 # Chunk cache configuration
@@ -312,10 +311,10 @@ chunk_store_config:
   # Maximum number of chunks to cache in memory
   chunk_cache_config:
     # Use embedded cache for small deployments
-    enable_fifocache: true
-    fifocache:
-      max_size_bytes: 2GB
-      validity: 1h
+    embedded_cache:
+      enabled: true
+      max_size_mb: 2048
+      ttl: 1h
 
     # Or use Memcached for distributed deployments
     memcached:
@@ -325,12 +324,9 @@ chunk_store_config:
       addresses: "memcached-chunks.loki.svc:11211"
       timeout: 1s
       max_idle_conns: 200
-      max_async_concurrency: 100
-      max_async_buffer_size: 100000
-      max_get_multi_concurrency: 100
-      max_get_multi_batch_size: 1024
 
-  # Write-dedupe cache prevents duplicate chunk writes
+  # Write-dedupe cache is only needed for legacy index types
+  # and is not required when using TSDB.
   write_dedupe_cache_config:
     memcached:
       batch_size: 100
@@ -345,7 +341,7 @@ For teams preferring Redis over Memcached:
 
 ```yaml
 # Redis cache configuration
-query_frontend:
+query_range:
   results_cache:
     cache:
       redis:
@@ -450,9 +446,6 @@ compactor:
   # Working directory for compaction
   working_directory: /loki/compactor
 
-  # Shared store for compacted indexes
-  shared_store: s3
-
   # Run compaction every 10 minutes
   compaction_interval: 10m
 
@@ -460,13 +453,11 @@ compactor:
   retention_enabled: true
   retention_delete_delay: 2h
   retention_delete_worker_count: 150
+  delete_request_store: s3
 
   # Delete request handling
   delete_request_cancel_period: 24h
 
-  # Apply retention per tenant
-  # Useful for multi-tenant deployments
-  retention_table_timeout: 0s
 ```
 
 ### Label Best Practices
@@ -612,9 +603,10 @@ limits_config:
 
   # Split and shard settings
   split_queries_by_interval: 15m
-  query_sharding_target_bytes_per_shard: 100MB
+  tsdb_max_bytes_per_shard: 100MB
 
 # Per-tenant overrides for different workloads
+# Put this in the runtime config file referenced by runtime_config.file.
 overrides:
   # High-priority tenant with relaxed limits
   tenant-critical:
@@ -651,7 +643,7 @@ Key metrics to monitor:
 ```promql
 # Query latency by route
 histogram_quantile(0.99,
-  sum(rate(loki_request_duration_seconds_bucket{route=~"loki_api_v1_query.*"}[5m]))
+  sum(rate(loki_request_duration_seconds_bucket{route=~"/loki/api/v1/query.*"}[5m]))
   by (le, route)
 )
 
@@ -710,34 +702,33 @@ ingester:
   chunk_block_size: 262144
   chunk_encoding: snappy
   chunk_retain_period: 1m
-  max_transfer_retries: 0
   wal:
     enabled: true
     dir: /loki/wal
 
 # Query frontend - optimized for parallelism
-query_frontend:
+frontend:
   max_outstanding_per_tenant: 2048
   compress_responses: true
 
-  # Query splitting for parallelism
-  split_queries_by_interval: 15m
+# Query range - optimized for caching and sharding
+query_range:
   parallelise_shardable_queries: true
+  cache_results: true
 
   # Results cache
   results_cache:
     cache:
+      default_validity: 12h
       memcached_client:
         addresses: "memcached-results:11211"
         timeout: 500ms
         max_idle_conns: 100
         consistent_hash: true
-    default_validity: 12h
 
 # Querier configuration
 querier:
   max_concurrent: 20
-  query_timeout: 5m
   query_ingesters_within: 3h
   engine:
     timeout: 5m
@@ -748,25 +739,14 @@ query_scheduler:
 
 # Storage configuration with caching
 storage_config:
-  boltdb_shipper:
+  tsdb_shipper:
     active_index_directory: /loki/index
-    cache_location: /loki/boltdb-cache
+    cache_location: /loki/tsdb-cache
     cache_ttl: 24h
-    shared_store: s3
 
   aws:
     s3: s3://your-region/loki-chunks
     s3forcepathstyle: true
-
-  # Index cache
-  index_queries_cache_config:
-    memcached:
-      batch_size: 256
-      parallelism: 10
-    memcached_client:
-      addresses: "memcached-index:11211"
-      timeout: 500ms
-      max_idle_conns: 100
 
 # Chunk store with caching
 chunk_store_config:
@@ -793,22 +773,23 @@ schema_config:
 # Compactor for index optimization
 compactor:
   working_directory: /loki/compactor
-  shared_store: s3
   compaction_interval: 10m
   retention_enabled: true
   retention_delete_delay: 2h
+  delete_request_store: s3
 
 # Limits configuration
 limits_config:
   max_query_length: 721h
   max_query_lookback: 90d
+  query_timeout: 5m
   max_entries_limit_per_query: 50000
   max_query_parallelism: 32
   split_queries_by_interval: 15m
   ingestion_rate_mb: 50
   ingestion_burst_size_mb: 100
   max_label_names_per_series: 30
-  query_sharding_target_bytes_per_shard: 100MB
+  tsdb_max_bytes_per_shard: 100MB
 ```
 
 ---
@@ -819,7 +800,7 @@ Use this checklist to evaluate your Loki read path:
 
 - [ ] Enable query splitting with appropriate intervals (5m-30m based on volume)
 - [ ] Configure results cache with Memcached or Redis
-- [ ] Set up index cache to speed up label lookups
+- [ ] Set up the TSDB shipper cache, or the legacy index cache if using BoltDB Shipper
 - [ ] Enable chunks cache for frequently accessed time ranges
 - [ ] Use TSDB schema (v13) for better index performance
 - [ ] Configure compactor to run regularly
