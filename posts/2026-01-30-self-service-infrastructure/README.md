@@ -122,6 +122,16 @@ variable "size" {
   default     = "small"
 }
 
+variable "subnet_group" {
+  description = "DB subnet group name"
+  type        = string
+}
+
+variable "requesting_team" {
+  description = "Team that owns this database"
+  type        = string
+}
+
 locals {
   # Map friendly sizes to instance types
   instance_map = {
