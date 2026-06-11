@@ -56,10 +56,17 @@ The model registry serves as the central hub for managing model versions and the
 ```bash
 # Install MLflow and related packages
 
-pip install mlflow boto3 sqlalchemy psycopg2-binary
+pip install mlflow boto3 sqlalchemy psycopg2-binary numpy
 
-# Set up the tracking server (using PostgreSQL for production)
-export MLFLOW_TRACKING_URI=postgresql://user:password@localhost:5432/mlflow
+# Start the tracking server (using PostgreSQL for production metadata)
+mlflow server \
+  --backend-store-uri postgresql://user:password@localhost:5432/mlflow \
+  --artifacts-destination ./mlartifacts \
+  --host 0.0.0.0 \
+  --port 5000
+
+# Point clients at the tracking server
+export MLFLOW_TRACKING_URI=http://localhost:5000
 ```
 
 ### Registering a Model with Metadata
@@ -137,7 +144,7 @@ def register_model_for_approval(
         value=json.dumps(data_lineage)
     )
 
-    # Set the initial stage to "None" (pending approval)
+    # Set the initial approval status tag
     client.set_model_version_tag(
         name=model_name,
         version=model_version.version,
@@ -280,11 +287,11 @@ class AutomatedValidationGate:
             ValidationResult with pass/fail status
         """
         # Retrieve training metrics from model tags
-        metrics_tag = self.client.get_model_version_tag(
+        model_version_info = self.client.get_model_version(
             name=self.model_name,
-            version=self.model_version,
-            key="training_metrics"
+            version=self.model_version
         )
+        metrics_tag = model_version_info.tags.get("training_metrics")
 
         if not metrics_tag:
             return ValidationResult(
@@ -294,7 +301,7 @@ class AutomatedValidationGate:
                 details={}
             )
 
-        metrics = json.loads(metrics_tag.value)
+        metrics = json.loads(metrics_tag)
         failed_metrics = []
 
         # Compare each metric against its threshold
@@ -540,7 +547,7 @@ sequenceDiagram
     BR->>SYS: Submit business approval
     SYS->>CR: Request compliance review
     CR->>SYS: Submit compliance approval
-    SYS->>REG: Transition model to Production
+    SYS->>REG: Assign production alias
     REG->>DS: Notify deployment complete
 ```
 
@@ -731,14 +738,14 @@ class StakeholderApprovalSystem:
         }
 
         # Retrieve existing requests or create new list
-        existing_tag = self.client.get_model_version_tag(
+        model_version_info = self.client.get_model_version(
             name=self.model_name,
-            version=self.model_version,
-            key="approval_requests"
+            version=self.model_version
         )
+        existing_tag = model_version_info.tags.get("approval_requests")
 
         if existing_tag:
-            requests = json.loads(existing_tag.value)
+            requests = json.loads(existing_tag)
         else:
             requests = []
 
@@ -764,14 +771,14 @@ class StakeholderApprovalSystem:
         }
 
         # Retrieve existing records or create new list
-        existing_tag = self.client.get_model_version_tag(
+        model_version_info = self.client.get_model_version(
             name=self.model_name,
-            version=self.model_version,
-            key="approval_records"
+            version=self.model_version
         )
+        existing_tag = model_version_info.tags.get("approval_records")
 
         if existing_tag:
-            records = json.loads(existing_tag.value)
+            records = json.loads(existing_tag)
         else:
             records = []
 
@@ -790,16 +797,16 @@ class StakeholderApprovalSystem:
         If complete, advance the model to the next stage.
         """
         # Get all approval records
-        records_tag = self.client.get_model_version_tag(
+        model_version_info = self.client.get_model_version(
             name=self.model_name,
-            version=self.model_version,
-            key="approval_records"
+            version=self.model_version
         )
+        records_tag = model_version_info.tags.get("approval_records")
 
         if not records_tag:
             return
 
-        records = json.loads(records_tag.value)
+        records = json.loads(records_tag)
         request_records = [r for r in records if r["request_id"] == request_id]
 
         # Check for any rejections
@@ -809,14 +816,14 @@ class StakeholderApprovalSystem:
             return
 
         # Get request details
-        requests_tag = self.client.get_model_version_tag(
+        model_version_info = self.client.get_model_version(
             name=self.model_name,
-            version=self.model_version,
-            key="approval_requests"
+            version=self.model_version
         )
+        requests_tag = model_version_info.tags.get("approval_requests")
 
         if requests_tag:
-            requests = json.loads(requests_tag.value)
+            requests = json.loads(requests_tag)
             current_request = next(
                 (r for r in requests if r["request_id"] == request_id),
                 None
@@ -848,9 +855,9 @@ class StakeholderApprovalSystem:
             next_stage = stage_order[current_index + 1]
             self._update_model_status(next_stage)
 
-            # If fully approved, transition model to Production
+            # If fully approved, mark this version as the production candidate
             if next_stage == ApprovalStage.APPROVED:
-                self._transition_to_production()
+                self._assign_production_alias()
 
         except (ValueError, IndexError):
             pass
@@ -864,23 +871,22 @@ class StakeholderApprovalSystem:
             value=stage.value
         )
 
-    def _transition_to_production(self):
+    def _assign_production_alias(self):
         """
-        Transition the model to Production stage in MLflow.
+        Assign the production alias in MLflow.
         This is the final step after all approvals are collected.
         """
-        self.client.transition_model_version_stage(
+        self.client.set_registered_model_alias(
             name=self.model_name,
-            version=self.model_version,
-            stage="Production",
-            archive_existing_versions=True
+            alias="champion",
+            version=self.model_version
         )
 
-        # Record the transition timestamp
+        # Record the production selection timestamp
         self.client.set_model_version_tag(
             name=self.model_name,
             version=self.model_version,
-            key="production_deployment_timestamp",
+            key="production_alias_timestamp",
             value=datetime.utcnow().isoformat()
         )
 
