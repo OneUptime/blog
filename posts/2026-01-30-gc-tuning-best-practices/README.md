@@ -36,7 +36,7 @@ Here is how the major GC algorithms compare across different dimensions:
 graph TD
     subgraph "Latency Focused"
         ZGC[ZGC<br/>Sub-millisecond pauses<br/>Large heaps OK]
-        Shenandoah[Shenandoah<br/>Sub-millisecond pauses<br/>Concurrent compaction]
+        Shenandoah[Shenandoah<br/>Low pauses<br/>Concurrent compaction]
     end
 
     subgraph "Balanced"
@@ -62,7 +62,7 @@ graph TD
 | Web services, APIs | G1GC or ZGC | Predictable response times matter |
 | Microservices in containers | G1GC | Good balance of footprint and latency |
 | Large heap applications (>32GB) | ZGC | Pause times stay constant regardless of heap size |
-| Latency-critical trading systems | ZGC or Shenandoah | Sub-millisecond pauses |
+| Latency-critical trading systems | ZGC or Shenandoah | Very low pause times |
 | Batch processing, ETL | Parallel GC | Maximum throughput, pauses acceptable |
 | Small CLI tools | Serial GC | Minimal overhead for short-lived processes |
 
@@ -153,7 +153,7 @@ java \
 | `-XX:SoftMaxHeapSize` | Same as Xmx | Target heap size (GC more aggressive above this) | Set 10-20% below Xmx for breathing room |
 | `-XX:ZCollectionInterval` | 0 (disabled) | Force GC every N seconds | Enable for consistent memory profile |
 | `-XX:ZAllocationSpikeTolerance` | 2.0 | How aggressive to be during allocation spikes | Increase if seeing allocation stalls |
-| `-XX:ZFragmentationLimit` | 25% | When to relocate for fragmentation | Lower if memory is tight |
+| `-XX:ZFragmentationLimit` | 5% | When to relocate for fragmentation | Lower if memory is tight |
 | `-XX:ConcGCThreads` | Auto | Number of concurrent GC threads | Usually leave at default |
 
 ### Production ZGC Configuration
@@ -161,7 +161,6 @@ java \
 ```bash
 java \
   -XX:+UseZGC \
-  -XX:+ZGenerational \
   -Xms32g \
   -Xmx32g \
   -XX:SoftMaxHeapSize=28g \
@@ -172,7 +171,7 @@ java \
   -jar application.jar
 ```
 
-Note: ZGC Generational mode (`-XX:+ZGenerational`) is available in JDK 21+ and improves performance for most workloads by separating young and old generation collection.
+Note: Generational ZGC is available in JDK 21 and improves performance for most workloads by separating young and old generation collection. Use `-XX:+UseZGC -XX:+ZGenerational` on JDK 21-23; on JDK 24 and later, ZGC is generational by default and the `ZGenerational` option has been removed.
 
 ---
 
@@ -210,7 +209,7 @@ java \
   -XX:ShenandoahGCHeuristics=adaptive \
   -XX:ShenandoahMinFreeThreshold=10 \
   -XX:ShenandoahAllocationThreshold=10 \
-  -XX:+ShenandoahAllocFailureALot \
+  -XX:+AlwaysPreTouch \
   -Xlog:gc*:file=/var/log/app/gc.log:time,uptime:filecount=5,filesize=100m \
   -jar application.jar
 ```
@@ -258,7 +257,7 @@ java \
 |-----------|-------------------|-----|
 | `MaxRAMPercentage` | 70-75% | Leave room for off-heap memory, metaspace, thread stacks |
 | `InitialRAMPercentage` | 50-70% | Start with reasonable size to avoid early resizing |
-| `MinRAMPercentage` | Same as Initial | Prevents heap shrinking under memory pressure |
+| `MinRAMPercentage` | Usually leave default | Controls maximum heap percentage for very small heaps, not minimum heap size |
 
 ---
 
@@ -319,7 +318,7 @@ For G1GC, start with these adjustments:
 
 | Mistake | Why It's Wrong | What to Do Instead |
 |---------|----------------|-------------------|
-| Setting Xms != Xmx | Causes heap resizing overhead | Set them equal for production |
+| Unintentionally leaving Xms far below Xmx | Can cause heap resizing overhead and latency hiccups | Set them equal for latency-sensitive production workloads, or keep Xms lower only when footprint matters |
 | Over-tuning young gen | JVM's adaptive sizing usually knows better | Only override with measured justification |
 | Ignoring metaspace | Causes unexpected OOM | Set `-XX:MetaspaceSize` and `-XX:MaxMetaspaceSize` |
 | Disabling adaptive sizing | Removes JVM's ability to optimize | Keep `-XX:+UseAdaptiveSizePolicy` (default) |
@@ -352,7 +351,7 @@ Configure comprehensive GC logging for production:
 # Print current GC configuration
 jcmd <pid> VM.flags
 
-# Force GC and print heap statistics
+# Print heap statistics
 jcmd <pid> GC.heap_info
 
 # Print class histogram (top memory consumers)
@@ -394,12 +393,11 @@ java \
   -jar processor.jar
 ```
 
-### Low-Latency Service (JDK 21+)
+### Low-Latency Service (JDK 24+)
 
 ```bash
 java \
   -XX:+UseZGC \
-  -XX:+ZGenerational \
   -Xms32g -Xmx32g \
   -XX:SoftMaxHeapSize=28g \
   -XX:+UseLargePages \
