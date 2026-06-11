@@ -63,14 +63,10 @@ flowchart TB
 ### Basic Deployment with Helm
 
 ```bash
-# Add the NPD Helm repository
-
-helm repo add deliveryhero https://charts.deliveryhero.io/
-helm repo update
-
 # Install Node Problem Detector
-helm install node-problem-detector deliveryhero/node-problem-detector \
+helm install node-problem-detector oci://ghcr.io/deliveryhero/helm-charts/node-problem-detector \
   --namespace kube-system \
+  --create-namespace \
   --set metrics.enabled=true \
   --set metrics.serviceMonitor.enabled=true
 ```
@@ -154,6 +150,62 @@ data:
           "pattern": "Error trying v2 registry: failed to register layer: rename /var/lib/docker/image/(.+) /var/lib/docker/image/(.+): directory not empty.*"
         }
       ]
+    }
+  health-checker-kubelet.json: |
+    {
+      "plugin": "custom",
+      "pluginConfig": {
+        "invoke_interval": "10s",
+        "timeout": "3m",
+        "max_output_length": 80,
+        "concurrency": 1
+      },
+      "source": "health-checker",
+      "conditions": [
+        {
+          "type": "KubeletUnhealthy",
+          "reason": "KubeletIsHealthy",
+          "message": "kubelet on the node is functioning properly"
+        }
+      ],
+      "rules": [
+        {
+          "type": "permanent",
+          "condition": "KubeletUnhealthy",
+          "reason": "KubeletUnhealthy",
+          "path": "/home/kubernetes/bin/health-checker",
+          "args": ["--component=kubelet", "--enable-repair=false", "--cooldown-time=1m", "--loopback-time=0", "--health-check-timeout=10s"],
+          "timeout": "3m"
+        }
+      ]
+    }
+  system-stats-monitor.json: |
+    {
+      "invokeInterval": "60s",
+      "disk": {
+        "metricsConfigs": {
+          "disk/io_time": { "displayName": "disk/io_time" },
+          "disk/weighted_io": { "displayName": "disk/weighted_io" },
+          "disk/avg_queue_len": { "displayName": "disk/avg_queue_len" }
+        },
+        "includeAllAttachedBlk": true,
+        "includeRootBlk": true,
+        "lsblkTimeout": "5s"
+      },
+      "memory": {
+        "metricsConfigs": {
+          "memory/bytes_used": { "displayName": "memory/bytes_used" },
+          "memory/dirty_used": { "displayName": "memory/dirty_used" }
+        }
+      },
+      "cpu": {
+        "metricsConfigs": {
+          "cpu/runnable_task_count": { "displayName": "cpu/runnable_task_count" },
+          "cpu/load_1m": { "displayName": "cpu/load_1m" },
+          "cpu/load_5m": { "displayName": "cpu/load_5m" },
+          "cpu/load_15m": { "displayName": "cpu/load_15m" }
+        }
+      }
     }
 ```
 
@@ -397,13 +449,16 @@ Custom plugin monitors run external scripts or binaries to detect problems. This
 
 ### Health Checker
 
-Health checker monitors run continuous health checks against system services:
+Health checkers are configured as custom plugins that run health checks against system services:
 
 ```json
 {
-  "plugin": "healthchecker",
+  "plugin": "custom",
   "pluginConfig": {
-    "timeout": "10s"
+    "invoke_interval": "10s",
+    "timeout": "3m",
+    "max_output_length": 80,
+    "concurrency": 1
   },
   "source": "health-checker",
   "conditions": [
@@ -423,13 +478,17 @@ Health checker monitors run continuous health checks against system services:
       "type": "permanent",
       "condition": "KubeletUnhealthy",
       "reason": "KubeletUnhealthy",
-      "path": "/health-checker/kubelet-health-checker.sh"
+      "path": "/home/kubernetes/bin/health-checker",
+      "args": ["--component=kubelet", "--enable-repair=false", "--cooldown-time=1m", "--loopback-time=0", "--health-check-timeout=10s"],
+      "timeout": "3m"
     },
     {
       "type": "permanent",
       "condition": "ContainerRuntimeUnhealthy",
       "reason": "ContainerRuntimeUnhealthy",
-      "path": "/health-checker/container-runtime-health-checker.sh"
+      "path": "/home/kubernetes/bin/health-checker",
+      "args": ["--component=cri", "--enable-repair=false", "--cooldown-time=2m", "--health-check-timeout=60s"],
+      "timeout": "3m"
     }
   ]
 }
@@ -443,29 +502,28 @@ Create a script that returns specific exit codes and outputs:
 
 ```bash
 #!/bin/bash
-# check_disk_latency.sh - Check disk I/O latency
+# check_disk_throughput.sh - Check disk read throughput
 
-THRESHOLD_MS=100
+THRESHOLD_MBPS=10
 DEVICE="/dev/sda"
 
-# Measure disk latency using dd
-LATENCY=$(dd if=$DEVICE of=/dev/null bs=4k count=100 iflag=direct 2>&1 | \
+# Measure sequential read throughput using dd
+THROUGHPUT=$(dd if=$DEVICE of=/dev/null bs=4k count=100 iflag=direct 2>&1 | \
   grep -oP '\d+\.\d+ MB/s' | head -1 | grep -oP '\d+\.\d+')
 
-if [ -z "$LATENCY" ]; then
-  echo "Unable to measure disk latency"
+if [ -z "$THROUGHPUT" ]; then
+  echo "Unable to measure disk throughput"
   exit 1  # Unknown state
 fi
 
-# Convert MB/s to approximate latency (inverse relationship)
-SPEED=$(echo "$LATENCY" | awk '{printf "%.0f", $1}')
+SPEED=$(echo "$THROUGHPUT" | awk '{printf "%.0f", $1}')
 
-if [ "$SPEED" -lt 10 ]; then
-  echo "Disk latency is high: ${SPEED} MB/s throughput"
+if [ "$SPEED" -lt "$THRESHOLD_MBPS" ]; then
+  echo "Disk throughput is low: ${SPEED} MB/s"
   exit 1  # Problem detected
 fi
 
-echo "Disk performance is normal: ${SPEED} MB/s throughput"
+echo "Disk throughput is normal: ${SPEED} MB/s"
 exit 0  # No problem
 ```
 
@@ -487,7 +545,7 @@ metadata:
   name: node-problem-detector-custom-config
   namespace: kube-system
 data:
-  disk-latency-monitor.json: |
+  disk-iops-monitor.json: |
     {
       "plugin": "custom",
       "pluginConfig": {
@@ -496,21 +554,21 @@ data:
         "max_output_length": 256,
         "concurrency": 1
       },
-      "source": "disk-latency-monitor",
+      "source": "disk-iops-monitor",
       "conditions": [
         {
-          "type": "DiskLatencyHigh",
-          "reason": "DiskLatencyNormal",
-          "message": "Disk latency is within normal range"
+          "type": "DiskIOPSLow",
+          "reason": "DiskIOPSNormal",
+          "message": "Disk IOPS are within normal range"
         }
       ],
       "rules": [
         {
           "type": "permanent",
-          "condition": "DiskLatencyHigh",
-          "reason": "DiskLatencyHigh",
-          "path": "/custom-plugins/check_disk_latency.sh",
-          "message": "Disk latency is above threshold"
+          "condition": "DiskIOPSLow",
+          "reason": "DiskIOPSLow",
+          "path": "/custom-plugins/check_disk_iops.sh",
+          "message": "Disk IOPS are below threshold"
         }
       ]
     }
@@ -541,7 +599,7 @@ data:
         }
       ]
     }
-  check_disk_latency.sh: |
+  check_disk_iops.sh: |
     #!/bin/bash
     THRESHOLD_IOPS=100
 
@@ -655,12 +713,10 @@ GPU monitor configuration:
 
 ## System Stats Monitor
 
-The system stats monitor collects performance metrics and reports issues when thresholds are exceeded:
+The system stats monitor collects health-related system statistics as metrics:
 
 ```json
 {
-  "plugin": "systemstatsmonitor",
-  "source": "system-stats-monitor",
   "invokeInterval": "60s",
   "disk": {
     "metricsConfigs": {
@@ -679,11 +735,11 @@ The system stats monitor collects performance metrics and reports issues when th
   },
   "memory": {
     "metricsConfigs": {
-      "memory/available": {
-        "displayName": "memory/available"
+      "memory/bytes_used": {
+        "displayName": "memory/bytes_used"
       },
-      "memory/dirty": {
-        "displayName": "memory/dirty"
+      "memory/dirty_used": {
+        "displayName": "memory/dirty_used"
       }
     }
   },
@@ -711,32 +767,36 @@ The system stats monitor collects performance metrics and reports issues when th
 ### Check Node Conditions
 
 ```bash
+NODE_NAME=node-1
+
 # View all node conditions
 kubectl get nodes -o json | jq '.items[] | {name: .metadata.name, conditions: .status.conditions}'
 
 # Filter for NPD-reported conditions
-kubectl describe node <node-name> | grep -A 5 "Conditions:"
+kubectl describe node "${NODE_NAME}" | grep -A 5 "Conditions:"
 
 # Check specific condition
-kubectl get node <node-name> -o jsonpath='{.status.conditions[?(@.type=="KernelDeadlock")]}'
+kubectl get node "${NODE_NAME}" -o jsonpath='{.status.conditions[?(@.type=="KernelDeadlock")]}'
 ```
 
 ### View Events
 
 ```bash
-# Get all events from NPD
-kubectl get events --field-selector source=node-problem-detector
+NODE_NAME=node-1
+
+# Get node events, including NPD problem monitor events
+kubectl get events --field-selector involvedObject.kind=Node
 
 # Get events for a specific node
-kubectl get events --field-selector involvedObject.name=<node-name>,source=node-problem-detector
+kubectl get events --field-selector involvedObject.kind=Node,involvedObject.name="${NODE_NAME}"
 
 # Watch events in real-time
-kubectl get events -w --field-selector source=node-problem-detector
+kubectl get events -w --field-selector involvedObject.kind=Node
 ```
 
 ### Sample Output
 
-```bash
+```text
 $ kubectl get nodes -o custom-columns=\
 NAME:.metadata.name,\
 KERNEL_DEADLOCK:.status.conditions[?(@.type==\"KernelDeadlock\")].status,\
@@ -871,6 +931,7 @@ import (
     "time"
 
     corev1 "k8s.io/api/core/v1"
+    policyv1 "k8s.io/api/policy/v1"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/client-go/kubernetes"
     "k8s.io/client-go/rest"
@@ -1005,7 +1066,9 @@ func (rc *RemediationController) drainAndReboot(nodeName string) error {
                 Namespace: pod.Namespace,
             },
         }
-        rc.clientset.PolicyV1().Evictions(pod.Namespace).Evict(ctx, eviction)
+        if err := rc.clientset.PolicyV1().Evictions(pod.Namespace).Evict(ctx, eviction); err != nil {
+            log.Printf("Eviction failed for pod %s/%s: %v", pod.Namespace, pod.Name, err)
+        }
     }
 
     log.Printf("Node %s drained, reboot should be triggered externally", nodeName)
@@ -1307,9 +1370,12 @@ data:
     }
   health-checker-kubelet.json: |
     {
-      "plugin": "healthchecker",
+      "plugin": "custom",
       "pluginConfig": {
-        "timeout": "10s"
+        "invoke_interval": "10s",
+        "timeout": "3m",
+        "max_output_length": 80,
+        "concurrency": 1
       },
       "source": "kubelet-health-checker",
       "conditions": [
@@ -1325,16 +1391,19 @@ data:
           "condition": "KubeletUnhealthy",
           "reason": "KubeletUnhealthy",
           "path": "/home/kubernetes/bin/health-checker",
-          "args": ["--component=kubelet", "--enable-repair=false"],
-          "timeout": "10s"
+          "args": ["--component=kubelet", "--enable-repair=false", "--cooldown-time=1m", "--loopback-time=0", "--health-check-timeout=10s"],
+          "timeout": "3m"
         }
       ]
     }
   health-checker-containerd.json: |
     {
-      "plugin": "healthchecker",
+      "plugin": "custom",
       "pluginConfig": {
-        "timeout": "10s"
+        "invoke_interval": "10s",
+        "timeout": "3m",
+        "max_output_length": 80,
+        "concurrency": 1
       },
       "source": "containerd-health-checker",
       "conditions": [
@@ -1350,15 +1419,13 @@ data:
           "condition": "ContainerRuntimeUnhealthy",
           "reason": "ContainerdUnhealthy",
           "path": "/home/kubernetes/bin/health-checker",
-          "args": ["--component=containerd", "--enable-repair=false"],
-          "timeout": "10s"
+          "args": ["--component=cri", "--enable-repair=false", "--cooldown-time=2m", "--health-check-timeout=60s"],
+          "timeout": "3m"
         }
       ]
     }
   system-stats-monitor.json: |
     {
-      "plugin": "systemstatsmonitor",
-      "source": "system-stats-monitor",
       "invokeInterval": "60s",
       "disk": {
         "metricsConfigs": {
@@ -1366,13 +1433,14 @@ data:
           "disk/weighted_io": { "displayName": "disk/weighted_io" },
           "disk/avg_queue_len": { "displayName": "disk/avg_queue_len" }
         },
-        "includeAllAttachedBlk": true
+        "includeAllAttachedBlk": true,
+        "includeRootBlk": true,
+        "lsblkTimeout": "5s"
       },
       "memory": {
         "metricsConfigs": {
-          "memory/available": { "displayName": "memory/available" },
           "memory/bytes_used": { "displayName": "memory/bytes_used" },
-          "memory/dirty": { "displayName": "memory/dirty" }
+          "memory/dirty_used": { "displayName": "memory/dirty_used" }
         }
       },
       "cpu": {
