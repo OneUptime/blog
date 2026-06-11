@@ -63,7 +63,7 @@ CREATE TABLE customers (
     updated_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Create unique index on email for conflict detection
+-- Create unique index on email to enforce email uniqueness
 CREATE UNIQUE INDEX idx_customers_email ON customers(email);
 
 -- Upsert operation: insert or update on conflict
@@ -77,8 +77,8 @@ DO UPDATE SET
     updated_at = EXCLUDED.updated_at
 WHERE
     -- Optional: only update if values actually changed
-    customers.customer_name != EXCLUDED.customer_name
-    OR customers.email != EXCLUDED.email;
+    customers.customer_name IS DISTINCT FROM EXCLUDED.customer_name
+    OR customers.email IS DISTINCT FROM EXCLUDED.email;
 ```
 
 ### SQL Server / Azure SQL MERGE
@@ -93,8 +93,10 @@ ON target.customer_id = source.customer_id
 
 -- When keys match: update existing record
 WHEN MATCHED AND (
-    target.customer_name != source.customer_name
-    OR target.email != source.email
+    target.customer_name <> source.customer_name
+    OR target.email <> source.email
+    OR (target.email IS NULL AND source.email IS NOT NULL)
+    OR (target.email IS NOT NULL AND source.email IS NULL)
 ) THEN
     UPDATE SET
         target.customer_name = source.customer_name,
@@ -276,7 +278,7 @@ WHEN NOT MATCHED THEN
 # Hash-based key matching for data pipelines
 # Useful when dealing with wide tables or variable key combinations
 
-from pyspark.sql.functions import sha2, concat_ws, col
+from pyspark.sql.functions import sha2, to_json, struct, col
 
 def create_hash_key(df, key_columns: list, hash_column_name: str = "_hash_key"):
     """
@@ -291,20 +293,18 @@ def create_hash_key(df, key_columns: list, hash_column_name: str = "_hash_key"):
         DataFrame with added hash key column
     """
 
-    # Concatenate key columns with a delimiter
-    # Use coalesce to handle nulls consistently
-    concat_expr = concat_ws(
-        "|",  # Delimiter between values
-        *[col(c).cast("string") for c in key_columns]
+    # Serialize key columns as a struct to preserve column boundaries and nulls
+    key_struct = to_json(
+        struct(*[col(c).cast("string").alias(c) for c in key_columns])
     )
 
-    # Create SHA-256 hash of concatenated values
+    # Create SHA-256 hash of serialized key values
     return df.withColumn(
         hash_column_name,
-        sha2(concat_expr, 256)
+        sha2(key_struct, 256)
     )
 
-# Apply hash key to source and target
+# Apply hash key to source data; the target table should store the same key
 source_df = create_hash_key(
     raw_source_df,
     key_columns=["customer_id", "order_date", "product_id"]
@@ -314,7 +314,9 @@ source_df = create_hash_key(
 delta_table.alias("target").merge(
     source_df.alias("source"),
     "target._hash_key = source._hash_key"
-)
+).whenMatchedUpdateAll() \
+ .whenNotMatchedInsertAll() \
+ .execute()
 ```
 
 ## Data Pipeline Integration
@@ -462,17 +464,18 @@ def batch_upsert(source_df, target_path: str, batch_size: int = 100000):
 
     # Get total count for progress tracking
     total_records = source_df.count()
-    num_batches = (total_records // batch_size) + 1
+    num_batches = (total_records + batch_size - 1) // batch_size
 
     print(f"Processing {total_records} records in {num_batches} batches")
 
-    # Add row number for batching
     from pyspark.sql.window import Window
-    from pyspark.sql.functions import row_number, monotonically_increasing_id
+    from pyspark.sql.functions import col, row_number, monotonically_increasing_id
+    from delta.tables import DeltaTable
 
+    # Add a consecutive row number for batching
     source_with_id = source_df.withColumn(
-        "_row_id",
-        monotonically_increasing_id()
+        "_row_number",
+        row_number().over(Window.orderBy(monotonically_increasing_id()))
     )
 
     # Process each batch
@@ -482,9 +485,9 @@ def batch_upsert(source_df, target_path: str, batch_size: int = 100000):
 
         # Filter to current batch
         batch_df = source_with_id.filter(
-            (col("_row_id") >= start_id) &
-            (col("_row_id") < end_id)
-        ).drop("_row_id")
+            (col("_row_number") > start_id) &
+            (col("_row_number") <= end_id)
+        ).drop("_row_number")
 
         # Skip empty batches
         if batch_df.count() == 0:
@@ -510,6 +513,8 @@ def batch_upsert(source_df, target_path: str, batch_size: int = 100000):
 
 import time
 from functools import wraps
+from pyspark.sql.functions import col, row_number
+from pyspark.sql.window import Window
 
 def retry_on_conflict(max_retries: int = 3, backoff_seconds: float = 1.0):
     """
@@ -567,7 +572,13 @@ def safe_upsert(delta_table, source_df, merge_condition: str):
     if source_count != distinct_count:
         print(f"Warning: Source has {source_count - distinct_count} duplicate keys")
         # Deduplicate, keeping latest record
-        source_df = source_df.dropDuplicates(["customer_id"])
+        dedupe_window = Window.partitionBy("customer_id").orderBy(
+            col("updated_at").desc_nulls_last()
+        )
+        source_df = source_df.withColumn(
+            "_dedupe_rank",
+            row_number().over(dedupe_window)
+        ).filter(col("_dedupe_rank") == 1).drop("_dedupe_rank")
 
     # Execute merge with optimistic concurrency
     delta_table.alias("target").merge(
