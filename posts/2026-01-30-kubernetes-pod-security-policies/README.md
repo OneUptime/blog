@@ -83,7 +83,7 @@ flowchart LR
 
 ### Step 1: Enable the Admission Controller
 
-The Pod Security Admission controller is enabled by default in Kubernetes 1.23 and later. For earlier versions, you need to enable it in the API server configuration.
+The Pod Security Admission controller is available by default in Kubernetes 1.23 and later, and is generally available in Kubernetes 1.25 and later. For Kubernetes 1.22, where the feature was alpha, you need to enable it in the API server configuration.
 
 ```yaml
 # kube-apiserver configuration
@@ -388,8 +388,9 @@ plugins:
         - kube-node-lease
         - kube-public
       # Service accounts for infrastructure components
+      # Exemption usernames must be explicitly listed.
       usernames:
-        - system:serviceaccount:kube-system:*
+        - system:serviceaccount:kube-system:cni-plugin
       # Runtime classes that have their own security measures
       runtimeClasses: []
 ```
@@ -404,9 +405,6 @@ Test pod configurations against policies before deployment:
 #!/bin/bash
 # validate-pod-security.sh
 # Script to validate pod manifests against security standards
-
-# Set the namespace with restricted policy for testing
-NAMESPACE="secure-apps"
 
 # Create a test namespace with restricted policy
 kubectl create namespace test-restricted --dry-run=client -o yaml | \
@@ -629,13 +627,13 @@ spec:
   groups:
   - name: pod-security
     rules:
-    # Alert when pods are rejected by Pod Security Admission
+    # Alert when pods are denied by Pod Security Admission enforcement
     - alert: PodSecurityViolation
       expr: |
         increase(
-          apiserver_admission_controller_admission_duration_seconds_count{
-            name="PodSecurity",
-            rejected="true"
+          pod_security_evaluations_total{
+            mode="enforce",
+            decision="deny"
           }[5m]
         ) > 0
       for: 1m
