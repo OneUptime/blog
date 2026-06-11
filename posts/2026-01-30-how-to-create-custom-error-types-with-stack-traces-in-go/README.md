@@ -56,15 +56,15 @@ Custom types let you carry structured data, enabling callers to make decisions b
 
 ## Adding Stack Traces with pkg/errors
 
-The `github.com/pkg/errors` package (now largely superseded by standard library features, but still widely used) adds stack trace capture:
+The `github.com/pkg/errors` package (now in maintenance mode after Go 1.13's standard library wrapping changes, but still widely used for stack traces) adds stack trace capture:
 
 ```go
-import "github.com/pkg/errors"
+import pkgerrors "github.com/pkg/errors"
 
 func fetchUser(id string) (*User, error) {
     user, err := db.Query(id)
     if err != nil {
-        return nil, errors.Wrap(err, "failed to fetch user")
+        return nil, pkgerrors.Wrap(err, "failed to fetch user")
     }
     return user, nil
 }
@@ -89,23 +89,24 @@ Combine custom error types with stack traces for maximum debugging power:
 ```go
 import (
     "fmt"
-    "github.com/pkg/errors"
+
+    pkgerrors "github.com/pkg/errors"
 )
 
 type AppError struct {
     Code    string
     Message string
     Err     error
-    stack   errors.StackTrace
+    stack   pkgerrors.StackTrace
 }
 
 func NewAppError(code, message string) *AppError {
-    err := errors.New(message)
+    err := pkgerrors.New(message)
     return &AppError{
         Code:    code,
         Message: message,
         Err:     err,
-        stack:   errors.WithStack(err).(stackTracer).StackTrace(),
+        stack:   err.(stackTracer).StackTrace(),
     }
 }
 
@@ -118,10 +119,10 @@ func (e *AppError) Unwrap() error {
 }
 
 type stackTracer interface {
-    StackTrace() errors.StackTrace
+    StackTrace() pkgerrors.StackTrace
 }
 
-func (e *AppError) StackTrace() errors.StackTrace {
+func (e *AppError) StackTrace() pkgerrors.StackTrace {
     return e.stack
 }
 ```
@@ -161,12 +162,18 @@ func validateAndSave(user *User) error {
 These functions inspect error chains, even through wrapped errors:
 
 ```go
+import "errors"
+
 var ErrNotFound = errors.New("not found")
 
 func handleRequest() {
-    err := fetchUser("123")
+    _, err := fetchUser("123")
+    if err == nil {
+        return
+    }
 
-    // Check if any error in the chain matches
+    // Check if any error in the chain matches.
+    // This works when fetchUser returns or wraps ErrNotFound.
     if errors.Is(err, ErrNotFound) {
         // Handle not found case
     }
@@ -184,7 +191,11 @@ func handleRequest() {
 For production observability, log errors with structured fields:
 
 ```go
-import "log/slog"
+import (
+    "errors"
+    "fmt"
+    "log/slog"
+)
 
 func logError(err error) {
     var appErr *AppError
@@ -210,7 +221,7 @@ This enables filtering and aggregating errors by code in logging systems like El
 
 3. **Capture stack traces at the origin**: Add stack traces when errors are created, not when they're wrapped.
 
-4. **Always implement Unwrap**: Enable `errors.Is` and `errors.As` to work through your error chains.
+4. **Implement Unwrap when wrapping an underlying error**: Enable `errors.Is` and `errors.As` to work through error chains when your custom error intentionally exposes another error.
 
 5. **Log once at the top**: Avoid logging errors at every layer. Log with full context at the top of your call stack.
 
