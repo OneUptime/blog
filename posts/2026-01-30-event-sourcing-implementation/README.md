@@ -143,6 +143,11 @@ class EventStore {
     return events.filter(e => e.version >= fromVersion);
   }
 
+  // Retrieve the global event log in append order
+  async getAllEvents(): Promise<DomainEvent[]> {
+    return [...this.globalLog];
+  }
+
   // Subscribe to new events for building projections
   subscribe(handler: (event: DomainEvent) => void): void {
     this.subscribers.push(handler);
@@ -181,16 +186,17 @@ interface CartCheckedOutEvent extends DomainEvent {
 
 // Shopping cart aggregate with event sourcing
 class ShoppingCart {
-  private id: string;
-  private version: number = 0;
+  private currentVersion: number = 0;
   private items: Map<string, { quantity: number; price: number }> = new Map();
   private checkedOut: boolean = false;
 
   // Uncommitted events waiting to be persisted
   private uncommittedEvents: DomainEvent[] = [];
 
-  constructor(id: string) {
-    this.id = id;
+  constructor(public readonly id: string) {}
+
+  get version(): number {
+    return this.currentVersion;
   }
 
   // Command: Add item to cart
@@ -260,7 +266,12 @@ class ShoppingCart {
         this.checkedOut = true;
         break;
     }
-    this.version = event.version;
+    this.currentVersion = event.version;
+  }
+
+  // Apply a historical event during replay without marking it as uncommitted
+  applyEvent(event: DomainEvent): void {
+    this.apply(event);
   }
 
   // Rebuild aggregate state from event history
@@ -270,6 +281,28 @@ class ShoppingCart {
       cart.apply(event);
     }
     return cart;
+  }
+
+  // Restore aggregate state from a saved snapshot
+  static fromSnapshot(id: string, snapshot: Snapshot): ShoppingCart {
+    const cart = new ShoppingCart(id);
+    const state = snapshot.state as {
+      items?: [string, { quantity: number; price: number }][];
+      checkedOut?: boolean;
+    };
+
+    cart.items = new Map(state.items || []);
+    cart.checkedOut = state.checkedOut || false;
+    cart.currentVersion = snapshot.version;
+    return cart;
+  }
+
+  // Convert aggregate state into a serializable snapshot payload
+  toSnapshot(): Record<string, unknown> {
+    return {
+      items: Array.from(this.items.entries()),
+      checkedOut: this.checkedOut,
+    };
   }
 
   // Get events that need to be persisted
