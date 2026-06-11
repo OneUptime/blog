@@ -56,7 +56,7 @@ The headers used for this vary by format:
 |--------|---------|
 | W3C Trace Context | `traceparent`, `tracestate` |
 | B3 (Single) | `b3` |
-| B3 (Multi) | `X-B3-TraceId`, `X-B3-SpanId`, `X-B3-Sampled`, `X-B3-ParentSpanId` |
+| B3 (Multi) | `X-B3-TraceId`, `X-B3-SpanId`, `X-B3-Sampled`, `X-B3-Flags` |
 | Jaeger | `uber-trace-id` |
 | AWS X-Ray | `X-Amzn-Trace-Id` |
 
@@ -98,7 +98,8 @@ The Composite Propagator wraps multiple individual propagators and delegates to 
 
 **During extraction** (receiving a request):
 - The composite propagator tries each child propagator in order
-- The first propagator that successfully extracts context wins
+- Each propagator receives the context returned by the previous propagator
+- If multiple propagators extract the same context key, the later propagator wins
 - This allows your service to understand any supported format
 
 **During injection** (making an outbound request):
@@ -115,9 +116,9 @@ flowchart TB
         CP1 --> W3C1[W3C Propagator]
         CP1 --> B31[B3 Propagator]
         CP1 --> J1[Jaeger Propagator]
-        W3C1 -->|First Match| Context1[Extracted Context]
-        B31 -.->|Skipped if W3C matched| Context1
-        J1 -.->|Skipped if earlier matched| Context1
+        W3C1 -->|Updates Context| Context1[Extracted Context]
+        B31 -->|Can Override| Context1
+        J1 -->|Can Override| Context1
     end
 ```
 
@@ -144,8 +145,11 @@ First, install the required packages.
 npm install @opentelemetry/api \
   @opentelemetry/sdk-node \
   @opentelemetry/core \
+  @opentelemetry/resources \
   @opentelemetry/propagator-b3 \
   @opentelemetry/propagator-jaeger \
+  @opentelemetry/auto-instrumentations-node \
+  @opentelemetry/semantic-conventions \
   @opentelemetry/exporter-trace-otlp-http
 ```
 
@@ -156,8 +160,8 @@ Create a telemetry configuration file that sets up the composite propagator.
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
-import { Resource } from '@opentelemetry/resources';
-import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
+import { resourceFromAttributes } from '@opentelemetry/resources';
+import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from '@opentelemetry/semantic-conventions';
 
 // Import propagators
 import {
@@ -186,14 +190,14 @@ const compositePropagator = new CompositePropagator({
 
 // Configure the trace exporter
 const traceExporter = new OTLPTraceExporter({
-  url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4318/v1/traces',
+  url: process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT || 'http://localhost:4318/v1/traces',
 });
 
 // Initialize the SDK with the composite propagator
 export const sdk = new NodeSDK({
-  resource: new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: process.env.SERVICE_NAME || 'my-service',
-    [SemanticResourceAttributes.SERVICE_VERSION]: process.env.SERVICE_VERSION || '1.0.0',
+  resource: resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: process.env.SERVICE_NAME || 'my-service',
+    [ATTR_SERVICE_VERSION]: process.env.SERVICE_VERSION || '1.0.0',
   }),
   traceExporter,
   // Register the composite propagator
@@ -245,6 +249,7 @@ pip install opentelemetry-api \
   opentelemetry-sdk \
   opentelemetry-propagator-b3 \
   opentelemetry-propagator-jaeger \
+  opentelemetry-instrumentation-flask \
   opentelemetry-exporter-otlp
 ```
 
@@ -282,7 +287,7 @@ def configure_telemetry():
 
     # Configure the OTLP exporter
     exporter = OTLPSpanExporter(
-        endpoint=os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4318/v1/traces")
+        endpoint=os.getenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT", "http://localhost:4318/v1/traces")
     )
 
     # Use batch processor for efficiency
@@ -295,7 +300,7 @@ def configure_telemetry():
     composite_propagator = CompositePropagator([
         TraceContextTextMapPropagator(),  # W3C Trace Context
         W3CBaggagePropagator(),           # W3C Baggage
-        B3MultiFormat(),                   # B3 Multi-header format
+        B3MultiFormat(),                   # B3 multi-header injection; extracts single and multi-header B3
         JaegerPropagator(),               # Jaeger format
     ])
 
@@ -316,6 +321,7 @@ Use the configuration in your Flask or FastAPI application.
 ```python
 # app.py
 from flask import Flask
+from opentelemetry.instrumentation.flask import FlaskInstrumentor
 from telemetry import configure_telemetry, shutdown_telemetry
 import atexit
 
@@ -323,6 +329,7 @@ import atexit
 configure_telemetry()
 
 app = Flask(__name__)
+FlaskInstrumentor().instrument_app(app)
 
 # Register shutdown handler
 atexit.register(shutdown_telemetry)
@@ -375,7 +382,6 @@ b3: 80f198ee56343ba864fe8b2a57d3eff7-e457b5a2e4d86bd1-1-05e3ac9a4f6e3b90
 ```text
 X-B3-TraceId: 80f198ee56343ba864fe8b2a57d3eff7
 X-B3-SpanId: e457b5a2e4d86bd1
-X-B3-ParentSpanId: 05e3ac9a4f6e3b90
 X-B3-Sampled: 1
 ```
 
@@ -396,14 +402,14 @@ For production environments, consider these configurations.
 
 ### Controlling Propagator Order
 
-The order of propagators matters for extraction. Place more specific or preferred formats first.
+The order of propagators matters for extraction. Place more specific or preferred formats later, because later propagators can override context extracted by earlier ones.
 
 ```typescript
 // If you want to prefer B3 over W3C during extraction
 const compositePropagator = new CompositePropagator({
   propagators: [
-    new B3Propagator(), // Checked first
-    new W3CTraceContextPropagator(), // Fallback
+    new W3CTraceContextPropagator(), // Checked first
+    new B3Propagator(), // Can override W3C if both are present
   ],
 });
 ```
@@ -503,15 +509,15 @@ Verify that your composite propagator is working correctly.
 ### Unit Test Example
 
 ```typescript
-import { context, trace, propagation } from '@opentelemetry/api';
+import { context, trace, propagation, TraceFlags } from '@opentelemetry/api';
 import { CompositePropagator, W3CTraceContextPropagator } from '@opentelemetry/core';
-import { B3Propagator } from '@opentelemetry/propagator-b3';
+import { B3InjectEncoding, B3Propagator } from '@opentelemetry/propagator-b3';
 
 describe('CompositePropagator', () => {
   const compositePropagator = new CompositePropagator({
     propagators: [
       new W3CTraceContextPropagator(),
-      new B3Propagator(),
+      new B3Propagator({ injectEncoding: B3InjectEncoding.MULTI_HEADER }),
     ],
   });
 
@@ -520,9 +526,11 @@ describe('CompositePropagator', () => {
   });
 
   it('should inject both W3C and B3 headers', () => {
-    const tracer = trace.getTracer('test');
-    const span = tracer.startSpan('test-span');
-    const ctx = trace.setSpan(context.active(), span);
+    const ctx = trace.setSpanContext(context.active(), {
+      traceId: '80f198ee56343ba864fe8b2a57d3eff7',
+      spanId: 'e457b5a2e4d86bd1',
+      traceFlags: TraceFlags.SAMPLED,
+    });
 
     const carrier: Record<string, string> = {};
     propagation.inject(ctx, carrier);
@@ -534,8 +542,6 @@ describe('CompositePropagator', () => {
     // Verify B3 headers
     expect(carrier['x-b3-traceid']).toBeDefined();
     expect(carrier['x-b3-spanid']).toBeDefined();
-
-    span.end();
   });
 
   it('should extract context from B3 headers', () => {
@@ -630,7 +636,7 @@ async function testPropagation() {
 
 1. **Header case sensitivity**: HTTP/2 lowercases all headers. Ensure your propagator handles both cases.
 
-2. **Propagator order**: The extraction stops at the first successful propagator. If you have multiple formats in the headers, ensure the correct propagator is listed first.
+2. **Propagator order**: Each propagator runs in sequence, and later propagators can override context extracted by earlier ones. If you have multiple formats in the headers, ensure the preferred propagator is listed later.
 
 3. **Missing propagator registration**: Verify that `propagation.setGlobalPropagator()` was called, or that the SDK was initialized with the composite propagator.
 
@@ -725,8 +731,10 @@ Log warnings when context extraction fails to help identify misconfigured servic
 ```typescript
 // Custom propagator wrapper with logging
 class LoggingCompositePropagator implements TextMapPropagator {
-  private delegate: CompositePropagator;
-  private logger: Logger;
+  constructor(
+    private delegate: CompositePropagator,
+    private logger: Pick<Console, 'debug'> = console
+  ) {}
 
   extract(context: Context, carrier: unknown, getter: TextMapGetter): Context {
     const extractedContext = this.delegate.extract(context, carrier, getter);
@@ -743,7 +751,13 @@ class LoggingCompositePropagator implements TextMapPropagator {
     return extractedContext;
   }
 
-  // ... inject and fields methods
+  inject(context: Context, carrier: unknown, setter: TextMapSetter): void {
+    this.delegate.inject(context, carrier, setter);
+  }
+
+  fields(): string[] {
+    return this.delegate.fields();
+  }
 }
 ```
 
@@ -770,7 +784,7 @@ gantt
 | Concept | Description |
 |---------|-------------|
 | **Composite Propagator** | Combines multiple propagation formats into one |
-| **Extraction** | Tries each propagator until one succeeds |
+| **Extraction** | Runs each propagator in order; later values can override earlier ones |
 | **Injection** | Calls all propagators to add headers |
 | **W3C Trace Context** | Recommended default format |
 | **B3 / Jaeger** | Include for legacy system compatibility |
