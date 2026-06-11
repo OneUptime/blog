@@ -338,8 +338,9 @@ class AclProvisioner:
         """List all ACLs or those matching a filter."""
         if filter_obj is None:
             filter_obj = AclBindingFilter(
-                ResourcePatternType.ANY,
                 ResourceType.ANY,
+                None,
+                ResourcePatternType.ANY,
                 None,
                 None,
                 AclOperation.ANY,
@@ -379,9 +380,10 @@ class AclProvisioner:
                 filters = [
                     AclBindingFilter(
                         acl.restype,
-                        acl.resource_pattern_type,
                         acl.name,
+                        acl.resource_pattern_type,
                         acl.principal,
+                        acl.host,
                         acl.operation,
                         acl.permission_type
                     )
@@ -431,8 +433,8 @@ def build_acl_binding(
 
     return AclBinding(
         resource_types[resource_type.lower()],
-        pattern_types[pattern_type.lower()],
         resource_name,
+        pattern_types[pattern_type.lower()],
         principal,
         host,
         operations[operation.lower()],
@@ -446,10 +448,16 @@ Implement automatic ACL expiration.
 
 ```python
 # acl_expiration_handler.py
-import json
 from datetime import datetime, timedelta
 from typing import List, Dict, Any
 import logging
+from confluent_kafka.admin import (
+    AclBindingFilter,
+    ResourceType,
+    ResourcePatternType,
+    AclOperation,
+    AclPermissionType
+)
 
 logger = logging.getLogger(__name__)
 
@@ -497,7 +505,7 @@ class AclExpirationHandler:
         if not dry_run:
             for acl in expired:
                 try:
-                    self.provisioner.delete_acl(acl)
+                    self.provisioner.delete_acls([self._build_acl_filter(acl)])
                     self.metadata_store.mark_as_removed(acl["id"])
                     removed.append(acl)
                     logger.info(f"Removed expired ACL: {acl['principal']} on {acl['resource_name']}")
@@ -539,6 +547,45 @@ class AclExpirationHandler:
 
         logger.info(f"Notification for {owner}: {message}")
         # Integrate with your notification system (Slack, email, etc.)
+
+    def _build_acl_filter(self, acl: Dict[str, Any]) -> AclBindingFilter:
+        """Build an exact-match ACL filter from stored ACL metadata."""
+        resource_types = {
+            "topic": ResourceType.TOPIC,
+            "group": ResourceType.GROUP,
+            "cluster": ResourceType.CLUSTER,
+            "transactional_id": ResourceType.TRANSACTIONAL_ID
+        }
+
+        pattern_types = {
+            "literal": ResourcePatternType.LITERAL,
+            "prefixed": ResourcePatternType.PREFIXED
+        }
+
+        operations = {
+            "read": AclOperation.READ,
+            "write": AclOperation.WRITE,
+            "create": AclOperation.CREATE,
+            "delete": AclOperation.DELETE,
+            "alter": AclOperation.ALTER,
+            "describe": AclOperation.DESCRIBE,
+            "all": AclOperation.ALL
+        }
+
+        permissions = {
+            "allow": AclPermissionType.ALLOW,
+            "deny": AclPermissionType.DENY
+        }
+
+        return AclBindingFilter(
+            resource_types[acl["resource_type"].lower()],
+            acl["resource_name"],
+            pattern_types[acl.get("pattern_type", "literal").lower()],
+            acl["principal"],
+            acl.get("host", "*"),
+            operations[acl["operation"].lower()],
+            permissions[acl.get("permission", "allow").lower()]
+        )
 ```
 
 ## Infrastructure as Code for ACLs
@@ -553,7 +600,7 @@ terraform {
   required_providers {
     kafka = {
       source  = "Mongey/kafka"
-      version = "~> 0.5"
+      version = "~> 0.13"
     }
   }
 }
@@ -594,65 +641,65 @@ variable "environment" {
 
 # Order Service - Producer ACLs
 resource "kafka_acl" "order_service_write_orders" {
-  resource_name       = "orders"
-  resource_type       = "Topic"
-  resource_pattern_type = "Literal"
-  principal           = "User:order-service"
-  host                = "*"
-  operation           = "Write"
-  permission_type     = "Allow"
+  resource_name                 = "orders"
+  resource_type                 = "Topic"
+  resource_pattern_type_filter  = "Literal"
+  acl_principal                 = "User:order-service"
+  acl_host                      = "*"
+  acl_operation                 = "Write"
+  acl_permission_type           = "Allow"
 }
 
 resource "kafka_acl" "order_service_describe_orders" {
-  resource_name       = "orders"
-  resource_type       = "Topic"
-  resource_pattern_type = "Literal"
-  principal           = "User:order-service"
-  host                = "*"
-  operation           = "Describe"
-  permission_type     = "Allow"
+  resource_name                 = "orders"
+  resource_type                 = "Topic"
+  resource_pattern_type_filter  = "Literal"
+  acl_principal                 = "User:order-service"
+  acl_host                      = "*"
+  acl_operation                 = "Describe"
+  acl_permission_type           = "Allow"
 }
 
 # Order Service - Consumer ACLs
 resource "kafka_acl" "order_service_read_inventory" {
-  resource_name       = "inventory"
-  resource_type       = "Topic"
-  resource_pattern_type = "Literal"
-  principal           = "User:order-service"
-  host                = "*"
-  operation           = "Read"
-  permission_type     = "Allow"
+  resource_name                 = "inventory"
+  resource_type                 = "Topic"
+  resource_pattern_type_filter  = "Literal"
+  acl_principal                 = "User:order-service"
+  acl_host                      = "*"
+  acl_operation                 = "Read"
+  acl_permission_type           = "Allow"
 }
 
 resource "kafka_acl" "order_service_group" {
-  resource_name       = "order-service-group"
-  resource_type       = "Group"
-  resource_pattern_type = "Literal"
-  principal           = "User:order-service"
-  host                = "*"
-  operation           = "Read"
-  permission_type     = "Allow"
+  resource_name                 = "order-service-group"
+  resource_type                 = "Group"
+  resource_pattern_type_filter  = "Literal"
+  acl_principal                 = "User:order-service"
+  acl_host                      = "*"
+  acl_operation                 = "Read"
+  acl_permission_type           = "Allow"
 }
 
 # Analytics Service - Prefixed ACLs for multiple topics
 resource "kafka_acl" "analytics_read_events" {
-  resource_name       = "events-"
-  resource_type       = "Topic"
-  resource_pattern_type = "Prefixed"
-  principal           = "User:analytics-service"
-  host                = "*"
-  operation           = "Read"
-  permission_type     = "Allow"
+  resource_name                 = "events-"
+  resource_type                 = "Topic"
+  resource_pattern_type_filter  = "Prefixed"
+  acl_principal                 = "User:analytics-service"
+  acl_host                      = "*"
+  acl_operation                 = "Read"
+  acl_permission_type           = "Allow"
 }
 
 resource "kafka_acl" "analytics_group" {
-  resource_name       = "analytics-"
-  resource_type       = "Group"
-  resource_pattern_type = "Prefixed"
-  principal           = "User:analytics-service"
-  host                = "*"
-  operation           = "Read"
-  permission_type     = "Allow"
+  resource_name                 = "analytics-"
+  resource_type                 = "Group"
+  resource_pattern_type_filter  = "Prefixed"
+  acl_principal                 = "User:analytics-service"
+  acl_host                      = "*"
+  acl_operation                 = "Read"
+  acl_permission_type           = "Allow"
 }
 ```
 
@@ -687,63 +734,63 @@ variable "consumer_groups" {
 resource "kafka_acl" "read" {
   for_each = toset(var.topics_read)
 
-  resource_name       = each.value
-  resource_type       = "Topic"
-  resource_pattern_type = "Literal"
-  principal           = "User:${var.service_name}"
-  host                = "*"
-  operation           = "Read"
-  permission_type     = "Allow"
+  resource_name                 = each.value
+  resource_type                 = "Topic"
+  resource_pattern_type_filter  = "Literal"
+  acl_principal                 = "User:${var.service_name}"
+  acl_host                      = "*"
+  acl_operation                 = "Read"
+  acl_permission_type           = "Allow"
 }
 
 resource "kafka_acl" "read_describe" {
   for_each = toset(var.topics_read)
 
-  resource_name       = each.value
-  resource_type       = "Topic"
-  resource_pattern_type = "Literal"
-  principal           = "User:${var.service_name}"
-  host                = "*"
-  operation           = "Describe"
-  permission_type     = "Allow"
+  resource_name                 = each.value
+  resource_type                 = "Topic"
+  resource_pattern_type_filter  = "Literal"
+  acl_principal                 = "User:${var.service_name}"
+  acl_host                      = "*"
+  acl_operation                 = "Describe"
+  acl_permission_type           = "Allow"
 }
 
 # Write ACLs
 resource "kafka_acl" "write" {
   for_each = toset(var.topics_write)
 
-  resource_name       = each.value
-  resource_type       = "Topic"
-  resource_pattern_type = "Literal"
-  principal           = "User:${var.service_name}"
-  host                = "*"
-  operation           = "Write"
-  permission_type     = "Allow"
+  resource_name                 = each.value
+  resource_type                 = "Topic"
+  resource_pattern_type_filter  = "Literal"
+  acl_principal                 = "User:${var.service_name}"
+  acl_host                      = "*"
+  acl_operation                 = "Write"
+  acl_permission_type           = "Allow"
 }
 
 resource "kafka_acl" "write_describe" {
   for_each = toset(var.topics_write)
 
-  resource_name       = each.value
-  resource_type       = "Topic"
-  resource_pattern_type = "Literal"
-  principal           = "User:${var.service_name}"
-  host                = "*"
-  operation           = "Describe"
-  permission_type     = "Allow"
+  resource_name                 = each.value
+  resource_type                 = "Topic"
+  resource_pattern_type_filter  = "Literal"
+  acl_principal                 = "User:${var.service_name}"
+  acl_host                      = "*"
+  acl_operation                 = "Describe"
+  acl_permission_type           = "Allow"
 }
 
 # Consumer Group ACLs
 resource "kafka_acl" "group" {
   for_each = toset(var.consumer_groups)
 
-  resource_name       = each.value
-  resource_type       = "Group"
-  resource_pattern_type = "Literal"
-  principal           = "User:${var.service_name}"
-  host                = "*"
-  operation           = "Read"
-  permission_type     = "Allow"
+  resource_name                 = each.value
+  resource_type                 = "Group"
+  resource_pattern_type_filter  = "Literal"
+  acl_principal                 = "User:${var.service_name}"
+  acl_host                      = "*"
+  acl_operation                 = "Read"
+  acl_permission_type           = "Allow"
 }
 ```
 
@@ -857,12 +904,16 @@ jobs:
           TF_VAR_kafka_admin_username: ${{ secrets.KAFKA_ADMIN_USERNAME }}
           TF_VAR_kafka_admin_password: ${{ secrets.KAFKA_ADMIN_PASSWORD }}
 
+      - name: Render Terraform Plan
+        working-directory: terraform/kafka-acls
+        run: terraform show -no-color tfplan > tfplan.txt
+
       - name: Comment Plan on PR
         uses: actions/github-script@v7
         with:
           script: |
             const fs = require('fs');
-            const plan = fs.readFileSync('terraform/kafka-acls/tfplan', 'utf8');
+            const plan = fs.readFileSync('terraform/kafka-acls/tfplan.txt', 'utf8');
             github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
@@ -1225,7 +1276,7 @@ class AclAuditCollector:
         start_date: datetime,
         end_date: datetime,
         principal: Optional[str] = None
-    ) -> List[dict]:
+    ) -> dict:
         """Generate audit report for a time period."""
         filters = {
             "timestamp_start": start_date.isoformat(),
@@ -1303,15 +1354,15 @@ class AclMetricsCollector:
         acls = self.provisioner.list_acls()
 
         # Reset gauges
-        acl_count._metrics.clear()
-        acl_by_principal._metrics.clear()
+        acl_count.clear()
+        acl_by_principal.clear()
 
         # Count by resource type and permission
         counts = {}
         principal_counts = {}
 
         for acl in acls:
-            key = (acl.resource_type, acl.permission_type)
+            key = (acl.restype, acl.permission_type)
             counts[key] = counts.get(key, 0) + 1
 
             principal_counts[acl.principal] = principal_counts.get(acl.principal, 0) + 1
