@@ -232,7 +232,7 @@ async function validateBodyMiddleware(req, res, next) {
 
 ## Putting It All Together
 
-Here is a complete example using our custom middleware system with an HTTP server.
+Here is a server example using the `AsyncMiddlewareRunner` class from above with an HTTP server.
 
 ```javascript
 const http = require('http');
