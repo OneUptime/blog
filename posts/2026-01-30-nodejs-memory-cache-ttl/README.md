@@ -115,7 +115,17 @@ class TTLCache {
 
   // Check if a key exists and is not expired
   has(key) {
-    return this.get(key) !== undefined;
+    const item = this.cache.get(key);
+    if (!item) {
+      return false;
+    }
+
+    if (Date.now() > item.expiresAt) {
+      this.cache.delete(key);
+      return false;
+    }
+
+    return true;
   }
 
   // Remove a specific key
@@ -752,6 +762,7 @@ class MemoryLimitedCache {
     if (this.cache.has(key)) {
       const existing = this.cache.get(key);
       this.currentBytes -= existing.size;
+      this.cache.delete(key);
       this._removeNode(existing);
     }
 
@@ -816,10 +827,10 @@ Here is how our implementation compares to popular caching libraries:
 | LRU Eviction | Yes | No | Yes |
 | Size Limits | Yes (count and bytes) | Yes (count) | Yes (count and bytes) |
 | Statistics | Yes | Yes | No (built-in) |
-| Automatic Cleanup | Yes | Yes | No |
+| Automatic Cleanup | Yes | Yes | Optional (`ttlAutopurge`) |
 | TypeScript Support | No | Yes | Yes |
-| Dependencies | None | None | None |
-| Async Support | Manual | Events | Yes |
+| Dependencies | None | Yes (`clone`) | None |
+| Async Support | Manual | Manual | Yes (`fetchMethod`/`fetch`) |
 
 ### When to Use Each
 
