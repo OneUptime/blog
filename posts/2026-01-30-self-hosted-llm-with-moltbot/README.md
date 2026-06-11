@@ -390,7 +390,7 @@ Let's compare the costs of API-based vs. self-hosted LLMs:
 **Solution:** Use a smaller model or more aggressive quantization:
 
 ```bash
-ollama pull llama3.1:8b-q4_0
+ollama pull llama3.1:8b-instruct-q4_0
 ```
 
 ### Slow Generation Speed
