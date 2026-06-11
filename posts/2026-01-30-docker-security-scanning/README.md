@@ -63,19 +63,21 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install dependencies
-# Using --production flag excludes dev dependencies
 # Using --ignore-scripts prevents malicious post-install scripts
-RUN npm ci --production --ignore-scripts
+RUN npm ci --ignore-scripts
 
 # Copy application source code
 COPY --chown=appuser:appgroup . .
+
+# Build the application, then remove dev dependencies
+RUN npm run build && npm prune --omit=dev
 
 # Multi-stage build: Create a minimal production image
 FROM node:20-alpine AS production
 
 # Install security updates
 # Always update packages in your base image
-RUN apk update && apk upgrade --no-cache
+RUN apk upgrade --no-cache
 
 # Create non-root user in production image
 RUN addgroup -g 1001 appgroup && \
@@ -87,6 +89,7 @@ WORKDIR /app
 # This reduces the attack surface by excluding build tools
 COPY --from=builder --chown=appuser:appgroup /app/node_modules ./node_modules
 COPY --from=builder --chown=appuser:appgroup /app/dist ./dist
+COPY --from=builder --chown=appuser:appgroup /app/healthcheck.js ./
 COPY --from=builder --chown=appuser:appgroup /app/package.json ./
 
 # Switch to non-root user
@@ -114,9 +117,9 @@ Trivy is an open-source vulnerability scanner developed by Aqua Security. It sca
 brew install trivy
 
 # Install on Linux using apt
-sudo apt-get install wget apt-transport-https gnupg lsb-release
-wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
-echo deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main | sudo tee -a /etc/apt/sources.list.d/trivy.list
+sudo apt-get install wget apt-transport-https gnupg
+wget -qO - https://get.trivy.dev/deb/public.key | gpg --dearmor | sudo tee /usr/share/keyrings/trivy.gpg > /dev/null
+echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://get.trivy.dev/deb generic main" | sudo tee -a /etc/apt/sources.list.d/trivy.list
 sudo apt-get update
 sudo apt-get install trivy
 
@@ -178,8 +181,9 @@ scan:
     - "**/*.md"
     - "**/test/**"
 
-  # Vulnerability types to scan for
-  vuln-type:
+# Vulnerability package types to scan for
+pkg:
+  types:
     - os
     - library
 
@@ -250,8 +254,8 @@ snyk container test myapp:latest --json > snyk-results.json
 # The --app-vulns flag scans npm/pip/gem dependencies too
 snyk container test myapp:latest --app-vulns
 
-# Scan a Dockerfile for configuration issues
-snyk iac test ./Dockerfile
+# Analyze the Dockerfile used to build the image
+snyk container test myapp:latest --file=Dockerfile
 ```
 
 ### Snyk Configuration
@@ -426,6 +430,8 @@ stages:
 variables:
   DOCKER_IMAGE: $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
   DOCKER_IMAGE_LATEST: $CI_REGISTRY_IMAGE:latest
+  DOCKER_HOST: tcp://docker:2375
+  DOCKER_TLS_CERTDIR: ""
 
 # Build the Docker image
 build:
@@ -448,12 +454,10 @@ trivy-scan:
     name: aquasec/trivy:latest
     entrypoint: [""]
   script:
-    # Load the image from the build stage
-    - docker load < image.tar
-    # Run vulnerability scan
-    - trivy image --exit-code 0 --severity HIGH,CRITICAL --format template --template "@/contrib/gitlab.tpl" -o gl-container-scanning-report.json $DOCKER_IMAGE
+    # Run vulnerability scan against the saved image artifact
+    - trivy image --input image.tar --exit-code 0 --severity HIGH,CRITICAL --format template --template "@/contrib/gitlab.tpl" -o gl-container-scanning-report.json
     # Fail on critical vulnerabilities
-    - trivy image --exit-code 1 --severity CRITICAL --ignore-unfixed $DOCKER_IMAGE
+    - trivy image --input image.tar --exit-code 1 --severity CRITICAL --ignore-unfixed
   artifacts:
     reports:
       container_scanning: gl-container-scanning-report.json
@@ -464,9 +468,8 @@ snyk-scan:
   stage: scan
   image: snyk/snyk:docker
   script:
-    - docker load < image.tar
     - snyk auth $SNYK_TOKEN
-    - snyk container test $DOCKER_IMAGE --severity-threshold=high
+    - snyk container test docker-archive:image.tar --severity-threshold=high
   allow_failure: false
 
 # Push to registry only after successful scans
