@@ -152,12 +152,15 @@ In your main function, wire everything together manually. This is often called t
 
 ```go
 func main() {
-    // Initialize database connection
+    // Initialize database handle
     db, err := sql.Open("postgres", os.Getenv("DATABASE_URL"))
     if err != nil {
         log.Fatal(err)
     }
     defer db.Close()
+    if err := db.Ping(); err != nil {
+        log.Fatal(err)
+    }
 
     // Create concrete implementations
     userRepo := NewPostgresUserRepository(db)
@@ -175,7 +178,7 @@ func main() {
 }
 ```
 
-For larger applications, you might consider Google's Wire tool. Wire generates dependency injection code at compile time, eliminating reflection overhead while maintaining explicit dependencies.
+For larger applications, you might consider a compile-time DI code generation tool such as Wire. Google's original Wire project is no longer maintained, but Wire-style tools generate dependency injection code at compile time, eliminating reflection overhead while maintaining explicit dependencies.
 
 ## Testing with Mock Implementations
 
