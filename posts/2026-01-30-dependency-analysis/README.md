@@ -10,7 +10,7 @@ Description: Learn how to analyze service dependencies from trace data for archi
 
 Your distributed system has grown from three services to thirty. Somewhere in that growth, you lost track of what calls what. An architect draws a diagram. A team lead disagrees. Nobody really knows what depends on what, at what frequency, or which dependencies are actually critical to production traffic.
 
-Traces hold the answer. Every span captures a parent-child relationship. Every trace captures a request path. Aggregate enough traces, and you can reconstruct your entire service topology, identify critical paths, detect circular dependencies, and surface health metrics for every edge in your architecture.
+Traces hold the answer. Every non-root span captures a parent-child relationship. Every trace captures a request path. Aggregate enough traces, and you can reconstruct your entire service topology, identify critical paths, detect circular dependencies, and surface health metrics for every edge in your architecture.
 
 This guide shows you how to build dependency analysis from trace data, turning raw spans into actionable architecture insights.
 
@@ -31,7 +31,7 @@ This guide shows you how to build dependency analysis from trace data, turning r
 
 ## 1. Building Service Graphs from Traces
 
-Every trace is a tree of spans. Each span knows its parent. Each span carries a `service.name` attribute. By walking the parent-child relationships and extracting service names, you build edges in a dependency graph.
+Every trace is a tree of spans. Each non-root span knows its parent. Each span is associated with resource attributes such as `service.name`. By walking the parent-child relationships and extracting service names, you build edges in a dependency graph.
 
 ### The Core Data Model
 
@@ -42,7 +42,7 @@ interface ServiceEdge {
   operation: string;    // The span name (e.g., "HTTP GET /users")
   callCount: number;    // Number of times this edge was traversed
   errorCount: number;   // Number of failed calls
-  totalLatencyMs: number; // Sum of latencies for percentile calculation
+  totalLatencyMs: number; // Sum of latencies for average calculation
   latencies: number[];  // Individual latencies (for p50/p95/p99)
 }
 
@@ -65,8 +65,6 @@ interface DependencyGraph {
 The algorithm walks each trace and extracts parent-child service relationships:
 
 ```typescript
-import { Span } from '@opentelemetry/api';
-
 interface RawSpan {
   traceId: string;
   spanId: string;
@@ -77,6 +75,7 @@ interface RawSpan {
   endTime: number;
   status: 'OK' | 'ERROR' | 'UNSET';
   attributes: Record<string, any>;
+  resourceAttributes: Record<string, any>;
 }
 
 function buildGraphFromSpans(spans: RawSpan[]): DependencyGraph {
@@ -86,17 +85,17 @@ function buildGraphFromSpans(spans: RawSpan[]): DependencyGraph {
     lastUpdated: new Date(),
   };
 
-  // Index spans by spanId for parent lookup
+  // Index spans by traceId and spanId for parent lookup
   const spanIndex = new Map<string, RawSpan>();
   for (const span of spans) {
-    spanIndex.set(span.spanId, span);
+    spanIndex.set(`${span.traceId}:${span.spanId}`, span);
   }
 
   // Process each span to find cross-service edges
   for (const span of spans) {
     if (!span.parentSpanId) continue; // Root spans have no parent
 
-    const parentSpan = spanIndex.get(span.parentSpanId);
+    const parentSpan = spanIndex.get(`${span.traceId}:${span.parentSpanId}`);
     if (!parentSpan) continue; // Parent not in this batch
 
     // Only create edge if services differ (cross-service call)
@@ -217,23 +216,27 @@ function calculateDependencyDepths(graph: DependencyGraph): DependencyDepth[] {
     }
   }
 
-  // BFS from entry points to calculate upstream depth
-  function bfsUpstream(startNodes: string[]) {
-    const visited = new Set<string>();
+  // Relax edges from entry points to calculate maximum upstream depth.
+  // In graphs with cycles, first collapse strongly connected components
+  // or cap traversal as shown here.
+  function calculateUpstream(startNodes: string[]) {
     const queue: Array<{ node: string; depth: number }> =
       startNodes.map(n => ({ node: n, depth: 0 }));
+    const maxDepth = graph.nodes.size;
 
     while (queue.length > 0) {
       const { node, depth } = queue.shift()!;
-      if (visited.has(node)) continue;
-      visited.add(node);
 
       const depthInfo = depths.get(node)!;
-      depthInfo.upstreamDepth = Math.max(depthInfo.upstreamDepth, depth);
+      if (depth > depthInfo.upstreamDepth) {
+        depthInfo.upstreamDepth = depth;
+      }
+      if (depth >= maxDepth) continue;
 
       const serviceNode = graph.nodes.get(node)!;
       for (const edge of serviceNode.outbound.values()) {
-        if (!visited.has(edge.target)) {
+        const targetDepth = depths.get(edge.target)!;
+        if (depth + 1 > targetDepth.upstreamDepth) {
           queue.push({ node: edge.target, depth: depth + 1 });
         }
       }
@@ -248,34 +251,36 @@ function calculateDependencyDepths(graph: DependencyGraph): DependencyDepth[] {
     }
   }
 
-  // BFS from leaf nodes to calculate downstream depth
-  function bfsDownstream(startNodes: string[]) {
-    const visited = new Set<string>();
+  // Relax reverse edges from leaf nodes to calculate maximum downstream depth.
+  function calculateDownstream(startNodes: string[]) {
     const queue: Array<{ node: string; depth: number }> =
       startNodes.map(n => ({ node: n, depth: 0 }));
+    const maxDepth = graph.nodes.size;
 
     while (queue.length > 0) {
       const { node, depth } = queue.shift()!;
-      if (visited.has(node)) continue;
-      visited.add(node);
 
       const depthInfo = depths.get(node)!;
-      depthInfo.downstreamDepth = Math.max(depthInfo.downstreamDepth, depth);
+      if (depth > depthInfo.downstreamDepth) {
+        depthInfo.downstreamDepth = depth;
+      }
+      if (depth >= maxDepth) continue;
 
       const serviceNode = graph.nodes.get(node)!;
       for (const edge of serviceNode.inbound.values()) {
-        if (!visited.has(edge.source)) {
+        const sourceDepth = depths.get(edge.source)!;
+        if (depth + 1 > sourceDepth.downstreamDepth) {
           queue.push({ node: edge.source, depth: depth + 1 });
         }
       }
     }
   }
 
-  bfsUpstream(entryPoints);
-  bfsDownstream(leafNodes);
+  calculateUpstream(entryPoints);
+  calculateDownstream(leafNodes);
 
   // Calculate critical path depth
-  for (const [name, depthInfo] of depths) {
+  for (const [, depthInfo] of depths) {
     depthInfo.criticalPathDepth = depthInfo.upstreamDepth + depthInfo.downstreamDepth;
   }
 
@@ -346,15 +351,15 @@ interface DependencyCriticality {
 
 function calculateCriticality(
   graph: DependencyGraph,
-  timeWindowMinutes: number = 60
+  _timeWindowMinutes: number = 60
 ): DependencyCriticality[] {
   const results: DependencyCriticality[] = [];
 
   // Calculate total call volume for normalization
   const totalCalls = graph.edges.reduce((sum, e) => sum + e.callCount, 0);
+  if (totalCalls === 0) return results;
 
   for (const edge of graph.edges) {
-    const targetNode = graph.nodes.get(edge.target)!;
     const sourceNode = graph.nodes.get(edge.source)!;
 
     // Factor 1: Call Volume (normalized)
@@ -455,13 +460,25 @@ function detectCircularDependencies(graph: DependencyGraph): CircularDependency[
   const recursionStack = new Set<string>();
   const path: string[] = [];
 
+  function canonicalCycleKey(cycle: string[]): string {
+    const rotations = cycle.map((_, index) => [
+      ...cycle.slice(index),
+      ...cycle.slice(0, index),
+    ].join('->'));
+    return rotations.sort()[0];
+  }
+
   function dfs(node: string): void {
     visited.add(node);
     recursionStack.add(node);
     path.push(node);
 
     const serviceNode = graph.nodes.get(node);
-    if (!serviceNode) return;
+    if (!serviceNode) {
+      path.pop();
+      recursionStack.delete(node);
+      return;
+    }
 
     for (const edge of serviceNode.outbound.values()) {
       const target = edge.target;
@@ -493,10 +510,11 @@ function detectCircularDependencies(graph: DependencyGraph): CircularDependency[
         }
 
         // Only add if we haven't seen this cycle before
-        const cycleKey = cyclePath.slice(0, -1).sort().join(',');
-        if (!cycles.find(c => c.cycle.slice().sort().join(',') === cycleKey)) {
+        const cycle = cyclePath.slice(0, -1);
+        const cycleKey = canonicalCycleKey(cycle);
+        if (!cycles.find(c => canonicalCycleKey(c.cycle) === cycleKey)) {
           cycles.push({
-            cycle: cyclePath.slice(0, -1),
+            cycle,
             edges: cycleEdges,
             frequency: Math.round(totalFrequency / cycleEdges.length),
             avgCycleLatency: Math.round(totalLatency),
@@ -626,19 +644,19 @@ function extractVersionedEdges(spans: RawSpan[]): VersionedEdge[] {
   const spanIndex = new Map<string, RawSpan>();
 
   for (const span of spans) {
-    spanIndex.set(span.spanId, span);
+    spanIndex.set(`${span.traceId}:${span.spanId}`, span);
   }
 
   for (const span of spans) {
     if (!span.parentSpanId) continue;
 
-    const parentSpan = spanIndex.get(span.parentSpanId);
+    const parentSpan = spanIndex.get(`${span.traceId}:${span.parentSpanId}`);
     if (!parentSpan) continue;
     if (parentSpan.serviceName === span.serviceName) continue;
 
     // Extract versions from resource attributes
-    const sourceVersion = parentSpan.attributes['service.version'] || 'unknown';
-    const targetVersion = span.attributes['service.version'] || 'unknown';
+    const sourceVersion = parentSpan.resourceAttributes['service.version'] || 'unknown';
+    const targetVersion = span.resourceAttributes['service.version'] || 'unknown';
 
     const edgeKey = `${parentSpan.serviceName}@${sourceVersion}->${span.serviceName}@${targetVersion}:${span.operationName}`;
 
@@ -848,6 +866,25 @@ function calculateHealthMetrics(
   timeWindowSeconds: number,
   previousMetrics?: DependencyHealthMetrics
 ): DependencyHealthMetrics {
+  if (edge.callCount === 0) {
+    return {
+      source: edge.source,
+      target: edge.target,
+      operation: edge.operation,
+      successRate: 100,
+      errorRate: 0,
+      latencyP50: 0,
+      latencyP95: 0,
+      latencyP99: 0,
+      requestsPerSecond: 0,
+      peakRps: 0,
+      timeoutRate: 0,
+      retryRate: 0,
+      latencyTrend: 'stable',
+      errorTrend: 'stable',
+    };
+  }
+
   const successRate = ((edge.callCount - edge.errorCount) / edge.callCount) * 100;
   const errorRate = (edge.errorCount / edge.callCount) * 100;
 
@@ -861,11 +898,13 @@ function calculateHealthMetrics(
   let latencyTrend: 'improving' | 'stable' | 'degrading' = 'stable';
   let errorTrend: 'improving' | 'stable' | 'degrading' = 'stable';
 
-  if (previousMetrics) {
+  if (previousMetrics && previousMetrics.latencyP95 > 0) {
     const latencyChange = ((latencyP95 - previousMetrics.latencyP95) / previousMetrics.latencyP95) * 100;
     if (latencyChange > 10) latencyTrend = 'degrading';
     else if (latencyChange < -10) latencyTrend = 'improving';
+  }
 
+  if (previousMetrics) {
     const errorChange = errorRate - previousMetrics.errorRate;
     if (errorChange > 1) errorTrend = 'degrading';
     else if (errorChange < -1) errorTrend = 'improving';
@@ -1203,7 +1242,7 @@ CREATE TABLE service_versions (
 -- Circular dependencies (detected)
 CREATE TABLE circular_dependencies (
   id SERIAL PRIMARY KEY,
-  cycle_hash VARCHAR(64) UNIQUE, -- Hash of sorted cycle members
+  cycle_hash VARCHAR(64) UNIQUE, -- Hash of a canonicalized cycle path
   cycle_services TEXT[], -- Array of service names in order
   first_detected TIMESTAMP NOT NULL,
   last_detected TIMESTAMP NOT NULL,
