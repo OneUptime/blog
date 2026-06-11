@@ -120,7 +120,7 @@ Temporal indexing allows efficient retrieval of episodes based on time. This is 
 ```python
 from collections import defaultdict
 from datetime import datetime, timedelta
-from typing import List, Tuple
+from typing import List, Tuple, Dict, Optional
 import bisect
 
 class TemporalIndex:
@@ -161,7 +161,7 @@ class TemporalIndex:
         )
         end_idx = bisect.bisect_right(
             self._timeline,
-            (end, "zzz")  # Ensures we include all episodes at end time
+            (end, chr(0x10ffff))  # Include all episode IDs at end time
         )
 
         return [ep_id for _, ep_id in self._timeline[start_idx:end_idx]]
@@ -175,7 +175,7 @@ class TemporalIndex:
         if before is None:
             before = datetime.now()
 
-        end_idx = bisect.bisect_right(self._timeline, (before, "zzz"))
+        end_idx = bisect.bisect_right(self._timeline, (before, chr(0x10ffff)))
         start_idx = max(0, end_idx - n)
 
         return [ep_id for _, ep_id in self._timeline[start_idx:end_idx]]
@@ -228,7 +228,7 @@ graph LR
 
 ## Similarity-Based Retrieval
 
-Similarity retrieval allows finding episodes that are semantically related to a given query. This requires embedding episodes into a vector space and using approximate nearest neighbor search.
+Similarity retrieval allows finding episodes that are semantically related to a given query. This requires embedding episodes into a vector space and using nearest neighbor search, either exact or approximate depending on the index.
 
 ```python
 import numpy as np
@@ -281,12 +281,12 @@ class VectorIndex:
         self._embeddings: List[np.ndarray] = []
         self._episode_ids: List[str] = []
 
-        # Optional: Use FAISS for larger scale
+        # Optional: Use FAISS for optimized exact search at larger scale
         self._faiss_index = None
         self._use_faiss = False
 
     def enable_faiss(self):
-        """Enable FAISS for faster similarity search."""
+        """Enable FAISS for faster exact similarity search."""
         try:
             import faiss
             self._faiss_index = faiss.IndexFlatIP(self.dimension)
@@ -522,11 +522,15 @@ Create a single merged episode that captures the common pattern and key variatio
     ) -> List[Episode]:
         """Run a full compression cycle on a list of episodes."""
         compressed_episodes = []
-        episodes_to_merge = []
+        processed_ids = set()
 
         for episode in episodes:
+            if episode.episode_id in processed_ids:
+                continue
+
             if not self.should_compress(episode):
                 compressed_episodes.append(episode)
+                processed_ids.add(episode.episode_id)
                 continue
 
             # Check for similar episodes to merge
@@ -535,22 +539,23 @@ Create a single merged episode that captures the common pattern and key variatio
                 k=5,
                 threshold=self.similarity_threshold
             )
+            similar_ids = {episode.episode_id} | {s[0] for s in similar}
 
             similar_episodes = [
                 e for e in episodes
-                if e.episode_id in [s[0] for s in similar]
+                if e.episode_id in similar_ids
                 and self.should_compress(e)
+                and e.episode_id not in processed_ids
             ]
 
             if len(similar_episodes) >= 3:
                 merged = self.merge_similar_episodes(similar_episodes)
                 compressed_episodes.append(merged)
-                # Mark originals for removal
-                for e in similar_episodes:
-                    episodes.remove(e)
+                processed_ids.update(e.episode_id for e in similar_episodes)
             else:
                 summarized = self.summarize_episode(episode)
                 compressed_episodes.append(summarized)
+                processed_ids.add(episode.episode_id)
 
         return compressed_episodes
 ```
@@ -695,8 +700,8 @@ pie title Relevance Score Components
 Now let us create a complete episodic memory system that integrates all components.
 
 ```python
-from typing import List, Optional, Dict, Any
-from datetime import datetime
+from typing import List, Optional, Dict, Any, Tuple
+from datetime import datetime, timedelta
 
 class EpisodicMemory:
     """Complete episodic memory system for AI agents."""
@@ -854,6 +859,22 @@ class EpisodicMemory:
 
             # Rebuild store with compressed episodes
             self.episode_store = {e.episode_id: e for e in compressed}
+
+            # Rebuild indexes so they match the compressed store
+            use_faiss = self.vector_index._use_faiss
+            vector_dimension = self.vector_index.dimension
+            self.temporal_index = TemporalIndex()
+            self.vector_index = VectorIndex(
+                self.embedding_model,
+                dimension=vector_dimension
+            )
+            if use_faiss:
+                self.vector_index.enable_faiss()
+
+            for episode in compressed:
+                self.temporal_index.add_episode(episode)
+                self.vector_index.add_episode(episode)
+
             self._last_compression = datetime.now()
 
     def get_context_for_prompt(
@@ -970,7 +991,7 @@ When implementing episodic memory for your AI agents, keep these best practices 
 
 1. **Choose appropriate granularity**: Episodes should be atomic but meaningful. Too fine-grained episodes create noise; too coarse episodes lose detail.
 
-2. **Balance storage and retrieval costs**: Use approximate nearest neighbor search (like FAISS or Annoy) for large-scale deployments.
+2. **Balance storage and retrieval costs**: Use nearest neighbor libraries and indexes (such as FAISS IVF/HNSW or Annoy) for large-scale deployments.
 
 3. **Implement forgetting mechanisms**: Not all memories are worth keeping. Use importance scores and access patterns to decide what to compress or discard.
 
