@@ -59,7 +59,7 @@ The write path consists of these key components:
 2. **Distributor** validates incoming data, enforces rate limits, and forwards to ingesters
 3. **Ingesters** buffer logs in memory, compress them into chunks, and periodically flush to storage
 4. **Chunk Store** holds the compressed log data (typically S3, GCS, or filesystem)
-5. **Index Store** maps label combinations to chunk locations (BoltDB, Cassandra, or cloud storage)
+5. **Index Store** maps label combinations to chunk locations (typically TSDB or BoltDB Shipper data in object storage)
 
 The ingester is where most write path optimization happens. It handles compression, chunking, and memory management.
 
@@ -73,6 +73,7 @@ Configure your log shipper to batch aggressively before sending to Loki:
 
 ```yaml
 # Promtail configuration with optimized batching
+# Promtail is EOL; use this only for existing deployments and prefer Grafana Alloy for new ones.
 
 clients:
   - url: http://loki:3100/loki/api/v1/push
@@ -80,23 +81,25 @@ clients:
     batchwait: 5s
     # Send when batch reaches 1MB
     batchsize: 1048576
-    # Enable HTTP compression on the wire
+    # Add static labels to every stream sent by this client
     external_labels:
       cluster: production
       env: prod
 ```
 
-```yaml
+```ini
 # Fluent Bit configuration for Loki output
+[SERVICE]
+    # Flush buffered chunks every 5 seconds
+    Flush       5
+    Log_Level   info
+
 [OUTPUT]
     Name        loki
     Match       *
     Host        loki.monitoring.svc.cluster.local
     Port        3100
     Labels      job=fluentbit, env=production
-    # Batch logs before sending
-    BatchWait   5
-    BatchSize   1048576
     # Use gzip compression
     Compress    gzip
 ```
@@ -108,7 +111,7 @@ The ingester's chunk settings determine how logs are grouped and compressed:
 ```yaml
 # Loki configuration - ingester chunk settings
 ingester:
-  # Target uncompressed chunk size (aim for 1.5MB before compression)
+  # Target compressed chunk size (aim for 1.5MB chunks in storage)
   chunk_target_size: 1572864
 
   # Maximum time a chunk can stay open
@@ -122,13 +125,13 @@ ingester:
   flush_check_period: 5m
 
   # Compression algorithm: gzip, lz4, snappy, or zstd
-  # zstd offers best compression ratio with good speed
-  chunk_encoding: zstd
+  # snappy is the usual starting point for high-throughput write paths
+  chunk_encoding: snappy
 
   # Number of concurrent flushes to storage
   concurrent_flushes: 32
 
-  # Queue size for chunks waiting to be flushed
+  # Timeout for an individual flush attempt
   flush_op_timeout: 10m
 ```
 
@@ -141,9 +144,9 @@ Choose your compression algorithm based on your priorities:
 | snappy | Low (2-3x) | Very Low | Low | High throughput, CPU constrained |
 | lz4 | Medium (3-4x) | Low | Low | Balanced workloads |
 | gzip | High (5-8x) | Medium | Medium | Storage cost sensitive |
-| zstd | Very High (6-10x) | Medium | Medium | Best overall for most workloads |
+| zstd | Very High (6-10x) | Medium | Medium | Storage-sensitive workloads after benchmarking |
 
-For most production deployments, `zstd` provides the best balance of compression ratio and CPU usage.
+For high-throughput production deployments, `snappy` is the safest starting point. Benchmark `lz4` or `zstd` if storage cost matters more than write-path CPU.
 
 ## Ingester Memory Management
 
@@ -167,7 +170,7 @@ flowchart LR
 
     IN[Incoming Logs] --> WB
     WB --> HC
-    HC -->|chunk_target_size reached| AC
+    HC -->|chunk target or block limit reached| AC
     AC -->|max_chunk_age or idle| FC
     FC -->|concurrent_flushes| OUT[Object Storage]
 
@@ -214,9 +217,9 @@ ingester:
     dir: /loki/wal
     # Checkpoint interval - balance between recovery time and disk I/O
     checkpoint_duration: 5m
-    # Flush WAL before acknowledging writes (set false for higher throughput)
+    # Flush in-memory chunks to long-term storage on shutdown
     flush_on_shutdown: true
-    # Replay concurrency on startup
+    # Maximum memory used during WAL replay before flushing to storage
     replay_memory_ceiling: 4GB
 ```
 
@@ -225,21 +228,21 @@ ingester:
 Use this formula to estimate ingester memory needs:
 
 ```text
-Memory = (active_streams * avg_chunk_size) + (flush_queue_size * avg_chunk_size) + WAL_buffer
+Memory = (active_streams * avg_in_memory_chunk_footprint) + (flush_queue_size * avg_in_memory_chunk_footprint) + WAL_replay_headroom
 
 Where:
 - active_streams = number of unique label combinations
-- avg_chunk_size = ~1-2MB uncompressed per chunk
+- avg_in_memory_chunk_footprint = measured memory per active stream; 1.5MB is the default compressed chunk target, not a hard memory cap
 - flush_queue_size = concurrent_flushes * 2
-- WAL_buffer = ~20% overhead for write-ahead log
+- WAL_replay_headroom = additional memory reserved for WAL replay, capped by replay_memory_ceiling
 ```
 
-For a cluster with 50,000 active streams:
+For a cluster with 50,000 active streams and a measured average in-memory footprint of 1.5MB per stream:
 
 ```text
-Memory = (50000 * 1.5MB) + (64 * 1.5MB) + 20% overhead
-       = 75GB + 96MB + 15GB
-       = ~90GB across all ingesters
+Memory = (50000 * 1.5MB) + (64 * 1.5MB) + WAL replay headroom
+       = 75GB + 96MB + WAL replay headroom
+       = ~75GB plus WAL replay headroom across all ingesters
 ```
 
 ## Stream Cardinality Optimization
@@ -249,9 +252,8 @@ High cardinality is the silent killer of Loki performance. Every unique label co
 ### Identifying Cardinality Problems
 
 ```bash
-# Query to find high cardinality labels
-# Run this in Grafana against your Loki datasource
-sum by (label_name) (count_over_time({job=~".+"}[24h]))
+# Analyze label cardinality with LogCLI
+logcli series '{}' --since=24h --analyze-labels
 ```
 
 ```python
@@ -262,9 +264,6 @@ Identifies labels contributing most to cardinality explosion.
 """
 
 import requests
-import json
-from collections import defaultdict
-
 LOKI_URL = "http://loki:3100"
 
 def get_label_values(label_name):
@@ -272,11 +271,13 @@ def get_label_values(label_name):
     response = requests.get(
         f"{LOKI_URL}/loki/api/v1/label/{label_name}/values"
     )
+    response.raise_for_status()
     return response.json().get("data", [])
 
 def get_all_labels():
     """Fetch all label names from Loki."""
     response = requests.get(f"{LOKI_URL}/loki/api/v1/labels")
+    response.raise_for_status()
     return response.json().get("data", [])
 
 def analyze_cardinality():
@@ -409,7 +410,7 @@ sequenceDiagram
     participant S as Object Storage
 
     Note over C: Batch logs locally
-    C->>D: POST /loki/api/v1/push (gzip compressed)
+    C->>D: POST /loki/api/v1/push (Snappy protobuf or gzipped JSON)
 
     Note over D: Validate & rate limit
     D->>D: Check tenant limits
@@ -431,7 +432,7 @@ sequenceDiagram
 
     alt Chunk full or aged
         Note over M: Compress and queue
-        M->>M: Compress chunk (zstd)
+        M->>M: Compress chunk (snappy)
         M->>S: Async flush to storage
         S-->>M: Confirm write
         M->>M: Update index
@@ -460,8 +461,7 @@ distributor:
   ring:
     kvstore:
       store: memberlist
-  # Accept out-of-order writes within this window
-  # Helps with network jitter and client batching
+  # Configure which OTLP resource attributes become index labels
   otlp_config:
     default_resource_attributes_as_index_labels:
       - service.name
@@ -480,8 +480,8 @@ ingester:
     final_sleep: 0s
 
   # Chunk configuration for optimal compression
-  chunk_target_size: 1572864      # 1.5MB target
-  chunk_encoding: zstd            # Best compression
+  chunk_target_size: 1572864      # 1.5MB compressed target
+  chunk_encoding: snappy          # Fast compression for high-throughput ingestion
   max_chunk_age: 2h               # Max time chunk stays open
   chunk_idle_period: 30m          # Flush idle chunks
   chunk_retain_period: 1m         # Keep after flush for queries
@@ -533,7 +533,7 @@ limits_config:
   max_label_name_length: 1024
   max_label_value_length: 2048
 
-  # Accept out-of-order writes (within 1 hour)
+  # Out-of-order writes are enabled by default; with max_chunk_age: 2h, the accepted window is 1h
   unordered_writes: true
 
   # Query limits (less relevant for write path)
