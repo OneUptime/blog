@@ -45,7 +45,7 @@ docker build --no-cache -t myapp:latest .
 
 This rebuilds every layer from scratch. While effective, it's often overkill and significantly increases build time.
 
-**When to use:** Complete rebuilds, debugging cache-related issues, or when you need to ensure absolutely nothing is cached.
+**When to use:** Complete layer rebuilds, debugging cache-related issues, or when you need to ensure build layers are not reused. Add `--pull` if you also need to check for a newer base image.
 
 ## Method 2: ARG-Based Cache Busting
 
@@ -102,11 +102,13 @@ RUN apt-get update && apt-get install -y \
 
 # Dependencies cache buster - use when you need fresh packages
 ARG DEPS_CACHE_BUST=1
+RUN echo "Deps cache bust: $DEPS_CACHE_BUST"
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Application code cache buster - use for code changes
 ARG CODE_CACHE_BUST=1
+RUN echo "Code cache bust: $CODE_CACHE_BUST"
 COPY . .
 
 CMD ["python", "app.py"]
@@ -243,7 +245,7 @@ COPY package.json package-lock.json ./
 
 # Optional: Cache bust for fresh dependencies
 ARG NPM_CACHE_BUST=1
-RUN npm ci --only=production
+RUN echo "NPM cache bust: $NPM_CACHE_BUST" && npm ci --omit=dev
 
 # Layer 3: Changes frequently - application code
 COPY . .
@@ -330,12 +332,13 @@ WORKDIR /app
 
 ARG DEPS_CACHE_BUST=1
 COPY package*.json ./
-RUN npm ci
+RUN echo "Deps cache bust: $DEPS_CACHE_BUST" && npm ci
 
 # Stage 2: Build
 FROM dependencies AS builder
 
 ARG CODE_CACHE_BUST=1
+RUN echo "Code cache bust: $CODE_CACHE_BUST"
 COPY . .
 RUN npm run build
 
@@ -387,7 +390,7 @@ WORKDIR /app
 # Use cache mount for pip - survives between builds
 ARG CACHE_BUST=1
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --upgrade pip
+    echo "Cache bust: $CACHE_BUST" && pip install --upgrade pip
 
 COPY requirements.txt .
 RUN --mount=type=cache,target=/root/.cache/pip \
@@ -401,10 +404,10 @@ To bust the BuildKit cache:
 
 ```bash
 # Clear BuildKit cache entirely
-docker builder prune
+docker buildx prune
 
 # Clear specific cache types
-docker builder prune --filter type=exec.cachemount
+docker buildx prune --filter type=exec.cachemount
 
 # Build with no cache
 DOCKER_BUILDKIT=1 docker build --no-cache -t myapp:latest .
