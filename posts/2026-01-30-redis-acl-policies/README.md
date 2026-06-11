@@ -586,9 +586,9 @@ ACL WHOAMI
 ACL GETUSER appuser
 
 # List all commands a user can execute
-ACL CAT | while read cat; do
+redis-cli ACL CAT | while read cat; do
   echo "=== $cat ==="
-  ACL DRYRUN appuser $(ACL CAT $cat | head -1) testkey 2>&1
+  redis-cli ACL DRYRUN appuser $(redis-cli ACL CAT $cat | head -1) testkey 2>&1
 done
 ```
 
