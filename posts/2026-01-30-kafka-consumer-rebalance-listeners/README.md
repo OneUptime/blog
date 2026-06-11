@@ -8,16 +8,16 @@ Description: A practical guide to implementing ConsumerRebalanceListener in Java
 
 ---
 
-Kafka consumer groups are dynamic. Consumers join, leave, crash, or get stuck. When this happens, Kafka triggers a rebalance to redistribute partitions among the remaining consumers. Without a rebalance listener, your application has no idea when partitions are about to be taken away or when new ones arrive. This blind spot leads to duplicate processing, lost offsets, and data inconsistency.
+Kafka consumer groups are dynamic. Consumers join, leave, crash, or get stuck. When this happens, Kafka triggers a rebalance to redistribute partitions among the remaining consumers. Without a rebalance listener, your application has no idea when partitions are about to be taken away or when new ones arrive. This blind spot can lead to duplicate processing, lost offsets, and data inconsistency.
 
 ## Why Rebalance Listeners Matter
 
 | Scenario | Without Listener | With Listener |
 |----------|------------------|---------------|
-| Consumer crashes | In-flight offsets lost | Offsets committed before revocation |
+| Consumer leaves gracefully | In-flight offsets may not be flushed | Offsets committed before revocation |
 | New consumer joins | State corruption risk | State cleared and rebuilt |
-| Partition reassignment | Duplicate processing | Exactly-once semantics preserved |
-| Rolling deployment | Message loss during handoff | Clean handoff with flushed buffers |
+| Partition reassignment | Duplicate processing | Processed offsets and state handed off cleanly |
+| Rolling deployment | Duplicates during handoff | Clean handoff with flushed buffers |
 
 ## The Rebalance Lifecycle
 
@@ -41,7 +41,7 @@ sequenceDiagram
 
 ## Basic ConsumerRebalanceListener Implementation
 
-The `ConsumerRebalanceListener` interface has two methods: `onPartitionsRevoked` and `onPartitionsAssigned`. Here is a minimal implementation:
+The `ConsumerRebalanceListener` interface has two required methods, `onPartitionsRevoked` and `onPartitionsAssigned`, plus the default `onPartitionsLost` callback for partitions that were lost instead of gracefully revoked. Here is a minimal implementation:
 
 ```java
 import org.apache.kafka.clients.consumer.*;
@@ -50,9 +50,9 @@ import java.util.Collection;
 
 public class BasicRebalanceListener implements ConsumerRebalanceListener {
 
-    private final KafkaConsumer<String, String> consumer;
+    private final Consumer<String, String> consumer;
 
-    public BasicRebalanceListener(KafkaConsumer<String, String> consumer) {
+    public BasicRebalanceListener(Consumer<String, String> consumer) {
         this.consumer = consumer;
     }
 
@@ -106,11 +106,11 @@ The basic listener commits all offsets. In practice, you want to commit only the
 ```java
 public class OffsetTrackingRebalanceListener implements ConsumerRebalanceListener {
 
-    private final KafkaConsumer<String, String> consumer;
+    private final Consumer<String, String> consumer;
     private final Map<TopicPartition, OffsetAndMetadata> currentOffsets;
 
     public OffsetTrackingRebalanceListener(
-            KafkaConsumer<String, String> consumer,
+            Consumer<String, String> consumer,
             Map<TopicPartition, OffsetAndMetadata> currentOffsets) {
         this.consumer = consumer;
         this.currentOffsets = currentOffsets;
@@ -190,13 +190,13 @@ Real applications maintain state per partition: caches, batch buffers, file hand
 ```java
 public class StatefulRebalanceListener implements ConsumerRebalanceListener {
 
-    private final KafkaConsumer<String, String> consumer;
+    private final Consumer<String, String> consumer;
     private final Map<TopicPartition, OffsetAndMetadata> currentOffsets;
     private final Map<TopicPartition, PartitionState> partitionStates;
     private final StateStore stateStore;
 
     public StatefulRebalanceListener(
-            KafkaConsumer<String, String> consumer,
+            Consumer<String, String> consumer,
             Map<TopicPartition, OffsetAndMetadata> currentOffsets,
             StateStore stateStore) {
         this.consumer = consumer;
@@ -362,7 +362,7 @@ props.put(ConsumerConfig.PARTITION_ASSIGNMENT_STRATEGY_CONFIG,
     "org.apache.kafka.clients.consumer.CooperativeStickyAssignor");
 ```
 
-With cooperative rebalancing, `onPartitionsRevoked` is called only for partitions that are moving to another consumer. Your listener code does not need to change, but the behavior improves significantly: consumers keep processing stable partitions while only the moving partitions experience downtime.
+With cooperative rebalancing, `onPartitionsRevoked` is called only for non-empty sets of partitions that are moving away from the consumer. Your listener code does not need to change if it already handles only the partitions passed to the callback, but the behavior improves significantly: consumers keep stable partitions while only the moving partitions experience downtime.
 
 ## Handling onPartitionsLost
 
@@ -371,7 +371,7 @@ In some failure scenarios, partitions are lost rather than gracefully revoked. T
 ```java
 public class RobustRebalanceListener implements ConsumerRebalanceListener {
 
-    private final KafkaConsumer<String, String> consumer;
+    private final Consumer<String, String> consumer;
     private final Map<TopicPartition, OffsetAndMetadata> currentOffsets;
     private final Map<TopicPartition, PartitionState> partitionStates;
 
@@ -561,26 +561,26 @@ public void onPartitionsRevoked(Collection<TopicPartition> partitions) {
 }
 ```
 
-**2. Forgetting to handle empty revocation**
+**2. Forgetting to handle empty assignments**
 
-With cooperative rebalancing, `onPartitionsRevoked` may be called with an empty collection:
+`onPartitionsAssigned` is called after every successful rebalance, even if the consumer receives an empty assignment:
 
 ```java
 @Override
-public void onPartitionsRevoked(Collection<TopicPartition> partitions) {
+public void onPartitionsAssigned(Collection<TopicPartition> partitions) {
     if (partitions.isEmpty()) {
-        return; // Nothing to do
+        return; // No partitions assigned to this consumer
     }
-    // ... rest of revocation logic
+    // ... rest of assignment logic
 }
 ```
 
-**3. Not disabling auto-commit**
+**3. Not disabling auto-commit for manual offset management**
 
 If auto-commit is enabled, offsets may be committed before your listener flushes buffers:
 
 ```java
-// Always disable auto-commit when using rebalance listeners
+// Disable auto-commit when the listener manages offsets explicitly
 props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
 ```
 
