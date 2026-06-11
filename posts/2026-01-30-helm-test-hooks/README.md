@@ -12,7 +12,7 @@ Deploying applications to Kubernetes is only half the battle. The real question 
 
 ## What Are Helm Test Hooks?
 
-Helm test hooks are Kubernetes resources (typically Pods or Jobs) that run after a release is installed or upgraded. They execute validation logic and report success or failure based on the exit code.
+Helm test hooks are Kubernetes resources (typically Pods or Jobs) that run when you invoke `helm test` against an installed release. They execute validation logic and report success or failure based on the exit code.
 
 ```mermaid
 flowchart LR
@@ -613,7 +613,9 @@ jobs:
       - name: Get test logs on failure
         if: failure()
         run: |
-          kubectl logs -l helm.sh/hook=test --tail=100
+          for pod in $(kubectl get pods -o name | grep -- '-test-' || true); do
+            kubectl logs "$pod" --tail=100 || true
+          done
 ```
 
 ### GitLab CI Example
@@ -627,13 +629,13 @@ helm-test:
     - docker:dind
   before_script:
     - apk add --no-cache curl
-    - curl -LO https://storage.googleapis.com/kubernetes-release/release/v1.29.0/bin/linux/amd64/kubectl
+    - curl -LO https://dl.k8s.io/release/v1.29.0/bin/linux/amd64/kubectl
     - chmod +x kubectl && mv kubectl /usr/local/bin/
   script:
     - helm install myapp ./charts/myapp --wait --timeout 5m
     - helm test myapp --logs --timeout 10m
   after_script:
-    - kubectl logs -l helm.sh/hook=test --tail=100 || true
+    - for pod in $(kubectl get pods -o name | grep -- '-test-' || true); do kubectl logs "$pod" --tail=100 || true; done
 ```
 
 ## Debugging Failed Tests
@@ -642,7 +644,7 @@ When tests fail, use these commands to investigate:
 
 ```bash
 # View test pod status
-kubectl get pods -l helm.sh/hook=test
+kubectl get pods | grep -- '-test-'
 
 # Get detailed pod information
 kubectl describe pod <test-pod-name>
