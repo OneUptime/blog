@@ -134,7 +134,7 @@ Delta events capture what changed rather than full state.
 
 ```jsonc
 {
-  "eventId": "evt_e5f6g7h8",
+  "eventId": "evt_e5f6a7b8",
   "eventType": "order.updated",
   "version": "1.0",
   "timestamp": "2026-01-30T15:10:00.000Z",
@@ -201,7 +201,7 @@ interface OrderItem {
 type OrderPlacedEvent = EventEnvelope<'order.placed', OrderPlacedData>;
 
 // Example of creating a typed event
-function createOrderPlacedEvent(data: OrderPlacedData): OrderPlacedEvent {
+export function createOrderPlacedEvent(data: OrderPlacedData): OrderPlacedEvent {
   return {
     eventId: `evt_${crypto.randomUUID()}`,
     eventType: 'order.placed',
@@ -596,10 +596,10 @@ Validate events at boundaries: producer side before publishing, consumer side af
 // event-validator.ts
 // Validate events using JSON Schema with Ajv
 
-import Ajv, { ValidateFunction, ErrorObject } from 'ajv';
+import Ajv2020, { ValidateFunction, ErrorObject } from 'ajv/dist/2020';
 import addFormats from 'ajv-formats';
 
-const ajv = new Ajv({ allErrors: true, strict: true });
+const ajv = new Ajv2020({ allErrors: true, strict: true });
 addFormats(ajv);
 
 // Cache compiled validators for performance
@@ -925,11 +925,11 @@ Verify that producers and consumers agree on the schema.
 // Contract tests ensure schema compatibility
 
 import { describe, it, expect } from 'vitest';
-import Ajv from 'ajv';
+import Ajv2020 from 'ajv/dist/2020';
 import addFormats from 'ajv-formats';
 import { orderPlacedSchema } from './schemas/order-placed.schema';
 
-const ajv = new Ajv({ allErrors: true });
+const ajv = new Ajv2020({ allErrors: true });
 addFormats(ajv);
 
 describe('OrderPlaced Event Contract', () => {
@@ -996,17 +996,15 @@ Catch unintended payload changes.
 // event-producer.test.ts
 // Snapshot tests catch unintended schema changes
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { createOrderPlacedEvent } from './event-types';
 
 describe('Event Producer', () => {
   it('produces consistent event structure', () => {
     // Mock the non-deterministic parts
     const mockDate = '2026-01-30T14:32:00.000Z';
-    const mockId = 'evt_test-uuid';
-
     vi.spyOn(Date.prototype, 'toISOString').mockReturnValue(mockDate);
-    vi.spyOn(crypto, 'randomUUID').mockReturnValue('test-uuid');
+    vi.spyOn(crypto, 'randomUUID').mockReturnValue('550e8400-e29b-41d4-a716-446655440000');
 
     const event = createOrderPlacedEvent({
       orderId: 'ord_123',
@@ -1045,4 +1043,3 @@ Start with these patterns, adjust based on your specific constraints (message si
 
 - [What are Traces and Spans in OpenTelemetry](https://oneuptime.com/blog/post/2025-08-27-traces-and-spans-in-opentelemetry/view) - Correlate events with distributed traces
 - [How to Structure Logs Properly in OpenTelemetry](https://oneuptime.com/blog/post/2025-08-28-how-to-structure-logs-properly-in-opentelemetry/view) - Complement events with structured logging
-
