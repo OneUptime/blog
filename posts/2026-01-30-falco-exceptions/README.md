@@ -35,7 +35,7 @@ The key components are:
 - **rule**: The name of the rule (used to reference it in exceptions)
 - **condition**: The filter expression that triggers the alert
 - **output**: What gets logged when the rule fires
-- **priority**: Severity level (DEBUG, INFO, NOTICE, WARNING, ERROR, CRITICAL, ALERT, EMERGENCY)
+- **priority**: Severity level (DEBUG, INFORMATIONAL, NOTICE, WARNING, ERROR, CRITICAL, ALERT, EMERGENCY)
 
 ## What Are Falco Exceptions?
 
@@ -48,7 +48,7 @@ flowchart TD
     B -->|Yes| D{Exception Conditions}
     D -->|Exception Matches| E[Suppress Alert]
     D -->|No Exception Match| F[Generate Alert]
-    E --> G[Event Logged as Exception]
+    E --> G[No Alert]
     F --> H[Alert Sent to Output]
 ```
 
@@ -90,6 +90,8 @@ Once you define the exception structure, you apply values using `append`:
         - [kubelet, /etc/kubernetes]
         # Process name equals "dockerd" AND file starts with "/etc/docker"
         - [dockerd, /etc/docker]
+  override:
+    exceptions: append
 ```
 
 ## Field-Based Exception Conditions
@@ -159,7 +161,7 @@ exceptions:
       - [/tmp/build-]
 
   - name: by_network
-    fields: [fd.sip, fd.sport]   # Source IP and port
+    fields: [fd.sip, fd.sport]   # Server IP and port
     comps: [=, =]
     values:
       - [10.0.0.1, 443]
@@ -277,7 +279,7 @@ exceptions:
 
 ### Example 1: Terminal Shell in Container
 
-The default rule fires whenever a shell runs in a container. This catches legitimate debugging and CI/CD operations.
+The default rule fires when a shell runs in a container with an attached terminal. This catches legitimate debugging and CI/CD operations.
 
 ```yaml
 # Original rule that generates noise
@@ -287,10 +289,12 @@ The default rule fires whenever a shell runs in a container. This catches legiti
     spawned_process and
     container and
     shell_procs and
-    proc.tty != 0
+    proc.tty != 0 and
+    container_entrypoint and
+    not user_expected_terminal_shell_in_container_conditions
   output: >
-    Shell running in container
-    (container=%container.name shell=%proc.name parent=%proc.pname)
+    A shell was spawned in a container with an attached terminal
+    (evt_type=%evt.type user=%user.name process=%proc.name parent=%proc.pname command=%proc.cmdline terminal=%proc.tty)
   priority: NOTICE
 
 # Add exceptions for legitimate use cases
@@ -319,6 +323,8 @@ The default rule fires whenever a shell runs in a container. This catches legiti
       values:
         - [debug-]
         - [kubectl-debug-]
+  override:
+    exceptions: append
 ```
 
 ### Example 2: Outbound Connection to Unexpected Port
@@ -363,16 +369,20 @@ The default rule fires whenever a shell runs in a container. This catches legiti
 ### Example 3: Package Management in Container
 
 ```yaml
-- rule: Package management process launched in container
+- rule: Launch Package Management Process in Container
   desc: Detect package manager execution in containers
   condition: >
     spawned_process and
     container and
-    package_mgmt_procs
+    user.name != "_apt" and
+    package_mgmt_procs and
+    not package_mgmt_ancestor_procs and
+    not user_known_package_manager_in_container and
+    not pkg_mgmt_in_kube_proxy
   output: >
     Package management process launched
     (command=%proc.cmdline container=%container.name)
-  priority: WARNING
+  priority: ERROR
   exceptions:
     # Allow during build phase only (detected by parent process)
     - name: build_processes
@@ -441,6 +451,8 @@ rules_file:
       comps: [in]
       values:
         - [[kube-system, kube-public, istio-system, cert-manager]]
+  override:
+    exceptions: append
 
 - rule: Write below etc
   exceptions:
@@ -449,6 +461,8 @@ rules_file:
       comps: [in]
       values:
         - [[kube-system]]
+  override:
+    exceptions: append
 
 - rule: Read sensitive file untrusted
   exceptions:
@@ -457,6 +471,8 @@ rules_file:
       comps: [in]
       values:
         - [[kube-system, monitoring]]
+  override:
+    exceptions: append
 ```
 
 ## Best Practices for Exception Management
@@ -538,20 +554,22 @@ docker run -it --rm falcosecurity/event-generator run syscall --all
 
 ### 6. Monitor Exception Effectiveness
 
-Track how many alerts are suppressed vs generated:
+Track rule match counts and overall Falco metrics after tuning:
 
 ```yaml
 # In falco.yaml, enable metrics
 webserver:
   enabled: true
   listen_port: 8765
+  prometheus_metrics_enabled: true
 metrics:
   enabled: true
+  rules_counters_enabled: true
 ```
 
 ```bash
 # Query Falco metrics
-curl http://localhost:8765/metrics | grep falco_rules
+curl http://localhost:8765/metrics | grep falcosecurity_falco_rules
 ```
 
 ## Debugging Exceptions
@@ -593,7 +611,7 @@ falco -o "log_level=debug"
 - Combine multiple fields with AND logic
 
 ```yaml
-# Debug: Log when exceptions match
+# Debug: Log candidate events and inspect fields
 - rule: Debug exception matching
   desc: Temporary rule to verify exceptions
   condition: >
