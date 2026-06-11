@@ -94,8 +94,8 @@ Install the OpenTelemetry Collector Contrib distribution:
 # Download the latest release for your platform
 
 # Example for Linux amd64
-curl -LO https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.96.0/otelcol-contrib_0.96.0_linux_amd64.tar.gz
-tar -xzf otelcol-contrib_0.96.0_linux_amd64.tar.gz
+curl -LO https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v0.154.0/otelcol-contrib_0.154.0_linux_amd64.tar.gz
+tar -xzf otelcol-contrib_0.154.0_linux_amd64.tar.gz
 ```
 
 For Kubernetes deployments, use the OpenTelemetry Collector Helm chart with the contrib image:
@@ -103,7 +103,8 @@ For Kubernetes deployments, use the OpenTelemetry Collector Helm chart with the 
 ```bash
 helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts
 helm install otel-collector open-telemetry/opentelemetry-collector \
-  --set image.repository=otel/opentelemetry-collector-contrib
+  --set image.repository=otel/opentelemetry-collector-contrib \
+  --set mode=deployment
 ```
 
 ---
@@ -116,7 +117,7 @@ The Datadog Exporter requires your API key and site information. Here is a basic
 exporters:
   datadog:
     api:
-      key: ${DD_API_KEY}           # Your Datadog API key
+      key: ${env:DD_API_KEY}       # Your Datadog API key
       site: datadoghq.com          # Your Datadog site
 ```
 
@@ -154,7 +155,7 @@ processors:
 exporters:
   datadog:
     api:
-      key: ${DD_API_KEY}
+      key: ${env:DD_API_KEY}
       site: datadoghq.com
     traces:
       span_name_as_resource_name: true  # Use span name for Datadog resource
@@ -192,7 +193,7 @@ processors:
 exporters:
   datadog:
     api:
-      key: ${DD_API_KEY}
+      key: ${env:DD_API_KEY}
       site: datadoghq.com
     metrics:
       histograms:
@@ -238,7 +239,7 @@ processors:
 exporters:
   datadog:
     api:
-      key: ${DD_API_KEY}
+      key: ${env:DD_API_KEY}
       site: datadoghq.com
 
 service:
@@ -249,7 +250,7 @@ service:
       exporters: [datadog]
 ```
 
-Logs sent through the Datadog Exporter will automatically include trace correlation if trace context is present, enabling you to jump from logs to traces in the Datadog UI.
+OTLP logs sent through the Datadog Exporter can be correlated with traces when trace context is present, enabling you to jump from logs to traces in the Datadog UI.
 
 ---
 
@@ -283,22 +284,22 @@ processors:
   resource:
     attributes:
       - key: deployment.environment
-        value: ${DEPLOYMENT_ENV}
+        value: ${env:DEPLOYMENT_ENV}
         action: upsert
       - key: service.version
-        value: ${SERVICE_VERSION}
+        value: ${env:SERVICE_VERSION}
         action: upsert
 
 exporters:
   datadog:
     api:
-      key: ${DD_API_KEY}
-      site: ${DD_SITE}              # datadoghq.com, datadoghq.eu, etc.
+      key: ${env:DD_API_KEY}
+      site: ${env:DD_SITE}          # datadoghq.com, datadoghq.eu, etc.
 
     # Traces configuration
     traces:
       span_name_as_resource_name: true
-      trace_buffer: 1000            # Buffer size for trace aggregation
+      trace_buffer: 1000            # Buffer size for outgoing trace payloads
 
     # Metrics configuration
     metrics:
@@ -347,7 +348,12 @@ service:
     logs:
       level: info
     metrics:
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 ```
 
 Save this configuration as `otel-collector-config.yaml` and run the collector:
@@ -459,7 +465,7 @@ Increase the timeout and enable retry:
 exporters:
   datadog:
     api:
-      key: ${DD_API_KEY}
+      key: ${env:DD_API_KEY}
     retry_on_failure:
       enabled: true
       initial_interval: 5s
@@ -482,7 +488,7 @@ Never hardcode API keys in configuration files:
 exporters:
   datadog:
     api:
-      key: ${DD_API_KEY}    # Good: environment variable
+      key: ${env:DD_API_KEY} # Good: environment variable
       # key: abc123         # Bad: hardcoded secret
 ```
 
@@ -546,7 +552,12 @@ Expose Collector metrics and send them to Datadog:
 service:
   telemetry:
     metrics:
-      address: 0.0.0.0:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
 ```
 
 Then scrape these metrics with a Prometheus receiver or use the Datadog Agent to collect them.
