@@ -50,7 +50,7 @@ flowchart LR
     G --> I
 ```
 
-Log metrics generation enables you to derive counters from error frequencies, histograms from response times embedded in log messages, and gauges from status indicators. All without touching application code.
+Log metrics generation enables you to derive counters from error frequencies, percentile metrics from response times embedded in log messages, and gauges from status indicators. All without touching application code.
 
 ---
 
@@ -88,7 +88,7 @@ groups:
       - record: log:errors:rate5m
         expr: |
           sum by (service, level) (
-            rate({job="application"} | logfmt | level="error" [5m])
+            rate({job="application"} | logfmt | level="error" | __error__="" [5m])
           )
         labels:
           source: "log_metrics"
@@ -99,7 +99,8 @@ groups:
           quantile_over_time(0.99,
             {job="application"}
             | json
-            | unwrap duration_ms [5m]
+            | unwrap duration_ms
+            | __error__="" [5m]
           ) by (service, endpoint)
         labels:
           source: "log_metrics"
@@ -111,6 +112,7 @@ groups:
             rate(
               {job="nginx"}
               | pattern `<ip> - - [<timestamp>] "<method> <path> <_>" <status_code> <_>`
+              | __error__=""
               [5m]
             )
           )
@@ -207,10 +209,11 @@ exporters:
     endpoint: "0.0.0.0:8889"
     namespace: "log_metrics"
 
-  otlp:
+  otlp_http/oneuptime:
     endpoint: "https://oneuptime.com/otlp"
+    encoding: json
     headers:
-      x-oneuptime-token: ${ONEUPTIME_TOKEN}
+      x-oneuptime-token: "${env:ONEUPTIME_TOKEN}"
 
 service:
   pipelines:
@@ -221,16 +224,16 @@ service:
 
     metrics:
       receivers: [count]
-      exporters: [prometheus, otlp]
+      exporters: [prometheus, otlp_http/oneuptime]
 ```
 
 The connector bridges the logs and metrics pipelines. Log entries matching specified conditions increment counters, and dimensional attributes become metric labels.
 
 ---
 
-## Extracting Histograms from Log Data
+## Extracting Percentiles from Log Data
 
-Response times and other duration values logged as fields can become histogram metrics. This provides percentile calculations without instrumenting your application.
+Response times and other duration values logged as fields can become percentile metrics. This provides percentile calculations without instrumenting your application.
 
 The following LogQL query extracts duration values and computes percentiles.
 
@@ -242,16 +245,16 @@ The following LogQL query extracts duration values and computes percentiles.
 quantile_over_time(0.50,
   {job="api-gateway"}
   | json
-  | __error__=""
-  | unwrap response_time_ms [5m]
+  | unwrap response_time_ms
+  | __error__="" [5m]
 ) by (endpoint)
 
 # P99 response time by endpoint
 quantile_over_time(0.99,
   {job="api-gateway"}
   | json
-  | __error__=""
-  | unwrap response_time_ms [5m]
+  | unwrap response_time_ms
+  | __error__="" [5m]
 ) by (endpoint)
 ```
 
@@ -272,7 +275,7 @@ flowchart TD
     end
 
     subgraph Collection["Collection Layer"]
-        B1[Promtail / Fluent Bit]
+        B1[Grafana Alloy / Fluent Bit]
         B2[OpenTelemetry Collector]
     end
 
@@ -323,6 +326,7 @@ groups:
               {job="application"}
               | json
               | level="error"
+              | __error__=""
               [1m]
             )
           )
@@ -331,11 +335,11 @@ groups:
       - record: log:error_ratio:5m
         expr: |
           sum by (service) (
-            rate({job="application"} | json | level="error" [5m])
+            rate({job="application"} | json | level="error" | __error__="" [5m])
           )
           /
           sum by (service) (
-            rate({job="application"} | json [5m])
+            rate({job="application"} | json | __error__="" [5m])
           )
 ```
 
@@ -393,7 +397,7 @@ Log metrics generation transforms your existing log data into actionable time-se
 3. Pattern matching and field unwrapping for structured data extraction
 4. Careful label selection to control cardinality
 
-By deriving metrics from logs, you gain insights into system behavior without additional application instrumentation. Errors that were buried in log files become visible trends on dashboards. Response times scattered across log entries become percentile histograms you can alert on.
+By deriving metrics from logs, you gain insights into system behavior without additional application instrumentation. Errors that were buried in log files become visible trends on dashboards. Response times scattered across log entries become percentile metrics you can alert on.
 
 Start with a single high-value metric, validate the extraction logic, and expand your recording rules as you identify additional insights hiding in your logs.
 
