@@ -12,7 +12,7 @@ Kafka Streams provides a powerful mechanism called punctuators that allows you t
 
 ## What Are Punctuators?
 
-A punctuator is a callback function that gets invoked at regular intervals during stream processing. Unlike normal record processing which is triggered by incoming messages, punctuators execute based on time - either wall-clock time or stream time.
+A punctuator is a callback function that gets invoked at scheduled intervals during stream processing. Unlike normal record processing which is triggered by incoming messages, punctuators execute based on time - either wall-clock time or stream time.
 
 ```mermaid
 flowchart LR
@@ -49,6 +49,7 @@ Wall-clock time is based on the system clock. The punctuator fires according to 
 - Useful for timeout detection and session expiration
 - Not reproducible across reruns
 - Better for real-time alerting scenarios
+- Best effort; long processing iterations, GC pauses, or very short intervals can delay or skip individual punctuations
 
 ```mermaid
 flowchart TB
@@ -230,8 +231,8 @@ public class DynamicPunctuatorProcessor implements Processor<String, Event, Stri
     public void process(Record<String, Event> record) {
         String deviceId = record.key();
 
-        // Update the last seen timestamp
-        lastSeenStore.put(deviceId, record.timestamp());
+        // Update the last seen wall-clock timestamp
+        lastSeenStore.put(deviceId, context.currentSystemTimeMs());
 
         // If no punctuator exists for this device, create one
         if (!activePunctuators.containsKey(deviceId)) {
@@ -327,6 +328,8 @@ private void performCleanup(long timestamp) {
 ## Punctuator Execution Flow
 
 Understanding when punctuators execute is crucial for designing your application:
+
+Kafka Streams will not trigger more than one punctuation for the same timestamp. If stream time jumps by more than the interval, or wall-clock scheduling is delayed by long processing, missed punctuations are skipped.
 
 ```mermaid
 sequenceDiagram
@@ -596,7 +599,7 @@ void testStreamTimePunctuator() {
         // Now the punctuator should have fired
         var output = outputTopic.readKeyValue();
         assertEquals("key1", output.key);
-        assertEquals(30, output.value); // 10 + 20 aggregated before punctuate
+        assertEquals(35, output.value); // 10 + 20 + 5 aggregated before punctuate
     }
 }
 
