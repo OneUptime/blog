@@ -30,14 +30,14 @@ quadrantChart
     quadrant-1 "Over-engineered"
     quadrant-2 "Optimal Zone"
     quadrant-3 "Risky"
-    quadrant-4 "Cost-efficient"
+    quadrant-4 "Inefficient"
 ```
 
 | Quadrant | Cost | Reliability | Action |
 |----------|------|-------------|--------|
 | Over-engineered | High | High | Reduce capacity or accept as justified for critical services |
 | Optimal Zone | Medium | High | Maintain current approach |
-| Cost-efficient | Low | Medium | Acceptable for non-critical services |
+| Inefficient | High | Low | Reduce waste and improve reliability |
 | Risky | Low | Low | Increase capacity or improve efficiency |
 
 ### Decision Framework Algorithm
@@ -212,7 +212,7 @@ console.log(checkoutTarget);
 //   targetUtilization: { min: 50, max: 60 },
 //   recommendedCapacity: 131,  // Need to scale up
 //   capacityChange: 31,
-//   monthsUntilResize: -6  // Already over target
+//   monthsUntilResize: -7  // Already over target
 // }
 ```
 
@@ -273,7 +273,7 @@ interface ReliabilityCost {
 
 function calculateReliabilityCost(requirements: ReliabilityRequirements): ReliabilityCost {
   // Calculate allowed downtime
-  const minutesPerMonth = 30 * 24 * 60;  // 43,200 minutes
+  const minutesPerMonth = 730 * 60;  // Average calendar month: 43,800 minutes
   const allowedDowntimeMinutes = minutesPerMonth * (1 - requirements.targetAvailability);
 
   // Calculate cost of downtime
@@ -314,10 +314,10 @@ const ecommerceReliability: ReliabilityRequirements = {
 const reliabilityCost = calculateReliabilityCost(ecommerceReliability);
 console.log(reliabilityCost);
 // {
-//   allowedDowntimeMinutes: 43.2,
-//   costOfDowntimePerMinute: 185,
-//   maxMonthlyDowntimeCost: 7992,
-//   infrastructureBudgetCeiling: 11111,
+//   allowedDowntimeMinutes: 43.8,
+//   costOfDowntimePerMinute: 183,
+//   maxMonthlyDowntimeCost: 8000,
+//   infrastructureBudgetCeiling: 10959,
 //   recommendation: "Requires redundant components with automatic failover"
 // }
 ```
@@ -365,6 +365,7 @@ interface UsagePattern {
   onDemandPrice: number;  // Per-hour on-demand price
   reservedPrice1yr: number;  // Per-hour effective price with 1-year reservation
   reservedPrice3yr: number;  // Per-hour effective price with 3-year reservation
+  reservedUpfrontCost3yr?: number;  // Optional total upfront cost for selected 3-year reservations
   savingsPlansPrice: number;  // Per-hour price with Savings Plans
 }
 
@@ -418,9 +419,11 @@ function analyzeReservationStrategy(pattern: UsagePattern): ReservationRecommend
   const monthlySavings = monthlyOnDemandCost - monthlyOptimizedCost;
   const savingsPercentage = (monthlySavings / monthlyOnDemandCost) * 100;
 
-  // Break-even calculation (assuming upfront payment for reserved)
-  const upfrontCost = reservedUnits * pattern.reservedPrice3yr * hours * 12;  // 1 year upfront
-  const breakEvenMonths = upfrontCost > 0 ? Math.ceil(upfrontCost / monthlySavings) : 0;
+  // Break-even calculation only applies when upfront reservation cost is provided
+  const upfrontCost = pattern.reservedUpfrontCost3yr ?? 0;
+  const breakEvenMonths = upfrontCost > 0 && monthlySavings > 0
+    ? Math.ceil(upfrontCost / monthlySavings)
+    : 0;
 
   return {
     reservedUnits,
@@ -636,8 +639,8 @@ const resources: ResourceUtilization[] = [
 const report = analyzeOverProvisioning(resources);
 console.log(report);
 // {
-//   totalMonthlyCost: 1533,
-//   wastedMonthlyCost: 612,
+//   totalMonthlyCost: 1545,
+//   wastedMonthlyCost: 618,
 //   wastePercentage: 40,
 //   recommendations: [...]
 // }
@@ -768,7 +771,7 @@ console.log(riskAnalysis);
 //   shortfallUnits: 50,
 //   monthlyOutageRisk: 3.65,
 //   monthlyDegradedRisk: 12.17,
-//   expectedMonthlyCost: 669250,
+//   expectedMonthlyCost: 669167,
 //   additionalCapacityCost: 18250,
 //   riskRewardRatio: 36.7,
 //   recommendation: "CRITICAL: Immediately provision additional capacity. Risk far exceeds cost."
