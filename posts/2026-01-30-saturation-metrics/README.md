@@ -151,11 +151,11 @@ Example for Kafka:
 
 ```yaml
 # Consumer lag (messages behind)
-kafka_consumer_group_lag
+kafka_consumergroup_lag
 
 # Queue depth (unconsumed messages per topic)
 sum(kafka_topic_partition_current_offset) by (topic)
-  - sum(kafka_consumer_group_offset) by (topic)
+  - sum(kafka_consumergroup_current_offset) by (topic)
 ```
 
 Example for RabbitMQ:
@@ -167,8 +167,8 @@ rabbitmq_queue_messages_ready
 # Messages unacknowledged (in flight)
 rabbitmq_queue_messages_unacked
 
-# Consumer utilization (percentage of time consumers are busy)
-rabbitmq_queue_consumer_utilization
+# Consumer utilisation (percentage of time consumers are busy)
+rabbitmq_queue_consumer_utilisation
 ```
 
 ### Job Queue Saturation
@@ -383,16 +383,28 @@ Adding saturation metrics to your application follows a consistent pattern:
 
 ```python
 # Python example using OpenTelemetry
+from typing import Iterable
 from opentelemetry import metrics
+from opentelemetry.metrics import CallbackOptions, Observation
 
 meter = metrics.get_meter("myapp")
+
+# Callbacks must accept CallbackOptions and return an Iterable[Observation]
+def pool_utilization_callback(options: CallbackOptions) -> Iterable[Observation]:
+    yield Observation(get_pool_utilization())
+
+def queue_depth_callback(options: CallbackOptions) -> Iterable[Observation]:
+    yield Observation(get_queue_depth())
+
+def thread_utilization_callback(options: CallbackOptions) -> Iterable[Observation]:
+    yield Observation(get_thread_utilization())
 
 # Connection pool saturation
 pool_utilization = meter.create_observable_gauge(
     name="db_pool_utilization",
     description="Database connection pool utilization percentage",
     unit="%",
-    callbacks=[lambda: get_pool_utilization()]
+    callbacks=[pool_utilization_callback],
 )
 
 # Queue depth
@@ -400,7 +412,7 @@ queue_depth = meter.create_observable_gauge(
     name="job_queue_depth",
     description="Number of jobs waiting in queue",
     unit="jobs",
-    callbacks=[lambda: get_queue_depth()]
+    callbacks=[queue_depth_callback],
 )
 
 # Thread pool saturation
@@ -408,7 +420,7 @@ thread_utilization = meter.create_observable_gauge(
     name="worker_thread_utilization",
     description="Worker thread pool utilization percentage",
     unit="%",
-    callbacks=[lambda: get_thread_utilization()]
+    callbacks=[thread_utilization_callback],
 )
 ```
 
