@@ -8,13 +8,13 @@ Description: Build custom GitHub Actions using JavaScript with @actions/core and
 
 ---
 
-JavaScript actions run directly on the runner machine without containers. They start faster than Docker actions and work identically across Linux, macOS, and Windows runners. This guide walks through building a production-ready JavaScript action from scratch.
+JavaScript actions run directly on the runner machine without containers. They usually start faster than Docker actions and can work across Linux, macOS, and Windows runners when written in portable JavaScript. This guide walks through building a production-ready JavaScript action from scratch.
 
 ## Why JavaScript Actions?
 
 | Feature | JavaScript Actions | Docker Actions |
 |---------|-------------------|----------------|
-| Startup time | ~1 second | 30+ seconds (image pull) |
+| Startup time | Fast, no image pull | Can be slower if the image must be pulled or built |
 | Cross-platform | Yes (Linux, macOS, Windows) | Linux only |
 | Access to runner | Direct filesystem and network | Isolated container |
 | Dependencies | Bundled with action | Built into image |
@@ -71,6 +71,10 @@ inputs:
     description: 'Update an existing comment instead of creating new'
     required: false
     default: 'false'
+  comment-tag:
+    description: 'Hidden marker used to find an existing comment'
+    required: false
+    default: 'pr-comment-reporter'
 
 # Define outputs other actions can consume
 outputs:
@@ -81,11 +85,11 @@ outputs:
 
 # Runtime configuration for JavaScript actions
 runs:
-  using: 'node20'           # Node.js version (node16, node20 supported)
+  using: 'node24'           # Node.js version (node20, node24 supported)
   main: 'dist/index.js'     # Entry point after bundling
 ```
 
-The `runs.using` field specifies the Node.js runtime. GitHub currently supports `node16` and `node20`. Always use `node20` for new actions since `node16` is deprecated.
+The `runs.using` field specifies the Node.js runtime. GitHub currently supports `node20` and `node24`. Use `node24` for new actions since `node20` is being deprecated.
 
 ## Installing the GitHub Actions Toolkit
 
@@ -220,7 +224,7 @@ if (github.context.eventName === 'pull_request') {
 
 ### Creating an Octokit Client
 
-The getOctokit function returns an authenticated Octokit instance with retry and throttling plugins.
+The getOctokit function returns an authenticated Octokit instance with REST endpoint helpers, pagination support, proxy handling, and GitHub Enterprise Server base URL handling.
 
 ```javascript
 const core = require('@actions/core');
@@ -339,7 +343,9 @@ function getPRNumber(context) {
   return null;
 }
 
-run();
+const runPromise = run();
+
+module.exports = { run, getPRNumber, runPromise };
 ```
 
 ## Bundling with ncc
@@ -438,7 +444,8 @@ describe('action', () => {
     github.getOctokit.mockReturnValue(mockOctokit);
 
     // Run action
-    await require('./index');
+    const { runPromise } = require('./index');
+    await runPromise;
 
     expect(mockOctokit.rest.issues.createComment).toHaveBeenCalled();
     expect(core.setOutput).toHaveBeenCalledWith('comment-id', '123');
@@ -465,9 +472,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
 
       - name: Install and test
