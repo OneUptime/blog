@@ -72,11 +72,7 @@ interface ConversionEvent {
   timestamp: Date;
 
   // Additional context
-  metadata: {
-    source?: string;
-    category?: string;
-    properties?: Record<string, string | number | boolean>;
-  };
+  metadata: Record<string, string | number | boolean | undefined>;
 }
 ```
 
@@ -95,6 +91,7 @@ Different features require different conversion metrics. Here are typical patter
 ### Implementing Conversion Tracking
 
 ```typescript
+import { createHash } from 'node:crypto';
 import { v4 as uuid } from 'uuid';
 
 interface ConversionConfig {
@@ -179,8 +176,7 @@ class ConversionTracker {
   }
 
   private hashUserId(userId: string): string {
-    // Use a proper hashing function in production (SHA-256 recommended)
-    return Buffer.from(userId).toString('base64');
+    return createHash('sha256').update(userId).digest('hex');
   }
 }
 ```
@@ -293,6 +289,8 @@ class SessionBasedAttribution {
   ): Promise<Attribution[]> {
     const exposures = await this.getSessionExposures(userId, sessionId);
 
+    if (exposures.length === 0) return [];
+
     return exposures.map(exp => ({
       exposureId: exp.evaluationId,
       flagKey: exp.flagKey,
@@ -326,17 +324,23 @@ class TimeWindowAttribution {
 
     // Weight by recency (more recent = higher weight)
     const totalTime = this.windowMs;
-
-    return exposures.map(exp => {
+    const recencyScores = exposures.map(exp => {
       const timeSinceExposure = conversionTime.getTime() - exp.timestamp.getTime();
-      const recencyScore = 1 - (timeSinceExposure / totalTime);
+      return Math.max(0, 1 - (timeSinceExposure / totalTime));
+    });
+    const totalScore = recencyScores.reduce((sum, score) => sum + score, 0);
+
+    if (totalScore === 0) return [];
+
+    return exposures.map((exp, i) => {
+      const timeSinceExposure = conversionTime.getTime() - exp.timestamp.getTime();
 
       return {
         exposureId: exp.evaluationId,
         flagKey: exp.flagKey,
         variant: exp.variant,
         attributionModel: 'time_window',
-        weight: recencyScore,
+        weight: recencyScores[i] / totalScore,
         timeSinceExposure,
       };
     });
@@ -585,7 +589,7 @@ class ConversionAnalyzer {
     const zBeta = this.getZBeta(this.powerTarget);
 
     const p = baselineRate;
-    const se = Math.sqrt(2 * p * (1 - p) / ((n1 * n2) / (n1 + n2)));
+    const se = Math.sqrt(p * (1 - p) * (1 / n1 + 1 / n2));
 
     return (zAlpha + zBeta) * se;
   }
@@ -1173,9 +1177,10 @@ class ROICalculator {
     const annualExposures = dailyExposures * 365;
 
     const annualIncrementalConversions = annualExposures * (treatmentRate - controlRate);
-    const projectedAnnualRevenue = annualIncrementalConversions * revenue.averageOrderValue * revenue.marginPercentage;
+    const projectedAnnualRevenue = annualIncrementalConversions * revenue.averageOrderValue;
+    const projectedAnnualProfit = projectedAnnualRevenue * revenue.marginPercentage;
     const projectedAnnualROI = implementationCost > 0
-      ? ((projectedAnnualRevenue - costs.maintenanceCostPerMonth * 12) / implementationCost) * 100
+      ? ((projectedAnnualProfit - costs.maintenanceCostPerMonth * 12) / implementationCost) * 100
       : 0;
 
     return {
@@ -1334,13 +1339,34 @@ function checkSampleRatioMismatch(
     Math.pow(treatmentCount - expectedTreatment, 2) / expectedTreatment;
 
   // p-value (1 degree of freedom)
-  const pValue = 1 - chiSquareCDF(chiSquare, 1);
+  const pValue = 1 - chiSquareCDF1df(chiSquare);
 
   return {
     hasSRM: pValue < 0.01, // SRM if p < 0.01
     actualRatio: controlCount / treatmentCount,
     pValue,
   };
+}
+
+function chiSquareCDF1df(x: number): number {
+  return erf(Math.sqrt(x / 2));
+}
+
+function erf(x: number): number {
+  const a1 = 0.254829592;
+  const a2 = -0.284496736;
+  const a3 = 1.421413741;
+  const a4 = -1.453152027;
+  const a5 = 1.061405429;
+  const p = 0.3275911;
+
+  const sign = x < 0 ? -1 : 1;
+  x = Math.abs(x);
+
+  const t = 1.0 / (1.0 + p * x);
+  const y = 1.0 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * Math.exp(-x * x);
+
+  return sign * y;
 }
 ```
 
