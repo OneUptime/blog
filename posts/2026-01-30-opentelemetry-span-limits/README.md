@@ -387,6 +387,7 @@ import (
     "go.opentelemetry.io/otel/sdk/resource"
     sdktrace "go.opentelemetry.io/otel/sdk/trace"
     semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
+    "go.opentelemetry.io/otel/trace"
 )
 
 func getEnvInt(key string, defaultVal int) int {
@@ -456,11 +457,11 @@ func main() {
         attribute.Int("operation.count", 42),
     )
 
-    span.AddEvent("processing", attribute.String("status", "started"))
+    span.AddEvent("processing", trace.WithAttributes(attribute.String("status", "started")))
 
     // Your application logic here
 
-    span.AddEvent("processing", attribute.String("status", "completed"))
+    span.AddEvent("processing", trace.WithAttributes(attribute.String("status", "completed")))
 
     log.Println("Operation completed")
 }
