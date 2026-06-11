@@ -25,7 +25,7 @@ Before diving into Docker secrets, let's understand why environment variables ar
 | Transmission | Passed in clear text | Encrypted during transmission |
 | Access | Available to all processes | Mounted as files with permissions |
 | Logging | Often leaked in logs | File-based, harder to leak |
-| Rotation | Requires container restart | Can update without full restart |
+| Rotation | Requires container restart | Uses rolling service updates in Swarm |
 
 Environment variables are visible to anyone with access to the Docker daemon.
 
@@ -467,10 +467,11 @@ WORKDIR /app
 COPY package*.json ./
 
 # Mount secret during npm install only
+# Assumes your npm configuration reads the token from NPM_TOKEN.
 # The secret is not stored in any layer
 RUN --mount=type=secret,id=npm_token \
     NPM_TOKEN=$(cat /run/secrets/npm_token) \
-    npm ci --only=production
+    npm ci --omit=dev
 
 COPY . .
 RUN npm run build
@@ -496,11 +497,11 @@ Build the image with the secret:
 # Enable BuildKit
 export DOCKER_BUILDKIT=1
 
-# Build with secret from file
-docker build --secret id=npm_token,src=$HOME/.npmrc -t myapp:latest .
+# Build with secret from a file containing only the token value
+docker build --secret id=npm_token,src=$HOME/.npm-token -t myapp:latest .
 
 # Build with secret from environment variable
-echo $NPM_TOKEN | docker build --secret id=npm_token -t myapp:latest .
+docker build --secret id=npm_token,env=NPM_TOKEN -t myapp:latest .
 ```
 
 ### Using .dockerignore
@@ -551,7 +552,7 @@ Use tools to detect accidentally committed secrets:
 docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
     aquasec/trivy:latest image --scanners secret myapp:latest
 
-# Use Docker Scout for vulnerability and secret scanning
+# Use Docker Scout for vulnerability scanning alongside secret scans
 docker scout cves myapp:latest
 docker scout quickview myapp:latest
 ```
@@ -902,8 +903,8 @@ services:
   traefik:
     image: traefik:v3.0
     command:
-      - "--providers.docker=true"
-      - "--providers.docker.swarmmode=true"
+      - "--providers.swarm=true"
+      - "--providers.swarm.endpoint=unix:///var/run/docker.sock"
       - "--entrypoints.web.address=:80"
       - "--entrypoints.websecure.address=:443"
     ports:
