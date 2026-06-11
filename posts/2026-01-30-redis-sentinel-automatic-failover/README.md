@@ -290,8 +290,8 @@ sentinel deny-scripts-reconfig yes
 # Announce port for NAT environments
 # sentinel announce-port 26379
 
-# Minimum time between logging identical messages
-sentinel log-level notice
+# Log verbosity level: debug, verbose, notice, warning
+loglevel notice
 
 # Resolve hostname support
 sentinel resolve-hostnames no
@@ -579,8 +579,8 @@ redis.on('error', (err) => {
     console.error('Redis error:', err.message);
 });
 
-redis.on('+switch-master', (name, oldMaster, newMaster) => {
-    console.log(`Master switched from ${oldMaster} to ${newMaster}`);
+redis.on('reconnecting', () => {
+    console.log('Reconnecting - ioredis re-queries Sentinels to find the current master');
 });
 
 // Usage example
@@ -681,7 +681,7 @@ SENTINEL sentinels mymaster
 # Get current master address
 SENTINEL get-master-addr-by-name mymaster
 
-# Check if master is in ODOWN state
+# Check if Sentinels can reach quorum and majority for failover
 SENTINEL ckquorum mymaster
 
 # Force a failover (for testing)
