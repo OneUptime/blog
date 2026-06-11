@@ -77,6 +77,7 @@ Your application can now connect to `my-database` or the fully qualified domain 
 
 ```python
 # Python application example
+import os
 import psycopg2
 
 # Instead of hardcoding: database.external-provider.com
@@ -291,20 +292,20 @@ Note that these port definitions do not affect traffic routing for ExternalName 
 
 ### Limitation 1: No IP Address Support
 
-ExternalName services only work with DNS hostnames. You cannot specify an IP address:
+ExternalName services are intended for DNS hostnames. If you specify an IPv4 address-looking value, Kubernetes treats it as a DNS name made of digits, not as an IP address, and DNS servers will not resolve it as an ExternalName target:
 
 ```yaml
-# This will NOT work
+# This will NOT resolve as an IP address
 apiVersion: v1
 kind: Service
 metadata:
   name: external-by-ip
 spec:
   type: ExternalName
-  externalName: 192.168.1.100  # Invalid - must be a hostname
+  externalName: 192.168.1.100  # Treated as a DNS name, not an IP address
 ```
 
-**Workaround**: Use a headless service with manual Endpoints:
+**Workaround**: Use a headless service with a manual EndpointSlice:
 
 ```yaml
 apiVersion: v1
@@ -314,17 +315,25 @@ metadata:
 spec:
   clusterIP: None
   ports:
-    - port: 8080
+    - name: http
+      port: 8080
+      targetPort: 8080
 ---
-apiVersion: v1
-kind: Endpoints
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
 metadata:
-  name: external-by-ip
-subsets:
+  name: external-by-ip-1
+  labels:
+    kubernetes.io/service-name: external-by-ip
+    endpointslice.kubernetes.io/managed-by: cluster-admins
+addressType: IPv4
+ports:
+  - name: http
+    protocol: TCP
+    port: 8080
+endpoints:
   - addresses:
-      - ip: 192.168.1.100
-    ports:
-      - port: 8080
+      - "192.168.1.100"
 ```
 
 ### Limitation 2: TLS Certificate Validation
@@ -420,6 +429,12 @@ spec:
       containers:
         - name: postgres
           image: postgres:15
+          env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: password
           ports:
             - containerPort: 5432
           volumeMounts:
@@ -663,7 +678,7 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - ../../base
-patchesStrategicMerge:
+patches:
   - external-services-patch.yaml
 ```
 
