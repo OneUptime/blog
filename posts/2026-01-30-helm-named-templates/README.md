@@ -12,7 +12,7 @@ Helm charts often contain repeated YAML blocks. Labels, annotations, resource na
 
 ## What Are Named Templates?
 
-Named templates are reusable template snippets defined with the `define` action and called with `include` or `template`. They live in files prefixed with an underscore, typically `_helpers.tpl`.
+Named templates are reusable template snippets defined with the `define` action and called with `include` or `template`. They are usually placed in files prefixed with an underscore, typically `_helpers.tpl`.
 
 ```mermaid
 flowchart TD
@@ -120,7 +120,7 @@ Prefer `include` because it works with pipelines:
 
 ## Passing Scope to Templates
 
-The second argument to `include` is the scope. Use `.` for root scope:
+The second argument to `include` is the scope. At the top level, use `.` to pass the current chart context:
 
 ```yaml
 {{- include "mychart.name" . }}
@@ -130,6 +130,12 @@ Or pass a specific scope:
 
 ```yaml
 {{- include "mychart.container" .Values.app }}
+```
+
+Inside a `range` or `with` block, `.` changes to the current item or object. Use `$` when you need to pass the root chart context from inside a changed scope:
+
+```yaml
+{{- include "mychart.name" $ }}
 ```
 
 ```mermaid
@@ -264,7 +270,7 @@ spec:
 
 ```yaml
 {{- define "mychart.deployment" -}}
-{{- $ctx := dict "Release" .Release "Values" .Values "name" .name }}
+{{- $ctx := dict "Release" .Release "Values" .Values "name" (include "mychart.fullname" .) }}
 metadata:
   name: {{ $ctx.name }}
   namespace: {{ $ctx.Release.Namespace }}
