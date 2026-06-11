@@ -108,7 +108,7 @@ class ToxicityFilter:
         self.classifier = pipeline(
             "text-classification",
             model="unitary/toxic-bert",
-            return_all_scores=True
+            top_k=None
         )
         self.threshold = threshold
 
@@ -428,7 +428,7 @@ class PIIDetector:
     # These patterns balance precision and recall
     PATTERNS: Dict[PIIType, str] = {
         # Email addresses
-        PIIType.EMAIL: r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b',
+        PIIType.EMAIL: r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b',
 
         # Phone numbers (US formats)
         PIIType.PHONE: r'\b(?:\+1[-.\s]?)?(?:\(?\d{3}\)?[-.\s]?)?\d{3}[-.\s]?\d{4}\b',
