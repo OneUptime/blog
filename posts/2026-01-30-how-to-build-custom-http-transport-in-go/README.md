@@ -98,7 +98,7 @@ func NewProxyTransport(proxyURL string) (*http.Transport, error) {
 
 ## Custom TLS Configuration
 
-For scenarios requiring custom certificate verification or specific TLS versions:
+For scenarios requiring specific TLS versions or cipher suites:
 
 ```go
 func NewSecureTransport() *http.Transport {
@@ -106,7 +106,8 @@ func NewSecureTransport() *http.Transport {
         MinVersion: tls.VersionTLS12,
         MaxVersion: tls.VersionTLS13,
 
-        // Custom cipher suites (optional)
+        // Custom cipher suites for TLS 1.0-1.2 (optional)
+        // TLS 1.3 cipher suites are not configurable.
         CipherSuites: []uint16{
             tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
             tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
