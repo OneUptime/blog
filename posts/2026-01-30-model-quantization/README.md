@@ -54,13 +54,15 @@ At its core, quantization is a linear mapping between floating-point range and i
 The simplest approach assumes weights are symmetric around zero.
 
 ```python
+import numpy as np
+
 # The scale factor maps the max absolute value to the max integer value
 
 # For INT8, we have 127 as the max positive integer
-scale = max(abs(weights)) / 127
+scale = np.max(np.abs(weights)) / 127
 
 # Quantize: convert float to int
-quantized_weights = round(weights / scale)
+quantized_weights = np.round(weights / scale)
 
 # Dequantize: convert back to float (used during inference)
 dequantized_weights = quantized_weights * scale
@@ -88,15 +90,19 @@ flowchart TB
 The formulas for asymmetric quantization:
 
 ```python
+import numpy as np
+
 # Calculate scale and zero-point
 # Scale determines the step size between quantized values
-scale = (max_val - min_val) / 255  # For uint8
+scale = max((max_val - min_val) / 255, 1e-8)  # For uint8
 
 # Zero-point shifts the range so min_val maps to 0
 zero_point = round(-min_val / scale)
+zero_point = max(0, min(255, zero_point))
 
 # Quantize
-quantized = round(weights / scale) + zero_point
+quantized = np.round(weights / scale) + zero_point
+quantized = np.clip(quantized, 0, 255)
 
 # Dequantize
 dequantized = (quantized - zero_point) * scale
@@ -153,11 +159,14 @@ class Quantizer:
         else:
             # Asymmetric: map full range to integer range
             self.scale = (max_val - min_val) / (self.qmax - self.qmin)
-            self.zero_point = int(round(self.qmin - min_val / self.scale))
 
         # Prevent division by zero for constant tensors
         if self.scale == 0:
             self.scale = 1.0
+
+        if not self.symmetric:
+            self.zero_point = int(round(self.qmin - min_val / self.scale))
+            self.zero_point = int(np.clip(self.zero_point, self.qmin, self.qmax))
 
         return self.scale, self.zero_point
 
@@ -362,7 +371,7 @@ class QuantizedLinear(nn.Module):
         super().__init__()
         self.linear = nn.Linear(in_features, out_features)
 
-        # Learnable quantization parameters
+        # Stored quantization parameters
         self.register_buffer('weight_scale', torch.tensor(1.0))
         self.register_buffer('weight_zero_point', torch.tensor(0))
         self.register_buffer('activation_scale', torch.tensor(1.0))
@@ -376,17 +385,28 @@ class QuantizedLinear(nn.Module):
         """Recalculate weight quantization parameters."""
         weight = self.linear.weight.data
         max_abs = weight.abs().max()
-        self.weight_scale = max_abs / 127.0
+        self.weight_scale = torch.clamp(max_abs / 127.0, min=1e-8)
 
     def update_activation_quantization_params(self, x: torch.Tensor):
         """Update running statistics for activation quantization."""
         # Exponential moving average of min/max
         momentum = 0.1
-        self.running_min = (1 - momentum) * self.running_min + momentum * x.min()
-        self.running_max = (1 - momentum) * self.running_max + momentum * x.max()
+        current_min = x.detach().min()
+        current_max = x.detach().max()
 
-        self.activation_scale = (self.running_max - self.running_min) / 255.0
+        if torch.isinf(self.running_min).item():
+            self.running_min = current_min
+            self.running_max = current_max
+        else:
+            self.running_min = (1 - momentum) * self.running_min + momentum * current_min
+            self.running_max = (1 - momentum) * self.running_max + momentum * current_max
+
+        self.activation_scale = torch.clamp(
+            (self.running_max - self.running_min) / 255.0,
+            min=1e-8
+        )
         self.activation_zero_point = torch.round(-self.running_min / self.activation_scale)
+        self.activation_zero_point = torch.clamp(self.activation_zero_point, 0, 255)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if self.training:
@@ -519,6 +539,8 @@ ONNX Runtime provides optimized INT8 inference on CPUs.
 ```python
 import torch
 import onnx
+import numpy as np
+import torch.nn as nn
 from onnxruntime.quantization import quantize_dynamic, QuantType
 
 def export_and_quantize_onnx(
@@ -598,11 +620,14 @@ def benchmark_onnx_inference(
 
 ### TensorRT INT8 Deployment
 
-For NVIDIA GPUs, TensorRT provides the fastest INT8 inference.
+For NVIDIA GPUs, TensorRT provides high-performance INT8 inference. The calibration example below uses TensorRT's legacy implicit quantization API, which is deprecated in TensorRT 10.1 and later in favor of explicit Q/DQ quantization. For new TensorRT 10.x projects, prefer exporting an explicitly quantized ONNX model with Quantize/Dequantize nodes.
 
 ```python
 import tensorrt as trt
 import numpy as np
+import os
+import pycuda.autoinit  # Initializes a CUDA context
+import pycuda.driver as cuda
 
 class TensorRTQuantizer:
     """
@@ -645,6 +670,8 @@ class TensorRTQuantizer:
 
         # Build engine
         engine = builder.build_serialized_network(network, config)
+        if engine is None:
+            raise RuntimeError("Failed to build TensorRT engine")
 
         with open(output_path, 'wb') as f:
             f.write(engine)
@@ -660,7 +687,7 @@ class EntropyCalibrator(trt.IInt8EntropyCalibrator2):
     """
 
     def __init__(self, calibration_data: np.ndarray, cache_file: str):
-        super().__init__()
+        trt.IInt8EntropyCalibrator2.__init__(self)
         self.calibration_data = calibration_data
         self.cache_file = cache_file
         self.batch_idx = 0
@@ -675,16 +702,26 @@ class EntropyCalibrator(trt.IInt8EntropyCalibrator2):
         return self.batch_size
 
     def get_batch(self, names):
-        if self.batch_idx >= len(self.calibration_data):
+        if self.batch_idx + self.batch_size > len(self.calibration_data):
             return None
 
-        batch = self.calibration_data[
+        batch = np.ascontiguousarray(self.calibration_data[
             self.batch_idx:self.batch_idx + self.batch_size
-        ]
+        ])
         cuda.memcpy_htod(self.device_input, batch)
         self.batch_idx += self.batch_size
 
         return [int(self.device_input)]
+
+    def read_calibration_cache(self):
+        if os.path.exists(self.cache_file):
+            with open(self.cache_file, 'rb') as f:
+                return f.read()
+        return None
+
+    def write_calibration_cache(self, cache):
+        with open(self.cache_file, 'wb') as f:
+            f.write(cache)
 ```
 
 ## Measuring Quantization Quality
@@ -752,7 +789,7 @@ def layer_sensitivity_analysis(
             original_weight = module.weight.data.clone()
 
             # Quantize this layer only
-            scale = original_weight.abs().max() / 127.0
+            scale = torch.clamp(original_weight.abs().max() / 127.0, min=1e-8)
             quantized = torch.round(original_weight / scale).clamp(-127, 127)
             dequantized = quantized * scale
 
