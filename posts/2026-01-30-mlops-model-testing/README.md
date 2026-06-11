@@ -464,10 +464,10 @@ class TestModelSlices:
     """Slice tests for the trained model."""
 
     @pytest.fixture
-    def slice_framework(self, trained_model, test_data):
+    def slice_framework(self, model, test_data):
         """Create slice testing framework with model and data."""
         return SliceTestFramework(
-            model=trained_model,
+            model=model,
             data=test_data,
             target_col='target'
         )
@@ -575,21 +575,18 @@ import pytest
 import numpy as np
 from sklearn.metrics import (
     accuracy_score,
-    roc_auc_score,
-    mean_squared_error,
-    calibration_curve
+    roc_auc_score
 )
 from sklearn.calibration import calibration_curve
-import scipy.stats as stats
 
 
 class TestModelAccuracy:
     """Tests for model accuracy metrics."""
 
-    def test_accuracy_exceeds_baseline(self, model, test_data, test_labels):
+    def test_accuracy_exceeds_baseline(self, model, test_features, test_labels):
         """Model accuracy should exceed a simple baseline."""
         # Calculate model accuracy
-        predictions = model.predict(test_data)
+        predictions = model.predict(test_features)
         model_accuracy = accuracy_score(test_labels, predictions)
 
         # Calculate baseline (most frequent class)
@@ -604,21 +601,21 @@ class TestModelAccuracy:
             f"exceed baseline {baseline_accuracy:.2%}"
         )
 
-    def test_auc_score_acceptable(self, model, test_data, test_labels):
+    def test_auc_score_acceptable(self, model, test_features, test_labels):
         """AUC-ROC should meet minimum threshold."""
         # Get probability predictions
-        probabilities = model.predict_proba(test_data)[:, 1]
+        probabilities = model.predict_proba(test_features)[:, 1]
         auc = roc_auc_score(test_labels, probabilities)
 
         # AUC should be at least 0.80
         assert auc >= 0.80, f"AUC {auc:.3f} below threshold 0.80"
 
     def test_no_performance_regression(
-        self, model, test_data, test_labels, previous_metrics
+        self, model, test_features, test_labels, previous_metrics
     ):
         """Model should not regress compared to previous version."""
         # Calculate current metrics
-        predictions = model.predict(test_data)
+        predictions = model.predict(test_features)
         current_accuracy = accuracy_score(test_labels, predictions)
 
         # Allow 2% tolerance for random variation
@@ -635,10 +632,10 @@ class TestModelAccuracy:
 class TestModelCalibration:
     """Tests for probability calibration."""
 
-    def test_calibration_error(self, model, test_data, test_labels):
+    def test_calibration_error(self, model, test_features, test_labels):
         """Predicted probabilities should be well-calibrated."""
         # Get probability predictions
-        probabilities = model.predict_proba(test_data)[:, 1]
+        probabilities = model.predict_proba(test_features)[:, 1]
 
         # Calculate calibration curve
         prob_true, prob_pred = calibration_curve(
@@ -654,11 +651,11 @@ class TestModelCalibration:
         # ECE should be below 0.05 for well-calibrated model
         assert ece < 0.05, f"Calibration error {ece:.3f} exceeds threshold 0.05"
 
-    def test_confidence_reliability(self, model, test_data, test_labels):
+    def test_confidence_reliability(self, model, test_features, test_labels):
         """High-confidence predictions should be more accurate."""
-        probabilities = model.predict_proba(test_data)
+        probabilities = model.predict_proba(test_features)
         max_probs = np.max(probabilities, axis=1)
-        predictions = model.predict(test_data)
+        predictions = model.predict(test_features)
 
         # Split into confidence buckets
         high_conf_mask = max_probs >= 0.90
@@ -688,20 +685,20 @@ class TestModelCalibration:
 class TestModelRobustness:
     """Tests for model robustness to perturbations."""
 
-    def test_invariance_to_small_perturbations(self, model, test_data):
+    def test_invariance_to_small_perturbations(self, model, test_features):
         """Small input changes should not drastically change predictions."""
         # Get original predictions
-        original_probs = model.predict_proba(test_data)
+        original_probs = model.predict_proba(test_features)
 
         # Add small Gaussian noise to numeric features
         noise_scale = 0.01  # 1% of feature scale
-        noisy_data = test_data.copy()
-        numeric_cols = test_data.select_dtypes(include=[np.number]).columns
+        noisy_data = test_features.copy()
+        numeric_cols = test_features.select_dtypes(include=[np.number]).columns
 
         for col in numeric_cols:
-            std = test_data[col].std()
-            noise = np.random.normal(0, noise_scale * std, len(test_data))
-            noisy_data[col] = test_data[col] + noise
+            std = test_features[col].std()
+            noise = np.random.normal(0, noise_scale * std, len(test_features))
+            noisy_data[col] = test_features[col] + noise
 
         # Get perturbed predictions
         perturbed_probs = model.predict_proba(noisy_data)
@@ -715,10 +712,10 @@ class TestModelRobustness:
             f"avg probability change = {prob_change:.3f}"
         )
 
-    def test_prediction_stability(self, model, test_data):
+    def test_prediction_stability(self, model, test_features):
         """Multiple predictions on same input should be identical."""
         # Run prediction multiple times
-        predictions = [model.predict(test_data) for _ in range(5)]
+        predictions = [model.predict(test_features) for _ in range(5)]
 
         # All predictions should be identical
         for i in range(1, len(predictions)):
@@ -726,15 +723,15 @@ class TestModelRobustness:
                 "Model predictions are not deterministic"
             )
 
-    def test_handles_out_of_distribution_gracefully(self, model, test_data):
+    def test_handles_out_of_distribution_gracefully(self, model, test_features):
         """Model should handle OOD inputs without crashing."""
         # Create out-of-distribution data
-        ood_data = test_data.copy()
-        numeric_cols = test_data.select_dtypes(include=[np.number]).columns
+        ood_data = test_features.copy()
+        numeric_cols = test_features.select_dtypes(include=[np.number]).columns
 
         for col in numeric_cols:
             # Set values far outside training distribution
-            ood_data[col] = test_data[col].max() * 10
+            ood_data[col] = test_features[col].max() * 10
 
         # Should not raise exception
         try:
@@ -783,6 +780,7 @@ flowchart LR
 import pytest
 import json
 import time
+import numpy as np
 from datetime import datetime
 from prediction_service import PredictionService
 from data_pipeline import DataPipeline
@@ -915,7 +913,7 @@ class TestModelServing:
             latencies.append(time.time() - start)
 
         # P95 latency should be under 100ms
-        p95_latency = sorted(latencies)[95] * 1000  # Convert to ms
+        p95_latency = np.percentile(latencies, 95) * 1000  # Convert to ms
         assert p95_latency < 100, f"P95 latency {p95_latency:.1f}ms exceeds 100ms"
 
     def test_handles_concurrent_requests(self, model_server):
@@ -1009,12 +1007,12 @@ class TestInferenceLatency:
 
         # Warm up
         for _ in range(10):
-            model.predict([sample_input])
+            model.predict(sample_input)
 
         # Measure latency
         for _ in range(1000):
             start = time.perf_counter()
-            model.predict([sample_input])
+            model.predict(sample_input)
             latencies.append(time.perf_counter() - start)
 
         # Calculate percentiles
@@ -1083,7 +1081,7 @@ class TestThroughput:
 
         def make_predictions():
             for _ in range(requests_per_worker):
-                model.predict([sample_input])
+                model.predict(sample_input)
             return requests_per_worker
 
         start = time.time()
@@ -1119,22 +1117,22 @@ class TestMemoryUsage:
     def test_no_memory_leak_on_repeated_inference(self, model, sample_batch):
         """Repeated inference should not leak memory."""
         tracemalloc.start()
+        before = tracemalloc.take_snapshot()
 
         # Run many predictions
         for _ in range(1000):
             model.predict(sample_batch)
 
         # Get memory stats
-        current, peak = tracemalloc.get_traced_memory()
+        after = tracemalloc.take_snapshot()
         tracemalloc.stop()
 
-        current_mb = current / (1024 * 1024)
-        peak_mb = peak / (1024 * 1024)
+        stats = after.compare_to(before, 'lineno')
+        growth_mb = sum(stat.size_diff for stat in stats) / (1024 * 1024)
 
         # Memory growth should be minimal
-        # Peak should not be more than 2x current (allowing for temporary allocations)
-        assert peak_mb < current_mb * 2, (
-            f"Memory leak detected: current={current_mb:.1f}MB, peak={peak_mb:.1f}MB"
+        assert growth_mb < 50, (
+            f"Memory leak detected: growth={growth_mb:.1f}MB"
         )
 
     def test_batch_memory_scaling(self, model, sample_batch):
@@ -1148,10 +1146,10 @@ class TestMemoryUsage:
 
             tracemalloc.start()
             model.predict(batch)
-            current, _ = tracemalloc.get_traced_memory()
+            _, peak = tracemalloc.get_traced_memory()
             tracemalloc.stop()
 
-            memory_usage[batch_size] = current / (1024 * 1024)  # MB
+            memory_usage[batch_size] = peak / (1024 * 1024)  # MB
 
         # Memory should scale approximately linearly
         # 100x batch should use less than 100x memory (due to overhead)
@@ -1313,6 +1311,16 @@ jobs:
         run: |
           pytest tests/ -m unit -v --cov=src --cov-report=xml
 
+      - name: Build model artifact
+        run: |
+          python scripts/train_model.py --output=models/model.pkl
+
+      - name: Upload model artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: trained-model
+          path: models/model.pkl
+
       - name: Upload coverage
         uses: codecov/codecov-action@v4
         with:
@@ -1323,6 +1331,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pytest
 
       - name: Download model artifact
         uses: actions/download-artifact@v4
@@ -1353,6 +1371,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pytest
+
+      - name: Download model artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: trained-model
+          path: models/
+
+      - name: Download test data
+        run: |
+          aws s3 cp s3://ml-data/test/test_data.parquet data/test/
+
       - name: Run slice tests
         run: |
           pytest tests/test_model_slices.py -v \
@@ -1369,6 +1407,26 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pytest
+
+      - name: Download model artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: trained-model
+          path: models/
+
+      - name: Download test data
+        run: |
+          aws s3 cp s3://ml-data/test/test_data.parquet data/test/
 
       - name: Run performance tests
         run: |
@@ -1391,6 +1449,16 @@ jobs:
           - 6379:6379
     steps:
       - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pytest requests
 
       - name: Start model server
         run: |
