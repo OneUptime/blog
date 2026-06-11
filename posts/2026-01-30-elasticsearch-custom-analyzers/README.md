@@ -16,7 +16,7 @@ This guide walks you through building custom analyzers from scratch. You will le
 
 ## Understanding the Analysis Pipeline
 
-Before building custom analyzers, you need to understand how text flows through the analysis pipeline. Every analyzer consists of three components that execute in order:
+Before building custom analyzers, you need to understand how text flows through the analysis pipeline. A custom analyzer has one tokenizer and can include character filters and token filters that execute in order:
 
 ```mermaid
 flowchart LR
@@ -179,6 +179,7 @@ N-grams enable substring matching, useful for searching product codes or technic
 curl -X PUT "localhost:9200/parts" -H 'Content-Type: application/json' -d'
 {
   "settings": {
+    "index.max_ngram_diff": 3,
     "analysis": {
       "tokenizer": {
         "part_number_tokenizer": {
@@ -401,6 +402,7 @@ curl -X PUT "localhost:9200/ecommerce" -H 'Content-Type: application/json' -d'
             "product_stopwords",
             "min_token_length",
             "product_synonyms",
+            "brand_synonyms",
             "porter_stem"
           ]
         },
@@ -410,7 +412,8 @@ curl -X PUT "localhost:9200/ecommerce" -H 'Content-Type: application/json' -d'
           "filter": [
             "lowercase",
             "asciifolding",
-            "product_synonyms"
+            "product_synonyms",
+            "brand_synonyms"
           ]
         }
       }
