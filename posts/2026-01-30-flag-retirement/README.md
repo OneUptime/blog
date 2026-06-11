@@ -93,9 +93,11 @@ function isReadyForRetirement(
     },
     {
       name: 'stable_duration',
-      passed: flag.stableSince &&
+      passed: flag.stableSince != null &&
         daysSince(flag.stableSince) >= criteria.minimumStableTime.days,
-      message: `Stable for ${daysSince(flag.stableSince)} days`,
+      message: flag.stableSince
+        ? `Stable for ${daysSince(flag.stableSince)} days`
+        : 'Flag has not reached a stable rollout date',
     },
     {
       name: 'no_incidents',
@@ -151,23 +153,28 @@ interface FlagReference {
   codeSnippet: string;
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 async function findFlagReferences(flagKey: string): Promise<FlagReference[]> {
   const references: FlagReference[] = [];
+  const escapedFlagKey = escapeRegExp(flagKey);
 
   // Search patterns for different reference types
   const patterns = [
     // Direct evaluation
-    new RegExp(`isEnabled\\(['"]${flagKey}['"]\\)`, 'g'),
-    new RegExp(`getFlag\\(['"]${flagKey}['"]\\)`, 'g'),
-    new RegExp(`featureFlags\\.${flagKey}`, 'g'),
+    new RegExp(`isEnabled\\(['"]${escapedFlagKey}['"]\\)`, 'g'),
+    new RegExp(`getFlag\\(['"]${escapedFlagKey}['"]\\)`, 'g'),
+    new RegExp(`featureFlags\\.${escapedFlagKey}`, 'g'),
 
     // SDK variations
-    new RegExp(`client\\.boolVariation\\(['"]${flagKey}['"]`, 'g'),
-    new RegExp(`useFeatureFlag\\(['"]${flagKey}['"]\\)`, 'g'),
+    new RegExp(`client\\.boolVariation\\(['"]${escapedFlagKey}['"]`, 'g'),
+    new RegExp(`useFeatureFlag\\(['"]${escapedFlagKey}['"]\\)`, 'g'),
 
     // Configuration references
-    new RegExp(`flag:\\s*['"]${flagKey}['"]`, 'g'),
-    new RegExp(`"${flagKey}":\\s*(true|false)`, 'g'),
+    new RegExp(`flag:\\s*['"]${escapedFlagKey}['"]`, 'g'),
+    new RegExp(`"${escapedFlagKey}":\\s*(true|false)`, 'g'),
   ];
 
   // Scan codebase
@@ -216,7 +223,7 @@ flowchart TD
 
 ### Step 3: Safe Code Transformation
 
-```typescript
+```tsx
 // Before: Code with feature flag
 import { isEnabled } from '@company/feature-flags';
 
@@ -406,7 +413,7 @@ async function cleanupFlagConfiguration(
     results.push({
       source: 'Flag Management Platform',
       status: 'error',
-      details: error.message,
+      details: error instanceof Error ? error.message : String(error),
     });
   }
 
@@ -425,7 +432,7 @@ async function cleanupFlagConfiguration(
   }
 
   // 3. Clean database records
-  const dbResult = await db.featureFlags.delete({
+  const dbResult = await db.featureFlags.deleteMany({
     where: { key: flagKey },
   });
   results.push({
@@ -692,9 +699,9 @@ async function verifyFlagRetirement(
   const testResult = await runTestSuite();
   results.push({
     step: 'Test Suite',
-    status: testResult.passed ? 'passed' : 'failed',
+    status: testResult.success ? 'passed' : 'failed',
     duration: Date.now() - testStart,
-    details: `${testResult.passed}/${testResult.total} tests passed`,
+    details: `${testResult.passedCount}/${testResult.total} tests passed`,
   });
 
   // 3. Build verification
@@ -952,7 +959,7 @@ async function updateDocumentation(
              Removing references from runbook.`,
       files: [{
         path: runbook.path,
-        content: removeFlag References(runbook.content, flagKey),
+        content: removeFlagReferences(runbook.content, flagKey),
       }],
     });
   }
@@ -1034,7 +1041,8 @@ class FlagRetirementPipeline {
     try {
       // Phase 1: Assessment
       await this.runStep(context, 'Check Criteria', async () => {
-        const readiness = await isReadyForRetirement(flagKey, defaultCriteria);
+        const flag = await flagService.getFlag(flagKey);
+        const readiness = isReadyForRetirement(flag, defaultCriteria);
         if (!readiness.ready) {
           throw new Error(`Flag not ready: ${readiness.checks
             .filter(c => !c.passed)
@@ -1073,7 +1081,7 @@ class FlagRetirementPipeline {
 
       await this.runStep(context, 'Run Tests', async () => {
         const testResult = await runTestSuite();
-        if (!testResult.passed) {
+        if (!testResult.success) {
           throw new Error(`Tests failed: ${testResult.failures.join(', ')}`);
         }
       });
@@ -1102,7 +1110,7 @@ class FlagRetirementPipeline {
       return {
         success: false,
         context,
-        error: error.message,
+        error: error instanceof Error ? error.message : String(error),
         failedStep: context.steps[context.steps.length - 1],
       };
     }
@@ -1126,7 +1134,7 @@ class FlagRetirementPipeline {
       step.completedAt = new Date();
     } catch (error) {
       step.status = 'failed';
-      step.error = error.message;
+      step.error = error instanceof Error ? error.message : String(error);
       step.completedAt = new Date();
       throw error;
     }
