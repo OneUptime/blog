@@ -45,10 +45,10 @@ Different timestamp types solve different problems. Choose based on your require
 
 | Timestamp Type | Source | Best For |
 |----------------|--------|----------|
-| Wall Clock | System time (NTP synced) | Human-readable logs, audit trails |
-| Monotonic | CPU counter | Measuring durations within one process |
+| Wall Clock | System time (often NTP synced) | Human-readable logs, audit trails |
+| Monotonic | High-resolution monotonic timer | Measuring durations within one process |
 | Logical | Lamport/Vector clocks | Causal ordering across nodes |
-| Hybrid | Combination approach | Google Spanner-style strong consistency |
+| Hybrid | Physical time + logical counter or bounded-uncertainty API | Causal ordering with physical-time context |
 
 The following diagram shows how these timestamp types relate to each other.
 
@@ -70,7 +70,7 @@ graph TD
 
 ## 3. Clock Synchronization Challenges
 
-Distributed systems face a fundamental problem - clocks on different machines drift apart. NTP typically keeps clocks within 1-10 milliseconds, but spikes can occur.
+Distributed systems face a fundamental problem - clocks on different machines drift apart. NTP can keep clocks within a few milliseconds on well-controlled networks, but public internet accuracy is often tens of milliseconds and spikes can occur.
 
 ```mermaid
 sequenceDiagram
@@ -86,7 +86,7 @@ sequenceDiagram
     Note over S1,S2: Brief window where S2 > S1
 ```
 
-Consider this scenario: Service A timestamps an event at 10:00:00.100, then sends it to Service B which receives it at 10:00:00.095 (because B's clock is 5ms behind). The receive timestamp is earlier than the send timestamp - a logical impossibility.
+Consider this scenario: Service A timestamps an event at 10:00:00.100, then sends it to Service B which receives it at 10:00:00.095 (because B's clock is 5ms behind). The receive timestamp is earlier than the send timestamp, which makes the event history appear to violate causality.
 
 ---
 
@@ -98,7 +98,7 @@ The simplest approach uses the system clock. This works well for logging and aud
 
 ```typescript
 // Define the event interface with required timestamp fields
-interface Event {
+interface TimestampedEvent {
   id: string;
   type: string;
   payload: Record<string, unknown>;
@@ -107,14 +107,17 @@ interface Event {
 }
 
 // Factory function to create timestamped events
-function createEvent(type: string, payload: Record<string, unknown>): Event {
+function createEvent(
+  type: string,
+  payload: Record<string, unknown>
+): TimestampedEvent {
   const now = new Date();
 
   return {
     id: crypto.randomUUID(),
     type,
     payload,
-    // Human-readable format with timezone
+    // Human-readable UTC format
     timestamp: now.toISOString(),
     // Numeric format for fast comparisons
     timestampMs: now.getTime(),
@@ -261,7 +264,7 @@ Choose your storage format based on precision requirements and query patterns.
 | UUID v7 | 1 millisecond | 16 bytes | Excellent (sortable) |
 | Custom (micros/nanos) | Sub-millisecond | 8+ bytes | Excellent |
 
-UUID v7 deserves special mention - it embeds a timestamp in a sortable format, giving you both a unique identifier and temporal ordering in one field.
+UUID v7 deserves special mention - it embeds a timestamp in a sortable format, giving you both a unique identifier and coarse temporal ordering in one field.
 
 ```typescript
 // UUID v7 provides timestamp-sortable unique IDs
@@ -273,8 +276,9 @@ function extractTimestampFromUUIDv7(uuid: string): number {
   return parseInt(hex, 16);
 }
 
-// Modern runtimes support crypto.randomUUID() but for v7
-// you may need a library like 'uuid' with v7 support
+// crypto.randomUUID() generates v4 UUIDs. For v7, use a runtime
+// API such as crypto.randomUUIDv7() when available, or a library
+// like 'uuid' with v7 support.
 ```
 
 ---
@@ -451,7 +455,7 @@ function sanitizeEventTimestamp(event: {
 | Basic logging | Wall clock with ISO 8601 |
 | Performance measurement | Monotonic clock (hrtime) |
 | Cross-service ordering | Lamport or vector clocks |
-| Strong consistency | Hybrid logical clocks |
+| Strong consistency | Bounded-uncertainty clocks plus consensus |
 | Storage efficiency | UUID v7 or numeric milliseconds |
 
 Event timestamps require careful thought in distributed systems. Start with wall clock timestamps for simplicity, add logical timestamps when you need causal ordering, and always validate timestamps from external sources.
