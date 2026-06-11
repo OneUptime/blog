@@ -78,16 +78,17 @@ PUT /documents
 Key parameters:
 
 - **dims**: Must match your embedding model's output dimension. Common values are 384 (MiniLM), 768 (BERT-based), 1536 (OpenAI ada-002), or 3072 (OpenAI text-embedding-3-large).
-- **index**: Set to `true` to enable kNN search. Without this, you can only use exact brute-force search.
-- **similarity**: The distance function. Options are `cosine`, `dot_product`, and `l2_norm`.
+- **index**: Set to `true` to enable kNN search. In current Elasticsearch versions this defaults to `true`; if you set it to `false`, you can only use exact brute-force search.
+- **similarity**: The distance function. Options are `cosine`, `dot_product`, `l2_norm`, and `max_inner_product`.
 
 ### Choosing the Right Similarity Function
 
 | Similarity | When to Use | Notes |
 |------------|-------------|-------|
 | `cosine` | Most embedding models | Normalizes vectors, handles varying magnitudes |
-| `dot_product` | Normalized vectors, when you need raw scores | Faster than cosine, but requires pre-normalized vectors |
+| `dot_product` | Normalized vectors | Optimized for unit vectors; for float vectors, both document and query vectors must be unit length |
 | `l2_norm` | When Euclidean distance matters | Less common for text embeddings |
+| `max_inner_product` | When vector magnitude should affect ranking | Similar to dot product but does not require normalized vectors |
 
 Most text embedding models are trained with cosine similarity in mind. Stick with `cosine` unless you have a specific reason to change.
 
@@ -310,7 +311,7 @@ flowchart TD
 
 ### Using Reciprocal Rank Fusion (RRF)
 
-Elasticsearch 8.8+ supports RRF natively:
+Elasticsearch 8.14+ supports the retriever syntax shown below for native RRF (retrievers became generally available in 8.16):
 
 ```json
 GET /documents/_search
@@ -484,6 +485,12 @@ def search():
     search_type = data.get('type', 'hybrid')  # 'vector', 'keyword', or 'hybrid'
 
     query_vector = model.encode(query).tolist()
+    filter_clauses = []
+    if 'category' in filters:
+        filter_clauses.append({'term': {'category': filters['category']}})
+    if 'date_from' in filters:
+        filter_clauses.append({'range': {'created_at': {'gte': filters['date_from']}}})
+    filter_query = {'bool': {'must': filter_clauses}} if filter_clauses else None
 
     if search_type == 'vector':
         body = {
@@ -494,38 +501,62 @@ def search():
                 'num_candidates': k * 10
             }
         }
+        if filter_query:
+            body['knn']['filter'] = filter_query
     elif search_type == 'keyword':
-        body = {
-            'query': {
-                'multi_match': {
-                    'query': query,
-                    'fields': ['title^2', 'content']
+        query_body = {
+            'multi_match': {
+                'query': query,
+                'fields': ['title^2', 'content']
+            }
+        }
+        if filter_query:
+            query_body = {
+                'bool': {
+                    'must': query_body,
+                    'filter': filter_query
                 }
-            },
+            }
+
+        body = {
+            'query': query_body,
             'size': k
         }
     else:  # hybrid
+        standard_query = {
+            'multi_match': {
+                'query': query,
+                'fields': ['title^2', 'content']
+            }
+        }
+        if filter_query:
+            standard_query = {
+                'bool': {
+                    'must': standard_query,
+                    'filter': filter_query
+                }
+            }
+
+        knn_retriever = {
+            'field': 'content_vector',
+            'query_vector': query_vector,
+            'k': k * 2,
+            'num_candidates': k * 10
+        }
+        if filter_query:
+            knn_retriever['filter'] = filter_query
+
         body = {
             'retriever': {
                 'rrf': {
                     'retrievers': [
                         {
                             'standard': {
-                                'query': {
-                                    'multi_match': {
-                                        'query': query,
-                                        'fields': ['title^2', 'content']
-                                    }
-                                }
+                                'query': standard_query
                             }
                         },
                         {
-                            'knn': {
-                                'field': 'content_vector',
-                                'query_vector': query_vector,
-                                'k': k * 2,
-                                'num_candidates': k * 10
-                            }
+                            'knn': knn_retriever
                         }
                     ],
                     'rank_window_size': k * 5
@@ -533,17 +564,6 @@ def search():
             },
             'size': k
         }
-
-    # Add filters if provided
-    if filters and 'knn' in body:
-        filter_clauses = []
-        if 'category' in filters:
-            filter_clauses.append({'term': {'category': filters['category']}})
-        if 'date_from' in filters:
-            filter_clauses.append({'range': {'created_at': {'gte': filters['date_from']}}})
-
-        if filter_clauses:
-            body['knn']['filter'] = {'bool': {'must': filter_clauses}}
 
     response = es.search(index='documents', body=body)
 
