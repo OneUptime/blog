@@ -611,7 +611,7 @@ pie showData
 # ownership_metrics.py
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Dict, List
+from typing import Any, Dict, List
 import statistics
 
 
@@ -719,7 +719,7 @@ class OwnershipMetricsCollector:
 
         return compliance_rates
 
-    def get_ownership_coverage(self) -> Dict[str, any]:
+    def get_ownership_coverage(self) -> Dict[str, Any]:
         """
         Returns ownership coverage statistics across all services.
         Identifies services without defined owners.
