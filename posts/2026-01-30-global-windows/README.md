@@ -71,7 +71,7 @@ Global windows shine when your aggregation logic does not align with time bounda
 
 **Accumulating totals:** Running totals that emit periodically but never reset (leaderboards, cumulative metrics).
 
-**Watermark-driven emissions:** Emit when the watermark passes a certain event-time threshold.
+**Watermark-driven emissions:** Emit from a custom event-time trigger when the watermark passes a certain event-time threshold.
 
 Real-world examples:
 - Gaming leaderboards: accumulate scores forever, emit top 10 every minute
@@ -124,10 +124,10 @@ Use case: Micro-batching, chunked processing.
 
 ### Processing Time Trigger
 
-Fires based on wall-clock time.
+Fires based on processing time, typically after a delay from the first element in the current pane.
 
 ```python
-trigger = AfterProcessingTime(duration=timedelta(seconds=30))
+trigger = AfterProcessingTime(30)
 ```
 
 Use case: Periodic snapshots, heartbeat emissions.
@@ -140,13 +140,14 @@ Fires when the watermark advances past a threshold.
 trigger = AfterWatermark()
 ```
 
-Use case: Waiting for "late" data to arrive before emitting.
+Use case: Waiting for a finite event-time window to close before emitting. In a global window, `AfterWatermark()` by itself waits for the end of the global window, so use early firings or a custom event-time trigger for unbounded streams.
 
 ### Data-Driven Trigger
 
 Fires when a condition in the data is met.
 
 ```python
+# Pseudocode: implement as a custom trigger or route flush signals in your pipeline logic
 trigger = AfterPredicate(lambda record: record.type == "FLUSH")
 ```
 
@@ -158,14 +159,14 @@ Combine triggers with AND/OR logic or sequences.
 
 ```python
 # Fire after 100 elements OR 30 seconds, whichever comes first
-trigger = AfterFirst(
+trigger = AfterAny(
     AfterCount(100),
-    AfterProcessingTime(timedelta(seconds=30))
+    AfterProcessingTime(30)
 )
 
-# Fire after watermark, then repeatedly every minute
-trigger = AfterWatermark().withLateFirings(
-    AfterProcessingTime(timedelta(minutes=1))
+# Fire after the watermark, then use processing-time late firings
+trigger = AfterWatermark(
+    late=AfterProcessingTime(60)
 )
 ```
 
@@ -198,6 +199,8 @@ Emissions: [1,2,3,4,5], [1,2,3,4,5,6,7,8,9,10]
 ### Accumulating and Retracting Mode
 
 Emit the accumulated result AND a retraction of the previous result. Downstream consumers use retractions to update their state correctly.
+
+This is a stream-processing model concept, but it is not exposed by the Apache Beam Python `AccumulationMode` enum, which currently provides discarding and accumulating modes.
 
 ```text
 Trigger fires at count 5:
@@ -239,29 +242,31 @@ Choose based on downstream needs:
 ```python
 import apache_beam as beam
 from apache_beam import window
-from apache_beam.transforms.trigger import AfterCount, AfterProcessingTime
+from apache_beam.transforms.trigger import AfterCount
 from apache_beam.transforms.trigger import AccumulationMode, Repeatedly
 
 # Global window with count trigger, discarding mode
 with beam.Pipeline() as p:
     (p
      | beam.io.ReadFromPubSub(topic='events')
+     | beam.Map(lambda message: int(message.decode('utf-8')))
      | beam.WindowInto(
          window.GlobalWindows(),
          trigger=Repeatedly(AfterCount(100)),
          accumulation_mode=AccumulationMode.DISCARDING
        )
      | beam.CombineGlobally(sum).without_defaults()
+     | beam.Map(lambda total: {'sum': total})
      | beam.io.WriteToBigQuery('dataset.table')
     )
 ```
 
 ```python
 # Global window with composite trigger: emit every 100 elements or 60 seconds
-from apache_beam.transforms.trigger import AfterFirst, AfterProcessingTime
+from apache_beam.transforms.trigger import AfterAny, AfterProcessingTime
 
 trigger = Repeatedly(
-    AfterFirst(
+    AfterAny(
         AfterCount(100),
         AfterProcessingTime(60)
     )
@@ -420,10 +425,11 @@ sequenceDiagram
     Window->>Output: Emit accumulated results
 ```
 
-Use watermark triggers when you want to emit based on event-time completeness rather than processing-time intervals.
+Use watermark-aware triggers when you want to emit based on event-time progress rather than processing-time intervals. For unbounded global windows, `AfterWatermark()` does not produce the final on-time firing until the global window ends, so pair it with early firings or implement a custom trigger/timer for a specific event-time threshold.
 
 ```python
-# Beam: Emit when watermark passes, then handle late data
+# Beam: Emit speculative updates before the global window's final watermark firing,
+# then handle late data if the runner reaches that final firing.
 from apache_beam.transforms.trigger import AfterWatermark, AfterProcessingTime
 
 trigger = AfterWatermark(
@@ -442,13 +448,13 @@ Collect streaming events into fixed-size batches for efficient downstream writes
 
 ```python
 # Emit batches of 1000 events or every 10 seconds
-trigger = Repeatedly(AfterFirst(AfterCount(1000), AfterProcessingTime(10)))
+trigger = Repeatedly(AfterAny(AfterCount(1000), AfterProcessingTime(10)))
 accumulation = AccumulationMode.DISCARDING
 ```
 
-### Pattern 2: Running Totals with Periodic Snapshots
+### Pattern 2: Running Totals with Processing-Time Snapshots
 
-Maintain cumulative state, emit snapshots periodically.
+Maintain cumulative state and emit snapshots based on processing time as data continues to arrive.
 
 ```python
 # Running total, snapshot every minute
@@ -475,7 +481,7 @@ Balance latency and throughput.
 ```python
 # Low latency: emit after 50 elements
 # Guaranteed progress: emit after 5 seconds even if count not reached
-trigger = Repeatedly(AfterFirst(AfterCount(50), AfterProcessingTime(5)))
+trigger = Repeatedly(AfterAny(AfterCount(50), AfterProcessingTime(5)))
 ```
 
 ---
@@ -502,7 +508,7 @@ Global windows can accumulate state forever. Protect your system:
 ```java
 // Flink: Configure state TTL
 StateTtlConfig ttlConfig = StateTtlConfig
-    .newBuilder(Time.hours(24))
+    .newBuilder(Duration.ofHours(24))
     .setUpdateType(StateTtlConfig.UpdateType.OnReadAndWrite)
     .cleanupFullSnapshot()
     .build();
