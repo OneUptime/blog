@@ -54,7 +54,9 @@ Before diving into state values, install Helmfile on your system.
 brew install helmfile
 
 # Linux
-curl -Lo helmfile https://github.com/helmfile/helmfile/releases/latest/download/helmfile_linux_amd64
+HELMFILE_VERSION=$(curl -s https://api.github.com/repos/helmfile/helmfile/releases/latest | grep tag_name | cut -d '"' -f4 | sed 's/^v//')
+curl -Lo helmfile.tar.gz "https://github.com/helmfile/helmfile/releases/download/v${HELMFILE_VERSION}/helmfile_${HELMFILE_VERSION}_linux_amd64.tar.gz"
+tar -xzf helmfile.tar.gz helmfile
 chmod +x helmfile
 sudo mv helmfile /usr/local/bin/
 
@@ -96,7 +98,7 @@ helmfile apply
 
 ## Understanding State Values
 
-State values in Helmfile determine how your releases behave across different environments. There are several ways to inject values into your releases.
+State values in Helmfile are values available to Helmfile templates, such as values loaded from environments or passed with state values CLI flags. Release values are the values passed to Helm charts. There are several ways to inject values into your releases.
 
 ```mermaid
 flowchart TD
@@ -273,7 +275,7 @@ helmfile/
 
 ## Using Go Templates in Values
 
-Helmfile supports Go templating in values files. This enables dynamic value generation.
+Helmfile supports Go templating in values files that end in `.gotmpl`. This enables dynamic value generation.
 
 ```yaml
 # values/nginx/common.yaml.gotmpl
@@ -351,12 +353,10 @@ releases:
 Handle missing optional files with missingFileHandler.
 
 ```yaml
-helmDefaults:
-  missingFileHandler: Warn
-
 releases:
   - name: api
     chart: ./charts/api
+    missingFileHandler: Warn
     values:
       - values/api/common.yaml
       - values/api/{{ .Environment.Name }}.yaml
@@ -618,8 +618,8 @@ helmfile -e production diff
 # Template without applying
 helmfile -e production template
 
-# Dry run
-helmfile -e production apply --dry-run
+# Validate rendered manifests against the cluster
+helmfile -e production template --validate
 ```
 
 ## Debugging State Values
@@ -630,8 +630,8 @@ When values do not merge as expected, debug with these commands.
 # Show computed values for a release
 helmfile -e production write-values --output-file-template "{{ .Release.Name }}.yaml"
 
-# Print the rendered helmfile
-helmfile -e production template --skip-deps
+# Print the rendered helmfile state
+helmfile -e production build
 ```
 
 ## Best Practices
