@@ -33,7 +33,7 @@ flowchart TD
     A[User Request] --> B[Feature Flag Service]
     B --> C{Calculate Hash}
     C --> D[Hash % 100]
-    D --> E{Hash Value <= Rollout %}
+    D --> E{Hash Value < Rollout %}
     E -->|Yes| F[Return New Feature]
     E -->|No| G[Return Old Feature]
     F --> H[User Experience]
@@ -50,12 +50,12 @@ The most critical aspect of percentage rollouts is ensuring **sticky rollouts**.
 flowchart LR
     A[User ID: user_123] --> B[Hash Function]
     B --> C[Hash Value: 42]
-    C --> D{42 <= 50%?}
+    C --> D{42 < 50%?}
     D -->|Yes| E[Feature Enabled]
 
     F[User ID: user_456] --> B
     B --> G[Hash Value: 78]
-    G --> H{78 <= 50%?}
+    G --> H{78 < 50%?}
     H -->|No| I[Feature Disabled]
 ```
 
