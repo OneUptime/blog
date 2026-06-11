@@ -33,7 +33,7 @@ flowchart LR
 
 ## How Gatekeeper Mutation Works
 
-When a resource is submitted to Kubernetes, Gatekeeper intercepts it and applies mutation policies in order. The modified resource then passes through validation.
+When a resource is submitted to Kubernetes, Gatekeeper's mutating webhook intercepts it and applies matching mutation policies until they converge. The modified resource then passes through validation.
 
 ```mermaid
 sequenceDiagram
@@ -45,9 +45,8 @@ sequenceDiagram
 
     User->>API: Create Pod
     API->>GM: Mutating Admission
-    GM->>GM: Apply Assign policies
-    GM->>GM: Apply AssignMetadata policies
-    GM->>GM: Apply ModifySet policies
+    GM->>GM: Evaluate matching mutators
+    GM->>GM: Apply convergent mutations
     GM->>API: Return modified Pod
     API->>GV: Validating Admission
     GV->>GV: Check constraints
@@ -57,45 +56,36 @@ sequenceDiagram
 
 ## Mutation Policy Types
 
-Gatekeeper provides three mutation types:
+Gatekeeper provides four mutation types:
 
 | Type | Purpose | Use Case |
 |------|---------|----------|
 | **Assign** | Set or override field values | Add default resource limits |
 | **AssignMetadata** | Add labels or annotations | Inject cost center labels |
-| **ModifySet** | Add items to lists | Add sidecar containers |
+| **ModifySet** | Add or remove items from lists | Add tolerations |
+| **AssignImage** | Change image domain, path, tag, or digest components | Pin image digests |
 
 ## Enabling Mutation in Gatekeeper
 
-Mutation is disabled by default. Enable it during installation.
+Mutation is enabled by default in current Gatekeeper Helm charts. Make sure it has not been disabled during installation.
 
 ```bash
-# Install Gatekeeper with mutation enabled
+# Install Gatekeeper with mutation enabled and fail-open mutation webhooks
 
 helm install gatekeeper gatekeeper/gatekeeper \
   --namespace gatekeeper-system \
   --create-namespace \
-  --set mutations.enabled=true \
-  --set mutatingWebhookConfigurationFailurePolicy=Ignore
+  --set disableMutation=false \
+  --set mutatingWebhookFailurePolicy=Ignore
 ```
 
-Or patch an existing installation:
+Or update an existing Helm installation:
 
-```yaml
-# gatekeeper-mutation-patch.yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: gatekeeper-controller-manager
-  namespace: gatekeeper-system
-spec:
-  template:
-    spec:
-      containers:
-        - name: manager
-          args:
-            - --operation=mutation-webhook
-            - --mutation-enabled=true
+```bash
+helm upgrade gatekeeper gatekeeper/gatekeeper \
+  --namespace gatekeeper-system \
+  --reuse-values \
+  --set disableMutation=false
 ```
 
 ## Assign: Setting Field Values
@@ -457,9 +447,6 @@ The `location` field uses a path expression syntax to target specific fields.
 # Simple path
 location: "spec.replicas"
 
-# Array index
-location: "spec.containers[0].image"
-
 # Array with name selector (matches all containers)
 location: "spec.containers[name:*].resources.limits.cpu"
 
@@ -493,7 +480,6 @@ flowchart TD
 | Pattern | Description |
 |---------|-------------|
 | `spec.replicas` | Direct field access |
-| `spec.containers[0]` | First container |
 | `spec.containers[name:*]` | All containers |
 | `spec.containers[name:app]` | Container named "app" |
 | `metadata.labels.key` | Label with key "key" |
@@ -501,28 +487,18 @@ flowchart TD
 
 ## Mutation Ordering and Conflicts
 
-When multiple mutations target the same field, order matters.
+Gatekeeper mutations should be written so they converge to a stable result. Avoid depending on one mutator overwriting another mutator.
 
-### Default Ordering
+### Avoid Overlapping Mutations
 
-Gatekeeper processes mutations in this order:
-
-1. **By mutation type**: AssignMetadata, then ModifySet, then Assign
-2. **By name**: Alphabetically within each type
-
-### Controlling Order with Priorities
-
-Use the `priority` field to control order. Lower numbers run first.
+Do not create multiple `Assign` mutators that set different values for the same field. Instead, use different match criteria or a single mutation for that path.
 
 ```yaml
 apiVersion: mutations.gatekeeper.sh/v1
 kind: Assign
 metadata:
-  name: high-priority-mutation
+  name: assign-production-memory
 spec:
-  # Runs before default (0) mutations
-  # Lower number = higher priority = runs first
-  priority: -10
   applyTo:
     - groups: [""]
       kinds: ["Pod"]
@@ -532,6 +508,7 @@ spec:
     kinds:
       - apiGroups: [""]
         kinds: ["Pod"]
+    namespaces: ["production"]
   location: "spec.containers[name:*].resources.limits.memory"
   parameters:
     assign:
@@ -540,10 +517,8 @@ spec:
 apiVersion: mutations.gatekeeper.sh/v1
 kind: Assign
 metadata:
-  name: low-priority-mutation
+  name: assign-development-memory
 spec:
-  # Runs after default mutations
-  priority: 10
   applyTo:
     - groups: [""]
       kinds: ["Pod"]
@@ -553,33 +528,26 @@ spec:
     kinds:
       - apiGroups: [""]
         kinds: ["Pod"]
+    namespaces: ["development"]
   location: "spec.containers[name:*].resources.limits.memory"
   parameters:
-    # This will overwrite the high-priority value
     assign:
       value: "512Mi"
 ```
 
-### Mutation Order Visualization
+### Mutation Design Visualization
 
 ```mermaid
 flowchart TB
-    subgraph Order["Mutation Execution Order"]
+    subgraph Match["Separate Match Criteria"]
         direction TB
-        P1["Priority -10: high-priority-mutation"] --> P2["Priority 0: default-mutations"]
-        P2 --> P3["Priority 10: low-priority-mutation"]
+        P1["production namespace"] --> P2["assign-production-memory"]
+        D1["development namespace"] --> D2["assign-development-memory"]
     end
 
-    subgraph Type["Within Same Priority"]
+    subgraph Conditions["Path Conditions"]
         direction TB
-        T1["1. AssignMetadata"] --> T2["2. ModifySet"]
-        T2 --> T3["3. Assign"]
-    end
-
-    subgraph Alpha["Within Same Type"]
-        direction TB
-        A1["assign-aaa"] --> A2["assign-bbb"]
-        A2 --> A3["assign-ccc"]
+        T1["MustNotExist"] --> T2["Set default only when missing"]
     end
 ```
 
@@ -638,7 +606,7 @@ kubectl apply -f test-pod.yaml --dry-run=server -o yaml
 
 ### Using Gatekeeper's Expand Resource
 
-Test mutations without creating resources.
+Test generated workload resources with expansion templates. Include `applyTo` so Gatekeeper knows which workload resource is expanded.
 
 ```yaml
 apiVersion: expansion.gatekeeper.sh/v1beta1
@@ -646,6 +614,10 @@ kind: ExpansionTemplate
 metadata:
   name: test-expand
 spec:
+  applyTo:
+    - groups: ["apps"]
+      kinds: ["Deployment"]
+      versions: ["v1"]
   templateSource: "spec.template"
   generatedGVK:
     kind: Pod
@@ -653,32 +625,20 @@ spec:
     version: v1
 ```
 
-### Unit Testing with Gator
+### Testing Generated Resources with Gator
 
-The `gator` CLI lets you test mutations locally.
+The `gator` CLI can expand workload resources locally and apply mutation CRs to the generated resources.
 
 ```bash
 # Install gator
 go install github.com/open-policy-agent/gatekeeper/v3/cmd/gator@latest
 
-# Create test suite
-cat <<EOF > mutation-test.yaml
-apiVersion: test.gatekeeper.sh/v1alpha1
-kind: Suite
-metadata:
-  name: mutation-test
-tests:
-  - name: test-memory-limit-mutation
-    template: assign-default-memory-limit.yaml
-    cases:
-      - name: pod-without-limits-gets-mutated
-        object: test-pod.yaml
-        assertions:
-          - violations: no
-EOF
+# Put your Deployment, ExpansionTemplate, and mutation CRs in one directory
+mkdir -p mutation-test
+cp deployment.yaml expansion-template.yaml assign-default-memory-limit.yaml mutation-test/
 
-# Run tests
-gator verify mutation-test.yaml
+# Expand generated resources and inspect the mutated output
+gator expand --filename mutation-test/
 ```
 
 ### Create a Test Script
@@ -752,7 +712,7 @@ echo -e "\nAll tests completed!"
 
 ```bash
 # List all mutation policies
-kubectl get assign,assignmetadata,modifyset -A
+kubectl get assign,assignmetadata,modifyset,assignimage -A
 
 # Check mutation status
 kubectl get assign <name> -o yaml
@@ -780,12 +740,12 @@ kubectl logs -n gatekeeper-system -l control-plane=controller-manager | grep -i 
 - Check the `applyTo` field matches your resource GVK
 
 **Mutation conflicts:**
-- Review priority settings
+- Review mutators that target the same field
 - Use `pathTests` with `MustNotExist` condition
-- Check alphabetical ordering of mutation names
+- Use non-overlapping `match` criteria
 
 **Unexpected values:**
-- Later mutations may overwrite earlier ones
+- Overlapping mutations may be rejected or converge differently than expected
 - Check all mutations targeting the same path
 - Use `kubectl apply --dry-run=server -o yaml` to see final result
 
