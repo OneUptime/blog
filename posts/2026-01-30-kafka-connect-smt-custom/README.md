@@ -47,7 +47,10 @@ Every custom SMT must implement the `Transformation<R>` interface where `R` exte
 package org.apache.kafka.connect.transforms;
 
 import org.apache.kafka.common.config.ConfigDef;
+import org.apache.kafka.common.Configurable;
 import org.apache.kafka.connect.connector.ConnectRecord;
+
+import java.io.Closeable;
 
 public interface Transformation<R extends ConnectRecord<R>> extends Configurable, Closeable {
 
@@ -56,14 +59,14 @@ public interface Transformation<R extends ConnectRecord<R>> extends Configurable
     ConfigDef config();
 
     void close();
-
-    void configure(Map<String, ?> configs);
 }
 ```
 
+The `configure(Map<String, ?> configs)` method comes from the inherited `Configurable` interface.
+
 ## Implementing a Basic Custom SMT
 
-Let us create a practical example - an SMT that adds a timestamp field and masks sensitive data.
+Let us create a practical example - an SMT that adds a timestamp field and masks sensitive string data.
 
 ### Step 1: Project Setup
 
@@ -139,7 +142,7 @@ First, create a Maven project with the necessary dependencies:
 
 ### Step 2: Create the SMT Implementation
 
-Here is a complete implementation of a custom SMT that enriches records with processing metadata and masks sensitive fields:
+Here is a complete implementation of a custom SMT that enriches records with processing metadata and masks sensitive string fields:
 
 ```java
 package com.example.kafka.connect.smt;
@@ -161,6 +164,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import static org.apache.kafka.connect.transforms.util.Requirements.requireMap;
 import static org.apache.kafka.connect.transforms.util.Requirements.requireStruct;
 
 public abstract class EnrichAndMask<R extends ConnectRecord<R>> implements Transformation<R> {
@@ -243,7 +247,7 @@ public abstract class EnrichAndMask<R extends ConnectRecord<R>> implements Trans
     }
 
     private R applySchemaless(R record) {
-        Map<String, Object> value = new HashMap<>((Map<String, Object>) operatingValue(record));
+        Map<String, Object> value = new HashMap<>(requireMap(operatingValue(record), "EnrichAndMask"));
 
         // Add timestamp
         value.put(timestampField, Instant.now().toString());
@@ -273,10 +277,11 @@ public abstract class EnrichAndMask<R extends ConnectRecord<R>> implements Trans
         // Build new struct with updated values
         Struct updatedValue = new Struct(updatedSchema);
 
-        // Copy existing fields, masking where necessary
+        // Copy existing fields, masking string fields where necessary
         for (Field field : originalSchema.fields()) {
             Object fieldValue = value.get(field);
-            if (maskFields.contains(field.name()) && fieldValue != null) {
+            if (maskFields.contains(field.name()) && fieldValue != null &&
+                field.schema().type() == Schema.Type.STRING) {
                 updatedValue.put(field.name(), maskReplacement);
             } else {
                 updatedValue.put(field.name(), fieldValue);
@@ -662,7 +667,7 @@ plugin.path=/opt/kafka-connect/plugins
 For containerized environments, create a custom Dockerfile:
 
 ```dockerfile
-FROM confluentinc/cp-kafka-connect:7.5.0
+FROM confluentinc/cp-kafka-connect:7.6.0
 
 # Copy custom SMT
 COPY target/kafka-connect-custom-smt-1.0.0.jar /usr/share/java/kafka-connect-custom-smt/
@@ -690,7 +695,7 @@ public abstract class EnrichAndMask<R extends ConnectRecord<R>> implements Trans
         LOG.debug("Processing record from topic: {}, partition: {}",
             record.topic(), record.kafkaPartition());
 
-        // ... transformation logic
+        R transformedRecord = record; // ... transformation logic
 
         LOG.trace("Transformed record: {}", transformedRecord);
         return transformedRecord;
@@ -707,16 +712,16 @@ import org.apache.kafka.common.metrics.Metrics;
 import org.apache.kafka.common.metrics.Sensor;
 import org.apache.kafka.common.metrics.stats.Avg;
 import org.apache.kafka.common.metrics.stats.Max;
-import org.apache.kafka.common.metrics.stats.Rate;
 
 // In your SMT class
+private Metrics metrics;
 private Sensor transformationTimeSensor;
 
 @Override
 public void configure(Map<String, ?> configs) {
     // ... other configuration
 
-    Metrics metrics = new Metrics();
+    metrics = new Metrics();
     transformationTimeSensor = metrics.sensor("transform-time");
     transformationTimeSensor.add(
         metrics.metricName("transform-avg-time", "smt"),
@@ -726,6 +731,13 @@ public void configure(Map<String, ?> configs) {
         metrics.metricName("transform-max-time", "smt"),
         new Max()
     );
+}
+
+@Override
+public void close() {
+    if (metrics != null) {
+        metrics.close();
+    }
 }
 ```
 
