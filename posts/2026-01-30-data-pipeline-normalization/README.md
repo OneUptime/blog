@@ -62,7 +62,7 @@ Format normalization standardizes how data is represented structurally.
 **Dates and Timestamps**
 
 ```python
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 import re
 
@@ -110,19 +110,23 @@ class DateNormalizer:
                 try:
                     if fmt == 'unix_seconds':
                         # Handle Unix timestamp in seconds
-                        dt = datetime.fromtimestamp(int(value))
+                        dt = datetime.fromtimestamp(int(value), tz=timezone.utc)
                     elif fmt == 'unix_millis':
                         # Handle Unix timestamp in milliseconds
-                        dt = datetime.fromtimestamp(int(value) / 1000)
+                        dt = datetime.fromtimestamp(int(value) / 1000, tz=timezone.utc)
+                    elif fmt == '%Y-%m-%dT%H:%M:%S':
+                        # Handle ISO 8601 timestamps, including Z or offsets
+                        dt = datetime.fromisoformat(
+                            value.replace('Z', '+00:00')
+                        )
                     else:
                         # Handle standard datetime formats
-                        # Strip timezone indicator if present
-                        clean_value = value.rstrip('Z')
-                        dt = datetime.strptime(clean_value, fmt)
+                        dt = datetime.strptime(value, fmt)
+                        dt = dt.replace(tzinfo=timezone.utc)
 
-                    # Return standardized ISO format
-                    return dt.strftime('%Y-%m-%dT%H:%M:%S')
-                except (ValueError, OSError):
+                    # Return standardized ISO format in UTC
+                    return dt.astimezone(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+                except (ValueError, OSError, OverflowError):
                     continue
 
         return None  # Could not parse the date
@@ -197,8 +201,13 @@ class PhoneNormalizer:
         if not digits:
             return None
 
+        if len(digits) > 15:
+            return None
+
         # Handle numbers that already have country code
         if has_plus:
+            if digits.startswith('0'):
+                return None
             # Assume the digits include the country code
             return f'+{digits}'
 
@@ -213,6 +222,8 @@ class PhoneNormalizer:
 
         # For other lengths, assume digits are complete with country code
         if len(digits) > 10:
+            if digits.startswith('0'):
+                return None
             return f'+{digits}'
 
         return None  # Invalid phone number length
@@ -1389,8 +1400,8 @@ Track normalization quality metrics in production.
 
 ```python
 from dataclasses import dataclass
-from datetime import datetime
-from typing import Dict, List
+from datetime import datetime, timezone
+from typing import Dict, List, Any
 import time
 
 @dataclass
@@ -1456,7 +1467,7 @@ class MetricsCollector:
         )[:5]
 
         metrics = NormalizationMetrics(
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             total_records=stats['total_records'],
             successful_records=stats['accepted_count'],
             failed_records=stats['rejected_count'],
@@ -1497,7 +1508,7 @@ class MetricsCollector:
         """
         Export metrics in a format suitable for observability platforms.
 
-        Returns format compatible with OpenTelemetry metrics.
+        Returns a simple payload that can be adapted to OpenTelemetry metrics.
         """
         summary = self.get_summary()
 
@@ -1524,7 +1535,7 @@ class MetricsCollector:
                     'type': 'histogram'
                 }
             ],
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         }
 
 
