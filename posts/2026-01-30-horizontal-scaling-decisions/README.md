@@ -193,7 +193,7 @@ Workloads limited by processing power (encryption, compression, computation) sca
 # Example: Image processing service that scales horizontally
 # Each request is independent - perfect for horizontal scaling
 
-from fastapi import FastAPI, File, UploadFile
+from fastapi import FastAPI, File, UploadFile, Response
 from PIL import Image
 import io
 
@@ -249,7 +249,13 @@ metadata:
   name: file-processor
 spec:
   replicas: 10  # Many small instances
+  selector:
+    matchLabels:
+      app: file-processor
   template:
+    metadata:
+      labels:
+        app: file-processor
     spec:
       containers:
         - name: processor
@@ -298,12 +304,18 @@ metadata:
   name: stateless-api
 spec:
   replicas: 5
+  selector:
+    matchLabels:
+      app: stateless-api
   strategy:
     type: RollingUpdate
     rollingUpdate:
       maxSurge: 25%        # Can add 25% extra during update
       maxUnavailable: 25%   # Can remove 25% during update
   template:
+    metadata:
+      labels:
+        app: stateless-api
     spec:
       containers:
         - name: api
@@ -472,21 +484,21 @@ def calculate_break_even():
     load_balancer_monthly = 25
     network_overhead_percent = 0.10
 
-    # At what replica count does horizontal become cheaper?
-    for replicas in range(1, 20):
+    # At what average replica count does horizontal become more expensive?
+    for average_replicas in range(1, 20):
         horizontal_monthly = (
-            small_instance_hourly * 730 * replicas +
+            small_instance_hourly * 730 * average_replicas +
             load_balancer_monthly +
-            (small_instance_hourly * 730 * replicas * network_overhead_percent)
+            (small_instance_hourly * 730 * average_replicas * network_overhead_percent)
         )
 
-        if horizontal_monthly < vertical_monthly:
-            return replicas, horizontal_monthly
+        if horizontal_monthly >= vertical_monthly:
+            return average_replicas, horizontal_monthly
 
     return None, None
 
-# Result: At ~8 replicas with autoscaling (avg 5),
-# horizontal is typically cheaper
+# Result: In this model, horizontal remains cheaper until about
+# 12 average replicas; autoscaling helps keep the average lower
 ```
 
 ---
@@ -497,7 +509,7 @@ How fast you need to scale determines your architecture choices.
 
 ### Reactive Scaling (Minutes)
 
-Standard Kubernetes HPA responds in 1-5 minutes:
+Standard Kubernetes HPA checks metrics periodically; the default control loop interval is 15 seconds, but real scaling often takes tens of seconds to several minutes once metrics collection and pod startup time are included:
 
 ```yaml
 apiVersion: autoscaling/v2
@@ -518,7 +530,7 @@ spec:
         target:
           type: Utilization
           averageUtilization: 70
-  # Default behavior: scales within 1-5 minutes
+  # Default control loop checks every 15 seconds, plus metrics and pod startup time
 ```
 
 **Suitable for:**
@@ -702,9 +714,15 @@ spec:
           image: redis:7
           command:
             - redis-server
-            - /conf/redis.conf
-            - --cluster-enabled yes
-            - --cluster-node-timeout 5000
+          args:
+            - "--cluster-enabled"
+            - "yes"
+            - "--cluster-config-file"
+            - "nodes.conf"
+            - "--cluster-node-timeout"
+            - "5000"
+            - "--appendonly"
+            - "yes"
           ports:
             - containerPort: 6379
             - containerPort: 16379
@@ -727,9 +745,10 @@ With horizontal scaling, sessions must be externalized:
 
 ```python
 # Session configuration for horizontal scaling
-from fastapi import FastAPI, Request
-from starlette.middleware.sessions import SessionMiddleware
+from fastapi import FastAPI, Request, Response
+import json
 import redis
+import uuid
 
 app = FastAPI()
 
@@ -740,18 +759,22 @@ redis_client = redis.Redis(
     decode_responses=True
 )
 
-app.add_middleware(
-    SessionMiddleware,
-    secret_key="your-secret-key",
-    session_cookie="session_id",
-    backend=RedisSessionBackend(redis_client)  # External session store
-)
-
 @app.get("/")
-async def root(request: Request):
+async def root(request: Request, response: Response):
     # Session works the same regardless of which instance handles the request
-    visits = request.session.get("visits", 0) + 1
-    request.session["visits"] = visits
+    session_id = request.cookies.get("session_id")
+
+    if not session_id:
+        session_id = str(uuid.uuid4())
+        response.set_cookie(key="session_id", value=session_id, httponly=True)
+
+    session_key = f"session:{session_id}"
+    session_data = json.loads(redis_client.get(session_key) or "{}")
+
+    visits = session_data.get("visits", 0) + 1
+    session_data["visits"] = visits
+    redis_client.setex(session_key, 3600, json.dumps(session_data))
+
     return {"visits": visits}
 ```
 
@@ -877,7 +900,7 @@ spec:
         - record: api:requests:rate5m
           expr: sum(rate(http_requests_total[5m])) by (service)
         - record: api:latency:p99
-          expr: histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))
+          expr: histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket[5m])) by (service, le))
 ```
 
 ### Phase 3: Autoscaling (Week 3-4)
@@ -957,12 +980,18 @@ Track these metrics to validate your horizontal scaling implementation:
 
 ```promql
 # Scaling efficiency - are we right-sized?
-avg(container_cpu_usage_seconds_total) / avg(container_spec_cpu_quota)
-# Target: 60-80%
+sum(rate(container_cpu_usage_seconds_total[5m]))
+/ sum(kube_pod_container_resource_requests{resource="cpu", unit="core"})
+# Target: 60-80% of requested CPU
 
 # Scaling responsiveness - how fast do we react?
-histogram_quantile(0.95, rate(kube_hpa_status_desired_replicas[5m]))
-# Track desired vs actual replica count
+avg_over_time(
+  abs(
+    kube_horizontalpodautoscaler_status_desired_replicas
+    - kube_horizontalpodautoscaler_status_current_replicas
+  )[5m:]
+)
+# Track desired vs current replica count
 
 # Cost per request - is scaling cost-effective?
 sum(rate(container_cpu_usage_seconds_total[1h])) * cost_per_cpu_hour
