@@ -58,6 +58,8 @@ Magnitude-based pruning is the simplest and most widely used approach. The assum
 import torch
 import torch.nn as nn
 import torch.nn.utils.prune as prune
+import torchvision
+from torchvision.models import ResNet18_Weights
 
 class SimplePruner:
     def __init__(self, model, pruning_rate=0.3):
@@ -93,7 +95,8 @@ class SimplePruner:
 
 # Example usage
 
-model = torch.hub.load('pytorch/vision:v0.10.0', 'resnet18', pretrained=True)
+weights = ResNet18_Weights.DEFAULT
+model = torchvision.models.resnet18(weights=weights)
 pruner = SimplePruner(model, pruning_rate=0.5)
 pruner.apply_magnitude_pruning()
 ```
@@ -105,7 +108,8 @@ For more control over the pruning process, you can implement custom threshold-ba
 ```python
 import torch
 import torch.nn as nn
-import numpy as np
+import torchvision
+from torchvision.models import ResNet18_Weights
 
 class ThresholdPruner:
     def __init__(self, model):
@@ -150,7 +154,8 @@ class ThresholdPruner:
                 module.weight.data *= self.masks[name]
 
 # Example: Prune 70% of weights globally
-model = torch.hub.load('pytorch/vision:v0.10.0', 'resnet18', pretrained=True)
+weights = ResNet18_Weights.DEFAULT
+model = torchvision.models.resnet18(weights=weights)
 pruner = ThresholdPruner(model)
 threshold = pruner.apply_global_pruning(target_sparsity=0.7)
 print(f"Global pruning threshold: {threshold:.6f}")
@@ -202,6 +207,8 @@ class StructuredPruner:
         # Get indices of filters to keep (highest importance)
         _, keep_indices = torch.topk(importance, num_to_keep)
         keep_indices = keep_indices.sort()[0]
+        device = conv_layer.weight.device
+        dtype = conv_layer.weight.dtype
 
         # Create new smaller conv layer
         new_conv = nn.Conv2d(
@@ -210,45 +217,65 @@ class StructuredPruner:
             kernel_size=conv_layer.kernel_size,
             stride=conv_layer.stride,
             padding=conv_layer.padding,
-            bias=conv_layer.bias is not None
-        )
+            dilation=conv_layer.dilation,
+            groups=conv_layer.groups,
+            bias=conv_layer.bias is not None,
+            padding_mode=conv_layer.padding_mode
+        ).to(device=device, dtype=dtype)
 
         # Copy selected filters
-        new_conv.weight.data = conv_layer.weight.data[keep_indices]
-        if conv_layer.bias is not None:
-            new_conv.bias.data = conv_layer.bias.data[keep_indices]
+        with torch.no_grad():
+            new_conv.weight.copy_(conv_layer.weight[keep_indices])
+            if conv_layer.bias is not None:
+                new_conv.bias.copy_(conv_layer.bias[keep_indices])
 
         # Create new batch norm if present
         new_bn = None
         if bn_layer is not None:
-            new_bn = nn.BatchNorm2d(num_to_keep)
-            new_bn.weight.data = bn_layer.weight.data[keep_indices]
-            new_bn.bias.data = bn_layer.bias.data[keep_indices]
-            new_bn.running_mean = bn_layer.running_mean[keep_indices]
-            new_bn.running_var = bn_layer.running_var[keep_indices]
+            new_bn = nn.BatchNorm2d(
+                num_to_keep,
+                eps=bn_layer.eps,
+                momentum=bn_layer.momentum,
+                affine=bn_layer.affine,
+                track_running_stats=bn_layer.track_running_stats
+            ).to(device=device, dtype=dtype)
+            with torch.no_grad():
+                if bn_layer.affine:
+                    new_bn.weight.copy_(bn_layer.weight[keep_indices])
+                    new_bn.bias.copy_(bn_layer.bias[keep_indices])
+                if bn_layer.track_running_stats:
+                    new_bn.running_mean.copy_(bn_layer.running_mean[keep_indices])
+                    new_bn.running_var.copy_(bn_layer.running_var[keep_indices])
+                    new_bn.num_batches_tracked.copy_(bn_layer.num_batches_tracked)
 
         return new_conv, new_bn, keep_indices
 
     def adjust_next_layer(self, next_conv, keep_indices):
         """Adjust the input channels of the next layer."""
+        device = next_conv.weight.device
+        dtype = next_conv.weight.dtype
         new_conv = nn.Conv2d(
             in_channels=len(keep_indices),
             out_channels=next_conv.out_channels,
             kernel_size=next_conv.kernel_size,
             stride=next_conv.stride,
             padding=next_conv.padding,
-            bias=next_conv.bias is not None
-        )
+            dilation=next_conv.dilation,
+            groups=next_conv.groups,
+            bias=next_conv.bias is not None,
+            padding_mode=next_conv.padding_mode
+        ).to(device=device, dtype=dtype)
 
-        new_conv.weight.data = next_conv.weight.data[:, keep_indices]
-        if next_conv.bias is not None:
-            new_conv.bias.data = next_conv.bias.data
+        with torch.no_grad():
+            new_conv.weight.copy_(next_conv.weight[:, keep_indices])
+            if next_conv.bias is not None:
+                new_conv.bias.copy_(next_conv.bias)
 
         return new_conv
 
-# Example usage for a simple sequential model
+# Example usage for a simple sequential model with standard convolutions
 def prune_simple_cnn(model, prune_ratio=0.3):
-    """Prune a simple sequential CNN model."""
+    """Prune a simple sequential CNN model without residual branches."""
     pruner = StructuredPruner(model)
 
     layers = list(model.children())
@@ -434,10 +461,12 @@ class IterativePruner:
 # Example usage
 """
 # Assuming you have your data loaders ready
+from torchvision.models import resnet18, ResNet18_Weights
+
 train_loader = DataLoader(train_dataset, batch_size=128, shuffle=True)
 val_loader = DataLoader(val_dataset, batch_size=256)
 
-model = torchvision.models.resnet18(pretrained=True)
+model = resnet18(weights=ResNet18_Weights.DEFAULT)
 pruner = IterativePruner(model, train_loader, val_loader)
 
 # Prune to 80% sparsity over 10 iterations with 5 epochs of fine-tuning each
@@ -539,7 +568,6 @@ class LRRewindPruner:
 
 ```python
 import torch.nn.utils.prune as prune
-import numpy as np
 
 class GradualPruner:
     """Implements gradual magnitude pruning during training."""
@@ -606,8 +634,9 @@ def create_pruning_pipeline():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     # Load pre-trained model
-    model = torchvision.models.resnet18(pretrained=True)
-    teacher_model = torchvision.models.resnet18(pretrained=True)
+    weights = torchvision.models.ResNet18_Weights.DEFAULT
+    model = torchvision.models.resnet18(weights=weights)
+    teacher_model = torchvision.models.resnet18(weights=weights)
     teacher_model.eval()
 
     model.to(device)
