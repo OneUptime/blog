@@ -300,7 +300,7 @@ impl Worker {
 
 ## Adding Task Results
 
-Often you need to get results back from tasks. We can add a mechanism to return values using oneshot channels.
+Often you need to get results back from tasks. We can add a mechanism to return values by giving each task its own mpsc channel that carries a single result.
 
 ```rust
 use std::sync::mpsc as std_mpsc;
