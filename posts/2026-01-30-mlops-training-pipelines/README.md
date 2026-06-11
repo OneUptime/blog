@@ -89,7 +89,7 @@ flowchart TB
 
 ## Setting Up Kubeflow Pipelines
 
-Kubeflow Pipelines (KFP) is the most widely adopted framework for ML pipelines on Kubernetes. It provides a Python SDK to define pipelines as code.
+Kubeflow Pipelines (KFP) is a widely used framework for ML pipelines on Kubernetes. It provides a Python SDK to define pipelines as code.
 
 ### Installation
 
@@ -127,7 +127,8 @@ ml-pipeline/
 │   ├── data_validation.py
 │   ├── feature_engineering.py
 │   ├── model_training.py
-│   └── model_evaluation.py
+│   ├── model_evaluation.py
+│   └── model_registration.py
 ├── pipelines/
 │   └── training_pipeline.py
 ├── config/
@@ -151,7 +152,12 @@ from kfp.dsl import Dataset, Output
 
 @dsl.component(
     base_image="python:3.10-slim",
-    packages_to_install=["pandas==2.1.0", "pyarrow==14.0.0", "boto3==1.34.0"]
+    packages_to_install=[
+        "pandas==2.1.0",
+        "pyarrow==14.0.0",
+        "s3fs==2024.2.0",
+        "gcsfs==2024.2.0"
+    ]
 )
 def ingest_data(
     source_uri: str,
@@ -170,7 +176,6 @@ def ingest_data(
         Dictionary containing ingestion metadata
     """
     import pandas as pd
-    import json
     from datetime import datetime
 
     print(f"Ingesting data from: {source_uri}")
@@ -223,7 +228,6 @@ from kfp.dsl import Dataset, Input, Output, Artifact
     base_image="python:3.10-slim",
     packages_to_install=[
         "pandas==2.1.0",
-        "great_expectations==0.18.0",
         "pyarrow==14.0.0"
     ]
 )
@@ -235,7 +239,7 @@ def validate_data(
     max_null_fraction: float = 0.1
 ) -> dict:
     """
-    Validate data quality using Great Expectations.
+    Validate basic data quality checks before training.
 
     Args:
         input_dataset: Input dataset artifact
@@ -252,9 +256,6 @@ def validate_data(
     """
     import pandas as pd
     import json
-    import great_expectations as gx
-    from great_expectations.core.batch import RuntimeBatchRequest
-
     print("Loading data for validation...")
     df = pd.read_parquet(input_dataset.path)
 
@@ -337,7 +338,7 @@ Transforms raw data into features suitable for model training.
 """
 
 from kfp import dsl
-from kfp.dsl import Dataset, Input, Output
+from kfp.dsl import Artifact, Dataset, Input, Output
 
 
 @dsl.component(
@@ -353,7 +354,7 @@ def engineer_features(
     input_dataset: Input[Dataset],
     train_dataset: Output[Dataset],
     test_dataset: Output[Dataset],
-    feature_transformer: Output[dsl.Artifact],
+    feature_transformer: Output[Artifact],
     target_column: str,
     numerical_columns: list,
     categorical_columns: list,
@@ -479,6 +480,7 @@ Trains the model and logs metrics to MLflow.
 
 from kfp import dsl
 from kfp.dsl import Dataset, Input, Output, Model, Metrics
+from typing import NamedTuple
 
 
 @dsl.component(
@@ -501,7 +503,12 @@ def train_model(
     target_column: str,
     model_type: str = "xgboost",
     hyperparameters: dict = None
-) -> dict:
+) -> NamedTuple("TrainOutputs", [
+    ("run_id", str),
+    ("train_accuracy", float),
+    ("train_f1", float),
+    ("train_auc", float)
+]):
     """
     Train a classification model with hyperparameter tracking.
 
@@ -516,7 +523,7 @@ def train_model(
         hyperparameters: Dictionary of hyperparameters
 
     Returns:
-        Dictionary containing training metadata and run ID
+        Named output parameters containing training metadata and run ID
     """
     import pandas as pd
     import joblib
@@ -546,7 +553,7 @@ def train_model(
     }
 
     # Merge default and provided hyperparameters
-    params = default_params.get(model_type, {})
+    params = default_params.get(model_type, {}).copy()
     if hyperparameters:
         params.update(hyperparameters)
 
@@ -592,7 +599,11 @@ def train_model(
 
         train_accuracy = accuracy_score(y_train, y_pred)
         train_f1 = f1_score(y_train, y_pred, average="weighted")
-        train_auc = roc_auc_score(y_train, y_proba) if y_proba is not None else 0.0
+        train_auc = (
+            roc_auc_score(y_train, y_proba)
+            if y_proba is not None and y_train.nunique() == 2
+            else 0.0
+        )
 
         # Log metrics to MLflow
         mlflow.log_metric("train_accuracy", train_accuracy)
@@ -615,14 +626,13 @@ def train_model(
 
         print(f"Training complete - Accuracy: {train_accuracy:.4f}, F1: {train_f1:.4f}")
 
-    return {
-        "run_id": run_id,
-        "model_type": model_type,
-        "train_accuracy": train_accuracy,
-        "train_f1": train_f1,
-        "train_auc": train_auc,
-        "hyperparameters": params
-    }
+    outputs = NamedTuple("TrainOutputs", [
+        ("run_id", str),
+        ("train_accuracy", float),
+        ("train_f1", float),
+        ("train_auc", float)
+    ])
+    return outputs(run_id, train_accuracy, train_f1, train_auc)
 ```
 
 ### Component 5: Model Evaluation
@@ -636,6 +646,7 @@ Evaluates the trained model on test data and determines if it should be deployed
 
 from kfp import dsl
 from kfp.dsl import Dataset, Input, Model, Metrics, Output, Artifact
+from typing import NamedTuple
 
 
 @dsl.component(
@@ -660,7 +671,12 @@ def evaluate_model(
     target_column: str,
     accuracy_threshold: float = 0.8,
     f1_threshold: float = 0.75
-) -> dict:
+) -> NamedTuple("EvaluationOutputs", [
+    ("deployment_approved", bool),
+    ("test_accuracy", float),
+    ("test_f1", float),
+    ("test_auc", float)
+]):
     """
     Evaluate model performance on held-out test data.
 
@@ -677,7 +693,7 @@ def evaluate_model(
         f1_threshold: Minimum F1 score for deployment approval
 
     Returns:
-        Dictionary containing evaluation results and deployment decision
+        Named output parameters containing evaluation results and deployment decision
     """
     import pandas as pd
     import joblib
@@ -711,7 +727,11 @@ def evaluate_model(
     test_f1 = f1_score(y_test, y_pred, average="weighted")
     test_precision = precision_score(y_test, y_pred, average="weighted")
     test_recall = recall_score(y_test, y_pred, average="weighted")
-    test_auc = roc_auc_score(y_test, y_proba) if y_proba is not None else 0.0
+    test_auc = (
+        roc_auc_score(y_test, y_proba)
+        if y_proba is not None and y_test.nunique() == 2
+        else 0.0
+    )
 
     print(f"Test Accuracy: {test_accuracy:.4f}")
     print(f"Test F1 Score: {test_f1:.4f}")
@@ -782,12 +802,13 @@ def evaluate_model(
         print(f"  Required: accuracy >= {accuracy_threshold}, f1 >= {f1_threshold}")
         print(f"  Actual: accuracy = {test_accuracy:.4f}, f1 = {test_f1:.4f}")
 
-    return {
-        "deployment_approved": deployment_approved,
-        "test_accuracy": test_accuracy,
-        "test_f1": test_f1,
-        "test_auc": test_auc
-    }
+    outputs = NamedTuple("EvaluationOutputs", [
+        ("deployment_approved", bool),
+        ("test_accuracy", float),
+        ("test_f1", float),
+        ("test_auc", float)
+    ])
+    return outputs(deployment_approved, test_accuracy, test_f1, test_auc)
 ```
 
 ### Component 6: Model Registration
@@ -874,21 +895,21 @@ def register_model(
         value="approved"
     )
 
-    # Transition to staging
-    client.transition_model_version_stage(
+    # Assign a mutable alias for the candidate deployment version
+    client.set_registered_model_alias(
         name=model_name,
-        version=model_version.version,
-        stage="Staging"
+        alias="staging",
+        version=model_version.version
     )
 
     print(f"Model registered as version {model_version.version}")
-    print(f"Model transitioned to Staging")
+    print(f"Model assigned alias 'staging'")
 
     return {
         "registered": True,
         "model_name": model_name,
         "version": model_version.version,
-        "stage": "Staging",
+        "alias": "staging",
         "run_id": mlflow_run_id
     }
 ```
@@ -991,7 +1012,7 @@ def training_pipeline(
         test_dataset=feature_task.outputs["test_dataset"],
         trained_model=train_task.outputs["trained_model"],
         mlflow_tracking_uri=mlflow_tracking_uri,
-        mlflow_run_id=train_task.outputs["Output"]["run_id"],
+        mlflow_run_id=train_task.outputs["run_id"],
         target_column=target_column,
         accuracy_threshold=accuracy_threshold,
         f1_threshold=f1_threshold
@@ -1002,9 +1023,9 @@ def training_pipeline(
         trained_model=train_task.outputs["trained_model"],
         feature_transformer=feature_task.outputs["feature_transformer"],
         mlflow_tracking_uri=mlflow_tracking_uri,
-        mlflow_run_id=train_task.outputs["Output"]["run_id"],
+        mlflow_run_id=train_task.outputs["run_id"],
         model_name=model_name,
-        deployment_approved=eval_task.outputs["Output"]["deployment_approved"]
+        deployment_approved=eval_task.outputs["deployment_approved"]
     )
 
 
@@ -1033,7 +1054,7 @@ flowchart TB
         Eval --> Check{Meets Thresholds?}
         Check -->|No| Skip[Skip Registration]
         Check -->|Yes| Register[Register Model]
-        Register --> Stage[Stage: Staging]
+        Register --> Stage[Alias: staging]
         Skip --> End([End])
         Stage --> End
     end
@@ -1115,7 +1136,6 @@ Schedule recurring pipeline runs for continuous training.
 """
 
 from kfp import Client
-from kfp.client import RecurringRunsApi
 
 client = Client(host="http://kubeflow-pipelines:8888")
 
@@ -1127,7 +1147,7 @@ recurring_run = client.create_recurring_run(
     experiment_id=experiment.experiment_id,
     job_name="daily-churn-training",
     pipeline_package_path="training_pipeline.yaml",
-    cron_expression="0 2 * * *",  # Daily at 2 AM UTC
+    cron_expression="0 0 2 * * *",  # Daily at 2 AM UTC
     max_concurrency=1,
     no_catchup=True,
     params={
@@ -1309,23 +1329,26 @@ def promote_model_to_production(
     client = MlflowClient()
 
     if archive_existing:
-        # Archive existing production versions
-        for mv in client.search_model_versions(f"name='{model_name}'"):
-            if mv.current_stage == "Production":
-                client.transition_model_version_stage(
-                    name=model_name,
-                    version=mv.version,
-                    stage="Archived"
-                )
-                print(f"Archived version {mv.version}")
+        # Tag the version that currently owns the production alias
+        try:
+            current = client.get_model_version_by_alias(model_name, "production")
+            client.set_model_version_tag(
+                name=model_name,
+                version=current.version,
+                key="deployment_status",
+                value="archived"
+            )
+            print(f"Tagged version {current.version} as archived")
+        except Exception:
+            print("No existing production alias found")
 
-    # Promote new version
-    client.transition_model_version_stage(
+    # Promote new version by moving the production alias
+    client.set_registered_model_alias(
         name=model_name,
+        alias="production",
         version=version,
-        stage="Production"
     )
-    print(f"Promoted version {version} to Production")
+    print(f"Promoted version {version} to production")
 ```
 
 ## Data Validation with Great Expectations
@@ -1353,16 +1376,14 @@ from kfp.dsl import Dataset, Input, Output, Artifact
 def advanced_validate_data(
     input_dataset: Input[Dataset],
     validation_report: Output[Artifact],
-    expectation_suite_path: str,
     fail_on_warning: bool = False
 ) -> dict:
     """
-    Validate data using a Great Expectations suite.
+    Validate data using programmatic Great Expectations checks.
 
     Args:
         input_dataset: Input dataset artifact
         validation_report: Output validation report artifact
-        expectation_suite_path: Path to GE expectation suite JSON
         fail_on_warning: Whether to fail pipeline on warnings
 
     Returns:
@@ -1371,31 +1392,29 @@ def advanced_validate_data(
     import pandas as pd
     import json
     import great_expectations as gx
-    from great_expectations.core import ExpectationSuite
-    from great_expectations.dataset import PandasDataset
 
     # Load data
     df = pd.read_parquet(input_dataset.path)
 
-    # Load expectation suite
-    with open(expectation_suite_path, "r") as f:
-        suite_config = json.load(f)
-
-    # Create Great Expectations dataset
-    ge_df = gx.from_pandas(df)
+    # Create a Great Expectations Validator for the in-memory DataFrame
+    context = gx.get_context()
+    validator = context.sources.add_pandas("pipeline_datasource").read_dataframe(
+        df,
+        asset_name="training_frame"
+    )
 
     # Define expectations programmatically if no suite file
     # These are common expectations for ML datasets
     expectations = [
         # No duplicate rows
-        ge_df.expect_table_row_count_to_be_between(min_value=100, max_value=10000000),
+        validator.expect_table_row_count_to_be_between(min_value=100, max_value=10000000),
 
         # Check for ID column uniqueness
-        ge_df.expect_column_values_to_be_unique(column="id") if "id" in df.columns else None,
+        validator.expect_column_values_to_be_unique(column="id") if "id" in df.columns else None,
 
         # Validate numerical columns are in expected ranges
         *[
-            ge_df.expect_column_values_to_be_between(
+            validator.expect_column_values_to_be_between(
                 column=col,
                 min_value=df[col].quantile(0.001),
                 max_value=df[col].quantile(0.999),
@@ -1406,7 +1425,7 @@ def advanced_validate_data(
 
         # Check for reasonable null rates
         *[
-            ge_df.expect_column_values_to_not_be_null(column=col, mostly=0.95)
+            validator.expect_column_values_to_not_be_null(column=col, mostly=0.95)
             for col in df.columns
         ]
     ]
@@ -1416,7 +1435,10 @@ def advanced_validate_data(
 
     # Aggregate results
     failures = [e for e in expectations if not e.success]
-    warnings = [e for e in expectations if e.success and e.get("partial_unexpected_list")]
+    warnings = [
+        e for e in expectations
+        if e.success and e.result.get("partial_unexpected_list")
+    ]
 
     result = {
         "success": len(failures) == 0,
@@ -1763,9 +1785,10 @@ jobs:
 
           client = Client(host="${{ env.KFP_HOST }}")
 
-          # Get the latest run
+          # Get the latest run in this experiment
+          experiment = client.get_experiment(experiment_name="ci-training-${{ github.run_id }}")
           runs = client.list_runs(
-              experiment_name="ci-training-${{ github.run_id }}",
+              experiment_id=experiment.experiment_id,
               page_size=1
           ).runs
 
@@ -1778,12 +1801,12 @@ jobs:
           # Poll for completion
           while True:
               run = client.get_run(run_id)
-              status = run.status
+              status = run.state
 
-              if status in ["Succeeded"]:
+              if status == "SUCCEEDED":
                   print(f"Pipeline succeeded!")
                   break
-              elif status in ["Failed", "Error"]:
+              elif status in ["FAILED", "CANCELED", "SKIPPED"]:
                   print(f"Pipeline failed with status: {status}")
                   exit(1)
 
@@ -1934,12 +1957,17 @@ mlflow.set_tags({
 # Enable caching for expensive components
 @dsl.component(
     base_image="python:3.10-slim",
-    packages_to_install=["pandas"],
-    # Cache based on inputs
-    caching=True
+    packages_to_install=["pandas"]
 )
-def expensive_preprocessing(...):
-    ...
+def expensive_preprocessing(input_path: str) -> str:
+    return input_path
+
+@dsl.pipeline(name="preprocessing-pipeline")
+def preprocessing_pipeline():
+    preprocessing_task = expensive_preprocessing(
+        input_path="s3://ml-data/training/data.parquet"
+    )
+    preprocessing_task.set_caching_options(enable_caching=True)
 ```
 
 ### 3. Handle Failures Gracefully
@@ -2010,8 +2038,8 @@ mlflow:
     SLA: 4 hours
     """
 )
-def customer_churn_pipeline(...):
-    ...
+def customer_churn_pipeline(source_uri: str, target_column: str):
+    pass
 ```
 
 ---
