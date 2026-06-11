@@ -395,7 +395,8 @@ auth_cache_refresh_interval = 2
 use_gr_notifications = 1
 
 # Unreachable destination quarantine
-unreachable_destination_refresh_interval = 1
+[destination_status]
+error_quarantine_interval = 1
 ```
 
 ### Connection Error Handling
@@ -422,7 +423,7 @@ client_connect_timeout = 9
 # Timeout for connecting to destination
 connect_timeout = 15
 
-# Timeout for waiting for server response
+# Network buffer size for client and server packets
 net_buffer_length = 16384
 ```
 
