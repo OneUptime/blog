@@ -73,7 +73,7 @@ class DeploymentCriteria:
     """Define what constitutes a valid deployment for metrics."""
 
     VALID_ENVIRONMENTS = ['production', 'prod', 'live']
-    VALID_STATUSES = ['success', 'completed', 'succeeded']
+    VALID_STATUSES = ['success']
 
     @classmethod
     def is_valid_deployment(cls, event: dict) -> bool:
@@ -110,7 +110,7 @@ Create a webhook endpoint that captures deployment events:
 # collectors/github_collector.py
 
 from flask import Flask, request, jsonify
-from datetime import datetime
+from datetime import datetime, timezone
 import hashlib
 import hmac
 import os
@@ -142,7 +142,9 @@ class GitHubDeploymentCollector:
             'status': payload.get('deployment_status', {}).get('state'),
             'sha': payload.get('deployment', {}).get('sha'),
             'ref': payload.get('deployment', {}).get('ref'),
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': payload.get(
+                'deployment_status', {}
+            ).get('created_at') or datetime.now(timezone.utc).isoformat(),
             'deployed_by': payload.get('sender', {}).get('login'),
             'source': 'github_actions'
         }
@@ -180,7 +182,7 @@ For Kubernetes-native deployments, watch for rollout events:
 # collectors/kubernetes_collector.py
 
 from kubernetes import client, config, watch
-from datetime import datetime
+from datetime import datetime, timezone
 import threading
 
 class KubernetesDeploymentWatcher:
@@ -225,27 +227,31 @@ class KubernetesDeploymentWatcher:
         """Check if deployment rollout has completed successfully."""
         status = deployment.status
         spec = deployment.spec
+        metadata = deployment.metadata
+        desired_replicas = spec.replicas or 1
 
-        if status.updated_replicas is None:
+        if status.observed_generation < metadata.generation:
             return False
 
         return (
-            status.updated_replicas == spec.replicas and
-            status.ready_replicas == spec.replicas and
-            status.available_replicas == spec.replicas
+            status.updated_replicas == desired_replicas and
+            status.ready_replicas == desired_replicas and
+            status.available_replicas == desired_replicas and
+            (status.unavailable_replicas or 0) == 0
         )
 
     def _extract_deployment_info(self, deployment) -> dict:
         """Extract deployment information for metrics."""
         metadata = deployment.metadata
+        labels = metadata.labels or {}
 
         return {
-            'id': metadata.uid,
+            'id': f"{metadata.uid}:{metadata.generation}",
             'name': metadata.name,
             'namespace': metadata.namespace,
-            'environment': metadata.labels.get('environment', 'unknown'),
+            'environment': labels.get('environment', 'unknown'),
             'status': 'success',
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'image': self._get_container_image(deployment),
             'replicas': deployment.spec.replicas,
             'source': 'kubernetes'
@@ -437,15 +443,20 @@ class DeploymentFrequencyCalculator:
             start_date, end_date, repository
         )
 
+        # Calculate totals
+        total_deployments = len(deployments)
+        days_in_period = (end_date - start_date).days or 1
+
         # Group deployments by day
         daily_counts = defaultdict(int)
         for dep in deployments:
             day_key = dep.timestamp.strftime('%Y-%m-%d')
             daily_counts[day_key] = daily_counts[day_key] + 1
 
-        # Calculate totals
-        total_deployments = len(deployments)
-        days_in_period = (end_date - start_date).days or 1
+        for offset in range(days_in_period):
+            day_key = (start_date + timedelta(days=offset)).strftime('%Y-%m-%d')
+            daily_counts.setdefault(day_key, 0)
+
         weeks_in_period = days_in_period / 7
         months_in_period = days_in_period / 30
 
@@ -455,7 +466,7 @@ class DeploymentFrequencyCalculator:
         monthly_average = total_deployments / months_in_period if months_in_period > 0 else 0
 
         # Find peak day
-        if daily_counts:
+        if total_deployments > 0:
             peak_day = max(daily_counts.items(), key=lambda x: x[1])
         else:
             peak_day = ('N/A', 0)
@@ -502,6 +513,7 @@ class DeploymentFrequencyCalculator:
 
     def calculate_rolling_average(
         self,
+        start_date: datetime,
         end_date: datetime,
         window_days: int = 7,
         repository: str = None
@@ -510,6 +522,7 @@ class DeploymentFrequencyCalculator:
         Calculate rolling average deployment frequency.
 
         Args:
+            start_date: Beginning of the time series period
             end_date: End date for calculation
             window_days: Size of rolling window
             repository: Optional repository filter
@@ -518,9 +531,9 @@ class DeploymentFrequencyCalculator:
             List of daily rolling averages
         """
         # Get extra days for the rolling window
-        start_date = end_date - timedelta(days=window_days * 2)
+        query_start_date = start_date - timedelta(days=window_days - 1)
         deployments = self.aggregator.get_deployments(
-            start_date, end_date, repository
+            query_start_date, end_date, repository
         )
 
         # Build daily counts
@@ -531,7 +544,7 @@ class DeploymentFrequencyCalculator:
 
         # Calculate rolling averages
         results = []
-        current_date = start_date + timedelta(days=window_days)
+        current_date = start_date
 
         while current_date <= end_date:
             window_total = 0
@@ -584,7 +597,7 @@ class DORAFrequencyClassifier:
     # DORA benchmarks based on State of DevOps reports
     BENCHMARKS = {
         DORAPerformanceLevel.ELITE: {
-            'min_daily': 1.0,  # Multiple deploys per day
+            'min_daily': 2.0,  # Multiple deploys per day
             'description': 'On-demand deployment (multiple per day)',
             'recommendation': 'Maintain practices and mentor other teams'
         },
@@ -641,7 +654,7 @@ class DORAFrequencyClassifier:
     def _format_benchmark(self, level: DORAPerformanceLevel) -> str:
         """Format benchmark description for display."""
         benchmarks = {
-            DORAPerformanceLevel.ELITE: '>= 1 deployment per day',
+            DORAPerformanceLevel.ELITE: '>= 2 deployments per day',
             DORAPerformanceLevel.HIGH: '>= 1 deployment per week',
             DORAPerformanceLevel.MEDIUM: '>= 1 deployment per month',
             DORAPerformanceLevel.LOW: '< 1 deployment per month'
@@ -682,7 +695,7 @@ flowchart LR
 # api/metrics_api.py
 
 from flask import Flask, jsonify, request
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from functools import wraps
 
 app = Flask(__name__)
@@ -703,7 +716,7 @@ def parse_date_params(func):
         if end_date:
             end_date = datetime.fromisoformat(end_date)
         else:
-            end_date = datetime.utcnow()
+            end_date = datetime.now(timezone.utc)
 
         if start_date:
             start_date = datetime.fromisoformat(start_date)
@@ -762,6 +775,7 @@ def get_frequency_timeseries(start_date, end_date):
     window = request.args.get('window', 7, type=int)
 
     rolling_data = calculator.calculate_rolling_average(
+        start_date=start_date,
         end_date=end_date,
         window_days=window,
         repository=repository
@@ -782,7 +796,7 @@ def compare_repositories():
     repositories = request.args.getlist('repository')
     days = request.args.get('days', 30, type=int)
 
-    end_date = datetime.utcnow()
+    end_date = datetime.now(timezone.utc)
     start_date = end_date - timedelta(days=days)
 
     comparisons = []
@@ -1033,7 +1047,7 @@ graph TD
 # alerts/frequency_alerts.py
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import List, Callable
 import smtplib
@@ -1089,7 +1103,7 @@ class DeploymentFrequencyAlerter:
             List of triggered AlertEvent objects
         """
         # Get current metrics
-        end_date = datetime.utcnow()
+        end_date = datetime.now(timezone.utc)
         start_date = end_date - timedelta(days=7)
 
         metrics = self.calculator.calculate_frequency(
@@ -1106,7 +1120,7 @@ class DeploymentFrequencyAlerter:
             if result['triggered']:
                 event = AlertEvent(
                     alert=alert,
-                    triggered_at=datetime.utcnow(),
+                    triggered_at=datetime.now(timezone.utc),
                     current_value=result['current_value'],
                     threshold=result['threshold'],
                     context={
@@ -1165,8 +1179,14 @@ def declining_trend():
 def no_deployments_days(days: int):
     """Create condition for no deployments in N days."""
     def condition(metrics):
-        recent_days = list(metrics.deployments_per_day.items())[-days:]
-        zero_days = sum(1 for _, count in recent_days if count == 0)
+        today = datetime.now(timezone.utc).date()
+        zero_days = 0
+
+        for offset in range(days):
+            day_key = (today - timedelta(days=offset)).isoformat()
+            if metrics.deployments_per_day.get(day_key, 0) == 0:
+                zero_days += 1
+
         return {
             'triggered': zero_days >= days,
             'current_value': zero_days,
@@ -1260,8 +1280,6 @@ sequenceDiagram
 
 ```yaml
 # docker-compose.yml
-
-version: '3.8'
 
 services:
   collector:
