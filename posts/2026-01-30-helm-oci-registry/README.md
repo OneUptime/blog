@@ -98,11 +98,11 @@ helm registry login registry.example.com \
   --password $REGISTRY_PASSWORD
 ```
 
-Helm stores credentials in the same location as Docker:
+By default, Helm stores registry credentials in its own registry config file. You can also pass `--registry-config` if you want Helm and Docker to use the same credential file:
 
 ```bash
 # Check where credentials are stored
-cat ~/.docker/config.json
+cat ~/.config/helm/registry/config.json
 ```
 
 ### Logout When Done
@@ -181,7 +181,7 @@ gcloud auth configure-docker us-central1-docker.pkg.dev
 helm push myapp-0.1.0.tgz oci://us-central1-docker.pkg.dev/my-project/helm-charts
 ```
 
-For legacy GCR:
+Legacy Container Registry is shut down and no longer accepts pushes. If you need `gcr.io` compatibility, use `gcr.io` repositories backed by Artifact Registry:
 
 ```bash
 # Authenticate
