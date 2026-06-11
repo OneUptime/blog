@@ -10,7 +10,7 @@ Description: Learn how to analyze reserved instance and savings plan coverage.
 
 ## What Is Coverage Analysis?
 
-Coverage analysis measures how much of your on-demand cloud spend is protected by committed discount mechanisms like Reserved Instances (RIs) and Savings Plans (SPs). If you are running workloads on AWS, Azure, or GCP without understanding your coverage, you are likely overpaying by 30-60%.
+Coverage analysis measures how much of your eligible usage cost is protected by committed discount mechanisms like Reserved Instances (RIs) and Savings Plans (SPs). If you are running workloads on AWS, Azure, or GCP without understanding your coverage, you can leave substantial commitment discounts unused.
 
 The core question coverage analysis answers: "What percentage of my eligible compute hours are covered by commitments, and where are the gaps?"
 
@@ -38,7 +38,7 @@ flowchart LR
     A --> E
     B --> E
     C --> E
-    D --> E
+    D --> F
     E --> F
     F --> G
     G --> H
@@ -224,8 +224,13 @@ class CoverageAnalyzer:
         ]
 
         for record in filtered_usage:
-            metrics.total_eligible_hours += record.usage_hours
             metrics.total_cost += record.on_demand_cost
+
+            if record.coverage_type == "Spot":
+                metrics.spot_hours += record.usage_hours
+                continue
+
+            metrics.total_eligible_hours += record.usage_hours
 
             if record.coverage_type == "RI":
                 metrics.ri_covered_hours += record.covered_hours
@@ -233,8 +238,6 @@ class CoverageAnalyzer:
             elif record.coverage_type == "SP":
                 metrics.sp_covered_hours += record.covered_hours
                 metrics.covered_hours += record.covered_hours
-            elif record.coverage_type == "Spot":
-                metrics.spot_hours += record.usage_hours
             else:
                 metrics.on_demand_hours += record.usage_hours
 
@@ -271,8 +274,13 @@ class CoverageAnalyzer:
             key = getattr(record, dimension, "unknown")
             metrics = results[key]
 
-            metrics.total_eligible_hours += record.usage_hours
             metrics.total_cost += record.on_demand_cost
+
+            if record.coverage_type == "Spot":
+                metrics.spot_hours += record.usage_hours
+                continue
+
+            metrics.total_eligible_hours += record.usage_hours
 
             if record.coverage_type == "RI":
                 metrics.ri_covered_hours += record.covered_hours
@@ -280,8 +288,6 @@ class CoverageAnalyzer:
             elif record.coverage_type == "SP":
                 metrics.sp_covered_hours += record.covered_hours
                 metrics.covered_hours += record.covered_hours
-            elif record.coverage_type == "Spot":
-                metrics.spot_hours += record.usage_hours
             else:
                 metrics.on_demand_hours += record.usage_hours
 
@@ -302,6 +308,12 @@ class CoverageAnalyzer:
 
             for key, metrics in by_dim.items():
                 if metrics.coverage_percentage < threshold:
+                    on_demand_cost = (
+                        metrics.on_demand_hours
+                        * (metrics.total_cost / metrics.total_eligible_hours)
+                        if metrics.total_eligible_hours > 0
+                        else 0
+                    )
                     gaps.append(
                         {
                             "dimension": dimension,
@@ -310,15 +322,9 @@ class CoverageAnalyzer:
                                 metrics.coverage_percentage, 2
                             ),
                             "on_demand_hours": metrics.on_demand_hours,
-                            "on_demand_cost": round(
-                                metrics.on_demand_hours
-                                * (metrics.total_cost / metrics.total_eligible_hours)
-                                if metrics.total_eligible_hours > 0
-                                else 0,
-                                2,
-                            ),
+                            "on_demand_cost": round(on_demand_cost, 2),
                             "potential_monthly_savings": round(
-                                metrics.on_demand_hours * 0.4 * 730 / 24,
+                                on_demand_cost * 0.40,
                                 2,
                             ),
                         }
@@ -391,7 +397,7 @@ if __name__ == "__main__":
     # Sample usage data
     sample_usage = [
         {
-            "timestamp": "2026-01-15T00:00:00",
+            "timestamp": (datetime.now() - timedelta(days=15)).replace(microsecond=0).isoformat(),
             "account_id": "111111111111",
             "region": "us-east-1",
             "service": "EC2",
@@ -402,7 +408,7 @@ if __name__ == "__main__":
             "coverage_type": "RI",
         },
         {
-            "timestamp": "2026-01-15T00:00:00",
+            "timestamp": (datetime.now() - timedelta(days=15)).replace(microsecond=0).isoformat(),
             "account_id": "111111111111",
             "region": "us-west-2",
             "service": "EC2",
@@ -413,7 +419,7 @@ if __name__ == "__main__":
             "coverage_type": "SP",
         },
         {
-            "timestamp": "2026-01-15T00:00:00",
+            "timestamp": (datetime.now() - timedelta(days=15)).replace(microsecond=0).isoformat(),
             "account_id": "222222222222",
             "region": "eu-west-1",
             "service": "RDS",
@@ -563,9 +569,7 @@ class GapDetector:
                 data["variance"] = variance
                 # Stability score: higher = more stable (good for commitments)
                 if data["avg_usage"] > 0:
-                    data["stability_score"] = (
-                        data["min_usage"] / data["avg_usage"]
-                    ) * 100
+                    data["stability_score"] = data["min_usage"] / data["avg_usage"]
 
         return dict(patterns)
 
@@ -619,6 +623,9 @@ class GapDetector:
         cost_totals = defaultdict(float)
 
         for record in usage_records:
+            if record.get("coverage_type") == "Spot":
+                continue
+
             key = record.get(dimension, "unknown")
             usage_totals[key] += record["usage_hours"]
             coverage_totals[key] += record.get("covered_hours", 0)
@@ -711,6 +718,9 @@ class GapDetector:
         usage_by_type = defaultdict(lambda: {"hours": 0, "cost": 0})
 
         for record in usage_records:
+            if record.get("coverage_type") == "Spot":
+                continue
+
             service = record["service"]
             instance_type = record["instance_type"]
             instance_family = instance_type.rsplit(".", 1)[0] if "." in instance_type else instance_type
@@ -757,12 +767,12 @@ class GapDetector:
         if dimension == "region":
             return (
                 f"Region {value} has {current_coverage:.1f}% coverage. "
-                f"Consider purchasing regional RIs or enabling SP regional flexibility."
+                f"Consider purchasing Regional RIs or a Compute Savings Plan for cross-region flexibility."
             )
         elif dimension == "service":
             return (
                 f"Service {value} has {current_coverage:.1f}% coverage. "
-                f"Evaluate Compute Savings Plan vs service-specific RIs."
+                f"Evaluate Compute Savings Plans against service-specific reserved capacity options."
             )
         elif dimension == "instance_type":
             return (
@@ -822,7 +832,7 @@ if __name__ == "__main__":
             "purchased_hours": 744,
             "hourly_rate": 0.12,
             "start_date": "2025-02-01T00:00:00",
-            "end_date": "2026-02-15T00:00:00",
+            "end_date": (datetime.now() + timedelta(days=30)).replace(microsecond=0).isoformat(),
             "flexibility": "size-flexible",
         }
     ]
@@ -1624,6 +1634,7 @@ class RecommendationEngine:
             "compute_sp_3yr": {"discount": 0.52, "flexibility": "highest"},
             "ec2_sp_1yr": {"discount": 0.40, "flexibility": "medium"},
             "ec2_sp_3yr": {"discount": 0.55, "flexibility": "medium"},
+            "database_sp_1yr": {"discount": 0.35, "flexibility": "highest"},
         }
 
     def generate_recommendations(
@@ -1677,10 +1688,11 @@ class RecommendationEngine:
         pattern = usage_patterns.get(pattern_key, {})
         stability = pattern.get("stability_score", 0.5)
         regional_spread = pattern.get("regional_spread", 1)
+        service = gap.get("service", value if dimension == "service" else "")
 
         # Determine recommendation type based on patterns
         rec_type, commitment_type = self._select_commitment_type(
-            stability, regional_spread, preferences
+            stability, regional_spread, preferences, service
         )
 
         if rec_type == RecommendationType.NO_ACTION:
@@ -1726,6 +1738,7 @@ class RecommendationEngine:
         stability: float,
         regional_spread: int,
         preferences: dict,
+        service: str = "",
     ) -> tuple[RecommendationType, str]:
         """Select the best commitment type based on usage characteristics."""
         prefer_flexibility = preferences.get("prefer_flexibility", False)
@@ -1734,6 +1747,21 @@ class RecommendationEngine:
         # Unstable workloads should not get commitments
         if stability < 0.6:
             return RecommendationType.USE_SPOT, "spot"
+
+        database_services = {
+            "Aurora",
+            "RDS",
+            "DynamoDB",
+            "ElastiCache",
+            "DocumentDB",
+            "Timestream",
+            "Neptune",
+            "Keyspaces",
+            "DMS",
+            "OpenSearch",
+        }
+        if service in database_services and prefer_flexibility:
+            return RecommendationType.PURCHASE_SP, "database_sp_1yr"
 
         # Multi-region needs Compute SP
         if regional_spread > 2:
@@ -1771,10 +1799,15 @@ class RecommendationEngine:
                 "6. Enable RI utilization alerts in Cost Explorer",
             ]
         elif rec_type == RecommendationType.PURCHASE_SP:
+            plan_name = {
+                "compute": "Compute Savings Plan",
+                "ec2": "EC2 Instance Savings Plan",
+                "database": "Database Savings Plan",
+            }.get(commitment_type.split("_", 1)[0], "Savings Plan")
             return [
                 "1. Navigate to AWS Cost Explorer > Savings Plans > Purchase Savings Plans",
                 "2. Use the recommendations tool to see suggested commitment",
-                f"3. Select Compute Savings Plan for {value}",
+                f"3. Select {plan_name} for {value}",
                 f"4. Choose {commitment_type.replace('_', ' ')} term",
                 "5. Enter hourly commitment amount",
                 "6. Review and purchase",
@@ -2616,7 +2649,7 @@ if __name__ == "__main__":
             "region": "us-east-1",
             "purchased_hours": 744,
             "hourly_rate": 0.10,
-            "end_date": "2026-02-15T00:00:00",
+            "end_date": (datetime.now() + timedelta(days=30)).replace(microsecond=0).isoformat(),
             "utilization": 75,
         }
     ]
@@ -2648,5 +2681,5 @@ Start with one service or region. Map your current coverage, identify the larges
 **Related Reading:**
 
 - [What Is FinOps and Why It Matters](https://oneuptime.com/blog/post/2026-01-30-finops-fundamentals/view)
-- [How to Right-Size Your Cloud Resources](https://oneuptime.com/blog/post/2026-01-08-dnssec-beginners-guide/view)
+- [How to Right-Size Your Cloud Resources](https://oneuptime.com/blog/post/2026-01-30-right-sizing-strategies/view)
 - [Understanding Reserved Instances vs Savings Plans](https://oneuptime.com/blog/post/2026-01-30-ri-vs-sp/view)
