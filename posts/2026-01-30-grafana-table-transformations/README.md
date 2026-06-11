@@ -79,8 +79,8 @@ transformations:
         __name__: true
         job: true
       indexByName:
-        Server: 0
-        HTTP Requests: 1
+        instance: 0
+        http_requests_total: 1
 ```
 
 ---
@@ -112,6 +112,8 @@ transformations:
 - `greater` / `greaterOrEqual`
 - `lower` / `lowerOrEqual`
 - `regex` (pattern matching)
+- `substring` / `notSubstring`
+- `between`
 - `isNull` / `isNotNull`
 
 ---
@@ -142,7 +144,9 @@ transformations:
 |------|----------|
 | binary | Math between two fields (+, -, *, /) |
 | unary | Operations on single field (abs, log, exp) |
-| reduce | Aggregate across fields (sum, mean, min, max) |
+| reduceRow | Aggregate across fields in each row (sum, mean, min, max) |
+| cumulativeFunctions | Running total or mean |
+| windowFunctions | Moving mean, standard deviation, or variance |
 | index | Row number or percentage position |
 
 To convert the error rate to a percentage, chain another transformation:
@@ -155,7 +159,7 @@ transformations:
       binary:
         left: "Error Rate"
         operator: "*"
-        right: 100
+        right: "100"
       alias: "Error Rate %"
 ```
 
@@ -207,7 +211,7 @@ transformations:
   - id: joinByField
     options:
       byField: service_name
-      mode: outer
+      mode: outerTabular
 ```
 
 **Result combines both:**
@@ -262,7 +266,7 @@ transformations:
           desc: true
 ```
 
-You can add multiple sort fields for multi-level sorting (sort by region, then by error count within each region).
+The options are stored as an array, but current Grafana releases apply the first sort field.
 
 ---
 
@@ -329,10 +333,10 @@ Change column data types. Essential when your data source returns numbers as str
 transformations:
   - id: convertFieldType
     options:
-      fields:
-        request_count:
+      conversions:
+        - targetField: request_count
           destinationType: number
-        timestamp:
+        - targetField: timestamp
           destinationType: time
 ```
 
@@ -341,6 +345,8 @@ transformations:
 - `string`
 - `time`
 - `boolean`
+- `enum`
+- `other`
 
 ---
 
@@ -375,17 +381,16 @@ flowchart TB
     A[Query Results] --> B[1. Merge]
     B --> C[2. Calculate Error Rate]
     C --> D[3. Convert Latency to ms]
-    D --> E[4. Join with Metadata]
-    E --> F[5. Organize Fields]
-    F --> G[6. Sort by Error Rate]
-    G --> H[Final Table]
+    D --> E[4. Organize Fields]
+    E --> F[5. Sort by Error Rate]
+    F --> G[Final Table]
 ```
 
 **Step-by-step configuration:**
 
 ```yaml
 transformations:
-  # Step 1: Merge all query results
+  # Step 1: Merge all query results by matching fields such as service
   - id: merge
     options: {}
 
@@ -406,16 +411,10 @@ transformations:
       binary:
         left: "Value #C"
         operator: "*"
-        right: 1000
+        right: "1000"
       alias: "p95_latency_ms"
 
-  # Step 4: Join with service metadata (Query D)
-  - id: joinByField
-    options:
-      byField: service
-      mode: outer
-
-  # Step 5: Organize and rename fields
+  # Step 4: Organize and rename fields
   - id: organize
     options:
       renameByName:
@@ -429,14 +428,14 @@ transformations:
         "Value #B": true
         "Value #C": true
       indexByName:
-        Service: 0
-        Team: 1
-        Tier: 2
-        Requests/sec: 3
-        Error Rate: 4
-        P95 Latency (ms): 5
+        service: 0
+        team: 1
+        tier: 2
+        "Value #A": 3
+        error_rate: 4
+        p95_latency_ms: 5
 
-  # Step 6: Sort by error rate descending
+  # Step 5: Sort by error rate descending
   - id: sortBy
     options:
       sort:
@@ -470,7 +469,7 @@ Transformations execute sequentially. A common mistake is trying to filter on a 
 
 ### Debug with Data View
 
-Use Grafana's **Table view** toggle to see intermediate results. Click the table icon in query options to view raw data at any transformation step.
+Use Grafana's **Table view** toggle to see the final transformed result as a table. To debug an individual transformation, click the bug icon on the transformation row to compare its input and output.
 
 ### Performance Considerations
 
