@@ -51,6 +51,8 @@ The most basic operations are adding and removing headers. Here's how to impleme
 
 ```javascript
 // headerManipulation.js
+const crypto = require('crypto');
+
 class HeaderManipulator {
   constructor(config = {}) {
     this.requestHeadersToAdd = config.requestHeadersToAdd || {};
@@ -60,7 +62,7 @@ class HeaderManipulator {
   }
 
   // Process incoming request headers
-  manipulateRequest(headers) {
+  manipulateRequest(headers, req = null) {
     const result = { ...headers };
 
     // Remove specified headers (case-insensitive)
@@ -75,7 +77,7 @@ class HeaderManipulator {
 
     // Add or override headers
     for (const [key, value] of Object.entries(this.requestHeadersToAdd)) {
-      result[key] = typeof value === 'function' ? value() : value;
+      result[key] = typeof value === 'function' ? value(req) : value;
     }
 
     return result;
@@ -132,7 +134,11 @@ const manipulator = new HeaderManipulator({
 // middleware/headerManipulation.js
 const crypto = require('crypto');
 
-function createHeaderMiddleware(config) {
+function createHeaderMiddleware(config = {}) {
+  const blockedResponseHeaders = new Set(
+    (config.blockedResponseHeaders || []).map(header => header.toLowerCase())
+  );
+
   return function headerMiddleware(req, res, next) {
     // Generate request ID if not present
     if (!req.headers['x-request-id']) {
@@ -140,7 +146,7 @@ function createHeaderMiddleware(config) {
     }
 
     // Add forwarding headers
-    req.headers['x-forwarded-for'] = req.ip || req.connection.remoteAddress;
+    req.headers['x-forwarded-for'] = req.ip || req.socket.remoteAddress;
     req.headers['x-forwarded-proto'] = req.protocol;
     req.headers['x-forwarded-host'] = req.get('host');
 
@@ -160,7 +166,7 @@ function createHeaderMiddleware(config) {
     const originalSetHeader = res.setHeader.bind(res);
     res.setHeader = function(name, value) {
       // Block certain headers from being set
-      if (config.blockedResponseHeaders?.includes(name.toLowerCase())) {
+      if (blockedResponseHeaders.has(name.toLowerCase())) {
         return;
       }
       originalSetHeader(name, value);
@@ -179,7 +185,7 @@ function createHeaderMiddleware(config) {
         const securityHeaders = {
           'X-Content-Type-Options': 'nosniff',
           'X-Frame-Options': 'DENY',
-          'X-XSS-Protection': '1; mode=block',
+          'X-XSS-Protection': '0',
           'Referrer-Policy': 'strict-origin-when-cross-origin'
         };
 
@@ -366,7 +372,6 @@ flowchart TB
         B["Content-Security-Policy"]
         C["X-Content-Type-Options"]
         D["X-Frame-Options"]
-        E["X-XSS-Protection"]
         F["Referrer-Policy"]
         G["Permissions-Policy"]
     end
@@ -383,7 +388,6 @@ flowchart TB
     B --> I
     C --> K
     D --> J
-    E --> I
     F --> L
     G --> L
 ```
@@ -400,7 +404,7 @@ class SecurityHeaderInjector {
       hstsPreload: options.hstsPreload ?? false,
       frameOptions: options.frameOptions || 'DENY',
       contentTypeOptions: options.contentTypeOptions || 'nosniff',
-      xssProtection: options.xssProtection || '1; mode=block',
+      xssProtection: options.xssProtection ?? '0',
       referrerPolicy: options.referrerPolicy || 'strict-origin-when-cross-origin',
       csp: options.csp || null,
       permissionsPolicy: options.permissionsPolicy || null,
@@ -427,7 +431,7 @@ class SecurityHeaderInjector {
     // X-Content-Type-Options - MIME sniffing protection
     headers['X-Content-Type-Options'] = this.options.contentTypeOptions;
 
-    // X-XSS-Protection - XSS filter (legacy but still useful)
+    // X-XSS-Protection - disable legacy browser XSS filters; use CSP instead
     headers['X-XSS-Protection'] = this.options.xssProtection;
 
     // Referrer-Policy
@@ -579,11 +583,27 @@ class CORSHandler {
   }
 
   isOriginAllowed(origin, route = null) {
-    // Check route-specific overrides first
-    if (route && this.config.routeOverrides[route]?.allowedOrigins) {
-      return this.checkOrigin(origin, this.config.routeOverrides[route].allowedOrigins);
+    const routeConfig = this.getRouteConfig(route);
+    return this.checkOrigin(origin, routeConfig.allowedOrigins);
+  }
+
+  getRouteConfig(route = null) {
+    if (!route) {
+      return this.config;
     }
-    return this.checkOrigin(origin, this.config.allowedOrigins);
+
+    const exactOverride = this.config.routeOverrides[route];
+    if (exactOverride) {
+      return { ...this.config, ...exactOverride };
+    }
+
+    for (const [pattern, override] of Object.entries(this.config.routeOverrides)) {
+      if (pattern.endsWith('*') && route.startsWith(pattern.slice(0, -1))) {
+        return { ...this.config, ...override };
+      }
+    }
+
+    return this.config;
   }
 
   checkOrigin(origin, allowedOrigins) {
@@ -613,6 +633,7 @@ class CORSHandler {
 
   getCORSHeaders(origin, route = null) {
     const headers = {};
+    const routeConfig = this.getRouteConfig(route);
 
     if (!origin) {
       return headers;
@@ -624,22 +645,22 @@ class CORSHandler {
 
     // Access-Control-Allow-Origin
     // Note: Can't use '*' with credentials
-    if (this.config.allowCredentials) {
+    if (routeConfig.allowCredentials) {
       headers['Access-Control-Allow-Origin'] = origin;
     } else {
       headers['Access-Control-Allow-Origin'] =
-        this.config.allowedOrigins === '*' ? '*' : origin;
+        routeConfig.allowedOrigins === '*' ? '*' : origin;
     }
 
     // Access-Control-Allow-Credentials
-    if (this.config.allowCredentials) {
+    if (routeConfig.allowCredentials) {
       headers['Access-Control-Allow-Credentials'] = 'true';
     }
 
     // Access-Control-Expose-Headers
-    if (this.config.exposedHeaders.length > 0) {
+    if (routeConfig.exposedHeaders.length > 0) {
       headers['Access-Control-Expose-Headers'] =
-        this.config.exposedHeaders.join(', ');
+        routeConfig.exposedHeaders.join(', ');
     }
 
     return headers;
@@ -647,21 +668,43 @@ class CORSHandler {
 
   getPreflightHeaders(origin, requestMethod, requestHeaders, route = null) {
     const headers = this.getCORSHeaders(origin, route);
+    const routeConfig = this.getRouteConfig(route);
 
     if (Object.keys(headers).length === 0) {
       return headers; // Origin not allowed
     }
 
+    if (
+      requestMethod &&
+      !routeConfig.allowedMethods.includes(requestMethod.toUpperCase())
+    ) {
+      return {};
+    }
+
+    if (requestHeaders) {
+      const requestedHeaders = requestHeaders
+        .split(',')
+        .map(header => header.trim().toLowerCase())
+        .filter(Boolean);
+      const allowedHeaders = routeConfig.allowedHeaders.map(header =>
+        header.toLowerCase()
+      );
+
+      if (requestedHeaders.some(header => !allowedHeaders.includes(header))) {
+        return {};
+      }
+    }
+
     // Access-Control-Allow-Methods
     headers['Access-Control-Allow-Methods'] =
-      this.config.allowedMethods.join(', ');
+      routeConfig.allowedMethods.join(', ');
 
     // Access-Control-Allow-Headers
     headers['Access-Control-Allow-Headers'] =
-      this.config.allowedHeaders.join(', ');
+      routeConfig.allowedHeaders.join(', ');
 
     // Access-Control-Max-Age
-    headers['Access-Control-Max-Age'] = String(this.config.maxAge);
+    headers['Access-Control-Max-Age'] = String(routeConfig.maxAge);
 
     return headers;
   }
@@ -975,6 +1018,9 @@ class SensitiveHeaderStripper {
     // Headers to strip from requests before forwarding
     this.stripFromRequest = new Set([
       ...this.internalHeaders,
+      ...this.authHeaders.filter(header =>
+        !['set-cookie', 'www-authenticate'].includes(header)
+      ),
       ...(config.stripFromRequest || [])
     ].map(h => h.toLowerCase()));
 
@@ -1115,11 +1161,12 @@ class SensitiveHeaderStripper {
       const originalHeaders = { ...req.headers };
       const strippedRequestHeaders = this.stripRequestHeaders(originalHeaders);
 
-      // Replace headers object (be careful with this approach)
+      // Replace headers object with the sanitized values
       for (const key of Object.keys(req.headers)) {
-        if (!(key.toLowerCase() in strippedRequestHeaders)) {
-          delete req.headers[key];
-        }
+        delete req.headers[key];
+      }
+      for (const [key, value] of Object.entries(strippedRequestHeaders)) {
+        req.headers[key.toLowerCase()] = value;
       }
 
       // Intercept response headers
