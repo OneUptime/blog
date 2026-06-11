@@ -40,8 +40,8 @@ Understanding the lifecycle of feature gates is essential for making informed de
 |-------|--------------|-----------------|-----------|
 | Alpha | Disabled | Testing/Development only | May change or be removed |
 | Beta | Usually Enabled | Non-critical workloads | API may change slightly |
-| GA (General Availability) | Enabled | Production ready | Stable, locked on |
-| Deprecated | Varies | Plan migration away | Will be removed |
+| GA (General Availability) | Always enabled | Production ready | Stable, gate no longer needed |
+| Deprecated | Varies | Plan migration away | Will be removed or become non-operational |
 
 ```mermaid
 stateDiagram-v2
@@ -57,7 +57,7 @@ stateDiagram-v2
 
 ## Enabling and Disabling Feature Gates
 
-Feature gates are configured through command-line arguments passed to Kubernetes components. The syntax follows a simple pattern.
+Feature gates are configured through command-line arguments passed to Kubernetes components, or through component configuration files where supported. The syntax follows a simple pattern.
 
 ### Basic Syntax
 
@@ -82,7 +82,7 @@ spec:
   - name: kube-apiserver
     command:
     - kube-apiserver
-    - --feature-gates=GracefulNodeShutdown=true,PodDisruptionConditions=true
+    - --feature-gates=APIServingWithRoutine=true,APIResponseCompression=true
     - --advertise-address=192.168.1.100
     - --allow-privileged=true
     # ... other flags
@@ -107,7 +107,7 @@ kind: KubeletConfiguration
 featureGates:
   GracefulNodeShutdown: true
   MemoryQoS: true
-  TopologyManager: true
+  KubeletCrashLoopBackOffMax: true
 cgroupDriver: systemd
 ```
 
@@ -125,7 +125,7 @@ spec:
   - name: kube-controller-manager
     command:
     - kube-controller-manager
-    - --feature-gates=TTLAfterFinished=true,JobTrackingWithFinalizers=true
+    - --feature-gates=MaxUnavailableStatefulSet=true,StaleControllerConsistencyJob=true
     - --leader-elect=true
     # ... other flags
 ```
@@ -164,31 +164,31 @@ flowchart TB
 
 **API Server specific:**
 ```bash
---feature-gates=APIPriorityAndFairness=true,APIListChunking=true
+--feature-gates=APIServingWithRoutine=true,APIResponseCompression=true
 ```
 
 **Scheduler specific:**
 ```bash
---feature-gates=PodTopologySpread=true,DefaultPodTopologySpread=true
+--feature-gates=SchedulerAsyncAPICalls=true,SchedulerAsyncPreemption=true
 ```
 
 **Kubelet specific:**
 ```bash
---feature-gates=CPUManager=true,MemoryManager=true,TopologyManager=true
+--feature-gates=GracefulNodeShutdown=true,MemoryQoS=true,KubeletCrashLoopBackOffMax=true
 ```
 
 ## Practical Example: Enabling Pod Security Admission
 
-Let us walk through enabling a feature gate across your cluster components.
+Let us walk through configuring a feature that used to have a feature gate. In current Kubernetes versions, Pod Security Admission is stable and the `PodSecurity` feature gate has been removed, so you configure the admission plugin instead of enabling a feature gate.
 
 ### Step 1: Check Current Feature Gate Status
 
 ```bash
 # Check API server feature gates
-kubectl get pods -n kube-system kube-apiserver-master -o yaml | grep feature-gates
+kubectl get pods -n kube-system -l component=kube-apiserver -o yaml | grep feature-gates
 
 # Check kubelet feature gates on a node
-ssh node1 "cat /var/lib/kubelet/config.yaml | grep -A 10 featureGates"
+ssh node1 "grep -A 10 featureGates /var/lib/kubelet/config.yaml"
 ```
 
 ### Step 2: Update API Server Configuration
@@ -204,7 +204,7 @@ spec:
   - name: kube-apiserver
     command:
     - kube-apiserver
-    - --feature-gates=PodSecurity=true
+    - --enable-admission-plugins=PodSecurity
     - --admission-control-config-file=/etc/kubernetes/admission/config.yaml
 ```
 
@@ -232,11 +232,9 @@ plugins:
 
 ```bash
 # Restart the API server (happens automatically with static pods)
-# Verify the feature is active
-kubectl api-resources | grep -i security
-
-# Test with a namespace
-kubectl label namespace default pod-security.kubernetes.io/enforce=baseline
+# Configure and verify with a namespace
+kubectl label namespace default pod-security.kubernetes.io/enforce=baseline --overwrite
+kubectl get namespace default --show-labels | grep pod-security.kubernetes.io/enforce=baseline
 ```
 
 ## Version Considerations and Upgrade Planning
@@ -268,22 +266,21 @@ flowchart TD
 ### Checking Feature Gate Changes Between Versions
 
 ```bash
-# List all feature gates and their status for current version
-kubectl api-versions
-kubectl get --raw /metrics | grep kubernetes_feature_enabled
+# Document explicitly configured feature gates for the current cluster
+kubectl get pod -n kube-system -l component=kube-apiserver -o jsonpath='{.items[0].spec.containers[0].command}' | tr ' ' '\n' | grep feature-gates
 
 # Compare release notes for feature gate changes
 # Example script to document current feature gates
 cat << 'EOF' > check-feature-gates.sh
 #!/bin/bash
 echo "=== API Server Feature Gates ==="
-kubectl get pod -n kube-system -l component=kube-apiserver -o jsonpath='{.items[0].spec.containers[0].command}' | tr ',' '\n' | grep feature-gates
+kubectl get pod -n kube-system -l component=kube-apiserver -o jsonpath='{.items[0].spec.containers[0].command}' | tr ' ' '\n' | grep feature-gates
 
 echo "=== Controller Manager Feature Gates ==="
-kubectl get pod -n kube-system -l component=kube-controller-manager -o jsonpath='{.items[0].spec.containers[0].command}' | tr ',' '\n' | grep feature-gates
+kubectl get pod -n kube-system -l component=kube-controller-manager -o jsonpath='{.items[0].spec.containers[0].command}' | tr ' ' '\n' | grep feature-gates
 
 echo "=== Scheduler Feature Gates ==="
-kubectl get pod -n kube-system -l component=kube-scheduler -o jsonpath='{.items[0].spec.containers[0].command}' | tr ',' '\n' | grep feature-gates
+kubectl get pod -n kube-system -l component=kube-scheduler -o jsonpath='{.items[0].spec.containers[0].command}' | tr ' ' '\n' | grep feature-gates
 EOF
 chmod +x check-feature-gates.sh
 ```
@@ -300,14 +297,14 @@ metadata:
   name: feature-gate-tracking
   namespace: kube-system
 data:
-  current-version: "1.29"
-  target-version: "1.30"
+  current-version: "1.32"
+  target-version: "1.33"
   feature-gates: |
-    # Gate Name          | Current | v1.29  | v1.30  | Action Required
+    # Gate Name          | Current | v1.32  | v1.33  | Action Required
     # -------------------|---------|--------|--------|----------------
-    # GracefulNodeShutdown | true  | Beta   | GA     | Remove explicit setting
-    # PodDisruptionConditions | true | Beta | GA    | Remove explicit setting
-    # LegacyServiceAccountTokenNoAutoGeneration | true | Beta | GA | Prepare for default
+    # GracefulNodeShutdown | true  | Beta   | Beta   | Keep current setting
+    # ComponentSLIs | true | GA | GA | Remove explicit setting
+    # APIListChunking | true | GA | Removed | Remove from config
 ```
 
 ## Best Practices
@@ -367,7 +364,7 @@ flowchart LR
 ### 4. Monitor Feature Gate Impact
 
 ```yaml
-# Prometheus alert for feature gate issues
+# Prometheus alert for feature gate issues if you export feature gate inventory as a custom metric
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
@@ -377,7 +374,7 @@ spec:
   - name: feature-gates
     rules:
     - alert: AlphaFeatureEnabled
-      expr: kubernetes_feature_enabled{stage="ALPHA"} == 1
+      expr: feature_gate_enabled{stage="ALPHA"} == 1
       for: 5m
       labels:
         severity: warning
@@ -402,7 +399,7 @@ kubectl logs -n kube-system kube-apiserver-master
 --feature-gates=FeatureName=true
 
 # Common mistakes
---feature-gates FeatureName=true  # Missing equals sign
+--feature-gates=FeatureName:true  # Wrong separator
 --feature-gates=featurename=true  # Case sensitive - wrong case
 ```
 
@@ -412,8 +409,8 @@ kubectl logs -n kube-system kube-apiserver-master
 # Verify all required components have the feature gate
 # Some features require enabling on multiple components
 
-# Example: Check if feature is recognized
-kubectl get --raw /metrics | grep kubernetes_feature_enabled | grep FeatureName
+# Example: Check if the feature gate is configured on the component
+kubectl get pod -n kube-system -l component=kube-apiserver -o jsonpath='{.items[0].spec.containers[0].command}' | tr ' ' '\n' | grep FeatureName
 ```
 
 **Issue: Upgrade breaks existing feature gate configuration**
@@ -422,9 +419,9 @@ kubectl get --raw /metrics | grep kubernetes_feature_enabled | grep FeatureName
 # Check for removed or renamed feature gates
 # Review release notes and migration guides
 
-# Temporarily disable problematic gates
-# Update one component at a time
-kubectl edit pod -n kube-system kube-apiserver-master
+# Temporarily disable problematic gates in the component configuration
+# For static pods, update one manifest at a time
+sudo vi /etc/kubernetes/manifests/kube-apiserver.yaml
 ```
 
 ## Summary
