@@ -77,7 +77,7 @@ graph TD
 
 ### Stationarity: The Foundation of Forecasting
 
-Most forecasting models assume your data is **stationary**, meaning statistical properties like mean and variance remain constant over time. Real-world capacity data is rarely stationary out of the box.
+Many classical forecasting models assume your data is **stationary**, meaning statistical properties like mean and variance remain constant over time. Real-world capacity data is rarely stationary out of the box.
 
 ```python
 # Check stationarity using the Augmented Dickey-Fuller test
@@ -166,7 +166,7 @@ def prepare_capacity_data(
     df: pd.DataFrame,
     metric_column: str,
     timestamp_column: str = 'timestamp',
-    resample_freq: str = '1H',
+    resample_freq: str = '1h',
     outlier_threshold: float = 3.0
 ) -> pd.DataFrame:
     """
@@ -176,7 +176,7 @@ def prepare_capacity_data(
         df: Raw dataframe with timestamps and metric values
         metric_column: Name of the column containing the metric to forecast
         timestamp_column: Name of the timestamp column
-        resample_freq: Frequency for resampling (e.g., '1H', '15T', '1D')
+        resample_freq: Frequency for resampling (e.g., '1h', '15min', '1D')
         outlier_threshold: Z-score threshold for outlier detection
 
     Returns:
@@ -205,8 +205,8 @@ def prepare_capacity_data(
         method='time',
         limit=6
     )
-    data[metric_column] = data[metric_column].fillna(method='ffill')
-    data[metric_column] = data[metric_column].fillna(method='bfill')
+    data[metric_column] = data[metric_column].ffill()
+    data[metric_column] = data[metric_column].bfill()
 
     # Step 4: Detect and handle outliers using Z-score
     mean_val = data[metric_column].mean()
@@ -513,7 +513,7 @@ class CapacityARIMAForecaster:
 if __name__ == "__main__":
     # Generate sample capacity data (simulating CPU utilization)
     np.random.seed(42)
-    dates = pd.date_range(start='2025-01-01', periods=720, freq='H')
+    dates = pd.date_range(start='2025-01-01', periods=720, freq='h')
 
     # Create realistic pattern: trend + daily seasonality + noise
     trend = np.linspace(40, 55, 720)
@@ -720,7 +720,7 @@ class CapacityProphetForecaster:
     def forecast(
         self,
         periods: int,
-        freq: str = 'H',
+        freq: str = 'h',
         include_history: bool = False
     ) -> pd.DataFrame:
         """
@@ -728,7 +728,7 @@ class CapacityProphetForecaster:
 
         Args:
             periods: Number of future periods to forecast
-            freq: Frequency of predictions ('H'=hourly, 'D'=daily, etc.)
+            freq: Frequency of predictions ('h'=hourly, 'D'=daily, etc.)
             include_history: Include fitted values for historical period
 
         Returns:
@@ -863,7 +863,7 @@ class CapacityProphetForecaster:
 if __name__ == "__main__":
     # Generate sample data with realistic patterns
     np.random.seed(42)
-    dates = pd.date_range(start='2025-01-01', periods=2160, freq='H')  # 90 days
+    dates = pd.date_range(start='2025-01-01', periods=2160, freq='h')  # 90 days
 
     # Create multi-seasonal pattern
     # Daily pattern: low at night, high during business hours
@@ -885,7 +885,7 @@ if __name__ == "__main__":
     )
 
     # Split data
-    train = memory_usage[:'2025-03-15']
+    train = memory_usage[:'2025-03-14 23:00:00']
     test = memory_usage['2025-03-15':]
 
     # Create and train Prophet forecaster
@@ -1138,7 +1138,7 @@ class CapacityForecastingPipeline:
 
         # Interpolate missing values
         data = data.interpolate(method='time', limit=6)
-        data = data.fillna(method='ffill').fillna(method='bfill')
+        data = data.ffill().bfill()
 
         # Clip extreme outliers (beyond 4 standard deviations)
         mean_val = data.mean()
@@ -1215,7 +1215,7 @@ class CapacityForecastingPipeline:
             # Evaluate
             future = prophet_model.make_future_dataframe(
                 periods=len(test),
-                freq='H',
+                freq='h',
                 include_history=False
             )
             prophet_forecast = prophet_model.predict(future)
@@ -1281,7 +1281,7 @@ class CapacityForecastingPipeline:
             forecast_dates = pd.date_range(
                 start=last_timestamp + timedelta(hours=1),
                 periods=self.forecast_horizon,
-                freq='H'
+                freq='h'
             )
 
             result = pd.DataFrame({
@@ -1293,7 +1293,7 @@ class CapacityForecastingPipeline:
         else:  # Prophet
             future = model.make_future_dataframe(
                 periods=self.forecast_horizon,
-                freq='H',
+                freq='h',
                 include_history=False
             )
             prophet_forecast = model.predict(future)
@@ -1407,7 +1407,7 @@ if __name__ == "__main__":
     dates = pd.date_range(
         start='2025-01-01',
         end='2025-01-30',
-        freq='H'
+        freq='h'
     )
 
     # Simulate CPU utilization with realistic patterns
