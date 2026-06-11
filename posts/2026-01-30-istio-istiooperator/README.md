@@ -8,7 +8,7 @@ Description: A comprehensive guide to installing and configuring Istio using Ist
 
 ---
 
-IstioOperator is the declarative way to install and manage Istio in Kubernetes. Instead of using command-line flags, you define your desired Istio configuration in a YAML manifest and let the operator handle the installation and updates.
+IstioOperator is the declarative way to install and manage Istio in Kubernetes with `istioctl`. Instead of using command-line flags, you define your desired Istio configuration in a YAML manifest and pass it to `istioctl install -f`.
 
 ## Understanding Istio Architecture
 
@@ -69,9 +69,9 @@ flowchart TB
 | Egress Gateway | Exit point for outbound traffic |
 | CNI Plugin | Optional network plugin for pod initialization |
 
-## Installing the Istio Operator
+## Installing Istio with an IstioOperator File
 
-First, install the Istio operator controller that will manage IstioOperator resources.
+First, install `istioctl`, the Istio CLI that consumes IstioOperator manifests.
 
 ```bash
 # Download istioctl (the Istio CLI)
@@ -79,28 +79,28 @@ First, install the Istio operator controller that will manage IstioOperator reso
 curl -L https://istio.io/downloadIstio | sh -
 
 # Move to the Istio directory
-cd istio-1.20.0
+cd istio-*
 
 # Add istioctl to PATH
 export PATH=$PWD/bin:$PATH
 
-# Install the Istio operator controller
-istioctl operator init
+# Install Istio with an IstioOperator manifest
+istioctl install -f default-profile.yaml
 
-# Verify operator is running
-kubectl get pods -n istio-operator
+# Verify Istio is running
+kubectl get pods -n istio-system
 ```
 
 Expected output:
 
 ```text
 NAME                              READY   STATUS    RESTARTS   AGE
-istio-operator-5f7b8d6c6f-xxxxx   1/1     Running   0          30s
+istiod-5f7b8d6c6f-xxxxx           1/1     Running   0          30s
 ```
 
 ## IstioOperator Resource Specification
 
-The IstioOperator custom resource defines your complete Istio configuration. Here is the basic structure.
+The IstioOperator manifest defines your complete Istio configuration. Here is the basic structure.
 
 ```yaml
 # Basic IstioOperator structure
@@ -271,14 +271,14 @@ spec:
 Apply the configuration:
 
 ```bash
-# Apply the IstioOperator resource
-kubectl apply -f default-profile.yaml
+# Apply the IstioOperator manifest
+istioctl install -f default-profile.yaml
 
 # Watch the installation progress
 kubectl get pods -n istio-system -w
 
 # Verify installation
-istioctl verify-install
+istioctl install -f default-profile.yaml --verify
 ```
 
 ### Demo Profile
@@ -493,14 +493,13 @@ spec:
 
         k8s:
           # Service configuration
+          serviceAnnotations:
+            # AWS NLB
+            service.beta.kubernetes.io/aws-load-balancer-type: nlb
+            service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
+
           service:
             type: LoadBalancer
-
-            # Cloud provider annotations
-            annotations:
-              # AWS NLB
-              service.beta.kubernetes.io/aws-load-balancer-type: nlb
-              service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
 
             # Port configuration
             ports:
@@ -893,12 +892,12 @@ spec:
       - name: istio-ingressgateway
         enabled: true
         k8s:
+          serviceAnnotations:
+            # Example for AWS
+            service.beta.kubernetes.io/aws-load-balancer-type: nlb
+            service.beta.kubernetes.io/aws-load-balancer-backend-protocol: tcp
           service:
             type: LoadBalancer
-            annotations:
-              # Example for AWS
-              service.beta.kubernetes.io/aws-load-balancer-type: nlb
-              service.beta.kubernetes.io/aws-load-balancer-backend-protocol: tcp
             ports:
               - name: status-port
                 port: 15021
@@ -966,7 +965,6 @@ spec:
     global:
       # Image configuration
       hub: docker.io/istio
-      tag: 1.20.0
 
       # Logging
       logging:
@@ -1027,27 +1025,27 @@ spec:
 # Create the istio-system namespace
 kubectl create namespace istio-system
 
-# Apply the IstioOperator resource
-kubectl apply -f production-istio.yaml
+# Apply the IstioOperator manifest
+istioctl install -f production-istio.yaml
 
 # Monitor the installation
 kubectl get pods -n istio-system -w
 
-# Check IstioOperator status
-kubectl get istiooperators -n istio-system
+# Check Istio deployment status
+kubectl get deployments -n istio-system
 
 # Detailed status
-kubectl describe istiooperator istio-production -n istio-system
+kubectl describe deployment istiod -n istio-system
 ```
 
 ### Verification
 
 ```bash
 # Verify installation
-istioctl verify-install
+istioctl install -f production-istio.yaml --verify
 
 # Check mesh configuration
-istioctl proxy-config cluster -n istio-system deploy/istio-ingressgateway
+istioctl proxy-config clusters deployment/istio-ingressgateway.istio-system
 
 # Analyze configuration for issues
 istioctl analyze
@@ -1059,28 +1057,23 @@ istioctl proxy-status
 ### Updating Istio
 
 ```bash
-# Edit the IstioOperator resource
-kubectl edit istiooperator istio-production -n istio-system
+# Edit the IstioOperator manifest locally
 
 # Or apply updated manifest
-kubectl apply -f updated-istio.yaml
+istioctl upgrade -f updated-istio.yaml
 
-# The operator will reconcile changes automatically
+# istioctl will apply the generated Kubernetes manifests
 kubectl get pods -n istio-system -w
 ```
 
 ### Uninstallation
 
 ```bash
-# Delete the IstioOperator resource
-kubectl delete istiooperator istio-production -n istio-system
-
-# Remove the Istio operator
-istioctl operator remove
+# Uninstall Istio from the IstioOperator manifest
+istioctl uninstall -f production-istio.yaml
 
 # Clean up any remaining resources
 kubectl delete namespace istio-system
-kubectl delete namespace istio-operator
 ```
 
 ## Troubleshooting
@@ -1088,9 +1081,6 @@ kubectl delete namespace istio-operator
 ### Common Issues
 
 ```bash
-# Check operator logs
-kubectl logs -n istio-operator -l name=istio-operator -f
-
 # Check Istiod logs
 kubectl logs -n istio-system -l app=istiod -f
 
@@ -1120,4 +1110,4 @@ kubectl port-forward -n istio-system svc/istio-ingressgateway 15020:15020
 
 ---
 
-IstioOperator provides a declarative, version-controlled way to manage your Istio installation. Start with a profile that matches your needs, customize components and resources for your workload, and let the operator handle the complexity of keeping Istio running smoothly. Remember to test configuration changes in a non-production environment before applying them to your production cluster.
+IstioOperator provides a declarative, version-controlled way to manage your Istio installation. Start with a profile that matches your needs, customize components and resources for your workload, and use `istioctl` to apply and verify the generated manifests. Remember to test configuration changes in a non-production environment before applying them to your production cluster.
