@@ -151,28 +151,17 @@ ORDER BY order_date DESC;
 
 ### Index Analysis Queries
 
-Periodically review your indexes to find unused or duplicate indexes.
+Periodically review your indexes to find unused indexes.
 
 ```sql
 -- Find indexes that have never been used
 -- Be careful: low usage might mean important but rare queries
+-- This view is most useful after the server has seen a representative workload
 SELECT
-    s.TABLE_SCHEMA,
-    s.TABLE_NAME,
-    s.INDEX_NAME,
-    s.COLUMN_NAME,
-    t.TABLE_ROWS
-FROM information_schema.STATISTICS s
-JOIN information_schema.TABLES t
-    ON s.TABLE_SCHEMA = t.TABLE_SCHEMA
-    AND s.TABLE_NAME = t.TABLE_NAME
-LEFT JOIN performance_schema.table_io_waits_summary_by_index_usage u
-    ON s.TABLE_SCHEMA = u.OBJECT_SCHEMA
-    AND s.TABLE_NAME = u.OBJECT_NAME
-    AND s.INDEX_NAME = u.INDEX_NAME
-WHERE u.INDEX_NAME IS NULL
-AND s.TABLE_SCHEMA NOT IN ('mysql', 'performance_schema', 'sys')
-AND s.INDEX_NAME != 'PRIMARY';
+    object_schema,
+    object_name,
+    index_name
+FROM sys.schema_unused_indexes;
 ```
 
 ## Query Rewriting Patterns
@@ -327,10 +316,10 @@ A few patterns consistently cause performance problems.
 
 ### Functions on Indexed Columns
 
-Applying functions to columns in WHERE clauses prevents index usage.
+Applying functions to columns in WHERE clauses prevents use of a normal index on the raw column.
 
 ```sql
--- Bad: YEAR() function prevents index on order_date
+-- Bad: YEAR() function prevents use of a normal index on order_date
 SELECT * FROM orders WHERE YEAR(order_date) = 2025;
 
 -- Good: Range condition can use the index
@@ -344,11 +333,11 @@ AND order_date < '2026-01-01';
 Mismatched types can cause full scans even with indexes present.
 
 ```sql
--- If customer_id is INT, this string comparison may prevent index use
-SELECT * FROM orders WHERE customer_id = '12345';
+-- If customer_id is VARCHAR, this numeric comparison can prevent index use
+SELECT * FROM orders WHERE customer_id = 12345;
 
 -- Match the column type
-SELECT * FROM orders WHERE customer_id = 12345;
+SELECT * FROM orders WHERE customer_id = '12345';
 ```
 
 ### Over-Indexing
