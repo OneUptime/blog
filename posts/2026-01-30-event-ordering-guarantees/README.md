@@ -29,7 +29,7 @@ If `OrderShipped` arrives before `OrderCreated`, your system breaks. The shippin
 | Strategy | Guarantee Level | Complexity | Use Case |
 |----------|----------------|------------|----------|
 | Partition Key | Per-entity ordering | Low | Most common scenarios |
-| Sequence Numbers | Strict global ordering | Medium | Financial transactions |
+| Sequence Numbers | Per-entity ordering verification | Medium | Financial transactions |
 | Vector Clocks | Causal ordering | High | Multi-writer scenarios |
 | Single Partition | Total ordering | Low | Simple, low-throughput |
 
@@ -37,7 +37,7 @@ If `OrderShipped` arrives before `OrderCreated`, your system breaks. The shippin
 
 ## Strategy 1: Partition-Based Ordering
 
-Most message brokers (Kafka, AWS Kinesis, Azure Event Hubs) guarantee ordering within a partition. Events with the same partition key always go to the same partition and arrive in order.
+Most message brokers (Kafka, AWS Kinesis, Azure Event Hubs) organize records into ordered partitions or shards. Use the same partition key for related events so they are routed to the same partition, and publish them sequentially when you need strict per-entity processing order.
 
 The flow looks like this:
 
@@ -108,28 +108,35 @@ async function publishOrderEvent(event: OrderEvent): Promise<void> {
 
 // Example usage showing three events for one order
 async function processOrder(orderId: string): Promise<void> {
-  // These three events will always arrive in this exact order
-  // because they share the same partition key (orderId)
-  await publishOrderEvent({
-    eventType: 'OrderCreated',
-    orderId,
-    timestamp: Date.now(),
-    payload: { items: ['item-1', 'item-2'], total: 99.99 }
-  });
+  await producer.connect();
 
-  await publishOrderEvent({
-    eventType: 'PaymentReceived',
-    orderId,
-    timestamp: Date.now(),
-    payload: { transactionId: 'txn-456', amount: 99.99 }
-  });
+  try {
+    // These three events will arrive in this order when published
+    // sequentially by this producer because they share the same
+    // partition key (orderId)
+    await publishOrderEvent({
+      eventType: 'OrderCreated',
+      orderId,
+      timestamp: Date.now(),
+      payload: { items: ['item-1', 'item-2'], total: 99.99 }
+    });
 
-  await publishOrderEvent({
-    eventType: 'OrderShipped',
-    orderId,
-    timestamp: Date.now(),
-    payload: { trackingNumber: 'TRACK-789', carrier: 'FedEx' }
-  });
+    await publishOrderEvent({
+      eventType: 'PaymentReceived',
+      orderId,
+      timestamp: Date.now(),
+      payload: { transactionId: 'txn-456', amount: 99.99 }
+    });
+
+    await publishOrderEvent({
+      eventType: 'OrderShipped',
+      orderId,
+      timestamp: Date.now(),
+      payload: { trackingNumber: 'TRACK-789', carrier: 'FedEx' }
+    });
+  } finally {
+    await producer.disconnect();
+  }
 }
 ```
 
@@ -146,6 +153,13 @@ const kafka = new Kafka({
 
 const consumer = kafka.consumer({ groupId: 'order-processors' });
 
+interface OrderEvent {
+  eventType: string;
+  orderId: string;
+  timestamp: number;
+  payload: Record<string, unknown>;
+}
+
 async function startConsumer(): Promise<void> {
   await consumer.connect();
   await consumer.subscribe({ topic: 'order-events', fromBeginning: false });
@@ -153,6 +167,7 @@ async function startConsumer(): Promise<void> {
   await consumer.run({
     // Process one message at a time to maintain order
     // Setting partitionsConsumedConcurrently: 1 ensures this
+    partitionsConsumedConcurrently: 1,
     eachMessage: async ({ topic, partition, message }: EachMessagePayload) => {
       const event: OrderEvent = JSON.parse(message.value!.toString());
 
@@ -173,13 +188,25 @@ async function startConsumer(): Promise<void> {
     }
   });
 }
+
+async function handleOrderCreated(event: OrderEvent): Promise<void> {
+  // Actual event handling logic here
+}
+
+async function handlePaymentReceived(event: OrderEvent): Promise<void> {
+  // Actual event handling logic here
+}
+
+async function handleOrderShipped(event: OrderEvent): Promise<void> {
+  // Actual event handling logic here
+}
 ```
 
 ---
 
 ## Strategy 2: Sequence Numbers
 
-When you need strict ordering verification, add sequence numbers to your events. The consumer tracks the last processed sequence and rejects out-of-order messages.
+When you need strict ordering verification, add sequence numbers to your events. The consumer tracks the last processed sequence and buffers or rejects out-of-order messages.
 
 ```mermaid
 sequenceDiagram
@@ -307,7 +334,7 @@ interface Event {
   eventId: string;
   entityId: string;
   eventType: string;
-  payload: unknown;
+  payload: Record<string, unknown>;
   timestamp: number;
 }
 
@@ -396,6 +423,8 @@ Each event carries two IDs: the correlation ID (shared across the entire flow) a
 
 ```typescript
 // correlation.ts - Tracking event causation
+import { randomUUID } from 'crypto';
+
 interface CausalEvent {
   eventId: string;
   correlationId: string;  // Shared across entire flow
@@ -411,7 +440,7 @@ function createDerivedEvent(
   payload: unknown
 ): CausalEvent {
   return {
-    eventId: generateUUID(),
+    eventId: randomUUID(),
     // Preserve correlation ID to link entire flow
     correlationId: sourceEvent.correlationId,
     // Point to the event that triggered this one
@@ -436,12 +465,19 @@ function orderEventsByCausation(events: CausalEvent[]): CausalEvent[] {
 
   // Add events whose cause has been processed
   while (remaining.size > 0) {
+    let processedInPass = false;
+
     for (const event of remaining) {
       const causeProcessed = ordered.some(e => e.eventId === event.causationId);
       if (causeProcessed) {
         ordered.push(event);
         remaining.delete(event);
+        processedInPass = true;
       }
+    }
+
+    if (!processedInPass) {
+      throw new Error('Cannot order events: missing causation ID or cycle detected');
     }
   }
 
@@ -455,9 +491,9 @@ function orderEventsByCausation(events: CausalEvent[]): CausalEvent[] {
 
 Watch out for these issues when implementing ordering guarantees:
 
-1. **Consumer parallelism** - Multiple consumers processing the same partition breaks ordering. Use one consumer per partition or process sequentially within each partition.
+1. **Consumer parallelism** - Processing multiple messages from the same partition concurrently can break application-level ordering. Kafka consumer groups assign a partition to only one consumer in the group at a time, so keep processing sequential within each partition.
 
-2. **Retries without deduplication** - Retrying failed events without idempotency causes duplicates. Always combine ordering with exactly-once processing.
+2. **Retries without deduplication** - Retrying failed events without idempotency causes duplicates. Always combine ordering with idempotent processing.
 
 3. **Time-based assumptions** - Do not rely on timestamps for ordering. Clocks drift, and network delays vary. Use sequence numbers or partition ordering instead.
 
