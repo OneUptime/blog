@@ -27,7 +27,7 @@ Before diving into implementation, let's clarify what each guarantee means:
 |-----------|-------------|------------|-----------|
 | At-most-once | Messages may be lost, never duplicated | No | Possible |
 | At-least-once | Messages never lost, may be duplicated | Possible | No |
-| Exactly-once | Messages delivered exactly one time | No | No |
+| Exactly-once | Records are processed once within Kafka when input offsets and output records are committed atomically | No | No |
 
 ## Part 1: Idempotent Producers
 
@@ -39,7 +39,7 @@ Kafka assigns each producer a unique Producer ID (PID) and tracks sequence numbe
 
 ### Basic Idempotent Producer Configuration
 
-The following configuration enables idempotency. Note that enabling idempotence automatically sets `acks=all`, `retries=Integer.MAX_VALUE`, and `max.in.flight.requests.per.connection=5`.
+The following configuration enables idempotency. Note that idempotence requires `acks=all`, `retries` greater than 0, and `max.in.flight.requests.per.connection` less than or equal to 5. Modern Kafka producer defaults already satisfy these requirements, but explicit configuration improves readability.
 
 ```java
 import org.apache.kafka.clients.producer.KafkaProducer;
@@ -64,8 +64,7 @@ public class IdempotentProducerExample {
         // Enable idempotence - this is the key setting
         props.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, true);
 
-        // These are set automatically when idempotence is enabled,
-        // but explicit configuration improves code readability
+        // These satisfy the requirements for idempotence
         props.put(ProducerConfig.ACKS_CONFIG, "all");
         props.put(ProducerConfig.RETRIES_CONFIG, Integer.MAX_VALUE);
         props.put(ProducerConfig.MAX_IN_FLIGHT_REQUESTS_PER_CONNECTION, 5);
@@ -100,11 +99,11 @@ public class IdempotentProducerExample {
 
 ### Limitations of Idempotent Producers
 
-Idempotent producers only guarantee exactly-once within a single partition during a single producer session. They do not help with:
+Idempotent producers prevent duplicate appends caused by retries for records sent during a single producer session. They do not help with:
 
-- Multi-partition atomic writes
+- Atomic visibility for multi-partition writes
 - Coordinating producer writes with consumer offset commits
-- Cross-session deduplication (after producer restart)
+- Deduplicating the same logical record if your application resends it after a producer restart
 
 For these scenarios, you need transactional messaging.
 
@@ -174,6 +173,7 @@ import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.errors.ProducerFencedException;
 import org.apache.kafka.common.errors.OutOfOrderSequenceException;
 import org.apache.kafka.common.errors.AuthorizationException;
+import org.apache.kafka.common.errors.UnsupportedVersionException;
 
 public class BasicTransactionExample {
 
@@ -193,7 +193,7 @@ public class BasicTransactionExample {
             // Begin a new transaction
             producer.beginTransaction();
 
-            // All sends within the transaction are buffered
+            // All sends within the transaction remain invisible to read_committed consumers until commit
             producer.send(new ProducerRecord<>("payments", "pay-001", "{\"amount\": 100.00}"));
             producer.send(new ProducerRecord<>("audit-log", "pay-001", "{\"action\": \"payment_created\"}"));
             producer.send(new ProducerRecord<>("notifications", "user-123", "{\"message\": \"Payment received\"}"));
@@ -202,7 +202,8 @@ public class BasicTransactionExample {
             producer.commitTransaction();
             System.out.println("Transaction committed successfully");
 
-        } catch (ProducerFencedException | OutOfOrderSequenceException | AuthorizationException e) {
+        } catch (ProducerFencedException | OutOfOrderSequenceException |
+                 AuthorizationException | UnsupportedVersionException e) {
             // Fatal errors - cannot recover, must close producer
             System.err.println("Fatal transaction error: " + e.getMessage());
             producer.close();
@@ -226,7 +227,8 @@ Different exceptions require different handling strategies. The following table 
 | ProducerFencedException | Another producer with same transactional.id started | Close producer, restart with new instance |
 | OutOfOrderSequenceException | Broker rejected message due to sequence gap | Close producer, restart |
 | AuthorizationException | Missing permissions for transactional operations | Fix ACLs, restart |
-| TimeoutException | Transaction coordinator not responding | Abort and retry |
+| UnsupportedVersionException | Broker or topic format does not support transactions | Close producer, upgrade broker/topic configuration |
+| TimeoutException | Transaction coordinator not responding before max.block.ms expires | Retry the same transaction operation or abort and retry the transaction |
 | KafkaException | Various recoverable errors | Abort and retry |
 
 ### Robust Transaction Handler
@@ -239,6 +241,7 @@ import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.errors.ProducerFencedException;
 import org.apache.kafka.common.errors.OutOfOrderSequenceException;
 import org.apache.kafka.common.errors.AuthorizationException;
+import org.apache.kafka.common.errors.UnsupportedVersionException;
 import org.apache.kafka.common.KafkaException;
 
 import java.util.List;
@@ -288,7 +291,8 @@ public class RobustTransactionHandler {
                 producer.commitTransaction();
                 return true;
 
-            } catch (ProducerFencedException | OutOfOrderSequenceException | AuthorizationException e) {
+            } catch (ProducerFencedException | OutOfOrderSequenceException |
+                     AuthorizationException | UnsupportedVersionException e) {
                 // Fatal errors - no point retrying
                 throw new RuntimeException("Fatal transaction error, cannot recover", e);
 
@@ -303,7 +307,7 @@ public class RobustTransactionHandler {
                 }
 
                 if (attempts < maxRetries) {
-                    sleep(retryBackoffMs * attempts);  // Exponential backoff
+                    sleep(retryBackoffMs * attempts);  // Increasing backoff
                 }
             }
         }
@@ -368,8 +372,7 @@ public class ReadCommittedConsumer {
         // Read-committed isolation - only see committed transaction messages
         props.put(ConsumerConfig.ISOLATION_LEVEL_CONFIG, "read_committed");
 
-        // Disable auto-commit when using transactions
-        // We will commit offsets as part of the producer transaction
+        // Disable auto-commit when managing offsets manually
         props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false);
 
         // Start from earliest if no committed offset exists
@@ -412,7 +415,7 @@ public class ReadCommittedConsumer {
 
 ### Impact of Read-Committed on Latency
 
-Read-committed consumers may experience slightly higher latency because they wait for transactions to complete. The consumer's position advances only up to the Last Stable Offset (LSO), which is the offset of the first message in an open transaction. Messages after the LSO are buffered until the transaction commits or aborts.
+Read-committed consumers may experience slightly higher latency because they wait for transactions to complete. `consumer.poll()` only returns messages up to the Last Stable Offset (LSO), which is one less than the offset of the first message in an open transaction. Messages after the LSO are withheld until the transaction commits or aborts.
 
 ## Part 4: Consume-Transform-Produce Pattern
 
@@ -451,6 +454,7 @@ import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.errors.ProducerFencedException;
 import org.apache.kafka.common.errors.OutOfOrderSequenceException;
 import org.apache.kafka.common.errors.AuthorizationException;
+import org.apache.kafka.common.errors.UnsupportedVersionException;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.kafka.common.serialization.StringSerializer;
 
@@ -520,7 +524,8 @@ public class ConsumeTransformProduce {
         while (running) {
             try {
                 processRecordBatch();
-            } catch (ProducerFencedException | OutOfOrderSequenceException | AuthorizationException e) {
+            } catch (ProducerFencedException | OutOfOrderSequenceException |
+                     AuthorizationException | UnsupportedVersionException e) {
                 // Fatal errors - shutdown required
                 System.err.println("Fatal error, shutting down: " + e.getMessage());
                 running = false;
@@ -573,6 +578,10 @@ public class ConsumeTransformProduce {
             producer.commitTransaction();
 
             System.out.printf("Committed transaction with %d records%n", records.count());
+
+        } catch (ProducerFencedException | OutOfOrderSequenceException |
+                 AuthorizationException | UnsupportedVersionException e) {
+            throw e;
 
         } catch (Exception e) {
             System.err.println("Error processing batch, aborting transaction: " + e.getMessage());
@@ -721,7 +730,7 @@ The `transactional.id` configuration is critical for transaction recovery and zo
 |----------|----------|---------|
 | Static per instance | Fixed number of consumers | `order-processor-1`, `order-processor-2` |
 | Partition-based | Dynamic scaling | `order-processor-partition-0` |
-| Consumer group based | Simple deployments | `order-processor-{groupId}-{memberId}` |
+| Consumer group based | Simple deployments with stable instance IDs | `order-processor-{groupId}-{instanceId}` |
 
 ### Static Transactional ID Example
 
