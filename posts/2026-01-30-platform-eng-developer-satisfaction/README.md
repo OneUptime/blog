@@ -429,7 +429,7 @@ app.post('/api/satisfaction', (req: Request, res: Response) => {
   }
 
   const record: SatisfactionRecord = {
-    id: `sat_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    id: `sat_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
     userId,
     type,
     score,
@@ -626,8 +626,8 @@ function buildDashboardMetrics(
       value: `${currentPeriod.ces}/7`,
       change: Math.round((currentPeriod.ces - previousPeriod.ces) * 10) / 10,
       trend: determineTrend(currentPeriod.ces, previousPeriod.ces),
-      // Lower CES is better (less effort)
-      status: currentPeriod.ces <= 3 ? 'good' : currentPeriod.ces <= 5 ? 'warning' : 'critical',
+      // Higher CES (1-7) is better — higher agreement that the platform made it easy
+      status: currentPeriod.ces >= 6 ? 'good' : currentPeriod.ces >= 4 ? 'warning' : 'critical',
     },
     {
       title: 'Survey Response Rate',
