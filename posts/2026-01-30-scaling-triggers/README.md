@@ -447,7 +447,8 @@ spec:
         queueURL: https://sqs.us-east-1.amazonaws.com/123456789/orders
         queueLength: "5"                  # 5 messages per pod
         awsRegion: us-east-1
-        identityOwner: operator           # Use KEDA operator's IAM role
+        # Auth defaults to the KEDA operator's IAM role.
+        # Use a TriggerAuthentication with podIdentity for pod-level auth.
 ```
 
 ### Prometheus Query Trigger
@@ -469,7 +470,6 @@ spec:
     - type: prometheus
       metadata:
         serverAddress: http://prometheus.monitoring.svc:9090
-        metricName: http_requests_per_second
         query: |
           sum(rate(http_server_requests_total{namespace="production",service="api-server"}[2m]))
         threshold: "1000"                 # Scale at 1000 RPS total
