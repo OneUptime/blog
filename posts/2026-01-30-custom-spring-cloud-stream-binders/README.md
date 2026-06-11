@@ -101,6 +101,10 @@ Start with a Maven project that includes the necessary Spring Cloud Stream depen
             <artifactId>spring-boot-configuration-processor</artifactId>
             <optional>true</optional>
         </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
 
         <!-- Testing support -->
         <dependency>
@@ -229,10 +233,10 @@ package com.example.binder.config;
  * spring:
  *   cloud:
  *     stream:
- *       bindings:
- *         output-out-0:
- *           producer:
- *             custom-messaging:
+ *       custommessaging:
+ *         bindings:
+ *           output-out-0:
+ *             producer:
  *               batchSize: 100
  *               compressionEnabled: true
  */
@@ -301,10 +305,10 @@ package com.example.binder.config;
  * spring:
  *   cloud:
  *     stream:
- *       bindings:
- *         input-in-0:
- *           consumer:
- *             custom-messaging:
+ *       custommessaging:
+ *         bindings:
+ *           input-in-0:
+ *             consumer:
  *               concurrency: 4
  *               prefetchCount: 250
  *               autoAck: false
@@ -383,18 +387,20 @@ public class CustomMessagingConsumerProperties {
 
 ## Creating the Extended Binding Properties
 
-Spring Cloud Stream uses extended binding properties to merge your custom properties with the standard binding configuration. This class acts as a container for both producer and consumer properties.
+Spring Cloud Stream uses extended binding properties to merge your custom properties with the standard binding configuration. These classes act as a container for producer and consumer properties for each binding.
 
 ```java
 package com.example.binder.config;
 
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.cloud.stream.binder.AbstractExtendedBindingProperties;
 import org.springframework.cloud.stream.binder.BinderSpecificPropertiesProvider;
 
 /**
- * Container class that provides access to extended producer and consumer properties.
- * Spring Cloud Stream uses this to resolve custom properties for each binding.
+ * Per-binding container that provides access to extended producer
+ * and consumer properties.
  */
-public class CustomMessagingExtendedBindingProperties
+class CustomMessagingBindingProperties
         implements BinderSpecificPropertiesProvider {
 
     private CustomMessagingConsumerProperties consumer =
@@ -416,6 +422,29 @@ public class CustomMessagingExtendedBindingProperties
 
     public void setProducer(CustomMessagingProducerProperties producer) {
         this.producer = producer;
+    }
+}
+
+/**
+ * Top-level extended binding properties.
+ * Binds properties from spring.cloud.stream.custommessaging.bindings.<bindingName>.
+ */
+@ConfigurationProperties("spring.cloud.stream.custommessaging")
+public class CustomMessagingExtendedBindingProperties extends
+        AbstractExtendedBindingProperties<
+            CustomMessagingConsumerProperties,
+            CustomMessagingProducerProperties,
+            CustomMessagingBindingProperties> {
+
+    @Override
+    public String getDefaultsPrefix() {
+        return "spring.cloud.stream.custommessaging.default";
+    }
+
+    @Override
+    public Class<? extends BinderSpecificPropertiesProvider>
+            getExtendedPropertiesEntryClass() {
+        return CustomMessagingBindingProperties.class;
     }
 }
 ```
@@ -501,7 +530,7 @@ public class CustomMessagingProvisioner implements ProvisioningProvider<
                     }
                 }
 
-                return new PartitionedProducerDestination(name, partitionCount);
+                return new CustomMessagingProducerDestination(name);
             }
 
             return new CustomMessagingProducerDestination(name);
@@ -639,6 +668,7 @@ import com.example.binder.config.CustomMessagingProducerProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.cloud.stream.binder.ExtendedProducerProperties;
+import org.springframework.messaging.MessagingException;
 import org.springframework.context.Lifecycle;
 import org.springframework.integration.handler.AbstractMessageHandler;
 import org.springframework.messaging.Message;
@@ -735,16 +765,18 @@ public class CustomMessagingMessageHandler extends AbstractMessageHandler
             Object partitionKey = message.getHeaders().get("partitionKey");
 
             if (partitionKey == null) {
-                // Use partition key expression if configured
-                String expression = properties.getExtension().getPartitionKeyExpression();
+                // Prefer Spring Cloud Stream's standard partition key expression
+                String expression = properties.getPartitionKeyExpression() != null
+                    ? properties.getPartitionKeyExpression().getExpressionString()
+                    : properties.getExtension().getPartitionKeyExpression();
                 if (expression != null) {
                     partitionKey = evaluateExpression(expression, message);
                 }
             }
 
             if (partitionKey != null) {
-                int partition = Math.abs(partitionKey.hashCode())
-                    % properties.getPartitionCount();
+                int partition = Math.floorMod(
+                    partitionKey.hashCode(), properties.getPartitionCount());
                 return destination + "-" + partition;
             }
         }
@@ -866,7 +898,6 @@ public class CustomMessagingMessageProducer extends MessageProducerSupport {
 
     private ExecutorService executorService;
     private final AtomicBoolean running = new AtomicBoolean(false);
-    private MessageConsumer messageConsumer;
 
     public CustomMessagingMessageProducer(
             String destination,
@@ -944,10 +975,11 @@ public class CustomMessagingMessageProducer extends MessageProducerSupport {
             CustomMessagingConsumerProperties consumerProps) {
 
         int attempts = 0;
-        long backoffInterval = consumerProps.getBackoffInitialInterval();
+        int maxAttempts = properties.getMaxAttempts();
+        long backoffInterval = properties.getBackOffInitialInterval();
         Exception lastException = null;
 
-        while (attempts < consumerProps.getMaxAttempts()) {
+        while (attempts < maxAttempts) {
             attempts++;
 
             try {
@@ -969,9 +1001,9 @@ public class CustomMessagingMessageProducer extends MessageProducerSupport {
             } catch (Exception e) {
                 lastException = e;
                 logger.warn("Failed to process message (attempt {}/{}): {}",
-                    attempts, consumerProps.getMaxAttempts(), e.getMessage());
+                    attempts, maxAttempts, e.getMessage());
 
-                if (attempts < consumerProps.getMaxAttempts()) {
+                if (attempts < maxAttempts) {
                     // Wait before retrying
                     try {
                         Thread.sleep(backoffInterval);
@@ -982,25 +1014,27 @@ public class CustomMessagingMessageProducer extends MessageProducerSupport {
 
                     // Exponential backoff
                     backoffInterval = Math.min(
-                        (long) (backoffInterval * consumerProps.getBackoffMultiplier()),
-                        consumerProps.getBackoffMaxInterval()
+                        (long) (backoffInterval * properties.getBackOffMultiplier()),
+                        properties.getBackOffMaxInterval()
                     );
                 }
             }
         }
 
         // All retries exhausted
-        handleFailedMessage(nativeMessage, lastException, consumerProps);
+        handleFailedMessage(nativeMessage, lastException, consumerProps, maxAttempts);
     }
 
     /**
      * Handles messages that failed after all retry attempts.
      */
     private void handleFailedMessage(NativeMessage nativeMessage,
-            Exception exception, CustomMessagingConsumerProperties consumerProps) {
+            Exception exception,
+            CustomMessagingConsumerProperties consumerProps,
+            int maxAttempts) {
 
         logger.error("Message processing failed after {} attempts: {}",
-            consumerProps.getMaxAttempts(), nativeMessage.getMessageId());
+            maxAttempts, nativeMessage.getMessageId());
 
         if (consumerProps.isDlqEnabled()) {
             // Route to dead letter queue
@@ -1044,8 +1078,18 @@ public class CustomMessagingMessageProducer extends MessageProducerSupport {
      * Converts a native message to a Spring Message.
      */
     private Message<?> convertToSpringMessage(NativeMessage nativeMessage) {
+        Object payload = nativeMessage.getPayload();
+
+        // Handle decompression if message was compressed
+        Object compression = nativeMessage.getHeaders().get("compression");
+        if (compression != null) {
+            payload = CompressionUtils.decompress(
+                (byte[]) nativeMessage.getPayload(),
+                compression.toString());
+        }
+
         MessageBuilder<?> builder = MessageBuilder
-            .withPayload(nativeMessage.getPayload())
+            .withPayload(payload)
             .setHeader("nativeMessageId", nativeMessage.getMessageId())
             .setHeader("nativeTimestamp", nativeMessage.getTimestamp());
 
@@ -1055,15 +1099,6 @@ public class CustomMessagingMessageProducer extends MessageProducerSupport {
                 builder.setHeader(key, value);
             }
         });
-
-        // Handle decompression if message was compressed
-        Object compression = nativeMessage.getHeaders().get("compression");
-        if (compression != null) {
-            byte[] decompressed = CompressionUtils.decompress(
-                (byte[]) nativeMessage.getPayload(),
-                compression.toString());
-            return builder.withPayload(decompressed).build();
-        }
 
         return builder.build();
     }
@@ -1143,17 +1178,18 @@ public class CustomMessagingBinder extends AbstractMessageChannelBinder<
 
     private final CustomMessagingBinderProperties binderProperties;
     private final CustomMessagingClient messagingClient;
-    private CustomMessagingExtendedBindingProperties extendedBindingProperties =
-        new CustomMessagingExtendedBindingProperties();
+    private final CustomMessagingExtendedBindingProperties extendedBindingProperties;
 
     public CustomMessagingBinder(
             String[] headersToEmbed,
             CustomMessagingProvisioner provisioner,
             CustomMessagingBinderProperties binderProperties,
-            CustomMessagingClient messagingClient) {
+            CustomMessagingClient messagingClient,
+            CustomMessagingExtendedBindingProperties extendedBindingProperties) {
         super(headersToEmbed, provisioner);
         this.binderProperties = binderProperties;
         this.messagingClient = messagingClient;
+        this.extendedBindingProperties = extendedBindingProperties;
     }
 
     /**
@@ -1174,11 +1210,6 @@ public class CustomMessagingBinder extends AbstractMessageChannelBinder<
             messagingClient,
             producerProperties
         );
-
-        // Configure error channel for failed sends
-        if (errorChannel != null) {
-            handler.setSendFailureChannel(errorChannel);
-        }
 
         return handler;
     }
@@ -1215,7 +1246,7 @@ public class CustomMessagingBinder extends AbstractMessageChannelBinder<
     @Override
     public CustomMessagingConsumerProperties getExtendedConsumerProperties(
             String channelName) {
-        return extendedBindingProperties.getConsumer();
+        return extendedBindingProperties.getExtendedConsumerProperties(channelName);
     }
 
     /**
@@ -1224,7 +1255,7 @@ public class CustomMessagingBinder extends AbstractMessageChannelBinder<
     @Override
     public CustomMessagingProducerProperties getExtendedProducerProperties(
             String channelName) {
-        return extendedBindingProperties.getProducer();
+        return extendedBindingProperties.getExtendedProducerProperties(channelName);
     }
 
     @Override
@@ -1235,12 +1266,7 @@ public class CustomMessagingBinder extends AbstractMessageChannelBinder<
     @Override
     public Class<? extends BinderSpecificPropertiesProvider>
             getExtendedPropertiesEntryClass() {
-        return CustomMessagingExtendedBindingProperties.class;
-    }
-
-    public void setExtendedBindingProperties(
-            CustomMessagingExtendedBindingProperties extendedBindingProperties) {
-        this.extendedBindingProperties = extendedBindingProperties;
+        return extendedBindingProperties.getExtendedPropertiesEntryClass();
     }
 }
 ```
@@ -1254,17 +1280,20 @@ package com.example.binder.config;
 
 import com.example.binder.CustomMessagingBinder;
 import com.example.binder.provisioner.CustomMessagingProvisioner;
+import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
 
 /**
  * Auto-configuration for the custom messaging binder.
  * This class is loaded by Spring Boot's auto-configuration mechanism.
  */
-@Configuration
-@EnableConfigurationProperties(CustomMessagingBinderProperties.class)
+@AutoConfiguration
+@EnableConfigurationProperties({
+    CustomMessagingBinderProperties.class,
+    CustomMessagingExtendedBindingProperties.class
+})
 public class CustomMessagingBinderAutoConfiguration {
 
     /**
@@ -1313,13 +1342,15 @@ public class CustomMessagingBinderAutoConfiguration {
     public CustomMessagingBinder customMessagingBinder(
             CustomMessagingProvisioner provisioner,
             CustomMessagingBinderProperties binderProperties,
-            CustomMessagingClient messagingClient) {
+            CustomMessagingClient messagingClient,
+            CustomMessagingExtendedBindingProperties extendedBindingProperties) {
 
         CustomMessagingBinder binder = new CustomMessagingBinder(
             new String[0], // headers to embed in payload
             provisioner,
             binderProperties,
-            messagingClient
+            messagingClient,
+            extendedBindingProperties
         );
 
         return binder;
@@ -1331,18 +1362,18 @@ public class CustomMessagingBinderAutoConfiguration {
 
 Spring Cloud Stream discovers binders through configuration files. Create the following file structure.
 
-Create `META-INF/spring.factories` in your resources folder for Spring Boot 2.x compatibility.
+Because this project targets Spring Boot 3.x, create `META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports`.
+
+```text
+com.example.binder.config.CustomMessagingBinderAutoConfiguration
+```
+
+If you maintain a separate Spring Boot 2.x-compatible artifact, create `META-INF/spring.factories` in your resources folder for Boot 2.x auto-configuration discovery.
 
 ```properties
 # src/main/resources/META-INF/spring.factories
 
 org.springframework.boot.autoconfigure.EnableAutoConfiguration=\
-com.example.binder.config.CustomMessagingBinderAutoConfiguration
-```
-
-For Spring Boot 3.x, also create `META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports`.
-
-```text
 com.example.binder.config.CustomMessagingBinderAutoConfiguration
 ```
 
@@ -1362,11 +1393,13 @@ Here is how users would configure and use your custom binder in their applicatio
 # application.yml
 spring:
   cloud:
+    function:
+      definition: orders;ordersIn
     stream:
       # Select the custom binder as the default
       default-binder: custommessaging
 
-      # Binder-level configuration
+      # Binder-level configuration and extended properties
       custommessaging:
         host: messaging.example.com
         port: 5672
@@ -1375,6 +1408,18 @@ spring:
         connectionPoolSize: 20
         connectionTimeout: 30000
         maxRetries: 5
+        bindings:
+          orders-out-0:
+            producer:
+              batchSize: 50
+              compressionEnabled: true
+              syncSend: false
+          ordersIn-in-0:
+            consumer:
+              prefetchCount: 200
+              autoAck: false
+              dlqEnabled: true
+              dlqName: orders.failed
 
       # Binding configuration
       bindings:
@@ -1385,27 +1430,12 @@ spring:
             partition-count: 3
 
         # Input binding (consumer)
-        orders-in-0:
+        ordersIn-in-0:
           destination: orders
           group: order-processor
           consumer:
             concurrency: 4
             max-attempts: 3
-
-      # Extended properties specific to our binder
-      custommessaging:
-        bindings:
-          orders-out-0:
-            producer:
-              batchSize: 50
-              compressionEnabled: true
-              syncSend: false
-          orders-in-0:
-            consumer:
-              prefetchCount: 200
-              autoAck: false
-              dlqEnabled: true
-              dlqName: orders.failed
 ```
 
 Application code using the binder.
@@ -1440,7 +1470,7 @@ public class OrderApplication {
 
     /**
      * Consumer function that processes messages from the 'orders' destination.
-     * Spring Cloud Stream binds this to 'orders-in-0' based on naming conventions.
+     * Spring Cloud Stream binds this to 'ordersIn-in-0' based on naming conventions.
      */
     @Bean
     public Consumer<Order> ordersIn() {
@@ -1460,6 +1490,8 @@ Write comprehensive tests using the test binder support provided by Spring Cloud
 package com.example.binder;
 
 import com.example.binder.config.CustomMessagingBinderProperties;
+import com.example.binder.config.CustomMessagingConsumerProperties;
+import com.example.binder.config.CustomMessagingProducerProperties;
 import com.example.binder.provisioner.CustomMessagingProvisioner;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -1542,7 +1574,7 @@ class CustomMessagingBinderTests {
             .setHeader("orderId", "12345")
             .build();
 
-        outputChannel.send(testMessage);
+        inputChannel.send(testMessage);
 
         // In a real test, the message would flow through the binder
         // For unit testing, you may need to mock the messaging client
