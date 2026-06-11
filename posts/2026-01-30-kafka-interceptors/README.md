@@ -26,20 +26,20 @@ Interceptors operate at two points in the Kafka message lifecycle:
 
 ## The ProducerInterceptor Interface
 
-The `ProducerInterceptor` interface defines three methods you must implement.
+The `ProducerInterceptor` interface defines the core callbacks below. `configure()` is inherited from `Configurable`, and the acknowledgement callbacks have default implementations in current Kafka clients.
 
 ```java
 package org.apache.kafka.clients.producer;
 
 import org.apache.kafka.common.Configurable;
 
-public interface ProducerInterceptor<K, V> extends Configurable {
+public interface ProducerInterceptor<K, V> extends Configurable, AutoCloseable {
 
     // Called before the record is serialized and sent
     ProducerRecord<K, V> onSend(ProducerRecord<K, V> record);
 
     // Called when the send has been acknowledged (success or failure)
-    void onAcknowledgement(RecordMetadata metadata, Exception exception);
+    default void onAcknowledgement(RecordMetadata metadata, Exception exception) {}
 
     // Called when the interceptor is closed
     void close();
@@ -51,8 +51,8 @@ public interface ProducerInterceptor<K, V> extends Configurable {
 | Method | When Called | Thread Safety | Can Modify Record |
 |--------|-------------|---------------|-------------------|
 | `configure()` | Once during producer initialization | Single thread | N/A |
-| `onSend()` | Before each record is sent | Producer thread | Yes |
-| `onAcknowledgement()` | After broker acknowledges | I/O thread | No |
+| `onSend()` | Before each record is sent | Application send thread(s) | Yes |
+| `onAcknowledgement()` | After broker acknowledgement or send failure | I/O thread | No |
 | `close()` | When producer is closed | Single thread | N/A |
 
 ## Building a Producer Interceptor
@@ -82,10 +82,8 @@ public class TracingProducerInterceptor<K, V> implements ProducerInterceptor<K, 
     @Override
     public void configure(Map<String, ?> configs) {
         // Extract custom configuration passed to the interceptor
-        this.applicationName = (String) configs.getOrDefault(
-            "interceptor.tracing.application.name",
-            "unknown-app"
-        );
+        Object configuredName = configs.get("interceptor.tracing.application.name");
+        this.applicationName = configuredName == null ? "unknown-app" : configuredName.toString();
     }
 
     @Override
@@ -125,7 +123,7 @@ public class TracingProducerInterceptor<K, V> implements ProducerInterceptor<K, 
 
 ### Metrics Collection Interceptor
 
-This interceptor tracks message throughput and latency metrics.
+This interceptor tracks message throughput and acknowledgement metrics.
 
 ```java
 package com.example.kafka.interceptors;
@@ -135,7 +133,6 @@ import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
 
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 public class MetricsProducerInterceptor<K, V> implements ProducerInterceptor<K, V> {
@@ -144,9 +141,6 @@ public class MetricsProducerInterceptor<K, V> implements ProducerInterceptor<K, 
     private final AtomicLong messagesSent = new AtomicLong(0);
     private final AtomicLong messagesAcked = new AtomicLong(0);
     private final AtomicLong messagesFailed = new AtomicLong(0);
-
-    // Track send timestamps for latency calculation
-    private final ConcurrentHashMap<String, Long> sendTimestamps = new ConcurrentHashMap<>();
 
     @Override
     public void configure(Map<String, ?> configs) {
@@ -157,18 +151,6 @@ public class MetricsProducerInterceptor<K, V> implements ProducerInterceptor<K, 
     public ProducerRecord<K, V> onSend(ProducerRecord<K, V> record) {
         // Increment send counter
         long count = messagesSent.incrementAndGet();
-
-        // Store timestamp for latency tracking
-        // Use topic-partition-offset as a unique key (offset not available yet)
-        // We use a hash of the record as a simple correlation key
-        String correlationKey = String.valueOf(System.nanoTime());
-        sendTimestamps.put(correlationKey, System.currentTimeMillis());
-
-        // Add correlation key as header for later matching
-        record.headers().add(
-            "x-metrics-correlation",
-            correlationKey.getBytes()
-        );
 
         // Log every 1000 messages
         if (count % 1000 == 0) {
@@ -208,7 +190,7 @@ package org.apache.kafka.clients.consumer;
 
 import org.apache.kafka.common.Configurable;
 
-public interface ConsumerInterceptor<K, V> extends Configurable {
+public interface ConsumerInterceptor<K, V> extends Configurable, AutoCloseable {
 
     // Called after records are fetched but before they are returned to the application
     ConsumerRecords<K, V> onConsume(ConsumerRecords<K, V> records);
@@ -234,7 +216,7 @@ public interface ConsumerInterceptor<K, V> extends Configurable {
 
 ### Trace Extraction Interceptor
 
-This interceptor extracts tracing headers and makes them available for downstream processing.
+This interceptor extracts tracing headers and logs them for downstream correlation.
 
 ```java
 package com.example.kafka.interceptors;
@@ -251,14 +233,6 @@ import java.util.Map;
 
 public class TracingConsumerInterceptor<K, V> implements ConsumerInterceptor<K, V> {
 
-    // Thread-local storage for trace context
-    // This allows your application code to access the trace ID
-    private static final ThreadLocal<String> CURRENT_TRACE_ID = new ThreadLocal<>();
-
-    public static String getCurrentTraceId() {
-        return CURRENT_TRACE_ID.get();
-    }
-
     @Override
     public void configure(Map<String, ?> configs) {
         // Configuration initialization
@@ -273,9 +247,6 @@ public class TracingConsumerInterceptor<K, V> implements ConsumerInterceptor<K, 
             if (traceHeader != null) {
                 String traceId = new String(traceHeader.value(), StandardCharsets.UTF_8);
 
-                // Store in thread-local for access by application code
-                CURRENT_TRACE_ID.set(traceId);
-
                 // Log for debugging
                 System.out.println("Processing message with trace-id: " + traceId +
                     " from topic: " + record.topic() +
@@ -285,7 +256,6 @@ public class TracingConsumerInterceptor<K, V> implements ConsumerInterceptor<K, 
         }
 
         // Return records unchanged
-        // Consumer interceptors typically should not filter records
         return records;
     }
 
@@ -300,8 +270,7 @@ public class TracingConsumerInterceptor<K, V> implements ConsumerInterceptor<K, 
 
     @Override
     public void close() {
-        // Clean up thread-local
-        CURRENT_TRACE_ID.remove();
+        // Clean up resources
     }
 }
 ```
@@ -498,13 +467,13 @@ Serialization & Send
      |
      v
 +--------------------+
-| Interceptor 2      |  <- Acknowledgements in reverse order
+| Interceptor 1      |  <- Acknowledgements execute in list order
 | onAcknowledgement()|
 +--------------------+
      |
      v
 +--------------------+
-| Interceptor 1      |
+| Interceptor 2      |
 | onAcknowledgement()|
 +--------------------+
 ```
@@ -585,14 +554,21 @@ import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
 
 import javax.crypto.Cipher;
+import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
+import java.nio.charset.StandardCharsets;
+import java.security.SecureRandom;
 import java.util.Base64;
 import java.util.Map;
 
 public class EncryptionProducerInterceptor implements ProducerInterceptor<String, String> {
 
     private SecretKeySpec secretKey;
+    private final SecureRandom secureRandom = new SecureRandom();
     private static final String ALGORITHM = "AES";
+    private static final String TRANSFORMATION = "AES/GCM/NoPadding";
+    private static final int GCM_TAG_LENGTH_BITS = 128;
+    private static final int IV_LENGTH_BYTES = 12;
 
     @Override
     public void configure(Map<String, ?> configs) {
@@ -603,7 +579,7 @@ public class EncryptionProducerInterceptor implements ProducerInterceptor<String
         }
 
         // Create secret key (in production, use proper key management)
-        byte[] keyBytes = keyString.getBytes();
+        byte[] keyBytes = keyString.getBytes(StandardCharsets.UTF_8);
         byte[] keyPadded = new byte[16];
         System.arraycopy(keyBytes, 0, keyPadded, 0, Math.min(keyBytes.length, 16));
         this.secretKey = new SecretKeySpec(keyPadded, ALGORITHM);
@@ -613,10 +589,13 @@ public class EncryptionProducerInterceptor implements ProducerInterceptor<String
     public ProducerRecord<String, String> onSend(ProducerRecord<String, String> record) {
         try {
             // Encrypt the message value
-            String encryptedValue = encrypt(record.value());
+            byte[] iv = new byte[IV_LENGTH_BYTES];
+            secureRandom.nextBytes(iv);
+            String encryptedValue = encrypt(record.value(), iv);
 
             // Mark the message as encrypted via header
-            record.headers().add("x-encrypted", "true".getBytes());
+            record.headers().add("x-encrypted", "true".getBytes(StandardCharsets.UTF_8));
+            record.headers().add("x-encryption-iv", Base64.getEncoder().encode(iv));
 
             // Create a new record with encrypted value
             return new ProducerRecord<>(
@@ -632,10 +611,10 @@ public class EncryptionProducerInterceptor implements ProducerInterceptor<String
         }
     }
 
-    private String encrypt(String value) throws Exception {
-        Cipher cipher = Cipher.getInstance(ALGORITHM);
-        cipher.init(Cipher.ENCRYPT_MODE, secretKey);
-        byte[] encryptedBytes = cipher.doFinal(value.getBytes());
+    private String encrypt(String value, byte[] iv) throws Exception {
+        Cipher cipher = Cipher.getInstance(TRANSFORMATION);
+        cipher.init(Cipher.ENCRYPT_MODE, secretKey, new GCMParameterSpec(GCM_TAG_LENGTH_BITS, iv));
+        byte[] encryptedBytes = cipher.doFinal(value.getBytes(StandardCharsets.UTF_8));
         return Base64.getEncoder().encodeToString(encryptedBytes);
     }
 
@@ -665,6 +644,7 @@ import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.header.Header;
 
 import javax.crypto.Cipher;
+import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -677,6 +657,8 @@ public class DecryptionConsumerInterceptor implements ConsumerInterceptor<String
 
     private SecretKeySpec secretKey;
     private static final String ALGORITHM = "AES";
+    private static final String TRANSFORMATION = "AES/GCM/NoPadding";
+    private static final int GCM_TAG_LENGTH_BITS = 128;
 
     @Override
     public void configure(Map<String, ?> configs) {
@@ -685,7 +667,7 @@ public class DecryptionConsumerInterceptor implements ConsumerInterceptor<String
             throw new IllegalArgumentException("Encryption key not provided");
         }
 
-        byte[] keyBytes = keyString.getBytes();
+        byte[] keyBytes = keyString.getBytes(StandardCharsets.UTF_8);
         byte[] keyPadded = new byte[16];
         System.arraycopy(keyBytes, 0, keyPadded, 0, Math.min(keyBytes.length, 16));
         this.secretKey = new SecretKeySpec(keyPadded, ALGORITHM);
@@ -701,12 +683,15 @@ public class DecryptionConsumerInterceptor implements ConsumerInterceptor<String
 
             for (ConsumerRecord<String, String> record : partitionRecords) {
                 Header encryptedHeader = record.headers().lastHeader("x-encrypted");
+                Header ivHeader = record.headers().lastHeader("x-encryption-iv");
 
                 if (encryptedHeader != null &&
+                    ivHeader != null &&
                     "true".equals(new String(encryptedHeader.value(), StandardCharsets.UTF_8))) {
 
                     try {
-                        String decryptedValue = decrypt(record.value());
+                        byte[] iv = Base64.getDecoder().decode(ivHeader.value());
+                        String decryptedValue = decrypt(record.value(), iv);
 
                         // Create new record with decrypted value
                         ConsumerRecord<String, String> decryptedRecord = new ConsumerRecord<>(
@@ -738,9 +723,9 @@ public class DecryptionConsumerInterceptor implements ConsumerInterceptor<String
         return new ConsumerRecords<>(decryptedRecords);
     }
 
-    private String decrypt(String encryptedValue) throws Exception {
-        Cipher cipher = Cipher.getInstance(ALGORITHM);
-        cipher.init(Cipher.DECRYPT_MODE, secretKey);
+    private String decrypt(String encryptedValue, byte[] iv) throws Exception {
+        Cipher cipher = Cipher.getInstance(TRANSFORMATION);
+        cipher.init(Cipher.DECRYPT_MODE, secretKey, new GCMParameterSpec(GCM_TAG_LENGTH_BITS, iv));
         byte[] decryptedBytes = cipher.doFinal(Base64.getDecoder().decode(encryptedValue));
         return new String(decryptedBytes, StandardCharsets.UTF_8);
     }
@@ -772,15 +757,9 @@ import java.util.Map;
 
 public class ResilientInterceptor<K, V> implements ProducerInterceptor<K, V> {
 
-    private boolean failOpen = true;
-
     @Override
     public void configure(Map<String, ?> configs) {
-        // Configure fail-open or fail-closed behavior
-        Object failOpenConfig = configs.get("interceptor.fail.open");
-        if (failOpenConfig != null) {
-            this.failOpen = Boolean.parseBoolean(failOpenConfig.toString());
-        }
+        // Load interceptor configuration
     }
 
     @Override
@@ -789,14 +768,10 @@ public class ResilientInterceptor<K, V> implements ProducerInterceptor<K, V> {
             // Your interceptor logic here
             return doIntercept(record);
         } catch (Exception e) {
-            if (failOpen) {
-                // Log error and return original record
-                System.err.println("Interceptor error (fail-open): " + e.getMessage());
-                return record;
-            } else {
-                // Propagate exception to stop the send
-                throw new RuntimeException("Interceptor failed", e);
-            }
+            // Kafka catches and logs interceptor exceptions, but handling them
+            // here lets you return a known-good record and control the log message.
+            System.err.println("Interceptor error: " + e.getMessage());
+            return record;
         }
     }
 
@@ -906,7 +881,7 @@ Interceptors run in the critical path of message processing. Keep these guidelin
 | Blocking operations | Never block in interceptors, use async patterns |
 | Memory allocation | Minimize object creation to reduce GC pressure |
 | Thread safety | Use thread-safe data structures for shared state |
-| Exception handling | Always catch exceptions to prevent message loss |
+| Exception handling | Catch exceptions so you can return a known-good record and control logging |
 
 ### Avoiding Common Pitfalls
 
