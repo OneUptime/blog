@@ -104,7 +104,7 @@ await redis.pfAdd('visitors:2026-01-30', ['user:1002', 'user:1003', 'user:1004']
 
 // Add visitor and check if cardinality changed
 const changed = await redis.pfAdd('visitors:2026-01-30', 'user:1001');
-console.log(changed); // 0 - already seen this user
+console.log(changed); // false - already seen this user (node-redis returns boolean)
 ```
 
 ### PFCOUNT: Get Estimated Cardinality
@@ -490,7 +490,7 @@ Here's a concrete comparison of memory usage for different cardinalities:
 
 The trade-off is accuracy. HyperLogLog provides an estimate with 0.81% standard error, meaning:
 
-- If true count is 1,000,000, HLL estimate will be between ~992,000 and ~1,008,000 (99% of the time)
+- If true count is 1,000,000, HLL estimate will typically be within ~992,000 and ~1,008,000 (within 1 standard error, ~68% of the time). For 99% confidence, the range widens to roughly +/- 2.58 standard errors, or ~979,000 to ~1,021,000.
 - For 100 elements, error range is roughly +/- 1 element
 
 For analytics and monitoring, this accuracy is usually sufficient. For billing or compliance where exact counts matter, use Sets or other exact counting methods.
@@ -506,7 +506,7 @@ HyperLogLog is not suitable for every counting scenario:
 | Need exact counts | 0.81% error is unacceptable | Redis Set or database |
 | Need to list elements | HLL only stores cardinality | Redis Set |
 | Small cardinalities (<1000) | Error rate higher relative to count | Redis Set |
-| Need to remove elements | HLL does not support removal | Redis Set or Bloom filter |
+| Need to remove elements | HLL does not support removal | Redis Set or Cuckoo filter (standard Bloom filters also do not support removal) |
 | Need intersection queries | HLL only supports union | Redis Set or probabilistic filters |
 
 A common mistake is using HyperLogLog for low-cardinality counts where a simple Set would be more accurate and still memory-efficient.
