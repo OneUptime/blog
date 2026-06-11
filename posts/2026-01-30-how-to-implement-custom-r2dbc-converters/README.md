@@ -53,6 +53,27 @@ Before writing converters, ensure your project has the right dependencies.
         <groupId>com.fasterxml.jackson.core</groupId>
         <artifactId>jackson-databind</artifactId>
     </dependency>
+    <!-- For converter and repository tests -->
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-test</artifactId>
+        <scope>test</scope>
+    </dependency>
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-testcontainers</artifactId>
+        <scope>test</scope>
+    </dependency>
+    <dependency>
+        <groupId>org.testcontainers</groupId>
+        <artifactId>junit-jupiter</artifactId>
+        <scope>test</scope>
+    </dependency>
+    <dependency>
+        <groupId>org.testcontainers</groupId>
+        <artifactId>postgresql</artifactId>
+        <scope>test</scope>
+    </dependency>
 </dependencies>
 ```
 
@@ -90,6 +111,9 @@ First, define the domain object that will be stored as JSON.
 
 ```java
 // UserPreferences.java
+import java.util.HashMap;
+import java.util.Map;
+
 // This object represents user settings stored in a JSONB column
 public class UserPreferences {
     private String theme;
@@ -275,6 +299,8 @@ Sensitive data like API keys or personal information should be encrypted at rest
 
 ```java
 // EncryptedString.java
+import java.util.Objects;
+
 // A wrapper type that signals this field should be encrypted in the database
 public final class EncryptedString {
     private final String value;
@@ -316,6 +342,7 @@ import javax.crypto.SecretKey;
 import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.util.Base64;
 
@@ -346,7 +373,7 @@ public class EncryptionService {
             GCMParameterSpec parameterSpec = new GCMParameterSpec(GCM_TAG_LENGTH, iv);
             cipher.init(Cipher.ENCRYPT_MODE, secretKey, parameterSpec);
 
-            byte[] ciphertext = cipher.doFinal(plaintext.getBytes());
+            byte[] ciphertext = cipher.doFinal(plaintext.getBytes(StandardCharsets.UTF_8));
 
             // Prepend IV to ciphertext for storage
             // Format: [IV (12 bytes)][Ciphertext + Auth Tag]
@@ -377,7 +404,7 @@ public class EncryptionService {
             GCMParameterSpec parameterSpec = new GCMParameterSpec(GCM_TAG_LENGTH, iv);
             cipher.init(Cipher.DECRYPT_MODE, secretKey, parameterSpec);
 
-            return new String(cipher.doFinal(ciphertext));
+            return new String(cipher.doFinal(ciphertext), StandardCharsets.UTF_8);
         } catch (Exception e) {
             throw new RuntimeException("Decryption failed", e);
         }
@@ -440,6 +467,7 @@ Financial applications need precise money handling. Here is a converter for a `M
 // Money.java
 import java.math.BigDecimal;
 import java.util.Currency;
+import java.util.Objects;
 
 // Immutable value object for monetary amounts
 public final class Money {
@@ -537,12 +565,9 @@ All converters must be registered through Spring's configuration. Create a confi
 ```java
 // R2dbcConfiguration.java
 import io.r2dbc.spi.ConnectionFactory;
-import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.r2dbc.config.AbstractR2dbcConfiguration;
-import org.springframework.data.r2dbc.convert.R2dbcCustomConversions;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.util.ArrayList;
 import java.util.List;
 
 @Configuration
@@ -566,30 +591,24 @@ public class R2dbcConfiguration extends AbstractR2dbcConfiguration {
         return connectionFactory;
     }
 
-    @Bean
     @Override
-    public R2dbcCustomConversions r2dbcCustomConversions() {
-        List<Object> converters = new ArrayList<>();
+    protected List<Object> getCustomConverters() {
+        return List.of(
+            // JSON converters
+            new JsonToUserPreferencesConverter(objectMapper),
+            new UserPreferencesToJsonConverter(objectMapper),
 
-        // JSON converters
-        converters.add(new JsonToUserPreferencesConverter(objectMapper));
-        converters.add(new UserPreferencesToJsonConverter(objectMapper));
+            // Enum converters
+            new StringToAccountStatusConverter(),
+            new AccountStatusToStringConverter(),
 
-        // Enum converters
-        converters.add(new StringToAccountStatusConverter());
-        converters.add(new AccountStatusToStringConverter());
+            // Encrypted field converters
+            new StringToEncryptedStringConverter(encryptionService),
+            new EncryptedStringToStringConverter(encryptionService),
 
-        // Encrypted field converters
-        converters.add(new StringToEncryptedStringConverter(encryptionService));
-        converters.add(new EncryptedStringToStringConverter(encryptionService));
-
-        // Value object converters
-        converters.add(new StringToMoneyConverter());
-        converters.add(new MoneyToStringConverter());
-
-        return R2dbcCustomConversions.of(
-            R2dbcCustomConversions.STORE_CONVERTERS,
-            converters
+            // Value object converters
+            new StringToMoneyConverter(),
+            new MoneyToStringConverter()
         );
     }
 }
@@ -770,6 +789,7 @@ Integration test with a real database.
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -781,6 +801,7 @@ import java.math.BigDecimal;
 class UserRepositoryIntegrationTest {
 
     @Container
+    @ServiceConnection
     static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:15")
             .withDatabaseName("testdb")
             .withUsername("test")
@@ -831,14 +852,21 @@ flowchart TB
 
 **Key optimizations:**
 
-1. **Singleton converters**: Register converters as Spring beans, not new instances
+1. **Singleton converters**: Register converters once during configuration, not per operation
 2. **Reuse ObjectMapper**: Create once, share across all JSON converters
-3. **Pool Cipher instances**: For encryption converters, consider a cipher pool
+3. **Handle Cipher instances carefully**: `Cipher` is stateful, so create one per operation or use a carefully managed pool or `ThreadLocal`
 4. **Measure overhead**: Profile converter execution time in production
 
 ```java
 // MeteredJsonConverter.java
 // Example: Adding metrics to monitor converter performance
+import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
+import io.r2dbc.postgresql.codec.Json;
+import org.springframework.core.convert.converter.Converter;
+import org.springframework.data.convert.ReadingConverter;
+
 @ReadingConverter
 public class MeteredJsonConverter implements Converter<Json, UserPreferences> {
 
