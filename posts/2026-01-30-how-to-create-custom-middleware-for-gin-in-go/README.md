@@ -86,7 +86,7 @@ func AuthMiddleware(secretKey string) gin.HandlerFunc {
         // Parse and validate the token
         token, err := jwt.Parse(parts[1], func(token *jwt.Token) (interface{}, error) {
             return []byte(secretKey), nil
-        })
+        }, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}))
 
         if err != nil || !token.Valid {
             c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
@@ -153,7 +153,7 @@ func LoggingMiddleware() gin.HandlerFunc {
 
 ## Rate Limiting Middleware
 
-Rate limiting protects your API from abuse. Here is a simple token bucket implementation:
+Rate limiting protects your API from abuse. Here is a simple fixed-window implementation:
 
 ```go
 package middleware
@@ -193,22 +193,24 @@ func (rl *RateLimiter) RateLimitMiddleware() gin.HandlerFunc {
     return func(c *gin.Context) {
         clientIP := c.ClientIP()
 
+        now := time.Now()
         rl.mu.Lock()
-        defer rl.mu.Unlock()
 
         // Get or create client data
         client, exists := rl.clients[clientIP]
-        if !exists || time.Now().After(client.resetTime) {
+        if !exists || now.After(client.resetTime) {
             rl.clients[clientIP] = &clientData{
                 count:     1,
-                resetTime: time.Now().Add(rl.window),
+                resetTime: now.Add(rl.window),
             }
+            rl.mu.Unlock()
             c.Next()
             return
         }
 
         // Check if rate limit exceeded
         if client.count >= rl.rate {
+            rl.mu.Unlock()
             c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
                 "error": "Rate limit exceeded. Try again later.",
             })
@@ -216,6 +218,7 @@ func (rl *RateLimiter) RateLimitMiddleware() gin.HandlerFunc {
         }
 
         client.count++
+        rl.mu.Unlock()
         c.Next()
     }
 }
