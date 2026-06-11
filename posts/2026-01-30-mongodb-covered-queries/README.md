@@ -37,7 +37,7 @@ For MongoDB to execute a covered query, three conditions must be met:
 
 1. **All query fields must be part of an index**
 2. **All returned fields must be in the same index**
-3. **No fields in the query can equal null or be checked for null existence**
+3. **No fields in the query can equal null**
 
 Let us set up a sample collection to demonstrate these concepts.
 
@@ -187,9 +187,12 @@ Look for these indicators in the output:
     "totalKeysExamined": 1,        // Only index keys examined
     // ...
   },
-  "winningPlan": {
-    "stage": "PROJECTION_COVERED", // This confirms coverage
-    // ...
+  "queryPlanner": {
+    "winningPlan": {
+      // Look for an IXSCAN that is not under a FETCH stage
+      // The exact shape can differ between MongoDB query engines
+      // ...
+    }
   }
 }
 ```
@@ -205,7 +208,7 @@ The `explain()` method is your primary tool for verifying covered queries. Let u
 | Field | Covered Query Value | Non-Covered Query Value |
 |-------|---------------------|------------------------|
 | totalDocsExamined | 0 | Greater than 0 |
-| stage | PROJECTION_COVERED | FETCH or PROJECTION_SIMPLE |
+| plan shape | IXSCAN without FETCH | FETCH or COLLSCAN |
 | indexOnly (older versions) | true | false |
 
 ### Complete explain() Analysis Example
@@ -229,12 +232,8 @@ print("Total Keys Examined: " + explainResult.executionStats.totalKeysExamined)
 print("Total Docs Examined: " + explainResult.executionStats.totalDocsExamined)
 print("Execution Time (ms): " + explainResult.executionStats.executionTimeMillis)
 
-// Check the winning plan stage
-var stage = explainResult.queryPlanner.winningPlan.stage
-if (explainResult.queryPlanner.winningPlan.inputStage) {
-  stage = explainResult.queryPlanner.winningPlan.inputStage.stage
-}
-print("Plan Stage: " + stage)
+// Print the winning plan and check that IXSCAN is not under a FETCH stage
+printjson(explainResult.queryPlanner.winningPlan)
 
 if (explainResult.executionStats.totalDocsExamined === 0) {
   print("Result: Query IS covered")
@@ -246,7 +245,7 @@ if (explainResult.executionStats.totalDocsExamined === 0) {
 ### Common explain() Stages
 
 ```javascript
-// PROJECTION_COVERED - Query is fully covered by index
+// IXSCAN without FETCH - Query is fully covered by index
 // FETCH - Documents must be retrieved (not covered)
 // IXSCAN - Index scan stage
 // COLLSCAN - Collection scan (no index used at all)
@@ -438,8 +437,8 @@ db.users.find(
   { email: 1, username: 1, _id: 0 }
 )
 
-// Alternative: Include _id in the index
-db.users.createIndex({ _id: 1, email: 1, username: 1 })
+// Alternative: Include _id in the same index
+db.users.createIndex({ email: 1, username: 1, _id: 1 })
 // Now this is covered:
 db.users.find(
   { email: "alice@example.com" },
@@ -493,7 +492,7 @@ db.users.find(
 
 ### 4. Null Values and Existence Checks
 
-Queries checking for null or field existence cannot be covered.
+Queries checking for null or for missing fields cannot be covered. A sparse index can make `$exists: true` queries avoid a `FETCH`, but `$exists: false` still cannot use an index efficiently.
 
 ```javascript
 // NOT covered - checking for null
@@ -520,13 +519,14 @@ db.users.createIndex(
   { name: "username_email_idx" }
 )
 
-// Covered - prefix regex (anchored at start)
+// Covered and efficient - prefix regex (anchored at start)
 db.users.find(
   { username: /^alice/ },
   { username: 1, email: 1, _id: 0 }
 )
 
-// NOT covered - non-anchored regex
+// Potentially covered but inefficient - non-anchored regex
+// MongoDB may scan many index keys because it cannot bound the search by prefix
 db.users.find(
   { username: /alice/ },  // No ^ anchor
   { username: 1, email: 1, _id: 0 }
@@ -540,8 +540,9 @@ db.users.find(
 | Missing _id: 0 in projection | No | Add _id: 0 or include _id in index |
 | Returning array fields | No | None available |
 | Null equality check | No | None available |
-| $exists operator | No | None available |
-| Non-prefix regex | No | Use prefix regex with ^ |
+| $exists: false | No | None available |
+| $exists: true with sparse index | Yes, in specific cases | Use a sparse index |
+| Non-prefix regex | Sometimes, but inefficient | Use prefix regex with ^ |
 | Returning embedded document | No | Project specific subfields |
 | Text search | No | None available |
 | Geospatial queries | No | None available |
@@ -734,8 +735,11 @@ db.users.createIndex({ department: 1, isActive: 1 })
 // This count uses only the index
 db.users.countDocuments({ department: "Engineering", isActive: true })
 
-// Verify with explain
-db.users.explain("executionStats").count({ department: "Engineering", isActive: true })
+// Verify the equivalent aggregation with explain
+db.users.explain("executionStats").aggregate([
+  { $match: { department: "Engineering", isActive: true } },
+  { $group: { _id: null, n: { $sum: 1 } } }
+])
 ```
 
 ---
@@ -787,18 +791,18 @@ var explain = db.users.find(
 printjson(explain.queryPlanner.winningPlan)
 
 // Look for FETCH stage - this means not covered
-// Look for PROJECTION_COVERED - this means covered
+// Look for IXSCAN without FETCH - this means covered
 ```
 
 ### Step 4: Check for Problematic Operators
 
 ```javascript
 // These operators prevent coverage:
-// $exists, $type (when checking for null), $elemMatch, $size
+// $exists: false, $type (when checking for null), $elemMatch, $size
 
 // Check your query for these patterns
 var problematicQuery = db.users.find(
-  { email: { $exists: true } },  // Prevents coverage
+  { email: { $exists: false } },  // Prevents coverage
   { email: 1, _id: 0 }
 )
 ```
