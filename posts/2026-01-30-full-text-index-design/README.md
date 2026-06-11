@@ -115,6 +115,7 @@ CREATE TABLE articles (
     title VARCHAR(255) NOT NULL,
     content TEXT NOT NULL,
     author VARCHAR(100),
+    status VARCHAR(20) DEFAULT 'draft',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     -- Dedicated column for search vector
     search_vector tsvector
@@ -269,7 +270,7 @@ class ArticleSearchService {
     ): Promise<SearchResult[]> {
         const { limit = 20, offset = 0, language = 'english' } = options;
 
-        // Sanitize and prepare the search query
+        // Normalize and limit the search query
         const sanitizedQuery = this.sanitizeSearchQuery(query);
 
         if (!sanitizedQuery) {
@@ -300,9 +301,9 @@ class ArticleSearchService {
         return result.rows;
     }
 
-    // Sanitize search query to prevent injection
+    // Normalize search query text before passing it as a parameter
     private sanitizeSearchQuery(query: string): string {
-        // Remove special characters that could break tsquery
+        // Remove special characters that could break tsquery syntax
         return query
             .replace(/[&|!():*]/g, ' ')
             .trim()
@@ -316,9 +317,12 @@ class ArticleSearchService {
         mustExclude: string[]
     ): Promise<SearchResult[]> {
         // Build tsquery with explicit operators
-        const mustTerms = mustInclude.map(t => `${t}`).join(' & ');
-        const shouldTerms = shouldInclude.map(t => `${t}`).join(' | ');
-        const excludeTerms = mustExclude.map(t => `!${t}`).join(' & ');
+        const mustTerms = mustInclude.map(t => this.sanitizeTsQueryTerm(t)).filter(Boolean).join(' & ');
+        const shouldTerms = shouldInclude.map(t => this.sanitizeTsQueryTerm(t)).filter(Boolean).join(' | ');
+        const excludeTerms = mustExclude.map(t => {
+            const term = this.sanitizeTsQueryTerm(t);
+            return term ? `!(${term})` : '';
+        }).filter(Boolean).join(' & ');
 
         let queryParts = [];
         if (mustTerms) queryParts.push(`(${mustTerms})`);
@@ -326,6 +330,10 @@ class ArticleSearchService {
         if (excludeTerms) queryParts.push(`(${excludeTerms})`);
 
         const tsqueryString = queryParts.join(' & ');
+
+        if (!tsqueryString) {
+            return [];
+        }
 
         const sql = `
             SELECT
@@ -340,6 +348,15 @@ class ArticleSearchService {
 
         const result = await this.pool.query(sql, [tsqueryString]);
         return result.rows;
+    }
+
+    private sanitizeTsQueryTerm(term: string): string {
+        return term
+            .replace(/[^\p{L}\p{N}_]+/gu, ' ')
+            .trim()
+            .split(/\s+/)
+            .filter(Boolean)
+            .join(' & ');
     }
 }
 ```
@@ -356,7 +373,7 @@ CREATE INDEX idx_search_published ON articles
 USING GIN (search_vector)
 WHERE status = 'published';
 
--- Query uses the partial index automatically
+-- Query can use the partial index when the predicate matches
 SELECT * FROM articles
 WHERE search_vector @@ plainto_tsquery('english', 'database')
 AND status = 'published';
@@ -364,13 +381,12 @@ AND status = 'published';
 
 ### 2. Covering Indexes
 
-Include frequently accessed columns in the index to avoid table lookups.
+GIN indexes do not support included columns or index-only scans. If you need index-only scans for common metadata filters or sorts around search results, create a separate B-tree covering index.
 
 ```sql
--- Include title and created_at in the index
-CREATE INDEX idx_search_covering ON articles
-USING GIN (search_vector)
-INCLUDE (title, created_at);
+-- Support filtering and sorting published articles by creation time
+CREATE INDEX idx_articles_status_created_covering ON articles (status, created_at DESC)
+INCLUDE (title);
 ```
 
 ### 3. Configuration Tuning
@@ -393,7 +409,23 @@ For multilingual content, store the language per document and use the appropriat
 
 ```sql
 -- Add language column
-ALTER TABLE articles ADD COLUMN language VARCHAR(20) DEFAULT 'english';
+ALTER TABLE articles ADD COLUMN language REGCONFIG DEFAULT 'english';
+
+-- Rebuild search vectors with each document's language configuration
+UPDATE articles SET search_vector =
+    setweight(to_tsvector(language, coalesce(title, '')), 'A') ||
+    setweight(to_tsvector(language, coalesce(content, '')), 'B');
+
+-- Update the trigger function to use each row's language
+CREATE OR REPLACE FUNCTION articles_search_vector_trigger()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.search_vector :=
+        setweight(to_tsvector(NEW.language, coalesce(NEW.title, '')), 'A') ||
+        setweight(to_tsvector(NEW.language, coalesce(NEW.content, '')), 'B');
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
 
 -- Create language-aware search function
 CREATE OR REPLACE FUNCTION search_articles(
@@ -406,10 +438,10 @@ BEGIN
     SELECT
         a.id,
         a.title,
-        ts_rank(a.search_vector, plainto_tsquery(search_language, search_text))
+        ts_rank(a.search_vector, plainto_tsquery(search_language::regconfig, search_text))
     FROM articles a
-    WHERE a.search_vector @@ plainto_tsquery(search_language, search_text)
-    AND a.language = search_language
+    WHERE a.search_vector @@ plainto_tsquery(search_language::regconfig, search_text)
+    AND a.language = search_language::regconfig
     ORDER BY 3 DESC;
 END;
 $$ LANGUAGE plpgsql;
