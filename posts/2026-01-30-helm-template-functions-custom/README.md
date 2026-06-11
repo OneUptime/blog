@@ -16,7 +16,7 @@ Helm templates are Go templates with superpowers. Custom functions make them eve
 
 ## Overview
 
-Helm uses Go's text/template package enhanced with Sprig functions and custom Helm-specific functions. Understanding how to create and use custom template functions is essential for building maintainable charts.
+Helm uses Go's text/template package enhanced with Sprig functions and custom Helm-specific functions. Within a chart, reusable "custom functions" are usually named helper templates rather than new Go functions registered with Helm. Understanding how to create and use these helper templates is essential for building maintainable charts.
 
 ```mermaid
 flowchart TD
@@ -484,7 +484,7 @@ Generate a DNS-safe name from input.
 Converts to lowercase, replaces invalid characters, and truncates.
 */}}
 {{- define "myapp.dnsSafeName" -}}
-{{- . | lower | replace "_" "-" | replace "." "-" | trunc 63 | trimSuffix "-" -}}
+{{- regexReplaceAll "[^a-z0-9-]" (. | lower) "-" | trunc 63 | trimAll "-" -}}
 {{- end }}
 
 {{/*
@@ -518,7 +518,7 @@ Later maps override earlier ones.
 {{- define "myapp.mergeLabels" -}}
 {{- $result := dict -}}
 {{- range . -}}
-{{- $result = merge $result . -}}
+{{- $result = mergeOverwrite $result . -}}
 {{- end -}}
 {{- toYaml $result -}}
 {{- end }}
@@ -637,11 +637,15 @@ Create the name of the service account to use.
 Generate image pull secrets.
 */}}
 {{- define "myapp.imagePullSecrets" -}}
-{{- with .Values.global.imagePullSecrets }}
-imagePullSecrets:
-  {{- toYaml . | nindent 2 }}
+{{- $globalPullSecrets := list -}}
+{{- with .Values.global }}
+{{- with .imagePullSecrets }}
+{{- $globalPullSecrets = . }}
 {{- end }}
-{{- with .Values.imagePullSecrets }}
+{{- end }}
+{{- $pullSecrets := concat $globalPullSecrets (.Values.imagePullSecrets | default (list)) -}}
+{{- with $pullSecrets }}
+imagePullSecrets:
   {{- toYaml . | nindent 2 }}
 {{- end }}
 {{- end }}
