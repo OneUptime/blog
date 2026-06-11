@@ -46,7 +46,7 @@ Design your namespaces with a clear hierarchy that reflects your organizational 
 ```python
 from dataclasses import dataclass
 from typing import Optional, List
-from datetime import datetime
+from datetime import datetime, timezone
 import hashlib
 import re
 
@@ -63,7 +63,7 @@ class Namespace:
     @staticmethod
     def generate_id(tenant_id: str, name: str) -> str:
         """Generate a unique namespace ID."""
-        raw = f"{tenant_id}:{name}:{datetime.utcnow().isoformat()}"
+        raw = f"{tenant_id}:{name}:{datetime.now(timezone.utc).isoformat()}"
         return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
     @staticmethod
@@ -114,7 +114,7 @@ class NamespaceManager:
             name=name,
             parent_id=parent_id,
             tenant_id=tenant_id,
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
             metadata=metadata or {}
         )
 
@@ -221,40 +221,49 @@ flowchart LR
 ### Implementing Logical Isolation
 
 ```python
-from typing import Any, Optional
+from typing import Optional
+from contextvars import ContextVar
 from functools import wraps
 
 class IsolationContext:
-    """Thread-local context for namespace isolation."""
+    """Context-local state for namespace isolation."""
 
-    _current_namespace: Optional[str] = None
-    _current_tenant: Optional[str] = None
+    _current_namespace: ContextVar[Optional[str]] = ContextVar(
+        "current_namespace",
+        default=None
+    )
+    _current_tenant: ContextVar[Optional[str]] = ContextVar(
+        "current_tenant",
+        default=None
+    )
 
     @classmethod
     def set_context(cls, tenant_id: str, namespace_id: str):
         """Set the current isolation context."""
-        cls._current_tenant = tenant_id
-        cls._current_namespace = namespace_id
+        cls._current_tenant.set(tenant_id)
+        cls._current_namespace.set(namespace_id)
 
     @classmethod
     def clear_context(cls):
         """Clear the current isolation context."""
-        cls._current_tenant = None
-        cls._current_namespace = None
+        cls._current_tenant.set(None)
+        cls._current_namespace.set(None)
 
     @classmethod
     def get_namespace(cls) -> str:
         """Get current namespace or raise error."""
-        if not cls._current_namespace:
+        namespace = cls._current_namespace.get()
+        if not namespace:
             raise SecurityError("No namespace context set")
-        return cls._current_namespace
+        return namespace
 
     @classmethod
     def get_tenant(cls) -> str:
         """Get current tenant or raise error."""
-        if not cls._current_tenant:
+        tenant = cls._current_tenant.get()
+        if not tenant:
             raise SecurityError("No tenant context set")
-        return cls._current_tenant
+        return tenant
 
 
 class SecurityError(Exception):
@@ -381,11 +390,12 @@ class ResourceIsolationManager:
 
     def acquire_connection(self, namespace_id: str) -> bool:
         """Acquire a connection from the namespace's pool."""
-        with self._locks[namespace_id]:
-            pool = self._pools.get(namespace_id)
-            if not pool:
-                raise ValueError(f"No pool for namespace {namespace_id}")
+        pool = self._pools.get(namespace_id)
+        lock = self._locks.get(namespace_id)
+        if not pool or not lock:
+            raise ValueError(f"No pool for namespace {namespace_id}")
 
+        with lock:
             if pool.current_connections >= pool.max_connections:
                 return False
 
@@ -394,9 +404,13 @@ class ResourceIsolationManager:
 
     def release_connection(self, namespace_id: str):
         """Release a connection back to the pool."""
-        with self._locks[namespace_id]:
-            pool = self._pools.get(namespace_id)
-            if pool and pool.current_connections > 0:
+        pool = self._pools.get(namespace_id)
+        lock = self._locks.get(namespace_id)
+        if not pool or not lock:
+            return
+
+        with lock:
+            if pool.current_connections > 0:
                 pool.current_connections -= 1
 
     def check_memory_quota(self, namespace_id: str, required_mb: float) -> bool:
@@ -454,7 +468,7 @@ graph TB
 from enum import Enum, auto
 from dataclasses import dataclass, field
 from typing import Set, Dict, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 class Permission(Enum):
     """Permissions for namespace operations."""
@@ -557,7 +571,7 @@ class AccessControlManager:
             namespace_id=namespace_id,
             role_name=role_name,
             granted_by=granter_id,
-            granted_at=datetime.utcnow(),
+            granted_at=datetime.now(timezone.utc),
             expires_at=expires_at,
             conditions=conditions or {}
         )
@@ -588,7 +602,7 @@ class AccessControlManager:
 
         for grant in grants:
             # Check expiration
-            if grant.expires_at and grant.expires_at < datetime.utcnow():
+            if grant.expires_at and grant.expires_at < datetime.now(timezone.utc):
                 continue
 
             # Check conditions (IP range, time window, etc.)
@@ -618,7 +632,7 @@ class AccessControlManager:
 ```python
 import secrets
 import hashlib
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass
 from typing import Optional, List
 
@@ -661,7 +675,7 @@ class APIKeyManager:
 
         expires_at = None
         if expires_in_days:
-            expires_at = datetime.utcnow() + timedelta(days=expires_in_days)
+            expires_at = datetime.now(timezone.utc) + timedelta(days=expires_in_days)
 
         api_key = APIKey(
             key_id=key_id,
@@ -669,7 +683,7 @@ class APIKeyManager:
             name=name,
             namespace_id=namespace_id,
             role_name=role_name,
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
             expires_at=expires_at
         )
 
@@ -690,11 +704,11 @@ class APIKeyManager:
         if not api_key.is_active:
             return None
 
-        if api_key.expires_at and api_key.expires_at < datetime.utcnow():
+        if api_key.expires_at and api_key.expires_at < datetime.now(timezone.utc):
             return None
 
         # Update last used timestamp
-        api_key.last_used_at = datetime.utcnow()
+        api_key.last_used_at = datetime.now(timezone.utc)
         self.metadata.update_api_key(api_key)
 
         return api_key
@@ -764,7 +778,7 @@ graph LR
 ```python
 from dataclasses import dataclass
 from typing import Dict, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 import threading
 
@@ -872,7 +886,7 @@ class QuotaManager:
             quota_type=quota_type,
             current_value=current,
             limit=limit,
-            last_updated=datetime.utcnow()
+            last_updated=datetime.now(timezone.utc)
         )
 
     def increment_usage(
@@ -938,14 +952,14 @@ class RateLimiter:
 
     def increment(self, amount: int = 1):
         with self._lock:
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
             for _ in range(amount):
                 self.requests.append(now)
 
     def _cleanup(self):
         """Remove expired entries."""
         with self._lock:
-            cutoff = datetime.utcnow() - timedelta(seconds=self.window_seconds)
+            cutoff = datetime.now(timezone.utc) - timedelta(seconds=self.window_seconds)
             self.requests = [r for r in self.requests if r > cutoff]
 ```
 
@@ -986,7 +1000,7 @@ sequenceDiagram
 ```python
 from dataclasses import dataclass
 from typing import Optional, Generator, List
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 import time
 
@@ -1055,7 +1069,7 @@ class NamespaceMigrationService:
             source_namespace_id=source_namespace_id,
             target_namespace_id=target_namespace_id,
             status=MigrationStatus.PENDING,
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
             total_vectors=total_vectors
         )
 
@@ -1073,7 +1087,7 @@ class NamespaceMigrationService:
 
         try:
             job.status = MigrationStatus.IN_PROGRESS
-            job.started_at = datetime.utcnow()
+            job.started_at = datetime.now(timezone.utc)
             self.metadata.update_migration_job(job)
 
             # Migrate in batches
@@ -1088,7 +1102,7 @@ class NamespaceMigrationService:
 
             if self._verify_migration(job):
                 job.status = MigrationStatus.COMPLETED
-                job.completed_at = datetime.utcnow()
+                job.completed_at = datetime.now(timezone.utc)
             else:
                 raise MigrationError("Verification failed - vector counts do not match")
 
