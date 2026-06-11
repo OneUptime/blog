@@ -37,7 +37,7 @@ This guide covers everything you need to build production-ready cross-encoder re
 
 First-stage retrievers (BM25, bi-encoders, vector search) optimize for recall and speed. They need to scan millions of documents in milliseconds. This constraint forces them to use approximate matching or pre-computed embeddings that cannot capture nuanced query-document interactions.
 
-Cross-encoders flip the trade-off: they process query and document together, enabling deep cross-attention between every token. This joint encoding captures subtle relevance signals that separate retrievers miss.
+Cross-encoders flip the trade-off: they process query and document together, enabling deep token-level interactions through self-attention over the joint input. This joint encoding captures subtle relevance signals that separate retrievers miss.
 
 | Stage | Model Type | Speed | Semantic Depth | Use Case |
 |-------|-----------|-------|----------------|----------|
@@ -65,7 +65,7 @@ flowchart LR
 
     subgraph Transformer
         E[Encoder Layers]
-        A[Cross-Attention]
+        A[Self-Attention Over Joint Sequence]
     end
 
     subgraph Output
@@ -88,7 +88,7 @@ Key architectural properties:
 3. **Scalar output**: A linear layer projects [CLS] to a single relevance score
 4. **No pre-computation**: Unlike bi-encoders, you cannot pre-compute document embeddings
 
-The cross-attention mechanism is what makes cross-encoders powerful. Each query token can attend to every document token (and vice versa), enabling the model to learn complex relevance patterns like:
+Self-attention over the joint query-document sequence is what makes cross-encoders powerful. Each query token can attend to every document token (and vice versa), enabling the model to learn complex relevance patterns like:
 
 - Term matching with context ("bank" near "river" vs "bank" near "money")
 - Semantic entailment (query asks for "causes", document explains "why")
@@ -152,14 +152,14 @@ from typing import List, Tuple
 class CrossEncoderReranker:
     """Cross-encoder re-ranker for search results."""
 
-    def __init__(self, model_name: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"):
+    def __init__(self, model_name: str = "cross-encoder/ms-marco-MiniLM-L6-v2"):
         """
         Initialize the cross-encoder model.
 
         Args:
             model_name: HuggingFace model identifier. Options include:
-                - cross-encoder/ms-marco-MiniLM-L-6-v2 (fast, good quality)
-                - cross-encoder/ms-marco-MiniLM-L-12-v2 (balanced)
+                - cross-encoder/ms-marco-MiniLM-L6-v2 (fast, good quality)
+                - cross-encoder/ms-marco-MiniLM-L12-v2 (balanced)
                 - cross-encoder/ms-marco-electra-base (high quality, slower)
         """
         self.model = CrossEncoder(model_name, max_length=512)
@@ -245,7 +245,7 @@ class OptimizedCrossEncoderReranker:
 
     def __init__(
         self,
-        model_name: str = "cross-encoder/ms-marco-MiniLM-L-6-v2",
+        model_name: str = "cross-encoder/ms-marco-MiniLM-L6-v2",
         batch_size: int = 32,
         device: Optional[str] = None
     ):
@@ -366,7 +366,7 @@ class CachedCrossEncoderReranker:
 
     def __init__(
         self,
-        model_name: str = "cross-encoder/ms-marco-MiniLM-L-6-v2",
+        model_name: str = "cross-encoder/ms-marco-MiniLM-L6-v2",
         redis_client: Optional[redis.Redis] = None,
         cache_ttl: int = 3600,
         memory_cache_size: int = 10000
@@ -483,52 +483,45 @@ flowchart TB
         direction TB
 
         subgraph Fast["Fast - < 50ms/100 docs"]
-            M1["MiniLM-L-6-v2<br/>6 layers, 22M params"]
+            M0["TinyBERT-L2-v2<br/>2 layers"]
+            M1["MiniLM-L6-v2<br/>6 layers, 22M params"]
         end
 
         subgraph Balanced["Balanced - 50-150ms/100 docs"]
-            M2["MiniLM-L-12-v2<br/>12 layers, 33M params"]
-            M3["DistilRoBERTa<br/>6 layers, 82M params"]
+            M2["MiniLM-L12-v2<br/>12 layers, 33M params"]
         end
 
-        subgraph Quality["High Quality - 150-500ms/100 docs"]
+        subgraph Quality["Higher Capacity - 150-500ms/100 docs"]
             M4["ELECTRA-base<br/>12 layers, 110M params"]
-            M5["DeBERTa-v3-base<br/>12 layers, 184M params"]
-        end
-
-        subgraph Premium["Premium - 500ms+/100 docs"]
-            M6["DeBERTa-v3-large<br/>24 layers, 434M params"]
         end
     end
 
     Fast --> Balanced
     Balanced --> Quality
-    Quality --> Premium
 ```
 
-| Model | Layers | Params | MS MARCO MRR@10 | Latency (100 docs, GPU) |
-|-------|--------|--------|-----------------|------------------------|
-| MiniLM-L-6-v2 | 6 | 22M | 0.390 | 45ms |
-| MiniLM-L-12-v2 | 12 | 33M | 0.397 | 75ms |
-| ELECTRA-base | 12 | 110M | 0.401 | 120ms |
-| DeBERTa-v3-base | 12 | 184M | 0.412 | 180ms |
-| DeBERTa-v3-large | 24 | 434M | 0.425 | 450ms |
+| Model | Layers | Params | MS MARCO MRR@10 | Docs/sec (V100 GPU) |
+|-------|--------|--------|-----------------|---------------------|
+| TinyBERT-L2-v2 | 2 | 4M | 0.3256 | 9000 |
+| MiniLM-L6-v2 | 6 | 22M | 0.3901 | 1800 |
+| MiniLM-L12-v2 | 12 | 33M | 0.3902 | 960 |
+| ELECTRA-base | 12 | 110M | 0.3641 | 340 |
 
 **Selection guidelines:**
 
-- **Real-time search (< 100ms)**: MiniLM-L-6-v2
-- **Standard search (100-200ms)**: MiniLM-L-12-v2 or ELECTRA-base
-- **Quality-critical applications**: DeBERTa-v3-base
-- **Offline batch processing**: DeBERTa-v3-large
+- **Real-time search (< 100ms)**: MiniLM-L6-v2
+- **Standard search (100-200ms)**: MiniLM-L12-v2 or ELECTRA-base
+- **Quality-critical applications**: benchmark several candidates and fine-tune on domain data
+- **Offline batch processing**: consider larger community rerankers after measuring quality and throughput on your workload
 
 ```python
 from sentence_transformers import CrossEncoder
 
 # Fast model for real-time search
-fast_model = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
+fast_model = CrossEncoder("cross-encoder/ms-marco-MiniLM-L6-v2")
 
 # Balanced model for standard search
-balanced_model = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-12-v2")
+balanced_model = CrossEncoder("cross-encoder/ms-marco-MiniLM-L12-v2")
 
 # High-quality model for precision-critical applications
 quality_model = CrossEncoder("cross-encoder/ms-marco-electra-base")
@@ -565,29 +558,35 @@ training_data = [
 ### Fine-Tuning Implementation
 
 ```python
-from sentence_transformers import CrossEncoder, InputExample
-from sentence_transformers.cross_encoder.evaluation import CERerankingEvaluator
-from torch.utils.data import DataLoader
+from datasets import Dataset
+from sentence_transformers.cross_encoder import (
+    CrossEncoder,
+    CrossEncoderTrainer,
+    CrossEncoderTrainingArguments,
+)
+from sentence_transformers.cross_encoder.evaluation import CrossEncoderRerankingEvaluator
+from sentence_transformers.cross_encoder.losses import BinaryCrossEntropyLoss
 from typing import List, Dict
 import json
 
-def load_training_data(filepath: str) -> List[InputExample]:
+def load_training_data(filepath: str) -> Dataset:
     """Load training data from JSONL file."""
     examples = []
     with open(filepath, 'r') as f:
         for line in f:
             item = json.loads(line)
-            examples.append(InputExample(
-                texts=[item["query"], item["document"]],
-                label=float(item["label"])
-            ))
-    return examples
+            examples.append({
+                "query": item["query"],
+                "document": item["document"],
+                "label": float(item["label"])
+            })
+    return Dataset.from_list(examples)
 
-def prepare_evaluation_data(filepath: str) -> Dict:
+def prepare_evaluation_data(filepath: str) -> List[Dict]:
     """
-    Prepare evaluation data for CERerankingEvaluator.
+    Prepare evaluation data for CrossEncoderRerankingEvaluator.
 
-    Format: {query: {doc: relevance_score, ...}, ...}
+    Format: [{"query": str, "positive": [docs], "negative": [docs]}, ...]
     """
     eval_data = {}
     with open(filepath, 'r') as f:
@@ -595,12 +594,18 @@ def prepare_evaluation_data(filepath: str) -> Dict:
             item = json.loads(line)
             query = item["query"]
             if query not in eval_data:
-                eval_data[query] = {}
-            eval_data[query][item["document"]] = item["label"]
-    return eval_data
+                eval_data[query] = {"query": query, "positive": [], "negative": []}
+            if float(item["label"]) > 0:
+                eval_data[query]["positive"].append(item["document"])
+            else:
+                eval_data[query]["negative"].append(item["document"])
+    return [
+        sample for sample in eval_data.values()
+        if sample["positive"] and sample["negative"]
+    ]
 
 def fine_tune_cross_encoder(
-    base_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2",
+    base_model: str = "cross-encoder/ms-marco-MiniLM-L6-v2",
     train_file: str = "train.jsonl",
     eval_file: str = "eval.jsonl",
     output_dir: str = "./fine-tuned-reranker",
@@ -626,35 +631,38 @@ def fine_tune_cross_encoder(
     model = CrossEncoder(base_model, num_labels=1, max_length=512)
 
     # Load training data
-    train_examples = load_training_data(train_file)
-    train_dataloader = DataLoader(
-        train_examples,
-        shuffle=True,
-        batch_size=batch_size
-    )
+    train_dataset = load_training_data(train_file)
+    loss = BinaryCrossEntropyLoss(model)
 
     # Prepare evaluator
     eval_data = prepare_evaluation_data(eval_file)
-    evaluator = CERerankingEvaluator(
+    evaluator = CrossEncoderRerankingEvaluator(
         samples=eval_data,
         name="domain-eval"
     )
 
-    # Calculate warmup steps
-    total_steps = len(train_dataloader) * epochs
-    warmup_steps = int(total_steps * warmup_ratio)
+    args = CrossEncoderTrainingArguments(
+        output_dir=output_dir,
+        num_train_epochs=epochs,
+        per_device_train_batch_size=batch_size,
+        learning_rate=learning_rate,
+        warmup_ratio=warmup_ratio,
+        eval_strategy="epoch",
+        save_strategy="epoch",
+        save_total_limit=2,
+        load_best_model_at_end=True,
+    )
 
     # Fine-tune
-    model.fit(
-        train_dataloader=train_dataloader,
+    trainer = CrossEncoderTrainer(
+        model=model,
+        args=args,
+        train_dataset=train_dataset,
+        loss=loss,
         evaluator=evaluator,
-        epochs=epochs,
-        warmup_steps=warmup_steps,
-        optimizer_params={"lr": learning_rate},
-        output_path=output_dir,
-        save_best_model=True,
-        show_progress_bar=True
     )
+    trainer.train()
+    model.save_pretrained(output_dir)
 
     print(f"Fine-tuned model saved to {output_dir}")
     return model
@@ -663,7 +671,7 @@ def fine_tune_cross_encoder(
 # Example usage
 if __name__ == "__main__":
     model = fine_tune_cross_encoder(
-        base_model="cross-encoder/ms-marco-MiniLM-L-6-v2",
+        base_model="cross-encoder/ms-marco-MiniLM-L6-v2",
         train_file="domain_train.jsonl",
         eval_file="domain_eval.jsonl",
         output_dir="./my-domain-reranker",
@@ -761,17 +769,30 @@ For high-throughput applications, deploy re-ranking as an async service:
 
 ```python
 import asyncio
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional
 from concurrent.futures import ThreadPoolExecutor
 from sentence_transformers import CrossEncoder
 
-app = FastAPI(title="Cross-Encoder Re-ranking Service")
-
 # Global model and executor
 model: Optional[CrossEncoder] = None
 executor: Optional[ThreadPoolExecutor] = None
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global model, executor
+    model = CrossEncoder("cross-encoder/ms-marco-MiniLM-L6-v2", max_length=512)
+    executor = ThreadPoolExecutor(max_workers=4)
+    yield
+    if executor:
+        executor.shutdown(wait=True)
+
+app = FastAPI(
+    title="Cross-Encoder Re-ranking Service",
+    lifespan=lifespan
+)
 
 class RerankerRequest(BaseModel):
     query: str
@@ -781,17 +802,6 @@ class RerankerRequest(BaseModel):
 class RerankerResponse(BaseModel):
     results: List[dict]
     latency_ms: float
-
-@app.on_event("startup")
-async def startup():
-    global model, executor
-    model = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2", max_length=512)
-    executor = ThreadPoolExecutor(max_workers=4)
-
-@app.on_event("shutdown")
-async def shutdown():
-    if executor:
-        executor.shutdown(wait=True)
 
 def sync_rerank(query: str, documents: List[str], top_k: int):
     """Synchronous re-ranking function to run in thread pool."""
@@ -824,7 +834,7 @@ async def rerank(request: RerankerRequest):
         )
 
     # Run in thread pool to avoid blocking event loop
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     results = await loop.run_in_executor(
         executor,
         sync_rerank,
@@ -851,7 +861,7 @@ For GPU-optimized serving at scale, use NVIDIA Triton Inference Server:
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 import torch
 
-model_name = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+model_name = "cross-encoder/ms-marco-MiniLM-L6-v2"
 model = AutoModelForSequenceClassification.from_pretrained(model_name)
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 
@@ -865,15 +875,20 @@ dummy_input = tokenizer(
     padding="max_length"
 )
 
+input_names = ["input_ids", "attention_mask"]
+if "token_type_ids" in dummy_input:
+    input_names.append("token_type_ids")
+
 torch.onnx.export(
     model,
-    (dummy_input["input_ids"], dummy_input["attention_mask"]),
+    tuple(dummy_input[name] for name in input_names),
     "model.onnx",
-    input_names=["input_ids", "attention_mask"],
+    input_names=input_names,
     output_names=["logits"],
     dynamic_axes={
-        "input_ids": {0: "batch_size"},
-        "attention_mask": {0: "batch_size"},
+        name: {0: "batch_size", 1: "sequence_length"}
+        for name in input_names
+    } | {
         "logits": {0: "batch_size"}
     },
     opset_version=14
@@ -1071,7 +1086,7 @@ Batch size affects both throughput and latency variance:
 
 ```python
 # BAD: Single large batch causes latency spike
-scores = model.predict(1000_pairs)  # All or nothing
+scores = model.predict(pairs[:1000])  # All or nothing
 
 # GOOD: Streaming with early cutoff
 def rerank_with_early_stopping(
@@ -1136,7 +1151,7 @@ class ProductionReranker:
 
     def __init__(
         self,
-        model_name: str = "cross-encoder/ms-marco-MiniLM-L-6-v2",
+        model_name: str = "cross-encoder/ms-marco-MiniLM-L6-v2",
         batch_size: int = 32,
         max_length: int = 512,
         chunk_size: int = 200,
@@ -1342,7 +1357,7 @@ class ProductionReranker:
 # Example usage
 if __name__ == "__main__":
     reranker = ProductionReranker(
-        model_name="cross-encoder/ms-marco-MiniLM-L-6-v2",
+        model_name="cross-encoder/ms-marco-MiniLM-L6-v2",
         batch_size=32
     )
 
