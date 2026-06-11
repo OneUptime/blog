@@ -8,13 +8,13 @@ Description: Learn to build paginated composite aggregations in Elasticsearch fo
 
 ---
 
-Elasticsearch aggregations are powerful for analytics, but standard bucket aggregations have a significant limitation: they return all buckets at once, which becomes problematic when you have millions of unique combinations. Composite aggregations solve this by providing paginated access to aggregation buckets.
+Elasticsearch aggregations are powerful for analytics, but standard bucket aggregations have a significant limitation: they do not provide cursor-style pagination through all buckets, which becomes problematic when you have millions of unique combinations. Composite aggregations solve this by providing paginated access to aggregation buckets.
 
 This guide covers how composite aggregations work, how to paginate through results using `after_key`, and how to combine multiple value sources for complex analytics.
 
 ## What Makes Composite Aggregations Different
 
-Standard aggregations like `terms` or `date_histogram` return all matching buckets in a single response. For high-cardinality fields or cross-product aggregations, this can mean millions of buckets, overwhelming memory and causing timeouts.
+Standard aggregations like `terms` or `date_histogram` build their bucket set for a single response rather than exposing a cursor over every bucket. For high-cardinality fields or cross-product aggregations, trying to retrieve all buckets this way can mean millions of buckets, overwhelming memory and causing timeouts.
 
 Composite aggregations flip this model:
 
@@ -115,6 +115,8 @@ GET /logs/_search
 ```
 
 When `after_key` is absent from the response, you have reached the end of the result set.
+
+Always use the `after_key` returned by Elasticsearch. It is usually the key of the last bucket in the response, but that is not guaranteed.
 
 ```mermaid
 sequenceDiagram
@@ -583,24 +585,55 @@ The `size` parameter controls how many buckets to return per page. Larger sizes 
 
 ### Early Termination
 
-Composite aggregations can use early termination when all sources are sorted by indexed fields. This significantly improves performance for large datasets:
+Composite aggregations can use early termination when the index sort matches a prefix of the composite source order and sort direction. This can significantly improve performance for large datasets:
 
 ```json
+GET /logs/_search
 {
-  "sources": [
-    {
-      "timestamp": {
-        "date_histogram": {
-          "field": "@timestamp",
-          "calendar_interval": "1d"
-        }
+  "size": 0,
+  "track_total_hits": false,
+  "aggs": {
+    "daily_buckets": {
+      "composite": {
+        "size": 1000,
+        "sources": [
+          {
+            "timestamp": {
+              "date_histogram": {
+                "field": "@timestamp",
+                "calendar_interval": "1d"
+              }
+            }
+          }
+        ]
       }
     }
-  ]
+  }
 }
 ```
 
-If `@timestamp` is indexed in sorted order (which is common for time-series data), Elasticsearch can stop scanning early once it fills the requested bucket size.
+With an index sort like this:
+
+```json
+PUT /logs
+{
+  "settings": {
+    "index": {
+      "sort.field": "@timestamp",
+      "sort.order": "asc"
+    }
+  },
+  "mappings": {
+    "properties": {
+      "@timestamp": {
+        "type": "date"
+      }
+    }
+  }
+}
+```
+
+If the index is configured with `index.sort.field` including `@timestamp` and the sort direction matches the composite source, Elasticsearch can stop scanning early once it fills the requested bucket size. Setting `track_total_hits` to `false` also avoids recounting total hits on every page when you do not need that value.
 
 ### Filtering Before Aggregation
 
