@@ -69,7 +69,13 @@ metadata:
   name: {{ .Release.Name }}
 spec:
   replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ .Chart.Name }}
   template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ .Chart.Name }}
     spec:
       {{- with .Values.global.imagePullSecrets }}
       imagePullSecrets:
@@ -152,7 +158,13 @@ metadata:
   name: {{ include "api-service.fullname" . }}
 spec:
   replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: api-service
   template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: api-service
     spec:
       {{- with .Values.global.imagePullSecrets }}
       imagePullSecrets:
@@ -237,10 +249,9 @@ helm install my-release ./my-platform -f staging-values.yaml
 
 ```mermaid
 flowchart LR
-    A["Chart defaults<br/>(lowest)"] --> B["Parent values.yaml"]
-    B --> C["Subchart values.yaml"]
-    C --> D["-f custom-values.yaml"]
-    D --> E["--set flags<br/>(highest)"]
+    A["Subchart values.yaml<br/>(lowest)"] --> B["Parent values.yaml"]
+    B --> C["-f custom-values.yaml"]
+    C --> D["--set flags<br/>(highest)"]
 ```
 
 ## Common Global Value Patterns
@@ -465,7 +476,7 @@ Add schema validation for your globals:
 }
 ```
 
-Helm validates values against this schema during `helm install` and `helm upgrade`.
+Helm validates values against this schema during `helm install`, `helm upgrade`, `helm lint`, and `helm template`.
 
 ## Debugging Global Values
 
@@ -492,7 +503,7 @@ metadata:
   name: debug-globals
 data:
   globals: |
-    {{- .Values.global | toYaml | nindent 4 }}
+{{ .Values.global | toYaml | nindent 4 }}
 ```
 
 ## Best Practices
