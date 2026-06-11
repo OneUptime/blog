@@ -8,21 +8,21 @@ Description: A practical guide to creating and managing Docker volumes for datab
 
 ---
 
-Containers are ephemeral by design. Stop a container and its filesystem vanishes. That works perfectly for stateless web servers but becomes a nightmare the moment your app writes data you actually care about. Databases, file uploads, session stores, and caches all need storage that survives container lifecycles. Docker volumes solve this problem by decoupling data from container lifetimes.
+Containers are ephemeral by design. Remove a container and its writable filesystem layer vanishes. That works perfectly for stateless web servers but becomes a nightmare the moment your app writes data you actually care about. Databases, file uploads, session stores, and caches all need storage that survives container lifecycles. Docker volumes solve this problem by decoupling data from container lifetimes.
 
 ## Why Volumes Beat Bind Mounts for Production
 
-Docker offers two main ways to persist data: bind mounts and volumes. Bind mounts map a host path directly into the container. Volumes are managed by Docker itself and live in a dedicated area on the host filesystem.
+Docker offers two main ways to persist data: bind mounts and volumes. Bind mounts map a host path directly into the container. Default local volumes are managed by Docker itself and live in a dedicated area on the host filesystem.
 
 | Feature | Bind Mounts | Docker Volumes |
 | --- | --- | --- |
 | **Portability** | Tied to host path structure | Works identically across hosts |
-| **Permissions** | Host user/group must match container | Docker manages ownership |
+| **Permissions** | Host user/group must match container | Less tied to host paths, but ownership still matters |
 | **Performance** | Same as host filesystem | Optimized drivers available |
-| **Backup/Restore** | Manual file operations | Built-in volume commands |
-| **Security** | Exposes host filesystem | Isolated from host |
+| **Backup/Restore** | Manual file operations | Docker-managed mount points and helper-container workflows |
+| **Security** | Exposes chosen host paths | Reduces direct host path exposure |
 
-For stateful apps in production, volumes win on every dimension except one: you cannot browse them with your host file manager. That is a feature, not a bug.
+For many stateful apps in production, volumes are the safer default unless you specifically need a host path that operators or other host processes can manage directly.
 
 ## Volume Lifecycle Overview
 
@@ -149,8 +149,6 @@ This Compose file defines a typical web application stack with PostgreSQL and Re
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
-
 services:
   # PostgreSQL database with persistent storage
   db:
@@ -205,7 +203,7 @@ Start the stack and Compose creates the volumes automatically.
 docker compose up -d
 
 # View volume status
-docker volume ls --filter name=myapp
+docker volume ls --filter label=com.docker.compose.project
 ```
 
 ## Volume Drivers for Advanced Storage
@@ -215,8 +213,8 @@ Docker volumes support pluggable drivers that connect to network storage, cloud 
 | Driver | Use Case | Example |
 | --- | --- | --- |
 | **local** | Single-host development, simple production | Default driver |
-| **nfs** | Shared storage across multiple Docker hosts | On-prem file servers |
-| **rexray/ebs** | AWS EBS volumes for EC2 instances | Cloud-native persistence |
+| **local with NFS options** | Shared storage across multiple Docker hosts | On-prem file servers |
+| **EBS volume plugin** | AWS EBS volumes for EC2 instances | Driver name depends on the installed plugin |
 | **portworx** | Multi-host replicated storage | Kubernetes-like HA |
 | **ceph** | Distributed storage clusters | Large-scale deployments |
 
@@ -299,12 +297,13 @@ flowchart TD
 Many official images run as non-root users. Check what user the image expects and set volume permissions accordingly.
 
 ```bash
-# Find out what user the container runs as
-docker run --rm postgres:16 id
-# Output: uid=999(postgres) gid=999(postgres)
+# Find out what UID/GID the image's postgres user uses
+docker run --rm postgres:16 id postgres
+# Output: uid=999(postgres) gid=999(postgres) groups=999(postgres),101(ssl-cert)
 
 # On the host, ensure the volume directory has correct ownership
-# This works for bind mounts; managed volumes handle this automatically
+# This is most common with bind mounts; named volumes can need the same fix
+# if you reuse data created by a different UID/GID
 sudo chown -R 999:999 /path/to/bind/mount
 ```
 
