@@ -200,7 +200,16 @@ class FlagStore {
     }
 
     async getAllFlags(): Promise<FeatureFlag[]> {
-        const keys = await this.redis.keys('flag:*');
+        const keys: string[] = [];
+        const stream = this.redis.scanStream({
+            match: 'flag:*',
+            count: 100
+        });
+
+        for await (const resultKeys of stream) {
+            keys.push(...resultKeys);
+        }
+
         if (keys.length === 0) {
             return [];
         }
@@ -334,11 +343,15 @@ interface RolloutStage {
     healthCheck: () => Promise<boolean>;
 }
 
+interface RolloutFlagService {
+    updatePercentage(flagKey: string, percentage: number): Promise<void>;
+}
+
 class GradualRolloutManager {
-    private flagService: FeatureFlagService;
+    private flagService: RolloutFlagService;
     private schedules: Map<string, RolloutSchedule>;
 
-    constructor(flagService: FeatureFlagService) {
+    constructor(flagService: RolloutFlagService) {
         this.flagService = flagService;
         this.schedules = new Map();
     }
@@ -664,7 +677,7 @@ class KillSwitchManager {
     // Synchronous check for maximum performance
     isKilled(key: string): boolean {
         // Default to killed (safe) if not in cache
-        return this.localCache.get(key) ?? true;
+        return !(this.localCache.get(key) ?? false);
     }
 
     async trigger(key: string, reason: string): Promise<void> {
@@ -710,13 +723,18 @@ class KillSwitchManager {
     private startBackgroundRefresh(): void {
         setInterval(async () => {
             try {
-                const keys = await this.redis.keys('killswitch:*');
+                const stream = this.redis.scanStream({
+                    match: 'killswitch:*',
+                    count: 100
+                });
 
-                for (const redisKey of keys) {
-                    const data = await this.redis.get(redisKey);
-                    if (data) {
-                        const ks = JSON.parse(data) as KillSwitch;
-                        this.localCache.set(ks.key, ks.enabled);
+                for await (const keys of stream) {
+                    for (const redisKey of keys) {
+                        const data = await this.redis.get(redisKey);
+                        if (data) {
+                            const ks = JSON.parse(data) as KillSwitch;
+                            this.localCache.set(ks.key, ks.enabled);
+                        }
                     }
                 }
             } catch (error) {
@@ -738,7 +756,7 @@ class CriticalService {
 
     async processRequest(request: Request): Promise<Response> {
         // Fast synchronous check
-        if (!this.killSwitches.isKilled('service-enabled')) {
+        if (this.killSwitches.isKilled('service-enabled')) {
             return Response.serviceUnavailable(
                 'Service temporarily unavailable'
             );
@@ -772,6 +790,11 @@ interface FlagMetadata {
 class FlagLifecycleManager {
     private store: FlagStore;
     private metadataStore: Map<string, FlagMetadata>;
+
+    constructor(store: FlagStore) {
+        this.store = store;
+        this.metadataStore = new Map();
+    }
 
     async createFlag(
         flag: FeatureFlag,
@@ -1050,7 +1073,11 @@ Test your code with different flag combinations.
 
 ```typescript
 // feature-flag-test-utils.ts
-class TestFeatureFlagService implements FeatureFlagService {
+interface FeatureFlagReader {
+    isEnabled(flagKey: string): Promise<boolean>;
+}
+
+class TestFeatureFlagService implements FeatureFlagReader {
     private overrides: Map<string, boolean>;
 
     constructor() {
@@ -1184,7 +1211,9 @@ class FlagAnalytics {
         return {
             flagKey,
             totalEvaluations,
-            enabledPercentage: (enabledCount / totalEvaluations) * 100,
+            enabledPercentage: totalEvaluations === 0
+                ? 0
+                : (enabledCount / totalEvaluations) * 100,
             uniqueUsers,
             period: { start: startDate, end: endDate }
         };
