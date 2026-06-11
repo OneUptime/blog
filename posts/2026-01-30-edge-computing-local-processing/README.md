@@ -80,9 +80,9 @@ class SensorReading:
 @dataclass
 class FilterConfig:
     """Configuration for threshold-based filtering."""
-    min_value: float          # Readings below this are filtered out
-    max_value: float          # Readings above this are filtered out
-    change_threshold: float   # Minimum change from last reading to pass
+    min_value: float          # Lower bound of normal operating range
+    max_value: float          # Upper bound of normal operating range
+    change_threshold: float   # Minimum change from last processed reading to pass
 
 class ThresholdFilter:
     """
@@ -90,14 +90,14 @@ class ThresholdFilter:
 
     A reading passes the filter if:
     1. It falls outside the normal range (min_value, max_value), OR
-    2. It differs from the last reading by more than change_threshold
+    2. It differs from the last processed reading by more than change_threshold
 
     This captures both anomalies and significant changes.
     """
 
     def __init__(self, config: FilterConfig):
         self.config = config
-        # Track last reading per sensor for change detection
+        # Track last processed reading per sensor for change detection
         self.last_readings: dict[str, float] = {}
 
     def should_process(self, reading: SensorReading) -> bool:
@@ -117,7 +117,7 @@ class ThresholdFilter:
         if reading.value > self.config.max_value:
             return True
 
-        # Check if value changed significantly from last reading
+        # Check if value changed significantly from last processed reading
         # Captures trends even within normal range
         last_value = self.last_readings.get(reading.sensor_id)
         if last_value is not None:
@@ -174,13 +174,10 @@ Prevent processing of duplicate or near-duplicate readings within a time window.
 # Useful when sensors may report the same event repeatedly
 
 from datetime import datetime, timedelta
-from typing import Optional
-from collections import defaultdict
-import hashlib
 
 class DeduplicationFilter:
     """
-    Filters duplicate readings based on content hash and time window.
+    Filters duplicate readings based on sensor ID, value tolerance, and time window.
 
     Two readings are considered duplicates if:
     1. They have the same sensor_id AND
@@ -293,6 +290,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import List, Optional, Dict
 from collections import defaultdict
+import math
 import statistics
 
 @dataclass
@@ -318,8 +316,8 @@ class AggregatedSummary:
             "min": self.min_value,
             "max": self.max_value,
             "avg": round(self.avg_value, 4),
-            "std_dev": round(self.std_dev, 4) if self.std_dev else None,
-            "p95": round(self.percentile_95, 4) if self.percentile_95 else None,
+            "std_dev": round(self.std_dev, 4) if self.std_dev is not None else None,
+            "p95": round(self.percentile_95, 4) if self.percentile_95 is not None else None,
         }
 
 class SlidingWindowAggregator:
@@ -399,7 +397,7 @@ class SlidingWindowAggregator:
         p95 = None
         if count >= 20:
             sorted_values = sorted(values)
-            p95_index = int(count * 0.95)
+            p95_index = math.ceil(count * 0.95) - 1
             p95 = sorted_values[p95_index]
 
         summary = AggregatedSummary(
@@ -432,7 +430,7 @@ class SlidingWindowAggregator:
         return summaries
 
 
-# Example usage demonstrating 1000:1 data reduction
+# Example usage demonstrating time-windowed data reduction
 if __name__ == "__main__":
     import random
 
@@ -861,7 +859,7 @@ class AdaptiveProcessor:
             },
             ResourceLevel.WARNING: {
                 "batch_size": 50,
-                "aggregation_window_seconds": 120,  # Longer windows = less memory
+                "aggregation_window_seconds": 120,  # Longer windows = fewer summaries
                 "min_priority": 3,  # Drop low priority data
                 "processing_interval_ms": 250,  # Slower processing
             },
@@ -993,7 +991,7 @@ class EdgeProcessingPipeline:
         self.aggregation_buffers: Dict[str, List[dict]] = {}
         self.window_starts: Dict[str, datetime] = {}
 
-        # Cloud transmission buffer (priority queue)
+        # Cloud transmission buffer with priority metadata
         self.cloud_buffer: deque = deque(maxlen=max_buffer_size)
 
         # Statistics
@@ -1218,8 +1216,8 @@ class EdgeProcessingPipeline:
         """Add data to cloud transmission buffer."""
         if len(self.cloud_buffer) >= self.max_buffer_size:
             self.stats["dropped_buffer_full"] += 1
-            # Drop lowest priority item if buffer full
-            # In production, use a proper priority queue
+            # Drop the current item if buffer is full.
+            # In production, use a proper priority queue to preserve high-priority data.
             return
 
         self.cloud_buffer.append({
