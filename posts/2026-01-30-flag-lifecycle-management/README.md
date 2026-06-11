@@ -163,10 +163,10 @@ flowchart TD
 
 # A scheduled job that checks for expiring flags and sends notifications
 
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 from dataclasses import dataclass
 from enum import Enum
-from typing import List, Optional
+from typing import List
 import logging
 
 # Configure logging for the expiration checker
@@ -203,7 +203,7 @@ def check_flag_expirations(flags: List[dict]) -> List[ExpirationAlert]:
         List of ExpirationAlert objects for flags that need attention
     """
     alerts = []
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     for flag in flags:
         # Skip flags that are already deprecated or archived
@@ -257,7 +257,7 @@ def auto_deprecate_expired_flags(flags: List[dict]) -> List[str]:
         List of flag IDs that were auto-deprecated
     """
     deprecated_flags = []
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     for flag in flags:
         # Only process active or rolled_out flags
@@ -311,7 +311,7 @@ sequenceDiagram
 // flag-code-scanner.ts
 // Scans repositories for feature flag references to enable safe cleanup
 
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 
 interface FlagReference {
   filePath: string;
@@ -355,12 +355,25 @@ function scanForFlagReferences(
       // Use git grep for efficient searching
       // -n: show line numbers
       // -I: ignore binary files
-      const output = execSync(
-        `git grep -n -I "${pattern}" -- "*.ts" "*.tsx" "*.js" "*.jsx" "*.py"`,
+      const output = execFileSync(
+        'git',
+        [
+          'grep',
+          '-n',
+          '-I',
+          '-F',
+          pattern,
+          '--',
+          '*.ts',
+          '*.tsx',
+          '*.js',
+          '*.jsx',
+          '*.py'
+        ],
         {
           cwd: repoPath,
           encoding: 'utf-8',
-          // Don't throw on no matches (exit code 1)
+          // Capture output and handle no-match status below
           stdio: ['pipe', 'pipe', 'pipe']
         }
       );
@@ -379,9 +392,12 @@ function scanForFlagReferences(
           });
         }
       }
-    } catch (error) {
+    } catch (error: any) {
       // git grep returns exit code 1 when no matches found
-      // This is expected behavior, not an error
+      // This is expected behavior; other exit codes should still fail
+      if (error.status !== 1) {
+        throw error;
+      }
     }
   }
 
@@ -563,9 +579,8 @@ Monitor flag usage to identify candidates for cleanup.
 # Collect and analyze metrics about flag usage patterns
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
-from typing import Dict, List
-from collections import defaultdict
+from datetime import datetime, timezone
+from typing import Any, Dict, List
 
 
 @dataclass
@@ -579,7 +594,7 @@ class FlagMetrics:
     days_since_last_change: int    # Days since flag configuration changed
 
 
-def analyze_flag_health(metrics: FlagMetrics) -> Dict[str, any]:
+def analyze_flag_health(metrics: FlagMetrics) -> Dict[str, Any]:
     """
     Analyze flag metrics to determine if cleanup is needed.
 
@@ -603,7 +618,7 @@ def analyze_flag_health(metrics: FlagMetrics) -> Dict[str, any]:
         )
 
     # Flag with no recent evaluations might be dead
-    days_inactive = (datetime.utcnow() - metrics.last_evaluated).days
+    days_inactive = (datetime.now(timezone.utc) - metrics.last_evaluated).days
     if days_inactive > 30:
         issues.append(f'Flag has not been evaluated in {days_inactive} days')
         recommendations.append(
@@ -742,7 +757,7 @@ on:
     branches: [main]
   # Run weekly to catch aging flags
   schedule:
-    - cron: '0 9 * * 1'  # Every Monday at 9 AM
+    - cron: '0 9 * * 1'  # Every Monday at 9 AM UTC
 
 jobs:
   flag-check:
