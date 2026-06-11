@@ -38,7 +38,7 @@ OpenTelemetry Baggage solves this problem by providing a standardized way to pro
 
 ## 1. What is OpenTelemetry Baggage?
 
-Baggage is a set of key-value pairs that travels with the trace context across service boundaries. Unlike span attributes (which are local to a single span), baggage is propagated to all downstream services automatically when you use proper context propagation.
+Baggage is a set of key-value pairs that travels with the trace context across service boundaries. Unlike span attributes (which are local to a single span), baggage is propagated to downstream services when you use proper context propagation.
 
 | Concept | Description |
 |---------|-------------|
@@ -75,7 +75,7 @@ A common question is: "Why not just use span attributes?" The key difference is 
 
 | Feature | Span Attributes | Baggage |
 |---------|-----------------|---------|
-| Scope | Single span only | Entire trace across services |
+| Scope | Single span only | Request/workflow context across services |
 | Propagation | Not propagated | Automatically propagated via headers |
 | Storage | Stored in span data | Stored in context, must be explicitly added to spans |
 | Use Case | Describe local operation | Share context across services |
@@ -150,8 +150,8 @@ baggage: key1=value1,key2=value2;metadata,key3=value3
 ```
 
 Each entry can have:
-- **Key**: URL-encoded string (no spaces, special chars encoded)
-- **Value**: URL-encoded string
+- **Key**: A valid HTTP token (no spaces; use simple ASCII names for compatibility)
+- **Value**: String value; characters outside the allowed baggage value range are percent-encoded in the header
 - **Properties** (optional): Semicolon-separated metadata like `;priority=high`
 
 ---
@@ -164,8 +164,10 @@ First, install the necessary packages:
 npm install @opentelemetry/api \
             @opentelemetry/sdk-node \
             @opentelemetry/auto-instrumentations-node \
-            @opentelemetry/exporter-otlp-http \
-            @opentelemetry/core
+            @opentelemetry/exporter-trace-otlp-http \
+            @opentelemetry/core \
+            @opentelemetry/resources \
+            @opentelemetry/sdk-trace-base
 ```
 
 ### Basic Telemetry Setup with Baggage Propagation
@@ -174,8 +176,8 @@ npm install @opentelemetry/api \
 // telemetry.ts
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
-import { OTLPTraceExporter } from '@opentelemetry/exporter-otlp-http';
-import { Resource } from '@opentelemetry/resources';
+import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 import {
   CompositePropagator,
   W3CTraceContextPropagator,
@@ -201,15 +203,15 @@ const traceExporter = new OTLPTraceExporter({
 
 export const sdk = new NodeSDK({
   traceExporter,
-  resource: new Resource({
+  resource: resourceFromAttributes({
     'service.name': 'my-service',
     'service.version': '1.0.0',
   }),
   instrumentations: [getNodeAutoInstrumentations()],
 });
 
-export async function startTelemetry() {
-  await sdk.start();
+export function startTelemetry() {
+  sdk.start();
   console.log('OpenTelemetry initialized with baggage propagation');
 }
 ```
@@ -226,7 +228,6 @@ import express from 'express';
 import {
   context,
   propagation,
-  baggage,
   trace
 } from '@opentelemetry/api';
 import fetch from 'node-fetch';
@@ -236,9 +237,9 @@ app.use(express.json());
 
 app.post('/checkout', async (req, res) => {
   // Step 1: Create baggage entries
-  const bag = baggage.setBaggage(
+  const bag = propagation.setBaggage(
     context.active(),
-    baggage.createBaggage({
+    propagation.createBaggage({
       'user.id': { value: req.body.userId || 'anonymous' },
       'user.tier': { value: req.body.tier || 'free' },
       'tenant.id': { value: req.headers['x-tenant-id'] as string || 'default' },
@@ -283,7 +284,6 @@ import express from 'express';
 import {
   context,
   propagation,
-  baggage,
   trace
 } from '@opentelemetry/api';
 import fetch from 'node-fetch';
@@ -297,9 +297,8 @@ app.use((req, res, next) => {
   const extractedContext = propagation.extract(context.active(), req.headers);
 
   // Continue with the extracted context
-  context.with(extractedContext, () => {
-    next();
-  });
+  const boundNext = context.bind(extractedContext, next);
+  boundNext();
 });
 
 app.post('/orders', async (req, res) => {
@@ -316,9 +315,9 @@ app.post('/orders', async (req, res) => {
   const priority = userTier === 'premium' ? 'high' : 'normal';
 
   // Step 3: Add new baggage entries for downstream services
-  const extendedBaggage = baggage.setBaggage(
+  const extendedBaggage = propagation.setBaggage(
     context.active(),
-    baggage.createBaggage({
+    propagation.createBaggage({
       ...Object.fromEntries(
         currentBaggage?.getAllEntries().map(([k, v]) => [k, v]) || []
       ),
@@ -358,7 +357,7 @@ For gRPC services, baggage propagation works through metadata:
 ```typescript
 // grpc-client.ts
 import * as grpc from '@grpc/grpc-js';
-import { context, propagation, baggage } from '@opentelemetry/api';
+import { context, propagation } from '@opentelemetry/api';
 
 function createGrpcMetadataWithBaggage(): grpc.Metadata {
   const metadata = new grpc.Metadata();
@@ -377,9 +376,9 @@ function createGrpcMetadataWithBaggage(): grpc.Metadata {
 
 async function callInventoryService(sku: string, quantity: number) {
   // Set baggage before making the call
-  const ctx = baggage.setBaggage(
+  const ctx = propagation.setBaggage(
     context.active(),
-    baggage.createBaggage({
+    propagation.createBaggage({
       'inventory.check_type': { value: 'reservation' },
       'warehouse.region': { value: 'us-west-2' },
     })
@@ -405,7 +404,7 @@ async function callInventoryService(sku: string, quantity: number) {
 ```typescript
 // grpc-server.ts
 import * as grpc from '@grpc/grpc-js';
-import { context, propagation, baggage } from '@opentelemetry/api';
+import { context, propagation } from '@opentelemetry/api';
 
 function extractContextFromMetadata(metadata: grpc.Metadata): any {
   const carrier: Record<string, string> = {};
@@ -451,16 +450,16 @@ Message queues require special handling since baggage must be serialized into me
 ```typescript
 // kafka-producer.ts
 import { Kafka } from 'kafkajs';
-import { context, propagation, baggage } from '@opentelemetry/api';
+import { context, propagation } from '@opentelemetry/api';
 
 const kafka = new Kafka({ brokers: ['localhost:9092'] });
 const producer = kafka.producer();
 
 async function publishOrderEvent(order: any) {
   // Set baggage for the message
-  const ctx = baggage.setBaggage(
+  const ctx = propagation.setBaggage(
     context.active(),
-    baggage.createBaggage({
+    propagation.createBaggage({
       'order.source': { value: 'checkout-flow' },
       'user.segment': { value: 'returning-customer' },
     })
@@ -496,7 +495,7 @@ async function publishOrderEvent(order: any) {
 ```typescript
 // kafka-consumer.ts
 import { Kafka } from 'kafkajs';
-import { context, propagation, baggage, trace } from '@opentelemetry/api';
+import { context, propagation, trace } from '@opentelemetry/api';
 
 const kafka = new Kafka({ brokers: ['localhost:9092'] });
 const consumer = kafka.consumer({ groupId: 'order-processor' });
@@ -553,7 +552,7 @@ Here are utility functions for working with baggage:
 
 ```typescript
 // baggage-utils.ts
-import { context, propagation, baggage, Baggage, BaggageEntry } from '@opentelemetry/api';
+import { context, propagation, type Baggage, type BaggageEntry } from '@opentelemetry/api';
 
 /**
  * Get a single baggage value
@@ -599,9 +598,9 @@ export function setBaggageEntries(
     existingEntries[key] = { value };
   }
 
-  return baggage.setBaggage(
+  return propagation.setBaggage(
     context.active(),
-    baggage.createBaggage(existingEntries)
+    propagation.createBaggage(existingEntries)
   );
 }
 
@@ -615,7 +614,7 @@ export function removeBaggageEntry(key: string): ReturnType<typeof context.activ
     return context.active();
   }
 
-  return baggage.setBaggage(
+  return propagation.setBaggage(
     context.active(),
     currentBaggage.removeEntry(key)
   );
@@ -701,7 +700,7 @@ import {
   ReadableSpan,
   Span
 } from '@opentelemetry/sdk-trace-base';
-import { context, propagation } from '@opentelemetry/api';
+import { propagation, type Context } from '@opentelemetry/api';
 
 /**
  * Custom span processor that automatically adds baggage to every span
@@ -715,8 +714,8 @@ export class BaggageSpanProcessor implements SpanProcessor {
       : null;
   }
 
-  onStart(span: Span): void {
-    const currentBaggage = propagation.getBaggage(context.active());
+  onStart(span: Span, parentContext: Context): void {
+    const currentBaggage = propagation.getBaggage(parentContext);
 
     if (currentBaggage) {
       for (const [key, entry] of currentBaggage.getAllEntries()) {
@@ -744,17 +743,18 @@ Register the processor in your telemetry setup:
 
 ```typescript
 // telemetry.ts
-import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node';
+import { NodeSDK } from '@opentelemetry/sdk-node';
 import { BaggageSpanProcessor } from './baggage-span-processor';
 
-const provider = new NodeTracerProvider();
+const sdk = new NodeSDK({
+  spanProcessors: [
+    new BaggageSpanProcessor({
+      allowedKeys: ['user.id', 'tenant.id', 'user.tier', 'request.origin'],
+    }),
+  ],
+});
 
-// Add the baggage processor - only copy specific keys
-provider.addSpanProcessor(new BaggageSpanProcessor({
-  allowedKeys: ['user.id', 'tenant.id', 'user.tier', 'request.origin']
-}));
-
-provider.register();
+sdk.start();
 ```
 
 ---
@@ -812,7 +812,7 @@ const goodBaggage = {
 
 ```typescript
 // baggage-sanitizer.ts
-import { context, propagation, baggage } from '@opentelemetry/api';
+import { context, propagation } from '@opentelemetry/api';
 import { RequestHandler } from 'express';
 
 const ALLOWED_BAGGAGE_KEYS = new Set([
@@ -865,14 +865,13 @@ export const sanitizeBaggageMiddleware: RequestHandler = (req, res, next) => {
   }
 
   // Replace context with sanitized baggage
-  const sanitizedContext = baggage.setBaggage(
+  const sanitizedContext = propagation.setBaggage(
     context.active(),
-    baggage.createBaggage(sanitizedEntries)
+    propagation.createBaggage(sanitizedEntries)
   );
 
-  context.with(sanitizedContext, () => {
-    next();
-  });
+  const boundNext = context.bind(sanitizedContext, next);
+  boundNext();
 };
 ```
 
@@ -880,14 +879,14 @@ export const sanitizeBaggageMiddleware: RequestHandler = (req, res, next) => {
 
 ```typescript
 // external-api-client.ts
-import { context, propagation, baggage } from '@opentelemetry/api';
+import { context, propagation } from '@opentelemetry/api';
 import fetch from 'node-fetch';
 
 async function callExternalApi(url: string, data: any) {
   // Create a context with empty baggage for external calls
-  const emptyBaggageContext = baggage.setBaggage(
+  const emptyBaggageContext = propagation.setBaggage(
     context.active(),
-    baggage.createBaggage({})
+    propagation.createBaggage({})
   );
 
   return context.with(emptyBaggageContext, async () => {
@@ -895,7 +894,7 @@ async function callExternalApi(url: string, data: any) {
       'Content-Type': 'application/json',
     };
 
-    // Only inject trace context, baggage will be empty
+    // Only inject trace context; baggage will be empty
     propagation.inject(context.active(), headers);
 
     return fetch(url, {
@@ -916,9 +915,9 @@ async function callExternalApi(url: string, data: any) {
 ```mermaid
 flowchart LR
     subgraph "Baggage Overhead"
-        A["Serialization<br/>~0.1ms per request"]
-        B["Header Size<br/>~200-500 bytes typical"]
-        C["Memory<br/>~1KB per context"]
+        A["Serialization<br/>small per-request cost"]
+        B["Header Size<br/>depends on keys and values"]
+        C["Memory<br/>context allocation"]
     end
 
     subgraph "Impact Factors"
@@ -1054,7 +1053,8 @@ if (isFeatureEnabled('new_checkout_flow')) {
 
 ```typescript
 // sampling-decision.ts
-import { withBaggage, getBaggageValue } from './baggage-utils';
+import { setBaggageEntries } from './baggage-utils';
+import { context } from '@opentelemetry/api';
 
 // At the edge - make sampling decision
 function decideSampling(req: Request): string {
@@ -1075,9 +1075,9 @@ function decideSampling(req: Request): string {
 app.use((req, res, next) => {
   const samplingDecision = decideSampling(req);
 
-  withBaggage({ 'sampling.decision': samplingDecision }, () => {
-    next();
-  });
+  const ctx = setBaggageEntries({ 'sampling.decision': samplingDecision });
+  const boundNext = context.bind(ctx, next);
+  boundNext();
 });
 
 // In collector tail sampling config
@@ -1159,7 +1159,7 @@ export function debugBaggageMiddleware(req: any, res: any, next: any) {
 
   const extractedContext = propagation.extract(context.active(), req.headers);
 
-  context.with(extractedContext, () => {
+  const boundNext = context.bind(extractedContext, () => {
     const currentBaggage = propagation.getBaggage(context.active());
 
     if (currentBaggage) {
@@ -1173,6 +1173,7 @@ export function debugBaggageMiddleware(req: any, res: any, next: any) {
 
     next();
   });
+  boundNext();
 }
 
 // Debug outbound calls
@@ -1189,11 +1190,8 @@ export function debugOutboundHeaders(headers: Record<string, string>) {
 // validate-baggage-setup.ts
 import {
   propagation,
-  context,
-  baggage,
-  trace
+  context
 } from '@opentelemetry/api';
-import { W3CBaggagePropagator, W3CTraceContextPropagator } from '@opentelemetry/core';
 
 function validateBaggageSetup() {
   console.log('Validating OpenTelemetry Baggage Setup...\n');
@@ -1202,11 +1200,11 @@ function validateBaggageSetup() {
   const testHeaders: Record<string, string> = {};
 
   // Create test baggage
-  const testBaggage = baggage.createBaggage({
+  const testBaggage = propagation.createBaggage({
     'test.key': { value: 'test_value' },
   });
 
-  const ctxWithBaggage = baggage.setBaggage(context.active(), testBaggage);
+  const ctxWithBaggage = propagation.setBaggage(context.active(), testBaggage);
 
   // Test injection
   context.with(ctxWithBaggage, () => {
@@ -1252,7 +1250,7 @@ Here is a complete example showing baggage propagation across three services.
 import express from 'express';
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
-import { OTLPTraceExporter } from '@opentelemetry/exporter-otlp-http';
+import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import {
   CompositePropagator,
   W3CTraceContextPropagator,
@@ -1261,7 +1259,6 @@ import {
 import {
   context,
   propagation,
-  baggage,
   trace
 } from '@opentelemetry/api';
 import fetch from 'node-fetch';
@@ -1288,7 +1285,7 @@ app.use(express.json());
 
 app.post('/api/orders', async (req, res) => {
   // Create initial baggage from request context
-  const initialBaggage = baggage.createBaggage({
+  const initialBaggage = propagation.createBaggage({
     'user.id': { value: req.body.userId || 'anonymous' },
     'user.tier': { value: req.headers['x-user-tier'] as string || 'free' },
     'tenant.id': { value: req.headers['x-tenant-id'] as string || 'default' },
@@ -1296,7 +1293,7 @@ app.post('/api/orders', async (req, res) => {
     'request.origin': { value: 'api-gateway' },
   });
 
-  const ctxWithBaggage = baggage.setBaggage(context.active(), initialBaggage);
+  const ctxWithBaggage = propagation.setBaggage(context.active(), initialBaggage);
 
   try {
     const result = await context.with(ctxWithBaggage, async () => {
@@ -1339,7 +1336,7 @@ app.listen(3000, () => {
 import express from 'express';
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
-import { OTLPTraceExporter } from '@opentelemetry/exporter-otlp-http';
+import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import {
   CompositePropagator,
   W3CTraceContextPropagator,
@@ -1348,7 +1345,6 @@ import {
 import {
   context,
   propagation,
-  baggage,
   trace
 } from '@opentelemetry/api';
 import fetch from 'node-fetch';
@@ -1376,7 +1372,8 @@ app.use(express.json());
 // Extract context middleware
 app.use((req, res, next) => {
   const extractedContext = propagation.extract(context.active(), req.headers);
-  context.with(extractedContext, () => next());
+  const boundNext = context.bind(extractedContext, next);
+  boundNext();
 });
 
 app.post('/orders', async (req, res) => {
@@ -1401,7 +1398,7 @@ app.post('/orders', async (req, res) => {
   const orderId = `ord_${Date.now()}`;
   const priority = userTier === 'premium' ? 'high' : 'normal';
 
-  const extendedBaggage = baggage.createBaggage({
+  const extendedBaggage = propagation.createBaggage({
     ...Object.fromEntries(
       currentBaggage?.getAllEntries().map(([k, v]) => [k, v]) || []
     ),
@@ -1409,7 +1406,7 @@ app.post('/orders', async (req, res) => {
     'order.priority': { value: priority },
   });
 
-  const ctxWithExtendedBaggage = baggage.setBaggage(context.active(), extendedBaggage);
+  const ctxWithExtendedBaggage = propagation.setBaggage(context.active(), extendedBaggage);
 
   try {
     const paymentResult = await context.with(ctxWithExtendedBaggage, async () => {
@@ -1454,7 +1451,7 @@ app.listen(3001, () => {
 import express from 'express';
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
-import { OTLPTraceExporter } from '@opentelemetry/exporter-otlp-http';
+import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import {
   CompositePropagator,
   W3CTraceContextPropagator,
@@ -1489,7 +1486,8 @@ app.use(express.json());
 // Extract context middleware
 app.use((req, res, next) => {
   const extractedContext = propagation.extract(context.active(), req.headers);
-  context.with(extractedContext, () => next());
+  const boundNext = context.bind(extractedContext, next);
+  boundNext();
 });
 
 app.post('/payments', async (req, res) => {
@@ -1589,7 +1587,7 @@ Payment processing with full context:
 
 ```typescript
 // Setting baggage
-const ctx = baggage.setBaggage(context.active(), baggage.createBaggage({
+const ctx = propagation.setBaggage(context.active(), propagation.createBaggage({
   'key': { value: 'value' }
 }));
 
