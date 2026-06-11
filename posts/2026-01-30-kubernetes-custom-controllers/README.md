@@ -47,6 +47,7 @@ go mod init github.com/example/webapp-controller
 # Install controller-runtime and client-go
 
 go get sigs.k8s.io/controller-runtime@v0.17.0
+go get k8s.io/api@v0.29.0
 go get k8s.io/client-go@v0.29.0
 go get k8s.io/apimachinery@v0.29.0
 ```
@@ -61,6 +62,14 @@ package v1
 
 import (
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+    "k8s.io/apimachinery/pkg/runtime/schema"
+    "sigs.k8s.io/controller-runtime/pkg/scheme"
+)
+
+var (
+    GroupVersion = schema.GroupVersion{Group: "webapp.example.com", Version: "v1"}
+    SchemeBuilder = &scheme.Builder{GroupVersion: GroupVersion}
+    AddToScheme = SchemeBuilder.AddToScheme
 )
 
 // WebAppSpec defines the desired state of WebApp
@@ -150,12 +159,21 @@ import (
     appsv1 "k8s.io/api/apps/v1"
     corev1 "k8s.io/api/core/v1"
     "k8s.io/apimachinery/pkg/api/errors"
+    "k8s.io/apimachinery/pkg/api/resource"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/apimachinery/pkg/runtime"
     "k8s.io/apimachinery/pkg/types"
+    "k8s.io/apimachinery/pkg/util/intstr"
+    "k8s.io/client-go/util/workqueue"
+    "k8s.io/utils/ptr"
     ctrl "sigs.k8s.io/controller-runtime"
+    "sigs.k8s.io/controller-runtime/pkg/builder"
     "sigs.k8s.io/controller-runtime/pkg/client"
+    "sigs.k8s.io/controller-runtime/pkg/client/apiutil"
+    "sigs.k8s.io/controller-runtime/pkg/controller"
+    "sigs.k8s.io/controller-runtime/pkg/handler"
     "sigs.k8s.io/controller-runtime/pkg/log"
+    "sigs.k8s.io/controller-runtime/pkg/predicate"
 
     webappv1 "github.com/example/webapp-controller/api/v1"
 )
@@ -385,7 +403,7 @@ func (r *WebAppReconciler) buildDeployment(webapp *webappv1.WebApp) *appsv1.Depl
                             ProbeHandler: corev1.ProbeHandler{
                                 HTTPGet: &corev1.HTTPGetAction{
                                     Path: "/healthz",
-                                    Port: intstr.FromInt(int(webapp.Spec.Port)),
+                                    Port: intstr.FromInt32(webapp.Spec.Port),
                                 },
                             },
                             InitialDelaySeconds: 15,
@@ -395,7 +413,7 @@ func (r *WebAppReconciler) buildDeployment(webapp *webappv1.WebApp) *appsv1.Depl
                             ProbeHandler: corev1.ProbeHandler{
                                 HTTPGet: &corev1.HTTPGetAction{
                                     Path: "/readyz",
-                                    Port: intstr.FromInt(int(webapp.Spec.Port)),
+                                    Port: intstr.FromInt32(webapp.Spec.Port),
                                 },
                             },
                             InitialDelaySeconds: 5,
@@ -481,8 +499,28 @@ func (r *WebAppReconciler) reconcileService(ctx context.Context, webapp *webappv
         return fmt.Errorf("failed to get Service: %w", err)
     }
 
-    // Services are generally immutable, so we skip updates
-    // For port changes, you would need to delete and recreate
+    expected := r.buildService(webapp)
+    needsUpdate := false
+
+    if !mapsEqual(service.Spec.Selector, expected.Spec.Selector) {
+        service.Spec.Selector = expected.Spec.Selector
+        needsUpdate = true
+    }
+
+    if len(service.Spec.Ports) != 1 ||
+        service.Spec.Ports[0].Port != expected.Spec.Ports[0].Port ||
+        service.Spec.Ports[0].TargetPort != expected.Spec.Ports[0].TargetPort ||
+        service.Spec.Ports[0].Protocol != expected.Spec.Ports[0].Protocol ||
+        service.Spec.Ports[0].Name != expected.Spec.Ports[0].Name {
+        service.Spec.Ports = expected.Spec.Ports
+        needsUpdate = true
+    }
+
+    if needsUpdate {
+        logger.Info("Updating Service", "name", service.Name)
+        return r.Update(ctx, service)
+    }
+
     return nil
 }
 
@@ -498,7 +536,7 @@ func (r *WebAppReconciler) buildService(webapp *webappv1.WebApp) *corev1.Service
             Selector: labelsForWebApp(webapp),
             Ports: []corev1.ServicePort{{
                 Port:       80,
-                TargetPort: intstr.FromInt(int(webapp.Spec.Port)),
+                TargetPort: intstr.FromInt32(webapp.Spec.Port),
                 Protocol:   corev1.ProtocolTCP,
                 Name:       "http",
             }},
@@ -529,8 +567,8 @@ func setOwnerReference(owner, child metav1.Object, scheme *runtime.Scheme) error
         Kind:               gvk.Kind,
         Name:               owner.GetName(),
         UID:                owner.GetUID(),
-        BlockOwnerDeletion: pointer.Bool(true),
-        Controller:         pointer.Bool(true),
+        BlockOwnerDeletion: ptr.To(true),
+        Controller:         ptr.To(true),
     }
 
     owners := child.GetOwnerReferences()
@@ -689,8 +727,8 @@ The controller needs to watch for changes to both the primary resource and any o
 // This configures which resources the controller watches
 func (r *WebAppReconciler) SetupWithManager(mgr ctrl.Manager) error {
     return ctrl.NewControllerManagedBy(mgr).
-        // Watch the primary resource
-        For(&webappv1.WebApp{}).
+        // Watch the primary resource and ignore status-only updates
+        For(&webappv1.WebApp{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
         // Watch owned Deployments and trigger reconciliation for the owner
         Owns(&appsv1.Deployment{}).
         // Watch owned Services
@@ -891,6 +929,7 @@ func TestWebAppReconciler_Reconcile(t *testing.T) {
     client := fake.NewClientBuilder().
         WithScheme(scheme).
         WithObjects(webapp).
+        WithStatusSubresource(webapp).
         Build()
 
     // Create the reconciler
@@ -987,6 +1026,9 @@ import (
     . "github.com/onsi/gomega"
     "k8s.io/client-go/kubernetes/scheme"
     "k8s.io/client-go/rest"
+    appsv1 "k8s.io/api/apps/v1"
+    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+    "k8s.io/apimachinery/pkg/types"
     ctrl "sigs.k8s.io/controller-runtime"
     "sigs.k8s.io/controller-runtime/pkg/client"
     "sigs.k8s.io/controller-runtime/pkg/envtest"
@@ -1173,7 +1215,7 @@ rules:
 
 3. **Missing RBAC permissions** - Controllers need explicit permissions for every API operation.
 
-4. **Infinite reconciliation loops** - Avoid triggering reconciliation from status updates by using the status subresource.
+4. **Infinite reconciliation loops** - Avoid triggering reconciliation from status-only updates by using the status subresource together with predicates such as `GenerationChangedPredicate`.
 
 ## Summary
 
