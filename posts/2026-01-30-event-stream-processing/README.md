@@ -101,6 +101,7 @@ services:
       - "2181:2181"
 
   kafka:
+    container_name: kafka
     image: confluentinc/cp-kafka:7.5.0
     depends_on:
       - zookeeper
@@ -136,6 +137,7 @@ The following producer implementation demonstrates how to publish events with pr
 
 ```javascript
 // producer.js
+const crypto = require('node:crypto');
 const { Kafka, Partitioners } = require('kafkajs');
 
 // Initialize Kafka client with broker connection
@@ -225,7 +227,7 @@ const kafka = new Kafka({
   brokers: ['localhost:9092']
 });
 
-// Consumer group ensures each event is processed once
+// Consumer group coordinates partition assignment across processors
 const consumer = kafka.consumer({
   groupId: 'event-processors',
   // Start from earliest unprocessed event on new consumer
@@ -277,7 +279,7 @@ async function startConsumer() {
         try {
           await handler(event);
         } catch (error) {
-          // Log error but don't crash - implement retry logic
+          // Route failed events before allowing this offset to be committed
           console.error(`Handler failed for ${event.type}:`, error);
           await handleProcessingError(event, error);
         }
@@ -489,7 +491,7 @@ For detailed monitoring with OpenTelemetry, see our guide on [traces and spans](
 
 When deploying event stream processing to production, keep these factors in mind:
 
-**Exactly-Once Processing**: Kafka supports exactly-once semantics with transactional producers and idempotent consumers. Enable these for financial or critical data.
+**Exactly-Once Processing**: Kafka supports exactly-once semantics for read-process-write pipelines with idempotent producers, transactions, and committed offsets. Enable these patterns for financial or critical data, and keep external side effects idempotent.
 
 **Schema Evolution**: Use a schema registry to manage event schema changes without breaking consumers. Avro or Protocol Buffers provide better forward/backward compatibility than JSON.
 
