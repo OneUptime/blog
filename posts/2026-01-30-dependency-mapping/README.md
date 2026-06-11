@@ -106,21 +106,34 @@ interface Dependency {
 
 function extractFromKubernetes(manifests: KubeManifest[]): Dependency[] {
   const deps: Dependency[] = [];
+  const workloadKinds = ['Deployment', 'StatefulSet', 'DaemonSet', 'Job', 'CronJob'];
 
   for (const manifest of manifests) {
-    if (manifest.kind === 'Service') {
-      // Extract service name
-      const serviceName = manifest.metadata.name;
+    if (workloadKinds.includes(manifest.kind)) {
+      // Extract workload name
+      const workloadName = manifest.metadata.name;
 
       // Find ConfigMaps/Secrets it references
-      const envVars = manifest.spec?.template?.spec?.containers
+      const podSpec = manifest.kind === 'CronJob'
+        ? manifest.spec?.jobTemplate?.spec?.template?.spec
+        : manifest.spec?.template?.spec;
+      const envVars = podSpec?.containers
         ?.flatMap(c => c.env || []) || [];
 
       for (const env of envVars) {
         if (env.valueFrom?.configMapKeyRef) {
           deps.push({
-            source: serviceName,
+            source: workloadName,
             target: `configmap/${env.valueFrom.configMapKeyRef.name}`,
+            type: 'import',
+            file: manifest.sourceFile,
+            line: manifest.sourceLine
+          });
+        }
+        if (env.valueFrom?.secretKeyRef) {
+          deps.push({
+            source: workloadName,
+            target: `secret/${env.valueFrom.secretKeyRef.name}`,
             type: 'import',
             file: manifest.sourceFile,
             line: manifest.sourceLine
@@ -1097,6 +1110,7 @@ import {
   SpanProcessor,
   ReadableSpan
 } from '@opentelemetry/sdk-trace-base';
+import { Context, Span, SpanKind } from '@opentelemetry/api';
 
 interface ExtractedDependency {
   source: string;
@@ -1114,7 +1128,7 @@ class DependencyExtractorProcessor implements SpanProcessor {
     setInterval(() => this.flush(), this.flushInterval);
   }
 
-  onStart(): void {
+  onStart(_span: Span, _parentContext: Context): void {
     // No action needed on span start
   }
 
@@ -1132,8 +1146,8 @@ class DependencyExtractorProcessor implements SpanProcessor {
     const attrs = span.attributes;
 
     // Extract HTTP client calls
-    if (span.kind === 2 && attrs['http.url']) { // SpanKind.CLIENT = 2
-      const url = new URL(attrs['http.url'] as string);
+    if (span.kind === SpanKind.CLIENT && attrs['url.full']) {
+      const url = new URL(attrs['url.full'] as string);
       const source = span.resource.attributes['service.name'] as string;
       const target = this.resolveServiceFromHost(url.hostname);
 
@@ -1142,23 +1156,23 @@ class DependencyExtractorProcessor implements SpanProcessor {
           source,
           target,
           protocol: 'http',
-          timestamp: new Date(span.startTime[0] * 1000)
+          timestamp: new Date(span.startTime[0] * 1000 + span.startTime[1] / 1e6)
         };
       }
     }
 
     // Extract database calls
-    if (attrs['db.system']) {
+    if (attrs['db.system.name']) {
       const source = span.resource.attributes['service.name'] as string;
-      const dbName = attrs['db.name'] as string;
-      const dbSystem = attrs['db.system'] as string;
+      const dbName = attrs['db.namespace'] as string;
+      const dbSystem = attrs['db.system.name'] as string;
 
       if (source && dbName) {
         return {
           source,
           target: `${dbSystem}:${dbName}`,
           protocol: dbSystem,
-          timestamp: new Date(span.startTime[0] * 1000)
+          timestamp: new Date(span.startTime[0] * 1000 + span.startTime[1] / 1e6)
         };
       }
     }
@@ -1166,7 +1180,7 @@ class DependencyExtractorProcessor implements SpanProcessor {
     // Extract messaging calls
     if (attrs['messaging.system']) {
       const source = span.resource.attributes['service.name'] as string;
-      const destination = attrs['messaging.destination'] as string;
+      const destination = attrs['messaging.destination.name'] as string;
       const system = attrs['messaging.system'] as string;
 
       if (source && destination) {
@@ -1174,7 +1188,7 @@ class DependencyExtractorProcessor implements SpanProcessor {
           source,
           target: `${system}:${destination}`,
           protocol: system,
-          timestamp: new Date(span.startTime[0] * 1000)
+          timestamp: new Date(span.startTime[0] * 1000 + span.startTime[1] / 1e6)
         };
       }
     }
@@ -1216,6 +1230,7 @@ class DependencyExtractorProcessor implements SpanProcessor {
 import express from 'express';
 
 const app = express();
+app.use(express.json());
 
 // Get all dependencies for a service
 app.get('/api/services/:serviceId/dependencies', async (req, res) => {
