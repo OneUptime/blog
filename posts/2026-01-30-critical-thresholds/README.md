@@ -39,7 +39,7 @@ flowchart TD
 
 ## Immediate Action Requirements
 
-Critical thresholds must trigger automated responses. Human reaction time is measured in minutes; systems can respond in seconds. Design your critical alerts to kick off immediate mitigations.
+Critical thresholds should trigger pre-approved automated responses when safe. Human reaction time is measured in minutes; systems can respond in seconds. Design your critical alerts to kick off immediate mitigations for actions that are well understood and reversible.
 
 ### Automated Response Architecture
 
@@ -70,7 +70,7 @@ Here is a practical implementation of automated response handlers.
 
 ```typescript
 // critical-alert-handler.ts
-import { AlertManager, AlertSeverity } from './alerting';
+import { AlertManager } from './alerting';
 import { ServiceOrchestrator } from './orchestrator';
 import { Pager } from './pager';
 
@@ -462,7 +462,7 @@ export class SLAThresholdManager {
     }
 
     // Fast burn rate warrants tighter thresholds
-    if (burnRate > 0.5) {  // More than 30 minutes per hour
+    if (burnRate > 0.5) {  // More than 30 seconds per hour
       return {
         errorRateThreshold: 0.01,  // 1%
         latencyThresholdMs: 2000,
@@ -496,7 +496,7 @@ console.log(`Recommendation: ${status.thresholdRecommendation.reason}`);
 
 ## Automated Responses
 
-Critical thresholds should trigger automated remediation before humans even see the alert. The goal is to buy time, not to solve the problem completely.
+Critical thresholds should trigger safe automated remediation as soon as the alert fires. The goal is to buy time, not to solve the problem completely.
 
 ### Response Automation Flow
 
@@ -654,10 +654,27 @@ export class ResponseOrchestrator {
       // If restart doesn't help within 2 minutes, failover
       const healthCheckDelay = 120000;
       setTimeout(async () => {
-        const isHealthy = await this.k8s.checkServiceHealth(service);
-        if (!isHealthy) {
-          await this.traffic.failoverToSecondary(service);
-          logger.warn('Initiated failover after restart failed', { service });
+        try {
+          const isHealthy = await this.k8s.checkServiceHealth(service);
+          if (!isHealthy) {
+            await this.traffic.failoverToSecondary(service);
+
+            this.responseHistory.push({
+              action: 'failover',
+              success: true,
+              details: `Failed over ${service} to secondary after restart did not restore health`,
+              timestamp: new Date()
+            });
+
+            logger.warn('Initiated failover after restart failed', { service });
+          }
+        } catch (error) {
+          this.responseHistory.push({
+            action: 'failover',
+            success: false,
+            details: `Failed to check health or fail over ${service}: ${(error as Error).message}`,
+            timestamp: new Date()
+          });
         }
       }, healthCheckDelay);
 
