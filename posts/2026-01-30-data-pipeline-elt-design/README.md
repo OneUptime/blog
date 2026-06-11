@@ -178,14 +178,25 @@ your_project/
 │   └── assert_positive_revenue.sql
 │
 ├── macros/                  # Reusable SQL functions
-│   ├── generate_surrogate_key.sql
-│   └── cents_to_dollars.sql
+│   ├── cents_to_dollars.sql
+│   ├── generate_date_spine.sql
+│   └── limit_in_dev.sql
 │
 ├── seeds/                   # Static reference data
-│   └── country_codes.csv
+│   └── seed_exchange_rates.csv
 │
 └── snapshots/               # Slowly changing dimensions
     └── scd_customers.sql
+```
+
+Because the examples below use `dbt_utils.generate_surrogate_key`, `dbt_utils.date_spine`, and `dbt_utils.expression_is_true`, add dbt-utils to your project:
+
+```yaml
+# packages.yml
+
+packages:
+  - package: dbt-labs/dbt_utils
+    version: ">=1.0.0,<2.0.0"
 ```
 
 ### Project Configuration
@@ -262,13 +273,14 @@ sources:
     database: raw_db
     schema: postgres_public
 
-    # Freshness checks alert on stale data
-    freshness:
-      warn_after: {count: 12, period: hour}
-      error_after: {count: 24, period: hour}
+    config:
+      # Freshness checks alert on stale data
+      freshness:
+        warn_after: {count: 12, period: hour}
+        error_after: {count: 24, period: hour}
 
-    # Load time tracking for debugging
-    loaded_at_field: _fivetran_synced
+      # Load time tracking for debugging
+      loaded_at_field: _fivetran_synced
 
     tables:
       - name: users
@@ -297,8 +309,9 @@ sources:
             tests:
               - not_null
               - relationships:
-                  to: source('postgres', 'users')
-                  field: id
+                  arguments:
+                    to: source('postgres', 'users')
+                    field: id
 ```
 
 ### Staging Model Example
@@ -349,8 +362,8 @@ renamed as (
         upper(coalesce(country_code, 'XX')) as country_code,
 
         -- Timestamp handling: ensure timezone awareness
-        created_at::timestamp with time zone as created_at,
-        updated_at::timestamp with time zone as updated_at,
+        created_at::timestamp_tz as created_at,
+        updated_at::timestamp_tz as updated_at,
 
         -- Deleted flag for soft deletes
         coalesce(is_deleted, false) as is_deleted,
@@ -428,15 +441,15 @@ transformed as (
         end as order_status,
 
         -- Timestamps
-        o.created_at::timestamp with time zone as ordered_at,
-        o.paid_at::timestamp with time zone as paid_at,
-        o.shipped_at::timestamp with time zone as shipped_at,
-        o.delivered_at::timestamp with time zone as delivered_at,
+        o.created_at::timestamp_tz as ordered_at,
+        o.paid_at::timestamp_tz as paid_at,
+        o.shipped_at::timestamp_tz as shipped_at,
+        o.delivered_at::timestamp_tz as delivered_at,
 
         -- Calculated fields
         case
             when o.shipped_at is not null and o.paid_at is not null
-            then extract(epoch from (o.shipped_at - o.paid_at)) / 3600.0
+            then datediff('second', o.paid_at, o.shipped_at) / 3600.0
             else null
         end as hours_to_ship,
 
@@ -501,7 +514,7 @@ order_payments as (
         sum(case when status = 'succeeded' then amount_usd else 0 end) as total_paid_usd,
         min(case when status = 'succeeded' then paid_at end) as first_payment_at,
         max(case when status = 'succeeded' then paid_at end) as last_payment_at,
-        bool_or(status = 'refunded') as has_refund
+        boolor_agg(status = 'refunded') as has_refund
     from payments
     group by order_id
 ),
@@ -575,7 +588,7 @@ enriched as (
         o.hours_to_ship,
 
         -- User tenure at order time
-        extract(day from o.ordered_at - u.created_at) as user_age_days_at_order,
+        datediff('day', u.created_at, o.ordered_at) as user_age_days_at_order,
 
         -- Metadata
         o._loaded_at,
@@ -609,10 +622,7 @@ Marts are your final, business-ready outputs. They should be optimized for speci
 {{
     config(
         materialized='table',
-        tags=['core', 'daily'],
-        post_hook=[
-            "analyze {{ this }}"
-        ]
+        tags=['core', 'daily']
     )
 }}
 
@@ -637,9 +647,9 @@ customer_orders as (
         count(case when has_refund then 1 end) as refunded_orders,
 
         -- Revenue metrics
-        sum(order_total_usd) as gross_revenue_usd,
-        sum(case when payment_status = 'fully_paid' then order_total_usd else 0 end) as net_revenue_usd,
-        avg(order_total_usd) as avg_order_value_usd,
+        sum(case when order_status != 'cancelled' then order_total_usd else 0 end) as gross_revenue_usd,
+        sum(case when order_status != 'cancelled' and payment_status = 'fully_paid' then order_total_usd else 0 end) as net_revenue_usd,
+        avg(case when order_status != 'cancelled' then order_total_usd end) as avg_order_value_usd,
 
         -- Time-based metrics
         min(ordered_at) as first_order_at,
@@ -648,12 +658,11 @@ customer_orders as (
         -- Order frequency (days between orders)
         case
             when count(*) > 1
-            then extract(day from max(ordered_at) - min(ordered_at)) / (count(*) - 1.0)
+            then datediff('day', min(ordered_at), max(ordered_at)) / (count(*) - 1.0)
             else null
         end as avg_days_between_orders
 
     from orders
-    where order_status != 'cancelled'
     group by user_id
 ),
 
@@ -682,7 +691,7 @@ segmented as (
         co.avg_days_between_orders,
 
         -- Days since last order
-        extract(day from current_timestamp - co.last_order_at) as days_since_last_order,
+        datediff('day', co.last_order_at, current_timestamp) as days_since_last_order,
 
         -- Customer lifecycle stage
         case
@@ -704,8 +713,8 @@ segmented as (
         -- Churn risk (simple heuristic)
         case
             when co.last_order_at is null then 'never_ordered'
-            when extract(day from current_timestamp - co.last_order_at) > 180 then 'high_risk'
-            when extract(day from current_timestamp - co.last_order_at) > 90 then 'medium_risk'
+            when datediff('day', co.last_order_at, current_timestamp) > 180 then 'high_risk'
+            when datediff('day', co.last_order_at, current_timestamp) > 90 then 'medium_risk'
             else 'low_risk'
         end as churn_risk,
 
@@ -733,10 +742,7 @@ select * from segmented
     config(
         materialized='table',
         tags=['core', 'daily'],
-        cluster_by=['ordered_at::date'],
-        post_hook=[
-            "analyze {{ this }}"
-        ]
+        cluster_by=['order_date']
     )
 }}
 
@@ -759,7 +765,7 @@ final as (
         o.order_number,
         o.user_id,
 
-        -- Customer attributes at time of order (for cohort analysis)
+        -- Current customer attributes (for segmentation)
         o.user_order_number,
         o.is_first_order,
         o.user_age_days_at_order,
@@ -783,7 +789,7 @@ final as (
         o.hours_to_ship,
         case
             when o.delivered_at is not null and o.shipped_at is not null
-            then extract(epoch from (o.delivered_at - o.shipped_at)) / 86400.0
+            then datediff('second', o.shipped_at, o.delivered_at) / 86400.0
             else null
         end as days_in_transit,
 
@@ -830,15 +836,8 @@ For large tables, full refreshes are expensive. Incremental models process only 
         unique_key='event_id',
         incremental_strategy='merge',
 
-        -- Partition by date for efficient pruning
-        partition_by={
-            "field": "event_date",
-            "data_type": "date",
-            "granularity": "day"
-        },
-
         -- Cluster for common query patterns
-        cluster_by=['event_type', 'user_id'],
+        cluster_by=['event_date', 'event_type', 'user_id'],
 
         tags=['incremental', 'events']
     )
@@ -851,7 +850,7 @@ with source_events as (
     -- In incremental runs, only process recent data
     -- Look back 3 days to catch late-arriving events
     where event_timestamp >= (
-        select dateadd(day, -3, max(event_timestamp))
+        select coalesce(dateadd(day, -3, max(event_timestamp)), '1900-01-01'::timestamp)
         from {{ this }}
     )
     {% endif %}
@@ -910,7 +909,7 @@ select * from transformed
         materialized='incremental',
         unique_key='product_id',
         incremental_strategy='merge',
-        merge_update_columns=['product_name', 'category', 'price_usd', 'is_active', '_dbt_updated_at'],
+        merge_update_columns=['product_name', 'category', 'subcategory', 'price_usd', 'cost_usd', 'margin_usd', 'is_active', 'updated_at', '_dbt_updated_at'],
         tags=['incremental', 'products']
     )
 }}
@@ -920,7 +919,7 @@ with source_products as (
 
     {% if is_incremental() %}
     -- Only process products modified since last run
-    where updated_at > (select max(_dbt_updated_at) from {{ this }})
+    where updated_at > (select coalesce(max(updated_at), '1900-01-01'::timestamp) from {{ this }})
     {% endif %}
 ),
 
@@ -1013,20 +1012,23 @@ models:
         tests:
           - not_null
           - accepted_values:
-              values: ['prospect', 'new_customer', 'developing', 'loyal']
+              arguments:
+                values: ['prospect', 'new_customer', 'developing', 'loyal']
 
       - name: revenue_tier
         description: "Revenue-based customer tier"
         tests:
           - accepted_values:
-              values: ['no_revenue', 'bronze', 'silver', 'gold', 'platinum']
+              arguments:
+                values: ['no_revenue', 'bronze', 'silver', 'gold', 'platinum']
 
       - name: lifetime_net_revenue_usd
         description: "Total revenue from customer"
         tests:
           - not_null
           - dbt_utils.expression_is_true:
-              expression: ">= 0"
+              arguments:
+                expression: ">= 0"
 
   - name: fct_orders
     description: "Order fact table"
@@ -1034,7 +1036,8 @@ models:
     tests:
       # Table-level test: ensure referential integrity
       - dbt_utils.expression_is_true:
-          expression: "order_total_usd >= order_amount_usd"
+          arguments:
+            expression: "order_total_usd >= order_amount_usd"
 
     columns:
       - name: order_key
@@ -1047,21 +1050,24 @@ models:
           - unique
           - not_null
           - relationships:
-              to: source('postgres', 'orders')
-              field: id
+              arguments:
+                to: source('postgres', 'orders')
+                field: id
 
       - name: user_id
         tests:
           - not_null
           - relationships:
-              to: ref('dim_customers')
-              field: user_id
+              arguments:
+                to: ref('dim_customers')
+                field: user_id
 
       - name: order_total_usd
         tests:
           - not_null
           - dbt_utils.expression_is_true:
-              expression: "> 0"
+              arguments:
+                expression: "> 0"
 ```
 
 ### Custom Data Tests
@@ -1076,7 +1082,7 @@ with mart_totals as (
         sum(order_total_usd) as mart_revenue,
         count(distinct order_id) as mart_order_count
     from {{ ref('fct_orders') }}
-    where order_date >= current_date - interval '30 days'
+    where order_date >= dateadd('day', -30, current_date)
       and order_status != 'cancelled'
 ),
 
@@ -1085,7 +1091,7 @@ source_totals as (
         sum(amount_cents) / 100.0 as source_revenue,
         count(distinct id) as source_order_count
     from {{ source('postgres', 'orders') }}
-    where created_at::date >= current_date - interval '30 days'
+    where created_at::date >= dateadd('day', -30, current_date)
       and status not in ('cancelled', 'canceled')
       and order_number not like 'TEST%'
 )
@@ -1150,8 +1156,8 @@ select
     extract(year from date_day) as year,
     extract(month from date_day) as month,
     extract(day from date_day) as day,
-    extract(dow from date_day) as day_of_week,
-    case when extract(dow from date_day) in (0, 6) then true else false end as is_weekend,
+    extract(dayofweek from date_day) as day_of_week,
+    case when extract(dayofweek from date_day) in (0, 6) then true else false end as is_weekend,
     to_char(date_day, 'YYYY-MM') as year_month
 from date_spine
 
@@ -1165,7 +1171,7 @@ from date_spine
 {% macro limit_data_in_dev(column_name, dev_days=7) %}
 
 {% if target.name == 'dev' %}
-    where {{ column_name }} >= current_date - interval '{{ dev_days }} days'
+    where {{ column_name }} >= dateadd('day', -{{ dev_days }}, current_date)
 {% endif %}
 
 {% endmacro %}
@@ -1277,21 +1283,21 @@ main() {
 
     # Step 2: Run staging models
     log "Running staging models..."
-    if ! dbt run --select staging --target "$DBT_TARGET"; then
+    if ! dbt run --select "path:models/staging" --target "$DBT_TARGET"; then
         send_alert "Staging models failed" "ERROR"
         exit 1
     fi
 
     # Step 3: Run staging tests
     log "Testing staging models..."
-    if ! dbt test --select staging --target "$DBT_TARGET"; then
+    if ! dbt test --select "path:models/staging" --target "$DBT_TARGET"; then
         send_alert "Staging tests failed - check data quality" "ERROR"
         exit 1
     fi
 
     # Step 4: Run mart models
     log "Running mart models..."
-    if ! dbt run --select marts --target "$DBT_TARGET"; then
+    if ! dbt run --select "path:models/marts" --target "$DBT_TARGET"; then
         send_alert "Mart models failed" "ERROR"
         exit 1
     fi
