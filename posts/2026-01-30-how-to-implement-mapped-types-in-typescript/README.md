@@ -12,7 +12,7 @@ Mapped types are one of TypeScript's most powerful features, allowing you to cre
 
 ## Understanding the keyof Operator
 
-Before diving into mapped types, you need to understand the `keyof` operator. It extracts all property keys from a type as a union of string literals:
+Before diving into mapped types, you need to understand the `keyof` operator. For object types like this one, it extracts property names as a union of string literal types:
 
 ```typescript
 interface User {
@@ -23,6 +23,8 @@ interface User {
 
 type UserKeys = keyof User; // "id" | "name" | "email"
 ```
+
+More broadly, `keyof` can produce string, number, or symbol keys depending on the type.
 
 This union type becomes the foundation for iterating over properties in mapped types.
 
@@ -80,7 +82,7 @@ type Mutable<T> = {
   -readonly [K in keyof T]: T[K];
 };
 
-type Required<T> = {
+type RequiredType<T> = {
   [K in keyof T]-?: T[K];
 };
 
@@ -89,7 +91,7 @@ interface PartialConfig {
   readonly port?: number;
 }
 
-type WritableRequiredConfig = Mutable<Required<PartialConfig>>;
+type WritableRequiredConfig = Mutable<RequiredType<PartialConfig>>;
 // { host: string; port: number; }
 ```
 
@@ -102,7 +104,7 @@ TypeScript provides several utility types that are implemented as mapped types:
 Makes all properties optional:
 
 ```typescript
-type Partial<T> = {
+type MyPartial<T> = {
   [K in keyof T]?: T[K];
 };
 
@@ -110,6 +112,7 @@ function updateUser(user: User, updates: Partial<User>): User {
   return { ...user, ...updates };
 }
 
+const existingUser: User = { id: 1, name: "John", email: "john@example.com" };
 updateUser(existingUser, { name: "New Name" }); // Only update name
 ```
 
@@ -118,7 +121,7 @@ updateUser(existingUser, { name: "New Name" }); // Only update name
 Makes all properties required:
 
 ```typescript
-type Required<T> = {
+type MyRequired<T> = {
   [K in keyof T]-?: T[K];
 };
 ```
@@ -128,7 +131,7 @@ type Required<T> = {
 Makes all properties readonly:
 
 ```typescript
-type Readonly<T> = {
+type MyReadonly<T> = {
   readonly [K in keyof T]: T[K];
 };
 
@@ -141,11 +144,11 @@ const frozenUser: Readonly<User> = { id: 1, name: "John", email: "john@example.c
 Select or exclude specific properties:
 
 ```typescript
-type Pick<T, K extends keyof T> = {
+type MyPick<T, K extends keyof T> = {
   [P in K]: T[P];
 };
 
-type Omit<T, K extends keyof any> = Pick<T, Exclude<keyof T, K>>;
+type MyOmit<T, K extends keyof any> = MyPick<T, Exclude<keyof T, K>>;
 
 type UserCredentials = Pick<User, "email" | "id">;
 // { email: string; id: number; }
