@@ -361,6 +361,7 @@ In production systems, you often need timeouts to prevent indefinite blocking.
 
 ```python
 import asyncio
+from typing import Any
 
 async def get_with_timeout(queue: asyncio.Queue, timeout: float) -> tuple[bool, Any]:
     """
