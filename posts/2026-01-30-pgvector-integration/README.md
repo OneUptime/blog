@@ -143,7 +143,7 @@ CREATE INDEX ON documents (created_at DESC);
 |----------------|------------|----------|
 | OpenAI text-embedding-3-small | 1536 | General purpose, high quality |
 | OpenAI text-embedding-3-large | 3072 | Maximum quality |
-| Cohere embed-english-v3 | 1024 | Multilingual support |
+| Cohere embed-multilingual-v3.0 | 1024 | Multilingual support |
 | sentence-transformers/all-MiniLM-L6-v2 | 384 | Fast, self-hosted |
 | BAAI/bge-small-en | 384 | Compact, good accuracy |
 
