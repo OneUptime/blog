@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Falco, Security, Kubernetes, Customization
 
-Description: Learn how to extend and customize Falco rules using the append directive to modify existing detection logic without duplicating rule definitions.
+Description: Learn how to extend and customize Falco rules using append overrides to modify existing detection logic without duplicating rule definitions.
 
 ---
 
-Falco ships with a comprehensive set of default rules, but every environment has unique requirements. Rather than copying and modifying entire rules, Falco provides an append mechanism that lets you extend existing rules, macros, and lists cleanly. This approach keeps your customizations separate from upstream rules, making updates painless.
+Falco ships with a comprehensive set of default rules, but every environment has unique requirements. Rather than copying and modifying entire rules, Falco provides override actions that let you append to existing rules, macros, and lists cleanly. This approach keeps your customizations separate from upstream rules, making updates painless.
 
 ## Understanding Falco Rule Components
 
@@ -65,9 +65,9 @@ Rules combine conditions with output formatting and priority levels.
   priority: WARNING
 ```
 
-## The Append Directive
+## The Append Override
 
-The `append` directive lets you add items to existing lists, extend macro conditions, or modify rule behavior without redefining the entire component.
+The `override` section's `append` action lets you add items to existing lists, extend macro conditions, or modify rule behavior without redefining the entire component.
 
 ```mermaid
 flowchart LR
@@ -76,7 +76,7 @@ flowchart LR
     end
 
     subgraph Append["Append Definition"]
-        A1["list: trusted_images<br/>append: true<br/>items: [myapp, worker]"]
+        A1["list: trusted_images<br/>items: [myapp, worker]<br/>override:<br/>items: append"]
     end
 
     subgraph Result["Final Result"]
@@ -97,11 +97,12 @@ Add items to existing lists without replacing them.
 
 # Your custom additions (in a separate file)
 - list: trusted_images
-  append: true
   items:
     - mycompany/api-server      # Add your internal images
     - mycompany/worker-service
     - mycompany/frontend
+  override:
+    items: append
 ```
 
 ### Appending to Macros
@@ -115,8 +116,9 @@ Extend macro conditions using `and` or `or` logic.
 
 # Append additional trusted processes
 - macro: user_known_write_below_etc_activities
-  append: true
   condition: or proc.name = myconfig-agent or proc.name = vault-agent
+  override:
+    condition: append
 ```
 
 The final macro condition becomes:
@@ -139,29 +141,30 @@ Modify rule conditions to add exceptions or extend detection.
 
 # Append exceptions for your environment
 - rule: Write Below Etc
-  append: true
   condition: and not proc.name = my-legitimate-tool
+  override:
+    condition: append
 ```
 
 ## Override vs Append Behavior
 
-Understanding when to use `append: true` versus redefining components is critical.
+Understanding when to use an append override versus redefining components is critical.
 
 ```mermaid
 flowchart TD
     A{Need to modify<br/>existing component?}
-    A -->|"Add items/conditions"| B["Use append: true"]
-    A -->|"Replace entirely"| C["Redefine without append"]
+    A -->|"Add items/conditions"| B["Use override append"]
+    A -->|"Replace entirely"| C["Use override replace"]
 
     B --> D["Items/conditions merged<br/>Original preserved"]
     C --> E["Original replaced<br/>Must include everything"]
 
     subgraph Override["Override Example"]
-        O1["- list: shell_binaries<br/>  items: [bash, sh]<br/><br/>Completely replaces<br/>the original list"]
+        O1["- list: shell_binaries<br/>  items: [bash, sh]<br/>  override:<br/>    items: replace<br/><br/>Completely replaces<br/>the original list"]
     end
 
     subgraph AppendEx["Append Example"]
-        A1["- list: shell_binaries<br/>  append: true<br/>  items: [custom-shell]<br/><br/>Adds to existing list"]
+        A1["- list: shell_binaries<br/>  items: [custom-shell]<br/>  override:<br/>    items: append<br/><br/>Adds to existing list"]
     end
 
     C --> Override
@@ -179,6 +182,8 @@ Override when you need to completely replace a component:
   items:
     - mycompany/app:v1.0
     - mycompany/sidecar:latest
+  override:
+    items: replace
 ```
 
 ### When to Append
@@ -188,10 +193,11 @@ Append when you want to extend existing behavior:
 ```yaml
 # Add to the default list while keeping original items
 - list: allowed_k8s_containers
-  append: true
   items:
     - mycompany/app:v1.0
     - mycompany/sidecar:latest
+  override:
+    items: append
 ```
 
 ## File Ordering for Rule Processing
@@ -211,8 +217,8 @@ flowchart TB
 
     subgraph Merge["Merge Process"]
         M1["Earlier definitions<br/>establish base"]
-        M2["Later files with<br/>append: true merge"]
-        M3["Later files without<br/>append replace"]
+        M2["Later files with<br/>override append merge"]
+        M3["Later files with<br/>override replace"]
 
         M1 --> M2
         M1 --> M3
@@ -227,7 +233,7 @@ In your Falco configuration, specify the loading order:
 
 ```yaml
 # /etc/falco/falco.yaml
-rules_file:
+rules_files:
   - /etc/falco/falco_rules.yaml           # Default rules (first)
   - /etc/falco/falco_rules.local.yaml     # Local overrides (second)
   - /etc/falco/rules.d                    # Custom rules directory (last)
@@ -256,9 +262,8 @@ Your application legitimately writes to sensitive directories. Instead of disabl
 ```yaml
 # File: /etc/falco/rules.d/file-access-exceptions.yaml
 
-# Add your application to the list of trusted processes
+# Define your application processes
 - list: user_known_write_etc_processes
-  append: true
   items:
     - config-reloader       # Sidecar that updates config files
     - cert-manager          # Certificate rotation tool
@@ -266,10 +271,11 @@ Your application legitimately writes to sensitive directories. Instead of disabl
 
 # Extend the macro to include your specific use cases
 - macro: user_known_write_below_etc_activities
-  append: true
   condition: >
     or (proc.name = config-reloader and fd.name startswith /etc/myapp/)
     or (proc.name = cert-manager and fd.name startswith /etc/ssl/)
+  override:
+    condition: append
 ```
 
 ### Example 2: Extending Network Rules for Microservices
@@ -281,22 +287,19 @@ Allow specific internal communications while maintaining security monitoring.
 
 # Define your internal service ports
 - list: internal_service_ports
-  append: true
   items: [8080, 8443, 9090, 3000]
 
-# Add known internal services to trusted outbound list
+# Define known internal service binaries
 - list: trusted_network_binaries
-  append: true
   items:
     - envoy                 # Service mesh proxy
     - linkerd-proxy         # Linkerd sidecar
     - istio-proxy           # Istio sidecar
 
-# Modify rule to exclude legitimate service mesh traffic
-- macro: allowed_outbound_connections
-  append: true
+# Define a macro to exclude legitimate service mesh traffic
+- macro: allowed_service_mesh_traffic
   condition: >
-    or (proc.name = envoy and fd.sport in (internal_service_ports))
+    (proc.name = envoy and fd.sport in (internal_service_ports))
     or (proc.name in (trusted_network_binaries) and container.image.repository startswith "mycompany/")
 ```
 
@@ -359,9 +362,8 @@ Handle Kubernetes system components that trigger false positives.
     - monitoring
     - cert-manager
 
-# Extend the trusted images list for K8s components
+# Define trusted images for K8s components
 - list: k8s_system_images
-  append: true
   items:
     - k8s.gcr.io/kube-apiserver
     - k8s.gcr.io/kube-controller-manager
@@ -376,13 +378,15 @@ Handle Kubernetes system components that trigger false positives.
     and container.image.repository in (k8s_system_images)
 
 # Append to rules that generate noise from system components
-- rule: Terminal Shell in Container
-  append: true
+- rule: Terminal shell in container
   condition: and not k8s_system_activity
+  override:
+    condition: append
 
-- rule: Read Sensitive File Untrusted
-  append: true
+- rule: Read sensitive file untrusted
   condition: and not k8s_system_activity
+  override:
+    condition: append
 ```
 
 ## Testing Your Append Rules
@@ -393,16 +397,13 @@ Validate your rules before deploying to production.
 
 ```bash
 # Test rule syntax without starting the engine
-falco --validate /etc/falco/rules.d/custom-rules.yaml
+falco --validate /etc/falco/falco_rules.yaml --validate /etc/falco/rules.d/custom-rules.yaml
 
-# List all loaded rules and check for conflicts
-falco --list=rules
+# List all loaded rules
+falco -L
 
-# List all macros
-falco --list=macros
-
-# List all lists
-falco --list=lists
+# Include rules, macros, and lists in JSON output
+falco -L -o json_output=true
 ```
 
 ### Generate Test Events
@@ -420,8 +421,9 @@ kubectl logs -l app=falco -n falco --tail=100
 ```yaml
 # Temporarily set rule to DEBUG priority for testing
 - rule: My Custom Rule
-  append: true
   priority: DEBUG
+  override:
+    priority: replace
 ```
 
 ## Common Pitfalls
@@ -433,13 +435,15 @@ When appending conditions, always include the logical operator:
 ```yaml
 # Wrong - missing operator
 - rule: Suspicious Activity
-  append: true
   condition: proc.name = myapp    # Error: condition must start with and/or
+  override:
+    condition: append
 
 # Correct - includes operator
 - rule: Suspicious Activity
-  append: true
   condition: and not proc.name = myapp
+  override:
+    condition: append
 ```
 
 ### Pitfall 2: File Loading Order
@@ -448,26 +452,29 @@ Ensure your custom files load after the default rules:
 
 ```yaml
 # falco.yaml - correct order
-rules_file:
+rules_files:
   - /etc/falco/falco_rules.yaml      # Base rules first
   - /etc/falco/rules.d/custom.yaml   # Custom rules after
 ```
 
 ### Pitfall 3: Overriding Instead of Appending
 
-Forgetting `append: true` replaces the entire definition:
+Using a replace override replaces the entire definition:
 
 ```yaml
 # This REPLACES the shell_binaries list
 - list: shell_binaries
   items: [custom-shell]
+  override:
+    items: replace
 
 # This ADDS to the shell_binaries list
 - list: shell_binaries
-  append: true
   items: [custom-shell]
+  override:
+    items: append
 ```
 
 ---
 
-Falco append rules give you the flexibility to customize detection without maintaining a fork of upstream rules. By keeping customizations in separate files and using append directives thoughtfully, you can adapt Falco to your environment while preserving the ability to pull in rule updates cleanly. Start with list and macro appends for simple whitelisting, then progress to rule condition modifications as your security requirements evolve.
+Falco append overrides give you the flexibility to customize detection without maintaining a fork of upstream rules. By keeping customizations in separate files and using append overrides thoughtfully, you can adapt Falco to your environment while preserving the ability to pull in rule updates cleanly. Start with list and macro appends for simple whitelisting, then progress to rule condition modifications as your security requirements evolve.
