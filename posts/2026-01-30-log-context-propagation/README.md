@@ -70,7 +70,8 @@ The following module creates a singleton store that maintains context throughout
 
 ```typescript
 // context-store.ts
-import { AsyncLocalStorage } from 'async_hooks';
+import { AsyncLocalStorage } from 'node:async_hooks';
+import { randomBytes } from 'node:crypto';
 
 // Define the shape of our propagated context
 interface PropagatedContext {
@@ -97,18 +98,22 @@ export function getContext(): PropagatedContext | undefined {
   return contextStorage.getStore();
 }
 
+function generateNonZeroHex(byteLength: number): string {
+  let value: string;
+  do {
+    value = randomBytes(byteLength).toString('hex');
+  } while (/^0+$/.test(value));
+  return value;
+}
+
 export function generateTraceId(): string {
-  // Generate a 32-character hex string matching W3C trace context format
-  return Array.from({ length: 32 }, () =>
-    Math.floor(Math.random() * 16).toString(16)
-  ).join('');
+  // Generate a 32-character non-zero hex string matching W3C trace context format
+  return generateNonZeroHex(16);
 }
 
 export function generateSpanId(): string {
-  // Generate a 16-character hex string for span identification
-  return Array.from({ length: 16 }, () =>
-    Math.floor(Math.random() * 16).toString(16)
-  ).join('');
+  // Generate a 16-character non-zero hex string for span identification
+  return generateNonZeroHex(8);
 }
 ```
 
@@ -130,8 +135,10 @@ interface LogEntry {
   message: string;
   traceId?: string;
   spanId?: string;
+  parentSpanId?: string;
   requestId?: string;
   userId?: string;
+  tenantId?: string;
   [key: string]: unknown;
 }
 
@@ -149,8 +156,10 @@ export function log(
     // Context fields are automatically injected
     traceId: context?.traceId,
     spanId: context?.spanId,
+    parentSpanId: context?.parentSpanId,
     requestId: context?.requestId,
     userId: context?.userId,
+    tenantId: context?.tenantId,
     // Merge any additional attributes
     ...attributes,
   };
@@ -179,7 +188,6 @@ Express middleware handles the entry point of requests, extracting context from 
 import { Request, Response, NextFunction } from 'express';
 import {
   runWithContext,
-  getContext,
   generateTraceId,
   generateSpanId,
 } from './context-store';
@@ -194,15 +202,26 @@ interface ParsedTraceParent {
   parentSpanId: string;
 }
 
+type HeaderValue = string | string[] | undefined;
+
+function firstHeader(value: HeaderValue): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
+}
+
 function parseTraceParent(header: string): ParsedTraceParent | null {
   // W3C traceparent format: version-traceId-parentId-flags
-  // Example: 00-abc123...def456-1234567890abcdef-01
-  const parts = header.split('-');
-  if (parts.length !== 4) return null;
+  // Example: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
+  const match = header.match(
+    /^00-([0-9a-f]{32})-([0-9a-f]{16})-([0-9a-f]{2})$/
+  );
+  if (!match) return null;
+
+  const [, traceId, parentSpanId] = match;
+  if (/^0+$/.test(traceId) || /^0+$/.test(parentSpanId)) return null;
 
   return {
-    traceId: parts[1],
-    parentSpanId: parts[2],
+    traceId,
+    parentSpanId,
   };
 }
 
@@ -212,8 +231,8 @@ export function contextMiddleware(
   next: NextFunction
 ): void {
   // Extract existing context from headers or generate new
-  const traceparent = req.headers[TRACEPARENT_HEADER] as string | undefined;
-  const requestId = (req.headers[REQUEST_ID_HEADER] as string) || generateSpanId();
+  const traceparent = firstHeader(req.headers[TRACEPARENT_HEADER]);
+  const requestId = firstHeader(req.headers[REQUEST_ID_HEADER]) || generateSpanId();
 
   let traceId: string;
   let parentSpanId: string | undefined;
@@ -239,8 +258,8 @@ export function contextMiddleware(
     spanId,
     parentSpanId,
     requestId,
-    userId: req.headers['x-user-id'] as string | undefined,
-    tenantId: req.headers['x-tenant-id'] as string | undefined,
+    userId: firstHeader(req.headers['x-user-id']),
+    tenantId: firstHeader(req.headers['x-tenant-id']),
   };
 
   // Add trace ID to response headers for client debugging
@@ -288,8 +307,10 @@ export async function fetchWithContext(
 
   const headers: Record<string, string> = {
     ...options.headers,
-    'Content-Type': 'application/json',
   };
+  if (options.body !== undefined) {
+    headers['Content-Type'] = headers['Content-Type'] || 'application/json';
+  }
 
   // Inject context headers for downstream services
   if (traceparent) {
@@ -313,7 +334,7 @@ export async function fetchWithContext(
   const response = await fetch(url, {
     ...options,
     headers,
-    body: options.body ? JSON.stringify(options.body) : undefined,
+    body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
   });
 
   logger.debug('HTTP response received', {
@@ -455,14 +476,14 @@ flowchart TD
 With context propagation in place, you can now query logs across all services using a single trace ID. Here is what the log output looks like.
 
 ```json
-{"timestamp":"2026-01-30T10:00:00.000Z","level":"info","message":"Request received","traceId":"abc123def456...","spanId":"1234abcd","requestId":"req-789","method":"POST","path":"/checkout"}
-{"timestamp":"2026-01-30T10:00:00.050Z","level":"info","message":"Fetching user details","traceId":"abc123def456...","spanId":"1234abcd","requestId":"req-789"}
-{"timestamp":"2026-01-30T10:00:00.100Z","level":"info","message":"Request received","traceId":"abc123def456...","spanId":"5678efgh","parentSpanId":"1234abcd","requestId":"req-789","method":"GET","path":"/users/current"}
-{"timestamp":"2026-01-30T10:00:00.150Z","level":"info","message":"Processing payment","traceId":"abc123def456...","spanId":"1234abcd","requestId":"req-789","amount":99.99,"currency":"USD"}
-{"timestamp":"2026-01-30T10:00:00.300Z","level":"info","message":"Checkout completed successfully","traceId":"abc123def456...","spanId":"1234abcd","requestId":"req-789"}
+{"timestamp":"2026-01-30T10:00:00.000Z","level":"info","message":"Request received","traceId":"4bf92f3577b34da6a3ce929d0e0e4736","spanId":"00f067aa0ba902b7","requestId":"req-789","method":"POST","path":"/checkout"}
+{"timestamp":"2026-01-30T10:00:00.050Z","level":"info","message":"Fetching user details","traceId":"4bf92f3577b34da6a3ce929d0e0e4736","spanId":"00f067aa0ba902b7","requestId":"req-789"}
+{"timestamp":"2026-01-30T10:00:00.100Z","level":"info","message":"Request received","traceId":"4bf92f3577b34da6a3ce929d0e0e4736","spanId":"b9c7c989f97918e1","parentSpanId":"00f067aa0ba902b7","requestId":"req-789","method":"GET","path":"/users/current"}
+{"timestamp":"2026-01-30T10:00:00.150Z","level":"info","message":"Processing payment","traceId":"4bf92f3577b34da6a3ce929d0e0e4736","spanId":"00f067aa0ba902b7","requestId":"req-789","amount":99.99,"currency":"USD"}
+{"timestamp":"2026-01-30T10:00:00.300Z","level":"info","message":"Checkout completed successfully","traceId":"4bf92f3577b34da6a3ce929d0e0e4736","spanId":"00f067aa0ba902b7","requestId":"req-789"}
 ```
 
-Searching for `traceId: abc123def456...` in your log aggregation system returns all logs from every service that participated in this request.
+Searching for `traceId: 4bf92f3577b34da6a3ce929d0e0e4736` in your log aggregation system returns all logs from every service that participated in this request.
 
 ---
 
