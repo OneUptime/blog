@@ -245,7 +245,7 @@ class SatisfactionTracker {
     return true;
   }
 
-  // Track NPS response (-10 to 10 scale normalized to 0-10)
+  // Track NPS response (0-10 scale)
   trackNPS(
     userId: string,
     sessionId: string,
@@ -332,7 +332,7 @@ class SatisfactionTracker {
   }
 
   private generateId(): string {
-    return `sat_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return `sat_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
   }
 }
 ```
@@ -373,7 +373,7 @@ SELECT
   promoters,
   detractors,
   ROUND(
-    ((promoters::float / total_responses) - (detractors::float / total_responses)) * 100,
+    ((promoters::numeric / total_responses) - (detractors::numeric / total_responses)) * 100,
     1
   ) as nps_score
 FROM nps_counts
@@ -495,7 +495,7 @@ class TaskCompletionTracker {
 
     // Check if task is complete
     const definition = this.taskDefinitions.get(attempt.taskKey);
-    if (definition && stepKey === definition.completionEvent.replace('_', '')) {
+    if (definition && stepKey === definition.completionEvent) {
       this.completeTask(attemptId, 'completed');
     }
   }
@@ -561,7 +561,7 @@ class TaskCompletionTracker {
   }
 
   private generateId(): string {
-    return `task_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return `task_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
   }
 }
 ```
@@ -713,7 +713,11 @@ class TimeOnTaskTracker {
     const sorted = [...times].sort((a, b) => a - b);
     const mean = times.reduce((a, b) => a + b, 0) / times.length;
 
-    const median = sorted[Math.floor(sorted.length / 2)];
+    const mid = Math.floor(sorted.length / 2);
+    const median =
+      sorted.length % 2 === 0
+        ? (sorted[mid - 1] + sorted[mid]) / 2
+        : sorted[mid];
     const p75 = sorted[Math.floor(sorted.length * 0.75)];
     const p95 = sorted[Math.floor(sorted.length * 0.95)];
 
@@ -724,7 +728,7 @@ class TimeOnTaskTracker {
   }
 
   private generateId(): string {
-    return `tot_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return `tot_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
   }
 }
 
@@ -758,10 +762,10 @@ SELECT
   variant,
   task_key,
   COUNT(*) as sample_size,
-  ROUND(AVG(duration_ms) / 1000, 2) as avg_seconds,
-  ROUND(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY duration_ms) / 1000, 2) as median_seconds,
-  ROUND(PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY duration_ms) / 1000, 2) as p75_seconds,
-  ROUND(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY duration_ms) / 1000, 2) as p95_seconds
+  ROUND((AVG(duration_ms) / 1000)::numeric, 2) as avg_seconds,
+  ROUND((PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY duration_ms) / 1000)::numeric, 2) as median_seconds,
+  ROUND((PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY duration_ms) / 1000)::numeric, 2) as p75_seconds,
+  ROUND((PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY duration_ms) / 1000)::numeric, 2) as p95_seconds
 FROM task_times
 GROUP BY flag_key, variant, task_key
 HAVING COUNT(*) >= 50
@@ -884,7 +888,7 @@ class FeedbackCollector {
   }
 
   private generateId(): string {
-    return `fb_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return `fb_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
   }
 }
 ```
@@ -908,13 +912,16 @@ WITH feedback_summary AS (
 SELECT
   flag_key,
   variant,
-  COUNT(*) FILTER (WHERE sentiment = 'positive') as positive_count,
-  COUNT(*) FILTER (WHERE sentiment = 'neutral') as neutral_count,
-  COUNT(*) FILTER (WHERE sentiment = 'negative') as negative_count,
-  ROUND(AVG(avg_sentiment_score), 3) as overall_sentiment,
+  COALESCE(SUM(count) FILTER (WHERE sentiment = 'positive'), 0) as positive_count,
+  COALESCE(SUM(count) FILTER (WHERE sentiment = 'neutral'), 0) as neutral_count,
+  COALESCE(SUM(count) FILTER (WHERE sentiment = 'negative'), 0) as negative_count,
   ROUND(
-    COUNT(*) FILTER (WHERE sentiment = 'positive')::float /
-    NULLIF(COUNT(*), 0) * 100,
+    (SUM(avg_sentiment_score * count) / NULLIF(SUM(count), 0))::numeric,
+    3
+  ) as overall_sentiment,
+  ROUND(
+    (COALESCE(SUM(count) FILTER (WHERE sentiment = 'positive'), 0)::numeric /
+    NULLIF(SUM(count), 0) * 100),
     1
   ) as positive_percentage
 FROM feedback_summary
@@ -1257,8 +1264,8 @@ sequenceDiagram
 
 Here is a complete example integrating all UX tracking into a React application:
 
-```typescript
-import React, { useEffect, useContext, createContext } from 'react';
+```tsx
+import React, { useEffect, useContext, createContext, useMemo, useRef } from 'react';
 
 // Create context for UX tracking
 interface UXTrackingContextType {
@@ -1285,40 +1292,51 @@ export function UXTrackingProvider({
   userId: string;
   sessionId: string;
 }) {
-  const taskTracker = new TaskCompletionTracker({ flagKey, variant });
-  const timeTracker = new TimeOnTaskTracker({ flagKey, variant });
-  const satisfactionTracker = new SatisfactionTracker('/api/satisfaction', { flagKey, variant });
-  const feedbackCollector = new FeedbackCollector('/api/feedback', { flagKey, variant });
+  const trackers = useMemo(() => ({
+    taskTracker: new TaskCompletionTracker({ flagKey, variant }),
+    timeTracker: new TimeOnTaskTracker({ flagKey, variant }),
+    satisfactionTracker: new SatisfactionTracker('/api/satisfaction', { flagKey, variant }),
+    feedbackCollector: new FeedbackCollector('/api/feedback', { flagKey, variant }),
+  }), [flagKey, variant]);
 
-  const value: UXTrackingContextType = {
+  const attemptTaskKeys = useRef(new Map<string, string>());
+
+  const value = useMemo<UXTrackingContextType>(() => ({
     trackTaskStart: (taskKey: string) => {
-      const attemptId = taskTracker.startTask(taskKey, userId, sessionId);
-      timeTracker.startTimer(userId, sessionId, taskKey);
+      const attemptId = trackers.taskTracker.startTask(taskKey, userId, sessionId);
+      trackers.timeTracker.startTimer(userId, sessionId, taskKey);
+      attemptTaskKeys.current.set(attemptId, taskKey);
       return attemptId;
     },
 
     trackTaskStep: (attemptId: string, stepKey: string) => {
-      taskTracker.recordStep(attemptId, stepKey);
+      trackers.taskTracker.recordStep(attemptId, stepKey);
     },
 
     trackTaskComplete: (attemptId: string, success: boolean) => {
-      const taskKey = attemptId.split('_')[0];
-      timeTracker.stopTimer(userId, sessionId, taskKey, success);
+      const taskKey = attemptTaskKeys.current.get(attemptId);
+      if (!taskKey) return;
+
+      if (!success) {
+        trackers.taskTracker.abandonTask(attemptId);
+      }
+      trackers.timeTracker.stopTimer(userId, sessionId, taskKey, success);
+      attemptTaskKeys.current.delete(attemptId);
     },
 
     trackSatisfaction: (score: number, comment?: string) => {
-      satisfactionTracker.trackCSAT(userId, sessionId, score, comment);
+      trackers.satisfactionTracker.trackCSAT(userId, sessionId, score, comment);
     },
 
     trackFeedback: (type: string, message: string) => {
-      feedbackCollector.collectFeedback(
+      trackers.feedbackCollector.collectFeedback(
         userId,
         sessionId,
         type as any,
         message
       );
     },
-  };
+  }), [trackers, userId, sessionId]);
 
   return (
     <UXTrackingContext.Provider value={value}>
