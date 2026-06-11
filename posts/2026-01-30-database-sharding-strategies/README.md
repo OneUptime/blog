@@ -81,7 +81,7 @@ This implementation uses a hash ring where each shard owns a segment of the ring
 
 ```python
 import hashlib
-from bisect import bisect_right
+from bisect import bisect_left
 from typing import Dict, List
 
 class ConsistentHashRing:
@@ -138,7 +138,7 @@ class ConsistentHashRing:
         hash_val = self._hash(key)
 
         # Find the first shard position >= hash_val
-        idx = bisect_right(self.sorted_keys, hash_val)
+        idx = bisect_left(self.sorted_keys, hash_val)
 
         # Wrap around to the first shard if we're past the end
         if idx == len(self.sorted_keys):
@@ -187,7 +187,7 @@ CREATE TABLE orders (
 ) PARTITION BY RANGE (order_date);
 
 -- Create partitions for each quarter
--- Each partition lives on a different shard/tablespace
+-- In a sharded deployment, each range would live on a separate shard
 
 CREATE TABLE orders_2024_q1 PARTITION OF orders
     FOR VALUES FROM ('2024-01-01') TO ('2024-04-01');
