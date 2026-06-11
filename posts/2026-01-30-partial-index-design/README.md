@@ -212,12 +212,10 @@ AND created_at > '2026-01-01';
 Expected output showing index usage.
 
 ```text
-Index Scan using idx_orders_pending on orders
-  Index Cond: (created_at > '2026-01-01')
-  Rows Removed by Index Recheck: 0
-  Actual rows: 1523
-  Planning time: 0.1 ms
-  Execution time: 2.3 ms
+Index Scan using idx_orders_pending on orders  (cost=0.42..245.67 rows=1500 width=64) (actual time=0.012..2.150 rows=1523 loops=1)
+  Index Cond: (created_at > '2026-01-01'::date)
+Planning Time: 0.100 ms
+Execution Time: 2.300 ms
 ```
 
 ## Performance Comparison
