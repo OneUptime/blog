@@ -31,7 +31,7 @@ Common transformation operations include:
 | Operation | Description | Example |
 |-----------|-------------|---------|
 | Field Mapping | Rename fields to match target schema | `user_id` to `userId` |
-| Type Conversion | Change data types | String timestamp to Unix epoch |
+| Type Conversion | Change data types | String timestamp to epoch milliseconds |
 | Enrichment | Add data from external sources | Append geo data from IP address |
 | Filtering | Remove unwanted fields or events | Strip PII before analytics |
 | Aggregation | Combine multiple events | Batch user actions into sessions |
@@ -112,6 +112,10 @@ interface TransformedOrderEvent {
   lineItems: Array<{ productId: string; quantity: number; unitPrice: number }>;
   totalAmount: number;
   createdTimestamp: number;
+}
+
+interface CustomerService {
+  getById(customerId: string): Promise<{ name: string }>;
 }
 ```
 
@@ -215,10 +219,12 @@ async function processOrderEvent(
 
     return transformer.build();
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+
     // Log error with event context for debugging
     console.error('Transformation failed', {
       orderId: rawEvent.order_id,
-      error: error.message
+      error: message
     });
 
     // Decide: throw, return null, or send to dead letter queue
@@ -317,7 +323,7 @@ async function transformWithRetry<T, R>(
   transformer: (e: T) => Promise<R>,
   maxRetries: number = 3
 ): Promise<R> {
-  let lastError: Error;
+  let lastError: unknown;
 
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
@@ -339,9 +345,17 @@ async function transformWithRetry<T, R>(
   throw lastError;
 }
 
-function isRetryableError(error: Error): boolean {
+function isRetryableError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
   const retryableCodes = ['ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND'];
   return retryableCodes.some(code => error.message.includes(code));
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 ```
 
