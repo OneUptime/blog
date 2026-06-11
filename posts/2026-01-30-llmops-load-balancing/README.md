@@ -86,7 +86,7 @@ These classes define the structure for replicas, requests, and metrics.
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional, Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 
 
@@ -216,7 +216,9 @@ class InferenceRequest:
     timeout_seconds: float = 30.0
 
     # Tracking
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(
+        default_factory=lambda: datetime.now(timezone.utc)
+    )
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     assigned_replica: Optional[str] = None
@@ -687,7 +689,7 @@ Implements priority queuing with rate limiting and overflow handling.
 
 import asyncio
 from typing import Dict, Optional, List, Callable, Awaitable
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from collections import defaultdict
 import heapq
 import threading
@@ -728,9 +730,10 @@ class PriorityQueue:
         self.priority_limits = priority_limits or {}
 
         # Internal heap storage
-        # Entries are tuples: (priority_value, timestamp, request)
+        # Entries are tuples: (priority_value, timestamp, sequence, request)
         self._heap: List[tuple] = []
         self._lock = threading.Lock()
+        self._sequence = 0
 
         # Track counts per priority for limit enforcement
         self._priority_counts: Dict[RequestPriority, int] = defaultdict(int)
@@ -760,7 +763,7 @@ class PriorityQueue:
         """
         deadline = None
         if timeout is not None:
-            deadline = datetime.utcnow() + timedelta(seconds=timeout)
+            deadline = datetime.now(timezone.utc) + timedelta(seconds=timeout)
 
         with self._lock:
             while True:
@@ -775,7 +778,7 @@ class PriorityQueue:
                 if len(self._heap) >= self.max_size:
                     if not block:
                         return False
-                    if deadline and datetime.utcnow() >= deadline:
+                    if deadline and datetime.now(timezone.utc) >= deadline:
                         return False
                     # Wait for space
                     self._not_empty.wait(timeout=0.1)
@@ -787,7 +790,7 @@ class PriorityQueue:
                     if self._priority_counts[request.priority] >= priority_limit:
                         if not block:
                             return False
-                        if deadline and datetime.utcnow() >= deadline:
+                        if deadline and datetime.now(timezone.utc) >= deadline:
                             return False
                         self._not_empty.wait(timeout=0.1)
                         continue
@@ -796,8 +799,10 @@ class PriorityQueue:
                 entry = (
                     request.priority.value,  # Lower value = higher priority
                     request.created_at.timestamp(),  # FIFO within priority
+                    self._sequence,  # Stable tiebreaker for identical timestamps
                     request
                 )
+                self._sequence += 1
                 heapq.heappush(self._heap, entry)
                 self._request_ids.add(request.request_id)
                 self._priority_counts[request.priority] += 1
@@ -823,7 +828,7 @@ class PriorityQueue:
         """
         deadline = None
         if timeout is not None:
-            deadline = datetime.utcnow() + timedelta(seconds=timeout)
+            deadline = datetime.now(timezone.utc) + timedelta(seconds=timeout)
 
         with self._not_empty:
             while True:
@@ -831,16 +836,17 @@ class PriorityQueue:
                 self._cleanup_expired()
 
                 if self._heap:
-                    _, _, request = heapq.heappop(self._heap)
+                    _, _, _, request = heapq.heappop(self._heap)
                     self._request_ids.discard(request.request_id)
                     self._priority_counts[request.priority] -= 1
+                    self._not_empty.notify()
                     return request
 
                 if not block:
                     return None
 
                 if deadline:
-                    remaining = (deadline - datetime.utcnow()).total_seconds()
+                    remaining = (deadline - datetime.now(timezone.utc)).total_seconds()
                     if remaining <= 0:
                         return None
                     self._not_empty.wait(timeout=remaining)
@@ -852,13 +858,13 @@ class PriorityQueue:
         Remove requests that have exceeded their timeout.
         Returns the count of removed requests.
         """
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         removed = 0
 
         # Build new heap without expired entries
         new_heap = []
         for entry in self._heap:
-            priority_val, timestamp, request = entry
+            priority_val, timestamp, sequence, request = entry
             age = (now - request.created_at).total_seconds()
 
             if age < request.timeout_seconds:
@@ -901,6 +907,7 @@ class PriorityQueue:
             self._heap.clear()
             self._request_ids.clear()
             self._priority_counts.clear()
+            self._not_empty.notify_all()
             return count
 
 
@@ -973,7 +980,7 @@ class QueueManager:
 
         Returns True if request is allowed, False if rate limited.
         """
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         # Initialize or update token bucket
         if client_id not in self._rate_limit_last_update:
@@ -1084,7 +1091,7 @@ Monitors GPU metrics and makes intelligent placement decisions.
 import asyncio
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import logging
 
 from .models import ModelReplica, GPUMetrics, InferenceRequest
@@ -1218,7 +1225,7 @@ class GPUMetricsCollector:
         Called when metrics are pushed from replicas.
         """
         self._metrics_cache[replica_id] = metrics
-        self._last_collection[replica_id] = datetime.utcnow()
+        self._last_collection[replica_id] = datetime.now(timezone.utc)
 
     def get_metrics(self, replica_id: str) -> Optional[GPUMetrics]:
         """
@@ -1232,7 +1239,7 @@ class GPUMetricsCollector:
         if last_update is None:
             return None
 
-        age = (datetime.utcnow() - last_update).total_seconds()
+        age = (datetime.now(timezone.utc) - last_update).total_seconds()
         if age > self.stale_threshold:
             logger.debug(f"Stale GPU metrics for {replica_id} (age: {age}s)")
             return None
@@ -1449,7 +1456,7 @@ Ensures requests are only routed to healthy replicas.
 
 import asyncio
 from typing import Dict, Optional, Callable, Awaitable
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from dataclasses import dataclass, field
 import logging
@@ -1485,7 +1492,9 @@ class CircuitBreaker:
     failure_count: int = 0
     success_count: int = 0
     last_failure_time: Optional[datetime] = None
-    last_state_change: datetime = field(default_factory=datetime.utcnow)
+    last_state_change: datetime = field(
+        default_factory=lambda: datetime.now(timezone.utc)
+    )
 
     def record_success(self) -> None:
         """Record a successful request."""
@@ -1499,7 +1508,7 @@ class CircuitBreaker:
 
     def record_failure(self) -> None:
         """Record a failed request."""
-        self.last_failure_time = datetime.utcnow()
+        self.last_failure_time = datetime.now(timezone.utc)
 
         if self.state == CircuitState.HALF_OPEN:
             # Failure during probe, back to open
@@ -1516,7 +1525,7 @@ class CircuitBreaker:
 
         if self.state == CircuitState.OPEN:
             # Check if timeout has elapsed
-            elapsed = (datetime.utcnow() - self.last_state_change).total_seconds()
+            elapsed = (datetime.now(timezone.utc) - self.last_state_change).total_seconds()
             if elapsed >= self.timeout_seconds:
                 self._transition_to(CircuitState.HALF_OPEN)
                 return True  # Allow probe request
@@ -1529,7 +1538,7 @@ class CircuitBreaker:
         """Transition to a new state."""
         old_state = self.state
         self.state = new_state
-        self.last_state_change = datetime.utcnow()
+        self.last_state_change = datetime.now(timezone.utc)
 
         if new_state == CircuitState.CLOSED:
             self.failure_count = 0
@@ -1608,14 +1617,14 @@ class HealthChecker:
         health_url = f"http://{replica.host}:{replica.port}/health"
 
         try:
-            start_time = datetime.utcnow()
+            start_time = datetime.now(timezone.utc)
 
             async with aiohttp.ClientSession() as session:
                 async with session.get(
                     health_url,
                     timeout=aiohttp.ClientTimeout(total=self.timeout)
                 ) as response:
-                    elapsed = (datetime.utcnow() - start_time).total_seconds()
+                    elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
 
                     if response.status != 200:
                         logger.warning(
@@ -1700,7 +1709,7 @@ class HealthChecker:
             if (replica.status == ReplicaStatus.UNHEALTHY and
                 self._consecutive_successes[replica_id] >= self.healthy_threshold):
                 replica.status = ReplicaStatus.HEALTHY
-                replica.last_health_check = datetime.utcnow()
+                replica.last_health_check = datetime.now(timezone.utc)
                 logger.info(f"Replica {replica_id} is now HEALTHY")
         else:
             self._consecutive_successes[replica_id] = 0
@@ -1770,7 +1779,7 @@ Orchestrates routing, queuing, health checking, and metrics.
 
 import asyncio
 from typing import Dict, List, Optional, Any
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 import aiohttp
 
@@ -1870,9 +1879,9 @@ class LLMLoadBalancer:
         timeout: float = 30.0
     ) -> None:
         """Wait for replica to drain, then remove it."""
-        start = datetime.utcnow()
+        start = datetime.now(timezone.utc)
 
-        while (datetime.utcnow() - start).total_seconds() < timeout:
+        while (datetime.now(timezone.utc) - start).total_seconds() < timeout:
             replica = self._replicas.get(replica_id)
             if replica and replica.current_requests == 0:
                 break
@@ -1911,6 +1920,7 @@ class LLMLoadBalancer:
         # Try to route and execute with retries
         last_error = None
         attempts = 0
+        retry_delay = self.retry_delay
 
         while attempts <= self.max_retries:
             try:
@@ -1931,11 +1941,11 @@ class LLMLoadBalancer:
                 if attempts <= self.max_retries:
                     logger.warning(
                         f"Request {request.request_id} failed (attempt {attempts}), "
-                        f"retrying in {self.retry_delay}s: {e}"
+                        f"retrying in {retry_delay}s: {e}"
                     )
-                    await asyncio.sleep(self.retry_delay)
+                    await asyncio.sleep(retry_delay)
                     # Exponential backoff
-                    self.retry_delay *= 1.5
+                    retry_delay *= 1.5
 
         # All retries exhausted
         self._metrics["requests_failed"] += 1
@@ -1988,12 +1998,12 @@ class LLMLoadBalancer:
 
         # Execute the request
         request.assigned_replica = selected.replica_id
-        request.started_at = datetime.utcnow()
+        request.started_at = datetime.now(timezone.utc)
         selected.current_requests += 1
 
         try:
             result = await self._send_inference_request(selected, request)
-            request.completed_at = datetime.utcnow()
+            request.completed_at = datetime.now(timezone.utc)
 
             # Update replica metrics
             selected.requests_processed += 1
