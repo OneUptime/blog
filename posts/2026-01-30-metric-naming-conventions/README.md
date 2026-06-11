@@ -87,10 +87,10 @@ Here is a breakdown of each component.
 # Examples: requests, connections, items, bytes
 
 # unit: The measurement unit (always use base units)
-# Examples: seconds, bytes, total (for counts)
+# Examples: seconds, bytes, ratio
 
 # suffix: Metric type indicator
-# Examples: total (counter), bucket (histogram)
+# Examples: total (counter), bucket (classic histogram series)
 
 # Good examples following the convention
 metric_names = [
@@ -141,7 +141,7 @@ Always include the unit in the metric name. This eliminates ambiguity and preven
 # Base units to use (avoid prefixes like milli, kilo)
 # Time: seconds (not milliseconds)
 # Data: bytes (not kilobytes)
-# Temperature: celsius or fahrenheit (not kelvin)
+# Temperature: celsius (kelvin only for special cases like absolute temperature)
 
 # Good: units are explicit
 "request_duration_seconds"
@@ -179,8 +179,8 @@ Prometheus metrics have specific types. Include suffixes that indicate the type.
 "request_duration_seconds"  # Creates request_duration_seconds_bucket, etc.
 
 # Summary: automatically creates quantile labels
-# Similar to histogram but calculates quantiles client-side
-"response_time_seconds"     # Creates response_time_seconds{quantile="0.99"}
+# Similar to histogram but calculates configurable quantiles client-side
+"response_time_seconds"     # Creates response_time_seconds{quantile="0.99"}, _sum, and _count
 ```
 
 ---
@@ -276,13 +276,13 @@ otel_db_metrics = {
     "db.client.operation.duration": {
         "unit": "s",
         "type": "histogram",
-        "attributes": ["db.system", "db.operation.name", "db.namespace"],
+        "attributes": ["db.system.name", "db.operation.name", "db.namespace"],
     },
 
     "db.client.connection.count": {
         "unit": "{connection}",
         "type": "updowncounter",
-        "attributes": ["db.system", "db.client.connection.state"],
+        "attributes": ["db.client.connection.pool.name", "db.client.connection.state"],
     },
 }
 ```
