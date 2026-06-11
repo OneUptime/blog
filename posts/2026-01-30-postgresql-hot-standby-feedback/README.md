@@ -141,16 +141,13 @@ flowchart LR
 
 ### Configuring Vacuum Delay Settings
 
-To mitigate bloat while using hot standby feedback:
+To mitigate bloat while using hot standby feedback, configure conflict handling on the standby. These parameters control how long the standby waits before canceling conflicting queries to apply WAL:
 
 ```sql
--- On the primary, set maximum standby delay
--- This limits how long vacuum will wait for standbys
-ALTER SYSTEM SET vacuum_defer_cleanup_age = 0;
-
 -- On the standby, configure conflict handling
 ALTER SYSTEM SET max_standby_streaming_delay = '30s';
 ALTER SYSTEM SET max_standby_archive_delay = '30s';
+SELECT pg_reload_conf();
 ```
 
 ### Understanding max_standby_streaming_delay
