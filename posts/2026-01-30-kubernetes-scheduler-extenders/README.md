@@ -12,25 +12,26 @@ Kubernetes scheduler extenders provide a powerful mechanism to customize pod sch
 
 ## Understanding Scheduler Extenders
 
-A scheduler extender is an HTTP(S) server that the Kubernetes scheduler calls during the scheduling cycle. The extender can influence scheduling decisions through three main functions:
+A scheduler extender is an HTTP(S) server that the Kubernetes scheduler calls during the scheduling cycle. The extender can influence scheduling decisions through these common functions:
 
 - **Filter**: Remove nodes that should not run the pod
 - **Prioritize**: Score remaining nodes to influence placement
 - **Preempt**: Select victims for preemption when no nodes are available
+- **Bind**: Optionally bind the pod to a node instead of the default scheduler binder
 
 ```mermaid
 flowchart TD
     A[Pod Created] --> B[Scheduler Picks Pod]
     B --> C[Default Filtering]
     C --> D{Extender Filter}
-    D -->|Nodes Filtered| E[Default Scoring]
+    D -->|Feasible Nodes| E[Default Scoring]
     E --> F{Extender Prioritize}
     F -->|Scores Added| G[Select Best Node]
-    G --> H{Node Available?}
-    H -->|Yes| I[Bind Pod to Node]
-    H -->|No| J{Extender Preempt}
-    J -->|Victims Selected| K[Evict Pods]
-    K --> I
+    G --> I[Bind Pod to Node]
+    D -->|No Feasible Nodes| J{Default Preemption}
+    J --> K{Extender Preempt}
+    K -->|Victims Selected| L[Preempt Victims]
+    L --> M[Retry Scheduling]
 ```
 
 ## Architecture Overview
@@ -52,6 +53,7 @@ flowchart LR
     KS -->|HTTP POST /filter| EXT
     KS -->|HTTP POST /prioritize| EXT
     KS -->|HTTP POST /preempt| EXT
+    KS -->|Optional HTTP POST /bind| EXT
     EXT --> DB
     KS --> API
     EXT --> API
@@ -94,8 +96,7 @@ First, define the types that match the Kubernetes scheduler extender API:
 package extender
 
 import (
-    v1 "k8s.io/api/core/v1"
-    "k8s.io/kube-scheduler/extender/v1"
+    extenderv1 "k8s.io/kube-scheduler/extender/v1"
 )
 
 // ExtenderArgs represents the arguments passed to the extender
@@ -514,8 +515,7 @@ sequenceDiagram
     participant A as kube-apiserver
 
     Note over S: Pod needs scheduling
-    S->>A: Get nodes list
-    A-->>S: Return nodes
+    S->>S: Read nodes from scheduler cache
 
     S->>S: Run default filters
 
@@ -523,22 +523,23 @@ sequenceDiagram
     E->>E: Apply custom filter logic
     E-->>S: {filteredNodes, failedNodes}
 
-    S->>S: Run default scoring
+    alt Feasible nodes remain
+        S->>S: Run default scoring
 
-    S->>E: POST /prioritize<br/>{pod, nodes}
-    E->>E: Calculate custom scores
-    E-->>S: [{host, score}, ...]
+        S->>E: POST /prioritize<br/>{pod, nodes}
+        E->>E: Calculate custom scores
+        E-->>S: [{host, score}, ...]
 
-    S->>S: Combine scores and select node
-
-    alt No suitable node found
+        S->>S: Combine scores and select node
+        S->>A: Bind pod to node
+    else No feasible nodes remain
+        S->>S: Run default preemption
         S->>E: POST /preempt<br/>{pod, nodeVictims}
         E->>E: Select victims
         E-->>S: {nodeVictims}
-        S->>A: Evict victim pods
+        S->>A: Delete victim pods
+        S->>S: Retry scheduling after victims terminate
     end
-
-    S->>A: Bind pod to node
 ```
 
 ## Kubernetes Deployment
@@ -655,18 +656,6 @@ clientConnection:
   kubeconfig: /etc/kubernetes/scheduler.conf
 profiles:
 - schedulerName: default-scheduler
-  plugins:
-    preFilter:
-      enabled:
-      - name: NodeResourcesFit
-    filter:
-      enabled:
-      - name: NodeResourcesFit
-      - name: NodeAffinity
-    score:
-      enabled:
-      - name: NodeResourcesBalancedAllocation
-        weight: 1
 extenders:
 - urlPrefix: "http://scheduler-extender.kube-system.svc.cluster.local:8888"
   filterVerb: "filter"
@@ -707,7 +696,7 @@ spec:
       serviceAccountName: custom-scheduler
       containers:
       - name: scheduler
-        image: registry.k8s.io/kube-scheduler:v1.29.0
+        image: registry.k8s.io/kube-scheduler:v1.36.1
         command:
         - kube-scheduler
         - --config=/etc/kubernetes/scheduler-config.yaml
@@ -897,7 +886,6 @@ Add metrics to track extender performance:
 ```go
 import (
     "github.com/prometheus/client_golang/prometheus"
-    "github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 var (
