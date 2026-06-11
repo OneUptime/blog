@@ -48,7 +48,7 @@ sequenceDiagram
 
 ## Consumer Delivery Timeout Configuration
 
-RabbitMQ 3.8+ introduced `consumer_timeout` - a server-side timeout that closes channels when consumers take too long to acknowledge messages. This is your first line of defense against stuck consumers.
+RabbitMQ 3.8.15 introduced `consumer_timeout` - a server-side timeout that closes channels when consumers take too long to acknowledge messages. This is your first line of defense against stuck consumers.
 
 ### Server-Side Configuration
 
@@ -60,8 +60,9 @@ Configure the timeout in your RabbitMQ configuration file (`rabbitmq.conf`):
 # Set to 0 to disable (not recommended for production)
 consumer_timeout = 300000
 
-# Per-vhost configuration available in RabbitMQ 3.12+
-# consumer_timeout.my_vhost = 600000
+# Per-queue configuration available in RabbitMQ 3.12+:
+# set via the x-consumer-timeout queue argument or a
+# `consumer-timeout` policy applied to a queue pattern.
 ```
 
 For environment variable configuration:
