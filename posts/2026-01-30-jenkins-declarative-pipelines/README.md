@@ -208,7 +208,7 @@ pipeline {
         stage('Build') {
             environment {
                 NODE_ENV = 'production'
-                BUILD_ID = "${env.BUILD_NUMBER}-${env.GIT_COMMIT[0..7]}"
+                BUILD_ID = "${env.BUILD_NUMBER}"
             }
             steps {
                 sh 'echo "Build ID: ${BUILD_ID}"'
@@ -346,13 +346,14 @@ pipeline {
                 }
 
                 stage('Integration Tests') {
-                    agent {
-                        docker { image 'docker/compose:latest' }
-                    }
                     steps {
                         sh 'docker compose up -d'
                         sh 'npm run test:integration'
-                        sh 'docker compose down'
+                    }
+                    post {
+                        always {
+                            sh 'docker compose down'
+                        }
                     }
                 }
 
@@ -654,7 +655,7 @@ pipeline {
                     post {
                         always {
                             junit 'coverage/junit.xml'
-                            publishHTML([
+                            publishHTML(target: [
                                 reportDir: 'coverage/lcov-report',
                                 reportFiles: 'index.html',
                                 reportName: 'Coverage Report'
