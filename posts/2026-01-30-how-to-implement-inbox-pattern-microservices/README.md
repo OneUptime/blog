@@ -123,6 +123,9 @@ CREATE TABLE inbox (
     -- Processing status for monitoring
     status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'processed', 'failed')),
 
+    -- Retry tracking for failed messages
+    retry_count INTEGER NOT NULL DEFAULT 0,
+
     -- Error details if processing failed
     error_message TEXT,
 
@@ -139,6 +142,9 @@ CREATE INDEX idx_inbox_processed_at ON inbox(processed_at) WHERE status = 'proce
 
 -- Index for correlation queries during debugging
 CREATE INDEX idx_inbox_correlation ON inbox(correlation_id) WHERE correlation_id IS NOT NULL;
+
+-- Optional archive table used by the cleanup job later in this guide
+CREATE TABLE inbox_archive (LIKE inbox INCLUDING ALL);
 ```
 
 Key design decisions:
@@ -210,34 +216,28 @@ export class InboxProcessor {
     try {
       await client.query('BEGIN');
 
-      // Check if message already exists in inbox
-      // Use FOR UPDATE to lock the row and prevent race conditions
-      const existingResult = await client.query(
-        `SELECT message_id, status FROM inbox
-         WHERE message_id = $1
-         FOR UPDATE`,
-        [message.messageId]
-      );
-
-      // Message already processed - skip and return early
-      if (existingResult.rows.length > 0) {
-        await client.query('COMMIT');
-        console.log(`Duplicate message detected: ${message.messageId}`);
-        return false;
-      }
-
-      // Insert the message into inbox with pending status
-      await client.query(
+      // Try to claim the message by inserting its ID.
+      // The primary key plus ON CONFLICT makes this safe under concurrency.
+      const insertResult = await client.query(
         `INSERT INTO inbox (message_id, message_type, payload, correlation_id, source_service, status)
-         VALUES ($1, $2, $3, $4, $5, 'pending')`,
+         VALUES ($1, $2, $3, $4, $5, 'pending')
+         ON CONFLICT (message_id) DO NOTHING
+         RETURNING message_id`,
         [
           message.messageId,
           message.messageType,
-          JSON.stringify(message.payload),
+          message.payload,
           message.correlationId,
           message.sourceService
         ]
       );
+
+      // Message already exists - skip and return early
+      if (insertResult.rows.length === 0) {
+        await client.query('COMMIT');
+        console.log(`Duplicate message detected: ${message.messageId}`);
+        return false;
+      }
 
       // Execute the business logic within the same transaction
       await this.executeHandler(message, client);
@@ -294,7 +294,7 @@ export class InboxProcessor {
         [
           message.messageId,
           message.messageType,
-          JSON.stringify(message.payload),
+          message.payload,
           message.correlationId,
           message.sourceService,
           error.message
@@ -316,7 +316,7 @@ Real-world systems encounter scenarios that require careful handling. Here are t
 
 ### Race Conditions Between Consumers
 
-When multiple consumers process messages concurrently, two might receive the same message simultaneously. The `FOR UPDATE` lock in our query handles this:
+When multiple consumers process messages concurrently, two might receive the same message simultaneously. The primary key and `ON CONFLICT DO NOTHING` query handle this:
 
 ```mermaid
 sequenceDiagram
@@ -324,25 +324,27 @@ sequenceDiagram
     participant Consumer2
     participant Database
 
-    Consumer1->>Database: BEGIN + SELECT FOR UPDATE (msg-123)
-    Note over Database: Row locked by Consumer1
-    Consumer2->>Database: BEGIN + SELECT FOR UPDATE (msg-123)
-    Note over Consumer2: Blocked, waiting for lock
-    Consumer1->>Database: INSERT + Process + COMMIT
-    Note over Database: Lock released
-    Database->>Consumer2: Returns existing row
+    Consumer1->>Database: INSERT msg-123 ON CONFLICT DO NOTHING
+    Note over Database: Row inserted by Consumer1
+    Consumer2->>Database: INSERT msg-123 ON CONFLICT DO NOTHING
+    Note over Consumer2: Waits for unique constraint result
+    Consumer1->>Database: Process + COMMIT
+    Database->>Consumer2: No row inserted
     Consumer2->>Database: COMMIT (skip processing)
 ```
 
 ### Handling Partial Failures
 
-If processing fails after inserting into the inbox but before completing business logic, the transaction rolls back. The message will be redelivered and processed fresh:
+If processing fails after inserting into the inbox but before completing business logic, the transaction rolls back. The implementation below records the failure outside the rolled-back transaction so a retry job can reprocess it later:
 
-This helper method retries failed messages with exponential backoff to handle transient failures:
+This helper method retries failed messages up to a maximum retry count to handle transient failures:
 
 ```typescript
 // inbox/retry-handler.ts
-// Retry logic for failed messages with exponential backoff
+// Retry logic for failed messages
+
+import { Pool } from 'pg';
+import { InboxProcessor } from './inbox-processor';
 
 export async function retryFailedMessages(
   processor: InboxProcessor,
@@ -380,7 +382,7 @@ export async function retryFailedMessages(
       await processor.processMessage({
         messageId: row.message_id,
         messageType: row.message_type,
-        payload: JSON.parse(row.payload),
+        payload: row.payload,
         correlationId: row.correlation_id,
         sourceService: row.source_service
       });
@@ -417,11 +419,28 @@ export function generateOrderMessageId(orderId: string, operation: string): stri
   return `order-${orderId}-${operation}`;
 }
 
-// Good: Hash-based ID for complex payloads
+// Good: Hash-based ID for JSON payloads
 // Ensures the same payload always generates the same ID
 export function generateContentBasedId(payload: Record<string, unknown>): string {
-  const normalized = JSON.stringify(payload, Object.keys(payload).sort());
+  const normalized = stableStringify(payload);
   return crypto.createHash('sha256').update(normalized).digest('hex').substring(0, 32);
+}
+
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== 'object') {
+    return JSON.stringify(value);
+  }
+
+  if (Array.isArray(value)) {
+    return `[${value.map(stableStringify).join(',')}]`;
+  }
+
+  const entries = Object.entries(value as Record<string, unknown>)
+    .sort(([a], [b]) => a.localeCompare(b));
+
+  return `{${entries
+    .map(([key, val]) => `${JSON.stringify(key)}:${stableStringify(val)}`)
+    .join(',')}}`;
 }
 
 // Bad: Random UUIDs defeat the purpose of deduplication
@@ -480,8 +499,8 @@ export class KafkaInboxConsumer {
   private async handleMessage(payload: EachMessagePayload): Promise<void> {
     const { topic, partition, message } = payload;
 
-    // Extract message ID from headers or generate from offset
-    // Kafka message keys or custom headers work well for this
+    // Prefer a producer-provided message ID for logical deduplication.
+    // Falling back to topic/partition/offset only deduplicates redelivery of the same Kafka record.
     const messageId = message.headers?.['message-id']?.toString()
       || `${topic}-${partition}-${message.offset}`;
 
@@ -505,8 +524,8 @@ export class KafkaInboxConsumer {
 
     } catch (error) {
       console.error(`Failed to process message ${messageId}:`, error);
-      // Let Kafka redeliver by not committing the offset
-      // The inbox will prevent reprocessing when it succeeds
+      // Throw so KafkaJS does not treat this delivery as successful.
+      // The failure is also recorded in the inbox for the retry job.
       throw error;
     }
   }
@@ -555,15 +574,18 @@ export class RabbitMQInboxConsumer {
     await this.channel.consume(queue, async (msg: ConsumeMessage | null) => {
       if (!msg) return;
 
-      // RabbitMQ provides a unique delivery tag
-      // Combine with message-id header for deduplication
+      // Use a producer-provided ID for deduplication.
+      // RabbitMQ delivery tags are scoped to a channel and are only suitable for acknowledgments.
       const messageId = msg.properties.messageId
-        || msg.properties.headers?.['message-id']
-        || `rmq-${msg.fields.deliveryTag}`;
+        || msg.properties.headers?.['message-id'];
 
       try {
+        if (!messageId) {
+          throw new Error('RabbitMQ message is missing messageId or message-id header');
+        }
+
         const wasProcessed = await this.processor.processMessage({
-          messageId,
+          messageId: messageId.toString(),
           messageType: msg.properties.type || msg.fields.routingKey,
           payload: JSON.parse(msg.content.toString()),
           correlationId: msg.properties.correlationId,
@@ -575,7 +597,7 @@ export class RabbitMQInboxConsumer {
 
       } catch (error) {
         console.error(`Failed to process message ${messageId}:`, error);
-        // Reject and requeue for retry
+        // Reject and requeue, while the inbox failure record remains available for retry handling
         this.channel?.nack(msg, false, true);
       }
     });
@@ -619,10 +641,10 @@ WHERE status = 'failed'
 GROUP BY message_type
 ORDER BY failure_count DESC;
 
--- Calculate deduplication rate (indicates producer retry behavior)
+-- Track processing outcomes over time
 SELECT
   DATE_TRUNC('hour', received_at) as hour,
-  COUNT(*) as total_received,
+  COUNT(*) as total_recorded,
   COUNT(*) FILTER (WHERE status = 'processed') as processed,
   COUNT(*) FILTER (WHERE status = 'failed') as failed
 FROM inbox
@@ -772,6 +794,10 @@ This optimization checks multiple messages against the inbox in a single query:
 ```typescript
 // inbox/batch-processor.ts
 // Batch processing for high-throughput scenarios
+
+import { Pool } from 'pg';
+import { InboxMessage } from './types';
+import { InboxProcessor } from './inbox-processor';
 
 export async function filterDuplicates(
   pool: Pool,
@@ -987,7 +1013,7 @@ The Inbox Pattern is essential for building reliable microservices that consume 
 | Monitor inbox health | Catch processing failures and deduplication issues early |
 | Archive old entries | Maintain query performance as the system scales |
 
-The pattern adds minimal overhead (one database lookup per message) but provides strong guarantees against duplicate processing. In distributed systems where exactly-once delivery is impossible to guarantee at the transport layer, the inbox pattern lets you achieve exactly-once processing at the application layer.
+The pattern adds minimal overhead (one atomic insert attempt per message) but provides strong guarantees against duplicate processing. In distributed systems where exactly-once delivery is not generally guaranteed at the transport layer, the inbox pattern lets you achieve effectively-once processing for business changes committed in the same database transaction.
 
 ---
 
