@@ -35,7 +35,7 @@ When MySQL merges (inlines) a CTE, it treats the CTE like a derived table and ca
 
 ## Using Materialization Hints
 
-MySQL 8.0.14 introduced optimizer hints that let you control CTE materialization behavior explicitly.
+MySQL 8.0 supports optimizer hints that let you control CTE materialization behavior explicitly.
 
 ### Preventing Merge (Forcing Materialization)
 
@@ -53,7 +53,7 @@ WITH order_totals AS (
     WHERE order_date >= '2024-01-01'
     GROUP BY customer_id
 )
-SELECT /*+ NO_MERGE(order_totals) */
+SELECT /*+ NO_MERGE(ot) */
     c.customer_name,
     ot.order_count,
     ot.total_spent,
@@ -79,7 +79,7 @@ WITH recent_orders AS (
     FROM orders
     WHERE status = 'completed'
 )
-SELECT /*+ MERGE(recent_orders) */
+SELECT /*+ MERGE(ro) */
     ro.id,
     ro.total_amount,
     c.customer_name
@@ -387,8 +387,8 @@ SELECT p.name, ss.total_qty
 FROM products p
 JOIN sales_summary ss ON p.id = ss.product_id;
 
--- Create index if table scan appears on products
-CREATE INDEX idx_products_id ON products(id);
+-- Create an index for the grouped and joined column if it is missing
+CREATE INDEX idx_sales_product ON sales(product_id);
 ```
 
 ## Advanced Techniques
@@ -477,7 +477,7 @@ ORDER BY p.product_name, rs.sale_rank;
 -- Enable statement instrumentation
 UPDATE performance_schema.setup_consumers
 SET ENABLED = 'YES'
-WHERE NAME LIKE 'events_statements%';
+WHERE NAME IN ('events_statements_current', 'statements_digest');
 
 -- Query to find slow CTE queries
 SELECT
