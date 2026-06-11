@@ -62,7 +62,7 @@ The following example shows a content-based filter that routes events based on t
 // content-filter.ts
 // Filter events based on payload content
 
-interface Event {
+interface DomainEvent {
   id: string;
   type: string;
   timestamp: Date;
@@ -94,7 +94,7 @@ class ContentFilter {
 
   // Extract nested field value using dot notation
   // Example: getFieldValue(event, 'payload.order.amount')
-  private getFieldValue(event: Event, path: string): unknown {
+  private getFieldValue(event: DomainEvent, path: string): unknown {
     const parts = path.split('.');
     let current: unknown = event;
 
@@ -109,7 +109,7 @@ class ContentFilter {
   }
 
   // Evaluate a single rule against an event
-  private evaluateRule(event: Event, rule: FilterRule): boolean {
+  private evaluateRule(event: DomainEvent, rule: FilterRule): boolean {
     const fieldValue = this.getFieldValue(event, rule.field);
 
     switch (rule.operator) {
@@ -143,7 +143,7 @@ class ContentFilter {
   }
 
   // Check if event matches all filter rules
-  matches(event: Event): boolean {
+  matches(event: DomainEvent): boolean {
     // All rules must match (AND logic)
     return this.rules.every(rule => this.evaluateRule(event, rule));
   }
@@ -156,14 +156,14 @@ const fraudFilter = new ContentFilter([
   { field: 'payload.currency', operator: 'in', value: ['USD', 'EUR', 'GBP'] }
 ]);
 
-const event: Event = {
+const paymentEvent: DomainEvent = {
   id: 'evt_123',
   type: 'payment.completed',
   timestamp: new Date(),
   payload: { amount: 5000, currency: 'USD', customerId: 'cust_456' }
 };
 
-if (fraudFilter.matches(event)) {
+if (fraudFilter.matches(paymentEvent)) {
   console.log('Event matched - sending to fraud detection');
 }
 ```
@@ -233,25 +233,40 @@ class TopicFilter:
     def _pattern_to_regex(self, pattern: str) -> re.Pattern:
         """
         Convert topic pattern to regex.
-        orders.* becomes orders\.[^.]+
-        orders.# becomes orders\..*
+        orders.* becomes orders\\.[^.]+
+        orders.# becomes orders(?:\\..+)?
         """
         if pattern in self.pattern_cache:
             return self.pattern_cache[pattern]
 
-        # Escape dots for regex
-        regex_str = pattern.replace('.', r'\.')
+        segments = pattern.split('.')
+        regex_parts = []
 
-        # Replace * with single segment match
-        regex_str = regex_str.replace('*', r'[^.]+')
+        for index, segment in enumerate(segments):
+            if segment == '#':
+                if index != len(segments) - 1:
+                    raise ValueError("# wildcard must be the last segment")
+                if index == 0:
+                    regex_str = r'^.*$'
+                else:
+                    regex_str = '^' + r'\.'.join(regex_parts) + r'(?:\..+)?$'
+                compiled = re.compile(regex_str)
+                self.pattern_cache[pattern] = compiled
+                return compiled
 
-        # Replace # with multi-segment match
-        regex_str = regex_str.replace('#', r'.*')
+            if '#' in segment:
+                raise ValueError("# wildcard must occupy a full segment")
 
-        # Anchor the pattern
-        regex_str = f'^{regex_str}$'
+            if segment == '*':
+                regex_parts.append(r'[^.]+')
+                continue
 
-        compiled = re.compile(regex_str)
+            if '*' in segment:
+                raise ValueError("* wildcard must occupy a full segment")
+
+            regex_parts.append(re.escape(segment))
+
+        compiled = re.compile('^' + r'\.'.join(regex_parts) + '$')
         self.pattern_cache[pattern] = compiled
         return compiled
 
@@ -262,7 +277,7 @@ class TopicFilter:
         Examples:
           - 'orders.created' - exact match
           - 'orders.*' - matches orders.created, orders.cancelled
-          - 'orders.#' - matches orders.created.us, orders.created.eu.west
+          - 'orders.#' - matches orders, orders.created.us, orders.created.eu.west
         """
         if pattern not in self.subscriptions:
             self.subscriptions[pattern] = []
@@ -518,8 +533,12 @@ Most message brokers support native filtering. Here are examples for popular pla
 // Filter events using Kafka Streams
 
 import org.apache.kafka.streams.StreamsBuilder;
+import org.apache.kafka.streams.kstream.Branched;
 import org.apache.kafka.streams.kstream.KStream;
+import org.apache.kafka.streams.kstream.Named;
 import org.apache.kafka.streams.kstream.Predicate;
+
+import java.util.Map;
 
 public class PaymentFilter {
 
@@ -534,20 +553,17 @@ public class PaymentFilter {
         Predicate<String, PaymentEvent> isFailed =
             (key, event) -> "FAILED".equals(event.getStatus());
 
-        // Branch into multiple output streams based on filters
-        // Index 0: high value payments
-        // Index 1: failed payments
-        // Index 2: everything else
-        KStream<String, PaymentEvent>[] branches = payments.branch(
-            isHighValue,
-            isFailed,
-            (key, event) -> true  // Default branch
-        );
+        // Split into multiple output streams based on filters
+        Map<String, KStream<String, PaymentEvent>> branches = payments
+            .split(Named.as("payment-"))
+            .branch(isHighValue, Branched.as("high-value"))
+            .branch(isFailed, Branched.as("failed"))
+            .defaultBranch(Branched.as("standard"));
 
         // Route filtered streams to different topics
-        branches[0].to("high-value-payments");
-        branches[1].to("failed-payments");
-        branches[2].to("standard-payments");
+        branches.get("payment-high-value").to("high-value-payments");
+        branches.get("payment-failed").to("failed-payments");
+        branches.get("payment-standard").to("standard-payments");
     }
 }
 ```
@@ -584,14 +600,20 @@ Filtering at scale requires careful optimization. Here are key strategies.
 // indexed-filter.ts
 // Use indexes for fast field lookups
 
+interface StoredEvent {
+  id: string;
+  type: string;
+  payload: Record<string, unknown>;
+}
+
 class IndexedEventStore {
-  private events: Map<string, Event> = new Map();
+  private events: Map<string, StoredEvent> = new Map();
 
   // Secondary indexes for common filter fields
   private typeIndex: Map<string, Set<string>> = new Map();
   private statusIndex: Map<string, Set<string>> = new Map();
 
-  addEvent(event: Event): void {
+  addEvent(event: StoredEvent): void {
     this.events.set(event.id, event);
 
     // Update type index
@@ -609,13 +631,13 @@ class IndexedEventStore {
   }
 
   // Fast lookup using index
-  findByType(type: string): Event[] {
+  findByType(type: string): StoredEvent[] {
     const ids = this.typeIndex.get(type) || new Set();
     return Array.from(ids).map(id => this.events.get(id)!);
   }
 
   // Combine indexes for compound queries
-  findByTypeAndStatus(type: string, status: string): Event[] {
+  findByTypeAndStatus(type: string, status: string): StoredEvent[] {
     const typeIds = this.typeIndex.get(type) || new Set();
     const statusIds = this.statusIndex.get(status) || new Set();
 
