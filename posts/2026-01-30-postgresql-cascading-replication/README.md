@@ -107,9 +107,6 @@ archive_command = 'cp %p /var/lib/postgresql/archive/%f'
 
 # Listen on all interfaces
 listen_addresses = '*'
-
-# Hot standby feedback for better WAL retention
-hot_standby_feedback = on
 ```
 
 Create a replication user:
