@@ -137,8 +137,7 @@ Avro is the most common schema format for Kafka. Here is how to set up contract 
     },
     {
       "name": "createdAt",
-      "type": "long",
-      "logicalType": "timestamp-millis",
+      "type": { "type": "long", "logicalType": "timestamp-millis" },
       "doc": "Creation timestamp in milliseconds"
     }
   ]
@@ -147,40 +146,45 @@ Avro is the most common schema format for Kafka. Here is how to set up contract 
 
 ### Compatibility Testing with Node.js
 
+The Confluent Schema Registry exposes a REST API for compatibility checks and schema registration. The example below uses `fetch` to call the relevant endpoints directly.
+
 ```typescript
 // schema-validator.ts
-import { SchemaRegistry } from '@kafkajs/confluent-schema-registry';
+const REGISTRY_URL =
+  process.env.SCHEMA_REGISTRY_URL || 'http://localhost:8081';
 
-// Initialize the schema registry client
-const registry = new SchemaRegistry({
-  host: process.env.SCHEMA_REGISTRY_URL || 'http://localhost:8081',
-});
+const REGISTRY_CONTENT_TYPE =
+  'application/vnd.schemaregistry.v1+json';
 
 interface CompatibilityResult {
   isCompatible: boolean;
   errors?: string[];
 }
 
-// Check if a new schema is compatible with the existing schema
+// Check if a new schema is compatible with the latest registered schema
 export async function checkSchemaCompatibility(
   subject: string,
   newSchema: string
 ): Promise<CompatibilityResult> {
-  try {
-    // Test compatibility against the latest registered schema
-    const isCompatible = await registry.testCompatibility({
-      subject,
-      schema: newSchema,
-    });
+  const response = await fetch(
+    `${REGISTRY_URL}/compatibility/subjects/${subject}/versions/latest`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': REGISTRY_CONTENT_TYPE },
+      body: JSON.stringify({ schema: newSchema, schemaType: 'AVRO' }),
+    }
+  );
 
-    return { isCompatible };
-  } catch (error: any) {
-    // Parse error response to extract compatibility violations
+  if (!response.ok) {
+    const error = await response.json();
     return {
       isCompatible: false,
-      errors: [error.message],
+      errors: [error.message || `HTTP ${response.status}`],
     };
   }
+
+  const { is_compatible } = await response.json();
+  return { isCompatible: is_compatible };
 }
 
 // Register a schema if it passes compatibility checks
@@ -198,13 +202,29 @@ export async function registerSchema(
   }
 
   // Register the schema and get its ID
-  const { id } = await registry.register({
-    type: 'AVRO',
-    schema,
-  }, { subject });
+  const registerRes = await fetch(
+    `${REGISTRY_URL}/subjects/${subject}/versions`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': REGISTRY_CONTENT_TYPE },
+      body: JSON.stringify({ schema, schemaType: 'AVRO' }),
+    }
+  );
 
-  // Get the version number
-  const versions = await registry.getSubjectVersions(subject);
+  if (!registerRes.ok) {
+    const error = await registerRes.json();
+    throw new Error(
+      `Failed to register schema: ${error.message || `HTTP ${registerRes.status}`}`
+    );
+  }
+
+  const { id } = await registerRes.json();
+
+  // Get the latest version number
+  const versionsRes = await fetch(
+    `${REGISTRY_URL}/subjects/${subject}/versions`
+  );
+  const versions: number[] = await versionsRes.json();
   const version = versions[versions.length - 1];
 
   return { id, version };
@@ -737,7 +757,6 @@ flowchart LR
 
 ```typescript
 // schema-version-manager.ts
-import { SchemaRegistry } from '@kafkajs/confluent-schema-registry';
 
 interface SchemaVersion {
   version: number;
@@ -746,27 +765,36 @@ interface SchemaVersion {
   createdAt: Date;
 }
 
-export class SchemaVersionManager {
-  private registry: SchemaRegistry;
+const REGISTRY_CONTENT_TYPE =
+  'application/vnd.schemaregistry.v1+json';
 
-  constructor(registryUrl: string) {
-    this.registry = new SchemaRegistry({ host: registryUrl });
+export class SchemaVersionManager {
+  constructor(private registryUrl: string) {}
+
+  private async fetchJson(path: string, init?: RequestInit) {
+    const res = await fetch(`${this.registryUrl}${path}`, init);
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(`Registry ${res.status}: ${body}`);
+    }
+    return res.json();
   }
 
   // Get all versions of a subject
   async getAllVersions(subject: string): Promise<SchemaVersion[]> {
-    const versions = await this.registry.getSubjectVersions(subject);
+    const versions: number[] = await this.fetchJson(
+      `/subjects/${subject}/versions`
+    );
     const schemas: SchemaVersion[] = [];
 
     for (const version of versions) {
-      const { schema, id } = await this.registry.getRegistryId(
-        subject,
-        version
+      const data = await this.fetchJson(
+        `/subjects/${subject}/versions/${version}`
       );
       schemas.push({
-        version,
-        id,
-        schema: JSON.stringify(schema),
+        version: data.version,
+        id: data.id,
+        schema: data.schema,
         createdAt: new Date(), // Registry does not store timestamp
       });
     }
@@ -776,17 +804,29 @@ export class SchemaVersionManager {
 
   // Get the latest version
   async getLatestVersion(subject: string): Promise<SchemaVersion> {
-    const versions = await this.getAllVersions(subject);
-    return versions[versions.length - 1];
+    const data = await this.fetchJson(
+      `/subjects/${subject}/versions/latest`
+    );
+    return {
+      version: data.version,
+      id: data.id,
+      schema: data.schema,
+      createdAt: new Date(),
+    };
   }
 
-  // Delete a specific version (use with caution)
+  // Delete a specific version (soft delete by default)
   async deleteVersion(
     subject: string,
     version: number
   ): Promise<void> {
-    // Soft delete - marks version as deleted
-    await this.registry.deleteSubjectVersion(subject, version);
+    const res = await fetch(
+      `${this.registryUrl}/subjects/${subject}/versions/${version}`,
+      { method: 'DELETE' }
+    );
+    if (!res.ok) {
+      throw new Error(`Failed to delete: HTTP ${res.status}`);
+    }
   }
 
   // Set compatibility mode for a subject
@@ -794,14 +834,19 @@ export class SchemaVersionManager {
     subject: string,
     mode: 'BACKWARD' | 'FORWARD' | 'FULL' | 'NONE'
   ): Promise<void> {
-    await this.registry.setSubjectConfig(subject, {
-      compatibilityLevel: mode,
+    const res = await fetch(`${this.registryUrl}/config/${subject}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': REGISTRY_CONTENT_TYPE },
+      body: JSON.stringify({ compatibility: mode }),
     });
+    if (!res.ok) {
+      throw new Error(`Failed to set config: HTTP ${res.status}`);
+    }
   }
 
   // Get current compatibility mode
   async getCompatibility(subject: string): Promise<string> {
-    const config = await this.registry.getSubjectConfig(subject);
+    const config = await this.fetchJson(`/config/${subject}`);
     return config.compatibilityLevel;
   }
 
@@ -811,28 +856,28 @@ export class SchemaVersionManager {
     versionA: number,
     versionB: number
   ): Promise<{ added: string[]; removed: string[]; modified: string[] }> {
-    const [schemaA, schemaB] = await Promise.all([
-      this.registry.getRegistryId(subject, versionA),
-      this.registry.getRegistryId(subject, versionB),
+    const [dataA, dataB] = await Promise.all([
+      this.fetchJson(`/subjects/${subject}/versions/${versionA}`),
+      this.fetchJson(`/subjects/${subject}/versions/${versionB}`),
     ]);
 
-    const fieldsA = new Set(
-      (schemaA.schema as any).fields.map((f: any) => f.name)
-    );
-    const fieldsB = new Set(
-      (schemaB.schema as any).fields.map((f: any) => f.name)
-    );
+    // Schema is returned as a JSON-encoded string
+    const schemaA = JSON.parse(dataA.schema);
+    const schemaB = JSON.parse(dataB.schema);
+
+    const fieldsA = new Set(schemaA.fields.map((f: any) => f.name));
+    const fieldsB = new Set(schemaB.fields.map((f: any) => f.name));
 
     const added = [...fieldsB].filter(f => !fieldsA.has(f));
     const removed = [...fieldsA].filter(f => !fieldsB.has(f));
 
     // Check for type modifications
     const modified: string[] = [];
-    const schemaAFields = new Map(
-      (schemaA.schema as any).fields.map((f: any) => [f.name, f])
+    const schemaAFields = new Map<string, any>(
+      schemaA.fields.map((f: any) => [f.name, f])
     );
-    const schemaBFields = new Map(
-      (schemaB.schema as any).fields.map((f: any) => [f.name, f])
+    const schemaBFields = new Map<string, any>(
+      schemaB.fields.map((f: any) => [f.name, f])
     );
 
     for (const [name, fieldA] of schemaAFields) {
@@ -852,6 +897,7 @@ export class SchemaVersionManager {
 ```typescript
 // scripts/migrate-schema.ts
 import { SchemaVersionManager } from '../schema-version-manager';
+import { registerSchema } from '../schema-validator';
 import { readFileSync } from 'fs';
 
 async function migrateSchema() {
@@ -888,7 +934,7 @@ async function migrateSchema() {
 
   // Register new schema (will fail if incompatible)
   try {
-    const result = await manager.registerSchema(subject, newSchema);
+    const result = await registerSchema(subject, newSchema);
     console.log(`\nNew version registered: ${result.version}`);
     console.log(`Schema ID: ${result.id}`);
   } catch (error: any) {
