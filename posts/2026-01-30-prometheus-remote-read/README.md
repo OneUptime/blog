@@ -142,7 +142,7 @@ sequenceDiagram
 
 ## Configuring Remote Read in Prometheus
 
-Add the remote_read configuration to your prometheus.yml file. This example configures Prometheus to read from a Thanos Store Gateway:
+Add the remote_read configuration to your prometheus.yml file. This example configures Prometheus to read from a Thanos Querier:
 
 ```yaml
 # prometheus.yml
@@ -152,7 +152,7 @@ global:
   evaluation_interval: 15s
 
 remote_read:
-  - url: "http://thanos-store-gateway:10901/api/v1/read"
+  - url: "http://thanos-query:10902/api/v1/read"
     read_recent: false
 
     # Optional: Add authentication headers
@@ -169,7 +169,7 @@ The key configuration options are:
 | Option | Description | Default |
 |--------|-------------|---------|
 | url | Remote read endpoint URL | Required |
-| read_recent | Also read recent data from remote | true |
+| read_recent | Also read recent data from remote | false |
 | required_matchers | Only use remote read for matching queries | None |
 | remote_timeout | Timeout for remote read requests | 1m |
 | headers | Custom HTTP headers | None |
@@ -271,9 +271,9 @@ func main() {
 
 ## Complete Example with VictoriaMetrics
 
-VictoriaMetrics is a popular choice for Prometheus long-term storage. Here is a complete setup:
+VictoriaMetrics is a popular choice for Prometheus long-term storage. Note that VictoriaMetrics intentionally does not implement the Prometheus remote read protocol because it can be slow and expensive for large time ranges. Instead, VictoriaMetrics exposes the Prometheus HTTP query API (`/api/v1/query`, `/api/v1/query_range`, etc.), which Grafana and other tools can query directly.
 
-First, start VictoriaMetrics with remote read support enabled:
+First, start VictoriaMetrics single-node:
 
 ```bash
 # Start VictoriaMetrics single-node
@@ -285,7 +285,7 @@ docker run -d \
   victoriametrics/victoria-metrics:latest
 ```
 
-Configure Prometheus to write and read from VictoriaMetrics:
+Configure Prometheus to send metrics to VictoriaMetrics via remote write, then point Grafana (or another query client) at VictoriaMetrics' Prometheus-compatible query API for historical queries:
 
 ```yaml
 # prometheus.yml
@@ -297,16 +297,13 @@ global:
 remote_write:
   - url: "http://victoriametrics:8428/api/v1/write"
 
-# Query metrics from VictoriaMetrics
-remote_read:
-  - url: "http://victoriametrics:8428/api/v1/read"
-    read_recent: false
-
 scrape_configs:
   - job_name: 'prometheus'
     static_configs:
       - targets: ['localhost:9090']
 ```
+
+To query historical data, configure Grafana with a Prometheus data source pointed at `http://victoriametrics:8428/` rather than configuring Prometheus `remote_read`.
 
 ---
 
@@ -429,12 +426,12 @@ Prometheus exposes metrics about remote read performance:
 
 ```promql
 # Average remote read duration
-rate(prometheus_remote_storage_read_request_duration_seconds_sum[5m])
+rate(prometheus_remote_read_client_request_duration_seconds_sum[5m])
 /
-rate(prometheus_remote_storage_read_request_duration_seconds_count[5m])
+rate(prometheus_remote_read_client_request_duration_seconds_count[5m])
 
 # Remote read request rate
-rate(prometheus_remote_storage_read_queries_total[5m])
+rate(prometheus_remote_read_client_queries_total[5m])
 ```
 
 ---
@@ -457,7 +454,7 @@ Check if remote read is causing slowdowns:
 ```promql
 # Time spent in remote read
 histogram_quantile(0.99,
-  rate(prometheus_remote_storage_read_request_duration_seconds_bucket[5m])
+  rate(prometheus_remote_read_client_request_duration_seconds_bucket[5m])
 )
 ```
 
