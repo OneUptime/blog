@@ -109,13 +109,16 @@ You can override the priority of existing rules without modifying the original r
 # This changes a WARNING to CRITICAL for your environment
 - rule: Read Sensitive File Untrusted
   priority: CRITICAL
-  append: true
+  override:
+    priority: replace
 
 # You can also override with additional conditions
 - rule: Terminal Shell in Container
   priority: EMERGENCY
   condition: and k8s.ns.name = "production"
-  append: true
+  override:
+    priority: replace
+    condition: append
 ```
 
 ### Creating Environment-Specific Overrides
@@ -128,13 +131,17 @@ You can override the priority of existing rules without modifying the original r
 - rule: Unexpected Network Connection
   priority: CRITICAL
   condition: and k8s.ns.name in (production, payments)
-  append: true
+  override:
+    priority: replace
+    condition: append
 
 # Development namespace gets lower priorities
 - rule: Unexpected Network Connection
   priority: NOTICE
   condition: and k8s.ns.name in (development, staging)
-  append: true
+  override:
+    priority: replace
+    condition: append
 ```
 
 ## Filtering Alerts by Priority
@@ -148,35 +155,23 @@ In your Falco configuration file, set the minimum priority for alerts:
 ```yaml
 # falco.yaml configuration
 # Only output alerts with priority WARNING or higher
-priority: WARNING
+priority: warning
 
 # This means DEBUG, INFORMATIONAL, and NOTICE
-# alerts will not be generated
+# rules will not be loaded or evaluated
 ```
 
 ### Output-Specific Priority Filtering
 
-You can configure different outputs to receive different priority levels:
+Falco applies the `priority` setting globally. To route different priority levels to different destinations, send Falco events to Falcosidekick and configure per-destination `minimumpriority` settings there:
 
 ```yaml
-# falco.yaml output configuration
-
-# Send all CRITICAL and above to PagerDuty
-- name: pagerduty
-  library_path: /usr/share/falco/plugins/libpagerduty.so
-  min_priority: CRITICAL
-
-# Send WARNING and above to Slack
-- name: slack
-  library_path: /usr/share/falco/plugins/libslack.so
-  min_priority: WARNING
-
-# Send everything to file for audit
-- name: file
-  library_path: /usr/share/falco/plugins/libfile.so
-  min_priority: DEBUG
-  options:
-    filename: /var/log/falco/events.log
+# falco.yaml output configuration for Falcosidekick
+json_output: true
+json_include_output_property: true
+http_output:
+  enabled: true
+  url: http://falcosidekick:2801/
 ```
 
 ### Using Falcosidekick for Priority-Based Routing
@@ -264,6 +259,12 @@ elasticsearch:
 ```yaml
 # Detect unexpected outbound connections
 # Priority based on destination characteristics
+- list: allowed_outbound_ips
+  items: [10.0.0.10, 10.0.0.11]
+
+- list: malicious_ip_list
+  items: [203.0.113.10, 203.0.113.11]
+
 - rule: Unexpected Outbound Connection
   desc: Detects outbound connections to unexpected destinations
   condition: >
