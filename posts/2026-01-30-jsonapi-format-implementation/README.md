@@ -17,7 +17,7 @@ Before diving into implementation, let us understand what problems JSON:API solv
 - **Consistent Structure**: Every response follows the same format, making client code predictable
 - **Efficient Data Fetching**: Compound documents reduce HTTP round trips
 - **Standardized Relationships**: Clear conventions for linking resources
-- **Built-in Pagination**: Standardized pagination metadata and links
+- **Pagination Links**: Standardized pagination link names
 - **Error Handling**: Structured error objects with detailed information
 - **Sparse Fieldsets**: Clients can request only the fields they need
 
@@ -785,23 +785,41 @@ Set up proper headers and content negotiation.
 ```javascript
 // src/middleware/jsonApiHeaders.js
 
-// JSON:API requires the Content-Type header to be application/vnd.api+json
+// JSON:API uses the application/vnd.api+json media type
 const JSON_API_CONTENT_TYPE = 'application/vnd.api+json';
+
+function isJsonApiMediaType(value, allowQuality = false) {
+  const [mediaType, ...params] = value.split(';').map(part => part.trim());
+  const allowedParams = new Set(['ext', 'profile']);
+
+  if (allowQuality) {
+    allowedParams.add('q');
+  }
+
+  if (mediaType.toLowerCase() !== JSON_API_CONTENT_TYPE) {
+    return false;
+  }
+
+  return params.every(param => {
+    const [name] = param.split('=');
+    return allowedParams.has(name.toLowerCase());
+  });
+}
 
 function jsonApiHeaders(req, res, next) {
   // Set the correct Content-Type for responses
-  res.set('Content-Type', JSON_API_CONTENT_TYPE);
+  res.type(JSON_API_CONTENT_TYPE);
 
   // Validate Content-Type for requests with bodies
   if (['POST', 'PATCH', 'PUT'].includes(req.method)) {
     const contentType = req.get('Content-Type');
 
-    if (contentType && !contentType.includes(JSON_API_CONTENT_TYPE)) {
+    if (!contentType || !isJsonApiMediaType(contentType)) {
       return res.status(415).json({
         errors: [{
           status: '415',
           title: 'Unsupported Media Type',
-          detail: `Content-Type must be ${JSON_API_CONTENT_TYPE}`
+          detail: `Content-Type must be ${JSON_API_CONTENT_TYPE} with only ext or profile parameters`
         }]
       });
     }
@@ -809,12 +827,15 @@ function jsonApiHeaders(req, res, next) {
 
   // Validate Accept header if present
   const accept = req.get('Accept');
-  if (accept && accept !== '*/*' && !accept.includes(JSON_API_CONTENT_TYPE)) {
+  const acceptsJsonApi = !accept || accept === '*/*' ||
+    accept.split(',').some(value => isJsonApiMediaType(value, true));
+
+  if (!acceptsJsonApi) {
     return res.status(406).json({
       errors: [{
         status: '406',
         title: 'Not Acceptable',
-        detail: `Accept header must include ${JSON_API_CONTENT_TYPE}`
+        detail: `Accept header must include ${JSON_API_CONTENT_TYPE} with only ext or profile parameters`
       }]
     });
   }
@@ -834,6 +855,7 @@ Wire everything together in the main application file.
 
 const express = require('express');
 const jsonApiHeaders = require('./middleware/jsonApiHeaders');
+const serializer = require('./serializers');
 const ArticleController = require('./controllers/ArticleController');
 const ArticleService = require('./services/ArticleService');
 
@@ -1165,6 +1187,21 @@ serializer.register(
 
 JSON_API_CONTENT_TYPE = 'application/vnd.api+json'
 
+def is_jsonapi_media_type(value, allow_quality=False):
+    """Validate a JSON:API media type instance."""
+    parts = [part.strip() for part in value.split(';')]
+    media_type, params = parts[0].lower(), parts[1:]
+    allowed_params = {'ext', 'profile'}
+
+    if allow_quality:
+        allowed_params.add('q')
+
+    if media_type != JSON_API_CONTENT_TYPE:
+        return False
+
+    return all(param.split('=', 1)[0].lower() in allowed_params
+               for param in params)
+
 def jsonapi_response(data, status=200):
     """Create a JSON:API response with correct headers"""
     response = make_response(jsonify(data), status)
@@ -1178,24 +1215,29 @@ def validate_jsonapi_headers(f):
         # Check Content-Type for requests with bodies
         if request.method in ['POST', 'PATCH', 'PUT']:
             content_type = request.headers.get('Content-Type', '')
-            if JSON_API_CONTENT_TYPE not in content_type:
+            if not content_type or not is_jsonapi_media_type(content_type):
                 return jsonapi_response(
                     serializer.serialize_error({
                         'status': 415,
                         'title': 'Unsupported Media Type',
-                        'detail': f'Content-Type must be {JSON_API_CONTENT_TYPE}'
+                        'detail': f'Content-Type must be {JSON_API_CONTENT_TYPE} with only ext or profile parameters'
                     }),
                     415
                 )
 
         # Check Accept header
         accept = request.headers.get('Accept', '*/*')
-        if accept != '*/*' and JSON_API_CONTENT_TYPE not in accept:
+        accepts_jsonapi = (
+            accept == '*/*' or
+            any(is_jsonapi_media_type(value, allow_quality=True)
+                for value in accept.split(','))
+        )
+        if not accepts_jsonapi:
             return jsonapi_response(
                 serializer.serialize_error({
                     'status': 406,
                     'title': 'Not Acceptable',
-                    'detail': f'Accept header must include {JSON_API_CONTENT_TYPE}'
+                    'detail': f'Accept header must include {JSON_API_CONTENT_TYPE} with only ext or profile parameters'
                 }),
                 406
             )
@@ -1436,7 +1478,7 @@ Response:
 
 ## Filtering and Sorting
 
-JSON:API defines conventions for filtering and sorting:
+JSON:API defines a sorting parameter. Filtering is implementation-specific, but the `filter` query parameter family is commonly used:
 
 ```text
 GET /api/articles?filter[status]=published&filter[author]=42&sort=-createdAt,title
@@ -1497,7 +1539,7 @@ graph LR
         S1["Standardized format"]
         S2["Compound documents"]
         S3["Relationship handling"]
-        S4["Pagination built-in"]
+        S4["Pagination link names"]
     end
 
     subgraph "Trade-offs"
@@ -1551,11 +1593,11 @@ curl -X POST http://localhost:3000/api/articles \
   }'
 
 # Get article with included author and comments
-curl "http://localhost:3000/api/articles/1?include=author,comments" \
+curl -g "http://localhost:3000/api/articles/1?include=author,comments" \
   -H "Accept: application/vnd.api+json"
 
 # List articles with pagination, filtering, and sparse fields
-curl "http://localhost:3000/api/articles?page[number]=1&page[size]=5&filter[status]=published&fields[articles]=title,slug" \
+curl -g "http://localhost:3000/api/articles?page[number]=1&page[size]=5&filter[status]=published&fields[articles]=title,slug" \
   -H "Accept: application/vnd.api+json"
 
 # Update an article
