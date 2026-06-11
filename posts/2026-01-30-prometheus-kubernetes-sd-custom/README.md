@@ -39,7 +39,7 @@ flowchart LR
 
 ## Built-in Kubernetes SD Roles
 
-Prometheus provides five discovery roles for Kubernetes:
+Prometheus provides six discovery roles for Kubernetes:
 
 | Role | Description | Use Case |
 |------|-------------|----------|
@@ -157,6 +157,7 @@ import (
     "log"
     "net/http"
     "os"
+    "strings"
     "time"
 
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -279,9 +280,10 @@ func (a *SDAdapter) updateTargets() {
         }
 
         // Add custom labels from annotations
+        labelPrefix := "monitoring.example.com/label_"
         for k, v := range pod.Annotations {
-            if len(k) > 24 && k[:24] == "monitoring.example.com/label_" {
-                labelName := k[24:]
+            if strings.HasPrefix(k, labelPrefix) {
+                labelName := k[len(labelPrefix):]
                 labels[labelName] = v
             }
         }
