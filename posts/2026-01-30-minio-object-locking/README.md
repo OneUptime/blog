@@ -8,7 +8,7 @@ Description: A practical guide to configuring object locking in MinIO for immuta
 
 ---
 
-Object locking prevents data from being deleted or overwritten for a specified period. This feature is essential for compliance requirements like SEC 17a-4, HIPAA, and GDPR, where you need to prove that records have not been tampered with. MinIO implements S3-compatible object locking, giving you WORM (Write Once Read Many) storage on your own infrastructure.
+Object locking prevents protected object versions from being deleted or overwritten for a specified period. This feature can help with compliance requirements like SEC 17a-4, HIPAA, and GDPR, where you need to prove that records have not been tampered with. MinIO implements S3-compatible object locking, giving you WORM (Write Once Read Many) storage on your own infrastructure.
 
 This guide covers how to enable object locking, configure retention policies, apply legal holds, and automate the process using both the MinIO Client (`mc`) and the S3 API.
 
@@ -23,7 +23,7 @@ flowchart TD
     A[Create Bucket with Object Locking] --> B[Upload Object]
     B --> C{Apply Retention?}
     C -->|Yes| D[Set Retention Mode + Period]
-    C -->|No| E[Object Mutable]
+    C -->|No| E[Object Version Has No Lock]
     D --> F{Mode Type}
     F -->|Governance| G[Admins Can Override]
     F -->|Compliance| H[Nobody Can Override]
@@ -47,14 +47,14 @@ flowchart TD
 
 ## Step 1: Create a Bucket with Object Locking Enabled
 
-Object locking must be enabled at bucket creation time. You cannot enable it on existing buckets.
+Object locking is normally enabled at bucket creation time for S3-compatible behavior. Current MinIO AIStor releases can also enable object locking on an existing bucket with `mc retention set --default`, but older releases required locking to be enabled when the bucket was created.
 
 ### Using mc
 
 ```bash
 # Create a bucket with object locking enabled
 
-mc mb myminio/compliance-bucket --with-lock
+mc mb --with-lock myminio/compliance-bucket
 
 # Verify the bucket was created with locking
 mc ls myminio/
@@ -94,7 +94,7 @@ Set a default retention configuration so every object uploaded to the bucket aut
 mc retention set --default governance 365d myminio/compliance-bucket
 
 # Verify the default retention setting
-mc retention info myminio/compliance-bucket
+mc retention info --default myminio/compliance-bucket
 ```
 
 ### Using S3 API (Python boto3)
@@ -177,19 +177,21 @@ mc retention info myminio/compliance-bucket/reports/2024/financial-report.pdf
 ### Using S3 API (Python boto3)
 
 ```python
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 # Calculate retention date
-retain_until = datetime.utcnow() + timedelta(days=730)
+retain_until = datetime.now(timezone.utc) + timedelta(days=730)
 
 # Upload object with retention
-s3.put_object(
-    Bucket='compliance-bucket',
-    Key='reports/2024/financial-report.pdf',
-    Body=open('financial-report.pdf', 'rb'),
-    ObjectLockMode='GOVERNANCE',
-    ObjectLockRetainUntilDate=retain_until
-)
+with open('financial-report.pdf', 'rb') as body:
+    s3.put_object(
+        Bucket='compliance-bucket',
+        Key='reports/2024/financial-report.pdf',
+        Body=body,
+        ObjectLockMode='GOVERNANCE',
+        ObjectLockRetainUntilDate=retain_until,
+        ChecksumAlgorithm='SHA256'
+    )
 
 print(f"Object uploaded with retention until {retain_until}")
 ```
@@ -400,12 +402,10 @@ Track locked objects and retention status across your MinIO deployment:
 
 ```bash
 # List all objects with retention in a bucket
-mc find myminio/compliance-bucket --json | \
-  jq -r 'select(.retention) | "\(.key): \(.retention.mode) until \(.retention.retainUntilDate)"'
+mc retention info --recursive myminio/compliance-bucket
 
-# Count objects with legal holds
-mc find myminio/compliance-bucket --json | \
-  jq -r 'select(.legalhold == "ON") | .key' | wc -l
+# List objects with legal hold status
+mc legalhold info --recursive myminio/compliance-bucket
 ```
 
 For production environments, export these metrics to your observability platform. OneUptime can alert you when retention policies are about to expire or when legal holds are modified, ensuring compliance teams stay informed.
