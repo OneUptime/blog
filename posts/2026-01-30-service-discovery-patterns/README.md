@@ -134,18 +134,18 @@ Consul provides service discovery, health checking, and a distributed key-value 
 
 ```json
 // service-definition.json
-// This file defines how our service registers with Consul
+// Payload for the Consul HTTP API register endpoint
+// (fields are at the top level - no outer "service" wrapper,
+// which is only used for agent config files)
 {
-  "service": {
-    "name": "payment-service",
-    "id": "payment-service-1",
-    "port": 8080,
-    "tags": ["v1", "production"],
-    "check": {
-      "http": "http://localhost:8080/health",
-      "interval": "10s",
-      "timeout": "5s"
-    }
+  "Name": "payment-service",
+  "ID": "payment-service-1",
+  "Port": 8080,
+  "Tags": ["v1", "production"],
+  "Check": {
+    "HTTP": "http://localhost:8080/health",
+    "Interval": "10s",
+    "Timeout": "5s"
   }
 }
 ```
