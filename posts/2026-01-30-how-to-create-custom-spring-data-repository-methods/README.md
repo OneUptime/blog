@@ -76,7 +76,7 @@ public class User {
     // Constructors, getters, and setters omitted for brevity
 }
 
-public enum UserStatus {
+enum UserStatus {
     ACTIVE, INACTIVE, SUSPENDED, PENDING_VERIFICATION
 }
 ```
@@ -281,6 +281,7 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Repository
@@ -343,7 +344,7 @@ public interface UserRepository extends JpaRepository<User, Long> {
         nativeQuery = true
     )
     List<Object[]> findHighValueCustomers(
-        @Param("since") String since,
+        @Param("since") LocalDateTime since,
         @Param("minSpent") double minSpent
     );
 
@@ -386,7 +387,7 @@ For complex logic that cannot be expressed in a single query, create a custom im
 flowchart LR
     A[UserRepository] -->|extends| B[JpaRepository]
     A -->|extends| C[UserRepositoryCustom]
-    D[UserRepositoryImpl] -->|implements| C
+    D[UserRepositoryCustomImpl] -->|implements| C
 
     B --> E[Spring Data Methods]
     C --> F[Custom Methods]
@@ -422,7 +423,7 @@ public interface UserRepositoryCustom {
 
 ### Step 2: Create Implementation Class
 
-The implementation class name must follow the pattern `{RepositoryName}Impl`. Spring Data finds it by naming convention.
+The implementation class name should follow the pattern `{CustomInterfaceName}Impl`. Spring Data finds custom repository fragments by naming convention.
 
 ```java
 package com.example.repository;
@@ -435,9 +436,9 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 import java.util.*;
 
-// The class name MUST end with "Impl" and match the custom interface name
+// The class name must end with "Impl" and match the custom interface name
 @Repository
-public class UserRepositoryImpl implements UserRepositoryCustom {
+public class UserRepositoryCustomImpl implements UserRepositoryCustom {
 
     // EntityManager is the JPA interface for database operations
     @PersistenceContext
@@ -603,7 +604,11 @@ The main repository interface extends both JpaRepository and your custom interfa
 package com.example.repository;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import java.util.List;
+import java.util.Optional;
 
 // Extend both JpaRepository and your custom interface
 @Repository
@@ -732,7 +737,7 @@ public class PagedResult<T> {
 
 ## Projections for Optimized Queries
 
-When you only need specific fields, projections avoid loading entire entities.
+When you only need specific fields, closed projections can avoid loading entire entities.
 
 ### Interface-Based Projections
 
@@ -741,6 +746,11 @@ Define interfaces with getter methods for the fields you need. Spring Data gener
 ```java
 package com.example.repository;
 
+import org.springframework.beans.factory.annotation.Value;
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.List;
+
 // Interface projection - Spring creates proxy that returns only these fields
 public interface UserSummary {
     String getEmail();
@@ -748,7 +758,7 @@ public interface UserSummary {
     String getLastName();
     UserStatus getStatus();
 
-    // Computed property using SpEL
+    // Open projection with a computed property using SpEL
     @Value("#{target.firstName + ' ' + target.lastName}")
     String getFullName();
 }
@@ -770,7 +780,10 @@ public interface UserWithOrders {
 package com.example.repository;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Repository
@@ -799,10 +812,10 @@ package com.example.dto;
 public class UserDTO {
     private final String email;
     private final String fullName;
-    private final int loginCount;
+    private final Integer loginCount;
 
     // Constructor parameters must match query SELECT order
-    public UserDTO(String email, String firstName, String lastName, int loginCount) {
+    public UserDTO(String email, String firstName, String lastName, Integer loginCount) {
         this.email = email;
         this.fullName = firstName + " " + lastName;
         this.loginCount = loginCount;
@@ -811,15 +824,17 @@ public class UserDTO {
     // Getters
     public String getEmail() { return email; }
     public String getFullName() { return fullName; }
-    public int getLoginCount() { return loginCount; }
+    public Integer getLoginCount() { return loginCount; }
 }
 ```
 
 ```java
 package com.example.repository;
 
+import com.example.dto.UserDTO;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import java.util.List;
 
@@ -845,6 +860,9 @@ JPA Specifications let you build reusable, composable query predicates that can 
 ```java
 package com.example.specification;
 
+import com.example.repository.Order;
+import com.example.repository.User;
+import com.example.repository.UserStatus;
 import org.springframework.data.jpa.domain.Specification;
 import java.time.LocalDateTime;
 
@@ -946,6 +964,10 @@ public interface UserRepository
 ```java
 package com.example.service;
 
+import com.example.repository.User;
+import com.example.repository.UserRepository;
+import com.example.repository.UserStatus;
+import com.example.web.UserSearchRequest;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -1049,8 +1071,11 @@ package com.example.repository;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.jpa.repository.QueryHints;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import jakarta.persistence.QueryHint;
+import java.time.LocalDateTime;
+import java.util.List;
 import java.util.stream.Stream;
 
 @Repository
@@ -1086,8 +1111,14 @@ public interface UserRepository extends JpaRepository<User, Long> {
 ```java
 package com.example.service;
 
+import com.example.repository.User;
+import com.example.repository.UserRepository;
+import com.example.repository.UserStatus;
+import com.example.exception.UserNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import java.util.List;
+import java.util.stream.Stream;
 
 @Service
 public class UserService {
