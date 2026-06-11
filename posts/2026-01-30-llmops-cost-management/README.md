@@ -139,7 +139,7 @@ First, define a schema for tracking LLM usage events:
 
 ```python
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 import uuid
 import json
@@ -157,7 +157,7 @@ class LLMUsageEvent:
     event_id: str = field(default_factory=lambda: str(uuid.uuid4()))
 
     # Timestamp when the API call was made
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     # Model information
     model: str = ""
@@ -219,11 +219,11 @@ class LLMUsageEvent:
 
 ### Cost Calculator Service
 
-Build a service that calculates costs based on current pricing:
+Build a service that calculates costs based on configured pricing:
 
 ```python
 from typing import Dict, Tuple
-from datetime import datetime, date
+from datetime import date
 import threading
 
 
@@ -239,7 +239,8 @@ class LLMPricingService:
         # Thread-safe pricing updates
         self._lock = threading.RLock()
 
-        # Default pricing (USD per 1000 tokens)
+        # Example pricing (USD per 1000 tokens).
+        # Replace these illustrative values with current provider price sheets.
         # Structure: {provider: {model: (input_price, output_price)}}
         self._pricing: Dict[str, Dict[str, Tuple[float, float]]] = {
             "openai": {
@@ -257,7 +258,7 @@ class LLMPricingService:
                 "claude-3-5-sonnet": (0.003, 0.015),
             },
             "azure": {
-                # Azure OpenAI typically matches OpenAI pricing
+                # Azure OpenAI pricing varies by region and deployment.
                 "gpt-4-turbo": (0.01, 0.03),
                 "gpt-4o": (0.005, 0.015),
                 "gpt-35-turbo": (0.0005, 0.0015),
@@ -375,9 +376,8 @@ Integrate cost tracking with OpenTelemetry for comprehensive observability:
 
 ```python
 from opentelemetry import trace
-from opentelemetry.trace import Span
 from opentelemetry import metrics
-from typing import Optional, Callable
+from typing import Optional
 import functools
 import time
 import hashlib
@@ -596,7 +596,7 @@ With tracking in place, implement budget controls to prevent cost overruns.
 
 ```python
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import List, Optional, Dict
 import json
@@ -676,9 +676,9 @@ class LLMBudget:
 
     def __post_init__(self):
         if self.created_at is None:
-            self.created_at = datetime.utcnow()
+            self.created_at = datetime.now(timezone.utc)
         if self.updated_at is None:
-            self.updated_at = datetime.utcnow()
+            self.updated_at = datetime.now(timezone.utc)
         if self.thresholds is None:
             # Default thresholds
             self.thresholds = [
@@ -690,7 +690,7 @@ class LLMBudget:
 
     def get_period_start(self) -> datetime:
         """Calculate the start of the current budget period."""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         if self.period == BudgetPeriod.HOURLY:
             return now.replace(minute=0, second=0, microsecond=0)
@@ -726,10 +726,10 @@ class LLMBudget:
 ### Budget Enforcement Service
 
 ```python
-from typing import Tuple, Optional
-import asyncio
+from typing import Dict, List, Tuple, Optional
 from collections import defaultdict
 import threading
+import json
 
 
 class BudgetEnforcementService:
@@ -978,7 +978,7 @@ flowchart LR
 
 ```python
 from enum import Enum
-from typing import Optional, Callable
+from typing import Callable, Dict, List, Optional, Tuple
 import re
 
 
@@ -1275,7 +1275,7 @@ flowchart TB
 ```python
 from typing import List, Dict
 from dataclasses import dataclass
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from collections import defaultdict
 
 
@@ -1512,7 +1512,7 @@ class CostAllocationService:
             "invoice_id": f"LLM-{team_id}-{year}{month:02d}",
             "team_id": team_id,
             "period": f"{year}-{month:02d}",
-            "generated_at": datetime.utcnow().isoformat(),
+            "generated_at": datetime.now(timezone.utc).isoformat(),
             "line_items": line_items,
             "subtotals": {
                 "direct": sum(item["amount"] for item in line_items if item["category"] == "direct"),
@@ -1530,9 +1530,10 @@ class CostAllocationService:
 Visibility into costs requires real-time dashboards. Here is how to structure metrics for dashboard consumption:
 
 ```python
-from typing import Dict, List
-from datetime import datetime, timedelta
+from typing import Dict, List, Optional
+from datetime import datetime, timedelta, date, timezone
 from dataclasses import dataclass
+import json
 
 
 @dataclass
@@ -1598,7 +1599,7 @@ class CostDashboardService:
         Returns:
             DashboardMetrics with all dashboard data
         """
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         period_start = now - timedelta(days=period_days)
         previous_period_start = period_start - timedelta(days=period_days)
 
@@ -1803,7 +1804,7 @@ Caching identical or similar prompts can significantly reduce costs:
 
 ```python
 import hashlib
-from typing import Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 import time
 
 
@@ -1811,9 +1812,9 @@ class PromptCache:
     """
     Cache for LLM responses to avoid redundant API calls.
 
-    Implements multiple caching strategies:
+    Implements exact-match caching and leaves room for additional strategies:
     - Exact match: Cache responses for identical prompts
-    - Semantic similarity: Cache for semantically similar prompts
+    - Semantic similarity: Extension point for semantically similar prompts
     - TTL-based expiration: Responses expire after a configurable time
     """
 
@@ -1937,7 +1938,7 @@ Reduce token usage without sacrificing quality:
 
 ```python
 import re
-from typing import List
+from typing import List, Tuple
 
 
 class TokenOptimizer:
@@ -2091,6 +2092,39 @@ Here is a complete example showing how all components work together:
 # Example: Complete LLM Cost Management Setup
 
 from datetime import date
+import time
+
+
+class InMemoryCostStore:
+    """Minimal in-memory store for the demo code."""
+
+    def __init__(self):
+        self.events = []
+
+    def add_event(self, event: LLMUsageEvent) -> None:
+        self.events.append(event)
+
+    def get_total_cost(self, **filters) -> float:
+        total = 0.0
+        timestamp_gte = filters.get("timestamp_gte")
+        timestamp_lt = filters.get("timestamp_lt")
+
+        for event in self.events:
+            if timestamp_gte and event.timestamp < timestamp_gte:
+                continue
+            if timestamp_lt and event.timestamp >= timestamp_lt:
+                continue
+
+            matches = True
+            for field in ("project_id", "team_id", "user_id", "organization_id"):
+                if field in filters and getattr(event, field, None) != filters[field]:
+                    matches = False
+                    break
+
+            if matches:
+                total += event.cost_usd
+
+        return total
 
 
 def setup_cost_management():
@@ -2172,6 +2206,7 @@ def setup_cost_management():
 
     return {
         "collector": collector,
+        "cost_store": cost_store,
         "budget_service": budget_service,
         "router": router,
         "cache": cache,
@@ -2247,6 +2282,7 @@ def make_cost_aware_llm_call(
         user_id=user_id,
         prompt_text=prompt
     )
+    services["cost_store"].add_event(event)
 
     print(f"Request cost: ${event.cost_usd:.6f} ({input_tokens} in / {output_tokens} out tokens)")
 
@@ -2312,7 +2348,7 @@ Before restricting usage, look for optimization opportunities. Prompt caching, i
 
 ### 5. Review and Adjust Regularly
 
-LLM pricing changes frequently, and usage patterns evolve. Review your cost management configuration monthly and adjust budgets, routing rules, and thresholds based on actual usage data.
+LLM pricing changes frequently, and usage patterns evolve. Review your cost management configuration monthly against the official provider pricing pages and adjust budgets, routing rules, and thresholds based on actual usage data.
 
 ## Conclusion
 
