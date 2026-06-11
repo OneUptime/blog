@@ -475,7 +475,7 @@ database_failover_test = SimulationTest(
         ),
         TestStep(
             name="Promote replica to primary",
-            command="kubectl exec postgres-replica-0 -- pg_ctl promote",
+            command="kubectl exec postgres-replica-0 -- psql -c 'SELECT pg_promote(true, 60);'",
             timeout_seconds=120
         ),
         TestStep(
