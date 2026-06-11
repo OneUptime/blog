@@ -70,14 +70,14 @@ func main() {
         }]
     }`
 
-    // Create the connection with the retry policy
-    conn, err := grpc.Dial(
+    // Create the client channel with the retry policy
+    conn, err := grpc.NewClient(
         "localhost:50051",
         grpc.WithTransportCredentials(insecure.NewCredentials()),
         grpc.WithDefaultServiceConfig(serviceConfig),
     )
     if err != nil {
-        log.Fatalf("failed to connect: %v", err)
+        log.Fatalf("failed to create client channel: %v", err)
     }
     defer conn.Close()
 
@@ -175,35 +175,18 @@ sequenceDiagram
     Server1--xClient: Response (Canceled)
 ```
 
-Here is how to configure hedging in Go.
+Here is what the service config looks like in languages that support hedging. Check the gRPC language support table before enabling it in a client library, because support is language-specific.
 
-```go
-package main
-
-import (
-    "google.golang.org/grpc"
-    "google.golang.org/grpc/credentials/insecure"
-)
-
-func createHedgingChannel() (*grpc.ClientConn, error) {
-    // Hedging policy sends up to 3 requests
-    // A new hedge is sent every 500ms if no response received
-    serviceConfig := `{
-        "methodConfig": [{
-            "name": [{"service": "search.SearchService", "method": "Search"}],
-            "hedgingPolicy": {
-                "maxAttempts": 3,
-                "hedgingDelay": "0.5s",
-                "nonFatalStatusCodes": ["UNAVAILABLE", "ABORTED"]
-            }
-        }]
-    }`
-
-    return grpc.Dial(
-        "localhost:50051",
-        grpc.WithTransportCredentials(insecure.NewCredentials()),
-        grpc.WithDefaultServiceConfig(serviceConfig),
-    )
+```json
+{
+    "methodConfig": [{
+        "name": [{"service": "search.SearchService", "method": "Search"}],
+        "hedgingPolicy": {
+            "maxAttempts": 3,
+            "hedgingDelay": "0.5s",
+            "nonFatalStatusCodes": ["UNAVAILABLE", "ABORTED"]
+        }
+    }]
 }
 ```
 
@@ -218,7 +201,6 @@ package main
 
 import (
     "context"
-    "errors"
     "sync"
     "time"
 
@@ -229,12 +211,13 @@ import (
 
 // CircuitBreaker prevents cascading failures during outages
 type CircuitBreaker struct {
-    mu              sync.Mutex
-    failures        int
-    lastFailure     time.Time
-    state           string // "closed", "open", "half-open"
+    mu               sync.Mutex
+    failures         int
+    lastFailure      time.Time
+    state            string // "closed", "open", "half-open"
+    halfOpenInFlight bool
     failureThreshold int
-    resetTimeout    time.Duration
+    resetTimeout     time.Duration
 }
 
 // NewCircuitBreaker creates a circuit breaker with sensible defaults
@@ -256,11 +239,16 @@ func (cb *CircuitBreaker) Allow() bool {
         // Check if enough time passed to try again
         if time.Since(cb.lastFailure) > cb.resetTimeout {
             cb.state = "half-open"
+            cb.halfOpenInFlight = true
             return true
         }
         return false
     case "half-open":
         // Allow one request through to test the service
+        if cb.halfOpenInFlight {
+            return false
+        }
+        cb.halfOpenInFlight = true
         return true
     default:
         return true
@@ -273,6 +261,7 @@ func (cb *CircuitBreaker) RecordSuccess() {
     defer cb.mu.Unlock()
     cb.failures = 0
     cb.state = "closed"
+    cb.halfOpenInFlight = false
 }
 
 // RecordFailure marks a failed request
@@ -282,6 +271,7 @@ func (cb *CircuitBreaker) RecordFailure() {
 
     cb.failures++
     cb.lastFailure = time.Now()
+    cb.halfOpenInFlight = false
 
     if cb.failures >= cb.failureThreshold {
         cb.state = "open"
@@ -311,6 +301,8 @@ func CircuitBreakerInterceptor(cb *CircuitBreaker) grpc.UnaryClientInterceptor {
             st, ok := status.FromError(err)
             if ok && (st.Code() == codes.Unavailable || st.Code() == codes.DeadlineExceeded) {
                 cb.RecordFailure()
+            } else {
+                cb.RecordSuccess()
             }
         } else {
             cb.RecordSuccess()
