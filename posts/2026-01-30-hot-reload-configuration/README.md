@@ -47,7 +47,7 @@ File watchers form the foundation of any hot reload system. They monitor your so
 
 ### Using Chokidar for File Watching
 
-Chokidar is the most reliable cross-platform file watching library for Node.js applications.
+Chokidar is a reliable cross-platform file watching library for Node.js applications. The CommonJS examples below target Chokidar 4. Chokidar 5 is ESM-only, so ESM projects should use `import chokidar from 'chokidar'`.
 
 ```javascript
 // hot-reload/file-watcher.js
@@ -128,7 +128,7 @@ class FileWatcher extends EventEmitter {
   }
 
   matchesIncludePatterns(filePath) {
-    const minimatch = require('minimatch');
+    const { minimatch } = require('minimatch');
     return this.options.include.some(pattern =>
       minimatch(filePath, pattern, { matchBase: true })
     );
@@ -150,9 +150,9 @@ class FileWatcher extends EventEmitter {
     this.emit('changes', categorized);
   }
 
-  stop() {
+  async stop() {
     if (this.watcher) {
-      this.watcher.close();
+      await this.watcher.close();
       this.watcher = null;
     }
     clearTimeout(this.debounceTimer);
@@ -343,11 +343,11 @@ module.exports = StatePreservationManager;
 
 ### React-Specific State Preservation
 
-For React applications, you can integrate with React Refresh for seamless state preservation.
+For React applications, React Refresh is the recommended integration for preserving component state. If you are building custom hot reload infrastructure, you can also bridge explicit state containers like this:
 
 ```javascript
-// hot-reload/react-state-bridge.js
-const StatePreservationManager = require('./state-manager');
+// hot-reload/react-state-bridge.jsx
+const React = require('react');
 
 class ReactStateBridge {
   constructor(stateManager) {
@@ -403,7 +403,7 @@ class ReactStateBridge {
         setState: setState,
         strategy: 'full'
       });
-    }, [state]);
+    }, [moduleId, state]);
 
     return [state, setState];
   }
@@ -589,7 +589,7 @@ class ModuleReplacementEngine {
 module.exports = ModuleReplacementEngine;
 ```
 
-### HMR API Usage
+### Webpack-Style HMR API Usage
 
 ```javascript
 // Example component with HMR support
@@ -616,9 +616,8 @@ if (module.hot) {
   module.hot.accept();
 
   // Cleanup before replacement
-  module.hot.dispose((data) => {
-    // Save any data needed for the next version
-    data.previousCount = window.__COUNTER_STATE__;
+  module.hot.dispose(() => {
+    // Clean up subscriptions, timers, or other side effects here
   });
 }
 ```
@@ -661,12 +660,20 @@ class ErrorOverlay {
   }
 
   show(error) {
+    if (typeof document === 'undefined') {
+      return;
+    }
+
     this.currentError = error;
     this.createOverlay();
     this.renderError(error);
   }
 
   hide() {
+    if (typeof document === 'undefined') {
+      return;
+    }
+
     if (this.container && this.container.parentNode) {
       this.container.parentNode.removeChild(this.container);
     }
@@ -711,7 +718,7 @@ class ErrorOverlay {
             border-radius: 4px;
             font-weight: bold;
             margin-right: 12px;
-          ">${type}</span>
+          ">${this.escapeHtml(type)}</span>
           <button onclick="window.__HOT_RELOAD_DISMISS__()" style="
             margin-left: auto;
             background: transparent;
@@ -1006,8 +1013,8 @@ class HotReloadSystem {
     // In practice, this would call your bundler's transform API
   }
 
-  stop() {
-    this.fileWatcher.stop();
+  async stop() {
+    await this.fileWatcher.stop();
     console.log('[HMR] Hot reload system stopped');
   }
 }
