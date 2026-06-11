@@ -135,25 +135,25 @@ ORDER BY time_bucket DESC;
 
 ## Step 3: Build the Processing Pipeline
 
-A Python script can process logs in real-time and emit SLI metrics. This example reads from a log stream and calculates rolling SLIs.
+A Python script can process logs in real-time and calculate SLI values that you can emit as metrics. This example reads from a log stream and calculates rolling SLIs.
 
 ```python
 import json
 from collections import defaultdict
 from datetime import datetime, timedelta
-import statistics
+from typing import Optional
 
 class LogBasedSLICalculator:
     """
     Processes structured logs and calculates SLIs in rolling windows.
-    Emits metrics compatible with Prometheus or OpenTelemetry.
+    Returns values that can be exported as Prometheus or OpenTelemetry metrics.
     """
 
     def __init__(self, window_seconds=60):
         self.window_seconds = window_seconds
         self.request_buffer = defaultdict(list)
 
-    def process_log(self, log_line: str) -> dict:
+    def process_log(self, log_line: str) -> Optional[dict]:
         """Parse a JSON log line and extract SLI-relevant fields."""
         try:
             log = json.loads(log_line)
@@ -216,17 +216,24 @@ class LogBasedSLICalculator:
         }
 
     def _percentile(self, sorted_data: list, percentile: float) -> float:
-        """Calculate percentile from sorted data."""
+        """Calculate a continuous percentile from sorted data."""
         if not sorted_data:
             return 0
-        index = int(len(sorted_data) * percentile)
-        index = min(index, len(sorted_data) - 1)
-        return sorted_data[index]
+
+        position = (len(sorted_data) - 1) * percentile
+        lower_index = int(position)
+        upper_index = min(lower_index + 1, len(sorted_data) - 1)
+        weight = position - lower_index
+
+        return (
+            sorted_data[lower_index] * (1 - weight)
+            + sorted_data[upper_index] * weight
+        )
 ```
 
 ## Step 4: Set Up the OpenTelemetry Collector
 
-The OpenTelemetry Collector can parse logs and extract metrics. This configuration file shows how to process logs and derive SLI metrics.
+The OpenTelemetry Collector can parse logs and normalize attributes before sending them to your backend. This configuration file shows how to process logs so downstream SLI queries can use consistent fields.
 
 ```yaml
 # otel-collector-config.yaml
@@ -258,9 +265,11 @@ processors:
 
 exporters:
   # Send logs to OneUptime
-  otlp:
+  otlphttp:
     endpoint: "https://oneuptime.com/otlp"
+    encoding: json
     headers:
+      Content-Type: "application/json"
       x-oneuptime-token: "${ONEUPTIME_TOKEN}"
 
 service:
@@ -268,7 +277,7 @@ service:
     logs:
       receivers: [filelog]
       processors: [transform, batch]
-      exporters: [otlp]
+      exporters: [otlphttp]
 ```
 
 ## Step 5: Create SLI Queries in OneUptime
