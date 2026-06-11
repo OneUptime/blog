@@ -80,8 +80,10 @@ package main
 import (
     "fmt"
     "io"
+    "net/http"
+    "os"
+    "strconv"
     "sync/atomic"
-    "time"
 )
 
 // ProgressReader wraps an io.Reader and tracks bytes read
@@ -121,7 +123,11 @@ func downloadWithProgress(w http.ResponseWriter, r *http.Request, filePath strin
     }
     defer file.Close()
 
-    stat, _ := file.Stat()
+    stat, err := file.Stat()
+    if err != nil {
+        http.Error(w, "failed to get file info", http.StatusInternalServerError)
+        return
+    }
     fileSize := stat.Size()
 
     // Track progress every 10%
@@ -165,7 +171,11 @@ func rangeDownloadHandler(w http.ResponseWriter, r *http.Request) {
     }
     defer file.Close()
 
-    stat, _ := file.Stat()
+    stat, err := file.Stat()
+    if err != nil {
+        http.Error(w, "failed to get file info", http.StatusInternalServerError)
+        return
+    }
     fileSize := stat.Size()
 
     // Check for Range header
@@ -180,23 +190,53 @@ func rangeDownloadHandler(w http.ResponseWriter, r *http.Request) {
 
     // Parse range header (format: "bytes=start-end")
     // Example: "bytes=0-499" or "bytes=500-" or "bytes=-500"
+    if !strings.HasPrefix(rangeHeader, "bytes=") {
+        w.Header().Set("Content-Range", fmt.Sprintf("bytes */%d", fileSize))
+        http.Error(w, "invalid range", http.StatusRequestedRangeNotSatisfiable)
+        return
+    }
+
     rangeHeader = strings.TrimPrefix(rangeHeader, "bytes=")
     parts := strings.Split(rangeHeader, "-")
+    if len(parts) != 2 {
+        w.Header().Set("Content-Range", fmt.Sprintf("bytes */%d", fileSize))
+        http.Error(w, "invalid range", http.StatusRequestedRangeNotSatisfiable)
+        return
+    }
 
     var start, end int64
+    var parseErr error
 
     if parts[0] == "" {
         // Suffix range: "-500" means last 500 bytes
-        suffix, _ := strconv.ParseInt(parts[1], 10, 64)
+        suffix, err := strconv.ParseInt(parts[1], 10, 64)
+        if err != nil || suffix <= 0 {
+            w.Header().Set("Content-Range", fmt.Sprintf("bytes */%d", fileSize))
+            http.Error(w, "invalid range", http.StatusRequestedRangeNotSatisfiable)
+            return
+        }
+        if suffix > fileSize {
+            suffix = fileSize
+        }
         start = fileSize - suffix
         end = fileSize - 1
     } else {
-        start, _ = strconv.ParseInt(parts[0], 10, 64)
+        start, parseErr = strconv.ParseInt(parts[0], 10, 64)
+        if parseErr != nil {
+            w.Header().Set("Content-Range", fmt.Sprintf("bytes */%d", fileSize))
+            http.Error(w, "invalid range", http.StatusRequestedRangeNotSatisfiable)
+            return
+        }
         if parts[1] == "" {
             // Open-ended range: "500-" means from byte 500 to end
             end = fileSize - 1
         } else {
-            end, _ = strconv.ParseInt(parts[1], 10, 64)
+            end, parseErr = strconv.ParseInt(parts[1], 10, 64)
+            if parseErr != nil {
+                w.Header().Set("Content-Range", fmt.Sprintf("bytes */%d", fileSize))
+                http.Error(w, "invalid range", http.StatusRequestedRangeNotSatisfiable)
+                return
+            }
         }
     }
 
@@ -208,7 +248,10 @@ func rangeDownloadHandler(w http.ResponseWriter, r *http.Request) {
     }
 
     // Seek to start position
-    file.Seek(start, io.SeekStart)
+    if _, err := file.Seek(start, io.SeekStart); err != nil {
+        http.Error(w, "failed to seek file", http.StatusInternalServerError)
+        return
+    }
 
     // Calculate content length for this range
     contentLength := end - start + 1
@@ -317,7 +360,7 @@ func (fs *FileServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
     // Prevent directory traversal attacks
     cleanPath := filepath.Clean(filename)
-    if strings.Contains(cleanPath, "..") {
+    if !filepath.IsLocal(cleanPath) {
         http.Error(w, "invalid path", http.StatusBadRequest)
         return
     }
@@ -389,14 +432,30 @@ func (fs *FileServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (fs *FileServer) parseRange(rangeHeader string, fileSize int64) (int64, int64, error) {
+    if !strings.HasPrefix(rangeHeader, "bytes=") {
+        return 0, 0, fmt.Errorf("unsupported range unit")
+    }
+
     rangeHeader = strings.TrimPrefix(rangeHeader, "bytes=")
     parts := strings.Split(rangeHeader, "-")
+    if len(parts) != 2 {
+        return 0, 0, fmt.Errorf("invalid range")
+    }
 
     var start, end int64
     var err error
 
     if parts[0] == "" {
-        suffix, _ := strconv.ParseInt(parts[1], 10, 64)
+        suffix, err := strconv.ParseInt(parts[1], 10, 64)
+        if err != nil {
+            return 0, 0, err
+        }
+        if suffix <= 0 {
+            return 0, 0, fmt.Errorf("invalid range")
+        }
+        if suffix > fileSize {
+            suffix = fileSize
+        }
         start = fileSize - suffix
         end = fileSize - 1
     } else {
