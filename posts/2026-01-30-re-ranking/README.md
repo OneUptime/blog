@@ -403,12 +403,9 @@ export async function rerankDocuments(
   for (let i = 0; i < documents.length; i++) {
     const doc = documents[i];
 
-    // Format input as query-document pair
-    // The model expects this specific format
-    const input = `${query} [SEP] ${doc.text}`;
-
-    // Get relevance score
-    const result = await reranker(input);
+    // Pass the query and document as a text pair so the tokenizer
+    // produces the correct [CLS] query [SEP] document [SEP] sequence.
+    const result = await reranker({ text: query, text_pair: doc.text });
     const score = result[0]?.score ?? 0;
 
     scoredDocs.push({
@@ -1019,7 +1016,7 @@ def evaluate_reranker(
         new_rels = [id_to_rel.get(did, 0) for did in reranked_ids]
 
         # Calculate metrics
-        mrr_scores.append([new_rels])
+        mrr_scores.append(new_rels)
         ndcg_scores.append(ndcg_at_k(new_rels, k=10))
 
     return {
