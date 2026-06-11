@@ -592,19 +592,21 @@ npm install @opentelemetry/api \
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
-const { Resource } = require('@opentelemetry/resources');
-const { SEMRESATTRS_SERVICE_NAME, SEMRESATTRS_SERVICE_VERSION } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } = require('@opentelemetry/semantic-conventions');
 
 function initializeTracing(serviceName, serviceVersion = '1.0.0') {
     // Configure the OTLP exporter to send traces to your collector
+    const otlpEndpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT;
     const traceExporter = new OTLPTraceExporter({
-        url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://localhost:4318/v1/traces',
+        url: process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT ||
+            (otlpEndpoint ? `${otlpEndpoint.replace(/\/$/, '')}/v1/traces` : 'http://localhost:4318/v1/traces'),
     });
 
     // Define resource attributes that identify this service
-    const resource = new Resource({
-        [SEMRESATTRS_SERVICE_NAME]: serviceName,
-        [SEMRESATTRS_SERVICE_VERSION]: serviceVersion,
+    const resource = resourceFromAttributes({
+        [ATTR_SERVICE_NAME]: serviceName,
+        [ATTR_SERVICE_VERSION]: serviceVersion,
         environment: process.env.NODE_ENV || 'development',
     });
 
@@ -667,18 +669,24 @@ async function processPayment(orderId, amount, currency) {
         try {
             // Validate payment details
             await tracer.startActiveSpan('validate-payment', async (validateSpan) => {
-                validateSpan.setAttribute('validation.type', 'pre-authorization');
-                await validatePaymentDetails(orderId, amount);
-                validateSpan.end();
+                try {
+                    validateSpan.setAttribute('validation.type', 'pre-authorization');
+                    await validatePaymentDetails(orderId, amount);
+                } finally {
+                    validateSpan.end();
+                }
             });
 
             // Process with payment gateway
             const result = await tracer.startActiveSpan('gateway-request', async (gatewaySpan) => {
-                gatewaySpan.setAttribute('gateway.name', 'stripe');
-                const response = await callPaymentGateway(orderId, amount, currency);
-                gatewaySpan.setAttribute('gateway.transaction_id', response.transactionId);
-                gatewaySpan.end();
-                return response;
+                try {
+                    gatewaySpan.setAttribute('gateway.name', 'stripe');
+                    const response = await callPaymentGateway(orderId, amount, currency);
+                    gatewaySpan.setAttribute('gateway.transaction_id', response.transactionId);
+                    return response;
+                } finally {
+                    gatewaySpan.end();
+                }
             });
 
             span.setAttribute('payment.transaction_id', result.transactionId);
@@ -787,12 +795,13 @@ When multiple services handle a request, you need to see the complete picture. H
 
 ```javascript
 // services/api-gateway/src/index.js
-const express = require('express');
 const { initializeTracing } = require('./tracing/otel-setup');
-const { OtelTracedLogger } = require('./tracing/otel-logger');
 
 // Initialize tracing before importing other modules
 initializeTracing('api-gateway', '1.0.0');
+
+const express = require('express');
+const { OtelTracedLogger } = require('./tracing/otel-logger');
 
 const logger = new OtelTracedLogger('api-gateway');
 const app = express();
@@ -829,13 +838,14 @@ app.listen(3000, () => {
 
 ```javascript
 // services/order-service/src/index.js
-const express = require('express');
 const { initializeTracing } = require('./tracing/otel-setup');
-const { OtelTracedLogger } = require('./tracing/otel-logger');
-const { trace } = require('@opentelemetry/api');
 
 // Initialize tracing before importing other modules
 initializeTracing('order-service', '1.0.0');
+
+const express = require('express');
+const { OtelTracedLogger } = require('./tracing/otel-logger');
+const { trace } = require('@opentelemetry/api');
 
 const logger = new OtelTracedLogger('order-service');
 const tracer = trace.getTracer('order-service');
@@ -900,13 +910,14 @@ app.listen(3001, () => {
 
 ```javascript
 // services/payment-service/src/index.js
-const express = require('express');
 const { initializeTracing } = require('./tracing/otel-setup');
-const { OtelTracedLogger } = require('./tracing/otel-logger');
-const { trace, SpanStatusCode } = require('@opentelemetry/api');
 
 // Initialize tracing before importing other modules
 initializeTracing('payment-service', '1.0.0');
+
+const express = require('express');
+const { OtelTracedLogger } = require('./tracing/otel-logger');
+const { trace, SpanStatusCode } = require('@opentelemetry/api');
 
 const logger = new OtelTracedLogger('payment-service');
 const tracer = trace.getTracer('payment-service');
