@@ -314,7 +314,7 @@ allow if {
 }
 ```
 
-Resource Ownership
+### Resource Ownership
 
 Users can modify only resources they created.
 
@@ -412,10 +412,11 @@ Run tests with the OPA CLI.
 opa test ./policies -v
 
 # Output:
-# PASS: 3/3
 # data.documents.authz.test_same_department_read: PASS
 # data.documents.authz.test_different_department_denied: PASS
 # data.documents.authz.test_admin_full_access: PASS
+# --------------------------------------------------------------------------------
+# PASS: 3/3
 ```
 
 ---
