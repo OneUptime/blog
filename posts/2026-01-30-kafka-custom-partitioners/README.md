@@ -73,11 +73,13 @@ import org.apache.kafka.common.Cluster;
 import org.apache.kafka.common.PartitionInfo;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class PriorityPartitioner implements Partitioner {
 
     // Number of partitions reserved for high-priority messages
     private int highPriorityPartitions;
+    private final AtomicInteger counter = new AtomicInteger();
 
     @Override
     public void configure(Map<String, ?> configs) {
@@ -93,13 +95,18 @@ public class PriorityPartitioner implements Partitioner {
 
         List<PartitionInfo> partitions = cluster.partitionsForTopic(topic);
         int numPartitions = partitions.size();
+        int normalPartitionCount = numPartitions - highPriorityPartitions;
+
+        if (highPriorityPartitions <= 0 || normalPartitionCount <= 0) {
+            throw new IllegalArgumentException("Topic must have more partitions than the high-priority partition count");
+        }
 
         // Key format expected: "priority:entityId" (e.g., "high:order-123")
         String keyStr = (String) key;
 
         if (keyStr == null) {
             // No key provided - use round-robin on normal partitions
-            return highPriorityPartitions + (int)(Math.random() * (numPartitions - highPriorityPartitions));
+            return highPriorityPartitions + Math.floorMod(counter.getAndIncrement(), normalPartitionCount);
         }
 
         String[] parts = keyStr.split(":", 2);
@@ -108,14 +115,11 @@ public class PriorityPartitioner implements Partitioner {
 
         if ("high".equals(priority) || "critical".equals(priority)) {
             // Route to high-priority partitions (0 to highPriorityPartitions-1)
-            int hash = Math.abs(entityId.hashCode());
-            return hash % highPriorityPartitions;
+            return Math.floorMod(entityId.hashCode(), highPriorityPartitions);
         }
 
         // Normal priority - distribute across remaining partitions
-        int hash = Math.abs(entityId.hashCode());
-        int normalPartitionCount = numPartitions - highPriorityPartitions;
-        return highPriorityPartitions + (hash % normalPartitionCount);
+        return highPriorityPartitions + Math.floorMod(entityId.hashCode(), normalPartitionCount);
     }
 
     @Override
@@ -177,15 +181,20 @@ public class GeoPartitioner implements Partitioner {
     public int partition(String topic, Object key, byte[] keyBytes,
                          Object value, byte[] valueBytes, Cluster cluster) {
 
-        int numPartitions = cluster.partitionCountForTopic(topic);
+        Integer partitionCount = cluster.partitionCountForTopic(topic);
+        if (partitionCount == null || partitionCount == 0) {
+            throw new IllegalArgumentException("No partitions available for topic " + topic);
+        }
+        int numPartitions = partitionCount;
 
         // Key format: "region:entityId" (e.g., "eu-west:customer-456")
         String keyStr = (String) key;
 
         if (keyStr == null || !keyStr.contains(":")) {
             // Fallback to hash-based distribution
-            int hash = keyStr != null ? Math.abs(keyStr.hashCode()) : (int)(Math.random() * numPartitions);
-            return hash % numPartitions;
+            return keyStr != null
+                ? Math.floorMod(keyStr.hashCode(), numPartitions)
+                : (int)(Math.random() * numPartitions);
         }
 
         String[] parts = keyStr.split(":", 2);
@@ -196,15 +205,18 @@ public class GeoPartitioner implements Partitioner {
 
         if (basePartition == null) {
             // Unknown region - hash to available partitions
-            return Math.abs(entityId.hashCode()) % numPartitions;
+            return Math.floorMod(entityId.hashCode(), numPartitions);
         }
 
         // Distribute within the region's partition range
-        int offsetInRegion = Math.abs(entityId.hashCode()) % partitionsPerRegion;
+        int offsetInRegion = Math.floorMod(entityId.hashCode(), partitionsPerRegion);
         int targetPartition = basePartition + offsetInRegion;
 
         // Safety check - ensure we do not exceed available partitions
-        return targetPartition < numPartitions ? targetPartition : (targetPartition % numPartitions);
+        if (targetPartition >= numPartitions) {
+            throw new IllegalArgumentException("Topic has fewer partitions than the configured geographic layout requires");
+        }
+        return targetPartition;
     }
 
     @Override
@@ -257,7 +269,6 @@ public class WeightedPartitioner implements Partitioner {
 
     // Weights for each partition (higher weight = more traffic)
     private int[] weights;
-    private int totalWeight;
 
     @Override
     public void configure(Map<String, ?> configs) {
@@ -267,17 +278,20 @@ public class WeightedPartitioner implements Partitioner {
 
         if (weightConfig != null) {
             String[] parts = weightConfig.split(",");
+            if (parts.length == 0) {
+                throw new IllegalArgumentException("At least one partition weight is required");
+            }
             weights = new int[parts.length];
-            totalWeight = 0;
 
             for (int i = 0; i < parts.length; i++) {
                 weights[i] = Integer.parseInt(parts[i].trim());
-                totalWeight += weights[i];
+                if (weights[i] <= 0) {
+                    throw new IllegalArgumentException("Partition weights must be positive");
+                }
             }
         } else {
             // Default: equal weights for 8 partitions
             weights = new int[]{1, 1, 1, 1, 1, 1, 1, 1};
-            totalWeight = 8;
         }
     }
 
@@ -285,14 +299,23 @@ public class WeightedPartitioner implements Partitioner {
     public int partition(String topic, Object key, byte[] keyBytes,
                          Object value, byte[] valueBytes, Cluster cluster) {
 
-        int numPartitions = cluster.partitionCountForTopic(topic);
+        Integer partitionCount = cluster.partitionCountForTopic(topic);
+        if (partitionCount == null || partitionCount == 0) {
+            throw new IllegalArgumentException("No partitions available for topic " + topic);
+        }
+        int numPartitions = partitionCount;
+        int usablePartitions = Math.min(weights.length, numPartitions);
+        int usableTotalWeight = 0;
+        for (int i = 0; i < usablePartitions; i++) {
+            usableTotalWeight += weights[i];
+        }
 
         // Pick a random number in the weight range
-        int random = ThreadLocalRandom.current().nextInt(totalWeight);
+        int random = ThreadLocalRandom.current().nextInt(usableTotalWeight);
 
         // Find which partition this maps to
         int cumulative = 0;
-        for (int i = 0; i < weights.length && i < numPartitions; i++) {
+        for (int i = 0; i < usablePartitions; i++) {
             cumulative += weights[i];
             if (random < cumulative) {
                 return i;
@@ -300,7 +323,7 @@ public class WeightedPartitioner implements Partitioner {
         }
 
         // Fallback to last partition
-        return Math.min(weights.length - 1, numPartitions - 1);
+        return usablePartitions - 1;
     }
 
     @Override
