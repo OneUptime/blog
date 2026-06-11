@@ -289,11 +289,11 @@ int RedisModule_OnLoad(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) 
 | write | Command may modify data |
 | readonly | Command only reads data |
 | fast | Runs in O(1) or O(log N) time |
-| slow | May take significant time |
 | admin | Administrative command |
 | pubsub | Related to pub/sub |
 | random | Output may be non-deterministic |
 | deny-oom | Reject if out of memory |
+| no-cluster | Command cannot be used in cluster mode |
 
 ## Working with Redis Keys
 
