@@ -437,7 +437,7 @@ if __name__ == "__main__":
 ```typescript
 // huggingface-embeddings.ts
 // Note: transformers.js allows running models in Node.js
-import { pipeline, env } from '@xenova/transformers';
+import { pipeline, env } from '@huggingface/transformers';
 
 // Disable local model check for first run
 env.allowLocalModels = false;
