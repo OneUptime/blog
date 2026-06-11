@@ -95,7 +95,7 @@ First, define the core types that represent events and routing rules.
 // types.ts - Core type definitions for the routing system
 
 // Event structure with metadata and payload
-interface Event {
+interface RoutedEvent {
   id: string;
   type: string;
   timestamp: Date;
@@ -129,7 +129,7 @@ Next, implement the router class that evaluates events against rules.
 
 class EventRouter {
   private rules: RoutingRule[] = [];
-  private destinations: Map<string, (event: Event) => Promise<void>> = new Map();
+  private destinations: Map<string, (event: RoutedEvent) => Promise<void>> = new Map();
 
   // Register a new routing rule
   addRule(rule: RoutingRule): void {
@@ -139,12 +139,12 @@ class EventRouter {
   }
 
   // Register a destination handler
-  registerDestination(name: string, handler: (event: Event) => Promise<void>): void {
+  registerDestination(name: string, handler: (event: RoutedEvent) => Promise<void>): void {
     this.destinations.set(name, handler);
   }
 
   // Route an event to matching destinations
-  async route(event: Event): Promise<string[]> {
+  async route(event: RoutedEvent): Promise<string[]> {
     const matchedDestinations: string[] = [];
 
     for (const rule of this.rules) {
@@ -161,14 +161,14 @@ class EventRouter {
   }
 
   // Check if all conditions in a rule are satisfied
-  private evaluateRule(rule: RoutingRule, event: Event): boolean {
+  private evaluateRule(rule: RoutingRule, event: RoutedEvent): boolean {
     return rule.conditions.every(condition =>
       this.evaluateCondition(condition, event)
     );
   }
 
   // Evaluate a single condition against the event
-  private evaluateCondition(condition: Condition, event: Event): boolean {
+  private evaluateCondition(condition: Condition, event: RoutedEvent): boolean {
     const value = this.getFieldValue(event, condition.field);
 
     switch (condition.operator) {
@@ -190,7 +190,7 @@ class EventRouter {
   }
 
   // Extract a nested field value using dot notation
-  private getFieldValue(event: Event, path: string): unknown {
+  private getFieldValue(event: RoutedEvent, path: string): unknown {
     const parts = path.split('.');
     let current: unknown = event;
 
@@ -255,7 +255,7 @@ router.registerDestination('order-analytics', async (event) => {
 });
 
 // Route an event
-const event: Event = {
+const event: RoutedEvent = {
   id: 'ord-123',
   type: 'order.created',
   timestamp: new Date(),
@@ -278,7 +278,7 @@ Most production systems use message brokers that provide built-in routing capabi
 
 | Exchange Type | Routing Behavior | Use Case |
 |---------------|------------------|----------|
-| Direct | Exact routing key match | Simple topic routing |
+| Direct | Exact routing key match | Simple key-based routing |
 | Topic | Wildcard pattern matching | Hierarchical topics |
 | Fanout | Broadcast to all queues | Notifications |
 | Headers | Match on message headers | Complex attribute routing |
@@ -338,7 +338,7 @@ Trace events through the routing system by including correlation IDs in headers.
 ```typescript
 // Add correlation ID if missing
 if (!event.headers['correlation-id']) {
-  event.headers['correlation-id'] = generateUUID();
+  event.headers['correlation-id'] = crypto.randomUUID();
 }
 ```
 
