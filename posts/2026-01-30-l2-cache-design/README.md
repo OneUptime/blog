@@ -37,7 +37,7 @@ flowchart TD
 
 ## Architecture Overview
 
-A well-designed L2 cache sits between your application instances and the database. All application servers share the same L2 cache, which ensures consistency across your distributed system.
+A well-designed L2 cache is checked before the database by your application instances. All application servers share the same L2 cache, which reduces duplicated cache state across your distributed system.
 
 ```mermaid
 flowchart LR
@@ -58,7 +58,9 @@ flowchart LR
     A1 --> R
     A2 --> R
     A3 --> R
-    R --> DB
+    A1 --> DB
+    A2 --> DB
+    A3 --> DB
 ```
 
 ## Implementation
@@ -148,7 +150,7 @@ Now implement the L2 cache layer using Redis as the backing store.
 
 ```typescript
 // l2-cache.ts
-import Redis from 'ioredis';
+import { Redis } from 'ioredis';
 
 class L2Cache {
   private redis: Redis;
@@ -193,11 +195,23 @@ class L2Cache {
   // Invalidate all keys matching a pattern
   async invalidatePattern(pattern: string): Promise<void> {
     const fullPattern = this.buildKey(pattern);
-    const keys = await this.redis.keys(fullPattern);
+    let cursor = '0';
 
-    if (keys.length > 0) {
-      await this.redis.del(...keys);
-    }
+    do {
+      const [nextCursor, keys] = await this.redis.scan(
+        cursor,
+        'MATCH',
+        fullPattern,
+        'COUNT',
+        100
+      );
+
+      cursor = nextCursor;
+
+      if (keys.length > 0) {
+        await this.redis.del(...keys);
+      }
+    } while (cursor !== '0');
   }
 }
 ```
@@ -283,8 +297,8 @@ async function getUser(userId: string): Promise<User> {
 // Invalidate when user is updated
 async function updateUser(userId: string, data: Partial<User>): Promise<void> {
   await database.query(
-    'UPDATE users SET ... WHERE id = $1',
-    [userId]
+    'UPDATE users SET profile = $2 WHERE id = $1',
+    [userId, data]
   );
 
   // Clear stale cache entries
@@ -299,10 +313,10 @@ Choosing the right invalidation strategy depends on your consistency requirement
 | Strategy | Consistency | Complexity | Best For |
 |----------|-------------|------------|----------|
 | TTL-based | Eventual | Low | Read-heavy data that tolerates staleness |
-| Write-through | Strong | Medium | Critical data requiring freshness |
-| Event-driven | Strong | High | Microservices with message queues |
+| Write-through | Stronger | Medium | Critical data requiring freshness |
+| Event-driven | Eventual to strong | High | Microservices with message queues |
 
-For event-driven invalidation, you can publish cache invalidation messages through Redis Pub/Sub.
+For event-driven invalidation, you can publish cache invalidation messages through Redis Pub/Sub. Because Pub/Sub messages are not persisted, use durable messaging or a reconnect recovery path if missed invalidation messages are unacceptable.
 
 ```mermaid
 sequenceDiagram
@@ -326,7 +340,7 @@ Set L1 TTL shorter than L2 TTL. This ensures L1 refreshes from L2 periodically, 
 
 Size your L1 cache based on memory constraints. A typical starting point is 1000 to 5000 entries per application instance. Monitor memory usage and adjust accordingly.
 
-Use Redis clustering for L2 when handling more than 100,000 requests per second. Single Redis instances can handle significant load, but clustering provides both capacity and redundancy.
+Consider Redis clustering for L2 when handling more than 100,000 requests per second. Single Redis instances can handle significant load, but clustering can split data across multiple nodes, and replicas provide redundancy.
 
 Implement circuit breakers around L2 operations. If Redis becomes unavailable, your application should fall back to direct database queries rather than failing entirely.
 
