@@ -133,19 +133,18 @@ flowchart TB
 
 Load balancers distribute traffic and detect unhealthy backends. Run them in pairs with virtual IP failover.
 
-The following nginx configuration sets up upstream health checks that automatically remove failed servers from the pool.
+The following NGINX Plus configuration sets up active upstream health checks that automatically remove failed servers from the pool.
 
 ```nginx
-# nginx upstream configuration with health checks
+# NGINX Plus upstream configuration with active health checks
 
 upstream backend {
+    zone backend 64k;
+
     # Round-robin with health checks
     server backend1.example.com:8080 weight=5;
     server backend2.example.com:8080 weight=5;
     server backend3.example.com:8080 backup;
-
-    # Health check settings
-    health_check interval=5s fails=3 passes=2;
 }
 
 server {
@@ -153,6 +152,7 @@ server {
 
     location / {
         proxy_pass http://backend;
+        health_check interval=5s fails=3 passes=2 uri=/healthz;
         proxy_next_upstream error timeout http_502 http_503;
         proxy_connect_timeout 5s;
         proxy_read_timeout 60s;
@@ -179,12 +179,12 @@ SELECT client_addr, state, sync_state
 FROM pg_stat_replication;
 ```
 
-**Kubernetes StatefulSet for Database Clusters**
+**Kubernetes StatefulSet Foundation for Database Clusters**
 
-This StatefulSet runs a three-node PostgreSQL cluster with persistent storage and ordered pod management.
+This StatefulSet gives PostgreSQL pods stable network identities, persistent storage, and ordered pod management. A plain `postgres` container does not configure replication or failover by itself; use a PostgreSQL operator or replication manager to turn these pods into a real HA database cluster.
 
 ```yaml
-# PostgreSQL StatefulSet with replicas
+# PostgreSQL StatefulSet foundation with persistent storage
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -211,6 +211,8 @@ spec:
                 secretKeyRef:
                   name: postgres-secret
                   key: password
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
           volumeMounts:
             - name: data
               mountPath: /var/lib/postgresql/data
@@ -251,10 +253,10 @@ flowchart LR
 
 **RabbitMQ Cluster Configuration**
 
-This Kubernetes deployment runs RabbitMQ with clustering and queue mirroring for high availability.
+This Kubernetes custom resource runs RabbitMQ with clustering and quorum queues for high availability.
 
 ```yaml
-# RabbitMQ cluster with mirrored queues
+# RabbitMQ cluster with quorum queues
 apiVersion: rabbitmq.com/v1beta1
 kind: RabbitmqCluster
 metadata:
@@ -265,8 +267,9 @@ spec:
     storageClassName: fast-ssd
     storage: 50Gi
   rabbitmq:
-    # Enable all queues to be mirrored across nodes
+    # Make new queues quorum queues by default
     additionalConfig: |
+      default_queue_type = quorum
       cluster_partition_handling = pause_minority
       vm_memory_high_watermark.relative = 0.8
       disk_free_limit.absolute = 2GB
@@ -614,16 +617,20 @@ resource "aws_autoscaling_group" "api" {
   # Replace unhealthy instances
   default_instance_warmup = 120
 
-  launch_template {
-    id      = aws_launch_template.api.id
-    version = "$Latest"
-  }
+  mixed_instances_policy {
+    launch_template {
+      launch_template_specification {
+        launch_template_id = aws_launch_template.api.id
+        version            = "$Latest"
+      }
+    }
 
-  # Spread instances across AZs
-  instance_distribution {
-    on_demand_base_capacity                  = 2
-    on_demand_percentage_above_base_capacity = 50
-    spot_allocation_strategy                 = "capacity-optimized"
+    # Spread capacity across On-Demand and Spot instances
+    instances_distribution {
+      on_demand_base_capacity                  = 2
+      on_demand_percentage_above_base_capacity = 50
+      spot_allocation_strategy                 = "capacity-optimized"
+    }
   }
 
   tag {
@@ -733,9 +740,9 @@ spec:
 Verify your system handles expected load with headroom for traffic spikes.
 
 ```yaml
-# k6 load test configuration
+# k6 Operator load test configuration
 apiVersion: k6.io/v1alpha1
-kind: K6
+kind: TestRun
 metadata:
   name: ha-load-test
 spec:
