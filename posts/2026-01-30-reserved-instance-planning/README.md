@@ -31,10 +31,10 @@ graph TD
     C --> E{Usage Pattern}
     E -->|24/7| F[Standard RI]
     E -->|Variable| G[Convertible RI]
-    E -->|Scheduled| H[Scheduled RI]
+    E -->|Recurring Schedule| H[Savings Plans / On-Demand Capacity Reservations]
     F --> I[Up to 72% Savings]
     G --> J[Up to 66% Savings]
-    H --> K[Up to 10% Savings]
+    H --> K[Varies by Commitment]
 ```
 
 ## Step 1: Analyze Your Current RI Coverage
@@ -461,7 +461,7 @@ def parse_ri_recommendations(response: dict) -> list:
                 'estimated_breakeven_months': float(detail.get('EstimatedBreakEvenInMonths', 0)),
 
                 # Current usage context
-                'current_monthly_spend': float(detail.get('CurrentOnDemandSpend', 0)),
+                'current_monthly_spend': float(detail.get('EstimatedMonthlyOnDemandCost', 0)),
                 'average_utilization': float(detail.get('AverageUtilization', 0))
             })
 
