@@ -338,13 +338,13 @@ Mask values generated during the workflow:
     # Mask it immediately
     echo "::add-mask::$TOKEN"
 
-    # Save for later use
-    echo "token=$TOKEN" >> $GITHUB_OUTPUT
+    # Save for later use in this job
+    echo "TOKEN=$TOKEN" >> $GITHUB_ENV
 
 - name: Use masked token
   run: |
     # Token is masked in logs but still usable
-    echo "Using token: ${{ steps.token.outputs.token }}"
+    echo "Using token: $TOKEN"
 ```
 
 ---
@@ -467,7 +467,7 @@ jobs:
     outputs:
       new_version: ${{ steps.bump.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -485,19 +485,26 @@ jobs:
           PATCH=$(echo $VERSION | cut -d. -f3)
 
           # Check commit messages for bump type
-          COMMITS=$(git log $LATEST_TAG..HEAD --pretty=format:"%s")
+          if git rev-parse "$LATEST_TAG" >/dev/null 2>&1; then
+            COMMITS=$(git log "$LATEST_TAG"..HEAD --pretty=format:"%s")
+          else
+            COMMITS=$(git log HEAD --pretty=format:"%s")
+          fi
 
           if echo "$COMMITS" | grep -qi "BREAKING CHANGE\|^feat!:"; then
             MAJOR=$((MAJOR + 1))
             MINOR=0
             PATCH=0
+            BUMP_TYPE=major
             echo "bump_type=major" >> $GITHUB_OUTPUT
           elif echo "$COMMITS" | grep -qi "^feat:"; then
             MINOR=$((MINOR + 1))
             PATCH=0
+            BUMP_TYPE=minor
             echo "bump_type=minor" >> $GITHUB_OUTPUT
           else
             PATCH=$((PATCH + 1))
+            BUMP_TYPE=patch
             echo "bump_type=patch" >> $GITHUB_OUTPUT
           fi
 
@@ -508,7 +515,7 @@ jobs:
           echo "## Version Bump" >> $GITHUB_STEP_SUMMARY
           echo "- Previous: $LATEST_TAG" >> $GITHUB_STEP_SUMMARY
           echo "- New: v$NEW_VERSION" >> $GITHUB_STEP_SUMMARY
-          echo "- Type: ${{ steps.bump.outputs.bump_type }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Type: $BUMP_TYPE" >> $GITHUB_STEP_SUMMARY
 ```
 
 ### Build Matrix with Outputs
@@ -525,12 +532,12 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        node: [18, 20, 22]
+        node: [22, 24]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup Node ${{ matrix.node }}
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: ${{ matrix.node }}
 
@@ -571,7 +578,7 @@ jobs:
       should_deploy: ${{ steps.check.outputs.deploy }}
       environment: ${{ steps.check.outputs.env }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Analyze changes
         id: check
@@ -617,27 +624,22 @@ jobs:
 
 ## State Management
 
-Save and restore state between steps:
+Save and restore state between the `pre`, `main`, and `post` scripts of a custom action:
 
-```yaml
-- name: Save state
-  run: |
-    # Save state for post-job cleanup
-    echo "cleanup_needed=true" >> $GITHUB_STATE
-    echo "temp_dir=/tmp/build-${{ github.run_id }}" >> $GITHUB_STATE
+```javascript
+// main.js
+import { appendFileSync } from 'node:fs';
 
-- name: Build process
-  run: |
-    mkdir -p /tmp/build-${{ github.run_id }}
-    # Build steps here
+appendFileSync(process.env.GITHUB_STATE, 'cleanup_needed=true\n');
+appendFileSync(process.env.GITHUB_STATE, `temp_dir=/tmp/build-${process.env.GITHUB_RUN_ID}\n`);
 
-- name: Cleanup
-  if: always()
-  run: |
-    if [[ "${{ env.STATE_cleanup_needed }}" == "true" ]]; then
-      rm -rf "${{ env.STATE_temp_dir }}"
-      echo "::notice::Cleanup completed"
-    fi
+// post.js
+import { rmSync } from 'node:fs';
+
+if (process.env.STATE_cleanup_needed === 'true') {
+  rmSync(process.env.STATE_temp_dir, { recursive: true, force: true });
+  console.log('::notice::Cleanup completed');
+}
 ```
 
 ---
@@ -650,6 +652,7 @@ Properly handle and report errors:
 - name: Build with error handling
   id: build
   run: |
+    set -o pipefail
     set +e  # Don't exit on error
 
     # Attempt build
@@ -686,7 +689,7 @@ Properly handle and report errors:
 
 ## Command Reference
 
-Quick reference for all workflow commands:
+Quick reference for commonly used workflow commands:
 
 ```mermaid
 flowchart LR
