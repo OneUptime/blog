@@ -73,11 +73,11 @@ class FlagMetrics {
    * Wrap flag evaluation with timing instrumentation.
    * Records latency percentiles and evaluation counts.
    */
-  measureEvaluation(flagKey, evaluationFn) {
+  async measureEvaluation(flagKey, evaluationFn) {
     const startTime = performance.now();
 
     try {
-      const result = evaluationFn();
+      const result = await evaluationFn();
       const duration = performance.now() - startTime;
 
       this.recordEvaluation(flagKey, duration, 'success');
@@ -156,10 +156,10 @@ class FlagMetrics {
   }
 }
 
-// Usage with any feature flag SDK
+// Usage with any async feature flag SDK
 const flagMetrics = new FlagMetrics();
 
-function getFeatureFlag(flagKey, context) {
+async function getFeatureFlag(flagKey, context) {
   return flagMetrics.measureEvaluation(flagKey, () => {
     return featureFlagClient.evaluate(flagKey, context);
   });
@@ -172,7 +172,7 @@ For production observability, integrate with OpenTelemetry to correlate flag per
 
 ```javascript
 // otel-flag-instrumentation.js
-const { trace, metrics } = require('@opentelemetry/api');
+const { trace, metrics, SpanStatusCode } = require('@opentelemetry/api');
 
 class OTelFlagInstrumentation {
   constructor(serviceName = 'feature-flags') {
@@ -253,7 +253,7 @@ class OTelFlagInstrumentation {
             'feature_flag.from_cache': result.fromCache || false
           });
 
-          span.setStatus({ code: 0 }); // OK
+          span.setStatus({ code: SpanStatusCode.OK });
           return result;
 
         } catch (error) {
@@ -265,7 +265,7 @@ class OTelFlagInstrumentation {
           });
 
           span.recordException(error);
-          span.setStatus({ code: 2, message: error.message }); // ERROR
+          span.setStatus({ code: SpanStatusCode.ERROR, message: error.message });
           throw error;
 
         } finally {
@@ -385,7 +385,7 @@ class FlagCache {
     // Fast hash of context attributes that affect targeting
     const relevantContext = {
       userId: context.userId,
-      userGroups: context.userGroups?.sort(),
+      userGroups: context.userGroups ? [...context.userGroups].sort() : undefined,
       environment: context.environment,
       // Add other targeting attributes
     };
@@ -615,11 +615,15 @@ class FlagCacheWarmer {
     for (let i = 0; i < combinations.length; i += this.options.warmingBatchSize) {
       const batch = combinations.slice(i, i + this.options.warmingBatchSize);
 
-      const results = await Promise.allSettled(
-        batch.map(({ flagKey, context }) =>
-          this.warmSingle(flagKey, context)
-        )
-      );
+      const results = [];
+      for (let j = 0; j < batch.length; j += this.options.warmingConcurrency) {
+        const group = batch.slice(j, j + this.options.warmingConcurrency);
+        results.push(...await Promise.allSettled(
+          group.map(({ flagKey, context }) =>
+            this.warmSingle(flagKey, context)
+          )
+        ));
+      }
 
       for (const result of results) {
         if (result.status === 'fulfilled') {
@@ -736,10 +740,14 @@ class OptimizedFlagClient {
     // Identify static flags (no targeting rules)
     const flags = await this.baseClient.getAllFlags();
     for (const [key, config] of Object.entries(flags)) {
-      if (this.isStaticFlag(config)) {
-        this.staticFlags.set(key, config.defaultValue);
+      const staticFlag = this.getStaticFlag(config);
+      if (staticFlag.isStatic) {
+        this.staticFlags.set(key, staticFlag.value);
       } else if (this.options.enableRuleCompilation) {
-        this.compiledRules.set(key, this.compileRules(config.rules));
+        this.compiledRules.set(key, {
+          rules: this.compileRules(config.rules),
+          defaultValue: config.defaultValue
+        });
       }
     }
 
@@ -749,9 +757,18 @@ class OptimizedFlagClient {
                 `${this.compiledRules.size} with rules`);
   }
 
-  isStaticFlag(config) {
-    return !config.rules || config.rules.length === 0 ||
-           (config.rules.length === 1 && config.rules[0].percentage === 100);
+  getStaticFlag(config) {
+    if (!config.rules || config.rules.length === 0) {
+      return { isStatic: true, value: config.defaultValue };
+    }
+
+    if (config.rules.length === 1 &&
+        config.rules[0].percentage === 100 &&
+        (!config.rules[0].conditions || config.rules[0].conditions.length === 0)) {
+      return { isStatic: true, value: config.rules[0].value };
+    }
+
+    return { isStatic: false };
   }
 
   /**
@@ -850,20 +867,21 @@ class OptimizedFlagClient {
   }
 
   evaluateCompiled(flagKey, context) {
-    const rules = this.compiledRules.get(flagKey);
+    const compiled = this.compiledRules.get(flagKey);
+    const { rules, defaultValue } = compiled;
 
     for (const rule of rules) {
       if (rule.matcher(context)) {
         // Handle percentage rollout
         if (rule.percentage !== undefined && rule.percentage < 100) {
           const hash = this.hashForRollout(flagKey, context.userId);
-          if (hash > rule.percentage) continue;
+          if (hash >= rule.percentage) continue;
         }
         return { value: rule.value, reason: 'RULE_MATCH' };
       }
     }
 
-    return { value: rules.defaultValue, reason: 'DEFAULT' };
+    return { value: defaultValue, reason: 'DEFAULT' };
   }
 
   hashForRollout(flagKey, userId) {
@@ -915,7 +933,6 @@ class FlagSyncClient {
     this.options = {
       syncStrategy: options.syncStrategy || 'streaming', // 'streaming' | 'polling'
       pollingInterval: options.pollingInterval || 30000,
-      compressionEnabled: options.compressionEnabled ?? true,
       deltaUpdates: options.deltaUpdates ?? true,
       ...options
     };
@@ -945,7 +962,7 @@ class FlagSyncClient {
   startStreaming() {
     const url = new URL('/flags/stream', this.baseUrl);
 
-    // Request compressed delta updates
+    // Request delta updates
     if (this.options.deltaUpdates && this.lastETag) {
       url.searchParams.set('since', this.lastETag);
     }
@@ -1006,11 +1023,6 @@ class FlagSyncClient {
     }
     if (this.lastModified) {
       headers['If-Modified-Since'] = this.lastModified;
-    }
-
-    // Request compression
-    if (this.options.compressionEnabled) {
-      headers['Accept-Encoding'] = 'gzip, deflate, br';
     }
 
     // Request delta updates
@@ -1115,11 +1127,13 @@ class FlagMemoryAnalyzer {
     // Sort by size descending
     breakdown.sort((a, b) => b.bytes - a.bytes);
 
+    const flagCount = Object.keys(flags).length;
+
     return {
       totalBytes,
       totalMB: (totalBytes / 1024 / 1024).toFixed(2),
-      flagCount: Object.keys(flags).length,
-      avgBytesPerFlag: Math.round(totalBytes / Object.keys(flags).length),
+      flagCount,
+      avgBytesPerFlag: flagCount ? Math.round(totalBytes / flagCount) : 0,
       largestFlags: breakdown.slice(0, 10),
       recommendations: this.generateRecommendations(breakdown, totalBytes)
     };
@@ -1188,9 +1202,6 @@ class FlagMemoryAnalyzer {
 // Memory-efficient flag storage
 class CompactFlagStore {
   constructor() {
-    // Use TypedArrays for percentage values
-    this.percentages = new Uint8Array(1000);
-
     // Intern common strings
     this.stringPool = new Map();
 
@@ -1506,7 +1517,7 @@ class FlagPerformanceMonitor {
     const durations = this.samples.map(s => s.durationMs).sort((a, b) => a - b);
     const p95 = durations[Math.floor(durations.length * 0.95)];
     const p99 = durations[Math.floor(durations.length * 0.99)];
-    const errorRate = this.errors / this.totalEvaluations;
+    const errorRate = this.totalEvaluations ? this.errors / this.totalEvaluations : 0;
 
     const alerts = [];
 
@@ -1566,7 +1577,9 @@ class FlagPerformanceMonitor {
       p50Ms: this.percentile(durations, 50).toFixed(3),
       p95Ms: this.percentile(durations, 95).toFixed(3),
       p99Ms: this.percentile(durations, 99).toFixed(3),
-      errorRate: ((this.errors / this.totalEvaluations) * 100).toFixed(4)
+      errorRate: (this.totalEvaluations
+        ? (this.errors / this.totalEvaluations) * 100
+        : 0).toFixed(4)
     };
 
     // Report to observability platform
