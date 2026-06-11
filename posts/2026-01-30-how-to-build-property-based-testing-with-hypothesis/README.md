@@ -8,7 +8,7 @@ Description: Learn how to use property-based testing with Hypothesis in Python t
 
 ---
 
-Traditional unit tests verify specific examples: given input X, expect output Y. While useful, this approach can miss edge cases that developers don't anticipate. Property-based testing flips this paradigm by generating hundreds of random test cases based on properties your code should always satisfy.
+Traditional unit tests verify specific examples: given input X, expect output Y. While useful, this approach can miss edge cases that developers don't anticipate. Property-based testing flips this paradigm by generating many random test cases based on properties your code should always satisfy.
 
 ## What is Property-Based Testing?
 
@@ -18,7 +18,7 @@ Hypothesis is Python's premier property-based testing library. It integrates sea
 
 Install Hypothesis with pip:
 
-```python
+```bash
 pip install hypothesis
 ```
 
@@ -42,7 +42,7 @@ def test_addition_identity(a):
     assert add(a, 0) == a
 ```
 
-Hypothesis will run these tests with hundreds of different integer values, including edge cases like zero, negative numbers, and extremely large values.
+Hypothesis will run these tests with 100 different integer values by default, including edge cases like zero, negative numbers, and extremely large values.
 
 ## Strategies for Data Generation
 
@@ -145,15 +145,24 @@ import pytest
 from hypothesis import given, settings, Verbosity
 from hypothesis import strategies as st
 
-@pytest.fixture
-def database_connection():
-    # Setup connection
-    yield connection
-    # Teardown
+@pytest.fixture(scope="session")
+def database_factory():
+    class InMemoryDatabase:
+        def __init__(self):
+            self.value = None
+
+        def store(self, value):
+            self.value = value
+
+        def retrieve(self):
+            return self.value
+
+    return InMemoryDatabase
 
 @given(st.text())
 @settings(max_examples=500, verbosity=Verbosity.verbose)
-def test_with_database(database_connection, text):
+def test_with_database(database_factory, text):
+    database_connection = database_factory()
     database_connection.store(text)
     assert database_connection.retrieve() == text
 
