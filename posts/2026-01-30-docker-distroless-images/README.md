@@ -16,12 +16,12 @@ In this guide, we will explore how to build production-ready Docker images using
 
 Distroless images are Docker base images published by Google that contain only the essential runtime components. Unlike traditional base images such as Ubuntu or Alpine, distroless images strip away everything that is not strictly necessary for running your application.
 
-Here is what a distroless image includes:
+Here is what a distroless image typically includes:
 
 - The application runtime (if needed)
 - CA certificates for HTTPS connections
 - Timezone data
-- A non-root user
+- A non-root user when you use a `:nonroot` tag
 
 Here is what it excludes:
 
@@ -50,14 +50,14 @@ Google provides several distroless variants for different use cases. Each varian
 
 | Image | Size | Use Case |
 |-------|------|----------|
-| `gcr.io/distroless/static` | ~2 MB | Statically compiled binaries (Go, Rust) |
-| `gcr.io/distroless/base` | ~20 MB | Dynamically linked binaries |
-| `gcr.io/distroless/cc` | ~21 MB | C/C++ applications with libgcc |
-| `gcr.io/distroless/java17` | ~230 MB | Java 17 applications |
-| `gcr.io/distroless/nodejs20` | ~130 MB | Node.js 20 applications |
-| `gcr.io/distroless/python3` | ~50 MB | Python 3 applications |
+| `gcr.io/distroless/static-debian13` | ~2 MB | Statically compiled binaries (Go, Rust) |
+| `gcr.io/distroless/base-debian13` | ~20 MB | Dynamically linked binaries |
+| `gcr.io/distroless/cc-debian13` | ~21 MB | C/C++ applications with libgcc |
+| `gcr.io/distroless/java17-debian13` | ~230 MB | Java 17 applications |
+| `gcr.io/distroless/nodejs24-debian13` | ~130 MB | Node.js 24 applications |
+| `gcr.io/distroless/python3-debian13` | ~50 MB | Python 3 applications |
 
-Each image also comes with a `:nonroot` tag that runs as a non-root user by default.
+Each image also comes with a `:nonroot` tag that runs as a non-root user by default. Using Debian-suffixed tags is recommended so a future default Debian version change does not unexpectedly affect your builds.
 
 ## Building a Go Application with Distroless
 
@@ -105,7 +105,7 @@ Now, create a multi-stage Dockerfile that builds the Go binary and packages it w
 # Dockerfile for Go with distroless
 
 # Stage 1: Build the Go binary
-FROM golang:1.22-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
 # Set working directory
 WORKDIR /app
@@ -125,7 +125,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
     ./main.go
 
 # Stage 2: Create minimal runtime image
-FROM gcr.io/distroless/static:nonroot
+FROM gcr.io/distroless/static-debian13:nonroot
 
 # Copy the compiled binary from builder stage
 COPY --from=builder /app/server /server
@@ -195,7 +195,7 @@ The Dockerfile for Node.js requires copying node_modules since distroless does n
 ```dockerfile
 # Dockerfile for Node.js with distroless
 # Stage 1: Install dependencies and prepare application
-FROM node:20-alpine AS builder
+FROM node:24-alpine AS builder
 
 WORKDIR /app
 
@@ -203,13 +203,13 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install production dependencies only
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 # Copy application source code
 COPY . .
 
 # Stage 2: Create minimal runtime image
-FROM gcr.io/distroless/nodejs20:nonroot
+FROM gcr.io/distroless/nodejs24-debian13:nonroot
 
 WORKDIR /app
 
@@ -254,17 +254,18 @@ if __name__ == '__main__':
     app.run(host='0.0.0.0', port=port)
 ```
 
-Here is the multi-stage Dockerfile for Python:
+Here is the multi-stage Dockerfile for Python. The `requirements.txt` file should include both Flask and Gunicorn:
 
 ```dockerfile
 # Dockerfile for Python with distroless
 # Stage 1: Build virtual environment with dependencies
-FROM python:3.11-slim AS builder
+FROM python:3.13-slim-trixie AS builder
 
 WORKDIR /app
 
-# Create virtual environment
-RUN python -m venv /opt/venv
+# Create virtual environment using the same Python path as the distroless image
+RUN ln -s /usr/local/bin/python /usr/bin/python && \
+    /usr/bin/python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 # Install dependencies in the virtual environment
@@ -272,7 +273,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Stage 2: Create minimal runtime image
-FROM gcr.io/distroless/python3
+FROM gcr.io/distroless/python3-debian13:nonroot
 
 WORKDIR /app
 
@@ -289,8 +290,8 @@ ENV PYTHONUNBUFFERED=1
 # Expose application port
 EXPOSE 5000
 
-# Run the application
-CMD ["app.py"]
+# Run the application with Gunicorn
+CMD ["-m", "gunicorn", "-b", "0.0.0.0:5000", "app:app"]
 ```
 
 ## Debugging Distroless Containers
@@ -303,7 +304,7 @@ Google provides debug variants of distroless images that include BusyBox:
 
 ```dockerfile
 # Use debug image during development
-FROM gcr.io/distroless/static:debug
+FROM gcr.io/distroless/static-debian13:debug
 
 # This image includes a shell at /busybox/sh
 ```
@@ -343,7 +344,7 @@ graph TD
     A[Security Benefits] --> B[Reduced Attack Surface]
     A --> C[No Shell Exploits]
     A --> D[Smaller CVE Footprint]
-    A --> E[Non-root by Default]
+    A --> E[Non-root Runtime Option]
 
     B --> F[Fewer binaries to exploit]
     C --> G[Cannot spawn shell after RCE]
@@ -353,7 +354,7 @@ graph TD
 
 ### CVE Comparison
 
-Running a vulnerability scan on different base images reveals the security advantage:
+Running a vulnerability scan on different base images often reveals the security advantage. Exact results vary over time as scanners, vulnerability databases, and base images are updated:
 
 ```bash
 # Scan Ubuntu-based image
@@ -366,7 +367,7 @@ trivy image myapp:alpine
 
 # Scan Distroless image
 trivy image myapp:distroless
-# Total: 0 vulnerabilities
+# Total: fewer vulnerabilities because the runtime image contains fewer packages
 ```
 
 ## Best Practices
