@@ -26,7 +26,7 @@ A counter is a cumulative metric that represents a single numerical value that o
 | Queue items processed | `queue_items_processed_total` |
 | Cache hits | `cache_hits_total` |
 
-The key insight: you never query a counter's raw value directly. Instead, you apply functions like `rate()` or `increase()` to derive meaningful information.
+The key insight: you usually query counters with functions like `rate()` or `increase()` to derive meaningful information over a time window. The raw value mostly tells you the total since the current process started.
 
 ---
 
@@ -34,10 +34,8 @@ The key insight: you never query a counter's raw value directly. Instead, you ap
 
 ```mermaid
 flowchart TD
-    A[Does the value only increase?] -->|Yes| B[Can it reset on restart?]
+    A[Does the value only increase?] -->|Yes| D[Use a Counter]
     A -->|No| C[Use a Gauge]
-    B -->|Yes| D[Use a Counter]
-    B -->|No| E[Consider a Gauge or Summary]
 
     D --> F[Examples: requests, errors, bytes]
     C --> G[Examples: temperature, queue depth, connections]
@@ -57,7 +55,7 @@ A counter metric has three parts: the name, labels, and the value itself.
 
 ### Naming Conventions
 
-Follow the pattern: `<namespace>_<name>_<unit>_total`
+Follow the pattern: `<namespace>_<name>_<unit>_total` when the metric has a unit, or `<namespace>_<name>_total` for unitless counts.
 
 ```text
 # Good names
@@ -150,20 +148,14 @@ export function metricsMiddleware(
   res: Response,
   next: NextFunction
 ): void {
-  // Capture the original end function
-  const originalEnd = res.end;
-
-  // Override res.end to record metrics after response
-  res.end = function(...args: any[]): Response {
+  // Record metrics after the response has been sent
+  res.on('finish', () => {
     // Get the matched route pattern, not the actual URL
-    // This prevents high cardinality from path parameters
+    // This helps prevent high cardinality from path parameters
     const route = req.route?.path || req.path;
 
     recordRequest(req.method, route, res.statusCode);
-
-    // Call the original end function
-    return originalEnd.apply(this, args);
-  };
+  });
 
   next();
 }
@@ -355,7 +347,7 @@ Counters only go up. If you need a value that goes down, use a gauge.
 
 ```typescript
 // Wrong: trying to decrement a counter
-counter.dec();  // This will throw an error
+counter.dec();  // This is not supported by counters
 
 // Right: use a gauge for bidirectional values
 gauge.inc();
@@ -375,7 +367,7 @@ counter.inc();
 ### 3. Using Raw Counter Values
 
 ```promql
-# Wrong: raw counter value is meaningless
+# Usually not useful for rates or recent totals
 http_requests_total
 
 # Right: use rate() to get requests per second
@@ -449,9 +441,9 @@ describe('Counter Metrics', () => {
 
 Counter metrics are foundational to observability. Design them with these principles:
 
-1. **Name clearly**: Use the `namespace_name_unit_total` pattern
+1. **Name clearly**: Use the `namespace_name_total` or `namespace_name_unit_total` pattern
 2. **Label carefully**: Keep cardinality low by using categories, not unique values
-3. **Query properly**: Always use `rate()` or `increase()`, never raw values
+3. **Query properly**: Use `rate()` or `increase()` for rates and time-windowed totals
 4. **Track what matters**: Business events alongside technical metrics
 5. **Test thoroughly**: Validate your counters increment correctly
 
