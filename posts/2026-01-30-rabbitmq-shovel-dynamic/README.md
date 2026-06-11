@@ -188,7 +188,7 @@ async function createShovel(shovelName, config) {
       'dest-uri': config.destUri,
       'dest-queue': config.destQueue,
       'ack-mode': config.ackMode || 'on-confirm',
-      'prefetch-count': config.prefetchCount || 1000
+      'src-prefetch-count': config.prefetchCount || 1000
     }
   };
 
@@ -246,7 +246,7 @@ def create_shovel(shovel_name: str, config: dict) -> dict:
             "dest-uri": config["dest_uri"],
             "dest-queue": config["dest_queue"],
             "ack-mode": config.get("ack_mode", "on-confirm"),
-            "prefetch-count": config.get("prefetch_count", 1000)
+            "src-prefetch-count": config.get("prefetch_count", 1000)
         }
     }
 
@@ -434,7 +434,7 @@ Control how many messages the shovel fetches before acknowledgment:
     "src-queue": "source",
     "dest-uri": "amqp://localhost",
     "dest-queue": "dest",
-    "prefetch-count": 500
+    "src-prefetch-count": 500
   }
 }
 ```
@@ -648,7 +648,7 @@ curl -u admin:password -X PUT \
       "src-queue": "source-queue",
       "dest-uri": "amqp://new-destination-host",
       "dest-queue": "new-destination-queue",
-      "prefetch-count": 1000
+      "src-prefetch-count": 1000
     }
   }'
 ```
@@ -929,7 +929,7 @@ amqp://user:p%40ss%3Aword@hostname:5672/vhost
 
 ### Performance
 
-- Set appropriate `prefetch-count` based on message size (larger messages = lower count)
+- Set appropriate `src-prefetch-count` based on message size (larger messages = lower count)
 - Use `on-confirm` ack mode for reliability
 - Monitor shovel lag and throughput
 - Consider multiple shovels for high-volume queues
