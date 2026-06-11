@@ -105,7 +105,6 @@ locals {
     Owner       = "platform-team"
     Environment = var.environment
     ManagedBy   = "terraform"
-    CreatedDate = timestamp()
   }
 }
 
@@ -204,13 +203,13 @@ aws ce update-cost-allocation-tags-status \
 
 ## GCP Labeling Implementation
 
-GCP uses "labels" instead of "tags" for cost allocation. The concepts are similar but the implementation differs.
+Google Cloud supports both labels and tags. Labels are commonly used to annotate resources for cost analysis; this section focuses on labels because the implementation differs from AWS and Azure tags.
 
 ### Labeling Resources with gcloud CLI
 
 ```bash
 # Add labels to a Compute Engine instance
-# Labels in GCP must be lowercase with hyphens (no underscores)
+# Labels in GCP must use lowercase letters, numbers, underscores, or hyphens
 gcloud compute instances update my-instance \
     --zone=us-central1-a \
     --update-labels=cost-center=cc-engineering,project=api-gateway,owner=platform-team,environment=production
@@ -224,7 +223,7 @@ gcloud storage buckets update gs://my-data-bucket \
 
 ```hcl
 # Define common labels for reuse across GCP resources
-# Note: GCP labels must be lowercase and use hyphens
+# Note: GCP labels must use lowercase letters, numbers, underscores, or hyphens
 locals {
   common_labels = {
     cost-center = "cc-engineering"
@@ -276,16 +275,7 @@ resource "google_storage_bucket" "data_bucket" {
 
 ### GCP Organization Policy for Labels
 
-Enforce labeling requirements using organization policies:
-
-```yaml
-# organization-policy.yaml
-# Require specific labels on all supported resources
-constraint: constraints/compute.requireLabels
-listPolicy:
-  allValues: ALLOW
-  suggestedValue: cost-center,project,owner,environment
-```
+Google Cloud does not provide a predefined `constraints/compute.requireLabels` organization policy constraint. For supported services, use custom organization policies to enforce label requirements, and use infrastructure as code or CI/CD validation where custom constraints are not available.
 
 ## Azure Tagging Implementation
 
@@ -322,7 +312,8 @@ locals {
   }
 }
 
-# Apply tags to a resource group (tags inherit to child resources)
+# Apply tags to a resource group
+# Resource group tags do not automatically inherit to child resources
 resource "azurerm_resource_group" "main" {
   name     = "rg-api-gateway-${var.environment}"
   location = "East US"
@@ -445,6 +436,7 @@ Scans AWS resources and generates a compliance report for cost allocation tags.
 """
 
 import boto3
+from botocore.exceptions import ClientError
 from datetime import datetime
 from typing import Dict, List, Any
 
@@ -503,9 +495,13 @@ def get_s3_buckets() -> List[Dict[str, Any]]:
         try:
             tag_response = s3.get_bucket_tagging(Bucket=bucket_name)
             tags = {tag["Key"]: tag["Value"] for tag in tag_response.get("TagSet", [])}
-        except s3.exceptions.ClientError:
-            # Bucket has no tags
-            tags = {}
+        except ClientError as error:
+            error_code = error.response.get("Error", {}).get("Code")
+            if error_code == "NoSuchTagSet":
+                # Bucket has no tags
+                tags = {}
+            else:
+                raise
 
         missing_tags = [tag for tag in MANDATORY_TAGS if tag not in tags]
 
