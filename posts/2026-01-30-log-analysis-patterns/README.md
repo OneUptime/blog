@@ -127,7 +127,7 @@ function generateFingerprint(errorType, message) {
 
 ### Database Query Logs
 
-Database logs reveal performance bottlenecks and query patterns. Extract the query type, table, duration, and any slow query indicators.
+Database logs reveal performance bottlenecks and query patterns. Extract the query type, duration, and any slow query indicators.
 
 ```python
 # Pattern for PostgreSQL slow query logs
