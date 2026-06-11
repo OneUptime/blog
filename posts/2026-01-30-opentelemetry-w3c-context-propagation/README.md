@@ -162,7 +162,7 @@ First, install the required OpenTelemetry packages:
 npm install @opentelemetry/api \
             @opentelemetry/sdk-node \
             @opentelemetry/auto-instrumentations-node \
-            @opentelemetry/exporter-otlp-http
+            @opentelemetry/exporter-trace-otlp-http
 ```
 
 Create a telemetry configuration file that initializes the SDK with W3C propagation:
@@ -171,7 +171,7 @@ Create a telemetry configuration file that initializes the SDK with W3C propagat
 // telemetry.ts
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
-import { OTLPTraceExporter } from '@opentelemetry/exporter-otlp-http';
+import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { Resource } from '@opentelemetry/resources';
 import {
   W3CTraceContextPropagator
