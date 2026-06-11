@@ -272,7 +272,8 @@ helm dependency update
 # helm dependency build
 # - Uses exact versions from Chart.lock
 # - Faster, does not contact repositories unless needed
-# - Fails if Chart.lock is missing or outdated
+# - Mirrors dependency update if Chart.lock is missing
+# - Fails if Chart.lock is out of sync with Chart.yaml
 helm dependency build
 ```
 
@@ -291,7 +292,7 @@ Use `dependency build` when:
 Check the status of your dependencies:
 
 ```bash
-helm dependency list
+helm dependency list .
 
 # NAME         VERSION   REPOSITORY                               STATUS
 # postgresql   12.5.8    https://charts.bitnami.com/bitnami      ok
@@ -882,6 +883,7 @@ prometheus:
   alertmanager:
     enabled: true
   server:
+    fullnameOverride: prometheus-server
     persistence:
       enabled: true
       size: 50Gi
@@ -898,7 +900,7 @@ grafana:
       datasources:
         - name: Prometheus
           type: prometheus
-          url: http://{{ .Release.Name }}-prometheus-server
+          url: http://prometheus-server
           isDefault: true
 ```
 
@@ -1009,7 +1011,7 @@ helm get values my-release -n production
 
 1. Mirror public charts to internal registry for air-gapped environments
 2. Use Chart.lock in version control for reproducible deployments
-3. Run `helm dependency update` in CI, not manually
+3. Run `helm dependency build` in CI for reproducible dependency restoration
 4. Document repository requirements in chart README
 
 ### Value Organization
@@ -1046,7 +1048,7 @@ redis:
 
 - Never commit secrets in values files
 - Use `existingSecret` references for credentials
-- Scan dependencies for vulnerabilities with `helm audit`
+- Scan rendered charts and dependencies with a security scanner such as Trivy
 - Review subchart RBAC requirements before deployment
 
 ## Summary
