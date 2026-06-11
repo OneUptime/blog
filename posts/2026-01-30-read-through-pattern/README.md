@@ -145,7 +145,6 @@ class RedisCacheProvider implements CacheProvider {
   constructor(redisUrl: string) {
     this.client = new Redis(redisUrl, {
       maxRetriesPerRequest: 3,
-      retryDelayOnFailover: 100,
       enableReadyCheck: true,
     });
   }
