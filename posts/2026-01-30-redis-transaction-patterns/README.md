@@ -165,26 +165,28 @@ import redis
 def compare_and_set(key, expected_value, new_value, max_retries=3):
     r = redis.Redis()
 
-    for attempt in range(max_retries):
-        # Watch the key
-        r.watch(key)
+    # WATCH must be issued from a Pipeline in redis-py
+    with r.pipeline() as pipe:
+        for attempt in range(max_retries):
+            try:
+                # Watch the key - this puts the pipeline in immediate mode
+                pipe.watch(key)
 
-        # Get current value
-        current = r.get(key)
+                # Get current value (executed immediately while watching)
+                current = pipe.get(key)
 
-        if current != expected_value:
-            r.unwatch()
-            return False  # Value doesn't match expected
+                if current != expected_value:
+                    pipe.unwatch()
+                    return False  # Value doesn't match expected
 
-        try:
-            # Attempt the update
-            pipe = r.pipeline()
-            pipe.set(key, new_value)
-            result = pipe.execute()
-            return True  # Success
-        except redis.WatchError:
-            # Key was modified, retry
-            continue
+                # Switch to buffered transaction mode
+                pipe.multi()
+                pipe.set(key, new_value)
+                pipe.execute()
+                return True  # Success
+            except redis.WatchError:
+                # Key was modified between WATCH and EXEC, retry
+                continue
 
     return False  # Max retries exceeded
 
