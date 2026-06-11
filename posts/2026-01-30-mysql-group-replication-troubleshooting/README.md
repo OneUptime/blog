@@ -8,7 +8,7 @@ Description: A practical guide to diagnosing and resolving common MySQL Group Re
 
 ---
 
-MySQL Group Replication provides high availability through automatic failover and multi-master synchronization. When it works, it is seamless. When it breaks, debugging can be challenging without the right approach. This guide covers systematic troubleshooting techniques with real commands and solutions.
+MySQL Group Replication provides high availability through automatic failover and single-primary or multi-primary synchronization. When it works, it is seamless. When it breaks, debugging can be challenging without the right approach. This guide covers systematic troubleshooting techniques with real commands and solutions.
 
 ## How Group Replication Works
 
@@ -64,7 +64,7 @@ FROM
 WHERE
     CHANNEL_NAME LIKE 'group_replication%';
 
--- Check applier status for transaction backlog
+-- Check certification queue and conflict statistics
 SELECT
     CHANNEL_NAME,
     COUNT_TRANSACTIONS_IN_QUEUE,
@@ -101,10 +101,18 @@ FROM
 WHERE
     CHANNEL_NAME = 'group_replication_recovery';
 
--- Check how far behind the recovering node is
+-- Check what the recovery channel has queued
 SELECT
     CHANNEL_NAME,
-    LAST_QUEUED_TRANSACTION,
+    LAST_QUEUED_TRANSACTION
+FROM
+    performance_schema.replication_connection_status
+WHERE
+    CHANNEL_NAME = 'group_replication_recovery';
+
+-- Check what the applier workers are applying
+SELECT
+    CHANNEL_NAME,
     LAST_APPLIED_TRANSACTION,
     APPLYING_TRANSACTION
 FROM
@@ -142,7 +150,7 @@ SELECT user, host FROM mysql.user WHERE user = 'replication_user';
 CREATE USER IF NOT EXISTS 'replication_user'@'%'
     IDENTIFIED BY 'secure_password';
 
-GRANT REPLICATION SLAVE, BACKUP_ADMIN, GROUP_REPLICATION_STREAM
+GRANT REPLICATION SLAVE, CONNECTION_ADMIN, BACKUP_ADMIN, GROUP_REPLICATION_STREAM
     ON *.* TO 'replication_user'@'%';
 
 FLUSH PRIVILEGES;
@@ -185,13 +193,13 @@ Use this only when you are certain which partition has the most recent data.
 -- DANGER: This can cause data loss if used incorrectly
 -- Only use when you are absolutely sure about the surviving nodes
 
--- Step 1: Get the server_uuid of surviving nodes
-SELECT @@server_uuid;
+-- Step 1: Get the group communication addresses of surviving nodes
+SELECT @@group_replication_local_address;
 
 -- Step 2: On the node with most recent data, force new membership
--- Replace the UUIDs with your actual surviving node UUIDs
+-- Replace the addresses with the surviving members' group_replication_local_address values
 SET GLOBAL group_replication_force_members =
-    'uuid1:33061,uuid2:33061';
+    'node1.example.com:33061,node2.example.com:33061';
 
 -- Step 3: Verify new membership
 SELECT * FROM performance_schema.replication_group_members;
@@ -250,8 +258,10 @@ Application-level strategies to reduce conflicts are shown below.
 -- Check current mode
 SELECT @@group_replication_single_primary_mode;
 
--- Switch to single-primary (requires restart of all nodes)
--- In my.cnf:
+-- Switch an online group to single-primary mode
+SELECT group_replication_switch_to_single_primary_mode();
+
+-- Persist the desired mode in my.cnf for future restarts:
 -- group_replication_single_primary_mode = ON
 
 -- Strategy 2: Add small random delay for hot rows
@@ -296,7 +306,6 @@ SELECT
 STOP GROUP_REPLICATION;
 
 SET GLOBAL replica_parallel_workers = 16;
-SET GLOBAL replica_parallel_type = 'LOGICAL_CLOCK';
 SET GLOBAL replica_preserve_commit_order = ON;
 
 START GROUP_REPLICATION;
@@ -325,16 +334,15 @@ After an unexpected crash, a node may fail to rejoin due to GTID inconsistencies
 -- Check GTID executed set on the rejoining node
 SELECT @@gtid_executed;
 
--- Compare with another healthy node in the group
+-- Compare with @@gtid_executed from a healthy node in the group
 -- If GTIDs are ahead of the group, the node has "errant transactions"
+SET @healthy_gtid_executed = 'uuid:1-1000'; -- replace with @@gtid_executed from a healthy member
 
 -- Check for errant transactions
 SELECT
     GTID_SUBTRACT(
-        (SELECT @@gtid_executed),
-        (SELECT RECEIVED_TRANSACTION_SET
-         FROM performance_schema.replication_connection_status
-         WHERE CHANNEL_NAME = 'group_replication_applier')
+        @@gtid_executed,
+        @healthy_gtid_executed
     ) as errant_transactions;
 ```
 
@@ -351,7 +359,7 @@ SELECT
 
 mysql -e "
 STOP GROUP_REPLICATION;
-RESET MASTER;
+RESET BINARY LOGS AND GTIDS;
 RESET REPLICA ALL;
 
 -- Install clone plugin if not present
@@ -373,10 +381,9 @@ mysql -e "START GROUP_REPLICATION;"
 -- Only use this if you understand the implications
 
 -- First, identify the errant transactions
+SET @healthy_gtid_executed = 'uuid:1-1000'; -- replace with @@gtid_executed from a healthy member
 SET @errant = (SELECT GTID_SUBTRACT(@@gtid_executed,
-    (SELECT RECEIVED_TRANSACTION_SET
-     FROM performance_schema.replication_connection_status
-     WHERE CHANNEL_NAME = 'group_replication_applier')));
+    @healthy_gtid_executed));
 
 -- If errant transactions exist, you must either:
 -- 1. Inject empty transactions on all other nodes (complex)
@@ -390,7 +397,7 @@ SET GTID_NEXT = 'AUTOMATIC';
 
 ## Common Issue 6: SSL/TLS Connection Failures
 
-Group Replication uses SSL for node-to-node communication. Certificate issues can prevent nodes from joining.
+Group Replication can use SSL/TLS for group communication and distributed recovery. Certificate issues can prevent nodes from joining when SSL/TLS is enabled.
 
 ```sql
 -- Check SSL configuration for group replication
@@ -417,6 +424,7 @@ WHERE
 [mysqld]
 # Enable SSL for group communication
 group_replication_ssl_mode = REQUIRED
+group_replication_recovery_use_ssl = ON
 group_replication_recovery_ssl_verify_server_cert = ON
 
 # SSL certificates (must be valid and trusted)
@@ -442,11 +450,12 @@ openssl x509 -in /etc/mysql/certs/server-cert.pem -noout -dates
 openssl verify -CAfile /etc/mysql/certs/ca.pem \
     /etc/mysql/certs/server-cert.pem
 
-# Test SSL connection to another node
-openssl s_client -connect other-node:33061 \
-    -CAfile /etc/mysql/certs/ca.pem \
-    -cert /etc/mysql/certs/server-cert.pem \
-    -key /etc/mysql/certs/server-key.pem
+# Test MySQL TLS connection to another node's recovery endpoint
+mysql --ssl-mode=VERIFY_CA \
+    --ssl-ca=/etc/mysql/certs/ca.pem \
+    --ssl-cert=/etc/mysql/certs/server-cert.pem \
+    --ssl-key=/etc/mysql/certs/server-key.pem \
+    -h other-node -P 3306 -e "SELECT 1;"
 ```
 
 ## Monitoring Group Replication
