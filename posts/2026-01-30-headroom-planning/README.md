@@ -299,15 +299,25 @@ graph TD
 ```
 
 ```python
-from datetime import datetime, timedelta
-from typing import Tuple
+import calendar
+from datetime import datetime
+from typing import Optional, Tuple
+
+def add_months(date: datetime, months: int) -> datetime:
+    """Add calendar months while keeping the day valid for the target month."""
+    month_index = date.month - 1 + months
+    year = date.year + month_index // 12
+    month = month_index % 12 + 1
+    day = min(date.day, calendar.monthrange(year, month)[1])
+    return date.replace(year=year, month=month, day=day)
 
 def project_capacity_needs(
     current_usage: float,
     current_capacity: float,
     monthly_growth_rate: float,
     target_headroom_percent: float = 20.0,
-    projection_months: int = 6
+    projection_months: int = 6,
+    start_date: Optional[datetime] = None
 ) -> list:
     """
     Project future capacity needs based on growth rate.
@@ -318,16 +328,17 @@ def project_capacity_needs(
         monthly_growth_rate: Expected monthly growth (e.g., 0.05 = 5%)
         target_headroom_percent: Desired headroom (default 20%)
         projection_months: How far to project (default 6 months)
+        start_date: Optional start date for reproducible projections
 
     Returns:
         List of monthly projections with scaling recommendations
     """
     projections = []
     usage = current_usage
-    today = datetime.now()
+    today = start_date or datetime.now()
 
     for month in range(projection_months + 1):
-        date = today + timedelta(days=30 * month)
+        date = add_months(today, month)
 
         # Calculate required capacity to maintain target headroom
         required_capacity = usage / (1 - target_headroom_percent / 100)
@@ -362,7 +373,8 @@ projections = project_capacity_needs(
     current_capacity=1000,    # 1000 requests/sec max capacity
     monthly_growth_rate=0.08, # 8% monthly growth
     target_headroom_percent=25.0,
-    projection_months=12
+    projection_months=12,
+    start_date=datetime(2026, 1, 1)
 )
 
 deadline, months_until = find_scaling_deadline(projections)
@@ -380,7 +392,7 @@ for p in projections[:7]:
 Output:
 ```text
 Current headroom: 35.0%
-Scaling needed by: 2026-05 (4 months)
+Scaling needed by: 2026-03 (2 months)
 
 Projection Table:
 ----------------------------------------------------------------------
@@ -526,18 +538,18 @@ Seasonal Capacity Analysis (E-commerce)
 ============================================================
 Month         Expected   Required      Gap   Status
 ------------------------------------------------------------
-January           4250       5313        0       OK
-February          4500       5625        0       OK
-March             4750       5938        0       OK
+January           4250       5167        0       OK
+February          4500       5521        0       OK
+March             4750       5882        0       OK
 April             5000       6250        0       OK
 May               5000       6250        0       OK
-June              5250       6563        0       OK
+June              5250       6625        0       OK
 July              5000       6250        0       OK
-August            5250       6563        0       OK
-September         5500       6875        0       OK
-October           5750       7188        0       OK
-November          7000       9333     1333    SCALE
-December          6750       8864      864    SCALE
+August            5250       6625        0       OK
+September         5500       7006        0       OK
+October           5750       7396        0       OK
+November          7000       9459     1459    SCALE
+December          6750       9030     1030    SCALE
 ```
 
 ---
@@ -613,6 +625,13 @@ PROVISIONING_PROFILES = {
         testing_time_hours=24,
         buffer_multiplier=1.3
     ),
+    ResourceType.DATACENTER_RACK: ProvisioningProfile(
+        resource_type=ResourceType.DATACENTER_RACK,
+        lead_time_hours=1440,     # 60 days
+        approval_time_hours=168,  # 1 week
+        testing_time_hours=48,
+        buffer_multiplier=1.2
+    ),
 }
 
 def calculate_lead_time_headroom(
@@ -683,7 +702,8 @@ Resource Type         Lead Time  Growth During Required Headroom
 cloud_vm                   1.3d           1.6%           21.6%
 kubernetes_node            0.0d           0.0%           20.0%
 database_replica           3.8d           4.5%           24.5%
-bare_metal                27.6d          33.1%           53.1%
+bare_metal                28.6d          34.3%           54.3%
+datacenter_rack           82.8d          99.4%          119.4%
 ```
 
 ---
@@ -708,6 +728,7 @@ graph TD
 ```python
 from dataclasses import dataclass
 from typing import List
+import math
 
 @dataclass
 class CostProfile:
@@ -794,12 +815,12 @@ Headroom Cost-Benefit Analysis
   Headroom   Infra Cost  Outage Prob  Outage Cost   Total Cost    Optimal
 --------------------------------------------------------------------------------
        10%     $55,000        4.5%      $5,578       $60,578
-       15%     $57,500        2.1%      $2,612       $60,112
-       20%     $60,000        1.0%      $1,224       $61,224
-       25%     $62,500        0.5%        $573       $63,073
-       30%     $65,000        0.2%        $269       $65,269
-       35%     $67,500        0.1%        $126       $67,626
-       40%     $70,000        0.0%         $59       $70,059
+       15%     $57,500        2.1%      $2,635       $60,135
+       20%     $60,000        1.0%      $1,245       $61,245
+       25%     $62,500        0.5%        $588       $63,088
+       30%     $65,000        0.2%        $278       $65,278
+       35%     $67,500        0.1%        $131       $67,631
+       40%     $70,000        0.1%         $62       $70,062
 ```
 
 The optimal headroom is where total cost (infrastructure + expected outage cost) is minimized. In this example, 15% headroom provides the best balance.
@@ -822,7 +843,7 @@ groups:
       - alert: CPUHeadroomLow
         expr: |
           (1 - (
-            avg(rate(container_cpu_usage_seconds_total{namespace="production"}[5m]))
+            sum(rate(container_cpu_usage_seconds_total{namespace="production"}[5m]))
             /
             sum(kube_pod_container_resource_limits{resource="cpu", namespace="production"})
           )) * 100 < 20
@@ -869,7 +890,7 @@ groups:
       - alert: HeadroomDepletingFast
         expr: |
           predict_linear(
-            (1 - avg(rate(container_cpu_usage_seconds_total{namespace="production"}[1h]))
+            (1 - sum(rate(container_cpu_usage_seconds_total{namespace="production"}[1h]))
             / sum(kube_pod_container_resource_limits{resource="cpu", namespace="production"}))[24h:1h],
             86400 * 7  # 7 days
           ) * 100 < 10
@@ -894,7 +915,7 @@ groups:
         "type": "gauge",
         "targets": [
           {
-            "expr": "(1 - (avg(rate(container_cpu_usage_seconds_total{namespace=\"production\"}[5m])) / sum(kube_pod_container_resource_limits{resource=\"cpu\", namespace=\"production\"}))) * 100",
+            "expr": "(1 - (sum(rate(container_cpu_usage_seconds_total{namespace=\"production\"}[5m])) / sum(kube_pod_container_resource_limits{resource=\"cpu\", namespace=\"production\"}))) * 100",
             "legendFormat": "CPU Headroom"
           }
         ],
@@ -902,7 +923,7 @@ groups:
           "defaults": {
             "thresholds": {
               "steps": [
-                { "value": 0, "color": "red" },
+                { "value": null, "color": "red" },
                 { "value": 15, "color": "orange" },
                 { "value": 25, "color": "green" }
               ]
@@ -918,7 +939,7 @@ groups:
         "type": "timeseries",
         "targets": [
           {
-            "expr": "(1 - (avg(rate(container_cpu_usage_seconds_total{namespace=\"production\"}[1h])) / sum(kube_pod_container_resource_limits{resource=\"cpu\", namespace=\"production\"}))) * 100",
+            "expr": "(1 - (sum(rate(container_cpu_usage_seconds_total{namespace=\"production\"}[1h])) / sum(kube_pod_container_resource_limits{resource=\"cpu\", namespace=\"production\"}))) * 100",
             "legendFormat": "CPU Headroom"
           },
           {
@@ -932,7 +953,7 @@ groups:
         "type": "stat",
         "targets": [
           {
-            "expr": "clamp_min((avg_over_time((1 - (avg(rate(container_cpu_usage_seconds_total{namespace=\"production\"}[1h])) / sum(kube_pod_container_resource_limits{resource=\"cpu\", namespace=\"production\"})))[24h:1h]) * 100) / (deriv((avg(rate(container_cpu_usage_seconds_total{namespace=\"production\"}[1h])) / sum(kube_pod_container_resource_limits{resource=\"cpu\", namespace=\"production\"})))[24h:1h]) / 86400, 0)",
+            "expr": "((1 - (sum(rate(container_cpu_usage_seconds_total{namespace=\"production\"}[1h])) / sum(kube_pod_container_resource_limits{resource=\"cpu\", namespace=\"production\"}))) / clamp_min(deriv((sum(rate(container_cpu_usage_seconds_total{namespace=\"production\"}[1h])) / sum(kube_pod_container_resource_limits{resource=\"cpu\", namespace=\"production\"}))[24h:1h]), 1e-9)) / 86400",
             "legendFormat": "Days to exhaustion"
           }
         ],
@@ -941,7 +962,7 @@ groups:
             "unit": "d",
             "thresholds": {
               "steps": [
-                { "value": 0, "color": "red" },
+                { "value": null, "color": "red" },
                 { "value": 14, "color": "orange" },
                 { "value": 30, "color": "green" }
               ]
@@ -959,6 +980,7 @@ groups:
 ```python
 import requests
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Dict, Optional
 import json
 
@@ -994,7 +1016,7 @@ class HeadroomMonitor:
     def get_cpu_headroom(self, namespace: str = "production") -> HeadroomStatus:
         """Calculate CPU headroom for a namespace."""
         usage_query = f'''
-            avg(rate(container_cpu_usage_seconds_total{{namespace="{namespace}"}}[5m]))
+            sum(rate(container_cpu_usage_seconds_total{{namespace="{namespace}"}}[5m]))
             / sum(kube_pod_container_resource_limits{{resource="cpu", namespace="{namespace}"}})
         '''
         usage_percent = self.query_prometheus(usage_query) * 100
@@ -1002,7 +1024,7 @@ class HeadroomMonitor:
 
         # Get trend (compare to 24h ago)
         trend_query = f'''
-            avg(rate(container_cpu_usage_seconds_total{{namespace="{namespace}"}}[5m] offset 24h))
+            sum(rate(container_cpu_usage_seconds_total{{namespace="{namespace}"}}[5m] offset 24h))
             / sum(kube_pod_container_resource_limits{{resource="cpu", namespace="{namespace}"}} offset 24h)
         '''
         usage_24h_ago = self.query_prometheus(trend_query) * 100
