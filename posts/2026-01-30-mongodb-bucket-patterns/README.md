@@ -176,7 +176,24 @@ async function insertTemperatureReading(db, sensorId, temperature, timestamp) {
     }
   );
 
+  await updateTemperatureAverage(db, sensorId, bucketStart);
+
   return result;
+}
+
+// Update the average value after the bucket's count and sum change
+async function updateTemperatureAverage(db, sensorId, bucketStart) {
+  const bucket = await db.collection("temperature_buckets").findOne({
+    sensor_id: sensorId,
+    bucket_start: bucketStart
+  });
+
+  if (bucket && bucket.count > 0) {
+    await db.collection("temperature_buckets").updateOne(
+      { _id: bucket._id },
+      { $set: { "aggregates.avg_temp": bucket.aggregates.sum_temp / bucket.count } }
+    );
+  }
 }
 ```
 
@@ -264,7 +281,7 @@ Here is how to implement count-based buckets for storing application request met
 
 ```javascript
 // Schema for count-based request metrics buckets
-// Each bucket holds exactly 100 requests
+// Each bucket holds up to 100 requests
 
 const requestMetricsBucketSchema = {
   // Service identifier
@@ -333,7 +350,8 @@ async function insertRequestMetric(db, serviceName, endpoint, metric) {
       // Find a bucket that is not full
       service_name: serviceName,
       endpoint: endpoint,
-      is_full: false
+      is_full: false,
+      count: { $lt: BUCKET_SIZE }
     },
     {
       // Add the metric to the bucket
@@ -483,9 +501,11 @@ async function insertHybridBucket(db, deviceId, reading) {
         }
       },
       $inc: { count: 1 },
-      $max: { bucket_end: reading.timestamp },
       $min: { "stats.min_value": reading.value },
-      $max: { "stats.max_value": reading.value }
+      $max: {
+        bucket_end: reading.timestamp,
+        "stats.max_value": reading.value
+      }
     }
   );
 
@@ -692,9 +712,7 @@ class IoTBucketManager {
     );
 
     // Update average after insert
-    if (result.upsertedCount === 0) {
-      await this.updateAverage(deviceId, sensorType, bucketStart);
-    }
+    await this.updateAverage(deviceId, sensorType, bucketStart);
 
     return result;
   }
