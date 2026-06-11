@@ -8,7 +8,7 @@ Description: Learn to create log batching for efficient bulk log shipping to red
 
 ---
 
-Shipping logs one at a time is expensive. Every log entry triggers a network call, consumes a connection, waits for acknowledgment, and burns CPU cycles on serialization. At scale, this adds up fast. A service handling 10,000 requests per second might generate 50,000 log entries. Without batching, that means 50,000 HTTP requests to your observability backend every second.
+Shipping logs one at a time is expensive. Every log entry triggers a network call, occupies or reuses a connection, waits for acknowledgment, and burns CPU cycles on serialization. At scale, this adds up fast. A service handling 10,000 requests per second might generate 50,000 log entries. Without batching, that means 50,000 HTTP requests to your observability backend every second.
 
 Log batching solves this by collecting multiple log entries into a single payload before transmission. Instead of 50,000 requests, you send 500 batches of 100 logs each. Network overhead drops by orders of magnitude. Your application spends less time waiting on I/O. Your observability backend ingests data more efficiently.
 
@@ -41,7 +41,7 @@ flowchart LR
 | Metric | Unbatched | Batched (100 per batch) |
 |--------|-----------|-------------------------|
 | Network calls per 1000 logs | 1000 | 10 |
-| TCP handshakes (new connections) | 1000 | 10 |
+| Request/connection overhead | High | Low |
 | Serialization overhead | High | Low |
 | Backend ingestion efficiency | Poor | Excellent |
 
@@ -155,8 +155,10 @@ class LogBatcher {
     let lastError: Error | null = null;
 
     for (let attempt = 0; attempt < this.config.maxRetries; attempt++) {
+      let response: Awaited<ReturnType<typeof fetch>>;
+
       try {
-        const response = await fetch(this.config.endpoint, {
+        response = await fetch(this.config.endpoint, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -164,27 +166,30 @@ class LogBatcher {
           },
           body: JSON.stringify({ logs: batch }),
         });
-
-        if (response.ok) {
-          return; // Success
-        }
-
-        // Server error - retry with backoff
-        if (response.status >= 500) {
-          lastError = new Error(`Server error: ${response.status}`);
-          await this.backoff(attempt);
-          continue;
-        }
-
-        // Client error - do not retry
-        throw new Error(`Client error: ${response.status}`);
       } catch (error) {
         lastError = error as Error;
         await this.backoff(attempt);
+        continue;
       }
+
+      if (response.ok) {
+        return; // Success
+      }
+
+      // Server error - retry with backoff
+      if (response.status >= 500) {
+        lastError = new Error(`Server error: ${response.status}`);
+        if (attempt < this.config.maxRetries - 1) {
+          await this.backoff(attempt);
+        }
+        continue;
+      }
+
+      // Client error - do not retry
+      throw new Error(`Client error: ${response.status}`);
     }
 
-    throw lastError;
+    throw lastError ?? new Error('Batch flush failed');
   }
 
   // Exponential backoff between retries
@@ -244,8 +249,8 @@ const batcher = new PriorityLogBatcher({
   maxBatchSize: 100,
   flushIntervalMs: 5000,
   maxRetries: 3,
-  endpoint: 'https://oneuptime.com/otlp/v1/logs',
-  headers: { 'x-oneuptime-token': process.env.ONEUPTIME_TOKEN || '' },
+  endpoint: 'https://logs.example.com/batches',
+  headers: { Authorization: `Bearer ${process.env.LOGS_API_TOKEN || ''}` },
   immediateFlushLevels: ['error', 'fatal'],
 });
 ```
@@ -436,6 +441,7 @@ class ProductionLogBatcher extends EventEmitter {
     if (this.buffer.length >= this.config.maxBufferSize) {
       if (this.config.overflowStrategy === 'drop-oldest') {
         this.buffer.shift();
+        this.stats.dropped++;
       } else {
         this.stats.dropped++;
         return;
@@ -501,26 +507,48 @@ class ProductionLogBatcher extends EventEmitter {
   }
 
   private async sendWithRetry(batch: LogEntry[]): Promise<void> {
+    let lastError: Error | null = null;
+
     for (let i = 0; i < this.config.maxRetries; i++) {
+      let res: Awaited<ReturnType<typeof fetch>>;
+
       try {
-        const res = await fetch(this.config.endpoint, {
+        res = await fetch(this.config.endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', ...this.config.headers },
           body: JSON.stringify({ logs: batch }),
         });
-        if (res.ok) return;
-        if (res.status < 500) throw new Error(`Client error: ${res.status}`);
       } catch (e) {
-        if (i === this.config.maxRetries - 1) throw e;
+        lastError = e as Error;
+        if (i < this.config.maxRetries - 1) {
+          await new Promise(r => setTimeout(r, 1000 * Math.pow(2, i)));
+        }
+        continue;
+      }
+
+      if (res.ok) return;
+
+      if (res.status < 500) {
+        throw new Error(`Client error: ${res.status}`);
+      }
+
+      lastError = new Error(`Server error: ${res.status}`);
+      if (i < this.config.maxRetries - 1) {
         await new Promise(r => setTimeout(r, 1000 * Math.pow(2, i)));
       }
     }
+
+    throw lastError ?? new Error('Batch flush failed');
   }
 
   private registerShutdownHandlers(): void {
     const shutdown = async () => {
       if (this.flushTimer) clearInterval(this.flushTimer);
-      await this.flush();
+      try {
+        await this.flush();
+      } finally {
+        process.exit(0);
+      }
     };
     process.on('SIGTERM', shutdown);
     process.on('SIGINT', shutdown);
@@ -533,8 +561,8 @@ const logger = new ProductionLogBatcher({
   maxBufferSize: 10000,
   flushIntervalMs: 5000,
   maxRetries: 3,
-  endpoint: 'https://oneuptime.com/otlp/v1/logs',
-  headers: { 'x-oneuptime-token': process.env.ONEUPTIME_TOKEN || '' },
+  endpoint: 'https://logs.example.com/batches',
+  headers: { Authorization: `Bearer ${process.env.LOGS_API_TOKEN || ''}` },
   immediateFlushLevels: ['error', 'fatal'],
   overflowStrategy: 'drop-oldest',
 });
