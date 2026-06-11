@@ -37,9 +37,13 @@ import {
   DataQueryRequest,
   DataQueryResponse,
   DataSourceInstanceSettings,
-  MutableDataFrame,
+  DataFrame,
   FieldType,
+  createDataFrame,
+  TestDataSourceResponse,
 } from '@grafana/data';
+import { getBackendSrv } from '@grafana/runtime';
+import { lastValueFrom } from 'rxjs';
 import { MyQuery, MyDataSourceOptions } from './types';
 
 export class MyDataSource extends DataSourceApi<MyQuery, MyDataSourceOptions> {
@@ -56,7 +60,7 @@ export class MyDataSource extends DataSourceApi<MyQuery, MyDataSourceOptions> {
     const to = range.to.valueOf();
 
     const promises = options.targets.map(async (target) => {
-      const response = await this.fetchData(target.queryText, from, to);
+      const response = await this.fetchData(target.queryText ?? '', from, to);
       return this.transformResponse(response, target.refId);
     });
 
@@ -71,29 +75,32 @@ export class MyDataSource extends DataSourceApi<MyQuery, MyDataSourceOptions> {
 Transform your backend's response into Grafana's DataFrame format. This standardized structure enables visualization across all Grafana panels:
 
 ```typescript
-private transformResponse(response: any, refId: string): MutableDataFrame {
-  const frame = new MutableDataFrame({
+private transformResponse(response: any, refId: string): DataFrame {
+  return createDataFrame({
     refId,
     fields: [
-      { name: 'time', type: FieldType.time },
-      { name: 'value', type: FieldType.number },
+      {
+        name: 'Time',
+        type: FieldType.time,
+        values: response.dataPoints.map((point: { timestamp: number }) => point.timestamp),
+      },
+      {
+        name: 'Value',
+        type: FieldType.number,
+        values: response.dataPoints.map((point: { value: number }) => point.value),
+      },
     ],
   });
-
-  response.dataPoints.forEach((point: { timestamp: number; value: number }) => {
-    frame.appendRow([point.timestamp, point.value]);
-  });
-
-  return frame;
 }
 
 private async fetchData(query: string, from: number, to: number): Promise<any> {
-  const response = await fetch(`${this.baseUrl}/api/query`, {
+  const response = getBackendSrv().fetch({
+    url: `${this.baseUrl}/api/query`,
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query, from, to }),
+    data: { query, from, to },
   });
-  return response.json();
+  const { data } = await lastValueFrom(response);
+  return data;
 }
 ```
 
@@ -102,18 +109,20 @@ private async fetchData(query: string, from: number, to: number): Promise<any> {
 The `testDatasource` method validates connectivity when users configure the data source:
 
 ```typescript
-async testDatasource(): Promise<{ status: string; message: string }> {
+async testDatasource(): Promise<TestDataSourceResponse> {
   try {
-    const response = await fetch(`${this.baseUrl}/api/health`);
-    if (response.ok) {
-      return { status: 'success', message: 'Data source is working' };
-    }
-    return { status: 'error', message: `HTTP ${response.status}` };
+    const response = getBackendSrv().fetch({
+      url: `${this.baseUrl}/api/health`,
+    });
+    await lastValueFrom(response);
+    return { status: 'success', message: 'Data source is working' };
   } catch (error) {
     return { status: 'error', message: `Connection failed: ${error}` };
   }
 }
 ```
+
+Using `getBackendSrv().fetch` sends requests through Grafana's data proxy. This avoids browser CORS limitations and lets Grafana add authentication configured for the data source.
 
 ## Building the Config Editor
 
@@ -121,7 +130,7 @@ Create a configuration UI in `src/components/ConfigEditor.tsx` for users to ente
 
 ```typescript
 import React, { ChangeEvent } from 'react';
-import { InlineField, Input, SecretInput } from '@grafana/ui';
+import { DataSourceHttpSettings, InlineField, SecretInput } from '@grafana/ui';
 import { DataSourcePluginOptionsEditorProps } from '@grafana/data';
 import { MyDataSourceOptions, MySecureJsonData } from '../types';
 
@@ -129,7 +138,7 @@ export function ConfigEditor(
   props: DataSourcePluginOptionsEditorProps<MyDataSourceOptions, MySecureJsonData>
 ) {
   const { onOptionsChange, options } = props;
-  const { jsonData, secureJsonFields, secureJsonData } = options;
+  const { secureJsonFields, secureJsonData } = options;
 
   const onApiKeyChange = (event: ChangeEvent<HTMLInputElement>) => {
     onOptionsChange({
@@ -140,6 +149,11 @@ export function ConfigEditor(
 
   return (
     <>
+      <DataSourceHttpSettings
+        defaultUrl="https://api.example.com"
+        dataSourceConfig={options}
+        onChange={onOptionsChange}
+      />
       <InlineField label="API Key" labelWidth={12}>
         <SecretInput
           isConfigured={secureJsonFields?.apiKey}
@@ -154,32 +168,29 @@ export function ConfigEditor(
 }
 ```
 
+Store secrets such as API keys in `secureJsonData`, not `jsonData`. After Grafana saves the data source, encrypted secrets are not readable from frontend code; send them to your API through a data proxy route or a backend plugin component.
+
 ## Adding Annotations Support
 
-Enable annotations by implementing the `annotationQuery` method to overlay events on time series panels:
+Enable annotations by declaring support in `src/plugin.json`:
 
-```typescript
-async annotationQuery(options: AnnotationQueryRequest<MyQuery>): Promise<AnnotationEvent[]> {
-  const { range, annotation } = options;
-  const response = await fetch(`${this.baseUrl}/api/events`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      from: range.from.valueOf(),
-      to: range.to.valueOf(),
-      tags: annotation.tags,
-    }),
-  });
-
-  const events = await response.json();
-  return events.map((event: any) => ({
-    time: event.timestamp,
-    title: event.title,
-    text: event.description,
-    tags: event.tags,
-  }));
+```json
+{
+  "annotations": true
 }
 ```
+
+Then add the `annotations` property to your data source class:
+
+```typescript
+export class MyDataSource extends DataSourceApi<MyQuery, MyDataSourceOptions> {
+  annotations = {};
+
+  // ...
+}
+```
+
+Grafana uses your default query editor for annotation queries and converts the query result data frames into annotation events.
 
 ## Building and Publishing
 
@@ -189,13 +200,20 @@ Build your plugin for distribution:
 npm run build
 ```
 
-Sign your plugin for Grafana Cloud or private distribution:
+Sign your plugin for Grafana Cloud or private distribution after exporting a Grafana access policy token:
 
 ```bash
-npx @grafana/sign-plugin@latest
+export GRAFANA_ACCESS_POLICY_TOKEN=<YOUR_ACCESS_POLICY_TOKEN>
+npm run sign
 ```
 
-Package the `dist` folder and publish to the Grafana plugin catalog or distribute internally. For local testing, copy the built plugin to Grafana's plugin directory and restart the server.
+For a private plugin, pass the root URLs where the plugin will be installed:
+
+```bash
+npm run sign -- --rootUrls https://example.com/grafana
+```
+
+Package the built plugin as a ZIP file and publish it to the Grafana plugin catalog or distribute it internally. For local testing, copy the built plugin to Grafana's plugin directory and restart the server.
 
 ## Conclusion
 
