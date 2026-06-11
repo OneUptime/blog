@@ -354,9 +354,8 @@ deploy_preview() {
     # Clone or update repository
     if [ -d "$PREVIEW_DIR" ]; then
         cd "$PREVIEW_DIR"
-        git fetch origin
-        git checkout "pull/${PR_NUMBER}/head"
-        git pull
+        git fetch origin "pull/${PR_NUMBER}/head:pr-${PR_NUMBER}" --force
+        git checkout "pr-${PR_NUMBER}"
     else
         mkdir -p "$PREVIEW_DIR"
         git clone "$REPO_URL" "$PREVIEW_DIR"
