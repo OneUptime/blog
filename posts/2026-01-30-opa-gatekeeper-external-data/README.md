@@ -35,7 +35,7 @@ sequenceDiagram
 
 ## Prerequisites
 
-External Data requires Gatekeeper v3.7.0 or later. Check your version:
+External Data is beta in Gatekeeper v3.11.0 and later. Check your version:
 
 ```bash
 # Check Gatekeeper version
@@ -67,20 +67,13 @@ metadata:
   name: image-registry-provider
 spec:
   # URL of the external data service
-  url: https://external-data-service.policy-system.svc:8443/validate
+  url: https://image-validator.gatekeeper-system.svc:8443/validate
 
-  # Timeout for HTTP requests (default: 3s)
-  timeout: 5s
+  # Timeout for HTTP requests in seconds (default: 3)
+  timeout: 5
 
   # TLS configuration for secure communication
   caBundle: <base64-encoded-ca-cert>
-
-  # Whether to fail open or closed when provider is unavailable
-  # failurePolicy: Fail (default) or Ignore
-  failurePolicy: Fail
-
-  # Insecure mode for testing (not recommended for production)
-  # insecureTLSSkipVerify: false
 ```
 
 ### Provider with mTLS Authentication
@@ -93,15 +86,14 @@ metadata:
   name: secure-provider
 spec:
   url: https://secure-service.policy-system.svc:8443/validate
-  timeout: 10s
+  timeout: 10
 
   # CA bundle for verifying the provider's certificate
   caBundle: |
     LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0t...
 
-  # Client certificate for mTLS (optional)
-  # Stored in a Secret referenced by Gatekeeper deployment
-  failurePolicy: Fail
+  # For mTLS, configure the provider server to verify Gatekeeper's
+  # client certificate using the Gatekeeper webhook CA.
 ```
 
 ## Building an External Data Service
@@ -172,6 +164,7 @@ import (
     "fmt"
     "log"
     "net/http"
+    "strings"
     "time"
 )
 
@@ -644,9 +637,6 @@ spec:
       rego: |
         package k8sallowedimages
 
-        # Import external data library
-        import data.inventory
-
         # Violation occurs when image is not allowed
         violation[{"msg": msg}] {
           # Get container images from the pod spec
@@ -657,8 +647,20 @@ spec:
           response := external_data({"provider": input.parameters.provider, "keys": [image]})
 
           # Check for system errors
-          response.systemError != ""
-          msg := sprintf("External data provider error for image %v: %v", [image, response.systemError])
+          count(response.system_error) > 0
+          msg := sprintf("External data provider error for image %v: %v", [image, response.system_error])
+        }
+
+        violation[{"msg": msg}] {
+          container := input_containers[_]
+          image := container.image
+
+          response := external_data({"provider": input.parameters.provider, "keys": [image]})
+          count(response.system_error) == 0
+
+          # Check for per-key provider errors
+          image_error := [err | item := response.errors[_]; item[0] == image; err := item[1]][0]
+          msg := sprintf("External data provider returned an error for image %v: %v", [image, image_error])
         }
 
         violation[{"msg": msg}] {
@@ -667,10 +669,10 @@ spec:
 
           # Query external provider
           response := external_data({"provider": input.parameters.provider, "keys": [image]})
-          response.systemError == ""
+          count(response.system_error) == 0
 
           # Get the validation result for this image
-          result := response.responses[image]
+          result := [value | item := response.responses[_]; item[0] == image; value := item[1]][0]
 
           # Check if image is allowed
           result.allowed == false
@@ -683,9 +685,9 @@ spec:
           image := container.image
 
           response := external_data({"provider": input.parameters.provider, "keys": [image]})
-          response.systemError == ""
+          count(response.system_error) == 0
 
-          result := response.responses[image]
+          result := [value | item := response.responses[_]; item[0] == image; value := item[1]][0]
 
           # Check vulnerability count
           max_vulns := input.parameters.maxVulnerabilities
@@ -699,9 +701,9 @@ spec:
           image := container.image
 
           response := external_data({"provider": input.parameters.provider, "keys": [image]})
-          response.systemError == ""
+          count(response.system_error) == 0
 
-          result := response.responses[image]
+          result := [value | item := response.responses[_]; item[0] == image; value := item[1]][0]
 
           # Check signature if required
           input.parameters.requireSigned == true
@@ -888,34 +890,29 @@ func (v *ImageValidator) ValidateImageWithCache(ctx context.Context, image strin
 
 ## Handling Failures
 
-Configure failure behavior based on your security requirements.
+Handle provider failures in your Rego policies based on your security requirements.
 
 ### Fail Closed (Default)
 
-```yaml
-# Deny admission if provider is unavailable
-apiVersion: externaldata.gatekeeper.sh/v1beta1
-kind: Provider
-metadata:
-  name: strict-provider
-spec:
-  url: https://validator.gatekeeper-system.svc:8443/validate
-  timeout: 5s
-  failurePolicy: Fail  # Deny on provider failure
+```rego
+# Deny admission if the provider is unavailable
+violation[{"msg": msg}] {
+  image := input.review.object.spec.containers[_].image
+  response := external_data({"provider": "validator", "keys": [image]})
+  count(response.system_error) > 0
+  msg := sprintf("External data provider error: %v", [response.system_error])
+}
 ```
 
 ### Fail Open
 
-```yaml
-# Allow admission if provider is unavailable
-apiVersion: externaldata.gatekeeper.sh/v1beta1
-kind: Provider
-metadata:
-  name: lenient-provider
-spec:
-  url: https://validator.gatekeeper-system.svc:8443/validate
-  timeout: 5s
-  failurePolicy: Ignore  # Allow on provider failure
+```rego
+# Do not emit a violation when the provider is unavailable
+allow_external_data_check {
+  image := input.review.object.spec.containers[_].image
+  response := external_data({"provider": "validator", "keys": [image]})
+  count(response.system_error) > 0
+}
 ```
 
 ### Circuit Breaker Pattern
@@ -1034,9 +1031,9 @@ spec:
 
           # Query registry validator
           response := external_data({"provider": "registry-validator", "keys": [image]})
-          response.systemError == ""
+          count(response.system_error) == 0
 
-          result := response.responses[image]
+          result := [value | item := response.responses[_]; item[0] == image; value := item[1]][0]
           result.registry_allowed == false
 
           msg := sprintf("Image %v is from unauthorized registry: %v", [image, result.registry])
@@ -1077,9 +1074,9 @@ spec:
 
           # Query vulnerability scanner
           response := external_data({"provider": "vuln-scanner", "keys": [image]})
-          response.systemError == ""
+          count(response.system_error) == 0
 
-          result := response.responses[image]
+          result := [value | item := response.responses[_]; item[0] == image; value := item[1]][0]
 
           # Check critical vulnerabilities
           result.critical > input.parameters.maxCritical
@@ -1092,9 +1089,9 @@ spec:
           image := container.image
 
           response := external_data({"provider": "vuln-scanner", "keys": [image]})
-          response.systemError == ""
+          count(response.system_error) == 0
 
-          result := response.responses[image]
+          result := [value | item := response.responses[_]; item[0] == image; value := item[1]][0]
 
           # Check high vulnerabilities
           result.high > input.parameters.maxHigh
@@ -1137,9 +1134,9 @@ spec:
 
           # Query license checker
           response := external_data({"provider": "license-checker", "keys": [image]})
-          response.systemError == ""
+          count(response.system_error) == 0
 
-          result := response.responses[image]
+          result := [value | item := response.responses[_]; item[0] == image; value := item[1]][0]
 
           # Check for denied licenses
           denied := input.parameters.deniedLicenses[_]
@@ -1183,9 +1180,9 @@ spec:
 
           # Query cost calculator
           response := external_data({"provider": "cost-calculator", "keys": [key]})
-          response.systemError == ""
+          count(response.system_error) == 0
 
-          result := response.responses[key]
+          result := [value | item := response.responses[_]; item[0] == key; value := item[1]][0]
 
           # Check hourly cost
           result.hourly_cost > input.parameters.maxHourlyCost
@@ -1354,14 +1351,14 @@ var (
 
 ```go
 // Structured logging for debugging
-log.WithFields(log.Fields{
-    "image":           image,
-    "registry":        result.Registry,
-    "allowed":         result.Allowed,
-    "vulnerabilities": result.Vulnerabilities,
-    "signed":          result.Signed,
-    "latency_ms":      latency.Milliseconds(),
-}).Info("Image validation completed")
+slog.Info("Image validation completed",
+    "image", image,
+    "registry", result.Registry,
+    "allowed", result.Allowed,
+    "vulnerabilities", result.Vulnerabilities,
+    "signed", result.Signed,
+    "latency_ms", latency.Milliseconds(),
+)
 ```
 
 ## Summary
