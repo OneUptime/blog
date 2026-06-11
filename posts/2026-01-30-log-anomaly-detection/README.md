@@ -56,7 +56,7 @@ Raw logs come in many formats. Before you can detect anomalies, you need consist
 ```typescript
 // log-parser.ts - Parse raw logs into structured format
 
-interface ParsedLog {
+export interface ParsedLog {
   timestamp: Date;
   level: 'debug' | 'info' | 'warn' | 'error' | 'fatal';
   service: string;
@@ -178,7 +178,9 @@ Raw parsed logs need to be converted into numerical features that statistical me
 ```typescript
 // feature-extractor.ts - Convert logs into numerical features
 
-interface LogFeatures {
+import { ParsedLog } from './log-parser';
+
+export interface LogFeatures {
   timestamp: number;
   fingerprint: string;
   service: string;
@@ -206,12 +208,14 @@ export class FeatureExtractor {
    */
   addLog(log: ParsedLog): LogFeatures | null {
     this.logBuffer.push(log);
-    this.pruneOldLogs(log.timestamp);
 
     // Only emit features at window boundaries
     if (this.logBuffer.length > 0 && this.isWindowComplete(log.timestamp)) {
-      return this.extractFeatures();
+      const features = this.extractFeatures();
+      this.pruneOldLogs(log.timestamp);
+      return features;
     }
+    this.pruneOldLogs(log.timestamp);
     return null;
   }
 
@@ -300,7 +304,7 @@ flowchart TD
 ```typescript
 // baseline-calculator.ts - Calculate statistical baselines
 
-interface BaselineStats {
+export interface BaselineStats {
   mean: number;
   stdDev: number;
   p50: number;
@@ -420,7 +424,9 @@ With baselines established, you can score each observation for how anomalous it 
 ```typescript
 // anomaly-scorer.ts - Score observations against baselines
 
-interface AnomalyScore {
+import { BaselineCalculator, BaselineStats } from './baseline-calculator';
+
+export interface AnomalyScore {
   value: number;
   baseline: BaselineStats;
   zScore: number;           // Standard deviations from mean
@@ -454,7 +460,20 @@ export class AnomalyScorer {
    * Score an observation against its baseline.
    */
   score(key: string, value: number): AnomalyScore {
-    const baseline = this.baselineCalculator.addObservation(key, value);
+    const baseline = this.baselineCalculator.getBaseline(key);
+
+    if (!baseline || baseline.sampleCount < 100) {
+      const updatedBaseline = this.baselineCalculator.addObservation(key, value);
+      return {
+        value,
+        baseline: updatedBaseline,
+        zScore: 0,
+        percentileRank: 50,
+        isAnomaly: false,
+        severity: 'low',
+        reason: 'Insufficient baseline data',
+      };
+    }
 
     // Calculate Z-score
     const zScore = baseline.stdDev > 0
@@ -488,12 +507,7 @@ export class AnomalyScorer {
       reason = `Value is ${absZScore.toFixed(1)} standard deviations from mean`;
     }
 
-    // Also check for "never seen before" values
-    if (baseline.sampleCount < 100) {
-      // Not enough data for reliable anomaly detection
-      isAnomaly = false;
-      reason = 'Insufficient baseline data';
-    }
+    this.baselineCalculator.addObservation(key, value);
 
     return {
       value,
@@ -530,7 +544,9 @@ Statistical methods catch numerical anomalies, but many log anomalies are about 
 ```typescript
 // pattern-detector.ts - Detect anomalous patterns in logs
 
-interface PatternAnomaly {
+import { ParsedLog } from './log-parser';
+
+export interface PatternAnomaly {
   type: 'new_message' | 'frequency_change' | 'sequence' | 'correlation';
   description: string;
   severity: 'low' | 'medium' | 'high' | 'critical';
@@ -627,12 +643,13 @@ export class PatternDetector {
     const actualFrequency = currentCount;
 
     if (currentCount > 100 && actualFrequency > expectedFrequency * 10) {
+      const frequencyRatio = actualFrequency / expectedFrequency;
       return {
         type: 'frequency_change',
         description: 'Log message frequency spike detected',
         severity: 'medium',
         evidence: [
-          `Message appears ${actualFrequency.toFixed(0)}x more than average`,
+          `Message appears ${frequencyRatio.toFixed(1)}x more than average`,
           `Count: ${currentCount}`,
           `Expected: ${expectedFrequency.toFixed(0)}`,
         ],
@@ -731,7 +748,10 @@ flowchart TD
 ```typescript
 // alert-evaluator.ts - Filter and prioritize anomalies for alerting
 
-interface Alert {
+import { AnomalyScore } from './anomaly-scorer';
+import { PatternAnomaly } from './pattern-detector';
+
+export interface Alert {
   id: string;
   title: string;
   description: string;
@@ -1111,6 +1131,8 @@ Many systems have predictable patterns:
 
 ```typescript
 // Time-aware baseline that accounts for daily/weekly patterns
+import { BaselineCalculator, BaselineStats } from './baseline-calculator';
+
 class SeasonalBaselineCalculator extends BaselineCalculator {
   private hourlyBaselines: Map<string, Map<number, number[]>> = new Map();
 
@@ -1147,11 +1169,23 @@ import { Alert } from './alert-evaluator';
 
 export class OneUptimeIntegration {
   private apiUrl: string;
-  private apiToken: string;
+  private apiKey: string;
+  private projectId: string;
+  private currentIncidentStateId: string;
+  private severityIds: Record<Alert['severity'], string>;
 
-  constructor(apiUrl: string, apiToken: string) {
+  constructor(
+    apiUrl: string,
+    apiKey: string,
+    projectId: string,
+    currentIncidentStateId: string,
+    severityIds: Record<Alert['severity'], string>
+  ) {
     this.apiUrl = apiUrl;
-    this.apiToken = apiToken;
+    this.apiKey = apiKey;
+    this.projectId = projectId;
+    this.currentIncidentStateId = currentIncidentStateId;
+    this.severityIds = severityIds;
   }
 
   /**
@@ -1159,22 +1193,21 @@ export class OneUptimeIntegration {
    */
   async createIncident(alert: Alert): Promise<void> {
     const incidentData = {
-      title: alert.title,
-      description: alert.description,
-      severity: this.mapSeverity(alert.severity),
-      monitors: [alert.service],
-      customFields: {
-        anomaly_count: alert.anomalies.length,
-        pattern_count: alert.patterns.length,
-        detection_method: 'log_anomaly_detection',
+      data: {
+        title: alert.title,
+        description: alert.description,
+        projectId: this.projectId,
+        currentIncidentStateId: this.currentIncidentStateId,
+        incidentSeverityId: this.mapSeverity(alert.severity),
+        declaredAt: alert.timestamp.toISOString(),
       },
     };
 
-    const response = await fetch(`${this.apiUrl}/api/incidents`, {
+    const response = await fetch(`${this.apiUrl}/api/incident`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.apiToken}`,
+        'ApiKey': this.apiKey,
       },
       body: JSON.stringify(incidentData),
     });
@@ -1185,13 +1218,7 @@ export class OneUptimeIntegration {
   }
 
   private mapSeverity(severity: Alert['severity']): string {
-    const mapping = {
-      critical: 'Critical',
-      high: 'High',
-      medium: 'Medium',
-      low: 'Low',
-    };
-    return mapping[severity];
+    return this.severityIds[severity];
   }
 }
 ```
