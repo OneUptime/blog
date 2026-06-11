@@ -10,7 +10,7 @@ Description: Learn to build data format conversion for transforming between CSV,
 
 > Data format conversion is the backbone of modern data pipelines. Whether you are moving data from operational databases to analytics warehouses or integrating multiple data sources, understanding how to efficiently transform between formats is essential for building robust, performant data systems.
 
-The right format choice can mean the difference between a query that takes milliseconds versus minutes, or storage costs that scale linearly versus exponentially. This guide covers the practical patterns and code you need to build production-ready format conversion pipelines.
+The right format choice can mean the difference between a query that takes milliseconds versus minutes, or storage costs that scale predictably versus steeply. This guide covers the practical patterns and code you need to build production-ready format conversion pipelines.
 
 ---
 
@@ -27,7 +27,7 @@ Before diving into conversion techniques, let's understand the characteristics o
 | Parquet | Binary | Required | Excellent | Yes | Analytics, data warehouses |
 | Avro | Binary | Required | Good | No | Streaming, schema evolution |
 | ORC | Binary | Required | Excellent | Yes | Hive ecosystem, ACID |
-| Protocol Buffers | Binary | Required | Good | No | RPC, compact serialization |
+| Protocol Buffers | Binary | Required | N/A (compact encoding) | No | RPC, compact serialization |
 
 ### When to Use Each Format
 
@@ -275,9 +275,19 @@ class CSVConverter(FormatConverter):
         self.metrics.bytes_read = source_path.stat().st_size
 
         with open(source, 'r', encoding=self.encoding, newline='') as csvfile:
-            # Use DictReader for automatic header handling
+            fieldnames = None
+            if not self.has_header:
+                if not self.schema:
+                    raise ValueError(
+                        "CSV files without headers require a schema for field names"
+                    )
+                fieldnames = list(self.schema.fields.keys())
+
+            # Use DictReader for automatic header handling, or schema field
+            # names when reading headerless files.
             reader = csv.DictReader(
                 csvfile,
+                fieldnames=fieldnames,
                 delimiter=self.delimiter,
                 quotechar=self.quote_char
             )
@@ -398,6 +408,8 @@ class CSVConverter(FormatConverter):
         type_converters = {
             'int': int,
             'integer': int,
+            'long': int,
+            'int64': int,
             'float': float,
             'double': float,
             'bool': lambda v: v.lower() in ('true', '1', 'yes'),
@@ -454,8 +466,8 @@ class JSONConverter(FormatConverter):
         """
         Read JSON file and yield records as dictionaries.
 
-        Automatically detects JSONL vs JSON array format if not specified.
-        Uses streaming for JSONL to handle large files efficiently.
+        Uses the configured JSONL or JSON array mode. JSONL reads stream
+        records one line at a time to handle large files efficiently.
         """
         source_path = Path(source)
 
@@ -612,7 +624,7 @@ class JSONConverter(FormatConverter):
 
 ### Parquet Converter
 
-Parquet is the preferred format for analytics workloads. This converter uses PyArrow for efficient columnar operations with full support for compression and schema evolution.
+Parquet is the preferred format for analytics workloads. This converter uses PyArrow for efficient columnar operations with compression and schema preservation.
 
 ```python
 # converters/parquet_converter.py
@@ -631,7 +643,7 @@ class ParquetConverter(FormatConverter):
     - Excellent compression (often 10x smaller than CSV)
     - Column pruning (read only needed columns)
     - Predicate pushdown (filter at storage level)
-    - Schema enforcement and evolution
+    - Schema enforcement and compatible schema changes
 
     Use Parquet for data lakes, warehouses, and any analytics workload.
     """
@@ -640,6 +652,7 @@ class ParquetConverter(FormatConverter):
     TYPE_MAPPING = {
         'int': pa.int64(),
         'integer': pa.int64(),
+        'long': pa.int64(),
         'int32': pa.int32(),
         'int64': pa.int64(),
         'float': pa.float64(),
@@ -689,20 +702,9 @@ class ParquetConverter(FormatConverter):
             f"{parquet_file.metadata.num_row_groups} row groups"
         )
 
-        # Read row groups one at a time for memory efficiency
-        for row_group_idx in range(parquet_file.metadata.num_row_groups):
-            table = parquet_file.read_row_group(row_group_idx)
-
-            # Convert to Python dictionaries
-            for batch in table.to_batches():
-                for row in batch.to_pydict().items():
-                    # Reconstruct row from columnar format
-                    pass
-
-            # Use pandas for easier row iteration
-            df = table.to_pandas()
-            for _, row in df.iterrows():
-                record = row.to_dict()
+        # Read record batches for memory efficiency
+        for batch in parquet_file.iter_batches():
+            for record in batch.to_pylist():
 
                 if self.validate_record(record):
                     self.metrics.rows_processed += 1
@@ -764,6 +766,9 @@ class ParquetConverter(FormatConverter):
             if writer:
                 writer.close()
 
+        if metrics.rows_processed == 0:
+            raise ValueError("No records to write to Parquet")
+
         metrics.bytes_written = Path(destination).stat().st_size
 
         # Calculate compression ratio
@@ -785,6 +790,9 @@ class ParquetConverter(FormatConverter):
 
         for field_name in self.schema.fields:
             if field_name not in record:
+                if field_name not in self.schema.nullable_fields:
+                    return False
+            elif record.get(field_name) is None:
                 if field_name not in self.schema.nullable_fields:
                     return False
 
@@ -986,6 +994,9 @@ class AvroConverter(FormatConverter):
             if field_name not in record:
                 if field_name not in self.schema.nullable_fields:
                     return False
+            elif record.get(field_name) is None:
+                if field_name not in self.schema.nullable_fields:
+                    return False
 
         return True
 
@@ -1006,17 +1017,22 @@ class AvroConverter(FormatConverter):
                 if field_name in self.schema.nullable_fields:
                     avro_type = ['null', avro_type]
 
-                fields.append({
+                field = {
                     'name': field_name,
                     'type': avro_type
-                })
+                }
+                if field_name in self.schema.nullable_fields:
+                    field['default'] = None
+
+                fields.append(field)
         else:
             # Infer from sample record
             for field_name, value in sample_record.items():
                 avro_type = self._infer_avro_type(value)
                 fields.append({
                     'name': field_name,
-                    'type': ['null', avro_type]  # Allow nulls by default
+                    'type': ['null', avro_type],  # Allow nulls by default
+                    'default': None
                 })
 
         return {
@@ -1241,13 +1257,13 @@ class SparkFormatConverter:
         Warning: CSV is not recommended for large datasets.
         Use for small exports or human-readable outputs only.
         """
+        if coalesce:
+            df = df.coalesce(coalesce)
+
         writer = df.write.format('csv') \
             .option('header', header) \
             .option('delimiter', delimiter) \
             .mode(mode)
-
-        if coalesce:
-            df = df.coalesce(coalesce)
 
         if partition_by:
             writer = writer.partitionBy(*partition_by)
@@ -1269,15 +1285,15 @@ class SparkFormatConverter:
 
         Recommended settings:
         - Use snappy compression for balanced speed/size
-        - Partition by date or high-cardinality columns
+        - Partition by date or other low- to moderate-cardinality columns used in filters
         - Target 128MB-1GB files for optimal read performance
         """
+        if coalesce:
+            df = df.coalesce(coalesce)
+
         writer = df.write.format('parquet') \
             .option('compression', compression) \
             .mode(mode)
-
-        if coalesce:
-            df = df.coalesce(coalesce)
 
         if partition_by:
             writer = writer.partitionBy(*partition_by)
@@ -1365,7 +1381,11 @@ class SparkFormatConverter:
         # Write to destination format
         write_methods = {
             'csv': lambda: self.write_csv(df, dest_path, partition_by=partition_by),
-            'json': lambda: df.write.json(dest_path, mode='overwrite'),
+            'json': lambda: (
+                df.write.mode('overwrite').partitionBy(*partition_by).json(dest_path)
+                if partition_by
+                else df.write.mode('overwrite').json(dest_path)
+            ),
             'parquet': lambda: self.write_parquet(df, dest_path, partition_by=partition_by),
             'avro': lambda: self.write_avro(df, dest_path, partition_by=partition_by),
         }
@@ -1567,7 +1587,13 @@ Choose the right compression codec based on your use case:
 ```python
 # optimization/performance_tuning.py
 from pyspark.sql import DataFrame, SparkSession
-from pyspark.sql.functions import col, spark_partition_id
+from pyspark.sql.functions import (
+    avg as spark_avg,
+    max as spark_max,
+    min as spark_min,
+    spark_partition_id,
+    stddev as spark_stddev,
+)
 from typing import List, Dict, Any
 import logging
 
@@ -1600,19 +1626,19 @@ class PerformanceOptimizer:
 
         # Count rows per partition
         partition_counts = df_with_partition.groupBy('_partition_id').count()
-        stats = partition_counts.agg({
-            'count': 'min',
-            'count': 'max',
-            'count': 'avg',
-            'count': 'stddev'
-        }).collect()[0]
+        stats = partition_counts.agg(
+            spark_min('count').alias('min_rows'),
+            spark_max('count').alias('max_rows'),
+            spark_avg('count').alias('avg_rows'),
+            spark_stddev('count').alias('stddev_rows')
+        ).collect()[0]
 
         return {
             'num_partitions': df.rdd.getNumPartitions(),
-            'min_rows': stats[0],
-            'max_rows': stats[1],
-            'avg_rows': stats[2],
-            'stddev_rows': stats[3],
+            'min_rows': stats['min_rows'],
+            'max_rows': stats['max_rows'],
+            'avg_rows': stats['avg_rows'],
+            'stddev_rows': stats['stddev_rows'],
         }
 
     def optimize_partition_count(
@@ -1629,6 +1655,9 @@ class PerformanceOptimizer:
         """
         # Estimate current data size
         row_count = df.count()
+        if row_count == 0:
+            return df
+
         sample_size = min(1000, row_count)
 
         # Sample to estimate row size
@@ -1639,7 +1668,8 @@ class PerformanceOptimizer:
         total_bytes = bytes_per_row * row_count
         target_bytes = target_file_size_mb * 1024 * 1024
 
-        optimal_partitions = max(1, int(total_bytes / target_bytes))
+        import math
+        optimal_partitions = max(1, math.ceil(total_bytes / target_bytes))
 
         logger.info(
             f"Optimizing partitions: {df.rdd.getNumPartitions()} -> {optimal_partitions} "
@@ -1754,7 +1784,8 @@ class SchemaEvolutionHandler:
     2. Forward compatible: Old schema can read new data
     3. Full compatible: Both directions work
 
-    Parquet and Avro support schema evolution natively.
+    Parquet and Avro support common schema evolution patterns, but compatibility
+    rules still depend on the exact schema change and reader implementation.
     CSV and JSON require explicit handling.
     """
 
@@ -1810,7 +1841,7 @@ class SchemaEvolutionHandler:
         Check if schema changes are backward compatible.
 
         Backward compatible means new code can read old data.
-        - Adding nullable fields: OK
+        - Adding fields with defaults or explicit nullable handling: OK
         - Removing fields: OK (new code ignores them)
         - Type changes: Usually NOT OK
         """
