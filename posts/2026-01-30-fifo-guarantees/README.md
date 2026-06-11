@@ -117,7 +117,7 @@ def calculate_partition(entity_id: str, num_partitions: int) -> int:
     """
     Calculate the target partition for a given entity.
 
-    Uses consistent hashing to ensure the same entity
+    Uses stable hashing to ensure the same entity
     always maps to the same partition.
 
     Args:
@@ -182,9 +182,9 @@ class TimeWindowPartitioner:
             A string key identifying the time window
         """
         # Round down to the nearest window boundary
+        window_minutes = int(self.window_size.total_seconds() // 60)
         window_start = timestamp.replace(
-            minute=(timestamp.minute // self.window_size.seconds * 60) *
-                   (self.window_size.seconds // 60),
+            minute=(timestamp.minute // window_minutes) * window_minutes,
             second=0,
             microsecond=0
         )
@@ -333,7 +333,7 @@ class KafkaFIFOConsumer:
             # Disable auto commit for manual control
             'enable.auto.commit': False,
 
-            # Fetch only from one partition at a time for ordering
+            # Limit bytes fetched per partition
             'max.partition.fetch.bytes': 1048576,
         })
 
@@ -386,7 +386,7 @@ Amazon SQS FIFO queues provide built-in ordering guarantees with message group I
 
 ```python
 # AWS SQS FIFO implementation
-# Uses message group IDs for ordering and deduplication IDs for exactly-once
+# Uses message group IDs for ordering and deduplication IDs to suppress duplicate sends
 
 import boto3
 import json
@@ -398,7 +398,7 @@ from dataclasses import dataclass
 class FIFOMessage:
     """Represents a message for SQS FIFO queue."""
     group_id: str           # Messages with same group_id are ordered
-    deduplication_id: str   # Prevents duplicate processing
+    deduplication_id: str   # Suppresses duplicate sends during the deduplication interval
     body: dict              # Message content
     sequence: int           # Application-level sequence number
 
@@ -457,7 +457,7 @@ class SQSFIFOProducer:
             # Required for FIFO: determines ordering group
             MessageGroupId=group_id,
 
-            # Required for FIFO: prevents duplicate delivery
+            # Required unless content-based deduplication is enabled
             MessageDeduplicationId=deduplication_id
         )
 
@@ -475,6 +475,9 @@ class SQSFIFOProducer:
         Returns:
             SQS batch response
         """
+        if not 1 <= len(messages) <= 10:
+            raise ValueError("SQS send_message_batch requires 1 to 10 messages")
+
         entries = []
 
         for i, message in enumerate(messages):
@@ -535,7 +538,7 @@ class SQSFIFOConsumer:
                 QueueUrl=self.queue_url,
                 MaxNumberOfMessages=1,  # Process one at a time for strict ordering
                 WaitTimeSeconds=20,     # Long polling for efficiency
-                AttributeNames=['All']
+                MessageSystemAttributeNames=['All']
             )
 
             messages = response.get('Messages', [])
@@ -575,7 +578,7 @@ class SQSFIFOConsumer:
 
 ## Handling Out-of-Order Messages
 
-Even with FIFO systems, messages can occasionally arrive out of order due to retries or network issues. Here is a reordering buffer implementation.
+If your producers, transport, or consumer workflow cannot rely on broker-level FIFO guarantees end-to-end, messages can occasionally arrive out of order. Here is a reordering buffer implementation.
 
 ```python
 # Reordering buffer for handling out-of-order messages
@@ -599,7 +602,7 @@ class ReorderingBuffer:
     Buffer that reorders messages before delivery.
 
     Messages are held until all previous sequences are received
-    or a timeout expires.
+    or a timeout is observed during a later flush attempt.
     """
 
     def __init__(
@@ -692,6 +695,7 @@ class ReorderingBuffer:
                 if age > self.timeout:
                     # Timeout expired, skip missing and deliver
                     print(f"Timeout: skipping sequences {expected} to {next_msg.sequence - 1}")
+                    expected = next_msg.sequence
                     self.expected_sequence[key] = next_msg.sequence
                     # Continue loop to deliver this message
                 else:
@@ -708,16 +712,16 @@ class ReorderingBuffer:
         buffer = self.buffers[key]
 
         if buffer:
-            # Deliver oldest message regardless of sequence
-            oldest = heapq.heappop(buffer)
-            print(f"Buffer full: force delivering sequence {oldest.sequence}")
-            self.handler(oldest.payload)
+            # Deliver lowest-sequence message regardless of gaps
+            next_msg = heapq.heappop(buffer)
+            print(f"Buffer full: force delivering sequence {next_msg.sequence}")
+            self.handler(next_msg.payload)
 
             # Update expected to next in buffer or beyond delivered
             if buffer:
                 self.expected_sequence[key] = buffer[0].sequence
             else:
-                self.expected_sequence[key] = oldest.sequence + 1
+                self.expected_sequence[key] = next_msg.sequence + 1
 
 
 # Example usage of the reordering buffer
@@ -818,7 +822,7 @@ flowchart TB
 
 class IdempotentProcessor:
     """
-    Processes messages exactly once using deduplication.
+    Prevents duplicate side effects using deduplication.
     """
 
     def __init__(self, state_store):
