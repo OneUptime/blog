@@ -42,7 +42,7 @@ flowchart TD
 Consider this scenario:
 
 ```dockerfile
-FROM node:20-alpine
+FROM node:24-alpine
 COPY app.js /app/
 CMD ["node", "/app/app.js"]
 ```
@@ -108,7 +108,7 @@ This is the simplest approach and works for most use cases.
 For more control, install Tini directly in your image:
 
 ```dockerfile
-FROM node:20-alpine
+FROM node:24-alpine
 
 # Install tini
 
@@ -124,7 +124,6 @@ CMD ["node", "/app/app.js"]
 ### Method 3: Using Tini with Docker Compose
 
 ```yaml
-version: '3.8'
 services:
   web:
     image: my-application
@@ -137,10 +136,10 @@ services:
 For minimal image size:
 
 ```dockerfile
-FROM alpine:3.19 AS tini
+FROM alpine:3.24 AS tini
 RUN apk add --no-cache tini
 
-FROM node:20-alpine
+FROM node:24-alpine
 COPY --from=tini /sbin/tini /sbin/tini
 ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["node", "/app/app.js"]
@@ -231,8 +230,7 @@ server.listen(3000, () => {
 
 ```python
 import signal
-import sys
-import time
+import threading
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 
 server = None
@@ -242,9 +240,7 @@ def shutdown_handler(signum, frame):
     print(f"Received {signal_name}, shutting down gracefully...")
 
     if server:
-        server.shutdown()
-
-    sys.exit(0)
+        threading.Thread(target=server.shutdown, daemon=True).start()
 
 def main():
     global server
@@ -255,7 +251,10 @@ def main():
 
     server = HTTPServer(('0.0.0.0', 8000), SimpleHTTPRequestHandler)
     print("Server running on port 8000")
-    server.serve_forever()
+    try:
+        server.serve_forever()
+    finally:
+        server.server_close()
 
 if __name__ == '__main__':
     main()
@@ -317,7 +316,7 @@ func main() {
 ### Node.js Application
 
 ```dockerfile
-FROM node:20-alpine
+FROM node:24-alpine
 
 # Install tini
 RUN apk add --no-cache tini
@@ -329,7 +328,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install dependencies
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 # Copy application code
 COPY . .
@@ -383,7 +382,7 @@ CMD ["python", "app.py"]
 
 ```dockerfile
 # Build stage
-FROM golang:1.22-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
 WORKDIR /build
 COPY go.* ./
@@ -393,7 +392,7 @@ COPY . .
 RUN CGO_ENABLED=0 go build -o /app/server .
 
 # Runtime stage
-FROM alpine:3.19
+FROM alpine:3.24
 
 RUN apk add --no-cache tini
 
@@ -425,13 +424,13 @@ tini -s -- your-command
 # Signal forwarding to process group
 tini -g -- your-command
 
-# Ignore specific signal (e.g., ignore SIGHUP)
-tini -e 1 -- your-command
+# Remap a specific child exit code to 0
+tini -e 143 -- your-command
 ```
 
 ### When to Use Subreaper Mode
 
-The `-s` flag enables subreaper mode, which is useful when your application forks processes:
+The `-s` flag enables subreaper mode. Use it when Tini cannot run as PID 1 but still needs orphaned processes to be re-parented to it:
 
 ```dockerfile
 ENTRYPOINT ["/sbin/tini", "-s", "--"]
@@ -440,7 +439,7 @@ ENTRYPOINT ["/sbin/tini", "-s", "--"]
 ```mermaid
 flowchart TD
     subgraph Subreaper["Tini with Subreaper Mode"]
-        A[Tini PID 1] -->|"Adopted"| B[Orphan 1]
+        A[Tini Subreaper] -->|"Adopted"| B[Orphan 1]
         A -->|"Adopted"| C[Orphan 2]
         A -->|"Child"| D[Main App]
         D -->|"Spawned"| E[Subprocess]
@@ -459,9 +458,9 @@ flowchart TD
 | Zombie Reaping | Yes | Yes | Yes | No |
 | Signal Forwarding | Yes | Yes | Yes | No |
 | Signal Rewriting | No | Yes | No | N/A |
-| Image Size | ~20KB | ~50KB | Built-in | N/A |
-| Subreaper Support | Yes | No | Yes | N/A |
-| Process Group Signals | Yes | Yes | Yes | No |
+| Image Size | 10KB range | ~50KB | Built-in | N/A |
+| Subreaper Support | Yes | No | N/A (runs as PID 1) | N/A |
+| Process Group Signals | Yes | Yes | Not configurable | No |
 
 ## Best Practices
 
