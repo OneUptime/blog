@@ -54,7 +54,7 @@ First, let us define how concepts are represented in our system:
 
 ```python
 from dataclasses import dataclass, field
-from typing import List, Dict, Optional, Set
+from typing import List, Dict, Optional, Set, Any
 from enum import Enum
 import uuid
 
@@ -86,7 +86,7 @@ class Concept:
     name: str = ""
     concept_type: ConceptType = ConceptType.ENTITY
     description: str = ""
-    attributes: Dict[str, any] = field(default_factory=dict)
+    attributes: Dict[str, Any] = field(default_factory=dict)
     embedding: Optional[List[float]] = None
     confidence: float = 1.0
     source: str = "direct_input"
@@ -981,7 +981,7 @@ graph TB
 
 ```python
 from typing import Union, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass
