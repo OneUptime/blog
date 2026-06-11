@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Logging, Correlation, Tracing, Observability
 
-Description: Learn to create log correlation using trace IDs and request IDs across services.
+Description: Learn to create log correlation using trace IDs and span IDs across services.
 
 ---
 
@@ -50,47 +50,56 @@ sequenceDiagram
     participant DB as Database
 
     Client->>Gateway: POST /orders
-    Note over Gateway: trace_id: abc123<br/>span_id: span-1
+    Note over Gateway: trace_id: 4bf92f3577b34da6a3ce929d0e0e4736<br/>span_id: b7ad6b7169203331
 
     Gateway->>OrderSvc: Create Order
-    Note over OrderSvc: trace_id: abc123<br/>span_id: span-2<br/>parent: span-1
+    Note over OrderSvc: trace_id: 4bf92f3577b34da6a3ce929d0e0e4736<br/>span_id: 00f067aa0ba902b7<br/>parent: b7ad6b7169203331
 
     OrderSvc->>PaymentSvc: Process Payment
-    Note over PaymentSvc: trace_id: abc123<br/>span_id: span-3<br/>parent: span-2
+    Note over PaymentSvc: trace_id: 4bf92f3577b34da6a3ce929d0e0e4736<br/>span_id: b9c7c989f97918e1<br/>parent: 00f067aa0ba902b7
 
     OrderSvc->>DB: INSERT order
-    Note over DB: trace_id: abc123<br/>span_id: span-4<br/>parent: span-2
+    Note over DB: trace_id: 4bf92f3577b34da6a3ce929d0e0e4736<br/>span_id: a3ce929d0e0e4736<br/>parent: 00f067aa0ba902b7
 ```
 
 ## Setting Up Context Propagation
 
 Context propagation passes correlation IDs between services automatically. The W3C Trace Context standard defines how to encode these IDs in HTTP headers.
 
-Start by creating a context manager that handles ID generation and storage. This class generates trace IDs when needed and provides access throughout your application.
+Start by creating a context manager that handles ID generation and storage. This helper generates trace IDs when needed and provides access throughout your application.
 
 ```typescript
 // context.ts
-import { randomUUID } from 'crypto';
-import { AsyncLocalStorage } from 'async_hooks';
+import { randomBytes } from 'node:crypto';
+import { AsyncLocalStorage } from 'node:async_hooks';
 
 // Define the shape of our correlation context
-interface CorrelationContext {
+export interface CorrelationContext {
   traceId: string;
   spanId: string;
   parentSpanId?: string;
+  traceFlags: string;
 }
 
 // AsyncLocalStorage maintains context across async operations
 const storage = new AsyncLocalStorage<CorrelationContext>();
 
 export function generateSpanId(): string {
-  // 16-character hex string for span IDs
-  return randomUUID().replace(/-/g, '').substring(0, 16);
+  // 16-character lowercase hex string for span IDs
+  return randomHex(8);
 }
 
 export function generateTraceId(): string {
-  // 32-character hex string for trace IDs
-  return randomUUID().replace(/-/g, '');
+  // 32-character lowercase hex string for trace IDs
+  return randomHex(16);
+}
+
+function randomHex(bytes: number): string {
+  let value = randomBytes(bytes).toString('hex');
+  while (/^0+$/.test(value)) {
+    value = randomBytes(bytes).toString('hex');
+  }
+  return value;
 }
 
 export function getContext(): CorrelationContext | undefined {
@@ -140,25 +149,42 @@ export function correlationMiddleware(
 }
 
 function parseOrCreateContext(req: Request): CorrelationContext {
-  const traceparent = req.headers[TRACEPARENT_HEADER] as string;
+  const traceparent = req.get(TRACEPARENT_HEADER);
 
-  if (traceparent) {
+  if (traceparent && isValidTraceparent(traceparent)) {
     // Parse W3C traceparent: version-traceId-parentSpanId-flags
-    const parts = traceparent.split('-');
-    if (parts.length === 4) {
-      return {
-        traceId: parts[1],
-        spanId: generateSpanId(),
-        parentSpanId: parts[2]
-      };
-    }
+    const [, traceId, parentSpanId, traceFlags] = traceparent.split('-');
+    return {
+      traceId,
+      spanId: generateSpanId(),
+      parentSpanId,
+      traceFlags
+    };
   }
 
   // No valid incoming context, start a new trace
   return {
     traceId: generateTraceId(),
-    spanId: generateSpanId()
+    spanId: generateSpanId(),
+    traceFlags: '01'
   };
+}
+
+function isValidTraceparent(traceparent: string): boolean {
+  const parts = traceparent.split('-');
+  if (parts.length !== 4) {
+    return false;
+  }
+
+  const [version, traceId, parentSpanId, flags] = parts;
+  return (
+    version === '00' &&
+    /^[0-9a-f]{32}$/.test(traceId) &&
+    traceId !== '00000000000000000000000000000000' &&
+    /^[0-9a-f]{16}$/.test(parentSpanId) &&
+    parentSpanId !== '0000000000000000' &&
+    /^[0-9a-f]{2}$/.test(flags)
+  );
 }
 ```
 
@@ -169,14 +195,6 @@ Your logger must automatically include correlation IDs in every log entry. Wrap 
 ```typescript
 // logger.ts
 import { getContext } from './context';
-
-// Log levels as numeric values for filtering
-enum LogLevel {
-  DEBUG = 10,
-  INFO = 20,
-  WARN = 30,
-  ERROR = 40
-}
 
 interface LogEntry {
   timestamp: string;
@@ -256,8 +274,8 @@ export async function fetchWithContext(
     const childSpanId = generateSpanId();
 
     // Format: version-traceId-spanId-flags
-    // Version 00 is current, flags 01 means sampled
-    const traceparent = `00-${context.traceId}-${childSpanId}-01`;
+    // Version 00 is current; preserve the trace flags from the incoming context
+    const traceparent = `00-${context.traceId}-${childSpanId}-${context.traceFlags}`;
     headers.set(TRACEPARENT_HEADER, traceparent);
   }
 
@@ -270,7 +288,7 @@ export async function fetchWithContext(
 
 ## Database Query Correlation
 
-Database queries should also carry correlation context. Most database drivers support query comments, which pass through to slow query logs.
+Database queries should also carry correlation context. Many SQL databases preserve comments in logged statements, which helps connect database logs back to application traces.
 
 ```typescript
 // database.ts
@@ -347,8 +365,8 @@ app.post('/orders', async (req, res) => {
       [req.body.userId, req.body.total]
     );
 
-    logger.info('Order completed', { orderId: result.rows[0] });
-    res.json({ orderId: result.rows[0], status: 'confirmed' });
+    logger.info('Order completed', { orderId: result.rows[0].id });
+    res.json({ orderId: result.rows[0].id, status: 'confirmed' });
 
   } catch (error) {
     logger.error('Order failed', { error: (error as Error).message });
@@ -364,7 +382,7 @@ Once your logs include trace IDs, debugging becomes straightforward. Here is wha
 ```mermaid
 flowchart TD
     A[User Reports Error] -->|Get trace_id from response| B[Query Logs]
-    B -->|Filter: trace_id = abc123| C[All Related Logs]
+    B -->|Filter by trace_id| C[All Related Logs]
     C --> D[API Gateway: Request received]
     C --> E[Order Service: Validation passed]
     C --> F[Payment Service: Charge failed]
@@ -377,7 +395,7 @@ Filter by trace ID to see the complete request journey.
 ```bash
 # Example log query in your aggregator
 
-trace_id:abc123 | sort timestamp asc
+trace_id:4bf92f3577b34da6a3ce929d0e0e4736 | sort timestamp asc
 ```
 
 The results show every log entry for that request in chronological order, across all services.
