@@ -118,7 +118,7 @@ The slow query log contains detailed information about each slow query. Here is 
 # Time: 2026-01-30T10:15:32.456789Z
 # User@Host: app_user[app_user] @ app-server [192.168.1.100]  Id: 12345
 # Query_time: 5.234567  Lock_time: 0.000123 Rows_sent: 1000  Rows_examined: 5000000
-SET timestamp=1738232132;
+SET timestamp=1769768132;
 SELECT * FROM orders
 WHERE customer_id = 12345
 AND order_date BETWEEN '2025-01-01' AND '2025-12-31'
@@ -341,7 +341,7 @@ WHERE YEAR(order_date) = 2025;
 -- 1. type = ALL means full table scan
 -- 2. key = NULL means no index is being used
 -- 3. rows = 5000000 means MySQL will examine all rows
--- 4. The YEAR() function prevents index usage
+-- 4. The YEAR() function prevents a normal index on order_date from being used for a range lookup
 
 -- Now let us fix the query to use an index properly
 EXPLAIN SELECT * FROM orders
@@ -375,7 +375,7 @@ SELECT
 FROM customers c
 JOIN orders o ON c.customer_id = o.customer_id
 WHERE o.order_date >= '2025-01-01'
-GROUP BY c.customer_id;
+GROUP BY c.customer_id, c.customer_name;
 
 -- Step 1: Check existing indexes
 SHOW INDEX FROM orders;
@@ -389,7 +389,7 @@ EXPLAIN SELECT
 FROM customers c
 JOIN orders o ON c.customer_id = o.customer_id
 WHERE o.order_date >= '2025-01-01'
-GROUP BY c.customer_id;
+GROUP BY c.customer_id, c.customer_name;
 
 -- Step 3: Create a composite index for the orders table
 -- This index covers the WHERE clause and JOIN condition
