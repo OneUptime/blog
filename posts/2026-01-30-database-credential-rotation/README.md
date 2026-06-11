@@ -114,7 +114,6 @@ Applications authenticate to Vault and request credentials from the appropriate 
 ```python
 import hvac
 import psycopg2
-import os
 import threading
 import time
 
@@ -127,6 +126,7 @@ class VaultDatabaseClient:
         self.db_role = db_role
         self._credentials = None
         self._lease_id = None
+        self._lease_duration = 0
         self._lock = threading.Lock()
 
         # Authenticate using Kubernetes service account JWT
@@ -183,14 +183,18 @@ class VaultDatabaseClient:
 
                 try:
                     # Attempt to renew the existing lease
-                    self.client.sys.renew_lease(
+                    response = self.client.sys.renew_lease(
                         lease_id=self._lease_id,
                         increment=self._lease_duration
                     )
+                    self._lease_duration = response["lease_duration"]
                 except Exception as e:
                     # If renewal fails, fetch new credentials
                     print(f"Lease renewal failed: {e}, fetching new credentials")
                     self.get_credentials()
+
+        if self._lease_id is None:
+            self.get_credentials()
 
         thread = threading.Thread(target=renew_loop, daemon=True)
         thread.start()
@@ -245,19 +249,29 @@ vault policy write myapp-db-readonly myapp-db-readonly.hcl
 Connection pools complicate credential rotation because they hold long-lived connections. Configure your pool to periodically refresh connections and handle authentication failures gracefully.
 
 ```python
-from sqlalchemy import create_engine, event
+import time
+
+import psycopg2
+from sqlalchemy import create_engine, event, exc
 from sqlalchemy.pool import QueuePool
 
 
 def create_rotating_engine(vault_client, db_host, db_name):
     """Create a SQLAlchemy engine that handles credential rotation."""
 
-    def get_connection_url():
+    def connect():
         creds = vault_client.get_credentials()
-        return f"postgresql://{creds['username']}:{creds['password']}@{db_host}/{db_name}"
+        return psycopg2.connect(
+            host=db_host,
+            database=db_name,
+            user=creds["username"],
+            password=creds["password"],
+            sslmode="require"
+        )
 
     engine = create_engine(
-        get_connection_url(),
+        "postgresql+psycopg2://",
+        creator=connect,
         poolclass=QueuePool,
         pool_size=5,
         max_overflow=10,
@@ -278,7 +292,7 @@ def create_rotating_engine(vault_client, db_host, db_name):
         # If credentials are older than 45 minutes, invalidate
         age = time.time() - connection_record.info.get("credentials_time", 0)
         if age > 2700:  # 45 minutes
-            raise Exception("Connection too old, forcing refresh")
+            raise exc.DisconnectionError("Connection too old, forcing refresh")
 
     return engine
 ```
@@ -295,11 +309,7 @@ groups:
       # Alert if credential generation is failing
       - alert: VaultDatabaseCredentialFailures
         expr: |
-          increase(vault_secret_kv_count{
-            mount_point="database",
-            operation="read",
-            status="failure"
-          }[5m]) > 5
+          increase(vault_database_CreateUser_error[5m]) > 5
         for: 2m
         labels:
           severity: critical
