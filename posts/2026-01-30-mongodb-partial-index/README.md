@@ -48,7 +48,7 @@ db.collection.createIndex(
 
 ### Supported Filter Operators
 
-Partial indexes support the following operators in filter expressions:
+Partial indexes support commonly used operators like these in filter expressions:
 
 | Operator | Description | Example |
 |----------|-------------|---------|
@@ -56,9 +56,10 @@ Partial indexes support the following operators in filter expressions:
 | `$gt`, `$gte` | Greater than | `{ age: { $gte: 18 } }` |
 | `$lt`, `$lte` | Less than | `{ priority: { $lt: 5 } }` |
 | `$type` | Type check | `{ email: { $type: "string" } }` |
-| `$exists` | Field existence | `{ deletedAt: { $exists: false } }` |
+| `$exists` | Field existence | `{ email: { $exists: true } }` |
 | `$and` | Logical AND | Combine multiple conditions |
 | `$or` | Logical OR | Alternative conditions |
+| `$in` | Match values in a set | `{ status: { $in: ["pending", "processing"] } }` |
 
 ## Practical Examples
 
@@ -97,10 +98,10 @@ db.users.find({
 
 ### Example 2: Recent Orders Index
 
-Index only orders from the last 30 days:
+Index only orders newer than a fixed cutoff date:
 
 ```javascript
-// Create a partial index for recent orders
+// Create a partial index for orders newer than this cutoff
 const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
 
 db.orders.createIndex(
@@ -118,12 +119,12 @@ db.orders.createIndex(
 ### Example 3: Non-Deleted Documents (Soft Delete Pattern)
 
 ```javascript
-// Index only documents that have not been soft-deleted
+// Index only documents that are marked as not soft-deleted
 db.documents.createIndex(
   { title: "text", content: "text" },
   {
     partialFilterExpression: {
-      deletedAt: { $exists: false }
+      isDeleted: false
     },
     name: "idx_text_search_active"
   }
@@ -132,7 +133,7 @@ db.documents.createIndex(
 
 ## Query Coverage and Matching
 
-For MongoDB to use a partial index, your query must include the partial filter expression conditions. The query planner evaluates whether the query is a subset of the indexed documents.
+For MongoDB to use a partial index, your query must include the partial filter expression conditions or a modified filter expression that matches a subset of the indexed documents. The query planner evaluates whether the query is a subset of the indexed documents.
 
 ```mermaid
 flowchart LR
@@ -302,18 +303,18 @@ stateDiagram-v2
 
 ### Pattern 2: Time-Based Partitioning
 
-Index only recent data for time-sensitive queries:
+Index only data newer than a fixed cutoff date for time-sensitive queries:
 
 ```javascript
 // Monitoring and alerting system
+const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+
 db.alerts.createIndex(
   { severity: 1, service: 1, timestamp: -1 },
   {
     partialFilterExpression: {
       resolved: false,
-      timestamp: {
-        $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
-      }
+      timestamp: { $gte: sevenDaysAgo }
     },
     name: "idx_unresolved_recent_alerts"
   }
@@ -348,8 +349,8 @@ db.profiles.createIndex(
   { "subscription.plan": 1, "subscription.expiresAt": 1 },
   {
     partialFilterExpression: {
-      "subscription.plan": { $exists: true },
-      "subscription.plan": { $ne: "free" }
+      "subscription.plan": { $in: ["pro", "business", "enterprise"] },
+      "subscription.expiresAt": { $exists: true }
     },
     name: "idx_premium_subscriptions"
   }
