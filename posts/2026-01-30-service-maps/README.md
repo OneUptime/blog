@@ -145,7 +145,7 @@ The foundation of automatic service maps is proper trace instrumentation. Each s
 npm install @opentelemetry/api \
             @opentelemetry/sdk-node \
             @opentelemetry/auto-instrumentations-node \
-            @opentelemetry/exporter-otlp-http \
+            @opentelemetry/exporter-trace-otlp-http \
             @opentelemetry/resources \
             @opentelemetry/semantic-conventions
 ```
@@ -158,12 +158,12 @@ This file sets up the OpenTelemetry SDK with proper service identification and e
 // telemetry.ts
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
-import { OTLPTraceExporter } from '@opentelemetry/exporter-otlp-http';
+import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { Resource } from '@opentelemetry/resources';
 import {
   ATTR_SERVICE_NAME,
   ATTR_SERVICE_VERSION,
-  ATTR_DEPLOYMENT_ENVIRONMENT,
+  ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
 } from '@opentelemetry/semantic-conventions';
 
 // Configure the OTLP exporter to send traces to your observability backend
@@ -181,7 +181,7 @@ const sdk = new NodeSDK({
   resource: new Resource({
     [ATTR_SERVICE_NAME]: process.env.SERVICE_NAME || 'unknown-service',
     [ATTR_SERVICE_VERSION]: process.env.SERVICE_VERSION || '1.0.0',
-    [ATTR_DEPLOYMENT_ENVIRONMENT]: process.env.NODE_ENV || 'development',
+    [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: process.env.NODE_ENV || 'development',
   }),
   instrumentations: [
     getNodeAutoInstrumentations({
