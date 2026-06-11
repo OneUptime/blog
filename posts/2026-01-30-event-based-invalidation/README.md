@@ -8,7 +8,7 @@ Description: Learn to create event-based cache invalidation for real-time data c
 
 ---
 
-Caching improves performance, but stale data creates bugs. Time-based expiration (TTL) is simple but wasteful: you either expire too early and lose cache benefits, or expire too late and serve stale data. Event-based invalidation solves this by invalidating cache entries precisely when the underlying data changes.
+Caching improves performance, but stale data creates bugs. Time-based expiration (TTL) is simple but wasteful: you either expire too early and lose cache benefits, or expire too late and serve stale data. Event-based invalidation reduces staleness by invalidating cache entries when the underlying data changes.
 
 ## Why Event-Based Invalidation?
 
@@ -86,7 +86,7 @@ const userUpdateEvent: CacheInvalidationEvent = {
 
 ## Publisher Implementation
 
-The publisher wraps data operations to emit invalidation events after successful writes. This class uses a transaction pattern to ensure events are only published when the database write succeeds.
+The publisher wraps data operations to emit invalidation events after successful writes. This helper ensures events are not published when the database write fails; production systems often use a transactional outbox when the database write and event publication must be atomic.
 
 ```typescript
 import { EventEmitter } from 'events';
@@ -176,6 +176,8 @@ The subscriber listens for invalidation events and removes affected entries from
 ```typescript
 import { Redis } from 'ioredis';
 
+type InvalidationHandler = (event: CacheInvalidationEvent) => void;
+
 // CacheInvalidationSubscriber listens for events and invalidates local cache
 class CacheInvalidationSubscriber {
   private subscriber: Redis;
@@ -183,10 +185,14 @@ class CacheInvalidationSubscriber {
   private handlers: Map<string, InvalidationHandler>;
   private channel: string;
 
-  constructor(redis: Redis, channel: string = 'cache-invalidation') {
+  constructor(
+    redis: Redis,
+    channel: string = 'cache-invalidation',
+    cache: Map<string, CacheEntry> = new Map()
+  ) {
     // Create a dedicated connection for subscribing
     this.subscriber = redis.duplicate();
-    this.cache = new Map();
+    this.cache = cache;
     this.handlers = new Map();
     this.channel = channel;
   }
@@ -207,7 +213,7 @@ class CacheInvalidationSubscriber {
     try {
       const event: CacheInvalidationEvent = JSON.parse(message);
 
-      // Deduplicate based on timestamp
+      // Deduplicate based on event identity
       if (this.isDuplicate(event)) {
         return;
       }
@@ -257,7 +263,7 @@ class CacheInvalidationSubscriber {
   private recentEvents = new Map<string, number>();
 
   private isDuplicate(event: CacheInvalidationEvent): boolean {
-    const key = `${event.entityType}:${event.entityId}:${event.timestamp}`;
+    const key = `${event.correlationId}:${event.eventType}:${event.entityType}:${event.entityId}:${event.timestamp}`;
     if (this.recentEvents.has(key)) {
       return true;
     }
@@ -293,12 +299,16 @@ class EventAwareCacheManager {
     this.cache = new Map();
     this.defaultTTL = options.defaultTTL || 300000; // 5 minutes
     this.publisher = new CacheEventPublisher(redis, options.channel);
-    this.subscriber = new CacheInvalidationSubscriber(redis, options.channel);
+    this.subscriber = new CacheInvalidationSubscriber(
+      redis,
+      options.channel,
+      this.cache
+    );
 
     // Wire up local invalidation
     this.publisher.onLocalInvalidation((event) => {
       for (const key of event.affectedKeys) {
-        this.cache.delete(key);
+        this.invalidateLocalKey(key);
       }
     });
   }
@@ -334,6 +344,20 @@ class EventAwareCacheManager {
   async invalidate(event: CacheInvalidationEvent): Promise<void> {
     // Local invalidation happens via the publisher's local emitter
     await this.publisher.publish(event);
+  }
+
+  private invalidateLocalKey(key: string): void {
+    // Support wildcard patterns like "user:123:*"
+    if (key.includes('*')) {
+      const pattern = new RegExp('^' + key.replace(/\*/g, '.*') + '$');
+      for (const cacheKey of this.cache.keys()) {
+        if (pattern.test(cacheKey)) {
+          this.cache.delete(cacheKey);
+        }
+      }
+    } else {
+      this.cache.delete(key);
+    }
   }
 
   // Get cache statistics for monitoring
@@ -397,6 +421,12 @@ sequenceDiagram
 Use version tracking to handle out-of-order events correctly.
 
 ```typescript
+interface VersionedEntry {
+  value: unknown;
+  version: number;
+  updatedAt: number;
+}
+
 // Version-aware cache that handles out-of-order events
 class VersionedCache {
   private cache: Map<string, VersionedEntry>;
@@ -451,6 +481,12 @@ Different scenarios require different invalidation strategies.
 This helper class implements tag-based invalidation, where cache entries are tagged with labels. Invalidating a tag removes all entries with that tag.
 
 ```typescript
+interface TaggedEntry {
+  value: unknown;
+  tags: string[];
+  createdAt: number;
+}
+
 // Tag-based invalidation for logical groupings
 class TaggedCache {
   private cache: Map<string, TaggedEntry>;
@@ -540,7 +576,7 @@ const staleEventsCounter = new prometheus.Counter({
 
 ## Summary
 
-Event-based cache invalidation provides real-time data consistency without sacrificing cache performance. The key principles are:
+Event-based cache invalidation provides near real-time cache consistency without sacrificing cache performance. The key principles are:
 
 1. **Publish events after successful writes** to notify all cache holders
 2. **Handle out-of-order events** using version numbers or timestamps
