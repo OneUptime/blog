@@ -173,6 +173,7 @@ When dealing with large files, you cannot load everything into memory. Use a str
 import { createReadStream } from 'fs';
 import { createInterface } from 'readline';
 import { EventEmitter } from 'events';
+import { randomUUID } from 'crypto';
 
 class StreamingSplitter extends EventEmitter {
   private correlationId: string;
@@ -357,6 +358,8 @@ class TimeBatchSplitter<T> {
 }
 ```
 
+Because this streaming splitter emits batches before reaching the end of the file, the final `totalCount` is not known when each batch message is created. In production, publish a separate completion message with the final count if the downstream aggregator needs an exact completion condition.
+
 ---
 
 ## 6. Content-Based Splitting
@@ -377,6 +380,8 @@ graph TD
 ### Content Router Implementation
 
 ```typescript
+import { randomUUID } from 'crypto';
+
 type RouteKey = string;
 type Router<T> = (item: T) => RouteKey;
 
@@ -421,7 +426,7 @@ class ContentBasedSplitter<T> {
     }
 
     // Update total counts per route
-    for (const [key, messages] of routes) {
+    for (const messages of routes.values()) {
       for (const msg of messages) {
         msg.totalCount = messages.length;
       }
@@ -462,6 +467,7 @@ for (const [routeKey, messages] of splitByType.routes) {
 For structured documents, split based on path expressions:
 
 ```typescript
+import { randomUUID } from 'crypto';
 import jp from 'jsonpath';
 
 class JsonPathSplitter {
@@ -837,9 +843,10 @@ graph LR
 
 ```typescript
 import amqp from 'amqplib';
+import { randomUUID } from 'crypto';
 
 class QueueBasedSplitter {
-  private connection: amqp.Connection | null = null;
+  private connection: amqp.ChannelModel | null = null;
   private channel: amqp.Channel | null = null;
 
   async connect(url: string): Promise<void> {
@@ -859,13 +866,14 @@ class QueueBasedSplitter {
     const totalCount = items.length;
 
     for (let i = 0; i < items.length; i++) {
-      const routeKey = router(items[i]);
+      const item = items[i]!;
+      const routeKey = router(item);
       const message: Message<T> = {
         id: randomUUID(),
         correlationId,
         sequenceNumber: i,
         totalCount,
-        payload: items[i],
+        payload: item,
         metadata: {},
       };
 
@@ -893,7 +901,8 @@ class QueueBasedSplitter {
 ### Kafka Splitting with Partition Awareness
 
 ```typescript
-import { Kafka, Producer, Message as KafkaMessage } from 'kafkajs';
+import { Kafka, type Producer, type Message as KafkaMessage } from 'kafkajs';
+import { randomUUID } from 'crypto';
 
 class KafkaSplitter {
   private producer: Producer;
