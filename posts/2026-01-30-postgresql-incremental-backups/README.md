@@ -962,8 +962,8 @@ pgbackrest --stanza=main info
 # Verify repository integrity
 pgbackrest --stanza=main verify
 
-# List WAL archive status
-pgbackrest --stanza=main archive-get --list
+# Show WAL archive status (includes wal archive min/max)
+pgbackrest --stanza=main info --output=json
 ```
 
 ## Conclusion
