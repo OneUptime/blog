@@ -75,7 +75,7 @@ flowchart TD
 
 ## eBPF-Based Profiling
 
-eBPF (extended Berkeley Packet Filter) runs sandboxed programs in the Linux kernel. For profiling, it enables sampling without context switches or signals to the application.
+eBPF (extended Berkeley Packet Filter) runs sandboxed programs in the Linux kernel. For profiling, it enables sampling without application signal handlers or transferring every raw sample to user space.
 
 ### How eBPF Profiling Works
 
@@ -92,7 +92,7 @@ sequenceDiagram
     E->>A: Read stack (in kernel context)
     A-->>E: Stack frames
     E->>M: Store aggregated stack
-    Note over A: Application continues<br/>uninterrupted
+    Note over A: Sampling work stays<br/>in kernel context
     U->>M: Periodically read aggregated data
     M-->>U: Stack counts
     U->>U: Symbolize and export
@@ -144,27 +144,25 @@ int do_sample(struct bpf_perf_event_data *ctx) {
     // if (pid != TARGET_PID) return 0;
 
     // Get kernel and user stack traces
-    // SKIP frames in the profiler itself
+    // BPF_F_FAST_STACK_CMP compares stacks by hash for lower overhead.
     int kernel_stack_id = stack_traces.get_stackid(
         ctx,
-        BPF_F_FAST_STACK_CMP  // Use frame pointer for speed
+        BPF_F_FAST_STACK_CMP
     );
     int user_stack_id = stack_traces.get_stackid(
         ctx,
         BPF_F_FAST_STACK_CMP | BPF_F_USER_STACK
     );
 
+    if (kernel_stack_id < 0 && user_stack_id < 0) {
+        return 0;
+    }
+
     // Create composite key from both stack IDs
     u64 key = (u64)kernel_stack_id << 32 | (u32)user_stack_id;
 
     // Increment count for this stack combination
-    u64 *val = counts.lookup(&key);
-    if (val) {
-        (*val)++;
-    } else {
-        u64 one = 1;
-        counts.insert(&key, &one);
-    }
+    counts.increment(key);
 
     return 0;
 }
@@ -213,12 +211,12 @@ Async-profiler uses AsyncGetCallTrace (when available) and native stack walking 
 # -e cpu: sample on CPU cycles
 # -i 10ms: 10ms sampling interval (100 Hz)
 # -f output.jfr: output as JFR format
-./profiler.sh -e cpu -i 10ms -f profile.jfr -d 60 <pid>
+asprof -e cpu -i 10ms -f profile.jfr -d 60 <pid>
 
 # For production with even lower overhead
 # -i 20ms reduces to 50 Hz
-# --all-user avoids kernel stacks (less data)
-./profiler.sh -e cpu -i 20ms --all-user -f profile.jfr -d 60 <pid>
+# --all-user includes only user-mode events
+asprof -e cpu -i 20ms --all-user -f profile.jfr -d 60 <pid>
 ```
 
 ### Programmatic Configuration in Java
@@ -506,7 +504,7 @@ async function continuousProfile() {
 ### 0x: Production-Ready Node.js Profiling
 
 ```bash
-# 0x is a flame graph tool for Node.js with low overhead
+# 0x is a flame graph tool for Node.js
 
 # Install globally
 npm install -g 0x
@@ -514,12 +512,11 @@ npm install -g 0x
 # Profile with default settings (reasonable overhead)
 0x my-app.js
 
-# Lower overhead with reduced sample rate
+# Collect profile data without generating the flame graph immediately
 0x --collect-only --output-dir ./profiles my-app.js
 
-# For already running process, use the kernel profiler
-# This has even lower overhead than V8 profiler
-0x --kernel-tracing -p <pid>
+# Use the kernel profiler to include native stack frames on Linux
+0x --kernel-tracing --output-dir ./profiles my-app.js
 ```
 
 ---
@@ -532,20 +529,20 @@ Go has excellent built-in profiling support through pprof with naturally low ove
 package main
 
 import (
+    "fmt"
     "log"
     "net/http"
     _ "net/http/pprof" // Register pprof handlers
+    "os"
     "runtime"
     "runtime/pprof"
-    "os"
     "time"
 )
 
 func main() {
-    // Configure CPU profiling rate
-    // Default is 100 Hz, which is already production-safe
-    // For even lower overhead, reduce to 50 Hz
-    runtime.SetCPUProfileRate(50)
+    // runtime/pprof CPU profiles use the runtime's standard 100 Hz profiler.
+    // For custom rates, call runtime.SetCPUProfileRate directly only when
+    // managing CPU profiling without pprof.StartCPUProfile.
 
     // Configure memory profiling rate
     // Default samples every 512KB of allocations
@@ -763,7 +760,7 @@ Before enabling profiling in production, verify these items:
 Low-overhead profiling is achievable with modern tools and careful configuration. The key principles are:
 
 1. **Use sampling, not instrumentation**: Sampling at 100 Hz or lower adds minimal overhead
-2. **Prefer kernel-based approaches**: eBPF avoids context switches and signal handling overhead
+2. **Prefer kernel-based approaches**: eBPF avoids application signal handlers and per-sample transfers to user space
 3. **Aggregate early**: Combine samples in the profiler rather than storing every raw sample
 4. **Defer expensive work**: Symbol resolution and flame graph generation can happen offline
 5. **Measure, do not assume**: Benchmark profiler overhead in your specific environment
