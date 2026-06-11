@@ -57,10 +57,6 @@ metadata:
       Detailed description of what this policy enforces
       and why it matters for your organization.
 spec:
-  # Enforce blocks non-compliant resources
-  # Audit only logs violations without blocking
-  validationFailureAction: Enforce
-
   # Check existing resources in background scans
   background: true
 
@@ -81,6 +77,9 @@ spec:
                 - kube-system
       # The actual validation logic
       validate:
+        # Enforce blocks non-compliant resources
+        # Audit only logs violations without blocking
+        failureAction: Enforce
         message: "Error message shown when validation fails"
         pattern:
           # Pattern matching against the resource
@@ -105,7 +104,6 @@ metadata:
       All Deployments must have an 'app' label for proper
       service discovery and monitoring integration.
 spec:
-  validationFailureAction: Enforce
   background: true
   rules:
     - name: check-app-label
@@ -115,6 +113,7 @@ spec:
               kinds:
                 - Deployment
       validate:
+        failureAction: Enforce
         # Clear message helps developers fix the issue quickly
         message: "Deployments must have an 'app' label. Add metadata.labels.app to your Deployment."
         pattern:
@@ -130,8 +129,26 @@ Apply this policy and test it:
 # Apply the policy
 kubectl apply -f require-app-label.yaml
 
-# This Deployment will be rejected
-kubectl create deployment nginx --image=nginx
+# This Deployment will be rejected because metadata.labels.app is missing
+cat << 'EOF' | kubectl apply -f -
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-missing-label
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      containers:
+        - name: nginx
+          image: nginx
+EOF
 # Error: Deployments must have an 'app' label...
 
 # This one will succeed (kubectl adds the app label by default)
@@ -150,7 +167,6 @@ kind: ClusterPolicy
 metadata:
   name: pattern-examples
 spec:
-  validationFailureAction: Enforce
   rules:
     - name: demonstrate-patterns
       match:
@@ -159,6 +175,7 @@ spec:
               kinds:
                 - Pod
       validate:
+        failureAction: Enforce
         message: "Pattern validation failed"
         pattern:
           metadata:
@@ -176,12 +193,12 @@ spec:
               - name: "*"
                 # !value negates the match
                 securityContext:
-                  runAsRoot: "!true"
+                  allowPrivilegeEscalation: "!true"
 
                 # Numeric comparisons work too
                 resources:
                   limits:
-                    # >=1 means at least 1
+                    # >= means at least the value shown
                     cpu: ">=100m"
                     memory: ">=128Mi"
 ```
@@ -203,7 +220,6 @@ metadata:
       Containers must run as non-root and drop all capabilities.
       This reduces the attack surface significantly.
 spec:
-  validationFailureAction: Enforce
   background: true
   rules:
     - name: require-run-as-non-root
@@ -219,6 +235,7 @@ spec:
                 - kube-system
                 - kyverno
       validate:
+        failureAction: Enforce
         message: >-
           Containers must set securityContext.runAsNonRoot to true.
           Running as root inside containers is a security risk.
@@ -240,6 +257,7 @@ spec:
               namespaces:
                 - kube-system
       validate:
+        failureAction: Enforce
         message: >-
           Containers must drop all capabilities. Add
           securityContext.capabilities.drop: ["ALL"] to each container.
@@ -268,7 +286,6 @@ metadata:
       Resources in production namespaces must meet stricter requirements
       including resource limits and multiple replicas.
 spec:
-  validationFailureAction: Enforce
   rules:
     - name: require-replicas-in-production
       match:
@@ -283,10 +300,11 @@ spec:
       preconditions:
         all:
           # Only validate if this is not a canary deployment
-          - key: "{{ request.object.metadata.labels.deployment-type || 'standard' }}"
+          - key: "{{ request.object.metadata.labels.\"deployment-type\" || 'standard' }}"
             operator: NotEquals
             value: "canary"
       validate:
+        failureAction: Enforce
         message: "Production Deployments must have at least 2 replicas for high availability."
         pattern:
           spec:
@@ -303,6 +321,7 @@ spec:
                 - production
                 - prod-*
       validate:
+        failureAction: Enforce
         message: "Production Pods must specify CPU and memory limits."
         pattern:
           spec:
@@ -333,7 +352,6 @@ metadata:
       Only images from approved registries are allowed. This prevents
       deployment of potentially malicious or unvetted images.
 spec:
-  validationFailureAction: Enforce
   background: true
   rules:
     - name: validate-image-registry
@@ -348,6 +366,7 @@ spec:
               namespaces:
                 - kube-system
       validate:
+        failureAction: Enforce
         message: >-
           Images must come from approved registries:
           gcr.io/my-company, ghcr.io/my-company, or docker.io/library.
@@ -417,20 +436,6 @@ kind: ClusterPolicy
 metadata:
   name: require-probes
 spec:
-  # Start in Audit mode
-  validationFailureAction: Audit
-
-  # Override to Enforce in specific namespaces
-  validationFailureActionOverrides:
-    - action: Enforce
-      namespaces:
-        - production
-        - staging
-    - action: Audit
-      namespaces:
-        - development
-        - "*-dev"
-
   background: true
   rules:
     - name: require-readiness-probe
@@ -440,15 +445,41 @@ spec:
               kinds:
                 - Deployment
       validate:
+        # Start in Audit mode
+        failureAction: Audit
+
+        # Override to Enforce in specific namespaces
+        failureActionOverrides:
+          - action: Enforce
+            namespaces:
+              - production
+              - staging
+          - action: Audit
+            namespaces:
+              - development
+              - "*-dev"
+
         message: "Deployments must define readiness probes for proper load balancing."
-        pattern:
-          spec:
-            template:
-              spec:
-                containers:
-                  - readinessProbe:
-                      # Accept any probe type
-                      (httpGet | tcpSocket | exec): "?*"
+        # Accept any common readiness probe type
+        anyPattern:
+          - spec:
+              template:
+                spec:
+                  containers:
+                    - readinessProbe:
+                        httpGet: "?*"
+          - spec:
+              template:
+                spec:
+                  containers:
+                    - readinessProbe:
+                        tcpSocket: "?*"
+          - spec:
+              template:
+                spec:
+                  containers:
+                    - readinessProbe:
+                        exec: "?*"
 ```
 
 Check policy violations through reports:
