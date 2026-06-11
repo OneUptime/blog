@@ -226,7 +226,7 @@ db.products.insertOne({
 
 ## Indexing Strategies
 
-The real power of the Attribute Pattern comes from efficient indexing. A single compound index can cover queries across all attributes.
+The real power of the Attribute Pattern comes from efficient indexing. A single compound index can support queries across all attributes.
 
 ### Creating the Compound Index
 
@@ -235,7 +235,7 @@ The real power of the Attribute Pattern comes from efficient indexing. A single 
 db.products.createIndex({ "attributes.k": 1, "attributes.v": 1 });
 ```
 
-This single index replaces what would otherwise be many individual field indexes:
+This single index can often replace what would otherwise be many individual field indexes:
 
 ```mermaid
 graph TD
@@ -270,7 +270,7 @@ db.products.createIndex({
 // Text index for string attribute values
 db.products.createIndex({ "attributes.v": "text" });
 
-// Partial index for specific attribute types
+// Partial index for documents that include specific attribute keys
 db.products.createIndex(
   { "attributes.k": 1, "attributes.v": 1 },
   {
@@ -443,7 +443,7 @@ In a SaaS application, different customers may need different custom fields:
 ```javascript
 // Customer A - Retail business
 {
-  _id: ObjectId("..."),
+  _id: ObjectId("507f1f77bcf86cd799439012"),
   tenantId: "customer_a",
   entityType: "contact",
   name: "John Smith",
@@ -457,7 +457,7 @@ In a SaaS application, different customers may need different custom fields:
 
 // Customer B - Healthcare provider
 {
-  _id: ObjectId("..."),
+  _id: ObjectId("507f1f77bcf86cd799439013"),
   tenantId: "customer_b",
   entityType: "contact",
   name: "Jane Doe",
@@ -507,7 +507,7 @@ Articles with varying metadata:
 
 ```javascript
 {
-  _id: ObjectId("..."),
+  _id: ObjectId("507f1f77bcf86cd799439014"),
   title: "Introduction to MongoDB Patterns",
   content: "...",
   author: "nawazdhandala",
@@ -704,7 +704,7 @@ db.system.profile.find({
 The MongoDB Attribute Pattern is a powerful technique for handling documents with many similar but varying fields. By restructuring data into key-value pairs within an array, you gain:
 
 - **Flexibility** - Add new attributes without schema changes
-- **Efficient indexing** - One compound index covers all attributes
+- **Efficient indexing** - One compound index supports queries across attributes
 - **Cleaner queries** - Uniform query syntax across all attributes
 - **Reduced sparsity** - No empty fields cluttering documents
 
