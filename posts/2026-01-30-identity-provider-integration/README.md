@@ -16,7 +16,7 @@ Organizations rely on identity providers like Okta, Azure AD, and Google Workspa
 
 | Benefit | Description |
 |---------|-------------|
-| **Centralized Access Control** | Admins manage users in one place; deprovisioning happens instantly |
+| **Centralized Access Control** | Admins manage users in one place; deprovisioning can be enforced centrally |
 | **Stronger Security** | MFA, device policies, and conditional access enforced at the IdP level |
 | **Better User Experience** | One click to sign in; no password fatigue |
 | **Compliance** | Audit logs show who accessed what and when |
@@ -152,6 +152,12 @@ app.get('/auth/callback', async (req, res) => {
     // Establish session
     req.session.userId = user.id;
     req.session.accessToken = tokens.access_token;
+    if (tokens.refresh_token) {
+      req.session.refreshToken = tokens.refresh_token;
+    }
+    if (tokens.expires_in) {
+      req.session.accessTokenExpiresAt = Date.now() + tokens.expires_in * 1000;
+    }
 
     // Clean up OAuth state from session
     delete req.session.oauthState;
@@ -323,16 +329,19 @@ Production deployments require additional security measures beyond the basic flo
 // middleware/auth.js
 async function refreshTokenIfNeeded(req, res, next) {
   if (!req.session.accessToken) return next();
+  if (!req.session.accessTokenExpiresAt) return next();
 
-  // Decode token to check expiration (without verification)
-  const decoded = jwt.decode(req.session.accessToken);
-  const expiresIn = decoded.exp - Math.floor(Date.now() / 1000);
+  // Use the token endpoint's expires_in value; access tokens are not always JWTs
+  const expiresIn = req.session.accessTokenExpiresAt - Date.now();
 
   // Refresh if token expires in less than 5 minutes
-  if (expiresIn < 300 && req.session.refreshToken) {
+  if (expiresIn < 5 * 60 * 1000 && req.session.refreshToken) {
     try {
       const tokens = await refreshAccessToken(req.session.refreshToken);
       req.session.accessToken = tokens.access_token;
+      if (tokens.expires_in) {
+        req.session.accessTokenExpiresAt = Date.now() + tokens.expires_in * 1000;
+      }
       if (tokens.refresh_token) {
         req.session.refreshToken = tokens.refresh_token;
       }
