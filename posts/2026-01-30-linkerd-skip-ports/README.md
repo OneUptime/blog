@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Linkerd, Kubernetes, ServiceMesh, Configuration
 
-Description: Configure Linkerd skip ports annotations to bypass proxy injection for specific traffic, improving performance and compatibility.
+Description: Configure Linkerd skip ports annotations to bypass proxy redirection for specific traffic, improving performance and compatibility.
 
 ---
 
-Linkerd injects a sidecar proxy into your pods to handle service mesh features like mTLS, observability, and traffic management. But sometimes you need traffic to bypass this proxy entirely. Skip ports let you exclude specific ports from proxy injection, giving you fine-grained control over what traffic goes through the mesh.
+Linkerd injects a sidecar proxy into your pods to handle service mesh features like mTLS, observability, and traffic management. But sometimes you need traffic to bypass this proxy entirely. Skip ports let you exclude specific ports from proxy redirection, giving you fine-grained control over what traffic goes through the mesh.
 
 ## Why Skip Ports?
 
@@ -58,7 +58,7 @@ Linkerd provides two annotations for skipping ports:
 
 ## Configuring Inbound Skip Ports
 
-Use `skip-inbound-ports` when external systems need direct access to your pod.
+Use `skip-inbound-ports` when incoming traffic needs to bypass the proxy entirely. For most protocol-detection issues, prefer opaque ports first so traffic can stay in the mesh.
 
 ### Basic Configuration
 
@@ -115,7 +115,7 @@ metadata:
 
 ## Configuring Outbound Skip Ports
 
-Use `skip-outbound-ports` when your application connects to services that should not go through the proxy.
+Use `skip-outbound-ports` on the source workload when your application connects to services that should not go through the proxy.
 
 ### Database Connections
 
@@ -201,7 +201,7 @@ flowchart TB
 
 ### Health Check Endpoint
 
-Kubernetes liveness and readiness probes work better without proxy overhead.
+Kubernetes liveness and readiness probes can bypass the proxy when you need direct pod checks.
 
 ```yaml
 apiVersion: apps/v1
@@ -270,7 +270,7 @@ spec:
 
 ### Database Connections
 
-Database protocols often have specific requirements that conflict with proxy behavior.
+Database protocols often have specific requirements that conflict with protocol detection. Prefer opaque ports when you want to keep mTLS and TCP metrics; use skip ports when the traffic must bypass the proxy entirely.
 
 ```yaml
 apiVersion: apps/v1
@@ -351,7 +351,7 @@ spec:
 
 ## Namespace-Level Configuration
 
-Apply skip ports to all pods in a namespace using annotations on the namespace itself.
+Apply default skip-port settings to newly injected pods in a namespace using annotations on the namespace itself.
 
 ```yaml
 apiVersion: v1
@@ -365,7 +365,7 @@ metadata:
     linkerd.io/inject: enabled
 ```
 
-Pod-level annotations override namespace-level settings when both are present.
+Workload or pod-template annotations override namespace-level settings when both are present. Existing pods must be recreated for injection-time configuration changes to take effect.
 
 ## Performance Considerations
 
@@ -408,12 +408,11 @@ For most traffic, this overhead is negligible. Skip ports only when you have mea
 kubectl get pod -n production -l app=my-service -o jsonpath='{.items[0].metadata.annotations}' | jq .
 ```
 
-### Check Proxy Configuration
+### Check Effective Pod Configuration
 
 ```bash
-# View the proxy configuration
-kubectl exec -n production deploy/my-service -c linkerd-proxy -- \
-  cat /var/run/linkerd/config/proxy.json | jq '.skip_ports'
+# Check the skip-port annotations on the created pod
+kubectl get pod -n production -l app=my-service -o jsonpath='{.items[0].metadata.annotations.config\.linkerd\.io/skip-inbound-ports}{"\n"}{.items[0].metadata.annotations.config\.linkerd\.io/skip-outbound-ports}{"\n"}'
 ```
 
 ### Test Connectivity
@@ -432,10 +431,10 @@ kubectl exec -n production deploy/my-service -c app -- \
 
 ```bash
 # Open Linkerd dashboard
-linkerd dashboard &
+linkerd viz dashboard &
 
 # Check the tap output - skipped traffic won't appear
-linkerd tap deploy/my-service -n production
+linkerd viz tap deploy/my-service -n production
 ```
 
 Traffic on skipped ports will not appear in Linkerd metrics or tap output. This is expected behavior.
@@ -515,7 +514,7 @@ Skipped ports bypass Linkerd's security features:
 
 - **No mTLS**: Traffic is not encrypted by the proxy
 - **No identity verification**: Linkerd cannot verify caller identity
-- **No authorization policies**: ServiceProfiles and authorization policies do not apply
+- **No authorization policies**: Linkerd authorization policies do not apply
 
 For skipped ports, implement security at other layers:
 
