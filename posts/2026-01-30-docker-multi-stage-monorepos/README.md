@@ -70,16 +70,16 @@ Start with a root-level Dockerfile that handles the entire monorepo. This approa
 
 # Stage 1: Base image with package manager
 
-FROM node:20-alpine AS base
+FROM node:24-alpine AS base
 
-# Install pnpm globally
-RUN corepack enable && corepack prepare pnpm@latest --activate
+# Enable the package manager pinned by package.json
+RUN corepack enable
 
 # Set working directory for the monorepo
 WORKDIR /monorepo
 ```
 
-The `syntax` directive enables BuildKit features we will use for caching. Using `corepack` ensures consistent package manager versions across builds.
+The `syntax` directive selects a Dockerfile frontend that supports the BuildKit features we will use for caching. Using `corepack` lets Docker use the package manager version pinned in your root `package.json`.
 
 ## Dependency Installation Stage
 
@@ -162,14 +162,14 @@ Each service needs a minimal production image. Here is where multi-stage builds 
 
 ```dockerfile
 # Stage 5a: API production image
-FROM node:20-alpine AS api-production
+FROM node:24-alpine AS api-production
 
-RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN corepack enable
 
 WORKDIR /app
 
-# Copy only production dependencies
-# Use pnpm deploy to extract a standalone package
+# Copy workspace metadata and package manifests
+COPY --from=api-builder /monorepo/pnpm-workspace.yaml ./
 COPY --from=api-builder /monorepo/pnpm-lock.yaml ./
 COPY --from=api-builder /monorepo/package.json ./
 
@@ -207,10 +207,11 @@ COPY services/api/ ./services/api/
 RUN pnpm --filter "api" run build
 
 # Deploy creates a standalone directory with all dependencies
-RUN pnpm --filter "api" deploy --prod /deployed/api
+# Current pnpm versions require inject-workspace-packages=true, or add --legacy here
+RUN pnpm --filter "api" --prod deploy /deployed/api
 
 # Production image is much simpler
-FROM node:20-alpine AS api-final
+FROM node:24-alpine AS api-final
 
 WORKDIR /app
 
@@ -238,7 +239,12 @@ COPY pnpm-workspace.yaml ./
 
 # Changes when dependencies update
 COPY pnpm-lock.yaml package.json ./
-COPY **/package.json ./
+COPY packages/shared-utils/package.json ./packages/shared-utils/
+COPY packages/api-client/package.json ./packages/api-client/
+COPY packages/database/package.json ./packages/database/
+COPY services/api/package.json ./services/api/
+COPY services/worker/package.json ./services/worker/
+COPY services/gateway/package.json ./services/gateway/
 
 # Changes with every code update
 COPY packages/ ./packages/
@@ -267,12 +273,13 @@ Build only the service you need:
 ARG SERVICE=api
 
 FROM shared-builder AS service-builder
+ARG SERVICE
 
 # Copy and build only the requested service
 COPY services/${SERVICE}/ ./services/${SERVICE}/
 RUN pnpm --filter "${SERVICE}" run build
 
-FROM node:20-alpine AS production
+FROM node:24-alpine AS production
 
 ARG SERVICE
 WORKDIR /app
@@ -289,11 +296,11 @@ docker build --build-arg SERVICE=worker -t myapp-worker .
 
 ## Handling Go Services in Monorepos
 
-Go monorepos work differently because Go compiles to static binaries. Here is a pattern for mixed-language monorepos:
+Go monorepos work differently because Go can compile services to static binaries. Here is a pattern for mixed-language monorepos:
 
 ```dockerfile
 # Go builder for backend services
-FROM golang:1.22-alpine AS go-builder
+FROM golang:1.26-alpine AS go-builder
 
 WORKDIR /src
 
@@ -391,7 +398,7 @@ jobs:
       worker: ${{ steps.changes.outputs.worker }}
     steps:
       - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@v3
+      - uses: dorny/paths-filter@v4
         id: changes
         with:
           filters: |
@@ -408,7 +415,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: docker/build-push-action@v5
+      - uses: docker/build-push-action@v7
         with:
           target: api-production
           tags: myregistry/api:${{ github.sha }}
@@ -422,7 +429,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: docker/build-push-action@v5
+      - uses: docker/build-push-action@v7
         with:
           target: worker-production
           tags: myregistry/worker:${{ github.sha }}
