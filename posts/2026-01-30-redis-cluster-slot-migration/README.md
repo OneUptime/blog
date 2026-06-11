@@ -46,7 +46,7 @@ sequenceDiagram
     T->>T: CLUSTER SETSLOT 1234 IMPORTING source-id
 
     loop For each key in slot 1234
-        S->>T: MIGRATE host port key db timeout COPY REPLACE
+        S->>T: MIGRATE host port key db timeout REPLACE
         T->>T: Store key
         S->>S: Delete key after migration
     end
@@ -123,14 +123,14 @@ redis-cli -h 127.0.0.1 -p 7000 CLUSTER COUNTKEYSINSLOT 100
 
 ```bash
 # Migrate each key from source to target
-# COPY flag keeps the key on source until migration completes
+# MIGRATE atomically transfers the key and deletes it from the source
 # REPLACE flag overwrites if key exists on target
 redis-cli -h 127.0.0.1 -p 7000 \
-  MIGRATE 127.0.0.1 7001 "user:100" 0 5000 COPY REPLACE
+  MIGRATE 127.0.0.1 7001 "user:100" 0 5000 REPLACE
 
 # For multiple keys in one command (Redis 3.0.6+)
 redis-cli -h 127.0.0.1 -p 7000 \
-  MIGRATE 127.0.0.1 7001 "" 0 5000 COPY REPLACE KEYS key1 key2 key3
+  MIGRATE 127.0.0.1 7001 "" 0 5000 REPLACE KEYS key1 key2 key3
 ```
 
 ### Step 5: Finalize the Migration
