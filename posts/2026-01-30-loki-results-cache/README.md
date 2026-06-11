@@ -18,7 +18,7 @@ This post walks you through implementing results caching in Loki to eliminate re
 
 ## What Is the Results Cache?
 
-The results cache stores the computed output of LogQL queries. When an identical query arrives within the cache TTL, Loki returns the cached result instead of re-executing the query against storage.
+The results cache stores reusable query responses for metric queries and supported metadata-style queries such as index stats, label, series, and volume queries. For log queries, Loki uses the results cache as a negative cache, storing empty results for quantized time ranges instead of caching every returned log line.
 
 Key benefits:
 
@@ -27,7 +27,7 @@ Key benefits:
 - **Lower costs**: Less compute and I/O translates to savings at scale
 - **Consistent latency**: Cache hits bypass query execution variability
 
-The results cache differs from the chunk cache (which caches raw log data) and the index cache (which caches index lookups). The results cache operates at the query result level, making it the most impactful for user-facing performance.
+The results cache differs from the chunk cache (which caches raw log chunks) and the legacy BoltDB index lookup cache. The results cache operates at the query result level, making it highly impactful for repeated metric and metadata queries.
 
 ---
 
@@ -91,30 +91,31 @@ query_range:
       # Default TTL for cached results
       default_validity: 1h
 
-    # Compression algorithm for cached data
-    # Options: snappy, lz4-64k, lz4-256k, lz4-1M, lz4, gzip, none
+    # Compression for cached data
+    # Supported values: snappy, or empty string to disable compression
     compression: snappy
-
-  # Query splitting aligns queries to cache boundaries
-  split_queries_by_interval: 15m
 
   # Align queries to step intervals for better cache hit rates
   align_queries_with_step: true
-
-  # Maximum parallelism for split queries
-  parallelism: 32
 
 # Frontend configuration
 frontend:
   # Maximum outstanding requests per tenant
   max_outstanding_per_tenant: 2048
 
-  # Compress responses to reduce cache storage
+  # Compress HTTP responses
   compress_responses: true
 
 # Query scheduler for distributed query execution
 query_scheduler:
   max_outstanding_requests_per_tenant: 2048
+
+limits_config:
+  # Query splitting aligns queries to cache boundaries
+  split_queries_by_interval: 15m
+
+  # Maximum parallelism for split queries
+  max_query_parallelism: 32
 ```
 
 ### Using Redis Instead of Memcached
@@ -180,7 +181,7 @@ Understanding how Loki generates cache keys helps you optimize cache hit rates.
 Loki generates cache keys from:
 
 1. **Tenant ID**: Multi-tenant deployments isolate caches per tenant
-2. **Query string**: The LogQL expression (normalized)
+2. **Query string**: The LogQL expression
 3. **Time range**: Start and end timestamps (aligned to split interval)
 4. **Step**: Query resolution step
 5. **Query hash**: A hash combining the above components
@@ -194,17 +195,16 @@ flowchart LR
     E --> F[Cache Key]
 ```
 
-### Query Normalization
+### Query Consistency
 
-Before hashing, Loki normalizes queries to maximize cache hits:
+Keep query strings consistent to maximize cache hits:
 
 ```text
-# These queries produce the same cache key after normalization
+# Prefer one canonical style for repeated dashboard queries
 {app="nginx"} | json | level="error"
-{ app = "nginx" } | json | level = "error"
 ```
 
-Normalization removes whitespace differences and standardizes formatting.
+Avoid generating many equivalent-looking queries with different formatting or label matcher order.
 
 ### Cache Invalidation
 
@@ -253,13 +253,16 @@ The split interval balances cache efficiency against query overhead:
 
 ```yaml
 # Smaller intervals: More cache reuse, more subqueries
-split_queries_by_interval: 5m
+limits_config:
+  split_queries_by_interval: 5m
 
 # Larger intervals: Fewer subqueries, less cache reuse
-split_queries_by_interval: 1h
+limits_config:
+  split_queries_by_interval: 1h
 
 # Recommended starting point for most workloads
-split_queries_by_interval: 15m
+limits_config:
+  split_queries_by_interval: 15m
 ```
 
 Factors to consider:
@@ -290,12 +293,14 @@ Your Grafana dashboards can make or break cache effectiveness. Here are practica
 
 Inconsistent time ranges defeat caching:
 
-```text
-# Bad: Custom time ranges produce unique cache keys
-{app="api"} | json [now-23h47m:now]
+```yaml
+# Bad: Custom dashboard ranges produce less reusable cache keys
+from: now-23h47m
+to: now
 
-# Good: Standard intervals align with cache boundaries
-{app="api"} | json [now-24h:now]
+# Good: Standard intervals are easier to align with cache boundaries
+from: now-24h
+to: now
 ```
 
 Configure Grafana dashboards to use standard intervals (1h, 6h, 12h, 24h, 7d).
@@ -306,7 +311,8 @@ If your split interval is 15 minutes, set dashboard auto-refresh to 15 minutes o
 
 ```yaml
 # Loki configuration
-split_queries_by_interval: 15m
+limits_config:
+  split_queries_by_interval: 15m
 
 # Grafana dashboard settings
 # Auto-refresh: 15m, 30m, or 1h (not 10m or 20m)
@@ -366,19 +372,24 @@ You cannot optimize what you do not measure. Loki exposes cache metrics that rev
 
 ```promql
 # Cache hit rate (higher is better, target > 80%)
-sum(rate(loki_cache_hits_total{cache="results"}[5m])) /
-sum(rate(loki_cache_fetched_keys_total{cache="results"}[5m]))
+sum(rate(loki_cache_hits_total{name=~"frontend.*"}[5m])) /
+sum(rate(loki_cache_fetched_keys_total{name=~"frontend.*"}[5m]))
 
 # Cache miss rate
-sum(rate(loki_cache_misses_total{cache="results"}[5m]))
+1 - (
+  sum(rate(loki_cache_hits_total{name=~"frontend.*"}[5m])) /
+  sum(rate(loki_cache_fetched_keys_total{name=~"frontend.*"}[5m]))
+)
 
 # Cache operation latency
 histogram_quantile(0.99,
-  sum(rate(loki_cache_request_duration_seconds_bucket{cache="results"}[5m])) by (le)
+  sum(rate(loki_cache_request_duration_seconds_bucket{method=~"frontend.*"}[5m])) by (le)
 )
 
-# Cached bytes stored
-sum(loki_cache_stored_bytes{cache="results"})
+# Cached value size observed on stores
+histogram_quantile(0.99,
+  sum(rate(loki_cache_value_size_bytes_bucket{name=~"frontend.*", method="store"}[5m])) by (le)
+)
 ```
 
 ### Alerting on Cache Degradation
@@ -390,8 +401,8 @@ groups:
     rules:
       - alert: LokiResultsCacheHitRateLow
         expr: |
-          sum(rate(loki_cache_hits_total{cache="results"}[15m])) /
-          sum(rate(loki_cache_fetched_keys_total{cache="results"}[15m])) < 0.5
+          sum(rate(loki_cache_hits_total{name=~"frontend.*"}[15m])) /
+          sum(rate(loki_cache_fetched_keys_total{name=~"frontend.*"}[15m])) < 0.5
         for: 30m
         labels:
           severity: warning
@@ -402,7 +413,7 @@ groups:
       - alert: LokiResultsCacheLatencyHigh
         expr: |
           histogram_quantile(0.99,
-            sum(rate(loki_cache_request_duration_seconds_bucket{cache="results"}[5m])) by (le)
+            sum(rate(loki_cache_request_duration_seconds_bucket{method=~"frontend.*"}[5m])) by (le)
           ) > 0.1
         for: 10m
         labels:
@@ -445,14 +456,8 @@ query_range:
     # Compress cached results to save memory
     compression: snappy
 
-  # 15 minute splits work well for most dashboard patterns
-  split_queries_by_interval: 15m
-
   # Align to step for metric queries
   align_queries_with_step: true
-
-  # Parallel execution of split queries
-  parallelism: 32
 
   # Cache index stats queries too
   cache_index_stats_results: true
@@ -474,11 +479,11 @@ query_scheduler:
   max_outstanding_requests_per_tenant: 2048
 
 limits_config:
-  # Per-tenant cache TTL override
-  results_cache_ttl: 30m
-
   # Maximum query length (prevents cache pollution from huge queries)
   max_query_length: 721h
+
+  # 15 minute splits work well for most dashboard patterns
+  split_queries_by_interval: 15m
 
   # Query parallelism per tenant
   max_query_parallelism: 32
