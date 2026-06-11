@@ -808,7 +808,7 @@ class BaselineConfig:
     # Window size for rolling baseline (in samples)
     rolling_window: int = 1000
 
-    # Number of standard deviations for anomaly detection
+    # Threshold multiplier for anomaly detection (used against percentage deviation)
     anomaly_threshold: float = 3.0
 
     # Percentiles to track for latency
