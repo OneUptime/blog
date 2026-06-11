@@ -47,7 +47,7 @@ flowchart LR
 
 ## IKE Phases Explained
 
-IPSec uses IKE (Internet Key Exchange) to establish secure tunnels. This happens in two phases.
+IPSec uses IKE (Internet Key Exchange) to establish secure tunnels. In IKEv1 this is described as two phases; in IKEv2 the same work is modeled as an IKE SA followed by one or more CHILD_SAs.
 
 ### Phase 1: IKE SA Establishment
 
@@ -58,7 +58,7 @@ sequenceDiagram
     participant A as VPN Gateway A
     participant B as VPN Gateway B
 
-    Note over A,B: Phase 1 - IKE SA
+    Note over A,B: IKE SA setup
     A->>B: SA Proposal (encryption, hash, DH group)
     B->>A: SA Selection
     A->>B: Key Exchange (DH public value)
@@ -67,7 +67,7 @@ sequenceDiagram
     B->>A: Authentication (PSK or Certificate)
     Note over A,B: IKE SA Established
 
-    Note over A,B: Phase 2 - IPSec SA
+    Note over A,B: CHILD_SA / IPSec SA setup
     A->>B: IPSec Proposal (ESP, encryption, PFS)
     B->>A: IPSec Selection
     A->>B: Traffic Selectors
@@ -75,9 +75,9 @@ sequenceDiagram
     Note over A,B: IPSec Tunnel Active
 ```
 
-### Phase 2: IPSec SA Establishment
+### CHILD_SA: IPSec SA Establishment
 
-Phase 2 negotiates the actual IPSec tunnel parameters. Multiple Phase 2 tunnels can exist within a single Phase 1 SA.
+The CHILD_SA negotiates the actual IPSec tunnel parameters. With IKEv2, the first CHILD_SA is usually established during the initial IKE_AUTH exchange, and additional CHILD_SAs can be created later within the same IKE SA.
 
 **Key Phase 1 Parameters:**
 - Encryption Algorithm (AES-256, AES-128)
@@ -88,7 +88,7 @@ Phase 2 negotiates the actual IPSec tunnel parameters. Multiple Phase 2 tunnels 
 
 **Key Phase 2 Parameters:**
 - ESP Encryption (AES-256-GCM, AES-256-CBC)
-- ESP Integrity (SHA-256, SHA-384)
+- ESP Integrity (SHA-256, SHA-384 for non-AEAD ciphers; omitted for AEAD ciphers like AES-GCM)
 - PFS Group (same as Phase 1 DH group)
 - SA Lifetime (typically 3600 seconds)
 
@@ -231,7 +231,7 @@ sudo iptables -A OUTPUT -p udp --dport 4500 -j ACCEPT
 sudo iptables -A INPUT -p esp -j ACCEPT
 sudo iptables -A OUTPUT -p esp -j ACCEPT
 
-# Allow forwarding between tunnel interfaces
+# Allow forwarding of policy-protected traffic; adjust interfaces for your topology
 sudo iptables -A FORWARD -i eth0 -o eth0 -m policy --pol ipsec --dir in -j ACCEPT
 sudo iptables -A FORWARD -i eth0 -o eth0 -m policy --pol ipsec --dir out -j ACCEPT
 
@@ -362,6 +362,7 @@ conn site-to-site-certs
     rightid=@vpn-b.example.com
     auto=start
     keyexchange=ikev2
+    authby=pubkey
     ike=aes256-sha256-modp2048!
     esp=aes256gcm16-modp2048!
 ```
@@ -395,7 +396,7 @@ flowchart LR
         GWB --- Net2B
     end
 
-    GWA <-->|"Multiple<br/>Child SAs"| GWB
+    GWA <-->|"Multiple<br/>Traffic Selectors"| GWB
 ```
 
 ### Configuration for Multiple Subnets
@@ -589,11 +590,12 @@ YOUR_PUBLIC_IP AWS_TUNNEL2_OUTSIDE_IP : PSK "aws-provided-psk-tunnel2"
 ### AWS-Specific Routing
 
 ```bash
-# Add routes for AWS VPC
-sudo ip route add 10.0.0.0/16 via AWS_TUNNEL1_INSIDE_IP metric 100
-sudo ip route add 10.0.0.0/16 via AWS_TUNNEL2_INSIDE_IP metric 200
+# With the policy-based configuration above, matching traffic is selected by
+# the XFRM policies created from leftsubnet/rightsubnet. Do not add Linux routes
+# via the AWS inside tunnel IPs unless you have also configured VTI or XFRM
+# interfaces for route-based VPN.
 
-# Or use BGP with VTI interfaces for dynamic routing
+# Use BGP or static routes with VTI/XFRM interfaces for route-based VPN.
 ```
 
 ## Monitoring and Troubleshooting
@@ -740,7 +742,7 @@ EOF
 
 ```bash
 # Modern IKEv2 configuration (2024+)
-ike=aes256gcm16-sha384-ecp384!
+ike=aes256gcm16-prfsha384-ecp384!
 esp=aes256gcm16-ecp384!
 
 # Avoid these deprecated algorithms:
