@@ -114,11 +114,7 @@ Create a base page class that other page objects extend:
 import { Page, Locator } from '@playwright/test';
 
 export abstract class BasePage {
-  protected page: Page;
-
-  constructor(page: Page) {
-    this.page = page;
-  }
+  constructor(public readonly page: Page) {}
 
   // Navigate to the page URL
   abstract goto(): Promise<void>;
@@ -161,7 +157,7 @@ Here's a login page object with clear, descriptive methods:
 // pages/LoginPage.ts
 // Page object for the login functionality
 
-import { Page, Locator, expect } from '@playwright/test';
+import { Page, Locator } from '@playwright/test';
 import { BasePage } from './BasePage';
 
 export class LoginPage extends BasePage {
@@ -235,7 +231,7 @@ export class LoginPage extends BasePage {
 // pages/DashboardPage.ts
 // Page object for the main dashboard with multiple components
 
-import { Page, Locator, expect } from '@playwright/test';
+import { Page, Locator } from '@playwright/test';
 import { BasePage } from './BasePage';
 
 export class DashboardPage extends BasePage {
@@ -267,8 +263,6 @@ export class DashboardPage extends BasePage {
     // Wait for key elements to be visible
     await this.welcomeMessage.waitFor({ state: 'visible' });
     await this.navigationMenu.waitFor({ state: 'visible' });
-    // Wait for network to be idle
-    await this.page.waitForLoadState('networkidle');
   }
 
   // Get the welcome message text
@@ -278,11 +272,13 @@ export class DashboardPage extends BasePage {
 
   // Search for a project
   async searchProject(query: string): Promise<void> {
-    await this.searchInput.fill(query);
-    // Wait for debounce and results to load
-    await this.page.waitForResponse(
-      response => response.url().includes('/api/projects/search')
-    );
+    // Start waiting before the action to avoid missing a fast response
+    await Promise.all([
+      this.page.waitForResponse(
+        response => response.url().includes('/api/projects/search')
+      ),
+      this.searchInput.fill(query),
+    ]);
   }
 
   // Get all visible project names
@@ -390,8 +386,9 @@ export const test = base.extend<TestFixtures>({
   },
 
   // Test data factory fixture
-  testData: async ({}, use) => {
+  testData: async ({ baseURL }, use) => {
     const factory = new TestDataFactory();
+    await factory.init(baseURL || 'http://localhost:3000');
     await use(factory);
     // Cleanup test data after test
     await factory.cleanup();
@@ -468,7 +465,7 @@ Flaky tests often result from improper waiting. Playwright has built-in auto-wai
 | `waitFor` | Wait for element state | `locator.waitFor({ state: 'visible' })` |
 | `waitForURL` | Navigation completion | `page.waitForURL('/dashboard')` |
 | `waitForResponse` | API call completion | `page.waitForResponse('/api/data')` |
-| `waitForLoadState` | Page load states | `page.waitForLoadState('networkidle')` |
+| `waitForLoadState` | Page load states | `page.waitForLoadState('load')` |
 | `waitForFunction` | Custom conditions | `page.waitForFunction(() => condition)` |
 | `expect.toBeVisible` | Assertion with retry | `expect(locator).toBeVisible()` |
 
@@ -530,11 +527,13 @@ export class WaitHelpers {
     // First check if spinner appears
     try {
       await spinner.waitFor({ state: 'visible', timeout: 1000 });
-      // If it appears, wait for it to disappear
-      await spinner.waitFor({ state: 'hidden', timeout: 30000 });
     } catch {
       // Spinner never appeared, which is fine
+      return;
     }
+
+    // If it appears, wait for it to disappear
+    await spinner.waitFor({ state: 'hidden', timeout: 30000 });
   }
 
   // Wait for table data to load
@@ -919,7 +918,7 @@ export default defineConfig({
 
 import { test, expect } from '@playwright/test';
 
-// Each test file runs in its own worker
+// Playwright uses worker processes to run test files
 // Tests within a file can run in parallel with fullyParallel: true
 
 test.describe('User Settings', () => {
@@ -994,7 +993,7 @@ jobs:
         run: npx playwright install --with-deps
 
       - name: Run tests
-        run: npx playwright test --shard=${{ matrix.shard }}/4
+        run: npx playwright test --shard=${{ matrix.shard }}/4 --reporter=blob
         env:
           BASE_URL: ${{ secrets.STAGING_URL }}
           TEST_USER_EMAIL: ${{ secrets.TEST_USER_EMAIL }}
@@ -1004,10 +1003,8 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results-${{ matrix.shard }}
-          path: |
-            test-results/
-            playwright-report/
+          name: blob-report-${{ matrix.shard }}
+          path: blob-report/
           retention-days: 7
 
   merge-reports:
@@ -1025,12 +1022,12 @@ jobs:
       - name: Download all test results
         uses: actions/download-artifact@v4
         with:
-          pattern: test-results-*
+          pattern: blob-report-*
           merge-multiple: true
-          path: all-results
+          path: all-blob-reports
 
       - name: Merge reports
-        run: npx playwright merge-reports ./all-results
+        run: npx playwright merge-reports --reporter=html ./all-blob-reports
 ```
 
 ## CI Integration
@@ -1151,7 +1148,7 @@ jobs:
 # Dockerfile.e2e
 # Docker image for running E2E tests
 
-FROM mcr.microsoft.com/playwright:v1.40.0-jammy
+FROM mcr.microsoft.com/playwright:v1.60.0-noble
 
 WORKDIR /app
 
@@ -1175,8 +1172,6 @@ CMD ["npx", "playwright", "test"]
 ```yaml
 # docker-compose.e2e.yml
 # Docker Compose for E2E test environment
-
-version: '3.8'
 
 services:
   app:
@@ -1229,7 +1224,7 @@ services:
 
 ```bash
 # Build and run E2E tests
-docker-compose -f docker-compose.e2e.yml up --build --exit-code-from e2e
+docker compose -f docker-compose.e2e.yml up --build --exit-code-from e2e
 
 # View results
 open playwright-report/index.html
