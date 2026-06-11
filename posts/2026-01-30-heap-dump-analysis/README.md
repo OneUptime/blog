@@ -213,14 +213,13 @@ This path shows exactly why the object is retained. In this case, a static Cache
 Object Query Language lets you search for specific patterns:
 
 ```sql
--- Find all strings longer than 10000 characters
-SELECT s FROM java.lang.String s WHERE s.value.length > 10000
+-- Find String objects with backing arrays longer than 10000 elements
+SELECT s FROM java.lang.String s WHERE s.value.@length > 10000
 
--- Find duplicate strings (memory waste)
-SELECT toString(s), count(s) AS cnt
+-- Show string values with large backing arrays
+SELECT toString(s), s.value.@length AS "Backing Array Length"
 FROM java.lang.String s
-GROUP BY toString(s)
-HAVING cnt > 100
+WHERE s.value.@length > 10000
 
 -- Find objects with specific field values
 SELECT c FROM com.example.CachedEntity c
@@ -265,10 +264,10 @@ VisualVM provides a more visual and interactive approach to heap analysis. It's 
 ### Starting VisualVM
 
 ```bash
-# VisualVM is bundled with JDK or download separately
+# VisualVM was bundled with older JDKs; for current JDKs, download it separately
 jvisualvm
 
-# Or for standalone version
+# For the standalone version
 visualvm
 ```
 
@@ -312,8 +311,9 @@ select s from java.lang.String s where s.toString().contains("password")
 // Find hashmaps with more than 10000 entries
 select m from java.util.HashMap m where m.size > 10000
 
-// Find threads in BLOCKED state
-select t from java.lang.Thread t where t.threadStatus == 1
+// Show thread names
+select { name: t.name ? t.name.toString() : "null", thread: t }
+from instanceof java.lang.Thread t
 ```
 
 ### Comparing with VisualVM
@@ -333,9 +333,9 @@ Understanding why objects stay in memory is the core of leak detection.
 ```mermaid
 graph TD
     A[Strong Reference] -->|Normal reference| B[Object]
-    C[Soft Reference] -->|Cleared when memory low| B
-    D[Weak Reference] -->|Cleared at next GC| B
-    E[Phantom Reference] -->|Post-finalization tracking| B
+    C[Soft Reference] -->|Cleared under memory demand| B
+    D[Weak Reference] -->|Cleared when weakly reachable| B
+    E[Phantom Reference] -->|Post-mortem cleanup tracking| B
 
     style A fill:#ff6b6b
     style C fill:#feca57
@@ -346,9 +346,9 @@ graph TD
 | Reference Type | GC Behavior | Common Use Case |
 |----------------|-------------|-----------------|
 | **Strong** | Never collected while referenced | Normal object relationships |
-| **Soft** | Collected when memory is low | Memory-sensitive caches |
-| **Weak** | Collected at next GC | Canonicalizing mappings |
-| **Phantom** | Enqueued after finalization | Resource cleanup tracking |
+| **Soft** | Cleared at GC discretion in response to memory demand | Memory-sensitive caches |
+| **Weak** | Cleared when the GC determines the object is weakly reachable | Canonicalizing mappings |
+| **Phantom** | Enqueued after the collector determines the referent may otherwise be reclaimed | Resource cleanup tracking |
 
 When analyzing leaks, focus on strong references. Soft and weak references are usually not the source of leaks.
 
@@ -444,23 +444,35 @@ DUMP_DIR="/var/heapdumps"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 FILENAME="${DUMP_DIR}/heap_${TIMESTAMP}.hprof"
 
-# Check disk space before dump
-AVAILABLE=$(df -P ${DUMP_DIR} | awk 'NR==2 {print $4}')
-HEAP_SIZE=$(jcmd ${APP_PID} GC.heap_info | grep "used" | awk '{print $3}')
+mkdir -p "${DUMP_DIR}"
 
-if [ ${AVAILABLE} -lt ${HEAP_SIZE} ]; then
+# Check disk space before dump
+AVAILABLE_KB=$(df -Pk "${DUMP_DIR}" | awk 'NR==2 {print $4}')
+HEAP_SIZE_KB=$(jcmd "${APP_PID}" GC.heap_info | awk '
+    /heap/ && /total/ {
+        for (i = 1; i <= NF; i++) {
+            if ($i == "total") {
+                gsub(/K,?/, "", $(i + 1));
+                print $(i + 1);
+                exit;
+            }
+        }
+    }
+')
+
+if [ -n "${HEAP_SIZE_KB}" ] && [ "${AVAILABLE_KB}" -lt "${HEAP_SIZE_KB}" ]; then
     echo "Insufficient disk space for heap dump"
     exit 1
 fi
 
 # Capture dump
-jcmd ${APP_PID} GC.heap_dump ${FILENAME}
+jcmd "${APP_PID}" GC.heap_dump "${FILENAME}"
 
 # Compress older dumps
-find ${DUMP_DIR} -name "*.hprof" -mtime +1 -exec gzip {} \;
+find "${DUMP_DIR}" -name "*.hprof" -mtime +1 -exec gzip {} \;
 
 # Clean up old dumps
-find ${DUMP_DIR} -name "*.hprof.gz" -mtime +7 -delete
+find "${DUMP_DIR}" -name "*.hprof.gz" -mtime +7 -delete
 
 echo "Heap dump saved to ${FILENAME}"
 ```
@@ -468,9 +480,16 @@ echo "Heap dump saved to ${FILENAME}"
 ### Extracting Metrics with MAT API
 
 ```java
-import org.eclipse.mat.parser.internal.SnapshotFactory;
+import java.io.File;
+import java.util.HashMap;
+import java.util.Map;
+
+import org.eclipse.mat.query.IResult;
+import org.eclipse.mat.snapshot.SnapshotFactory;
 import org.eclipse.mat.snapshot.ISnapshot;
 import org.eclipse.mat.snapshot.model.IClass;
+import org.eclipse.mat.snapshot.query.SnapshotQuery;
+import org.eclipse.mat.util.VoidProgressListener;
 
 public class HeapAnalyzer {
 
@@ -481,35 +500,38 @@ public class HeapAnalyzer {
             new VoidProgressListener()
         );
 
-        Map<String, Long> histogram = new HashMap<>();
+        try {
+            Map<String, Long> histogram = new HashMap<>();
 
-        for (IClass clazz : snapshot.getClasses()) {
-            long retainedHeap = snapshot.getRetainedHeapSize(
-                clazz.getObjectId()
-            );
-            histogram.put(clazz.getName(), retainedHeap);
+            for (IClass clazz : snapshot.getClasses()) {
+                long retainedHeap = clazz.getRetainedHeapSizeOfObjects(
+                    true,
+                    false,
+                    new VoidProgressListener()
+                );
+                histogram.put(clazz.getName(), retainedHeap);
+            }
+
+            return histogram;
+        } finally {
+            snapshot.dispose();
         }
-
-        snapshot.dispose();
-        return histogram;
     }
 
-    public List<String> findSuspects(String heapDumpPath) throws Exception {
-        // Use MAT's leak detector API
+    public String getTopConsumersReport(String heapDumpPath) throws Exception {
         ISnapshot snapshot = SnapshotFactory.openSnapshot(
             new File(heapDumpPath),
             new VoidProgressListener()
         );
 
-        LeakHunterQuery query = new LeakHunterQuery();
-        IResult result = query.execute(snapshot,
-            new VoidProgressListener());
-
-        List<String> suspects = new ArrayList<>();
-        // Extract suspect descriptions from result
-
-        snapshot.dispose();
-        return suspects;
+        try {
+            IResult result = SnapshotQuery
+                .lookup("top_consumers_html", snapshot)
+                .execute(new VoidProgressListener());
+            return result.toString();
+        } finally {
+            snapshot.dispose();
+        }
     }
 }
 ```
