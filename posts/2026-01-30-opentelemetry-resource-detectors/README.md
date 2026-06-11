@@ -461,22 +461,27 @@ Resource detection happens at startup, so detectors can perform async operations
 
 ### Detection Timeout
 
-Set a timeout to prevent slow detectors from blocking startup:
+`NodeSDK` does not expose a global detection timeout, so each detector is responsible for bounding its own work. Wrap any network or filesystem calls with `AbortSignal.timeout()` (or an `AbortController`) so a slow metadata endpoint cannot block startup:
 
 ```typescript
-import { NodeSDK } from '@opentelemetry/sdk-node';
-import { detectResourcesSync } from '@opentelemetry/resources';
+import { Detector, Resource, ResourceDetectionConfig } from '@opentelemetry/resources';
 
-const sdk = new NodeSDK({
-  resourceDetectors: [
-    awsEc2Detector,
-    customSlowDetector,
-  ],
-  resourceDetectionOptions: {
-    detectors: [awsEc2Detector, customSlowDetector],
-    timeout: 5000, // 5 second timeout
-  },
-});
+class TimeBoundedDetector implements Detector {
+  async detect(_config?: ResourceDetectionConfig): Promise<Resource> {
+    try {
+      const response = await fetch('http://metadata.internal/info', {
+        signal: AbortSignal.timeout(5000), // 5 second timeout
+      });
+      if (!response.ok) {
+        return Resource.empty();
+      }
+      return new Resource(await response.json());
+    } catch {
+      // Timeout or network error — fall back to empty resource
+      return Resource.empty();
+    }
+  }
+}
 ```
 
 ### Graceful Degradation
