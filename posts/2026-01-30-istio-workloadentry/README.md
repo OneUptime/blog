@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Service Mesh, Kubernetes, DevOps
 
-Description: A practical guide to creating and managing Istio WorkloadEntry resources for integrating external services, VMs, and legacy systems into your service mesh.
+Description: A practical guide to creating and managing Istio WorkloadEntry resources for integrating VMs, bare-metal services, and legacy systems into your service mesh.
 
 ---
 
-Kubernetes pods are not the only workloads that need to participate in a service mesh. Databases running on dedicated VMs, legacy applications that cannot be containerized, and external services all need to be discoverable and manageable within the mesh. Istio WorkloadEntry solves this by representing non-Kubernetes workloads as first-class mesh citizens.
+Kubernetes pods are not the only workloads that need to participate in a service mesh. Databases running on dedicated VMs, legacy applications that cannot be containerized, and bare-metal services all need to be discoverable and manageable within the mesh. Istio WorkloadEntry solves this by representing non-Kubernetes workloads as first-class mesh citizens.
 
 ## What is a WorkloadEntry?
 
-A WorkloadEntry is an Istio resource that represents a single instance of a workload running outside of Kubernetes. Think of it as a manual endpoint registration that tells Istio where to find your external services.
+A WorkloadEntry is an Istio resource that represents a single instance of a workload running outside of Kubernetes. Think of it as a manual endpoint registration that tells Istio where to find your VM or bare-metal workloads.
 
 ```mermaid
 graph TB
@@ -55,7 +55,7 @@ graph TB
 
 Before creating WorkloadEntry resources, ensure you have:
 
-- A Kubernetes cluster with Istio 1.6 or later installed
+- A Kubernetes cluster with a current supported Istio release installed
 - kubectl configured to access your cluster
 - Network connectivity between your cluster and external workloads
 - The istioctl CLI tool for troubleshooting
@@ -81,7 +81,7 @@ The following WorkloadEntry represents a MySQL database running on a VM:
 # workload-entry-mysql.yaml
 # This WorkloadEntry makes a MySQL database on a VM
 # discoverable to services in the mesh
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: WorkloadEntry
 metadata:
   # Unique name for this workload instance
@@ -121,7 +121,7 @@ kubectl get workloadentry -n database
 
 ## Creating a Service for WorkloadEntry Discovery
 
-A WorkloadEntry alone is not enough. You need a Kubernetes Service that selects the WorkloadEntry labels to enable service discovery.
+A WorkloadEntry alone is not enough. You need a service definition that selects the WorkloadEntry labels to enable service discovery. Istio VM integrations commonly use a Kubernetes Service for this, while ServiceEntry can also select WorkloadEntry resources through `workloadSelector`.
 
 The following Service makes the MySQL WorkloadEntry accessible via DNS:
 
@@ -156,21 +156,20 @@ Apply the Service:
 # Apply the Service
 kubectl apply -f service-mysql.yaml
 
-# Check that the Service has endpoints
-# The external IP should appear as an endpoint
-kubectl get endpoints mysql -n database
+# Verify that Istio programmed the endpoint into a sidecar
+istioctl proxy-config endpoints <pod-name> -n <namespace> | grep mysql.database.svc.cluster.local
 ```
 
 ## Complete WorkloadEntry Configuration
 
-A production WorkloadEntry includes additional configuration for identity, networking, and health checking.
+A production WorkloadEntry includes additional configuration for identity and networking metadata.
 
 The following example shows a fully configured WorkloadEntry:
 
 ```yaml
 # workload-entry-complete.yaml
 # Comprehensive WorkloadEntry configuration for a payment service VM
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: WorkloadEntry
 metadata:
   name: payment-service-vm-1
@@ -277,7 +276,7 @@ The following configuration creates a highly available database cluster:
 # Multiple WorkloadEntries for a MySQL cluster with primary and replicas
 ---
 # Primary database instance
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: WorkloadEntry
 metadata:
   name: mysql-primary
@@ -296,7 +295,7 @@ spec:
     metrics: 9104
 ---
 # First replica instance
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: WorkloadEntry
 metadata:
   name: mysql-replica-1
@@ -314,7 +313,7 @@ spec:
     metrics: 9104
 ---
 # Second replica instance
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: WorkloadEntry
 metadata:
   name: mysql-replica-2
@@ -391,7 +390,7 @@ The following DestinationRule configures connection pooling, load balancing, and
 ```yaml
 # destination-rule-mysql.yaml
 # Traffic policies for MySQL WorkloadEntries
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: mysql-traffic-policy
@@ -460,74 +459,46 @@ spec:
             maxConnections: 200
 ```
 
-## WorkloadEntry for External APIs
+## ServiceEntry for External APIs
 
-WorkloadEntry can represent external APIs that your services depend on. This enables traffic management and observability for external calls.
+Use ServiceEntry, not WorkloadEntry, for third-party APIs that your services depend on. WorkloadEntry is intended for non-Kubernetes workloads you are onboarding into the mesh, while ServiceEntry is the Istio resource for adding external services to the service registry.
 
 The following configuration integrates an external payment gateway:
 
 ```yaml
-# workload-entry-payment-gateway.yaml
-# WorkloadEntry for an external payment processor API
-apiVersion: networking.istio.io/v1beta1
-kind: WorkloadEntry
-metadata:
-  name: stripe-api-primary
-  namespace: external-apis
-spec:
-  # Stripe API endpoint
-  address: api.stripe.com
-  labels:
-    app: stripe-api
-    provider: stripe
-  # External services do not need ServiceAccount
-  # They are outside the mesh trust domain
-  ports:
-    https: 443
----
-# Backup endpoint for resilience
-apiVersion: networking.istio.io/v1beta1
-kind: WorkloadEntry
-metadata:
-  name: stripe-api-backup
-  namespace: external-apis
-spec:
-  address: api.stripe.com
-  labels:
-    app: stripe-api
-    provider: stripe
-    backup: "true"
-  ports:
-    https: 443
-```
-
-Create a Service and DestinationRule for external API traffic management:
-
-```yaml
-# service-stripe-api.yaml
-# Service for external Stripe API
-apiVersion: v1
-kind: Service
+# service-entry-payment-gateway.yaml
+# ServiceEntry for an external payment processor API
+apiVersion: networking.istio.io/v1
+kind: ServiceEntry
 metadata:
   name: stripe-api
   namespace: external-apis
 spec:
+  hosts:
+    - api.stripe.com
+  location: MESH_EXTERNAL
   ports:
-    - name: https
-      port: 443
-  selector:
-    app: stripe-api
----
+    # Clients call http://api.stripe.com:80 and Envoy originates TLS to port 443
+    - number: 80
+      name: http
+      protocol: HTTP
+      targetPort: 443
+  resolution: DNS
+```
+
+Create a DestinationRule for external API traffic management:
+
+```yaml
 # DestinationRule for Stripe API traffic policies
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: stripe-api-policy
   namespace: external-apis
 spec:
-  host: stripe-api.external-apis.svc.cluster.local
+  host: api.stripe.com
   trafficPolicy:
-    # TLS settings for external HTTPS
+    # TLS origination for the external HTTPS service
     tls:
       mode: SIMPLE
       sni: api.stripe.com
@@ -555,12 +526,12 @@ spec:
 
 Use VirtualService to implement advanced routing for WorkloadEntry endpoints.
 
-The following configuration demonstrates traffic splitting and header-based routing:
+The following configuration demonstrates traffic splitting and source-label-based routing:
 
 ```yaml
 # virtual-service-mysql.yaml
 # Advanced routing for MySQL WorkloadEntries
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: mysql-routing
@@ -609,7 +580,7 @@ For HTTP-based WorkloadEntries, use HTTP routing rules:
 ```yaml
 # virtual-service-payment-api.yaml
 # HTTP routing for payment API WorkloadEntry
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: payment-api-routing
@@ -675,7 +646,7 @@ The following configuration restricts access to the database:
 ```yaml
 # authorization-policy-mysql.yaml
 # Restrict access to MySQL WorkloadEntries
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: mysql-access
@@ -723,7 +694,7 @@ The following Telemetry resource enables access logging and metrics:
 ```yaml
 # telemetry-workloadentry.yaml
 # Observability configuration for WorkloadEntry traffic
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: workloadentry-telemetry
@@ -778,9 +749,9 @@ echo "=== WorkloadEntry Verification ==="
 echo -e "\n1. WorkloadEntries in namespace $NAMESPACE:"
 kubectl get workloadentry -n $NAMESPACE -o wide
 
-# Check if Service exists and has endpoints
-echo -e "\n2. Service endpoints:"
-kubectl get endpoints $WORKLOAD -n $NAMESPACE -o yaml | grep -A 20 "subsets:"
+# Check if Service exists
+echo -e "\n2. Service definition:"
+kubectl get service $WORKLOAD -n $NAMESPACE -o yaml
 
 # Verify Service selector matches WorkloadEntry labels
 echo -e "\n3. Service selector:"
@@ -791,8 +762,20 @@ echo ""
 echo -e "\n4. WorkloadEntry labels:"
 kubectl get workloadentry -n $NAMESPACE -l app=$WORKLOAD -o jsonpath='{range .items[*]}{.metadata.name}: {.spec.labels}{"\n"}{end}'
 
+# Check a sidecar's endpoint configuration
+echo -e "\n5. Istio proxy endpoints:"
+PROXY_POD="${3:-}"
+if [ -z "$PROXY_POD" ]; then
+  PROXY_POD="$(kubectl get pod -n $NAMESPACE -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)"
+fi
+if [ -n "$PROXY_POD" ]; then
+  istioctl proxy-config endpoints "$PROXY_POD" -n "$NAMESPACE" | grep "$WORKLOAD.$NAMESPACE.svc.cluster.local" || true
+else
+  echo "No pod found in $NAMESPACE; pass a known sidecar pod as the third argument."
+fi
+
 # Test connectivity from a pod
-echo -e "\n5. Testing connectivity:"
+echo -e "\n6. Testing connectivity:"
 kubectl run test-connectivity --rm -it --restart=Never \
   --image=busybox \
   --namespace=$NAMESPACE \
@@ -824,7 +807,7 @@ istioctl proxy-config all <pod-name> -n <namespace> -o json | jq '.configs'
 
 | Issue | Symptoms | Solution |
 |-------|----------|----------|
-| Service has no endpoints | kubectl get endpoints shows empty | Verify Service selector matches WorkloadEntry labels |
+| Endpoint missing from Istio config | istioctl proxy-config endpoints does not show the WorkloadEntry address | Verify the Service or ServiceEntry selector matches WorkloadEntry labels |
 | Connection refused | Timeout errors from pods | Check network connectivity and firewall rules |
 | mTLS handshake failure | TLS errors in Envoy logs | Verify ServiceAccount exists and is correctly referenced |
 | Routing not working | Traffic goes to wrong endpoint | Check VirtualService and DestinationRule configuration |
@@ -892,7 +875,7 @@ metadata:
   namespace: legacy
 ---
 # WorkloadEntry for first VM
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: WorkloadEntry
 metadata:
   name: legacy-api-1
@@ -910,7 +893,7 @@ spec:
     metrics: 9090
 ---
 # WorkloadEntry for second VM
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: WorkloadEntry
 metadata:
   name: legacy-api-2
@@ -945,7 +928,7 @@ spec:
     app: legacy-api
 ---
 # DestinationRule for traffic policies
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: legacy-api
@@ -972,7 +955,7 @@ spec:
       maxEjectionPercent: 50
 ---
 # VirtualService for routing
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: legacy-api
@@ -992,7 +975,7 @@ spec:
         retryOn: connect-failure,refused-stream,unavailable,retriable-4xx,reset
 ---
 # AuthorizationPolicy for access control
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: legacy-api-access
@@ -1062,7 +1045,7 @@ When working with WorkloadEntry resources, follow these guidelines:
 
 ---
 
-WorkloadEntry is the bridge between Kubernetes-native service mesh and the real world where not everything runs in containers. By properly configuring WorkloadEntry resources, you can extend Istio's traffic management, security, and observability features to VMs, legacy systems, and external services, creating a unified service mesh that spans your entire infrastructure.
+WorkloadEntry is the bridge between Kubernetes-native service mesh and the real world where not everything runs in containers. By properly configuring WorkloadEntry resources, you can extend Istio's traffic management, security, and observability features to VMs, legacy systems, and bare-metal services, creating a unified service mesh that spans your entire infrastructure.
 
 ## References
 
