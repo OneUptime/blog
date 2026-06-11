@@ -132,7 +132,7 @@ public class QueueStatistics
 
 The `System.Threading.Channels` namespace provides a high-performance, thread-safe queue implementation. Use a bounded channel to apply backpressure when the queue fills up.
 
-The implementation below uses a `PriorityQueue` internally to ensure high-priority items are processed first. A semaphore coordinates access between the channel reader and the priority queue.
+The implementation below uses a `PriorityQueue` internally to process the highest-priority available items first. A semaphore coordinates access between the channel reader and the priority queue.
 
 ```csharp
 using System.Threading.Channels;
@@ -226,8 +226,33 @@ public class BackgroundQueue : IBackgroundQueue
 
         // No items available, wait for one from the channel
         var newItem = await _channel.Reader.ReadAsync(cancellationToken);
-        Interlocked.Increment(ref _processingCount);
-        return newItem;
+
+        // Put the newly-read item through the same priority path, then drain
+        // any other items that arrived while this worker was waiting.
+        await _priorityLock.WaitAsync(cancellationToken);
+        try
+        {
+            _priorityQueue.Enqueue(newItem, -newItem.Priority);
+
+            while (_channel.Reader.TryRead(out var item))
+            {
+                _priorityQueue.Enqueue(item, -item.Priority);
+            }
+
+            if (_priorityQueue.TryDequeue(out var priorityItem, out _))
+            {
+                Interlocked.Increment(ref _processingCount);
+                return priorityItem;
+            }
+        }
+        finally
+        {
+            _priorityLock.Release();
+        }
+
+        // The priority queue should contain at least newItem, so reaching this
+        // point means the read was interrupted by cancellation.
+        throw new OperationCanceledException(cancellationToken);
     }
 
     public void RecordCompletion(bool success)
@@ -244,15 +269,28 @@ public class BackgroundQueue : IBackgroundQueue
         }
     }
 
+    public void RecordRetry()
+    {
+        Interlocked.Decrement(ref _processingCount);
+    }
+
     public QueueStatistics GetStatistics()
     {
-        return new QueueStatistics
+        _priorityLock.Wait();
+        try
         {
-            QueuedCount = _channel.Reader.Count + _priorityQueue.Count,
-            ProcessingCount = _processingCount,
-            CompletedCount = _completedCount,
-            FailedCount = _failedCount
-        };
+            return new QueueStatistics
+            {
+                QueuedCount = _channel.Reader.Count + _priorityQueue.Count,
+                ProcessingCount = _processingCount,
+                CompletedCount = _completedCount,
+                FailedCount = _failedCount
+            };
+        }
+        finally
+        {
+            _priorityLock.Release();
+        }
     }
 }
 
@@ -369,7 +407,7 @@ public class BackgroundQueueProcessor : BackgroundService
                     workItem.Id,
                     _options.ProcessingTimeout);
 
-                await HandleFailureAsync(workItem, "Processing timeout exceeded");
+                await HandleFailureAsync(workItem, "Processing timeout exceeded", stoppingToken);
             }
             catch (Exception ex) when (workItem != null)
             {
@@ -379,14 +417,17 @@ public class BackgroundQueueProcessor : BackgroundService
                     workerId,
                     workItem.Id);
 
-                await HandleFailureAsync(workItem, ex.Message);
+                await HandleFailureAsync(workItem, ex.Message, stoppingToken);
             }
         }
 
         _logger.LogDebug("Worker {WorkerId} stopped", workerId);
     }
 
-    private async Task HandleFailureAsync(BackgroundWorkItem workItem, string errorMessage)
+    private async Task HandleFailureAsync(
+        BackgroundWorkItem workItem,
+        string errorMessage,
+        CancellationToken stoppingToken)
     {
         workItem.RetryCount++;
         workItem.ErrorMessage = errorMessage;
@@ -403,8 +444,11 @@ public class BackgroundQueueProcessor : BackgroundService
                 workItem.RetryCount + 1,
                 workItem.MaxRetries);
 
+            // The item is no longer actively processing while it waits to retry
+            RecordRetry();
+
             // Wait before requeuing
-            await Task.Delay(delay);
+            await Task.Delay(delay, stoppingToken);
 
             // Requeue for retry
             await _queue.QueueAsync(workItem);
@@ -428,6 +472,14 @@ public class BackgroundQueueProcessor : BackgroundService
         if (_queue is BackgroundQueue bgQueue)
         {
             bgQueue.RecordCompletion(success);
+        }
+    }
+
+    private void RecordRetry()
+    {
+        if (_queue is BackgroundQueue bgQueue)
+        {
+            bgQueue.RecordRetry();
         }
     }
 }
@@ -788,7 +840,7 @@ sequenceDiagram
 
 For scenarios where you cannot lose queued items during restarts, add persistence to the queue. This extension stores items in a database before they enter the in-memory queue.
 
-The persistent queue writes items to the database immediately, ensuring they survive process restarts. A recovery service requeues any unprocessed items on startup.
+The persistent queue writes items to the database immediately, ensuring they survive process restarts. A recovery service marks any unprocessed items as queued on startup so a work-item factory can requeue them.
 
 ```csharp
 using Microsoft.EntityFrameworkCore;
