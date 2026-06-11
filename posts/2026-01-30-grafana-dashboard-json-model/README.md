@@ -29,7 +29,7 @@ Before diving in, here's why understanding the JSON model matters:
 
 ## Dashboard JSON Structure Overview
 
-Every Grafana dashboard is defined by a JSON document with a specific structure. Here's how the main components relate to each other:
+Grafana currently supports multiple dashboard schema models. This guide uses the classic dashboard JSON model, which remains widely used for exports, imports, provisioning, and sharing. Here's how the main components relate to each other:
 
 ```mermaid
 graph TD
@@ -86,7 +86,7 @@ Key fields explained:
 | `title` | Dashboard name displayed in the UI |
 | `tags` | Array of strings for organization and filtering |
 | `timezone` | Time zone for the dashboard (`browser`, `utc`, or specific zone) |
-| `schemaVersion` | JSON schema version (use latest; as of 2025, values in the 39–42 range are common depending on your Grafana version) |
+| `schemaVersion` | JSON schema version (use the value exported by your target Grafana version; Grafana 12 examples commonly use `41`, while older dashboards may use lower values) |
 | `version` | Dashboard revision number (Grafana increments this on save) |
 | `panels` | Array of panel definitions |
 
@@ -175,9 +175,9 @@ graph TB
 ```
 
 - `x`: Horizontal position (0-23)
-- `y`: Vertical position (row number, each row is 1 unit tall)
+- `y`: Vertical position in grid height units
 - `w`: Width in columns (1-24)
-- `h`: Height in rows (typically 6-10 for graphs)
+- `h`: Height in grid height units; each unit is 30 pixels (typically 6-10 for graphs)
 
 ---
 
@@ -601,9 +601,11 @@ flowchart LR
 To export an existing dashboard:
 
 1. Open the dashboard in Grafana
-2. Click the gear icon (Dashboard settings)
-3. Click "JSON Model" in the left sidebar
-4. Copy the JSON or click "Save to file"
+2. Click "Edit" in the top-right corner
+3. Click the Dashboard options icon in the toolbar
+4. Click "Settings" in the sidebar
+5. Go to the "JSON Model" tab
+6. Copy the JSON or save it to a file from the export options
 
 ### Cleaning Up Exported JSON
 
@@ -625,18 +627,21 @@ Remove or reset these fields:
 
 ### Importing via the API
 
-Use the Grafana HTTP API to import dashboards programmatically. This curl command imports a dashboard JSON file:
+Use the Grafana HTTP API to import dashboards programmatically. In Grafana 12 and later, the dashboard API wraps the classic dashboard JSON in a `spec` object. This curl command imports a dashboard JSON file whose `uid` is set:
 
 ```bash
+jq -n --slurpfile dashboard dashboard.json \
+  '{
+    metadata: {
+      name: $dashboard[0].uid
+    },
+    spec: $dashboard[0]
+  }' |
 curl -X POST \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{
-    "dashboard": '"$(cat dashboard.json)"',
-    "overwrite": true,
-    "message": "Updated via CI/CD pipeline"
-  }' \
-  "https://your-grafana-instance/api/dashboards/db"
+  -d @- \
+  "https://your-grafana-instance/apis/dashboard.grafana.app/v1/namespaces/default/dashboards"
 ```
 
 ---
@@ -661,7 +666,7 @@ providers:
       path: /var/lib/grafana/dashboards
 ```
 
-Then place your dashboard JSON files in `/var/lib/grafana/dashboards/`. Grafana will automatically load and update them.
+Then place your dashboard definition files in `/var/lib/grafana/dashboards/`. Grafana will automatically load and update them.
 
 ---
 
