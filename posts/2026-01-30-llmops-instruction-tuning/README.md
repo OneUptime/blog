@@ -266,7 +266,7 @@ class InstructionExample:
         )
 
     def _llama_template(self) -> str:
-        """Format using the Llama 2/3 chat template."""
+        """Format using the Llama 3 chat template."""
         user_content = self.instruction
         if self.input:
             user_content = f"{self.instruction}\n\n{self.input}"
@@ -403,14 +403,13 @@ class DatasetProcessor:
         similarity_threshold: float = 0.95
     ) -> List[InstructionExample]:
         """
-        Remove duplicate and near-duplicate examples.
+        Remove exact duplicate examples.
 
-        Uses content hashing for exact duplicates and optional
-        similarity checking for near-duplicates.
+        Uses content hashing for exact duplicates.
 
         Args:
             examples: List of examples to deduplicate
-            similarity_threshold: Threshold for near-duplicate detection
+            similarity_threshold: Reserved for adding near-duplicate detection
 
         Returns:
             Deduplicated list of examples
@@ -603,7 +602,7 @@ flowchart LR
 
     subgraph Loss["Loss Computation"]
         G --> H[Cross-Entropy Loss]
-        H --> I[Response-Only Masking]
+        H --> I[Padding Masking]
         I --> J[Gradient Computation]
     end
 
@@ -646,7 +645,7 @@ from transformers import (
     AutoTokenizer,
     TrainingArguments,
     Trainer,
-    DataCollatorForSeq2Seq,
+    DataCollatorForLanguageModeling,
     BitsAndBytesConfig,
 )
 from datasets import Dataset, load_dataset
@@ -770,7 +769,7 @@ class TrainConfig:
     max_seq_length: int = 2048
 
     # Evaluation
-    evaluation_strategy: str = "steps"
+    eval_strategy: str = "steps"
     load_best_model_at_end: bool = True
     metric_for_best_model: str = "eval_loss"
 
@@ -812,7 +811,7 @@ class InstructionTuningTrainer:
         self.tokenizer = AutoTokenizer.from_pretrained(
             self.model_config.model_name_or_path,
             trust_remote_code=self.model_config.trust_remote_code,
-            padding_side="right",  # Required for correct loss computation
+            padding_side="right",  # Common for decoder-only training batches
         )
 
         # Set pad token if not present
@@ -859,7 +858,7 @@ class InstructionTuningTrainer:
         self,
         train_path: str,
         val_path: Optional[str] = None,
-        prompt_template: str = "chatml"
+        prompt_template: str = "llama"
     ) -> Dict[str, Dataset]:
         """
         Load and prepare datasets for training.
@@ -935,9 +934,6 @@ class InstructionTuningTrainer:
                 return_tensors=None,
             )
 
-            # For causal LM, labels are the same as input_ids
-            tokenized["labels"] = tokenized["input_ids"].copy()
-
             return tokenized
 
         # Load datasets
@@ -990,10 +986,9 @@ class InstructionTuningTrainer:
         datasets = self.prepare_dataset(train_path, val_path)
 
         # Create data collator
-        data_collator = DataCollatorForSeq2Seq(
+        data_collator = DataCollatorForLanguageModeling(
             tokenizer=self.tokenizer,
-            model=self.model,
-            padding=True,
+            mlm=False,
             pad_to_multiple_of=8,  # Optimize for tensor cores
         )
 
@@ -1016,7 +1011,7 @@ class InstructionTuningTrainer:
             logging_steps=self.train_config.logging_steps,
             save_steps=self.train_config.save_steps,
             eval_steps=self.train_config.eval_steps if val_path else None,
-            evaluation_strategy=self.train_config.evaluation_strategy if val_path else "no",
+            eval_strategy=self.train_config.eval_strategy if val_path else "no",
             save_total_limit=self.train_config.save_total_limit,
             load_best_model_at_end=self.train_config.load_best_model_at_end if val_path else False,
             metric_for_best_model=self.train_config.metric_for_best_model,
@@ -1032,7 +1027,7 @@ class InstructionTuningTrainer:
             train_dataset=datasets['train'],
             eval_dataset=datasets.get('validation'),
             data_collator=data_collator,
-            tokenizer=self.tokenizer,
+            processing_class=self.tokenizer,
         )
 
         # Start training
@@ -1246,6 +1241,10 @@ class InstructionEvaluator:
         dtype = getattr(torch, self.config.torch_dtype)
 
         self.tokenizer = AutoTokenizer.from_pretrained(self.config.model_path)
+        if self.tokenizer.pad_token is None:
+            self.tokenizer.pad_token = self.tokenizer.eos_token
+            self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
+
         self.model = AutoModelForCausalLM.from_pretrained(
             self.config.model_path,
             torch_dtype=dtype,
@@ -1285,7 +1284,7 @@ class InstructionEvaluator:
         messages.append({"role": "user", "content": user_content})
 
         # Apply chat template if available
-        if hasattr(self.tokenizer, 'apply_chat_template'):
+        if getattr(self.tokenizer, "chat_template", None):
             prompt = self.tokenizer.apply_chat_template(
                 messages,
                 tokenize=False,
@@ -1314,11 +1313,12 @@ class InstructionEvaluator:
                 pad_token_id=self.tokenizer.pad_token_id,
             )
 
-        # Decode and extract response
-        full_response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
-
-        # Remove the prompt from the response
-        response = full_response[len(prompt):].strip()
+        # Decode only newly generated tokens
+        generated_tokens = outputs[0][inputs["input_ids"].shape[-1]:]
+        response = self.tokenizer.decode(
+            generated_tokens,
+            skip_special_tokens=True
+        ).strip()
 
         return response
 
