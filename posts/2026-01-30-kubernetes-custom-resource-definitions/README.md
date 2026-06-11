@@ -23,7 +23,7 @@ Before starting, make sure you have:
 Check your cluster version:
 
 ```bash
-kubectl version --short
+kubectl version
 ```
 
 ## Understanding CRD Structure
@@ -399,7 +399,7 @@ The status subresource separates spec (desired state) from status (observed stat
 |---------|---------------------------|------------------------|
 | User can modify status | Yes | No |
 | Controller can update status independently | No | Yes |
-| Optimistic concurrency | Single resourceVersion | Separate for spec and status |
+| Status update endpoint | Main resource endpoint | Separate `/status` endpoint |
 | RBAC control | Single permission | Separate permissions |
 
 Enable the status subresource in your CRD:
@@ -772,13 +772,13 @@ package main
 
 import (
     "encoding/json"
-    "fmt"
     "io"
     "net/http"
 
     apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+    "k8s.io/apimachinery/pkg/runtime"
 )
 
 // DatabaseV1Spec represents the v1 spec
