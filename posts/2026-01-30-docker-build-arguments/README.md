@@ -39,6 +39,8 @@ ARG <name>[=<default value>]
 ### Simple Example
 
 ```dockerfile
+FROM alpine
+
 # Declare a build argument
 
 ARG APP_VERSION
@@ -59,9 +61,10 @@ You can provide default values that will be used if no argument is passed:
 
 ```dockerfile
 ARG NODE_VERSION=18
-ARG ENVIRONMENT=production
 
 FROM node:${NODE_VERSION}-alpine
+
+ARG ENVIRONMENT=production
 
 RUN echo "Environment: $ENVIRONMENT"
 ```
@@ -129,7 +132,7 @@ RUN echo "Building ${APP_NAME}"
 
 ### Stage-Specific Scoping
 
-Each `FROM` instruction starts a new build stage with its own scope. ARGs do not automatically carry over between stages:
+Each `FROM` instruction starts a new build stage with its own scope. ARGs do not automatically carry over between unrelated stages:
 
 ```dockerfile
 ARG VERSION=1.0.0
@@ -240,6 +243,8 @@ docker build \
 Sometimes you need a build-time value to also be available at runtime. You can convert an ARG to an ENV:
 
 ```dockerfile
+FROM node:20-alpine
+
 ARG NODE_ENV=production
 
 # Convert ARG to ENV for runtime availability
@@ -266,7 +271,7 @@ flowchart LR
 
 ## Security Considerations
 
-Build arguments are visible in the image history and build logs. Never use them for sensitive data like passwords, API keys, or tokens.
+Build arguments can be visible in the image history, provenance attestations, and build logs if they are echoed or used in commands. Never use them for sensitive data like passwords, API keys, or tokens.
 
 ### What NOT to Do
 
@@ -283,10 +288,10 @@ Anyone can view these values:
 
 ```bash
 # View image history and see ARG values
-docker history myimage
+docker history --no-trunc myimage
 
-# Inspect build cache
-docker buildx imagetools inspect myimage
+# Inspect image provenance attestations
+docker buildx imagetools inspect myimage --format '{{ json .Provenance }}'
 ```
 
 ### Secure Alternatives
@@ -396,7 +401,7 @@ jobs:
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
 
       - name: Build and push
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           push: true
           tags: myapp:${{ steps.version.outputs.VERSION }}
@@ -427,7 +432,7 @@ build:
 3. **Use meaningful names** - `APP_VERSION` is better than `VER` or `V`
 4. **Group related ARGs** - Keep ARGs organized at the top of each stage
 5. **Never pass secrets via ARG** - Use BuildKit secrets or runtime injection instead
-6. **Redeclare ARGs in multi-stage builds** - Remember they do not carry over between stages
+6. **Redeclare ARGs in unrelated multi-stage builds** - Remember they do not carry over between unrelated stages
 7. **Use predefined ARGs for cross-platform builds** - Leverage TARGETARCH and TARGETOS
 
 ## Conclusion
