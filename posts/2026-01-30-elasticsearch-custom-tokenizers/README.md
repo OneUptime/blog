@@ -271,7 +271,7 @@ flowchart TD
     C --> G[More Flexibility]
 ```
 
-Char group is 2-3x faster for simple splits. Use pattern only when you need regex power.
+Char group avoids the regex overhead of the pattern tokenizer for simple splits. Use pattern only when you need regex power.
 
 ---
 
@@ -382,7 +382,7 @@ This indexes edge n-grams but searches with the full term. Typing "elast" matche
 |-----------|-------------|---------|
 | `min_gram` | Minimum token length | 1 |
 | `max_gram` | Maximum token length | 2 |
-| `token_chars` | Character classes to include | All |
+| `token_chars` | Character classes to include | Keep all characters |
 
 Character classes for `token_chars`:
 - `letter`
@@ -556,10 +556,10 @@ curl -s "localhost:9200/production_index/_search?size=100" | \
   jq -r '.hits.hits[]._source.text_field' > samples.txt
 
 # Test each sample
-while read line; do
+while read -r line; do
   curl -s -X POST "localhost:9200/test_index/_analyze" \
     -H "Content-Type: application/json" \
-    -d "{\"analyzer\": \"my_analyzer\", \"text\": \"$line\"}"
+    -d "$(jq -nc --arg text "$line" '{"analyzer": "my_analyzer", "text": $text}')"
 done < samples.txt
 ```
 
@@ -792,7 +792,7 @@ Mitigate by:
 Complex analyzers slow indexing. Profile with:
 
 ```json
-POST _nodes/hot_threads
+GET _nodes/hot_threads
 ```
 
 If analysis is the bottleneck:
