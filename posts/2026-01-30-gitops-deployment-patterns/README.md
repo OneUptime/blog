@@ -260,18 +260,19 @@ spec:
 
 ### Strategy 3: Tag-Based Promotion
 
-Environments track Git tags rather than branches or directories. Promotion means creating a new tag.
+Environments can track explicit Git tags rather than branches or directories. Promotion means updating the environment to point at a new tag.
 
 ```yaml
-# ArgoCD tracking a tag pattern
+# ArgoCD tracking a specific tag
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: myapp-prod
 spec:
+  project: default
   source:
     repoURL: https://github.com/myorg/myapp-config.git
-    targetRevision: prod-*  # Tracks tags matching pattern
+    targetRevision: refs/tags/prod-v2.1.0
     path: k8s/prod
 ```
 
@@ -334,7 +335,7 @@ metadata:
 spec:
   interval: 5m
   prune: true
-  force: false  # Set true to overwrite conflicts
+  force: false  # Set true to recreate resources after immutable field changes
   path: ./k8s/overlays/dev
   sourceRef:
     kind: GitRepository
@@ -405,6 +406,8 @@ metadata:
   name: myapp-all-clusters
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
     - clusters:
         selector:
@@ -412,7 +415,7 @@ spec:
             env: production
   template:
     metadata:
-      name: 'myapp-{{name}}'
+      name: 'myapp-{{.name}}'
     spec:
       project: default
       source:
@@ -420,14 +423,14 @@ spec:
         targetRevision: HEAD
         path: k8s/overlays/prod
       destination:
-        server: '{{server}}'
+        server: '{{.server}}'
         namespace: myapp
       syncPolicy:
         automated:
           prune: true
 ```
 
-### Flux Multi-Cluster with Cluster API
+### Flux Multi-Cluster with Per-Cluster Paths
 
 ```yaml
 # Bootstrap flux on each cluster
@@ -438,6 +441,7 @@ metadata:
   namespace: flux-system
 spec:
   url: https://github.com/myorg/platform-config.git
+  interval: 1m
   ref:
     branch: main
 ---
@@ -447,6 +451,8 @@ metadata:
   name: cluster-config
   namespace: flux-system
 spec:
+  interval: 10m
+  prune: true
   path: ./clusters/${CLUSTER_NAME}
   sourceRef:
     kind: GitRepository
@@ -492,7 +498,7 @@ spec:
 Pull secrets from Vault, AWS Secrets Manager, or other backends.
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: db-creds
@@ -569,12 +575,13 @@ sequenceDiagram
 
 ```yaml
 apiVersion: v1
-kind: ConfigMap
+kind: Secret
 metadata:
-  name: argocd-cm
+  name: argocd-secret
   namespace: argocd
-data:
-  webhook.github.secret: $webhook-secret
+type: Opaque
+stringData:
+  webhook.github.secret: webhook-secret-value
 ```
 
 ### Flux Receiver for Webhooks
@@ -587,10 +594,14 @@ metadata:
   namespace: flux-system
 spec:
   type: github
+  events:
+    - ping
+    - push
   secretRef:
     name: webhook-token
   resources:
-    - kind: GitRepository
+    - apiVersion: source.toolkit.fluxcd.io/v1
+      kind: GitRepository
       name: myapp
 ```
 
