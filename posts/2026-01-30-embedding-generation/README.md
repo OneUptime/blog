@@ -99,8 +99,8 @@ Embedding models vary in quality, speed, and dimension size:
 
 | Model | Dimensions | Context Length | Best For |
 |-------|-----------|----------------|----------|
-| OpenAI text-embedding-3-small | 1536 | 8191 tokens | General purpose, cost effective |
-| OpenAI text-embedding-3-large | 3072 | 8191 tokens | Highest quality, more expensive |
+| OpenAI text-embedding-3-small | 1536 | 8192 tokens | General purpose, cost effective |
+| OpenAI text-embedding-3-large | 3072 | 8192 tokens | Highest quality, more expensive |
 | Cohere embed-english-v3.0 | 1024 | 512 tokens | English text, good balance |
 | sentence-transformers/all-MiniLM-L6-v2 | 384 | 256 tokens | Open source, fast, runs locally |
 | BAAI/bge-large-en-v1.5 | 1024 | 512 tokens | Open source, high quality |
@@ -403,6 +403,11 @@ def chunk_by_tokens(
     Split text into chunks by approximate token count.
     Uses whitespace splitting as a proxy for tokens.
     """
+    if chunk_size <= 0:
+        raise ValueError("chunk_size must be positive")
+    if overlap < 0 or overlap >= chunk_size:
+        raise ValueError("overlap must be non-negative and less than chunk_size")
+
     words = text.split()
     chunks = []
 
@@ -423,6 +428,11 @@ def chunk_by_sentences(
     Split text by sentence boundaries.
     Better preserves semantic coherence.
     """
+    if max_sentences <= 0:
+        raise ValueError("max_sentences must be positive")
+    if overlap_sentences < 0 or overlap_sentences >= max_sentences:
+        raise ValueError("overlap_sentences must be non-negative and less than max_sentences")
+
     # Simple sentence splitting pattern
     sentence_pattern = r'(?<=[.!?])\s+'
     sentences = re.split(sentence_pattern, text)
@@ -466,6 +476,9 @@ def recursive_chunk(
     Recursively split text using progressively smaller separators.
     Tries to keep semantic units together.
     """
+    if max_chunk_size <= 0:
+        raise ValueError("max_chunk_size must be positive")
+
     if separators is None:
         separators = ["\n\n", "\n", ". ", " "]
 
@@ -780,6 +793,13 @@ export function chunkByTokens(
   chunkSize: number = 512,
   overlap: number = 50
 ): string[] {
+  if (chunkSize <= 0) {
+    throw new Error('chunkSize must be positive');
+  }
+  if (overlap < 0 || overlap >= chunkSize) {
+    throw new Error('overlap must be non-negative and less than chunkSize');
+  }
+
   const words = text.split(/\s+/);
   const chunks: string[] = [];
 
@@ -801,6 +821,13 @@ export function chunkBySentences(
   maxSentences: number = 5,
   overlapSentences: number = 1
 ): string[] {
+  if (maxSentences <= 0) {
+    throw new Error('maxSentences must be positive');
+  }
+  if (overlapSentences < 0 || overlapSentences >= maxSentences) {
+    throw new Error('overlapSentences must be non-negative and less than maxSentences');
+  }
+
   const sentencePattern = /(?<=[.!?])\s+/;
   const sentences = text
     .split(sentencePattern)
@@ -827,6 +854,10 @@ export function recursiveChunk(
   maxChunkSize: number = 1000,
   separators: string[] = ['\n\n', '\n', '. ', ' ']
 ): string[] {
+  if (maxChunkSize <= 0) {
+    throw new Error('maxChunkSize must be positive');
+  }
+
   function splitText(text: string, sepIdx: number): string[] {
     if (text.length <= maxChunkSize) {
       return text.trim() ? [text] : [];
@@ -1049,36 +1080,47 @@ class AsyncBatchProcessor:
         self,
         session: aiohttp.ClientSession,
         texts: List[str]
-    ) -> List[Dict[str, Any]]:
+    ) -> tuple[List[Dict[str, Any]], int]:
         """Generate embeddings for a batch of texts."""
         async with self.semaphore:
-            await self._rate_limit()
+            last_error = None
 
-            async with session.post(
-                "https://api.openai.com/v1/embeddings",
-                headers={
-                    "Authorization": f"Bearer {self.api_key}",
-                    "Content-Type": "application/json"
-                },
-                json={
-                    "model": self.model,
-                    "input": texts,
-                    "encoding_format": "float"
-                }
-            ) as response:
-                if response.status != 200:
-                    text = await response.text()
-                    raise Exception(f"API error: {response.status} - {text}")
+            for attempt in range(3):
+                await self._rate_limit()
 
-                data = await response.json()
-                return [
-                    {
-                        "text": texts[i],
-                        "embedding": item["embedding"],
-                        "index": item["index"]
-                    }
-                    for i, item in enumerate(data["data"])
-                ]
+                try:
+                    async with session.post(
+                        "https://api.openai.com/v1/embeddings",
+                        headers={
+                            "Authorization": f"Bearer {self.api_key}",
+                            "Content-Type": "application/json"
+                        },
+                        json={
+                            "model": self.model,
+                            "input": texts,
+                            "encoding_format": "float"
+                        }
+                    ) as response:
+                        if response.status != 200:
+                            text = await response.text()
+                            raise Exception(f"API error: {response.status} - {text}")
+
+                        data = await response.json()
+                        return [
+                            {
+                                "text": texts[item["index"]],
+                                "embedding": item["embedding"],
+                                "index": item["index"]
+                            }
+                            for item in data["data"]
+                        ], data["usage"]["total_tokens"]
+
+                except Exception as e:
+                    last_error = e
+                    if attempt < 2:
+                        await asyncio.sleep(2 ** attempt)
+
+            raise last_error
 
     async def process_documents(
         self,
@@ -1128,8 +1170,9 @@ class AsyncBatchProcessor:
             processed = 0
             for future in asyncio.as_completed(tasks):
                 try:
-                    batch_results = await future
+                    batch_results, batch_tokens = await future
                     results.extend(batch_results)
+                    total_tokens += batch_tokens
                     processed += len(batch_results)
 
                     if on_progress:
@@ -1185,7 +1228,8 @@ Here is how to use pgvector with the embeddings we generated:
 ```python
 # vector_store.py
 import psycopg2
-from psycopg2.extras import execute_values
+from pgvector.psycopg2 import register_vector
+from psycopg2.extras import Json, execute_values
 from typing import List, Tuple
 import numpy as np
 
@@ -1204,6 +1248,8 @@ class PgVectorStore:
         with self.conn.cursor() as cur:
             # Enable pgvector extension
             cur.execute("CREATE EXTENSION IF NOT EXISTS vector")
+            self.conn.commit()
+            register_vector(self.conn)
 
             # Create embeddings table
             cur.execute("""
@@ -1243,7 +1289,7 @@ class PgVectorStore:
                 INSERT INTO embeddings (doc_id, chunk_index, content, embedding, metadata)
                 VALUES (%s, %s, %s, %s, %s)
                 """,
-                (doc_id, chunk_index, content, embedding, metadata or {})
+                (doc_id, chunk_index, content, np.array(embedding), Json(metadata or {}))
             )
             self.conn.commit()
 
@@ -1255,8 +1301,8 @@ class PgVectorStore:
                     r["doc_id"],
                     r["chunk_index"],
                     r["content"],
-                    r["embedding"],
-                    r.get("metadata", {})
+                    np.array(r["embedding"]),
+                    Json(r.get("metadata", {}))
                 )
                 for r in records
             ]
@@ -1303,7 +1349,13 @@ class PgVectorStore:
                 ORDER BY embedding <=> %s
                 LIMIT %s
                 """,
-                (query_embedding, query_embedding, threshold, query_embedding, limit)
+                (
+                    np.array(query_embedding),
+                    np.array(query_embedding),
+                    threshold,
+                    np.array(query_embedding),
+                    limit
+                )
             )
 
             results = []
@@ -1643,7 +1695,7 @@ Please answer the question based on the context provided above. Cite sources usi
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
             ],
-            max_tokens=max_tokens,
+            max_completion_tokens=max_tokens,
             temperature=0.7
         )
 
@@ -1946,7 +1998,7 @@ from typing import Tuple
 def validate_input(
     text: str,
     model: str = "text-embedding-3-small",
-    max_tokens: int = 8191
+    max_tokens: int = 8192
 ) -> Tuple[bool, str]:
     """
     Validate input text before embedding.
