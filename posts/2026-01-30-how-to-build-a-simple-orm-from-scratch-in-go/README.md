@@ -65,7 +65,7 @@ The heart of any ORM is its ability to inspect struct fields at runtime. Go's `r
 
 ```go
 // getTableName extracts the table name from a struct
-// It looks for a "table" tag on the struct or uses the struct name
+// It uses the struct name as the table name
 func getTableName(model interface{}) string {
     t := reflect.TypeOf(model)
 
@@ -84,6 +84,7 @@ type fieldInfo struct {
     Column     string       // Database column name
     Value      interface{}  // Field value
     IsPrimary  bool         // Is this the primary key?
+    Index      int          // Struct field index
 }
 
 // getFields extracts field information from a struct using reflection
@@ -129,10 +130,21 @@ func getFields(model interface{}) []fieldInfo {
             Column:    columnName,
             Value:     value.Interface(),
             IsPrimary: isPrimary,
+            Index:     i,
         })
     }
 
     return fields
+}
+
+// getPrimaryKeyColumn returns the primary key column name
+func getPrimaryKeyColumn(fields []fieldInfo) string {
+    for _, f := range fields {
+        if f.IsPrimary {
+            return f.Column
+        }
+    }
+    return "id"
 }
 ```
 
@@ -149,22 +161,25 @@ func buildInsertQuery(model interface{}) (string, []interface{}) {
     var columns []string
     var placeholders []string
     var values []interface{}
+    paramIndex := 1
 
-    for i, f := range fields {
+    for _, f := range fields {
         // Skip primary key fields (auto-increment)
         if f.IsPrimary {
             continue
         }
         columns = append(columns, f.Column)
-        placeholders = append(placeholders, fmt.Sprintf("$%d", i+1))
+        placeholders = append(placeholders, fmt.Sprintf("$%d", paramIndex))
         values = append(values, f.Value)
+        paramIndex++
     }
 
     query := fmt.Sprintf(
-        "INSERT INTO %s (%s) VALUES (%s) RETURNING id",
+        "INSERT INTO %s (%s) VALUES (%s) RETURNING %s",
         tableName,
         strings.Join(columns, ", "),
         strings.Join(placeholders, ", "),
+        getPrimaryKeyColumn(fields),
     )
 
     return query, values
@@ -193,6 +208,7 @@ func buildSelectQuery(model interface{}, whereColumn string, whereValue interfac
 func buildUpdateQuery(model interface{}, id interface{}) (string, []interface{}) {
     tableName := getTableName(model)
     fields := getFields(model)
+    primaryKey := getPrimaryKeyColumn(fields)
 
     var setClauses []string
     var values []interface{}
@@ -211,9 +227,10 @@ func buildUpdateQuery(model interface{}, id interface{}) (string, []interface{})
     values = append(values, id)
 
     query := fmt.Sprintf(
-        "UPDATE %s SET %s WHERE id = $%d",
+        "UPDATE %s SET %s WHERE %s = $%d",
         tableName,
         strings.Join(setClauses, ", "),
+        primaryKey,
         paramIndex,
     )
 
@@ -241,7 +258,8 @@ func (db *DB) Create(model interface{}) (int64, error) {
 
 // FindByID retrieves a record by its primary key
 func (db *DB) FindByID(model interface{}, id interface{}) error {
-    query := buildSelectQuery(model, "id", id)
+    fields := getFields(model)
+    query := buildSelectQuery(model, getPrimaryKeyColumn(fields), id)
 
     v := reflect.ValueOf(model)
     if v.Kind() != reflect.Ptr {
@@ -250,11 +268,10 @@ func (db *DB) FindByID(model interface{}, id interface{}) error {
     v = v.Elem()
 
     // Build a slice of pointers for scanning
-    fields := getFields(model)
     scanDest := make([]interface{}, len(fields))
 
     for i := range fields {
-        scanDest[i] = v.Field(i).Addr().Interface()
+        scanDest[i] = v.Field(fields[i].Index).Addr().Interface()
     }
 
     err := db.conn.QueryRow(query, id).Scan(scanDest...)
@@ -280,7 +297,8 @@ func (db *DB) Update(model interface{}, id interface{}) error {
 // Delete removes a record by ID
 func (db *DB) Delete(model interface{}, id interface{}) error {
     tableName := getTableName(model)
-    query := fmt.Sprintf("DELETE FROM %s WHERE id = $1", tableName)
+    fields := getFields(model)
+    query := fmt.Sprintf("DELETE FROM %s WHERE %s = $1", tableName, getPrimaryKeyColumn(fields))
 
     _, err := db.conn.Exec(query, id)
     if err != nil {
