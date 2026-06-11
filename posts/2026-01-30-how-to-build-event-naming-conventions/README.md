@@ -27,23 +27,26 @@ A well-structured event name follows a predictable pattern that encodes context.
 
 ```mermaid
 flowchart LR
-    A[Object] --> B[Action]
-    B --> C[Qualifier]
+    A[Namespace] --> B[Object]
+    B --> C[Action]
+    C --> E[Qualifier]
 
     subgraph Example
-        D["checkout.payment.submitted"]
+        D["checkout.payment.submitted.succeeded"]
     end
 
     A -.-> |"checkout"| D
     B -.-> |"payment"| D
     C -.-> |"submitted"| D
+    E -.-> |"succeeded"| D
 ```
 
-The pattern breaks down into three parts:
+The pattern breaks down into these parts:
 
 | Component | Purpose | Examples |
 |-----------|---------|----------|
-| Object | The entity being acted upon | `user`, `order`, `checkout`, `cart` |
+| Namespace | The feature area or domain (optional) | `checkout`, `auth`, `inventory` |
+| Object | The entity being acted upon | `user`, `order`, `payment`, `cart` |
 | Action | What operation occurred | `created`, `updated`, `deleted`, `viewed` |
 | Qualifier | Additional context (optional) | `succeeded`, `failed`, `started`, `completed` |
 
@@ -53,7 +56,7 @@ The pattern breaks down into three parts:
 
 The simplest pattern joins an object with its action using a separator. This works well for most business events and analytics tracking.
 
-This TypeScript implementation provides type-safe event name construction with auto-completion support. The generic types ensure only valid object-action combinations can be created.
+This TypeScript implementation provides type-safe event name construction with auto-completion support. The string literal union types ensure only allowed objects and actions can be used.
 
 ```typescript
 // event-naming.ts - Type-safe event name builder
@@ -335,7 +338,7 @@ This tracker validates event names against the registry and checks required attr
 ```typescript
 // event-tracker.ts - Validated event tracking
 
-import { EVENT_REGISTRY, getEventDefinition } from './event-registry';
+import { getEventDefinition } from './event-registry';
 
 interface TrackingPayload {
   event: string;
@@ -448,7 +451,7 @@ export const tracker = new EventTracker();
 
 For observability systems, span events follow similar naming patterns but integrate with distributed tracing. Here is how to apply the conventions to OpenTelemetry.
 
-This helper wraps OpenTelemetry span event creation with consistent naming. It automatically adds timestamps and validates event names against your conventions.
+This helper wraps OpenTelemetry span event creation with consistent naming. OpenTelemetry records a timestamp for each span event, and the helper keeps event names aligned with your conventions. For new OpenTelemetry instrumentation, prefer log-based events correlated with the active span when that fits your backend and SDK support; the span event API is still shown here for existing tracing workflows.
 
 ```typescript
 // otel-events.ts - OpenTelemetry span event naming
@@ -721,10 +724,11 @@ This ESLint rule validates that all event names in your codebase follow the defi
 ```typescript
 // eslint-rules/event-naming.ts - ESLint rule for event name validation
 
-import { Rule } from 'eslint';
+import { ESLintUtils, TSESTree } from '@typescript-eslint/utils';
 
-// Pattern: namespace.object.action or object.action
-const EVENT_NAME_PATTERN = /^[a-z][a-z0-9]*(\.[a-z][a-z0-9]*){1,3}$/;
+// Pattern: namespace.object.action or object.action.
+// Segments use lowercase snake_case so names like product.added_to_cart are valid.
+const EVENT_NAME_PATTERN = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*){1,3}$/;
 
 // Valid actions (past tense)
 const VALID_ACTIONS = new Set([
@@ -735,19 +739,31 @@ const VALID_ACTIONS = new Set([
   'received', 'sent', 'published', 'subscribed', 'unsubscribed',
   'established', 'closed', 'exceeded', 'reached', 'occurred',
   'hit', 'miss', 'invalidated', 'evicted', 'opened',
+  'selected', 'performed', 'changed', 'paid', 'joined', 'removed',
+  'suspended', 'upgraded', 'downgraded', 'added', 'added_to_cart',
+  'removed_from_cart', 'added_to_wishlist', 'abandoned', 'confirmed',
+  'succeeded', 'invited', 'enabled', 'disabled', 'applied',
+  'logged_in', 'signed_up',
+  'dead_lettered',
 ]);
 
-const rule: Rule.RuleModule = {
+const createRule = ESLintUtils.RuleCreator<{
+  recommended: boolean;
+}>(name => `https://example.com/eslint-rules/${name}`);
+
+const rule = createRule({
+  name: 'event-naming',
   meta: {
     type: 'suggestion',
     docs: {
       description: 'Enforce event naming conventions',
       recommended: true,
     },
+    schema: [],
     messages: {
-      invalidFormat: 'Event name "{{ name }}" does not match pattern: namespace.object.action',
+      invalidFormat: 'Event name "{{ name }}" does not match pattern: [namespace.]object.action[.qualifier]',
       invalidAction: 'Event action "{{ action }}" is not a valid past tense action',
-      useCamelCase: 'Event name should use lowercase with dots, not camelCase',
+      useCamelCase: 'Event name should use lowercase snake_case segments with dots, not camelCase',
     },
   },
 
@@ -758,10 +774,10 @@ const rule: Rule.RuleModule = {
         // Check if this is a track() call
         if (
           node.callee.type === 'MemberExpression' &&
-          node.callee.property.type === 'Identifier' &&
+          node.callee.property.type === TSESTree.AST_NODE_TYPES.Identifier &&
           node.callee.property.name === 'track' &&
           node.arguments.length > 0 &&
-          node.arguments[0].type === 'Literal' &&
+          node.arguments[0].type === TSESTree.AST_NODE_TYPES.Literal &&
           typeof node.arguments[0].value === 'string'
         ) {
           const eventName = node.arguments[0].value as string;
@@ -800,7 +816,8 @@ const rule: Rule.RuleModule = {
       },
     };
   },
-};
+  defaultOptions: [],
+});
 
 export default rule;
 ```
@@ -919,7 +936,7 @@ export const migrationTracker = new MigrationTracker();
 
 Document your event naming conventions in a team-accessible location. Here is a template.
 
-```markdown
+````markdown
 # Event Naming Conventions
 
 ## Format
@@ -927,7 +944,7 @@ Document your event naming conventions in a team-accessible location. Here is a 
 All events follow this pattern:
 ```
 [namespace.]object.action[.qualifier]
-```text
+```
 
 ## Rules
 
@@ -957,7 +974,7 @@ All events follow this pattern:
 | Old Name | New Name | Remove Date |
 |----------|----------|-------------|
 | userSignup | user.created | 2026-03-01 |
-```
+````
 
 ## Key Takeaways
 
