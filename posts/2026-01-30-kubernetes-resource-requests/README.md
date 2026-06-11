@@ -104,7 +104,10 @@ When a container tries to use more CPU than its limit, the kernel throttles it. 
 
 kubectl top pod web-server
 
-# Get detailed throttling metrics from cgroups
+# Get detailed throttling metrics from cgroups (cgroup v2)
+kubectl exec web-server -- cat /sys/fs/cgroup/cpu.stat
+
+# Older cgroup v1 nodes may use this path instead
 kubectl exec web-server -- cat /sys/fs/cgroup/cpu/cpu.stat
 ```
 
@@ -406,7 +409,7 @@ spec:
     kind: Deployment
     name: web
   updatePolicy:
-    updateMode: "Auto"    # Options: Off, Initial, Recreate, Auto
+    updateMode: "Recreate"    # Options: Off, Initial, Recreate
   resourcePolicy:
     containerPolicies:
       - containerName: "*"
@@ -426,7 +429,7 @@ spec:
 | Off | Only provides recommendations, no changes |
 | Initial | Sets resources only at pod creation |
 | Recreate | Recreates pods to apply new resources |
-| Auto | Updates pods when possible (recreates if needed) |
+| Auto | Deprecated alias for Recreate |
 
 Start with "Off" mode to see recommendations before enabling automatic updates:
 
@@ -481,8 +484,8 @@ avg_over_time(
   rate(container_cpu_usage_seconds_total{
     namespace="production",
     container="web"
-  }[5m])
-[7d])
+  }[5m])[7d:]
+)
 
 # 95th percentile memory usage over 7 days
 quantile_over_time(0.95,
@@ -780,14 +783,17 @@ resources:
 Check if containers are being throttled:
 
 ```bash
-# Get throttling stats
+# Get throttling stats (cgroup v2)
+kubectl exec myapp -- cat /sys/fs/cgroup/cpu.stat
+
+# Older cgroup v1 nodes may use this path instead
 kubectl exec myapp -- cat /sys/fs/cgroup/cpu/cpu.stat
 
 # nr_throttled: number of throttle events
-# throttled_time: total throttle time in nanoseconds
+# throttled_usec (cgroup v2) or throttled_time (cgroup v1): total throttle time
 ```
 
-If throttled_time is high relative to total CPU time, increase CPU limits:
+If throttled_usec or throttled_time is high relative to total CPU time, increase CPU limits:
 
 ```yaml
 resources:
