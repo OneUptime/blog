@@ -333,7 +333,7 @@ namespace YourApp.Validation
             var userService = validationContext.GetRequiredService<IUserService>();
 
             // Check if username exists (this is synchronous)
-            // For async operations, consider using IValidatableObject instead
+            // For async operations, validate in the handler/action or another async service
             var exists = userService.UsernameExistsSync(username);
 
             if (exists)
@@ -375,9 +375,9 @@ public class UserRegistrationModel
 }
 ```
 
-## Async Validation with IValidatableObject
+## Model-Level Validation with IValidatableObject
 
-Validation attributes are synchronous by design. For async validation (like checking a database), implement `IValidatableObject` on your model.
+Validation attributes are synchronous by design. For validation that involves multiple model properties or service-backed checks, implement `IValidatableObject` on your model. Keep this code synchronous; for true async database or API checks, run the check in your handler/action or another async service and add model state errors there.
 
 ```csharp
 using System.ComponentModel.DataAnnotations;
@@ -580,9 +580,23 @@ namespace YourApp.Validation
         public void AddValidation(ClientModelValidationContext context)
         {
             // Add data attributes for client-side JavaScript validation
-            context.Attributes.Add("data-val", "true");
-            context.Attributes.Add("data-val-maxfilesize", ErrorMessage ?? "File too large.");
-            context.Attributes.Add("data-val-maxfilesize-maxbytes", _maxSizeInBytes.ToString());
+            MergeAttribute(context.Attributes, "data-val", "true");
+            MergeAttribute(context.Attributes, "data-val-maxfilesize", ErrorMessage ?? "File too large.");
+            MergeAttribute(context.Attributes, "data-val-maxfilesize-maxbytes", _maxSizeInBytes.ToString());
+        }
+
+        private static bool MergeAttribute(
+            IDictionary<string, string> attributes,
+            string key,
+            string value)
+        {
+            if (attributes.ContainsKey(key))
+            {
+                return false;
+            }
+
+            attributes.Add(key, value);
+            return true;
         }
     }
 }
