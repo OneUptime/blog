@@ -207,6 +207,7 @@ Here's a complete example showing all parameter types in action.
 ```csharp
 // File: Components/DataCard.razor
 
+@using MyApp.Services
 @typeparam TItem
 
 <div class="data-card @CssClass">
@@ -407,6 +408,8 @@ Set up the cascading value provider at the app level.
 ```csharp
 // File: App.razor
 
+@using MyApp.Services
+
 <CascadingValue Value="theme" Name="AppTheme">
     <Router AppAssembly="@typeof(App).Assembly">
         <Found Context="routeData">
@@ -421,16 +424,6 @@ Set up the cascading value provider at the app level.
 
 @code {
     private ThemeInfo theme = new();
-
-    protected override void OnInitialized()
-    {
-        // Load saved theme preferences
-        var savedTheme = LocalStorage.GetItem<ThemeInfo>("theme");
-        if (savedTheme != null)
-        {
-            theme = savedTheme;
-        }
-    }
 }
 ```
 
@@ -438,6 +431,8 @@ Now any component can access the theme through a cascading parameter.
 
 ```csharp
 // File: Components/ThemedButton.razor
+
+@using MyApp.Services
 
 <button class="themed-btn @SizeClass"
         style="background-color: @Theme?.PrimaryColor;
@@ -743,6 +738,7 @@ Define supporting classes for the grid.
 ```csharp
 // File: Components/GridColumn.cs
 
+using Microsoft.AspNetCore.Components;
 using System.Linq.Expressions;
 
 namespace MyApp.Components;
@@ -1022,12 +1018,17 @@ Create a notification display component.
 @code {
     protected override void OnInitialized()
     {
-        NotificationService.OnChange += StateHasChanged;
+        NotificationService.OnChange += HandleNotificationsChanged;
+    }
+
+    private void HandleNotificationsChanged()
+    {
+        _ = InvokeAsync(StateHasChanged);
     }
 
     public void Dispose()
     {
-        NotificationService.OnChange -= StateHasChanged;
+        NotificationService.OnChange -= HandleNotificationsChanged;
     }
 }
 ```
@@ -1248,7 +1249,7 @@ Use `ShouldRender` to prevent unnecessary re-renders.
 
     protected override bool ShouldRender()
     {
-        var currentDataHash = Data.GetHashCode();
+        var currentDataHash = GetDataHash(Data);
 
         // Only re-render if Title or Data actually changed
         var shouldRender = Title != _previousTitle || currentDataHash != _previousDataHash;
@@ -1260,6 +1261,16 @@ Use `ShouldRender` to prevent unnecessary re-renders.
         }
 
         return shouldRender;
+    }
+
+    private static int GetDataHash(int[] data)
+    {
+        var hash = new HashCode();
+        foreach (var value in data)
+        {
+            hash.Add(value);
+        }
+        return hash.ToHashCode();
     }
 
     private string ExpensiveCalculation(int[] data)
@@ -1395,6 +1406,7 @@ Write tests for your components using bUnit.
 // File: Tests/AlertTests.cs
 
 using Bunit;
+using FluentAssertions;
 using MyComponents.Components;
 using Xunit;
 
@@ -1473,6 +1485,7 @@ public class AlertTests : TestContext
 // File: Tests/DataGridTests.cs
 
 using Bunit;
+using FluentAssertions;
 using MyComponents.Components;
 using Xunit;
 
