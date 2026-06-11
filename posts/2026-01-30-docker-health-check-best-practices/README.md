@@ -22,7 +22,7 @@ Without health checks, Docker only knows if your container's main process (PID 1
 - Application stuck in an infinite loop
 - Dependency service unavailable
 
-When a container becomes unhealthy, orchestrators like Docker Swarm or Kubernetes can automatically restart or replace it.
+When a container becomes unhealthy, orchestrators like Docker Swarm can automatically restart or replace it. Kubernetes uses its own liveness, readiness, and startup probes for the same kind of recovery behavior.
 
 ## The HEALTHCHECK Instruction
 
@@ -63,13 +63,14 @@ CMD ["nginx", "-g", "daemon off;"]
 
 ### HEALTHCHECK Options Explained
 
-The HEALTHCHECK instruction accepts four timing options:
+The HEALTHCHECK instruction accepts five timing options:
 
 | Option | Default | Description |
 |--------|---------|-------------|
 | --interval | 30s | Time between health check executions |
 | --timeout | 30s | Maximum time to wait for check to complete |
 | --start-period | 0s | Grace period for container startup |
+| --start-interval | 5s | Time between checks during the start period (Docker Engine 25.0+) |
 | --retries | 3 | Consecutive failures needed to mark unhealthy |
 
 Here is a detailed example showing all options:
@@ -79,6 +80,7 @@ HEALTHCHECK \
     --interval=30s \
     --timeout=10s \
     --start-period=60s \
+    --start-interval=5s \
     --retries=3 \
     CMD curl -f http://localhost:8080/health || exit 1
 ```
@@ -117,7 +119,7 @@ HEALTHCHECK --interval=60s --timeout=10s --retries=3 \
 
 ### Start Period Configuration
 
-The start-period gives your application time to initialize before health checks count against it. Failed checks during this period do not count toward the retry limit.
+The start-period gives your application time to initialize before health checks count against it. Failed checks during this period do not count toward the retry limit unless a health check has already succeeded, which tells Docker the container has finished starting.
 
 Calculate your start period based on:
 - Application boot time
@@ -162,7 +164,7 @@ FROM node:20-alpine
 
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --production
+RUN apk add --no-cache curl && npm ci --omit=dev
 COPY . .
 
 # Curl with connection timeout and max time
@@ -229,10 +231,10 @@ Some applications need custom logic to determine health:
 ```dockerfile
 FROM rabbitmq:3-management-alpine
 
-# RabbitMQ provides rabbitmqctl for health checking
-# Checks node health and alarms
+# RabbitMQ provides rabbitmq-diagnostics for health checking
+# Checks that the RabbitMQ application is running and no local alarms are active
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
-    CMD rabbitmqctl node_health_check || exit 1
+    CMD rabbitmq-diagnostics -q check_running && rabbitmq-diagnostics -q check_local_alarms || exit 1
 
 EXPOSE 5672 15672
 ```
@@ -481,8 +483,6 @@ Docker Compose provides health check configuration in the service definition.
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
-
 services:
   api:
     build: .
@@ -496,6 +496,7 @@ services:
       timeout: 5s
       retries: 3
       start_period: 60s
+      start_interval: 5s
     depends_on:
       db:
         condition: service_healthy
@@ -514,6 +515,7 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
+      start_interval: 5s
 
 volumes:
   pgdata:
@@ -547,8 +549,6 @@ This example shows a complete application stack with proper health check depende
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
-
 services:
   # Frontend service
   frontend:
@@ -652,7 +652,7 @@ services:
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
     healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "check_running"]
+      test: ["CMD-SHELL", "rabbitmq-diagnostics -q check_running && rabbitmq-diagnostics -q check_local_alarms"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -907,6 +907,7 @@ module.exports = router;
 # health.py - Flask health check blueprint
 from flask import Blueprint, jsonify
 import time
+import os
 import psycopg2
 import redis
 
