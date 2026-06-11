@@ -12,7 +12,7 @@ Description: Learn to implement bridge tables for handling many-to-many relation
 
 In dimensional modeling, bridge tables solve one of the most challenging problems: representing many-to-many relationships between fact tables and dimension tables. When a single transaction or event relates to multiple dimension members simultaneously, bridge tables provide an elegant solution that preserves query performance and analytical flexibility.
 
-This guide walks you through implementing bridge tables with practical SQL examples, weighting factors for accurate aggregations, and query patterns you can use in production data warehouses.
+This guide walks you through implementing bridge tables with practical MySQL 8.0+ examples, weighting factors for accurate aggregations, and query patterns you can use in production data warehouses.
 
 ## Understanding the Problem
 
@@ -95,11 +95,19 @@ INSERT INTO dim_promotion (promotion_id, promotion_name, promotion_type, discoun
 (6, 'Bundle Discount',       'Cross-sell', 12.00, '2026-01-01', '2026-12-31', TRUE);
 ```
 
-### Step 2: Create the Bridge Table
+### Step 2: Create the Group Lookup and Bridge Tables
 
-The bridge table contains the promotion group key, individual promotion keys, and weighting factors.
+The group lookup table stores each unique promotion combination, and the bridge table contains the promotion group key, individual promotion keys, and weighting factors.
 
 ```sql
+-- Create a helper table to track promotion group assignments
+CREATE TABLE promotion_group_lookup (
+    promotion_group_key INT PRIMARY KEY AUTO_INCREMENT,
+    promotion_set_hash  VARCHAR(64) UNIQUE NOT NULL,
+    promotion_count     INT NOT NULL,
+    created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Create the bridge table for promotions
 -- Each row represents one promotion within a promotion group
 CREATE TABLE bridge_promotion (
@@ -110,7 +118,8 @@ CREATE TABLE bridge_promotion (
     -- Composite primary key ensures uniqueness
     PRIMARY KEY (promotion_group_key, promotion_id),
 
-    -- Foreign key to the dimension table
+    -- Foreign keys to the group lookup and dimension tables
+    FOREIGN KEY (promotion_group_key) REFERENCES promotion_group_lookup(promotion_group_key),
     FOREIGN KEY (promotion_id) REFERENCES dim_promotion(promotion_id)
 );
 
@@ -121,11 +130,11 @@ CREATE INDEX idx_bridge_promotion_group
 
 ### Step 3: Create the Fact Table
 
-The fact table references the bridge through the promotion group key.
+The fact table references the group lookup through the promotion group key.
 
 ```sql
 -- Create the sales fact table
--- References the bridge table via promotion_group_key
+-- References the promotion group lookup via promotion_group_key
 CREATE TABLE fact_sales (
     sale_id             INT PRIMARY KEY,
     sale_date           DATE NOT NULL,
@@ -138,9 +147,9 @@ CREATE TABLE fact_sales (
     net_amount          DECIMAL(12,2) NOT NULL,
     promotion_group_key INT,
 
-    -- Foreign key to bridge table group
+    -- Foreign key to the group lookup table
     FOREIGN KEY (promotion_group_key)
-        REFERENCES bridge_promotion(promotion_group_key)
+        REFERENCES promotion_group_lookup(promotion_group_key)
 );
 
 -- Create index for joining to bridge table
@@ -153,14 +162,6 @@ CREATE INDEX idx_fact_sales_promo_group
 Here is where the logic gets interesting. You need to generate unique group keys for each distinct combination of promotions.
 
 ```sql
--- Create a helper table to track promotion group assignments
-CREATE TABLE promotion_group_lookup (
-    promotion_group_key INT PRIMARY KEY AUTO_INCREMENT,
-    promotion_set_hash  VARCHAR(64) UNIQUE NOT NULL,
-    promotion_count     INT NOT NULL,
-    created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
 -- Stored procedure to get or create a promotion group
 -- This ensures each unique combination gets a consistent group key
 DELIMITER //
@@ -172,6 +173,7 @@ CREATE PROCEDURE get_or_create_promotion_group(
 BEGIN
     DECLARE v_hash VARCHAR(64);
     DECLARE v_count INT;
+    DECLARE CONTINUE HANDLER FOR NOT FOUND SET p_group_key = NULL;
 
     -- Create a deterministic hash of the sorted promotion IDs
     -- Sorting ensures '1,2,3' and '3,1,2' produce the same hash
@@ -188,7 +190,13 @@ BEGIN
         WHERE FIND_IN_SET(promotion_id, p_promotion_ids)
     );
 
+    IF v_count = 0 THEN
+        SIGNAL SQLSTATE '45000'
+            SET MESSAGE_TEXT = 'Promotion group must contain at least one valid promotion ID';
+    END IF;
+
     -- Check if this combination already exists
+    SET p_group_key = NULL;
     SELECT promotion_group_key INTO p_group_key
     FROM promotion_group_lookup
     WHERE promotion_set_hash = v_hash;
@@ -268,27 +276,24 @@ Sometimes equal weighting does not reflect business reality. You might want to w
 -- Update bridge table with custom weights based on discount percentage
 -- Higher discount promotions get proportionally more credit
 UPDATE bridge_promotion bp
-SET weight_factor = (
+JOIN dim_promotion dp
+    ON bp.promotion_id = dp.promotion_id
+JOIN (
+    -- Calculate totals for each group
     SELECT
-        -- Calculate this promotion's share of total discount in group
+        bp2.promotion_group_key,
+        SUM(dp2.discount_percent) as group_total_discount,
+        COUNT(*) as group_count
+    FROM bridge_promotion bp2
+    JOIN dim_promotion dp2 ON bp2.promotion_id = dp2.promotion_id
+    GROUP BY bp2.promotion_group_key
+) totals
+    ON bp.promotion_group_key = totals.promotion_group_key
+SET bp.weight_factor =
         CASE
             WHEN group_total_discount = 0 THEN 1.0 / group_count
             ELSE dp.discount_percent / group_total_discount
-        END
-    FROM dim_promotion dp
-    CROSS JOIN (
-        -- Calculate totals for this group
-        SELECT
-            bp2.promotion_group_key,
-            SUM(dp2.discount_percent) as group_total_discount,
-            COUNT(*) as group_count
-        FROM bridge_promotion bp2
-        JOIN dim_promotion dp2 ON bp2.promotion_id = dp2.promotion_id
-        WHERE bp2.promotion_group_key = bp.promotion_group_key
-        GROUP BY bp2.promotion_group_key
-    ) totals
-    WHERE dp.promotion_id = bp.promotion_id
-);
+        END;
 ```
 
 ### Weighting Factor Validation
@@ -435,7 +440,7 @@ LIMIT 20;
 ```sql
 -- Analyze promotion performance over time with proper weighting
 SELECT
-    DATE_TRUNC('month', fs.sale_date) as sale_month,
+    DATE_FORMAT(fs.sale_date, '%Y-%m-01') as sale_month,
     dp.promotion_type,
 
     -- Distinct sale count (not inflated)
@@ -448,7 +453,7 @@ SELECT
     -- Calculate month-over-month growth
     LAG(SUM(fs.net_amount * bp.weight_factor)) OVER (
         PARTITION BY dp.promotion_type
-        ORDER BY DATE_TRUNC('month', fs.sale_date)
+        ORDER BY DATE_FORMAT(fs.sale_date, '%Y-%m-01')
     ) as prev_month_revenue
 
 FROM fact_sales fs
@@ -457,7 +462,7 @@ JOIN bridge_promotion bp
 JOIN dim_promotion dp
     ON bp.promotion_id = dp.promotion_id
 GROUP BY
-    DATE_TRUNC('month', fs.sale_date),
+    DATE_FORMAT(fs.sale_date, '%Y-%m-01'),
     dp.promotion_type
 ORDER BY
     sale_month,
@@ -547,11 +552,15 @@ CREATE TABLE bridge_employee_skill (
 -- Weight based on proficiency level
 -- Expert skills get more attribution than basic skills
 UPDATE bridge_employee_skill bes
-SET weight_factor = (
-    SELECT bes.proficiency_level / SUM(bes2.proficiency_level)
-    FROM bridge_employee_skill bes2
-    WHERE bes2.skill_group_key = bes.skill_group_key
-);
+JOIN (
+    SELECT
+        skill_group_key,
+        SUM(proficiency_level) as total_proficiency
+    FROM bridge_employee_skill
+    GROUP BY skill_group_key
+) totals
+    ON bes.skill_group_key = totals.skill_group_key
+SET bes.weight_factor = bes.proficiency_level / totals.total_proficiency;
 ```
 
 ## Performance Optimization
@@ -574,11 +583,11 @@ CREATE INDEX idx_bridge_covering
     ON bridge_promotion(promotion_group_key, promotion_id, weight_factor);
 ```
 
-### Materialized Views for Common Aggregations
+### Pre-Aggregated Tables for Common Aggregations
 
 ```sql
 -- Pre-aggregate weighted metrics for dashboard queries
-CREATE MATERIALIZED VIEW mv_promotion_daily_metrics AS
+CREATE TABLE promotion_daily_metrics AS
 SELECT
     fs.sale_date,
     dp.promotion_id,
@@ -599,7 +608,9 @@ GROUP BY
     dp.promotion_type;
 
 -- Refresh strategy: daily after ETL completes
--- REFRESH MATERIALIZED VIEW mv_promotion_daily_metrics;
+-- TRUNCATE TABLE promotion_daily_metrics;
+-- INSERT INTO promotion_daily_metrics
+-- SELECT ...same query as above...;
 ```
 
 ### Partition Strategy for Large Bridge Tables
@@ -617,7 +628,7 @@ PARTITION BY RANGE (promotion_group_key) (
     PARTITION p0 VALUES LESS THAN (100000),
     PARTITION p1 VALUES LESS THAN (200000),
     PARTITION p2 VALUES LESS THAN (300000),
-    PARTITION p3 VALUES LESS THAN (MAXVALUE)
+    PARTITION p3 VALUES LESS THAN MAXVALUE
 );
 ```
 
@@ -650,17 +661,16 @@ GROUP BY dp.promotion_type;
 ```sql
 -- Automated fix for weight normalization
 UPDATE bridge_promotion bp
-SET weight_factor = weight_factor / (
-    SELECT SUM(weight_factor)
-    FROM bridge_promotion bp2
-    WHERE bp2.promotion_group_key = bp.promotion_group_key
-)
-WHERE promotion_group_key IN (
-    SELECT promotion_group_key
+JOIN (
+    SELECT
+        promotion_group_key,
+        SUM(weight_factor) as total_weight
     FROM bridge_promotion
     GROUP BY promotion_group_key
     HAVING ABS(SUM(weight_factor) - 1.0) > 0.0001
-);
+) totals
+    ON bp.promotion_group_key = totals.promotion_group_key
+SET bp.weight_factor = bp.weight_factor / totals.total_weight;
 ```
 
 ### Pitfall 3: NULL Handling in Joins
