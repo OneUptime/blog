@@ -55,13 +55,13 @@ The assignment strategy determines the mapping between partitions and consumers.
 | RangeAssignor | Per-topic | No | No | Single topic, simple setups |
 | RoundRobinAssignor | Global | No | No | Multi-topic, fresh starts |
 | StickyAssignor | Global | Yes | No | Minimizing rebalance impact |
-| CooperativeStickyAssignor | Global | Yes | Yes | Production, zero-downtime |
+| CooperativeStickyAssignor | Global | Yes | Yes | Production, low-disruption rebalances |
 
 ---
 
 ## RangeAssignor
 
-The default strategy in Kafka. It assigns partitions on a per-topic basis by dividing partitions into contiguous ranges.
+The first assignor in the default Kafka Java client configuration. It assigns partitions on a per-topic basis by dividing partitions into contiguous ranges.
 
 ### How It Works
 
@@ -91,7 +91,7 @@ props.put(ConsumerConfig.GROUP_ID_CONFIG, "my-group");
 props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
 props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
 
-// RangeAssignor is the default, but you can set it explicitly
+// RangeAssignor is first in the default assignor list, but you can set it explicitly
 props.put(ConsumerConfig.PARTITION_ASSIGNMENT_STRATEGY_CONFIG,
     RangeAssignor.class.getName());
 
@@ -103,6 +103,7 @@ consumer.subscribe(Arrays.asList("orders", "inventory"));
 
 ```python
 from kafka import KafkaConsumer
+from kafka.coordinator.assignors.range import RangePartitionAssignor
 
 consumer = KafkaConsumer(
     'orders',
@@ -110,7 +111,7 @@ consumer = KafkaConsumer(
     bootstrap_servers=['localhost:9092'],
     group_id='my-group',
     partition_assignment_strategy=[
-        'kafka.coordinator.assignors.range.RangeAssignor'
+        RangePartitionAssignor
     ]
 )
 ```
@@ -138,8 +139,8 @@ flowchart TB
 This looks balanced, but with 2 topics of 4 partitions each and 3 consumers:
 
 - Consumer 1: A0, A1, B0, B1 (4 partitions)
-- Consumer 2: A2, A3, B2, B3 (4 partitions)
-- Consumer 3: Nothing extra
+- Consumer 2: A2, B2 (2 partitions)
+- Consumer 3: A3, B3 (2 partitions)
 
 If partition counts don't divide evenly, Consumer 1 gets extra partitions from each topic. With many topics, this imbalance compounds.
 
@@ -258,7 +259,7 @@ props.put(ConsumerConfig.PARTITION_ASSIGNMENT_STRATEGY_CONFIG,
 KafkaConsumer<String, String> consumer = new KafkaConsumer<>(props);
 ```
 
-### Configuration (Node.js with kafkajs)
+### KafkaJS Note
 
 ```javascript
 const { Kafka } = require('kafkajs');
@@ -271,17 +272,13 @@ const kafka = new Kafka({
 const consumer = kafka.consumer({
   groupId: 'my-group',
   partitionAssignors: [
-    // kafkajs uses StickyAssignor by default
+    // KafkaJS uses round robin by default and exposes it here explicitly.
     require('kafkajs').PartitionAssignors.roundRobin
   ]
 });
-
-// For sticky behavior (default in kafkajs)
-const consumerSticky = kafka.consumer({
-  groupId: 'my-group'
-  // Default assignor is already sticky-like
-});
 ```
+
+KafkaJS does not provide Kafka's built-in `StickyAssignor` out of the box. Use a Java client or another client that supports `org.apache.kafka.clients.consumer.StickyAssignor` when you need the Kafka sticky assignment strategy.
 
 ### Why Stickiness Matters
 
@@ -469,7 +466,7 @@ public class CooperativeConsumer {
 ```mermaid
 flowchart TD
     A[Start] --> B{Production environment?}
-    B -->|Yes| C{Need zero-downtime rebalancing?}
+    B -->|Yes| C{Need low-disruption rebalancing?}
     B -->|No| D[RoundRobinAssignor]
     C -->|Yes| E[CooperativeStickyAssignor]
     C -->|No| F{Have stateful consumers?}
@@ -487,7 +484,7 @@ flowchart TD
 | Production with stateful processing | CooperativeStickyAssignor | Minimal state invalidation |
 | Legacy Kafka (< 2.4) | StickyAssignor | Best option available |
 | Simple single-topic consumption | RangeAssignor | Default, works fine |
-| High-throughput with frequent scaling | CooperativeStickyAssignor | Continuous processing during scale |
+| High-throughput with frequent scaling | CooperativeStickyAssignor | Keeps unaffected partitions processing during scale |
 
 ---
 
@@ -500,7 +497,7 @@ If you're running StickyAssignor and want to migrate to CooperativeStickyAssigno
 ```java
 // Temporary configuration during migration
 props.put(ConsumerConfig.PARTITION_ASSIGNMENT_STRATEGY_CONFIG,
-    CooperativeStickyAssignor.class.getName() + "," + StickyAssignor.class.getName());
+    StickyAssignor.class.getName() + "," + CooperativeStickyAssignor.class.getName());
 ```
 
 ### Step 2: Deploy to All Consumers
@@ -565,7 +562,7 @@ Key metrics to monitor:
 // Increase session timeout if processing takes long
 props.put(ConsumerConfig.SESSION_TIMEOUT_MS_CONFIG, 45000);
 
-// Ensure heartbeat is frequent enough (should be < session.timeout / 3)
+// Ensure heartbeat is frequent enough (typically no higher than session.timeout / 3)
 props.put(ConsumerConfig.HEARTBEAT_INTERVAL_MS_CONFIG, 15000);
 
 // Increase max poll interval for slow processing
@@ -606,9 +603,9 @@ props.put(ConsumerConfig.PARTITION_ASSIGNMENT_STRATEGY_CONFIG,
 | RangeAssignor | Default option, single topic, simple use cases |
 | RoundRobinAssignor | Multiple topics, need even distribution, can tolerate full rebalances |
 | StickyAssignor | Stateful consumers, want to minimize partition movement, Kafka < 2.4 |
-| CooperativeStickyAssignor | Production workloads, need continuous processing during rebalances |
+| CooperativeStickyAssignor | Production workloads, need unaffected partitions to keep processing during rebalances |
 
-For most production deployments, CooperativeStickyAssignor is the best choice. It provides balanced assignment, minimizes partition movement, and allows continuous processing during rebalances. Start with it unless you have specific requirements that suggest otherwise.
+For most production deployments, CooperativeStickyAssignor is the best choice. It provides balanced assignment, minimizes partition movement, and allows unaffected partitions to keep processing during rebalances. Start with it unless you have specific requirements that suggest otherwise.
 
 ---
 
