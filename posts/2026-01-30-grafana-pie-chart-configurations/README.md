@@ -96,7 +96,7 @@ flowchart TB
     A --> C[Donut Chart]
     B --> D["Full circle visualization"]
     B --> E["Best for simple distributions"]
-    C --> F["Hollow center for totals"]
+    C --> F["Hollow center"]
     C --> G["Better for dashboards with KPIs"]
 ```
 
@@ -117,7 +117,7 @@ The standard pie chart fills the entire circle. Use this when you want maximum v
 
 ### Donut Chart
 
-The donut chart includes a hollow center, which can display a total or summary value. This works well on dense dashboards where you want to show both distribution and aggregate metrics.
+The donut chart includes a hollow center, which can make the distribution easier to scan on dense dashboards.
 
 ```json
 {
@@ -215,7 +215,7 @@ When labels on the chart provide sufficient context, hide the legend entirely.
 {
   "options": {
     "legend": {
-      "displayMode": "hidden"
+      "showLegend": false
     }
   }
 }
@@ -442,11 +442,16 @@ Combine small slices into an "Other" category using recording rules or query tra
 groups:
   - name: pie_chart_helpers
     rules:
-      - record: service:requests:top5
+      - record: service:requests:top5_or_other
         expr: |
+          topk(5, sum(increase(http_requests_total[1h])) by (service))
+          or
           label_replace(
-            topk(5, sum(increase(http_requests_total[1h])) by (service)),
-            "category", "$1", "service", "(.*)"
+            (
+              sum(sum(increase(http_requests_total[1h])) by (service))
+              - sum(topk(5, sum(increase(http_requests_total[1h])) by (service)))
+            ) > 0,
+            "service", "Other", "service", ".*"
           )
 ```
 
@@ -575,7 +580,13 @@ The chart has many tiny slices that are hard to distinguish.
 # Show top 5 services plus aggregate others
 topk(5, sum(increase(http_requests_total[1h])) by (service))
 or
-sum(increase(http_requests_total[1h])) * 0 + sum(sum(increase(http_requests_total[1h])) by (service)) - sum(topk(5, sum(increase(http_requests_total[1h])) by (service)))
+label_replace(
+  (
+    sum(sum(increase(http_requests_total[1h])) by (service))
+    - sum(topk(5, sum(increase(http_requests_total[1h])) by (service)))
+  ) > 0,
+  "service", "Other", "service", ".*"
+)
 ```
 
 ### Issue: Percentages Do Not Add to 100%
