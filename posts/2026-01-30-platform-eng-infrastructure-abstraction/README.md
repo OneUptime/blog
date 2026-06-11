@@ -734,6 +734,7 @@ package controller
 import (
     "context"
     "fmt"
+    "strings"
     "time"
 
     appsv1 "k8s.io/api/apps/v1"
@@ -1165,18 +1166,19 @@ func (r *PlatformServiceReconciler) reconcileIngress(ctx context.Context, svc *p
     }
 
     pathType := networkingv1.PathTypePrefix
+    ingressClassName := "nginx"
     ingress := &networkingv1.Ingress{
         ObjectMeta: metav1.ObjectMeta{
             Name:      svc.Name,
             Namespace: svc.Namespace,
             Annotations: map[string]string{
-                "kubernetes.io/ingress.class":                "nginx",
-                "cert-manager.io/cluster-issuer":             "letsencrypt-prod",
-                "nginx.ingress.kubernetes.io/ssl-redirect":   "true",
+                "cert-manager.io/cluster-issuer":              "letsencrypt-prod",
+                "nginx.ingress.kubernetes.io/ssl-redirect":    "true",
                 "nginx.ingress.kubernetes.io/proxy-body-size": "10m",
             },
         },
         Spec: networkingv1.IngressSpec{
+            IngressClassName: &ingressClassName,
             TLS: []networkingv1.IngressTLS{{
                 Hosts:      []string{fmt.Sprintf("%s.example.com", svc.Name)},
                 SecretName: fmt.Sprintf("%s-tls", svc.Name),
@@ -1243,8 +1245,11 @@ import (
     "context"
     "fmt"
     "os"
+    "time"
 
     "github.com/spf13/cobra"
+    "k8s.io/apimachinery/pkg/api/errors"
+    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/client-go/kubernetes/scheme"
     "sigs.k8s.io/controller-runtime/pkg/client"
     "sigs.k8s.io/controller-runtime/pkg/client/config"
@@ -1593,11 +1598,13 @@ Do not build abstractions before you understand the problems. Start with direct 
 When errors from underlying systems bubble up unchanged, developers face complexity you meant to hide. Wrap errors with context:
 
 ```go
+// Bad: leaky abstraction
 if err != nil {
-    // Bad: leaky abstraction
     return err
+}
 
-    // Good: meaningful error
+// Good: meaningful error
+if err != nil {
     return fmt.Errorf("failed to create service %s: check image name and registry access", svc.Name)
 }
 ```
