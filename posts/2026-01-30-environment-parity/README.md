@@ -55,8 +55,8 @@ WORKDIR /app
 # Copy package files first for better layer caching
 COPY package*.json ./
 
-# Install dependencies with exact versions from lockfile
-RUN npm ci --only=production
+# Install production dependencies with exact versions from lockfile
+RUN npm ci --omit=dev
 
 # Copy application code
 COPY . .
@@ -215,8 +215,6 @@ External services like message queues and caches should match across environment
 
 ```yaml
 # docker-compose.yml - Local development environment
-version: '3.8'
-
 services:
   app:
     build: .
@@ -282,8 +280,8 @@ This script compares database schemas between environments.
 #!/bin/bash
 # validate-parity.sh - Compare database schemas between environments
 
-STAGING_SCHEMA=$(pg_dump -h staging-db.example.com -U app -s myapp)
-PROD_SCHEMA=$(pg_dump -h prod-db.example.com -U app -s myapp)
+STAGING_SCHEMA=$(pg_dump -h staging-db.example.com -U app --schema-only --no-owner --no-privileges myapp)
+PROD_SCHEMA=$(pg_dump -h prod-db.example.com -U app --schema-only --no-owner --no-privileges myapp)
 
 # Compare schemas, ignoring comments and whitespace
 STAGING_NORMALIZED=$(echo "$STAGING_SCHEMA" | grep -v "^--" | tr -s ' ')
