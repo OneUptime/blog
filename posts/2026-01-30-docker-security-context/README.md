@@ -75,8 +75,9 @@ docker run --user appuser myimage
 
 User namespaces provide an additional isolation layer by mapping container UIDs to unprivileged host UIDs:
 
+Add the setting to `/etc/docker/daemon.json`:
+
 ```json
-// /etc/docker/daemon.json
 {
   "userns-remap": "default"
 }
@@ -158,7 +159,6 @@ docker run --cap-drop=ALL --cap-add=NET_BIND_SERVICE myimage
 ### Docker Compose Example
 
 ```yaml
-version: '3.8'
 services:
   webapp:
     image: mywebapp:latest
@@ -340,13 +340,13 @@ flowchart TD
 Use tools like `strace` or `sysdig` to identify required syscalls:
 
 ```bash
-# Trace syscalls of a running container
-docker run --rm -it --cap-add SYS_PTRACE strace -c -f /bin/sh -c "your-app"
+# Trace syscalls in an image that includes strace
+docker run --rm -it --cap-add SYS_PTRACE myimage \
+  strace -c -f /bin/sh -c "your-app"
 
-# Use OCI seccomp-bpf-generator
-docker run --rm -it --security-opt seccomp=unconfined \
-  -v /var/run/docker.sock:/var/run/docker.sock \
-  genuinetools/amicontained
+# Use oci-seccomp-bpf-hook with an OCI runtime that supports hooks
+sudo podman run --annotation io.containers.trace-syscall=of:/tmp/profile.json \
+  myimage /bin/sh -c "your-app"
 ```
 
 ## AppArmor Profiles
@@ -361,8 +361,8 @@ Docker applies a default AppArmor profile called `docker-default`. Verify it:
 # Check AppArmor status
 sudo aa-status
 
-# View the default profile
-cat /etc/apparmor.d/docker-default
+# Verify the default profile is loaded
+sudo aa-status | grep docker-default
 ```
 
 ### Custom AppArmor Profile
@@ -432,7 +432,6 @@ docker run --security-opt apparmor=docker-custom-webapp myimage
 ### Docker Compose with AppArmor
 
 ```yaml
-version: '3.8'
 services:
   webapp:
     image: mywebapp:latest
@@ -457,7 +456,6 @@ docker run --read-only --tmpfs /tmp --tmpfs /run myimage
 ### Practical Example
 
 ```yaml
-version: '3.8'
 services:
   webapp:
     image: nginx:alpine
@@ -546,8 +544,6 @@ CMD ["./app"]
 ### Docker Compose
 
 ```yaml
-version: '3.8'
-
 services:
   webapp:
     build: .
