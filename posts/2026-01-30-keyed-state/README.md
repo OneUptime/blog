@@ -12,7 +12,7 @@ Description: Learn how to implement keyed state for per-key stateful processing 
 
 Keyed state is a fundamental concept in stream processing that allows you to maintain and access state on a per-key basis. When processing unbounded streams of data, you often need to remember information about previous events to make decisions about current ones. Keyed state makes this possible by partitioning state according to the keys defined in your data stream.
 
-In this guide, we will explore how to create and use keyed state in Apache Flink, covering the four main types of keyed state: ValueState, ListState, MapState, and ReducingState.
+In this guide, we will explore how to create and use keyed state in Apache Flink, covering common types of keyed state: ValueState, ListState, MapState, and ReducingState.
 
 ## Understanding Keyed State
 
@@ -56,7 +56,7 @@ When you key a stream by a specific field, Flink ensures that all events with th
 
 ## Types of Keyed State
 
-Flink provides four built-in types of keyed state, each suited for different use cases:
+Flink provides several built-in types of keyed state, each suited for different use cases:
 
 ```mermaid
 flowchart TB
@@ -74,10 +74,14 @@ flowchart TB
     RS["ReducingState<T>
     Aggregated value per key"]
 
+    AS["AggregatingState<IN,OUT>
+    Aggregated value with different input/output types"]
+
     KS --> VS
     KS --> LS
     KS --> MS
     KS --> RS
+    KS --> AS
 ```
 
 Let us explore each type with practical examples.
@@ -174,6 +178,7 @@ ListState allows you to store a list of values per key. This is useful when you 
 import org.apache.flink.api.common.state.ListState;
 import org.apache.flink.api.common.state.ListStateDescriptor;
 import org.apache.flink.api.common.typeinfo.Types;
+import org.apache.flink.configuration.Configuration;
 import org.apache.flink.streaming.api.functions.KeyedProcessFunction;
 import org.apache.flink.util.Collector;
 
@@ -275,8 +280,11 @@ MapState allows you to store a map of key-value pairs within each keyed state pa
 import org.apache.flink.api.common.state.MapState;
 import org.apache.flink.api.common.state.MapStateDescriptor;
 import org.apache.flink.api.common.typeinfo.Types;
+import org.apache.flink.configuration.Configuration;
 import org.apache.flink.streaming.api.functions.KeyedProcessFunction;
 import org.apache.flink.util.Collector;
+
+import java.util.Map;
 
 /**
  * Tracks how many times each user has viewed each product.
@@ -370,6 +378,7 @@ import org.apache.flink.api.common.functions.ReduceFunction;
 import org.apache.flink.api.common.state.ReducingState;
 import org.apache.flink.api.common.state.ReducingStateDescriptor;
 import org.apache.flink.api.common.typeinfo.Types;
+import org.apache.flink.configuration.Configuration;
 import org.apache.flink.streaming.api.functions.KeyedProcessFunction;
 import org.apache.flink.util.Collector;
 
@@ -427,6 +436,14 @@ public class MaxSensorReading
 ### Example: Computing Running Sum with ReducingState
 
 ```java
+import org.apache.flink.api.common.functions.ReduceFunction;
+import org.apache.flink.api.common.state.ReducingState;
+import org.apache.flink.api.common.state.ReducingStateDescriptor;
+import org.apache.flink.api.common.typeinfo.Types;
+import org.apache.flink.configuration.Configuration;
+import org.apache.flink.streaming.api.functions.KeyedProcessFunction;
+import org.apache.flink.util.Collector;
+
 /**
  * Computes the running sum of transaction amounts per account.
  */
@@ -475,7 +492,12 @@ In long-running applications, state can grow unbounded. Flink provides State TTL
 
 ```java
 import org.apache.flink.api.common.state.StateTtlConfig;
-import org.apache.flink.api.common.time.Time;
+import org.apache.flink.api.common.state.ValueState;
+import org.apache.flink.api.common.state.ValueStateDescriptor;
+import org.apache.flink.configuration.Configuration;
+import org.apache.flink.streaming.api.functions.KeyedProcessFunction;
+
+import java.time.Duration;
 
 /**
  * Example showing how to configure State TTL for automatic cleanup.
@@ -488,11 +510,11 @@ public class StateTtlExample extends KeyedProcessFunction<String, Event, Result>
     public void open(Configuration parameters) throws Exception {
         // Configure TTL settings
         StateTtlConfig ttlConfig = StateTtlConfig
-            .newBuilder(Time.hours(24))  // State expires after 24 hours
+            .newBuilder(Duration.ofHours(24))  // State expires after 24 hours
             .setUpdateType(StateTtlConfig.UpdateType.OnCreateAndWrite)  // Reset TTL on writes
             .setStateVisibility(
                 StateTtlConfig.StateVisibility.NeverReturnExpired)  // Never return expired state
-            .cleanupFullSnapshot()  // Clean expired state during checkpoints
+            .cleanupFullSnapshot()  // Exclude expired state from full snapshots
             .build();
 
         // Create descriptor and enable TTL
@@ -563,7 +585,7 @@ flowchart TD
 
 ## Best Practices
 
-1. **Choose the right state type**: Use ValueState for simple values, ListState for collections, MapState for dictionaries, and ReducingState for aggregations.
+1. **Choose the right state type**: Use ValueState for simple values, ListState for collections, MapState for dictionaries, and ReducingState or AggregatingState for aggregations.
 
 2. **Configure State TTL**: Always set up TTL for state that can grow unbounded to prevent memory issues.
 
@@ -583,8 +605,14 @@ Here is a comprehensive example combining multiple state types for a fraud detec
 
 ```java
 import org.apache.flink.api.common.state.*;
+import org.apache.flink.api.common.typeinfo.Types;
+import org.apache.flink.configuration.Configuration;
 import org.apache.flink.streaming.api.functions.KeyedProcessFunction;
 import org.apache.flink.util.Collector;
+
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Detects potentially fraudulent transactions using multiple state types.
@@ -634,7 +662,7 @@ public class FraudDetector
 
         // Initialize MapState for known locations with TTL
         StateTtlConfig ttlConfig = StateTtlConfig
-            .newBuilder(Time.days(90))
+            .newBuilder(Duration.ofDays(90))
             .setUpdateType(StateTtlConfig.UpdateType.OnCreateAndWrite)
             .build();
 
@@ -751,7 +779,7 @@ public class FraudDetector
 
 ## Conclusion
 
-Keyed state is essential for building stateful stream processing applications. By understanding and properly using ValueState, ListState, MapState, and ReducingState, you can implement sophisticated streaming logic that maintains per-key context across events.
+Keyed state is essential for building stateful stream processing applications. By understanding and properly using ValueState, ListState, MapState, ReducingState, and AggregatingState, you can implement sophisticated streaming logic that maintains per-key context across events.
 
 Key takeaways:
 
@@ -759,5 +787,6 @@ Key takeaways:
 - **ListState** works well for buffering events or maintaining history
 - **MapState** provides efficient key-value storage within each partition
 - **ReducingState** enables efficient incremental aggregations
+- **AggregatingState** enables incremental aggregations where input and output types differ
 
 Always remember to configure appropriate TTL settings, handle null values gracefully, and choose the right state type for your use case. With these tools, you can build robust, scalable stream processing applications that handle complex stateful logic efficiently.
