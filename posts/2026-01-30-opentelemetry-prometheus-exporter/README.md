@@ -129,7 +129,7 @@ const cpuUsage = meter.createObservableGauge('process_cpu_usage', {
 cpuUsage.addCallback((observableResult) => {
   const usage = process.cpuUsage();
   const total = usage.user + usage.system;
-  observableResult.observe(total / 1000000); // Convert to percentage
+  observableResult.observe(total / 1000000); // Convert microseconds to seconds
 });
 ```
 
