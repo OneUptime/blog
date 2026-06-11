@@ -277,6 +277,7 @@ When your custom library communicates across process boundaries, you need to pro
 from opentelemetry import trace, propagate
 from opentelemetry.trace import SpanKind
 import requests
+from urllib.parse import urlparse
 
 
 class InternalRPCClient:
@@ -284,6 +285,7 @@ class InternalRPCClient:
 
     def __init__(self, service_url: str):
         self.service_url = service_url
+        self.server_address = urlparse(service_url).hostname or service_url
         self.tracer = trace.get_tracer("internal_rpc", "1.0.0")
 
     def call(self, method: str, params: dict) -> dict:
@@ -294,8 +296,8 @@ class InternalRPCClient:
             kind=SpanKind.CLIENT,
         ) as span:
             span.set_attributes({
-                "rpc.system": "internal",
-                "rpc.service": self.service_url,
+                "rpc.system.name": "internal",
+                "server.address": self.server_address,
                 "rpc.method": method,
             })
 
@@ -353,7 +355,7 @@ def handle_rpc_request(request):
         kind=SpanKind.SERVER,
     ) as span:
         span.set_attributes({
-            "rpc.system": "internal",
+            "rpc.system.name": "internal",
             "rpc.method": method,
         })
 
@@ -375,7 +377,6 @@ OpenTelemetry defines semantic conventions for common attribute names. Following
 ```python
 # Using semantic conventions for consistent attributes
 
-from opentelemetry.semconv.trace import SpanAttributes
 from opentelemetry import trace
 
 
@@ -390,10 +391,10 @@ def instrumented_database_query(query: str, params: tuple):
     ) as span:
         # Use standard semantic conventions
         span.set_attributes({
-            SpanAttributes.DB_SYSTEM: "postgresql",
-            SpanAttributes.DB_NAME: "orders",
-            SpanAttributes.DB_OPERATION: "SELECT",
-            SpanAttributes.DB_STATEMENT: sanitize_query(query),
+            "db.system.name": "postgresql",
+            "db.namespace": "orders",
+            "db.operation.name": "SELECT",
+            "db.query.text": sanitize_query(query),
 
             # Custom attributes for your specific needs
             "db.param_count": len(params),
@@ -402,7 +403,7 @@ def instrumented_database_query(query: str, params: tuple):
 
         result = execute_query(query, params)
 
-        span.set_attribute("db.row_count", len(result))
+        span.set_attribute("db.response.returned_rows", len(result))
         return result
 ```
 
@@ -410,10 +411,10 @@ Common semantic conventions you should use:
 
 | Domain | Attributes |
 |--------|------------|
-| HTTP | `http.method`, `http.url`, `http.status_code` |
-| Database | `db.system`, `db.name`, `db.operation`, `db.statement` |
-| Messaging | `messaging.system`, `messaging.destination`, `messaging.operation` |
-| RPC | `rpc.system`, `rpc.service`, `rpc.method` |
+| HTTP | `http.request.method`, `url.full`, `http.response.status_code` |
+| Database | `db.system.name`, `db.namespace`, `db.operation.name`, `db.query.text` |
+| Messaging | `messaging.system`, `messaging.destination.name`, `messaging.operation.name` |
+| RPC | `rpc.system.name`, `server.address`, `rpc.method` |
 
 ---
 
@@ -486,17 +487,10 @@ Add to your `setup.py` or `pyproject.toml`:
 payment_gateway = "instrumentation.payment_gateway:PaymentGatewayInstrumentor"
 ```
 
-Then users can enable all registered instrumentations at once:
+Then users can enable registered instrumentations with the OpenTelemetry Python agent:
 
-```python
-# Automatic instrumentation discovery
-from opentelemetry.instrumentation.auto_instrumentation import sitecustomize
-
-# Or programmatically
-from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
-
-for instrumentor in BaseInstrumentor.__subclasses__():
-    instrumentor().instrument()
+```bash
+opentelemetry-instrument python app.py
 ```
 
 ---
@@ -511,6 +505,7 @@ Test that your instrumentation creates the expected spans and attributes.
 import pytest
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 from instrumentation.payment_gateway_instrumentation import PaymentGatewayInstrumentor
@@ -522,9 +517,7 @@ def tracer_provider():
     """Set up an in-memory tracer for testing."""
     provider = TracerProvider()
     exporter = InMemorySpanExporter()
-    provider.add_span_processor(
-        trace.get_tracer_provider().get_tracer(__name__)
-    )
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
     trace.set_tracer_provider(provider)
     return provider, exporter
 
