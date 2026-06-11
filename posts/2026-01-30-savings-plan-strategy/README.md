@@ -169,10 +169,10 @@ quadrantChart
     title Coverage vs Flexibility Decision Matrix
     x-axis Low Flexibility --> High Flexibility
     y-axis Low Savings --> High Savings
-    quadrant-1 "EC2 Instance Plans"
-    quadrant-2 "Overcommitted"
-    quadrant-3 "On-Demand Only"
-    quadrant-4 "Compute Plans"
+    quadrant-1 "Compute Plans"
+    quadrant-2 "EC2 Instance Plans"
+    quadrant-3 "Overcommitted"
+    quadrant-4 "On-Demand Only"
 
     "Stable production": [0.2, 0.85]
     "Dev/Test environments": [0.7, 0.4]
@@ -243,7 +243,8 @@ The decision between Compute and EC2 Instance Savings Plans depends on your arch
 # Answer YES to all before committing:
 
 # 1. Is the instance family locked for 1-3 years?
-aws ec2 describe-instance-types --instance-types c6i.* \
+aws ec2 describe-instance-types \
+  --filters Name=instance-type,Values='c6i.*' \
   --query 'InstanceTypes[].InstanceType' | head -5
 # If you're on c6i and c7i just launched, think twice
 
@@ -330,7 +331,7 @@ def get_and_analyze_recommendations():
     client = boto3.client('ce', region_name='us-east-1')
 
     # Get recommendations for different terms
-    terms = ['ONE_YEAR', 'THREE_YEAR']
+    terms = ['ONE_YEAR', 'THREE_YEARS']
     payment_options = ['NO_UPFRONT', 'PARTIAL_UPFRONT', 'ALL_UPFRONT']
 
     recommendations = {}
