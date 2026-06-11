@@ -83,12 +83,12 @@ Before deploying Mayastor, your cluster must meet specific requirements. Mayasto
 
 ### Kubernetes Requirements
 
-Mayastor requires Kubernetes 1.25 or later with the following:
+OpenEBS can run on Kubernetes 1.23 or later. For Mayastor, verify the cluster version and worker node count before installing:
 
 ```bash
 # Check Kubernetes version
 
-kubectl version --short
+kubectl version
 
 # Verify at least 3 nodes are available for HA
 kubectl get nodes
@@ -96,20 +96,22 @@ kubectl get nodes
 
 ### Node Preparation
 
-Each node participating in Mayastor storage pools needs hugepages configured and certain kernel parameters set.
+Each node participating in Mayastor storage pools needs 2 MiB hugepages configured and certain kernel parameters set.
 
 ```bash
-# Configure hugepages (2048 pages of 2MB each = 4GB)
+# Configure hugepages (1024 pages of 2 MiB each = 2 GiB)
 # Add to /etc/sysctl.conf for persistence
-echo "vm.nr_hugepages = 2048" | sudo tee -a /etc/sysctl.conf
+echo "vm.nr_hugepages = 1024" | sudo tee -a /etc/sysctl.conf
 sudo sysctl -p
+
+# Restart kubelet or reboot the node after changing hugepages
 
 # Verify hugepages
 grep HugePages /proc/meminfo
 
 # Expected output:
-# HugePages_Total:    2048
-# HugePages_Free:     2048
+# HugePages_Total:    1024
+# HugePages_Free:     1024
 # HugePages_Rsvd:        0
 # HugePages_Surp:        0
 ```
@@ -167,7 +169,8 @@ helm install openebs openebs/openebs \
     --namespace openebs \
     --set engines.replicated.mayastor.enabled=true \
     --set engines.local.lvm.enabled=false \
-    --set engines.local.zfs.enabled=false
+    --set engines.local.zfs.enabled=false \
+    --set loki.enabled=false
 
 # Monitor the installation
 kubectl -n openebs get pods -w
@@ -177,7 +180,7 @@ Wait until all pods reach the `Running` state:
 
 ```bash
 # Check Mayastor pods status
-kubectl -n openebs get pods -l app.kubernetes.io/component=io-engine
+kubectl -n openebs get pods -l app=io-engine
 
 # Expected output:
 # NAME                       READY   STATUS    RESTARTS   AGE
@@ -273,13 +276,15 @@ ssh worker-01 "lsblk -d -o NAME,SIZE,TYPE,MODEL"
 # nvme1n1 500G disk Samsung SSD 980 PRO
 ```
 
+Use stable device links such as `/dev/disk/by-id/...` or `/dev/disk/by-path/...` in pool definitions instead of raw `/dev/nvme...` names, because raw device names can change after a reboot.
+
 ### Create Disk Pools
 
 Create a DiskPool resource for each storage node:
 
 ```yaml
 # disk-pools.yaml
-apiVersion: openebs.io/v1beta2
+apiVersion: openebs.io/v1beta3
 kind: DiskPool
 metadata:
   name: pool-worker-01
@@ -287,9 +292,10 @@ metadata:
 spec:
   node: worker-01
   disks:
-    - uring:///dev/nvme1n1
+    - uring:///dev/disk/by-id/nvme-Samsung_SSD_980_PRO_worker_01
+  maxExpansion: "5x"
 ---
-apiVersion: openebs.io/v1beta2
+apiVersion: openebs.io/v1beta3
 kind: DiskPool
 metadata:
   name: pool-worker-02
@@ -297,9 +303,10 @@ metadata:
 spec:
   node: worker-02
   disks:
-    - uring:///dev/nvme1n1
+    - uring:///dev/disk/by-id/nvme-Samsung_SSD_980_PRO_worker_02
+  maxExpansion: "5x"
 ---
-apiVersion: openebs.io/v1beta2
+apiVersion: openebs.io/v1beta3
 kind: DiskPool
 metadata:
   name: pool-worker-03
@@ -307,7 +314,8 @@ metadata:
 spec:
   node: worker-03
   disks:
-    - uring:///dev/nvme1n1
+    - uring:///dev/disk/by-id/nvme-Samsung_SSD_980_PRO_worker_03
+  maxExpansion: "5x"
 ```
 
 Apply the configuration:
@@ -317,13 +325,13 @@ Apply the configuration:
 kubectl apply -f disk-pools.yaml
 
 # Verify pools are created and online
-kubectl get diskpools -n openebs
+kubectl get dsp -n openebs
 
 # Expected output:
-# NAME             NODE        STATE    POOL_STATUS   CAPACITY      USED   AVAILABLE
-# pool-worker-01   worker-01   Created  Online        499963174912  0      499963174912
-# pool-worker-02   worker-02   Created  Online        499963174912  0      499963174912
-# pool-worker-03   worker-03   Created  Online        499963174912  0      499963174912
+# NAME             NODE        STATE    STATUS   ERROR   ALERTS    ENCRYPTED   CAPACITY   USED   AVAILABLE
+# pool-worker-01   worker-01   Created  Online           Healthy   false       500GiB     0 B    500GiB
+# pool-worker-02   worker-02   Created  Online           Healthy   false       500GiB     0 B    500GiB
+# pool-worker-03   worker-03   Created  Online           Healthy   false       500GiB     0 B    500GiB
 ```
 
 ### Pool Status States
@@ -360,8 +368,6 @@ parameters:
   repl: "3"
   # Storage protocol
   protocol: nvmf
-  # I/O timeout in seconds
-  ioTimeout: "30"
   # Enable thin provisioning
   thin: "true"
 volumeBindingMode: Immediate
@@ -369,7 +375,7 @@ reclaimPolicy: Delete
 allowVolumeExpansion: true
 ```
 
-### High-Performance Local Storage Class
+### High-Performance Single-Replica Storage Class
 
 For workloads that prioritize performance over redundancy:
 
@@ -383,10 +389,7 @@ provisioner: io.openebs.csi-mayastor
 parameters:
   repl: "1"
   protocol: nvmf
-  ioTimeout: "30"
   thin: "true"
-  # Prefer local replica to reduce network latency
-  local: "true"
 volumeBindingMode: WaitForFirstConsumer
 reclaimPolicy: Delete
 allowVolumeExpansion: true
@@ -428,6 +431,7 @@ stringData:
   POSTGRES_USER: admin
   POSTGRES_PASSWORD: securepassword123
   POSTGRES_DB: appdata
+  PGDATA: /var/lib/postgresql/data/pgdata
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -660,12 +664,9 @@ echo none | sudo tee /sys/block/nvme1n1/queue/scheduler
 
 ### Hugepages Sizing
 
-Calculate hugepages based on pool size and workload:
+Ensure each storage node keeps at least 1024 2 MiB hugepages available for the io-engine pod, plus any additional hugepages required by other workloads:
 
 ```bash
-# Formula: (pool_size_GB / 2) + 512 pages for overhead
-# For a 500GB pool: (500 / 2) + 512 = 762 pages minimum
-
 # Check current allocation
 grep HugePages /proc/meminfo
 
@@ -705,7 +706,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app.kubernetes.io/component: io-engine
+      app: metrics-exporter-io-engine
   endpoints:
     - port: metrics
       interval: 15s
@@ -716,14 +717,10 @@ spec:
 
 | Metric | Description |
 |--------|-------------|
-| `mayastor_pool_total_size_bytes` | Total pool capacity |
-| `mayastor_pool_used_size_bytes` | Used pool capacity |
-| `mayastor_volume_read_bytes_total` | Total bytes read |
-| `mayastor_volume_write_bytes_total` | Total bytes written |
-| `mayastor_volume_read_ops_total` | Total read operations |
-| `mayastor_volume_write_ops_total` | Total write operations |
-| `mayastor_volume_read_latency_seconds` | Read latency histogram |
-| `mayastor_volume_write_latency_seconds` | Write latency histogram |
+| `disk_pool_total_size_bytes` | Total pool capacity |
+| `disk_pool_used_size_bytes` | Used pool capacity |
+| `disk_pool_committed_size` | Committed pool capacity |
+| `disk_pool_status` | Pool status as a numeric gauge |
 
 ### Grafana Dashboard
 
@@ -746,7 +743,7 @@ flowchart LR
     PROM --> GRAF
 ```
 
-Import the official Mayastor dashboard from Grafana (Dashboard ID: 19676) or use the JSON from the OpenEBS repository.
+Use the OpenEBS monitoring add-on or the dashboard JSON from the OpenEBS monitoring repository.
 
 ## Troubleshooting
 
@@ -756,7 +753,7 @@ Import the official Mayastor dashboard from Grafana (Dashboard ID: 19676) or use
 
 ```bash
 # Check io-engine logs
-kubectl -n openebs logs -l app.kubernetes.io/component=io-engine
+kubectl -n openebs logs -l app=io-engine
 
 # Verify disk is available
 kubectl mayastor get block-devices <node-name>
@@ -772,10 +769,10 @@ kubectl -n openebs exec -it <io-engine-pod> -- cat /proc/meminfo | grep HugePage
 kubectl describe pvc <pvc-name>
 
 # Verify pool capacity
-kubectl get diskpools -n openebs
+kubectl get dsp -n openebs
 
 # Check CSI driver logs
-kubectl -n openebs logs -l app=openebs-csi-controller
+kubectl -n openebs logs -l app=csi-controller
 ```
 
 **Performance issues:**
@@ -785,7 +782,7 @@ kubectl -n openebs logs -l app=openebs-csi-controller
 sudo nvme smart-log /dev/nvme1n1
 
 # Monitor IOPS and latency
-kubectl mayastor get volumes --output wide
+kubectl mayastor get volumes -o json
 
 # Verify network connectivity between nodes
 kubectl -n openebs exec -it <io-engine-pod> -- ping <other-node-ip>
