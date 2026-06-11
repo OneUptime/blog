@@ -88,7 +88,7 @@ class HalBuilder {
       href: `${this.baseUrl}${href}`,
     };
 
-    // Add optional link attributes per HAL spec
+    // Add optional standard HAL link attributes
     if (options.templated) link.templated = true;
     if (options.type) link.type = options.type;
     if (options.deprecation) link.deprecation = options.deprecation;
@@ -96,6 +96,8 @@ class HalBuilder {
     if (options.profile) link.profile = options.profile;
     if (options.title) link.title = options.title;
     if (options.hreflang) link.hreflang = options.hreflang;
+
+    // Application-specific extension: HAL itself does not define a method property
     if (options.method) link.method = options.method;
 
     return link;
@@ -175,7 +177,7 @@ This middleware automatically sets the correct content type and provides helper 
 
 ```javascript
 // middleware/hal.js
-const HalBuilder = require('./hal-builder');
+const HalBuilder = require('../hal-builder');
 
 function halMiddleware(options = {}) {
   return (req, res, next) => {
@@ -382,9 +384,13 @@ app.post('/api/orders/:id/pay', (req, res) => {
   });
 });
 
-app.listen(3000, () => {
-  console.log('HAL API running on port 3000');
-});
+if (require.main === module) {
+  app.listen(3000, () => {
+    console.log('HAL API running on port 3000');
+  });
+}
+
+module.exports = app;
 ```
 
 ## State Machine with HAL Links
@@ -429,7 +435,7 @@ Here is the same pattern implemented in Python using FastAPI and Pydantic.
 # hal.py
 
 from typing import Any, Dict, List, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from fastapi import Request
 
 
@@ -445,10 +451,6 @@ class HalLink(BaseModel):
     hreflang: Optional[str] = None
     method: Optional[str] = None
 
-    class Config:
-        # Exclude None values from serialization
-        exclude_none = True
-
 
 class HalResource(BaseModel):
     """
@@ -458,9 +460,11 @@ class HalResource(BaseModel):
     links: Dict[str, HalLink | List[HalLink]] = Field(default_factory=dict, alias="_links")
     embedded: Optional[Dict[str, Any]] = Field(default=None, alias="_embedded")
 
-    class Config:
-        populate_by_name = True
-        exclude_none = True
+    model_config = ConfigDict(
+        validate_by_name=True,
+        validate_by_alias=True,
+        serialize_by_alias=True,
+    )
 
 
 class HalBuilder:
@@ -529,7 +533,6 @@ class HalBuilder:
 # main.py
 from fastapi import FastAPI, Request, HTTPException, Depends
 from fastapi.responses import JSONResponse
-from typing import Optional
 from hal import HalBuilder
 
 app = FastAPI()
@@ -608,15 +611,15 @@ HAL uses link relations (rels) to describe the relationship between resources. U
 
 | Relation | Description | Example |
 |----------|-------------|---------|
-| `self` | The canonical link to this resource | Required for every resource |
+| `self` | The canonical link to this resource | Recommended for every resource |
 | `collection` | The collection this item belongs to | `/api/users` for a user |
 | `next` / `prev` | Pagination navigation | Collection responses |
 | `first` / `last` | First and last pages | Collection responses |
 | `edit` | Link to update the resource | PUT endpoint |
-| `delete` | Link to delete the resource | DELETE endpoint |
+| `delete` | Application-specific deletion action | DELETE endpoint |
 | `related` | Generic related resource | Any associated resource |
 
-For domain-specific relations, use a URL prefix to avoid conflicts:
+For domain-specific or action-specific relations that are not registered with IANA, use a URL prefix to avoid conflicts:
 
 ```json
 {
@@ -735,16 +738,22 @@ class HalClient {
       throw new Error(`'${rel}' is not a templated link`);
     }
 
-    let href = link.href;
+    let href = link.href.replace(/\{\?([^}]+)\}/g, (_, names) => {
+      const query = names
+        .split(',')
+        .filter((name) => params[name] !== undefined)
+        .map((name) => `${encodeURIComponent(name)}=${encodeURIComponent(params[name])}`)
+        .join('&');
 
-    // Simple template expansion for common patterns
-    for (const [key, value] of Object.entries(params)) {
-      href = href.replace(`{${key}}`, encodeURIComponent(value));
-      href = href.replace(`{?${key}}`, `?${key}=${encodeURIComponent(value)}`);
-    }
+      return query ? `?${query}` : '';
+    });
 
-    // Remove unused template parameters
-    href = href.replace(/\{[^}]+\}/g, '');
+    href = href.replace(/\{([^}?]+)\}/g, (_, name) => {
+      if (params[name] === undefined) {
+        throw new Error(`Missing template parameter '${name}'`);
+      }
+      return encodeURIComponent(params[name]);
+    });
 
     return href;
   }
