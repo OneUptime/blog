@@ -445,6 +445,7 @@ from flask import Flask, jsonify
 from enum import Enum
 from dataclasses import dataclass
 from typing import Callable, Dict, List
+import concurrent.futures
 import time
 
 app = Flask(__name__)
@@ -464,6 +465,7 @@ class Dependency:
 class DependencyChecker:
     def __init__(self):
         self.dependencies: List[Dependency] = []
+        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=10)
 
     def register(self, dep: Dependency):
         self.dependencies.append(dep)
@@ -476,7 +478,8 @@ class DependencyChecker:
             start = time.time()
             try:
                 # Run check with timeout
-                result = dep.check_fn()
+                future = self.executor.submit(dep.check_fn)
+                future.result(timeout=dep.timeout_ms / 1000)
                 latency_ms = (time.time() - start) * 1000
 
                 results[dep.name] = {
@@ -484,6 +487,21 @@ class DependencyChecker:
                     "latency_ms": round(latency_ms, 2),
                     "type": dep.type.value
                 }
+            except concurrent.futures.TimeoutError:
+                latency_ms = (time.time() - start) * 1000
+                results[dep.name] = {
+                    "status": "failed",
+                    "error": "timeout",
+                    "latency_ms": round(latency_ms, 2),
+                    "type": dep.type.value
+                }
+
+                # Update overall status based on dependency type
+                if dep.type == DependencyType.CRITICAL:
+                    overall_status = "unhealthy"
+                elif dep.type == DependencyType.DEGRADABLE and overall_status != "unhealthy":
+                    overall_status = "degraded"
+                # Optional failures don't change overall status
             except Exception as e:
                 latency_ms = (time.time() - start) * 1000
                 results[dep.name] = {
@@ -738,9 +756,7 @@ spec:
 ```python
 # timeout_health_check.py
 from flask import Flask, jsonify
-import asyncio
 import concurrent.futures
-from functools import partial
 import time
 
 app = Flask(__name__)
@@ -1221,11 +1237,12 @@ def count_healthy_replicas():
 
 ### Load Balancer Integration with Weights
 
-For NGINX or HAProxy, use the weight headers to dynamically adjust traffic:
+For NGINX Plus or HAProxy, health headers can be used by health-check rules or external automation. NGINX Plus active health checks can match response headers to decide whether an upstream is healthy, but changing upstream weights from a response header requires separate automation such as the NGINX Plus API or a load balancer that supports dynamic weights directly:
 
 ```nginx
 # nginx-health-weighted.conf
 upstream backend {
+    zone backend 64k;
     server backend1:8080 weight=10;
     server backend2:8080 weight=10;
     server backend3:8080 weight=10;
@@ -1237,6 +1254,7 @@ server {
 
     location / {
         proxy_pass http://backend;
+        health_check uri=/health/weighted match=health_check;
 
         # Pass health weight header from upstream
         add_header X-Backend-Weight $upstream_http_x_health_weight;
@@ -1244,7 +1262,7 @@ server {
 }
 
 # Active health checks (NGINX Plus feature)
-# Adjusts weight based on X-Health-Weight header
+# Treats healthy and degraded responses as available
 match health_check {
     status 200;
     header X-Health-Status ~ "healthy|degraded";
@@ -1310,16 +1328,14 @@ Complete health check implementation for high availability systems.
 Implements startup, readiness, and liveness checks with:
 - Dependency classification
 - Timeout management
-- Threshold tracking
 - Graceful degradation signals
 """
 
 from flask import Flask, jsonify, Response
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime
 from enum import Enum
 from typing import Callable, Dict, List, Optional
-from collections import deque
 import concurrent.futures
 import threading
 import time
