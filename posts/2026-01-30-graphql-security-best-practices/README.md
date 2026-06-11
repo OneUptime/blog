@@ -1161,7 +1161,7 @@ import express from 'express';
 import { ApolloServer } from '@apollo/server';
 import { expressMiddleware } from '@apollo/server/express4';
 import depthLimit from 'graphql-depth-limit';
-import { createComplexityLimitRule } from 'graphql-query-complexity';
+import { createComplexityRule } from 'graphql-query-complexity';
 
 import { schema } from './schema';
 import { createContext } from './context';
@@ -1206,7 +1206,8 @@ async function startServer() {
       depthLimit(10),
 
       // Limit query complexity
-      createComplexityLimitRule(1000, {
+      createComplexityRule({
+        maximumComplexity: 1000,
         estimators: [fieldCostEstimator()],
         onComplete: (complexity) => {
           console.log(`Query complexity: ${complexity}`);
