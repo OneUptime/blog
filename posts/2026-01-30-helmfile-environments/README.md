@@ -45,7 +45,9 @@ Install Helmfile on your system.
 brew install helmfile
 
 # Linux
-curl -Lo helmfile https://github.com/helmfile/helmfile/releases/latest/download/helmfile_linux_amd64
+HELMFILE_VERSION=$(curl -s https://api.github.com/repos/helmfile/helmfile/releases/latest | sed -n 's/.*"tag_name": "v\([^"]*\)".*/\1/p')
+curl -Lo helmfile.tar.gz "https://github.com/helmfile/helmfile/releases/download/v${HELMFILE_VERSION}/helmfile_${HELMFILE_VERSION}_linux_amd64.tar.gz"
+tar -xzf helmfile.tar.gz helmfile
 chmod +x helmfile
 sudo mv helmfile /usr/local/bin/
 
@@ -198,14 +200,14 @@ environments:
 
 releases:
   - name: myapp
-    namespace: {{ .Environment.Values.namespace | default "default" }}
+    namespace: {{ .Values | get "namespace" "default" }}
     chart: ./charts/myapp
     values:
-      - replicas: {{ .Environment.Values.replicas | default 1 }}
+      - replicas: {{ .Values | get "replicas" 1 }}
       - resources:
           limits:
-            memory: {{ .Environment.Values.resources.limits.memory }}
-            cpu: {{ .Environment.Values.resources.limits.cpu }}
+            memory: {{ .Values | get "resources.limits.memory" "256Mi" }}
+            cpu: {{ .Values | get "resources.limits.cpu" "100m" }}
 ```
 
 The flow of value resolution looks like this.
@@ -240,15 +242,18 @@ Preview changes before applying them.
 # Show what will change
 helmfile -e staging diff
 
-# Show rendered values
+# Show rendered manifests
 helmfile -e staging template
 ```
 
 ## Managing Secrets with SOPS
 
-Helmfile integrates with SOPS for encrypted secrets. First, create an encrypted secrets file.
+Helmfile uses the helm-secrets plugin with SOPS for encrypted secrets. First, install the plugin and create an encrypted secrets file.
 
 ```bash
+# Install the Helm secrets plugin
+helm plugin install https://github.com/jkroepke/helm-secrets
+
 # Create .sops.yaml for encryption rules
 cat > .sops.yaml << 'EOF'
 creation_rules:
@@ -256,8 +261,8 @@ creation_rules:
     age: age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqmcac8p
 EOF
 
-# Encrypt a secrets file
-sops -e secrets.yaml > secrets.enc.yaml
+# Encrypt the environment secrets file in place
+sops -e -i environments/production/secrets.yaml
 ```
 
 Reference encrypted secrets in your helmfile.
@@ -276,7 +281,7 @@ releases:
     chart: ./charts/myapp
     values:
       - database:
-          password: {{ .Environment.Values.dbPassword }}
+          password: {{ .Values.dbPassword }}
 ```
 
 The secrets file contains sensitive values that SOPS encrypts.
@@ -306,11 +311,11 @@ environments:
 releases:
   - name: prometheus
     chart: prometheus-community/prometheus
-    installed: {{ .Environment.Values.installMonitoring }}
+    installed: {{ .Values.installMonitoring }}
 
   - name: debug-toolkit
     chart: ./charts/debug-toolkit
-    installed: {{ .Environment.Values.installDebugTools }}
+    installed: {{ .Values.installDebugTools }}
 ```
 
 ## Using Multiple Helmfiles
@@ -464,28 +469,28 @@ repositories:
 releases:
   # Core application
   - name: myapp
-    namespace: {{ .Environment.Values.namespace }}
+    namespace: {{ .Values.namespace }}
     chart: ./charts/myapp
     version: 1.0.0
     values:
       - values/myapp/common.yaml
       - values/myapp/{{ .Environment.Name }}.yaml
       - image:
-          tag: {{ .Environment.Values.imageTag | default "latest" }}
+          tag: {{ .Values | get "imageTag" "latest" }}
       - secrets:
-          dbPassword: {{ .Environment.Values.dbPassword }}
+          dbPassword: {{ .Values.dbPassword }}
     wait: true
     timeout: 300
 
   # Database
   - name: postgresql
-    namespace: {{ .Environment.Values.namespace }}
+    namespace: {{ .Values.namespace }}
     chart: bitnami/postgresql
     version: 13.2.24
     values:
       - values/postgresql/common.yaml
       - values/postgresql/{{ .Environment.Name }}.yaml
-    installed: {{ .Environment.Values.installDatabase | default true }}
+    installed: {{ .Values | get "installDatabase" true }}
 
   # Monitoring (production only)
   - name: prometheus
@@ -494,7 +499,7 @@ releases:
     version: 25.8.0
     values:
       - values/prometheus/{{ .Environment.Name }}.yaml
-    installed: {{ .Environment.Values.installMonitoring | default false }}
+    installed: {{ .Values | get "installMonitoring" false }}
 ```
 
 ## Best Practices
@@ -527,7 +532,7 @@ helmfile -e production template
 # Destroy all releases
 helmfile -e production destroy
 
-# Update chart repositories
+# Add chart repositories defined in the state file
 helmfile repos
 ```
 
