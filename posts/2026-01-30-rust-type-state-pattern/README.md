@@ -319,7 +319,7 @@ File handles are a classic example where operations depend on mode. Let's model 
 
 ```rust
 use std::marker::PhantomData;
-use std::io::{self, Write as IoWrite, Read as IoRead};
+use std::io;
 
 // Mode markers
 struct ReadMode;
