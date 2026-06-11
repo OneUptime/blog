@@ -22,7 +22,7 @@ Every time your application connects to a database, several things happen behind
 
 This process typically takes 20-100ms depending on network latency and database configuration. For a single request, that is tolerable. For 1000 concurrent requests, you are looking at 20-100 seconds of cumulative overhead, plus the risk of exhausting database connection limits.
 
-Connection pooling solves this by maintaining a set of pre-established connections that your application can borrow and return. The overhead happens once at startup, and subsequent requests reuse existing connections.
+Connection pooling solves this by maintaining a set of reusable connections that your application can borrow and return. The pool opens connections as they are needed, and subsequent requests can reuse existing connections.
 
 ### The Numbers Tell the Story
 
@@ -75,14 +75,14 @@ module.exports = pool;
 
 ### Production-Ready Pool Configuration
 
-For production, you need more robust settings. This configuration handles SSL, connection validation, and proper error handling:
+For production, you need more robust settings. This configuration handles SSL, timeouts, and proper error handling:
 
 ```javascript
 // db/pool.js
 const { Pool } = require('pg');
 const fs = require('fs');
 
-// Production pool configuration with all recommended settings
+// Production pool configuration with common recommended settings
 const poolConfig = {
   // Connection settings
   host: process.env.DB_HOST,
@@ -101,7 +101,7 @@ const poolConfig = {
 
   // Pool sizing - explained in detail below
   max: parseInt(process.env.DB_POOL_MAX) || 20,
-  min: parseInt(process.env.DB_POOL_MIN) || 2,
+  min: parseInt(process.env.DB_POOL_MIN) || 2, // Keep this many already-created idle clients from eviction
 
   // Timeouts
   idleTimeoutMillis: 30000,        // Remove idle connections after 30s
@@ -141,7 +141,7 @@ Getting pool size right is critical. Too few connections and you create bottlene
 
 ### The Formula
 
-A good starting point comes from the PostgreSQL documentation:
+A commonly cited starting point for database connection sizing is:
 
 ```text
 connections = (core_count * 2) + effective_spindle_count
@@ -153,7 +153,7 @@ For most cloud databases with SSD storage, this simplifies to:
 connections = (cpu_cores * 2) + 1
 ```
 
-However, this is per-application. If you have 5 Node.js instances connecting to a database with a 100-connection limit, each instance should use at most 20 connections.
+Treat this as a database-level starting point, then divide your available database connections across application instances. If you have 5 Node.js instances connecting to a database with a 100-connection limit, each instance should use at most 20 connections, and usually less so you keep headroom for administration, migrations, and monitoring.
 
 ### Dynamic Pool Sizing
 
@@ -168,6 +168,7 @@ const os = require('os');
  * @param {Object} options Configuration options
  * @param {number} options.dbMaxConnections Maximum connections your DB allows
  * @param {number} options.appInstances Number of application instances
+ * @param {number} options.dbCpuCores Number of database CPU cores
  * @param {number} options.reservedConnections Connections reserved for admin/monitoring
  * @returns {Object} Recommended pool configuration
  */
@@ -176,16 +177,15 @@ function calculatePoolSize(options = {}) {
     dbMaxConnections = 100,
     appInstances = 1,
     reservedConnections = 10,
+    dbCpuCores = os.cpus().length,
   } = options;
-
-  const cpuCount = os.cpus().length;
 
   // Calculate connections available per instance
   const availableConnections = dbMaxConnections - reservedConnections;
   const connectionsPerInstance = Math.floor(availableConnections / appInstances);
 
-  // Apply the PostgreSQL formula as an upper bound
-  const formulaMax = (cpuCount * 2) + 1;
+  // Apply the database CPU formula as an upper bound
+  const formulaMax = (dbCpuCores * 2) + 1;
 
   // Take the minimum of formula result and fair share
   const recommendedMax = Math.min(formulaMax, connectionsPerInstance);
@@ -196,8 +196,8 @@ function calculatePoolSize(options = {}) {
   return {
     max: recommendedMax,
     min: recommendedMin,
-    cpuCount,
-    reasoning: `Based on ${cpuCount} CPUs and ${connectionsPerInstance} available connections per instance`,
+    dbCpuCores,
+    reasoning: `Based on ${dbCpuCores} database CPUs and ${connectionsPerInstance} available connections per instance`,
   };
 }
 
@@ -206,10 +206,11 @@ const sizing = calculatePoolSize({
   dbMaxConnections: 100,
   appInstances: 3,
   reservedConnections: 10,
+  dbCpuCores: 4,
 });
 
 console.log(sizing);
-// Output: { max: 9, min: 2, cpuCount: 4, reasoning: '...' }
+// Output: { max: 9, min: 2, dbCpuCores: 4, reasoning: '...' }
 
 module.exports = { calculatePoolSize };
 ```
@@ -218,7 +219,7 @@ module.exports = { calculatePoolSize };
 
 Different applications have different needs:
 
-| Workload Type | Recommended Pool Size | Rationale |
+| Workload Type | Starting Point per Instance | Rationale |
 |---------------|----------------------|-----------|
 | API Server (I/O heavy) | CPU cores * 2 | Most time spent waiting on network |
 | Background Worker | CPU cores | Compute-bound tasks |
@@ -262,8 +263,8 @@ class ValidatedPool {
 
       return client;
     } catch (error) {
-      // Connection is dead, release it with an error to remove from pool
-      client.release(error);
+      // Connection is dead, destroy it instead of returning it to the pool
+      client.release(true);
 
       // Try to get a fresh connection
       return this.pool.connect();
@@ -534,9 +535,6 @@ class ResilientPool {
     // Backpressure settings
     this.maxWaitingClients = config.maxWaitingClients || 100;
 
-    // Track waiting clients
-    this.waitingClients = 0;
-
     this.pool.on('error', (err) => {
       this.recordFailure(err);
     });
@@ -557,11 +555,9 @@ class ResilientPool {
     }
 
     // Check backpressure
-    if (this.waitingClients >= this.maxWaitingClients) {
-      throw new Error(`Pool exhausted - ${this.waitingClients} clients waiting`);
+    if (this.pool.waitingCount >= this.maxWaitingClients) {
+      throw new Error(`Pool exhausted - ${this.pool.waitingCount} clients waiting`);
     }
-
-    this.waitingClients++;
 
     try {
       const client = await this.pool.connect();
@@ -573,42 +569,40 @@ class ResilientPool {
         console.log('Circuit breaker CLOSED');
       }
 
-      // Wrap release to track waiting clients
+      // Wrap release so errored clients are destroyed instead of reused
       const originalRelease = client.release.bind(client);
-      client.release = (err) => {
-        this.waitingClients = Math.max(0, this.waitingClients - 1);
-        if (err) {
-          this.recordFailure(err);
+      client.release = (destroy) => {
+        if (destroy instanceof Error) {
+          this.recordFailure(destroy);
         }
-        return originalRelease(err);
+        return originalRelease(Boolean(destroy));
       };
 
       return client;
 
     } catch (error) {
-      this.waitingClients = Math.max(0, this.waitingClients - 1);
       this.recordFailure(error);
       throw error;
     }
   }
 
   /**
-   * Execute a query with automatic retry and timeout
+   * Execute a query with circuit breaker and backpressure protection
    */
-  async query(text, params, options = {}) {
-    const timeout = options.timeout || 30000;
-
-    const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error('Query timeout')), timeout);
-    });
-
-    const queryPromise = this.pool.query(text, params);
+  async query(text, params) {
+    const client = await this.connect();
+    let destroyClient = false;
 
     try {
-      return await Promise.race([queryPromise, timeoutPromise]);
+      return await client.query(text, params);
     } catch (error) {
-      this.recordFailure(error);
+      if (this.isConnectionError(error)) {
+        destroyClient = true;
+        this.recordFailure(error);
+      }
       throw error;
+    } finally {
+      client.release(destroyClient);
     }
   }
 
@@ -628,13 +622,30 @@ class ResilientPool {
   }
 
   /**
+   * Check if an error is a connection-related error
+   */
+  isConnectionError(error) {
+    const connectionErrorCodes = [
+      'ECONNREFUSED',
+      'ECONNRESET',
+      'EPIPE',
+      'ETIMEDOUT',
+      '57P01', // admin_shutdown
+      '57P02', // crash_shutdown
+      '57P03', // cannot_connect_now
+    ];
+
+    return connectionErrorCodes.includes(error.code);
+  }
+
+  /**
    * Get current pool and circuit breaker status
    */
   getStatus() {
     return {
       circuitState: this.circuitState,
       failureCount: this.failureCount,
-      waitingClients: this.waitingClients,
+      waitingClients: this.pool.waitingCount,
       totalConnections: this.pool.totalCount,
       idleConnections: this.pool.idleCount,
       poolWaitingCount: this.pool.waitingCount,
@@ -696,7 +707,7 @@ While pg has built-in pooling, you might need to pool other resources like Redis
 ### Installation
 
 ```bash
-npm install generic-pool
+npm install generic-pool ioredis
 ```
 
 ### Basic Usage
