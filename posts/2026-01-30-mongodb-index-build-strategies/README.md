@@ -8,17 +8,17 @@ Description: Learn to implement index build strategies with background builds, r
 
 ---
 
-Building indexes on MongoDB collections in production requires careful planning. A poorly executed index build can lock your database, consume excessive resources, and degrade application performance. This guide covers practical strategies for building indexes safely in production environments.
+Building indexes on MongoDB collections in production requires careful planning. A poorly executed index build can block collection operations, consume excessive resources, and degrade application performance. This guide covers practical strategies for building indexes safely in production environments.
 
 ## Understanding Index Build Modes
 
-MongoDB offers different approaches for building indexes, each with distinct trade-offs between build speed and system impact.
+MongoDB has legacy foreground and background index build behavior, and modern operational strategies such as default replicated builds and rolling builds. Each approach has distinct trade-offs between build speed and system impact.
 
 ```mermaid
 flowchart TD
     A[Index Build Request] --> B{Build Strategy}
-    B --> C[Foreground Build]
-    B --> D[Background Build]
+    B --> C[Legacy Foreground Build]
+    B --> D[Legacy Background Build]
     B --> E[Rolling Build]
 
     C --> F[Exclusive Lock]
@@ -30,13 +30,13 @@ flowchart TD
     D --> K[Allows Read/Write]
 
     E --> L[One Node at a Time]
-    E --> M[Zero Downtime]
+    E --> M[Reduced Production Impact]
     E --> N[Requires Replica Set]
 ```
 
 ### Foreground vs Background Builds
 
-Before MongoDB 4.2, you had to explicitly choose between foreground and background index builds. Starting with MongoDB 4.2, all index builds use an optimized process that holds an exclusive lock only at the beginning and end of the build.
+Before MongoDB 4.2, you had to explicitly choose between foreground and background index builds. Starting with MongoDB 4.2, all index builds use an optimized process that holds an exclusive collection lock only at the beginning and end of the build and permits interleaving reads and writes during most of the build.
 
 Here is how index builds behave across MongoDB versions:
 
@@ -47,7 +47,7 @@ db.orders.createIndex(
     { background: true }  // Deprecated in 4.2+
 );
 
-// MongoDB 4.2+ - optimized build process (background option ignored)
+// MongoDB 4.2+ - optimized build process
 db.orders.createIndex(
     { customerId: 1, orderDate: -1 }
 );
@@ -62,18 +62,21 @@ sequenceDiagram
     participant Secondary as Secondary Nodes
 
     App->>Primary: createIndex()
-    Primary->>Primary: Acquire intent exclusive lock
+    Primary->>Primary: Acquire exclusive collection lock
+    Primary->>Primary: Downgrade to intent exclusive lock
+    Primary->>Secondary: Replicate startIndexBuild oplog entry
     Primary->>Primary: Start collection scan
+    Secondary->>Secondary: Build index locally
     Note over Primary: Yields to read/write operations
     Primary->>Primary: Build index structure
+    Primary->>Secondary: Wait for commit quorum
+    Primary->>Primary: Acquire shared lock and drain writes
     Primary->>Primary: Acquire exclusive lock (brief)
     Primary->>Primary: Commit index
-    Primary->>Secondary: Replicate index build
-    Secondary->>Secondary: Build index locally
     Primary->>App: Index ready
 ```
 
-Resource Management for Index Builds
+## Resource Management for Index Builds
 
 Index builds consume CPU, memory, and disk I/O. Controlling these resources prevents index builds from starving your application.
 
@@ -82,7 +85,7 @@ Index builds consume CPU, memory, and disk I/O. Controlling these resources prev
 Configure the maximum memory available for index builds:
 
 ```javascript
-// Check current memory limit (in bytes)
+// Check current memory limit (in megabytes)
 db.adminCommand({ getParameter: 1, maxIndexBuildMemoryUsageMegabytes: 1 });
 
 // Set memory limit to 500MB (requires admin privileges)
@@ -100,16 +103,17 @@ Track index build progress and resource consumption:
 
 ```javascript
 // Check current index build operations
-db.currentOp({ "command.createIndexes": { $exists: true } });
-
-// More detailed view of index build progress
-db.adminCommand({
-    currentOp: true,
-    $or: [
-        { op: "command", "command.createIndexes": { $exists: true } },
-        { op: "none", "msg": /^Index Build/ }
-    ]
-});
+db.getSiblingDB("admin").aggregate([
+    { $currentOp: { idleConnections: true, allUsers: true } },
+    {
+        $match: {
+            $or: [
+                { op: "command", "command.createIndexes": { $exists: true } },
+                { op: "none", msg: /^Index Build/ }
+            ]
+        }
+    }
+]);
 ```
 
 Here is a script to monitor index build progress:
@@ -120,7 +124,7 @@ function monitorIndexBuild(dbName, collectionName) {
 
     const interval = setInterval(() => {
         const ops = db.getSiblingDB("admin").aggregate([
-            { $currentOp: { allUsers: true } },
+            { $currentOp: { idleConnections: true, allUsers: true } },
             {
                 $match: {
                     "command.createIndexes": collectionName,
@@ -157,7 +161,7 @@ const monitor = monitorIndexBuild("myDatabase", "orders");
 
 ## Rolling Index Builds for Replica Sets
 
-Rolling builds minimize production impact by building indexes one replica set member at a time.
+Rolling builds minimize production impact by taking one replica set member out at a time and building the index on that member as a standalone.
 
 ```mermaid
 flowchart LR
@@ -189,14 +193,18 @@ Follow these steps for a rolling index build:
 **Step 1: Build on each secondary**
 
 ```bash
-# Connect to a secondary node
+# Stop a secondary, then restart it as a standalone on a different port.
+# Omit --replSet and keep the same dbPath.
+mongod --port 27217 \
+  --dbpath /var/lib/mongodb \
+  --bind_ip localhost,secondary1.example.com \
+  --setParameter disableLogicalSessionCacheRefresh=true
 
-mongosh --host secondary1.example.com:27017
+# Connect directly to the standalone and build the index.
+mongosh --host secondary1.example.com:27217
+```
 
-# In the mongo shell
-rs.status()  // Verify this is a secondary
-
-// Create the index - this only affects this node
+```javascript
 db.orders.createIndex(
     { customerId: 1, orderDate: -1 },
     { name: "idx_customer_date" }
@@ -206,19 +214,24 @@ db.orders.createIndex(
 **Step 2: Wait for build completion**
 
 ```javascript
-// Monitor build progress on the secondary
-db.currentOp({ "command.createIndexes": "orders" });
+// Monitor build progress on the standalone
+db.getSiblingDB("admin").aggregate([
+    { $currentOp: { idleConnections: true, allUsers: true } },
+    { $match: { "command.createIndexes": "orders" } }
+]);
 
 // Verify index exists
 db.orders.getIndexes();
 ```
+
+After the build completes, shut down the standalone and restart it as a replica set member using its original port and replica set configuration.
 
 **Step 3: Repeat for remaining secondaries**
 
 Before moving to the next secondary, ensure the current one has caught up with replication:
 
 ```javascript
-// Check replication lag
+// Check replication lag after the member rejoins the replica set
 rs.printSecondaryReplicationInfo();
 ```
 
@@ -228,27 +241,23 @@ rs.printSecondaryReplicationInfo();
 // On the primary
 rs.stepDown(300);  // Step down for 5 minutes
 
-// After stepdown, this node becomes a secondary
-// Create the index
+// After stepdown, restart the old primary as a standalone on a different port,
+// then connect directly to the standalone and create the index
 db.orders.createIndex(
     { customerId: 1, orderDate: -1 },
     { name: "idx_customer_date" }
 );
 ```
 
-### Automated Rolling Build Script
+### Rolling Build Command Checklist
 
-Here is a more complete script for automated rolling builds:
+Rolling builds require process control outside of `mongosh` because each member must be stopped and restarted as a standalone. Here is a checklist-style helper that prints the commands to run for each member:
 
 ```javascript
-async function rollingIndexBuild(indexSpec, indexOptions, dbName, collName) {
+function printRollingIndexBuildPlan(indexSpec, indexOptions, dbName, collName) {
     const db = connect("mongodb://localhost:27017/admin");
 
     // Get replica set configuration
-    const rsConfig = db.adminCommand({ replSetGetConfig: 1 }).config;
-    const members = rsConfig.members;
-
-    // Separate secondaries and primary
     const rsStatus = db.adminCommand({ replSetGetStatus: 1 });
     const primary = rsStatus.members.find(m => m.stateStr === "PRIMARY");
     const secondaries = rsStatus.members.filter(m => m.stateStr === "SECONDARY");
@@ -256,59 +265,45 @@ async function rollingIndexBuild(indexSpec, indexOptions, dbName, collName) {
     print(`Primary: ${primary.name}`);
     print(`Secondaries: ${secondaries.map(s => s.name).join(", ")}`);
 
-    // Build on each secondary first
-    for (const secondary of secondaries) {
-        print(`\nBuilding index on secondary: ${secondary.name}`);
+    const members = [...secondaries, primary];
 
-        const conn = new Mongo(secondary.name);
-        const targetDb = conn.getDB(dbName);
+    members.forEach((member, i) => {
+        print(`\nStep ${i + 1}: ${member.name}`);
+        if (member.stateStr === "PRIMARY") {
+            print("1. Run rs.stepDown(300) on the current primary first.");
+        }
+        print("2. Stop this mongod process.");
+        print("3. Restart it as a standalone on a different port:");
+        print("   mongod --port 27217 --dbpath <same-dbpath> --bind_ip localhost,<host> --setParameter disableLogicalSessionCacheRefresh=true");
+        print("4. Connect directly to the standalone:");
+        print("   mongosh --host <host>:27217");
+        print("5. Build the index:");
+        print(`   db.getSiblingDB("${dbName}").getCollection("${collName}").createIndex(`);
+        print(`       ${JSON.stringify(indexSpec)},`);
+        print(`       ${JSON.stringify(indexOptions)}`);
+        print("   );");
+        print("6. Restart the node with its original replica set configuration.");
+        print("7. Wait for replication to catch up before moving to the next member.");
+    });
 
-        // Create index
-        const result = targetDb.getCollection(collName).createIndex(
-            indexSpec,
-            indexOptions
-        );
-
-        print(`Result: ${JSON.stringify(result)}`);
-
-        // Wait for replication to catch up
-        print("Waiting for replication to catch up...");
-        sleep(5000);
-    }
-
-    // Step down primary and build
-    print(`\nStepping down primary: ${primary.name}`);
-
-    try {
-        db.adminCommand({ replSetStepDown: 300 });
-    } catch (e) {
-        // Expected - connection closes during stepdown
-        print("Stepdown initiated");
-    }
-
-    // Wait for new primary election
-    sleep(10000);
-
-    // Connect to old primary (now secondary) and build
-    const oldPrimaryConn = new Mongo(primary.name);
-    const oldPrimaryDb = oldPrimaryConn.getDB(dbName);
-
-    print(`Building index on old primary: ${primary.name}`);
-    const finalResult = oldPrimaryDb.getCollection(collName).createIndex(
-        indexSpec,
-        indexOptions
-    );
-
-    print(`Final result: ${JSON.stringify(finalResult)}`);
-    print("\nRolling index build complete!");
+    print("\nFor unique indexes, stop writes to the collection during the entire rolling build.");
 }
 
 // Usage
-rollingIndexBuild(
+printRollingIndexBuildPlan(
     { customerId: 1, orderDate: -1 },
     { name: "idx_customer_date" },
     "ecommerce",
     "orders"
+);
+```
+
+For a standard replicated index build, run `createIndex()` on the primary and let MongoDB coordinate the build across the replica set:
+
+```javascript
+db.orders.createIndex(
+    { customerId: 1, orderDate: -1 },
+    { name: "idx_customer_date" }
 );
 ```
 
@@ -324,12 +319,12 @@ flowchart TD
 
     D --> E[Duplicate Key Error]
     D --> F[Out of Disk Space]
-    D --> G[Node Restart]
+    D --> G[Clean Node Restart]
     D --> H[Manual Abort]
 
     E --> I[Fix Data or Use Partial Index]
     F --> J[Free Disk Space and Retry]
-    G --> K[Build Resumes Automatically]
+    G --> K[Build May Resume from Checkpoint]
     H --> L[Index Dropped]
 
     I --> M[Retry Build]
@@ -341,18 +336,14 @@ flowchart TD
 
 ### Aborting a Running Index Build
 
-If an index build is causing problems, you can abort it:
+If an index build is causing problems, you can abort it with `dropIndex()` or `dropIndexes()`:
 
 ```javascript
-// Find the operation ID
-const ops = db.currentOp({ "command.createIndexes": { $exists: true } });
-const opId = ops.inprog[0].opid;
-
-// Kill the operation
-db.killOp(opId);
-
-// Or use the dropIndexes command with the index name
+// Stop an in-progress build by dropping the index being built
 db.orders.dropIndex("idx_customer_date");
+
+// Or stop all in-progress index builds on the collection
+db.orders.dropIndexes();
 ```
 
 ### Handling Duplicate Key Errors
@@ -375,13 +366,13 @@ db.orders.deleteMany({
     _id: { $in: duplicateIds }
 });
 
-// Option 2: Use a partial index to exclude duplicates
+// Option 2: Use a partial unique index to exclude missing and null emails
 db.orders.createIndex(
     { email: 1 },
     {
         unique: true,
         partialFilterExpression: {
-            email: { $exists: true, $ne: null }
+            email: { $type: "string" }
         }
     }
 );
@@ -401,8 +392,8 @@ const docCount = db.orders.countDocuments();
 const estimatedIndexSize = docCount * 50; // rough estimate for single field
 print(`Estimated index size: ${(estimatedIndexSize / 1024 / 1024).toFixed(2)} MB`);
 
-// 3. Check available disk space
-db.adminCommand({ dbStats: 1 });
+// 3. Check database storage statistics
+db.stats();
 
 // 4. Check current index build memory setting
 db.adminCommand({ getParameter: 1, maxIndexBuildMemoryUsageMegabytes: 1 });
@@ -422,7 +413,10 @@ db.orders.aggregate([
 ]);
 
 // Monitor real-time operations
-db.currentOp({ active: true });
+db.getSiblingDB("admin").aggregate([
+    { $currentOp: { allUsers: true } },
+    { $match: { active: true } }
+]);
 ```
 
 ### Index Build Configuration Summary
@@ -431,9 +425,9 @@ db.currentOp({ active: true });
 |--------|----------------|
 | Collection Size | Under 10GB - Direct build; Over 10GB - Consider rolling build |
 | Traffic Level | High traffic - Rolling build or maintenance window |
-| Replica Set | Always use rolling builds in production |
-| Sharded Cluster | Build on each shard independently |
-| Memory Limit | Set to 10-20% of available RAM |
+| Replica Set | Prefer normal replicated builds; use rolling builds only when the production impact justifies the operational risk |
+| Sharded Cluster | Use the rolling index build procedure for sharded clusters when building one shard at a time |
+| Memory Limit | Keep the default unless you have measured pressure or very large/many concurrent builds |
 | Disk Space | Ensure 2x index size available for temp files |
 
 ## Monitoring and Alerting
@@ -443,15 +437,19 @@ Set up monitoring for index build operations:
 ```javascript
 // Create a function to check for long-running index builds
 function checkLongRunningIndexBuilds(thresholdSeconds) {
-    const builds = db.adminCommand({
-        currentOp: true,
-        $or: [
-            { "command.createIndexes": { $exists: true } },
-            { "msg": /^Index Build/ }
-        ]
-    });
+    const builds = db.getSiblingDB("admin").aggregate([
+        { $currentOp: { idleConnections: true, allUsers: true } },
+        {
+            $match: {
+                $or: [
+                    { "command.createIndexes": { $exists: true } },
+                    { msg: /^Index Build/ }
+                ]
+            }
+        }
+    ]).toArray();
 
-    const longRunning = builds.inprog.filter(
+    const longRunning = builds.filter(
         op => op.secs_running > thresholdSeconds
     );
 
@@ -476,7 +474,7 @@ checkLongRunningIndexBuilds(3600);
 
 Building indexes in production MongoDB deployments requires balancing build speed against system impact. Key takeaways:
 
-1. **Use rolling builds** for replica sets to maintain availability
+1. **Use rolling builds selectively** for replica sets when the reduced build impact is worth the operational complexity
 2. **Configure memory limits** to prevent resource exhaustion
 3. **Monitor build progress** and resource usage throughout the process
 4. **Plan for failures** with proper error handling and recovery procedures
