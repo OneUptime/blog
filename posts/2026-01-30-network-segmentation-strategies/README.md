@@ -8,7 +8,7 @@ Description: A comprehensive guide to network segmentation strategies for isolat
 
 ---
 
-Network segmentation divides your network into smaller, isolated zones. When an attacker compromises one segment, they cannot easily move to others. This is the foundation of defense in depth and a core requirement for compliance frameworks like PCI-DSS.
+Network segmentation divides your network into smaller, isolated zones. When an attacker compromises one segment, they cannot easily move to others. This is the foundation of defense in depth and a common way to reduce compliance scope for frameworks like PCI-DSS.
 
 ## Why Network Segmentation Matters
 
@@ -344,9 +344,6 @@ iptables -P FORWARD DROP
 # Allow established connections (stateful firewall)
 iptables -A FORWARD -m state --state ESTABLISHED,RELATED -j ACCEPT
 
-# Log dropped packets for troubleshooting
-iptables -A FORWARD -j LOG --log-prefix "FW_DROP: " --log-level 4
-
 # Web tier rules
 # Allow internet to web servers on ports 80 and 443
 iptables -A FORWARD -d $WEB_TIER -p tcp --dport 80 -j ACCEPT
@@ -370,11 +367,8 @@ iptables -A FORWARD -s $MGMT_NET -p tcp --dport 22 -j ACCEPT
 iptables -A FORWARD -s $MGMT_NET -p tcp --dport 9090 -j ACCEPT
 iptables -A FORWARD -s $MGMT_NET -p tcp --dport 9100 -j ACCEPT
 
-# Block all other inter-segment traffic (implicit with DROP policy)
-# But explicit deny helps with logging and clarity
-iptables -A FORWARD -s $WEB_TIER -d $DB_TIER -j DROP
-iptables -A FORWARD -s $WEB_TIER -d $PCI_ZONE -j DROP
-iptables -A FORWARD -s $DB_TIER -d $WEB_TIER -j DROP
+# Log unmatched packets before the default DROP policy handles them
+iptables -A FORWARD -j LOG --log-prefix "FW_DROP: " --log-level 4
 
 # Save rules
 iptables-save > /etc/iptables/rules.v4
@@ -431,7 +425,7 @@ table inet segmentation {
 ### pfSense/OPNsense Firewall Rules
 
 ```bash
-# pfSense firewall rules export format
+# pf-style representation of pfSense/OPNsense firewall rules
 # Interface aliases defined in System > Aliases
 
 # WEB_TIER_NET = 10.10.10.0/24
@@ -466,7 +460,7 @@ block out on DB_TIER from DB_TIER_NET to any
 
 ## PCI-DSS Compliance Requirements
 
-PCI-DSS requires network segmentation to reduce the scope of compliance. Systems that process, store, or transmit cardholder data must be isolated.
+PCI-DSS does not require every environment to use network segmentation, but segmentation is commonly used to reduce compliance scope. Systems that process, store, or transmit cardholder data must be isolated from out-of-scope systems if you rely on segmentation for scope reduction.
 
 ```mermaid
 flowchart TB
@@ -614,7 +608,7 @@ aws ec2 create-vpc \
     --tag-specifications 'ResourceType=vpc,Tags=[{Key=Name,Value=segmented-vpc}]'
 
 # Create subnets for each tier
-# Public subnet for web tier (has internet gateway)
+# Public subnet for web tier (add an internet gateway and route table separately)
 aws ec2 create-subnet \
     --vpc-id vpc-xxx \
     --cidr-block 10.0.10.0/24 \
@@ -643,6 +637,12 @@ aws ec2 create-security-group \
     --vpc-id vpc-xxx
 
 # Allow HTTP/HTTPS from internet
+aws ec2 authorize-security-group-ingress \
+    --group-id sg-web-xxx \
+    --protocol tcp \
+    --port 80 \
+    --cidr 0.0.0.0/0
+
 aws ec2 authorize-security-group-ingress \
     --group-id sg-web-xxx \
     --protocol tcp \
@@ -678,7 +678,7 @@ aws ec2 authorize-security-group-ingress \
 
 ```hcl
 # terraform/network-segmentation/main.tf
-# Complete network segmentation with Terraform
+# Core network segmentation with Terraform
 
 terraform {
   required_providers {
@@ -847,19 +847,9 @@ resource "aws_network_acl" "db_tier" {
     to_port    = 5432
   }
 
-  # Allow return traffic (ephemeral ports)
-  ingress {
-    protocol   = "tcp"
-    rule_no    = 200
-    action     = "allow"
-    cidr_block = var.app_subnet_cidr
-    from_port  = 1024
-    to_port    = 65535
-  }
-
   # Deny all other inbound
   ingress {
-    protocol   = -1
+    protocol   = "-1"
     rule_no    = 999
     action     = "deny"
     cidr_block = "0.0.0.0/0"
@@ -879,7 +869,7 @@ resource "aws_network_acl" "db_tier" {
 
   # Deny all other outbound
   egress {
-    protocol   = -1
+    protocol   = "-1"
     rule_no    = 999
     action     = "deny"
     cidr_block = "0.0.0.0/0"
@@ -928,6 +918,8 @@ spec:
               kubernetes.io/metadata.name: kube-system
       ports:
         - protocol: UDP
+          port: 53
+        - protocol: TCP
           port: 53
 ---
 # Web tier: allow ingress from load balancer
@@ -1045,6 +1037,7 @@ Track traffic between segments to detect policy violations and anomalies.
 ```yaml
 # prometheus/alerts/segmentation-alerts.yaml
 # Alert on unexpected cross-segment traffic
+# Assumes flow telemetry is exported as network_transmit_bytes_total with src_zone and dst_zone labels.
 
 groups:
   - name: network-segmentation
