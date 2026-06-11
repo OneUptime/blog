@@ -26,9 +26,9 @@ First, install Bubbletea and its companion libraries:
 
 ```bash
 go mod init mytui
-go get github.com/charmbracelet/bubbletea
-go get github.com/charmbracelet/bubbles
-go get github.com/charmbracelet/lipgloss
+go get charm.land/bubbletea/v2
+go get charm.land/bubbles/v2
+go get charm.land/lipgloss/v2
 ```
 
 ## Building a Simple Counter App
@@ -42,7 +42,7 @@ import (
     "fmt"
     "os"
 
-    tea "github.com/charmbracelet/bubbletea"
+    tea "charm.land/bubbletea/v2"
 )
 
 // Model holds the application state
@@ -75,12 +75,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
     return m, nil
 }
 
-// View renders the current state as a string
-func (m model) View() string {
-    return fmt.Sprintf(
+// View renders the current state
+func (m model) View() tea.View {
+    return tea.NewView(fmt.Sprintf(
         "\n  Counter: %d\n\n  Press up/down or j/k to change\n  Press q to quit\n",
         m.count,
-    )
+    ))
 }
 
 func main() {
@@ -101,7 +101,7 @@ Bubbletea provides rich keyboard handling through `tea.KeyMsg`. You can match sp
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
     switch msg := msg.(type) {
     case tea.KeyMsg:
-        switch msg.Type {
+        switch msg.Key().Code {
         case tea.KeyEnter:
             // Handle Enter key
             return m, m.submit()
@@ -135,8 +135,8 @@ import (
     "fmt"
     "os"
 
-    "github.com/charmbracelet/bubbles/textinput"
-    tea "github.com/charmbracelet/bubbletea"
+    "charm.land/bubbles/v2/textinput"
+    tea "charm.land/bubbletea/v2"
 )
 
 type model struct {
@@ -151,7 +151,7 @@ func initialModel() model {
     ti.Placeholder = "Enter your name"
     ti.Focus()
     ti.CharLimit = 50
-    ti.Width = 30
+    ti.SetWidth(30)
 
     return model{
         textInput: ti,
@@ -168,13 +168,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
     switch msg := msg.(type) {
     case tea.KeyMsg:
-        switch msg.Type {
+        switch msg.Key().Code {
         case tea.KeyEnter:
             // Capture the input value on submit
             m.value = m.textInput.Value()
             m.submitted = true
             return m, tea.Quit
-        case tea.KeyCtrlC, tea.KeyEsc:
+        case tea.KeyEsc:
+            return m, tea.Quit
+        }
+
+        if msg.String() == "ctrl+c" {
             return m, tea.Quit
         }
     }
@@ -184,14 +188,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
     return m, cmd
 }
 
-func (m model) View() string {
+func (m model) View() tea.View {
     if m.submitted {
-        return fmt.Sprintf("\n  Hello, %s!\n\n", m.value)
+        return tea.NewView(fmt.Sprintf("\n  Hello, %s!\n\n", m.value))
     }
-    return fmt.Sprintf(
+    return tea.NewView(fmt.Sprintf(
         "\n  What's your name?\n\n  %s\n\n  (press Enter to submit)\n",
         m.textInput.View(),
-    )
+    ))
 }
 
 func main() {
@@ -211,8 +215,14 @@ Lipgloss provides declarative styling for terminal output. Use it to add colors,
 package main
 
 import (
-    "github.com/charmbracelet/lipgloss"
+    tea "charm.land/bubbletea/v2"
+    "charm.land/lipgloss/v2"
 )
+
+type model struct {
+    items  []string
+    cursor int
+}
 
 // Define reusable styles
 var (
@@ -236,7 +246,7 @@ var (
         Padding(1, 2)
 )
 
-func (m model) View() string {
+func (m model) View() tea.View {
     // Apply styles in the View function
     title := titleStyle.Render("My TUI App")
 
@@ -251,7 +261,7 @@ func (m model) View() string {
 
     // Wrap everything in a box
     content := title + "\n\n" + items
-    return boxStyle.Render(content)
+    return tea.NewView(boxStyle.Render(content))
 }
 ```
 
