@@ -229,14 +229,14 @@ func ordersHandler(w http.ResponseWriter, r *http.Request) {
 
 ## Summary in Python
 
-The Python Prometheus client provides similar functionality:
+The Python Prometheus client provides a Summary metric, but with an important caveat: it does not compute quantiles locally. It only exposes the `_sum` and `_count` time series. If you need p50/p95/p99 in Python, use a Histogram instead.
 
 ```python
 from prometheus_client import Summary, start_http_server
 import time
 import random
 
-# Create summary with quantile objectives
+# Create summary - exposes only _sum and _count (no quantiles)
 
 REQUEST_DURATION = Summary(
     'http_request_duration_seconds',
@@ -244,8 +244,9 @@ REQUEST_DURATION = Summary(
     ['method', 'endpoint']
 )
 
-# Note: Python client uses default quantiles (0.5, 0.9, 0.99)
-# Custom quantiles require using the multiprocess mode or custom implementation
+# Note: The Python client's Summary does not compute or expose quantiles.
+# Only http_request_duration_seconds_sum and http_request_duration_seconds_count
+# will be scraped. Use a Histogram if you need p50/p95/p99 in Python.
 
 def handle_request(method: str, endpoint: str):
     start_time = time.time()
@@ -269,17 +270,16 @@ if __name__ == '__main__':
     main()
 ```
 
-### Python with Custom Quantiles
+### Python Summary Wrapper
 
-For custom quantile objectives in Python, you can extend the Summary class:
+Because the Python client's Summary does not expose quantiles, the wrapper below provides only ergonomic helpers (label handling and a timing context manager). For quantiles, switch to a Histogram and compute them server-side with `histogram_quantile`.
 
 ```python
 from prometheus_client import Summary
-from prometheus_client.metrics import MetricWrapperBase
 import time
 
 class CustomSummary:
-    """Wrapper for Summary with explicit quantile tracking"""
+    """Ergonomic wrapper around Summary - exposes only _sum and _count."""
 
     def __init__(self, name: str, documentation: str, labelnames=None):
         self.summary = Summary(
