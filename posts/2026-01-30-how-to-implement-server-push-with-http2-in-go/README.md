@@ -8,16 +8,16 @@ Description: Learn how to implement HTTP/2 server push in Go to preemptively sen
 
 ---
 
-HTTP/2 server push allows your server to send resources to the client before the client even requests them. This can significantly reduce page load times by eliminating round trips for critical assets like CSS, JavaScript, and fonts. Go's standard library has built-in support for HTTP/2 server push through the `http.Pusher` interface.
+HTTP/2 server push allows your server to send resources to the client before the client even requests them. It was designed to reduce page load times by eliminating round trips for critical assets like CSS, JavaScript, and fonts, but most major browsers have removed support for HTTP/2 server push. Go's standard library still has built-in support for HTTP/2 server push through the `http.Pusher` interface, which can be useful with HTTP/2 clients that explicitly support push.
 
 ## TLS Requirements for HTTP/2
 
-HTTP/2 requires TLS in practice. While the HTTP/2 specification allows unencrypted connections, browsers only support HTTP/2 over HTTPS. You will need a valid TLS certificate. For development, you can generate a self-signed certificate:
+HTTP/2 requires TLS in practice. While the HTTP/2 specification allows unencrypted connections, browsers only support HTTP/2 over HTTPS. You will need a valid TLS certificate. For development, you can generate a self-signed certificate for localhost:
 
 ```bash
-# Generate a self-signed certificate for development
+# Generate a self-signed certificate for localhost development
 
-openssl req -x509 -newkey rsa:2048 -keyout server.key -out server.crt -days 365 -nodes -subj "/CN=localhost"
+openssl req -x509 -newkey rsa:2048 -keyout server.key -out server.crt -days 365 -noenc -subj "/CN=localhost" -addext "subjectAltName=DNS:localhost"
 ```
 
 ## Setting Up an HTTP/2 Server in Go
@@ -59,7 +59,7 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
     pusher, ok := w.(http.Pusher)
     if ok {
         // Push CSS file to the client
-        // The browser will receive this before it parses the HTML
+        // A push-capable HTTP/2 client can receive this before it parses the HTML
         if err := pusher.Push("/static/style.css", nil); err != nil {
             log.Printf("Failed to push CSS: %v", err)
         }
@@ -178,7 +178,7 @@ func main() {
     mux.HandleFunc("/static/app.js", handleJS)
 
     log.Println("Starting HTTP/2 server on https://localhost:8443")
-    log.Println("Open your browser and check the Network tab to see pushed resources")
+    log.Println("Connect with a push-capable HTTP/2 client to inspect pushed resources")
 
     err := http.ListenAndServeTLS(":8443", "server.crt", "server.key", mux)
     if err != nil {
@@ -189,7 +189,7 @@ func main() {
 
 ## When to Use Server Push
 
-Server push works best for critical resources that you know the client will need:
+Server push only helps when the client supports it and you know the client will need the resource:
 
 - **CSS files** - Push stylesheets to prevent render-blocking
 - **JavaScript** - Push scripts needed for initial page functionality
@@ -197,20 +197,20 @@ Server push works best for critical resources that you know the client will need
 - **Above-the-fold images** - Push hero images or logos
 
 Avoid pushing resources that:
-- Are already in the browser cache (the browser will cancel the push)
+- Are already cached by the client (the client may reject or cancel the push)
 - Are not needed for initial render
 - Are large files that could delay other critical resources
 
 ## Verifying Server Push
 
-To verify that server push is working, open Chrome DevTools, go to the Network tab, and look for resources with "Push" in the Initiator column. You can also use `curl` with verbose output:
+Modern Chrome and other major browsers no longer expose HTTP/2 server push because browser support has been removed. You can still use `curl` to confirm that the server negotiated HTTP/2:
 
 ```bash
 curl -v --http2 -k https://localhost:8443/
 ```
 
-Look for frames marked as `PUSH_PROMISE` in the output.
+Look for `HTTP/2` in the output. To verify `PUSH_PROMISE` frames themselves, use a push-capable HTTP/2 client library or a frame-level HTTP/2 debugging tool.
 
 ## Conclusion
 
-HTTP/2 server push is straightforward to implement in Go thanks to the `http.Pusher` interface. By pushing critical assets like CSS and JavaScript, you can eliminate round trips and improve page load times. Remember that HTTP/2 requires TLS, and always check if the client supports push before attempting to use it.
+HTTP/2 server push is straightforward to implement in Go thanks to the `http.Pusher` interface. With clients that still support push, pushing critical assets like CSS and JavaScript can eliminate round trips. Remember that HTTP/2 requires TLS in browser contexts, and always check if the client supports push before attempting to use it.
