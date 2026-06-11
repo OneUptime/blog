@@ -134,14 +134,14 @@ The following table shows common claim mappings.
 
 ### Step 3: Implement SAML Authentication
 
-Your application needs code to handle SAML requests and responses. The following Node.js example uses the passport-saml library.
+Your application needs code to handle SAML requests and responses. The following Node.js example uses the @node-saml/passport-saml library.
 
 ```javascript
 // saml-config.js
 // Configure SAML strategy for Passport.js
 
 const passport = require('passport');
-const SamlStrategy = require('passport-saml').Strategy;
+const SamlStrategy = require('@node-saml/passport-saml').Strategy;
 const fs = require('fs');
 
 // Load the IdP certificate for signature verification
@@ -161,7 +161,7 @@ const samlConfig = {
   callbackUrl: 'https://app.example.com/saml/acs',
 
   // IdP certificate validates incoming assertions
-  cert: idpCert,
+  idpCert: idpCert,
 
   // SP private key signs outgoing requests
   privateKey: spPrivateKey,
@@ -171,7 +171,7 @@ const samlConfig = {
   wantAssertionsSigned: true,
   wantAuthnResponseSigned: true,
 
-  // Session lifetime in seconds
+  // Assertion validation windows in milliseconds
   acceptedClockSkewMs: 5000,
   maxAssertionAgeMs: 300000
 };
@@ -214,7 +214,7 @@ sequenceDiagram
 
 ### Step 1: Register Your Application
 
-Register your application with the OIDC provider to obtain client credentials. The following configuration parameters are required.
+Register your application with the OIDC provider to obtain client credentials. The following configuration parameters are typical for a confidential web application.
 
 ```json
 {
