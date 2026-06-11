@@ -126,7 +126,7 @@ interface Event<T> {
 Building events manually leads to inconsistency. Use a factory that enforces your metadata standards.
 
 ```typescript
-import { randomUUID } from 'crypto';
+import { randomUUID } from 'node:crypto';
 
 // Configuration for the event factory
 interface EventFactoryConfig {
@@ -276,8 +276,9 @@ sequenceDiagram
 The correlation ID must flow through every system boundary. Here is how to propagate it in an Express middleware.
 
 ```typescript
+import { randomUUID } from 'node:crypto';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { Request, Response, NextFunction } from 'express';
-import { AsyncLocalStorage } from 'async_hooks';
 
 // AsyncLocalStorage provides context that follows async operations
 // This allows any code in the request chain to access the correlation ID
@@ -294,13 +295,15 @@ interface CorrelationContext {
 function correlationMiddleware(req: Request, res: Response, next: NextFunction): void {
   // Check standard header names for existing correlation ID
   const correlationId =
-    req.headers['x-correlation-id'] as string ||
-    req.headers['x-request-id'] as string ||
+    req.get('x-correlation-id') ||
+    req.get('x-request-id') ||
     randomUUID();
 
   // Extract OpenTelemetry trace context if present
-  const traceId = req.headers['traceparent']?.toString().split('-')[1];
-  const spanId = req.headers['traceparent']?.toString().split('-')[2];
+  const traceparent = req.get('traceparent');
+  const traceparentParts = traceparent?.split('-');
+  const traceId = traceparentParts?.length === 4 ? traceparentParts[1] : undefined;
+  const spanId = traceparentParts?.length === 4 ? traceparentParts[2] : undefined;
 
   const context: CorrelationContext = {
     correlationId,
@@ -532,6 +535,8 @@ flowchart LR
 Include schema information that helps consumers deserialize correctly.
 
 ```typescript
+import { createHash } from 'node:crypto';
+
 // Schema metadata for validation and compatibility checking
 interface SchemaMetadata {
   // Schema version number (incrementing integer)
@@ -864,8 +869,8 @@ CREATE TABLE event_metadata (
     occurred_at TIMESTAMPTZ NOT NULL,
 
     -- Tracing identifiers
-    correlation_id UUID NOT NULL,
-    causation_id UUID NOT NULL,
+    correlation_id VARCHAR(255) NOT NULL,
+    causation_id UUID,
     trace_id VARCHAR(32),
     span_id VARCHAR(16),
 
@@ -1015,7 +1020,7 @@ interface CausationNode {
 
 interface EventRow {
   event_id: string;
-  causation_id: string;
+  causation_id: string | null;
   event_type: string;
   created_at: Date;
   depth: number;
@@ -1027,7 +1032,7 @@ interface StoredEvent {
   schema_version: number;
   created_at: Date;
   correlation_id: string;
-  causation_id: string;
+  causation_id: string | null;
   payload: unknown;
 }
 ```
@@ -1037,7 +1042,15 @@ interface StoredEvent {
 Integrate event metadata with distributed tracing for full observability.
 
 ```typescript
-import { trace, context, SpanKind, SpanStatusCode } from '@opentelemetry/api';
+import {
+  Context,
+  ROOT_CONTEXT,
+  context,
+  propagation,
+  SpanKind,
+  SpanStatusCode,
+  trace
+} from '@opentelemetry/api';
 
 // Event publisher with OpenTelemetry integration
 class TracedEventPublisher {
@@ -1147,13 +1160,13 @@ class TracedEventConsumer {
     });
   }
 
-  private extractTraceContext(metadata: EventMetadata): context.Context {
+  private extractTraceContext(metadata: EventMetadata): Context {
     // Extract W3C trace context from metadata
     if (metadata.traceId && metadata.spanId) {
       // Reconstruct traceparent header format
       const traceparent = `00-${metadata.traceId}-${metadata.spanId}-01`;
       // Use OpenTelemetry propagator to extract context
-      // Implementation depends on your propagator setup
+      return propagation.extract(ROOT_CONTEXT, { traceparent });
     }
     return context.active();
   }
