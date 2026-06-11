@@ -74,7 +74,7 @@ flowchart TD
     J --> K
 ```
 
-The compactor acquires a lock before starting. In distributed mode, only one compactor instance runs at a time. This prevents duplicate work and index corruption.
+The compactor ring elects which compactor instance runs compactions. In normal deployments, run the compactor as a singleton to prevent duplicate work and index corruption.
 
 ## Production Configuration Example
 
@@ -94,14 +94,24 @@ compactor:
 limits_config:
   retention_period: 744h  # 31 days
 
+schema_config:
+  configs:
+    - from: 2024-01-01
+      store: tsdb
+      object_store: s3
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
 storage_config:
-  boltdb_shipper:
+  tsdb_shipper:
     active_index_directory: /data/loki/index
     cache_location: /data/loki/index_cache
-    shared_store: s3
 
   aws:
-    s3: s3://your-region/your-bucket
+    region: your-region
+    bucketnames: your-bucket
     s3forcepathstyle: true
 ```
 
@@ -125,12 +135,17 @@ Controls how many tables the compactor processes in parallel. Higher values spee
 
 ## Configuring Retention Per Tenant
 
-Loki supports multi-tenant deployments where each tenant can have different retention periods. Configure this in `limits_config`:
+Loki supports multi-tenant deployments where each tenant can have different retention periods. Point `limits_config` at a runtime overrides file:
 
 ```yaml
 limits_config:
   retention_period: 744h  # Default: 31 days
+  per_tenant_override_config: /etc/loki/overrides.yaml
+```
 
+Then define tenant-specific retention in that overrides file:
+
+```yaml
 overrides:
   tenant-a:
     retention_period: 2160h  # 90 days
@@ -144,24 +159,24 @@ The compactor respects these per-tenant overrides when marking chunks for deleti
 
 ## Stream-Level Retention
 
-Starting with Loki 2.4, you can define retention rules based on label selectors. This lets you keep debug logs for 7 days while retaining error logs for 90 days:
+Loki can define retention rules based on label selectors. This lets you keep debug logs for 7 days while retaining error logs for 90 days:
 
 ```yaml
 limits_config:
   retention_period: 744h  # Default fallback
   retention_stream:
     - selector: '{level="error"}'
-      priority: 1
+      priority: 30
       period: 2160h  # 90 days
     - selector: '{level="debug"}'
-      priority: 2
+      priority: 20
       period: 168h   # 7 days
     - selector: '{namespace="kube-system"}'
-      priority: 3
+      priority: 10
       period: 336h   # 14 days
 ```
 
-Rules are evaluated in priority order. The first matching rule wins. Chunks that match no rule fall back to `retention_period`.
+If multiple rules match a stream, the rule with the highest priority value wins. Chunks that match no rule fall back to `retention_period`.
 
 ```mermaid
 flowchart TD
@@ -196,7 +211,7 @@ spec:
     spec:
       containers:
         - name: compactor
-          image: grafana/loki:2.9.0
+          image: grafana/loki:3.7.2
           args:
             - -config.file=/etc/loki/config.yaml
             - -target=compactor
@@ -234,24 +249,24 @@ The compactor exposes Prometheus metrics. Here are the ones worth alerting on:
 
 | Metric | What It Tells You |
 |--------|-------------------|
-| `loki_compactor_running` | Whether the compactor is active (1) or idle (0) |
-| `loki_compactor_compact_tables_operation_duration_seconds` | Time spent on each compaction cycle |
-| `loki_compactor_retention_marks_created_total` | Chunks marked for deletion |
-| `loki_compactor_retention_marks_deleted_total` | Chunks actually deleted |
-| `loki_compactor_delete_requests_processed_total` | Manual deletion requests processed |
+| `loki_boltdb_shipper_compactor_running` | Whether the compactor is active (1) or idle (0). This historical prefix is used even with TSDB. |
+| `loki_boltdb_shipper_compact_tables_operation_duration_seconds` | Time spent on each compaction cycle |
+| `loki_boltdb_shipper_compact_tables_operation_last_successful_run_timestamp_seconds` | Last successful compaction run |
+| `loki_compactor_apply_retention_last_successful_run_timestamp_seconds` | Last successful retention run |
+| `loki_boltdb_shipper_retention_sweeper_chunk_deleted_duration_seconds_count` | Chunk deletion throughput from the retention sweeper |
 
 Set up alerts for:
 
 - Compactor not running for more than 2x `compaction_interval`
-- Compaction duration exceeding the interval (falling behind)
-- Delete requests stuck in pending state
+- No successful compaction for longer than expected
+- Retention sweeper lag or falling delete throughput
 
 ```yaml
 groups:
   - name: loki-compactor
     rules:
       - alert: CompactorNotRunning
-        expr: loki_compactor_running == 0
+        expr: sum(loki_boltdb_shipper_compactor_running) == 0
         for: 30m
         labels:
           severity: warning
@@ -260,8 +275,7 @@ groups:
 
       - alert: CompactionFallingBehind
         expr: |
-          rate(loki_compactor_compact_tables_operation_duration_seconds_sum[1h])
-          > 600
+          time() - max(loki_boltdb_shipper_compact_tables_operation_last_successful_run_timestamp_seconds) > 1800
         for: 1h
         labels:
           severity: critical
@@ -271,19 +285,14 @@ groups:
 
 ## Troubleshooting Common Issues
 
-### Compactor Stuck on Lock
+### Compactor Not Running or Multiple Compactors
 
-The compactor uses a distributed lock stored in your object storage. If a previous compactor crashed without releasing the lock, the new instance waits forever.
+Modern Loki deployments use the compactor ring to elect which compactor runs compactions, and Grafana recommends running the compactor as a singleton. If the compactor is not running, or more than one compactor is active, check the compactor logs and ring configuration.
 
-Fix: Delete the lock file manually from your object storage bucket:
+Check how many compactors are active:
 
-```bash
-# For S3
-
-aws s3 rm s3://your-bucket/loki/compactor/lock
-
-# For GCS
-gsutil rm gs://your-bucket/loki/compactor/lock
+```promql
+sum(loki_boltdb_shipper_compactor_running)
 ```
 
 ### Retention Not Deleting Chunks
@@ -350,6 +359,11 @@ schema_config:
         prefix: index_
         period: 24h
 
+storage_config:
+  tsdb_shipper:
+    active_index_directory: /data/loki/index
+    cache_location: /data/loki/index_cache
+
 compactor:
   working_directory: /data/loki/compactor
   compaction_interval: 10m
@@ -363,13 +377,13 @@ limits_config:
   retention_period: 744h
   retention_stream:
     - selector: '{level="error"}'
-      priority: 1
+      priority: 30
       period: 2160h
     - selector: '{level="debug"}'
-      priority: 2
+      priority: 20
       period: 168h
     - selector: '{env="production"}'
-      priority: 3
+      priority: 10
       period: 1440h
 ```
 
