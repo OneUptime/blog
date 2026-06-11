@@ -32,22 +32,22 @@ sequenceDiagram
     participant K8s as Kubernetes
     participant Old as Old Pods (v1)
     participant New as New Pods (v2)
-    participant LB as Load Balancer
+    participant SVC as Service
 
     Note over Old: 3 pods running v1
     K8s->>New: Create surge pod (v2)
     New->>K8s: Pod Ready
-    LB->>New: Add to service
+    SVC->>New: Add to endpoints
     K8s->>Old: Terminate 1 pod (v1)
-    Old->>LB: Remove from service
+    Old->>SVC: Remove from endpoints
     K8s->>New: Create next pod (v2)
     New->>K8s: Pod Ready
-    LB->>New: Add to service
+    SVC->>New: Add to endpoints
     K8s->>Old: Terminate 1 pod (v1)
     Note over New: 3 pods running v2
 ```
 
-The surge pod comes up first, gets added to the load balancer, and only then does Kubernetes terminate an old pod. This maintains capacity throughout the rollout.
+With `maxUnavailable: 0`, the surge pod comes up first, gets added to the Service endpoints, and only then does Kubernetes terminate an old pod. This maintains capacity throughout the rollout.
 
 ---
 
@@ -85,7 +85,7 @@ spec:
           image: myapp/api:v2.0.0
           ports:
             - containerPort: 8080
-          # Probes are required for safe rolling updates
+          # Readiness probes are important for safe rolling updates
           readinessProbe:
             httpGet:
               path: /health
@@ -154,6 +154,9 @@ metadata:
   name: web-frontend
 spec:
   replicas: 5
+  selector:
+    matchLabels:
+      app: web-frontend
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -162,6 +165,9 @@ spec:
       # Never reduce capacity below desired count
       maxUnavailable: 0
   template:
+    metadata:
+      labels:
+        app: web-frontend
     spec:
       containers:
         - name: frontend
@@ -186,6 +192,9 @@ metadata:
   name: worker-pool
 spec:
   replicas: 20
+  selector:
+    matchLabels:
+      app: worker-pool
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -194,6 +203,9 @@ spec:
       # Allow some pods to be unavailable
       maxUnavailable: 25%
   template:
+    metadata:
+      labels:
+        app: worker-pool
     spec:
       containers:
         - name: worker
@@ -213,6 +225,9 @@ metadata:
   name: api-gateway
 spec:
   replicas: 8
+  selector:
+    matchLabels:
+      app: api-gateway
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -221,6 +236,9 @@ spec:
       # Allow 1 pod unavailable to speed up rollout
       maxUnavailable: 1
   template:
+    metadata:
+      labels:
+        app: api-gateway
     spec:
       containers:
         - name: gateway
@@ -283,7 +301,7 @@ At no point does the pod count drop below 4 (the desired count). The surge pod p
 
 ## Combining with Pod Disruption Budgets
 
-MaxSurge controls voluntary updates you trigger. Pod Disruption Budgets (PDBs) control involuntary disruptions like node drains. Use them together for complete protection.
+MaxSurge controls how Deployment rolling updates add replacement pods. Pod Disruption Budgets (PDBs) limit voluntary disruptions like node drains. Use them together for stronger availability protection.
 
 ```yaml
 # Deployment with rolling update strategy
@@ -311,7 +329,7 @@ spec:
         - name: app
           image: myapp/critical:v1.0.0
 ---
-# PDB ensures minimum availability during node operations
+# PDB ensures minimum availability during voluntary node operations
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
@@ -324,7 +342,7 @@ spec:
       app: critical-service
 ```
 
-The PDB ensures at least 3 pods stay running during node drains, cluster upgrades, or autoscaler scale-downs.
+The PDB ensures at least 3 pods stay running during voluntary disruptions that use the Eviction API, such as node drains, cluster upgrades, or autoscaler scale-downs.
 
 ---
 
@@ -361,7 +379,7 @@ If surge pods stay Pending, your cluster likely lacks resources.
 kubectl describe pod <pending-pod-name> -n production
 
 # Look for resource issues
-kubectl get events -n production --sort-by='.lastTimestamp'
+kubectl get events -n production --sort-by='.metadata.creationTimestamp'
 ```
 
 Solutions include reducing maxSurge, adding cluster capacity, or adjusting resource requests.
