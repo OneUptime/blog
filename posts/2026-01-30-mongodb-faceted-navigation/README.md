@@ -349,6 +349,11 @@ function buildSmartFacetedSearch(filters) {
     baseBrandMatch.price.$lte = maxPrice;
   }
 
+  // Match for price facet - exclude price filters
+  const priceFacetMatch = {};
+  if (category) priceFacetMatch.category = category;
+  if (brand) priceFacetMatch.brand = brand;
+
   // Full match for results
   const fullMatch = { ...baseCategoryMatch };
   if (category) fullMatch.category = category;
@@ -373,7 +378,7 @@ function buildSmartFacetedSearch(filters) {
 
         // Price ranges - apply all non-price filters
         priceRanges: [
-          { $match: { category, brand } },
+          { $match: priceFacetMatch },
           {
             $bucket: {
               groupBy: "$price",
@@ -600,15 +605,29 @@ async function updateFacetCache() {
 }
 ```
 
-### 5. Use allowDiskUse for Large Datasets
+### 5. Understand $facet Memory Limits
 
-For operations exceeding the 100MB memory limit:
+The `$facet` stage has a 100MB limit for the document it builds, and the final output document must fit within MongoDB's 16 MiB BSON document size limit. The `allowDiskUse` option does not remove the `$facet` limit because `$facet` cannot spill to disk.
+
+Keep facet outputs small by filtering before `$facet`, limiting facet arrays, and projecting only the fields you need:
 
 ```javascript
 db.products.aggregate([
   { $match: { /* filters */ } },
-  { $facet: { /* facets */ } }
-], { allowDiskUse: true });
+  {
+    $facet: {
+      categories: [
+        { $group: { _id: "$category", count: { $sum: 1 } } },
+        { $sort: { count: -1 } },
+        { $limit: 50 }
+      ],
+      results: [
+        { $project: { name: 1, category: 1, price: 1 } },
+        { $limit: 20 }
+      ]
+    }
+  }
+]);
 ```
 
 ## Complete Node.js Implementation
@@ -655,6 +674,7 @@ class FacetedSearchService {
     });
 
     const skip = (page - 1) * limit;
+    const priceBoundaries = [0, 25, 50, 100, 200, 500, 1000];
 
     const pipeline = [
       ...(Object.keys(matchStage).length > 0 ? [{ $match: matchStage }] : []),
@@ -674,12 +694,10 @@ class FacetedSearchService {
             {
               $bucket: {
                 groupBy: '$price',
-                boundaries: [0, 25, 50, 100, 200, 500, 1000],
+                boundaries: priceBoundaries,
                 default: '1000+',
                 output: {
-                  count: { $sum: 1 },
-                  minPrice: { $min: '$price' },
-                  maxPrice: { $max: '$price' }
+                  count: { $sum: 1 }
                 }
               }
             }
@@ -739,11 +757,30 @@ class FacetedSearchService {
 
     return {
       facets: {
-        categories: result.categories,
-        brands: result.brands,
-        priceRanges: result.priceRanges,
-        ratings: result.ratings,
-        availability: result.availability
+        categories: result.categories.map(({ _id, count }) => ({
+          value: _id,
+          count
+        })),
+        brands: result.brands.map(({ _id, count }) => ({
+          value: _id,
+          count
+        })),
+        priceRanges: result.priceRanges.map(({ _id, count }) => {
+          const index = priceBoundaries.indexOf(_id);
+          return {
+            min: index === -1 ? priceBoundaries[priceBoundaries.length - 1] : _id,
+            max: index === -1 ? null : priceBoundaries[index + 1],
+            count
+          };
+        }),
+        ratings: result.ratings.map(({ _id, count }) => ({
+          value: _id,
+          count
+        })),
+        availability: result.availability.map(({ _id, count }) => ({
+          value: _id,
+          count
+        }))
       },
       results: result.results,
       pagination: {
