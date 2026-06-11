@@ -28,8 +28,11 @@ The `KeyValueStore` interface is the foundation for all key-value state stores i
 
 ```java
 import org.apache.kafka.streams.processor.StateStore;
-import org.apache.kafka.streams.state.KeyValueStore;
 import org.apache.kafka.streams.state.KeyValueIterator;
+import org.apache.kafka.streams.state.ReadOnlyKeyValueStore;
+import org.apache.kafka.streams.KeyValue;
+
+import java.util.List;
 
 public interface KeyValueStore<K, V> extends StateStore, ReadOnlyKeyValueStore<K, V> {
 
@@ -56,23 +59,24 @@ public interface KeyValueStore<K, V> extends StateStore, ReadOnlyKeyValueStore<K
 Let's start with a simple in-memory implementation that demonstrates all the required methods.
 
 ```java
-import org.apache.kafka.streams.processor.ProcessorContext;
+import org.apache.kafka.common.utils.Bytes;
 import org.apache.kafka.streams.processor.StateStore;
+import org.apache.kafka.streams.processor.StateStoreContext;
 import org.apache.kafka.streams.state.KeyValueIterator;
 import org.apache.kafka.streams.state.KeyValueStore;
 import org.apache.kafka.streams.KeyValue;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.NavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 
-public class CustomInMemoryStore<K extends Comparable<K>, V>
-        implements KeyValueStore<K, V> {
+public class CustomInMemoryStore
+        implements KeyValueStore<Bytes, byte[]> {
 
     private final String name;
-    private final NavigableMap<K, V> store;
+    private final NavigableMap<Bytes, byte[]> store;
     private boolean open;
-    private ProcessorContext context;
 
     public CustomInMemoryStore(String name) {
         this.name = name;
@@ -86,8 +90,7 @@ public class CustomInMemoryStore<K extends Comparable<K>, V>
     }
 
     @Override
-    public void init(ProcessorContext context, StateStore root) {
-        this.context = context;
+    public void init(StateStoreContext context, StateStore root) {
         this.open = true;
 
         // Register the store with the context for changelog tracking
@@ -95,58 +98,60 @@ public class CustomInMemoryStore<K extends Comparable<K>, V>
             context.register(root, (key, value) -> {
                 // State restoration callback
                 if (value == null) {
-                    store.remove(deserializeKey(key));
+                    store.remove(Bytes.wrap(key));
                 } else {
-                    store.put(deserializeKey(key), deserializeValue(value));
+                    store.put(Bytes.wrap(key), Arrays.copyOf(value, value.length));
                 }
             });
         }
     }
 
     @Override
-    public void put(K key, V value) {
+    public void put(Bytes key, byte[] value) {
         if (value == null) {
             store.remove(key);
         } else {
-            store.put(key, value);
+            store.put(key, Arrays.copyOf(value, value.length));
         }
     }
 
     @Override
-    public V putIfAbsent(K key, V value) {
-        V existing = store.get(key);
+    public byte[] putIfAbsent(Bytes key, byte[] value) {
+        byte[] existing = store.get(key);
         if (existing == null) {
-            store.put(key, value);
+            put(key, value);
         }
-        return existing;
+        return existing == null ? null : Arrays.copyOf(existing, existing.length);
     }
 
     @Override
-    public void putAll(List<KeyValue<K, V>> entries) {
-        for (KeyValue<K, V> entry : entries) {
+    public void putAll(List<KeyValue<Bytes, byte[]>> entries) {
+        for (KeyValue<Bytes, byte[]> entry : entries) {
             put(entry.key, entry.value);
         }
     }
 
     @Override
-    public V delete(K key) {
-        return store.remove(key);
+    public byte[] delete(Bytes key) {
+        byte[] oldValue = store.remove(key);
+        return oldValue == null ? null : Arrays.copyOf(oldValue, oldValue.length);
     }
 
     @Override
-    public V get(K key) {
-        return store.get(key);
+    public byte[] get(Bytes key) {
+        byte[] value = store.get(key);
+        return value == null ? null : Arrays.copyOf(value, value.length);
     }
 
     @Override
-    public KeyValueIterator<K, V> range(K from, K to) {
+    public KeyValueIterator<Bytes, byte[]> range(Bytes from, Bytes to) {
         return new InMemoryKeyValueIterator<>(
             store.subMap(from, true, to, true).entrySet().iterator()
         );
     }
 
     @Override
-    public KeyValueIterator<K, V> all() {
+    public KeyValueIterator<Bytes, byte[]> all() {
         return new InMemoryKeyValueIterator<>(store.entrySet().iterator());
     }
 
@@ -175,18 +180,6 @@ public class CustomInMemoryStore<K extends Comparable<K>, V>
     public boolean isOpen() {
         return this.open;
     }
-
-    @SuppressWarnings("unchecked")
-    private K deserializeKey(byte[] key) {
-        // Implement your deserialization logic
-        return (K) context.keySerde().deserializer().deserialize(name, key);
-    }
-
-    @SuppressWarnings("unchecked")
-    private V deserializeValue(byte[] value) {
-        // Implement your deserialization logic
-        return (V) context.valueSerde().deserializer().deserialize(name, value);
-    }
 }
 ```
 
@@ -205,7 +198,7 @@ import java.util.NoSuchElementException;
 public class InMemoryKeyValueIterator<K, V> implements KeyValueIterator<K, V> {
 
     private final Iterator<Map.Entry<K, V>> iterator;
-    private Map.Entry<K, V> current;
+    private Map.Entry<K, V> next;
     private boolean closed;
 
     public InMemoryKeyValueIterator(Iterator<Map.Entry<K, V>> iterator) {
@@ -218,7 +211,7 @@ public class InMemoryKeyValueIterator<K, V> implements KeyValueIterator<K, V> {
         if (closed) {
             throw new IllegalStateException("Iterator has been closed");
         }
-        return iterator.hasNext();
+        return next != null || iterator.hasNext();
     }
 
     @Override
@@ -229,7 +222,8 @@ public class InMemoryKeyValueIterator<K, V> implements KeyValueIterator<K, V> {
         if (!hasNext()) {
             throw new NoSuchElementException();
         }
-        current = iterator.next();
+        Map.Entry<K, V> current = next != null ? next : iterator.next();
+        next = null;
         return new KeyValue<>(current.getKey(), current.getValue());
     }
 
@@ -241,7 +235,10 @@ public class InMemoryKeyValueIterator<K, V> implements KeyValueIterator<K, V> {
         if (!hasNext()) {
             throw new NoSuchElementException();
         }
-        return iterator.next().getKey();
+        if (next == null) {
+            next = iterator.next();
+        }
+        return next.getKey();
     }
 
     @Override
@@ -263,11 +260,9 @@ import org.apache.kafka.common.utils.Bytes;
 public class CustomStoreSupplier implements KeyValueBytesStoreSupplier {
 
     private final String name;
-    private final boolean loggingEnabled;
 
-    public CustomStoreSupplier(String name, boolean loggingEnabled) {
+    public CustomStoreSupplier(String name) {
         this.name = name;
-        this.loggingEnabled = loggingEnabled;
     }
 
     @Override
@@ -277,7 +272,7 @@ public class CustomStoreSupplier implements KeyValueBytesStoreSupplier {
 
     @Override
     public KeyValueStore<Bytes, byte[]> get() {
-        return new CustomInMemoryStore<>(name);
+        return new CustomInMemoryStore(name);
     }
 
     @Override
@@ -289,47 +284,46 @@ public class CustomStoreSupplier implements KeyValueBytesStoreSupplier {
 
 ## Building a Persistent State Store with Custom Backend
 
-For production systems, you typically need persistence. Here is an implementation using a file-based backend with memory-mapped files.
+For production systems, you typically need persistence. Here is an implementation using a simple append-only file-based backend.
 
 ```java
-import org.apache.kafka.streams.processor.ProcessorContext;
 import org.apache.kafka.streams.processor.StateStore;
+import org.apache.kafka.streams.processor.StateStoreContext;
 import org.apache.kafka.streams.state.KeyValueIterator;
 import org.apache.kafka.streams.state.KeyValueStore;
 import org.apache.kafka.streams.KeyValue;
 
 import java.io.*;
-import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
-public class PersistentCustomStore<K, V> implements KeyValueStore<K, V> {
+public class PersistentCustomStore<K extends Comparable<K> & Serializable, V>
+        implements KeyValueStore<K, V> {
 
     private final String name;
-    private final Path storeDirectory;
+    private Path storeDirectory;
     private final Map<K, Long> keyIndex;
     private RandomAccessFile dataFile;
     private FileChannel fileChannel;
-    private ProcessorContext context;
+    private StateStoreContext context;
     private boolean open;
     private long writePosition;
 
-    public PersistentCustomStore(String name, Path baseDirectory) {
+    public PersistentCustomStore(String name) {
         this.name = name;
-        this.storeDirectory = baseDirectory.resolve(name);
         this.keyIndex = new ConcurrentHashMap<>();
         this.writePosition = 0;
     }
 
     @Override
-    public void init(ProcessorContext context, StateStore root) {
+    public void init(StateStoreContext context, StateStore root) {
         this.context = context;
 
         try {
+            this.storeDirectory = context.stateDir().toPath().resolve(name);
             Files.createDirectories(storeDirectory);
 
             Path dataPath = storeDirectory.resolve("data.bin");
@@ -436,9 +430,7 @@ public class PersistentCustomStore<K, V> implements KeyValueStore<K, V> {
         // For persistent store, load keys into sorted set for range query
         TreeMap<K, V> rangeMap = new TreeMap<>();
         for (K key : keyIndex.keySet()) {
-            @SuppressWarnings("unchecked")
-            Comparable<K> comparableKey = (Comparable<K>) key;
-            if (comparableKey.compareTo(from) >= 0 && comparableKey.compareTo(to) <= 0) {
+            if (key.compareTo(from) >= 0 && key.compareTo(to) <= 0) {
                 rangeMap.put(key, get(key));
             }
         }
@@ -536,15 +528,20 @@ public class PersistentCustomStore<K, V> implements KeyValueStore<K, V> {
 When a Kafka Streams application restarts or rebalances, state stores need to be restored from changelog topics. Here is how to handle restoration properly.
 
 ```java
+import org.apache.kafka.common.utils.Bytes;
+import org.apache.kafka.streams.KeyValue;
 import org.apache.kafka.streams.processor.StateRestoreCallback;
 import org.apache.kafka.streams.processor.BatchingStateRestoreCallback;
 
+import java.util.Arrays;
+import java.util.Collection;
+
 public class CustomBatchingRestoreCallback implements BatchingStateRestoreCallback {
 
-    private final CustomInMemoryStore<?, ?> store;
+    private final CustomInMemoryStore store;
     private long recordsRestored;
 
-    public CustomBatchingRestoreCallback(CustomInMemoryStore<?, ?> store) {
+    public CustomBatchingRestoreCallback(CustomInMemoryStore store) {
         this.store = store;
         this.recordsRestored = 0;
     }
@@ -568,9 +565,9 @@ public class CustomBatchingRestoreCallback implements BatchingStateRestoreCallba
 
         // Delegate to store's internal restoration
         if (value == null) {
-            store.delete(store.deserializeKey(key));
+            store.delete(Bytes.wrap(key));
         } else {
-            store.put(store.deserializeKey(key), store.deserializeValue(value));
+            store.put(Bytes.wrap(key), Arrays.copyOf(value, value.length));
         }
     }
 
@@ -585,6 +582,7 @@ public class CustomBatchingRestoreCallback implements BatchingStateRestoreCallba
 Interactive queries allow external applications to query state stores directly. You need to implement the appropriate read-only interface.
 
 ```java
+import org.apache.kafka.streams.processor.StateStore;
 import org.apache.kafka.streams.state.QueryableStoreType;
 import org.apache.kafka.streams.state.ReadOnlyKeyValueStore;
 import org.apache.kafka.streams.state.internals.StateStoreProvider;
@@ -617,7 +615,7 @@ import org.apache.kafka.streams.KeyValue;
 
 import java.util.List;
 import java.util.ArrayList;
-import java.util.Iterator;
+import java.util.NoSuchElementException;
 
 public class CompositeReadOnlyKeyValueStore<K, V>
         implements ReadOnlyKeyValueStore<K, V> {
@@ -679,6 +677,52 @@ public class CompositeReadOnlyKeyValueStore<K, V>
         );
     }
 }
+
+class CompositeKeyValueIterator<K, V> implements KeyValueIterator<K, V> {
+
+    private final List<KeyValueIterator<K, V>> iterators;
+    private int currentIndex;
+
+    CompositeKeyValueIterator(List<KeyValueIterator<K, V>> iterators) {
+        this.iterators = iterators;
+        this.currentIndex = 0;
+    }
+
+    @Override
+    public boolean hasNext() {
+        while (currentIndex < iterators.size()) {
+            if (iterators.get(currentIndex).hasNext()) {
+                return true;
+            }
+            iterators.get(currentIndex).close();
+            currentIndex++;
+        }
+        return false;
+    }
+
+    @Override
+    public KeyValue<K, V> next() {
+        if (!hasNext()) {
+            throw new NoSuchElementException();
+        }
+        return iterators.get(currentIndex).next();
+    }
+
+    @Override
+    public K peekNextKey() {
+        if (!hasNext()) {
+            throw new NoSuchElementException();
+        }
+        return iterators.get(currentIndex).peekNextKey();
+    }
+
+    @Override
+    public void close() {
+        for (KeyValueIterator<K, V> iterator : iterators) {
+            iterator.close();
+        }
+    }
+}
 ```
 
 ## Wiring Custom Stores into Your Topology
@@ -691,11 +735,12 @@ import org.apache.kafka.streams.StreamsBuilder;
 import org.apache.kafka.streams.StreamsConfig;
 import org.apache.kafka.streams.Topology;
 import org.apache.kafka.streams.kstream.KStream;
-import org.apache.kafka.streams.kstream.Materialized;
+import org.apache.kafka.streams.state.StoreBuilder;
 import org.apache.kafka.streams.state.Stores;
 import org.apache.kafka.streams.state.KeyValueStore;
 import org.apache.kafka.common.serialization.Serdes;
 
+import java.util.Collections;
 import java.util.Properties;
 
 public class CustomStateStoreApplication {
@@ -710,28 +755,28 @@ public class CustomStateStoreApplication {
             Serdes.String().getClass());
         props.put(StreamsConfig.DEFAULT_VALUE_SERDE_CLASS_CONFIG,
             Serdes.String().getClass());
+        props.put(StreamsConfig.APPLICATION_SERVER_CONFIG, "localhost:8080");
 
         StreamsBuilder builder = new StreamsBuilder();
 
         // Create custom store supplier
-        CustomStoreSupplier storeSupplier = new CustomStoreSupplier(
-            STORE_NAME,
-            true  // enable changelog logging
-        );
+        CustomStoreSupplier storeSupplier = new CustomStoreSupplier(STORE_NAME);
 
         // Add the store to the topology
-        builder.addStateStore(
+        StoreBuilder<KeyValueStore<String, Long>> storeBuilder =
             Stores.keyValueStoreBuilder(
-                storeSupplier,
-                Serdes.String(),
-                Serdes.Long()
-            )
-        );
+                    storeSupplier,
+                    Serdes.String(),
+                    Serdes.Long()
+                )
+                .withLoggingEnabled(Collections.emptyMap());
+
+        builder.addStateStore(storeBuilder);
 
         // Process stream and use the custom store
         KStream<String, String> inputStream = builder.stream("input-topic");
 
-        inputStream.process(() -> new CustomStoreProcessor(), STORE_NAME);
+        inputStream.process(() -> new CustomStoreProcessor(STORE_NAME), STORE_NAME);
 
         // Build and start the topology
         Topology topology = builder.build();
@@ -757,15 +802,22 @@ import org.apache.kafka.streams.state.KeyValueStore;
 
 public class CustomStoreProcessor implements Processor<String, String, Void, Void> {
 
+    private final String storeName;
     private ProcessorContext<Void, Void> context;
     private KeyValueStore<String, Long> stateStore;
+
+    public CustomStoreProcessor(String storeName) {
+        this.storeName = storeName;
+    }
+
+    public CustomStoreProcessor() {
+        this(CustomStateStoreApplication.STORE_NAME);
+    }
 
     @Override
     public void init(ProcessorContext<Void, Void> context) {
         this.context = context;
-        this.stateStore = context.getStateStore(
-            CustomStateStoreApplication.STORE_NAME
-        );
+        this.stateStore = context.getStateStore(storeName);
     }
 
     @Override
@@ -801,6 +853,7 @@ Expose your state store for external queries through a REST API.
 
 ```java
 import org.apache.kafka.streams.KafkaStreams;
+import org.apache.kafka.streams.KeyQueryMetadata;
 import org.apache.kafka.streams.StoreQueryParameters;
 import org.apache.kafka.streams.state.QueryableStoreTypes;
 import org.apache.kafka.streams.state.ReadOnlyKeyValueStore;
@@ -826,22 +879,22 @@ public class InteractiveQueryService {
 
     public Long getCount(String key) {
         // Find which instance has this key
-        StreamsMetadata metadata = streams.metadataForKey(
+        KeyQueryMetadata metadata = streams.queryMetadataForKey(
             storeName,
             key,
             new org.apache.kafka.common.serialization.StringSerializer()
         );
 
-        if (metadata == null || metadata.equals(StreamsMetadata.NOT_AVAILABLE)) {
+        if (metadata == null || metadata.equals(KeyQueryMetadata.NOT_AVAILABLE)) {
             throw new IllegalStateException("Metadata not available for key: " + key);
         }
 
         // Check if this instance has the key
-        if (metadata.hostInfo().equals(hostInfo)) {
+        if (metadata.activeHost().equals(hostInfo)) {
             return getLocalCount(key);
         } else {
             // Forward request to the correct instance
-            return fetchFromRemoteInstance(metadata.hostInfo(), key);
+            return fetchFromRemoteInstance(metadata.activeHost(), key);
         }
     }
 
@@ -882,6 +935,7 @@ public class InteractiveQueryService {
 Production stores need observability. Here is how to add metrics.
 
 ```java
+import org.apache.kafka.common.utils.Bytes;
 import org.apache.kafka.common.metrics.Metrics;
 import org.apache.kafka.common.metrics.Sensor;
 import org.apache.kafka.common.metrics.stats.Avg;
@@ -890,8 +944,7 @@ import org.apache.kafka.common.metrics.stats.Rate;
 
 import java.util.concurrent.atomic.AtomicLong;
 
-public class MetricsAwareStore<K extends Comparable<K>, V>
-        extends CustomInMemoryStore<K, V> {
+public class MetricsAwareStore extends CustomInMemoryStore {
 
     private final AtomicLong putCount;
     private final AtomicLong getCount;
@@ -940,7 +993,7 @@ public class MetricsAwareStore<K extends Comparable<K>, V>
     }
 
     @Override
-    public void put(K key, V value) {
+    public void put(Bytes key, byte[] value) {
         long startTime = System.nanoTime();
         try {
             super.put(key, value);
@@ -952,7 +1005,7 @@ public class MetricsAwareStore<K extends Comparable<K>, V>
     }
 
     @Override
-    public V get(K key) {
+    public byte[] get(Bytes key) {
         long startTime = System.nanoTime();
         try {
             return super.get(key);
@@ -964,7 +1017,7 @@ public class MetricsAwareStore<K extends Comparable<K>, V>
     }
 
     @Override
-    public V delete(K key) {
+    public byte[] delete(Bytes key) {
         long startTime = System.nanoTime();
         try {
             return super.delete(key);
@@ -994,11 +1047,17 @@ public class MetricsAwareStore<K extends Comparable<K>, V>
 Unit testing is essential. Use the TopologyTestDriver for testing.
 
 ```java
-import org.apache.kafka.streams.TopologyTestDriver;
-import org.apache.kafka.streams.test.TestRecord;
-import org.apache.kafka.streams.state.KeyValueStore;
+import org.apache.kafka.common.serialization.Serdes;
 import org.apache.kafka.common.serialization.StringSerializer;
-import org.apache.kafka.common.serialization.StringDeserializer;
+import org.apache.kafka.streams.StreamsBuilder;
+import org.apache.kafka.streams.StreamsConfig;
+import org.apache.kafka.streams.TestInputTopic;
+import org.apache.kafka.streams.TopologyTestDriver;
+import org.apache.kafka.streams.kstream.Consumed;
+import org.apache.kafka.streams.state.KeyValueIterator;
+import org.apache.kafka.streams.state.KeyValueStore;
+import org.apache.kafka.streams.state.StoreBuilder;
+import org.apache.kafka.streams.state.Stores;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -1011,6 +1070,7 @@ public class CustomStateStoreTest {
 
     private TopologyTestDriver testDriver;
     private KeyValueStore<String, Long> store;
+    private static final String STORE_NAME = "test-store";
 
     @BeforeEach
     void setup() {
@@ -1021,24 +1081,23 @@ public class CustomStateStoreTest {
         // Build topology with custom store
         StreamsBuilder builder = new StreamsBuilder();
 
-        CustomStoreSupplier storeSupplier = new CustomStoreSupplier(
-            "test-store",
-            false
-        );
+        CustomStoreSupplier storeSupplier = new CustomStoreSupplier(STORE_NAME);
 
-        builder.addStateStore(
+        StoreBuilder<KeyValueStore<String, Long>> storeBuilder =
             Stores.keyValueStoreBuilder(
-                storeSupplier,
-                Serdes.String(),
-                Serdes.Long()
-            )
-        );
+                    storeSupplier,
+                    Serdes.String(),
+                    Serdes.Long()
+                )
+                .withLoggingDisabled();
+
+        builder.addStateStore(storeBuilder);
 
         builder.stream("input", Consumed.with(Serdes.String(), Serdes.String()))
-            .process(() -> new CustomStoreProcessor(), "test-store");
+            .process(() -> new CustomStoreProcessor(STORE_NAME), STORE_NAME);
 
         testDriver = new TopologyTestDriver(builder.build(), props);
-        store = testDriver.getKeyValueStore("test-store");
+        store = testDriver.getKeyValueStore(STORE_NAME);
     }
 
     @AfterEach
