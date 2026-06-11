@@ -40,9 +40,9 @@ Key points:
 
 ## Source Principals: Beyond Service Accounts
 
-The `principals` field accepts more than just service account identities. You can match on SPIFFE IDs, namespaces with wildcards, and negation patterns.
+The `principals` field accepts peer identities in Istio's trust-domain format. You can match exact principals, combine principal matches with namespace matches, and use negation patterns.
 
-### Wildcard Principal Matching
+### Wildcard Namespace Matching
 
 Match all service accounts from a namespace pattern:
 
@@ -61,8 +61,8 @@ spec:
     - from:
         - source:
             # Match any service account from namespaces starting with team-
-            principals:
-              - "cluster.local/ns/team-*/sa/*"
+            namespaces:
+              - "team-*"
 ```
 
 ### Combining Principals with Negation
@@ -150,7 +150,7 @@ spec:
             notPaths:
               - "/api/v1/admin/*"
               - "/api/v2/admin/*"
-              - "/api/*/internal/*"
+              - "/api/{*}/internal/{**}"
               - "*/debug"
               - "*/metrics"
 ```
@@ -446,7 +446,7 @@ spec:
 Apply security baselines across the entire mesh:
 
 ```yaml
-# In istio-system namespace for mesh-wide effect
+# In the root namespace (commonly istio-system) for mesh-wide effect
 
 apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
@@ -454,7 +454,7 @@ metadata:
   name: mesh-baseline-deny
   namespace: istio-system
 spec:
-  # No selector = applies to all workloads
+  # No selector in the root namespace = applies to all workloads
   action: DENY
   rules:
     # Block requests to debug endpoints mesh-wide
@@ -679,9 +679,9 @@ istioctl x authz check deploy/api-service -n production
 istioctl analyze -n production
 
 # Common warnings:
-# - Overlapping selectors
-# - Conflicting ALLOW/DENY rules
-# - Missing default deny
+# - Schema validation errors
+# - Ineffective selectors
+# - Policies that reference missing resources
 ```
 
 ### Test Specific Requests
@@ -718,18 +718,18 @@ Recommendations:
 - Prefer wildcards over exhaustive lists
 - Limit use of `when` conditions on high-traffic paths
 
-### Caching Behavior
+### Matching Behavior
 
-Istio caches authorization decisions when possible. To maximize cache hits:
+Istio authorization is evaluated by Envoy from request and connection attributes. To keep matching predictable and inexpensive:
 - Keep condition keys consistent
 - Avoid matching on volatile headers
-- Use `requestPrincipals` from JWT (cached after validation) over raw header matching
+- Use `requestPrincipals` from JWT validation over raw header matching when you need authenticated user identity
 
 ## Production Checklist
 
 Before deploying authorization policies:
 
-1. Start with AUDIT action to observe behavior without enforcement
+1. Start with the `istio.io/dry-run: "true"` annotation to observe DENY or ALLOW policy effects without enforcement
 2. Review istioctl analyze output for all namespaces
 3. Verify health check paths are excluded from deny rules
 4. Test with representative traffic patterns in staging
