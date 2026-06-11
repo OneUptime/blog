@@ -8,7 +8,7 @@ Description: A practical guide to implementing the OpenTelemetry OTLP gRPC expor
 
 ---
 
-The OpenTelemetry Protocol (OTLP) is the native protocol for transmitting telemetry data in OpenTelemetry. While OTLP supports both HTTP and gRPC transports, gRPC offers significant advantages for high-throughput production environments: binary encoding, multiplexed connections, and bidirectional streaming. This guide walks through implementing the OTLP gRPC exporter for traces, metrics, and logs.
+The OpenTelemetry Protocol (OTLP) is the native protocol for transmitting telemetry data in OpenTelemetry. While OTLP supports both HTTP and gRPC transports, gRPC offers significant advantages for high-throughput production environments: binary encoding, persistent HTTP/2 connections, and multiplexed requests. This guide walks through implementing the OTLP gRPC exporter for traces, metrics, and logs.
 
 ## Why Choose OTLP gRPC Over HTTP
 
@@ -18,8 +18,8 @@ Before diving into implementation, understand when gRPC is the right choice.
 |--------|-----------|-----------|
 | **Encoding** | Protocol Buffers (binary) | JSON or Protobuf |
 | **Performance** | Higher throughput, lower latency | Good for moderate loads |
-| **Connection** | Persistent, multiplexed | Connection per request |
-| **Compression** | Built-in gzip support | Optional |
+| **Connection** | Persistent HTTP/2 connection, multiplexed requests | Request-response over HTTP, with connection reuse depending on client/proxy support |
+| **Compression** | gzip supported | gzip supported |
 | **Firewall Compatibility** | Requires HTTP/2 support | Works with any HTTP proxy |
 | **Browser Support** | Not supported | Supported |
 | **Best For** | Backend services, high volume | Web apps, restricted networks |
@@ -86,15 +86,15 @@ import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-grpc';
 import { OTLPLogExporter } from '@opentelemetry/exporter-logs-otlp-grpc';
 import { PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
 import { BatchLogRecordProcessor } from '@opentelemetry/sdk-logs';
-import { Resource } from '@opentelemetry/resources';
-import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
+import { resourceFromAttributes } from '@opentelemetry/resources';
+import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from '@opentelemetry/semantic-conventions';
 import { credentials } from '@grpc/grpc-js';
 
 // Define service identity - appears in all telemetry
-const resource = new Resource({
-  [SemanticResourceAttributes.SERVICE_NAME]: process.env.SERVICE_NAME || 'my-service',
-  [SemanticResourceAttributes.SERVICE_VERSION]: process.env.SERVICE_VERSION || '1.0.0',
-  [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: process.env.NODE_ENV || 'development',
+const resource = resourceFromAttributes({
+  [ATTR_SERVICE_NAME]: process.env.SERVICE_NAME || 'my-service',
+  [ATTR_SERVICE_VERSION]: process.env.SERVICE_VERSION || '1.0.0',
+  'deployment.environment.name': process.env.NODE_ENV || 'development',
 });
 
 // gRPC endpoint - typically port 4317
@@ -126,7 +126,7 @@ const sdk = new NodeSDK({
     exporter: metricExporter,
     exportIntervalMillis: 30000, // Export metrics every 30 seconds
   }),
-  logRecordProcessor: new BatchLogRecordProcessor(logExporter),
+  logRecordProcessors: [new BatchLogRecordProcessor(logExporter)],
 });
 
 // Start the SDK
@@ -177,14 +177,19 @@ Create a telemetry configuration module that sets up gRPC exporters for all sign
 
 import os
 import atexit
+import logging
 from opentelemetry import trace, metrics
+from opentelemetry._logs import set_logger_provider
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
+from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 from opentelemetry.sdk.resources import Resource, SERVICE_NAME, SERVICE_VERSION
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
+from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
 
 # Define service resource
 resource = Resource.create({
@@ -207,6 +212,12 @@ metric_exporter = OTLPMetricExporter(
     insecure=True,
 )
 
+# Configure logs exporter
+log_exporter = OTLPLogExporter(
+    endpoint=grpc_endpoint,
+    insecure=True,
+)
+
 # Set up TracerProvider with batch processor
 tracer_provider = TracerProvider(resource=resource)
 tracer_provider.add_span_processor(BatchSpanProcessor(trace_exporter))
@@ -224,10 +235,17 @@ meter_provider = MeterProvider(
 )
 metrics.set_meter_provider(meter_provider)
 
+# Set up LoggerProvider with batch processor
+logger_provider = LoggerProvider(resource=resource)
+logger_provider.add_log_record_processor(BatchLogRecordProcessor(log_exporter))
+set_logger_provider(logger_provider)
+logging.getLogger().addHandler(LoggingHandler(logger_provider=logger_provider))
+
 # Graceful shutdown
 def shutdown():
     tracer_provider.shutdown()
     meter_provider.shutdown()
+    logger_provider.shutdown()
 
 atexit.register(shutdown)
 ```
@@ -264,8 +282,10 @@ Add the required OpenTelemetry modules to your Go project.
 go get go.opentelemetry.io/otel \
   go.opentelemetry.io/otel/sdk/trace \
   go.opentelemetry.io/otel/sdk/metric \
+  go.opentelemetry.io/otel/sdk/log \
   go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc \
   go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc \
+  go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc \
   google.golang.org/grpc
 ```
 
@@ -284,12 +304,15 @@ import (
     "time"
 
     "go.opentelemetry.io/otel"
+    "go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc"
     "go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+    otellog "go.opentelemetry.io/otel/log/global"
+    sdklog "go.opentelemetry.io/otel/sdk/log"
     "go.opentelemetry.io/otel/sdk/metric"
     "go.opentelemetry.io/otel/sdk/resource"
     "go.opentelemetry.io/otel/sdk/trace"
-    semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
+    semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
     "google.golang.org/grpc"
     "google.golang.org/grpc/credentials/insecure"
 )
@@ -300,19 +323,23 @@ func initTelemetry(ctx context.Context) (func(), error) {
         endpoint = "localhost:4317"
     }
 
-    // Create gRPC connection
-    conn, err := grpc.DialContext(ctx, endpoint,
+    // Create gRPC connection (lazy - dials on first RPC)
+    conn, err := grpc.NewClient(endpoint,
         grpc.WithTransportCredentials(insecure.NewCredentials()),
-        grpc.WithBlock(),
     )
     if err != nil {
         return nil, err
     }
 
     // Define service resource
+    serviceName := os.Getenv("SERVICE_NAME")
+    if serviceName == "" {
+        serviceName = "go-service"
+    }
+
     res, err := resource.New(ctx,
         resource.WithAttributes(
-            semconv.ServiceName(os.Getenv("SERVICE_NAME")),
+            semconv.ServiceName(serviceName),
             semconv.ServiceVersion("1.0.0"),
         ),
     )
@@ -348,6 +375,19 @@ func initTelemetry(ctx context.Context) (func(), error) {
     )
     otel.SetMeterProvider(meterProvider)
 
+    // Configure logs exporter
+    logExporter, err := otlploggrpc.New(ctx, otlploggrpc.WithGRPCConn(conn))
+    if err != nil {
+        return nil, err
+    }
+
+    // Configure logger provider
+    loggerProvider := sdklog.NewLoggerProvider(
+        sdklog.WithProcessor(sdklog.NewBatchProcessor(logExporter)),
+        sdklog.WithResource(res),
+    )
+    otellog.SetLoggerProvider(loggerProvider)
+
     // Return shutdown function
     return func() {
         ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -357,6 +397,9 @@ func initTelemetry(ctx context.Context) (func(), error) {
         }
         if err := meterProvider.Shutdown(ctx); err != nil {
             log.Printf("Error shutting down meter: %v", err)
+        }
+        if err := loggerProvider.Shutdown(ctx); err != nil {
+            log.Printf("Error shutting down logger: %v", err)
         }
         conn.Close()
     }, nil
@@ -438,6 +481,7 @@ const traceExporter = new OTLPTraceExporter({
 Configure the exporter with certificate paths.
 
 ```python
+import grpc
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 
 trace_exporter = OTLPSpanExporter(
@@ -553,7 +597,8 @@ const traceExporter = new OTLPTraceExporter({
 ### Python Compression
 
 ```python
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter, Compression
+from grpc import Compression
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 
 trace_exporter = OTLPSpanExporter(
     endpoint=grpc_endpoint,
@@ -565,7 +610,8 @@ trace_exporter = OTLPSpanExporter(
 
 ```go
 traceExporter, err := otlptracegrpc.New(ctx,
-    otlptracegrpc.WithGRPCConn(conn),
+    otlptracegrpc.WithEndpoint(endpoint),
+    otlptracegrpc.WithInsecure(),
     otlptracegrpc.WithCompressor("gzip"),
 )
 ```
@@ -591,9 +637,9 @@ flowchart TD
     I -->|No| F
 ```
 
-### Node.js Retry Configuration
+### Node.js Batch and Queue Configuration
 
-Configure the batch span processor for retry behavior.
+Tune the batch span processor to control queue size, batch size, and export cadence. The OTLP exporter handles retries on transient gRPC errors internally; the processor controls how spans are buffered and handed off to the exporter.
 
 ```typescript
 import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
@@ -630,7 +676,7 @@ const traceExporter = new OTLPTraceExporter({
 If you see "connection refused" errors, verify the endpoint and port.
 
 ```bash
-# Test gRPC connectivity
+# List services if server reflection is enabled
 grpcurl -plaintext localhost:4317 list
 
 # Check if collector is listening
