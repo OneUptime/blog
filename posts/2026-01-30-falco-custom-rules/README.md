@@ -37,23 +37,24 @@ Exceptions let you create granular allow-lists without modifying the original ru
       fields: [container.name]
 
 # Create exception entries (in a separate file for easier management)
-- exception: Shell Spawned in Container
-  name: allowed_shells
-  values:
-    # Allow bash in our debug containers
-    - [myregistry.io/debug-tools, bash]
-    # Allow sh in init containers
-    - [myregistry.io/init-helper, sh]
-
-- exception: Shell Spawned in Container
-  name: allowed_containers
-  values:
-    # CI runner containers need shell access
-    - [gitlab-runner]
-    - [jenkins-agent]
+- rule: Shell Spawned in Container
+  exceptions:
+    - name: allowed_shells
+      values:
+        # Allow bash in our debug containers
+        - [myregistry.io/debug-tools, bash]
+        # Allow sh in init containers
+        - [myregistry.io/init-helper, sh]
+    - name: allowed_containers
+      values:
+        # CI runner containers need shell access
+        - [gitlab-runner]
+        - [jenkins-agent]
+  override:
+    exceptions: append
 ```
 
-Exceptions are evaluated at rule load time and compiled into efficient lookups. They perform better than adding conditions directly to the rule.
+Exceptions are applied when rules are loaded and become part of the effective rule condition. They are easier to maintain than adding allow-list conditions directly to the rule.
 
 ## Advanced Condition Patterns
 
@@ -99,7 +100,7 @@ Monitor specific file operations with precision.
   condition: >
     (evt.type in (write, writev, pwrite, pwritev) and evt.dir = <) or
     (evt.type in (open, openat) and evt.dir = < and
-     evt.arg.flags contains O_WRONLY or evt.arg.flags contains O_RDWR)
+     (evt.arg.flags contains O_WRONLY or evt.arg.flags contains O_RDWR))
 
 # List of sensitive configuration paths
 - list: sensitive_config_paths
@@ -136,20 +137,26 @@ Place cheap checks before expensive ones. Event type checks are fastest, followe
 ```yaml
 # Good: cheap checks first
 - rule: Optimized Rule
+  desc: Detect curl commands that include HTTP URLs
   condition: >
-    evt.type = execve and          # Cheapest - event type filter
-    evt.dir = < and                # Cheap - direction check
-    container.id != host and       # Cheap - simple comparison
-    proc.name = curl and           # Medium - string comparison
-    proc.cmdline contains "http"   # Expensive - substring search
+    evt.type = execve and
+    evt.dir = < and
+    container.id != host and
+    proc.name = curl and
+    proc.cmdline contains "http"
+  output: Curl command with HTTP URL (user=%user.name proc=%proc.name cmdline=%proc.cmdline)
+  priority: NOTICE
 
 # Bad: expensive checks first
 - rule: Unoptimized Rule
+  desc: Detect curl commands that include HTTP URLs
   condition: >
-    proc.cmdline contains "http" and  # Expensive substring first
+    proc.cmdline contains "http" and
     container.id != host and
     evt.type = execve and
     proc.name = curl
+  output: Curl command with HTTP URL (user=%user.name proc=%proc.name cmdline=%proc.cmdline)
+  priority: NOTICE
 ```
 
 ### Use Lists Instead of Multiple OR Conditions
@@ -162,18 +169,24 @@ Lists are compiled into hash lookups, which are faster than chained OR condition
   items: [curl, wget, nc, ncat, netcat, socat, telnet]
 
 - rule: Network Tool Execution
+  desc: Detect network tools executing in containers
   condition: >
     spawned_process and
     container and
     proc.name in (network_tools)
+  output: Network tool executed (tool=%proc.name container=%container.name cmdline=%proc.cmdline)
+  priority: NOTICE
 
 # Less efficient: chained OR conditions
 - rule: Network Tool Execution Slow
+  desc: Detect network tools executing in containers
   condition: >
     spawned_process and
     container and
     (proc.name = curl or proc.name = wget or
      proc.name = nc or proc.name = ncat)
+  output: Network tool executed (tool=%proc.name container=%container.name cmdline=%proc.cmdline)
+  priority: NOTICE
 ```
 
 ### Macro Composition for Reuse
@@ -191,16 +204,22 @@ Build macros that compose well and avoid redundant checks.
 - macro: k8s_pod
   condition: k8s.pod.name != ""
 
-# Composed macro - each base macro is evaluated once
+# Composed macro - keep shared checks in one place
 - macro: container_process_spawn
   condition: spawned_process and container
 
 # Use in rules
 - rule: Rule One
+  desc: Detect bash process spawns in containers
   condition: container_process_spawn and proc.name = bash
+  output: Bash spawned in container (container=%container.name cmdline=%proc.cmdline)
+  priority: NOTICE
 
 - rule: Rule Two
+  desc: Detect python process spawns in containers
   condition: container_process_spawn and proc.name = python
+  output: Python spawned in container (container=%container.name cmdline=%proc.cmdline)
+  priority: NOTICE
 ```
 
 ## Custom Output Formatting
@@ -224,7 +243,7 @@ Rich outputs make alerts actionable without needing to query additional systems.
       image=%container.image.repository:%container.image.tag
       k8s_namespace=%k8s.ns.name
       k8s_pod=%k8s.pod.name
-      k8s_deployment=%k8s.deployment.name
+      k8s_pod_uid=%k8s.pod.uid
       user=%user.name
       uid=%user.uid
       process=%proc.name
@@ -248,13 +267,13 @@ json_output: true
 json_include_output_property: true
 json_include_tags_property: true
 
-# Output fields appear as JSON keys
-# {"output":"Container drift detected...","priority":"Critical","rule":"Container Drift Detected","tags":["container_drift"]}
+# Output fields appear under output_fields
+# {"output":"Container drift detected...","priority":"Critical","rule":"Container Drift Detected","tags":["container_drift"],"output_fields":{"proc.name":"bash"}}
 ```
 
 ## Multi-Source Correlation
 
-Falco can correlate syscall events with Kubernetes audit logs for comprehensive detection.
+Falco can analyze syscall events alongside Kubernetes audit logs for comprehensive detection.
 
 ```mermaid
 flowchart LR
@@ -271,7 +290,7 @@ flowchart LR
 
 ### Combining Syscall and Audit Rules
 
-Create rules that use both sources for context.
+Create rules for each source and route their alerts together downstream.
 
 ```yaml
 # Syscall rule - detect exec in container
@@ -283,7 +302,7 @@ Create rules that use both sources for context.
     k8s.pod.name != ""
   output: >
     Process in pod (pod=%k8s.pod.name ns=%k8s.ns.name proc=%proc.name)
-  priority: INFO
+  priority: INFORMATIONAL
   source: syscall
   tags: [kubernetes]
 
@@ -311,41 +330,46 @@ Manage rule updates across environments without losing customizations.
 # Override default rule priority
 - rule: Terminal Shell in Container
   priority: ERROR  # Increase from WARNING
-  append: false    # Replace, don't append
+  override:
+    priority: replace
 
 # Disable a rule entirely
 - rule: Read Sensitive File Untrusted
   enabled: false
+  override:
+    enabled: replace
 
 # Append conditions to existing rule
 - rule: Write Below Etc
   condition: and not fd.name startswith /etc/nginx
-  append: true
+  override:
+    condition: append
 
 # Extend a list from default rules
 - list: allowed_k8s_users
   items: [system:serviceaccount:monitoring:prometheus]
-  append: true
+  override:
+    items: append
 ```
 
 ## Testing Advanced Rules
 
-### Capture and Replay
+### Validate and Replay
 
-Record live traffic for rule development.
+Validate new rules before deployment and replay captured traffic for rule development.
 
 ```bash
-# Capture syscalls for 5 minutes
-sudo falco -c /etc/falco/falco.yaml \
-  -w /tmp/capture.scap \
-  -M 300
+# Validate rules without processing events
+falco --dry-run -c /etc/falco/falco.yaml \
+  -r /etc/falco/falco_rules.yaml \
+  -r ./my_advanced_rules.yaml
 
 # Test new rules against capture
 falco -c /etc/falco/falco.yaml \
   -r /etc/falco/falco_rules.yaml \
   -r ./my_advanced_rules.yaml \
-  -e /tmp/capture.scap \
-  --stats-interval 10
+  -o engine.kind=replay \
+  -o engine.replay.capture_file=/tmp/capture.scap
 ```
 
 ### Rule Statistics
@@ -356,18 +380,20 @@ Monitor rule performance in production.
 # Enable stats in falco.yaml
 webserver:
   enabled: true
+  prometheus_metrics_enabled: true
   listen_port: 8765
 
 metrics:
   enabled: true
   interval: 15s
+  rules_counters_enabled: true
 ```
 
 ```bash
 # Check rule statistics
-curl -s localhost:8765/metrics | grep falco_rules
-# falco_rules_matches_total{rule="Shell Spawned in Container"} 42
-# falco_rules_matches_total{rule="Container Drift Detected"} 3
+curl -s localhost:8765/metrics | grep falcosecurity_falco_rules_matches_total
+# falcosecurity_falco_rules_matches_total{rule_name="Shell Spawned in Container",source="syscall"} 42
+# falcosecurity_falco_rules_matches_total{rule_name="Container Drift Detected",source="syscall"} 3
 ```
 
 ## Deployment Patterns
