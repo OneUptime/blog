@@ -56,13 +56,13 @@ flowchart TD
     E3 --> B
 ```
 
-The key insight: geographic data must be captured at ingestion time. You cannot retroactively add latitude/longitude to metrics that were stored without location context.
+The key insight: geographic data must be captured at ingestion time or be available from a reliable lookup source. You cannot derive exact latitude/longitude from metrics that were stored without location context unless you can join them to another source, such as a region inventory.
 
 ## Prerequisites
 
 Before implementing Geomap visualizations, ensure you have:
 
-- Grafana 9.0 or later (Geomap is the default geo panel from v9+)
+- Grafana 8.1 or later (Grafana 9+ recommended; Geomap is the supported replacement for the deprecated Worldmap panel)
 - A data source with geographic fields (latitude, longitude) or location identifiers (country codes, city names)
 - Metrics or logs tagged with location information
 
@@ -76,36 +76,52 @@ If you control the metric emission, include latitude and longitude as labels. Th
 
 ```promql
 server_cpu_usage{instance="web-01",region="eu-west-1",lat="53.3498",lon="-6.2603"} 0.75
-server_cpu_usage{instance="web-02",region="us-east-1",lat="37.7749",lon="-122.4194"} 0.42
+server_cpu_usage{instance="web-02",region="us-east-1",lat="39.0438",lon="-77.4874"} 0.42
 server_cpu_usage{instance="web-03",region="ap-southeast-1",lat="1.3521",lon="103.8198"} 0.63
 ```
+
+Prometheus labels are strings. In Grafana, use an instant query and apply the "Labels to fields" transformation, then convert the `lat` and `lon` fields to numeric values before mapping them in Geomap.
 
 ### Option B: GeoIP Enrichment at Ingestion
 
 For user traffic data, enrich logs with GeoIP at the collector level. This OpenTelemetry Collector configuration uses the GeoIP processor to add location fields.
 
 ```yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+      http:
+
 processors:
   geoip:
-    context: resource
     providers:
       maxmind:
         database_path: /etc/otel/GeoLite2-City.mmdb
+    context: record
+    attributes: [client.address, source.address]
 
-pipeline:
-  logs:
-    receivers: [otlp]
-    processors: [geoip, batch]
-    exporters: [loki]
+  batch:
+
+exporters:
+  otlphttp/loki:
+    endpoint: http://loki:3100/otlp
+
+service:
+  pipelines:
+    logs:
+      receivers: [otlp]
+      processors: [geoip, batch]
+      exporters: [otlphttp/loki]
 ```
 
 ### Option C: Lookup Tables in Grafana
 
-For static infrastructure, maintain a lookup table. Grafana can join metrics with CSV data containing coordinates. Create a CSV file with your location mappings.
+For static infrastructure, maintain a lookup table. Grafana can join metrics with coordinates from a SQL table, the Infinity data source, or another CSV-capable data source using transformations such as "Join by field". Create a CSV file with your location mappings.
 
 ```csv
 region,lat,lon,datacenter
-us-east-1,37.7749,-122.4194,Virginia
+us-east-1,39.0438,-77.4874,Virginia
 eu-west-1,53.3498,-6.2603,Dublin
 ap-southeast-1,1.3521,103.8198,Singapore
 ```
@@ -121,6 +137,8 @@ For Prometheus data with embedded coordinates, your query extracts the geographi
 ```promql
 max by (instance, region, lat, lon) (server_cpu_usage)
 ```
+
+Set the Prometheus query type to "Instant" and apply "Labels to fields" plus numeric conversion for the coordinate fields if `lat` and `lon` are stored as labels.
 
 ### Configure Data Layers
 
@@ -195,14 +213,14 @@ For high-volume data like user requests, heatmaps show density patterns better t
 
 ### Route Layer for Network Paths
 
-Visualize traffic flows or network paths between locations. The route layer connects points with lines.
+Visualize traffic flows or network paths between locations. The route layer renders ordered geographic points as a line, optionally with arrows.
 
-Your data needs source and destination coordinates. This query format supports route visualization.
+Your data needs latitude and longitude fields for each point in the path, plus enough labels or fields to identify and sort the route.
 
 ```promql
-# Query returning: source_lat, source_lon, dest_lat, dest_lon, traffic_volume
+# Query returns route, sequence, lat, lon, and traffic volume labels/fields
 
-network_traffic_flow{source_region!="", dest_region!=""}
+network_route_point{route!="", sequence!="", lat!="", lon!=""}
 ```
 
 ## Step 4: Integrate with Alerting
@@ -237,7 +255,7 @@ groups:
 In your alert notification template, include a link to the Geomap dashboard with the relevant time range.
 
 ```text
-Dashboard: https://grafana.example.com/d/geo-overview?from={{ $startsAt }}&to={{ $endsAt }}&var-region={{ $labels.region }}
+Dashboard: https://grafana.example.com/d/geo-overview?from=now-6h&to=now&var-region={{ .CommonLabels.region }}
 ```
 
 ## Step 5: Performance Optimization
@@ -260,10 +278,11 @@ avg by (region, lat, lon) (
 
 ### Caching Strategy
 
-For relatively static geographic data (server locations rarely change), increase query caching. In your datasource configuration, set appropriate cache durations.
+For relatively static geographic data (server locations rarely change), keep query intervals and timeouts appropriate for the data source. Grafana Enterprise and Grafana Cloud also support query caching on supported data sources through the data source Cache tab or caching API; the provisioning settings below tune the Prometheus query behavior but do not enable Grafana query caching.
 
 ```yaml
 # Grafana datasource provisioning
+apiVersion: 1
 datasources:
   - name: Prometheus
     type: prometheus
@@ -335,7 +354,7 @@ Compare edge node performance with origin servers. Use multiple layers: markers 
 **Symptoms**: Query returns data but map shows no markers.
 
 **Solutions**:
-1. Verify latitude/longitude fields are numeric, not strings
+1. Verify latitude/longitude fields are numeric, not strings; Prometheus label coordinates usually need "Labels to fields" and "Convert field type" transformations
 2. Check field mapping in layer configuration matches your data fields exactly
 3. Ensure coordinates are valid (latitude: -90 to 90, longitude: -180 to 180)
 
@@ -355,7 +374,7 @@ Compare edge node performance with origin servers. Use multiple layers: markers 
 **Solutions**:
 1. Check network connectivity to tile servers (OpenStreetMap, CARTO)
 2. If using custom tiles, verify the tile server URL is accessible
-3. For air-gapped environments, configure a local tile server or use Grafana's offline map option
+3. For air-gapped environments, configure a local tile server or a local MapLibre/XYZ basemap source
 
 ## Integration with OneUptime
 
