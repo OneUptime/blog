@@ -408,16 +408,11 @@ groups:
   - name: recording_rule_monitoring
     interval: 30s
     rules:
-      # Track evaluation duration
-      - record: prometheus:rule_evaluation_duration_seconds:p99
-        expr: |
-          histogram_quantile(0.99,
-            sum by (rule_group) (
-              rate(prometheus_rule_evaluation_duration_seconds_bucket[5m])
-            )
-          )
+      # Track per-group evaluation duration (last evaluation)
+      - record: prometheus:rule_group_last_duration_seconds:max
+        expr: max by (rule_group) (prometheus_rule_group_last_duration_seconds)
 
-      # Track rule evaluation failures
+      # Track rule evaluation failures by group
       - record: prometheus:rule_evaluation_failures:rate5m
         expr: sum by (rule_group) (rate(prometheus_rule_evaluation_failures_total[5m]))
 ```
@@ -426,9 +421,9 @@ groups:
 
 | Metric | Description | Warning Threshold |
 |--------|-------------|-------------------|
-| `prometheus_rule_evaluation_duration_seconds` | Time taken to evaluate rule groups | > 50% of interval |
-| `prometheus_rule_evaluation_failures_total` | Number of failed rule evaluations | > 0 |
-| `prometheus_rule_group_last_evaluation_timestamp_seconds` | Last successful evaluation | Staleness > 2x interval |
+| `prometheus_rule_group_last_duration_seconds` | Duration of the last evaluation of a rule group | > 50% of interval |
+| `prometheus_rule_evaluation_failures_total` | Number of failed rule evaluations (per `rule_group`) | > 0 |
+| `prometheus_rule_group_last_evaluation_timestamp_seconds` | Timestamp of the last evaluation of a rule group | Staleness > 2x interval |
 
 ## Common Pitfalls and Solutions
 
@@ -457,7 +452,8 @@ groups:
       - record: job:requests:rate30s
         expr: rate(requests_total[30s])
 
-# GOOD: Rate window should be at least 4x the evaluation interval
+# GOOD: Rate window should be at least 4x the scrape interval
+# and no shorter than the evaluation interval
 groups:
   - name: matched_intervals
     interval: 30s
