@@ -139,7 +139,7 @@ async function handleOverflow(userId, followerId, user) {
         $set: { hasOverflow: true },
         $inc: {
           followerCount: 1,
-          overflowCount: overflow ? 0 : 1
+          overflowCount: 1
         }
       }
     );
@@ -191,33 +191,54 @@ async function getAllFollowers(userId) {
 // Paginated query for large follower lists
 async function getFollowersPaginated(userId, page, pageSize) {
   const user = await db.users.findOne({ _id: userId });
-  const skip = page * pageSize;
 
-  // If within main document range
-  if (skip + pageSize <= user.followers.length) {
-    return user.followers.slice(skip, skip + pageSize);
-  }
-
-  // Need to query overflow documents
-  if (!user.hasOverflow) {
-    return user.followers.slice(skip, skip + pageSize);
-  }
-
-  // Calculate which batch contains our page
-  const overflowSkip = Math.max(0, skip - FOLLOWER_THRESHOLD);
-  const batchNumber = Math.floor(overflowSkip / BATCH_SIZE) + 1;
-
-  const overflow = await db.followerOverflow.findOne({
-    userId: userId,
-    batchNumber: batchNumber
-  });
-
-  if (!overflow) {
+  if (!user || page < 0 || pageSize <= 0) {
     return [];
   }
 
-  const localSkip = overflowSkip % BATCH_SIZE;
-  return overflow.followers.slice(localSkip, localSkip + pageSize);
+  const skip = page * pageSize;
+  let remaining = pageSize;
+  const results = [];
+
+  // Include any requested followers stored in the main document
+  if (skip < user.followers.length) {
+    const mainFollowers = user.followers.slice(skip, skip + remaining);
+    results.push(...mainFollowers);
+    remaining -= mainFollowers.length;
+  }
+
+  // Need to query overflow documents
+  if (!user.hasOverflow || remaining === 0) {
+    return results;
+  }
+
+  // Calculate which overflow batch contains the next follower
+  const overflowSkip = Math.max(0, skip - FOLLOWER_THRESHOLD);
+  let batchNumber = Math.floor(overflowSkip / BATCH_SIZE) + 1;
+  let localSkip = overflowSkip % BATCH_SIZE;
+
+  while (remaining > 0) {
+    const overflow = await db.followerOverflow.findOne({
+      userId: userId,
+      batchNumber: batchNumber
+    });
+
+    if (!overflow) {
+      break;
+    }
+
+    const overflowFollowers = overflow.followers.slice(
+      localSkip,
+      localSkip + remaining
+    );
+
+    results.push(...overflowFollowers);
+    remaining -= overflowFollowers.length;
+    batchNumber += 1;
+    localSkip = 0;
+  }
+
+  return results;
 }
 ```
 
@@ -233,7 +254,7 @@ sequenceDiagram
     participant O as Overflow Collection
 
     C->>A: Add follower request
-    A->>M: Check document size
+    A->>M: Check follower threshold
 
     alt Document below threshold
         A->>M: Add follower to array
