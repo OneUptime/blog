@@ -14,15 +14,15 @@ This guide covers the design principles, implementation patterns, and production
 
 ## Why L1 Caching?
 
-Every network call adds latency. Even the fastest Redis instance running on localhost introduces milliseconds of overhead. An L1 cache eliminates this entirely by storing data in the application's heap memory.
+Every network call adds latency. Even a fast Redis instance running on localhost introduces network and serialization overhead. An L1 cache eliminates this entirely by storing data in the application's heap memory.
 
 Here is a comparison of cache access times at different layers.
 
 | Cache Layer | Location | Typical Latency | Best For |
 |-------------|----------|-----------------|----------|
 | L1 Cache | In-process memory | < 1 microsecond | Hot data, config, lookups |
-| L2 Cache | Local Redis/Memcached | 0.5-2 ms | Shared process data |
-| L3 Cache | Remote distributed cache | 2-10 ms | Cross-region data |
+| L2 Cache | Local Redis/Memcached | 0.1-2 ms | Shared process data |
+| L3 Cache | Remote distributed cache | 2-10 ms | Shared cross-instance data |
 | Database | Persistent storage | 10-100 ms | Source of truth |
 
 The tradeoff is clear: L1 caches sacrifice shared state for raw speed. Each application instance maintains its own cache, which means data can diverge between instances.
@@ -91,6 +91,10 @@ class L1Cache<T> {
   }
 
   set(key: string, value: T, ttl?: number): void {
+    if (this.maxSize <= 0) {
+      return;
+    }
+
     // Evict if at capacity before adding new entry
     if (this.cache.size >= this.maxSize && !this.cache.has(key)) {
       this.evictLRU();
@@ -163,7 +167,7 @@ Here is a comparison of when to use each strategy.
 | TTL | Time-sensitive data | No size control alone |
 | ARC | Unknown or mixed patterns | Higher memory overhead |
 
-This LFU implementation tracks access frequency alongside recency.
+This LFU implementation tracks access frequency and uses bucket insertion order as a simple tie-breaker.
 
 ```typescript
 interface LFUEntry<T> {
@@ -259,6 +263,8 @@ class LFUCache<T> {
 
     // Remove first key from lowest frequency bucket
     const keyToEvict = bucket.values().next().value;
+    if (keyToEvict === undefined) return;
+
     this.removeKey(keyToEvict, this.minFrequency);
   }
 }
@@ -295,6 +301,7 @@ Here is a multi-layer cache client that handles the fallback logic.
 interface CacheLayer {
   get(key: string): Promise<string | undefined>;
   set(key: string, value: string, ttl?: number): Promise<void>;
+  delete(key: string): Promise<void>;
 }
 
 class MultiLayerCache {
@@ -337,7 +344,7 @@ class MultiLayerCache {
   async invalidate(key: string): Promise<void> {
     // Clear from all layers
     this.l1.delete(key);
-    await this.l2.set(key, '', 1);  // Expire immediately in L2
+    await this.l2.delete(key);
   }
 }
 ```
