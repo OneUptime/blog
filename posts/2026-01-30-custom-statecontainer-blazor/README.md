@@ -10,7 +10,7 @@ Description: Learn how to build production-ready custom StateContainer patterns 
 
 State management in Blazor applications often becomes messy as projects grow. While simple apps can get by with component parameters and cascading values, real-world applications need a more structured approach. Building a custom StateContainer gives you full control over how state flows through your application, when components re-render, and how data persists across sessions.
 
-This guide walks through building a StateContainer from scratch, covering everything from basic implementation to advanced patterns like persistence, middleware, and testing.
+This guide walks through building a StateContainer from scratch, covering everything from basic implementation to advanced patterns like persistence, history tracking, and testing.
 
 ## Why Build a Custom StateContainer?
 
@@ -130,12 +130,10 @@ public class CartState
 }
 ```
 
-Register the StateContainer as a scoped service in Program.cs. Scoped lifetime ensures each user circuit gets its own instance.
+Register the StateContainer as a scoped service in Program.cs. Scoped lifetime gives each Blazor Server circuit its own instance and acts like a singleton within a Blazor WebAssembly application instance.
 
 ```csharp
 // File: Program.cs
-
-var builder = WebApplication.CreateBuilder(args);
 
 // Register StateContainer with scoped lifetime
 // In Blazor Server, scoped = per circuit (per user session)
@@ -431,6 +429,15 @@ public class LocalStorageService : IBrowserStorage
 }
 ```
 
+Register the storage service and the persistent state container in Program.cs.
+
+```csharp
+// File: Program.cs
+
+builder.Services.AddScoped<IBrowserStorage, LocalStorageService>();
+builder.Services.AddScoped<PersistentCartState>();
+```
+
 Now create a persistent state container base class.
 
 ```csharp
@@ -456,7 +463,8 @@ public abstract class PersistentStateContainer<TState> where TState : class, new
         _storageKey = storageKey;
     }
 
-    // Call this in OnInitializedAsync to load persisted state
+    // Call this from OnInitializedAsync in WebAssembly or non-prerendered components.
+    // In prerendered server-side components, call it from OnAfterRenderAsync(firstRender).
     public async Task InitializeAsync()
     {
         if (_isInitialized)
@@ -629,6 +637,19 @@ public class ScopedStateContainer<TState> : StateContainerBase<TState>
 ```
 
 Use the factory when you need state isolated by some identifier, like a document editor where each document has its own state.
+
+```csharp
+// File: Services/DocumentState.cs
+
+namespace MyApp.Services;
+
+public record DocumentState
+{
+    public string Title { get; init; } = "";
+    public string Content { get; init; } = "";
+    public DateTime LastModified { get; init; } = DateTime.UtcNow;
+}
+```
 
 ```csharp
 // File: Components/DocumentEditor.razor
