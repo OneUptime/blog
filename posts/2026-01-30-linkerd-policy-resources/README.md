@@ -45,7 +45,7 @@ flowchart TB
 
 ## Understanding the Server Resource
 
-A Server resource defines a named set of ports on a workload. It acts as the target for authorization policies.
+A Server resource selects a port on a set of pods in the same namespace. It acts as the target for authorization policies.
 
 ```yaml
 # server.yaml
@@ -229,23 +229,26 @@ When a request arrives, Linkerd evaluates policies in this order:
 flowchart TD
     R[Incoming Request] --> S{Server Defined?}
     S -->|No| D[Default Policy]
-    S -->|Yes| A{AuthorizationPolicy Exists?}
-    A -->|No| SA{ServerAuthorization Exists?}
-    A -->|Yes| AP[Evaluate AuthorizationPolicy]
-    SA -->|No| D
-    SA -->|Yes| SAE[Evaluate ServerAuthorization]
-    AP --> M{Matches Required Auth?}
-    SAE --> MC{Matches Client Spec?}
+    S -->|Yes| A{AuthorizationPolicy or ServerAuthorization Exists?}
+    A -->|No| SP[Server accessPolicy]
+    A -->|Yes| AP[Evaluate Matching Authorizations]
+    AP --> M{Matches an Authorization?}
     M -->|Yes| Allow[Allow Request]
     M -->|No| Deny[Deny Request - 403]
-    MC -->|Yes| Allow
-    MC -->|No| Deny
+    SP --> SDP{Server accessPolicy Setting}
+    SDP -->|deny default| Deny
+    SDP -->|all-unauthenticated| Allow
+    SDP -->|all-authenticated| AuthCheck
+    SDP -->|cluster-unauthenticated| CU
+    SDP -->|cluster-authenticated| CA
+    SDP -->|audit| Allow
     D --> DP{Default Policy Setting}
     DP -->|all-unauthenticated| Allow
     DP -->|all-authenticated| AuthCheck{mTLS Identity?}
     DP -->|cluster-unauthenticated| CU{Same Cluster?}
     DP -->|cluster-authenticated| CA{Same Cluster + mTLS?}
     DP -->|deny| Deny
+    DP -->|audit| Allow
     AuthCheck -->|Yes| Allow
     AuthCheck -->|No| Deny
     CU -->|Yes| Allow
@@ -262,7 +265,7 @@ Linkerd's default policy determines what happens when no explicit policy matches
 
 ```bash
 # Set during installation
-linkerd install --set policyController.defaultAllowPolicy=deny | kubectl apply -f -
+linkerd install --default-inbound-policy deny | kubectl apply -f -
 ```
 
 ### Per-Namespace Override
@@ -287,6 +290,7 @@ metadata:
 | `cluster-unauthenticated` | Allow traffic from same cluster |
 | `cluster-authenticated` | Allow traffic from same cluster with valid mTLS |
 | `deny` | Deny all traffic unless explicitly allowed (most secure) |
+| `audit` | Allow traffic like `all-unauthenticated`, but flag requests in logs and metrics |
 
 ## Workload Identity Verification
 
@@ -319,7 +323,7 @@ flowchart LR
 
 ```bash
 # Check the identity assigned to a pod
-linkerd identity -n production deploy/api
+linkerd identity -n production -l app=api
 
 # Output shows the SPIFFE identity
 # spiffe://cluster.local/ns/production/sa/api
@@ -547,7 +551,7 @@ kubectl describe authorizationpolicy api-authz -n production
 linkerd diagnostics proxy-metrics -n production deploy/api | grep policy
 
 # View the inbound policy for a workload
-linkerd diagnostics policy -n production deploy/api --port 8080
+linkerd diagnostics policy -n production deploy/api 8080
 ```
 
 ### Test Connectivity
@@ -582,7 +586,7 @@ Start permissive and gradually tighten policies.
 ### Step 1: Install with Permissive Default
 
 ```bash
-linkerd install --set policyController.defaultAllowPolicy=all-unauthenticated | kubectl apply -f -
+linkerd install --default-inbound-policy all-unauthenticated | kubectl apply -f -
 ```
 
 ### Step 2: Add Servers Without Authorization
@@ -605,8 +609,8 @@ spec:
 ### Step 3: Monitor Traffic Patterns
 
 ```bash
-# See which identities are calling your service
-linkerd viz stat deploy/api -n production --from deploy
+# See which workloads and proxy identities are calling your service
+linkerd viz edges deploy -n production
 ```
 
 ### Step 4: Add AuthorizationPolicies
