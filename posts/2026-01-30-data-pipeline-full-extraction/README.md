@@ -239,9 +239,9 @@ def get_source_connection(config: ExtractionConfig):
             user=config.source_user,
             password=config.source_password,
         )
-        # Use server-side cursor for large result sets
-        # This prevents loading entire dataset into memory
-        conn.set_session(autocommit=True)
+        # Keep autocommit disabled: psycopg2 named cursors are declared
+        # inside a transaction unless they are explicitly created WITH HOLD.
+        conn.set_session(readonly=True)
         yield conn
     finally:
         if conn:
@@ -369,12 +369,11 @@ def load_to_staging(
             backup_table = f"{config.target_table}_backup"
 
             cursor.execute(f"""
-                BEGIN;
                 DROP TABLE IF EXISTS {backup_table};
                 ALTER TABLE {config.target_table} RENAME TO {backup_table.split('.')[-1]};
                 ALTER TABLE {staging_table} RENAME TO {config.target_table.split('.')[-1]};
-                COMMIT;
             """)
+            conn.commit()
 
             logger.info(f"Full extraction complete. Total rows: {total_rows}")
             return total_rows
@@ -443,8 +442,7 @@ For datasets exceeding available memory, implement streaming extraction with pro
 # streaming_extraction.py
 # Memory-efficient streaming extraction for large datasets
 
-import io
-import csv
+import tempfile
 from typing import Iterator, Generator
 import psycopg2
 from psycopg2 import sql
@@ -477,7 +475,8 @@ class StreamingExtractor:
         Stream table data as CSV bytes.
 
         Uses PostgreSQL COPY TO STDOUT for maximum performance.
-        Data is streamed directly without loading into memory.
+        Data is buffered in a spooled temporary file so large exports
+        spill to disk instead of being held entirely in memory.
 
         Yields:
             Chunks of CSV data as bytes
@@ -497,10 +496,11 @@ class StreamingExtractor:
                         "COPY {} TO STDOUT WITH CSV HEADER"
                     ).format(sql.Identifier(table_name))
 
-                # Create a buffer to collect streamed data
-                buffer = io.BytesIO()
+                # SpooledTemporaryFile keeps small exports in memory and
+                # rolls larger exports to disk after temp_buffer_size bytes.
+                buffer = tempfile.SpooledTemporaryFile(max_size=self.temp_buffer_size)
 
-                # Use copy_expert for streaming COPY
+                # Use copy_expert for COPY TO STDOUT
                 cursor.copy_expert(copy_sql, buffer)
 
                 # Reset buffer position and yield in chunks
@@ -620,8 +620,8 @@ def bulk_transfer_example():
             # Prepare target table
             target_cursor.execute("TRUNCATE TABLE target_schema.customers")
 
-            # Create a pipe to stream data directly
-            buffer = io.BytesIO()
+            # Create a spooled buffer for the transfer
+            buffer = tempfile.SpooledTemporaryFile(max_size=10 * 1024 * 1024)
 
             # Collect streamed CSV data
             for chunk in extractor.extract_to_csv_stream("customers"):
@@ -649,7 +649,7 @@ For faster extraction from large tables, use parallel processing:
 # Parallel extraction using multiprocessing for improved throughput
 
 import multiprocessing as mp
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
 from typing import List, Tuple, Dict, Any
 import psycopg2
@@ -664,8 +664,8 @@ logger = logging.getLogger(__name__)
 class PartitionConfig:
     """Configuration for a single extraction partition."""
     partition_id: int
-    start_key: Any
-    end_key: Any
+    start_key: int
+    end_key: int
     source_connection_string: str
     table_name: str
     key_column: str
@@ -752,12 +752,12 @@ class ParallelExtractor:
         """
         Calculate partition boundaries based on data distribution.
 
-        Uses percentile calculation to create evenly sized partitions
-        regardless of key value distribution.
+        Uses bucket boundaries to create roughly evenly sized partitions
+        for integer key columns.
 
         Args:
             table_name: Table to partition
-            key_column: Column to partition on (should be indexed)
+            key_column: Integer column to partition on (should be indexed)
             num_partitions: Number of partitions (defaults to num_workers)
 
         Returns:
@@ -777,17 +777,14 @@ class ParallelExtractor:
                 if min_key is None or max_key is None:
                     return []
 
-                # For numeric keys, calculate even splits
-                # For other types, use percentile approach
                 cursor.execute(f"""
-                    SELECT {key_column}
+                    SELECT MAX({key_column}) AS boundary
                     FROM (
                         SELECT {key_column},
                                NTILE({num_partitions}) OVER (ORDER BY {key_column}) as bucket
                         FROM {table_name}
                     ) t
-                    GROUP BY bucket, {key_column}
-                    HAVING {key_column} = MAX({key_column})
+                    GROUP BY bucket
                     ORDER BY bucket
                 """)
 
@@ -801,8 +798,8 @@ class ParallelExtractor:
                     partitions.append((prev_key, boundary))
                     prev_key = boundary
 
-                # Last partition goes to max_key + 1 (or use inclusive upper bound)
-                partitions.append((prev_key, max_key + 1 if isinstance(max_key, int) else max_key))
+                # The extraction query uses an exclusive upper bound.
+                partitions.append((prev_key, max_key + 1))
 
                 return partitions
 
@@ -847,7 +844,7 @@ class ParallelExtractor:
         logger.info(f"Starting parallel extraction with {self.num_workers} workers")
 
         # Execute extractions in parallel using process pool
-        # ProcessPoolExecutor is better for CPU-bound work and avoids GIL
+        # This is useful when per-partition extraction includes CPU-heavy transformation.
         results = []
         with ProcessPoolExecutor(max_workers=self.num_workers) as executor:
             results = list(executor.map(extract_partition, partition_configs))
@@ -1293,7 +1290,7 @@ flowchart TB
 | **Source Requirements** | None - works with any source | Needs timestamps, CDC, or logs |
 | **Delete Handling** | Automatic - deleted rows disappear | Must explicitly track deletes |
 | **Recovery** | Easy - just rerun | Complex state recovery needed |
-| **Consistency** | Guaranteed point-in-time snapshot | Can have timing edge cases |
+| **Consistency** | Simple to make consistent with snapshot isolation | Can have timing edge cases |
 | **Resource Usage** | Higher network/IO per run | Lower per-run resource usage |
 | **Run Time** | Proportional to total data size | Proportional to change volume |
 | **Best For** | Small/medium tables, reference data | Large tables, append-heavy data |
@@ -1497,7 +1494,7 @@ class OptimizedExtractor:
 
         COPY is significantly faster than INSERT statements because:
         - Bypasses SQL parsing for each row
-        - Uses binary protocol (optionally)
+        - Can use binary COPY format when configured
         - Batches network round trips
 
         Args:
@@ -1640,7 +1637,7 @@ class OptimizedExtractor:
                 cursor.execute(f"""
                     DROP TABLE IF EXISTS {staging_table};
                     CREATE UNLOGGED TABLE {staging_table}
-                    (LIKE {target_table} INCLUDING DEFAULTS);
+                    (LIKE {target_table} INCLUDING ALL);
                 """)
                 conn.commit()
 
@@ -2626,11 +2623,10 @@ class ProductionExtractor:
     Production-ready full extraction pipeline.
 
     Features:
-    - Atomic table swap for zero-downtime updates
-    - Comprehensive error handling with retries
+    - Atomic table swap with a brief metadata lock
+    - Error cleanup on failure
     - Data validation before final commit
     - Detailed logging and metrics
-    - Checkpoint support for recovery
     """
 
     def __init__(self, config: PipelineConfig):
@@ -2844,7 +2840,8 @@ class ProductionExtractor:
         """
         Atomically swap staging table with production.
 
-        This ensures zero downtime during the swap operation.
+        This keeps the replacement atomic, although PostgreSQL still
+        takes brief metadata locks for the ALTER TABLE statements.
         """
         logger.info("Performing atomic table swap...")
 
@@ -2854,9 +2851,6 @@ class ProductionExtractor:
 
         with psycopg2.connect(self.config.target_connection_string) as conn:
             with conn.cursor() as cursor:
-                # Use a transaction for atomicity
-                cursor.execute("BEGIN")
-
                 try:
                     # Rename current table to backup
                     cursor.execute(
@@ -2870,10 +2864,10 @@ class ProductionExtractor:
                         f"RENAME TO {target_table_name}"
                     )
 
-                    cursor.execute("COMMIT")
+                    conn.commit()
 
                 except Exception as e:
-                    cursor.execute("ROLLBACK")
+                    conn.rollback()
                     raise Exception(f"Atomic swap failed: {e}")
 
         logger.info("Table swap completed successfully")
@@ -2981,15 +2975,16 @@ def extract_with_snapshot(
     import psycopg2
 
     with psycopg2.connect(conn_string) as conn:
-        # Set transaction to serializable for strongest consistency
+        # REPEATABLE READ gives every query in this transaction the
+        # same MVCC snapshot.
         conn.set_isolation_level(
             psycopg2.extensions.ISOLATION_LEVEL_REPEATABLE_READ
         )
 
         with conn.cursor() as cursor:
             if snapshot_timestamp:
-                # Query as of a specific timestamp (requires pg_stat_statements)
-                # Note: This requires PostgreSQL time travel extension or similar
+                # Query as of a specific timestamp requires temporal tables,
+                # audit history, or a time-travel extension.
                 cursor.execute(f"""
                     SELECT * FROM {table}
                     -- Add timestamp filter if your schema supports it
@@ -3045,7 +3040,7 @@ flowchart TB
 
 2. **Use streaming and batching** to handle datasets larger than available memory.
 
-3. **Implement atomic swap** with staging tables for zero-downtime updates.
+3. **Implement atomic swap** with staging tables for low-downtime updates with brief metadata locks.
 
 4. **Validate before committing** to catch issues early and maintain data quality.
 
