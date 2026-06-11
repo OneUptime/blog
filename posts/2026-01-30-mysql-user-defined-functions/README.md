@@ -28,17 +28,16 @@ flowchart TD
 
 ## UDF Types
 
-MySQL supports three types of UDFs:
+MySQL supports two types of loadable UDFs:
 
 | Type | Description | Use Case |
 |------|-------------|----------|
 | Simple Functions | Process one row at a time | String manipulation, calculations |
 | Aggregate Functions | Process multiple rows | Custom SUM, AVG-like operations |
-| Window Functions | Process rows with window context | Running totals, rankings |
 
 ## The UDF Interface
 
-Every UDF requires implementing specific functions that MySQL calls during query execution. The naming convention uses your function name as a prefix.
+Every UDF implements specific functions that MySQL calls during query execution. The naming convention uses your function name as a prefix.
 
 ```mermaid
 flowchart LR
@@ -54,7 +53,7 @@ flowchart LR
 
 ### Required Functions
 
-For a function named `my_function`, you need to implement:
+For a function named `my_function`, the main `my_function()` function is required. In practice, you should also implement `my_function_init()` and `my_function_deinit()` for argument validation, resource management, and normal loadable-function security checks:
 
 - **my_function_init()** - Called once before processing, for initialization
 - **my_function()** - Called for each row or to get the final result
@@ -436,10 +435,10 @@ char *slugify(UDF_INIT *initid, UDF_ARGS *args,
     bool last_was_dash = true; // Prevent leading dashes
 
     for (unsigned long i = 0; i < input_len && out_pos < 254; i++) {
-        char c = input[i];
+        unsigned char c = (unsigned char)input[i];
 
         if (isalnum(c)) {
-            output[out_pos++] = tolower(c);
+            output[out_pos++] = (char)tolower(c);
             last_was_dash = false;
         } else if ((c == ' ' || c == '-' || c == '_') && !last_was_dash) {
             output[out_pos++] = '-';
@@ -613,14 +612,14 @@ When deploying UDFs, consider these security aspects:
    ```ini
    # my.cnf
    [mysqld]
-   # Disable CREATE FUNCTION for non-privileged users
-   # Require SUPER privilege for UDF creation
+   # Keep suspicious single-symbol UDF libraries disabled
+   allow-suspicious-udfs=OFF
    ```
 
 4. **Privilege Control**
    ```sql
-   -- Only grant CREATE ROUTINE to trusted users
-   GRANT CREATE ROUTINE ON database.* TO 'trusted_user'@'localhost';
+   -- CREATE FUNCTION and DROP FUNCTION update mysql.func
+   GRANT INSERT, DELETE ON mysql.* TO 'trusted_user'@'localhost';
    ```
 
 ## Performance Optimization Tips
@@ -631,7 +630,7 @@ When deploying UDFs, consider these security aspects:
 
 2. **Cache Computed Values**
    - Use `initid->ptr` to cache expensive computations
-   - Check `initid->const_item` for constant optimization
+   - Set `initid->const_item` when the function always returns the same value
 
 3. **Avoid Unnecessary Copies**
    - Work directly with input pointers when possible
