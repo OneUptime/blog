@@ -48,13 +48,20 @@ using Microsoft.Extensions.Logging;
 
 namespace MyApp.Logging;
 
+public interface IHttpLogProcessor
+{
+    IExternalScopeProvider? ScopeProvider { get; }
+    LogLevel MinLevel { get; }
+    void EnqueueLog(LogEntry entry);
+}
+
 // The logger instance handles individual log calls for a category
 public class HttpLogger : ILogger
 {
     private readonly string _categoryName;
-    private readonly HttpLoggerProvider _provider;
+    private readonly IHttpLogProcessor _provider;
 
-    public HttpLogger(string categoryName, HttpLoggerProvider provider)
+    public HttpLogger(string categoryName, IHttpLogProcessor provider)
     {
         _categoryName = categoryName;
         _provider = provider;
@@ -168,7 +175,7 @@ public class HttpLoggerOptions
 
 // The provider creates loggers and manages the batching pipeline
 [ProviderAlias("HttpLogger")]
-public class HttpLoggerProvider : ILoggerProvider, ISupportExternalScope
+public class HttpLoggerProvider : ILoggerProvider, ISupportExternalScope, IHttpLogProcessor
 {
     private readonly ConcurrentDictionary<string, HttpLogger> _loggers = new();
     private readonly HttpLoggerOptions _options;
@@ -188,7 +195,6 @@ public class HttpLoggerProvider : ILoggerProvider, ISupportExternalScope
         // Configure the HTTP client with authentication
         _httpClient = new HttpClient();
         _httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {_options.ApiKey}");
-        _httpClient.DefaultRequestHeaders.Add("Content-Type", "application/json");
 
         // Bounded channel prevents memory issues if the endpoint is slow
         _logChannel = Channel.CreateBounded<LogEntry>(new BoundedChannelOptions(_options.MaxQueueSize)
@@ -213,7 +219,7 @@ public class HttpLoggerProvider : ILoggerProvider, ISupportExternalScope
     }
 
     // Add a log entry to the processing queue
-    public void EnqueueLog(LogEntry entry)
+    public virtual void EnqueueLog(LogEntry entry)
     {
         // TryWrite is non-blocking - drops if queue is full
         _logChannel.Writer.TryWrite(entry);
@@ -223,7 +229,6 @@ public class HttpLoggerProvider : ILoggerProvider, ISupportExternalScope
     private async Task ProcessLogQueueAsync()
     {
         var batch = new List<LogEntry>(_options.BatchSize);
-        var timer = new PeriodicTimer(_options.FlushInterval);
 
         while (!_cts.Token.IsCancellationRequested)
         {
@@ -682,7 +687,7 @@ public class HighThroughputOptions
 }
 
 [ProviderAlias("HighThroughput")]
-public class HighThroughputLoggerProvider : ILoggerProvider, ISupportExternalScope
+public class HighThroughputLoggerProvider : ILoggerProvider, ISupportExternalScope, IHttpLogProcessor
 {
     private readonly ConcurrentDictionary<string, HttpLogger> _loggers = new();
     private readonly HighThroughputOptions _options;
@@ -873,7 +878,7 @@ Support configuration through the standard .NET configuration system.
         "Default": "Information"
       },
       "Endpoint": "https://logs.example.com/ingest",
-      "ApiKey": "${LOGGING_API_KEY}",
+      "ApiKey": "",
       "BatchSize": 100,
       "FlushIntervalSeconds": 5
     }
@@ -890,7 +895,10 @@ builder.Logging.AddHttpLogger(options =>
     var section = builder.Configuration.GetSection("Logging:HttpLogger");
 
     options.Endpoint = section["Endpoint"] ?? "https://localhost/logs";
-    options.ApiKey = section["ApiKey"] ?? "";
+    options.ApiKey = section["ApiKey"]
+        ?? builder.Configuration["LOGGING_API_KEY"]
+        ?? "";
+    options.MinLevel = section.GetValue("LogLevel:Default", LogLevel.Information);
     options.BatchSize = section.GetValue("BatchSize", 100);
     options.FlushInterval = TimeSpan.FromSeconds(
         section.GetValue("FlushIntervalSeconds", 5));
@@ -987,7 +995,7 @@ public class TestableHttpLoggerProvider : HttpLoggerProvider
     {
     }
 
-    public new void EnqueueLog(LogEntry entry)
+    public override void EnqueueLog(LogEntry entry)
     {
         QueuedLogs.Add(entry);
     }
