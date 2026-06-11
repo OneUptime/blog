@@ -82,14 +82,23 @@ The multi-cluster extension includes the ServiceMirror controller and gateway co
 
 ### Install on Both Clusters
 
+```yaml
+# File: values-west.yaml
+# Configure the source cluster with a controller for the east Link.
+controllers:
+  - link:
+      ref:
+        name: east
+```
+
 ```bash
 # Install multi-cluster extension on the target cluster (east)
 # This cluster will export services
 linkerd multicluster install --context east | kubectl apply --context east -f -
 
 # Install multi-cluster extension on the source cluster (west)
-# This cluster will consume mirrored services
-linkerd multicluster install --context west | kubectl apply --context west -f -
+# This cluster will consume mirrored services from the east Link
+linkerd multicluster install --context west -f values-west.yaml | kubectl apply --context west -f -
 
 # Verify the installation
 linkerd multicluster check --context east
@@ -102,41 +111,24 @@ The gateway is the entry point for cross-cluster traffic. By default, it creates
 
 ```yaml
 # Custom gateway configuration
-# File: gateway-config.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: linkerd-gateway-config
-  namespace: linkerd-multicluster
-data:
+# File: gateway-values.yaml
+gateway:
   # Configure gateway to use NodePort instead of LoadBalancer
-  config: |
-    gateway:
-      serviceType: NodePort
-      nodePort: 30443
+  serviceType: NodePort
+  nodePort: 30443
 ```
 
 For production environments, configure the gateway with proper resource limits:
 
 ```yaml
-# File: gateway-resources.yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: linkerd-gateway
-  namespace: linkerd-multicluster
-spec:
-  template:
-    spec:
-      containers:
-        - name: linkerd-gateway
-          resources:
-            requests:
-              cpu: 100m
-              memory: 128Mi
-            limits:
-              cpu: 500m
-              memory: 256Mi
+# File: gateway-values.yaml
+gateway:
+  serviceType: LoadBalancer
+  deploymentAnnotations:
+    config.linkerd.io/proxy-cpu-request: 100m
+    config.linkerd.io/proxy-cpu-limit: 500m
+    config.linkerd.io/proxy-memory-request: 128Mi
+    config.linkerd.io/proxy-memory-limit: 256Mi
 ```
 
 ## Creating the Link Resource
@@ -150,11 +142,11 @@ On the target cluster (east), generate the credentials that will be used by the 
 ```bash
 # Generate the Link resource with credentials
 # Run this on the TARGET cluster (east)
-linkerd multicluster link \
+linkerd multicluster link-gen \
   --context east \
   --cluster-name east \
-  --gateway-addresses "gateway.east.example.com:4143" \
-  --gateway-identity "linkerd-gateway.linkerd-multicluster.serviceaccount.identity.linkerd.cluster.local" \
+  --gateway-addresses "gateway.east.example.com" \
+  --gateway-port 4143 \
   > link-east.yaml
 
 # The output contains a Secret with kubeconfig credentials
@@ -178,7 +170,8 @@ spec:
   targetClusterDomain: cluster.local
 
   # Gateway configuration
-  gatewayAddress: gateway.east.example.com:4143
+  gatewayAddress: gateway.east.example.com
+  gatewayPort: "4143"
   gatewayIdentity: linkerd-gateway.linkerd-multicluster.serviceaccount.identity.linkerd.cluster.local
 
   # Probe configuration for health checking
@@ -192,7 +185,7 @@ spec:
     matchLabels:
       mirror.linkerd.io/exported: "true"
 ---
-# The Link also creates a Secret with target cluster credentials
+# The link-gen output also includes Secrets with target cluster credentials
 apiVersion: v1
 kind: Secret
 metadata:
@@ -261,19 +254,15 @@ Credentials should be rotated periodically. Here is the process:
 
 ```bash
 # 1. Generate new credentials on the target cluster
-linkerd multicluster link \
+linkerd multicluster link-gen \
   --context east \
   --cluster-name east \
   > link-east-new.yaml
 
-# 2. Extract the new secret
-kubectl get secret -n linkerd-multicluster cluster-credentials-east \
-  --context east -o yaml > new-credentials.yaml
+# 2. Apply the refreshed Link and credential Secrets on the source cluster
+kubectl apply --context west -f link-east-new.yaml
 
-# 3. Apply the new secret on the source cluster
-kubectl apply --context west -f new-credentials.yaml
-
-# 4. Restart the service mirror controller to pick up new credentials
+# 3. Restart the service mirror controller to force an immediate reconnect
 kubectl rollout restart deployment/linkerd-service-mirror-east \
   -n linkerd-multicluster --context west
 ```
@@ -303,12 +292,6 @@ metadata:
   labels:
     # Required: enables mirroring
     mirror.linkerd.io/exported: "true"
-  annotations:
-    # Optional: custom name for the mirrored service
-    mirror.linkerd.io/remote-svc-name: "api-primary"
-    # Optional: gateway to use (if multiple links exist)
-    mirror.linkerd.io/gateway-name: "linkerd-gateway"
-    mirror.linkerd.io/gateway-ns: "linkerd-multicluster"
 spec:
   selector:
     app: api
@@ -392,11 +375,11 @@ spec:
 
 ### Traffic Splitting Between Clusters
 
-Use Linkerd's TrafficSplit to distribute traffic between local and remote services.
+Use Linkerd's TrafficSplit to distribute traffic between local and remote services. In current Linkerd releases, TrafficSplit requires the Linkerd SMI extension, which is deprecated in favor of newer routing APIs.
 
 ```yaml
 # Split traffic between local and mirrored service
-apiVersion: split.smi-spec.io/v1alpha1
+apiVersion: split.smi-spec.io/v1alpha2
 kind: TrafficSplit
 metadata:
   name: api-split
@@ -406,10 +389,10 @@ spec:
   backends:
     # 80% to local cluster
     - service: api
-      weight: 800m
+      weight: 80
     # 20% to east cluster
     - service: api-east
-      weight: 200m
+      weight: 20
 ```
 
 ## Monitoring Multi-Cluster Traffic
@@ -420,14 +403,14 @@ spec:
 # View gateway status across all links
 linkerd multicluster gateways
 
-# Output shows latency and success rate to each remote cluster
-# CLUSTER  ALIVE  NUM_SVC  LATENCY_P50  LATENCY_P95  LATENCY_P99
-# east     True   5        2ms          5ms          10ms
+# Output shows gateway liveness, mirrored service count, and probe latency
+# CLUSTER  ALIVE  NUM_SVC  LATENCY
+# east     True   5        2ms
 ```
 
 ### Prometheus Metrics
 
-The ServiceMirror controller exports metrics about cross-cluster traffic.
+The ServiceMirror controller exports metrics about gateway probes and endpoint repair activity. Request volume and latency are exposed by the Linkerd proxies on the gateway pods.
 
 ```yaml
 # Prometheus scrape config for multi-cluster metrics
@@ -444,25 +427,25 @@ data:
             namespaces:
               names: ['linkerd-multicluster']
         relabel_configs:
-          - source_labels: [__meta_kubernetes_pod_label_linkerd_io_control_plane_component]
+          - source_labels: [__meta_kubernetes_pod_label_app]
             action: keep
-            regex: gateway
+            regex: linkerd-gateway
 ```
 
 ### Key Metrics to Monitor
 
 ```bash
-# Gateway request volume
-gateway_requests_total{cluster="east"}
+# Gateway liveness from the service mirror controller
+gateway_alive{target_cluster_name="east"}
 
-# Gateway request latency
-gateway_request_duration_seconds{cluster="east"}
+# Gateway probe latency from the service mirror controller
+gateway_probe_latency_ms_bucket{target_cluster_name="east"}
 
-# Service mirror health
-service_mirror_probe_success_total{cluster="east"}
+# Gateway probe count by success status
+gateway_probes{target_cluster_name="east", probe_successful="true"}
 
-# Mirrored endpoints
-service_mirror_endpoints{cluster="east", service="api"}
+# Endpoint repair attempts by the service mirror controller
+service_mirror_endpoint_repairs{target_cluster_name="east"}
 ```
 
 ## High Availability Architecture
