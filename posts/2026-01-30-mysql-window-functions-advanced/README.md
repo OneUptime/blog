@@ -199,7 +199,7 @@ ORDER BY within OVER determines the sequence of rows for:
 ```sql
 -- Order matters for running totals and rankings
 -- Without ORDER BY, the window includes all partition rows
--- With ORDER BY, the default frame is UNBOUNDED PRECEDING to CURRENT ROW
+-- With ORDER BY, the default frame is RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
 SELECT
     sale_date,
     salesperson,
@@ -248,8 +248,8 @@ flowchart TB
 ROWS counts actual rows regardless of their values.
 
 ```sql
--- 3-day moving average using ROWS
--- ROWS BETWEEN 2 PRECEDING AND CURRENT ROW includes exactly 3 rows
+-- 3-row moving average using ROWS
+-- ROWS BETWEEN 2 PRECEDING AND CURRENT ROW includes the current row and up to 2 preceding rows
 SELECT
     sale_date,
     daily_revenue,
@@ -274,12 +274,12 @@ FROM daily_sales;
 RANGE includes rows whose ORDER BY values fall within a range.
 
 ```sql
--- Include all rows with the same date (handles duplicates)
--- RANGE groups rows with equal ORDER BY values together
+-- Cumulative sum through the current date (handles duplicate dates)
+-- RANGE includes all peer rows with the same ORDER BY value
 SELECT
     sale_date,
     amount,
-    -- All sales on the same date are summed together
+    -- All sales up to and including the current date are summed together
     SUM(amount) OVER (
         ORDER BY sale_date
         RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
@@ -291,10 +291,10 @@ FROM sales;
 
 ```sql
 -- Full partition (default without ORDER BY)
-ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+RANGE BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
 
 -- Running total (default with ORDER BY)
-ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
 
 -- Centered moving window
 ROWS BETWEEN 3 PRECEDING AND 3 FOLLOWING
@@ -706,7 +706,7 @@ FROM employees
 ORDER BY department, hire_date;
 ```
 
-**Important:** LAST_VALUE with the default frame (UNBOUNDED PRECEDING to CURRENT ROW) only sees up to the current row. Use `ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING` to see the actual last row.
+**Important:** LAST_VALUE with the default ordered frame (`RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW`) only sees up to the current row and its peers. Use `ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING` to see the actual last row.
 
 ---
 
@@ -968,9 +968,9 @@ flowchart TB
     end
 
     subgraph Benefit["Benefits"]
-        B1["Avoids full table scan"]
-        B2["Eliminates sort operation"]
-        B3["Enables index-only scan"]
+        B1["Can reduce rows scanned"]
+        B2["Can reduce sort work"]
+        B3["Can enable covering reads"]
     end
 
     Q1 --> I1
@@ -1000,9 +1000,9 @@ SELECT
     sale_date,
     region,
     amount,
-    SUM(amount) OVER regional_sales AS regional_total,
-    AVG(amount) OVER regional_sales AS regional_avg,
-    COUNT(*) OVER regional_sales AS regional_count,
+    SUM(amount) OVER regional_sales AS regional_running_total,
+    AVG(amount) OVER regional_sales AS regional_running_avg,
+    COUNT(*) OVER regional_sales AS regional_running_count,
     ROW_NUMBER() OVER regional_sales AS row_in_region
 FROM sales
 WINDOW regional_sales AS (
@@ -1037,7 +1037,7 @@ FROM sales;
 ### Pitfall 1: LAST_VALUE Default Frame
 
 ```sql
--- Wrong: LAST_VALUE only sees up to current row
+-- Wrong: LAST_VALUE only sees up to the current row and its peers
 SELECT
     id,
     value,
@@ -1076,8 +1076,8 @@ FROM data;
 -- Without ORDER BY: frame is entire partition
 SELECT SUM(amount) OVER (PARTITION BY region) AS region_total FROM sales;
 
--- With ORDER BY: frame defaults to UNBOUNDED PRECEDING TO CURRENT ROW
--- This creates a running total, not a partition total
+-- With ORDER BY: frame defaults to RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+-- This creates a running total by ORDER BY value, not a partition total
 SELECT SUM(amount) OVER (
     PARTITION BY region
     ORDER BY sale_date
