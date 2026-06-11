@@ -51,12 +51,12 @@ sequenceDiagram
     App->>Queue: Event (10:00:05) sent first
     App->>Queue: Event (10:00:00) sent second
     Queue->>Processor: Process with event time
-    Note over Processor: Reorders based on timestamps
+    Note over Processor: Assigns windows based on timestamps
 ```
 
 ## Event Timestamps
 
-Every event in an event time system must carry a timestamp. This timestamp should be embedded in the event payload and extracted consistently.
+Every event in an event time system must have an event-time timestamp available. This timestamp is often embedded in the event payload and should be extracted consistently.
 
 ### Kafka Streams: Timestamp Extractors
 
@@ -240,13 +240,14 @@ public class BoundedOutOfOrdernessGenerator
 
     /**
      * Called periodically to emit watermarks.
-     * The watermark is set to the max timestamp minus the allowed lateness.
+     * The watermark is set to the max timestamp minus the out-of-orderness
+     * tolerance, minus 1 millisecond because watermark timestamps are inclusive.
      */
     @Override
     public void onPeriodicEmit(WatermarkOutput output) {
         // Emit watermark: max timestamp minus out-of-orderness tolerance
         output.emitWatermark(
-            new Watermark(currentMaxTimestamp - maxOutOfOrderness)
+            new Watermark(currentMaxTimestamp - maxOutOfOrderness - 1)
         );
     }
 }
@@ -316,8 +317,10 @@ public class KafkaStreamsWindowing {
             // with a 1 minute grace period for late events
             .windowedBy(
                 TimeWindows
-                    .ofSizeWithNoGrace(Duration.ofMinutes(5))
-                    .grace(Duration.ofMinutes(1))
+                    .ofSizeAndGrace(
+                        Duration.ofMinutes(5),
+                        Duration.ofMinutes(1)
+                    )
             )
             // Count events in each window
             .count(Materialized.as("event-counts"))
@@ -371,7 +374,6 @@ Flink provides fine-grained control over late data with allowed lateness and sid
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
 import org.apache.flink.streaming.api.windowing.assigners.TumblingEventTimeWindows;
-import org.apache.flink.streaming.api.windowing.time.Time;
 import org.apache.flink.util.OutputTag;
 import java.time.Duration;
 
@@ -393,9 +395,9 @@ public class LateDataHandling {
             // Key by user ID
             .keyBy(event -> event.getUserId())
             // Define 10-minute tumbling windows
-            .window(TumblingEventTimeWindows.of(Time.minutes(10)))
+            .window(TumblingEventTimeWindows.of(Duration.ofMinutes(10)))
             // Allow events up to 5 minutes late to update window results
-            .allowedLateness(Time.minutes(5))
+            .allowedLateness(Duration.ofMinutes(5))
             // Events later than 5 minutes go to side output
             .sideOutputLateData(LATE_EVENTS_TAG)
             // Aggregate events in each window
@@ -417,7 +419,7 @@ public class LateDataHandling {
 
 ### Kafka Streams: Processing Late Data
 
-In Kafka Streams, you handle late data through the grace period and by monitoring window store state.
+In Kafka Streams, you handle late data through grace periods and by comparing record timestamps with stream time.
 
 ```java
 import org.apache.kafka.streams.StreamsBuilder;
@@ -427,7 +429,6 @@ import org.apache.kafka.streams.kstream.Materialized;
 import org.apache.kafka.streams.processor.api.Processor;
 import org.apache.kafka.streams.processor.api.ProcessorContext;
 import org.apache.kafka.streams.processor.api.Record;
-import org.apache.kafka.streams.state.WindowStore;
 import java.time.Duration;
 import java.time.Instant;
 
@@ -468,7 +469,7 @@ public class LateEventProcessor implements Processor<String, MyEvent, String, My
                 lateness
             );
 
-            // Forward to a special topic for late events
+            // Forward to a named downstream sink processor for late events
             context.forward(record.withValue(event), "late-events-sink");
         } else {
             // Event is on time, process normally
@@ -525,7 +526,6 @@ import org.apache.flink.api.common.functions.AggregateFunction;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.windowing.assigners.TumblingEventTimeWindows;
-import org.apache.flink.streaming.api.windowing.time.Time;
 import org.apache.flink.util.OutputTag;
 import java.time.Duration;
 
@@ -561,9 +561,9 @@ public class ClickAnalyticsPipeline {
         // Compute click counts per page in 1-minute windows
         var clickCounts = clicks
             .keyBy(ClickEvent::getPageId)
-            .window(TumblingEventTimeWindows.of(Time.minutes(1)))
+            .window(TumblingEventTimeWindows.of(Duration.ofMinutes(1)))
             // Allow updates for late events up to 2 minutes
-            .allowedLateness(Time.minutes(2))
+            .allowedLateness(Duration.ofMinutes(2))
             // Send very late events to side output
             .sideOutputLateData(LATE_CLICKS)
             // Aggregate clicks
@@ -676,8 +676,10 @@ public class KafkaClickAnalytics {
             // Define 1-minute tumbling windows with 2-minute grace period
             .windowedBy(
                 TimeWindows
-                    .ofSizeWithNoGrace(Duration.ofMinutes(1))
-                    .grace(Duration.ofMinutes(2))
+                    .ofSizeAndGrace(
+                        Duration.ofMinutes(1),
+                        Duration.ofMinutes(2)
+                    )
             )
             // Count events per window
             .count(Materialized.as("click-counts-store"))
@@ -700,10 +702,12 @@ public class KafkaClickAnalytics {
                     windowedKey.window().endTime().toEpochMilli()
                 );
             })
+            // Use a regular string key for the output topic
+            .selectKey((windowedKey, stats) -> windowedKey.key())
             // Output to the results topic
             .to(
                 "click-stats",
-                Produced.with(new WindowedSerde(), new ClickStatsSerde())
+                Produced.with(Serdes.String(), new ClickStatsSerde())
             );
 
         // Build and start the streams application
@@ -725,6 +729,10 @@ public class KafkaClickAnalytics {
 The watermark delay is a trade-off between latency and completeness. Too short, and you will drop many late events. Too long, and your results will be delayed.
 
 ```java
+import org.apache.flink.api.common.eventtime.Watermark;
+import org.apache.flink.api.common.eventtime.WatermarkGenerator;
+import org.apache.flink.api.common.eventtime.WatermarkOutput;
+
 /**
  * Dynamic watermark generator that adjusts the out-of-orderness
  * threshold based on observed lateness patterns.
@@ -768,7 +776,7 @@ public class AdaptiveWatermarkGenerator
     @Override
     public void onPeriodicEmit(WatermarkOutput output) {
         output.emitWatermark(
-            new Watermark(currentMaxTimestamp - currentMaxOutOfOrderness)
+            new Watermark(currentMaxTimestamp - currentMaxOutOfOrderness - 1)
         );
     }
 }
@@ -826,6 +834,8 @@ public class WatermarkMonitor extends ProcessFunction<MyEvent, MyEvent> {
 Different sources may have slightly different clocks. Handle this by normalizing timestamps or using a reference time source.
 
 ```java
+import java.util.Map;
+
 /**
  * Timestamp normalizer that adjusts for known clock skew
  * between different data sources.
