@@ -631,7 +631,7 @@ Prevents data leakage and blocks harmful content.
 
 import re
 from dataclasses import dataclass
-from typing import List, Optional, Set
+from typing import List, Optional, Set, Tuple
 from enum import Enum
 
 
@@ -677,7 +677,7 @@ class OutputGuard:
         "phone": r'\b(?:\+?1[-.\s]?)?\(?[0-9]{3}\)?[-.\s]?[0-9]{3}[-.\s]?[0-9]{4}\b',
         "ssn": r'\b[0-9]{3}-[0-9]{2}-[0-9]{4}\b',
         "credit_card": r'\b(?:4[0-9]{12}(?:[0-9]{3})?|5[1-5][0-9]{14}|3[47][0-9]{13})\b',
-        "api_key": r'\b(sk-|pk-|api[_-]?key[_-]?)[a-zA-Z0-9]{20,}\b',
+        "api_key": r'\b(?:sk-|pk-|api[_-]?key[_-]?)[a-zA-Z0-9]{20,}\b',
         "aws_key": r'\bAKIA[0-9A-Z]{16}\b',
         "jwt": r'\beyJ[A-Za-z0-9-_]+\.eyJ[A-Za-z0-9-_]+\.[A-Za-z0-9-_]+\b',
     }
@@ -1003,11 +1003,17 @@ class LLMRateLimiter:
                 "tokens_hour": self._check_token_limit(
                     record, now, 3600, self.config.tokens_per_hour, estimated_tokens
                 ),
+                "tokens_day": self._check_token_limit(
+                    record, now, 86400, self.config.tokens_per_day, estimated_tokens
+                ),
                 "cost_minute": self._check_cost_limit(
                     record, now, 60, self.config.cost_per_minute, estimated_cost
                 ),
                 "cost_hour": self._check_cost_limit(
                     record, now, 3600, self.config.cost_per_hour, estimated_cost
+                ),
+                "cost_day": self._check_cost_limit(
+                    record, now, 86400, self.config.cost_per_day, estimated_cost
                 ),
             }
 
@@ -1225,9 +1231,9 @@ import json
 import time
 import logging
 from dataclasses import dataclass, asdict
-from typing import Optional, Dict, List, Any
+from typing import Optional, Dict, List, Any, Tuple
 from enum import Enum
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from collections import defaultdict
 
 
@@ -1366,12 +1372,12 @@ class SecurityLogger:
 
     def _cleanup_old_aggregations(self):
         """Remove aggregations older than 1 hour."""
-        current_minute = datetime.now().strftime("%Y-%m-%d-%H-%M")
+        cutoff = datetime.now() - timedelta(hours=1)
         keys_to_remove = []
 
         for key in self._event_counts:
-            # Simple comparison works because of format
-            if key < current_minute[:-2]:  # Different hour
+            key_time = datetime.strptime(key, "%Y-%m-%d-%H-%M")
+            if key_time < cutoff:
                 keys_to_remove.append(key)
 
         for key in keys_to_remove:
@@ -1441,7 +1447,7 @@ class SecurityLogger:
         return SecurityEvent(
             event_type=event_type,
             severity=severity,
-            timestamp=datetime.utcnow().isoformat() + "Z",
+            timestamp=datetime.now(timezone.utc).isoformat(),
             user_id=user_id,
             session_id=session_id,
             input_hash=input_hash,
@@ -1477,8 +1483,12 @@ class SecurityLogger:
             Dictionary of event type to count
         """
         stats = defaultdict(int)
+        cutoff = datetime.now() - timedelta(minutes=minutes)
 
-        for minute_data in self._event_counts.values():
+        for minute_key, minute_data in self._event_counts.items():
+            key_time = datetime.strptime(minute_key, "%Y-%m-%d-%H-%M")
+            if key_time < cutoff:
+                continue
             for event_type, count in minute_data.items():
                 stats[event_type] += count
 
