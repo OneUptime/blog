@@ -8,21 +8,21 @@ Description: Securely handle sensitive data during Docker builds using BuildKit 
 
 ---
 
-If you have ever needed to pull packages from a private npm registry, clone a private Git repository, or authenticate with an API during your Docker build, you have probably faced the challenge of handling credentials safely. The traditional approach of using build arguments or copying secret files into the image is risky because those secrets end up baked into image layers, visible to anyone who inspects the image history.
+If you have ever needed to pull packages from a private npm registry, clone a private Git repository, or authenticate with an API during your Docker build, you have probably faced the challenge of handling credentials safely. The traditional approach of using build arguments or copying secret files into the image is risky because those secrets can end up in image metadata, history, provenance, or layers, visible to anyone who inspects the image.
 
-BuildKit, Docker's modern build engine, solves this problem with secret mounts. Secrets are available during the build but never written to image layers. This post walks through how to use BuildKit secrets effectively in real-world scenarios.
+BuildKit, Docker's modern build engine, solves this problem with secret mounts. Secrets are available during the build but are not written to image layers by the mount itself. This post walks through how to use BuildKit secrets effectively in real-world scenarios.
 
 ## Why BuildKit Secrets Matter
 
 Before diving into the how, let's understand the security problem with the old approach.
 
-The following diagram shows what happens when you use build arguments for secrets:
+The following diagram shows what can happen when you use build arguments for secrets:
 
 ```mermaid
 flowchart TD
-    A[Build ARG with secret] --> B[Secret written to layer]
+    A[Build ARG with secret] --> B[Secret visible in history or metadata]
     B --> C[Image pushed to registry]
-    C --> D[Anyone can run docker history]
+    C --> D[Anyone can inspect the image]
     D --> E[Secret exposed]
 ```
 
@@ -36,7 +36,7 @@ flowchart TD
     D --> E[Image pushed safely]
 ```
 
-The key difference is that secrets mounted with BuildKit are only accessible during the specific RUN instruction and are never persisted in the final image.
+The key difference is that secrets mounted with BuildKit are only accessible during the specific RUN instruction and are not persisted in the final image unless your command explicitly writes them there.
 
 ## Enabling BuildKit
 
@@ -191,6 +191,7 @@ COPY requirements.txt .
 # Mount both pip config and a private PyPI token
 RUN --mount=type=secret,id=pip_conf,target=/root/.pip/pip.conf \
     --mount=type=secret,id=pypi_token \
+    PIP_EXTRA_INDEX_URL="https://__token__:$(cat /run/secrets/pypi_token)@pypi.example.com/simple" \
     pip install -r requirements.txt
 
 COPY . .
@@ -244,7 +245,7 @@ First, always use the Dockerfile syntax directive:
 # syntax=docker/dockerfile:1.4
 ```
 
-This ensures you have access to the latest BuildKit features.
+This ensures your Dockerfile is parsed with a frontend version that supports the BuildKit features used here.
 
 Second, verify your secrets are not leaking by inspecting the image history:
 
@@ -252,8 +253,10 @@ Second, verify your secrets are not leaking by inspecting the image history:
 # Check image history for exposed secrets
 docker history --no-trunc myimage:latest
 
-# Save and inspect layers
-docker save myimage:latest | tar -tv | grep -v "layer.tar"
+# Save and inspect layer file names for suspicious secret files
+mkdir -p image-inspect
+docker save myimage:latest | tar -x -C image-inspect
+find image-inspect -name layer.tar -exec sh -c 'tar -tf "$1" | grep -Ei "npmrc|secret|token" && echo "found in $1"' sh {} \;
 ```
 
 Third, consider using tools like Trivy to scan for accidentally committed secrets:
@@ -291,7 +294,7 @@ BuildKit secrets provide a secure way to use sensitive data during Docker builds
 
 The key points to remember:
 
-- Secrets are mounted temporarily and never written to image layers
+- Secrets are mounted temporarily and are not written to image layers unless your build command copies them there
 - Use `--secret id=name,src=file` or `--secret id=name,env=VAR` when building
 - SSH forwarding with `--mount=type=ssh` handles Git authentication cleanly
 - Always verify with `docker history` that no secrets leaked
