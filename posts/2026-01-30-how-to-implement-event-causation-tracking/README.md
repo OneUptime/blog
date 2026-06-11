@@ -81,6 +81,9 @@ interface EventMetadata {
   // ID of the event that directly caused this one (null for root events)
   causationId: string | null;
 
+  // IDs of all direct causes for fan-in scenarios
+  causationIds?: string[];
+
   // Shared ID across all events in the same business transaction
   correlationId: string;
 
@@ -117,7 +120,7 @@ type OrderPlacedEvent = DomainEvent<OrderPlacedPayload>;
 
 Events should be created through a factory that handles ID generation and causation linking automatically. This prevents developers from forgetting to set causation IDs.
 
-The factory provides two methods: one for root events that start a new causal chain, and one for derived events that continue an existing chain.
+The factory provides methods for root events that start a new causal chain, derived events that continue an existing chain, and fan-in events with multiple direct causes.
 
 ```typescript
 // event-factory.ts
@@ -126,6 +129,7 @@ import { randomUUID } from 'crypto';
 interface EventMetadata {
   eventId: string;
   causationId: string | null;
+  causationIds?: string[];
   correlationId: string;
   timestamp: string;
   source: string;
@@ -200,13 +204,16 @@ class EventFactory {
     type: string,
     payload: T,
     causeEvents: DomainEvent<unknown>[]
-  ): DomainEvent<T> & { metadata: { causationIds: string[] } } {
+  ): DomainEvent<T> {
     if (causeEvents.length === 0) {
       throw new Error('At least one cause event is required');
     }
 
     // Use the first event's correlation ID (all should be the same)
     const correlationId = causeEvents[0].metadata.correlationId;
+    if (causeEvents.some((e) => e.metadata.correlationId !== correlationId)) {
+      throw new Error('All cause events must share the same correlation ID');
+    }
 
     return {
       metadata: {
@@ -350,23 +357,42 @@ class CausationGraph {
 
     this.nodes.set(event.metadata.eventId, node);
 
-    // Link to parent if it exists
-    if (event.metadata.causationId) {
-      const parentNode = this.nodes.get(event.metadata.causationId);
+    const causeIds = new Set([
+      ...(event.metadata.causationIds ?? []),
+      ...(event.metadata.causationId ? [event.metadata.causationId] : []),
+    ]);
+
+    // Link to parents if they exist
+    for (const causeId of causeIds) {
+      const parentNode = this.nodes.get(causeId);
       if (parentNode) {
         parentNode.children.push(node);
-        node.parent = parentNode;
+        node.parent ??= parentNode;
       }
-    } else {
+    }
+
+    if (causeIds.size === 0) {
       // No causation ID means this is a root event
       this.roots.push(node);
     }
 
     // Check if any existing nodes are children of this one
     for (const existingNode of this.nodes.values()) {
-      if (existingNode.event.metadata.causationId === event.metadata.eventId) {
+      const existingCauseIds = new Set([
+        ...(existingNode.event.metadata.causationIds ?? []),
+        ...(existingNode.event.metadata.causationId
+          ? [existingNode.event.metadata.causationId]
+          : []),
+      ]);
+
+      if (
+        existingCauseIds.has(event.metadata.eventId) &&
+        !node.children.some(
+          (child) => child.event.metadata.eventId === existingNode.event.metadata.eventId
+        )
+      ) {
         node.children.push(existingNode);
-        existingNode.parent = node;
+        existingNode.parent ??= node;
       }
     }
   }
@@ -457,7 +483,8 @@ CREATE TABLE events (
     event_id UUID PRIMARY KEY,
 
     -- Causation tracking fields
-    causation_id UUID REFERENCES events(event_id),
+    -- Keep this nullable and avoid an immediate foreign key if events can arrive out of order
+    causation_id UUID,
     correlation_id UUID NOT NULL,
 
     -- Event data
@@ -493,7 +520,7 @@ The repository provides methods for storing events and querying by causation rel
 
 ```typescript
 // event-repository.ts
-import { Pool, PoolClient } from 'pg';
+import { Pool } from 'pg';
 import { DomainEvent } from './event-factory';
 
 interface EventRow {
@@ -525,7 +552,7 @@ class EventRepository {
     `;
 
     // Handle multi-cause events
-    const causationIds = (event.metadata as any).causationIds ?? [];
+    const causationIds = event.metadata.causationIds ?? [];
 
     await this.pool.query(query, [
       event.metadata.eventId,
@@ -551,8 +578,19 @@ class EventRepository {
     return result.rows.map(this.rowToEvent);
   }
 
+  // Get a single event by ID
+  async findById(eventId: string): Promise<DomainEvent<unknown> | null> {
+    const query = `
+      SELECT * FROM events
+      WHERE event_id = $1
+    `;
+
+    const result = await this.pool.query<EventRow>(query, [eventId]);
+    return result.rows[0] ? this.rowToEvent(result.rows[0]) : null;
+  }
+
   // Get all events caused by a specific event
-  async findBysCausationId(causationId: string): Promise<DomainEvent<unknown>[]> {
+  async findByCausationId(causationId: string): Promise<DomainEvent<unknown>[]> {
     const query = `
       SELECT * FROM events
       WHERE causation_id = $1
@@ -579,7 +617,9 @@ class EventRepository {
         -- Recursive case: find the parent of each event
         SELECT e.*, a.depth + 1
         FROM events e
-        INNER JOIN ancestors a ON e.event_id = a.causation_id
+        INNER JOIN ancestors a
+          ON e.event_id = a.causation_id
+          OR e.event_id = ANY(a.causation_ids)
       )
       SELECT * FROM ancestors
       WHERE event_id != $1
@@ -605,7 +645,9 @@ class EventRepository {
         -- Recursive case: find children of each child
         SELECT e.*, d.depth + 1
         FROM events e
-        INNER JOIN descendants d ON e.causation_id = d.event_id
+        INNER JOIN descendants d
+          ON e.causation_id = d.event_id
+          OR d.event_id = ANY(e.causation_ids)
       )
       SELECT * FROM descendants
       ORDER BY depth ASC, created_at ASC
@@ -625,6 +667,7 @@ class EventRepository {
         timestamp: row.created_at.toISOString(),
         source: row.source_service,
         version: row.schema_version,
+        causationIds: row.causation_ids,
       },
       type: row.event_type,
       payload: row.payload,
@@ -667,7 +710,8 @@ function createTracedHandler<T>(
       attributes: {
         // Standard messaging attributes
         'messaging.system': 'custom',
-        'messaging.operation': 'process',
+        'messaging.operation.name': 'process',
+        'messaging.operation.type': 'receive',
         'messaging.message.id': event.metadata.eventId,
 
         // Causation tracking attributes
@@ -772,12 +816,17 @@ class CausationDebugger {
   // Generate a debug report for a specific event
   async generateReport(eventId: string): Promise<DebugReport> {
     // Get the target event and its correlation chain
+    const targetEvent = await this.repository.findById(eventId);
+    if (!targetEvent) {
+      throw new Error(`Event ${eventId} not found`);
+    }
+
     const ancestors = await this.repository.findAncestors(eventId);
     const descendants = await this.repository.findDescendants(eventId);
 
     // Build the causation graph
     const graph = new CausationGraph();
-    const correlationId = ancestors[0]?.metadata.correlationId;
+    const correlationId = targetEvent.metadata.correlationId;
 
     if (correlationId) {
       const allEvents = await this.repository.findByCorrelationId(correlationId);
@@ -787,21 +836,22 @@ class CausationDebugger {
     }
 
     // Find siblings (events with the same parent)
-    const targetEvent = graph.getAllEventsOrdered().find(
-      (e) => e.metadata.eventId === eventId
+    const targetCauseIds = new Set([
+      ...(targetEvent.metadata.causationIds ?? []),
+      ...(targetEvent.metadata.causationId ? [targetEvent.metadata.causationId] : []),
+    ]);
+    const siblings = (await this.repository.findByCorrelationId(correlationId)).filter(
+      (e) => {
+        if (e.metadata.eventId === eventId) return false;
+
+        const eventCauseIds = new Set([
+          ...(e.metadata.causationIds ?? []),
+          ...(e.metadata.causationId ? [e.metadata.causationId] : []),
+        ]);
+
+        return [...eventCauseIds].some((causeId) => targetCauseIds.has(causeId));
+      }
     );
-
-    if (!targetEvent) {
-      throw new Error(`Event ${eventId} not found`);
-    }
-
-    const siblings = correlationId
-      ? (await this.repository.findByCorrelationId(correlationId)).filter(
-          (e) =>
-            e.metadata.causationId === targetEvent.metadata.causationId &&
-            e.metadata.eventId !== eventId
-        )
-      : [];
 
     // Build timeline
     const allRelatedEvents = [...ancestors, targetEvent, ...descendants];
@@ -913,21 +963,30 @@ function generateEventId(): string {
 Sometimes the cause event is not yet persisted when a derived event arrives. Handle this gracefully.
 
 ```typescript
-// Store the event even if the cause is not found yet
-// The foreign key constraint should be deferred or removed
+// If you keep a foreign key, retry without the direct reference when the cause is missing
 async function saveWithGracefulCausation(
   event: DomainEvent<unknown>,
   repository: EventRepository
 ): Promise<void> {
   try {
     await repository.save(event);
-  } catch (error) {
-    // Log but do not fail if causation reference is missing
+  } catch (error: any) {
+    if (error.code !== '23503' || !event.metadata.causationId) {
+      throw error;
+    }
+
     console.warn(
       `Causation event ${event.metadata.causationId} not found, ` +
-      `storing ${event.metadata.eventId} anyway`
+      `storing ${event.metadata.eventId} without a direct reference`
     );
-    // Could retry with null causation or store in a separate table
+
+    await repository.save({
+      ...event,
+      metadata: {
+        ...event.metadata,
+        causationId: null,
+      },
+    });
   }
 }
 ```
@@ -948,7 +1007,7 @@ WHERE causation_id IS NULL;
 
 -- Table partitioning by month for large datasets
 CREATE TABLE events_partitioned (
-    LIKE events INCLUDING ALL
+    LIKE events INCLUDING DEFAULTS INCLUDING CONSTRAINTS
 ) PARTITION BY RANGE (created_at);
 
 CREATE TABLE events_2026_01 PARTITION OF events_partitioned
