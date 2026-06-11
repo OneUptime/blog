@@ -61,7 +61,7 @@ The output reveals the internal structure including sub-topologies, source proce
 
 ## Sub-Topology Design and Optimization
 
-Kafka Streams automatically partitions your topology into sub-topologies based on repartitioning boundaries. Each sub-topology can be scaled independently through parallelism.
+Kafka Streams automatically partitions your topology into sub-topologies based on connected processor graphs and topic boundaries. These sub-topologies are executed as tasks and parallelized across input partitions.
 
 ```mermaid
 graph TB
@@ -89,19 +89,21 @@ graph TB
 Repartitioning is one of the most expensive operations in Kafka Streams. It creates intermediate topics and adds network overhead. Here are strategies to minimize it:
 
 ```java
-// Bad: Unnecessary repartitioning
+// Bad: unnecessary repartitioning when the stream is already keyed correctly
 KStream<String, Order> orders = builder.stream("orders");
 orders
-    .selectKey((key, value) -> value.getCustomerId())  // Triggers repartition
+    .selectKey((key, value) -> key)  // Marks the stream for repartition
     .groupByKey()
     .count();
 
-// Better: Use groupBy with a KeyValueMapper
+// Better: group directly by the existing key
 KStream<String, Order> orders = builder.stream("orders");
 orders
-    .groupBy((key, value) -> value.getCustomerId())  // Single repartition
+    .groupByKey()
     .count();
 ```
+
+When you do need to change the grouping key, `groupBy((key, value) -> value.getCustomerId())` is equivalent to `selectKey(...).groupByKey()` and creates a single internal repartition topic.
 
 ### Copartitioning for Joins
 
@@ -174,18 +176,25 @@ For production workloads with RocksDB, tune these key parameters:
 
 ```java
 import org.apache.kafka.streams.StreamsConfig;
+import org.apache.kafka.streams.state.RocksDBConfigSetter;
 import org.rocksdb.Options;
 import org.rocksdb.BlockBasedTableConfig;
+import org.rocksdb.Cache;
+import org.rocksdb.LRUCache;
+
+import java.util.Map;
 
 Properties props = new Properties();
 props.put(StreamsConfig.ROCKSDB_CONFIG_SETTER_CLASS_CONFIG, CustomRocksDBConfig.class);
 
 public class CustomRocksDBConfig implements RocksDBConfigSetter {
+    private final Cache cache = new LRUCache(256 * 1024L * 1024L);  // 256 MB
+
     @Override
     public void setConfig(String storeName, Options options, Map<String, Object> configs) {
         // Increase block cache for frequently accessed data
-        BlockBasedTableConfig tableConfig = new BlockBasedTableConfig();
-        tableConfig.setBlockCacheSize(256 * 1024 * 1024L);  // 256 MB
+        BlockBasedTableConfig tableConfig = (BlockBasedTableConfig) options.tableFormatConfig();
+        tableConfig.setBlockCache(cache);
         tableConfig.setBlockSize(16 * 1024);  // 16 KB blocks
 
         options.setTableFormatConfig(tableConfig);
@@ -196,6 +205,11 @@ public class CustomRocksDBConfig implements RocksDBConfigSetter {
         // Increase write buffer for better write performance
         options.setWriteBufferSize(64 * 1024 * 1024);  // 64 MB
         options.setMaxWriteBufferNumber(3);
+    }
+
+    @Override
+    public void close(String storeName, Options options) {
+        cache.close();
     }
 }
 ```
@@ -304,7 +318,7 @@ Kafka Streams supports adding and removing threads at runtime:
 KafkaStreams streams = new KafkaStreams(topology, props);
 streams.start();
 
-// Scale up - add 2 more threads
+// Scale up - add one more thread
 Optional<String> newThreadNames = streams.addStreamThread();
 
 // Scale down - remove a thread
@@ -319,7 +333,7 @@ Optional<String> removedThread = streams.removeStreamThread();
 // Exactly-once semantics - higher latency, stronger guarantees
 props.put(StreamsConfig.PROCESSING_GUARANTEE_CONFIG, StreamsConfig.EXACTLY_ONCE_V2);
 
-// At-least-once - lower latency, requires idempotent consumers
+// At-least-once - lower latency, may require idempotent downstream processing
 props.put(StreamsConfig.PROCESSING_GUARANTEE_CONFIG, StreamsConfig.AT_LEAST_ONCE);
 ```
 
@@ -455,14 +469,20 @@ try (KeyValueIterator<String, Long> iterator = store.all()) {
 ### Custom Partitioner for Hot Keys
 
 ```java
+import org.apache.kafka.streams.kstream.Repartitioned;
+import org.apache.kafka.streams.processor.StreamPartitioner;
+
+import java.util.Optional;
+import java.util.Set;
+
 public class CustomPartitioner implements StreamPartitioner<String, Order> {
     @Override
-    public Integer partition(String topic, String key, Order value, int numPartitions) {
+    public Optional<Set<Integer>> partitions(String topic, String key, Order value, int numPartitions) {
         // Spread hot keys across multiple partitions
         if (isHotKey(key)) {
-            return (key.hashCode() + value.getSubKey().hashCode()) % numPartitions;
+            return Optional.of(Set.of(Math.floorMod(key.hashCode() + value.getSubKey().hashCode(), numPartitions)));
         }
-        return Math.abs(key.hashCode()) % numPartitions;
+        return Optional.of(Set.of(Math.floorMod(key.hashCode(), numPartitions)));
     }
 
     private boolean isHotKey(String key) {
@@ -473,7 +493,10 @@ public class CustomPartitioner implements StreamPartitioner<String, Order> {
 
 // Apply custom partitioner
 stream
-    .through("intermediate-topic", Produced.with(Serdes.String(), orderSerde, new CustomPartitioner()))
+    .repartition(Repartitioned
+        .with(Serdes.String(), orderSerde)
+        .withName("intermediate")
+        .withStreamPartitioner(new CustomPartitioner()))
     .groupByKey()
     .count();
 ```
