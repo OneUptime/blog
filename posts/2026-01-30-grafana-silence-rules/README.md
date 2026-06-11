@@ -56,9 +56,10 @@ flowchart TD
 Navigate to Grafana and access the alerting section:
 
 1. Open your Grafana instance
-2. Click on **Alerting** in the left sidebar
-3. Select **Silences** from the submenu
-4. Click **Create silence** button
+2. Click **Alerts & IRM** in the left sidebar, then **Alerting**
+3. Select **Silences**
+4. Keep the default **Grafana** Alertmanager selected, or choose an external Alertmanager from the dropdown
+5. Click **Create silence** button
 
 ### Step 2: Configure Matchers
 
@@ -147,7 +148,7 @@ Create silences programmatically with Python:
 ```python
 # grafana_silence.py
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Optional
 import os
 
@@ -181,13 +182,13 @@ class GrafanaSilenceManager:
         Returns:
             API response with silence ID
         """
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         ends_at = now + timedelta(minutes=duration_minutes)
 
         payload = {
             "matchers": matchers,
-            "startsAt": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "endsAt": ends_at.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "startsAt": now.isoformat().replace("+00:00", "Z"),
+            "endsAt": ends_at.isoformat().replace("+00:00", "Z"),
             "createdBy": created_by,
             "comment": comment
         }
@@ -385,7 +386,7 @@ spec:
         spec:
           containers:
           - name: silence-creator
-            image: curlimages/curl:latest
+            image: buildpack-deps:curl
             env:
             - name: GRAFANA_URL
               valueFrom:
@@ -501,6 +502,9 @@ matchers = [
 Every silence should have a meaningful comment:
 
 ```python
+from datetime import datetime, timezone
+from typing import Dict, List
+
 def create_silence_with_context(
     manager: GrafanaSilenceManager,
     matchers: List[Dict],
@@ -511,7 +515,7 @@ def create_silence_with_context(
 ) -> Dict:
     """Create silence with required context"""
 
-    comment = f"{reason} | Ticket: {ticket_id} | Created: {datetime.utcnow().isoformat()}"
+    comment = f"{reason} | Ticket: {ticket_id} | Created: {datetime.now(timezone.utc).isoformat()}"
 
     return manager.create_silence(
         matchers=matchers,
@@ -560,7 +564,7 @@ Track silence creation and expiration for operational awareness:
 ```python
 # silence_audit.py
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict
 
 logger = logging.getLogger(__name__)
@@ -570,7 +574,7 @@ def audit_silence_creation(silence_data: Dict, created_by: str):
 
     log_entry = {
         "event": "silence_created",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "silence_id": silence_data.get("silenceID"),
         "created_by": created_by,
         "matchers": silence_data.get("matchers"),
@@ -589,7 +593,7 @@ def audit_silence_deletion(silence_id: str, deleted_by: str, reason: str):
 
     log_entry = {
         "event": "silence_deleted",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "silence_id": silence_id,
         "deleted_by": deleted_by,
         "reason": reason
@@ -601,19 +605,22 @@ def audit_silence_deletion(silence_id: str, deleted_by: str, reason: str):
 
 ### 4. Implement Automatic Cleanup
 
-Prevent silence accumulation with regular cleanup:
+Review expired silences before Grafana's automatic cleanup removes them:
 
 ```python
 # silence_cleanup.py
-from datetime import datetime, timedelta
-from typing import List
+import logging
+from datetime import datetime, timedelta, timezone
+from typing import Dict, List
 
-def cleanup_expired_silences(manager: GrafanaSilenceManager) -> List[str]:
-    """Remove silences that have been expired for more than 7 days"""
+logger = logging.getLogger(__name__)
+
+def review_expired_silences(manager: GrafanaSilenceManager) -> List[str]:
+    """Find expired silences before Grafana auto-deletes them"""
 
     silences = manager.list_silences()
-    cleaned = []
-    cutoff = datetime.utcnow() - timedelta(days=7)
+    reviewed = []
+    cutoff = datetime.now(timezone.utc) - timedelta(days=4)
 
     for silence in silences:
         if silence["status"]["state"] == "expired":
@@ -621,12 +628,12 @@ def cleanup_expired_silences(manager: GrafanaSilenceManager) -> List[str]:
                 silence["endsAt"].replace("Z", "+00:00")
             )
 
-            if ends_at.replace(tzinfo=None) < cutoff:
-                # Note: Grafana auto-cleans, but this is for custom cleanup logic
-                cleaned.append(silence["id"])
-                logger.info(f"Cleaned expired silence: {silence['id']}")
+            if ends_at < cutoff:
+                # Grafana automatically deletes expired silences after 5 days.
+                reviewed.append(silence["id"])
+                logger.info(f"Reviewed expired silence before cleanup: {silence['id']}")
 
-    return cleaned
+    return reviewed
 
 def alert_on_long_running_silences(
     manager: GrafanaSilenceManager,
@@ -636,7 +643,7 @@ def alert_on_long_running_silences(
 
     silences = manager.list_silences()
     long_running = []
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     for silence in silences:
         if silence["status"]["state"] == "active":
@@ -644,7 +651,7 @@ def alert_on_long_running_silences(
                 silence["startsAt"].replace("Z", "+00:00")
             )
 
-            duration = now - starts_at.replace(tzinfo=None)
+            duration = now - starts_at
 
             if duration > timedelta(hours=max_hours):
                 long_running.append({
@@ -697,15 +704,15 @@ flowchart TD
 
 ## Terraform Configuration
 
-Manage silences as infrastructure with Terraform:
+Manage recurring notification mute windows as infrastructure with Terraform. The official Grafana Terraform provider manages mute timings; use the Alertmanager API examples above for one-off silences.
 
 ```hcl
-# grafana_silences.tf
+# grafana_mute_timings.tf
 terraform {
   required_providers {
     grafana = {
       source  = "grafana/grafana"
-      version = "~> 2.0"
+      version = "~> 4.0"
     }
   }
 }
@@ -715,42 +722,18 @@ provider "grafana" {
   auth = var.grafana_api_token
 }
 
-# Recurring maintenance window silence
-resource "grafana_silence" "weekly_maintenance" {
-  comment    = "Weekly maintenance window - every Sunday 2-6 AM UTC"
-  created_by = "terraform"
+# Recurring maintenance mute timing
+resource "grafana_mute_timing" "weekly_maintenance" {
+  name = "weekly-maintenance"
 
-  starts_at = "2026-01-30T02:00:00Z"
-  ends_at   = "2026-01-30T06:00:00Z"
+  intervals {
+    times {
+      start = "02:00"
+      end   = "06:00"
+    }
 
-  matcher {
-    name    = "maintenance_window"
-    value   = "weekly"
-    is_equal = true
-    is_regex = false
-  }
-}
-
-# Environment-specific silence for staging
-resource "grafana_silence" "staging_low_priority" {
-  comment    = "Suppress warning-level alerts in staging during business hours"
-  created_by = "terraform"
-
-  starts_at = "2026-01-30T09:00:00Z"
-  ends_at   = "2026-01-30T17:00:00Z"
-
-  matcher {
-    name    = "environment"
-    value   = "staging"
-    is_equal = true
-    is_regex = false
-  }
-
-  matcher {
-    name    = "severity"
-    value   = "warning"
-    is_equal = true
-    is_regex = false
+    weekdays = ["sunday"]
+    location = "UTC"
   }
 }
 
@@ -775,10 +758,24 @@ Track silence usage to prevent abuse and ensure operational awareness:
 
 ```python
 # silence_metrics.py
+import os
 from opentelemetry import metrics
-from typing import Callable
 
 meter = metrics.get_meter(__name__)
+
+def observe_active_silences(options):
+    """Callback to observe current active silence count"""
+    manager = GrafanaSilenceManager(
+        grafana_url=os.getenv("GRAFANA_URL"),
+        api_token=os.getenv("GRAFANA_API_TOKEN")
+    )
+
+    silences = manager.list_silences()
+    active = sum(1 for s in silences if s["status"]["state"] == "active")
+    pending = sum(1 for s in silences if s["status"]["state"] == "pending")
+
+    yield metrics.Observation(active, {"state": "active"})
+    yield metrics.Observation(pending, {"state": "pending"})
 
 # Track active silences
 active_silences_gauge = meter.create_observable_gauge(
@@ -800,20 +797,6 @@ silence_duration_histogram = meter.create_histogram(
     description="Duration of silences in minutes",
     unit="min"
 )
-
-def observe_active_silences(options) -> None:
-    """Callback to observe current active silence count"""
-    manager = GrafanaSilenceManager(
-        grafana_url=os.getenv("GRAFANA_URL"),
-        api_token=os.getenv("GRAFANA_API_TOKEN")
-    )
-
-    silences = manager.list_silences()
-    active = sum(1 for s in silences if s["status"]["state"] == "active")
-    pending = sum(1 for s in silences if s["status"]["state"] == "pending")
-
-    yield metrics.Observation(active, {"state": "active"})
-    yield metrics.Observation(pending, {"state": "pending"})
 
 def record_silence_created(matchers: list, duration_minutes: int, created_by: str):
     """Record metrics when a silence is created"""
