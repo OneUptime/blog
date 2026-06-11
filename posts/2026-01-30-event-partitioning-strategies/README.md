@@ -125,9 +125,9 @@ Use entity-based partitioning when:
 
 ### 2. Time-Based Partitioning
 
-Partition by time windows when events do not require strict ordering but you need predictable data distribution and retention.
+Partition by time windows when events do not require strict ordering but you need to group records by processing window.
 
-This approach assigns events to partitions based on time buckets. It works well for analytics pipelines where you process data in time windows.
+This approach assigns events to partitions based on time buckets. It works well for analytics pipelines where you process data in time windows, as long as a single active time bucket does not exceed the capacity of one partition.
 
 ```typescript
 // partition-by-time.ts
@@ -177,7 +177,6 @@ The composite key approach creates a partition key from multiple fields. This ma
 ```typescript
 // partition-composite.ts
 import { Kafka } from 'kafkajs';
-import { createHash } from 'crypto';
 
 const kafka = new Kafka({
   clientId: 'multi-tenant-service',
@@ -240,7 +239,7 @@ flowchart TB
     Before --> |"Apply sub-key strategy"| After
 ```
 
-The solution is to add a sub-key that spreads load while maintaining ordering where it matters most. The following code shows how to implement sub-partitioning for high-volume entities.
+The solution is to add a sub-key that spreads load when you can relax strict ordering for the hottest entity, or when ordering only matters within each sub-key. The following code shows how to implement sub-partitioning for high-volume entities.
 
 ```typescript
 // hot-partition-mitigation.ts
@@ -265,7 +264,7 @@ interface Event {
 }
 
 // Spread high-volume entities across sub-partitions
-// Use event ID to distribute while keeping some locality
+// Use event ID to distribute; this relaxes strict per-entity ordering
 function getPartitionKey(event: Event): string {
   if (highVolumeEntities.has(event.entityId)) {
     // Hash event ID to get consistent sub-partition assignment
@@ -331,7 +330,7 @@ const consumer = kafka.consumer({
   groupId: 'order-processing-group'
 });
 
-// Track last processed offset per partition for exactly-once semantics
+// Track last processed offset per partition for observability or custom checkpointing
 const partitionOffsets = new Map<number, string>();
 
 async function processMessage({
