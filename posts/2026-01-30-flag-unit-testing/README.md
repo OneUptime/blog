@@ -575,7 +575,7 @@ describe('PricingService.calculateDiscount', () => {
 
 ### Tracking Flag Coverage
 
-Create a custom reporter to track which flags have test coverage:
+Create a small helper to track which flags have test coverage:
 
 ```javascript
 // tests/utils/flag-coverage-tracker.js
