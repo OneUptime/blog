@@ -164,7 +164,7 @@ jobs:
           echo "Build number: ${{ steps.build_info.outputs.build_number }}"
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.build_info.outputs.artifact_name }}
           path: dist/
@@ -204,7 +204,7 @@ jobs:
       - name: Set build matrix
         id: set-matrix
         run: |
-          MATRIX='{"include":[{"os":"ubuntu-latest","node":"18"},{"os":"ubuntu-latest","node":"20"}]}'
+          MATRIX='{"include":[{"os":"ubuntu-latest","node":"22"},{"os":"ubuntu-latest","node":"24"}]}'
           echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
 
       - name: Check if should deploy
@@ -321,7 +321,7 @@ Create an informative deployment summary:
     DEPLOY_URL="https://${{ env.DEPLOY_ENV }}.example.com"
 
     # Create summary
-    cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+    cat >> $GITHUB_STEP_SUMMARY << EOF
     ## Deployment Summary
 
     ### Environment Details
@@ -393,7 +393,7 @@ jobs:
       version: ${{ steps.version.outputs.version }}
       should_deploy: ${{ steps.config.outputs.should_deploy }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Determine configuration
         id: config
@@ -421,7 +421,7 @@ jobs:
     needs: setup
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set build environment
         run: |
@@ -430,9 +430,9 @@ jobs:
           echo "BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_ENV
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
 
       - name: Install dependencies
@@ -458,7 +458,7 @@ jobs:
           TOTAL=$(jq '.numTotalTests' test-results.json)
           PASSED=$(jq '.numPassedTests' test-results.json)
           FAILED=$(jq '.numFailedTests' test-results.json)
-          COVERAGE=$(jq '.coverageMap.total.lines.pct' coverage/coverage-summary.json)
+          COVERAGE=$(jq '.total.lines.pct' coverage/coverage-summary.json)
 
           echo "total=$TOTAL" >> $GITHUB_OUTPUT
           echo "passed=$PASSED" >> $GITHUB_OUTPUT
@@ -501,7 +501,7 @@ jobs:
           fi
 
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: build-${{ needs.setup.outputs.version }}
           path: dist/
@@ -513,7 +513,7 @@ jobs:
     environment: ${{ needs.setup.outputs.environment }}
     steps:
       - name: Download artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: build-${{ needs.setup.outputs.version }}
           path: dist/
@@ -602,7 +602,7 @@ on:
       node_version:
         required: false
         type: string
-        default: '20'
+        default: '24'
       environment:
         required: true
         type: string
@@ -621,7 +621,7 @@ jobs:
       version: ${{ steps.version.outputs.version }}
       artifact_name: ${{ steps.version.outputs.artifact_name }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Calculate version
         id: version
@@ -635,7 +635,7 @@ jobs:
           echo "VERSION=$VERSION" >> $GITHUB_ENV
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: ${{ inputs.node_version }}
 
@@ -643,7 +643,7 @@ jobs:
         run: npm ci && npm run build
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.version.outputs.artifact_name }}
           path: dist/
@@ -676,7 +676,7 @@ jobs:
     uses: ./.github/workflows/reusable-build.yml
     with:
       environment: production
-      node_version: '18'
+      node_version: '22'
 
   notify:
     needs: [build-staging, build-production]
