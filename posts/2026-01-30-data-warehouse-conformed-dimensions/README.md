@@ -20,7 +20,7 @@ This guide shows you how to design, implement, and maintain conformed dimensions
 
 ## What Are Conformed Dimensions?
 
-A conformed dimension is a dimension table that maintains the same structure, keys, and attribute values across multiple fact tables and data marts. When two fact tables share a conformed dimension, you can analyze them together with consistent business context.
+A conformed dimension is a shared dimension table, or a set of dimension attributes, that maintains consistent keys, names, and domain values across multiple fact tables and data marts. When two fact tables share a conformed dimension, you can analyze them together with consistent business context.
 
 ```text
 Conformed Dimension: dim_product
@@ -32,7 +32,7 @@ Conformed Dimension: dim_product
 
 Key characteristics:
 
-- **Identical surrogate keys** across all fact tables
+- **Consistent surrogate key values** referenced by all fact tables
 - **Consistent attribute values** (same names, codes, hierarchies)
 - **Single source of truth** managed centrally
 - **Versioned changes** tracked through slowly changing dimension techniques
@@ -140,7 +140,7 @@ SELECT
 FROM information_schema.columns
 WHERE table_schema = 'warehouse'
   AND table_name LIKE 'fact_%'
-  AND column_name LIKE '%_key' OR column_name LIKE '%_id'
+  AND (column_name LIKE '%_key' OR column_name LIKE '%_id')
 GROUP BY column_name
 HAVING COUNT(DISTINCT table_name) > 1
 ORDER BY fact_table_count DESC;
@@ -482,7 +482,7 @@ BEGIN
 
     UPDATE dim_customer dc
     SET
-        effective_end_date = v_load_date - INTERVAL '1 day',
+        effective_end_date = v_load_date - 1,
         is_current_record = FALSE,
         updated_at = CURRENT_TIMESTAMP,
         updated_by = 'ETL_PROCESS'
@@ -491,13 +491,13 @@ BEGIN
       AND dc.is_current_record = TRUE
       AND (
           -- Check for changes in tracked attributes
-          dc.customer_name != sc.customer_name OR
-          dc.customer_segment != sc.customer_segment OR
-          dc.customer_tier != sc.customer_tier OR
-          dc.account_status != sc.account_status OR
-          dc.billing_city != sc.billing_city OR
-          dc.billing_state != sc.billing_state OR
-          dc.billing_country != sc.billing_country
+          dc.customer_name IS DISTINCT FROM sc.customer_name OR
+          dc.customer_segment IS DISTINCT FROM sc.customer_segment OR
+          dc.customer_tier IS DISTINCT FROM sc.customer_tier OR
+          dc.account_status IS DISTINCT FROM sc.account_status OR
+          dc.billing_city IS DISTINCT FROM sc.billing_city OR
+          dc.billing_state IS DISTINCT FROM sc.billing_state OR
+          dc.billing_country IS DISTINCT FROM sc.billing_country
       );
 
     GET DIAGNOSTICS v_rows_updated = ROW_COUNT;
@@ -722,12 +722,12 @@ VALUES
 ('dim_customer', 'customer_key_conformance',
  'Verify all customer keys in fact tables exist in dim_customer',
  $$
- SELECT 'fact_sales' AS fact_table, COUNT(*) AS orphan_count
+ SELECT 'fact_sales' AS fact_table, f.customer_key AS orphan_key
  FROM fact_sales f
  LEFT JOIN dim_customer d ON f.customer_key = d.customer_key
  WHERE d.customer_key IS NULL
  UNION ALL
- SELECT 'fact_customer_support', COUNT(*)
+ SELECT 'fact_customer_support', f.customer_key
  FROM fact_customer_support f
  LEFT JOIN dim_customer d ON f.customer_key = d.customer_key
  WHERE d.customer_key IS NULL
@@ -791,12 +791,12 @@ VALUES
      'Inconsistent category mapping' AS issue
  FROM dim_product p
  INNER JOIN (
-     SELECT product_key, category_code
+     SELECT product_id
      FROM dim_product
      WHERE is_current_record = TRUE
-     GROUP BY product_key, category_code
+     GROUP BY product_id
      HAVING COUNT(DISTINCT category_code) > 1
- ) dups ON p.product_key = dups.product_key
+ ) dups ON p.product_id = dups.product_id
  $$,
  'WARNING');
 
