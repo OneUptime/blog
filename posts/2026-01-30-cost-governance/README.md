@@ -299,7 +299,13 @@ function isAuthorized(
   );
 
   if (!authority) return false;
-  if (amount && authority.limit && amount > authority.limit) return false;
+  if (
+    amount !== undefined &&
+    authority.limit !== undefined &&
+    amount > authority.limit
+  ) {
+    return false;
+  }
 
   return true;
 }
@@ -338,8 +344,7 @@ flowchart TB
 # budget_controls.py
 from dataclasses import dataclass
 from enum import Enum
-from typing import List, Optional, Callable
-import datetime
+from typing import List, Optional
 
 class AlertSeverity(Enum):
     INFO = "info"
@@ -498,9 +503,9 @@ if forecast_alert:
 
 ```python
 # hard_stop_controls.py
-from typing import Optional
+from typing import List, Optional
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import UTC, datetime
 import json
 
 @dataclass
@@ -519,7 +524,7 @@ class ProvisioningResult:
     request: ProvisioningRequest
     reason: str
     requires_approval: bool = False
-    approvers: list = None
+    approvers: Optional[List[str]] = None
 
 class HardStopController:
     def __init__(self, budget_service, policy_service):
@@ -604,7 +609,7 @@ class HardStopController:
     def log_decision(self, result: ProvisioningResult):
         """Log all provisioning decisions for audit trail."""
         log_entry = {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "requestor": result.request.requestor,
             "resource_type": result.request.resource_type,
             "cost_center": result.request.cost_center,
@@ -908,8 +913,7 @@ flowchart LR
 from dataclasses import dataclass
 from typing import List, Dict, Optional
 from enum import Enum
-from datetime import datetime, timedelta
-import asyncio
+from datetime import UTC, datetime, timedelta
 
 class ComplianceStatus(Enum):
     COMPLIANT = "compliant"
@@ -1035,8 +1039,31 @@ class ComplianceMonitor:
                 rule=rule,
                 resource_id=resource["id"],
                 resource_type=resource["type"],
-                detected_at=datetime.utcnow(),
+                detected_at=datetime.now(UTC),
                 details={"missing_tags": missing_tags},
+                estimated_cost_impact=resource.get("monthly_cost", 0)
+            )
+        return None
+
+    async def check_instance_size(self, resource: Dict) -> Optional[ComplianceViolation]:
+        """Check if development compute instances exceed the approved size."""
+        if resource.get("type") != "ec2" or resource.get("environment") != "development":
+            return None
+
+        allowed_sizes = ["t3.micro", "t3.small", "t3.medium", "m5.large"]
+        instance_type = resource.get("instance_type")
+
+        if instance_type not in allowed_sizes:
+            rule = next(r for r in self.rules if r.id == "SIZE-001")
+            return ComplianceViolation(
+                rule=rule,
+                resource_id=resource["id"],
+                resource_type=resource["type"],
+                detected_at=datetime.now(UTC),
+                details={
+                    "instance_type": instance_type,
+                    "max_allowed": "m5.large"
+                },
                 estimated_cost_impact=resource.get("monthly_cost", 0)
             )
         return None
@@ -1059,11 +1086,51 @@ class ComplianceMonitor:
                 rule=rule,
                 resource_id=resource["id"],
                 resource_type=resource["type"],
-                detected_at=datetime.utcnow(),
+                detected_at=datetime.now(UTC),
                 details={
                     "average_cpu_percent": round(avg_cpu, 2),
                     "measurement_period_days": 7
                 },
+                estimated_cost_impact=resource.get("monthly_cost", 0)
+            )
+        return None
+
+    async def check_resource_expiry(self, resource: Dict) -> Optional[ComplianceViolation]:
+        """Check if resource has passed its declared expiration timestamp."""
+        expires_at = resource.get("expires_at")
+        if not expires_at:
+            return None
+
+        if isinstance(expires_at, str):
+            expires_at = datetime.fromisoformat(expires_at)
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=UTC)
+
+        if expires_at < datetime.now(UTC):
+            rule = next(r for r in self.rules if r.id == "LIFE-001")
+            return ComplianceViolation(
+                rule=rule,
+                resource_id=resource["id"],
+                resource_type=resource["type"],
+                detected_at=datetime.now(UTC),
+                details={"expires_at": expires_at.isoformat()},
+                estimated_cost_impact=resource.get("monthly_cost", 0)
+            )
+        return None
+
+    async def check_unattached_storage(self, resource: Dict) -> Optional[ComplianceViolation]:
+        """Check if storage resources are unattached."""
+        if resource.get("type") not in ["ebs-volume", "disk", "storage-volume"]:
+            return None
+
+        if not resource.get("attached_to"):
+            rule = next(r for r in self.rules if r.id == "UNUSED-001")
+            return ComplianceViolation(
+                rule=rule,
+                resource_id=resource["id"],
+                resource_type=resource["type"],
+                detected_at=datetime.now(UTC),
+                details={"attached_to": None},
                 estimated_cost_impact=resource.get("monthly_cost", 0)
             )
         return None
@@ -1097,10 +1164,11 @@ class ComplianceMonitor:
         # Calculate total cost impact
         total_cost_impact = sum(v.estimated_cost_impact for v in violations)
 
+        scan_time = datetime.now(UTC)
         report = ComplianceReport(
-            generated_at=datetime.utcnow(),
-            period_start=datetime.utcnow() - timedelta(days=1),
-            period_end=datetime.utcnow(),
+            generated_at=scan_time,
+            period_start=scan_time - timedelta(days=1),
+            period_end=scan_time,
             total_resources=len(resources),
             compliant_resources=compliant_count,
             violations=violations,
