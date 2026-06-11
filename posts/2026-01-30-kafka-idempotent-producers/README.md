@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Kafka, Idempotent Producer, Exactly-Once, Reliability
 
-Description: Learn to implement Kafka idempotent producers with producer IDs, sequence numbers, and retry handling for exactly-once semantics.
+Description: Learn to implement Kafka idempotent producers with producer IDs, sequence numbers, and retry handling for producer-side exactly-once delivery.
 
 ---
 
@@ -66,7 +66,7 @@ flowchart TD
 
 ### Basic Configuration
 
-The simplest way to enable idempotence is by setting `enable.idempotence=true`:
+In Kafka 3.0 and later, idempotence is enabled by default when there are no conflicting producer configurations. You can still set `enable.idempotence=true` explicitly:
 
 ```java
 import org.apache.kafka.clients.producer.KafkaProducer;
@@ -117,12 +117,12 @@ public class IdempotentProducerExample {
 
 ### Implicit Configuration Changes
 
-When you enable idempotence, Kafka automatically adjusts several settings:
+When you enable idempotence, Kafka uses or requires several compatible settings:
 
 | Configuration | Required Value | Reason |
 |--------------|----------------|--------|
 | `acks` | `all` | Ensures all replicas acknowledge the write |
-| `retries` | `Integer.MAX_VALUE` | Allows unlimited retries for transient failures |
+| `retries` | `> 0` (defaults to `Integer.MAX_VALUE`) | Allows retries for transient failures |
 | `max.in.flight.requests.per.connection` | `<= 5` | Maintains message ordering during retries |
 
 ```java
@@ -136,7 +136,7 @@ public static KafkaProducer<String, String> createFullyConfiguredIdempotentProdu
     // Idempotence configuration
     props.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, true);
 
-    // These are set automatically but shown explicitly for clarity
+    // These are compatible with idempotence but can be left unset to use Kafka defaults
     props.put(ProducerConfig.ACKS_CONFIG, "all");
     props.put(ProducerConfig.RETRIES_CONFIG, Integer.MAX_VALUE);
     props.put(ProducerConfig.MAX_IN_FLIGHT_REQUESTS_PER_CONNECTION, 5);
@@ -181,21 +181,29 @@ flowchart LR
 
 ### Batch Sequence Handling
 
-When messages are batched, the sequence number corresponds to the last message in the batch:
+When messages are batched, the batch includes a base sequence number, and the records in that batch use consecutive sequence numbers. Configure batching when creating the producer:
 
 ```java
 public class BatchedIdempotentProducer {
 
-    public static void sendBatchedMessages(KafkaProducer<String, String> producer,
-                                           String topic,
-                                           List<String> messages) {
-        // Configure batching
-        // These settings control how messages are grouped
+    public static KafkaProducer<String, String> createBatchedProducer(String bootstrapServers) {
         Properties props = new Properties();
+        props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
+        props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
+        props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
+        props.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, true);
+
+        // These settings control how messages are grouped into batches
         props.put(ProducerConfig.BATCH_SIZE_CONFIG, 16384);        // 16KB batch size
         props.put(ProducerConfig.LINGER_MS_CONFIG, 10);            // Wait up to 10ms
         props.put(ProducerConfig.BUFFER_MEMORY_CONFIG, 33554432);  // 32MB buffer
 
+        return new KafkaProducer<>(props);
+    }
+
+    public static void sendBatchedMessages(KafkaProducer<String, String> producer,
+                                           String topic,
+                                           List<String> messages) {
         // Send multiple messages - they may be batched together
         List<Future<RecordMetadata>> futures = new ArrayList<>();
 
@@ -237,7 +245,7 @@ flowchart TD
 
     B -->|Fatal| F[InvalidProducerEpoch]
     B -->|Fatal| G[OutOfOrderSequence]
-    B -->|Fatal| H[UnknownProducerId]
+    B -->|Fatal or Recoverable| H[UnknownProducerId]
 
     C --> I[Automatic Retry]
     D --> I
@@ -317,7 +325,7 @@ public class RobustIdempotentProducer {
 
 ### Handling Fatal Errors
 
-Fatal errors require creating a new producer instance:
+Fatal errors require closing the current producer and creating a new producer instance. For idempotent producers without `transactional.id`, `OutOfOrderSequenceException` may be continuable, but continuing can risk reordering, so most applications should close and recreate the producer:
 
 ```java
 public class FatalErrorHandler {
@@ -385,7 +393,7 @@ public class FatalErrorHandler {
 
 ### Understanding Producer Epochs
 
-When a producer restarts, it gets a new PID. The broker tracks producer epochs to handle producer restarts:
+For a non-transactional idempotent producer, a restarted producer gets a new PID. When `transactional.id` is configured, Kafka uses producer epochs to fence older producer instances with the same transactional ID:
 
 ```mermaid
 stateDiagram-v2
@@ -447,7 +455,9 @@ public class ThreadSafeIdempotentProducer {
 
         for (int i = 0; i < messages.size(); i++) {
             final int index = i;
-            futures.add(sendAsync(topic, "key-" + index, messages.get(index)));
+            futures.add(CompletableFuture
+                .supplyAsync(() -> sendAsync(topic, "key-" + index, messages.get(index)), executor)
+                .thenCompose(future -> future));
         }
 
         // Wait for all messages
@@ -554,9 +564,9 @@ public class ProducerMetricsMonitor {
 
 1. **Creating multiple producer instances unnecessarily** - Idempotence is per-producer instance. Share one instance across threads.
 
-2. **Setting incompatible configurations** - Do not set `acks` to anything other than `all` or `max.in.flight.requests.per.connection` greater than 5.
+2. **Setting incompatible configurations** - Do not explicitly enable idempotence while setting `acks` to anything other than `all`, `retries` to `0`, or `max.in.flight.requests.per.connection` greater than 5.
 
-3. **Ignoring fatal errors** - Always handle `OutOfOrderSequenceException` and `InvalidProducerEpochException` by recreating the producer.
+3. **Ignoring fatal errors** - Always handle fatal errors such as `InvalidProducerEpochException` and transactional `OutOfOrderSequenceException` by closing the current producer and creating a new one.
 
 4. **Not closing the producer properly** - Always call `close()` to ensure pending messages are flushed.
 
@@ -576,7 +586,7 @@ try (KafkaProducer<String, String> producer = createIdempotentProducer()) {
 
 ## Conclusion
 
-Kafka idempotent producers provide a robust foundation for exactly-once message delivery. By understanding how Producer IDs and sequence numbers work, properly configuring your producer, and handling errors appropriately, you can build reliable streaming applications that guarantee no duplicate messages even in the face of network failures and retries.
+Kafka idempotent producers provide a robust foundation for producer-side exactly-once message delivery. By understanding how Producer IDs and sequence numbers work, properly configuring your producer, and handling errors appropriately, you can build reliable streaming applications that avoid duplicate writes from producer retries within a single producer session.
 
 Key takeaways:
 - Enable idempotence with `enable.idempotence=true`
