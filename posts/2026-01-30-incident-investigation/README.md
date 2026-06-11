@@ -384,7 +384,7 @@ class EvidenceCollector:
         return evidence
 
     async def _collect_traces(self, query: EvidenceQuery) -> List[Evidence]:
-        """Collect error and slow traces from the incident window."""
+        """Collect error traces from the incident window."""
         evidence = []
 
         # Query for error traces
@@ -858,16 +858,14 @@ class MetricCorrelator:
         best_corr = 0.0
         best_lag = 0
 
-        lag_range = range(
-            -self.max_lag // 60,
-            self.max_lag // 60 + 1
-        )
+        max_lag_steps = self.max_lag // 60
+        lag_range = range(-max_lag_steps, max_lag_steps + 1)
 
         for lag in lag_range:
             if lag < 0:
-                corr = np.corrcoef(norm_a[:lag], norm_b[-lag:])[0, 1]
+                corr = np.corrcoef(norm_a[-lag:], norm_b[:lag])[0, 1]
             elif lag > 0:
-                corr = np.corrcoef(norm_a[lag:], norm_b[:-lag])[0, 1]
+                corr = np.corrcoef(norm_a[:-lag], norm_b[lag:])[0, 1]
             else:
                 corr = np.corrcoef(norm_a, norm_b)[0, 1]
 
@@ -1143,7 +1141,7 @@ class ChangeCorrelator {
       factors.push(`Keyword matches: ${matchingSymptoms.join(', ')}`);
     }
 
-    // Boost if rollback is available (indicates it might be the cause)
+    // Note if rollback is available for mitigation planning
     if (change.metadata.rollbackAvailable) {
       factors.push('Rollback available');
     }
