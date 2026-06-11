@@ -231,11 +231,21 @@ import (
     "github.com/go-playground/validator/v10"
 )
 
+// validatePhoneNumber checks if the phone number has the correct format
+func validatePhoneNumber(fl validator.FieldLevel) bool {
+    phone := fl.Field().String()
+    if len(phone) < 10 || len(phone) > 15 {
+        return false
+    }
+    return phone[0] == '+'
+}
+
 // CreateUserRequest holds the user creation payload
 type CreateUserRequest struct {
     Username string `json:"username" binding:"required,min=3,max=20"`
     Email    string `json:"email" binding:"required,email"`
     Password string `json:"password" binding:"required,min=8"`
+    Phone    string `json:"phone" binding:"required,phone"`
 }
 
 func main() {
@@ -278,6 +288,13 @@ import (
     "github.com/labstack/echo/v4"
     "github.com/go-playground/validator/v10"
 )
+
+// CreateUserRequest holds the user creation payload
+type CreateUserRequest struct {
+    Username string `json:"username" validate:"required,min=3,max=20"`
+    Email    string `json:"email" validate:"required,email"`
+    Password string `json:"password" validate:"required,min=8"`
+}
 
 // CustomValidator wraps the validator for Echo
 type CustomValidator struct {
