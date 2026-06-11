@@ -191,54 +191,9 @@ burst = 10 * 30 = 300 tokens
 
 ## OpenTelemetry Rate Limiting Sampler Configuration
 
-### Using the Built-in Rate Limiting Sampler
-
-OpenTelemetry provides a rate limiting sampler in the `@opentelemetry/sdk-trace-base` package.
-
-```typescript
-// telemetry.ts
-import { NodeSDK } from '@opentelemetry/sdk-node';
-import {
-    ParentBasedSampler,
-    TraceIdRatioBasedSampler
-} from '@opentelemetry/sdk-trace-base';
-import { RateLimitingSampler } from '@opentelemetry/sdk-trace-base';
-import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
-import { Resource } from '@opentelemetry/resources';
-import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
-
-// Rate limiting sampler: 100 traces per second with burst of 500
-const rateLimitingSampler = new RateLimitingSampler(100, 500);
-
-// Wrap with ParentBasedSampler to respect parent decisions
-const sampler = new ParentBasedSampler({
-    root: rateLimitingSampler,
-    // Remote parent sampled: follow parent decision
-    remoteParentSampled: new TraceIdRatioBasedSampler(1.0),
-    // Remote parent not sampled: respect that decision
-    remoteParentNotSampled: new TraceIdRatioBasedSampler(0),
-});
-
-const sdk = new NodeSDK({
-    resource: new Resource({
-        [SemanticResourceAttributes.SERVICE_NAME]: 'my-service',
-        [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: 'production',
-    }),
-    sampler,
-    traceExporter: new OTLPTraceExporter({
-        url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'https://oneuptime.com/otlp/v1/traces',
-        headers: {
-            'x-oneuptime-token': process.env.ONEUPTIME_TOKEN || '',
-        },
-    }),
-});
-
-sdk.start();
-```
-
 ### Custom Rate Limiting Sampler Implementation
 
-For more control, implement a custom sampler using the token bucket algorithm:
+The OpenTelemetry JavaScript SDK does not ship a built-in rate limiting sampler (the `@opentelemetry/sdk-trace-base` package only provides `AlwaysOnSampler`, `AlwaysOffSampler`, `ParentBasedSampler`, and `TraceIdRatioBasedSampler`). To implement rate limiting, write a custom sampler using the token bucket algorithm:
 
 ```typescript
 // rate-limiting-sampler.ts
@@ -246,6 +201,8 @@ import {
     Sampler,
     SamplingDecision,
     SamplingResult,
+} from '@opentelemetry/sdk-trace-base';
+import {
     Context,
     SpanKind,
     Attributes,
@@ -335,10 +292,13 @@ export class TokenBucketRateLimitingSampler implements Sampler {
 
 ### Using the Custom Sampler
 
+Wrap the rate limiting sampler with `ParentBasedSampler` so it only applies to root spans and respects upstream sampling decisions for child spans:
+
 ```typescript
 // telemetry.ts
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { ParentBasedSampler } from '@opentelemetry/sdk-trace-base';
+import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { TokenBucketRateLimitingSampler } from './rate-limiting-sampler';
 
 // 50 traces per second sustained, 200 burst capacity
@@ -348,7 +308,12 @@ const sdk = new NodeSDK({
     sampler: new ParentBasedSampler({
         root: rateLimiter,
     }),
-    // ... other configuration
+    traceExporter: new OTLPTraceExporter({
+        url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'https://oneuptime.com/otlp/v1/traces',
+        headers: {
+            'x-oneuptime-token': process.env.ONEUPTIME_TOKEN || '',
+        },
+    }),
 });
 
 sdk.start();
@@ -382,6 +347,8 @@ import {
     Sampler,
     SamplingDecision,
     SamplingResult,
+} from '@opentelemetry/sdk-trace-base';
+import {
     Context,
     SpanKind,
     Attributes,
@@ -587,6 +554,8 @@ import {
     Sampler,
     SamplingDecision,
     SamplingResult,
+} from '@opentelemetry/sdk-trace-base';
+import {
     Context,
     SpanKind,
     Attributes,
@@ -687,6 +656,8 @@ import {
     Sampler,
     SamplingDecision,
     SamplingResult,
+} from '@opentelemetry/sdk-trace-base';
+import {
     Context,
     SpanKind,
     Attributes,
