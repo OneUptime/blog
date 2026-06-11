@@ -89,7 +89,7 @@ TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 
 mysqldump --single-transaction \
     --flush-logs \
-    --master-data=2 \
+    --source-data=2 \
     --all-databases > "$BACKUP_DIR/full_backup_$TIMESTAMP.sql"
 
 # Sync binary logs for point-in-time recovery
@@ -121,6 +121,8 @@ spec:
             - -c
             - |
               # Restore from hot storage (NVMe-backed PV)
+              START_TIME=$(date +%s)
+
               pg_restore \
                 --host=$TEST_DB_HOST \
                 --username=$POSTGRES_USER \
@@ -129,8 +131,10 @@ spec:
                 --if-exists \
                 /hot-backup/latest.dump
 
-              echo "Restore completed in $(date +%s) - $START_TIME seconds"
+              echo "Restore completed in $(( $(date +%s) - START_TIME )) seconds"
           env:
+            - name: TEST_DB_HOST
+              value: test-db
             - name: POSTGRES_USER
               valueFrom:
                 secretKeyRef:
@@ -187,21 +191,23 @@ BACKUP_FILE="/backup/benchmark_test.dump"
 echo "=== SSD Backup Performance Test ==="
 # NVMe SSD typically achieves 3-5 GB/s sequential write
 time pg_dump -Fc mydb > /nvme-storage/backup.dump
-# Expected: ~20-35 seconds for 100GB
+# Storage-only transfer time for 100GB is ~20-35 seconds; actual pg_dump time
+# also depends on database scan speed, CPU, compression, locks, and network.
 
 echo "=== HDD Backup Performance Test ==="
 # SATA HDD typically achieves 100-150 MB/s sequential write
 time pg_dump -Fc mydb > /hdd-storage/backup.dump
-# Expected: ~12-17 minutes for 100GB
+# Storage-only transfer time for 100GB is ~12-17 minutes; actual pg_dump time
+# also depends on database scan speed, CPU, compression, locks, and network.
 
 echo "=== Recovery Time Comparison ==="
 # NVMe restore
 time pg_restore -d testdb /nvme-storage/backup.dump
-# Expected: ~30-60 seconds for 100GB
+# Actual restore time also depends on indexes, constraints, WAL, CPU, and network.
 
 # HDD restore
 time pg_restore -d testdb /hdd-storage/backup.dump
-# Expected: ~15-25 minutes for 100GB
+# Actual restore time also depends on indexes, constraints, WAL, CPU, and network.
 ```
 
 ### Storage Configuration for Hot Backups
@@ -212,7 +218,7 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: hot-backup-storage
-provisioner: kubernetes.io/aws-ebs
+provisioner: ebs.csi.aws.com
 parameters:
   type: io2
   iopsPerGB: "50"
@@ -419,7 +425,7 @@ COMPRESSION_LEVEL=3  # Lower = faster for hot storage
 # Create backup directory with timestamp
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 BACKUP_PATH="$BACKUP_DIR/$TIMESTAMP"
-mkdir -p "$BACKUP_PATH"
+mkdir -p "$BACKUP_DIR"
 
 echo "Starting optimized hot backup at $(date)"
 
@@ -566,27 +572,19 @@ class HotBackupCatalog:
         """Find the backup closest to (but before) a specific time"""
         timestamp = target_time.timestamp()
 
-        # Get backups before target time
-        backup_ids = self.redis.zrangebyscore(
+        # Get the most recent backup at or before the target time
+        backup_ids = self.redis.zrange(
             'backups:timeline',
-            '-inf',
             timestamp,
-            start=0,
+            '-inf',
+            byscore=True,
+            desc=True,
+            offset=0,
             num=1,
-            withscores=False
         )
 
         if backup_ids:
-            # Get the most recent one before target
-            latest_before = self.redis.zrevrangebyscore(
-                'backups:timeline',
-                timestamp,
-                '-inf',
-                start=0,
-                num=1
-            )
-            if latest_before:
-                return self.get_backup(latest_before[0])
+            return self.get_backup(backup_ids[0])
 
         return None
 
