@@ -129,7 +129,7 @@ resources:
 
 Production environments often need strict boundaries. The following LimitRange enforces minimum and maximum resource values for containers.
 
-This configuration prevents containers from requesting too few resources (which could cause performance issues) or too many resources (which could impact other workloads).
+This configuration prevents containers from requesting too few resources (which could cause performance issues) or declaring too many resources (which could impact other workloads).
 
 ```yaml
 # constrained-limitrange.yaml
@@ -141,11 +141,11 @@ metadata:
 spec:
   limits:
     - type: Container
-      # Minimum resources a container can request
+      # Minimum resources a container can request or limit
       min:
         cpu: "50m"
         memory: "64Mi"
-      # Maximum resources a container can request
+      # Maximum resources a container can request or limit
       max:
         cpu: "2"
         memory: "4Gi"
@@ -169,7 +169,7 @@ kubectl apply -f constrained-limitrange.yaml
 
 When you try to create a pod that violates the constraints, Kubernetes rejects it immediately.
 
-This pod requests 8GB of memory, exceeding the 4Gi maximum defined in the LimitRange.
+This pod declares 8Gi of memory, exceeding the 4Gi maximum defined in the LimitRange.
 
 ```yaml
 # violation-pod.yaml
@@ -252,7 +252,7 @@ kubectl describe limitrange pod-limits -n shared-services
 
 Consider a pod with three containers. The pod-level constraint ensures their combined resources stay within bounds.
 
-This deployment runs a web server with two sidecar containers. Each container stays within container limits, and the total stays within pod limits.
+This pod runs a web server with two sidecar containers. Each container stays within container limits, and the total stays within pod limits.
 
 ```yaml
 # multi-container-pod.yaml
@@ -300,7 +300,7 @@ Resource totals for this pod:
 | Resource | Requests | Limits |
 |----------|----------|--------|
 | CPU | 650m | 1.3 |
-| Memory | 704Mi | 1.384Gi |
+| Memory | 704Mi | 1.375Gi |
 
 Both totals fall within the pod-level maximum of 4 CPU and 8Gi memory.
 
@@ -724,11 +724,11 @@ kubectl apply -f production-limits.yaml
 
 ### Pod Stuck in Pending
 
-If pods remain in Pending state after LimitRange changes, check if existing resources violate new constraints:
+LimitRange changes do not revalidate pods that already exist. If a Deployment, StatefulSet, or other controller cannot create replacement pods after a LimitRange change, check the controller and namespace events for admission errors:
 
 ```bash
-# Check pod events for admission errors
-kubectl describe pod <pod-name> -n <namespace>
+# Check controller events for admission errors
+kubectl describe deployment <deployment-name> -n <namespace>
 
 # Look for LimitRange-related events
 kubectl get events -n <namespace> --field-selector reason=FailedCreate
@@ -751,7 +751,7 @@ kubectl get pod <pod-name> -n <namespace> -o jsonpath='{.spec.containers[*].reso
 
 ### Init Containers and LimitRange
 
-Init containers are subject to LimitRange constraints separately from regular containers. However, pod-level limits consider the maximum of init container resources (not the sum, since they run sequentially).
+Init containers are subject to LimitRange constraints separately from regular containers. However, pod-level limits use the higher of the summed app-container resources or the maximum init-container resources (init containers run sequentially).
 
 ```yaml
 # init-container-pod.yaml
@@ -762,7 +762,7 @@ metadata:
   namespace: production
 spec:
   initContainers:
-    # Init container resources count toward pod limits
+    # Init container resources count toward effective pod limits
     - name: init-db
       image: busybox:1.36
       command: ['sh', '-c', 'echo Initializing...']
