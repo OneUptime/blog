@@ -134,6 +134,8 @@ function corsMiddleware(options = {}) {
     'X-RateLimit-Limit',
     'X-RateLimit-Remaining',
     'X-RateLimit-Reset',
+    'RateLimit',
+    'RateLimit-Policy',
     'Retry-After'
   ];
 
@@ -182,7 +184,7 @@ const redis = new Redis(process.env.REDIS_URL);
 
 // Rate limiter using sliding window algorithm
 // Provides proper headers per RFC 6585 and draft-ietf-httpapi-ratelimit-headers
-async function rateLimitMiddleware(options = {}) {
+function rateLimitMiddleware(options = {}) {
   const windowMs = options.windowMs || 60000; // 1 minute default
   const maxRequests = options.max || 100;
   const keyPrefix = options.keyPrefix || 'ratelimit';
@@ -213,21 +215,20 @@ async function rateLimitMiddleware(options = {}) {
       // Calculate remaining requests and reset time
       const remaining = Math.max(0, maxRequests - requestCount);
       const resetTime = Math.ceil((now + windowMs) / 1000);
+      const windowSeconds = Math.ceil(windowMs / 1000);
 
-      // Set standard rate limit headers
-      // These headers help clients implement proper retry logic
+      // Set legacy rate limit headers still used by many clients
       res.set('X-RateLimit-Limit', maxRequests.toString());
       res.set('X-RateLimit-Remaining', remaining.toString());
       res.set('X-RateLimit-Reset', resetTime.toString());
 
-      // Also set the newer RateLimit header format (draft standard)
-      res.set('RateLimit-Limit', maxRequests.toString());
-      res.set('RateLimit-Remaining', remaining.toString());
-      res.set('RateLimit-Reset', Math.ceil(windowMs / 1000).toString());
+      // Also set the newer RateLimit header format from the IETF draft
+      res.set('RateLimit-Policy', `"default";q=${maxRequests};w=${windowSeconds}`);
+      res.set('RateLimit', `"default";r=${remaining};t=${windowSeconds}`);
 
       if (requestCount > maxRequests) {
         // Calculate retry delay
-        const retryAfter = Math.ceil(windowMs / 1000);
+        const retryAfter = windowSeconds;
         res.set('Retry-After', retryAfter.toString());
 
         return res.status(429).json({
@@ -532,6 +533,12 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         response.headers["X-RateLimit-Limit"] = str(self.max_requests)
         response.headers["X-RateLimit-Remaining"] = str(remaining)
         response.headers["X-RateLimit-Reset"] = str(reset_time)
+        response.headers["RateLimit-Policy"] = (
+            f'"default";q={self.max_requests};w={self.window_seconds}'
+        )
+        response.headers["RateLimit"] = (
+            f'"default";r={remaining};t={self.window_seconds}'
+        )
 
         return response
 
@@ -551,7 +558,9 @@ app.add_middleware(
         "X-Request-ID",
         "X-RateLimit-Limit",
         "X-RateLimit-Remaining",
-        "X-RateLimit-Reset"
+        "X-RateLimit-Reset",
+        "RateLimit",
+        "RateLimit-Policy"
     ],
     max_age=86400,
 )
@@ -567,6 +576,12 @@ async def health_check():
 async def get_current_user(request: Request):
     """Protected endpoint - requires valid JWT token."""
     # Authentication would be handled by a dependency
+    if not hasattr(request.state, "user"):
+        raise HTTPException(
+            status_code=401,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     return {"user": request.state.user}
 ```
 
@@ -767,7 +782,7 @@ Implementing proper API security headers requires attention to several areas:
 | Header Category | Key Headers | Purpose |
 |----------------|-------------|---------|
 | **Authentication** | Authorization, WWW-Authenticate | Identify and validate clients |
-| **Rate Limiting** | X-RateLimit-*, Retry-After | Prevent abuse and communicate limits |
+| **Rate Limiting** | RateLimit, RateLimit-Policy, X-RateLimit-*, Retry-After | Prevent abuse and communicate limits |
 | **CORS** | Access-Control-* | Control cross-origin access |
 | **Security** | X-Content-Type-Options, HSTS, Cache-Control | Prevent common attacks |
 | **Tracing** | X-Request-ID | Correlate logs and debug issues |
