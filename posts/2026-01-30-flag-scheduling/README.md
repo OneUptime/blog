@@ -712,7 +712,7 @@ flowchart TD
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import List, Optional
+from typing import Any, List, Optional
 from enum import IntEnum
 
 
@@ -731,7 +731,7 @@ class PrioritizedSchedule:
     flag_id: str
     start_at: datetime
     end_at: Optional[datetime]
-    value: any
+    value: Any
     priority: SchedulePriority
     created_at: datetime
 
@@ -779,20 +779,13 @@ interface TimeProvider {
 }
 
 /**
- * A time provider that adds tolerance for server time drift.
- * Schedules activate slightly early to account for clock differences.
+ * A centralized time provider for scheduler checks.
+ * Keep the raw current time separate from drift tolerance logic so start and
+ * end boundaries can apply different tolerances.
  */
 class DriftTolerantTimeProvider implements TimeProvider {
-  private driftToleranceMs: number;
-
-  constructor(driftToleranceSeconds: number = 30) {
-    this.driftToleranceMs = driftToleranceSeconds * 1000;
-  }
-
   getCurrentTime(): Date {
-    // Add drift tolerance to current time
-    // This means schedules activate slightly early
-    return new Date(Date.now() + this.driftToleranceMs);
+    return new Date();
   }
 }
 
@@ -834,7 +827,7 @@ If the scheduler service is down when a schedule should activate, you need to ha
 # missed_schedule_recovery.py
 # Recovery logic for schedules missed during downtime
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import List
 from dataclasses import dataclass
 
@@ -863,7 +856,7 @@ def recover_missed_schedules(
     Returns:
         Tuple of (schedules_to_activate, schedules_to_skip)
     """
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
     max_late = timedelta(hours=policy.max_late_activation_hours)
 
     to_activate = []
@@ -1069,6 +1062,7 @@ jobs:
         run: |
           # Calculate activation time (2 hours from now)
           ACTIVATION_TIME=$(date -u -d "+2 hours" +"%Y-%m-%dT%H:%M:%SZ")
+          echo "ACTIVATION_TIME=${ACTIVATION_TIME}" >> "$GITHUB_ENV"
 
           # Create the schedule via API
           curl -X POST "${FLAG_API_URL}/api/flags/new-feature/schedules" \
@@ -1123,7 +1117,7 @@ flowchart TD
 # Metrics collection for flag scheduling
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import List
 import time
 
@@ -1154,7 +1148,7 @@ def collect_schedule_metrics(
     Returns:
         Aggregated metrics for monitoring
     """
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     next_hour = now + timedelta(hours=1)
 
