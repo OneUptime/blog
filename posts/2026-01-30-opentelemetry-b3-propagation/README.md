@@ -58,7 +58,7 @@ OpenTelemetry supports multiple propagation formats. Here is when to choose B3:
 | Integrating with Zipkin-based systems | B3 |
 | Mixed ecosystem (some Zipkin, some OTel) | Both (composite propagator) |
 | Legacy services expecting B3 headers | B3 |
-| Envoy, Istio service mesh | B3 (often default) |
+| Envoy, Istio service mesh | B3 or W3C, depending on mesh and tracing provider configuration |
 
 If you control all services and start fresh, W3C Trace Context (`traceparent`, `tracestate`) is the modern standard. But many real-world systems have existing Zipkin instrumentation or service meshes configured for B3.
 
@@ -76,20 +76,20 @@ sequenceDiagram
     participant ServiceC
 
     Client->>ServiceA: POST /checkout
-    Note over ServiceA: Create root span<br/>TraceId: abc123<br/>SpanId: span1
+    Note over ServiceA: Create root span<br/>TraceId: 80f198ee56343ba864fe8b2a57d3eff7<br/>SpanId: 05e3ac9a4f6e3b90
 
-    ServiceA->>ServiceB: GET /inventory<br/>b3: abc123-span2-1-span1
-    Note over ServiceB: Extract context<br/>Create child span<br/>SpanId: span3
+    ServiceA->>ServiceB: GET /inventory<br/>b3: 80f198ee56343ba864fe8b2a57d3eff7-e457b5a2e4d86bd1-1
+    Note over ServiceB: Extract context<br/>Create server span<br/>SpanId: 4a1f2b3c4d5e6f70
 
-    ServiceB->>ServiceC: GET /pricing<br/>b3: abc123-span4-1-span3
-    Note over ServiceC: Extract context<br/>Create child span<br/>SpanId: span5
+    ServiceB->>ServiceC: GET /pricing<br/>b3: 80f198ee56343ba864fe8b2a57d3eff7-9f8e7d6c5b4a3928-1
+    Note over ServiceC: Extract context<br/>Create server span<br/>SpanId: 1122334455667788
 
     ServiceC-->>ServiceB: 200 OK
     ServiceB-->>ServiceA: 200 OK
     ServiceA-->>Client: 200 OK
 ```
 
-Each service extracts the incoming B3 headers, creates a child span with the extracted trace context as parent, and injects new B3 headers when making outbound calls.
+Each service extracts the incoming B3 headers, creates a server span with the extracted trace context as parent, and injects the active outbound span context when making downstream calls.
 
 ---
 
@@ -113,7 +113,7 @@ import { NodeSDK } from '@opentelemetry/sdk-node';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { B3Propagator, B3InjectEncoding } from '@opentelemetry/propagator-b3';
-import { Resource } from '@opentelemetry/resources';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 import { ATTR_SERVICE_NAME } from '@opentelemetry/semantic-conventions';
 
 // Configure B3 propagator with single header format
@@ -129,7 +129,7 @@ const traceExporter = new OTLPTraceExporter({
 });
 
 export const sdk = new NodeSDK({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     [ATTR_SERVICE_NAME]: 'checkout-service'
   }),
   traceExporter,
@@ -333,7 +333,7 @@ function makeOutboundCall() {
 
 ## B3 Propagation with OpenTelemetry Collector
 
-If you use an OpenTelemetry Collector, you can configure context propagation at the receiver level. This is useful when the Collector acts as a gateway.
+If you use an OpenTelemetry Collector, applications still handle B3 propagation at the SDK level. The Collector receives the spans after trace context has already been applied and forwards them through a pipeline.
 
 ```yaml
 receivers:
@@ -361,7 +361,7 @@ service:
       exporters: [otlphttp]
 ```
 
-The Collector preserves trace context as spans flow through the pipeline. Applications still handle B3 propagation at the SDK level.
+The Collector preserves trace IDs, span IDs, and parent relationships in the spans as they flow through the pipeline.
 
 ---
 
@@ -404,7 +404,7 @@ export function logB3Headers(req: Request, res: Response, next: NextFunction) {
 | Traces not connecting across services | Propagator not configured | Ensure B3Propagator is set in textMapPropagator |
 | Missing spans in downstream service | Context not extracted | Check auto-instrumentation is enabled |
 | Wrong header format | Inject encoding mismatch | Match SINGLE_HEADER or MULTI_HEADER to what downstream expects |
-| Duplicate trace IDs | Multiple propagators injecting | Use CompositePropagator to coordinate |
+| Duplicate propagation headers | Multiple propagators injecting | Use CompositePropagator to coordinate |
 | Sampling decisions not propagating | Sampled flag ignored | Ensure sampling respects parent decision |
 
 ---
@@ -451,8 +451,8 @@ flowchart TB
     B2 -->|b3: traceId-spanId-1| C
 
     C --> C1 --> C2 --> C3
-    C3 -->|b3: traceId-spanId-1| D
-    C3 -->|b3: traceId-spanId-1| E
+    C3 -->|b3: traceId-newSpanId-1| D
+    C3 -->|b3: traceId-newSpanId-1| E
 
     D --> D1 --> D2 --> D3
     E --> E1 --> E2
