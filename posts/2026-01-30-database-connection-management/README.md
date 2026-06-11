@@ -99,6 +99,7 @@ The pool manager handles acquisition, release, and health checking:
 // connection-pool.ts
 class ConnectionPool {
   private connections: PooledConnection[] = [];
+  private pendingCreates = 0;
   private waitingQueue: Array<{
     resolve: (conn: PooledConnection) => void;
     reject: (err: Error) => void;
@@ -106,16 +107,17 @@ class ConnectionPool {
   }> = [];
   private config: PoolConfig;
   private healthCheckTimer: NodeJS.Timeout | null = null;
+  private ready: Promise<void>;
 
   constructor(config: Partial<PoolConfig> = {}) {
     this.config = { ...defaultConfig, ...config };
-    this.initializePool();
+    this.ready = this.initializePool();
     this.startHealthCheck();
   }
 
   // Create minimum connections on startup
   private async initializePool(): Promise<void> {
-    const promises = [];
+    const promises: Promise<PooledConnection>[] = [];
     for (let i = 0; i < this.config.minConnections; i++) {
       promises.push(this.createConnection());
     }
@@ -124,6 +126,8 @@ class ConnectionPool {
 
   // Acquire a connection from the pool
   async acquire(): Promise<PooledConnection> {
+    await this.ready;
+
     // Try to find an available connection
     const available = this.connections.find((c) => !c.inUse);
     if (available) {
@@ -133,7 +137,10 @@ class ConnectionPool {
     }
 
     // Create new connection if under limit
-    if (this.connections.length < this.config.maxConnections) {
+    if (
+      this.connections.length + this.pendingCreates <
+      this.config.maxConnections
+    ) {
       const conn = await this.createConnection();
       conn.inUse = true;
       return conn;
@@ -176,16 +183,21 @@ class ConnectionPool {
 
   // Create a new database connection
   private async createConnection(): Promise<PooledConnection> {
-    const connection = await connectToDatabase();
-    const pooledConn: PooledConnection = {
-      connection,
-      createdAt: new Date(),
-      lastUsedAt: new Date(),
-      inUse: false,
-      id: crypto.randomUUID(),
-    };
-    this.connections.push(pooledConn);
-    return pooledConn;
+    this.pendingCreates++;
+    try {
+      const connection = await connectToDatabase();
+      const pooledConn: PooledConnection = {
+        connection,
+        createdAt: new Date(),
+        lastUsedAt: new Date(),
+        inUse: false,
+        id: crypto.randomUUID(),
+      };
+      this.connections.push(pooledConn);
+      return pooledConn;
+    } finally {
+      this.pendingCreates--;
+    }
   }
 
   // Periodic health check removes stale connections
@@ -193,7 +205,7 @@ class ConnectionPool {
     this.healthCheckTimer = setInterval(async () => {
       const now = Date.now();
 
-      for (const conn of this.connections) {
+      for (const conn of [...this.connections]) {
         // Skip connections in use
         if (conn.inUse) continue;
 
@@ -207,6 +219,11 @@ class ConnectionPool {
         }
       }
     }, this.config.healthCheckInterval);
+  }
+
+  // Destroy a connection instead of returning it to the pool
+  async destroy(conn: PooledConnection): Promise<void> {
+    await this.removeConnection(conn);
   }
 
   // Safely remove a connection from the pool
