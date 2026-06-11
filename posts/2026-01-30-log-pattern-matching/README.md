@@ -196,13 +196,15 @@ class PatternMatcher:
 Here are patterns for common log formats you will encounter. Each pattern uses named capture groups to extract specific fields.
 
 ```python
+import json
+
 # Initialize the matcher
 matcher = PatternMatcher()
 
-# Apache/Nginx combined log format
+# Apache/Nginx common access log format
 # Example: 192.168.1.1 - - [30/Jan/2026:14:23:45 +0000] "GET /api/users HTTP/1.1" 200 1234
 matcher.add_pattern(
-    "apache_combined",
+    "apache_common",
     r'(?P<ip>[\d.]+)\s+'
     r'(?P<identity>\S+)\s+'
     r'(?P<user>\S+)\s+'
@@ -306,7 +308,7 @@ parser = GrokParser()
 
 # Define pattern using Grok syntax
 pattern = parser.compile(
-    "%{TIMESTAMP_ISO:timestamp} %{LOGLEVEL:level} \[%{WORD:service}\] %{GREEDYDATA:message}"
+    r"%{TIMESTAMP_ISO:timestamp} %{LOGLEVEL:level} \[%{WORD:service}\] %{GREEDYDATA:message}"
 )
 
 log = "2026-01-30T14:23:45 ERROR [PaymentService] Transaction failed: insufficient funds"
@@ -456,10 +458,19 @@ class TestLogPatterns(unittest.TestCase):
 
     def setUp(self):
         self.matcher = PatternMatcher()
-        # Register patterns here
+        self.matcher.add_pattern(
+            "apache_common",
+            r'(?P<ip>[\d.]+)\s+'
+            r'(?P<identity>\S+)\s+'
+            r'(?P<user>\S+)\s+'
+            r'\[(?P<timestamp>[^\]]+)\]\s+'
+            r'"(?P<method>\w+)\s+(?P<path>\S+)\s+(?P<protocol>[^"]+)"\s+'
+            r'(?P<status>\d+)\s+'
+            r'(?P<bytes>\d+)'
+        )
 
     def test_apache_log_parsing(self):
-        """Verify Apache combined format extraction."""
+        """Verify Apache common access log format extraction."""
         log = '192.168.1.100 - admin [30/Jan/2026:14:23:45 +0000] "POST /api/login HTTP/1.1" 200 512'
         result = self.matcher.match(log)
 
