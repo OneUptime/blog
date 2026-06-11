@@ -47,10 +47,10 @@ Several tools can identify licenses in your dependencies:
 
 | Tool | Language Support | Output Formats | SBOM Support |
 |------|-----------------|----------------|--------------|
-| **Licensee** | Ruby | JSON, Markdown | No |
+| **Licensee** | License files | JSON, text | No |
 | **license-checker** | Node.js | JSON, CSV, Markdown | No |
 | **pip-licenses** | Python | JSON, CSV, Markdown | No |
-| **go-licenses** | Go | JSON, CSV | Yes |
+| **go-licenses** | Go | CSV, custom templates | No |
 | **Syft** | All | JSON, SPDX, CycloneDX | Yes |
 | **Trivy** | All | JSON, SPDX, CycloneDX | Yes |
 | **FOSSA** | All | JSON, SPDX | Yes |
@@ -107,40 +107,15 @@ Create a policy file that explicitly lists allowed and denied licenses. Here is 
 ### FOSSA Policy Example
 
 ```yaml
-# .fossa.yml - FOSSA license policy configuration
+# .fossa.yml - FOSSA project policy assignment
 
 version: 3
 project:
   id: github.com/your-org/your-repo
   name: your-project
-
-# Define which licenses are acceptable for your project
-
-policy:
-  # Licenses that are always allowed (permissive licenses)
-  allowlist:
-    - MIT
-    - Apache-2.0
-    - BSD-2-Clause
-    - BSD-3-Clause
-    - ISC
-    - Unlicense
-    - CC0-1.0
-
-  # Licenses that require manual review before approval
-  flaglist:
-    - LGPL-2.1-only
-    - LGPL-3.0-only
-    - MPL-2.0
-    - EPL-2.0
-
-  # Licenses that will automatically fail the build
-  denylist:
-    - GPL-2.0-only
-    - GPL-3.0-only
-    - AGPL-3.0-only
-    - SSPL-1.0
-    - CC-BY-NC-4.0
+  # Define allow, flag, and deny rules in the FOSSA web app,
+  # then assign that policy to the project by name.
+  policy: permissive-dependencies
 ```
 
 ### License-Checker Configuration (Node.js)
@@ -148,24 +123,8 @@ policy:
 ```json
 {
   "name": "license-checker-config",
-  "licenseCheckerConfig": {
-    "onlyAllow": [
-      "MIT",
-      "Apache-2.0",
-      "BSD-2-Clause",
-      "BSD-3-Clause",
-      "ISC",
-      "Unlicense",
-      "CC0-1.0"
-    ],
-    "excludePackages": [
-      "internal-package@1.0.0"
-    ],
-    "failOn": [
-      "GPL",
-      "AGPL",
-      "SSPL"
-    ]
+  "scripts": {
+    "license:check": "license-checker --onlyAllow \"MIT;Apache-2.0;BSD-2-Clause;BSD-3-Clause;ISC;Unlicense;CC0-1.0\" --excludePackages \"internal-package@1.0.0\" --failOn \"GPL;AGPL;SSPL\""
   }
 }
 ```
@@ -176,7 +135,7 @@ A Software Bill of Materials (SBOM) provides a complete inventory of your softwa
 
 - Standardized formats (SPDX, CycloneDX) work across tools.
 - Single source of truth for dependencies and licenses.
-- Required by regulations like US Executive Order 14028.
+- Aligned with supply chain guidance such as US Executive Order 14028 and NTIA/CISA SBOM minimum elements.
 - Enables supply chain transparency.
 
 ### Generating an SBOM with Syft
@@ -214,18 +173,15 @@ ALLOWED_LICENSES=(
     "BSD-3-Clause"
     "ISC"
     "Unlicense"
+    "CC0-1.0"
 )
 
-# Convert SBOM to license report using grype
-# Then filter for license information
-grype sbom:sbom.cdx.json -o json > scan-results.json
-
 # Extract unique licenses from the SBOM
-FOUND_LICENSES=$(jq -r '.components[].licenses[]?.license?.id // .components[].licenses[]?.expression // "UNKNOWN"' sbom.cdx.json | sort -u)
+FOUND_LICENSES=$(jq -r '.components[]?.licenses[]? | .license.id // .expression // .license.name // "UNKNOWN"' sbom.cdx.json | sort -u)
 
 # Check each license against the allowed list
 EXIT_CODE=0
-for license in $FOUND_LICENSES; do
+while IFS= read -r license; do
     ALLOWED=false
     for allowed in "${ALLOWED_LICENSES[@]}"; do
         if [[ "$license" == "$allowed" ]]; then
@@ -240,7 +196,7 @@ for license in $FOUND_LICENSES; do
     else
         echo "OK: $license"
     fi
-done
+done <<< "$FOUND_LICENSES"
 
 exit $EXIT_CODE
 ```
@@ -286,13 +242,14 @@ jobs:
       - name: Check licenses
         run: |
           # Install jq for JSON parsing
+          sudo apt-get update
           sudo apt-get install -y jq
 
           # Define allowed licenses
           ALLOWED='["MIT","Apache-2.0","BSD-2-Clause","BSD-3-Clause","ISC","Unlicense","CC0-1.0"]'
 
           # Extract licenses from SBOM and check against policy
-          jq -r '.components[]?.licenses[]?.license?.id // empty' sbom.cdx.json | sort -u | while read license; do
+          jq -r '.components[]?.licenses[]? | .license.id // .expression // .license.name // empty' sbom.cdx.json | sort -u | while IFS= read -r license; do
             if ! echo "$ALLOWED" | jq -e --arg l "$license" 'index($l)' > /dev/null; then
               echo "::error::Denied license found: $license"
               exit 1
@@ -303,7 +260,7 @@ jobs:
 
       # Notify on failure
       - name: Notify on failure
-        if: failure()
+        if: failure() && github.event_name == 'pull_request'
         uses: actions/github-script@v7
         with:
           script: |
@@ -327,6 +284,7 @@ against a configurable policy.
 """
 
 import json
+import re
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -347,13 +305,13 @@ class LicensePolicy:
     """Defines which licenses are allowed, flagged, or denied."""
 
     # Licenses that pass without review
-    allowed: set[str] = None
+    allowed: Optional[set[str]] = None
 
     # Licenses that require manual approval
-    flagged: set[str] = None
+    flagged: Optional[set[str]] = None
 
     # Licenses that always fail the build
-    denied: set[str] = None
+    denied: Optional[set[str]] = None
 
     def __post_init__(self):
         # Default permissive licenses are always allowed
@@ -394,19 +352,25 @@ class LicensePolicy:
         """
         # Normalize license identifier
         normalized = license_id.upper().strip()
+        tokens = {
+            token.removesuffix(" LICENSE").strip()
+            for token in re.split(r"\s*(?:\bAND\b|\bOR\b|/|,|;|\(|\))\s*", normalized)
+            if token.strip()
+        }
+
+        allowed = {item.upper() for item in self.allowed}
+        flagged = {item.upper() for item in self.flagged}
+        denied = {item.upper() for item in self.denied}
 
         # Check against each category
-        for allowed in self.allowed:
-            if allowed.upper() in normalized:
-                return True, RiskLevel.LOW, "Allowed"
+        if tokens & denied:
+            return False, RiskLevel.HIGH, "Denied by policy"
 
-        for flagged in self.flagged:
-            if flagged.upper() in normalized:
-                return False, RiskLevel.MEDIUM, "Requires review"
+        if tokens & flagged:
+            return False, RiskLevel.MEDIUM, "Requires review"
 
-        for denied in self.denied:
-            if denied.upper() in normalized:
-                return False, RiskLevel.HIGH, "Denied by policy"
+        if tokens and tokens <= allowed:
+            return True, RiskLevel.LOW, "Allowed"
 
         # Unknown licenses need investigation
         return False, RiskLevel.CRITICAL, "Unknown license"
