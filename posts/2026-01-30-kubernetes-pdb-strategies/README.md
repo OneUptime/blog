@@ -196,7 +196,7 @@ kind: PodDisruptionBudget
 metadata:
   name: production-services-pdb
 spec:
-  maxUnavailable: 1
+  minAvailable: 2
   selector:
     matchExpressions:
       - key: app
@@ -229,7 +229,7 @@ kubectl describe pdb web-app-pdb -n production
 # Status:
 #   Current:    4
 #   Desired:    4
-#   Expected:   4
+#   Total:      4
 #   Allowed disruptions: 2
 ```
 
@@ -280,7 +280,7 @@ kubectl get pdb -n production -o wide
 - **ALLOWED DISRUPTIONS**: How many pods can currently be evicted
 - **Current**: Number of healthy pods now
 - **Desired**: Number of pods the controller wants
-- **Expected**: Number of pods expected to be available
+- **Total**: Number of pods covered by the PDB
 
 ### Handling Blocked Evictions
 
@@ -310,8 +310,8 @@ kubectl drain node-1 --ignore-daemonsets
 kubectl describe pod <unhealthy-pod> -n production
 kubectl delete pod <unhealthy-pod> -n production
 
-# Option 3 (Emergency): Override with force (loses PDB protection)
-kubectl drain node-1 --ignore-daemonsets --force --delete-emptydir-data
+# Option 3 (Emergency): Disable eviction checks (loses PDB protection)
+kubectl drain node-1 --ignore-daemonsets --disable-eviction --delete-emptydir-data
 ```
 
 ## Maintenance Window Strategies
@@ -339,7 +339,13 @@ metadata:
   name: web
 spec:
   replicas: 4
+  selector:
+    matchLabels:
+      app: web
   template:
+    metadata:
+      labels:
+        app: web
     spec:
       # Spread pods across nodes
       topologySpreadConstraints:
@@ -349,6 +355,9 @@ spec:
           labelSelector:
             matchLabels:
               app: web
+      containers:
+        - name: web
+          image: nginx:latest
 ```
 
 ```mermaid
@@ -385,7 +394,7 @@ During major upgrades, you may need to temporarily relax PDBs:
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
-  name: web-pdb-maintenance
+  name: web-pdb
   namespace: production
   labels:
     maintenance-mode: "true"
@@ -441,10 +450,11 @@ echo "$(date) - Emergency drain of $NODE by $USER" >> /var/log/k8s-emergency.log
 # Cordon to prevent new scheduling
 kubectl cordon $NODE
 
-# Force drain
+# Disable eviction checks so PDBs are bypassed
 kubectl drain $NODE \
     --ignore-daemonsets \
     --force \
+    --disable-eviction \
     --delete-emptydir-data \
     --grace-period=30
 
@@ -500,14 +510,24 @@ spec:
       app: web-frontend
 ```
 
-### Pattern 2: Stateful Databases (Quorum-Based)
+### Pattern 2: Stateful Databases
 
 ```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+spec:
+  clusterIP: None
+  selector:
+    app: postgres
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: postgres
 spec:
+  serviceName: postgres
   replicas: 3
   selector:
     matchLabels:
@@ -526,7 +546,7 @@ kind: PodDisruptionBudget
 metadata:
   name: postgres-pdb
 spec:
-  minAvailable: 2  # Maintain quorum (n/2 + 1 for n=3)
+  minAvailable: 2  # Keep most replicas available during voluntary disruptions
   selector:
     matchLabels:
       app: postgres
@@ -548,6 +568,10 @@ spec:
     metadata:
       labels:
         app: batch-workers
+    spec:
+      containers:
+        - name: worker
+          image: nginx:latest
 ---
 apiVersion: policy/v1
 kind: PodDisruptionBudget
@@ -572,6 +596,14 @@ spec:
   selector:
     matchLabels:
       app: scheduler
+  template:
+    metadata:
+      labels:
+        app: scheduler
+    spec:
+      containers:
+        - name: scheduler
+          image: nginx:latest
 ---
 apiVersion: policy/v1
 kind: PodDisruptionBudget
@@ -761,7 +793,7 @@ kubectl get deployments -A -o json | jq -r '
 ' | while read deploy; do
   ns=$(echo $deploy | cut -d/ -f1)
   name=$(echo $deploy | cut -d/ -f2)
-  labels=$(kubectl get deployment $name -n $ns -o jsonpath='{.spec.selector.matchLabels}')
+  labels=$(kubectl get deployment $name -n $ns -o json | jq -c '.spec.selector.matchLabels')
   pdb_count=$(kubectl get pdb -n $ns -o json | jq --arg labels "$labels" '[.items[] | select(.spec.selector.matchLabels == ($labels | fromjson))] | length')
   if [ "$pdb_count" -eq "0" ]; then
     echo "Missing PDB: $deploy"
