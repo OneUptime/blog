@@ -80,11 +80,13 @@ import {
   Sampler,
   SamplingDecision,
   SamplingResult,
+} from '@opentelemetry/sdk-trace-base';
+import {
   Context,
   SpanKind,
   Attributes,
   Link,
-} from '@opentelemetry/sdk-trace-base';
+} from '@opentelemetry/api';
 
 // AttributeBasedSampler samples spans that match specific attribute values
 // Use this when you want to guarantee sampling for certain types of operations
@@ -171,11 +173,13 @@ import {
   Sampler,
   SamplingDecision,
   SamplingResult,
+} from '@opentelemetry/sdk-trace-base';
+import {
   Context,
   SpanKind,
   Attributes,
   Link,
-} from '@opentelemetry/sdk-trace-base';
+} from '@opentelemetry/api';
 
 // ErrorAwareSampler always records spans so errors can trigger full sampling
 // The span processor handles the actual export decision based on error status
@@ -243,7 +247,7 @@ import {
   ReadableSpan,
   Span,
 } from '@opentelemetry/sdk-trace-base';
-import { SpanStatusCode } from '@opentelemetry/api';
+import { Context, SpanStatusCode } from '@opentelemetry/api';
 
 // ErrorUpgradeProcessor checks completed spans for errors
 // and marks them for export if they were initially recorded but not sampled
@@ -294,11 +298,14 @@ import {
   Sampler,
   SamplingDecision,
   SamplingResult,
+} from '@opentelemetry/sdk-trace-base';
+import {
   Context,
   SpanKind,
   Attributes,
   Link,
-} from '@opentelemetry/sdk-trace-base';
+  trace,
+} from '@opentelemetry/api';
 
 // RateLimitingSampler caps the number of sampled traces per second
 // Uses a token bucket algorithm for smooth rate limiting
@@ -323,7 +330,8 @@ class RateLimitingSampler implements Sampler {
   ): SamplingResult {
     // Only apply rate limiting to root spans
     // Child spans should follow their parent's decision
-    const parentSpanContext = this.getParentSpanContext(context);
+    const parentSpan = trace.getSpan(context);
+    const parentSpanContext = parentSpan?.spanContext();
 
     if (parentSpanContext && parentSpanContext.isRemote === false) {
       // This is a child span, follow parent decision
@@ -362,12 +370,6 @@ class RateLimitingSampler implements Sampler {
     this.lastRefillTime = now;
   }
 
-  private getParentSpanContext(context: Context): any {
-    // Implementation depends on your context propagation setup
-    // This is a simplified version
-    return context.getValue(Symbol.for('OpenTelemetry Context Key SPAN'));
-  }
-
   toString(): string {
     return `RateLimitingSampler{maxPerSecond=${this.maxTracesPerSecond}}`;
   }
@@ -383,11 +385,13 @@ import {
   Sampler,
   SamplingDecision,
   SamplingResult,
+} from '@opentelemetry/sdk-trace-base';
+import {
   Context,
   SpanKind,
   Attributes,
   Link,
-} from '@opentelemetry/sdk-trace-base';
+} from '@opentelemetry/api';
 
 // Rule definition for pattern-based sampling
 interface SamplingRule {
@@ -503,11 +507,13 @@ import {
   Sampler,
   SamplingDecision,
   SamplingResult,
+} from '@opentelemetry/sdk-trace-base';
+import {
   Context,
   SpanKind,
   Attributes,
   Link,
-} from '@opentelemetry/sdk-trace-base';
+} from '@opentelemetry/api';
 
 // Combination mode for multiple samplers
 type CombineMode = 'AND' | 'OR' | 'FIRST_MATCH';
@@ -662,11 +668,13 @@ import {
   Sampler,
   SamplingDecision,
   SamplingResult,
+} from '@opentelemetry/sdk-trace-base';
+import {
   Context,
   SpanKind,
   Attributes,
   Link,
-} from '@opentelemetry/sdk-trace-base';
+} from '@opentelemetry/api';
 
 // Priority levels for different trace types
 enum TracePriority {
