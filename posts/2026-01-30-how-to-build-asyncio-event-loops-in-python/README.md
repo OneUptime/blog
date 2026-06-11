@@ -35,7 +35,7 @@ asyncio.run(main())
 
 The event loop schedules both tasks concurrently. While `task_one` waits for its sleep to complete, `task_two` continues execution.
 
-## get_event_loop vs new_event_loop
+## get_running_loop vs new_event_loop
 
 Python provides two primary ways to obtain an event loop. Understanding the difference is crucial for proper resource management.
 
@@ -57,38 +57,35 @@ def create_new_loop():
     finally:
         loop.close()
 
-# Deprecated pattern (avoid in Python 3.10+)
+# Avoid this in coroutines and callbacks; get_running_loop() is clearer there.
 # loop = asyncio.get_event_loop()
 ```
 
 Use `asyncio.get_running_loop()` inside async functions and `asyncio.new_event_loop()` when you need explicit control over loop lifecycle, such as in multi-threaded applications.
 
-## Custom Event Loop Policies
+## Custom Event Loop Creation
 
-Event loop policies control how loops are created and managed. You can implement custom policies for specialized behavior.
+Event loop factories control how loops are created and managed by high-level runners. You can implement custom factories for specialized behavior.
 
 ```python
 import asyncio
 
-class CustomEventLoopPolicy(asyncio.DefaultEventLoopPolicy):
-    def new_event_loop(self):
-        loop = super().new_event_loop()
-        loop.set_debug(True)  # Enable debug mode by default
-        print("Created new custom event loop")
-        return loop
+def custom_loop_factory():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.set_debug(True)  # Enable debug mode by default
+    print("Created new custom event loop")
+    return loop
 
-# Set the custom policy globally
-asyncio.set_event_loop_policy(CustomEventLoopPolicy())
-
-# Now all new loops use your custom policy
 async def main():
     loop = asyncio.get_running_loop()
     print(f"Debug mode: {loop.get_debug()}")
 
-asyncio.run(main())
+with asyncio.Runner(loop_factory=custom_loop_factory) as runner:
+    runner.run(main())
 ```
 
-Custom policies are useful for instrumenting loops with logging, metrics collection, or integrating with third-party frameworks like uvloop for improved performance.
+Custom loop factories are useful for instrumenting loops with logging, metrics collection, or integrating with third-party frameworks like uvloop for improved performance. The older event loop policy APIs are deprecated in Python 3.14 and will be removed in Python 3.16.
 
 ## Running Synchronous Code in Async Context
 
@@ -123,7 +120,7 @@ async def main():
 asyncio.run(main())
 ```
 
-This pattern keeps your event loop responsive while handling CPU-bound or legacy synchronous code.
+This pattern keeps your event loop responsive while handling blocking I/O-bound or legacy synchronous code. For CPU-bound Python work, prefer a `ProcessPoolExecutor` or `InterpreterPoolExecutor` instead of a thread pool.
 
 ## Integrating with Threading
 
@@ -147,14 +144,8 @@ def thread_with_loop(name):
     finally:
         loop.close()
 
-def run_async_from_sync(coro):
-    """Safely run a coroutine from synchronous code"""
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        return asyncio.run(coro)
-
-    # If loop is running, use thread-safe method
+def run_async_from_thread(coro, loop):
+    """Safely run a coroutine on an event loop from another thread"""
     future = asyncio.run_coroutine_threadsafe(coro, loop)
     return future.result(timeout=30)
 
