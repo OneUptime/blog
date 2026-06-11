@@ -31,7 +31,7 @@ go func() {
 }()
 ```
 
-Running this with the race detector (`go run -race`) will immediately flag the problem. Go's runtime will panic if it detects concurrent map writes.
+Running this with the race detector (`go run -race`) can flag the problem when the concurrent accesses overlap. Go's runtime may also panic if it detects concurrent map reads and writes or concurrent map writes.
 
 ---
 
@@ -172,7 +172,7 @@ func (c *RWCache) Get(key string) (interface{}, bool) {
     // Check expiration
     if !item.expiration.IsZero() && time.Now().After(item.expiration) {
         // Note: We can't delete here with RLock
-        // Expired items cleaned up by background goroutine
+        // Expired items can be cleaned up by a background goroutine
         return nil, false
     }
 
@@ -247,7 +247,8 @@ func (c *SyncMapCache) Delete(key string) {
     c.items.Delete(key)
 }
 
-// Len returns the number of items (requires iteration)
+// Len returns the number of items observed during iteration.
+// If other goroutines update the map concurrently, this is not a consistent snapshot.
 func (c *SyncMapCache) Len() int {
     count := 0
     c.items.Range(func(_, _ interface{}) bool {
@@ -400,7 +401,6 @@ package cache
 
 import (
     "context"
-    "sync"
     "time"
 )
 
@@ -413,6 +413,10 @@ type TTLCache struct {
 
 // NewTTLCache creates a sharded cache with background cleanup
 func NewTTLCache(shardCount int, cleanupInterval time.Duration) *TTLCache {
+    if cleanupInterval <= 0 {
+        cleanupInterval = time.Minute
+    }
+
     ctx, cancel := context.WithCancel(context.Background())
 
     cache := &TTLCache{
@@ -493,6 +497,10 @@ type lruItem struct {
 
 // NewLRUCache creates an LRU cache with the specified max items
 func NewLRUCache(maxSize int) *LRUCache {
+    if maxSize <= 0 {
+        maxSize = 1
+    }
+
     return &LRUCache{
         maxSize:  maxSize,
         items:    make(map[string]*list.Element),
@@ -563,7 +571,7 @@ func (c *LRUCache) Len() int {
 | Approach | Best For | Tradeoffs |
 |----------|----------|-----------|
 | **Mutex** | Simple cases, low concurrency | Readers block each other |
-| **RWMutex** | Read-heavy workloads | Write starvation possible |
+| **RWMutex** | Read-heavy workloads | Waiting writers block new readers |
 | **sync.Map** | Write-once, read-many | No size limit, iteration cost |
 | **Sharded** | High throughput, many keys | Memory overhead, complexity |
 | **LRU** | Memory-constrained environments | Overhead per operation |
@@ -575,11 +583,10 @@ func (c *LRUCache) Len() int {
 Always benchmark with your actual workload patterns.
 
 ```go
-package cache_test
+package cache
 
 import (
     "fmt"
-    "sync"
     "testing"
     "time"
 )
