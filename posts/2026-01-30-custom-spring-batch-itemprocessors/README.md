@@ -968,7 +968,8 @@ public Step orderProcessingStep(
         ItemWriter<Order> writer) {
 
     return new StepBuilder("orderProcessingStep", jobRepository)
-        .<OrderCsvRecord, Order>chunk(100, transactionManager)
+        .<OrderCsvRecord, Order>chunk(100)
+        .transactionManager(transactionManager)
         .reader(reader)
         .processor(processor)
         .writer(writer)
@@ -1035,7 +1036,7 @@ Follow these guidelines when building processors for production systems:
 
 2. **Make processors stateless**: Avoid storing state between process() calls. Use step scope for configuration that varies per job run.
 
-3. **Handle null inputs gracefully**: Check for null before processing, especially when items come from external sources.
+3. **Validate nullable fields explicitly**: Spring Batch does not pass a null item to `process()`, but fields inside items from external sources may still be null.
 
 4. **Log at appropriate levels**: Use DEBUG for successful processing, WARN for filtered items, ERROR for exceptions.
 
