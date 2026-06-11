@@ -55,8 +55,8 @@ First, initialize your project and install ESLint:
 
 npm init -y
 
-# Install ESLint as a dev dependency
-npm install eslint --save-dev
+# Install ESLint 9 and its JavaScript config package as dev dependencies
+npm install eslint@^9 @eslint/js@^9 --save-dev
 
 # Initialize ESLint configuration
 npx eslint --init
@@ -94,8 +94,8 @@ export default [
     rules: {
       'no-unused-vars': 'warn',
       'no-console': 'off',
-      'semi': ['error', 'always'],
-      'quotes': ['error', 'single'],
+      'eqeqeq': ['error', 'always'],
+      'curly': ['error', 'all'],
     },
   },
 ];
@@ -129,18 +129,19 @@ export default [
       'no-debugger': 'error',
 
       // Rule with options - array format
-      'indent': ['error', 2],
+      'complexity': ['warn', 10],
 
       // Rule with multiple options
-      'quotes': ['error', 'single', { 'avoidEscape': true }],
+      'no-restricted-syntax': ['error', {
+        selector: 'WithStatement',
+        message: 'with statements are not allowed.',
+      }],
 
       // Rule with object options
-      'max-len': ['warn', {
-        code: 100,
-        tabWidth: 2,
-        ignoreUrls: true,
-        ignoreStrings: true,
-        ignoreTemplateLiterals: true,
+      'no-unused-vars': ['warn', {
+        argsIgnorePattern: '^_',
+        varsIgnorePattern: '^_',
+        caughtErrorsIgnorePattern: '^_',
       }],
     },
   },
@@ -161,7 +162,7 @@ export default [
       'no-debugger': 'error',
       'no-duplicate-case': 'error',
       'no-empty': 'error',
-      'no-extra-semi': 'error',
+      'no-async-promise-executor': 'error',
       'valid-typeof': 'error',
 
       // Best Practices
@@ -170,7 +171,7 @@ export default [
       'eqeqeq': ['error', 'always'],
       'no-eval': 'error',
       'no-implied-eval': 'error',
-      'no-return-await': 'error',
+      'no-promise-executor-return': 'error',
       'require-await': 'error',
 
       // Variables
@@ -181,13 +182,12 @@ export default [
       }],
       'no-use-before-define': 'error',
 
-      // Stylistic Issues
-      'brace-style': ['error', '1tbs'],
+      // Modern JavaScript
       'camelcase': 'error',
-      'comma-dangle': ['error', 'always-multiline'],
-      'indent': ['error', 2],
-      'quotes': ['error', 'single'],
-      'semi': ['error', 'always'],
+      'no-var': 'error',
+      'object-shorthand': 'error',
+      'prefer-const': 'error',
+      'prefer-template': 'error',
     },
   },
 ];
@@ -229,7 +229,9 @@ Let us add some common plugins:
 ```bash
 # Install popular plugins
 npm install --save-dev \
-  @eslint/js \
+  eslint@^9 \
+  @eslint/js@^9 \
+  typescript \
   typescript-eslint \
   eslint-plugin-import \
   eslint-plugin-react \
@@ -240,13 +242,14 @@ Configure them in your ESLint config:
 
 ```javascript
 // eslint.config.js
+import { defineConfig } from 'eslint/config';
 import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
 import importPlugin from 'eslint-plugin-import';
 import react from 'eslint-plugin-react';
 import reactHooks from 'eslint-plugin-react-hooks';
 
-export default tseslint.config(
+export default defineConfig([
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
@@ -292,7 +295,7 @@ export default tseslint.config(
       'import/no-duplicates': 'error',
 
       // React rules
-      'react/jsx-uses-react': 'error',
+      'react/jsx-key': 'error',
       'react/jsx-uses-vars': 'error',
       'react/prop-types': 'off',
 
@@ -301,7 +304,7 @@ export default tseslint.config(
       'react-hooks/exhaustive-deps': 'warn',
     },
   },
-);
+]);
 ```
 
 ## Creating Shared Configurations
@@ -342,6 +345,7 @@ Create a new package for your shared ESLint config:
 mkdir eslint-config-mycompany
 cd eslint-config-mycompany
 npm init -y
+npm install --save-dev eslint@^9 @eslint/js@^9 typescript typescript-eslint eslint-plugin-react eslint-plugin-react-hooks eslint-plugin-n
 ```
 
 Create the configuration files:
@@ -349,22 +353,27 @@ Create the configuration files:
 ```javascript
 // eslint-config-mycompany/index.js
 import js from '@eslint/js';
+import tseslint from 'typescript-eslint';
+import react from 'eslint-plugin-react';
+import reactHooks from 'eslint-plugin-react-hooks';
+import n from 'eslint-plugin-n';
 
 export const baseConfig = {
   ...js.configs.recommended,
   rules: {
+    ...js.configs.recommended.rules,
     'no-console': 'warn',
     'no-debugger': 'error',
     'eqeqeq': ['error', 'always'],
     'curly': ['error', 'all'],
-    'semi': ['error', 'always'],
-    'quotes': ['error', 'single'],
-    'indent': ['error', 2],
-    'comma-dangle': ['error', 'always-multiline'],
+    'no-var': 'error',
+    'prefer-const': 'error',
   },
 };
 
 export const typescriptConfig = {
+  files: ['**/*.{ts,tsx}'],
+  extends: [tseslint.configs.recommended],
   rules: {
     '@typescript-eslint/explicit-function-return-type': 'warn',
     '@typescript-eslint/no-explicit-any': 'error',
@@ -373,6 +382,19 @@ export const typescriptConfig = {
 };
 
 export const reactConfig = {
+  files: ['**/*.{jsx,tsx}'],
+  extends: [
+    react.configs.flat.recommended,
+    react.configs.flat['jsx-runtime'],
+  ],
+  plugins: {
+    'react-hooks': reactHooks,
+  },
+  settings: {
+    react: {
+      version: 'detect',
+    },
+  },
   rules: {
     'react/jsx-no-target-blank': 'error',
     'react/jsx-key': 'error',
@@ -382,9 +404,12 @@ export const reactConfig = {
 };
 
 export const nodeConfig = {
+  plugins: {
+    n,
+  },
   rules: {
-    'no-process-exit': 'error',
-    'handle-callback-err': 'error',
+    'n/no-process-exit': 'error',
+    'n/handle-callback-err': 'error',
   },
 };
 
@@ -402,9 +427,10 @@ In your projects, install and extend the shared config:
 
 ```javascript
 // eslint.config.js in your project
+import { defineConfig } from 'eslint/config';
 import { baseConfig, typescriptConfig, reactConfig } from 'eslint-config-mycompany';
 
-export default [
+export default defineConfig([
   baseConfig,
   typescriptConfig,
   reactConfig,
@@ -414,7 +440,7 @@ export default [
       'no-console': 'off', // Allow console in this project
     },
   },
-];
+]);
 ```
 
 ## IDE Integration
@@ -425,7 +451,7 @@ Integrating ESLint with your IDE provides real-time feedback as you write code.
 
 Install the ESLint extension and configure VS Code:
 
-```json
+```jsonc
 // .vscode/settings.json
 {
   "editor.formatOnSave": true,
@@ -644,7 +670,7 @@ export default [
     // Config files can use require
     files: ['*.config.js', '*.config.ts'],
     rules: {
-      '@typescript-eslint/no-var-requires': 'off',
+      '@typescript-eslint/no-require-imports': 'off',
     },
   },
 ];
@@ -681,11 +707,10 @@ npm install --save-dev prettier eslint-config-prettier
 ```javascript
 // eslint.config.js
 import js from '@eslint/js';
-import prettier from 'eslint-config-prettier';
+import prettier from 'eslint-config-prettier/flat';
 
 export default [
   js.configs.recommended,
-  prettier, // Must be last to override other formatting rules
   {
     rules: {
       // Your rules here - avoid formatting rules
@@ -693,13 +718,13 @@ export default [
       'eqeqeq': 'error',
     },
   },
+  prettier, // Must be last to override other formatting rules
 ];
 ```
 
 Create a Prettier configuration:
 
 ```json
-// .prettierrc
 {
   "semi": true,
   "singleQuote": true,
