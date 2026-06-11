@@ -207,13 +207,14 @@ auto-aof-rewrite-percentage 0
 The fork() system call creates a copy-on-write child process. During heavy writes, memory usage can spike. Configure these safeguards:
 
 ```conf
-# Don't rewrite if saving RDB would fail
+# Skip fsync from the main thread while a child rewrite is running
+# (reduces latency at the cost of up to ~30s of data on a crash)
 no-appendfsync-on-rewrite yes
 
-# Stop accepting writes if AOF rewrite fails
+# Tolerate a truncated trailing command when loading the AOF at startup
 aof-load-truncated yes
 
-# Use incremental fsync during rewrite (Redis 7+)
+# Fsync in 32MB chunks during rewrite to avoid large I/O stalls
 aof-rewrite-incremental-fsync yes
 ```
 
@@ -338,10 +339,10 @@ The manifest file tracks which base and incremental files are active. During rew
 Configuration for Redis 7+:
 
 ```conf
-# Use RDB preamble for faster loading (default in Redis 7)
+# Use RDB preamble for faster loading (default since Redis 5)
 aof-use-rdb-preamble yes
 
-# Timestamp annotations for point-in-time recovery
+# Timestamp annotations for point-in-time recovery (Redis 7+)
 aof-timestamp-enabled yes
 ```
 
