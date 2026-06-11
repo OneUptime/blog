@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Loki, Observability, Caching, Performance
 
-Description: Configure Loki index caching to accelerate log queries with in-memory and external cache backends.
+Description: Configure Loki index caching to accelerate log queries with local index-file caching and cache backends.
 
 ---
 
-Loki stores logs in object storage but queries them by scanning index files that map labels to chunk locations. Without caching, every query hits storage, making repeated or overlapping queries expensive. An index cache keeps recently accessed index entries in memory or an external store, cutting query latency from seconds to milliseconds.
+Loki stores logs in object storage but queries them by scanning index files that map labels to chunk locations. Without caching, every query hits storage, making repeated or overlapping queries expensive. With TSDB, Loki keeps downloaded index files in a local cache directory. Legacy BoltDB index lookup caching can also use in-memory or external cache backends.
 
 ## Why Index Caching Matters
 
@@ -19,7 +19,7 @@ When you run a LogQL query, Loki:
 3. Fetches chunk references
 4. Downloads and decompresses chunks
 
-Steps 2 and 3 are the bottleneck for large tenants. Index files live in object storage (S3, GCS, MinIO), and each lookup incurs network latency. A cache eliminates repeated trips for the same index ranges.
+Steps 2 and 3 are the bottleneck for large tenants. Index files live in object storage (S3, GCS, MinIO), and each lookup can incur network latency. A local index-file cache reduces repeated trips for the same index ranges.
 
 ## Index Lookup Flow
 
@@ -46,7 +46,7 @@ sequenceDiagram
 
 ## Cache Backend Options
 
-Loki supports three cache backends for index data:
+For current TSDB deployments, Loki's index cache is the local shipper cache configured with `cache_location` and `cache_ttl`. The older index lookup cache is primarily for legacy BoltDB index storage and supports three cache backends:
 
 | Backend | Latency | Capacity | Complexity | Best For |
 | --- | --- | --- | --- | --- |
@@ -54,14 +54,14 @@ Loki supports three cache backends for index data:
 | **Memcached** | ~1ms network | Scales horizontally | Moderate | Production clusters, shared cache |
 | **Redis** | ~1ms network | Scales with clustering | Moderate | Teams already running Redis |
 
-## In-Memory Cache Configuration
+## TSDB Index Cache Configuration
 
-The simplest option runs inside each querier pod. No external dependencies, but cache is lost on restart and not shared across pods.
+The simplest option uses a local cache directory inside each querier or read pod. No external dependency is required, but the cache is lost on restart unless the directory is backed by persistent storage and it is not shared across pods unless you use the index gateway.
 
 ```yaml
 # loki-config.yaml
 
-# In-memory cache for index queries
+# Local TSDB index-file cache
 # Suitable for development or single-node deployments
 
 storage_config:
@@ -69,7 +69,8 @@ storage_config:
   tsdb_shipper:
     active_index_directory: /loki/index
     cache_location: /loki/index_cache
-    shared_store: s3
+    # Downloaded index files are removed from the cache after this TTL
+    cache_ttl: 24h
 
 query_range:
   # Enable result caching for repeated queries
@@ -91,29 +92,28 @@ chunk_store_config:
       max_size_mb: 1024
       ttl: 1h
 
-# Index cache for label lookups
-index_queries_cache_config:
-  embedded_cache:
-    enabled: true
-    max_size_mb: 256
-    ttl: 24h
+# Legacy BoltDB index lookup cache only. TSDB uses the local index file cache above.
+# index_queries_cache_config:
+#   embedded_cache:
+#     enabled: true
+#     max_size_mb: 256
 ```
 
 ### Memory Sizing Guidelines
 
-- **Small clusters (under 100 GB/day):** 256 MB for index cache, 512 MB for chunk cache
-- **Medium clusters (100 GB to 1 TB/day):** 512 MB index, 2 GB chunk
-- **Large clusters (over 1 TB/day):** Use external cache (Memcached/Redis)
+- **Small clusters (under 100 GB/day):** persistent disk for `/loki/index_cache`, 512 MB for chunk cache
+- **Medium clusters (100 GB to 1 TB/day):** larger persistent disk for `/loki/index_cache`, 2 GB chunk cache
+- **Large clusters (over 1 TB/day):** Use persistent index cache storage or an index gateway, plus external chunk/results caches
 
 ## Memcached Configuration
 
-For production deployments, Memcached provides a shared cache layer that survives pod restarts and scales independently.
+For production deployments, Memcached provides a shared cache layer for chunk and results caching. The legacy BoltDB index lookup cache can also use Memcached, but TSDB index files are cached on local disk or served through the index gateway.
 
 ### Deploy Memcached
 
 ```yaml
 # memcached-deployment.yaml
-# Dedicated Memcached cluster for Loki index caching
+# Dedicated Memcached cluster for Loki's legacy BoltDB index lookup cache
 
 apiVersion: apps/v1
 kind: StatefulSet
@@ -177,8 +177,7 @@ storage_config:
   tsdb_shipper:
     active_index_directory: /loki/index
     cache_location: /loki/index_cache
-    shared_store: s3
-    # How often to sync index to object storage
+    # How long downloaded index files stay in the local cache
     cache_ttl: 24h
 
     # Index gateway caching
@@ -186,7 +185,11 @@ storage_config:
       server_address: loki-index-gateway:9095
 
 # Memcached for index queries
+# Legacy BoltDB index lookup cache only. Omit this for TSDB.
 index_queries_cache_config:
+  memcached:
+    batch_size: 256
+    parallelism: 10
   memcached_client:
     # Memcached service addresses
     addresses: dns+loki-memcached-index.loki.svc.cluster.local:11211
@@ -221,12 +224,13 @@ query_range:
 
 ## Redis Configuration
 
-If your infrastructure already runs Redis, use it instead of adding Memcached.
+If your infrastructure already runs Redis, use it for the legacy BoltDB index lookup cache or for chunk caching instead of adding Memcached.
 
 ```yaml
 # loki-config.yaml
 # Redis backend for index caching
 
+# Legacy BoltDB index lookup cache only. Omit this for TSDB.
 index_queries_cache_config:
   redis:
     # Redis endpoint
@@ -317,7 +321,7 @@ Delay traffic until cache is partially warm.
 spec:
   containers:
     - name: querier
-      image: grafana/loki:2.9.0
+      image: grafana/loki:3.7.2
       # Custom entrypoint that warms cache before starting
       command:
         - /bin/sh
@@ -367,7 +371,7 @@ flowchart TB
 
     subgraph "Cache Layer"
         RC[Results Cache<br/>Memcached]
-        IC[Index Cache<br/>Memcached]
+        IC[TSDB Index Cache<br/>Local disk or PV]
         CC[Chunk Cache<br/>Memcached]
     end
 
@@ -393,7 +397,9 @@ flowchart TB
     Q2 --> CC
     Q3 --> CC
 
-    IC --> IG
+    Q1 --> IG
+    Q2 --> IG
+    Q3 --> IG
     IG --> S3
     CC --> S3
 ```
@@ -408,13 +414,15 @@ Allocate generous cache sizes when query latency is critical.
 # High-performance configuration
 # Use when: Dashboard refresh times matter, users run ad-hoc queries frequently
 
+# Legacy BoltDB index lookup cache only. TSDB uses the local index file cache.
 index_queries_cache_config:
-  memcached_client:
-    addresses: dns+loki-memcached-index:11211
+  memcached:
     # Larger batch sizes reduce round trips
     batch_size: 4096
     # More parallel requests
     parallelism: 100
+  memcached_client:
+    addresses: dns+loki-memcached-index:11211
 
 # Deploy Memcached with more memory
 # 3 replicas x 4GB = 12GB total cache capacity
@@ -438,13 +446,12 @@ Minimize cache footprint when cost matters more than speed.
 # Cost-optimized configuration
 # Use when: Batch processing, async alerting, budget constraints
 
+# Legacy BoltDB index lookup cache only. TSDB uses the local index file cache.
 index_queries_cache_config:
   embedded_cache:
     enabled: true
     # Smaller cache, faster eviction
     max_size_mb: 128
-    # Shorter TTL forces refresh
-    ttl: 30m
 
 chunk_store_config:
   chunk_cache_config:
@@ -466,22 +473,22 @@ chunk_store_config:
 
 ### Sizing Formula
 
-Estimate cache size based on active index and query patterns:
+Estimate cache size from observed index cache usage and query patterns:
 
 ```text
-Index Cache Size = (Active Series Count) x (Avg Labels per Series) x 200 bytes x 2
-Chunk Cache Size = (Queries per Second) x (Avg Chunks per Query) x (Avg Chunk Size) x (TTL in seconds)
+TSDB Index Cache Disk = observed /loki/index_cache size for the query lookback window x growth headroom
+Chunk Cache Size = unique chunks expected to be reused during the TTL x average compressed chunk size
 ```
 
 **Example calculation:**
 
-- 500,000 active series
-- 8 labels per series average
-- 10 QPS, 50 chunks per query, 256 KB chunks, 1 hour TTL
+- `/loki/index_cache` uses 20 GB after a representative 24-hour query workload
+- 50% growth headroom
+- 10,000 reusable chunks, 256 KB average compressed chunk size
 
 ```text
-Index Cache = 500,000 x 8 x 200 x 2 = 1.6 GB
-Chunk Cache = 10 x 50 x 256 KB x 3600 = 460 GB (use external cache or reduce TTL)
+TSDB Index Cache Disk = 20 GB x 1.5 = 30 GB
+Chunk Cache = 10,000 x 256 KB = 2.56 GB
 ```
 
 ## Monitoring Cache Performance
@@ -499,9 +506,9 @@ groups:
       - alert: LokiIndexCacheHitRateLow
         expr: |
           (
-            sum(rate(loki_cache_hits_total{cache="index"}[5m]))
+            sum(rate(loki_cache_hits{name="store.index-cache-read"}[5m]))
             /
-            sum(rate(loki_cache_fetched_keys_total{cache="index"}[5m]))
+            sum(rate(loki_cache_fetched_keys{name="store.index-cache-read"}[5m]))
           ) < 0.8
         for: 15m
         labels:
@@ -513,7 +520,7 @@ groups:
       # Alert when chunk cache is overwhelmed
       - alert: LokiChunkCacheEvictionHigh
         expr: |
-          rate(loki_cache_evicted_total{cache="chunk"}[5m]) > 1000
+          sum(rate(loki_embeddedcache_evicted_total{cache="store.chunks-cache"}[5m])) > 1000
         for: 10m
         labels:
           severity: warning
@@ -526,10 +533,9 @@ groups:
 
 | Metric | Target | Action if Missed |
 | --- | --- | --- |
-| `loki_cache_hits_total / loki_cache_fetched_keys_total` | > 0.8 | Increase cache size or TTL |
-| `loki_cache_evicted_total` | < 100/s | Increase cache memory |
+| `loki_cache_hits / loki_cache_fetched_keys` | > 0.8 | Increase cache size or TTL |
+| `loki_embeddedcache_evicted_total` | < 100/s | Increase embedded cache memory |
 | `loki_memcache_request_duration_seconds` | < 10ms p99 | Check network, add replicas |
-| `loki_cache_stale_gets_total` | < 1% of gets | Reduce TTL or enable background refresh |
 
 ## Complete Production Configuration
 
@@ -567,7 +573,6 @@ storage_config:
   tsdb_shipper:
     active_index_directory: /loki/index
     cache_location: /loki/index_cache
-    shared_store: s3
     cache_ttl: 24h
 
 # Three-tier caching strategy
@@ -583,17 +588,10 @@ query_range:
         max_idle_conns: 50
         consistent_hash: true
 
-# Tier 2: Index cache - caches label to chunk mappings
-index_queries_cache_config:
-  memcached_client:
-    addresses: dns+loki-memcached-index.loki.svc.cluster.local:11211
-    timeout: 500ms
-    max_idle_conns: 100
-    batch_size: 4096
-    parallelism: 100
-    consistent_hash: true
+# Tier 2: TSDB index file cache - stores downloaded index files locally at /loki/index_cache.
+# Use persistent storage for this directory or configure an index gateway in distributed deployments.
 
-# Tier 3: Chunk cache - caches decompressed log chunks
+# Tier 3: Chunk cache - caches fetched log chunks
 chunk_store_config:
   chunk_cache_config:
     memcached_client:
@@ -601,10 +599,6 @@ chunk_store_config:
       timeout: 500ms
       max_idle_conns: 100
       consistent_hash: true
-  write_dedupe_cache_config:
-    memcached_client:
-      addresses: dns+loki-memcached-chunks.loki.svc.cluster.local:11211
-      timeout: 500ms
 
 limits_config:
   # Per-tenant limits
@@ -624,7 +618,7 @@ frontend:
 
 1. Check TTL settings - if logs are queried hours after ingestion, TTL might expire entries too soon
 2. Verify Memcached memory - run `echo stats | nc memcached-host 11211` and check `evictions`
-3. Ensure consistent hashing is enabled to prevent cache key collisions
+3. Ensure consistent hashing is enabled so keys remain stable when clients discover multiple Memcached servers
 
 ### High Latency Despite Caching
 
@@ -638,4 +632,4 @@ frontend:
 2. Parallelize warmup across multiple label sets
 3. Use index gateway to centralize and share index cache
 
-Index caching transforms Loki from "eventually consistent logs" to "interactive log exploration." Start with embedded caches during development, graduate to Memcached for production, and monitor hit rates religiously. The difference between a 5-second query and a 50-millisecond query is often just a few gigabytes of well-placed cache memory.
+Index caching transforms Loki from "eventually consistent logs" to "interactive log exploration." Start with the TSDB local index cache and embedded chunk/results caches during development, graduate chunk and results caching to Memcached for production, and monitor hit rates religiously. The difference between a 5-second query and a 50-millisecond query is often just a few gigabytes of well-placed cache memory or disk.
