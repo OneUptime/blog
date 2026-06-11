@@ -566,8 +566,8 @@ SELECT '123'::INTEGER;
 -- SQL-standard cast
 SELECT CAST('123' AS INTEGER);
 
--- Function-style cast
-SELECT INTEGER('123');
+-- Function-style cast (only works for type names that are not reserved SQL keywords)
+SELECT int4('123');
 ```
 
 ### Creating Custom Cast Functions
