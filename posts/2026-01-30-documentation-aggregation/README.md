@@ -101,6 +101,12 @@ The GitHub connector pulls markdown files from repositories. It can watch for ch
 ```typescript
 import { Octokit } from '@octokit/rest';
 
+type GitHubContentFile = {
+  name: string;
+  path: string;
+  type?: string;
+};
+
 class GitHubConnector implements SourceConnector {
   name = 'github';
   private octokit: Octokit;
@@ -115,13 +121,12 @@ class GitHubConnector implements SourceConnector {
     const documents: AggregatedDocument[] = [];
 
     for (const { owner, repo, path, branch } of this.repos) {
-      const files = await this.fetchDirectory(owner, repo, path, branch);
+      const files = await this.fetchMarkdownFiles(owner, repo, path, branch);
 
       for (const file of files) {
-        if (!file.name.endsWith('.md')) continue;
-
         const content = await this.fetchFileContent(owner, repo, file.path, branch);
         const parsed = this.parseMarkdown(content);
+        const commitInfo = await this.getFileCommitInfo(owner, repo, file.path);
 
         documents.push({
           id: `github:${owner}/${repo}:${file.path}`,
@@ -131,12 +136,12 @@ class GitHubConnector implements SourceConnector {
           content: parsed.body,
           contentType: 'markdown',
           metadata: {
-            authors: await this.getFileAuthors(owner, repo, file.path),
-            lastModified: new Date(file.sha), // Use commit date in production
+            authors: commitInfo.authors,
+            lastModified: commitInfo.lastModified,
             tags: parsed.frontmatter.tags || [],
           },
           navigation: {
-            parent: this.extractParent(file.path),
+            parent: this.extractParentId(owner, repo, file.path),
             order: parsed.frontmatter.order || 999,
             slug: this.pathToSlug(file.path),
           },
@@ -147,14 +152,31 @@ class GitHubConnector implements SourceConnector {
     return documents;
   }
 
-  private async fetchDirectory(owner: string, repo: string, path: string, branch: string) {
+  private async fetchMarkdownFiles(
+    owner: string,
+    repo: string,
+    path: string,
+    branch: string
+  ): Promise<GitHubContentFile[]> {
     const { data } = await this.octokit.repos.getContent({
       owner,
       repo,
       path,
       ref: branch,
     });
-    return Array.isArray(data) ? data : [data];
+    if (!Array.isArray(data)) {
+      return data.name.endsWith('.md') ? [data] : [];
+    }
+
+    const files: GitHubContentFile[] = [];
+    for (const item of data) {
+      if (item.type === 'dir') {
+        files.push(...await this.fetchMarkdownFiles(owner, repo, item.path, branch));
+      } else if (item.type === 'file' && item.name.endsWith('.md')) {
+        files.push(item);
+      }
+    }
+    return files;
   }
 
   private async fetchFileContent(owner: string, repo: string, path: string, branch: string) {
@@ -165,7 +187,7 @@ class GitHubConnector implements SourceConnector {
       ref: branch,
     });
 
-    if ('content' in data) {
+    if (!Array.isArray(data) && 'content' in data && data.content) {
       return Buffer.from(data.content, 'base64').toString('utf-8');
     }
     throw new Error('Not a file');
@@ -197,13 +219,20 @@ class GitHubConnector implements SourceConnector {
     for (const line of raw.split('\n')) {
       const [key, ...valueParts] = line.split(':');
       if (key && valueParts.length) {
-        result[key.trim()] = valueParts.join(':').trim();
+        const trimmedKey = key.trim();
+        const value = valueParts.join(':').trim();
+        result[trimmedKey] = trimmedKey === 'tags'
+          ? value.split(',').map(tag => tag.trim()).filter(Boolean)
+          : value;
       }
     }
     return result;
   }
 
-  private async getFileAuthors(owner: string, repo: string, path: string): Promise<string[]> {
+  private async getFileCommitInfo(owner: string, repo: string, path: string): Promise<{
+    authors: string[];
+    lastModified: Date;
+  }> {
     const { data } = await this.octokit.repos.listCommits({
       owner,
       repo,
@@ -211,12 +240,20 @@ class GitHubConnector implements SourceConnector {
       per_page: 10,
     });
     const authors = new Set(data.map(c => c.commit.author?.name).filter(Boolean));
-    return Array.from(authors) as string[];
+    const lastCommit = data[0]?.commit.author?.date || data[0]?.commit.committer?.date;
+
+    return {
+      authors: Array.from(authors) as string[],
+      lastModified: lastCommit ? new Date(lastCommit) : new Date(),
+    };
   }
 
-  private extractParent(path: string): string | undefined {
+  private extractParentId(owner: string, repo: string, path: string): string | undefined {
     const parts = path.split('/');
-    return parts.length > 1 ? parts.slice(0, -1).join('/') : undefined;
+    if (parts.length <= 1) return undefined;
+
+    const parentPath = `${parts.slice(0, -1).join('/')}/index.md`;
+    return `github:${owner}/${repo}:${parentPath}`;
   }
 
   private pathToSlug(path: string): string {
@@ -261,6 +298,8 @@ class ConfluenceConnector implements SourceConnector {
       for (const page of pages) {
         const fullPage = await this.fetchPage(page.id);
         const markdown = this.turndown.turndown(fullPage.body.storage.value);
+        const ancestors = page.ancestors || [];
+        const parent = ancestors.length > 0 ? ancestors[ancestors.length - 1] : undefined;
 
         documents.push({
           id: `confluence:${spaceKey}:${page.id}`,
@@ -275,7 +314,7 @@ class ConfluenceConnector implements SourceConnector {
             tags: fullPage.metadata?.labels?.results?.map((l: any) => l.name) || [],
           },
           navigation: {
-            parent: page.ancestors?.[0]?.id ? `confluence:${spaceKey}:${page.ancestors[0].id}` : undefined,
+            parent: parent?.id ? `confluence:${spaceKey}:${parent.id}` : undefined,
             order: page.position || 999,
             slug: this.titleToSlug(page.title),
           },
@@ -329,7 +368,7 @@ API reference documentation often lives in OpenAPI specs. This connector convert
 
 ````typescript
 import SwaggerParser from '@apidevtools/swagger-parser';
-import { OpenAPI } from 'openapi-types';
+import { OpenAPIV3 } from 'openapi-types';
 
 class OpenAPIConnector implements SourceConnector {
   name = 'openapi';
@@ -343,7 +382,7 @@ class OpenAPIConnector implements SourceConnector {
     const documents: AggregatedDocument[] = [];
 
     for (const { name, url, version } of this.specs) {
-      const spec = await SwaggerParser.dereference(url) as OpenAPI.Document;
+      const spec = await SwaggerParser.dereference(url) as OpenAPIV3.Document;
 
       // Create overview document
       documents.push({
@@ -356,7 +395,7 @@ class OpenAPIConnector implements SourceConnector {
         metadata: {
           authors: spec.info.contact?.name ? [spec.info.contact.name] : [],
           lastModified: new Date(),
-          version: spec.info.version,
+          version: version || spec.info.version,
           tags: ['api', 'reference'],
         },
         navigation: {
@@ -369,8 +408,8 @@ class OpenAPIConnector implements SourceConnector {
       if ('paths' in spec && spec.paths) {
         for (const [path, methods] of Object.entries(spec.paths)) {
           for (const [method, operation] of Object.entries(methods || {})) {
-            if (['get', 'post', 'put', 'patch', 'delete'].includes(method)) {
-              const op = operation as OpenAPI.Operation;
+            if (['get', 'post', 'put', 'patch', 'delete', 'options', 'head', 'trace'].includes(method)) {
+              const op = operation as OpenAPIV3.OperationObject;
               documents.push({
                 id: `openapi:${name}:${method}:${path}`,
                 source: 'openapi',
@@ -381,7 +420,7 @@ class OpenAPIConnector implements SourceConnector {
                 metadata: {
                   authors: [],
                   lastModified: new Date(),
-                  version: spec.info.version,
+                  version: version || spec.info.version,
                   tags: op.tags || ['api'],
                 },
                 navigation: {
@@ -399,7 +438,7 @@ class OpenAPIConnector implements SourceConnector {
     return documents;
   }
 
-  private generateOverview(spec: OpenAPI.Document): string {
+  private generateOverview(spec: OpenAPIV3.Document): string {
     return `# ${spec.info.title}
 
 ${spec.info.description || ''}
@@ -418,7 +457,7 @@ ${this.describeAuth(spec)}
 `;
   }
 
-  private generateEndpointDoc(method: string, path: string, op: OpenAPI.Operation): string {
+  private generateEndpointDoc(method: string, path: string, op: OpenAPIV3.OperationObject): string {
     return `# ${op.summary || `${method.toUpperCase()} ${path}`}
 
 ${op.description || ''}
@@ -439,12 +478,12 @@ ${this.describeResponses(op)}
 `;
   }
 
-  private describeAuth(spec: OpenAPI.Document): string {
+  private describeAuth(spec: OpenAPIV3.Document): string {
     // Simplified - expand based on securitySchemes
     return 'See the authentication section for details on API keys and tokens.';
   }
 
-  private describeParameters(op: OpenAPI.Operation): string {
+  private describeParameters(op: OpenAPIV3.OperationObject): string {
     if (!op.parameters?.length) return '';
 
     let md = '### Parameters\n\n| Name | In | Type | Required | Description |\n|------|-----|------|----------|-------------|\n';
@@ -456,12 +495,12 @@ ${this.describeResponses(op)}
     return md;
   }
 
-  private describeRequestBody(op: OpenAPI.Operation): string {
+  private describeRequestBody(op: OpenAPIV3.OperationObject): string {
     if (!('requestBody' in op) || !op.requestBody) return '';
     return '### Request Body\n\nSee schema in the full specification.';
   }
 
-  private describeResponses(op: OpenAPI.Operation): string {
+  private describeResponses(op: OpenAPIV3.OperationObject): string {
     if (!op.responses) return '';
 
     let md = '';
@@ -472,7 +511,7 @@ ${this.describeResponses(op)}
   }
 
   private getOperationOrder(method: string): number {
-    const order: Record<string, number> = { get: 1, post: 2, put: 3, patch: 4, delete: 5 };
+    const order: Record<string, number> = { get: 1, post: 2, put: 3, patch: 4, delete: 5, options: 6, head: 7, trace: 8 };
     return order[method] || 99;
   }
 }
@@ -554,6 +593,9 @@ class SearchIndexer {
       source: doc.source,
       sourcePath: doc.sourcePath,
       slug: doc.navigation.slug,
+      navigation: {
+        order: doc.navigation.order,
+      },
       metadata: {
         tags: doc.metadata.tags,
         version: doc.metadata.version,
@@ -581,6 +623,7 @@ class SearchIndexer {
       highlightPostTag: '</mark>',
       attributesToCrop: ['content'],
       cropLength: 200,
+      showRankingScore: true,
     });
 
     return {
@@ -590,11 +633,15 @@ class SearchIndexer {
         snippet: hit._formatted?.content || hit.content,
         source: hit.source as string,
         slug: hit.slug as string,
-        score: hit._score,
+        score: hit._rankingScore,
       })),
       total: result.estimatedTotalHits || 0,
       query,
     };
+  }
+
+  async deleteDocument(id: string) {
+    await this.index.deleteDocument(id);
   }
 
   private stripMarkdown(content: string): string {
@@ -657,6 +704,11 @@ class VersionManager {
     if (isLatest) {
       this.latestVersion = version;
     }
+  }
+
+  clear() {
+    this.versions.clear();
+    this.latestVersion = null;
   }
 
   addDocument(version: string, document: AggregatedDocument) {
@@ -903,7 +955,7 @@ class DocumentationAggregator {
   private indexer: SearchIndexer;
   private versionManager: VersionManager;
   private navBuilder: NavigationBuilder;
-  private documents: AggregatedDocument[] = [];
+  protected documents: AggregatedDocument[] = [];
 
   constructor(
     connectors: SourceConnector[],
@@ -942,8 +994,24 @@ class DocumentationAggregator {
     console.log(`Indexed ${this.documents.length} documents`);
 
     // Register versions and assign documents
+    this.versionManager.clear();
     const versionedDocs = this.documents.filter(d => d.metadata.version);
-    const unversionedDocs = this.documents.filter(d => !d.metadata.version);
+    const versions = new Map<string, Date>();
+
+    for (const doc of versionedDocs) {
+      const version = doc.metadata.version!;
+      const existingDate = versions.get(version);
+      if (!existingDate || doc.metadata.lastModified > existingDate) {
+        versions.set(version, doc.metadata.lastModified);
+      }
+    }
+
+    const sortedVersions = Array.from(versions.entries())
+      .sort(([, dateA], [, dateB]) => dateB.getTime() - dateA.getTime());
+
+    for (const [index, [version, releaseDate]] of sortedVersions.entries()) {
+      this.versionManager.registerVersion(version, releaseDate, index === 0);
+    }
 
     for (const doc of versionedDocs) {
       this.versionManager.addDocument(doc.metadata.version!, doc);
@@ -1247,7 +1315,8 @@ class InstrumentedAggregator extends DocumentationAggregator {
 
       return result;
     } catch (error) {
-      metrics.syncErrors.labels('all', error.name).inc();
+      const errorType = error instanceof Error ? error.name : 'unknown';
+      metrics.syncErrors.labels('all', errorType).inc();
       throw error;
     }
   }
