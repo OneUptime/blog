@@ -8,9 +8,9 @@ Description: Learn to build data aggregation at the edge for combining and summa
 
 ---
 
-Edge computing has fundamentally changed how we process data. Instead of sending every raw sensor reading, log entry, or metric to a central server, smart edge nodes can aggregate, summarize, and compress data locally. This reduces bandwidth consumption by 80-95%, cuts latency, and improves reliability in unreliable network conditions.
+Edge computing has fundamentally changed how we process data. Instead of sending every raw sensor reading, log entry, or metric to a central server, smart edge nodes can aggregate, summarize, and compress data locally. In high-volume telemetry workloads, this can reduce bandwidth consumption by 80-95%, cut latency, and improve reliability in unreliable network conditions.
 
-This guide walks you through building a production-ready data aggregation layer at the edge, covering aggregation windows, rollup strategies, storage optimization, and practical implementations.
+This guide walks you through building a practical data aggregation layer at the edge, covering aggregation windows, rollup strategies, storage optimization, and implementation patterns.
 
 ---
 
@@ -147,7 +147,7 @@ class RunningStats {
 
   /**
    * Add a new value to the running statistics.
-   * Time complexity: O(1) for stats, O(n) for percentiles
+   * Time complexity: O(1) for stats, O(1) to store percentile samples.
    */
   addValue(value: number): void {
     this.count++;
@@ -164,6 +164,38 @@ class RunningStats {
     // Store for percentile calculation
     // Consider using t-digest or DDSketch for memory efficiency
     this.values.push(value);
+  }
+
+  /**
+   * Merge an already-aggregated bucket into the running statistics.
+   * Combines count, sum, min, max, mean, and variance exactly.
+   * Carries percentile estimates forward as approximation samples.
+   */
+  mergeBucket(bucket: AggregatedBucket): void {
+    if (bucket.count === 0) return;
+
+    this.values.push(bucket.p50, bucket.p95, bucket.p99);
+
+    if (this.count === 0) {
+      this.count = bucket.count;
+      this.sum = bucket.sum;
+      this.min = bucket.min;
+      this.max = bucket.max;
+      this.mean = bucket.mean;
+      this.m2 = bucket.variance * bucket.count;
+      return;
+    }
+
+    const totalCount = this.count + bucket.count;
+    const delta = bucket.mean - this.mean;
+
+    this.m2 += bucket.variance * bucket.count +
+      delta * delta * this.count * bucket.count / totalCount;
+    this.mean = (this.sum + bucket.sum) / totalCount;
+    this.sum += bucket.sum;
+    this.count = totalCount;
+    this.min = Math.min(this.min, bucket.min);
+    this.max = Math.max(this.max, bucket.max);
   }
 
   /**
@@ -251,28 +283,17 @@ export class AggregationEngine {
    * Tags are sorted for consistent key generation.
    */
   private getBucketKey(metric: string, tags: Record<string, string>): string {
-    const sortedTags = Object.entries(tags)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([k, v]) => `${k}=${v}`)
-      .join(',');
-    return `${metric}|${sortedTags}`;
+    const sortedTags = Object.fromEntries(
+      Object.entries(tags).sort(([a], [b]) => a.localeCompare(b))
+    );
+    return JSON.stringify({ metric, tags: sortedTags });
   }
 
   /**
    * Parse metric and tags from bucket key.
    */
   private parseBucketKey(key: string): { metric: string; tags: Record<string, string> } {
-    const [metric, tagStr] = key.split('|');
-    const tags: Record<string, string> = {};
-
-    if (tagStr) {
-      tagStr.split(',').forEach(pair => {
-        const [k, v] = pair.split('=');
-        if (k && v) tags[k] = v;
-      });
-    }
-
-    return { metric, tags };
+    return JSON.parse(key) as { metric: string; tags: Record<string, string> };
   }
 
   /**
@@ -296,6 +317,27 @@ export class AggregationEngine {
     }
 
     stats.addValue(point.value);
+  }
+
+  /**
+   * Ingest an aggregated bucket into a coarser rollup tier.
+   */
+  ingestBucket(bucket: AggregatedBucket): void {
+    const bucketWindow = this.alignToWindow(bucket.windowStart);
+    if (bucketWindow > this.windowStart) {
+      this.flush();
+      this.windowStart = bucketWindow;
+    }
+
+    const key = this.getBucketKey(bucket.metric, bucket.tags);
+    let stats = this.buckets.get(key);
+
+    if (!stats) {
+      stats = new RunningStats();
+      this.buckets.set(key, stats);
+    }
+
+    stats.mergeBucket(bucket);
   }
 
   /**
@@ -326,7 +368,7 @@ export class AggregationEngine {
         tags,
         windowStart: this.windowStart,
         windowEnd: this.windowStart + this.config.durationMs,
-        ...stats.getStats() as any,
+        ...(stats.getStats() as Omit<AggregatedBucket, 'metric' | 'tags' | 'windowStart' | 'windowEnd'>),
       };
       aggregated.push(bucket);
     }
@@ -364,7 +406,7 @@ Hierarchical rollups reduce storage while preserving historical visibility:
 
 ```typescript
 // engine/rollup-manager.ts
-import { AggregatedBucket, RollupConfig, WindowConfig } from '../core/types';
+import { AggregatedBucket, RollupConfig } from '../core/types';
 import { AggregationEngine } from './aggregator';
 
 /**
@@ -420,21 +462,9 @@ export class RollupManager {
     if (nextTierIndex < this.config.tiers.length) {
       const nextTier = this.tiers.get(this.config.tiers[nextTierIndex].durationMs);
       if (nextTier) {
-        // Convert buckets to synthetic data points for re-aggregation
+        // Merge bucket statistics into the coarser tier without losing counts.
         for (const bucket of buckets) {
-          // Use mean as representative value for rollup
-          nextTier.ingest({
-            metric: bucket.metric,
-            value: bucket.mean,
-            timestamp: bucket.windowStart,
-            tags: {
-              ...bucket.tags,
-              _rollup_count: String(bucket.count),
-              _rollup_sum: String(bucket.sum),
-              _rollup_min: String(bucket.min),
-              _rollup_max: String(bucket.max),
-            },
-          });
+          nextTier.ingestBucket(bucket);
         }
       }
     }
@@ -462,10 +492,17 @@ export class RollupManager {
 /**
  * Local storage interface for persisting aggregated buckets.
  */
+type MaybePromise<T> = T | Promise<T>;
+
 interface LocalStorage {
-  storeBuckets(tierDurationMs: number, buckets: AggregatedBucket[]): Promise<void>;
-  getBuckets(tierDurationMs: number, startTime: number, endTime: number): Promise<AggregatedBucket[]>;
-  cleanExpired(tierDurationMs: number, retentionMs: number): Promise<void>;
+  storeBuckets(tierDurationMs: number, buckets: AggregatedBucket[]): MaybePromise<void>;
+  getBuckets(
+    tierDurationMs: number,
+    metric: string | null,
+    startTime: number,
+    endTime: number
+  ): MaybePromise<AggregatedBucket[]>;
+  cleanExpired(tierDurationMs: number, retentionMs: number): MaybePromise<void>;
 }
 ```
 
@@ -1073,12 +1110,12 @@ sequenceDiagram
 For high-cardinality metrics, use approximate algorithms:
 
 ```typescript
-// utils/t-digest.ts
+// utils/centroid-digest.ts
 /**
- * T-Digest approximation for memory-efficient percentiles.
- * Maintains O(1) memory regardless of data volume.
+ * Centroid digest for memory-efficient percentile approximation.
+ * Maintains bounded memory regardless of data volume.
  */
-export class TDigest {
+export class CentroidDigest {
   private centroids: { mean: number; count: number }[] = [];
   private maxSize: number;
 
@@ -1098,30 +1135,30 @@ export class TDigest {
   }
 
   /**
-   * Compress centroids to maintain memory bounds.
+   * Compress the two closest centroids until the digest is within bounds.
    */
   private compress(): void {
     this.centroids.sort((a, b) => a.mean - b.mean);
 
-    const compressed: { mean: number; count: number }[] = [];
-    let current = this.centroids[0];
+    while (this.centroids.length > this.maxSize) {
+      let mergeIndex = 0;
+      let smallestGap = Infinity;
 
-    for (let i = 1; i < this.centroids.length; i++) {
-      const next = this.centroids[i];
-
-      // Merge if within bounds
-      if (compressed.length < this.maxSize) {
-        const newCount = current.count + next.count;
-        const newMean = (current.mean * current.count + next.mean * next.count) / newCount;
-        current = { mean: newMean, count: newCount };
-      } else {
-        compressed.push(current);
-        current = next;
+      for (let i = 0; i < this.centroids.length - 1; i++) {
+        const gap = this.centroids[i + 1].mean - this.centroids[i].mean;
+        if (gap < smallestGap) {
+          smallestGap = gap;
+          mergeIndex = i;
+        }
       }
-    }
 
-    compressed.push(current);
-    this.centroids = compressed;
+      const current = this.centroids[mergeIndex];
+      const next = this.centroids[mergeIndex + 1];
+      const newCount = current.count + next.count;
+      const newMean = (current.mean * current.count + next.mean * next.count) / newCount;
+
+      this.centroids.splice(mergeIndex, 2, { mean: newMean, count: newCount });
+    }
   }
 
   /**
@@ -1306,8 +1343,6 @@ export class EdgeMetrics {
 
 ```yaml
 # docker-compose.yml
-
-version: '3.8'
 
 services:
   edge-agent:
