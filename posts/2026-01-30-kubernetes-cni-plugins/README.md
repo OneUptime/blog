@@ -8,7 +8,7 @@ Description: Learn to implement CNI plugins for custom network configuration wit
 
 ---
 
-Container Network Interface (CNI) plugins are the backbone of Kubernetes networking. They handle the critical task of connecting containers to networks, assigning IP addresses, and managing network policies. While many production-ready CNI plugins exist (Calico, Flannel, Cilium), understanding how to build your own gives you the power to implement custom networking solutions tailored to your specific requirements.
+Container Network Interface (CNI) plugins are the backbone of Kubernetes networking. They handle the critical task of connecting containers to networks and assigning IP addresses; some production-ready plugins also enforce network policies. While many production-ready CNI plugins exist (Calico, Flannel, Cilium), understanding how to build your own gives you the power to implement custom networking solutions tailored to your specific requirements.
 
 ## Understanding the CNI Specification
 
@@ -25,13 +25,15 @@ flowchart LR
 
 ### CNI Operations
 
-Every CNI plugin must implement three core operations:
+The CNI specification defines five operations:
 
 | Operation | Purpose | When Called |
 |-----------|---------|-------------|
 | ADD | Set up network for a container | Container creation |
 | DEL | Tear down network for a container | Container deletion |
-| CHECK | Verify network configuration | Health checks |
+| CHECK | Verify network configuration | Attachment verification |
+| GC | Garbage-collect stale resources | Runtime cleanup |
+| VERSION | Report supported CNI versions | Capability discovery |
 
 The runtime communicates the desired operation through the `CNI_COMMAND` environment variable.
 
@@ -40,7 +42,7 @@ The runtime communicates the desired operation through the `CNI_COMMAND` environ
 CNI plugins receive context through these environment variables:
 
 ```bash
-CNI_COMMAND      # ADD, DEL, or CHECK
+CNI_COMMAND      # ADD, DEL, CHECK, GC, or VERSION
 CNI_CONTAINERID  # Unique container identifier
 CNI_NETNS        # Path to network namespace (e.g., /var/run/netns/cni-xxx)
 CNI_IFNAME       # Interface name to create (e.g., eth0)
@@ -63,7 +65,11 @@ CNI plugins receive their configuration as JSON through stdin. Here is a typical
   "mtu": 1500,
   "ipam": {
     "type": "host-local",
-    "subnet": "10.244.0.0/24",
+    "ranges": [
+      [
+        { "subnet": "10.244.0.0/24" }
+      ]
+    ],
     "routes": [
       { "dst": "0.0.0.0/0" }
     ]
@@ -73,7 +79,7 @@ CNI plugins receive their configuration as JSON through stdin. Here is a typical
 
 ### Configuration Fields Explained
 
-- **cniVersion**: The CNI spec version (use "1.0.0" for latest)
+- **cniVersion**: The CNI spec version (use the lowest version supported by your runtime and plugins; "1.0.0" remains widely used)
 - **name**: Network name for identification
 - **type**: Plugin executable name
 - **ipam**: IP Address Management configuration (can delegate to another plugin)
@@ -258,7 +264,6 @@ Now implement the core CNI operations:
 package main
 
 import (
-    "encoding/json"
     "fmt"
     "net"
     "runtime"
@@ -277,7 +282,11 @@ import (
 )
 
 func main() {
-    skel.PluginMain(cmdAdd, cmdCheck, cmdDel, version.All, "my-cni-plugin v1.0.0")
+    skel.PluginMainFuncs(skel.CNIFuncs{
+        Add:   cmdAdd,
+        Check: cmdCheck,
+        Del:   cmdDel,
+    }, version.PluginSupports("0.4.0", "1.0.0"), "my-cni-plugin v1.0.0")
 }
 
 // cmdAdd handles the ADD operation
@@ -294,6 +303,9 @@ func cmdAdd(args *skel.CmdArgs) error {
         return fmt.Errorf("invalid subnet: %v", err)
     }
     gateway := net.ParseIP(cfg.Gateway)
+    if gateway == nil {
+        return fmt.Errorf("invalid gateway: %s", cfg.Gateway)
+    }
 
     // Create or get bridge
     bridge := &network.Bridge{Name: cfg.BridgeName, MTU: cfg.MTU}
@@ -310,7 +322,11 @@ func cmdAdd(args *skel.CmdArgs) error {
     defer netns.Close()
 
     // Generate unique veth names
-    hostIfName := "veth" + args.ContainerID[:8]
+    idLen := 8
+    if len(args.ContainerID) < idLen {
+        idLen = len(args.ContainerID)
+    }
+    hostIfName := "veth" + args.ContainerID[:idLen]
 
     // Create veth pair
     hostVeth, containerVeth, err := network.CreateVethPair(args.IfName, hostIfName, cfg.MTU)
@@ -329,6 +345,9 @@ func cmdAdd(args *skel.CmdArgs) error {
     }
 
     // Run IPAM plugin to get IP address
+    if cfg.IPAM.Type == "" {
+        return fmt.Errorf("ipam.type is required")
+    }
     r, err := ipam.ExecAdd(cfg.IPAM.Type, args.StdinData)
     if err != nil {
         return fmt.Errorf("IPAM allocation failed: %v", err)
@@ -340,6 +359,14 @@ func cmdAdd(args *skel.CmdArgs) error {
         return err
     }
 
+    containerInterfaceIndex := 0
+    result.Interfaces = []*current.Interface{
+        {
+            Name: hostVeth.Attrs().Name,
+            Mac:  hostVeth.Attrs().HardwareAddr.String(),
+        },
+    }
+
     // Configure the container interface
     err = netns.Do(func(_ ns.NetNS) error {
         link, err := netlink.LinkByName(args.IfName)
@@ -347,11 +374,23 @@ func cmdAdd(args *skel.CmdArgs) error {
             return err
         }
 
+        result.Interfaces = append([]*current.Interface{
+            {
+                Name:    args.IfName,
+                Mac:     link.Attrs().HardwareAddr.String(),
+                Sandbox: args.Netns,
+            },
+        }, result.Interfaces...)
+
         // Add IP address
         for _, ipc := range result.IPs {
             addr := &netlink.Addr{IPNet: &ipc.Address}
             if err := netlink.AddrAdd(link, addr); err != nil {
                 return fmt.Errorf("failed to add IP: %v", err)
+            }
+            ipc.Interface = &containerInterfaceIndex
+            if ipc.Gateway == nil {
+                ipc.Gateway = gateway
             }
         }
 
@@ -541,7 +580,6 @@ import (
     "net"
     "os"
     "path/filepath"
-    "sync"
 
     "github.com/containernetworking/cni/pkg/skel"
     "github.com/containernetworking/cni/pkg/types"
@@ -551,40 +589,46 @@ import (
 
 var (
     dataDir = "/var/lib/cni/my-ipam"
-    mutex   sync.Mutex
 )
 
 type IPAMConfig struct {
-    types.NetConf
     Subnet  string `json:"subnet"`
     Gateway string `json:"gateway"`
 }
 
+type NetConfig struct {
+    types.NetConf
+    IPAM IPAMConfig `json:"ipam"`
+}
+
 func main() {
-    skel.PluginMain(cmdAdd, cmdCheck, cmdDel, version.All, "my-ipam v1.0.0")
+    skel.PluginMainFuncs(skel.CNIFuncs{
+        Add:   cmdAdd,
+        Check: cmdCheck,
+        Del:   cmdDel,
+    }, version.PluginSupports("0.4.0", "1.0.0"), "my-ipam v1.0.0")
 }
 
 func cmdAdd(args *skel.CmdArgs) error {
-    mutex.Lock()
-    defer mutex.Unlock()
-
-    cfg := &IPAMConfig{}
+    cfg := &NetConfig{}
     if err := json.Unmarshal(args.StdinData, cfg); err != nil {
         return err
     }
 
-    _, subnet, err := net.ParseCIDR(cfg.Subnet)
+    _, subnet, err := net.ParseCIDR(cfg.IPAM.Subnet)
     if err != nil {
         return err
+    }
+    gateway := net.ParseIP(cfg.IPAM.Gateway)
+    if gateway == nil {
+        return fmt.Errorf("invalid gateway: %s", cfg.IPAM.Gateway)
     }
 
     // Find next available IP
-    ip, err := allocateIP(cfg.Name, subnet, args.ContainerID)
+    ip, err := allocateIP(cfg.Name, subnet, gateway, args.ContainerID)
     if err != nil {
         return err
     }
-
-    gateway := net.ParseIP(cfg.Gateway)
 
     result := &current.Result{
         CNIVersion: cfg.CNIVersion,
@@ -602,9 +646,11 @@ func cmdAdd(args *skel.CmdArgs) error {
     return types.PrintResult(result, cfg.CNIVersion)
 }
 
-func allocateIP(networkName string, subnet *net.IPNet, containerID string) (net.IP, error) {
+func allocateIP(networkName string, subnet *net.IPNet, gateway net.IP, containerID string) (net.IP, error) {
     dir := filepath.Join(dataDir, networkName)
-    os.MkdirAll(dir, 0755)
+    if err := os.MkdirAll(dir, 0755); err != nil {
+        return nil, err
+    }
 
     // Get all allocated IPs
     allocated := make(map[string]bool)
@@ -616,11 +662,26 @@ func allocateIP(networkName string, subnet *net.IPNet, containerID string) (net.
     // Find available IP in subnet
     ip := subnet.IP.Mask(subnet.Mask)
     for ip = incrementIP(ip); subnet.Contains(ip); ip = incrementIP(ip) {
+        if ip.Equal(gateway) {
+            continue
+        }
         ipStr := ip.String()
         if !allocated[ipStr] {
             // Claim this IP
-            os.WriteFile(filepath.Join(dir, ipStr), []byte(containerID), 0644)
-            return ip, nil
+            f, err := os.OpenFile(filepath.Join(dir, ipStr), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
+            if os.IsExist(err) {
+                continue
+            }
+            if err != nil {
+                return nil, err
+            }
+            if _, err := f.WriteString(containerID); err != nil {
+                f.Close()
+                os.Remove(filepath.Join(dir, ipStr))
+                return nil, err
+            }
+            f.Close()
+            return append(net.IP(nil), ip...), nil
         }
     }
 
@@ -641,7 +702,7 @@ func incrementIP(ip net.IP) net.IP {
 
 func cmdDel(args *skel.CmdArgs) error {
     // Release allocated IP
-    cfg := &IPAMConfig{}
+    cfg := &NetConfig{}
     json.Unmarshal(args.StdinData, cfg)
 
     dir := filepath.Join(dataDir, cfg.Name)
@@ -690,7 +751,11 @@ Plugin chains are defined using a conflist file:
       "gateway": "10.244.0.1",
       "ipam": {
         "type": "host-local",
-        "subnet": "10.244.0.0/24"
+        "ranges": [
+          [
+            { "subnet": "10.244.0.0/24" }
+          ]
+        ]
       }
     },
     {
@@ -755,13 +820,13 @@ Create comprehensive tests for your plugin:
 package main
 
 import (
-    "encoding/json"
+    "fmt"
     "testing"
 
     "github.com/containernetworking/cni/pkg/skel"
-    current "github.com/containernetworking/cni/pkg/types/100"
     "github.com/containernetworking/plugins/pkg/ns"
     "github.com/containernetworking/plugins/pkg/testutils"
+    "github.com/vishvananda/netlink"
 )
 
 func TestCmdAdd(t *testing.T) {
@@ -781,7 +846,11 @@ func TestCmdAdd(t *testing.T) {
         "gateway": "10.244.0.1",
         "ipam": {
             "type": "host-local",
-            "subnet": "10.244.0.0/24"
+            "ranges": [
+                [
+                    { "subnet": "10.244.0.0/24" }
+                ]
+            ]
         }
     }`
 
@@ -835,7 +904,11 @@ cat > /etc/cni/net.d/10-my-cni.conf << EOF
   "gateway": "10.244.0.1",
   "ipam": {
     "type": "host-local",
-    "subnet": "10.244.0.0/24"
+    "ranges": [
+      [
+        { "subnet": "10.244.0.0/24" }
+      ]
+    ]
   }
 }
 EOF
@@ -1022,7 +1095,7 @@ flowchart TB
 
 Creating custom CNI plugins gives you complete control over container networking in Kubernetes. The key concepts to remember are:
 
-1. **CNI Specification** - Understand the three operations (ADD, DEL, CHECK) and how plugins receive configuration
+1. **CNI Specification** - Understand the CNI operations (ADD, DEL, CHECK, GC, VERSION) and how plugins receive configuration
 2. **Plugin Structure** - Use the official CNI libraries to handle protocol details
 3. **IPAM Integration** - Either use existing IPAM plugins or implement your own
 4. **Plugin Chaining** - Design plugins to work in chains with other plugins
