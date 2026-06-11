@@ -60,11 +60,13 @@ flowchart LR
     end
 ```
 
-Grafana stores built-in annotations in its internal database. Data source annotations query external systems in real-time. API-created annotations can target either the internal store or be injected dynamically.
+Grafana stores built-in and API-created annotations in its internal database. Data source annotations query external systems in real-time.
 
 ## Method 1: Programmatic Annotations via Grafana API
 
 The Grafana HTTP API allows you to create, update, and delete annotations programmatically. This is the foundation for automated annotation pipelines.
+
+In Grafana 13 and newer, `/api` endpoints are considered legacy in favor of the newer `/apis` route structure, but the legacy annotation endpoints remain available.
 
 ### Basic API Annotation Creation
 
@@ -72,7 +74,7 @@ The Grafana HTTP API allows you to create, update, and delete annotations progra
 # Create a point-in-time annotation
 
 curl -X POST \
-  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Authorization: Bearer YOUR_SERVICE_ACCOUNT_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "dashboardUID": "your-dashboard-uid",
@@ -91,7 +93,7 @@ Range annotations highlight a span of time, perfect for maintenance windows or i
 ```bash
 # Create a range annotation for a maintenance window
 curl -X POST \
-  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Authorization: Bearer YOUR_SERVICE_ACCOUNT_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "dashboardUID": "your-dashboard-uid",
@@ -117,14 +119,13 @@ Creates deployment annotations with rich metadata
 import requests
 import os
 import time
-import json
 from typing import Optional, List
 
 class GrafanaAnnotator:
-    def __init__(self, grafana_url: str, api_key: str):
+    def __init__(self, grafana_url: str, service_account_token: str):
         self.grafana_url = grafana_url.rstrip('/')
         self.headers = {
-            'Authorization': f'Bearer {api_key}',
+            'Authorization': f'Bearer {service_account_token}',
             'Content-Type': 'application/json'
         }
 
@@ -207,7 +208,7 @@ class GrafanaAnnotator:
 if __name__ == '__main__':
     annotator = GrafanaAnnotator(
         grafana_url=os.environ['GRAFANA_URL'],
-        api_key=os.environ['GRAFANA_API_KEY']
+        service_account_token=os.environ['GRAFANA_SERVICE_ACCOUNT_TOKEN']
     )
 
     result = annotator.create_deployment_annotation(
@@ -232,11 +233,11 @@ if __name__ == '__main__':
 const axios = require('axios');
 
 class GrafanaAnnotationClient {
-  constructor(grafanaUrl, apiKey) {
+  constructor(grafanaUrl, serviceAccountToken) {
     this.client = axios.create({
       baseURL: grafanaUrl,
       headers: {
-        'Authorization': `Bearer ${apiKey}`,
+        'Authorization': `Bearer ${serviceAccountToken}`,
         'Content-Type': 'application/json'
       }
     });
@@ -304,7 +305,7 @@ class GrafanaAnnotationClient {
 async function main() {
   const client = new GrafanaAnnotationClient(
     process.env.GRAFANA_URL,
-    process.env.GRAFANA_API_KEY
+    process.env.GRAFANA_SERVICE_ACCOUNT_TOKEN
   );
 
   // Single deployment annotation
@@ -334,8 +335,7 @@ Data source annotations query your existing metrics or logs databases to generat
 
 Query Prometheus for deployment events recorded as metrics:
 
-```yaml
-# In Grafana Dashboard JSON
+```json
 {
   "annotations": {
     "list": [
@@ -346,7 +346,7 @@ Query Prometheus for deployment events recorded as metrics:
           "uid": "prometheus-uid"
         },
         "enable": true,
-        "expr": "changes(deployment_timestamp{environment=\"production\"}[1m]) > 0",
+        "expr": "deployment_timestamp_milliseconds{environment=\"production\"}",
         "titleFormat": "Deploy: {{service}}",
         "textFormat": "Version: {{version}}, Commit: {{commit}}",
         "tagKeys": "service,environment,version",
@@ -357,22 +357,13 @@ Query Prometheus for deployment events recorded as metrics:
 }
 ```
 
-The Prometheus query for this approach requires recording deployment events as metrics:
+The Prometheus query for this approach requires exposing deployment events as timestamp metrics in milliseconds:
 
-```yaml
-# Prometheus recording rule for deployment events
-groups:
-  - name: deployment_events
-    rules:
-      - record: deployment_timestamp
-        expr: |
-          timestamp(
-            kube_deployment_status_observed_generation{
-              namespace="production"
-            }
-          )
-        labels:
-          event_type: deployment
+```text
+# Prometheus text exposition format
+# HELP deployment_timestamp_milliseconds Unix timestamp of a deployment in milliseconds.
+# TYPE deployment_timestamp_milliseconds gauge
+deployment_timestamp_milliseconds{environment="production",service="api",version="2.3.1",commit="abc12345"} 1706608800000
 ```
 
 ### InfluxDB Annotations
@@ -499,7 +490,7 @@ class K8sEventAnnotator:
 
         self.v1 = client.CoreV1Api()
         self.grafana_url = os.environ['GRAFANA_URL']
-        self.grafana_api_key = os.environ['GRAFANA_API_KEY']
+        self.grafana_service_account_token = os.environ['GRAFANA_SERVICE_ACCOUNT_TOKEN']
 
         # Event types to annotate
         self.watched_reasons = {
@@ -552,7 +543,7 @@ class K8sEventAnnotator:
             response = requests.post(
                 f'{self.grafana_url}/api/annotations',
                 headers={
-                    'Authorization': f'Bearer {self.grafana_api_key}',
+                    'Authorization': f'Bearer {self.grafana_service_account_token}',
                     'Content-Type': 'application/json'
                 },
                 json=payload
@@ -615,7 +606,7 @@ jobs:
         if: success()
         run: |
           curl -X POST \
-            -H "Authorization: Bearer ${{ secrets.GRAFANA_API_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.GRAFANA_SERVICE_ACCOUNT_TOKEN }}" \
             -H "Content-Type: application/json" \
             -d '{
               "tags": ["deployment", "github-actions", "${{ github.repository }}"],
@@ -627,7 +618,7 @@ jobs:
         if: failure()
         run: |
           curl -X POST \
-            -H "Authorization: Bearer ${{ secrets.GRAFANA_API_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.GRAFANA_SERVICE_ACCOUNT_TOKEN }}" \
             -H "Content-Type: application/json" \
             -d '{
               "tags": ["deployment-failed", "github-actions", "${{ github.repository }}"],
@@ -638,9 +629,9 @@ jobs:
 
 ## Advanced Visualization Techniques
 
-### Custom Annotation Styling
+### Custom Annotation Marker Colors
 
-Grafana 10+ supports custom annotation colors and styling:
+Grafana annotation queries support custom marker colors:
 
 ```json
 {
@@ -733,21 +724,21 @@ graph TB
 ```bash
 # Get annotations by tag
 curl -X GET \
-  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Authorization: Bearer YOUR_SERVICE_ACCOUNT_TOKEN" \
   "http://localhost:3000/api/annotations?tags=deployment&from=1706608800000&to=1706695200000"
 
 # Get annotations for a specific dashboard
 curl -X GET \
-  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Authorization: Bearer YOUR_SERVICE_ACCOUNT_TOKEN" \
   "http://localhost:3000/api/annotations?dashboardUID=abc123"
 ```
 
 ### Updating Annotations
 
 ```bash
-# Update annotation text and tags
-curl -X PUT \
-  -H "Authorization: Bearer YOUR_API_KEY" \
+# Patch annotation text and tags
+curl -X PATCH \
+  -H "Authorization: Bearer YOUR_SERVICE_ACCOUNT_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "text": "Updated: Deployment completed successfully",
@@ -761,17 +752,17 @@ curl -X PUT \
 ```bash
 # Delete a specific annotation
 curl -X DELETE \
-  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Authorization: Bearer YOUR_SERVICE_ACCOUNT_TOKEN" \
   "http://localhost:3000/api/annotations/42"
 
 # Bulk delete by tag (via API script)
 ```
 
 ```python
-def delete_annotations_by_tag(grafana_url, api_key, tag, from_ms, to_ms):
+def delete_annotations_by_tag(grafana_url, service_account_token, tag, from_ms, to_ms):
     """Delete all annotations matching a tag within a time range."""
     headers = {
-        'Authorization': f'Bearer {api_key}',
+        'Authorization': f'Bearer {service_account_token}',
         'Content-Type': 'application/json'
     }
 
@@ -891,7 +882,7 @@ def cleanup_old_annotations(
 
 ## Integrating with Incident Management
 
-### PagerDuty Webhook to Grafana Annotations
+### PagerDuty V3 Webhook to Grafana Annotations
 
 ```python
 from flask import Flask, request
@@ -901,23 +892,21 @@ import os
 app = Flask(__name__)
 
 GRAFANA_URL = os.environ['GRAFANA_URL']
-GRAFANA_API_KEY = os.environ['GRAFANA_API_KEY']
+GRAFANA_SERVICE_ACCOUNT_TOKEN = os.environ['GRAFANA_SERVICE_ACCOUNT_TOKEN']
 
 @app.route('/webhook/pagerduty', methods=['POST'])
 def pagerduty_webhook():
     """Handle PagerDuty webhook and create Grafana annotation."""
     data = request.json
 
-    for message in data.get('messages', []):
-        event = message.get('event', {})
-        incident = message.get('incident', {})
+    event = data.get('event', {})
+    incident = event.get('data', {})
+    event_type = event.get('event_type', '')
 
-        event_type = event.get('event_type', '')
-
-        if event_type == 'incident.triggered':
-            create_incident_annotation(incident, 'triggered')
-        elif event_type == 'incident.resolved':
-            create_incident_annotation(incident, 'resolved')
+    if event_type == 'incident.triggered':
+        create_incident_annotation(incident, 'triggered')
+    elif event_type == 'incident.resolved':
+        create_incident_annotation(incident, 'resolved')
 
     return {'status': 'ok'}
 
@@ -927,8 +916,8 @@ def create_incident_annotation(incident, status):
     text = f"""
 **Incident {status.upper()}: {incident.get('title', 'Unknown')}**
 
-- ID: {incident.get('incident_number')}
-- Service: {incident.get('service', {}).get('name', 'Unknown')}
+- ID: {incident.get('number')}
+- Service: {incident.get('service', {}).get('summary', 'Unknown')}
 - Urgency: {incident.get('urgency', 'Unknown')}
 - URL: {incident.get('html_url', '')}
     """.strip()
@@ -948,7 +937,7 @@ def create_incident_annotation(incident, status):
     requests.post(
         f'{GRAFANA_URL}/api/annotations',
         headers={
-            'Authorization': f'Bearer {GRAFANA_API_KEY}',
+            'Authorization': f'Bearer {GRAFANA_SERVICE_ACCOUNT_TOKEN}',
             'Content-Type': 'application/json'
         },
         json=payload
@@ -1030,7 +1019,7 @@ Here is a complete dashboard configuration with advanced annotations:
         "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
         "targets": [
           {
-            "expr": "histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m]))",
+            "expr": "histogram_quantile(0.99, sum by (le) (rate(http_request_duration_seconds_bucket[5m])))",
             "legendFormat": "p99 latency"
           }
         ]
@@ -1041,7 +1030,7 @@ Here is a complete dashboard configuration with advanced annotations:
         "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
         "targets": [
           {
-            "expr": "rate(http_requests_total{status=~\"5..\"}[5m]) / rate(http_requests_total[5m])",
+            "expr": "sum(rate(http_requests_total{status=~\"5..\"}[5m])) / sum(rate(http_requests_total[5m]))",
             "legendFormat": "Error rate"
           }
         ]
@@ -1056,7 +1045,7 @@ Here is a complete dashboard configuration with advanced annotations:
 ### Annotations Not Appearing
 
 1. **Check time range**: Annotations only show within the selected time range
-2. **Verify permissions**: API key needs annotation write permissions
+2. **Verify permissions**: Service account token needs annotation write permissions
 3. **Check dashboard UID**: Ensure you are targeting the correct dashboard
 4. **Inspect browser console**: Look for failed API requests
 
@@ -1102,7 +1091,7 @@ def create_annotation_if_unique(grafana_client, annotation_data):
 ### Performance with Many Annotations
 
 - Use tag filtering to load only relevant annotations
-- Implement pagination for annotation queries
+- Use narrower time ranges and reasonable `limit` values for annotation queries
 - Set up retention policies to remove old annotations
 - Consider using data source annotations for high-volume events
 
