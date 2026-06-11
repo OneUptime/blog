@@ -46,7 +46,7 @@ When the close is higher than the open, the candle is bullish (typically green).
 
 Before creating candlestick charts, ensure you have:
 
-- Grafana 8.0 or later (candlestick panel included by default)
+- Grafana 8.3 or later (candlestick panel included by default)
 - A data source with OHLC data or metrics that can be aggregated into OHLC format
 - Basic familiarity with Grafana dashboards
 
@@ -73,13 +73,14 @@ WHERE $timeFilter
 GROUP BY time($__interval)
 ```
 
-For Prometheus, you can use recording rules or subqueries to achieve similar results.
+For Prometheus, you can use recording rules or range-vector functions to achieve similar results.
 
 ```promql
-# Using subqueries to get OHLC-like data
+# Using range-vector functions to get OHLC-like data
+# first_over_time requires Prometheus' promql-experimental-functions feature flag.
 
 # Open - first value in interval
-cpu_usage[5m:1m] @ start()
+first_over_time(cpu_usage[5m])
 
 # High - maximum value
 max_over_time(cpu_usage[5m])
@@ -88,7 +89,7 @@ max_over_time(cpu_usage[5m])
 min_over_time(cpu_usage[5m])
 
 # Close - last value in interval
-cpu_usage[5m:1m] @ end()
+last_over_time(cpu_usage[5m])
 ```
 
 ### Step 3: Map Fields to OHLC
@@ -97,11 +98,11 @@ In the panel options, expand the "Candlestick" section. You will see options to 
 
 | Option | Description |
 |--------|-------------|
-| Mode | Auto or Manual field mapping |
 | Open | Field containing opening values |
 | High | Field containing high values |
 | Low | Field containing low values |
 | Close | Field containing closing values |
+| Volume | Field containing volume values |
 
 If your fields are named conventionally (open, high, low, close), Grafana will auto-detect them.
 
@@ -145,9 +146,9 @@ Your data source should provide data similar to this structure.
 }
 ```
 
-### PostgreSQL Query Example
+### PostgreSQL with TimescaleDB Query Example
 
-This query fetches stock data from a PostgreSQL database and formats it for the candlestick panel.
+This query fetches stock data from a PostgreSQL database with TimescaleDB enabled and formats it for the candlestick panel.
 
 ```sql
 SELECT
@@ -160,7 +161,7 @@ SELECT
 FROM stock_trades
 WHERE
   symbol = 'AAPL'
-  AND timestamp BETWEEN $__timeFrom() AND $__timeTo()
+  AND $__timeFilter(timestamp)
 GROUP BY time_bucket('1 hour', timestamp)
 ORDER BY time
 ```
@@ -171,16 +172,16 @@ For MySQL databases, use the following approach.
 
 ```sql
 SELECT
-  DATE_FORMAT(timestamp, '%Y-%m-%d %H:00:00') AS time,
-  SUBSTRING_INDEX(GROUP_CONCAT(price ORDER BY timestamp), ',', 1) AS open,
+  $__timeGroupAlias(timestamp, '1h'),
+  CAST(SUBSTRING_INDEX(GROUP_CONCAT(price ORDER BY timestamp), ',', 1) AS DECIMAL(18,6)) AS open,
   MAX(price) AS high,
   MIN(price) AS low,
-  SUBSTRING_INDEX(GROUP_CONCAT(price ORDER BY timestamp DESC), ',', 1) AS close
+  CAST(SUBSTRING_INDEX(GROUP_CONCAT(price ORDER BY timestamp DESC), ',', 1) AS DECIMAL(18,6)) AS close
 FROM stock_trades
 WHERE
   symbol = 'AAPL'
-  AND timestamp BETWEEN $__timeFrom() AND $__timeTo()
-GROUP BY DATE_FORMAT(timestamp, '%Y-%m-%d %H:00:00')
+  AND $__timeFilter(timestamp)
+GROUP BY time
 ORDER BY time
 ```
 
@@ -193,7 +194,6 @@ Customize the appearance of bullish and bearish candles in the panel options.
 ```text
 Up color: #73BF69 (green)
 Down color: #F2495C (red)
-Flat color: #808080 (gray)
 ```
 
 ### Candle Style Options
@@ -203,18 +203,17 @@ Grafana supports multiple candlestick styles.
 | Style | Description |
 |-------|-------------|
 | Candles | Traditional filled rectangles with wicks |
-| Bars | OHLC bars without filled bodies |
-| Volume | Include volume as bar chart overlay |
+| OHLC Bars | OHLC bars without filled bodies |
 
 ### Include Volume
 
-To add volume bars beneath your candlesticks, enable the "Include volume" toggle. Ensure your query returns a volume field.
+To add volume bars beneath your candlesticks, set the candlestick mode to "Both". Ensure your query returns a volume field.
 
 ## Using Transformations
 
 Grafana transformations can help reshape data for candlestick charts.
 
-### Grouping to Matrix
+### Group By
 
 When your data comes in separate series, use the "Group by" transformation.
 
@@ -241,21 +240,21 @@ For complex setups, you can directly edit the panel JSON. This is useful for pro
 {
   "type": "candlestick",
   "title": "Stock Price - AAPL",
-  "fieldConfig": {
-    "defaults": {
-      "custom": {
-        "drawStyle": "candles",
-        "upColor": "#73BF69",
-        "downColor": "#F2495C",
-        "flatColor": "#808080",
-        "includeVolume": true
-      }
-    }
-  },
   "options": {
-    "mode": "candles",
+    "mode": "candles+volume",
     "candleStyle": "candles",
-    "colorStrategy": "open-close"
+    "colorStrategy": "open-close",
+    "colors": {
+      "up": "#73BF69",
+      "down": "#F2495C"
+    },
+    "fields": {
+      "open": "open",
+      "high": "high",
+      "low": "low",
+      "close": "close",
+      "volume": "volume"
+    }
   }
 }
 ```
@@ -290,18 +289,22 @@ This query aggregates node CPU metrics for candlestick visualization.
 ```promql
 # For Prometheus - create OHLC from CPU metrics
 # Use recording rules for efficiency
+# first_over_time requires Prometheus' promql-experimental-functions feature flag.
+
+# rule: instance:cpu_idle_percent
+100 * avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m]))
 
 # rule: cpu_ohlc_open
-first_over_time(node_cpu_seconds_total{mode="idle"}[1h])
+first_over_time(instance:cpu_idle_percent[1h])
 
 # rule: cpu_ohlc_high
-max_over_time(node_cpu_seconds_total{mode="idle"}[1h])
+max_over_time(instance:cpu_idle_percent[1h])
 
 # rule: cpu_ohlc_low
-min_over_time(node_cpu_seconds_total{mode="idle"}[1h])
+min_over_time(instance:cpu_idle_percent[1h])
 
 # rule: cpu_ohlc_close
-last_over_time(node_cpu_seconds_total{mode="idle"}[1h])
+last_over_time(instance:cpu_idle_percent[1h])
 ```
 
 ### API Response Times
@@ -326,15 +329,24 @@ Resource Pricing
 Track cloud resource pricing fluctuations.
 
 ```sql
+WITH daily_prices AS (
+  SELECT
+    date_trunc('day', timestamp) AS time,
+    spot_price,
+    row_number() OVER (PARTITION BY date_trunc('day', timestamp) ORDER BY timestamp) AS open_rank,
+    row_number() OVER (PARTITION BY date_trunc('day', timestamp) ORDER BY timestamp DESC) AS close_rank
+  FROM aws_spot_prices
+  WHERE instance_type = 'm5.large'
+)
 SELECT
-  date_trunc('day', timestamp) AS time,
-  first_value(spot_price) OVER w AS open,
-  max(spot_price) OVER w AS high,
-  min(spot_price) OVER w AS low,
-  last_value(spot_price) OVER w AS close
-FROM aws_spot_prices
-WHERE instance_type = 'm5.large'
-WINDOW w AS (PARTITION BY date_trunc('day', timestamp) ORDER BY timestamp)
+  time,
+  max(spot_price) FILTER (WHERE open_rank = 1) AS open,
+  max(spot_price) AS high,
+  min(spot_price) AS low,
+  max(spot_price) FILTER (WHERE close_rank = 1) AS close
+FROM daily_prices
+GROUP BY time
+ORDER BY time
 ```
 
 ## Alerting on Candlestick Patterns
@@ -379,17 +391,26 @@ Here is a complete dashboard JSON snippet for a candlestick panel.
       "fieldConfig": {
         "defaults": {
           "custom": {
-            "drawStyle": "candles",
-            "upColor": "#73BF69",
-            "downColor": "#F2495C"
+            "drawStyle": "line"
           }
         },
         "overrides": []
       },
       "options": {
-        "includeVolume": true,
+        "mode": "candles+volume",
         "candleStyle": "candles",
-        "colorStrategy": "open-close"
+        "colorStrategy": "open-close",
+        "colors": {
+          "up": "#73BF69",
+          "down": "#F2495C"
+        },
+        "fields": {
+          "open": "open",
+          "high": "high",
+          "low": "low",
+          "close": "close",
+          "volume": "volume"
+        }
       }
     }
   ]
@@ -403,7 +424,7 @@ Here is a complete dashboard JSON snippet for a candlestick panel.
 Check that your query returns the required fields. Enable query inspector to see raw data.
 
 ```text
-Panel Options > Query Inspector > Refresh
+Panel menu > Inspect > Query > Refresh
 ```
 
 ### Candles Appear as Lines
@@ -412,7 +433,7 @@ This happens when open and close values are identical. Ensure your time interval
 
 ### Wrong Colors
 
-Verify your color strategy setting. The "open-close" strategy compares open and close values. The "close" strategy compares current close to previous close.
+Verify your color strategy setting. The "Since Open" strategy compares open and close values. The "Since Prior Close" strategy compares the current value to the previous close.
 
 ### Time Gaps
 
@@ -427,7 +448,9 @@ SELECT
   locf(min(price)) AS low,
   locf(last(price, timestamp)) AS close
 FROM stock_trades
+WHERE $__timeFilter(timestamp)
 GROUP BY time_bucket_gapfill('1 hour', timestamp)
+ORDER BY time
 ```
 
 ## Integration with OneUptime
