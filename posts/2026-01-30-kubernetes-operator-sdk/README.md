@@ -71,7 +71,7 @@ operator-sdk version
 # Download the binary for your architecture
 export ARCH=$(case $(uname -m) in x86_64) echo -n amd64 ;; aarch64) echo -n arm64 ;; *) echo -n $(uname -m) ;; esac)
 export OS=$(uname | awk '{print tolower($0)}')
-export OPERATOR_SDK_DL_URL=https://github.com/operator-framework/operator-sdk/releases/download/v1.34.1
+export OPERATOR_SDK_DL_URL=https://github.com/operator-framework/operator-sdk/releases/download/v1.42.2
 
 curl -LO ${OPERATOR_SDK_DL_URL}/operator-sdk_${OS}_${ARCH}
 
@@ -89,7 +89,7 @@ Before building operators, you need these tools installed:
 
 | Tool | Version | Purpose |
 |------|---------|---------|
-| Go | 1.21+ | Programming language for the operator |
+| Go | 1.23+ | Programming language for the operator |
 | Docker | 20.10+ | Building and pushing container images |
 | kubectl | 1.28+ | Interacting with Kubernetes clusters |
 | kind or minikube | Latest | Local Kubernetes cluster for testing |
@@ -318,6 +318,7 @@ import (
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/apimachinery/pkg/runtime"
     "k8s.io/apimachinery/pkg/types"
+    "k8s.io/apimachinery/pkg/util/intstr"
     ctrl "sigs.k8s.io/controller-runtime"
     "sigs.k8s.io/controller-runtime/pkg/client"
     "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -361,6 +362,11 @@ func (r *MemcachedReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
         return ctrl.Result{}, err
     }
 
+    // Handle deletion before adding finalizers or reconciling child resources
+    if !memcached.DeletionTimestamp.IsZero() {
+        return r.handleDeletion(ctx, memcached)
+    }
+
     // Set initial status condition
     if memcached.Status.Conditions == nil || len(memcached.Status.Conditions) == 0 {
         meta.SetStatusCondition(&memcached.Status.Conditions, metav1.Condition{
@@ -391,11 +397,6 @@ func (r *MemcachedReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
             logger.Error(err, "Failed to add finalizer")
             return ctrl.Result{}, err
         }
-    }
-
-    // Handle deletion
-    if !memcached.DeletionTimestamp.IsZero() {
-        return r.handleDeletion(ctx, memcached)
     }
 
     // Reconcile the Deployment
@@ -444,9 +445,13 @@ func (r *MemcachedReconciler) reconcileDeployment(ctx context.Context, memcached
 
     // Ensure the deployment spec matches the desired state
     size := memcached.Spec.Size
-    if *deployment.Spec.Replicas != size {
+    currentReplicas := int32(1)
+    if deployment.Spec.Replicas != nil {
+        currentReplicas = *deployment.Spec.Replicas
+    }
+    if currentReplicas != size {
         deployment.Spec.Replicas = &size
-        logger.Info("Updating Deployment replicas", "from", *deployment.Spec.Replicas, "to", size)
+        logger.Info("Updating Deployment replicas", "from", currentReplicas, "to", size)
         if err := r.Update(ctx, deployment); err != nil {
             logger.Error(err, "Failed to update Deployment")
             return ctrl.Result{}, err
@@ -589,9 +594,6 @@ func (r *MemcachedReconciler) deploymentForMemcached(m *cachev1alpha1.Memcached)
 func boolPtr(b bool) *bool {
     return &b
 }
-
-// Import intstr for probe ports
-import "k8s.io/apimachinery/pkg/util/intstr"
 ```
 
 ### Handling Deletion with Finalizers
@@ -735,7 +737,6 @@ import (
     . "github.com/onsi/ginkgo/v2"
     . "github.com/onsi/gomega"
     appsv1 "k8s.io/api/apps/v1"
-    corev1 "k8s.io/api/core/v1"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/apimachinery/pkg/types"
 
@@ -992,7 +993,7 @@ spec:
       name: example-memcached
     spec:
       size: 3
-    ```bash
+    ```
   maturity: alpha
   version: 0.0.1
   replaces: ""
@@ -1053,9 +1054,21 @@ spec:
       permissions:
         - serviceAccountName: memcached-operator-controller-manager
           rules:
-            - apiGroups: [""]
-              resources: ["configmaps"]
+            - apiGroups: ["cache.example.com"]
+              resources: ["memcacheds"]
               verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+            - apiGroups: ["cache.example.com"]
+              resources: ["memcacheds/status"]
+              verbs: ["get", "update", "patch"]
+            - apiGroups: ["cache.example.com"]
+              resources: ["memcacheds/finalizers"]
+              verbs: ["update"]
+            - apiGroups: ["apps"]
+              resources: ["deployments"]
+              verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+            - apiGroups: [""]
+              resources: ["pods"]
+              verbs: ["get", "list", "watch"]
   customresourcedefinitions:
     owned:
       - name: memcacheds.cache.example.com
@@ -1065,8 +1078,6 @@ spec:
         description: Represents a Memcached cluster
         resources:
           - kind: Deployment
-            version: v1
-          - kind: Service
             version: v1
         specDescriptors:
           - path: size
@@ -1080,7 +1091,7 @@ spec:
             description: Names of the Memcached pods
             x-descriptors:
               - urn:alm:descriptor:com.tectonic.ui:podStatuses
-```text
+```
 
 ### Build and Push Bundle
 
