@@ -306,10 +306,9 @@ flowchart LR
 
 ```python
 import hashlib
-import json
 import numpy as np
 import redis
-from functools import lru_cache
+from collections import OrderedDict
 from typing import Optional, List
 from sentence_transformers import SentenceTransformer
 
@@ -337,8 +336,9 @@ class CachedEmbedder:
         self.cache_ttl = cache_ttl
         self.embedding_dim = self.model.get_sentence_embedding_dimension()
 
-        # Configure L1 cache size
+        # L1 in-memory LRU cache (OrderedDict tracks insertion/access order)
         self._l1_cache_size = l1_cache_size
+        self._l1_cache: "OrderedDict[str, np.ndarray]" = OrderedDict()
 
     def _normalize_text(self, text: str) -> str:
         """
@@ -355,17 +355,21 @@ class CachedEmbedder:
         normalized = self._normalize_text(text)
         return f"emb:v1:{hashlib.sha256(normalized.encode()).hexdigest()}"
 
-    @lru_cache(maxsize=10000)
-    def _l1_cache_get(self, cache_key: str) -> Optional[tuple]:
-        """
-        L1 in-memory cache lookup.
-
-        Returns tuple (for hashability) or None.
-        Note: lru_cache requires hashable return types.
-        """
-        # This method body is a placeholder - actual cache
-        # is managed by lru_cache decorator
+    def _l1_cache_get(self, cache_key: str) -> Optional[np.ndarray]:
+        """L1 in-memory cache lookup with LRU access ordering."""
+        if cache_key in self._l1_cache:
+            # Move to end to mark as most recently used
+            self._l1_cache.move_to_end(cache_key)
+            return self._l1_cache[cache_key]
         return None
+
+    def _l1_cache_set(self, cache_key: str, embedding: np.ndarray) -> None:
+        """Store in L1 cache, evicting LRU entry when over capacity."""
+        self._l1_cache[cache_key] = embedding
+        self._l1_cache.move_to_end(cache_key)
+        if len(self._l1_cache) > self._l1_cache_size:
+            # Evict least recently used (first item)
+            self._l1_cache.popitem(last=False)
 
     def _l2_cache_get(self, cache_key: str) -> Optional[np.ndarray]:
         """L2 Redis cache lookup."""
@@ -402,13 +406,13 @@ class CachedEmbedder:
         # Check L1 (in-memory)
         l1_result = self._l1_cache_get(cache_key)
         if l1_result is not None:
-            return np.array(l1_result, dtype=np.float32)
+            return l1_result
 
         # Check L2 (Redis)
         l2_result = self._l2_cache_get(cache_key)
         if l2_result is not None:
             # Populate L1 cache
-            self._l1_cache_get.cache_clear()  # Reset to add new entry
+            self._l1_cache_set(cache_key, l2_result)
             return l2_result
 
         # Cache miss - compute embedding
@@ -416,9 +420,10 @@ class CachedEmbedder:
             text,
             convert_to_numpy=True,
             normalize_embeddings=True
-        )
+        ).astype(np.float32)
 
         # Populate caches
+        self._l1_cache_set(cache_key, embedding)
         self._l2_cache_set(cache_key, embedding)
 
         return embedding
@@ -779,8 +784,7 @@ class ONNXOptimizedEmbedder:
         quantize_dynamic(
             model_input=input_path,
             model_output=output_path,
-            weight_type=QuantType.QInt8,
-            optimize_model=True
+            weight_type=QuantType.QInt8
         )
 
         original_size = Path(input_path).stat().st_size / 1e6
@@ -908,7 +912,7 @@ class GPUEmbedder:
 
             # Inference with AMP
             if self.use_amp:
-                with torch.cuda.amp.autocast():
+                with torch.amp.autocast('cuda'):
                     outputs = self.model(**encoded)
                     embeddings = self._mean_pooling(
                         outputs,
@@ -966,7 +970,9 @@ if __name__ == "__main__":
 ```python
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.nn.parallel import DataParallel
+from transformers import AutoTokenizer, AutoModel
 from typing import List
 import numpy as np
 
@@ -1022,7 +1028,7 @@ class MultiGPUEmbedder:
 
             encoded = {k: v.to(self.primary_device) for k, v in encoded.items()}
 
-            with torch.cuda.amp.autocast():
+            with torch.amp.autocast('cuda'):
                 outputs = self.model(**encoded)
 
                 # Handle DataParallel output
@@ -1395,6 +1401,7 @@ import asyncio
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 import numpy as np
+import torch
 import logging
 
 logging.basicConfig(level=logging.INFO)
@@ -1543,10 +1550,10 @@ class ProductionEmbeddingPipeline:
 
 
 # FastAPI service example
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-app = FastAPI(title="Embedding Service")
 pipeline: Optional[ProductionEmbeddingPipeline] = None
 
 class EmbedRequest(BaseModel):
@@ -1556,11 +1563,14 @@ class EmbedResponse(BaseModel):
     embeddings: List[List[float]]
     count: int
 
-@app.on_event("startup")
-async def startup():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     global pipeline
     config = EmbeddingConfig()
     pipeline = ProductionEmbeddingPipeline(config)
+    yield
+
+app = FastAPI(title="Embedding Service", lifespan=lifespan)
 
 @app.post("/embed", response_model=EmbedResponse)
 async def embed_texts(request: EmbedRequest):
