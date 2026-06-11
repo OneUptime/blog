@@ -45,7 +45,8 @@ my-slack-notifier/
 ├── action.yml
 ├── index.js
 ├── package.json
-└── node_modules/
+└── dist/
+    └── index.js
 ```
 
 The `action.yml` file defines your action's interface - its inputs, outputs, and how it runs:
@@ -72,13 +73,13 @@ inputs:
 
 # Define what the action outputs for subsequent steps
 outputs:
-  message-ts:
-    description: 'Timestamp of the posted Slack message'
+  sent-at:
+    description: 'Local timestamp recorded after Slack accepts the webhook request'
 
-# Specify this is a JavaScript action running on Node 20
+# Specify this is a JavaScript action running on Node 24
 runs:
-  using: 'node20'
-  main: 'index.js'
+  using: 'node24'
+  main: 'dist/index.js'
 ```
 
 Now implement the action logic in JavaScript:
@@ -97,15 +98,17 @@ async function run() {
     const status = core.getInput('status');
 
     // Access context about the workflow run
-    const { repo, sha, actor, workflow } = github.context;
+    const { repo, sha, actor } = github.context;
     const repoName = `${repo.owner}/${repo.repo}`;
     const shortSha = sha.substring(0, 7);
 
     // Build the Slack message payload
     const color = status === 'success' ? '#36a64f' : '#dc3545';
     const emoji = status === 'success' ? ':white_check_mark:' : ':x:';
+    const text = `${emoji} Deployment ${status} for ${repoName} in ${environment}`;
 
     const payload = {
+      text: text,
       attachments: [{
         color: color,
         blocks: [
@@ -121,10 +124,10 @@ async function run() {
     };
 
     // Send the notification to Slack
-    const messageTs = await postToSlack(webhookUrl, payload);
+    const sentAt = await postToSlack(webhookUrl, payload);
 
     // Set the output for use in subsequent workflow steps
-    core.setOutput('message-ts', messageTs);
+    core.setOutput('sent-at', sentAt);
     core.info(`Successfully posted notification to Slack`);
 
   } catch (error) {
@@ -166,12 +169,14 @@ function postToSlack(webhookUrl, payload) {
 run();
 ```
 
-Install the GitHub Actions toolkit packages:
+Install the GitHub Actions toolkit packages and bundle the action:
 
 ```bash
 # Initialize the package and install required dependencies
 npm init -y
 npm install @actions/core @actions/github
+npm install --save-dev @vercel/ncc
+npx ncc build index.js -o dist
 ```
 
 ## Building a Docker Container Action
@@ -251,7 +256,12 @@ bandit -r "$SCAN_PATH" -f json -o /tmp/bandit-report.json || true
 VULN_COUNT=$(cat /tmp/bandit-report.json | python3 -c "
 import sys, json
 data = json.load(sys.stdin)
-count = len([r for r in data.get('results', []) if r['issue_severity'].lower() >= '$SEVERITY'.lower()])
+severity_order = {'low': 1, 'medium': 2, 'high': 3, 'critical': 4}
+threshold = severity_order.get('$SEVERITY'.lower(), 2)
+count = len([
+    r for r in data.get('results', [])
+    if severity_order.get(r.get('issue_severity', '').lower(), 0) >= threshold
+])
 print(count)
 ")
 
@@ -301,14 +311,14 @@ runs:
   steps:
     # Step 1: Set up the specified Node.js version
     - name: Setup Node.js
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@v6
       with:
         node-version: ${{ inputs.node-version }}
 
     # Step 2: Cache node_modules for faster subsequent runs
     - name: Cache dependencies
       id: cache
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: ${{ inputs.working-directory }}/node_modules
         key: node-modules-${{ runner.os }}-${{ hashFiles(format('{0}/package-lock.json', inputs.working-directory)) }}
@@ -345,7 +355,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # Use a local action from the same repo
       - name: Setup project
