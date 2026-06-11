@@ -41,13 +41,13 @@ flowchart TB
 
 ## What is the Config Resource?
 
-The Config resource is a cluster-scoped custom resource that controls how Gatekeeper interacts with your cluster. It defines:
+The Config resource is a namespaced singleton custom resource that controls how Gatekeeper interacts with your cluster. It defines:
 
 - **Sync configuration** - which resources to cache for policy evaluation
 - **Exempt namespaces** - namespaces where policies are not enforced
-- **Match conditions** - fine-grained control over webhook behavior
+- **Namespace exclusions** - fine-grained control over Gatekeeper processes
 
-Without a Config resource, Gatekeeper cannot evaluate policies that reference other resources in the cluster.
+Without a Config resource or SyncSet that replicates the needed resources, Gatekeeper cannot evaluate policies that reference other resources in the cluster.
 
 ---
 
@@ -213,7 +213,7 @@ spec:
         # Gatekeeper's own namespace - prevents self-blocking
         - "gatekeeper-system"
       processes:
-        # Exclude from all admission processes
+        # Exclude from all Gatekeeper processes
         - "*"
 ```
 
@@ -266,21 +266,21 @@ The following processes can be exempted:
 | Process | Description |
 |---------|-------------|
 | `*` | All processes |
-| `webhook` | Admission webhook (both validating and mutating) |
+| `webhook` | Validating admission webhook |
 | `mutation-webhook` | Mutating admission webhook only |
 | `audit` | Background audit process |
 | `sync` | Resource sync process |
 
 ---
 
-## Webhook Match Conditions
+## Namespace Exclusion Patterns
 
-Control which resources trigger the admission webhook with match conditions.
+Control which namespaces are excluded from Gatekeeper processes.
 
-### Match by Namespace Labels
+### Match by Namespace Names
 
 ```yaml
-# config-match-labels.yaml
+# config-match-names.yaml
 apiVersion: config.gatekeeper.sh/v1alpha1
 kind: Config
 metadata:
@@ -297,27 +297,19 @@ spec:
         kind: "Pod"
 
   match:
-    # Only enforce policies in namespaces with specific labels
-    - includedNamespaces:
-        # Use label selectors instead of hardcoded names
-        matchLabels:
-          gatekeeper-enabled: "true"
-      processes:
-        - "webhook"
-
-    # Exempt namespaces labeled as development environments
+    # Exempt development namespaces from admission and audit
     - excludedNamespaces:
-        matchLabels:
-          environment: "development"
+        - "development"
+        - "sandbox"
       processes:
         - "webhook"
         - "audit"
 ```
 
-### Match by Namespace Expressions
+### Match by Namespace Globs
 
 ```yaml
-# config-match-expressions.yaml
+# config-match-globs.yaml
 apiVersion: config.gatekeeper.sh/v1alpha1
 kind: Config
 metadata:
@@ -331,24 +323,10 @@ spec:
         kind: "Namespace"
 
   match:
-    # Enforce in production namespaces only
-    - includedNamespaces:
-        matchExpressions:
-          # Match namespaces where environment label is production or staging
-          - key: "environment"
-            operator: "In"
-            values:
-              - "production"
-              - "staging"
-      processes:
-        - "webhook"
-
-    # Exempt temporary namespaces
+    # Exempt temporary namespaces using prefix and suffix globs
     - excludedNamespaces:
-        matchExpressions:
-          # Match namespaces with a ttl label (temporary namespaces)
-          - key: "ttl"
-            operator: "Exists"
+        - "tmp-*"
+        - "*-test"
       processes:
         - "*"
 ```
@@ -386,10 +364,10 @@ spec:
 
           # Query synced Ingress resources from the cache
           # data.inventory contains all synced resources
-          other := data.inventory.namespace[ns][_].Ingress[name]
+          other := data.inventory.namespace[ns]["networking.k8s.io/v1"]["Ingress"][name]
 
           # Skip if comparing to the same Ingress
-          other.metadata.name != input.review.object.metadata.name
+          not same_ingress(other)
 
           # Check if the host already exists
           other_host := other.spec.rules[_].host
@@ -399,6 +377,11 @@ spec:
             "Ingress host '%v' is already used by %v/%v",
             [input_host, ns, name]
           )
+        }
+
+        same_ingress(other) {
+          other.metadata.namespace == input.review.object.metadata.namespace
+          other.metadata.name == input.review.object.metadata.name
         }
 ```
 
@@ -720,13 +703,9 @@ spec:
       processes:
         - "mutation-webhook"
 
-    # Only enforce in namespaces labeled for policy enforcement
-    - includedNamespaces:
-        matchExpressions:
-          - key: "policy-enforcement"
-            operator: "NotIn"
-            values:
-              - "disabled"
+    # Exempt namespaces that are not ready for policy enforcement
+    - excludedNamespaces:
+        - "policy-disabled-*"
       processes:
         - "webhook"
 ```
@@ -737,7 +716,7 @@ spec:
 
 1. **Start minimal** - only sync resources your policies actually need
 2. **Exempt system namespaces** - prevent blocking critical cluster components
-3. **Use label selectors** - more flexible than hardcoding namespace names
+3. **Use namespace globs** - more flexible than hardcoding every namespace name
 4. **Monitor memory usage** - syncing too many resources impacts Gatekeeper performance
 5. **Test in dry-run** - verify policies work with synced data before enforcement
 6. **Document dependencies** - note which Config entries each policy requires
@@ -746,14 +725,14 @@ spec:
 
 ## Conclusion
 
-The OPA Gatekeeper Config resource is essential for policies that need cluster state. Key takeaways:
+The OPA Gatekeeper Config resource is one way to make cluster state available to policies. Key takeaways:
 
 - **Sync configuration** makes Kubernetes resources available to policies
 - **Exempt namespaces** prevent blocking critical system components
-- **Match conditions** provide fine-grained control over enforcement
+- **Namespace exclusions** provide fine-grained control over enforcement
 - **Data inventory** follows a predictable structure for policy queries
 
-Without proper Config setup, your policies are limited to validating only the incoming resource.
+Without proper data replication setup, your policies are limited to validating only the incoming resource.
 
 ---
 
