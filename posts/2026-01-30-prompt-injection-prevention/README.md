@@ -597,7 +597,7 @@ This logging configuration captures security events for analysis and incident re
 
 ```python
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 class SecurityLogger:
     """Structured logging for security events."""
@@ -614,7 +614,7 @@ class SecurityLogger:
     ):
         """Log a security event in structured format."""
         event = {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "event_type": event_type,
             "user_id": user_id,
             "risk_level": risk_level,
