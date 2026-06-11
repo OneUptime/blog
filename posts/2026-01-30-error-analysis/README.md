@@ -323,8 +323,7 @@ const rootCauseTraces = await traceStore.query({
   timeRange: { start: Date.now() - 3600000, end: Date.now() },
   filter: {
     'span.status.code': 'ERROR',
-    'span.attributes.error.source': 'database-service',
-    'span.parentSpanId': null  // Root span check
+    'span.attributes.error.source': 'database-service'
   }
 });
 ```
@@ -543,7 +542,7 @@ function detectRetryStorm(traces: Trace[]): boolean {
   for (const trace of traces) {
     for (const span of trace.spans) {
       if (span.kind === SpanKind.CLIENT) {
-        const target = span.attributes['peer.service'];
+        const target = span.attributes['service.peer.name'];
         if (!callsByService.has(target)) {
           callsByService.set(target, []);
         }
@@ -572,9 +571,14 @@ function detectRetryStorm(traces: Trace[]): boolean {
 
 **Detection**:
 ```typescript
-function detectPartialDeploymentIssue(errorSpans: Span[]): boolean {
+function detectPartialDeploymentIssue(errorSpans: Span[], allSpans: Span[]): boolean {
   const errorsByVersion = new Map<string, number>();
   const totalByVersion = new Map<string, number>();
+
+  for (const span of allSpans) {
+    const version = span.resource.attributes['service.version'];
+    totalByVersion.set(version, (totalByVersion.get(version) || 0) + 1);
+  }
 
   for (const span of errorSpans) {
     const version = span.resource.attributes['service.version'];
@@ -582,10 +586,12 @@ function detectPartialDeploymentIssue(errorSpans: Span[]): boolean {
   }
 
   // Compare error rates between versions
-  const versions = Array.from(errorsByVersion.keys());
+  const versions = Array.from(totalByVersion.keys());
   if (versions.length < 2) return false;
 
-  const rates = versions.map(v => errorsByVersion.get(v)! / totalByVersion.get(v)!);
+  const rates = versions.map(v =>
+    (errorsByVersion.get(v) || 0) / totalByVersion.get(v)!
+  );
   const maxRate = Math.max(...rates);
   const minRate = Math.min(...rates);
 
@@ -616,7 +622,7 @@ function errorAnalysisMiddleware(err: Error, req: Request, res: Response, next: 
     // Add analysis attributes
     span.setAttribute('error.type', err.constructor.name);
     span.setAttribute('error.category', categorizeError(err));
-    span.setAttribute('http.status_code', getStatusCode(err));
+    span.setAttribute('http.response.status_code', getStatusCode(err));
 
     // Add request context for correlation
     span.setAttribute('request.path', req.path);
