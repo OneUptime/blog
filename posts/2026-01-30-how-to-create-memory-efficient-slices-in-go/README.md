@@ -23,7 +23,7 @@ type slice struct {
 }
 ```
 
-When you create a slice, Go allocates an underlying array. The slice header points to this array and tracks both the current length and total capacity. Understanding this structure is key to writing memory-efficient code.
+When you create a slice with make or a slice literal, Go allocates an underlying array. The slice header points to this array and tracks both the current length and total capacity. Understanding this structure is key to writing memory-efficient code.
 
 ```go
 package main
@@ -73,7 +73,7 @@ func main() {
 }
 ```
 
-When a slice exceeds its capacity, Go allocates a new array (typically doubling the size) and copies all elements. Pre-allocation eliminates these costly operations.
+When a slice exceeds its capacity, Go allocates a new underlying array with enough capacity for the appended elements and copies the existing elements. Pre-allocation eliminates these costly operations.
 
 ## Avoiding Slice Append Pitfalls
 
