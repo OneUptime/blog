@@ -102,7 +102,7 @@ def generate_cache_key(prompt: str, model: str, temperature: float) -> str:
 
 def get_llm_response_with_cache(
     prompt: str,
-    model: str = "gpt-4",
+    model: str = "gpt-4o-mini",
     temperature: float = 0.7
 ) -> dict:
     """
@@ -209,6 +209,11 @@ INDEX_NAME = "semantic_cache_idx"
 CACHE_PREFIX = "semantic_cache:"
 
 
+def to_text(value):
+    """Decode Redis byte responses when decode_responses=False."""
+    return value.decode() if isinstance(value, bytes) else value
+
+
 def create_vector_index():
     """
     Create a Redis vector search index for semantic caching.
@@ -229,6 +234,9 @@ def create_vector_index():
     schema = (
         # Store the original prompt as searchable text
         TextField("$.prompt", as_name="prompt"),
+        # Store the response and model metadata for retrieval and filtering
+        TextField("$.response", as_name="response"),
+        TextField("$.model", as_name="model"),
         # Store the embedding as a vector field for similarity search
         VectorField(
             "$.embedding",
@@ -269,7 +277,10 @@ def get_embedding(text: str) -> list:
     return response.data[0].embedding
 
 
-def find_similar_cached_response(query_embedding: list) -> dict | None:
+def find_similar_cached_response(
+    query_embedding: list,
+    model: str
+) -> dict | None:
     """
     Search for a semantically similar cached response.
 
@@ -279,10 +290,10 @@ def find_similar_cached_response(query_embedding: list) -> dict | None:
     query_vector = np.array(query_embedding, dtype=np.float32).tobytes()
 
     # Build the vector similarity query
-    # KNN search for the single most similar cached item
+    # KNN search for similar cached items
     query = (
-        Query("*=>[KNN 1 @embedding $vec AS similarity_score]")
-        .return_fields("prompt", "response", "similarity_score")
+        Query("*=>[KNN 10 @embedding $vec AS similarity_score]")
+        .return_fields("prompt", "response", "model", "similarity_score")
         .sort_by("similarity_score")
         .dialect(2)
     )
@@ -296,25 +307,28 @@ def find_similar_cached_response(query_embedding: list) -> dict | None:
     if results.total == 0:
         return None
 
-    # Check if the similarity meets our threshold
-    # Redis returns cosine distance, so we convert to similarity
-    # For COSINE distance metric, similarity = 1 - distance
-    top_result = results.docs[0]
-    similarity_score = 1 - float(top_result.similarity_score)
+    # Check if the similarity meets our threshold for the same model.
+    # Redis returns cosine distance, so we convert to similarity.
+    # For COSINE distance metric, similarity = 1 - distance.
+    for result in results.docs:
+        if to_text(result.model) != model:
+            continue
 
-    if similarity_score >= SIMILARITY_THRESHOLD:
-        return {
-            'response': top_result.response,
-            'original_prompt': top_result.prompt,
-            'similarity_score': similarity_score
-        }
+        similarity_score = 1 - float(result.similarity_score)
+
+        if similarity_score >= SIMILARITY_THRESHOLD:
+            return {
+                'response': to_text(result.response),
+                'original_prompt': to_text(result.prompt),
+                'similarity_score': similarity_score
+            }
 
     return None
 
 
 def get_llm_response_semantic_cache(
     prompt: str,
-    model: str = "gpt-4"
+    model: str = "gpt-4o-mini"
 ) -> dict:
     """
     Get LLM response with semantic caching.
@@ -326,7 +340,7 @@ def get_llm_response_semantic_cache(
     prompt_embedding = get_embedding(prompt)
 
     # Search for similar cached responses
-    cached = find_similar_cached_response(prompt_embedding)
+    cached = find_similar_cached_response(prompt_embedding, model)
 
     if cached:
         return {
@@ -460,7 +474,7 @@ def get_support_response(user_message: str) -> dict:
     subsequent requests that use the same system context.
     """
     response = client.messages.create(
-        model="claude-sonnet-4-20250514",
+        model="claude-sonnet-4-6",
         max_tokens=1024,
         system=[
             {
@@ -531,7 +545,7 @@ def query_with_context(user_query: str) -> dict:
     3. Use consistent formatting for the static portion
     """
     response = client.chat.completions.create(
-        model="gpt-4",
+        model="gpt-4o-mini",
         messages=[
             {
                 "role": "system",
@@ -551,17 +565,15 @@ def query_with_context(user_query: str) -> dict:
 
     # Check usage for caching information
     usage = response.usage
+    prompt_tokens_details = getattr(usage, 'prompt_tokens_details', None)
+    cached_tokens = getattr(prompt_tokens_details, 'cached_tokens', 0)
 
     return {
         'response': response.choices[0].message.content,
         'prompt_tokens': usage.prompt_tokens,
         'completion_tokens': usage.completion_tokens,
         # Cached tokens show up in prompt_tokens_details for supported models
-        'cached_tokens': getattr(
-            usage,
-            'prompt_tokens_details',
-            {}
-        ).get('cached_tokens', 0)
+        'cached_tokens': cached_tokens
     }
 ```
 
@@ -596,6 +608,11 @@ import time
 # Initialize clients
 redis_client = redis.Redis(host='localhost', port=6379, decode_responses=False)
 openai_client = OpenAI()
+
+
+def to_text(value):
+    """Decode Redis byte responses when decode_responses=False."""
+    return value.decode() if isinstance(value, bytes) else value
 
 
 @dataclass
@@ -644,6 +661,9 @@ class MultiLayerLLMCache:
         except redis.ResponseError:
             schema = (
                 TextField("$.prompt", as_name="prompt"),
+                TextField("$.response", as_name="response"),
+                TextField("$.model", as_name="model"),
+                TextField("$.system_prompt_hash", as_name="system_prompt_hash"),
                 VectorField(
                     "$.embedding",
                     "FLAT",
@@ -664,9 +684,21 @@ class MultiLayerLLMCache:
                 definition=definition
             )
 
-    def _get_exact_cache_key(self, prompt: str, model: str) -> str:
+    def _get_exact_cache_key(
+        self,
+        prompt: str,
+        model: str,
+        system_prompt: Optional[str]
+    ) -> str:
         """Generate deterministic cache key for exact matching."""
-        data = json.dumps({'prompt': prompt, 'model': model}, sort_keys=True)
+        data = json.dumps(
+            {
+                'prompt': prompt,
+                'model': model,
+                'system_prompt': system_prompt
+            },
+            sort_keys=True
+        )
         return f"exact:{hashlib.sha256(data.encode()).hexdigest()}"
 
     def _get_embedding(self, text: str) -> list:
@@ -677,9 +709,14 @@ class MultiLayerLLMCache:
         )
         return response.data[0].embedding
 
-    def _check_exact_cache(self, prompt: str, model: str) -> Optional[str]:
+    def _check_exact_cache(
+        self,
+        prompt: str,
+        model: str,
+        system_prompt: Optional[str]
+    ) -> Optional[str]:
         """Check for exact match in cache."""
-        key = self._get_exact_cache_key(prompt, model)
+        key = self._get_exact_cache_key(prompt, model, system_prompt)
         cached = redis_client.get(key)
         if cached:
             return json.loads(cached.decode())
@@ -687,14 +724,19 @@ class MultiLayerLLMCache:
 
     def _check_semantic_cache(
         self,
-        embedding: list
+        embedding: list,
+        model: str,
+        system_prompt: Optional[str]
     ) -> Optional[tuple[str, float]]:
         """Check for semantically similar cached response."""
         query_vector = np.array(embedding, dtype=np.float32).tobytes()
+        system_prompt_hash = hashlib.sha256(
+            (system_prompt or "").encode()
+        ).hexdigest()
 
         query = (
-            Query("*=>[KNN 1 @embedding $vec AS score]")
-            .return_fields("response", "score")
+            Query("*=>[KNN 10 @embedding $vec AS score]")
+            .return_fields("response", "model", "system_prompt_hash", "score")
             .sort_by("score")
             .dialect(2)
         )
@@ -704,11 +746,16 @@ class MultiLayerLLMCache:
             query_params={"vec": query_vector}
         )
 
-        if results.total > 0:
-            top = results.docs[0]
-            similarity = 1 - float(top.score)
+        for result in results.docs:
+            if (
+                to_text(result.model) != model or
+                to_text(result.system_prompt_hash) != system_prompt_hash
+            ):
+                continue
+
+            similarity = 1 - float(result.score)
             if similarity >= self.similarity_threshold:
-                return (top.response, similarity)
+                return (to_text(result.response), similarity)
 
         return None
 
@@ -717,11 +764,12 @@ class MultiLayerLLMCache:
         prompt: str,
         response: str,
         model: str,
-        embedding: list
+        embedding: list,
+        system_prompt: Optional[str]
     ):
         """Store response in both exact and semantic caches."""
         # Store in exact cache
-        exact_key = self._get_exact_cache_key(prompt, model)
+        exact_key = self._get_exact_cache_key(prompt, model, system_prompt)
         redis_client.setex(
             exact_key,
             self.exact_cache_ttl,
@@ -736,6 +784,9 @@ class MultiLayerLLMCache:
             'response': response,
             'embedding': embedding,
             'model': model,
+            'system_prompt_hash': hashlib.sha256(
+                (system_prompt or "").encode()
+            ).hexdigest(),
             'created_at': time.time()
         })
         redis_client.expire(semantic_key, self.semantic_cache_ttl)
@@ -743,7 +794,7 @@ class MultiLayerLLMCache:
     def get_response(
         self,
         prompt: str,
-        model: str = "gpt-4",
+        model: str = "gpt-4o-mini",
         system_prompt: Optional[str] = None
     ) -> CacheResult:
         """
@@ -757,7 +808,7 @@ class MultiLayerLLMCache:
         start_time = time.time()
 
         # Layer 1: Check exact cache
-        exact_result = self._check_exact_cache(prompt, model)
+        exact_result = self._check_exact_cache(prompt, model, system_prompt)
         if exact_result:
             return CacheResult(
                 response=exact_result,
@@ -771,7 +822,11 @@ class MultiLayerLLMCache:
         embedding = self._get_embedding(prompt)
 
         # Layer 2: Check semantic cache
-        semantic_result = self._check_semantic_cache(embedding)
+        semantic_result = self._check_semantic_cache(
+            embedding,
+            model,
+            system_prompt
+        )
         if semantic_result:
             response, similarity = semantic_result
             return CacheResult(
@@ -796,7 +851,13 @@ class MultiLayerLLMCache:
         response_text = api_response.choices[0].message.content
 
         # Store in both caches for future use
-        self._store_in_caches(prompt, response_text, model, embedding)
+        self._store_in_caches(
+            prompt,
+            response_text,
+            model,
+            embedding,
+            system_prompt
+        )
 
         return CacheResult(
             response=response_text,
@@ -990,7 +1051,7 @@ def invalidate_cache_by_pattern(pattern: str):
 Pre-populate your cache with common queries during off-peak hours:
 
 ```python
-def warm_cache(common_queries: list[str], model: str = "gpt-4"):
+def warm_cache(common_queries: list[str], model: str = "gpt-4o-mini"):
     """
     Pre-populate cache with responses to common queries.
 
