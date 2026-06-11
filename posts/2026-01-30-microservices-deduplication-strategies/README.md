@@ -65,8 +65,27 @@ class IdempotencyService {
   }
 
   // Create a hash of the request body to detect mismatched retries
+  private normalizeForHash(value: unknown): unknown {
+    if (Array.isArray(value)) {
+      return value.map(item => this.normalizeForHash(item));
+    }
+
+    if (value && typeof value === 'object') {
+      return Object.keys(value as Record<string, unknown>)
+        .sort()
+        .reduce<Record<string, unknown>>((normalized, key) => {
+          normalized[key] = this.normalizeForHash(
+            (value as Record<string, unknown>)[key]
+          );
+          return normalized;
+        }, {});
+    }
+
+    return value;
+  }
+
   private hashRequest(body: unknown): string {
-    const serialized = JSON.stringify(body, Object.keys(body as object).sort());
+    const serialized = JSON.stringify(this.normalizeForHash(body));
     return crypto.createHash('sha256').update(serialized).digest('hex').slice(0, 32);
   }
 
@@ -85,7 +104,7 @@ class IdempotencyService {
         return existing
       end
       local record = ARGV[1]
-      redis.call('SETEX', KEYS[1], ARGV[2], record)
+      redis.call('SET', KEYS[1], record, 'EX', ARGV[2])
       return nil
     `;
 
@@ -141,7 +160,7 @@ class IdempotencyService {
     record.response = response;
     record.completedAt = Date.now();
 
-    await this.redis.setex(key, this.ttlSeconds, JSON.stringify(record));
+    await this.redis.set(key, JSON.stringify(record), 'EX', this.ttlSeconds);
   }
 
   // Mark request as failed to allow retry with same key
@@ -283,8 +302,8 @@ class MessageDeduplicator {
         return 0
       end
 
-      redis.call('SETEX', KEYS[1], ARGV[1], '1')
-      redis.call('SETEX', KEYS[2], ARGV[1], ARGV[2])
+      redis.call('SET', KEYS[1], '1', 'EX', ARGV[1])
+      redis.call('SET', KEYS[2], ARGV[2], 'EX', ARGV[1])
       return 1
     `;
 
@@ -366,7 +385,7 @@ For critical operations, database constraints provide the strongest guarantees. 
 This approach uses PostgreSQL's ON CONFLICT clause to handle duplicates at the database level.
 
 ```typescript
-import { Pool, PoolClient } from 'pg';
+import { Pool } from 'pg';
 
 interface Order {
   orderId: string;
@@ -413,7 +432,7 @@ class OrderRepository {
         ON CONFLICT (idempotency_key) DO UPDATE
         SET order_id = orders.order_id
         RETURNING order_id, customer_id, total_amount, idempotency_key,
-                  (xmax = 0) as is_new
+                  (old.idempotency_key IS NULL) as is_new
         `,
         [order.orderId, order.customerId, order.totalAmount, order.idempotencyKey]
       );
@@ -469,12 +488,12 @@ class OrderRepository {
     return {
       orderId: orderResult.rows[0].order_id,
       customerId: orderResult.rows[0].customer_id,
-      totalAmount: orderResult.rows[0].total_amount,
+      totalAmount: Number(orderResult.rows[0].total_amount),
       idempotencyKey: orderResult.rows[0].idempotency_key,
       items: itemsResult.rows.map(row => ({
         productId: row.product_id,
         quantity: row.quantity,
-        price: row.price,
+        price: Number(row.price),
       })),
     };
   }
@@ -518,7 +537,7 @@ CREATE INDEX idx_orders_customer_id ON orders(customer_id);
 Event sourcing naturally supports deduplication by storing events with unique identifiers. If an event with the same ID already exists, the append operation fails or is ignored.
 
 ```typescript
-import { Pool } from 'pg';
+import { Pool, PoolClient } from 'pg';
 
 interface Event {
   eventId: string;
@@ -562,7 +581,7 @@ class EventStore {
     try {
       await client.query('BEGIN');
 
-      // Lock the aggregate row to prevent concurrent modifications
+      // Lock this aggregate stream to prevent concurrent modifications
       const currentVersion = await this.getCurrentVersion(
         client,
         aggregateId,
@@ -637,17 +656,25 @@ class EventStore {
     aggregateId: string,
     aggregateType: string
   ): Promise<number> {
+    await client.query(
+      'SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))',
+      [aggregateType, aggregateId]
+    );
+
     const result = await client.query(
       `
       SELECT COALESCE(MAX(version), 0) as version
       FROM events
       WHERE aggregate_id = $1 AND aggregate_type = $2
-      FOR UPDATE
       `,
       [aggregateId, aggregateType]
     );
 
     return result.rows[0].version;
+  }
+
+  private parseJson(value: unknown): unknown {
+    return typeof value === 'string' ? JSON.parse(value) : value;
   }
 
   // Load events for rebuilding aggregate state
@@ -672,8 +699,8 @@ class EventStore {
       aggregateId: row.aggregate_id,
       aggregateType: row.aggregate_type,
       eventType: row.event_type,
-      payload: JSON.parse(row.payload),
-      metadata: JSON.parse(row.metadata),
+      payload: this.parseJson(row.payload),
+      metadata: this.parseJson(row.metadata),
       version: row.version,
     }));
   }
@@ -694,7 +721,8 @@ class DistributedBloomFilter {
   private hashCount: number;
 
   // Size and hash count determine false positive rate
-  // With size=1000000 and hashCount=7, false positive rate is about 0.8%
+  // With size=1000000, hashCount=7, and about 100000 inserted items,
+  // the false positive rate is about 0.8%
   constructor(redis: Redis, key: string, size = 1000000, hashCount = 7) {
     this.redis = redis;
     this.key = key;
@@ -815,7 +843,7 @@ class TieredDeduplicator {
 
     await Promise.all([
       this.bloomFilter.addAndCheck(itemId),
-      this.redis.setex(exactKey, this.exactCheckTTL, '1'),
+      this.redis.set(exactKey, '1', 'EX', this.exactCheckTTL),
     ]);
   }
 }
