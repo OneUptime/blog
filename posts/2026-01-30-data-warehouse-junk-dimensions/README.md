@@ -180,18 +180,18 @@ CREATE TABLE dim_order_junk (
 
 -- Add check constraints to enforce valid values
 ALTER TABLE dim_order_junk
-ADD CONSTRAINT chk_is_gift CHECK (is_gift_flag IN ('Y', 'N'));
+ADD CONSTRAINT chk_is_gift CHECK (is_gift_flag IN ('Y', 'N', 'U'));
 
 ALTER TABLE dim_order_junk
-ADD CONSTRAINT chk_is_rush CHECK (is_rush_flag IN ('Y', 'N'));
+ADD CONSTRAINT chk_is_rush CHECK (is_rush_flag IN ('Y', 'N', 'U'));
 
 ALTER TABLE dim_order_junk
-ADD CONSTRAINT chk_is_taxable CHECK (is_taxable_flag IN ('Y', 'N'));
+ADD CONSTRAINT chk_is_taxable CHECK (is_taxable_flag IN ('Y', 'N', 'U'));
 ```
 
 ### Step 3: Generate Cartesian Product
 
-The most common approach is to pre-populate all possible combinations using a Cartesian product:
+One common approach is to pre-populate all possible combinations using a Cartesian product:
 
 ```sql
 -- Generate all possible combinations using CROSS JOIN
@@ -200,50 +200,50 @@ The most common approach is to pre-populate all possible combinations using a Ca
 -- First, create helper tables with valid values for each attribute
 -- These can be temporary tables or CTEs
 
-CREATE TEMPORARY TABLE gift_values (
+CREATE TABLE #gift_values (
     flag_value CHAR(1),
     flag_desc VARCHAR(50)
 );
 
-INSERT INTO gift_values VALUES
+INSERT INTO #gift_values VALUES
     ('Y', 'Gift Order'),
     ('N', 'Non-Gift Order');
 
-CREATE TEMPORARY TABLE rush_values (
+CREATE TABLE #rush_values (
     flag_value CHAR(1),
     flag_desc VARCHAR(50)
 );
 
-INSERT INTO rush_values VALUES
+INSERT INTO #rush_values VALUES
     ('Y', 'Rush Delivery'),
     ('N', 'Standard Delivery');
 
-CREATE TEMPORARY TABLE taxable_values (
+CREATE TABLE #taxable_values (
     flag_value CHAR(1),
     flag_desc VARCHAR(50)
 );
 
-INSERT INTO taxable_values VALUES
+INSERT INTO #taxable_values VALUES
     ('Y', 'Taxable'),
     ('N', 'Tax Exempt');
 
-CREATE TEMPORARY TABLE payment_values (
+CREATE TABLE #payment_values (
     type_code VARCHAR(20),
     type_desc VARCHAR(100)
 );
 
-INSERT INTO payment_values VALUES
+INSERT INTO #payment_values VALUES
     ('CREDIT', 'Credit Card'),
     ('DEBIT', 'Debit Card'),
     ('ACH', 'Bank Transfer'),
     ('PAYPAL', 'PayPal');
 
-CREATE TEMPORARY TABLE shipping_values (
+CREATE TABLE #shipping_values (
     method_code VARCHAR(20),
     method_desc VARCHAR(100)
 );
 
-INSERT INTO shipping_values VALUES
+INSERT INTO #shipping_values VALUES
     ('STANDARD', 'Standard Shipping (5-7 days)'),
     ('EXPRESS', 'Express Shipping (2-3 days)'),
     ('OVERNIGHT', 'Overnight Shipping'),
@@ -280,11 +280,11 @@ SELECT
     t.flag_desc AS is_taxable_desc,
     p.type_desc AS payment_type_desc,
     s.method_desc AS shipping_method_desc
-FROM gift_values g
-CROSS JOIN rush_values r
-CROSS JOIN taxable_values t
-CROSS JOIN payment_values p
-CROSS JOIN shipping_values s;
+FROM #gift_values g
+CROSS JOIN #rush_values r
+CROSS JOIN #taxable_values t
+CROSS JOIN #payment_values p
+CROSS JOIN #shipping_values s;
 ```
 
 ---
@@ -368,6 +368,7 @@ Integrate junk dimension lookups into your ETL process:
 -- This pattern ensures every fact row has a valid junk dimension key
 
 CREATE PROCEDURE usp_load_fact_orders
+    @last_load_date DATETIME
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -532,22 +533,16 @@ ON dim_order_junk (
 )
 INCLUDE (order_junk_key);
 
--- Alternative: Create hash index for exact match lookups (PostgreSQL)
--- Hash indexes are faster for equality comparisons
-
-CREATE INDEX ix_order_junk_hash
-ON dim_order_junk USING hash (
-    (is_gift_flag || is_rush_flag || is_taxable_flag ||
-     payment_type_code || shipping_method_code)
-);
+-- For SQL Server, use the persisted computed hash column shown below
+-- if a shorter equality lookup key is needed.
 ```
 
-### Using Hash Keys for Faster Lookups
+### Using Hash Keys for Shorter Lookups
 
-Generate a hash key to simplify and speed up lookups:
+Generate a hash key to simplify lookups:
 
 ```sql
--- Add a hash column for faster lookups
+-- Add a hash column for shorter lookup predicates
 ALTER TABLE dim_order_junk
 ADD junk_hash_key AS (
     HASHBYTES('SHA2_256',
@@ -570,7 +565,12 @@ WHERE junk_hash_key = HASHBYTES('SHA2_256',
            @is_rush, '|',
            @is_taxable, '|',
            @payment_type, '|',
-           @shipping_method));
+           @shipping_method))
+  AND is_gift_flag = @is_gift
+  AND is_rush_flag = @is_rush
+  AND is_taxable_flag = @is_taxable
+  AND payment_type_code = @payment_type
+  AND shipping_method_code = @shipping_method;
 ```
 
 ---
