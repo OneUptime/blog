@@ -52,9 +52,9 @@ Grafana heatmaps work with two main data formats: pre-bucketed histograms and ra
 
 ### Pre-Bucketed Histograms (Prometheus)
 
-Prometheus histogram metrics come pre-bucketed, which is ideal for heatmaps. The histogram_quantile function works with these buckets.
+Prometheus histogram metrics come pre-bucketed, which is ideal for heatmaps. Grafana's Prometheus heatmap format works with these bucket series, and the histogram_quantile function can use the same buckets when you need percentile lines.
 
-This query retrieves HTTP request duration histogram buckets over the past hour with 1-minute resolution.
+This query retrieves per-second rates for HTTP request duration histogram buckets using a 5-minute rate window.
 
 ```promql
 sum(rate(http_request_duration_seconds_bucket[5m])) by (le)
@@ -154,20 +154,18 @@ Use sequential schemes when you want to emphasize magnitude. Blues, Greens, and 
 
 Use diverging schemes like Spectral or RdYlGn when you have a meaningful center point and want to show deviation in both directions.
 
-### Custom Thresholds
+### Custom Color Range
 
-Define explicit color thresholds when you have SLO-based boundaries.
+Define an explicit color scale range when you have SLO-based boundaries.
 
 ```json
 {
   "color": {
-    "mode": "thresholds",
-    "thresholds": [
-      {"value": 0, "color": "green"},
-      {"value": 50, "color": "yellow"},
-      {"value": 100, "color": "orange"},
-      {"value": 200, "color": "red"}
-    ]
+    "mode": "scheme",
+    "scheme": "RdYlGn",
+    "reverse": true,
+    "min": 0,
+    "max": 200
   }
 }
 ```
@@ -207,9 +205,7 @@ sum(increase(http_request_duration_seconds_bucket{status=~"5.."}[1m])) by (le)
 For message queue monitoring, heatmaps can show how queue depth fluctuates throughout the day.
 
 ```promql
-histogram_quantile(0.5,
-  sum(rate(kafka_consumer_lag_bucket[5m])) by (le, topic)
-)
+sum(rate(kafka_consumer_lag_bucket[5m])) by (le)
 ```
 
 ### Pattern 4: Custom Bucket Boundaries
@@ -324,7 +320,7 @@ Every cell appears the same color, making the heatmap unreadable.
 **Causes and Solutions:**
 
 1. **Color scale not matching data range** - Adjust min/max color thresholds
-2. **Logarithmic scale needed** - Enable log scale for exponentially distributed data
+2. **Logarithmic bucket scale needed** - Use a logarithmic Y-bucket scale for exponentially distributed data
 3. **Too few color steps** - Increase the number of color gradient steps
 
 ```json
