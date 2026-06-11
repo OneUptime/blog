@@ -260,7 +260,7 @@ class RequestCoalescer:
                 return await self.in_flight[key]
 
             # Create future for this request
-            future = asyncio.get_event_loop().create_future()
+            future = asyncio.get_running_loop().create_future()
             self.in_flight[key] = future
 
         # Execute fetch outside the lock
