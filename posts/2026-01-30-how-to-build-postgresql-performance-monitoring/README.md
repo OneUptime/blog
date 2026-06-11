@@ -117,18 +117,15 @@ Identify blocking locks that cause query delays:
 
 ```sql
 SELECT
-    blocked_locks.pid AS blocked_pid,
+    blocked_activity.pid AS blocked_pid,
     blocked_activity.usename AS blocked_user,
-    blocking_locks.pid AS blocking_pid,
+    blocking_pid.pid AS blocking_pid,
     blocking_activity.usename AS blocking_user,
-    blocked_activity.query AS blocked_query
-FROM pg_locks blocked_locks
-JOIN pg_stat_activity blocked_activity ON blocked_locks.pid = blocked_activity.pid
-JOIN pg_locks blocking_locks ON blocked_locks.locktype = blocking_locks.locktype
-    AND blocked_locks.relation = blocking_locks.relation
-    AND blocked_locks.pid <> blocking_locks.pid
-JOIN pg_stat_activity blocking_activity ON blocking_locks.pid = blocking_activity.pid
-WHERE NOT blocked_locks.granted;
+    blocked_activity.query AS blocked_query,
+    blocking_activity.query AS blocking_query
+FROM pg_stat_activity AS blocked_activity
+JOIN LATERAL unnest(pg_blocking_pids(blocked_activity.pid)) AS blocking_pid(pid) ON true
+LEFT JOIN pg_stat_activity AS blocking_activity ON blocking_activity.pid = blocking_pid.pid;
 ```
 
 ## Vacuum Statistics
@@ -161,6 +158,7 @@ Install and configure the exporter:
 services:
   postgres_exporter:
     image: prometheuscommunity/postgres-exporter
+    command: ["--collector.stat_statements"]
     environment:
       DATA_SOURCE_NAME: "postgresql://user:password@postgres:5432/dbname?sslmode=disable"
     ports:
