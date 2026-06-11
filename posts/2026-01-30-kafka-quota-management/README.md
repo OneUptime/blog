@@ -23,7 +23,7 @@ flowchart TB
     subgraph Quotas["Kafka Quota Types"]
         PQ["Producer Quotas<br/>bytes/second"]
         CQ["Consumer Quotas<br/>bytes/second"]
-        RQ["Request Quotas<br/>percentage of I/O threads"]
+        RQ["Request Quotas<br/>percentage of network and I/O thread time"]
     end
 
     subgraph Resources["Protected Resources"]
@@ -42,7 +42,7 @@ flowchart TB
 |------------|--------|---------|---------|
 | **Producer** | bytes/second | Unlimited | Limits write throughput |
 | **Consumer** | bytes/second | Unlimited | Limits read throughput |
-| **Request** | % of I/O threads | Unlimited | Limits request processing time |
+| **Request** | % of network and I/O thread time | Unlimited | Limits request processing time |
 
 ### Quota Granularity
 
@@ -91,10 +91,10 @@ flowchart LR
         B3["Broker 3"]
     end
 
-    P1 --> QM
-    P2 --> QM
-    C1 --> QM
-    C2 --> QM
+    P1 --> B1
+    P2 --> B2
+    C1 --> B2
+    C2 --> B3
     QM --> QS
     QM --> B1
     QM --> B2
@@ -103,7 +103,7 @@ flowchart LR
 
 ### Multi-Tenant Quota Strategy
 
-For multi-tenant environments, implement a hierarchical quota structure:
+For multi-tenant environments, model a hierarchical quota structure in your quota management service, then translate each tenant or application allocation into Kafka user, client-id, or user+client-id quotas:
 
 ```mermaid
 flowchart TB
@@ -149,7 +149,7 @@ kafka-configs.sh --bootstrap-server localhost:9092 \
   --alter --add-config 'consumer_byte_rate=20971520' \
   --entity-type clients --entity-default
 
-# Set default request quota (50% of I/O thread time)
+# Set default request quota (50% of network and I/O thread time)
 kafka-configs.sh --bootstrap-server localhost:9092 \
   --alter --add-config 'request_percentage=50' \
   --entity-type clients --entity-default
@@ -198,11 +198,9 @@ Here is a Python service that manages Kafka quotas programmatically:
 # quota_manager.py
 # Kafka quota management service with dynamic quota adjustments
 from dataclasses import dataclass
-from typing import Dict, Optional, List
+from typing import Dict, Optional
 from enum import Enum
-import json
-from kafka.admin import KafkaAdminClient, ConfigResource, ConfigResourceType
-from kafka import KafkaConsumer
+from kafka.admin import KafkaAdminClient
 import logging
 
 logging.basicConfig(level=logging.INFO)
@@ -219,7 +217,7 @@ class QuotaConfig:
     """Represents a quota configuration for a client or user"""
     producer_byte_rate: Optional[int] = None  # bytes per second
     consumer_byte_rate: Optional[int] = None  # bytes per second
-    request_percentage: Optional[float] = None  # percentage of I/O threads
+    request_percentage: Optional[float] = None  # percentage of network and I/O thread time
 
     def to_config_dict(self) -> Dict[str, str]:
         """Convert to Kafka config format"""
@@ -251,13 +249,16 @@ class KafkaQuotaManager:
         # Create config entries for default client quotas
         configs = config.to_config_dict()
 
-        # Use alter_configs to set the quotas
-        # Note: This uses the internal Kafka admin API
+        # kafka-python does not expose Kafka's Java alterClientQuotas API,
+        # so this example shells out to the supported kafka-configs.sh tool.
         self._set_quota_config(
             entity_type="clients",
             entity_name=None,  # None means default
             configs=configs
         )
+
+        # Update cache
+        self._quota_cache["clients:default"] = config
 
     def set_user_quota(self, username: str, config: QuotaConfig) -> None:
         """Set quotas for a specific authenticated user"""
@@ -270,7 +271,7 @@ class KafkaQuotaManager:
         )
 
         # Update cache
-        self._quota_cache[f"user:{username}"] = config
+        self._quota_cache[f"users:{username}"] = config
 
     def set_client_quota(self, client_id: str, config: QuotaConfig) -> None:
         """Set quotas for a specific client.id"""
@@ -283,7 +284,7 @@ class KafkaQuotaManager:
         )
 
         # Update cache
-        self._quota_cache[f"client:{client_id}"] = config
+        self._quota_cache[f"clients:{client_id}"] = config
 
     def set_user_client_quota(
         self,
@@ -306,7 +307,7 @@ class KafkaQuotaManager:
         )
 
         # Update cache
-        self._quota_cache[f"user:{username}:client:{client_id}"] = config
+        self._quota_cache[f"users:{username}:clients:{client_id}"] = config
 
     def remove_quota(
         self,
@@ -337,9 +338,8 @@ class KafkaQuotaManager:
         client_id: Optional[str] = None,
         remove: bool = False
     ) -> None:
-        """Internal method to set quota configuration via Kafka Admin API"""
-        # Build the command for kafka-configs
-        # In production, you would use the AdminClient API directly
+        """Internal method to set quota configuration via kafka-configs.sh"""
+        # Build the command for kafka-configs.
         import subprocess
 
         cmd = [
@@ -399,6 +399,11 @@ from dataclasses import dataclass
 from typing import Dict, List, Callable
 from enum import Enum
 import time
+import logging
+
+from quota_manager import KafkaQuotaManager, QuotaConfig
+
+logger = logging.getLogger(__name__)
 
 class PolicyAction(Enum):
     """Actions that can be taken by quota policies"""
@@ -454,7 +459,9 @@ class QuotaPolicyEngine:
                         "entity": entity,
                         "policy": policy.name,
                         "action": policy.action,
-                        "adjustment_factor": policy.adjustment_factor
+                        "adjustment_factor": policy.adjustment_factor,
+                        "min_quota": policy.min_quota,
+                        "max_quota": policy.max_quota
                     }
                     actions.append(action)
 
@@ -465,6 +472,8 @@ class QuotaPolicyEngine:
         entity = action["entity"]
         policy_action = action["action"]
         factor = action["adjustment_factor"]
+        min_quota = action["min_quota"]
+        max_quota = action["max_quota"]
 
         # Get current quota
         entity_type, entity_name = entity.split(":", 1)
@@ -472,6 +481,10 @@ class QuotaPolicyEngine:
 
         if current is None:
             logger.warning(f"No current quota found for {entity}")
+            return
+
+        if current.producer_byte_rate is None or current.consumer_byte_rate is None:
+            logger.warning(f"Incomplete byte-rate quota found for {entity}")
             return
 
         # Calculate new quota based on action
@@ -489,6 +502,9 @@ class QuotaPolicyEngine:
             # ALERT action - just log
             logger.warning(f"ALERT: Policy triggered for {entity}")
             return
+
+        new_producer = max(min_quota, min(new_producer, max_quota))
+        new_consumer = max(min_quota, min(new_consumer, max_quota))
 
         # Apply the new quota
         new_config = QuotaConfig(
@@ -555,10 +571,12 @@ Build a monitoring system to track quota usage:
 # quota_monitor.py
 # Monitor Kafka quota utilization with Prometheus metrics
 from prometheus_client import Gauge, Counter, start_http_server
-from kafka import KafkaConsumer, KafkaAdminClient
 from typing import Dict
 import threading
 import time
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Prometheus metrics
 QUOTA_UTILIZATION = Gauge(
@@ -629,13 +647,15 @@ class QuotaMonitor:
         metrics = {}
 
         # Query JMX for quota metrics
-        # Metrics are exposed under:
-        # kafka.server:type=ClientQuotaManager,name=*
+        # Quota metrics are exposed under MBeans such as:
+        # kafka.server:type=Produce,user=...,client-id=...
+        # kafka.server:type=Fetch,user=...,client-id=...
+        # kafka.server:type=Request,user=...,client-id=...
 
         # Example metric names:
-        # - ProduceThrottleTime
-        # - FetchThrottleTime
-        # - RequestThrottleTime
+        # - throttle-time
+        # - byte-rate
+        # - request-time
 
         return metrics
 
@@ -728,7 +748,7 @@ Create a dashboard to visualize quota metrics:
 
 ### Burst Allowance
 
-Implement burst capacity for handling temporary spikes:
+Implement burst capacity in your quota management service for handling temporary spikes:
 
 ```python
 # burst_quota_manager.py
@@ -736,6 +756,11 @@ Implement burst capacity for handling temporary spikes:
 from dataclasses import dataclass
 from typing import Dict
 import time
+import logging
+
+from quota_manager import KafkaQuotaManager, QuotaConfig
+
+logger = logging.getLogger(__name__)
 
 @dataclass
 class BurstConfig:
@@ -835,7 +860,7 @@ class BurstQuotaManager:
         entity_type, entity_name = entity.split(":", 1)
         config = QuotaConfig(producer_byte_rate=rate, consumer_byte_rate=rate * 2)
 
-        if entity_type == "user":
+        if entity_type == "users":
             self.quota_manager.set_user_quota(entity_name, config)
         else:
             self.quota_manager.set_client_quota(entity_name, config)
@@ -850,7 +875,12 @@ Implement different quota tiers based on client priority:
 # Priority-based quota allocation
 from enum import IntEnum
 from dataclasses import dataclass
-from typing import Dict, List
+from typing import Dict
+import logging
+
+from quota_manager import KafkaQuotaManager, QuotaConfig
+
+logger = logging.getLogger(__name__)
 
 class Priority(IntEnum):
     """Client priority levels"""
@@ -922,7 +952,7 @@ class PriorityQuotaManager:
         )
 
         entity_type, entity_name = entity.split(":", 1)
-        if entity_type == "user":
+        if entity_type == "users":
             self.quota_manager.set_user_quota(entity_name, quota_config)
         else:
             self.quota_manager.set_client_quota(entity_name, quota_config)
@@ -958,7 +988,7 @@ class PriorityQuotaManager:
             )
 
             entity_type, entity_name = entity.split(":", 1)
-            if entity_type == "user":
+            if entity_type == "users":
                 self.quota_manager.set_user_quota(entity_name, quota_config)
             else:
                 self.quota_manager.set_client_quota(entity_name, quota_config)
@@ -1145,7 +1175,7 @@ kafka-configs.sh --bootstrap-server localhost:9092 \
 ```bash
 # Check throttle metrics
 kafka-run-class.sh kafka.tools.JmxTool \
-  --object-name 'kafka.server:type=ClientQuotaManager,name=*' \
+  --object-name 'kafka.server:type=Produce,user=*,client-id=*' \
   --jmx-url service:jmx:rmi:///jndi/rmi://localhost:9999/jmxrmi
 ```
 
