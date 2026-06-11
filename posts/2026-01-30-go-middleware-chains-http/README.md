@@ -88,10 +88,15 @@ The standard `http.ResponseWriter` does not expose the status code after writing
 type responseWriter struct {
     http.ResponseWriter
     statusCode int
+    wroteHeader bool
 }
 
 // WriteHeader captures the status code before writing
 func (rw *responseWriter) WriteHeader(code int) {
+    if rw.wroteHeader {
+        return
+    }
+    rw.wroteHeader = true
     rw.statusCode = code
     rw.ResponseWriter.WriteHeader(code)
 }
@@ -266,6 +271,7 @@ Here is a practical example using Go's `sync` package for simple rate limiting:
 package main
 
 import (
+    "net"
     "net/http"
     "sync"
     "time"
@@ -317,7 +323,10 @@ func (rl *RateLimiter) Allow(ip string) bool {
 func RateLimitMiddleware(limiter *RateLimiter) Middleware {
     return func(next http.Handler) http.Handler {
         return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-            ip := r.RemoteAddr
+            ip, _, err := net.SplitHostPort(r.RemoteAddr)
+            if err != nil {
+                ip = r.RemoteAddr
+            }
 
             if !limiter.Allow(ip) {
                 http.Error(w, "Rate limit exceeded", http.StatusTooManyRequests)
