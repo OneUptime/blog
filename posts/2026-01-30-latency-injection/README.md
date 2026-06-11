@@ -134,6 +134,8 @@ class LatencyInjector {
 const express = require('express');
 const app = express();
 
+app.use(express.json());
+
 const latencyInjector = new LatencyInjector({
   enabled: process.env.ENABLE_LATENCY_INJECTION === 'true',
   delayMs: 2000,
@@ -281,6 +283,7 @@ package latency
 
 import (
     "context"
+    "log"
     "math/rand"
     "net/http"
     "sync"
@@ -409,7 +412,7 @@ func main() {
 
 ## Service Mesh Latency Injection
 
-Service meshes like Istio and Linkerd provide infrastructure-level latency injection without code changes. This approach is ideal for testing in staging or production environments.
+Service meshes can provide infrastructure-level fault injection without code changes. Istio supports HTTP delay faults directly; Linkerd supports fault-injection patterns by routing traffic to a separate fault-injecting backend. This approach is ideal for testing in staging or production environments.
 
 ### Istio Fault Injection
 
@@ -477,12 +480,12 @@ spec:
             host: orders-service
 ```
 
-### Linkerd Latency Injection
+### Linkerd Fault Injection
 
-Linkerd uses ServiceProfiles for traffic policies including latency injection.
+Linkerd does not define delay faults in ServiceProfiles. ServiceProfiles can configure route metadata such as timeouts and retries; fault injection is implemented by routing a percentage of traffic to a fault-injecting backend.
 
 ```yaml
-# Linkerd ServiceProfile with latency injection
+# Linkerd ServiceProfile with a timeout for delayed upstream responses
 apiVersion: linkerd.io/v1alpha2
 kind: ServiceProfile
 metadata:
@@ -494,11 +497,10 @@ spec:
       condition:
         method: GET
         pathRegex: /api/orders.*
-      # Inject 2 second delay on 30% of requests
+      # Fail requests that exceed 10 seconds
       timeout: 10s
-      # Note: Linkerd uses traffic splits for fault injection
-      # This example shows the structure; actual fault injection
-      # requires Linkerd's fault injection extension
+      # To inject latency with Linkerd, route a percentage of traffic
+      # to a separate fault-injecting backend using HTTPRoute.
 ```
 
 ### Service Mesh Injection Flow
@@ -1025,23 +1027,25 @@ class InstrumentedLatencyInjector {
     this.enabled = options.enabled || false;
   }
 
-  async middleware(req, res, next) {
-    const route = req.route?.path || req.path;
-    const shouldInject = this.enabled && Math.random() * 100 < this.percentage;
+  middleware() {
+    return async (req, res, next) => {
+      const route = req.route?.path || req.path;
+      const shouldInject = this.enabled && Math.random() * 100 < this.percentage;
 
-    latencyInjectionCounter.inc({
-      route,
-      injected: shouldInject ? 'true' : 'false',
-    });
+      latencyInjectionCounter.inc({
+        route,
+        injected: shouldInject ? 'true' : 'false',
+      });
 
-    if (shouldInject) {
-      const delay = this.delayMs / 1000;
-      latencyInjectionDuration.observe({ route }, delay);
+      if (shouldInject) {
+        const delay = this.delayMs / 1000;
+        latencyInjectionDuration.observe({ route }, delay);
 
-      await new Promise(resolve => setTimeout(resolve, this.delayMs));
-    }
+        await new Promise(resolve => setTimeout(resolve, this.delayMs));
+      }
 
-    next();
+      next();
+    };
   }
 }
 
