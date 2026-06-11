@@ -135,12 +135,18 @@ CREATE TABLE role_permissions (
 
 -- Link users to roles with optional resource scoping
 CREATE TABLE user_roles (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID REFERENCES users(id) ON DELETE CASCADE,
     role_id UUID REFERENCES roles(id) ON DELETE CASCADE,
     resource_type VARCHAR(64),  -- NULL means global assignment
-    resource_id UUID,           -- NULL means all resources of type
-    PRIMARY KEY (user_id, role_id, COALESCE(resource_id, '00000000-0000-0000-0000-000000000000'))
+    resource_id UUID            -- NULL means all resources of type
 );
+
+-- Ensure each (user, role, resource) assignment is unique. PostgreSQL primary
+-- keys cannot contain expressions, so use a unique index with COALESCE to
+-- treat NULL resource_id as a single bucket.
+CREATE UNIQUE INDEX idx_user_roles_unique
+    ON user_roles(user_id, role_id, COALESCE(resource_id, '00000000-0000-0000-0000-000000000000'));
 
 -- Index for fast permission lookups
 CREATE INDEX idx_user_roles_lookup ON user_roles(user_id, resource_type, resource_id);
@@ -199,8 +205,11 @@ class AuthorizationService {
         AND p.resource_type = $2
         AND p.action = $3
         AND (
-          ur.resource_id IS NULL
-          OR ur.resource_id = $4
+          ur.resource_type IS NULL
+          OR (
+            ur.resource_type = $2
+            AND (ur.resource_id IS NULL OR ur.resource_id = $4)
+          )
         )
       LIMIT 1
     `;
