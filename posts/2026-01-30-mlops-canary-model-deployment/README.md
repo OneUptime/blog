@@ -140,9 +140,6 @@ metadata:
   name: fraud-detection-model
   namespace: ml-production
 spec:
-  # Name identifies this deployment in metrics and logs
-  name: fraud-detector
-
   # Predictors define the model serving configurations
   # Each predictor can have different traffic weights
   predictors:
@@ -197,7 +194,6 @@ metadata:
   name: fraud-detection-model
   namespace: ml-production
 spec:
-  name: fraud-detector
   predictors:
     # Baseline predictor - receives 90% of traffic
     - name: baseline
@@ -274,7 +270,7 @@ Usage:
 
 import time
 import argparse
-from typing import Dict, Optional, Tuple
+from typing import Dict, Tuple
 from kubernetes import client, config
 from prometheus_api_client import PrometheusConnect
 
@@ -593,6 +589,8 @@ KServe (formerly KFServing) is another popular model serving framework that prov
 
 ### KServe Canary Deployment Configuration
 
+After deploying the initial model revision, apply an updated InferenceService like this in KServe serverless deployment mode:
+
 ```yaml
 # kserve-canary.yaml
 # KServe InferenceService with canary rollout configuration
@@ -609,20 +607,24 @@ metadata:
 spec:
   # Predictor defines the model serving configuration
   predictor:
-    # Minimum replicas for the stable version
+    # Minimum replicas for the service
     minReplicas: 3
     maxReplicas: 10
 
-    # Scale to zero after 5 minutes of inactivity (optional)
+    # Autoscaling target for serverless deployment mode
     scaleTarget: 10
     scaleMetric: concurrency
 
-    # TensorFlow Serving container for the model
-    tensorflow:
-      # Storage URI points to the model artifacts
-      storageUri: "gs://ml-models/sentiment/v1.0"
+    # Traffic percentage routed to the latest ready revision (0-100)
+    # The remaining traffic stays on the last good revision
+    canaryTrafficPercent: 10
 
-      # Runtime version of TensorFlow Serving
+    # TensorFlow model served by a KServe runtime
+    model:
+      modelFormat:
+        name: tensorflow
+      # New model version for canary testing
+      storageUri: "gs://ml-models/sentiment/v2.0"
       runtimeVersion: "2.8.0"
 
       # Resource requirements
@@ -633,38 +635,15 @@ spec:
         limits:
           cpu: "2"
           memory: "4Gi"
-
-  # Canary specification for the new model version
-  # This creates a separate deployment for A/B testing
-  canary:
-    # Traffic percentage routed to canary (0-100)
-    canaryTrafficPercent: 10
-
-    predictor:
-      minReplicas: 1
-      maxReplicas: 5
-
-      tensorflow:
-        # New model version for canary testing
-        storageUri: "gs://ml-models/sentiment/v2.0"
-        runtimeVersion: "2.8.0"
-
-        resources:
-          requests:
-            cpu: "1"
-            memory: "2Gi"
-          limits:
-            cpu: "2"
-            memory: "4Gi"
 ```
 
-### KServe with Argo Rollouts Integration
+### Argo Rollouts Integration for Model Servers
 
-For more advanced canary deployments with automated analysis, integrate KServe with Argo Rollouts:
+For more advanced canary deployments with automated analysis, run the model server as a Kubernetes workload behind Istio and manage it with Argo Rollouts:
 
 ```yaml
 # argo-rollout-kserve.yaml
-# This Argo Rollout manages the KServe InferenceService
+# This Argo Rollout manages a model server Deployment
 # and provides automated canary analysis and promotion
 apiVersion: argoproj.io/v1alpha1
 kind: Rollout
@@ -707,6 +686,7 @@ spec:
     canary:
       # Initial canary traffic percentage
       # Traffic will start at 10% and increase according to steps
+      # These Services and the referenced VirtualService must already exist
       canaryService: sentiment-classifier-canary
       stableService: sentiment-classifier-stable
 
@@ -900,7 +880,7 @@ spec:
             severity: warning
           annotations:
             summary: "Canary model latency degradation detected"
-            description: "Canary latency is {{ $value | humanizePercentage }} higher than baseline"
+            description: "Canary latency is {{ $value | humanizePercentage }} of baseline"
 
         # Alert when canary error rate exceeds threshold
         - alert: CanaryErrorRateHigh
@@ -956,10 +936,10 @@ spec:
     # Analysis interval between traffic increases
     interval: 2m
 
-    # Number of successful checks before traffic increase
+    # Maximum number of failed checks before rollback
     threshold: 3
 
-    # Maximum number of failed checks before rollback
+    # Maximum canary traffic weight before promotion
     maxWeight: 50
 
     # Traffic increment per successful analysis
@@ -1087,7 +1067,6 @@ metadata:
   name: fraud-detection-shadow
   namespace: ml-production
 spec:
-  name: fraud-detector-shadow
   predictors:
     - name: production
       traffic: 100
@@ -1095,15 +1074,18 @@ spec:
         name: classifier
         implementation: SKLEARN_SERVER
         modelUri: gs://ml-models/fraud-detection/v1.0
-        # Shadow configuration mirrors requests to canary
-        children:
-          - name: shadow-classifier
-            implementation: SKLEARN_SERVER
-            modelUri: gs://ml-models/fraud-detection/v2.0
-            # Shadow mode: log predictions but do not return to client
-            logger:
-              mode: all
-              url: http://shadow-logger.ml-production/log
+
+    - name: shadow
+      shadow: true
+      replicas: 1
+      graph:
+        name: shadow-classifier
+        implementation: SKLEARN_SERVER
+        modelUri: gs://ml-models/fraud-detection/v2.0
+        # Log predictions but do not return them to clients
+        logger:
+          mode: all
+          url: http://shadow-logger.ml-production/log
 ```
 
 ### 3. Gradual Traffic Ramp-Up Schedule
