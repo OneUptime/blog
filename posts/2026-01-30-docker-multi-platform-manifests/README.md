@@ -92,7 +92,7 @@ docker buildx build \
   .
 ```
 
-The `--push` flag is required because multi-platform images cannot be loaded into the local Docker image store directly.
+The `--push` flag is used here because the default Docker image store cannot load multi-platform images directly. If you need to load a multi-platform build locally, enable the containerd image store and use an output mode that supports it.
 
 ### Complete Example with Dockerfile
 
@@ -110,7 +110,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install dependencies
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 # Copy application code
 COPY . .
@@ -260,12 +260,12 @@ docker buildx build \
 ```bash
 # Login to ECR
 aws ecr get-login-password --region us-east-1 | \
-  docker login --username AWS --password-stdin 123456789.dkr.ecr.us-east-1.amazonaws.com
+  docker login --username AWS --password-stdin 123456789012.dkr.ecr.us-east-1.amazonaws.com
 
 # Build and push
 docker buildx build \
   --platform linux/amd64,linux/arm64 \
-  --tag 123456789.dkr.ecr.us-east-1.amazonaws.com/myapp:latest \
+  --tag 123456789012.dkr.ecr.us-east-1.amazonaws.com/myapp:latest \
   --push \
   .
 ```
@@ -362,13 +362,13 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -376,7 +376,7 @@ jobs:
 
       - name: Extract metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
@@ -385,7 +385,7 @@ jobs:
             type=sha
 
       - name: Build and push
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           platforms: linux/amd64,linux/arm64
@@ -464,7 +464,7 @@ WORKDIR /app
 
 # Copy only package files first (cached layer)
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 # Copy source code (changes frequently)
 COPY . .
@@ -530,9 +530,10 @@ docker manifest create --amend username/myapp:latest \
 Native builds are significantly faster than emulated builds. Consider using native ARM build nodes:
 
 ```bash
-# Create a builder with multiple nodes
-docker buildx create --name multiarch --node amd64-node --platform linux/amd64
-docker buildx create --name multiarch --append --node arm64-node --platform linux/arm64
+# Create a builder with multiple native nodes
+# This assumes you already have Docker contexts named node-amd64 and node-arm64
+docker buildx create --name multiarch --node amd64-node --platform linux/amd64 node-amd64
+docker buildx create --name multiarch --append --node arm64-node --platform linux/arm64 node-arm64
 ```
 
 ## Summary
@@ -542,7 +543,7 @@ Docker multi-platform manifests enable seamless cross-architecture deployments. 
 1. **Set up buildx** with a docker-container driver for multi-platform support
 2. **Use `--platform` flag** to specify target architectures
 3. **Leverage build variables** like `TARGETARCH` for conditional logic
-4. **Push directly to registry** since multi-platform images cannot be stored locally
+4. **Push directly to registry** when using the default Docker image store, or enable the containerd image store for local multi-platform loading
 5. **Verify with `manifest inspect`** to confirm platform support
 6. **Integrate with CI/CD** using QEMU for emulation
 
