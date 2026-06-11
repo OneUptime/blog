@@ -72,6 +72,7 @@ Install the required dependencies for testing with OpenTelemetry.
 
 ```bash
 npm install @opentelemetry/api \
+            @opentelemetry/api-logs \
             @opentelemetry/sdk-trace-base \
             @opentelemetry/sdk-trace-node \
             @opentelemetry/sdk-metrics \
@@ -103,21 +104,20 @@ import {
   InMemorySpanExporter,
   SimpleSpanProcessor
 } from '@opentelemetry/sdk-trace-base';
-import { Resource } from '@opentelemetry/resources';
-import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
+import { resourceFromAttributes } from '@opentelemetry/resources';
+import { ATTR_SERVICE_NAME } from '@opentelemetry/semantic-conventions';
 import { trace } from '@opentelemetry/api';
 
 export function createTestTracerProvider() {
   const exporter = new InMemorySpanExporter();
 
   const provider = new NodeTracerProvider({
-    resource: new Resource({
-      [SemanticResourceAttributes.SERVICE_NAME]: 'test-service',
+    resource: resourceFromAttributes({
+      [ATTR_SERVICE_NAME]: 'test-service',
     }),
+    spanProcessors: [new SimpleSpanProcessor(exporter)],
   });
 
-  // Use SimpleSpanProcessor for synchronous, immediate export
-  provider.addSpanProcessor(new SimpleSpanProcessor(exporter));
   provider.register();
 
   return { provider, exporter };
@@ -210,7 +210,7 @@ it('maintains parent-child span relationships', async () => {
   const dbSpan = spans.find(s => s.name === 'db.query');
   const httpSpan = spans.find(s => s.name === 'http.request');
 
-  expect(dbSpan?.parentSpanId).toBe(httpSpan?.spanContext().spanId);
+  expect(dbSpan?.parentSpanContext?.spanId).toBe(httpSpan?.spanContext().spanId);
   expect(dbSpan?.spanContext().traceId).toBe(httpSpan?.spanContext().traceId);
 });
 ```
@@ -219,51 +219,31 @@ it('maintains parent-child span relationships', async () => {
 
 ## 5. In-Memory Metric Exporter
 
-For metrics, you need to create a custom in-memory reader since the SDK does not provide one out of the box.
+For metrics, OpenTelemetry provides a built-in `InMemoryMetricExporter`. Pair it with a metric reader and force a collection when your test is ready to assert.
 
-### Custom In-Memory Metric Reader
+### In-Memory Metric Exporter Setup
 
-Build a metric reader that collects metrics on demand for testing.
+Build a test helper that collects metrics on demand for testing.
 
 ```typescript
-// test/in-memory-metric-reader.ts
+// test/in-memory-metrics.ts
 import {
-  MetricReader,
   AggregationTemporality,
-  ResourceMetrics,
-  InstrumentType,
+  InMemoryMetricExporter,
+  PeriodicExportingMetricReader,
 } from '@opentelemetry/sdk-metrics';
 
-export class InMemoryMetricReader extends MetricReader {
-  private _metrics: ResourceMetrics[] = [];
+export function createInMemoryMetricReader() {
+  const exporter = new InMemoryMetricExporter(
+    AggregationTemporality.CUMULATIVE
+  );
 
-  protected async onForceFlush(): Promise<void> {
-    await this.collect();
-  }
+  const reader = new PeriodicExportingMetricReader({
+    exporter,
+    exportIntervalMillis: 10000,
+  });
 
-  protected async onShutdown(): Promise<void> {
-    // No cleanup needed
-  }
-
-  selectAggregationTemporality(instrumentType: InstrumentType): AggregationTemporality {
-    return AggregationTemporality.CUMULATIVE;
-  }
-
-  async collect(): Promise<ResourceMetrics[]> {
-    const result = await super.collect();
-    if (result.resourceMetrics) {
-      this._metrics.push(result.resourceMetrics);
-    }
-    return this._metrics;
-  }
-
-  getMetrics(): ResourceMetrics[] {
-    return this._metrics;
-  }
-
-  reset(): void {
-    this._metrics = [];
-  }
+  return { reader, exporter };
 }
 ```
 
@@ -273,18 +253,27 @@ Write tests that verify your application emits the correct metrics.
 
 ```typescript
 // test/metrics.test.ts
-import { MeterProvider } from '@opentelemetry/sdk-metrics';
-import { Resource } from '@opentelemetry/resources';
-import { InMemoryMetricReader } from './in-memory-metric-reader';
+import {
+  DataPointType,
+  InMemoryMetricExporter,
+  MeterProvider,
+  PeriodicExportingMetricReader,
+} from '@opentelemetry/sdk-metrics';
+import { resourceFromAttributes } from '@opentelemetry/resources';
+import { createInMemoryMetricReader } from './in-memory-metrics';
 
 describe('Application Metrics', () => {
-  let reader: InMemoryMetricReader;
+  let reader: PeriodicExportingMetricReader;
+  let exporter: InMemoryMetricExporter;
   let meterProvider: MeterProvider;
 
   beforeEach(() => {
-    reader = new InMemoryMetricReader();
+    const setup = createInMemoryMetricReader();
+    reader = setup.reader;
+    exporter = setup.exporter;
+
     meterProvider = new MeterProvider({
-      resource: new Resource({ 'service.name': 'test-service' }),
+      resource: resourceFromAttributes({ 'service.name': 'test-service' }),
       readers: [reader],
     });
   });
@@ -303,8 +292,8 @@ describe('Application Metrics', () => {
     counter.add(1, { 'http.method': 'POST', 'http.route': '/api/orders' });
     counter.add(1, { 'http.method': 'GET', 'http.route': '/api/orders' });
 
-    await reader.collect();
-    const metrics = reader.getMetrics();
+    await reader.forceFlush();
+    const metrics = exporter.getMetrics();
 
     const requestMetric = metrics[0]?.scopeMetrics[0]?.metrics.find(
       m => m.descriptor.name === 'http.requests'
@@ -333,8 +322,8 @@ describe('Application Metrics', () => {
     histogram.record(120, { 'http.route': '/api/orders' });
     histogram.record(30, { 'http.route': '/api/orders' });
 
-    await reader.collect();
-    const metrics = reader.getMetrics();
+    await reader.forceFlush();
+    const metrics = exporter.getMetrics();
 
     const durationMetric = metrics[0]?.scopeMetrics[0]?.metrics.find(
       m => m.descriptor.name === 'http.request.duration'
@@ -342,9 +331,12 @@ describe('Application Metrics', () => {
 
     expect(durationMetric).toBeDefined();
 
-    const dataPoint = durationMetric?.dataPoints[0];
-    expect(dataPoint?.value.count).toBe(3);
-    expect(dataPoint?.value.sum).toBe(195);
+    expect(durationMetric?.dataPointType).toBe(DataPointType.HISTOGRAM);
+    if (durationMetric?.dataPointType === DataPointType.HISTOGRAM) {
+      const dataPoint = durationMetric.dataPoints[0];
+      expect(dataPoint?.value.count).toBe(3);
+      expect(dataPoint?.value.sum).toBe(195);
+    }
   });
 });
 ```
@@ -353,50 +345,15 @@ describe('Application Metrics', () => {
 
 ## 6. In-Memory Log Exporter
 
-For the logs signal, create a simple in-memory log record exporter.
+For the logs signal, OpenTelemetry provides a built-in in-memory log record exporter.
 
-### Custom Log Exporter
+### In-Memory Log Exporter
 
-Build an exporter that stores log records in memory.
+Use `InMemoryLogRecordExporter` to store log records in memory.
 
 ```typescript
 // test/in-memory-log-exporter.ts
-import {
-  LogRecordExporter,
-  ReadableLogRecord,
-} from '@opentelemetry/sdk-logs';
-import { ExportResult, ExportResultCode } from '@opentelemetry/core';
-
-export class InMemoryLogExporter implements LogRecordExporter {
-  private _logs: ReadableLogRecord[] = [];
-  private _stopped = false;
-
-  export(
-    logs: ReadableLogRecord[],
-    resultCallback: (result: ExportResult) => void
-  ): void {
-    if (this._stopped) {
-      resultCallback({ code: ExportResultCode.FAILED });
-      return;
-    }
-
-    this._logs.push(...logs);
-    resultCallback({ code: ExportResultCode.SUCCESS });
-  }
-
-  shutdown(): Promise<void> {
-    this._stopped = true;
-    return Promise.resolve();
-  }
-
-  getLogs(): ReadableLogRecord[] {
-    return this._logs;
-  }
-
-  reset(): void {
-    this._logs = [];
-  }
-}
+export { InMemoryLogRecordExporter } from '@opentelemetry/sdk-logs';
 ```
 
 ### Testing Log Output
@@ -406,25 +363,23 @@ Verify that your application produces correctly structured log records.
 ```typescript
 // test/logging.test.ts
 import {
+  InMemoryLogRecordExporter,
   LoggerProvider,
   SimpleLogRecordProcessor,
-  SeverityNumber,
 } from '@opentelemetry/sdk-logs';
-import { Resource } from '@opentelemetry/resources';
-import { InMemoryLogExporter } from './in-memory-log-exporter';
+import { SeverityNumber } from '@opentelemetry/api-logs';
+import { resourceFromAttributes } from '@opentelemetry/resources';
 
 describe('Application Logging', () => {
-  let exporter: InMemoryLogExporter;
+  let exporter: InMemoryLogRecordExporter;
   let loggerProvider: LoggerProvider;
 
   beforeEach(() => {
-    exporter = new InMemoryLogExporter();
+    exporter = new InMemoryLogRecordExporter();
     loggerProvider = new LoggerProvider({
-      resource: new Resource({ 'service.name': 'test-service' }),
+      resource: resourceFromAttributes({ 'service.name': 'test-service' }),
+      processors: [new SimpleLogRecordProcessor(exporter)],
     });
-    loggerProvider.addLogRecordProcessor(
-      new SimpleLogRecordProcessor(exporter)
-    );
   });
 
   afterEach(async () => {
@@ -444,7 +399,7 @@ describe('Application Logging', () => {
       },
     });
 
-    const logs = exporter.getLogs();
+    const logs = exporter.getFinishedLogRecords();
 
     expect(logs).toHaveLength(1);
     expect(logs[0].body).toBe('Order created successfully');
@@ -466,7 +421,7 @@ describe('Application Logging', () => {
       },
     });
 
-    const logs = exporter.getLogs();
+    const logs = exporter.getFinishedLogRecords();
 
     expect(logs[0].severityNumber).toBe(SeverityNumber.ERROR);
     expect(logs[0].attributes['exception.type']).toBe('Error');
@@ -487,57 +442,75 @@ Create reusable fixtures that set up complete telemetry for each test.
 // test/fixtures/telemetry-fixture.ts
 import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node';
 import { InMemorySpanExporter, SimpleSpanProcessor } from '@opentelemetry/sdk-trace-base';
-import { MeterProvider } from '@opentelemetry/sdk-metrics';
-import { LoggerProvider, SimpleLogRecordProcessor } from '@opentelemetry/sdk-logs';
-import { Resource } from '@opentelemetry/resources';
-import { InMemoryMetricReader } from './in-memory-metric-reader';
-import { InMemoryLogExporter } from './in-memory-log-exporter';
+import {
+  AggregationTemporality,
+  InMemoryMetricExporter,
+  MeterProvider,
+  PeriodicExportingMetricReader,
+} from '@opentelemetry/sdk-metrics';
+import { InMemoryLogRecordExporter, LoggerProvider, SimpleLogRecordProcessor } from '@opentelemetry/sdk-logs';
+import { metrics, trace } from '@opentelemetry/api';
+import { resourceFromAttributes } from '@opentelemetry/resources';
+import { ATTR_SERVICE_NAME } from '@opentelemetry/semantic-conventions';
 
 export interface TelemetryFixture {
   tracerProvider: NodeTracerProvider;
   spanExporter: InMemorySpanExporter;
   meterProvider: MeterProvider;
-  metricReader: InMemoryMetricReader;
+  metricReader: PeriodicExportingMetricReader;
+  metricExporter: InMemoryMetricExporter;
   loggerProvider: LoggerProvider;
-  logExporter: InMemoryLogExporter;
+  logExporter: InMemoryLogRecordExporter;
   reset: () => void;
   shutdown: () => Promise<void>;
 }
 
 export function createTelemetryFixture(): TelemetryFixture {
-  const resource = new Resource({ 'service.name': 'test-service' });
+  const resource = resourceFromAttributes({ [ATTR_SERVICE_NAME]: 'test-service' });
 
   // Traces
   const spanExporter = new InMemorySpanExporter();
-  const tracerProvider = new NodeTracerProvider({ resource });
-  tracerProvider.addSpanProcessor(new SimpleSpanProcessor(spanExporter));
+  const tracerProvider = new NodeTracerProvider({
+    resource,
+    spanProcessors: [new SimpleSpanProcessor(spanExporter)],
+  });
   tracerProvider.register();
 
   // Metrics
-  const metricReader = new InMemoryMetricReader();
+  const metricExporter = new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE);
+  const metricReader = new PeriodicExportingMetricReader({
+    exporter: metricExporter,
+    exportIntervalMillis: 10000,
+  });
   const meterProvider = new MeterProvider({ resource, readers: [metricReader] });
+  metrics.setGlobalMeterProvider(meterProvider);
 
   // Logs
-  const logExporter = new InMemoryLogExporter();
-  const loggerProvider = new LoggerProvider({ resource });
-  loggerProvider.addLogRecordProcessor(new SimpleLogRecordProcessor(logExporter));
+  const logExporter = new InMemoryLogRecordExporter();
+  const loggerProvider = new LoggerProvider({
+    resource,
+    processors: [new SimpleLogRecordProcessor(logExporter)],
+  });
 
   return {
     tracerProvider,
     spanExporter,
     meterProvider,
     metricReader,
+    metricExporter,
     loggerProvider,
     logExporter,
     reset: () => {
       spanExporter.reset();
-      metricReader.reset();
+      metricExporter.reset();
       logExporter.reset();
     },
     shutdown: async () => {
       await tracerProvider.shutdown();
       await meterProvider.shutdown();
       await loggerProvider.shutdown();
+      trace.disable();
+      metrics.disable();
     },
   };
 }
@@ -729,8 +702,8 @@ describe('CheckoutService Integration', () => {
     const inventorySpan = findSpanByName(spans, 'inventory.update');
 
     // Verify hierarchy
-    expect(paymentSpan?.parentSpanId).toBe(checkoutSpan?.spanContext().spanId);
-    expect(inventorySpan?.parentSpanId).toBe(checkoutSpan?.spanContext().spanId);
+    expect(paymentSpan?.parentSpanContext?.spanId).toBe(checkoutSpan?.spanContext().spanId);
+    expect(inventorySpan?.parentSpanContext?.spanId).toBe(checkoutSpan?.spanContext().spanId);
 
     // Verify attributes
     expect(checkoutSpan?.attributes['order.id']).toBe('ord-123');
@@ -745,8 +718,8 @@ describe('CheckoutService Integration', () => {
     await service.processCheckout('ord-456', 150.00);
     await service.processCheckout('ord-789', 75.50);
 
-    await fixture.metricReader.collect();
-    const metrics = fixture.metricReader.getMetrics();
+    await fixture.metricReader.forceFlush();
+    const metrics = fixture.metricExporter.getMetrics();
 
     const counterMetric = metrics[0]?.scopeMetrics[0]?.metrics.find(
       m => m.descriptor.name === 'checkout.completed'
@@ -772,10 +745,14 @@ The `BatchSpanProcessor` buffers spans and exports them periodically. In tests, 
 
 ```typescript
 // Bad: Spans may not be exported when you check
-provider.addSpanProcessor(new BatchSpanProcessor(exporter));
+const provider = new NodeTracerProvider({
+  spanProcessors: [new BatchSpanProcessor(exporter)],
+});
 
 // Good: Immediate export for predictable tests
-provider.addSpanProcessor(new SimpleSpanProcessor(exporter));
+const provider = new NodeTracerProvider({
+  spanProcessors: [new SimpleSpanProcessor(exporter)],
+});
 ```
 
 ### Pitfall 2: Forgetting to Reset Between Tests
@@ -823,8 +800,8 @@ afterAll(async () => {
 | Component | In-Memory Solution | Key Methods |
 |-----------|-------------------|-------------|
 | Traces | `InMemorySpanExporter` (built-in) | `getFinishedSpans()`, `reset()` |
-| Metrics | Custom `InMemoryMetricReader` | `collect()`, `getMetrics()`, `reset()` |
-| Logs | Custom `InMemoryLogExporter` | `getLogs()`, `reset()` |
+| Metrics | `InMemoryMetricExporter` (built-in) | `getMetrics()`, `reset()` |
+| Logs | `InMemoryLogRecordExporter` (built-in) | `getFinishedLogRecords()`, `reset()` |
 
 In-memory exporters enable:
 
