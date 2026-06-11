@@ -12,7 +12,7 @@ Description: Learn to implement distribution metrics for statistical analysis of
 
 When you measure latency, request sizes, or queue depths, a single number rarely tells the whole story. Averages hide outliers. Totals obscure patterns. Distribution metrics solve this by capturing the full spread of values, letting you answer questions like: "What latency do 99% of users experience?" or "How often do requests exceed 1MB?"
 
-Distribution metrics come in two primary forms: **histograms** and **summaries**. Both track how values are distributed across buckets or quantiles, but they differ in where computation happens and how flexible they are at query time.
+In Prometheus-style monitoring, distribution metrics commonly appear as **histograms** and **summaries**. Both track how values are distributed across buckets or quantiles, but they differ in where computation happens and how flexible they are at query time. In OpenTelemetry, use histogram instruments for new application metrics; summary points are a legacy compatibility data type.
 
 This guide walks through the concepts, implementation patterns, and practical code examples for building distribution metrics into your observability stack using OpenTelemetry.
 
@@ -43,9 +43,9 @@ flowchart LR
 | **Aggregation** | Can combine across instances | Cannot aggregate quantiles |
 | **Flexibility** | Query any percentile | Fixed quantiles at instrumentation |
 | **Accuracy** | Bounded by bucket boundaries | Configurable error margin |
-| **Memory** | Fixed (number of buckets) | Grows with data volume |
+| **Memory** | Fixed (number of buckets) | Depends on configured quantiles and time window |
 
-**Recommendation**: Use histograms for most cases. They aggregate cleanly across service instances and let you query any percentile without re-instrumenting. Use summaries only when you need precise quantiles from a single instance and cannot afford query-time computation.
+**Recommendation**: Use histograms for most cases. They aggregate cleanly across service instances and let you query any percentile without re-instrumenting. Use summaries only when you are working with a monitoring system that supports them, need precise quantiles from a single instance, and cannot afford query-time computation.
 
 ---
 
@@ -53,7 +53,7 @@ flowchart LR
 
 A histogram tracks three pieces of data:
 
-1. **Buckets**: Counters for values falling at or below each boundary
+1. **Buckets**: Counters for values in configured ranges (exposed as `le` cumulative buckets in Prometheus classic histograms)
 2. **Sum**: Total of all recorded values
 3. **Count**: Number of recorded values
 
@@ -72,7 +72,7 @@ graph TD
     B1 --> B2 --> B3 --> B4 --> B5
 ```
 
-When you record a value of 75ms, the histogram increments all buckets where the boundary is greater than or equal to 75 (le=100, le=500, le=+Inf), plus the sum and count.
+In a Prometheus classic histogram, when you record a value of 75ms, the exposed cumulative buckets at or above that value increase (le=100, le=500, le=+Inf), plus the sum and count. OpenTelemetry explicit histograms store counts per bucket and exporters convert them to cumulative bucket series when exposing Prometheus classic histograms.
 
 ### Choosing Bucket Boundaries
 
@@ -100,18 +100,18 @@ const linearBuckets = [100, 200, 300, 400, 500, 600, 700, 800, 900, 1000];
 ### Node.js / TypeScript Example
 
 ```javascript
-const { MeterProvider } = require('@opentelemetry/sdk-metrics');
+const { MeterProvider, PeriodicExportingMetricReader } = require('@opentelemetry/sdk-metrics');
 const { OTLPMetricExporter } = require('@opentelemetry/exporter-metrics-otlp-http');
-const { Resource } = require('@opentelemetry/resources');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
 
 // Configure the meter provider with OTLP export
 const meterProvider = new MeterProvider({
-  resource: new Resource({
+  resource: resourceFromAttributes({
     'service.name': 'order-service',
     'deployment.environment': process.env.NODE_ENV || 'development',
   }),
   readers: [
-    {
+    new PeriodicExportingMetricReader({
       exporter: new OTLPMetricExporter({
         url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'https://otel.oneuptime.com/v1/metrics',
         headers: {
@@ -119,7 +119,7 @@ const meterProvider = new MeterProvider({
         },
       }),
       exportIntervalMillis: 60000, // Export every 60 seconds
-    },
+    }),
   ],
 });
 
@@ -400,7 +400,7 @@ ORDER BY p99 DESC;
 |---------|---------|----------|
 | **Bucket boundaries too coarse** | p99 jumps between values | Add boundaries near your SLO thresholds |
 | **High cardinality attributes** | Memory explosion, slow queries | Limit to 5-7 attribute keys; avoid IDs |
-| **Missing +Inf bucket** | Percentile calculation fails | Always include an upper bound bucket |
+| **Missing overflow bucket** | Percentile calculation fails | Make sure your backend/exporter emits the implicit `+Inf` or overflow bucket |
 | **Aggregating summaries** | Incorrect percentiles | Switch to histograms for multi-instance services |
 | **Wrong time windows** | Noisy percentiles | Use 5m+ windows for rate calculations |
 
@@ -432,7 +432,7 @@ Before shipping distribution metrics to production:
 1. **Define bucket boundaries** based on expected value ranges and SLO thresholds
 2. **Limit attribute cardinality** to prevent metric explosion
 3. **Set appropriate export intervals** (30-60 seconds for most cases)
-4. **Include a +Inf bucket** for values exceeding your highest boundary
+4. **Verify the implicit overflow bucket** for values exceeding your highest boundary; do not add `+Inf` to OpenTelemetry explicit bucket boundaries
 5. **Test percentile accuracy** by comparing query results against known distributions
 6. **Document metric semantics** so consumers understand what they are querying
 7. **Set up alerts on percentile thresholds** not just averages
