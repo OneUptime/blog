@@ -58,7 +58,7 @@ flowchart TB
 
 **Cons:**
 - Cannot route based on content
-- No SSL termination
+- SSL termination support depends on the load balancer; pure TCP pass-through does not terminate TLS
 - Limited health check options
 
 ### Layer 7 (Application Layer)
@@ -103,7 +103,7 @@ flowchart TB
 | Raw TCP/UDP traffic | Yes | No |
 | Database connections | Yes | No |
 | HTTP microservices | Possible | Recommended |
-| SSL termination | No | Yes |
+| SSL termination | Depends on implementation | Yes |
 | Content-based routing | No | Yes |
 | WebSocket | Yes | Yes |
 | gRPC | Yes | Yes (better) |
@@ -235,27 +235,26 @@ flowchart TB
 Simple port connectivity test. Fast but only confirms the port is open.
 
 ```nginx
-# NGINX TCP health check configuration
+# NGINX Plus TCP health check configuration
 
 # This verifies that backend servers are accepting TCP connections
 # on the specified port at regular intervals
 
-upstream backend {
-    # Zone directive enables shared memory for health check state
-    # Required for NGINX Plus health checks
-    zone backend_zone 64k;
+stream {
+    upstream backend {
+        # Zone directive enables shared memory for health check state
+        # Required for NGINX Plus active health checks
+        zone backend_zone 64k;
 
-    # Backend server pool
-    server 10.0.0.1:8080;
-    server 10.0.0.2:8080;
-    server 10.0.0.3:8080;
-}
+        # Backend server pool
+        server 10.0.0.1:8080;
+        server 10.0.0.2:8080;
+        server 10.0.0.3:8080;
+    }
 
-server {
-    listen 80;
-
-    location / {
-        proxy_pass http://backend;
+    server {
+        listen 8080;
+        proxy_pass backend;
 
         # Health check configuration (NGINX Plus)
         # interval: check every 5 seconds
@@ -309,8 +308,8 @@ match health_ok {
     # Response must return HTTP 200
     status 200;
 
-    # Content-Type header must be JSON
-    header Content-Type = application/json;
+    # Content-Type header must be JSON; frameworks often add charset parameters
+    header Content-Type ~ application/json;
 
     # Response body must contain this JSON field
     body ~ "\"status\":\"healthy\"";
@@ -461,7 +460,8 @@ http {
     server {
         # Listen on HTTP and HTTPS with HTTP/2 support
         listen 80;
-        listen 443 ssl http2;
+        listen 443 ssl;
+        http2 on;
         server_name example.com;
 
         # SSL configuration for secure connections
@@ -642,10 +642,13 @@ defaults
 # Statistics dashboard for monitoring
 listen stats
     bind *:8404
+    mode http
     stats enable
     stats uri /stats
     stats refresh 10s
     stats admin if LOCALHOST
+    # Requires HAProxy built with the Prometheus exporter service
+    http-request use-service prometheus-exporter if { path /metrics }
 
 # Frontend: entry point for incoming connections
 frontend http_front
@@ -683,7 +686,8 @@ backend web_backend
 
     # HTTP health check configuration
     # Checks /health endpoint and expects HTTP 200
-    option httpchk GET /health HTTP/1.1\r\nHost:\ localhost
+    option httpchk
+    http-check send meth GET uri /health ver HTTP/1.1 hdr Host localhost
     http-check expect status 200
 
     # Backend servers with cookie identifiers
@@ -697,7 +701,8 @@ backend api_backend
     balance leastconn
 
     # HTTP health check with body validation
-    option httpchk GET /api/health HTTP/1.1\r\nHost:\ localhost
+    option httpchk
+    http-check send meth GET uri /api/health ver HTTP/1.1 hdr Host localhost
     http-check expect string "status":"healthy"
 
     # Enable gzip compression for API responses
@@ -716,7 +721,8 @@ backend static_backend
     balance roundrobin
 
     # Simple HEAD request health check
-    option httpchk HEAD /
+    option httpchk
+    http-check send meth HEAD uri / ver HTTP/1.1 hdr Host localhost
 
     # Add cache headers for static content
     http-response set-header Cache-Control "public, max-age=31536000"
@@ -734,7 +740,8 @@ backend websocket_backend
     timeout tunnel 1h
 
     # HTTP health check for WebSocket endpoint
-    option httpchk GET /ws/health HTTP/1.1\r\nHost:\ localhost
+    option httpchk
+    http-check send meth GET uri /ws/health ver HTTP/1.1 hdr Host localhost
 
     server ws1 10.0.0.30:8080 check
     server ws2 10.0.0.31:8080 check
@@ -1153,9 +1160,6 @@ kind: Ingress
 metadata:
   name: main-ingress
   annotations:
-    # Specify ingress controller
-    kubernetes.io/ingress.class: nginx
-
     # Force HTTPS redirect
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
 
@@ -1170,10 +1174,10 @@ metadata:
 
     # Session persistence using URI hash
     nginx.ingress.kubernetes.io/upstream-hash-by: "$request_uri"
-
-    # Custom health check path
-    nginx.ingress.kubernetes.io/health-check-path: "/health"
 spec:
+  # Specify ingress controller
+  ingressClassName: nginx
+
   # TLS configuration
   tls:
     - hosts:
@@ -1332,7 +1336,7 @@ flowchart TB
     App3 --> Cache
 ```
 
-### Active-Active Load Balancers with Keepalived
+### Active-Passive Load Balancers with Keepalived
 
 ```bash
 # /etc/keepalived/keepalived.conf on LB1 (MASTER)
@@ -1443,35 +1447,32 @@ groups:
     rules:
       # Alert when any backend is completely down
       - alert: HAProxyBackendDown
-        expr: haproxy_backend_up == 0
+        expr: haproxy_backend_status{state="UP"} == 0
         for: 1m
         labels:
           severity: critical
         annotations:
-          summary: "HAProxy backend {{ $labels.backend }} is down"
+          summary: "HAProxy backend {{ $labels.proxy }} is down"
 
       # Alert on high error rate (> 5% 5xx responses)
       - alert: HAProxyHighErrorRate
         expr: |
-          sum(rate(haproxy_backend_http_responses_total{code=~"5.."}[5m]))
-          / sum(rate(haproxy_backend_http_responses_total[5m])) > 0.05
+          sum by (proxy) (rate(haproxy_backend_http_responses_total{code="5xx"}[5m]))
+          / sum by (proxy) (rate(haproxy_backend_http_responses_total[5m])) > 0.05
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "High error rate on HAProxy backend"
+          summary: "High error rate on HAProxy backend {{ $labels.proxy }}"
 
-      # Alert on high latency (p99 > 1 second)
+      # Alert on high average backend response time (> 1 second)
       - alert: HAProxyHighLatency
-        expr: |
-          histogram_quantile(0.99,
-            sum(rate(haproxy_backend_response_time_seconds_bucket[5m])) by (le, backend)
-          ) > 1
+        expr: haproxy_backend_response_time_average_seconds > 1
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "High latency on backend {{ $labels.backend }}"
+          summary: "High latency on backend {{ $labels.proxy }}"
 ```
 
 ## Best Practices Checklist
