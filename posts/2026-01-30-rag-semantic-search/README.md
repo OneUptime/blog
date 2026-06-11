@@ -80,7 +80,7 @@ Popular embedding models:
 | OpenAI text-embedding-3-large | 3072 | Maximum quality |
 | sentence-transformers/all-MiniLM-L6-v2 | 384 | Fast, open source |
 | BAAI/bge-large-en-v1.5 | 1024 | High quality, open source |
-| Cohere embed-english-v3.0 | 1024 | Commercial, multilingual |
+| Cohere embed-english-v3.0 | 1024 | Commercial, English-only |
 
 ---
 
@@ -1757,7 +1757,7 @@ class QueryCache:
 -- No index needed, or use HNSW for better quality
 
 -- For medium datasets (100K - 1M vectors): IVFFlat
--- lists = sqrt(num_vectors)
+-- lists = rows / 1000 (use sqrt(rows) for over 1M rows)
 CREATE INDEX ON document_chunks
 USING ivfflat (embedding vector_cosine_ops)
 WITH (lists = 1000);  -- Adjust based on dataset size
