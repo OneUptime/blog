@@ -78,7 +78,7 @@ sequenceDiagram
 
 ## Building the Orchestrator
 
-Let's build a production-ready saga orchestrator in Node.js with TypeScript. We'll use Redis for state persistence and message queuing.
+Let's build a practical saga orchestrator in Node.js with TypeScript. We'll use Redis for state persistence.
 
 ### Project Structure
 
@@ -95,6 +95,7 @@ src/
     OrderService.ts
     InventoryService.ts
     PaymentService.ts
+    ShippingService.ts
   index.ts
 ```
 
@@ -201,7 +202,7 @@ The orchestrator manages saga execution, persistence, and compensation. This imp
 ```typescript
 // src/orchestrator/SagaOrchestrator.ts
 import { createClient, RedisClientType } from 'redis';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'crypto';
 import { SagaDefinition } from './SagaDefinition';
 import { SagaState, SagaStatus } from './SagaState';
 import { SagaStep } from './SagaStep';
@@ -235,7 +236,7 @@ export class SagaOrchestrator {
       throw new Error(`Saga definition not found: ${sagaName}`);
     }
 
-    const sagaId = uuidv4();
+    const sagaId = randomUUID();
     const state: SagaState<TContext> = {
       sagaId,
       sagaName,
@@ -271,6 +272,9 @@ export class SagaOrchestrator {
       // Execute each step in order
       for (let i = state.currentStepIndex; i < definition.steps.length; i++) {
         const step = definition.steps[i];
+        if (!step) {
+          throw new Error(`Step not found at index ${i}`);
+        }
         state.currentStepIndex = i;
 
         console.log(`Saga ${state.sagaId}: Executing step ${step.name}`);
@@ -296,7 +300,7 @@ export class SagaOrchestrator {
       console.error(`Saga ${state.sagaId}: Step failed, starting compensation`);
 
       state.error = {
-        stepName: definition.steps[state.currentStepIndex].name,
+        stepName: definition.steps[state.currentStepIndex]?.name || 'unknown',
         message: error instanceof Error ? error.message : String(error),
         timestamp: new Date()
       };
@@ -729,7 +733,7 @@ Set up the orchestrator and start processing orders.
 // src/index.ts
 import { SagaOrchestrator } from './orchestrator/SagaOrchestrator';
 import { createOrderSaga, OrderContext } from './sagas/OrderSaga';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'crypto';
 
 async function main() {
   // Initialize the orchestrator
@@ -751,7 +755,7 @@ async function main() {
 
   // Example: Start a new order saga
   const orderContext: OrderContext = {
-    orderId: uuidv4(),
+    orderId: randomUUID(),
     customerId: 'cust-123',
     items: [
       { productId: 'prod-001', quantity: 2, price: 29.99 },
@@ -813,7 +817,7 @@ async function executeParallelSteps<TContext>(
   if (failures.length > 0) {
     // Compensate successful steps
     const successfulSteps = steps.filter(
-      (_, i) => results[i].status === 'fulfilled'
+      (_, i) => results[i]?.status === 'fulfilled'
     );
 
     await Promise.all(
@@ -928,7 +932,7 @@ export class SagaMetrics {
   public sagasFailed: Counter;
   public sagasCompensated: Counter;
   public sagaDuration: Histogram;
-  public activeGagas: Gauge;
+  public activeSagas: Gauge;
   public stepDuration: Histogram;
 
   constructor() {
@@ -970,7 +974,7 @@ export class SagaMetrics {
       registers: [this.registry]
     });
 
-    this.activeGagas = new Gauge({
+    this.activeSagas = new Gauge({
       name: 'sagas_active',
       help: 'Number of currently active sagas',
       labelNames: ['saga_name'],
@@ -998,7 +1002,7 @@ Integrate OpenTelemetry for tracing across services.
 
 ```typescript
 // src/orchestrator/SagaTracing.ts
-import { trace, Span, SpanStatusCode, context } from '@opentelemetry/api';
+import { trace, Span, SpanStatusCode } from '@opentelemetry/api';
 
 const tracer = trace.getTracer('saga-orchestrator');
 
