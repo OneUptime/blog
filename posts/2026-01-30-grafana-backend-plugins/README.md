@@ -53,7 +53,7 @@ flowchart TB
 
 Before starting, ensure you have:
 
-- Go 1.21 or later installed
+- The Go version required by the generated `go.mod`
 - Node.js 18+ (for frontend components)
 - Grafana 10.0 or later
 - The Grafana plugin tools CLI
@@ -79,12 +79,12 @@ my-datasource-plugin/
 ├── src/
 │   ├── module.ts            # Frontend module
 │   ├── datasource.ts        # Frontend data source
+│   ├── plugin.json          # Plugin metadata
 │   └── components/
 │       └── ConfigEditor.tsx # Configuration UI
 ├── go.mod
 ├── go.sum
-├── package.json
-└── plugin.json              # Plugin metadata
+└── package.json
 ```
 
 ## Step 1: Initialize the Plugin
@@ -99,7 +99,7 @@ Select "datasource" as the plugin type and enable backend support when prompted.
 
 ## Step 2: Configure Plugin Metadata
 
-The `plugin.json` file defines your plugin's capabilities:
+The `src/plugin.json` file defines your plugin's capabilities:
 
 ```json
 {
@@ -135,7 +135,6 @@ import (
     "context"
     "encoding/json"
     "fmt"
-    "time"
 
     "github.com/grafana/grafana-plugin-sdk-go/backend"
     "github.com/grafana/grafana-plugin-sdk-go/backend/instancemgmt"
@@ -248,7 +247,7 @@ type QueryModel struct {
 func (d *Datasource) QueryData(ctx context.Context, req *backend.QueryDataRequest) (*backend.QueryDataResponse, error) {
     response := backend.NewQueryDataResponse()
 
-    // Process each query in parallel for better performance
+    // Process each query and collect a response for its RefID
     for _, query := range req.Queries {
         res := d.processQuery(ctx, req.PluginContext, query)
         response.Responses[query.RefID] = res
@@ -346,7 +345,6 @@ package plugin
 
 import (
     "context"
-    "encoding/json"
     "fmt"
     "time"
 
@@ -476,6 +474,7 @@ import (
     "encoding/json"
     "fmt"
     "net/http"
+    "net/url"
     "time"
 )
 
@@ -550,14 +549,17 @@ func (c *CustomAPIClient) Ping(ctx context.Context) error {
 // Query executes a query against the data source
 func (c *CustomAPIClient) Query(ctx context.Context, params QueryParams) (*QueryResult, error) {
     // Build query URL with parameters
-    url := fmt.Sprintf("%s/query?metric=%s&from=%d&to=%d",
-        c.endpoint,
-        params.MetricName,
-        params.From.UnixMilli(),
-        params.To.UnixMilli(),
-    )
+    queryURL, err := url.Parse(c.endpoint + "/query")
+    if err != nil {
+        return nil, err
+    }
+    values := queryURL.Query()
+    values.Set("metric", params.MetricName)
+    values.Set("from", fmt.Sprintf("%d", params.From.UnixMilli()))
+    values.Set("to", fmt.Sprintf("%d", params.To.UnixMilli()))
+    queryURL.RawQuery = values.Encode()
 
-    req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+    req, err := http.NewRequestWithContext(ctx, "GET", queryURL.String(), nil)
     if err != nil {
         return nil, err
     }
@@ -584,9 +586,15 @@ func (c *CustomAPIClient) Query(ctx context.Context, params QueryParams) (*Query
 
 // GetLatestDataPoint retrieves the most recent data point
 func (c *CustomAPIClient) GetLatestDataPoint(ctx context.Context, metricName string) (*DataPoint, error) {
-    url := fmt.Sprintf("%s/latest?metric=%s", c.endpoint, metricName)
+    latestURL, err := url.Parse(c.endpoint + "/latest")
+    if err != nil {
+        return nil, err
+    }
+    values := latestURL.Query()
+    values.Set("metric", metricName)
+    latestURL.RawQuery = values.Encode()
 
-    req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+    req, err := http.NewRequestWithContext(ctx, "GET", latestURL.String(), nil)
     if err != nil {
         return nil, err
     }
@@ -598,6 +606,10 @@ func (c *CustomAPIClient) GetLatestDataPoint(ctx context.Context, metricName str
         return nil, err
     }
     defer resp.Body.Close()
+
+    if resp.StatusCode != http.StatusOK {
+        return nil, fmt.Errorf("latest data point request failed with status: %d", resp.StatusCode)
+    }
 
     var point DataPoint
     if err := json.NewDecoder(resp.Body).Decode(&point); err != nil {
@@ -625,6 +637,7 @@ Create a Makefile for building your plugin:
 ```makefile
 PLUGIN_ID=myorg-custom-datasource
 DIST_DIR=dist
+PACKAGE_FILE=$(PLUGIN_ID).zip
 
 .PHONY: build
 build: build-backend build-frontend
@@ -642,15 +655,13 @@ build-frontend:
 
 .PHONY: package
 package: build
-	mkdir -p $(DIST_DIR)
-	cp -r dist/* $(DIST_DIR)/
-	cp plugin.json $(DIST_DIR)/
-	cd $(DIST_DIR) && zip -r ../$(PLUGIN_ID).zip .
+	rm -f $(PACKAGE_FILE)
+	cd $(DIST_DIR) && zip -r ../$(PACKAGE_FILE) .
 
 .PHONY: clean
 clean:
 	rm -rf $(DIST_DIR)
-	rm -f $(PLUGIN_ID).zip
+	rm -f $(PACKAGE_FILE)
 ```
 
 Create the `magefile.go` for cross-platform building:
@@ -662,6 +673,7 @@ Create the `magefile.go` for cross-platform building:
 package main
 
 import (
+    // mage:import
     "github.com/grafana/grafana-plugin-sdk-go/build"
 )
 
@@ -704,11 +716,11 @@ flowchart TD
 Sign your plugin for production use:
 
 ```bash
-# Install the Grafana plugin signing tool
-npx @grafana/sign-plugin@latest
+# Export a Grafana Cloud access policy token with the plugins:write scope
+export GRAFANA_ACCESS_POLICY_TOKEN=<YOUR_ACCESS_POLICY_TOKEN>
 
 # Sign the plugin (requires Grafana Cloud account)
-npx @grafana/sign-plugin@latest --rootUrls https://your-grafana-instance.com
+npm run sign -- --rootUrls https://your-grafana-instance.com
 ```
 
 ### Docker Deployment
@@ -736,6 +748,9 @@ package plugin_test
 
 import (
     "context"
+    "encoding/json"
+    "net/http"
+    "net/http/httptest"
     "testing"
     "time"
 
@@ -747,9 +762,25 @@ import (
 )
 
 func TestQueryData(t *testing.T) {
+    server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        switch r.URL.Path {
+        case "/query":
+            result := plugin.QueryResult{
+                Timestamps: []time.Time{time.Now().Add(-1 * time.Minute), time.Now()},
+                Values:     []float64{10.5, 12.2},
+                Labels:     map[string]string{"host": "test"},
+                Unit:       "percent",
+            }
+            require.NoError(t, json.NewEncoder(w).Encode(result))
+        default:
+            http.NotFound(w, r)
+        }
+    }))
+    defer server.Close()
+
     // Create test settings
     settings := backend.DataSourceInstanceSettings{
-        JSONData: []byte(`{"endpoint": "http://localhost:8080", "timeout": 30}`),
+        JSONData: []byte(`{"endpoint": "` + server.URL + `", "timeout": 30}`),
     }
 
     // Create the datasource instance
@@ -783,8 +814,17 @@ func TestQueryData(t *testing.T) {
 }
 
 func TestCheckHealth(t *testing.T) {
+    server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        if r.URL.Path != "/health" {
+            http.NotFound(w, r)
+            return
+        }
+        w.WriteHeader(http.StatusOK)
+    }))
+    defer server.Close()
+
     settings := backend.DataSourceInstanceSettings{
-        JSONData: []byte(`{"endpoint": "http://localhost:8080", "timeout": 30}`),
+        JSONData: []byte(`{"endpoint": "` + server.URL + `", "timeout": 30}`),
     }
 
     ds, err := plugin.NewDatasource(context.Background(), settings)
