@@ -251,9 +251,9 @@ print("Program continues normally")
 
 ## Advanced Patterns
 
-### Reentrant Context Managers
+### Context Manager Factories
 
-Sometimes you need a context manager that can be entered multiple times. Here is a connection pool example:
+Sometimes you want an object that hands out fresh context managers on demand. A connection pool is a classic example:
 
 ```python
 from contextlib import contextmanager
