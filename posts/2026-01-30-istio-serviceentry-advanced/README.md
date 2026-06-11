@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Kubernetes, ServiceMesh, ExternalServices
 
-Description: Master Istio ServiceEntry patterns for integrating external services with DNS resolution, TLS origination, and health checking.
+Description: Master Istio ServiceEntry patterns for integrating external services with DNS resolution, TLS origination, and outlier detection.
 
 ---
 
@@ -44,7 +44,7 @@ flowchart LR
 
 ## Resolution Modes Explained
 
-Istio supports three resolution modes that determine how traffic reaches external endpoints.
+Istio supports several resolution modes that determine how traffic reaches external endpoints.
 
 ### NONE - Direct IP Connection
 
@@ -67,7 +67,7 @@ spec:
     - number: 5432
       name: postgres
       protocol: TCP
-  resolution: NONE  # No DNS resolution, use endpoint IPs directly
+  resolution: NONE  # No DNS resolution, forward to the original destination IP
 ```
 
 ### STATIC - Explicit Endpoint IPs
@@ -138,13 +138,13 @@ spec:
   resolution: DNS  # Resolve hostname via DNS
 ```
 
-### DNS_ROUND_ROBIN - Load Balanced DNS
+### DNS_ROUND_ROBIN - Connection-Oriented DNS
 
-Distributes traffic across all IP addresses returned by DNS. Ideal for external services that return multiple A records.
+Resolves DNS asynchronously and uses one returned IP address when a new connection is initiated. This avoids draining connection pools when DNS records change frequently.
 
 ```yaml
 # ServiceEntry with DNS round-robin
-# Use case: External service behind DNS load balancing
+# Use case: Large external service with frequently changing DNS records
 apiVersion: networking.istio.io/v1beta1
 kind: ServiceEntry
 metadata:
@@ -158,7 +158,7 @@ spec:
     - number: 443
       name: https
       protocol: HTTPS
-  resolution: DNS_ROUND_ROBIN  # Distribute across all DNS results
+  resolution: DNS_ROUND_ROBIN  # Resolve DNS per new connection without draining pools
 ```
 
 ## Traffic Flow Architecture
@@ -175,7 +175,7 @@ flowchart TB
         NONE["NONE\nDirect passthrough"]
         STATIC["STATIC\nUse defined IPs"]
         DNS["DNS\nResolve hostname"]
-        DNSRR["DNS_ROUND_ROBIN\nResolve + distribute"]
+        DNSRR["DNS_ROUND_ROBIN\nResolve per connection"]
     end
 
     subgraph Endpoints["External Endpoints"]
@@ -199,12 +199,12 @@ flowchart TB
     DNSRR --> EP3
 ```
 
-## Endpoint Health Checking
+## Endpoint Outlier Detection
 
-Configure active health checks to automatically remove unhealthy endpoints from the load balancing pool.
+Configure passive outlier detection to automatically remove endpoints from the load balancing pool after observed failures.
 
 ```yaml
-# ServiceEntry with health checking via DestinationRule
+# ServiceEntry with outlier detection via DestinationRule
 apiVersion: networking.istio.io/v1beta1
 kind: ServiceEntry
 metadata:
@@ -230,7 +230,7 @@ spec:
       ports:
         https: 443
 ---
-# DestinationRule for health checking configuration
+# DestinationRule for outlier detection configuration
 apiVersion: networking.istio.io/v1beta1
 kind: DestinationRule
 metadata:
@@ -261,10 +261,10 @@ spec:
       minHealthPercent: 20
 ```
 
-### Advanced Health Check with HTTP Probing
+### Advanced Outlier Detection for HTTP Endpoints
 
 ```yaml
-# Comprehensive health checking for HTTP endpoints
+# Comprehensive outlier detection for HTTP endpoints
 apiVersion: networking.istio.io/v1beta1
 kind: DestinationRule
 metadata:
@@ -283,7 +283,7 @@ spec:
       interval: 10s
       baseEjectionTime: 30s
       maxEjectionPercent: 100
-      # Success threshold to return to pool
+      # Locally originated failures before ejection
       consecutiveLocalOriginFailures: 5
     connectionPool:
       tcp:
@@ -416,9 +416,9 @@ spec:
 #   --from-file=cert=client.pem \
 #   --from-file=key=client-key.pem \
 #   --from-file=cacert=ca.pem \
-#   -n istio-system
+#   -n production
 
-# DestinationRule referencing the secret
+# DestinationRule referencing the secret for selected sidecars
 apiVersion: networking.istio.io/v1beta1
 kind: DestinationRule
 metadata:
@@ -426,6 +426,9 @@ metadata:
   namespace: production
 spec:
   host: secure.partner-api.com
+  workloadSelector:
+    matchLabels:
+      app: partner-client
   trafficPolicy:
     tls:
       mode: MUTUAL
@@ -559,10 +562,10 @@ spec:
       baseEjectionTime: 30s
 ```
 
-### Pattern 3: Legacy Service with Protocol Upgrade
+### Pattern 3: Legacy Service with Request Rewrite
 
 ```yaml
-# ServiceEntry for legacy HTTP service that needs to be accessed as HTTPS internally
+# ServiceEntry for legacy HTTP service that needs request rewriting
 apiVersion: networking.istio.io/v1beta1
 kind: ServiceEntry
 metadata:
@@ -609,7 +612,7 @@ spec:
               number: 80
 ```
 
-### Pattern 4: External Service Rate Limiting
+### Pattern 4: External Service Circuit Breaking
 
 ```yaml
 # ServiceEntry for rate-limited external API
@@ -628,7 +631,7 @@ spec:
       protocol: HTTPS
   resolution: DNS
 ---
-# DestinationRule to control request rate
+# DestinationRule to control concurrency and pending requests
 apiVersion: networking.istio.io/v1beta1
 kind: DestinationRule
 metadata:
@@ -647,7 +650,7 @@ spec:
         maxRequestsPerConnection: 5
         maxRetries: 2
     outlierDetection:
-      # Handle 429 (rate limit) responses
+      # Eject hosts after repeated upstream failures
       consecutive5xxErrors: 10
       consecutiveGatewayErrors: 5
       interval: 10s
@@ -812,4 +815,4 @@ kubectl exec -it <pod-name> -n production -c istio-proxy -- \
 
 ---
 
-ServiceEntry transforms how your mesh interacts with the outside world. By combining resolution modes, health checking, and TLS origination, you gain the same level of control over external traffic that Istio provides for internal services. Start with basic ServiceEntries and progressively add DestinationRules and VirtualServices as your requirements grow.
+ServiceEntry transforms how your mesh interacts with the outside world. By combining resolution modes, outlier detection, and TLS origination, you gain the same level of control over external traffic that Istio provides for internal services. Start with basic ServiceEntries and progressively add DestinationRules and VirtualServices as your requirements grow.
