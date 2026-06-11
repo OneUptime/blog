@@ -266,7 +266,7 @@ class FactualConsistencyEvaluator:
         Each sentence is treated as a potential claim.
         """
         import re
-        sentences = re.split(r'[.!?]+', text)
+        sentences = re.findall(r'[^.!?]+[.!?]?', text)
         # Filter sentences that look like factual claims
         claims = []
         for sentence in sentences:
@@ -399,7 +399,7 @@ flowchart LR
 
 from typing import Dict, Any, Optional, Callable
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 import logging
 
@@ -494,7 +494,7 @@ class LLMQualityMonitor:
         Returns:
             QualityReport with all metrics and alerts
         """
-        timestamp = datetime.utcnow()
+        timestamp = datetime.now(timezone.utc)
         alerts = []
 
         # Run relevance evaluation
@@ -609,6 +609,7 @@ class LLMQualityMonitor:
                 "factual_score": report.factual_metrics.get("factual_consistency_score"),
                 "passed_thresholds": report.passed_thresholds,
                 "alert_count": len(report.alerts),
+                "alerts": report.alerts,
                 "metadata": report.metadata
             }
             self.storage.store(report_dict)
@@ -678,11 +679,11 @@ from openai import OpenAI
 
 class LLMJudgeEvaluator:
     """
-    Uses GPT-4 or similar model to evaluate LLM responses
+    Uses a current LLM to evaluate LLM responses
     on subjective criteria like helpfulness and tone.
     """
 
-    def __init__(self, api_key: str, model: str = "gpt-4"):
+    def __init__(self, api_key: str, model: str = "gpt-5.4"):
         self.client = OpenAI(api_key=api_key)
         self.model = model
 
@@ -771,6 +772,7 @@ Return only the JSON, no additional text."""
                     },
                     {"role": "user", "content": prompt}
                 ],
+                response_format={"type": "json_object"},
                 temperature=0.1  # Low temperature for consistent evaluations
             )
 
@@ -844,7 +846,7 @@ flowchart TD
 
 from typing import Dict, Any, Optional, List
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 import uuid
 
@@ -915,7 +917,7 @@ class FeedbackCollector:
         feedback = UserFeedback(
             feedback_id=str(uuid.uuid4()),
             request_id=request_id,
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             feedback_type=FeedbackType.THUMBS_UP if is_positive else FeedbackType.THUMBS_DOWN,
             is_positive=is_positive,
             user_id=user_id
@@ -948,7 +950,7 @@ class FeedbackCollector:
         feedback = UserFeedback(
             feedback_id=str(uuid.uuid4()),
             request_id=request_id,
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             feedback_type=FeedbackType.RATING,
             is_positive=rating >= 4,
             rating=rating,
@@ -979,6 +981,10 @@ class FeedbackCollector:
         Returns:
             UserFeedback object
         """
+        # Validate rating
+        if not 1 <= rating <= 5:
+            raise ValueError("Rating must be between 1 and 5")
+
         # Convert category strings to enum values
         feedback_categories = []
         for cat in categories:
@@ -990,7 +996,7 @@ class FeedbackCollector:
         feedback = UserFeedback(
             feedback_id=str(uuid.uuid4()),
             request_id=request_id,
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             feedback_type=FeedbackType.DETAILED,
             is_positive=rating >= 4,
             rating=rating,
@@ -1118,7 +1124,7 @@ flowchart TB
 # Supports real-time metrics and historical trend analysis
 
 from typing import Dict, Any, List
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass
 import statistics
 
@@ -1153,7 +1159,7 @@ class QualityDashboardProvider:
         """
         Get high-level overview metrics for the dashboard header.
         """
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         start_time = now - timedelta(hours=self.config.default_time_window_hours)
 
         # Query quality reports
@@ -1183,7 +1189,7 @@ class QualityDashboardProvider:
         """
         Get quality trend data for time series charts.
         """
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         start_time = now - timedelta(days=self.config.trend_window_days)
 
         reports = self.quality_storage.query(start_time, now)
@@ -1242,7 +1248,7 @@ class QualityDashboardProvider:
         """
         Get distribution of quality scores for histogram display.
         """
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         start_time = now - timedelta(hours=self.config.default_time_window_hours)
 
         reports = self.quality_storage.query(start_time, now)
@@ -1292,7 +1298,7 @@ class QualityDashboardProvider:
         """
         Get recent quality alerts for the dashboard.
         """
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         start_time = now - timedelta(hours=self.config.alert_retention_hours)
 
         reports = self.quality_storage.query(start_time, now)
