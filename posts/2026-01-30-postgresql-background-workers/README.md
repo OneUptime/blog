@@ -383,6 +383,7 @@ typedef struct MyWorkerSharedState
 
 static MyWorkerSharedState *shared_state = NULL;
 static shmem_startup_hook_type prev_shmem_startup_hook = NULL;
+static shmem_request_hook_type prev_shmem_request_hook = NULL;
 ```
 
 ### Shared Memory Initialization
@@ -902,7 +903,7 @@ WHERE backend_type = 'my_custom_worker';
 -- Get worker statistics
 SELECT * FROM my_worker_status;
 
--- Check logs
+-- Check current configuration values for the worker
 SELECT * FROM pg_catalog.pg_file_settings
 WHERE name LIKE 'my_worker%';
 ```
