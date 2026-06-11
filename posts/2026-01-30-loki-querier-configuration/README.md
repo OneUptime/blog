@@ -63,12 +63,12 @@ querier:
 
   # Engine configuration for query processing
   engine:
-    # Maximum time a query can run before being cancelled
-    timeout: 5m
-
-    # Maximum lookback period for queries
-    # Queries cannot look back further than this duration
+    # Maximum amount of time to look back for log lines in instant log queries
     max_look_back_period: 720h  # 30 days
+
+limits_config:
+  # Maximum time a query can spend querying backends before timing out
+  query_timeout: 5m
 ```
 
 ### Parallelism and Concurrency Configuration
@@ -77,29 +77,28 @@ Controlling parallelism is crucial for balancing query performance with cluster 
 
 ```yaml
 querier:
-  # Number of workers to use for parallel query processing
-  # Each worker processes a portion of the query independently
+  # Maximum number of queries that can be simultaneously processed by the querier
   max_concurrent: 20
 
-  # Query parallelism settings in the query_range section
-  query_range:
-    # Enable parallelization of queries
-    parallelise_shardable_queries: true
+# Query parallelism settings in the query_range section
+query_range:
+  # Enable parallelization of shardable queries
+  parallelise_shardable_queries: true
 
-    # Number of shards to split queries into
-    # Higher values improve parallelism but increase overhead
-    max_query_parallelism: 32
+limits_config:
+  # Maximum number of queries that will be scheduled in parallel by the frontend
+  max_query_parallelism: 32
 
 # Frontend worker configuration
 frontend_worker:
-  # Number of simultaneous queries to process per querier
-  parallelism: 10
-
-  # Address of the query frontend or scheduler
+  # Address of the query frontend
   frontend_address: "query-frontend:9095"
 
-  # How often to poll for new work
-  scheduler_address: ""
+  # Or use the query scheduler address instead of frontend_address
+  # scheduler_address: "query-scheduler:9095"
+
+  # How often to resolve the query-frontend or query-scheduler address
+  dns_lookup_duration: 3s
 
   # gRPC client configuration
   grpc_client_config:
@@ -112,16 +111,11 @@ frontend_worker:
 Configure timeouts to prevent runaway queries from consuming excessive resources.
 
 ```yaml
-querier:
-  engine:
-    # Maximum time for query execution
-    timeout: 3m
-
-    # Maximum lookback period
-    max_look_back_period: 720h
-
 # Limits configuration for query boundaries
 limits_config:
+  # Limit how far back in time data can be queried
+  max_query_lookback: 720h
+
   # Maximum time range for a single query
   max_query_length: 721h
 
@@ -161,7 +155,12 @@ limits_config:
   max_entries_limit_per_query: 5000
   query_timeout: 2m
 
-# Per-tenant overrides
+# Load per-tenant overrides from runtime configuration
+runtime_config:
+  file: /etc/loki/runtime-config.yaml
+  period: 10s
+
+# Contents of /etc/loki/runtime-config.yaml
 overrides:
   # High-priority tenant with relaxed limits
   tenant_premium:
@@ -257,30 +256,32 @@ flowchart LR
 The query frontend works closely with the querier to optimize query execution.
 
 ```yaml
-query_frontend:
+query_range:
   # Maximum number of retries for failed queries
   max_retries: 5
 
-  # Address to listen for querier connections
-  address: "0.0.0.0:9095"
-
+frontend:
   # Compression for responses
   compress_responses: true
 
   # Log queries that are slower than this threshold
   log_queries_longer_than: 10s
 
+  # Maximum number of outstanding requests per tenant per frontend
+  max_outstanding_per_tenant: 2048
+
 # Query scheduling configuration
 query_scheduler:
-  # Maximum number of outstanding requests per tenant
+  # Maximum number of outstanding requests per tenant per query-scheduler
   max_outstanding_requests_per_tenant: 2048
 
-  # How long to wait for queriers to connect
+  # How long to keep a disconnected querier in a tenant shard
   querier_forget_delay: 2m
 
-  # gRPC server configuration
-  grpc_server_max_recv_msg_size: 104857600
-  grpc_server_max_send_msg_size: 104857600
+  # gRPC client configuration used to report errors back to the query frontend
+  grpc_client_config:
+    max_recv_msg_size: 104857600
+    max_send_msg_size: 104857600
 ```
 
 ## Caching Configuration for Query Performance
@@ -307,16 +308,17 @@ query_range:
       #   timeout: 500ms
       #   expiration: 1h
 
-# Index cache configuration
+# Index query cache configuration
 storage_config:
-  index_cache:
+  index_queries_cache_config:
     embedded_cache:
       enabled: true
       max_size_mb: 1000
       ttl: 24h
 
-  # Chunk cache for frequently accessed data
-  chunk_cache:
+# Chunk cache for frequently accessed data
+chunk_store_config:
+  chunk_cache_config:
     embedded_cache:
       enabled: true
       max_size_mb: 2000
@@ -343,7 +345,6 @@ querier:
   extra_query_delay: 0s
 
   engine:
-    timeout: 5m
     max_look_back_period: 720h
 
 query_range:
@@ -361,8 +362,8 @@ query_scheduler:
   querier_forget_delay: 2m
 
 frontend_worker:
-  parallelism: 10
   frontend_address: "query-frontend:9095"
+  dns_lookup_duration: 3s
   grpc_client_config:
     max_recv_msg_size: 104857600
     max_send_msg_size: 104857600
@@ -411,18 +412,10 @@ Set timeouts that match your query complexity and data volume.
 
 ```yaml
 # For dashboards with simple queries
-querier:
-  engine:
-    timeout: 1m
-
 limits_config:
   query_timeout: 1m
 
 # For ad-hoc exploration with complex queries
-querier:
-  engine:
-    timeout: 10m
-
 limits_config:
   query_timeout: 10m
 ```
