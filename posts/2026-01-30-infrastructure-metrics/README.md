@@ -75,13 +75,13 @@ Node Exporter is the standard tool for collecting hardware and OS metrics from L
 # Download the latest Node Exporter release
 
 # Check https://github.com/prometheus/node_exporter/releases for the current version
-wget https://github.com/prometheus/node_exporter/releases/download/v1.7.0/node_exporter-1.7.0.linux-amd64.tar.gz
+wget https://github.com/prometheus/node_exporter/releases/download/v1.9.1/node_exporter-1.9.1.linux-amd64.tar.gz
 
 # Extract the archive
-tar xvfz node_exporter-1.7.0.linux-amd64.tar.gz
+tar xvfz node_exporter-1.9.1.linux-amd64.tar.gz
 
 # Move binary to a standard location
-sudo mv node_exporter-1.7.0.linux-amd64/node_exporter /usr/local/bin/
+sudo mv node_exporter-1.9.1.linux-amd64/node_exporter /usr/local/bin/
 
 # Verify the installation
 node_exporter --version
@@ -177,12 +177,10 @@ cAdvisor (Container Advisor) provides container users with resource usage and pe
 # docker-compose.yml for cAdvisor
 # This configuration exposes container metrics on port 8080
 
-version: '3.8'
-
 services:
   cadvisor:
     # Use the official Google cAdvisor image
-    image: gcr.io/cadvisor/cadvisor:v0.47.0
+    image: ghcr.io/google/cadvisor:v0.57.0
     container_name: cadvisor
     # Privileged mode required for accessing host metrics
     privileged: true
@@ -190,13 +188,13 @@ services:
       # Expose metrics endpoint
       - "8080:8080"
     volumes:
-      # Mount host directories as read-only for security
+      # Mount host directories needed by cAdvisor
       # Root filesystem for process information
       - /:/rootfs:ro
       # Cgroup information for resource limits
       - /sys:/sys:ro
       # Docker socket for container discovery
-      - /var/run:/var/run:ro
+      - /var/run:/var/run:rw
       # Docker metadata and logs
       - /var/lib/docker/:/var/lib/docker:ro
       # Device information
@@ -206,7 +204,7 @@ services:
       # Reduce housekeeping frequency for lower CPU usage
       - --housekeeping_interval=30s
       # Disable metrics we do not need
-      - --disable_metrics=percpu,sched,tcp,udp,disk,diskIO,hugetlb,referenced_memory
+      - --disable_metrics=percpu,sched,tcp,udp,hugetlb,referenced_memory
       # Store only 2 minutes of data in memory
       - --storage_duration=2m
     restart: unless-stopped
@@ -286,9 +284,9 @@ scrape_configs:
           - 'docker-host2:8080'
         labels:
           env: 'production'
-    # Filter out pause containers and system containers
+    # Filter out series that are not associated with a named container
     metric_relabel_configs:
-      - source_labels: [container_label_io_kubernetes_pod_name]
+      - source_labels: [name]
         regex: ''
         action: drop
 ```
@@ -310,9 +308,9 @@ Here are the most important PromQL queries for monitoring infrastructure using t
 
 # CPU Saturation - normalized load average
 # Values above 1 indicate CPU saturation
-node_load1 / count without (cpu) (node_cpu_seconds_total{mode="idle"})
+node_load1 / count without (cpu, mode) (node_cpu_seconds_total{mode="idle"})
 
-# CPU Errors - context switches (high rate may indicate problems)
+# CPU scheduler activity - high context switch rates may indicate problems
 rate(node_context_switches_total[5m])
 ```
 
@@ -341,13 +339,13 @@ increase(node_vmstat_oom_kill[1h])
 # Disk Utilization - percentage of time disk is busy
 rate(node_disk_io_time_seconds_total[5m]) * 100
 
-# Disk Saturation - average queue size
+# Disk Saturation - average number of I/Os in progress
 # Values consistently above 1 indicate saturation
 rate(node_disk_io_time_weighted_seconds_total[5m])
-/ rate(node_disk_io_time_seconds_total[5m])
 
-# Disk Errors - failed read/write operations
+# Disk Read Latency - average seconds per completed read
 rate(node_disk_read_time_seconds_total{device=~"sd.*"}[5m])
+/ rate(node_disk_reads_completed_total{device=~"sd.*"}[5m])
 
 # Filesystem Usage - percentage of disk space used
 100 * (
@@ -378,7 +376,7 @@ rate(node_network_receive_errs_total[5m])
 ### Container Metrics (from cAdvisor)
 
 ```promql
-# Container CPU Usage - percentage of allocated CPU
+# Container CPU Usage - percentage of one CPU core
 sum by (name) (
   rate(container_cpu_usage_seconds_total{name!=""}[5m])
 ) * 100
@@ -482,7 +480,7 @@ groups:
       - alert: CPUSaturation
         # Fire when load average exceeds CPU count
         expr: |
-          node_load1 / count without (cpu) (node_cpu_seconds_total{mode="idle"}) > 1.5
+          node_load1 / count without (cpu, mode) (node_cpu_seconds_total{mode="idle"}) > 1.5
         for: 5m
         labels:
           severity: warning
@@ -553,7 +551,7 @@ groups:
 
       # Container Alerts
       - alert: ContainerHighCPU
-        # Fire when container uses more than 80% of its CPU limit
+        # Fire when container uses more than 80% of one CPU core
         expr: |
           sum by (name) (rate(container_cpu_usage_seconds_total{name!=""}[5m])) * 100 > 80
         for: 5m
@@ -599,14 +597,13 @@ labels:
 
 Configure appropriate retention based on your needs:
 
-```yaml
-# prometheus.yml storage configuration
-storage:
-  tsdb:
-    # Keep 15 days of data locally
-    retention.time: 15d
-    # Limit storage to 50GB
-    retention.size: 50GB
+```bash
+# Prometheus startup flags
+prometheus \
+  --config.file=/etc/prometheus/prometheus.yml \
+  --storage.tsdb.path=/var/lib/prometheus \
+  --storage.tsdb.retention.time=15d \
+  --storage.tsdb.retention.size=50GB
 ```
 
 ### 3. Recording Rules for Performance
